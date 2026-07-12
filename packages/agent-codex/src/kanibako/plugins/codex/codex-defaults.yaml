@@ -72,6 +72,22 @@ descriptor:
     - setting_key: model
       channel: flag
       flag: ["--model"]
+    # NOTE: endpoint is DELIBERATELY not a SettingArg here.  A codex persona's
+    # alternate endpoint is delivered via the ~/.codex/config.toml
+    # [model_providers.<id>] block (see `persona:` below + vscode_config's
+    # merge_codex_model_provider), NOT an env var — so it must not be emitted as a
+    # flag/env by the launch arg assembler.  It is a first-class SETTABLE key via
+    # setting_descriptors() (target.py) so `config set agent.<node>℘codex.endpoint`
+    # validates + resolves through the behavior cascade.
+
+  # PERSONA endpoint/token delivery (codex; INC 2 harness-aware persona resolution).
+  # config_file = the endpoint is written into ~/.codex/config.toml's model-provider
+  # block (not ANTHROPIC_BASE_URL); token_var EMPTY = DYNAMIC (the single configured
+  # secret_path key IS the provider env_key + the in-box bearer var).  config_file
+  # also disables the claude-shaped B3 host-dir auto-adopt (MVP keyspace-config only).
+  persona:
+    endpoint_delivery: config_file
+    wire_api: chat
 
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).

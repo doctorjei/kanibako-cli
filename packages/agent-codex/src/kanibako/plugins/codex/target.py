@@ -387,15 +387,29 @@ class CodexTarget(Target):
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Codex runtime settings.
 
-        Only ``model`` (freeform; OpenAI adds models regularly).  Safe-bypass is
-        NOT a setting descriptor: it rides the uniform ``auto_approve`` key (the
-        descriptor's ``safe_bypass.setting_key`` is ``auto_approve``), persisted +
-        cascade-resolved, default permissive; ``-A``/``-S`` override per launch.
+        - ``model`` (freeform; OpenAI adds models regularly).
+        - ``endpoint``: alternate model-provider base-URL (persona); unset =
+          bare/harness-default.  Unlike claude, a codex endpoint is delivered via
+          the ``~/.codex/config.toml`` ``[model_providers.<id>]`` block (see the
+          descriptor ``persona.endpoint_delivery: config_file``), NOT an env var —
+          it is declared here only to make it a first-class SETTABLE + cascade-
+          resolved behavior key (``config set``/``--effective``).
+
+        Safe-bypass is NOT a setting descriptor: it rides the uniform ``auto_approve``
+        key (the descriptor's ``safe_bypass.setting_key`` is ``auto_approve``),
+        persisted + cascade-resolved, default permissive; ``-A``/``-S`` override per
+        launch.
         """
         return [
             TargetSetting(
                 key="model",
                 description="Model to use",
                 default="gpt-5.5",
+            ),
+            TargetSetting(
+                key="endpoint",
+                description="Alternate model-provider base-URL (persona); "
+                "unset uses the harness default and syncs the codex login",
+                default="",
             ),
         ]

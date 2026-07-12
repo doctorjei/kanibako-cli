@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from kanibako.config import KanibakoConfig
     from kanibako.paths import ProjectPaths, StandardPaths
     from kanibako.settings_launch import AuthSource
+    from kanibako.targets.base import PersonaSpec
+    from kanibako.vscode_config import CodexModelProvider
 
 from kanibako.agent_config import (
     agent_settings_path,
@@ -1656,8 +1658,13 @@ def _run_container(
     # NOTHING is left behind — a true pre-flight, not a rollback.
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
-        active_endpoint, persona_error, persona_adopted = _preflight_persona_load(
-            agent_id, agent_cfg, active_endpoint, logger,
+        # ``_provider`` is the resolved codex CodexModelProvider (None for claude);
+        # INC 3 threads it into ``seed_codex_config`` here.  INC 2 only proves the
+        # resolution is harness-correct — the launch dispatch stays untouched.
+        (
+            active_endpoint, persona_error, persona_adopted, _provider,
+        ) = _preflight_persona_load(
+            agent_id, agent_cfg, active_endpoint, logger, target=target,
         )
         if persona_error is not None:
             print(persona_error, file=sys.stderr)
@@ -3764,16 +3771,96 @@ def _name_new_box_probe(std, proj) -> None:
         proj.name = short_hash(proj.project_hash)
 
 
+def _persona_wiring(target) -> "PersonaSpec":
+    """The HARNESS-specific persona endpoint/token delivery for *target* (INC 2).
+
+    Consults the resolved :class:`~kanibako.targets.base.Target`'s descriptor for a
+    declared :class:`~kanibako.targets.base.PersonaSpec`; a target with no descriptor
+    or no ``persona:`` block falls back to the claude-style default (ENV endpoint
+    delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var) so any pre-seam / no-
+    target caller resolves BYTE-IDENTICALLY to before this seam existed.
+    """
+    from kanibako.targets.base import PersonaSpec
+
+    desc = getattr(target, "descriptor", None) if target is not None else None
+    spec = getattr(desc, "persona", None) if desc is not None else None
+    if isinstance(spec, PersonaSpec):
+        # An empty token_var means DYNAMIC (config-file harness): the configured
+        # secret_path key is the token var.  An empty ENV-delivery token_var still
+        # means the claude default (defensive — no shipped ENV harness leaves it
+        # empty).
+        if spec.endpoint_delivery == "env" and not spec.token_var:
+            return PersonaSpec(
+                token_var=_PERSONA_TOKEN_VAR,
+                endpoint_delivery="env",
+                wire_api=spec.wire_api,
+            )
+        return spec
+    return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
+
+
+def _resolve_codex_persona_env_key(agent_cfg, wiring) -> "str | None":
+    """The config-file persona's bearer token var == the model-provider ``env_key``.
+
+    For a FIXED-var harness this is ``wiring.token_var``.  For the DYNAMIC codex MVP
+    (empty ``token_var``) it is the SINGLE configured ``agent.<node>.secret_path``
+    key — that key names BOTH the in-box env var the token is exported to AND the
+    ``[model_providers.<id>].env_key`` the generated config.toml reads, so they
+    cannot drift.  Returns ``None`` when there is no single unambiguous key (zero →
+    no token; >1 → ambiguous), which the caller turns into an actionable error.
+    """
+    if wiring.token_var:
+        return wiring.token_var
+    keys = sorted(agent_cfg.secret_path)
+    if len(keys) == 1:
+        return keys[0]
+    return None
+
+
+def _resolve_codex_persona_provider(
+    agent_id: str, agent_cfg, endpoint: str, env_key: str, wiring
+) -> "CodexModelProvider":
+    """Build the resolved codex model-provider bundle INC 3 wires into config.toml.
+
+    A pure assembly of the persona's resolved values (no I/O) into the
+    :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 feeds to
+    :func:`~kanibako.vscode_config.merge_codex_config` /
+    :func:`~kanibako.vscode_config.seed_codex_config`:
+
+    * *provider_id* / *name* — the persona segment (``navigator``); the table id +
+      the human-readable provider name (INC 3/4 may add a display-name keyspace key).
+    * *base_url* — the resolved endpoint.
+    * *wire_api* — the harness default (``chat`` for codex; settled at INC 3/4).
+    * *env_key* — the token var (== the ``secret_path`` key the bearer token is
+      delivered through), so codex reads the key kanibako exports.
+    * *model* — the resolved active-slot model (``agent.<node>.model``); empty when
+      unset (INC 3/4 finalises the model-default handling — it is not a load gate).
+    """
+    from kanibako.vscode_config import CodexModelProvider
+
+    persona = persona_of(agent_id)
+    return CodexModelProvider(
+        provider_id=persona,
+        name=persona,
+        base_url=endpoint,
+        wire_api=wiring.wire_api,
+        env_key=env_key,
+        model=agent_cfg.state.get("model", ""),
+    )
+
+
 def _preflight_persona_load(
     agent_id: str,
     agent_cfg,
     keyspace_endpoint: str | None,
     logger,
-) -> "tuple[str | None, str | None, bool]":
+    *,
+    target=None,
+) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
     """Resolve a persona's LOADABILITY (A + B3) — a TRUE pre-flight.
 
     Called ONLY for a persona (``harness_of(agent_id) != agent_id``), BEFORE any
-    persona artifact is created.  Returns ``(endpoint, error, adopted)``:
+    persona artifact is created.  Returns ``(endpoint, error, adopted, provider)``:
 
     * *endpoint* — the resolved endpoint URL on success (``error`` None); ``None``
       when unloadable;
@@ -3782,19 +3869,40 @@ def _preflight_persona_load(
       it (start) or raises it (create) and refuses to launch.
     * *adopted* — True iff B3 mutated *agent_cfg* in place (so the caller persists
       the adopted config).
+    * *provider* — for a CONFIG-FILE harness (codex) the resolved
+      :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 wires into
+      ``~/.codex/config.toml``; ``None`` for an ENV harness (claude) — whose endpoint
+      + token ride their existing single-source channels (the
+      ``endpoint``→``ANTHROPIC_BASE_URL`` :class:`SettingArg` env + the
+      ``secret_path`` mount), so no separate carry is needed.
+
+    HARNESS-AWARE (INC 2): the token var and endpoint DESTINATION are chosen per the
+    resolved target's :func:`_persona_wiring`, not hardwired to Anthropic.  Claude
+    (``endpoint_delivery == "env"``) keeps the ``ANTHROPIC_AUTH_TOKEN`` token var,
+    the ``ANTHROPIC_BASE_URL`` env endpoint, and B3 host-dir auto-adopt — BYTE-
+    IDENTICAL to before this seam.  Codex (``config_file``) resolves the endpoint +
+    ``secret_path`` key (== the provider ``env_key``) from the KEYSPACE ONLY (no B3),
+    and returns the CodexModelProvider for INC 3.
 
     ``keyspace_endpoint`` is the endpoint the launch snapshot already resolved from
-    ``agent.<node>.endpoint`` (explicit config wins).  When it is ``None`` the
-    persona is not recognised → B3 adopts from ``~/.config/claude/<persona>/``,
-    populating ``agent_cfg.state['endpoint']`` (endpoint), ``agent_cfg.secret_path``
-    (bearer token pointer) and ``agent_cfg.env`` (model-map).  A resolved endpoint
-    with NO usable token (neither a keyspace ``secret_path`` nor the host ``token``)
-    is ALSO a hard error (a bearer endpoint with no token 401s inside the box).
+    ``agent.<node>.endpoint`` (explicit config wins).  For an ENV harness, when it is
+    ``None`` the persona is not recognised → B3 adopts from
+    ``~/.config/claude/<persona>/``, populating ``agent_cfg.state['endpoint']``
+    (endpoint), ``agent_cfg.secret_path`` (bearer token pointer) and ``agent_cfg.env``
+    (model-map).  A resolved endpoint with NO usable token is ALSO a hard error (a
+    bearer endpoint with no token 401s inside the box).
     """
     persona = persona_of(agent_id)
+    wiring = _persona_wiring(target)
     endpoint = keyspace_endpoint
     adopted = False
-    if endpoint is None:
+    display = display_agent_ref(agent_id)
+
+    # B3 host-dir auto-adopt is CLAUDE-SHAPED (reads ~/.config/claude/<persona>/
+    # settings.json) — ENV delivery only.  A config-file harness (codex) resolves
+    # from the KEYSPACE only (MVP): an absent endpoint is a hard error, never a
+    # host-dir adoption attempt.
+    if endpoint is None and wiring.endpoint_delivery == "env":
         adoption = _adopt_persona_from_host_dir(persona)
         if adoption is not None:
             base_url, extra_env, token_path = adoption
@@ -3803,7 +3911,7 @@ def _preflight_persona_load(
             # mount + in-box export; the secret stays in the host file — kanibako
             # never reads it). Do not clobber a pre-set keyspace pointer. Written to
             # ``agent.<persona>.secret_path.ANTHROPIC_AUTH_TOKEN`` when persisted.
-            agent_cfg.secret_path.setdefault(_PERSONA_TOKEN_VAR, token_path)
+            agent_cfg.secret_path.setdefault(wiring.token_var, token_path)
             # Deliver the model-map (and any other non-secret settings.json env)
             # via the agent env channel; keyspace env wins (do not clobber).
             for var, val in extra_env.items():
@@ -3811,41 +3919,29 @@ def _preflight_persona_load(
             endpoint = base_url
             adopted = True
 
-    display = display_agent_ref(agent_id)
-    host_dir = _persona_host_dir(persona)
     if endpoint is None:
-        # Distinguish "no host config at all" from "host config present but with
-        # no usable endpoint" (N2): a settings.json that lacks ANTHROPIC_BASE_URL
-        # is a PRESENT-but-unusable config, not an absent one.
-        if (host_dir / "settings.json").exists():
-            detail = (
-                f"the host config at {host_dir}/ is not usable "
-                f"(settings.json has no env.ANTHROPIC_BASE_URL)"
-            )
-        else:
-            detail = f"no host config was found at {host_dir}/"
-        return None, (
-            f"Error: persona '{display}' cannot be loaded — no endpoint is "
-            f"configured for it and {detail}.\n"
-            f"  Kanibako will not launch a persona as bare host claude on your "
-            f"real account.\n"
-            f"  Run the class setup script to create {host_dir}/ (settings.json + "
-            f"token), or set the endpoint for this persona, then retry."
-        ), False
+        return None, _persona_no_endpoint_error(agent_id, persona, wiring), False, None
 
+    if wiring.endpoint_delivery == "config_file":
+        return _preflight_config_file_persona(
+            agent_id, agent_cfg, endpoint, wiring, display,
+        )
+
+    # --- ENV harness (claude): byte-identical token gate ------------------------
+    host_dir = _persona_host_dir(persona)
     # Endpoint resolved — require a usable BEARER token.  A KEYSPACE-recognised
     # persona whose ``secret_path`` carries no token FALLS BACK to the host-dir
     # ``token`` file (F4): the endpoint may come from the keyspace while the class
     # setup script supplies the token on disk.  Only when NEITHER a resolvable
     # ``secret_path`` token NOR the host token exists is it an error.
     host_token = host_dir / "token"
-    if not agent_cfg.secret_path.get(_PERSONA_TOKEN_VAR) and host_token.exists():
-        agent_cfg.secret_path[_PERSONA_TOKEN_VAR] = str(host_token)
+    if not agent_cfg.secret_path.get(wiring.token_var) and host_token.exists():
+        agent_cfg.secret_path[wiring.token_var] = str(host_token)
         adopted = True  # secret_path mutated in place → caller persists it.
     # Check the TOKEN var SPECIFICALLY (N1): a usable result for some OTHER
     # secret_path var does not mean a bearer token is present. STAT the pointer
     # arm's-length (never read the value — the value flows only via the launch mount).
-    token_ptr = agent_cfg.secret_path.get(_PERSONA_TOKEN_VAR)
+    token_ptr = agent_cfg.secret_path.get(wiring.token_var)
     if not token_ptr or not _secret_pointer_usable(token_ptr):
         return None, (
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
@@ -3853,8 +3949,76 @@ def _preflight_persona_load(
             f"  A custom-endpoint persona needs a bearer token; none was found "
             f"(neither a configured secret_path nor {host_token}).\n"
             f"  Run the class setup script to write {host_token}, then retry."
-        ), adopted
-    return endpoint, None, adopted
+        ), adopted, None
+    return endpoint, None, adopted, None
+
+
+def _persona_no_endpoint_error(agent_id: str, persona: str, wiring) -> str:
+    """The actionable "no endpoint configured" error, worded per harness.
+
+    ENV (claude) distinguishes "no host config" from "present-but-unusable" (N2) and
+    points at the class setup script / B3 host dir.  CONFIG-FILE (codex, no B3)
+    points ONLY at the keyspace ``config set`` route — it never references a host dir
+    that plays no part in its resolution.
+    """
+    display = display_agent_ref(agent_id)
+    harness = harness_of(agent_id)
+    if wiring.endpoint_delivery == "config_file":
+        return (
+            f"Error: persona '{display}' cannot be loaded — no endpoint is "
+            f"configured for it.\n"
+            f"  Kanibako will not launch a persona as bare host {harness} on your "
+            f"real account.\n"
+            f"  Set the endpoint for this persona (e.g. "
+            f"`kanibako config set agent.{display}.endpoint=<url>`), then retry."
+        )
+    host_dir = _persona_host_dir(persona)
+    # Distinguish "no host config at all" from "host config present but with no
+    # usable endpoint" (N2): a settings.json that lacks ANTHROPIC_BASE_URL is a
+    # PRESENT-but-unusable config, not an absent one.
+    if (host_dir / "settings.json").exists():
+        detail = (
+            f"the host config at {host_dir}/ is not usable "
+            f"(settings.json has no env.ANTHROPIC_BASE_URL)"
+        )
+    else:
+        detail = f"no host config was found at {host_dir}/"
+    return (
+        f"Error: persona '{display}' cannot be loaded — no endpoint is "
+        f"configured for it and {detail}.\n"
+        f"  Kanibako will not launch a persona as bare host {harness} on your "
+        f"real account.\n"
+        f"  Run the class setup script to create {host_dir}/ (settings.json + "
+        f"token), or set the endpoint for this persona, then retry."
+    )
+
+
+def _preflight_config_file_persona(
+    agent_id: str, agent_cfg, endpoint: str, wiring, display: str,
+) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
+    """Token gate + provider resolve for a CONFIG-FILE harness (codex, INC 2).
+
+    The endpoint is resolved (keyspace only — no B3).  Require a usable bearer token
+    under the DYNAMIC token var (the single configured ``secret_path`` key ==
+    the provider ``env_key``); on success return the resolved
+    :class:`~kanibako.vscode_config.CodexModelProvider` for INC 3.  NEVER mutates
+    *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist), so ``adopted`` is False.
+    """
+    env_key = _resolve_codex_persona_env_key(agent_cfg, wiring)
+    token_ptr = agent_cfg.secret_path.get(env_key) if env_key else None
+    if not env_key or not token_ptr or not _secret_pointer_usable(token_ptr):
+        return None, (
+            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+            f"usable auth token.\n"
+            f"  A custom-endpoint codex persona needs an API key delivered via a "
+            f"single `agent.{display}.secret_path.<ENV_KEY>=<path>` entry (that "
+            f"<ENV_KEY> becomes the model-provider env_key); none was found.\n"
+            f"  Set the key for this persona, then retry."
+        ), False, None
+    provider = _resolve_codex_persona_provider(
+        agent_id, agent_cfg, endpoint, env_key, wiring,
+    )
+    return endpoint, None, False, provider
 
 
 def _effective_behavior_for_display(
@@ -4642,8 +4806,8 @@ def persona_create_verdict(
         agent_cfg=probe_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
     )
-    _ep, error, _adopted = _preflight_persona_load(
-        agent_id, probe_cfg, endpoint, logger,
+    _ep, error, _adopted, _provider = _preflight_persona_load(
+        agent_id, probe_cfg, endpoint, logger, target=target,
     )
     return error
 
@@ -4725,8 +4889,10 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # recoverable (a cleanup command is a separate follow-up).
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
-        active_endpoint, persona_error, persona_adopted = _preflight_persona_load(
-            agent_id, seed_agent_cfg, active_endpoint, logger,
+        (
+            active_endpoint, persona_error, persona_adopted, _provider,
+        ) = _preflight_persona_load(
+            agent_id, seed_agent_cfg, active_endpoint, logger, target=target,
         )
         if persona_error is not None:
             raise KanibakoError(persona_error)
