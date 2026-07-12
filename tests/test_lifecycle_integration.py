@@ -52,6 +52,14 @@ def _setup_with_image(cli_env: dict, image: str) -> None:
     text = re.sub(r'^(\s*)image\s*:\s*.*$', rf'\1image: "{image}"', text, flags=re.MULTILINE)
     config_file.write_text(text)
 
+    # v1.7.0 explicit-create: launches (start / shell / bare / code) no longer
+    # auto-create a box — they ERROR on an absent box. Create the box now (after
+    # the image patch, so `create` persists the requested image into the box
+    # meta) so the subsequent launch finds an existing box. Default mode, cwd
+    # project — matching how the launch calls below are invoked.
+    result = _run_kanibako("create", env=cli_env["env"], cwd=str(cli_env["project"]))
+    assert result.returncode == 0, f"create failed: {result.stderr}"
+
 
 # =========================================================================
 # Setup
