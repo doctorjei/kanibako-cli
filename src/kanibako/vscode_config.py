@@ -43,6 +43,7 @@ import json
 import re
 import urllib.parse
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -681,23 +682,34 @@ def _first_table_index(lines: list[str]) -> int:
     return len(lines)
 
 
-def _strip_codex_region(text: str) -> str:
-    """Remove the kanibako-managed region (BEGIN..END markers, inclusive).
+def _strip_delimited_region(text: str, begin: str, end: str) -> str:
+    """Remove a comment-delimited managed region (*begin*..*end*, inclusive).
 
-    Idempotence + re-run safety: the region is regenerated each write, so it is
+    The shared primitive behind every kanibako-managed codex config.toml region
+    (the instruction-delivery hook region AND the model-provider region).
+    Idempotence + re-run safety: a region is regenerated each write, so it is
     stripped first so the surviving text is pure user content.  A malformed
-    region missing its END marker is stripped to end-of-file.  No markers → text
-    unchanged.
+    region missing its END marker is stripped to end-of-file.  No *begin* marker
+    → text unchanged.
     """
     lines = text.split("\n")
-    begins = [i for i, ln in enumerate(lines) if ln.strip() == _CODEX_REGION_BEGIN]
+    begins = [i for i, ln in enumerate(lines) if ln.strip() == begin]
     if not begins:
         return text
     b = begins[0]
-    ends = [i for i, ln in enumerate(lines) if ln.strip() == _CODEX_REGION_END and i >= b]
+    ends = [i for i, ln in enumerate(lines) if ln.strip() == end and i >= b]
     e = ends[0] if ends else len(lines) - 1
     del lines[b : e + 1]
     return "\n".join(lines)
+
+
+def _strip_codex_region(text: str) -> str:
+    """Remove the kanibako-managed instruction-delivery region (inclusive).
+
+    Thin wrapper over :func:`_strip_delimited_region` for the hook+trust region's
+    BEGIN..END markers.
+    """
+    return _strip_delimited_region(text, _CODEX_REGION_BEGIN, _CODEX_REGION_END)
 
 
 def _reconcile_codex_approval(text: str, auto_approve: bool) -> str:
@@ -791,7 +803,12 @@ def _build_codex_managed_region(
 
 
 def merge_codex_config(
-    text: str, *, box_config_path: str, codex_cwd: str, auto_approve: bool
+    text: str,
+    *,
+    box_config_path: str,
+    codex_cwd: str,
+    auto_approve: bool,
+    model_provider: CodexModelProvider | None = None,
 ) -> str:
     """Return *text* with kanibako's managed codex config MERGED in (pure).
 
@@ -800,17 +817,184 @@ def merge_codex_config(
     managed region at the file's end.  All other user content — comments and data
     alike — is preserved byte-for-byte.  Idempotent: re-merging its own output
     reproduces it exactly.
+
+    When *model_provider* is supplied (INC 3 persona wiring), a SECOND managed
+    region — the ``[model_providers.<id>]`` table plus the top-level
+    ``model``/``model_provider`` root keys (see :func:`merge_codex_model_provider`)
+    — is composed in alongside the hook region.  When it is ``None`` (the
+    default) the output is BYTE-IDENTICAL to the pre-provider behaviour: no
+    provider region, no ``model``/``model_provider`` keys.
     """
     # rstrip the region separator immediately so re-merges do not accumulate
     # blank lines (idempotence); reconcile + region append operate on the clean
     # user body.
     body = _strip_codex_region(text).rstrip("\n")
+    if model_provider is not None:
+        # Strip our OWN prior provider region too, so the provider root keys and
+        # table are reconciled (not duplicated) across re-merges.
+        body = _strip_codex_provider_region(body).rstrip("\n")
     body = _reconcile_codex_approval(body, auto_approve)
+    if model_provider is not None:
+        # Provider root keys are applied to the CLEAN body (no managed regions
+        # yet), so they land in the legal top-level position (before any table)
+        # and OUTSIDE both regenerated regions — never swallowed by a re-strip.
+        body = _apply_provider_root_keys(
+            body, model=model_provider.model, provider_id=model_provider.provider_id,
+        )
     group_index = _count_session_start_groups(body)
     region = _build_codex_managed_region(
         box_config_path=box_config_path,
         codex_cwd=codex_cwd,
         group_index=group_index,
+    )
+    if model_provider is not None:
+        region = region + "\n\n" + _build_codex_provider_region(
+            provider_id=model_provider.provider_id,
+            name=model_provider.name,
+            base_url=model_provider.base_url,
+            wire_api=model_provider.wire_api,
+            env_key=model_provider.env_key,
+        )
+    if body:
+        return body + "\n\n" + region + "\n"
+    return region + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Codex personas INC 1: the ~/.codex/config.toml MODEL-PROVIDER generator.
+#
+# A codex persona (e.g. ``navigator℘codex``) reaches an external OpenAI-compatible
+# model provider by SELECTING it in config.toml — a top-level ``model`` +
+# ``model_provider`` pair plus a ``[model_providers.<id>]`` table carrying the
+# provider's name/base_url/wire_api/env_key.  This is the pure generator for that
+# region; INC 2 resolves the six field values from the persona keyspace and INC 3
+# invokes it on codex-persona launch (via :func:`merge_codex_config`'s
+# ``model_provider`` seam / :func:`seed_codex_config`).  NOTHING here is wired into
+# launch yet.
+#
+# It MATCHES the surgical, comment-delimited mechanism of the instruction-delivery
+# region (NO tomlkit round-trip — see the module note above): the provider TABLE
+# lives in its own clearly-delimited managed REGION regenerated at the file's end,
+# and the two TOP-LEVEL scalar keys (``model``/``model_provider``) are reconciled
+# by the SAME root-section line surgery as approval_policy/sandbox_mode
+# (:func:`_apply_root_key`) — a bare key after a ``[table]`` header would bind to
+# that table, so managed root keys are edited where top-level keys legally belong,
+# before the first table header.
+# ---------------------------------------------------------------------------
+
+# Delimiters bounding the regenerated model-provider region.  DISTINCT from the
+# hook region's markers so the two regions strip/regenerate independently and can
+# coexist in one file.  Everything OUTSIDE this region is preserved verbatim.
+_CODEX_PROVIDER_REGION_BEGIN = (
+    "# >>> kanibako-managed (model provider) — do not edit >>>"
+)
+_CODEX_PROVIDER_REGION_END = "# <<< kanibako-managed (model provider) <<<"
+
+
+class CodexModelProvider(NamedTuple):
+    """The six resolved values selecting a codex external model provider.
+
+    An immutable bundle threaded (optionally) through :func:`merge_codex_config` /
+    :func:`seed_codex_config`.  INC 2 constructs this from the persona keyspace
+    (``agent.<persona>℘codex.{endpoint,model,secret_path.<VAR>,...}``); the fields
+    map 1:1 onto the emitted TOML:
+
+    * *provider_id* → the ``[model_providers.<id>]`` table id AND top-level
+      ``model_provider`` value;
+    * *name*/*base_url*/*wire_api*/*env_key* → the table's four keys;
+    * *model* → the top-level ``model`` value.
+    """
+
+    provider_id: str
+    name: str
+    base_url: str
+    wire_api: str
+    env_key: str
+    model: str
+
+
+def _strip_codex_provider_region(text: str) -> str:
+    """Remove the kanibako-managed model-provider region (inclusive).
+
+    Thin wrapper over :func:`_strip_delimited_region` for the provider region's
+    BEGIN..END markers.  Independent of :func:`_strip_codex_region` (distinct
+    markers), so stripping one never touches the other.
+    """
+    return _strip_delimited_region(
+        text, _CODEX_PROVIDER_REGION_BEGIN, _CODEX_PROVIDER_REGION_END,
+    )
+
+
+def _apply_provider_root_keys(body: str, *, model: str, provider_id: str) -> str:
+    """SET the managed top-level ``model``/``model_provider`` root keys on *body*.
+
+    Reuses :func:`_apply_root_key`'s ON-direction (always SET, in place if a
+    root-section line already exists else inserted before the first table header),
+    so the keys land in the legal top-level position and updating a value touches
+    ONLY that line — never a user key.  *body* must be CLEAN user content (no
+    managed region), so the "first table" is a real user table, not our own.
+    """
+    lines = body.split("\n")
+    lines = _apply_root_key(lines, "model", model, True)
+    lines = _apply_root_key(lines, "model_provider", provider_id, True)
+    return "\n".join(lines)
+
+
+def _build_codex_provider_region(
+    *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str
+) -> str:
+    """Build the regenerated model-provider TOML region.
+
+    Holds the ``[model_providers.<provider_id>]`` table with the provider's
+    ``name``/``base_url``/``wire_api``/``env_key``.  The table id is a QUOTED key
+    (``[model_providers."navigator"]`` — equivalent to the unquoted form but safe
+    for ids with special characters), matching how the hook region quotes
+    ``[projects."<cwd>"]``.  All four values are TOML-basic-string encoded.
+    """
+    return "\n".join(
+        [
+            _CODEX_PROVIDER_REGION_BEGIN,
+            f"[model_providers.{_toml_basic_string(provider_id)}]",
+            f"name = {_toml_basic_string(name)}",
+            f"base_url = {_toml_basic_string(base_url)}",
+            f"wire_api = {_toml_basic_string(wire_api)}",
+            f"env_key = {_toml_basic_string(env_key)}",
+            _CODEX_PROVIDER_REGION_END,
+        ]
+    )
+
+
+def merge_codex_model_provider(
+    text: str,
+    *,
+    provider_id: str,
+    name: str,
+    base_url: str,
+    wire_api: str,
+    env_key: str,
+    model: str,
+) -> str:
+    """Return *text* with the codex model-provider selection MERGED in (pure).
+
+    The standalone generator for the INC-1 region: strips any prior provider
+    region, SETs the top-level ``model``/``model_provider`` root keys, then
+    regenerates the ``[model_providers.<provider_id>]`` table region at the file's
+    end.  All other user content — comments, other keys, other tables (including
+    an unrelated ``[model_providers.<other>]``) — is preserved byte-for-byte.
+
+    Pure/deterministic (string in, string out, no I/O) and idempotent: re-merging
+    its own output reproduces it exactly.  Updating a single field (e.g. *model*
+    or *base_url*) changes ONLY that emitted value, never a user key.  Top-level
+    keys are emitted before the table, so the result is valid TOML.
+    """
+    body = _strip_codex_provider_region(text).rstrip("\n")
+    body = _apply_provider_root_keys(body, model=model, provider_id=provider_id)
+    region = _build_codex_provider_region(
+        provider_id=provider_id,
+        name=name,
+        base_url=base_url,
+        wire_api=wire_api,
+        env_key=env_key,
     )
     if body:
         return body + "\n\n" + region + "\n"
@@ -823,6 +1007,7 @@ def seed_codex_config(
     box_config_path: str,
     codex_cwd: str,
     auto_approve: bool,
+    model_provider: CodexModelProvider | None = None,
 ) -> bool:
     """Read-modify-write the box's in-box ``~/.codex/config.toml`` (host path
     *config_path*): merge kanibako's managed hook group, trust hash, directory
@@ -835,6 +1020,10 @@ def seed_codex_config(
     ``codex_cwd`` is the in-box directory codex runs in (the trusted project).
     Returns ``True`` iff it wrote.  Callers wrap best-effort so a failure never
     blocks the launch.
+
+    *model_provider* (default ``None``) is the INC-3 seam: when supplied the
+    merged config also carries the model-provider region; when ``None`` the write
+    is BYTE-IDENTICAL to today's.
     """
     try:
         existing = config_path.read_text()
@@ -845,6 +1034,7 @@ def seed_codex_config(
         box_config_path=box_config_path,
         codex_cwd=codex_cwd,
         auto_approve=auto_approve,
+        model_provider=model_provider,
     )
     if config_path.exists() and merged == existing:
         return False

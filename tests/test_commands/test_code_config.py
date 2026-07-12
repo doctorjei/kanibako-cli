@@ -16,6 +16,7 @@ from kanibako.vscode_config import (
     _SESSION_START_COMMAND,
     _SESSION_START_MATCHER,
     AGENT_MARKERS_DIR,
+    CodexModelProvider,
     _encode_image_ref,
     attached_container_config_path,
     clear_bypass_permissions,
@@ -27,6 +28,7 @@ from kanibako.vscode_config import (
     merge_attached_container_config,
     merge_bypass_permissions,
     merge_codex_config,
+    merge_codex_model_provider,
     merge_marker_remove_hook,
     merge_marker_write_hook,
     merge_session_start_hook,
@@ -1049,3 +1051,250 @@ def test_deliver_goose_overwrites_conflicting_existing_value(tmp_path):
     written = yaml.safe_load(path.read_text())
     assert written["GOOSE_MODE"] == "approve"
     assert written["GOOSE_PROVIDER"] == "anthropic"
+
+
+# --- Codex personas INC 1: merge_codex_model_provider (pure; text→text) ------
+
+_NAVIGATOR = dict(
+    provider_id="navigator",
+    name="NaviGator",
+    base_url="https://api.ai.it.ufl.edu/v1",
+    wire_api="chat",
+    env_key="NAVIGATOR_API_KEY",
+    model="gemma-4-31b-it",
+)
+
+
+def _provider(text, **overrides):
+    kwargs = {**_NAVIGATOR, **overrides}
+    return merge_codex_model_provider(text, **kwargs)
+
+
+def test_provider_fresh_file_emits_valid_toml_block():
+    """A fresh (comment-only) file gains the provider table + top-level keys and
+    parses as valid TOML with exactly the requested values."""
+    out = _provider(_TEMPLATE)
+    data = tomllib.loads(out)  # parses → valid TOML
+    assert data["model"] == "gemma-4-31b-it"
+    assert data["model_provider"] == "navigator"
+    prov = data["model_providers"]["navigator"]
+    assert prov == {
+        "name": "NaviGator",
+        "base_url": "https://api.ai.it.ufl.edu/v1",
+        "wire_api": "chat",
+        "env_key": "NAVIGATOR_API_KEY",
+    }
+
+
+def test_provider_top_level_keys_precede_the_table():
+    """TOML validity guard: the top-level model/model_provider scalars are emitted
+    BEFORE the first table header (a bare key after a table would bind to it)."""
+    out = _provider(_TEMPLATE)
+    model_pos = out.index("\nmodel = ")
+    provider_pos = out.index("model_provider = ")
+    table_pos = out.index("[model_providers.")
+    assert model_pos < table_pos
+    assert provider_pos < table_pos
+    tomllib.loads(out)  # and it parses
+
+
+def test_provider_preserves_unrelated_user_keys_tables_and_comments():
+    """User comments, unrelated top-level keys, and unrelated tables (including a
+    DIFFERENT model_providers.<id>) are preserved byte-for-byte in the body."""
+    text = (
+        "# my header comment\n"
+        'approval_policy = "never"\n\n'
+        "[mcp_servers.foo]\n"
+        'command = "serve"\n\n'
+        "[model_providers.other]\n"
+        'name = "Other"\n'
+        'base_url = "https://other.example/v1"\n'
+    )
+    out = _provider(text)
+    assert "# my header comment" in out
+    data = tomllib.loads(out)
+    assert data["approval_policy"] == "never"
+    assert data["mcp_servers"]["foo"]["command"] == "serve"
+    # the user's OWN provider is untouched...
+    assert data["model_providers"]["other"]["name"] == "Other"
+    assert data["model_providers"]["other"]["base_url"] == "https://other.example/v1"
+    # ...and ours is added alongside it.
+    assert data["model_providers"]["navigator"]["name"] == "NaviGator"
+    assert data["model_provider"] == "navigator"
+
+
+def test_provider_is_idempotent():
+    """Applying the generator twice reproduces its own output exactly, with a
+    single managed region + a single provider table."""
+    once = _provider(_TEMPLATE)
+    twice = _provider(once)
+    assert twice == once
+    assert once.count("[model_providers.") == 1
+    assert once.count("model_provider = ") == 1
+    assert once.count("model = ") == 1
+
+
+def test_provider_update_model_changes_only_that_value():
+    """Re-merging with a new model updates ONLY the model scalar; the provider id,
+    table, and all user content are unchanged."""
+    first = _provider(_TEMPLATE)
+    updated = _provider(first, model="gemma-4-70b-it")
+    data = tomllib.loads(updated)
+    assert data["model"] == "gemma-4-70b-it"
+    # everything else identical to the original merge.
+    assert data["model_provider"] == "navigator"
+    assert data["model_providers"]["navigator"] == tomllib.loads(first)[
+        "model_providers"
+    ]["navigator"]
+    # exactly one model key (updated in place, not appended).
+    assert updated.count("model = ") == 1
+
+
+def test_provider_update_base_url_changes_only_the_table_value():
+    """Changing base_url updates only the table's base_url, preserving the rest."""
+    first = _provider(_TEMPLATE)
+    updated = _provider(first, base_url="https://api2.ai.it.ufl.edu/v1")
+    data = tomllib.loads(updated)
+    prov = data["model_providers"]["navigator"]
+    assert prov["base_url"] == "https://api2.ai.it.ufl.edu/v1"
+    assert prov["name"] == "NaviGator"
+    assert prov["wire_api"] == "chat"
+    assert prov["env_key"] == "NAVIGATOR_API_KEY"
+    assert updated.count("[model_providers.") == 1
+
+
+def test_provider_updates_preexisting_user_top_level_model_in_place():
+    """A user's own top-level ``model`` is SET to ours in place (not duplicated),
+    keeping the file valid TOML with a single model key."""
+    text = 'model = "gpt-5-codex"\n'
+    out = _provider(text)
+    data = tomllib.loads(out)
+    assert data["model"] == "gemma-4-31b-it"
+    assert out.count("model = ") == 1
+
+
+def test_provider_wire_api_responses_variant():
+    """wire_api is parameterized (chat vs responses settle at INC 3/4)."""
+    out = _provider(_TEMPLATE, wire_api="responses")
+    data = tomllib.loads(out)
+    assert data["model_providers"]["navigator"]["wire_api"] == "responses"
+
+
+def test_provider_empty_input_produces_valid_toml():
+    """An empty existing config still yields a valid, parseable provider block."""
+    out = _provider("")
+    data = tomllib.loads(out)
+    assert data["model"] == "gemma-4-31b-it"
+    assert data["model_providers"]["navigator"]["name"] == "NaviGator"
+
+
+def test_provider_namedtuple_fields_map_onto_toml():
+    """CodexModelProvider bundles the six values the merge threads through."""
+    mp = CodexModelProvider(**_NAVIGATOR)
+    assert mp.provider_id == "navigator"
+    assert mp.model == "gemma-4-31b-it"
+    assert mp.env_key == "NAVIGATOR_API_KEY"
+
+
+# --- INC 1 seam: merge_codex_config threads the optional provider -----------
+
+def test_codex_merge_no_provider_is_byte_identical():
+    """DEFAULT (model_provider=None) is BYTE-IDENTICAL to the pre-provider merge:
+    no provider region, no model/model_provider keys."""
+    default = merge_codex_config(
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+    )
+    explicit_none = merge_codex_config(
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, model_provider=None,
+    )
+    assert default == explicit_none
+    assert "model_providers" not in default
+    assert "model_provider = " not in default
+
+
+def test_codex_merge_with_provider_composes_both_regions():
+    """With a provider, the merged config carries BOTH the hook region and the
+    provider region, all valid TOML, hook behaviour intact."""
+    mp = CodexModelProvider(**_NAVIGATOR)
+    out = merge_codex_config(
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, model_provider=mp,
+    )
+    data = tomllib.loads(out)
+    # hook region intact
+    assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
+        _SESSION_START_COMMAND
+    )
+    assert data["projects"][_CODEX_CWD]["trust_level"] == "trusted"
+    assert data["approval_policy"] == "never"
+    # provider region present
+    assert data["model"] == "gemma-4-31b-it"
+    assert data["model_provider"] == "navigator"
+    assert data["model_providers"]["navigator"]["base_url"] == (
+        "https://api.ai.it.ufl.edu/v1"
+    )
+
+
+def test_codex_merge_with_provider_is_idempotent():
+    """Re-merging the provider-bearing output reproduces it exactly (both regions
+    reconciled, not duplicated)."""
+    mp = CodexModelProvider(**_NAVIGATOR)
+    kw = dict(
+        box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        model_provider=mp,
+    )
+    once = merge_codex_config(_TEMPLATE, **kw)
+    twice = merge_codex_config(once, **kw)
+    assert twice == once
+    assert once.count("[model_providers.") == 1
+    assert once.count("[[hooks.SessionStart]]") == 1
+
+
+def test_codex_merge_provider_preserves_user_content():
+    """A provider merge preserves the user's unrelated keys/tables/comments."""
+    text = (
+        "# keep me\n"
+        'model = "gpt-5-codex"\n\n'
+        "[mcp_servers.foo]\n"
+        'command = "serve"\n'
+    )
+    mp = CodexModelProvider(**_NAVIGATOR)
+    out = merge_codex_config(
+        text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, model_provider=mp,
+    )
+    assert "# keep me" in out
+    data = tomllib.loads(out)
+    assert data["mcp_servers"]["foo"]["command"] == "serve"
+    # user's model is overridden to ours (in place, single key)
+    assert data["model"] == "gemma-4-31b-it"
+    assert out.count("model = ") == 1
+
+
+def test_seed_codex_config_no_provider_byte_identical(tmp_path):
+    """seed_codex_config default write is byte-identical to an explicit
+    model_provider=None write (the INC-3 I/O seam is inert by default)."""
+    p1 = tmp_path / "a.toml"
+    p2 = tmp_path / "b.toml"
+    seed_codex_config(
+        p1, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+    )
+    seed_codex_config(
+        p2, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        model_provider=None,
+    )
+    assert p1.read_text() == p2.read_text()
+
+
+def test_seed_codex_config_with_provider_writes_region(tmp_path):
+    """seed_codex_config threads the provider through to the written file."""
+    path = tmp_path / "config.toml"
+    mp = CodexModelProvider(**_NAVIGATOR)
+    assert seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        model_provider=mp,
+    ) is True
+    data = tomllib.loads(path.read_text())
+    assert data["model_provider"] == "navigator"
+    assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
