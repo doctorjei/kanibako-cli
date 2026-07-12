@@ -79,6 +79,33 @@ descriptor:
     - setting_key: provider
       channel: env
       env_var: GOOSE_PROVIDER
+    # endpoint (persona): the alternate OpenAI-compatible base-URL.  ENV channel ->
+    # goose's built-in `openai` provider reads OPENAI_HOST as the endpoint origin
+    # (paired with GOOSE_PROVIDER=openai + OPENAI_API_KEY + GOOSE_MODEL).  Unset
+    # (<None>) emits nothing (bare/harness-default); set = point goose at a
+    # third-party endpoint (paired with the OAuth-suppress cred fork).  MIRRORS
+    # claude's endpoint->ANTHROPIC_BASE_URL declaration (env-var name is
+    # HARNESS-specific, so it lives in the descriptor).
+    - setting_key: endpoint
+      channel: env
+      env_var: OPENAI_HOST
+
+  # PERSONA endpoint/token delivery (goose; INC G1 harness-aware persona resolution).
+  # env = the endpoint rides the descriptor's endpoint->OPENAI_HOST ENV SettingArg
+  # (NOT config_file); token_var=OPENAI_API_KEY is the FIXED secret_path key / in-box
+  # bearer var goose's `openai` provider reads.  host_dir_adopt=false: goose is NOT
+  # claude, so it must NOT auto-adopt from the claude-shaped ~/.config/claude/<persona>/
+  # host dir — an unset endpoint resolves from the KEYSPACE only (goose-worded error).
+  # provider_pin forces GOOSE_PROVIDER=openai (via the `provider` setting) whenever a
+  # goose persona endpoint is active, so the openai provider can't be forgotten.
+  # model_required: a third-party endpoint has no meaningful default model → require one.
+  persona:
+    endpoint_delivery: env
+    token_var: OPENAI_API_KEY
+    host_dir_adopt: false
+    model_required: true
+    provider_pin:
+      provider: openai
 
   # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static): the in-box OS
   # keyring/D-Bus secret-service is unavailable, so goose stores secrets in the

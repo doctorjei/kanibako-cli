@@ -360,6 +360,13 @@ class GooseTarget(Target):
         ``agent.goose.provider`` / ``agent.goose.model`` setting still wins the
         cascade and IS emitted, so a user who wants to pin a provider via
         kanibako settings still can.
+
+        ``endpoint`` (persona): the alternate OpenAI-compatible base-URL; unset =
+        bare/harness-default.  Delivered via the descriptor's
+        ``endpoint``→``OPENAI_HOST`` ENV SettingArg (goose's built-in ``openai``
+        provider reads ``OPENAI_HOST``); declared here to make it a first-class
+        SETTABLE + cascade-resolved behavior key (``config set``/``--effective``),
+        MIRRORING claude's ``endpoint`` descriptor.
         """
         return [
             TargetSetting(
@@ -370,6 +377,12 @@ class GooseTarget(Target):
             TargetSetting(
                 key="model",
                 description="Model to use (unset = use goose configure / config.yaml)",
+                default="",
+            ),
+            TargetSetting(
+                key="endpoint",
+                description="Alternate OpenAI-compatible base-URL endpoint (persona); "
+                "unset uses the harness default and syncs the goose login",
                 default="",
             ),
         ]

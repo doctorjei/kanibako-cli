@@ -88,6 +88,10 @@ descriptor:
   persona:
     endpoint_delivery: config_file
     wire_api: chat
+    # config_file delivery already excludes codex from the ENV-only B3 host-dir
+    # adopt gate; host_dir_adopt=false is declared for correctness/clarity (codex
+    # resolves its endpoint from the KEYSPACE only, never a claude-shaped host dir).
+    host_dir_adopt: false
 
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).

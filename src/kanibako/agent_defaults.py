@@ -146,10 +146,15 @@ def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
     """
     if not raw:
         return None
+    pin_raw = raw.get("provider_pin") or {}
+    provider_pin = tuple(sorted((str(k), str(v)) for k, v in pin_raw.items()))
     return PersonaSpec(
         token_var=raw.get("token_var", ""),
         endpoint_delivery=raw.get("endpoint_delivery", "env"),
         wire_api=raw.get("wire_api", "chat"),
+        host_dir_adopt=bool(raw.get("host_dir_adopt", True)),
+        provider_pin=provider_pin,
+        model_required=bool(raw.get("model_required", False)),
     )
 
 

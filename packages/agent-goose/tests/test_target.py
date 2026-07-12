@@ -394,12 +394,14 @@ class TestApplyState:
 
 
 class TestSettingDescriptors:
-    def test_returns_provider_and_model(self):
+    def test_returns_provider_model_and_endpoint(self):
         settings = GooseTarget().setting_descriptors()
         keys = [s.key for s in settings]
         assert "provider" in keys
         assert "model" in keys
-        assert len(settings) == 2
+        # endpoint (persona): first-class SETTABLE key mirroring claude/codex.
+        assert "endpoint" in keys
+        assert len(settings) == 3
 
     def test_provider_and_model_have_no_default(self):
         # The keys stay declared/settable, but with EMPTY defaults so the
@@ -408,6 +410,8 @@ class TestSettingDescriptors:
         settings = {s.key: s for s in GooseTarget().setting_descriptors()}
         assert settings["provider"].default == ""
         assert settings["model"].default == ""
+        # endpoint too: unset = bare/harness-default (no persona).
+        assert settings["endpoint"].default == ""
 
 
 class TestDefaultShares:
@@ -478,14 +482,29 @@ class TestDescriptor:
         # via setting_key="auto_approve" (spec §2d L655).
         assert sb.setting_key == "auto_approve"
 
-    def test_settings_model_and_provider_env(self):
+    def test_settings_model_provider_and_endpoint_env(self):
         d = GooseTarget().descriptor
         settings = {s.setting_key: s for s in d.settings}
-        assert set(settings) == {"model", "provider"}
+        assert set(settings) == {"model", "provider", "endpoint"}
         assert settings["model"].channel == Channel.ENV
         assert settings["model"].env_var == "GOOSE_MODEL"
         assert settings["provider"].channel == Channel.ENV
         assert settings["provider"].env_var == "GOOSE_PROVIDER"
+        # endpoint (persona): ENV channel -> OPENAI_HOST (goose's built-in openai
+        # provider reads it), mirroring claude's endpoint->ANTHROPIC_BASE_URL.
+        assert settings["endpoint"].channel == Channel.ENV
+        assert settings["endpoint"].env_var == "OPENAI_HOST"
+
+    def test_persona_spec_env_delivery_openai(self):
+        # INC G1: goose persona = ENV delivery, OPENAI_API_KEY token var, NO claude
+        # host-dir adopt, GOOSE_PROVIDER auto-pin (via provider setting), model gate.
+        p = GooseTarget().descriptor.persona
+        assert p is not None
+        assert p.endpoint_delivery == "env"
+        assert p.token_var == "OPENAI_API_KEY"
+        assert p.host_dir_adopt is False
+        assert p.model_required is True
+        assert p.provider_pin == (("provider", "openai"),)
 
     def test_container_env_disables_keyring(self):
         # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
