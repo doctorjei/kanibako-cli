@@ -15,13 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > on PyPI). They fold into a single `[1.7.0]` on the stable release.
 
 ### Added
-- **VS Code integration — `kanibako code`.** Attach a local VS Code window to a
-  box's running container (via the Dev Containers "Attach to Running Container"
-  flow), with your chosen agent available in the integrated panel and the
-  workspace opened at the project. `kanibako code --remote <ssh-host>` attaches a
-  *local* VS Code to a box on a remote machine by tunneling the remote container
-  socket over a single owned SSH connection. `kanibako system diagnose` gained
-  VS Code host-prerequisite checks.
+- **VS Code integration — `kanibako code`** *(experimental)*. Attach a local
+  VS Code window to a box's running container (via the Dev Containers "Attach to
+  Running Container" flow), with your chosen agent available in the integrated
+  panel and the workspace opened at the project. `kanibako code --remote
+  <ssh-host>` attaches a *local* VS Code to a box on a remote machine by
+  tunneling the remote container socket over a single owned SSH connection.
+  `kanibako system diagnose` gained VS Code host-prerequisite checks.
+  **Experimental in this release:** kanibako does not yet enforce a single
+  active agent per box — running the VS Code panel and a CLI agent on the same
+  box at once silently forks the session; use one surface at a time (see
+  README → VS Code Integration).
 - **Always-on boxes and session persistence.** A box's agent now runs under a
   small in-box supervisor as PID-1, so the box's lifetime is decoupled from any
   one agent session. `kanibako start --detach` (alias `--background`) launches a
