@@ -10,7 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,7 +37,11 @@ from kanibako.config import (
     read_default_agent,
 )
 from kanibako import core_defaults
-from kanibako.container import ContainerRuntime, detect_shadowed_mounts
+from kanibako.container import (
+    ContainerRuntime,
+    _guest_dest_to_host,
+    detect_shadowed_mounts,
+)
 from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError
 from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
@@ -5229,6 +5233,67 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
     # NAMED: no deferred registration on create (membership written at resolve).
 
 
+def _synced_uptodate(src: Path, dest: Path) -> bool:
+    """True when the box copy is at least as new as the host source (mtime gate).
+
+    Synced entries reapply only when the host source is NEWER than the box copy;
+    a ``stat`` failure returns False so the copy proceeds (preserving the former
+    inline ``try/except OSError: pass`` fall-through).
+    """
+    try:
+        return dest.exists() and dest.stat().st_mtime >= src.stat().st_mtime
+    except OSError:
+        return False
+
+
+def _apply_shell_copy(
+    src: Path,
+    dest: Path,
+    *,
+    label: str,
+    name: str,
+    host_src: str,
+    logger,
+    if_absent: bool,
+    skip_if: "Callable[[Path, Path], bool] | None" = None,
+) -> None:
+    """Copy one seed/synced entry's *src* into the box shell-dir *dest*.
+
+    The single copy block shared by :func:`_apply_init_seeds`
+    (``if_absent=True``: copy-once, NEVER clobber existing box content) and
+    :func:`_apply_synced_copies` (``if_absent=False``: overwrite, mtime-gated via
+    *skip_if*):
+
+    * Missing source -> the ``%s %s: host_src %r does not exist; skipping``
+      warning (label ``"seed"`` / ``"synced"``) then return.
+    * *skip_if* (the synced mtime gate) -> return before copying when it reports
+      the dest is already up to date.
+    * Directory source -> :func:`~kanibako.templates.copy_resource_tree_if_absent`
+      (create-if-absent) when *if_absent* else ``copytree(dirs_exist_ok=True)``
+      (overwrite).
+    * File source -> ``copy2`` (skipped for an existing dest when *if_absent*).
+    """
+    from kanibako.templates import copy_resource_tree_if_absent
+
+    if not src.exists():
+        logger.warning(
+            "%s %s: host_src %r does not exist; skipping",
+            label, name, host_src,
+        )
+        return
+    if skip_if is not None and skip_if(src, dest):
+        return
+    if src.is_dir():
+        dest.mkdir(parents=True, exist_ok=True)
+        if if_absent:
+            copy_resource_tree_if_absent(src, dest)
+        else:
+            shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
+    elif not if_absent or not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dest))
+
+
 def _apply_init_seeds(
     *,
     std,
@@ -5261,11 +5326,8 @@ def _apply_init_seeds(
     The credential gate (D-M4) is applied during reconcile: a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*shares* False).
     """
-    import shutil
-
     from kanibako.settings_resolve import GUEST_HOME
     from kanibako.templates import (
-        copy_resource_tree_if_absent,
         stage_layers,
         template_seed_defaults,
     )
@@ -5301,14 +5363,6 @@ def _apply_init_seeds(
         shares=shares,
     )
 
-    def _host_dest(guest_dest: str) -> "Path | None":
-        gd = guest_dest.rstrip("/")
-        if gd == GUEST_HOME:
-            return proj.shell_path
-        if gd.startswith(GUEST_HOME + "/"):
-            return proj.shell_path / gd[len(GUEST_HOME) + 1:]
-        return None
-
     # Group the seeded COPY winners by resolved guest dest, PRESERVING the reconcile
     # apply order (system -> agent -> workset -> box) within each dest — so a dest
     # targeted by multiple layers (the template trio at ``~``) is staged in that
@@ -5320,7 +5374,9 @@ def _apply_init_seeds(
         by_dest.setdefault(seed.box_dest, []).append(seed)
 
     for box_dest, group in by_dest.items():
-        dest = _host_dest(box_dest)
+        dest = _guest_dest_to_host(
+            box_dest, proj.shell_path, proj.project_path, map_home_root=True,
+        )
         if dest is None:
             logger.warning(
                 "seed %s: guest_dest %r is outside %s; skipping",
@@ -5338,24 +5394,16 @@ def _apply_init_seeds(
             stage_layers(dest, [Path(e.host_src) for e in group])
             continue
         # Single-source dest — the ordinary per-seed copy (unchanged behavior).
+        # Create-if-absent (``if_absent=True``): a seed delivers content ONCE;
+        # existing home content is owned by the box and must never be overwritten
+        # by a re-seed (the playbook-clobber bug).
         seed = group[0]
         assert seed.host_src is not None  # seeds always have a source.
-        src = Path(seed.host_src)
-        if not src.exists():
-            logger.warning(
-                "seed %s: host_src %r does not exist; skipping",
-                seed.name, seed.host_src,
-            )
-            continue
-        if src.is_dir():
-            dest.mkdir(parents=True, exist_ok=True)
-            # Create-if-absent: a seed delivers content ONCE; existing home
-            # content is owned by the box and must never be overwritten by a
-            # re-seed (the playbook-clobber bug).
-            copy_resource_tree_if_absent(src, dest)
-        elif not dest.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src), str(dest))
+        _apply_shell_copy(
+            Path(seed.host_src), dest,
+            label="seed", name=seed.name, host_src=seed.host_src,
+            logger=logger, if_absent=True,
+        )
 
 
 def _apply_synced_copies(
@@ -5388,8 +5436,6 @@ def _apply_synced_copies(
     ADDITIVE: with no ``synced.*`` keys configured (and no target default synced
     entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
     """
-    import shutil
-
     from kanibako.settings_resolve import GUEST_HOME
 
     # Single-route (7c): resolve the synced COPY winners off the ONE committed
@@ -5420,37 +5466,25 @@ def _apply_synced_copies(
         if sync.category != "synced":
             continue  # seeded copies are applied by _apply_init_seeds.
         assert sync.host_src is not None  # synced entries always have a source.
-        gd = sync.box_dest.rstrip("/")
-        if gd == GUEST_HOME:
-            dest = proj.shell_path
-        elif gd.startswith(GUEST_HOME + "/"):
-            rel = gd[len(GUEST_HOME) + 1:]
-            dest = proj.shell_path / rel
-        else:
+        # Shared translator (audit P3): a ``~/workspace/...`` dest now maps under
+        # proj.project_path (the workspace bind) rather than the shadowed
+        # shell_path/workspace stub the former inline branch computed.
+        dest = _guest_dest_to_host(
+            sync.box_dest, proj.shell_path, proj.project_path, map_home_root=True,
+        )
+        if dest is None:
             logger.warning(
                 "synced %s: guest_dest %r is outside %s; skipping",
                 sync.name, sync.box_dest, GUEST_HOME,
             )
             continue
-        src = Path(sync.host_src)
-        if not src.exists():
-            logger.warning(
-                "synced %s: host_src %r does not exist; skipping",
-                sync.name, sync.host_src,
-            )
-            continue
-        # mtime gate: skip if the dest is at least as new as the source.
-        try:
-            if dest.exists() and dest.stat().st_mtime >= src.stat().st_mtime:
-                continue
-        except OSError:
-            pass  # stat failure -> fall through and (re)copy
-        if src.is_dir():
-            dest.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(str(src), str(dest), dirs_exist_ok=True)
-        else:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src), str(dest))
+        # if_absent=False -> overwrite (reapplied every launch), mtime-gated so an
+        # unchanged source is a no-op.
+        _apply_shell_copy(
+            Path(sync.host_src), dest,
+            label="synced", name=sync.name, host_src=sync.host_src,
+            logger=logger, if_absent=False, skip_if=_synced_uptodate,
+        )
 
 
 # Default ``box.masks`` (decision B): there is NO default tmpfs mask.  The vault

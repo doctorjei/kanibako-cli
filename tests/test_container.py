@@ -1491,3 +1491,76 @@ class TestLocalImageMetadata:
         rt = ContainerRuntime(command="echo")
         with self._inspect({"Config": {}}):
             assert rt.get_local_label("img:latest", "x") is None
+
+
+class TestGuestDestToHost:
+    """The single guest_dest -> host-path translator (audit P3 unification).
+
+    Equivalence: the shared ``_guest_dest_to_host`` returns the SAME host path as
+    each of the three former sites for the four cases, plus the ``map_home_root``
+    fork (mount-stub callers vs seed/synced COPY callers) and the ``/workspace``
+    split the copy callers now inherit.
+    """
+
+    def _paths(self):
+        shell = Path("/host/shell")
+        project = Path("/host/project")
+        return shell, project
+
+    def test_home_root_mount_callers_return_none(self):
+        """map_home_root=False (mount stub/shadow callers): bare home -> None.
+
+        Byte-identical to the former ``_mount_dest_to_host``: the base home bind
+        is not a stub to pre-create.
+        """
+        from kanibako.container import _guest_dest_to_host
+        shell, project = self._paths()
+        assert _guest_dest_to_host("/home/agent", shell, project) is None
+        assert _guest_dest_to_host("/home/agent/", shell, project) == shell
+
+    def test_home_root_copy_callers_map_to_shell(self):
+        """map_home_root=True (seed/synced COPY callers): bare home -> shell root.
+
+        Byte-identical to the former ``_host_dest`` / inline synced branch.
+        """
+        from kanibako.container import _guest_dest_to_host
+        shell, project = self._paths()
+        assert _guest_dest_to_host(
+            "/home/agent", shell, project, map_home_root=True
+        ) == shell
+        assert _guest_dest_to_host(
+            "/home/agent/", shell, project, map_home_root=True
+        ) == shell
+
+    def test_home_subpath_maps_under_shell(self):
+        """A ~/x dest maps under shell_path in every mode (all three former sites
+        agreed)."""
+        from kanibako.container import _guest_dest_to_host
+        shell, project = self._paths()
+        for kw in ({}, {"map_home_root": True}):
+            assert _guest_dest_to_host(
+                "/home/agent/.claude", shell, project, **kw
+            ) == shell / ".claude"
+
+    def test_workspace_subpath_maps_under_project(self):
+        """A ~/workspace/x dest maps under project_path (the workspace bind).
+
+        The canonical mount behavior the COPY callers now inherit (P3 fix): both
+        modes route ~/workspace/x to project_path/x, NOT the shadowed
+        shell_path/workspace/x.
+        """
+        from kanibako.container import _guest_dest_to_host
+        shell, project = self._paths()
+        for kw in ({}, {"map_home_root": True}):
+            assert _guest_dest_to_host(
+                "/home/agent/workspace/proj/f", shell, project, **kw
+            ) == project / "proj" / "f"
+
+    def test_outside_home_returns_none(self):
+        """A dest outside the box home returns None (the skip case)."""
+        from kanibako.container import _guest_dest_to_host
+        shell, project = self._paths()
+        assert _guest_dest_to_host("/etc/passwd", shell, project) is None
+        assert _guest_dest_to_host(
+            "/etc/passwd", shell, project, map_home_root=True
+        ) is None

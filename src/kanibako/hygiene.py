@@ -235,9 +235,9 @@ def _reap_stale_agent_mountpoints(
     is correct for every current AGENT_CRITICAL dest (all under ``~/.local``).
     A future AGENT_CRITICAL bind whose ``box_dest`` is under
     ``/home/agent/workspace/`` would be pre-created under the PROJECT dir instead
-    (see ``container._mount_dest_to_host``), so it would silently not be reaped
+    (see ``container._guest_dest_to_host``), so it would silently not be reaped
     here — a SAFE failure (never mis-reaps); route ``rel`` through the same
-    ``_mount_dest_to_host`` contract if such a dest is ever added.
+    ``_guest_dest_to_host`` contract if such a dest is ever added.
     """
     actions: list[str] = []
     if not agent_critical_dests:

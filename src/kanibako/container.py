@@ -686,13 +686,39 @@ class ContainerRuntime:
         return images
 
 
-def _mount_dest_to_host(dest: str, shell_path: Path, project_path: Path) -> Path | None:
-    """Map a box-side mount DEST to its host stub path; None if not under home.
+def _guest_dest_to_host(
+    dest: str,
+    shell_path: Path,
+    project_path: Path,
+    *,
+    map_home_root: bool = False,
+) -> Path | None:
+    """Map a box-side guest DEST to its host stub path; None if not under home.
 
-    Destinations under ``/home/agent/workspace/`` map relative to
-    *project_path*; other destinations under ``/home/agent/`` map relative to
-    *shell_path*.  A dest outside the box home returns ``None``.
+    The SINGLE translator shared by the mount-stub precreate/shadow scans (here)
+    and the seed/synced COPY appliers (:mod:`kanibako.commands.start`).
+    Destinations under ``/home/agent/workspace/`` map relative to *project_path*
+    (the workspace bind); other destinations under ``/home/agent/`` map relative
+    to *shell_path* (the box HOME bind).  A dest outside the box home returns
+    ``None``.
+
+    *map_home_root* controls the box-home ROOT itself (``/home/agent``, with any
+    trailing slash):
+
+    * ``False`` (default — the mount-stub callers): the bare home root returns
+      ``None``.  The base home bind is not a stub to pre-create, and the shadow
+      scan skips the base roots explicitly.
+    * ``True`` (the seed/synced COPY callers): the bare home root maps to
+      *shell_path* so a ``~``-targeted copy (the ``seeded.template`` trio) stages
+      straight into the box HOME.
+
+    Both COPY callers gain the ``/workspace`` split for free by routing here: a
+    ``~/workspace/...`` copy dest now lands under *project_path* (the workspace
+    bind), not the shadowed ``shell_path/workspace`` stub — closing the former
+    inline translators' latent drift bug (audit P3).
     """
+    if map_home_root and dest.rstrip("/") == GUEST_HOME:
+        return shell_path
     workspace = GUEST_HOME + "/workspace/"
     agent_home = GUEST_HOME + "/"
     if dest.startswith(workspace):
@@ -743,7 +769,7 @@ def detect_shadowed_mounts(
         # Skip the base roots (their content IS the box, not shadowed).
         if dest.rstrip("/") in base_roots:
             continue
-        host_path = _mount_dest_to_host(dest, shell_path, project_path)
+        host_path = _guest_dest_to_host(dest, shell_path, project_path)
         if host_path is None:
             continue
         try:
@@ -929,7 +955,7 @@ def _precreate_mount_stubs(
         # mapped (under project_path for workspace dests, shell_path for other
         # home dests).  Empty list (the default — no masks) -> no stubs.
         for mask in tmpfs_masks:
-            host_path = _mount_dest_to_host(mask, shell_path, project_path)
+            host_path = _guest_dest_to_host(mask, shell_path, project_path)
             if host_path is None:
                 logger.debug("mask stub skip (not under home): %s", mask)
                 continue
@@ -941,7 +967,7 @@ def _precreate_mount_stubs(
     for mount in extra_mounts:
         dest = mount.destination
         src = mount.source
-        host_path = _mount_dest_to_host(dest, shell_path, project_path)
+        host_path = _guest_dest_to_host(dest, shell_path, project_path)
         if host_path is None:
             logger.debug("stub skip (not under home): %s → %s", src, dest)
             continue
