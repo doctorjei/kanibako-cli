@@ -315,6 +315,14 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 
 ## VS Code Integration
 
+> **⚠ Experimental.** VS Code integration is **experimental** in this release.
+> The commands below work, but multi-surface behavior is still hardening — in
+> particular, kanibako does **not yet enforce a single active agent per box**.
+> Running the agent **panel** and a **CLI agent** on the *same box at the same
+> time* silently **forks the session**: both write the same agent history and
+> one surface's turns can be lost with no warning. **Use one agent surface per
+> box at a time** until single-writer enforcement lands.
+
 `kanibako code [project]` opens your **host** VS Code attached to the box
 (Dev Containers "Attach to Running Container"), at the box's `~/workspace`.
 The box is auto-started detached if it isn't running, and it stays up when
