@@ -376,6 +376,44 @@ class TestDeregistered:
         # The self-heal is PERSISTED, not just filtered in memory.
         assert set(registry_store.load_deregistered(reg)) == {"live"}
 
+    def test_list_keeps_entry_on_transient_stat_error(
+        self, reg: Path, tmp_path: Path,
+    ) -> None:
+        """A transient stat error (EACCES/EIO) must NOT false-drop a recovery
+        pointer — only a DEFINITIVE ENOENT/ENOTDIR is drop-safe.
+
+        Mutation proof: the previous ``Path.exists()`` self-heal collapses the
+        permission error into ``False`` and drops ``blocked``, reddening the
+        ``{"blocked"}`` assertions.
+        """
+        import errno
+        import os
+        from unittest.mock import patch
+
+        gone = tmp_path / "reallygone"          # genuinely absent → drop
+        blocked = tmp_path / "blocked"          # present, stat raises EACCES → keep
+        blocked.mkdir()
+        registry_store.register_deregistered(
+            reg, "gone", kind="primary", workspace="/w", metadata=str(gone),
+        )
+        registry_store.register_deregistered(
+            reg, "blocked", kind="primary", workspace="/w", metadata=str(blocked),
+        )
+
+        real_stat = os.stat
+
+        def fake_stat(path, *a, **k):  # type: ignore[no-untyped-def]
+            if str(path) == str(blocked):
+                raise OSError(errno.EACCES, "Permission denied")
+            return real_stat(path, *a, **k)
+
+        with patch("os.stat", fake_stat):
+            listed = registry_store.list_deregistered(reg)
+
+        # 'blocked' KEPT despite the ambiguous error; 'gone' dropped (ENOENT).
+        assert set(listed) == {"blocked"}
+        assert set(registry_store.load_deregistered(reg)) == {"blocked"}
+
     def test_section_survives_other_section_writes(self, reg: Path, tmp_path: Path) -> None:
         registry_store.register_deregistered(
             reg, "keep", kind="primary", workspace="/w", metadata=str(tmp_path),
