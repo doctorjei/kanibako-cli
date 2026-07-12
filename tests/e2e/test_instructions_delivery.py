@@ -20,8 +20,9 @@ inspect the exited container's Mounts/Env.
 ``_ensure_initialized`` early-returns and the packaged-template install is skipped.
 Each test runs the real ``install_packaged_templates`` against the fixture data dir
 first — exactly what first-init does — so the install + bind path is genuinely
-exercised.  (The KANIBAKO.md guide itself is delivered live via the RO
-``~/playbook/kanibako`` bundle + launch-flatten, not installed to a host path.)
+exercised.  (The KANIBAKO.md guide itself is delivered live via the per-file rom
+RO bind at ``~/playbook/kanibako/directives/KANIBAKO.md`` + launch-flatten, not
+installed to a host path.)
 """
 
 from __future__ import annotations

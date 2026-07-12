@@ -217,17 +217,12 @@ kani:
     source: kani_bin
     box_dest: "~/.local/bin/kanibako"
     options: "ro"
-  # Built-in directive bundle → ~/playbook/kanibako (ro).  The read-only kanibako-
-  # provided directive tree (KANIBAKO.md + flattener scripts) that the instruction-
-  # delivery redesign bind-mounts LIVE into the box home (never seeded/copied — it
-  # rides the installed package, refreshing automatically on upgrade).  Its host
-  # source is import-resolved at the seam (kanibako.data →
-  # global/rom/playbook/kanibako), mirroring the kani_pkg RO bind.
-  - key: playbook_kanibako
-    category: bindings.ro
-    source: playbook_kanibako
-    box_dest: "~/playbook/kanibako"
-    options: "ro"
+  # NOTE: the read-only built-in directive tree (KANIBAKO.md + flattener scripts,
+  # formerly the single ``playbook_kanibako`` whole-dir RO bind) is no longer a
+  # hand-declared entry here.  It is enumerated PER FILE from the packaged rom root
+  # (``global/rom``) by ``core_defaults.rom_default_categories`` — ANY file under
+  # ``rom/`` is bound ro at its mirrored ``~`` path, the RO-bind dual of the
+  # per-file ``template/`` writable seed.
 
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
 # message LOG, routed through the category resolver instead of the hardwired

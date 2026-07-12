@@ -4772,6 +4772,11 @@ def _resolve_launch_snapshot(
     if include_base_families:
         default_categories.update(_core_default_categories(std, proj))
         default_categories.update(core_defaults.kani_default_categories())
+        # Per-file READ-ONLY rom binds: every shipped file under the packaged rom
+        # root bound ro at its mirrored ~ path (the KANIBAKO.md guide + flattener
+        # scripts).  Generalizes the retired single ``playbook_kanibako`` whole-dir
+        # RO bind — enumerated per file so containing dirs stay writable.
+        default_categories.update(core_defaults.rom_default_categories())
         default_categories.update(_channel_default_categories(std, proj))
         if target is not None:
             default_categories.update(target.default_shares())
