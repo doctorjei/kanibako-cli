@@ -1298,3 +1298,71 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
     data = tomllib.loads(path.read_text())
     assert data["model_provider"] == "navigator"
     assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
+
+
+# --- INC 3 dispatch seam: deliver_directive_session_hook(model_provider=...) --
+
+def test_deliver_directive_codex_with_provider_writes_region(tmp_path):
+    """INC 3: a codex-persona launch threads the provider through the SINGLE
+    config.toml write site — the file carries BOTH the hook/trust region AND the
+    [model_providers.<id>] block + model/model_provider selection."""
+    mp = CodexModelProvider(**_NAVIGATOR)
+    wrote = deliver_directive_session_hook(
+        agent_name="codex",
+        config_root=tmp_path,
+        box_codex_config_path=_BOX_CFG,
+        codex_cwd=_CODEX_CWD,
+        auto_approve=True,
+        model_provider=mp,
+    )
+    assert wrote is True
+    data = tomllib.loads((tmp_path / ".codex" / "config.toml").read_text())
+    # hook/trust region intact alongside the provider region.
+    assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
+        _SESSION_START_COMMAND
+    )
+    assert data["projects"][_CODEX_CWD]["trust_level"] == "trusted"
+    assert data["model"] == "gemma-4-31b-it"
+    assert data["model_provider"] == "navigator"
+    assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
+
+
+def test_deliver_directive_codex_no_provider_byte_identical(tmp_path):
+    """A bare codex launch (model_provider omitted) writes a config.toml
+    BYTE-IDENTICAL to an explicit model_provider=None — no provider region."""
+    r1 = tmp_path / "a"
+    r2 = tmp_path / "b"
+    deliver_directive_session_hook(
+        agent_name="codex", config_root=r1, box_codex_config_path=_BOX_CFG,
+        codex_cwd=_CODEX_CWD, auto_approve=True,
+    )
+    deliver_directive_session_hook(
+        agent_name="codex", config_root=r2, box_codex_config_path=_BOX_CFG,
+        codex_cwd=_CODEX_CWD, auto_approve=True, model_provider=None,
+    )
+    a = (r1 / ".codex" / "config.toml").read_text()
+    b = (r2 / ".codex" / "config.toml").read_text()
+    assert a == b
+    assert "model_providers" not in a
+    assert "model_provider = " not in a
+
+
+def test_deliver_directive_claude_ignores_provider(tmp_path):
+    """The claude branch IGNORES model_provider (claude carries its persona via env,
+    not config.toml): the settings.json is byte-identical to a no-provider write and
+    NO codex config.toml is created."""
+    mp = CodexModelProvider(**_NAVIGATOR)
+    r1 = tmp_path / "with"
+    r2 = tmp_path / "without"
+    deliver_directive_session_hook(
+        agent_name="claude", config_root=r1, box_codex_config_path=_BOX_CFG,
+        codex_cwd=_CODEX_CWD, auto_approve=True, model_provider=mp,
+    )
+    deliver_directive_session_hook(
+        agent_name="claude", config_root=r2, box_codex_config_path=_BOX_CFG,
+        codex_cwd=_CODEX_CWD, auto_approve=True,
+    )
+    assert (r1 / ".claude" / "settings.json").read_text() == (
+        (r2 / ".claude" / "settings.json").read_text()
+    )
+    assert not (r1 / ".codex").exists()

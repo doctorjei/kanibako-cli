@@ -588,7 +588,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     reauth_agent_cfg = (
         load_agent_config(agent_cfg_path) if agent_cfg_path.exists() else None
     )
-    auth_src, active_endpoint = _resolve_box_launch_decisions(
+    auth_src, active_endpoint, _active_model = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
         target=target,

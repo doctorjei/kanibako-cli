@@ -140,6 +140,26 @@ CLAUDE_DESC = PluginDescriptor(
     ),
 )
 
+# codex descriptor: its login cred is ``.codex/auth.json`` (SYNC cadence), the file
+# a NaviGator codex persona must NOT receive (the ChatGPT auth would leak to a
+# third-party endpoint box).  Mirrors packages/agent-codex codex-defaults.yaml.
+CODEX_DESC = PluginDescriptor(
+    command=("codex",),
+    bindings=(),
+    mode={},
+    init_dirs=(".codex",),
+    auth_share_support=True,
+    cred_files=(
+        CredFileSpec(
+            home_rel=".codex/auth.json",
+            host_rel=".codex/auth.json",
+            cadence=Cadence.SYNC,
+            mtime_gate=True,
+            filtered=False,
+        ),
+    ),
+)
+
 GOOSE_DESC = PluginDescriptor(
     command=("goose",),
     bindings=(),
@@ -760,3 +780,30 @@ class TestEndpointCredFork:
             suppress_oauth=False,
         )
         assert (proj / ".claude/.credentials.json").read_text() == "MARKER:in:OAUTH"
+
+    def test_codex_authjson_dropped_when_endpoint_set(self, tmp_path: Path) -> None:
+        # INC 3 confirm: a codex persona launch (endpoint set → suppress_oauth=True)
+        # DROPS the codex ``.codex/auth.json`` SYNC cred, so host ChatGPT auth never
+        # reaches a NaviGator box — the same generic fork the claude path uses.
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".codex/auth.json", "CHATGPT")
+        seed_box_credentials(
+            CODEX_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=True,
+        )
+        assert not (proj / ".codex/auth.json").exists()
+        assert (proj / ".codex").is_dir()  # init_dirs still prepared.
+
+    def test_codex_authjson_synced_when_endpoint_unset(self, tmp_path: Path) -> None:
+        # MUTATION CHECK: a BARE codex box (suppress_oauth=False) DOES receive
+        # auth.json — proving the codex suppression above is non-vacuous.
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".codex/auth.json", "CHATGPT")
+        seed_box_credentials(
+            CODEX_DESC, _MarkerTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=False,
+        )
+        # codex auth.json is filtered=False → copied as-is (no marker transform).
+        assert (proj / ".codex/auth.json").read_text() == "CHATGPT"
