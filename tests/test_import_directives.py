@@ -18,7 +18,7 @@ from kanibako import data as _kani_data
 def _load_flattener():
     root = importlib.resources.files(_kani_data.__name__)
     script = root.joinpath(
-        "global", "base", "shared", "playbook", "kanibako", "scripts",
+        "global", "rom", "playbook", "kanibako", "scripts",
         "import-directives.py",
     )
     spec = importlib.util.spec_from_file_location("import_directives", str(script))

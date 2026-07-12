@@ -42,7 +42,7 @@ descriptor:
     # source is SKIPPED, never raised, so a missing SEED can NOT crash a launch.
     - key: managed_pointer
       origin: literal
-      literal_src_pkg: "data/kickoff-loader/.codex/AGENTS.md"
+      literal_src_pkg: "data/KICKOFF.md"
       box_dest: "$GUEST_HOME/.config/kanibako/kickoff.md"
       kind: file
       scope: agent
