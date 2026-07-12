@@ -1089,6 +1089,19 @@ def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[
     return program, [inner_cmd, *cli_args]
 
 
+def _env_flag_enabled(value: str | None) -> bool:
+    """True iff *value* is a recognised truthy env-flag string (case-insensitive).
+
+    Accepts ``1`` / ``true`` / ``yes`` / ``on`` (trimmed, any case) as enabled;
+    everything else — including ``None``, empty, ``0``, ``false`` — is disabled.  Used
+    to gate the experimental ``KANIBAKO_SESSION_TAKEOVER`` (4b) so the default (unset)
+    stays OFF.
+    """
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _build_supervisor_pid1(
     supervisor_argv: list[str], fallback_argv: list[str],
 ) -> tuple[str, list[str]]:
@@ -2853,6 +2866,18 @@ def _run_container(
                 # (increment 4a, LOG-ONLY); panel-watch (E2f) enumerates it for
                 # panel-agent liveness + newcomer detection.  One dir, one scheme.
                 supervisor_argv += ["--agent-markers-dir", AGENT_MARKERS_DIR]
+                # increment 4b ENFORCEMENT — DEFAULT-OFF, gated behind the experimental
+                # env KANIBAKO_SESSION_TAKEOVER so 4b lands DORMANT and cannot fire in
+                # the wild before the $PPID == agent-PID / panel invariant is validated
+                # on Jei's desktop (a misidentification that evicts a legitimate SOLE
+                # agent is catastrophic).  Unset/off ⇒ the supervisor's newcomer handling
+                # is 4a LOG-ONLY (no signals/kills).  When on, run_forever PAUSEs a panel
+                # newcomer, GRACEs + process-group-EVICTs the CLI incumbent, then RESUMEs
+                # the newcomer as sole writer.  This is an internal/experimental switch,
+                # NOT a spec settings key — promoting it to an agent.default.* key (and
+                # flipping the default to ON) is a later spec-delta + desktop validation.
+                if _env_flag_enabled(os.environ.get("KANIBAKO_SESSION_TAKEOVER")):
+                    supervisor_argv += ["--session-takeover"]
                 if warm_only:
                     # E2f — AGENT-INDEPENDENT warm-up: front the box with the
                     # supervisor in PANEL-WATCH mode.  It starts NO CLI agent, watches
