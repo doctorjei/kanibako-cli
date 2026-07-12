@@ -647,3 +647,212 @@ class TestRecoveryStandalone:
         assert journal.pending_create(std.journal, box_key) is None
         assert journal.read_journal(std.journal) == {}
         assert user_file.read_text() == "precious"
+
+
+# ---------------------------------------------------------------------------
+# box lifecycle I4: conflict-safe create (DATA-LOSS guard on `create --name X`)
+# ---------------------------------------------------------------------------
+
+class TestConflictSafeCreate:
+    """`create --name X` REFUSES to reuse an existing box home (``std.boxes/X``).
+
+    Closes the DATA-LOSS window (box-lifecycle I4): before this guard a
+    ``create --name dup`` after ``rm dup`` merged into the deregistered box's
+    retained home, so a later ``rm dup --purge`` deleted the live box's data.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        # The home seed runs AFTER the guard (and never for a refused create) — stub
+        # it so these are fast + fs-deterministic, matching the sibling suites.
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def _std(self, config_file):
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+        return load_std_paths(load_config(config_file))
+
+    def test_repro_create_over_deregistered_refused_no_data_loss(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """⚑ THE HAZARD REPRO: rm dup (deregister) -> create --name dup <NEW path>
+        is REFUSED; the deregistered box's home + secrets are intact (no merge)."""
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import run_create, run_rm
+
+        orig = tmp_home / "orig"
+        orig.mkdir()
+        assert run_create(_create_args(orig, name="dup")) == 0
+        std = self._std(config_file)
+        home_dir = std.boxes / "dup"
+        (home_dir / "home").mkdir(parents=True, exist_ok=True)
+        sentinel = home_dir / "home" / "SECRET.txt"
+        sentinel.write_text("old-box-credentials")
+
+        assert run_rm(
+            argparse.Namespace(target="dup", purge=False, force=False)
+        ) == 0
+        assert registry_store.lookup_deregistered(std.registry, "dup") is not None
+        capsys.readouterr()
+
+        # create --name dup at a NEW path -> REFUSED (the reuse hole is closed).
+        newp = tmp_home / "newp"
+        newp.mkdir()
+        rc = run_create(_create_args(newp, name="dup"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "deregistered" in err
+        assert "box register dup" in err
+        assert "box rm dup --purge" in err
+
+        # NO data loss: the deregistered home + sentinel untouched, entry stands,
+        # and no active "dup" was minted over it.
+        assert sentinel.read_text() == "old-box-credentials"
+        assert registry_store.lookup_deregistered(std.registry, "dup") is not None
+        assert "dup" not in _primary_names(std)
+
+    def test_create_over_active_name_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako.commands.box._parser import run_create
+
+        orig = tmp_home / "orig"
+        orig.mkdir()
+        assert run_create(_create_args(orig, name="act")) == 0
+        std = self._std(config_file)
+        assert "act" in _primary_names(std)
+        capsys.readouterr()
+
+        newp = tmp_home / "newp"
+        newp.mkdir()
+        rc = run_create(_create_args(newp, name="act"))
+        assert rc == 1
+        # Active-name collision refused by check_primary_box_name_free.
+        assert "already registered" in capsys.readouterr().err
+        assert "act" in _primary_names(std)
+
+    def test_create_over_orphaned_metadata_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        # An ORPHANED home: a std.boxes/<name> dir with NO membership, NO
+        # deregistered entry, NO pending journal entry.
+        orphan = std.boxes / "orphan"
+        (orphan / "home").mkdir(parents=True, exist_ok=True)
+        (orphan / "home" / "KEEP.txt").write_text("orphaned")
+
+        newp = tmp_home / "newp"
+        newp.mkdir()
+        rc = run_create(_create_args(newp, name="orphan"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "orphaned metadata" in err
+        assert (orphan / "home" / "KEEP.txt").read_text() == "orphaned"
+        assert "orphan" not in _primary_names(std)
+
+    def test_normal_create_fresh_name_unaffected(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """A --name create of a genuinely-new name at a fresh path is UNAFFECTED —
+        the guard is a no-op when the home is free."""
+        from kanibako.commands.box._parser import run_create
+
+        fresh = tmp_home / "fresh"
+        fresh.mkdir()
+        rc = run_create(_create_args(fresh, name="brandnew"))
+        assert rc == 0
+        std = self._std(config_file)
+        assert "brandnew" in _primary_names(std)
+        assert (std.boxes / "brandnew").is_dir()
+
+    def test_stale_journal_entry_does_not_reopen_hazard(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A STALE `create` journal entry (register->clear-window crash that `rm`
+        never clears) must NOT false-allow `create --name X <new path>` to merge
+        into a deregistered box's retained home.  The deregistered refusal
+        precedes the pending-create allow, so the reuse hole stays closed even
+        with a lingering journal crumb."""
+        from types import SimpleNamespace
+
+        from kanibako import journal, registry_store
+        from kanibako.commands.box._parser import run_create, run_rm
+        from kanibako.commands.start import _write_create_entry
+        from kanibako.paths import BoxMode
+
+        orig = tmp_home / "orig"
+        orig.mkdir()
+        assert run_create(_create_args(orig, name="dup")) == 0
+        std = self._std(config_file)
+        home_dir = std.boxes / "dup"
+        (home_dir / "home").mkdir(parents=True, exist_ok=True)
+        sentinel = home_dir / "home" / "SECRET.txt"
+        sentinel.write_text("old-box-credentials")
+
+        # Plant a stale pending `create` entry for the box home (the
+        # register->clear crash window), then `rm dup` (which does NOT clear it).
+        proj = SimpleNamespace(
+            shell_path=home_dir / "home", mode=BoxMode.primary,
+            name="dup", project_path=orig, group=None,
+        )
+        _write_create_entry(std, proj)
+        assert run_rm(
+            argparse.Namespace(target="dup", purge=False, force=False)
+        ) == 0
+        assert journal.pending_create(std.journal, str(home_dir)) is not None
+        assert registry_store.lookup_deregistered(std.registry, "dup") is not None
+        capsys.readouterr()
+
+        # create --name dup at a NEW path is REFUSED despite the stale entry.
+        newp = tmp_home / "newp"
+        newp.mkdir()
+        rc = run_create(_create_args(newp, name="dup"))
+        assert rc == 1
+        assert "deregistered" in capsys.readouterr().err
+        # No active "dup" minted over the deregistered home; sentinel intact.
+        assert "dup" not in _primary_names(std)
+        assert sentinel.read_text() == "old-box-credentials"
+
+    def test_named_half_create_recovery_still_works(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """A --name box interrupted mid-create (pending journal entry) is RESUMED
+        by re-running `create --name <same>` — the I4 guard must NOT refuse it."""
+        from kanibako.commands import start as start_mod
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ProjectError
+
+        std = self._std(config_file)
+        path = tmp_home / "halfbox"
+        path.mkdir()
+
+        real_register = start_mod._register_new_box
+        calls = {"n": 0}
+
+        def flaky(std, proj, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ProjectError("simulated registry collision")
+            return real_register(std, proj, **kw)
+
+        monkeypatch.setattr(
+            "kanibako.commands.start._register_new_box", flaky
+        )
+
+        # First create: interrupted at register -> box dir + pending entry LEFT.
+        with pytest.raises(ProjectError):
+            run_create(_create_args(path, name="halfbox"))
+        box_key = str(std.boxes / "halfbox")
+        assert journal.pending_create(std.journal, box_key) is not None
+        assert (std.boxes / "halfbox").is_dir()
+
+        # Re-run: the guard sees the pending entry and ALLOWS the recovery re-entry.
+        rc = run_create(_create_args(path, name="halfbox"))
+        assert rc == 0
+        assert "halfbox" in _primary_names(std)
+        assert journal.pending_create(std.journal, box_key) is None

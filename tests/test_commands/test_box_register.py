@@ -272,19 +272,24 @@ class TestConflictSafety:
     def test_readopt_refused_when_active_box_owns_name(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        from kanibako.paths import load_primary_boxes
+        from kanibako.paths import load_primary_boxes, register_primary_box_name
 
         config, std = _std(config_file)
-        # Box A named "dup" → deregister it.
+        # Box A named "dup" → deregister it (retained metadata at std.boxes/dup).
         dir_a = tmp_home / "a"
         dir_a.mkdir()
         assert run_create(_create_args(dir_a, name="dup")) == 0
         assert run_rm(_rm_args("dup")) == 0
 
-        # A NEW active box also named "dup" at a different workspace.
+        # A NEW active box also named "dup" at a different workspace.  I4 now
+        # BLOCKS `create --name dup` over the deregistered home (that was the
+        # data-loss hole), so build the split-brain state directly: register the
+        # active "dup" membership at dir_b (an index-only write, no home reuse).
         dir_b = tmp_home / "b"
         dir_b.mkdir()
-        assert run_create(_create_args(dir_b, name="dup")) == 0
+        register_primary_box_name(
+            std.primary_workset, std.registry, "dup", str(dir_b),
+        )
         capsys.readouterr()
 
         # Readopt of the deregistered "dup" must REFUSE (active box owns the name)
