@@ -1050,6 +1050,7 @@ def deliver_directive_session_hook(
     box_codex_config_path: str,
     codex_cwd: str,
     auto_approve: bool,
+    model_provider: CodexModelProvider | None = None,
 ) -> bool:
     """Route the instruction-delivery SessionStart hook to the agent's NATIVE
     config surface, returning whether a write occurred.
@@ -1061,6 +1062,15 @@ def deliver_directive_session_hook(
     * ``codex``  → ``<config_root>/.codex/config.toml`` (the codex config manager:
       hook + trust + approval/sandbox parity, the SINGLE managed-write site).
     * any other agent → inert (``False``).
+
+    *model_provider* (default ``None``) is the INC-3 codex-persona seam: for a codex
+    persona launch the caller passes the resolved
+    :class:`CodexModelProvider` so the SAME config.toml write that lands the hook +
+    trust ALSO lands the ``[model_providers.<id>]`` block + top-level
+    ``model``/``model_provider`` selection.  It is IGNORED on the claude branch
+    (claude carries its persona endpoint/token via env, not config.toml).  When
+    ``None`` (claude, bare codex, any non-persona) the codex write is BYTE-IDENTICAL
+    to before this seam.
 
     The single dispatch point for the launch-side directive-hook delivery (mirrors
     :func:`deliver_claude_panel_permissions`); callers wrap best-effort so a
@@ -1074,6 +1084,7 @@ def deliver_directive_session_hook(
             box_config_path=box_codex_config_path,
             codex_cwd=codex_cwd,
             auto_approve=auto_approve,
+            model_provider=model_provider,
         )
     return False
 

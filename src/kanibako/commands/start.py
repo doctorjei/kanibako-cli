@@ -1639,7 +1639,7 @@ def _run_container(
     # BARE (byte-identical to today); a set endpoint is the cred-fork signal →
     # ``suppress_oauth`` drops the host OAuth cred sync so the Anthropic token never
     # reaches a box pointed at a third-party endpoint.
-    auth_src, active_endpoint = _resolve_box_launch_decisions(
+    auth_src, active_endpoint, active_model = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
         target=target,
@@ -1656,15 +1656,20 @@ def _run_container(
     # ``agent_cfg``).  On a hard error we return BEFORE creating any artifact; for a
     # DEFERRED explicit persona (``_defer_box``) the box was never materialised, so
     # NOTHING is left behind — a true pre-flight, not a rollback.
+    #
+    # ``provider`` is the resolved codex CodexModelProvider for a config-file
+    # (codex) persona (None for claude / non-persona / bare) — INC 3 threads it into
+    # the codex config.toml write below (``deliver_directive_session_hook`` →
+    # ``seed_codex_config``).  Init None here so the non-persona launch reaches the
+    # write with a None provider (byte-identical) instead of an unbound local.
+    provider: CodexModelProvider | None = None
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
-        # ``_provider`` is the resolved codex CodexModelProvider (None for claude);
-        # INC 3 threads it into ``seed_codex_config`` here.  INC 2 only proves the
-        # resolution is harness-correct — the launch dispatch stays untouched.
         (
-            active_endpoint, persona_error, persona_adopted, _provider,
+            active_endpoint, persona_error, persona_adopted, provider,
         ) = _preflight_persona_load(
-            agent_id, agent_cfg, active_endpoint, logger, target=target,
+            agent_id, agent_cfg, active_endpoint, logger,
+            target=target, keyspace_model=active_model,
         )
         if persona_error is not None:
             print(persona_error, file=sys.stderr)
@@ -2176,6 +2181,17 @@ def _run_container(
                             ),
                             codex_cwd=f"{GUEST_HOME}/workspace",
                             auto_approve=auto_approve,
+                            # INC 3: a codex persona carries its resolved
+                            # model-provider (None for claude / bare / non-persona ⇒
+                            # byte-identical write).  This is the SINGLE codex
+                            # config.toml write site, reached whenever a box is
+                            # (re)started here — first launch after create and start
+                            # of a stopped box — so the provider block re-materialises
+                            # to the current persona config, exactly like the hook +
+                            # trust region beside it.  (A reattach to an ALREADY-running
+                            # box early-returns above and does not rewrite config.toml;
+                            # harmless — the running box already carries the block.)
+                            model_provider=provider,
                         )
                     except Exception:
                         logger.debug(
@@ -3818,23 +3834,27 @@ def _resolve_codex_persona_env_key(agent_cfg, wiring) -> "str | None":
 
 
 def _resolve_codex_persona_provider(
-    agent_id: str, agent_cfg, endpoint: str, env_key: str, wiring
+    agent_id: str, endpoint: str, env_key: str, model: str, wiring
 ) -> "CodexModelProvider":
     """Build the resolved codex model-provider bundle INC 3 wires into config.toml.
 
     A pure assembly of the persona's resolved values (no I/O) into the
-    :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 feeds to
-    :func:`~kanibako.vscode_config.merge_codex_config` /
+    :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 feeds through
+    :func:`~kanibako.vscode_config.deliver_directive_session_hook` →
     :func:`~kanibako.vscode_config.seed_codex_config`:
 
     * *provider_id* / *name* — the persona segment (``navigator``); the table id +
       the human-readable provider name (INC 3/4 may add a display-name keyspace key).
     * *base_url* — the resolved endpoint.
-    * *wire_api* — the harness default (``chat`` for codex; settled at INC 3/4).
+    * *wire_api* — the harness default (``chat`` for codex; PROVISIONAL — the
+      chat-vs-responses final call needs a real NaviGator key, settled at INC 4).
     * *env_key* — the token var (== the ``secret_path`` key the bearer token is
       delivered through), so codex reads the key kanibako exports.
-    * *model* — the resolved active-slot model (``agent.<node>.model``); empty when
-      unset (INC 3/4 finalises the model-default handling — it is not a load gate).
+    * *model* — the CASCADE-resolved active-node model (``agent.<node>.model`` off the
+      box-level launch snapshot, harness default excluded — see
+      :func:`_resolve_box_launch_decisions`), passed in by the caller.  It is a load
+      GATE (a codex persona needs a real model id): the caller rejects an empty
+      *model* BEFORE reaching here, so this is always non-empty.
     """
     from kanibako.vscode_config import CodexModelProvider
 
@@ -3845,7 +3865,7 @@ def _resolve_codex_persona_provider(
         base_url=endpoint,
         wire_api=wiring.wire_api,
         env_key=env_key,
-        model=agent_cfg.state.get("model", ""),
+        model=model,
     )
 
 
@@ -3856,6 +3876,7 @@ def _preflight_persona_load(
     logger,
     *,
     target=None,
+    keyspace_model: str | None = None,
 ) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
     """Resolve a persona's LOADABILITY (A + B3) — a TRUE pre-flight.
 
@@ -3891,6 +3912,14 @@ def _preflight_persona_load(
     (endpoint), ``agent_cfg.secret_path`` (bearer token pointer) and ``agent_cfg.env``
     (model-map).  A resolved endpoint with NO usable token is ALSO a hard error (a
     bearer endpoint with no token 401s inside the box).
+
+    ``keyspace_model`` is the box-level cascade-resolved ``agent.<node>.model`` (the
+    single-source resolution done by the caller off the launch snapshot, harness
+    default excluded — see :func:`_resolve_box_launch_decisions`).  It is used ONLY by
+    the config-file (codex) path, which REQUIRES a real model id: an empty/absent
+    model is a hard error there (a NaviGator provider block with ``model = ""`` is
+    meaningless).  It is ignored by the ENV (claude) path, whose model rides its
+    existing channels.
     """
     persona = persona_of(agent_id)
     wiring = _persona_wiring(target)
@@ -3924,7 +3953,7 @@ def _preflight_persona_load(
 
     if wiring.endpoint_delivery == "config_file":
         return _preflight_config_file_persona(
-            agent_id, agent_cfg, endpoint, wiring, display,
+            agent_id, agent_cfg, endpoint, keyspace_model, wiring, display,
         )
 
     # --- ENV harness (claude): byte-identical token gate ------------------------
@@ -3994,31 +4023,97 @@ def _persona_no_endpoint_error(agent_id: str, persona: str, wiring) -> str:
 
 
 def _preflight_config_file_persona(
-    agent_id: str, agent_cfg, endpoint: str, wiring, display: str,
+    agent_id: str,
+    agent_cfg,
+    endpoint: str,
+    keyspace_model: str | None,
+    wiring,
+    display: str,
 ) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
-    """Token gate + provider resolve for a CONFIG-FILE harness (codex, INC 2).
+    """Token + model gate + provider resolve for a CONFIG-FILE harness (codex, INC 2/3).
 
-    The endpoint is resolved (keyspace only — no B3).  Require a usable bearer token
-    under the DYNAMIC token var (the single configured ``secret_path`` key ==
-    the provider ``env_key``); on success return the resolved
-    :class:`~kanibako.vscode_config.CodexModelProvider` for INC 3.  NEVER mutates
-    *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist), so ``adopted`` is False.
+    The endpoint is resolved (keyspace only — no B3).  Two load gates, each with an
+    ACTIONABLE, SUB-CASE-SPECIFIC error (INC-3 fold-in), then the provider assemble:
+
+    1. a usable bearer token under the DYNAMIC token var (the single configured
+       ``secret_path`` key == the provider ``env_key``).  Distinguished sub-cases:
+       * ZERO keys → "no API key configured";
+       * >1 keys → "ambiguous: multiple keys configured" (can't pick the env_key);
+       * the single key's pointer is missing/unreadable/empty → "points at an unusable
+         file" (names the key + path) — NOT a blanket "none was found".
+    2. a real ``model`` id (``keyspace_model``, the box-level cascade override): empty
+       ⇒ error (a NaviGator ``[model_providers.<id>]`` block needs a model — never ship
+       ``model = ""``).
+
+    On success return the resolved :class:`~kanibako.vscode_config.CodexModelProvider`
+    for INC 3.  NEVER mutates *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist),
+    so ``adopted`` is False.
     """
+    token_err = _codex_persona_token_error(agent_cfg, wiring, endpoint, display)
+    if token_err is not None:
+        return None, token_err, False, None
+    # token gate passed ⇒ a single, usable secret_path key resolves the env_key.
     env_key = _resolve_codex_persona_env_key(agent_cfg, wiring)
-    token_ptr = agent_cfg.secret_path.get(env_key) if env_key else None
-    if not env_key or not token_ptr or not _secret_pointer_usable(token_ptr):
+    assert env_key is not None  # guaranteed by the passed token gate above.
+    model = (keyspace_model or "").strip()
+    if not model:
         return None, (
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
-            f"usable auth token.\n"
+            f"model configured.\n"
+            f"  A custom-endpoint codex persona must name the provider's model id "
+            f"(e.g. `kanibako config set agent.{display}.model=<model-id>`); the "
+            f"harness default is not used for a third-party provider.\n"
+            f"  Set the model for this persona, then retry."
+        ), False, None
+    provider = _resolve_codex_persona_provider(
+        agent_id, endpoint, env_key, model, wiring,
+    )
+    return endpoint, None, False, provider
+
+
+def _codex_persona_token_error(agent_cfg, wiring, endpoint: str, display: str) -> "str | None":
+    """The SUB-CASE-specific bearer-token error for a config-file persona, or ``None``.
+
+    Differentiates the three ways the DYNAMIC token var can fail to resolve so the
+    message is actionable (INC-3 fold-in — INC 2 collapsed all three into a single
+    "none was found").  A FIXED-var harness (non-empty ``wiring.token_var``) uses that
+    var directly; the DYNAMIC codex MVP derives it from the single configured
+    ``secret_path`` key.  Returns ``None`` when a single, usable token resolves.
+    """
+    intro = (
+        f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+        f"usable auth token.\n"
+    )
+    tail = "  Set the key for this persona, then retry."
+    keys = sorted(agent_cfg.secret_path)
+    # DYNAMIC (empty token_var): the env_key IS the single configured secret_path key.
+    if not wiring.token_var and len(keys) > 1:
+        return (
+            f"{intro}"
+            f"  A custom-endpoint codex persona needs a SINGLE "
+            f"`agent.{display}.secret_path.<ENV_KEY>=<path>` entry (that <ENV_KEY> "
+            f"becomes the model-provider env_key), but {len(keys)} are configured "
+            f"({', '.join(keys)}) — ambiguous.\n"
+            f"  Leave exactly one, then retry."
+        )
+    env_key = _resolve_codex_persona_env_key(agent_cfg, wiring)
+    token_ptr = agent_cfg.secret_path.get(env_key) if env_key else None
+    if not env_key or not token_ptr:
+        return (
+            f"{intro}"
             f"  A custom-endpoint codex persona needs an API key delivered via a "
             f"single `agent.{display}.secret_path.<ENV_KEY>=<path>` entry (that "
             f"<ENV_KEY> becomes the model-provider env_key); none was found.\n"
-            f"  Set the key for this persona, then retry."
-        ), False, None
-    provider = _resolve_codex_persona_provider(
-        agent_id, agent_cfg, endpoint, env_key, wiring,
-    )
-    return endpoint, None, False, provider
+            f"{tail}"
+        )
+    if not _secret_pointer_usable(token_ptr):
+        return (
+            f"{intro}"
+            f"  The configured key `{env_key}` points at an unusable file "
+            f"({token_ptr}) — it must be a readable, non-empty file.\n"
+            f"{tail}"
+        )
+    return None
 
 
 def _effective_behavior_for_display(
@@ -4178,10 +4273,10 @@ def _resolve_box_launch_decisions(
     agent_cfg,
     system_settings_path,
     agent_cfg_path,
-) -> "tuple[AuthSource, str | None]":
-    """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint) off ONE
-    snapshot — the single-source consolidation of the auth resolve and the endpoint
-    resolve.
+) -> "tuple[AuthSource, str | None, str | None]":
+    """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint + persona
+    model) off ONE snapshot — the single-source consolidation of the auth resolve and
+    the behavior (endpoint/model) resolve.
 
     ``build_launch_snapshot`` accepts BOTH the auth 3-tier ``auth_chain`` floor AND
     the behavior ``behavior_floor`` in a single call, so the box's sharing decision
@@ -4195,6 +4290,15 @@ def _resolve_box_launch_decisions(
     * *endpoint* — the resolved PERSONA endpoint URL, or ``None`` when unset
       (``<None>`` / empty / no descriptors / no target) — the cred-fork signal
       (non-None ⇒ suppress the OAuth cred). ``None`` is byte-identical to today.
+    * *model* — the cascade-resolved active-node ``agent.<node>.model`` (the box-level
+      override where set), or ``None`` when unset.  The codex-persona provider needs a
+      real model id, so this DELIBERATELY excludes the harness ``model`` DEFAULT floor
+      (e.g. codex's ``gpt-5.5`` — an own-endpoint default that is wrong for a
+      third-party provider): an unset persona model resolves ``None`` here so the
+      preflight surfaces an actionable empty-model error rather than shipping a bogus
+      default into a NaviGator ``[model_providers.<id>]`` block.  Only consumed for a
+      config-file (codex) persona; unused (harmless) for bare/claude launches, where
+      the ``--model`` flag still resolves its own default via the main launch snapshot.
 
     The behavior floor folds in as ``agent.default.<key>`` (OS1) and the per-agent
     FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
@@ -4215,8 +4319,16 @@ def _resolve_box_launch_decisions(
     # A real target returns a list of TargetSetting; guard against a non-list (e.g.
     # a MagicMock target in unit tests) so the behavior floor / endpoint read is
     # skipped rather than iterating a mock — endpoint then stays None (bare).
+    #
+    # ``model`` is DELIBERATELY dropped from the floor (see the *model* return note):
+    # the persona model must be EXPLICITLY configured (any cascade scope), never
+    # backfilled by the harness's own-endpoint default — so the resolved model below
+    # reflects only scopes that actually set ``agent.<node>.model`` and is empty/None
+    # when unset.  Dropping it here is safe: this snapshot's ``effective`` is read for
+    # endpoint + model only, and the bare-box ``--model`` flag resolves its own
+    # default via the separate main-launch snapshot.
     behavior_floor = (
-        {d.key: d.default for d in descriptors}
+        {d.key: d.default for d in descriptors if d.key != "model"}
         if isinstance(descriptors, list)
         else {}
     )
@@ -4244,12 +4356,17 @@ def _resolve_box_launch_decisions(
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
     endpoint: str | None = None
+    model: str | None = None
     if behavior_floor:
         effective = settings_launch.effective_behavior(
             snapshot, active_agent=agent_name
         )
         endpoint = effective.get("endpoint", "") or None
-    return auth_src, endpoint
+        # model resolves off the SAME snapshot (box-level cascade override where set);
+        # the harness default was excluded from the floor above, so an unset persona
+        # model is absent/empty here → None (empty-model error, not a bogus default).
+        model = effective.get("model", "") or None
+    return auth_src, endpoint, model
 
 
 def _launch_snapshot_inputs(
@@ -4801,13 +4918,13 @@ def persona_create_verdict(
         if agent_cfg_path.exists()
         else target.generate_agent_config()
     )
-    _auth, endpoint = _resolve_box_launch_decisions(
+    _auth, endpoint, model = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=probe_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
     )
     _ep, error, _adopted, _provider = _preflight_persona_load(
-        agent_id, probe_cfg, endpoint, logger, target=target,
+        agent_id, probe_cfg, endpoint, logger, target=target, keyspace_model=model,
     )
     return error
 
@@ -4877,7 +4994,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # Auth SOURCE + persona endpoint off ONE snapshot (single-source). At CREATE, a
     # fresh custom-endpoint box is seeded WITHOUT the host OAuth cred (fail-safe;
     # <None>/no-target = bare, byte-identical to today).
-    auth_src, active_endpoint = _resolve_box_launch_decisions(
+    auth_src, active_endpoint, active_model = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
@@ -4886,13 +5003,18 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # PERSONA LOAD-OR-ERROR (A + B3) — the SAME gate the launch path runs, before
     # any seed/artifact.  An unloadable persona raises (surfaced by cli.py with a
     # non-zero exit); the create journal keeps the half-built box forward-
-    # recoverable (a cleanup command is a separate follow-up).
+    # recoverable (a cleanup command is a separate follow-up).  The provider itself
+    # is NOT consumed here (create seeds creds + templates; the codex config.toml —
+    # hook + provider — materialises at first launch via _run_container), but the
+    # model gate must run so an unconfigured-model codex persona is rejected at
+    # CREATE, symmetric with the launch path.
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
         (
             active_endpoint, persona_error, persona_adopted, _provider,
         ) = _preflight_persona_load(
-            agent_id, seed_agent_cfg, active_endpoint, logger, target=target,
+            agent_id, seed_agent_cfg, active_endpoint, logger,
+            target=target, keyspace_model=active_model,
         )
         if persona_error is not None:
             raise KanibakoError(persona_error)

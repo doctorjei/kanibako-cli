@@ -949,7 +949,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
 
         with start_mocks(), patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None),
+            return_value=(_PRIVATE_AUTH, None, None),
         ):
             spawn = MagicMock()
             with patch("kanibako.commands.start._spawn_creds_watcher", spawn):

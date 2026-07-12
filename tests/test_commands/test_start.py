@@ -806,7 +806,7 @@ class TestDistinctAuth:
         """A PRIVATE box (auth_src.shares False) -> refresh_credentials skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None),
+            return_value=(_PRIVATE_AUTH, None, None),
         ):
             rc = _run_container(
                 project_dir=None,
@@ -825,7 +825,7 @@ class TestDistinctAuth:
         """A PRIVATE box (auth_src.shares False) -> check_auth skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None),
+            return_value=(_PRIVATE_AUTH, None, None),
         ):
             rc = _run_container(
                 project_dir=None,
@@ -1470,7 +1470,7 @@ class TestCredsyncRouting:
         (credsync.refresh/writeback never reached)."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None),
+            return_value=(_PRIVATE_AUTH, None, None),
         ):
             self._drive_descriptor(m)
             # Seed-at-create path: a brand-new (just-registered) box seeds now.
@@ -2296,7 +2296,7 @@ class TestPrepareHostHook:
         """Distinct auth (PRIVATE box, auth_src.shares False) -> auto_auth=False."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None),
+            return_value=(_PRIVATE_AUTH, None, None),
         ):
             _run_container(
                 project_dir=None,
@@ -4099,7 +4099,7 @@ class TestWritebackAllPaths:
         )
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(workset_auth, None),
+            return_value=(workset_auth, None, None),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -4126,7 +4126,7 @@ class TestWritebackAllPaths:
         )
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(workset_auth, None),
+            return_value=(workset_auth, None, None),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -4173,7 +4173,7 @@ class TestWritebackAllPaths:
         any path."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None),
+            return_value=(_PRIVATE_AUTH, None, None),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -4312,7 +4312,7 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.commands.start.write_agent_config"),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
-                return_value=(_SHARED_AUTH, None),
+                return_value=(_SHARED_AUTH, None, None),
             ),
             patch("kanibako.commands.start.load_agent_config"),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
@@ -4873,6 +4873,47 @@ class TestPreflightClaudeByteIdentical:
             "/claude/navigator/token"
         )
 
+    def test_claude_b3_hostdir_adopt_with_target(self, tmp_path, monkeypatch):
+        # B3 host-dir AUTO-ADOPT (unresolved keyspace endpoint) works unchanged when
+        # a real ClaudeTarget is threaded through: the endpoint + model-map env come
+        # from ~/.config/claude/<persona>/settings.json, the token from the sibling
+        # token file, provider stays None (ENV harness), adopted True.
+        import json
+
+        from kanibako.agent_config import AgentConfig
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        (pdir / "settings.json").write_text(
+            json.dumps(
+                {
+                    "env": {
+                        "ANTHROPIC_BASE_URL": "https://nav.example/v1",
+                        "ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma-4-31b-it",
+                    }
+                }
+            )
+        )
+        (pdir / "token").write_text("sk-host\n")
+
+        cfg = AgentConfig()  # empty keyspace → B3 adoption supplies everything.
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘claude", cfg, None, MagicMock(), target=ClaudeTarget(),
+        )
+        assert err is None
+        assert endpoint == "https://nav.example/v1"
+        assert adopted is True
+        assert provider is None  # ENV harness — no codex config.toml provider.
+        assert cfg.state["endpoint"] == "https://nav.example/v1"
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"].endswith(
+            "/claude/navigator/token"
+        )
+        # The model-map env rides the agent env channel (base-URL/token excluded).
+        assert cfg.env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "gemma-4-31b-it"
+
 
 class TestPreflightCodexPersona:
     """Codex (config-file harness) persona resolution — keyspace-config only (no B3)."""
@@ -4881,13 +4922,11 @@ class TestPreflightCodexPersona:
         from kanibako.plugins.codex.target import CodexTarget
         return CodexTarget()
 
-    def _cfg(self, *, secret=None, model=None):
+    def _cfg(self, *, secret=None):
         from kanibako.agent_config import AgentConfig
         cfg = AgentConfig()
         if secret:
             cfg.secret_path = dict(secret)
-        if model is not None:
-            cfg.state["model"] = model
         return cfg
 
     def test_keyspace_endpoint_and_key_resolves_provider(self, tmp_path):
@@ -4896,12 +4935,11 @@ class TestPreflightCodexPersona:
 
         key = tmp_path / "navkey"
         key.write_text("nv-secret\n")
-        cfg = self._cfg(
-            secret={"NAVIGATOR_API_KEY": str(key)}, model="gemma-4-31b-it",
-        )
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
+        # model is the CASCADE-resolved value (keyspace_model), NOT cfg.state (INC 3).
         endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
-            target=self._codex(),
+            target=self._codex(), keyspace_model="gemma-4-31b-it",
         )
         assert err is None
         assert endpoint == "https://api.ai.example/v1"
@@ -4914,6 +4952,22 @@ class TestPreflightCodexPersona:
             env_key="NAVIGATOR_API_KEY",   # the configured secret_path key.
             model="gemma-4-31b-it",
         )
+
+    def test_empty_model_errors(self, tmp_path):
+        # A usable token but NO cascade model → a NaviGator provider needs a model
+        # id → hard error (never ship model = "").
+        from kanibako.commands.start import _preflight_persona_load
+        key = tmp_path / "navkey"
+        key.write_text("nv-secret\n")
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
+        for missing in (None, "", "   "):
+            endpoint, err, adopted, provider = _preflight_persona_load(
+                "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+                target=self._codex(), keyspace_model=missing,
+            )
+            assert endpoint is None and provider is None
+            assert err is not None and "no model configured" in err
+            assert "config set" in err and ".model=" in err
 
     def test_no_endpoint_config_file_error_no_hostdir(self, tmp_path, monkeypatch):
         # No keyspace endpoint → hard error worded for config-file (no host-dir /
@@ -4941,17 +4995,22 @@ class TestPreflightCodexPersona:
         assert called["b3"] is False  # B3 is NEVER attempted for codex.
 
     def test_endpoint_but_no_token_errors(self):
+        # ZERO configured secret keys → the "none was found" sub-case (distinct from
+        # the ambiguous / unusable-pointer messages below).
         from kanibako.commands.start import _preflight_persona_load
         endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘codex", self._cfg(), "https://api.example/v1", MagicMock(),
-            target=self._codex(),
+            target=self._codex(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
         assert err is not None and "no usable auth token" in err
         assert "env_key" in err
+        assert "none was found" in err
+        assert "ambiguous" not in err and "unusable file" not in err
 
     def test_ambiguous_multiple_secret_keys_errors(self, tmp_path):
-        # >1 configured secret_path key → cannot pick the provider env_key → error.
+        # >1 configured secret_path key → cannot pick the provider env_key → the
+        # DIFFERENTIATED "ambiguous" sub-case (names the count + keys), NOT "none".
         from kanibako.commands.start import _preflight_persona_load
         a = tmp_path / "a"
         a.write_text("x\n")
@@ -4960,21 +5019,28 @@ class TestPreflightCodexPersona:
         cfg = self._cfg(secret={"KEY_A": str(a), "KEY_B": str(b)})
         endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
-            target=self._codex(),
+            target=self._codex(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
         assert err is not None and "no usable auth token" in err
+        assert "ambiguous" in err
+        assert "2" in err and "KEY_A" in err and "KEY_B" in err
+        assert "none was found" not in err
 
     def test_unusable_token_pointer_errors(self, tmp_path):
-        # The configured key points at a MISSING file → not usable → error.
+        # The single configured key points at a MISSING file → the DIFFERENTIATED
+        # "unusable file" sub-case (names the key + path), NOT "none was found".
         from kanibako.commands.start import _preflight_persona_load
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(tmp_path / "absent")})
         endpoint, err, adopted, provider = _preflight_persona_load(
             "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
-            target=self._codex(),
+            target=self._codex(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
         assert err is not None and "no usable auth token" in err
+        assert "unusable file" in err
+        assert "NAVIGATOR_API_KEY" in err
+        assert "none was found" not in err and "ambiguous" not in err
 
     def test_resolved_endpoint_is_suppress_signal(self, tmp_path):
         # suppress_oauth = active_endpoint is not None; a loadable codex persona
@@ -4982,13 +5048,98 @@ class TestPreflightCodexPersona:
         from kanibako.commands.start import _preflight_persona_load
         key = tmp_path / "k"
         key.write_text("z\n")
-        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)}, model="m")
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         endpoint, err, _adopted, _provider = _preflight_persona_load(
             "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
-            target=self._codex(),
+            target=self._codex(), keyspace_model="m",
         )
         assert err is None
         assert endpoint is not None  # → suppress_oauth fires (auth.json dropped).
+
+
+class TestCodexPersonaLaunchWiring:
+    """INC 3 launch-site: ``_run_container`` threads the preflight-resolved codex
+    provider into the SINGLE config.toml write (``deliver_directive_session_hook``),
+    and passes ``None`` for claude / bare codex (byte-identical write).
+
+    Reached on EVERY launch (first-launch-after-create, start, reattach — all funnel
+    through this one call site), so this proves the create/start/reattach coverage.
+    The box materialisation is mocked exactly as the other ``start_mocks`` launch
+    tests do; the config.toml provider-region content is proven at the dispatch level
+    in ``test_code_config.py``.
+    """
+
+    def _provider(self):
+        from kanibako.vscode_config import CodexModelProvider
+        return CodexModelProvider(
+            provider_id="navigator", name="navigator",
+            base_url="https://api.example/v1", wire_api="chat",
+            env_key="NAVIGATOR_API_KEY", model="gemma-4-31b-it",
+        )
+
+    def test_codex_persona_launch_threads_resolved_provider(self, start_mocks):
+        from kanibako.plugins.codex.target import CodexTarget
+        prov = self._provider()
+        with start_mocks() as m:
+            # resolve_agent yields the CANONICAL node (℘), the persona identity.
+            m.resolve_agent.return_value = "navigator℘codex"
+            m.target.name = "codex"
+            m.target.descriptor = CodexTarget().descriptor
+            with (
+                patch(
+                    "kanibako.commands.start._preflight_persona_load",
+                    return_value=("https://api.example/v1", None, False, prov),
+                ),
+                patch(
+                    "kanibako.vscode_config.deliver_directive_session_hook",
+                ) as m_deliver,
+            ):
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], explicit_agent="navigator+codex",
+                )
+            assert rc == 0
+            m_deliver.assert_called_once()
+            assert m_deliver.call_args.kwargs["agent_name"] == "codex"
+            # the SAME provider the preflight resolved reaches the config.toml write.
+            assert m_deliver.call_args.kwargs["model_provider"] is prov
+
+    def test_bare_codex_launch_passes_no_provider(self, start_mocks):
+        from kanibako.plugins.codex.target import CodexTarget
+        with start_mocks() as m:
+            m.resolve_agent.return_value = "codex"
+            m.target.name = "codex"
+            m.target.descriptor = CodexTarget().descriptor
+            with patch(
+                "kanibako.vscode_config.deliver_directive_session_hook",
+            ) as m_deliver:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 0
+            m_deliver.assert_called_once()
+            assert m_deliver.call_args.kwargs["agent_name"] == "codex"
+            # bare (non-persona) codex → no provider → byte-identical write.
+            assert m_deliver.call_args.kwargs["model_provider"] is None
+
+    def test_claude_launch_passes_no_provider(self, start_mocks):
+        # default start_mocks target is claude; a non-persona claude launch never
+        # resolves a provider → deliver gets model_provider=None (byte-identical).
+        with start_mocks(), patch(
+            "kanibako.vscode_config.deliver_directive_session_hook",
+        ) as m_deliver:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m_deliver.assert_called_once()
+            assert m_deliver.call_args.kwargs["agent_name"] == "claude"
+            assert m_deliver.call_args.kwargs["model_provider"] is None
 
 
 class TestPersonaCreateVerdict:
@@ -5024,7 +5175,7 @@ class TestPersonaCreateVerdict:
             ),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
-                return_value=(_SHARED_AUTH, None),
+                return_value=(_SHARED_AUTH, None, None),
             ),
         ):
             err = persona_create_verdict(
@@ -5110,7 +5261,7 @@ class TestPersonaLoadOrErrorIntegration:
                 ),
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None),  # endpoint unresolved
+                    return_value=(_SHARED_AUTH, None, None),  # endpoint unresolved
                 ),
                 patch(
                     "kanibako.commands.start.write_agent_config"
@@ -5161,7 +5312,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None),  # unrecognised keyspace
+                    return_value=(_SHARED_AUTH, None, None),  # unrecognised keyspace
                 ),
                 # The adopted config IS persisted (dirty ⇒ write); the write is
                 # covered by the unit test — patch it here so the real dump against
@@ -5219,7 +5370,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None),
+                    return_value=(_SHARED_AUTH, None, None),
                 ),
                 patch("kanibako.commands.start.write_agent_config") as m_write,
             ):
@@ -5273,7 +5424,7 @@ class TestPersonaLoadOrErrorIntegration:
                 ),
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None),  # endpoint unresolved
+                    return_value=(_SHARED_AUTH, None, None),  # endpoint unresolved
                 ),
                 patch("kanibako.commands.start.write_agent_config") as m_write,
             ):
@@ -5329,7 +5480,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None),  # unrecognised keyspace → B3
+                    return_value=(_SHARED_AUTH, None, None),  # unrecognised keyspace → B3
                 ),
                 patch("kanibako.commands.start.write_agent_config"),
                 patch("kanibako.config.write_project_config") as m_write_toml,
