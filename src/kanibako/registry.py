@@ -28,21 +28,6 @@ _INDEX_MEDIA_TYPES = frozenset(
 )
 
 
-def get_remote_digest(image: str) -> str | None:
-    """Return the remote manifest (tag/index) digest for *image*, or None.
-
-    Retained for callers that only need the single tag digest. Freshness
-    should use :func:`get_remote_digests`, which also resolves the matching
-    per-arch child of an image index.
-    """
-    try:
-        registry, repo, tag = _parse_image_ref(image)
-        token = _get_anonymous_token(registry, repo)
-        return _fetch_manifest_digest(registry, repo, tag, token)
-    except Exception:
-        return None
-
-
 def get_remote_digests(image: str, platform: str | None) -> set[str]:
     """Return the set of remote digests that mean "current" for *platform*.
 

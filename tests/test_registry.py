@@ -12,7 +12,6 @@ from kanibako.registry import (
     _get_anonymous_token,
     _parse_image_ref,
     get_remote_created,
-    get_remote_digest,
     get_remote_digests,
     get_remote_tag_digest,
     list_remote_tags,
@@ -119,23 +118,6 @@ class TestFetchManifestDigest:
         with patch("kanibako.registry.urllib.request.urlopen", return_value=mock_resp):
             digest = _fetch_manifest_digest("ghcr.io", "o/r", "latest", "tok")
         assert digest is None
-
-
-class TestGetRemoteDigest:
-    def test_success(self):
-        with (
-            patch("kanibako.registry._parse_image_ref", return_value=("ghcr.io", "o/r", "latest")),
-            patch("kanibako.registry._get_anonymous_token", return_value="tok"),
-            patch("kanibako.registry._fetch_manifest_digest", return_value="sha256:abc"),
-        ):
-            assert get_remote_digest("ghcr.io/o/r:latest") == "sha256:abc"
-
-    def test_network_error(self):
-        with patch("kanibako.registry._parse_image_ref", side_effect=OSError("timeout")):
-            assert get_remote_digest("ghcr.io/o/r:latest") is None
-
-    def test_parse_error(self):
-        assert get_remote_digest("localimage") is None
 
 
 class TestGetRemoteDigests:

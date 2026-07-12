@@ -30,7 +30,6 @@ def reg(tmp_path: Path) -> Path:
 def test_absent_file_is_empty_membership(reg: Path) -> None:
     """Absent registry file → empty membership (no scaffolding)."""
     assert workset_registry.load_workset_boxes(reg) == {}
-    assert workset_registry.workset_box_names(reg) == set()
     assert workset_registry.workset_box_path(reg, "mybox") is None
     # Reading does not create the file.
     assert not reg.exists()
@@ -47,7 +46,6 @@ def test_present_but_null_boxes_section_is_empty(reg: Path) -> None:
     reg.parent.mkdir(parents=True, exist_ok=True)
     reg.write_text("boxes:\n")
     assert workset_registry.load_workset_boxes(reg) == {}
-    assert workset_registry.workset_box_names(reg) == set()
     assert workset_registry.workset_box_path(reg, "mybox") is None
     # A register onto the null section still works (no crash) and preserves it.
     workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
@@ -62,7 +60,6 @@ def test_register_and_load_round_trip(reg: Path) -> None:
         "alpha": "/abs/alpha",
         "beta": "/abs/beta",
     }
-    assert workset_registry.workset_box_names(reg) == {"alpha", "beta"}
     assert workset_registry.workset_box_path(reg, "alpha") == "/abs/alpha"
     assert workset_registry.workset_box_path(reg, "beta") == "/abs/beta"
 

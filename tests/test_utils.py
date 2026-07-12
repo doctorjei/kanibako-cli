@@ -18,7 +18,6 @@ from kanibako.utils import (
     escape_path,
     project_hash,
     short_hash,
-    unescape_path,
 )
 
 
@@ -136,7 +135,7 @@ class TestShortHash:
 
 
 # ---------------------------------------------------------------------------
-# escape_path / unescape_path
+# escape_path
 # ---------------------------------------------------------------------------
 
 class TestEscapePath:
@@ -146,33 +145,14 @@ class TestEscapePath:
     def test_path_with_dashes(self):
         assert escape_path("/home/user/my-project/app") == "home-user-my-.project-app"
 
-    def test_round_trip(self):
-        original = "/home/user/my-project/app"
-        assert unescape_path(escape_path(original)) == original
-
-    def test_round_trip_no_dashes(self):
-        original = "/home/user/project"
-        assert unescape_path(escape_path(original)) == original
-
-    def test_round_trip_consecutive_dashes(self):
-        original = "/home/user/a--b/c"
-        assert unescape_path(escape_path(original)) == original
-
     def test_single_component(self):
         assert escape_path("/app") == "app"
-        assert unescape_path("app") == "/app"
-
-    def test_trailing_slash_stripped(self):
-        # Leading / is stripped; trailing / becomes trailing -
-        encoded = escape_path("/home/user/")
-        assert unescape_path(encoded) == "/home/user/"
 
     def test_multiple_dashes(self):
         """Multiple consecutive dashes in the path are each escaped."""
         original = "/a-b-c"
         encoded = escape_path(original)
         assert encoded == "a-.b-.c"
-        assert unescape_path(encoded) == original
 
 
 # ---------------------------------------------------------------------------

@@ -80,61 +80,6 @@ class TestStandaloneSettingsPresent:
 
 
 # ---------------------------------------------------------------------------
-# find_owning_workset — enumerate + scan per-workset registries
-# ---------------------------------------------------------------------------
-
-class TestFindOwningWorkset:
-    def test_named_workset_owns_box(self, std, config, tmp_home):
-        ws_root = tmp_home / "ws"
-        reg = _make_named_workset(std, ws_root, "clientwork")
-        box = tmp_home / "external" / "repo"
-        box.mkdir(parents=True)
-        _register_box(reg, "repo", box)
-
-        found = box_resolve.find_owning_workset(box, std, config)
-        assert found is not None
-        name, root, mode = found
-        assert name == "clientwork"
-        assert root == ws_root
-        assert mode is BoxMode.named
-
-    def test_primary_workset_owns_box(self, std, config, tmp_home):
-        # PRIMARY is enumerated explicitly (anchored by config.primary_workset).
-        reg = workset_registry.resolve_workset_registry_path(
-            std.primary_workset, None
-        )
-        box = tmp_home / "primarybox"
-        box.mkdir()
-        _register_box(reg, "primarybox", box)
-
-        found = box_resolve.find_owning_workset(box, std, config)
-        assert found is not None
-        name, root, mode = found
-        assert mode is BoxMode.primary
-        assert root == std.primary_workset
-
-    def test_none_when_not_a_member(self, std, config, project_dir):
-        assert box_resolve.find_owning_workset(project_dir, std, config) is None
-
-    def test_path_match_normalizes_both_sides(self, std, config, tmp_home):
-        # Registry stores a NON-normalized path with a '..' segment (pathlib does
-        # NOT collapse '..' at construction — only .resolve() does, using the
-        # filesystem); the caller passes a plain path. The match works ONLY
-        # because _find_owning_box .resolve()s both sides.
-        # Mutation-proven load-bearing: drop the .resolve() in _find_owning_box
-        # → the '..' entry no longer equals project_dir → this goes RED.
-        ws_root = tmp_home / "ws"
-        reg = _make_named_workset(std, ws_root, "w")
-        box = tmp_home / "ext" / "repo"
-        box.mkdir(parents=True)
-        # ``.../ext/repo/../repo`` — resolves to ``.../ext/repo`` == box.
-        _register_box(reg, "repo", box / ".." / box.name)
-
-        found = box_resolve.find_owning_workset(box, std, config)
-        assert found is not None and found[0] == "w"
-
-
-# ---------------------------------------------------------------------------
 # detect_box_mode — the D3-mode precedence
 # ---------------------------------------------------------------------------
 
@@ -161,9 +106,6 @@ class TestDetectBoxMode:
         assert result is not None
         assert result.mode is BoxMode.standalone
         assert result.project_root == box.resolve()
-        # And the workset genuinely WOULD have claimed it (guards the test's
-        # own validity — without the settings-file precedence this is 'named').
-        assert box_resolve.find_owning_workset(box, std, config) is not None
 
     def test_standalone_by_presence_no_registry(self, std, config, project_dir):
         _make_standalone_marker(project_dir)

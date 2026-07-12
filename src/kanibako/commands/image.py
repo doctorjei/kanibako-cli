@@ -8,8 +8,6 @@ import shutil
 import sys
 import tarfile
 import tempfile
-import urllib.request
-import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -627,33 +625,6 @@ def run_rm(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     return 0
-
-
-def _extract_ghcr_owner(image: str) -> str | None:
-    """Extract GitHub owner from ghcr.io/<owner>/... image path."""
-    if not image.startswith("ghcr.io/"):
-        return None
-    remainder = image[len("ghcr.io/"):]
-    return remainder.split("/")[0] if "/" in remainder else None
-
-
-def _list_remote_packages(owner: str) -> None:
-    """Query GitHub API for the owner's kanibako container packages."""
-    url = f"https://api.github.com/users/{owner}/packages?package_type=container"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "kanibako"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-    except (urllib.error.URLError, OSError, json.JSONDecodeError):
-        print("  (could not reach GitHub API)")
-        return
-
-    packages = [pkg["name"] for pkg in data if "kanibako" in pkg.get("name", "").lower()]
-    if packages:
-        for pkg in packages:
-            print(f"  ghcr.io/{owner}/{pkg}")
-    else:
-        print(f"  (no kanibako packages found for {owner})")
 
 
 def _extract_registry_prefix(image: str) -> str | None:

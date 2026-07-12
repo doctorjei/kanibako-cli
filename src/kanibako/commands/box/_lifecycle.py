@@ -114,10 +114,6 @@ class ProjectState:
     ws: Workset | None = None
     enable_vault: bool = True
 
-    @property
-    def is_workset(self) -> bool:
-        return self.mode == BoxMode.named
-
 
 @dataclass
 class TargetSpec:

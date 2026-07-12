@@ -11,8 +11,6 @@ from unittest.mock import MagicMock, patch
 
 from kanibako.commands.start import (
     _bootstrap_available,
-    _tmux_has_session,
-    _tmux_session_name,
 )
 
 
@@ -31,47 +29,6 @@ class TestTmuxAvailable:
     def test_returns_false_when_tmux_missing(self):
         with patch("kanibako.commands.start.shutil.which", return_value=None):
             assert _bootstrap_available() is False
-
-
-# ---------------------------------------------------------------------------
-# _tmux_session_name
-# ---------------------------------------------------------------------------
-
-
-class TestTmuxSessionName:
-    """Deterministic session naming."""
-
-    def test_returns_prefixed_name(self):
-        assert _tmux_session_name("myapp") == "kanibako-myapp"
-
-    def test_handles_hyphens(self):
-        assert _tmux_session_name("my-app") == "kanibako-my-app"
-
-    def test_handles_underscores(self):
-        assert _tmux_session_name("my_app") == "kanibako-my_app"
-
-
-# ---------------------------------------------------------------------------
-# _tmux_has_session
-# ---------------------------------------------------------------------------
-
-
-class TestTmuxHasSession:
-    """Session existence detection."""
-
-    def test_returns_true_on_zero_exit(self):
-        mock_result = MagicMock(returncode=0)
-        with patch("kanibako.commands.start.subprocess.run", return_value=mock_result) as m:
-            assert _tmux_has_session("kanibako-myapp") is True
-        m.assert_called_once_with(
-            ["tmux", "has-session", "-t", "kanibako-myapp"],
-            capture_output=True,
-        )
-
-    def test_returns_false_on_nonzero_exit(self):
-        mock_result = MagicMock(returncode=1)
-        with patch("kanibako.commands.start.subprocess.run", return_value=mock_result):
-            assert _tmux_has_session("kanibako-myapp") is False
 
 
 # ---------------------------------------------------------------------------

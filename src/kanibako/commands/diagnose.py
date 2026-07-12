@@ -604,47 +604,6 @@ def run_box_diagnose(args: object) -> int:
     return 0
 
 
-def run_agent_diagnose(args: object) -> int:
-    """Run diagnostics for agent configuration."""
-    from kanibako.config import config_file_path, load_config, load_merged_config
-    from kanibako.paths import load_std_paths, xdg
-
-    print("Agent Diagnostics")
-    print("=" * 40)
-    print()
-
-    # Resolve config/std (and, cheaply, a runtime + configured image) so the
-    # no-agent "Shell" line reports its resolved box.shell.  Each step is
-    # guarded so a missing config or absent podman never crashes diagnose.
-    merged = None
-    std = None
-    runtime = None
-    image = None
-    try:
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        cf = config_file_path(config_home)
-        std = load_std_paths(load_config(cf))
-        merged = load_merged_config(cf, None)
-        image = getattr(merged, "box_image", None)
-    except Exception:
-        pass
-    if image is not None:
-        try:
-            from kanibako.container import ContainerRuntime
-
-            runtime = ContainerRuntime()
-        except Exception:
-            runtime = None
-
-    for status, label, detail in _check_agents(
-        config=merged, std=std, runtime=runtime, image=image,
-    ):
-        print(_format_check(status, label, detail))
-
-    print()
-    return 0
-
-
 def run_rig_diagnose(args: object) -> int:
     """Run diagnostics for rig/image status."""
     from kanibako.config import config_file_path, load_merged_config

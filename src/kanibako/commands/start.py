@@ -1169,19 +1169,6 @@ def _bootstrap_attach(program: str) -> list[str]:
     return [program]
 
 
-def _tmux_session_name(project_name: str) -> str:
-    """Generate a deterministic tmux session name for host-side reattach."""
-    return f"kanibako-{project_name}"
-
-
-def _tmux_has_session(session_name: str) -> bool:
-    """Check if a tmux session exists on the host."""
-    return subprocess.run(
-        ["tmux", "has-session", "-t", session_name],
-        capture_output=True,
-    ).returncode == 0
-
-
 def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
     """Apply tweakcc patching if enabled in agent config.
 

@@ -126,25 +126,6 @@ def _find_owning_box(
     return None
 
 
-def find_owning_workset(
-    project_dir: Path,
-    std: StandardPaths,
-    config: KanibakoConfig,
-) -> tuple[str, Path, BoxMode] | None:
-    """Return the workset that OWNS the box at *project_dir*, or ``None``.
-
-    Enumerates ALL worksets (global ``worksets:`` + the PRIMARY at
-    ``config.primary_workset``) and scans their per-workset registries'
-    ``boxes:`` membership for a PATH == *project_dir* match (D10).  Returns the
-    owning workset's ``(name, root, mode)`` where ``mode`` is ``primary`` (the
-    PRIMARY workset) or ``named``.  ``None`` when no workset lists the dir.
-    """
-    owned = _find_owning_box(project_dir, std, config)
-    if owned is None:
-        return None
-    return (owned.workset_name, owned.workset_root, owned.mode)
-
-
 def find_connected_external_box(
     project_dir: Path,
     std: StandardPaths,

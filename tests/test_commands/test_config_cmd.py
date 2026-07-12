@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 
 from kanibako.config import (
-    KanibakoConfig,
     load_config,
     load_project_overrides,
     write_project_config,
@@ -645,18 +644,3 @@ class TestSplitConfigKey:
         from kanibako.config import _split_config_key
         assert _split_config_key("allow_helpers") == ("", "allow_helpers")
         assert _split_config_key("unknown_prefix_key") == ("", "unknown_prefix_key")
-
-
-class TestConfigKeys:
-    def test_returns_all_fields(self):
-        from kanibako.config import config_keys
-        from dataclasses import fields
-        expected = [fld.name for fld in fields(KanibakoConfig)]
-        assert config_keys() == expected
-
-    def test_includes_known_keys(self):
-        from kanibako.config import config_keys
-        keys = config_keys()
-        assert "box_image" in keys
-        assert "paths_project_toml" in keys
-        assert "box_agent_name" in keys

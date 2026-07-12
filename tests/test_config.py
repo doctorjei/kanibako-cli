@@ -13,7 +13,6 @@ from kanibako.config import (
     read_box_enable_vault,
     read_setup_completed,
     read_agent_settings,
-    remove_agent_setting,
     write_box_enable_vault,
     write_global_config,
     write_project_config,
@@ -817,25 +816,6 @@ class TestTargetSettings:
 
         assert read_agent_settings(p, "claude") == {"model": "sonnet"}
         assert read_agent_settings(p, "goose") == {}
-
-    def test_remove_setting(self, tmp_path):
-        """remove_agent_setting removes a single agent-keyed setting."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-        write_agent_setting(p, "model", "sonnet", "claude")
-        write_agent_setting(p, "access", "permissive", "claude")
-
-        assert remove_agent_setting(p, "model", "claude") is True
-        settings = read_agent_settings(p, "claude")
-        assert "model" not in settings
-        assert "access" in settings
-
-    def test_remove_nonexistent(self, tmp_path):
-        """remove_agent_setting returns False for missing key."""
-        p = tmp_path / "settings.yaml"
-        self._write_base_toml(p)
-
-        assert remove_agent_setting(p, "nonexistent", "claude") is False
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
