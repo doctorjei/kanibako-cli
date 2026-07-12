@@ -1393,7 +1393,7 @@ def _is_standalone_meta_dir(root: Path) -> bool:
     ``settings.yaml`` AT THE ROOT (``<root>/settings.yaml``, NOT inside
     ``box_data/``), both PRESENT.  The FILE's existence is the standalone
     self-declaration (design D4) — the former ``box.mode == "standalone"`` field
-    read is DROPPED (that field is going away).  A box's own in-place settings
+    read is DROPPED (that field is gone).  A box's own in-place settings
     file is the highest-precedence, authoritative standalone signal and
     OVERRIDES any workset determination (D3-mode #1); requiring both parts keeps
     an unrelated ``box_data/`` directory from being mistaken for a marker.
@@ -1902,11 +1902,11 @@ def resolve_workset_project(
         # ``box.enable_vault`` is persisted, sparsely.
         write_box_enable_vault(project_toml, actual_vault_enabled)
         # P5a dual-register: record membership in the workset's per-workset
-        # registry (name → workspace), IN ADDITION to the transitional
-        # ``project:`` write above.  Sourced from the resolved *project_path* so
-        # an external-connect override seeds the registry with the external dir
-        # (the D10/P7 home for that record).  Idempotent — overwrites a moved
-        # box's path.
+        # registry (name → workspace) — the SOLE on-disk identity record now that
+        # sparse create writes no ``project:`` entry.  Sourced from the resolved
+        # *project_path* so an external-connect override seeds the registry with
+        # the external dir (the D10/P7 home for that record).  Idempotent —
+        # overwrites a moved box's path.
         _register_workset_box_membership(ws.root, project_name, project_path)
         is_new = True
 
