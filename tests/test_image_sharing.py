@@ -8,8 +8,6 @@ from unittest.mock import MagicMock, patch
 from kanibako.image_sharing import (
     SHARED_STORE_CONTAINER_PATH,
     VIRTIOFS_GRAPHROOT_MESSAGE,
-    _STORAGE_CONF_CONTAINER_PATH,
-    build_image_sharing_mounts,
     detect_graph_root,
     generate_storage_conf,
     is_rootless_podman,
@@ -133,97 +131,6 @@ class TestGenerateStorageConf:
         lines = conf.strip().split("\n")
         assert lines[0] == "[storage]"
         assert any("[storage.options]" in line for line in lines)
-
-
-# ---------------------------------------------------------------------------
-# build_image_sharing_mounts
-# ---------------------------------------------------------------------------
-
-class TestBuildImageSharingMounts:
-    """Tests for build_image_sharing_mounts()."""
-
-    def test_returns_mounts_on_success(self, tmp_path):
-        """Returns two mounts when graph root is detected."""
-        graph_dir = tmp_path / "overlay"
-        graph_dir.mkdir()
-        staging = tmp_path / "staging"
-
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = graph_dir
-            mounts = build_image_sharing_mounts("podman", staging)
-
-        assert len(mounts) == 2
-
-        # First mount: graph root -> shared store path (read-only)
-        assert mounts[0].source == graph_dir
-        assert mounts[0].destination == SHARED_STORE_CONTAINER_PATH
-        assert mounts[0].options == "ro"
-
-        # Second mount: storage.conf -> container config path (read-only)
-        assert mounts[1].source == staging / "storage.conf"
-        assert mounts[1].destination == _STORAGE_CONF_CONTAINER_PATH
-        assert mounts[1].options == "ro"
-
-    def test_returns_empty_when_detection_fails(self, tmp_path):
-        """Returns empty list when graph root cannot be detected."""
-        staging = tmp_path / "staging"
-
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = None
-            mounts = build_image_sharing_mounts("podman", staging)
-
-        assert mounts == []
-
-    def test_staging_dir_created(self, tmp_path):
-        """Staging directory is created if it doesn't exist."""
-        graph_dir = tmp_path / "overlay"
-        graph_dir.mkdir()
-        staging = tmp_path / "staging" / "nested"
-
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = graph_dir
-            build_image_sharing_mounts("podman", staging)
-
-        assert staging.is_dir()
-
-    def test_storage_conf_written(self, tmp_path):
-        """storage.conf is written to the staging directory."""
-        graph_dir = tmp_path / "overlay"
-        graph_dir.mkdir()
-        staging = tmp_path / "staging"
-
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = graph_dir
-            build_image_sharing_mounts("podman", staging)
-
-        conf_file = staging / "storage.conf"
-        assert conf_file.exists()
-        content = conf_file.read_text()
-        assert SHARED_STORE_CONTAINER_PATH in content
-
-    def test_mount_volume_args(self, tmp_path):
-        """Mounts produce correct -v argument strings."""
-        graph_dir = tmp_path / "overlay"
-        graph_dir.mkdir()
-        staging = tmp_path / "staging"
-
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = graph_dir
-            mounts = build_image_sharing_mounts("podman", staging)
-
-        for mount in mounts:
-            vol_arg = mount.to_volume_arg()
-            assert ":ro" in vol_arg
-
-    def test_runtime_cmd_passed_to_detect(self, tmp_path):
-        """The runtime command is forwarded to detect_graph_root."""
-        staging = tmp_path / "staging"
-
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = None
-            build_image_sharing_mounts("/usr/bin/docker", staging)
-
-        mock_detect.assert_called_once_with("/usr/bin/docker")
 
 
 # ---------------------------------------------------------------------------
