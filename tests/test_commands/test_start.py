@@ -5057,6 +5057,156 @@ class TestPreflightCodexPersona:
         assert endpoint is not None  # → suppress_oauth fires (auth.json dropped).
 
 
+class TestPreflightGoosePersona:
+    """Goose (ENV-delivery, KEYSPACE-config) persona resolution — INC G1.
+
+    Goose is the FIRST env-delivery harness that is NOT claude: B3 host-dir adopt is
+    OFF, so an unset endpoint errors with GOOSE-worded keyspace config wording (never
+    the claude host-dir), the bearer token comes ONLY from
+    ``agent.<node>.secret_path.OPENAI_API_KEY``, and a model is REQUIRED.
+    """
+
+    def _goose(self):
+        from kanibako.plugins.goose.target import GooseTarget
+        return GooseTarget()
+
+    def _cfg(self, *, secret=None):
+        from kanibako.agent_config import AgentConfig
+        cfg = AgentConfig()
+        if secret:
+            cfg.secret_path = dict(secret)
+        return cfg
+
+    def test_keyspace_endpoint_key_and_model_resolves(self, tmp_path):
+        # Endpoint + OPENAI_API_KEY secret + model → loads; NO provider (env harness),
+        # NO adoption/mutation.
+        from kanibako.commands.start import _preflight_persona_load
+        key = tmp_path / "k"
+        key.write_text("sk-openai\n")
+        cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘goose", cfg, "https://oai.example/v1", MagicMock(),
+            target=self._goose(), keyspace_model="gemma-4-31b-it",
+        )
+        assert err is None
+        assert endpoint == "https://oai.example/v1"
+        assert adopted is False  # keyspace-only: nothing mutated.
+        assert provider is None  # ENV harness → no config.toml provider.
+        assert "endpoint" not in cfg.state  # no B3 mutation.
+
+    def test_b3_never_consulted_for_goose(self, tmp_path, monkeypatch):
+        # A goose persona must NEVER call the claude host-dir B3 reader — even when an
+        # (irrelevant) claude host dir exists.  Monkeypatch it to a bomb.
+        import kanibako.commands.start as start_mod
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        # A claude host dir for the same persona name exists — must be IGNORED.
+        pdir = tmp_path / "claude" / "navigator"
+        pdir.mkdir(parents=True)
+        (pdir / "settings.json").write_text('{"env":{"ANTHROPIC_BASE_URL":"x"}}')
+        (pdir / "token").write_text("sk-host\n")
+
+        def _boom(_persona):
+            raise AssertionError("B3 host-dir adopt must not run for goose")
+
+        monkeypatch.setattr(start_mod, "_adopt_persona_from_host_dir", _boom)
+        key = tmp_path / "k"
+        key.write_text("sk-openai\n")
+        cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘goose", cfg, "https://oai.example/v1", MagicMock(),
+            target=self._goose(), keyspace_model="m",
+        )
+        assert err is None and endpoint == "https://oai.example/v1"
+        assert provider is None and adopted is False
+
+    def test_no_endpoint_goose_worded_error_no_hostdir(self, tmp_path, monkeypatch):
+        # Unset endpoint → GOOSE-worded keyspace error: names endpoint + OPENAI_API_KEY
+        # secret_path route, NOT the claude host-dir/settings.json/class-setup wording,
+        # and B3 is NEVER attempted.
+        import kanibako.commands.start as start_mod
+        from kanibako.commands.start import _preflight_persona_load
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+        def _boom(_persona):
+            raise AssertionError("B3 must not run for goose")
+
+        monkeypatch.setattr(start_mod, "_adopt_persona_from_host_dir", _boom)
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘goose", self._cfg(), None, MagicMock(), target=self._goose(),
+        )
+        assert endpoint is None and provider is None
+        assert err is not None and "cannot be loaded" in err
+        assert "config set" in err and ".endpoint=" in err
+        assert "OPENAI_API_KEY" in err  # names the API-key secret_path route.
+        assert "settings.json" not in err  # NOT the claude host-dir wording.
+        assert "class setup" not in err
+
+    def test_endpoint_but_no_token_goose_worded(self, tmp_path):
+        # Endpoint set but no OPENAI_API_KEY secret → goose-worded token error naming
+        # the secret_path route (never the claude host-dir/class-setup script).
+        from kanibako.commands.start import _preflight_persona_load
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘goose", self._cfg(), "https://oai.example/v1", MagicMock(),
+            target=self._goose(), keyspace_model="m",
+        )
+        assert endpoint is None and provider is None
+        assert err is not None and "no usable auth token" in err
+        assert "OPENAI_API_KEY" in err and "secret_path" in err
+        assert "class setup" not in err and "settings.json" not in err
+
+    def test_endpoint_but_no_model_gate_fires(self, tmp_path):
+        # Endpoint + token but NO model → the goose model-required gate errors
+        # (parity with codex); each empty form triggers it.
+        from kanibako.commands.start import _preflight_persona_load
+        key = tmp_path / "k"
+        key.write_text("sk-openai\n")
+        for missing in (None, "", "   "):
+            cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
+            endpoint, err, adopted, provider = _preflight_persona_load(
+                "navigator℘goose", cfg, "https://oai.example/v1", MagicMock(),
+                target=self._goose(), keyspace_model=missing,
+            )
+            assert endpoint is None and provider is None
+            assert err is not None and "no model configured" in err
+            assert "config set" in err and ".model=" in err
+
+    def test_goose_wiring_declares_pin_and_gates(self):
+        from kanibako.commands.start import _persona_wiring
+        w = _persona_wiring(self._goose())
+        assert w.endpoint_delivery == "env"
+        assert w.token_var == "OPENAI_API_KEY"
+        assert w.host_dir_adopt is False
+        assert w.model_required is True
+        assert w.provider_pin == (("provider", "openai"),)
+
+
+class TestGooseProviderAutoPin:
+    """The GOOSE_PROVIDER auto-pin: a goose persona endpoint forces provider=openai
+    (via the descriptor's provider→GOOSE_PROVIDER env), so it can't be forgotten; a
+    bare goose box / claude / codex are byte-identical (empty provider_pin)."""
+
+    def test_pin_forces_goose_provider_env(self):
+        # effective_state pinned provider=openai → assemble_env emits GOOSE_PROVIDER.
+        from kanibako.plugins.goose.target import GooseTarget
+        from kanibako.targets import assembly
+        desc = GooseTarget().descriptor
+        # Simulate the launch-site pin (active_endpoint set → provider forced openai).
+        state = {"endpoint": "https://oai.example/v1", "provider": "openai"}
+        env = assembly.assemble_env(desc, safe_mode_off=True, setting_values=state)
+        assert env["GOOSE_PROVIDER"] == "openai"
+        assert env["OPENAI_HOST"] == "https://oai.example/v1"
+
+    def test_claude_and_codex_declare_no_pin(self):
+        from kanibako.commands.start import _persona_wiring
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.plugins.codex.target import CodexTarget
+        assert _persona_wiring(ClaudeTarget()).provider_pin == ()
+        assert _persona_wiring(CodexTarget()).provider_pin == ()
+
+
 class TestCodexPersonaLaunchWiring:
     """INC 3 launch-site: ``_run_container`` threads the preflight-resolved codex
     provider into the SINGLE config.toml write (``deliver_directive_session_hook``),

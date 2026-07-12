@@ -807,3 +807,45 @@ class TestEndpointCredFork:
         )
         # codex auth.json is filtered=False → copied as-is (no marker transform).
         assert (proj / ".codex/auth.json").read_text() == "CHATGPT"
+
+    def test_goose_sync_creds_dropped_when_endpoint_set(self, tmp_path: Path) -> None:
+        # INC G1 confirm: a goose persona (endpoint set → suppress_oauth=True) DROPS
+        # ALL of goose's SYNC-cadence cred files (secrets.yaml + config.yaml +
+        # custom_providers/) via the SAME generic fork, so a bare goose login never
+        # reaches an OpenAI-compatible-endpoint box.  Uses the REAL goose descriptor.
+        from kanibako.plugins.goose.target import GooseTarget
+        desc = GooseTarget().descriptor
+        # All three shipped goose cred_files are SYNC (the fork drops SYNC).
+        sync_rels = [s.home_rel for s in desc.cred_files if s.cadence is Cadence.SYNC]
+        assert sorted(sync_rels) == [
+            ".config/goose/config.yaml",
+            ".config/goose/custom_providers",
+            ".config/goose/secrets.yaml",
+        ]
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".config/goose/secrets.yaml", "SECRETS")
+        _write(host / ".config/goose/config.yaml", "CONFIG")
+        _write(host / ".config/goose/custom_providers/p.yaml", "PROVIDER")
+        seed_box_credentials(
+            desc, _StubTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=True,
+        )
+        assert not (proj / ".config/goose/secrets.yaml").exists()
+        assert not (proj / ".config/goose/config.yaml").exists()
+        assert not (proj / ".config/goose/custom_providers").exists()
+        assert (proj / ".config/goose").is_dir()  # init_dirs still prepared.
+
+    def test_goose_sync_creds_synced_when_endpoint_unset(self, tmp_path: Path) -> None:
+        # MUTATION CHECK: a BARE goose box (suppress_oauth=False) DOES receive its
+        # SYNC creds — proving the goose suppression above is non-vacuous.
+        from kanibako.plugins.goose.target import GooseTarget
+        desc = GooseTarget().descriptor
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        _write(host / ".config/goose/secrets.yaml", "SECRETS")
+        seed_box_credentials(
+            desc, _StubTarget(), auth=_global_src(),
+            host_home=host, project_home=proj,
+            suppress_oauth=False,
+        )
+        assert (proj / ".config/goose/secrets.yaml").exists()

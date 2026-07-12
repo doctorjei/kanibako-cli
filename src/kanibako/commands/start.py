@@ -2077,6 +2077,16 @@ def _run_container(
             # Apply model override from -M/--model flag
             if model_override:
                 effective_state["model"] = model_override
+            # PERSONA provider auto-pin: when this launch resolved an active persona
+            # endpoint (active_endpoint is not None), FORCE the harness-declared
+            # provider setting(s) so the endpoint's required provider can't be
+            # forgotten/mis-set (goose pins ``provider=openai`` → the descriptor's
+            # ``provider``→``GOOSE_PROVIDER`` env then emits ``GOOSE_PROVIDER=openai``).
+            # Empty provider_pin (claude/codex) = no-op (byte-identical); a BARE box
+            # (active_endpoint None) is NEVER touched.
+            if active_endpoint is not None:
+                for _pin_key, _pin_val in _persona_wiring(target).provider_pin:
+                    effective_state[_pin_key] = _pin_val
             all_extra = list(agent_cfg.run_args) + list(extra_args)
             if desc is not None:
                 # Descriptor path: assemble argv + container-env overlay
@@ -3806,11 +3816,8 @@ def _persona_wiring(target) -> "PersonaSpec":
         # means the claude default (defensive — no shipped ENV harness leaves it
         # empty).
         if spec.endpoint_delivery == "env" and not spec.token_var:
-            return PersonaSpec(
-                token_var=_PERSONA_TOKEN_VAR,
-                endpoint_delivery="env",
-                wire_api=spec.wire_api,
-            )
+            from dataclasses import replace
+            return replace(spec, token_var=_PERSONA_TOKEN_VAR)
         return spec
     return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
 
@@ -3928,10 +3935,12 @@ def _preflight_persona_load(
     display = display_agent_ref(agent_id)
 
     # B3 host-dir auto-adopt is CLAUDE-SHAPED (reads ~/.config/claude/<persona>/
-    # settings.json) — ENV delivery only.  A config-file harness (codex) resolves
-    # from the KEYSPACE only (MVP): an absent endpoint is a hard error, never a
-    # host-dir adoption attempt.
-    if endpoint is None and wiring.endpoint_delivery == "env":
+    # settings.json) — ENV delivery AND ``host_dir_adopt`` (claude ONLY).  A
+    # config-file harness (codex) and a NON-claude env harness (goose) both resolve
+    # from the KEYSPACE only: an absent endpoint is a hard error, never a
+    # claude-host-dir adoption attempt against a dir that plays no part in their
+    # resolution.
+    if endpoint is None and wiring.endpoint_delivery == "env" and wiring.host_dir_adopt:
         adoption = _adopt_persona_from_host_dir(persona)
         if adoption is not None:
             base_url, extra_env, token_path = adoption
@@ -3954,6 +3963,15 @@ def _preflight_persona_load(
     if wiring.endpoint_delivery == "config_file":
         return _preflight_config_file_persona(
             agent_id, agent_cfg, endpoint, keyspace_model, wiring, display,
+        )
+
+    # --- ENV harness, KEYSPACE-config (goose): NO claude host-dir --------------
+    # A non-claude env harness (``host_dir_adopt`` False) resolves its bearer token
+    # and (required) model from the KEYSPACE only — it must NEVER read/word against
+    # the claude-shaped ``~/.config/claude/<persona>/`` dir.
+    if not wiring.host_dir_adopt:
+        return _preflight_env_keyspace_persona(
+            agent_cfg, endpoint, keyspace_model, wiring, display,
         )
 
     # --- ENV harness (claude): byte-identical token gate ------------------------
@@ -3982,24 +4000,90 @@ def _preflight_persona_load(
     return endpoint, None, adopted, None
 
 
+def _preflight_env_keyspace_persona(
+    agent_cfg,
+    endpoint: str,
+    keyspace_model: str | None,
+    wiring,
+    display: str,
+) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
+    """Token + (optional) model gate for a KEYSPACE-config ENV harness (goose, INC G1).
+
+    The endpoint is resolved (keyspace only — no claude host-dir B3).  Unlike the
+    claude ENV path this NEVER consults ``~/.config/claude/<persona>/``: the bearer
+    token comes ONLY from ``agent.<node>.secret_path.<token_var>`` (goose:
+    ``OPENAI_API_KEY``), and the error wording points at the keyspace ``config set``
+    route — NOT the claude class-setup script / host dir.
+
+    Gates (each an ACTIONABLE, harness-appropriate error):
+
+    1. a usable bearer token under the FIXED ``wiring.token_var`` (goose
+       ``OPENAI_API_KEY``): missing/unusable ⇒ error pointing at
+       ``agent.<node>.secret_path.<token_var>``.
+    2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model`` id
+       (``keyspace_model``): empty ⇒ error (a third-party OpenAI-compatible endpoint
+       has no meaningful default model — parity with the codex model gate).
+
+    NEVER mutates *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist), so
+    ``adopted`` is False; the endpoint + token ride their existing single-source
+    channels (the ``endpoint``→env ``SettingArg`` + the ``secret_path`` mount), so
+    there is no config-file provider to carry (``provider`` None).
+    """
+    token_ptr = agent_cfg.secret_path.get(wiring.token_var)
+    if not token_ptr or not _secret_pointer_usable(token_ptr):
+        return None, (
+            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+            f"usable auth token.\n"
+            f"  A custom-endpoint persona needs an API key delivered via a "
+            f"`kanibako config set agent.{display}.secret_path.{wiring.token_var}="
+            f"<path>` entry; none was found (or it points at an unusable file).\n"
+            f"  Set the key for this persona, then retry."
+        ), False, None
+    model = (keyspace_model or "").strip()
+    if wiring.model_required and not model:
+        return None, (
+            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+            f"model configured.\n"
+            f"  A custom-endpoint persona must name the provider's model id "
+            f"(e.g. `kanibako config set agent.{display}.model=<model-id>`); the "
+            f"harness default is not used for a third-party provider.\n"
+            f"  Set the model for this persona, then retry."
+        ), False, None
+    return endpoint, None, False, None
+
+
 def _persona_no_endpoint_error(agent_id: str, persona: str, wiring) -> str:
     """The actionable "no endpoint configured" error, worded per harness.
 
-    ENV (claude) distinguishes "no host config" from "present-but-unusable" (N2) and
-    points at the class setup script / B3 host dir.  CONFIG-FILE (codex, no B3)
-    points ONLY at the keyspace ``config set`` route — it never references a host dir
-    that plays no part in its resolution.
+    ENV+host_dir_adopt (claude) distinguishes "no host config" from
+    "present-but-unusable" (N2) and points at the class setup script / B3 host dir.
+    Every OTHER harness — CONFIG-FILE (codex, no B3) and a NON-claude ENV harness
+    (goose, ``host_dir_adopt`` False) — points ONLY at the keyspace ``config set``
+    route (endpoint + API key); it never references a host dir that plays no part in
+    its resolution.
     """
     display = display_agent_ref(agent_id)
     harness = harness_of(agent_id)
-    if wiring.endpoint_delivery == "config_file":
+    if not wiring.host_dir_adopt:
+        # KEYSPACE-config harness (codex config_file OR goose env-no-adopt): word the
+        # error for the keyspace route.  An ENV harness (goose) also names the API-key
+        # secret_path so the user has the full recipe; a config-file harness (codex)
+        # resolves its key downstream, so it names only the endpoint here.
+        key_hint = ""
+        if wiring.endpoint_delivery == "env" and wiring.token_var:
+            key_hint = (
+                f" and its API key "
+                f"(`kanibako config set agent.{display}.secret_path."
+                f"{wiring.token_var}=<path>`)"
+            )
         return (
             f"Error: persona '{display}' cannot be loaded — no endpoint is "
             f"configured for it.\n"
             f"  Kanibako will not launch a persona as bare host {harness} on your "
             f"real account.\n"
             f"  Set the endpoint for this persona (e.g. "
-            f"`kanibako config set agent.{display}.endpoint=<url>`), then retry."
+            f"`kanibako config set agent.{display}.endpoint=<url>`){key_hint}, "
+            f"then retry."
         )
     host_dir = _persona_host_dir(persona)
     # Distinguish "no host config at all" from "host config present but with no
