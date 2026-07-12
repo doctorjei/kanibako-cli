@@ -2760,10 +2760,19 @@ def _run_container(
                     prog, prog_args = _secret_export_shim(
                         prog, prog_args, secret_export_vars,
                     )
-                # goose-only launch-flatten (increment 2b): write goose's
-                # ``.additionalContext.md`` before ``exec goose`` (goose injects
-                # from no hook).  Nests OUTSIDE any secret shim; runs at start.
-                if target is not None and target.name == "goose":
+                # Instruction-delivery launch-flatten for AGENT launches (all
+                # agents; NO per-agent name gate): flatten the directive SEED into
+                # the agent's native FINAL slot before exec, so the full guide
+                # reaches the native (uncapped) instruction file rather than the
+                # 2K/10K-capped additionalContext hook.  Gated on is_agent_mode so
+                # plain-shell / no-agent launches (nothing to deliver) are NOT
+                # wrapped; the shim ALSO self-skips in-shell when no
+                # KANIBAKO_DIRECTIVE_FINAL is set.  Nests OUTSIDE any secret shim.
+                if (
+                    is_agent_mode
+                    and target is not None
+                    and target.default_entrypoint is not None
+                ):
                     prog, prog_args = _directive_flatten_shim(prog, prog_args)
                 return prog, prog_args
 
@@ -2914,8 +2923,15 @@ def _run_container(
                 entrypoint, cli_args = _secret_export_shim(
                     entrypoint, list(cli_args or []), secret_export_vars,
                 )
-            # goose-only launch-flatten (increment 2b); see the persistent path.
-            if target is not None and target.name == "goose" and entrypoint:
+            # Instruction-delivery launch-flatten for AGENT launches (see the
+            # persistent path).  Gated on is_agent_mode (NOT a per-agent name) so
+            # plain-shell / no-agent launches are not wrapped.
+            if (
+                is_agent_mode
+                and entrypoint
+                and target is not None
+                and target.default_entrypoint is not None
+            ):
                 entrypoint, cli_args = _directive_flatten_shim(
                     entrypoint, list(cli_args or []),
                 )
@@ -3529,27 +3545,34 @@ def _directive_flatten_shim(
     program: str, args: list[str],
 ) -> "tuple[str, list[str]]":
     """Wrap ``(program, args)`` in an ``sh -c`` shim that FLATTENS the instruction
-    SEED into goose's native context slot, then ``exec``s the agent — the goose
-    half of the instruction-delivery (increment 2b).
+    SEED into the agent's native instruction slot, then ``exec``s the agent — the
+    DEFAULT instruction-delivery mechanism for EVERY agent (increment 2b; made the
+    universal default 2026-07-12).
 
-    goose can inject context from NO hook (verified), so kanibako WRITES goose's
-    ``.additionalContext.md`` at launch: the shim runs, before ``exec goose``,
-    ``python3 <flattener> "$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"``
-    (the flattener's SOURCE→DEST file mode) so the file exists before goose reads
-    its ``CONTEXT_FILE_NAMES``.  Runs IN-BOX (the flattener is at the RO bundle
-    path ``$HOME/playbook/kanibako/scripts/import-directives.py``); no sudo — the
-    dest under ``~/.config/goose`` is agent-owned.  SILENT-SAFE (``|| true``): a
-    missing SEED/FINAL or flattener error never aborts the launch.
+    Before ``exec``, the shim runs (in-box) the flattener in its SOURCE→DEST file
+    mode — ``python3 <flattener> "$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"``
+    — writing the flattened ``@import`` directive chain to the agent's native slot
+    (``$KANIBAKO_DIRECTIVE_FINAL``: claude ``~/.claude/CLAUDE.md``, codex
+    ``~/.codex/AGENTS.md``, goose ``~/.config/goose/.additionalContext.md``).  This
+    lands the FULL guide in the native, always-loaded instruction file — the strong,
+    uncapped channel — instead of the 2K/10K-capped ``additionalContext`` hook (kept
+    as a secondary/future channel).  The flattener lives at the RO bundle path
+    ``$HOME/playbook/kanibako/scripts/import-directives.py``; no sudo — the native
+    slots are agent-owned.  SILENT-SAFE (``|| true``) and GUARDED on
+    ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive slot
+    (e.g. a no-agent shell) skips the flatten cleanly.
 
     Returns ``("sh", ["-c", <script>, "sh", program, *args])`` so ``sh -c`` sets
     ``$0=sh`` and ``$@=program args`` and ``exec "$@"`` runs the agent with its
     args intact — nesting inside the tmux/bootstrap wrap exactly like
-    :func:`_secret_export_shim`.  Per-``/clear`` regen is OUT OF SCOPE (goose's
-    hook timing is unverified); launch-flatten is the reliable baseline.
+    :func:`_secret_export_shim`.  Per-session refresh is via the SessionStart hook
+    where available (racy — accepted); this launch-flatten is the reliable baseline.
     """
     script = (
+        'if [ -n "$KANIBAKO_DIRECTIVE_FINAL" ]; then '
         'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
         '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL" || true; '
+        'fi; '
         'exec "$@"'
     )
     return "sh", ["-c", script, "sh", program, *args]

@@ -1135,8 +1135,11 @@ class TestInstructionDeliveryActivation:
             # $@ still runs goose after the flatten.
             assert "goose" in cli_args[2:]
 
-    def test_claude_launch_has_no_flatten_shim(self, start_mocks):
-        """claude (additionalContext via hook, not launch-flatten) is NOT wrapped."""
+    def test_claude_launch_wraps_entrypoint_with_flatten(self, start_mocks):
+        """claude ALSO nests the flatten shim now (DEFAULT for all agents,
+        2026-07-12): the launch-flatten writes the SEED into claude's
+        ~/.claude/CLAUDE.md FINAL slot — the native, uncapped channel — before
+        exec.  (The additionalContext hook is kept as a secondary channel.)"""
         with start_mocks() as m:
             self._drive_claude(m)
             _run_container(
@@ -1145,9 +1148,9 @@ class TestInstructionDeliveryActivation:
                 extra_args=[],
             )
             kw = m.runtime.run.call_args.kwargs
-            assert kw.get("entrypoint") != "sh"
             cli_args = kw.get("cli_args") or []
-            assert not any("import-directives.py" in str(a) for a in cli_args)
+            # claude now gets the launch-flatten too (no more goose-only gate).
+            assert any("import-directives.py" in str(a) for a in cli_args)
 
 
 class TestPluginsAndCacheShares:
@@ -1670,8 +1673,14 @@ class TestAgentConfigIntegration:
                 getattr(mt, "destination", "").startswith(SECRET_MOUNT_DIR)
                 for mt in mounts
             )
-            # Fail-soft: no secret winner → no shim → bare entrypoint (not sh -c).
-            assert kw.get("entrypoint") != "sh"
+            # Fail-soft: no secret winner → no SECRET export shim (the token mount
+            # path never appears in the launch command).  The directive flatten
+            # shim is orthogonal to secrets and may still wrap the agent.
+            argv = " ".join(
+                [str(kw.get("entrypoint") or "")]
+                + [str(a) for a in (kw.get("cli_args") or [])]
+            )
+            assert SECRET_MOUNT_DIR not in argv
 
     def test_no_secret_path_is_byte_identical(self, start_mocks):
         """A box with NO secrets: no mount, no shim, bare entrypoint (zero delta)."""
@@ -1692,8 +1701,14 @@ class TestAgentConfigIntegration:
                 getattr(mt, "destination", "").startswith(SECRET_MOUNT_DIR)
                 for mt in mounts
             )
-            # No secret → NO shim: the entrypoint is the bare agent (never sh -c).
-            assert kw.get("entrypoint") != "sh"
+            # No secret → no SECRET export shim: the secret mount path never
+            # appears in the launch command.  (The directive flatten shim is
+            # orthogonal to secrets and may wrap the agent — not asserted here.)
+            argv = " ".join(
+                [str(kw.get("entrypoint") or "")]
+                + [str(a) for a in (kw.get("cli_args") or [])]
+            )
+            assert SECRET_MOUNT_DIR not in argv
 
     def test_state_env_merged_into_container_env(self, start_mocks):
         """Descriptor container_env is merged into the container env.
@@ -3024,10 +3039,14 @@ class TestBoxShellLaunch:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert cli_args[0] == "-c"
             script = cli_args[1]
-            # The agent binary rides the supervisor's `-- <agent>` payload...
+            # The agent binary rides the supervisor's `-- <agent>` payload — now
+            # nested in the directive flatten shim (default for all agents), so the
+            # `--` payload is `sh -c '<flatten>; exec "$@"' sh claude`.
             sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
             sup_argv = shlex.split(sup)
-            assert sup_argv[sup_argv.index("--") + 1] == "claude"
+            after_sep = sup_argv[sup_argv.index("--"):]
+            assert "claude" in after_sep
+            assert any("import-directives.py" in a for a in after_sep)
             # ...and /bin/zsh is ONLY the `|| exec` fallback keep-alive, not the agent.
             fb = script.split(" || exec ", 1)[1]
             assert "/bin/zsh" in fb
@@ -3050,7 +3069,16 @@ class TestBoxShellLaunch:
                     persistent=False,
                 )
             m_resolve.assert_not_called()
-            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "claude"
+            # Real agent uses the AGENT entrypoint, never box.shell — now nested in
+            # the directive flatten shim (default for all agents).
+            kw = m.runtime.run.call_args.kwargs
+            full = " ".join(
+                [str(kw.get("entrypoint") or "")]
+                + [str(a) for a in (kw.get("cli_args") or [])]
+            )
+            assert "claude" in full
+            assert "/bin/zsh" not in full
+            assert "import-directives.py" in full
 
 
 class TestDetachKeepAlive:
@@ -4318,6 +4346,9 @@ class TestDirectiveFlattenShim:
         assert '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"' in script
         assert "|| true" in script
         assert 'exec "$@"' in script
+        # GUARD (2026-07-12): the flatten only runs when a FINAL slot is set, so a
+        # no-agent/plain-shell launch (no KANIBAKO_DIRECTIVE_FINAL) skips it cleanly.
+        assert 'if [ -n "$KANIBAKO_DIRECTIVE_FINAL" ]' in script
         # $0=sh, $@=goose session (exec runs the agent with its args intact).
         assert args[2:] == ["sh", "goose", "session"]
 
