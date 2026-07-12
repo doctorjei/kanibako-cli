@@ -113,20 +113,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Gate promote on a GREEN e2e for this commit
+      - name: Gate promote on GREEN Tests jobs for this commit
         # STRUCTURAL FIX for the CI-e2e "disaster": release.yml (this promote) and
-        # test.yml (the Tests workflow, which owns the `e2e` job) are SEPARATE
-        # workflows both fired by the v* tag, so a RED e2e never blocked a prod
-        # publish — rc10..rc12 shipped while the e2e had been broken for weeks.
-        # REFUSE to publish unless the Tests workflow's `e2e` job SUCCEEDED for THIS
-        # exact commit. Both workflows start together on the tag push, so poll the
-        # Tests run for this SHA until it concludes, then require e2e == success.
+        # test.yml (the Tests workflow, which owns the test/integration/e2e jobs)
+        # are SEPARATE workflows both fired by the v* tag, so a RED Tests job never
+        # blocked a prod publish — rc10..rc12 shipped while the e2e had been broken
+        # for weeks, and rc15 shipped with a RED `integration` while the gate only
+        # checked `e2e`. REFUSE to publish unless EVERY required Tests job SUCCEEDED
+        # for THIS exact commit. The required set mirrors test.yml's `jobs:` keys
+        # (test, integration, e2e). Both workflows start together on the tag push,
+        # so poll the Tests run for this SHA until it concludes, then require each
+        # required job == success. Checking per-job (not just the run conclusion)
+        # is FAIL-SAFE: a skipped/renamed/missing critical job yields a non-success
+        # (or empty) conclusion and REJECTS, rather than a run-level "success" that
+        # a skipped critical job could produce.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The Tests jobs that MUST be green before a prod promote. Keep in sync
+          # with test.yml's `jobs:` keys (job name defaults to the key).
+          REQUIRED_JOBS: "test integration e2e"
         run: |
           set -euo pipefail
           sha="$GITHUB_SHA"
-          echo "Requiring a green Tests/e2e for $sha before publishing…"
+          echo "Requiring green Tests jobs ($REQUIRED_JOBS) for $sha before publishing…"
           deadline=$(( $(date +%s) + 45*60 ))   # e2e ~13m + queue/runner headroom
           while :; do
             run_id=$(gh api \
@@ -135,15 +144,22 @@ jobs:
             if [ -n "$run_id" ]; then
               status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status')
               if [ "$status" = "completed" ]; then
-                e2e=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
-                  --jq '.jobs[] | select(.name=="e2e") | .conclusion' | head -n1)
-                echo "Tests run $run_id completed; e2e conclusion: ${e2e:-<none>}"
-                if [ "$e2e" = "success" ]; then
-                  echo "e2e is green — proceeding with the publish."
+                echo "Tests run $run_id completed; checking required job conclusions…"
+                all_ok=1
+                for job in $REQUIRED_JOBS; do
+                  concl=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+                    --jq ".jobs[] | select(.name==\"$job\") | .conclusion" | head -n1)
+                  echo "  job '$job' conclusion: ${concl:-<none>}"
+                  if [ "$concl" != "success" ]; then
+                    echo "REFUSING to publish: the '$job' job is '${concl:-missing}', not success." >&2
+                    all_ok=0
+                  fi
+                done
+                if [ "$all_ok" = "1" ]; then
+                  echo "All required Tests jobs are green — proceeding with the publish."
                   break
                 fi
-                echo "REFUSING to publish: the e2e job is '${e2e:-missing}', not success." >&2
-                echo "Fix the e2e (see plans/e2e-restoration-MUSTFIX.md) and re-tag." >&2
+                echo "Fix the failing Tests job(s) (see plans/e2e-restoration-MUSTFIX.md) and re-tag." >&2
                 exit 1
               fi
               echo "  Tests run $run_id status=$status; waiting…"
@@ -151,7 +167,7 @@ jobs:
               echo "  no Tests run for $sha yet; waiting…"
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "Timed out waiting for the Tests/e2e job to conclude." >&2
+              echo "Timed out waiting for the Tests jobs to conclude." >&2
               exit 1
             fi
             sleep 30
