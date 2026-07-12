@@ -63,13 +63,12 @@ class GooseTarget(Target):
         return _GOOSE_DESCRIPTOR
 
     def default_category_binds(self) -> dict[str, BindDefault]:
-        """Declare goose's instructions bind (spec §2d L608).
+        """Declare goose's AGENT-scope ``@``-ref-sourced category binds.
 
-        ``agent.goose.bindings.ro.instructions = (@system.instructions,
-        ~/.config/goose/KANIBAKO.md)`` — the shared box-guidance doc delivered
-        READ-ONLY into goose's config dir.  Paired with the descriptor's
-        ``CONTEXT_FILE_NAMES`` box env (goose-defaults.yaml) so goose loads the file.
-        Declared in ``goose-defaults.yaml`` (read via the loader).
+        Read from ``goose-defaults.yaml`` (via the loader).  Currently EMPTY: the
+        former ``@system.instructions`` → ``~/.config/goose/KANIBAKO.md``
+        instructions bind was retired — the box guide now ships via the RO
+        ``~/playbook/kanibako`` bundle + the flattened per-agent FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 

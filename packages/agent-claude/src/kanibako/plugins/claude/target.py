@@ -242,12 +242,12 @@ class ClaudeTarget(Target):
         return load_shares(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
     def default_category_binds(self) -> dict[str, BindDefault]:
-        """Declare claude's instructions bind (spec §2d L608).
+        """Declare claude's AGENT-scope ``@``-ref-sourced category binds.
 
-        ``agent.claude.bindings.ro.instructions = (@system.instructions,
-        ~/.claude/KANIBAKO.md)`` — the shared box-guidance doc delivered READ-ONLY
-        into claude's config dir.  Declared in ``claude-defaults.yaml`` (read via
-        the loader); the ``@system.instructions`` source keeps core agent-agnostic.
+        Read from ``claude-defaults.yaml`` (via the loader).  Currently EMPTY: the
+        former ``@system.instructions`` → ``~/.claude/KANIBAKO.md`` instructions
+        bind was retired — the box guide now ships via the RO ``~/playbook/kanibako``
+        bundle + the flattened per-agent FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 

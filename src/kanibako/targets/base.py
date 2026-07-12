@@ -368,10 +368,10 @@ class Target(ABC):
         (``default_categories``) alongside :meth:`default_shares`; a user can
         override or suppress (terminal "") any of them at a more-specific level.
 
-        The canonical use (spec §2d L608) is the PLUGIN-declared instructions bind
-        ``agent.<agent>.bindings.ro.instructions = (@system.instructions,
-        <harness slot>)`` — each plugin owns its own harness-slot ``box_dest`` while
-        the shared ``@system.instructions`` source keeps core agent-agnostic.  The
+        A plugin owns its own harness-slot ``box_dest`` while an ``@``-ref source
+        keeps core agent-agnostic.  (The former per-agent instructions bind was
+        retired — the box guide now ships via the RO ``~/playbook/kanibako`` bundle
+        + launch-flatten — so no first-party plugin declares one today.)  The
         default returns ``{}`` (no category binds).
         """
         return {}

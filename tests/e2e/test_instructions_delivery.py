@@ -17,10 +17,11 @@ Scope: boxes exit immediately in e2e (the agent can't auth) — that's expected;
 inspect the exited container's Mounts/Env.
 
 ⚑ The ``e2e_env`` / ``goose_e2e_env`` fixtures pre-write the bootstrap config, so
-``_ensure_initialized`` early-returns and the packaged-template install (which
-ships KANIBAKO.md) is skipped. Each test runs the real
-``install_packaged_templates`` against the fixture data dir first — exactly what
-first-init does — so the install + bind path is genuinely exercised.
+``_ensure_initialized`` early-returns and the packaged-template install is skipped.
+Each test runs the real ``install_packaged_templates`` against the fixture data dir
+first — exactly what first-init does — so the install + bind path is genuinely
+exercised.  (The KANIBAKO.md guide itself is delivered live via the RO
+``~/playbook/kanibako`` bundle + launch-flatten, not installed to a host path.)
 """
 
 from __future__ import annotations
@@ -81,7 +82,7 @@ def run_install(env: dict) -> None:
     """Run the real packaged-template install against the fixture data dir.
 
     First-init is otherwise skipped because the fixture pre-writes the bootstrap
-    config, so the KANIBAKO.md ship + template staging would never happen.
+    config, so the template staging would never happen.
     """
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import load_std_paths
@@ -103,9 +104,6 @@ def test_claude_kickoff_loader_delivery(e2e_env):
     (single directive import); mount-parent .config/kanibako auto-created by podman."""
     env, project, box = e2e_env["env"], e2e_env["project"], "instr-claude"
     run_install(env)
-
-    guide_src = e2e_env["data_home"] / "kanibako" / "global" / "KANIBAKO.md"
-    assert guide_src.is_file(), "install did not ship <data>/global/KANIBAKO.md"
 
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"

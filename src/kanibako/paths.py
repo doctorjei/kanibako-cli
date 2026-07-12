@@ -86,10 +86,6 @@ class StandardPaths:
     agents: Path
     channels: Path
     base_template: Path
-    # Agent-agnostic box-guidance source file (@system.instructions =
-    # @config.data/global/KANIBAKO.md).  A shipped default is installed here
-    # create-if-absent; plugins bind it read-only into each harness slot.
-    instructions: Path
     settings: Path
     primary_workset: Path
     registry: Path
@@ -587,7 +583,6 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.backup": "@config.data/backup",
     "system.channelroot": "@config.data/channels",
     "system.base_template": "@config.data/global/base_template",
-    "system.instructions": "@config.data/global/KANIBAKO.md",
     "system.cache": "$XDG_CACHE_HOME/kanibako",
     "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
     # Channels skeleton (the type-roots derive from system.channelroot).
@@ -847,7 +842,6 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         agents=resolved["config.agents"],
         channels=resolved["system.channelroot"],
         base_template=resolved["system.base_template"],
-        instructions=resolved["system.instructions"],
         settings=resolved["config.settings"],
         primary_workset=resolved["config.primary_workset"],
         registry=resolved["config.registry"],

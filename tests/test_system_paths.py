@@ -61,8 +61,9 @@ class TestResolveSystemPathsDefaults:
         assert resolved["system.backup"] == base / "backup"
         assert resolved["system.channelroot"] == base / "channels"
         assert resolved["system.base_template"] == base / "global" / "base_template"
-        # Agent-agnostic box-guidance source (shipped default installed here).
-        assert resolved["system.instructions"] == base / "global" / "KANIBAKO.md"
+        # The box guide (KANIBAKO.md) is NOT a system path key — it is delivered
+        # live via the RO bundle + launch-flatten, not a host runtime install.
+        assert "system.instructions" not in resolved
         # Phase 5: PRIMARY box/vault/logs roots live under the PRIMARY workset.
         assert resolved["system._boxes"] == base / "primary_workset" / "boxes"
         assert resolved["system._primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
@@ -218,7 +219,6 @@ class TestLoadStdPathsParity:
         assert std.channels == std.data_path / "channels"
         assert std.primary_workset == std.data_path / "primary_workset"
         assert std.base_template == std.data_path / "global" / "base_template"
-        assert std.instructions == std.data_path / "global" / "KANIBAKO.md"
         assert std.registry == std.data_path / "global" / "registry.yaml"
         # Phase 5: PRIMARY box/vault/logs live under the PRIMARY workset.
         assert std.boxes == std.primary_workset / "boxes"

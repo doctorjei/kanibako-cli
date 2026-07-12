@@ -15,7 +15,7 @@ from kanibako.paths import (
 )
 from kanibako.templates import (
     _packaged_base_template,
-    _packaged_instructions,
+    _packaged_manifest_entries,
     copy_resource_tree_if_absent,
     install_packaged_templates,
     packaged_templates_digest,
@@ -420,22 +420,12 @@ class TestInstallPackagedTemplates:
         install_packaged_templates(std, ["claude"])
         assert instr.read_text() == "MY EDITS"
 
-    def test_instructions_default_landed(self, std):
-        """The shipped default KANIBAKO.md is installed at @system.instructions."""
-        assert not std.instructions.exists()
+    def test_kanibako_md_not_installed_to_host(self, std):
+        """The box guide is delivered live (RO bundle + launch-flatten), NOT
+        flat-copied to a host runtime path by the template install (the retired
+        ``@system.instructions`` vestige)."""
         install_packaged_templates(std, ["claude"])
-        assert std.instructions.is_file()
-        assert std.instructions == std.data / "global" / "KANIBAKO.md"
-        assert std.instructions.read_text().startswith(
-            "# KANIBAKO.md — Operating Guide for Agents in a Kanibako Box"
-        )
-
-    def test_instructions_create_if_absent_does_not_clobber(self, std):
-        """A user-edited KANIBAKO.md survives a re-install (create-if-absent)."""
-        install_packaged_templates(std, ["claude"])
-        std.instructions.write_text("MY BOX GUIDE")
-        install_packaged_templates(std, ["claude"])
-        assert std.instructions.read_text() == "MY BOX GUIDE"
+        assert not (std.data / "global" / "KANIBAKO.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -445,14 +435,17 @@ class TestInstallPackagedTemplates:
 
 class TestPackagedTemplatesDigest:
     """``packaged_templates_digest`` — deterministic content hash over the
-    packaged base + KANIBAKO.md + each agent template tree."""
+    packaged base + RO bundle (carrying KANIBAKO.md) + each agent template tree."""
 
-    def _fake_trees(self, monkeypatch, tmp_path, *, base="B", instr="I", claude="C"):
+    def _fake_trees(self, monkeypatch, tmp_path, *, base="B", guide="G", claude="C"):
         base_dir = tmp_path / "pbase"
         base_dir.mkdir()
         (base_dir / "INSTRUCTIONS.md").write_text(base)
-        instr_f = tmp_path / "KANIBAKO.md"
-        instr_f.write_text(instr)
+        # The RO built-in bundle carries the KANIBAKO.md guide at
+        # directives/KANIBAKO.md — the SOLE manifest source of the guide now.
+        bundle_dir = tmp_path / "pbundle"
+        (bundle_dir / "directives").mkdir(parents=True)
+        (bundle_dir / "directives" / "KANIBAKO.md").write_text(guide)
         claude_dir = tmp_path / "pclaude"
         claude_dir.mkdir()
         (claude_dir / ".claude.json").write_text(claude)
@@ -460,13 +453,13 @@ class TestPackagedTemplatesDigest:
             "kanibako.templates._packaged_base_template", lambda: base_dir
         )
         monkeypatch.setattr(
-            "kanibako.templates._packaged_instructions", lambda: instr_f
+            "kanibako.templates._packaged_shared_bundle", lambda: bundle_dir
         )
         monkeypatch.setattr(
             "kanibako.templates._packaged_agent_template",
             lambda name: claude_dir if name == "claude" else None,
         )
-        return base_dir, instr_f, claude_dir
+        return base_dir, bundle_dir, claude_dir
 
     def test_deterministic_and_order_independent(self, monkeypatch, tmp_path):
         self._fake_trees(monkeypatch, tmp_path)
@@ -481,11 +474,24 @@ class TestPackagedTemplatesDigest:
         (base_dir / "INSTRUCTIONS.md").write_text("CHANGED")
         assert packaged_templates_digest(["claude"]) != before
 
-    def test_changes_when_instructions_change(self, monkeypatch, tmp_path):
-        _, instr_f, _ = self._fake_trees(monkeypatch, tmp_path)
+    def test_changes_when_guide_changes(self, monkeypatch, tmp_path):
+        _, bundle_dir, _ = self._fake_trees(monkeypatch, tmp_path)
         before = packaged_templates_digest(["claude"])
-        instr_f.write_text("NEW GUIDE")
+        (bundle_dir / "directives" / "KANIBAKO.md").write_text("NEW GUIDE")
         assert packaged_templates_digest(["claude"]) != before
+
+    def test_kanibako_md_hashed_exactly_once(self, monkeypatch, tmp_path):
+        """Regression: the guide is enumerated ONCE (only via the RO bundle).
+
+        The retired ``@system.instructions`` flat-copy used to add a SECOND
+        ``instructions/KANIBAKO.md`` manifest entry beside the bundle's
+        ``shared/directives/KANIBAKO.md`` — double-hashing the same bytes so a
+        relocation flipped the digest and spuriously tripped the setup gate.
+        """
+        self._fake_trees(monkeypatch, tmp_path)
+        keys = [k for k, _ in _packaged_manifest_entries(["claude"])]
+        kani = [k for k in keys if k.endswith("KANIBAKO.md")]
+        assert kani == ["shared/directives/KANIBAKO.md"], keys
 
     def test_changes_when_agent_template_changes(self, monkeypatch, tmp_path):
         _, _, claude_dir = self._fake_trees(monkeypatch, tmp_path)
@@ -537,13 +543,6 @@ class TestInstallPackagedTemplatesRefresh:
         install_packaged_templates(std, ["claude"], refresh=True)
         assert user_file.read_text() == "user only"
 
-    def test_refresh_overwrites_kanibako_md(self, std):
-        install_packaged_templates(std, ["claude"])
-        std.instructions.write_text("STALE GUIDE")
-        install_packaged_templates(std, ["claude"], refresh=True)
-        assert std.instructions.read_text() == _packaged_instructions().read_text()
-        assert std.instructions.read_text() != "STALE GUIDE"
-
     def test_refresh_overwrites_agent_file(self, std):
         install_packaged_templates(std, ["claude"])
         stub = std.agents / "claude" / "template" / ".claude.json"
@@ -583,7 +582,6 @@ class TestPlanTemplateRefresh:
     def test_all_added_on_empty_host(self, std):
         added, overwritten = plan_template_refresh(std, ["claude"])
         assert overwritten == []
-        assert std.instructions in added
         assert any(p.name == "CONTENTS.md" for p in added)
 
     def test_unchanged_after_install_is_empty(self, std):
@@ -601,9 +599,10 @@ class TestPlanTemplateRefresh:
 
     def test_missing_file_is_added_partition(self, std):
         install_packaged_templates(std, ["claude"])
-        std.instructions.unlink()
+        contents = std.base_template / "playbook" / "CONTENTS.md"
+        contents.unlink()
         added, overwritten = plan_template_refresh(std, ["claude"])
-        assert std.instructions in added
+        assert contents in added
 
     def test_user_only_file_absent_from_plan(self, std):
         install_packaged_templates(std, ["claude"])

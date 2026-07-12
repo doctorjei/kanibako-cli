@@ -191,11 +191,11 @@ def load_category_binds(package: str, filename: str) -> dict[str, BindDefault]:
     ``agent.<category>.<key>`` → a STRUCTURED bind tuple ``(meta_ref, box_dest[,
     "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).
 
-    The value's element 0 is the RAW ``@``-ref STRING (e.g.
-    ``"@system.instructions"``); the launch category cascade folds it into the floor
-    and ``expand`` resolves it to the referenced path — so a plugin declares a bind
-    to the shared source WITHOUT any per-harness path knowledge in core (spec §2d
-    L608 — the PLUGIN-declared instructions bind).  ``start.py`` unions this table
+    The value's element 0 is the RAW ``@``-ref STRING (e.g. a ``"@system.*"``
+    source key); the launch category cascade folds it into the floor and ``expand``
+    resolves it to the referenced path — so a plugin declares a bind to a shared
+    source WITHOUT any per-harness path knowledge in core (spec §2d L608).
+    ``start.py`` unions this table
     into ``default_categories`` alongside :func:`load_shares`; the bare
     ``agent.<category>.*`` key is re-rooted to the active slot by
     ``settings_launch._agent_scope_qualify`` exactly like a share.
