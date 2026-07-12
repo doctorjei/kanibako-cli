@@ -836,6 +836,7 @@ def run_share_add(args: argparse.Namespace) -> int:
     no content sync exists).
     """
     from kanibako.config_io import dump_doc
+    from kanibako.settings_resolve import split_bind
 
     name = args.name
     if not _SHARE_NAME_RE.match(name):
@@ -847,11 +848,21 @@ def run_share_add(args: argparse.Namespace) -> int:
         return 1
 
     bind = args.bind
-    host_src, sep, guest_dest = bind.partition(":")
-    if not sep or not host_src or not guest_dest or ":" in guest_dest:
+    # Parse the ``host_src:guest_dest`` grammar through the CANONICAL escape-aware
+    # splitter (spec §2a CLI-INPUT edge) — the SAME parser config set / the resolver
+    # use — so an escaped colon (``\:`` for a literal ':' in a path) behaves
+    # identically here. ``split_bind`` splits at the FIRST unescaped ':' and returns
+    # both halves with escapes resolved (2nd half is None when there is no unescaped
+    # ':'). The share grammar is EXACTLY two fields — the ro/rw mode comes from
+    # ``--mode``, not the bind — so a SECOND unescaped ':' is rejected, detected by
+    # re-splitting the (already-unescaped) guest half rather than a raw ':' scan.
+    host_src, guest_dest = split_bind(bind)
+    has_extra_colon = guest_dest is not None and split_bind(guest_dest)[1] is not None
+    if guest_dest is None or not host_src or not guest_dest or has_extra_colon:
         print(
             f"Error: invalid bind '{bind}' "
-            "(expected exactly one ':' as 'host_src:guest_dest', non-empty halves).",
+            "(expected exactly one ':' as 'host_src:guest_dest', non-empty halves; "
+            "escape a literal ':' in a path as '\\:').",
             file=sys.stderr,
         )
         return 1
