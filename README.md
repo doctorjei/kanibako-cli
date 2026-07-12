@@ -100,8 +100,11 @@ it is used automatically. See [Agent Selection](#agent-selection).
 ## Quick Start
 
 ```bash
-# Start an agent session in the current directory
+# Create a box for the current directory (a deliberate, one-time step)
 cd ~/my-project
+kanibako create
+
+# Start an agent session (shortcut for `kanibako start`)
 kanibako
 
 # Start with a specific rig
@@ -117,10 +120,11 @@ kanibako shell -- echo hello
 kanibako -N
 ```
 
-That's it -- no `docker run`, no volume flags, no Containerfile.  On first run,
-Kanibako automatically pulls the container rig, sets up the project
-environment, and syncs your credentials.  Subsequent runs pick up where you
-left off.
+That's it -- no `docker run`, no volume flags, no Containerfile.  Creating a box
+is an explicit step (`kanibako create`); a launch (`kanibako` / `start` / `code` /
+`shell`) never invents a box, so a typo'd project or wrong directory can't
+silently make one.  On the first launch of a box, Kanibako pulls the container
+rig and syncs your credentials; subsequent runs pick up where you left off.
 
 ## Example: Python Project
 
@@ -137,13 +141,16 @@ mkdir ~/my-flask-app && cd ~/my-flask-app
 git init
 # (or: git clone https://github.com/you/my-flask-app.git && cd my-flask-app)
 
-# 3. Launch -- that's it
+# 3. Create the box for this project (explicit, one-time)
+kanibako create
+
+# 4. Launch -- that's it
 kanibako
 ```
 
-On the first launch, Kanibako will:
+`kanibako create` sets up an isolated environment for this project.  On the
+first launch, Kanibako will:
 - Pull the base container rig (once, cached afterwards)
-- Create an isolated environment for this project
 - Copy your agent credentials into the sandbox
 - Drop you into an agent session inside the container
 
@@ -169,13 +176,16 @@ toolchains you need:
 kanibako rig prep systems
 # (or build one interactively with: kanibako rig extend my-systems --from kanibako-oci)
 
-# 2. Use it for your project
+# 2. Create the box for your project, pinned to that rig (explicit, one-time)
 cd ~/my-rust-project
-kanibako --image kanibako-template-systems
+kanibako create --image kanibako-template-systems
+
+# 3. Launch
+kanibako
 ```
 
-After the first run, Kanibako remembers the rig choice for this project,
-so you can just run `kanibako` next time.
+`kanibako create` pins the rig choice for this project, so you can just run
+`kanibako` next time.
 
 See [Container Rigs](#container-rigs) for the base rigs and custom rig
 creation.

@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from kanibako.config import KanibakoConfig
+    from kanibako.paths import ProjectPaths, StandardPaths
     from kanibako.settings_launch import AuthSource
 
 from kanibako.agent_config import (
@@ -34,7 +36,7 @@ from kanibako.config import (
 )
 from kanibako import core_defaults
 from kanibako.container import ContainerRuntime, detect_shadowed_mounts
-from kanibako.errors import ConfigError, ContainerError, KanibakoError
+from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError
 from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
@@ -841,6 +843,75 @@ def _check_box_components(proj) -> str | None:
     return None
 
 
+def _resolve_existing_box(
+    std: StandardPaths, config: KanibakoConfig, project_dir: str | None,
+) -> ProjectPaths | None:
+    """Non-materialising probe: the :class:`ProjectPaths` of an EXISTING
+    registered box for *project_dir*, or ``None`` when no box exists there.
+
+    Explicit-create gate (Jei 2026-07-11g): a launch (``start`` / bare
+    ``kanibako`` / ``code`` / ``shell``) NEVER auto-creates a box — the box must
+    already have been made by ``kanibako create``.  We resolve through the SAME
+    ``resolve_box_target`` the launch uses, but:
+
+    * ``initialize=False`` — a NON-materialising resolve (no mkdir / no name
+      assignment / no seed): probing must never leave a box dir behind.
+    * ``register=True`` — the register=False journal-recovery arm is NOT
+      consulted, so a half-created box that crashed BEFORE its registry write
+      reads as "no box" here (its dir/journal-entry do not resurrect it on a
+      launch).  Forward-recovery of an interrupted create belongs to ``create``
+      alone (re-running ``create`` completes it); the launch path must treat a
+      not-fully-registered box as "no box" → error.  ⚑ This holds for PRIMARY and
+      NAMED (registration IS the signal); STANDALONE is the EXCEPTION — its
+      existence is a disk-marker + ``detect_project_mode``'s ``import_standalone``
+      self-heal, which re-registers a half-created standalone box (and clobbers its
+      create-journal entry) during the resolve, so a half-created STANDALONE box
+      reads as "exists" here and launches.  That is a PRE-EXISTING import-reconcile
+      interaction (not introduced by this gate) — see the explicit-create follow-up.
+    * ``warn=False`` — a pure probe never doubles the non-conforming-name flag.
+
+    REGISTRATION is the existence signal: a resolved box carries a non-empty
+    ``name`` exactly when it is registered (PRIMARY membership / STANDALONE
+    registry / NAMED workset membership), which is precisely "fully created".
+    A bare token naming no registered box makes ``resolve_box_target`` refuse to
+    path-ify it under ``initialize=False`` (it raises :class:`ProjectError`),
+    which we also read as "no box".
+    """
+    try:
+        proj = resolve_box_target(
+            std, config, project_dir,
+            initialize=False, register=True, warn=False,
+        )
+    except ProjectError:
+        # A bare token that names no registered box (initialize=False refuses to
+        # invent a cwd-relative path for it) or a path that does not exist → no
+        # box to launch.  (WorksetError — a bare-workset / in-workset-but-not-a-
+        # project spec — is intentionally NOT caught here: it carries its own
+        # actionable message and must surface unchanged.)
+        return None
+    return proj if proj.name else None
+
+
+def _no_box_error(project_dir: str | None) -> str:
+    """The launch-time "no box; run create" error for an ABSENT box target.
+
+    ``<path>`` is the resolved target we looked for a box at; the suggested
+    ``create`` carries the user's own spec so it is copy-pasteable — an explicit
+    ``kanibako create <spec>`` when they named a project, a bare ``kanibako
+    create`` from inside the project dir (no spec).
+    """
+    if project_dir:
+        # A path that resolves on disk shows its resolved dir; a bare NAME (no
+        # such path) shows the spec verbatim — either way copy-pasteable.
+        candidate = Path(project_dir)
+        target = str(candidate.resolve()) if candidate.exists() else project_dir
+        suggest = f"kanibako create {project_dir}"
+    else:
+        target = os.getcwd()
+        suggest = "kanibako create"
+    return f"Error: no box at {target}. To create a new box, run '{suggest}'"
+
+
 # Sentinel returned by _check_launch_baseline when the launch-critical bootstrap
 # program is missing from the image (tier-1 hard-stop).
 _BOOTSTRAP_MISSING = object()
@@ -1239,6 +1310,20 @@ def _run_container(
             _defer_box = _node != _harness
         except ConfigError:
             _defer_box = False  # malformed ref: surfaced by resolve_agent below.
+
+    # EXPLICIT-CREATE gate (Jei 2026-07-11g, v1.7.0 BREAKING): a launch NEVER
+    # materialises a NEW box.  Creating a box is a deliberate act — it must go
+    # through ``kanibako create``.  Probe non-materialisingly (``initialize=
+    # False`` → no mkdir/name/seed) BEFORE the materialising resolve below; if no
+    # EXISTING registered box resolves for the target, error out and point at
+    # ``create`` rather than silently inventing a box for a typo'd project / wrong
+    # cwd.  This single chokepoint covers every launch route (``start`` / bare
+    # ``kanibako`` / ``code`` → start_detached → here / ``shell``).  Auto-START of
+    # an EXISTING box is UNCHANGED — the probe passes and the flow continues.
+    if _resolve_existing_box(std, config, project_dir) is None:
+        print(_no_box_error(project_dir), file=sys.stderr)
+        return 1
+
     proj = resolve_box_target(
         std, config, project_dir,
         initialize=not _defer_box, register=False, warn=not _defer_box,
@@ -1765,26 +1850,27 @@ def _run_container(
         # Seed at CREATE, never at launch (keyspace spec §0/§5).  The one-time
         # home seed runs ATOMICALLY with box registration: registry MEMBERSHIP is
         # the seed signal, so a box that already exists was already seeded and
-        # this launch must NOT re-seed it (user edits survive).  ``proj.is_new``
-        # is True exactly when THIS resolve_box_target call materialized the box
-        # (all three modes set it on first creation), so a box auto-created by
-        # `start` is seeded here, while every subsequent launch of an existing box
-        # (is_new False, no pending entry) skips the seed entirely.  (`box create`
-        # seeds via the same helper from run_create.)  Seed application is
-        # create-if-absent, so even a re-create into a leftover dir never clobbers
-        # content.
+        # this launch must NOT re-seed it (user edits survive).  ``proj.is_new`` is
+        # True exactly when THIS resolve materialized the box; `box create` seeds
+        # via the same ``_seed_box_home`` from ``run_create``.  Seed application is
+        # create-if-absent, so even a re-create into a leftover dir never clobbers.
         #
-        # J1 lifecycle journal: the gate is ``is_new OR pending create entry``.
-        # A pending create journal entry overrides membership so an interrupted
-        # auto-create (crash between seed-start and registry write, leaving a
-        # registered-or-unregistered box with the entry) re-seeds and completes.
-        # The flow is write-ahead: write-entry -> seed -> register -> clear-entry,
-        # with the entry cleared as the IMMEDIATE step after the registry write
-        # (HARD INVARIANT: registered ==> no pending entry at rest).
-        # ``register=False`` above deferred registration to here;
-        # ``_register_new_box`` is idempotent so a recovery of an already-
-        # registered box (stale entry) is a no-op + entry clear.
-        if proj.is_new or _pending_create_entry(std, proj) is not None:
+        # EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER auto-creates a box —
+        # the explicit-create gate at the top of ``_run_container`` already errored
+        # out for any target that is not a fully-registered box, so in real
+        # operation ``proj.is_new`` is False here and this block does not run (an
+        # existing box is never is_new).  Two deliberate consequences:
+        #   * The launch path no longer completes an INTERRUPTED create — the old
+        #     ``or _pending_create_entry(...)`` clause is REMOVED.  A half-created,
+        #     not-yet-registered box reads as "no box" at the gate and errors;
+        #     forward-recovery of an interrupted create belongs to ``create`` ALONE
+        #     (re-running ``kanibako create`` replays seed → register → clear-entry
+        #     in ``run_create``).  The launch must not silently resurrect/complete
+        #     someone's half-finished create.
+        #   * The ``if proj.is_new:`` guard is retained (not dead semantics — it is
+        #     the correct action IF a box were ever materialized on this path) and
+        #     is the seam the ``_run_container`` seed-routing unit tests drive.
+        if proj.is_new:
             _write_create_entry(std, proj)
             _seed_box_home(
                 std=std, proj=proj, target=target, desc=desc,

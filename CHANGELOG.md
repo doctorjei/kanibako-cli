@@ -49,6 +49,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: launching no longer auto-creates a box — run `kanibako create`
+  first.** Creating a box is now a deliberate act. `kanibako` (shortcut for
+  `start`), `kanibako start`, `kanibako code`, and `kanibako shell` no longer
+  materialize a new box for a path/name that has none — they error with
+  `no box at <path>. To create a new box, run 'kanibako create'` and exit
+  non-zero. This closes a day-1 footgun where a typo'd project or the wrong
+  working directory would silently spawn a brand-new box. Auto-*starting* an
+  existing (stopped) box is unchanged. `kanibako create` gained a start hint in
+  its success message, and forward-recovery of an interrupted create now belongs
+  to `create` alone (re-running it completes the create); a launch treats a
+  not-yet-registered box as "no box" rather than resurrecting it. For
+  `kanibako code --remote`, the box must exist on the *remote* host — the remote
+  "no box" error is surfaced with a hint to run `create` there.
 - **A higher scope can now set defaults for the scopes it contains.** The
   config-verb scope guard follows containment (`system ⊃ agent ⊃ workset ⊃
   box`): `kanibako workset set box.image=X` stores `box.image` in the

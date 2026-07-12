@@ -1174,7 +1174,7 @@ class TestProjectPositional:
                 agent_args=[],
             )
             run_start(args)
-            m.resolve_any_project.assert_called_once()
+            m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
             call_args = m.resolve_any_project.call_args
             assert call_args[0][2] == "/tmp/myproject"
 
@@ -1194,7 +1194,7 @@ class TestProjectPositional:
                 agent_args=[],
             )
             run_start(args)
-            m.resolve_any_project.assert_called_once()
+            m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
             call_args = m.resolve_any_project.call_args
             assert call_args[0][2] is None
 

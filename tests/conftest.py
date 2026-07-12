@@ -636,6 +636,12 @@ def start_mocks():
                 credsync=m_credsync,
                 resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
                 seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
+                # Create-journal stubs (write-ahead recovery flow) — exposed so
+                # explicit-create tests can assert the launch path never resurrects
+                # a half-created box (no seed / register / clear on launch).
+                pending_create_entry=m_launch_mount_stubs["_pending_create_entry"],
+                register_new_box=m_launch_mount_stubs["_register_new_box"],
+                write_create_entry=m_launch_mount_stubs["_write_create_entry"],
                 read_default_agent=m_launch_mount_stubs["read_default_agent"],
                 effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
                 resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
