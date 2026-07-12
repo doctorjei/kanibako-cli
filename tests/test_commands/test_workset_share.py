@@ -99,6 +99,30 @@ class TestShareAdd:
         assert rc == 1
         assert "invalid bind" in capsys.readouterr().err
 
+    def test_add_escaped_colon_in_host_src(self, config_file, tmp_home, workset):
+        r"""P4 fix: a literal ':' in the host path is written ``\:`` and now parses
+        via the canonical escape-aware ``split_bind`` — the split falls on the FIRST
+        UNESCAPED ':' (before ``/guest``), and the stored host half has its escape
+        resolved to a literal colon. The pre-fix ``partition(':')`` parser split on
+        the escaped colon and then rejected the bind (``':' in guest_dest``); this is
+        the divergence P4 closes."""
+        rc = run_share_add(_add_args(bind="/host/pa\\:th:/guest/dest"))
+        assert rc == 0
+        shares = read_shares(workset.root / "settings.yaml")
+        assert shares == {
+            "workset.bindings.rw.data": ["/host/pa:th", "/guest/dest"]
+        }
+
+    def test_add_escaped_colon_only_no_separator_rejected(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        r"""An escaped ``\:`` is a literal colon, NOT the host/guest separator: with
+        no UNESCAPED ':' there is no separator, so this is rejected (guest half is
+        None) — the required-two-fields check still surfaces."""
+        rc = run_share_add(_add_args(bind="/host/pa\\:th"))
+        assert rc == 1
+        assert "invalid bind" in capsys.readouterr().err
+
     @pytest.mark.parametrize("name", ["bad name", "has/slash", "with:colon", ""])
     def test_add_rejects_bad_name(self, config_file, tmp_home, workset, name, capsys):
         rc = run_share_add(_add_args(name=name))
