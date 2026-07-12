@@ -9,6 +9,8 @@ import tempfile
 from typing import TYPE_CHECKING
 from pathlib import Path
 
+from kanibako.core_defaults import packaged_data_dir
+
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
 
@@ -208,9 +210,7 @@ def _packaged_base_template() -> Path | None:
     built-in bundle bound live at ``~/playbook/kanibako``.
     """
     try:
-        ref = importlib.resources.files("kanibako.data").joinpath(
-            "global", "template"
-        )
+        ref = packaged_data_dir("global", "template")
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))
@@ -229,9 +229,7 @@ def _packaged_shared_bundle() -> Path | None:
     when the shipped bundle content drifts.
     """
     try:
-        ref = importlib.resources.files("kanibako.data").joinpath(
-            "global", "rom", "playbook", "kanibako"
-        )
+        ref = packaged_data_dir("global", "rom", "playbook", "kanibako")
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))

@@ -25,6 +25,7 @@ Split (documented in the YAML header too):
 from __future__ import annotations
 
 import importlib.resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +33,19 @@ import yaml
 
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
+
+
+def packaged_data_dir(*parts: str) -> Traversable:
+    """Resolve a path inside the packaged ``kanibako.data`` tree.
+
+    Single source of truth for ``importlib.resources.files("kanibako.data")``
+    joined with ``*parts`` — returns the same ``Traversable`` the inline
+    ``files("kanibako.data").joinpath(*parts)`` expression produced (callers wrap
+    it in ``Path(str(...))`` as before).  Notably it centralizes the rom-bundle
+    subpath literal ``("global", "rom", "playbook", "kanibako")`` that was
+    resolved verbatim in both this module and :mod:`kanibako.templates`.
+    """
+    return importlib.resources.files("kanibako.data").joinpath(*parts)
 
 # Filename of the shipped system/core defaults (in kanibako.data).
 CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
@@ -50,7 +64,7 @@ FLOOR_PLACEHOLDER_SRC = "__floor_placeholder__"
 
 def _load_doc() -> dict[str, Any]:
     """Read and parse the bundled system/core defaults file."""
-    ref = importlib.resources.files("kanibako.data").joinpath(CORE_DEFAULTS_FILENAME)
+    ref = packaged_data_dir(CORE_DEFAULTS_FILENAME)
     raw = yaml.safe_load(Path(str(ref)).read_text()) or {}
     if not isinstance(raw, dict):
         return {}
@@ -270,9 +284,7 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
     # kanibako-provided directive tree bind-mounted LIVE at ~/playbook/kanibako.
     # Import-resolved from the installed package (kanibako.data →
     # global/rom/playbook/kanibako) exactly as the kani_pkg source above.
-    bundle_ref = importlib.resources.files("kanibako.data").joinpath(
-        "global", "rom", "playbook", "kanibako"
-    )
+    bundle_ref = packaged_data_dir("global", "rom", "playbook", "kanibako")
     bundle_path = Path(str(bundle_ref))
 
     sources: dict[str, str] = {
