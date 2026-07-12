@@ -835,6 +835,14 @@ def run_list(args: argparse.Namespace) -> int:
     # are not in names.yaml / iter_projects, so list them explicitly (BUG-E).
     from kanibako import registry_store
     standalone = registry_store.load_standalone(std.registry)
+    # DEREGISTERED boxes (rm without --purge) are never active, so they are only
+    # surfaced when NOT filtering to active-only (plain `list` / `list --all`,
+    # not `--active` / `ps`).  list_deregistered self-heals genuinely-stale
+    # entries; with none parked it returns {} and writes nothing (list stays
+    # byte-identical for a tree without deregistered boxes).
+    deregistered = (
+        registry_store.list_deregistered(std.registry) if not active_only else {}
+    )
 
     if orphan_only:
         return _list_orphans(projects, ws_data, std, quiet)
@@ -848,7 +856,7 @@ def run_list(args: argparse.Namespace) -> int:
     except ContainerError:
         pass  # No runtime available — all projects show as stopped.
 
-    if not projects and not ws_data and not standalone:
+    if not projects and not ws_data and not standalone and not deregistered:
         if not quiet:
             print("No known projects.")
         return 0
@@ -1012,6 +1020,30 @@ def run_list(args: argparse.Namespace) -> int:
             print(f"  {'NAME':<{sa_width}} {'STATUS':<10} {'ROOT'}")
             for box_name, status, root_str in sa_items:
                 print(f"  {box_name:<{sa_width}} {status:<10} {root_str}")
+
+    # DEREGISTERED boxes (registry.deregistered: name → recovery blob).  Surfaced
+    # in a dedicated section — with the DEREGISTERED status as the marker — so a
+    # user can SEE what they may `register` (recover) or `rm --purge` (delete);
+    # today these are invisible.  Only shown when entries exist, keeping a tree
+    # with no deregistered boxes byte-identical.  `quiet` prints bare names.
+    if deregistered:
+        any_output = True
+        if quiet:
+            for box_name in sorted(deregistered):
+                print(box_name)
+        else:
+            dr_width = min(40, max(26, name_width, *(len(n) for n in deregistered)))
+            print()
+            print("Deregistered boxes (metadata retained):")
+            print(f"  {'NAME':<{dr_width}} {'STATUS':<14} {'PATH'}")
+            for box_name in sorted(deregistered):
+                entry = deregistered[box_name]
+                path = str(entry.get("workspace") or entry.get("metadata") or "")
+                print(f"  {box_name:<{dr_width}} {'deregistered':<14} {path}")
+            print(
+                "  Recover with 'kanibako box register <name>', or delete with "
+                "'kanibako box rm <name> --purge'."
+            )
 
     if not any_output and not quiet:
         if active_only:

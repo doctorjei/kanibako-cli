@@ -282,6 +282,34 @@ def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
         pass
 
 
+def _assert_dup_home_free(std, name: str) -> None:
+    """Refuse a duplicate whose minted primary home is a deregistered/orphaned box.
+
+    ⚑ Box-lifecycle cleanup (I4 follow-up).  ``assign_primary_box_name``'s picker
+    does NOT consult ``std.boxes`` (``boxes_dir=None``), so a freshly-minted
+    duplicate name can land on a ``std.boxes/<name>`` dir still occupied by a
+    DEREGISTERED box (retained by ``rm``) or a hand-left ORPHAN.  With ``--force``
+    the copy path ``rmtree``s that home before copying — the very data-loss window
+    the create-side guard closes.  REUSE that guard here, BEFORE any home
+    materialises.
+
+    On a conflict, unwind ONLY the just-registered name (``assign_primary_box_name``
+    registered it a moment ago) and re-raise :class:`ProjectError` — NEVER touch
+    the occupied home dir, which is the retained data we are protecting (so the
+    reused guard is deliberately NOT wrapped in ``_unwind_local_name``, whose
+    ``rmtree`` would delete it).  The caller surfaces the register/purge guidance.
+    A genuinely-fresh duplicate name has no such dir, so this is a no-op for it.
+    """
+    from kanibako.commands.box._parser import _assert_primary_home_free_for_create
+    from kanibako.errors import ProjectError
+
+    try:
+        _assert_primary_home_free_for_create(std, name)
+    except ProjectError:
+        unregister_primary_box_name(std.primary_workset, name)
+        raise
+
+
 def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into default-mode layout for new_path."""
     from kanibako.config import BOX_META_FILE
@@ -296,6 +324,11 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     )
     projects_base = std.boxes
     dst_project = projects_base / project_name
+
+    # ⚑ Refuse (register/purge guidance) if this home is a deregistered/orphaned
+    # box before any copy — reuse the create-side guard.  Raises ProjectError
+    # (name already unwound); callers surface it.  No-op for a fresh dup name.
+    _assert_dup_home_free(std, project_name)
 
     # The source box's metadata dir (home + agent/session state + settings.yaml):
     # for primary/named it is ``metadata_path`` (boxes/<name>/), but for a
@@ -479,7 +512,14 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     if target_mode == BoxMode.standalone:
         _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
-        _duplicate_to_local(src_proj, new_path, std, config, args.force)
+        from kanibako.errors import ProjectError
+        try:
+            _duplicate_to_local(src_proj, new_path, std, config, args.force)
+        except ProjectError as e:
+            # A local target onto a deregistered/orphaned (or name-colliding) home
+            # is refused with register/purge guidance rather than clobbered.
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     print(f"Duplicated project to {target_mode.value} mode:")
     print(f"  from: {ws.name}/{proj_name}")
@@ -631,6 +671,15 @@ def run_duplicate(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     new_project_dir = std.boxes / dup_name
+
+    # ⚑ Refuse if the minted home is a deregistered/orphaned box before the copy
+    # (--force would rmtree it below → I4 data-loss).  Reuse the create-side guard;
+    # the name is unwound inside on conflict, and the protected dir is untouched.
+    try:
+        _assert_dup_home_free(std, dup_name)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     # Failure-consistency: a crash AFTER assign_primary_box_name but DURING the metadata copy
     # would otherwise strand a "registered but no metadata" orphan.  Unwind the

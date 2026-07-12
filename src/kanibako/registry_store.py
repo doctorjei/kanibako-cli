@@ -302,22 +302,52 @@ def lookup_deregistered(registry: Path, box_name: str) -> dict | None:
     return dict(entry) if entry is not None else None
 
 
-def list_deregistered(registry: Path) -> dict[str, dict]:
-    """Return the deregistered entries, self-healing stale ones.
+def _metadata_definitively_gone(path: str) -> bool:
+    """True only when *path* is DEFINITIVELY absent — the drop-safe case.
 
-    Any entry whose ``metadata`` path is empty or no longer exists on disk is
-    dropped (the box was deleted out-of-band); the pruned section is persisted
-    when anything is removed.  This is the ``list`` self-heal from the design.
+    The self-heal in :func:`list_deregistered` must NOT drop a recovery pointer
+    on a TRANSIENT filesystem error: a plain ``Path.exists()`` collapses "the dir
+    is genuinely gone" and "I could not stat it (permission / I/O error)" into the
+    same ``False``, so an ambiguous error would false-drop a still-present box and
+    lose the only handle to ``register`` / ``purge`` it.
+
+    Distinguish the two by inspecting the ``OSError``: only ``ENOENT`` (no such
+    file) / ``ENOTDIR`` (a path component is not a directory) prove the target is
+    really gone.  Any other error (``EACCES``, ``EIO``, ``ESTALE``, …) is treated
+    as "present, cannot confirm removal" so the entry is KEPT.  ``os.stat``
+    follows symlinks (matching the previous ``Path.exists()`` semantics), so a
+    dangling symlink still reads as gone.
+    """
+    import errno
+    import os
+
+    try:
+        os.stat(path)
+    except OSError as exc:
+        return exc.errno in (errno.ENOENT, errno.ENOTDIR)
+    return False
+
+
+def list_deregistered(registry: Path) -> dict[str, dict]:
+    """Return the deregistered entries, self-healing genuinely-stale ones.
+
+    An entry is dropped only when its ``metadata`` path is empty (no recovery
+    target) or DEFINITIVELY gone from disk (the box was deleted out-of-band); the
+    pruned section is persisted when anything is removed.  A transient stat error
+    (permission / I/O) is NOT a genuine removal, so such an entry is KEPT rather
+    than false-dropped (which would lose its recovery pointer) — see
+    :func:`_metadata_definitively_gone`.  This is the ``list`` self-heal from the
+    design, hardened for the transient-FS case now that ``box list`` wires it.
     """
     entries = load_deregistered(registry)
     live: dict[str, dict] = {}
     dropped = False
     for name, entry in entries.items():
         meta = entry.get("metadata")
-        if meta and Path(str(meta)).exists():
-            live[name] = entry
-        else:
+        if not meta or _metadata_definitively_gone(str(meta)):
             dropped = True
+        else:
+            live[name] = entry
     if dropped:
         save_section(registry, "deregistered", live)
     return live

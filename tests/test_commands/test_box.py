@@ -109,6 +109,109 @@ class TestBoxList:
         assert rc == 0
         assert capsys.readouterr().out == ""
 
+    def _park_deregistered(self, std, tmp_home, name="gonebox"):
+        """Create a deregistered box with a retained home dir under std.boxes."""
+        from kanibako import registry_store
+
+        meta = std.boxes / name
+        meta.mkdir(parents=True)
+        registry_store.register_deregistered(
+            std.registry, name, kind="primary",
+            workspace=str(tmp_home / name), metadata=str(meta),
+        )
+        return meta
+
+    def test_list_shows_deregistered(self, config_file, tmp_home, credentials_dir, capsys):
+        """box list surfaces a deregistered box + its register/purge recovery hint."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._park_deregistered(std, tmp_home)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Deregistered boxes" in out
+        assert "gonebox" in out
+        assert "deregistered" in out  # the STATUS marker
+        # Recovery is discoverable from the listing itself.
+        assert "register" in out and "--purge" in out
+
+    def test_list_without_deregistered_omits_section(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A tree with NO deregistered boxes shows no deregistered section
+        (the surfacing is additive — output otherwise unchanged)."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj_dir = tmp_home / "proj"
+        proj_dir.mkdir()
+        resolve_project(std, config, project_dir=str(proj_dir), initialize=True)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "proj" in out
+        assert "Deregistered" not in out
+
+    def test_list_active_hides_deregistered(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """--active (and ps) never surface deregistered boxes — they aren't active."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._park_deregistered(std, tmp_home)
+
+        args = argparse.Namespace(
+            show_all=False, orphan=False, quiet=False, active=True,
+        )
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Deregistered" not in out
+
+    def test_list_quiet_deregistered_names_only(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Quiet mode lists a deregistered box's bare name (no header)."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._park_deregistered(std, tmp_home)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "gonebox" in out
+        assert "Deregistered" not in out
+
+    def test_list_only_deregistered_not_no_known_projects(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A tree whose only records are deregistered still lists them (not the
+        'No known projects.' early-out)."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._park_deregistered(std, tmp_home)
+
+        args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "No known projects" not in out
+        assert "gonebox" in out
+
     def test_list_name_column_widens_for_long_names(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
@@ -490,6 +593,100 @@ class TestBoxDuplicate:
         assert rc == 1
         # No stray fw_dst2 box was minted.
         assert not (std.boxes / "fw_dst2").exists()
+
+    def test_duplicate_force_refuses_deregistered_home(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """--force must NOT overwrite a std.boxes/<name> home occupied by a
+        DEREGISTERED box (same I4 data-loss class as create).  Refuse with
+        register/purge guidance; the retained home is untouched; no active
+        membership is stranded for the refused name."""
+        from kanibako import registry_store
+        from kanibako.commands.box import run_duplicate
+        from kanibako.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # Source primary box.
+        src_dir = tmp_home / "src_box"
+        src_dir.mkdir()
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        # A deregistered box 'target' with a retained home + sentinel.
+        home = std.boxes / "target"
+        home.mkdir(parents=True)
+        (home / "keep.txt").write_text("precious")
+        registry_store.register_deregistered(
+            std.registry, "target", kind="primary",
+            workspace=str(tmp_home / "target"), metadata=str(home),
+        )
+
+        # Duplicating to a NEW path whose basename mints the name 'target' lands
+        # on that deregistered home.
+        dst_dir = tmp_home / "target"
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+        assert rc == 1
+        # Home NOT overwritten — sentinel intact.
+        assert (home / "keep.txt").read_text() == "precious"
+        # No active membership stranded for the refused name.
+        assert "target" not in load_primary_boxes(std.primary_workset)
+        # Guidance is surfaced.
+        err = capsys.readouterr().err
+        assert "register" in err and "purge" in err
+
+    def test_duplicate_force_refuses_orphaned_home(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """--force also refuses an ORPHANED std.boxes/<name> home (no active or
+        deregistered registration) rather than clobbering it."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "src2"
+        src_dir.mkdir()
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        orphan = std.boxes / "orphan"
+        orphan.mkdir(parents=True)
+        (orphan / "keep.txt").write_text("precious")
+
+        dst_dir = tmp_home / "orphan"
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+        assert rc == 1
+        assert (orphan / "keep.txt").read_text() == "precious"
+
+    def test_duplicate_fresh_name_unaffected_by_guard(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A genuinely-fresh dup name (no deregistered/orphaned home) still
+        duplicates — the guard is a no-op for it."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "fresh_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("x = 1")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        # A deregistered box exists but under a DIFFERENT name, so the minted
+        # 'fresh_dst' home is free.
+        (std.boxes / "someoldbox").mkdir(parents=True)
+        from kanibako import registry_store
+        registry_store.register_deregistered(
+            std.registry, "someoldbox", kind="primary",
+            workspace=str(tmp_home / "someoldbox"),
+            metadata=str(std.boxes / "someoldbox"),
+        )
+
+        dst_dir = tmp_home / "fresh_dst"
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+        assert rc == 0
+        assert (std.boxes / "fresh_dst").is_dir()
 
     def test_duplicate_force_overwrites_workspace(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
