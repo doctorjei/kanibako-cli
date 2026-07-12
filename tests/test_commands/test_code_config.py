@@ -9,13 +9,13 @@ from pathlib import Path
 import yaml
 
 from kanibako.vscode_config import (
-    _AGENT_PIDFILE_REMOVE_COMMAND,
-    _AGENT_PIDFILE_WRITE_COMMAND,
+    _AGENT_MARKER_REMOVE_COMMAND,
+    _AGENT_MARKER_WRITE_COMMAND,
     _CODEX_EVENT_KEY,
     _SESSION_END_MATCHER,
     _SESSION_START_COMMAND,
     _SESSION_START_MATCHER,
-    AGENT_PIDFILE_PATH,
+    AGENT_MARKERS_DIR,
     _encode_image_ref,
     attached_container_config_path,
     clear_bypass_permissions,
@@ -27,8 +27,8 @@ from kanibako.vscode_config import (
     merge_attached_container_config,
     merge_bypass_permissions,
     merge_codex_config,
-    merge_pidfile_write_hook,
-    merge_session_end_hook,
+    merge_marker_remove_hook,
+    merge_marker_write_hook,
     merge_session_start_hook,
     seed_attached_container_config,
     seed_claude_bypass_permissions,
@@ -423,29 +423,29 @@ def _managed_group() -> dict:
     }
 
 
-def _pidfile_write_group() -> dict:
-    """The E2g pidfile-WRITE managed group (its own SessionStart group)."""
+def _marker_write_group() -> dict:
+    """The per-PID marker-WRITE managed group (its own SessionStart group)."""
     return {
         "matcher": _SESSION_START_MATCHER,
-        "hooks": [{"type": "command", "command": _AGENT_PIDFILE_WRITE_COMMAND}],
+        "hooks": [{"type": "command", "command": _AGENT_MARKER_WRITE_COMMAND}],
     }
 
 
-def _pidfile_remove_group() -> dict:
-    """The E2g pidfile-REMOVE managed group (the SessionEnd group)."""
+def _marker_remove_group() -> dict:
+    """The per-PID marker-REMOVE managed group (the SessionEnd group)."""
     return {
         "matcher": _SESSION_END_MATCHER,
-        "hooks": [{"type": "command", "command": _AGENT_PIDFILE_REMOVE_COMMAND}],
+        "hooks": [{"type": "command", "command": _AGENT_MARKER_REMOVE_COMMAND}],
     }
 
 
 def _full_managed_hooks() -> dict:
     """The full claude managed hook set seed_session_start_hook writes: the
-    directive + pidfile-write SessionStart groups and the pidfile-remove SessionEnd
+    directive + marker-write SessionStart groups and the marker-remove SessionEnd
     group."""
     return {
-        "SessionStart": [_managed_group(), _pidfile_write_group()],
-        "SessionEnd": [_pidfile_remove_group()],
+        "SessionStart": [_managed_group(), _marker_write_group()],
+        "SessionEnd": [_marker_remove_group()],
     }
 
 
@@ -552,9 +552,9 @@ def test_seed_session_start_merges_into_existing_user_hooks(tmp_path):
     data = json.loads(path.read_text())
     assert data["hooks"]["PreToolUse"] == [{"matcher": "*", "hooks": []}]
     assert data["hooks"]["SessionStart"] == [
-        _managed_group(), _pidfile_write_group(),
+        _managed_group(), _marker_write_group(),
     ]
-    assert data["hooks"]["SessionEnd"] == [_pidfile_remove_group()]
+    assert data["hooks"]["SessionEnd"] == [_marker_remove_group()]
 
 
 def test_seed_session_start_tolerates_corrupt(tmp_path):
@@ -566,62 +566,71 @@ def test_seed_session_start_tolerates_corrupt(tmp_path):
     assert data == {"hooks": _full_managed_hooks()}
 
 
-# --- E2g pidfile marker: write (SessionStart) + remove (SessionEnd) --------
+# --- per-PID markers: write (SessionStart) + remove (SessionEnd) -----------
 
-def test_pidfile_commands_default_path_is_the_single_source_constant():
-    """SINGLE SOURCE OF TRUTH guard: the hook commands' default path is built FROM
-    AGENT_PIDFILE_PATH, so it cannot drift from the supervisor's --agent-pidfile."""
-    default = "${KANIBAKO_AGENT_PIDFILE:-" + AGENT_PIDFILE_PATH + "}"
-    assert default in _AGENT_PIDFILE_WRITE_COMMAND
-    assert default in _AGENT_PIDFILE_REMOVE_COMMAND
-    # The write command writes $PPID after ensuring the dir exists; silent-safe.
-    assert _AGENT_PIDFILE_WRITE_COMMAND == (
-        f'f="${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}"; '
-        'mkdir -p "$(dirname "$f")" && printf %s "$PPID" > "$f" || true'
+def test_marker_commands_default_dir_is_the_single_source_constant():
+    """SINGLE SOURCE OF TRUTH guard: the hook commands' default dir is built FROM
+    AGENT_MARKERS_DIR, so it cannot drift from the supervisor's --agent-markers-dir."""
+    default = "${KANIBAKO_AGENT_MARKERS_DIR:-" + AGENT_MARKERS_DIR + "}"
+    assert default in _AGENT_MARKER_WRITE_COMMAND
+    assert default in _AGENT_MARKER_REMOVE_COMMAND
+    # The write command writes a per-PID marker <dir>/$PPID after mkdir -p; silent-safe.
+    assert _AGENT_MARKER_WRITE_COMMAND == (
+        f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
+        'mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'
     )
-    assert _AGENT_PIDFILE_REMOVE_COMMAND == (
-        f'rm -f "${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}" || true'
+    assert _AGENT_MARKER_REMOVE_COMMAND == (
+        f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
+        'rm -f "$d/$PPID" || true'
     )
 
 
-def test_pidfile_path_agrees_with_supervisor_agent_pidfile():
-    """The two ends of the E2f/E2g contract read ONE constant: the E2g write side
-    (vscode_config.AGENT_PIDFILE_PATH) IS the value start.py passes to the
-    supervisor's --agent-pidfile / seeds as KANIBAKO_AGENT_PIDFILE (read side)."""
-    from kanibako.commands.start import AGENT_PIDFILE_PATH as START_PIDFILE_PATH
+def test_marker_write_filename_is_the_pid_not_a_fixed_file():
+    """The per-PID scheme keys the marker on $PPID as the FILENAME (``$d/$PPID``),
+    so a CLI incumbent and a panel newcomer each hold their OWN marker — no single
+    last-writer-wins path."""
+    assert '"$d/$PPID"' in _AGENT_MARKER_WRITE_COMMAND
+    assert '"$d/$PPID"' in _AGENT_MARKER_REMOVE_COMMAND
 
-    assert START_PIDFILE_PATH is AGENT_PIDFILE_PATH
+
+def test_markers_dir_agrees_with_supervisor_agent_markers_dir():
+    """The two ends of the detection contract read ONE constant: the write side
+    (vscode_config.AGENT_MARKERS_DIR) IS the value start.py passes to the supervisor's
+    --agent-markers-dir / seeds as KANIBAKO_AGENT_MARKERS_DIR (read side)."""
+    from kanibako.commands.start import AGENT_MARKERS_DIR as START_MARKERS_DIR
+
+    assert START_MARKERS_DIR is AGENT_MARKERS_DIR
 
 
 def test_merge_pidfile_write_into_empty_creates_own_sessionstart_group():
-    merged = merge_pidfile_write_hook({})
-    assert merged == {"hooks": {"SessionStart": [_pidfile_write_group()]}}
+    merged = merge_marker_write_hook({})
+    assert merged == {"hooks": {"SessionStart": [_marker_write_group()]}}
 
 
 def test_merge_session_end_into_empty_creates_sessionend_group():
-    merged = merge_session_end_hook({})
-    assert merged == {"hooks": {"SessionEnd": [_pidfile_remove_group()]}}
+    merged = merge_marker_remove_hook({})
+    assert merged == {"hooks": {"SessionEnd": [_marker_remove_group()]}}
 
 
 def test_all_three_managed_commands_coexist():
     """Directive + pidfile-write (both SessionStart) + pidfile-remove (SessionEnd)
     all coexist when merged together — no group swallows another."""
     merged = merge_session_start_hook({})
-    merged = merge_pidfile_write_hook(merged)
-    merged = merge_session_end_hook(merged)
+    merged = merge_marker_write_hook(merged)
+    merged = merge_marker_remove_hook(merged)
     assert merged["hooks"]["SessionStart"] == [
-        _managed_group(), _pidfile_write_group(),
+        _managed_group(), _marker_write_group(),
     ]
-    assert merged["hooks"]["SessionEnd"] == [_pidfile_remove_group()]
+    assert merged["hooks"]["SessionEnd"] == [_marker_remove_group()]
 
 
 def test_pidfile_merges_are_idempotent():
     """Merging all three twice does NOT duplicate any command."""
-    once = merge_session_end_hook(
-        merge_pidfile_write_hook(merge_session_start_hook({}))
+    once = merge_marker_remove_hook(
+        merge_marker_write_hook(merge_session_start_hook({}))
     )
-    twice = merge_session_end_hook(
-        merge_pidfile_write_hook(merge_session_start_hook(once))
+    twice = merge_marker_remove_hook(
+        merge_marker_write_hook(merge_session_start_hook(once))
     )
     assert twice == once
     assert len(twice["hooks"]["SessionStart"]) == 2
@@ -637,13 +646,13 @@ def test_pidfile_write_idempotent_keys_on_command_not_matcher():
                 {
                     "matcher": "startup",
                     "hooks": [
-                        {"type": "command", "command": _AGENT_PIDFILE_WRITE_COMMAND},
+                        {"type": "command", "command": _AGENT_MARKER_WRITE_COMMAND},
                     ],
                 }
             ]
         }
     }
-    assert merge_pidfile_write_hook(pre) == pre
+    assert merge_marker_write_hook(pre) == pre
 
 
 def test_pidfile_merges_preserve_user_hooks_on_every_event():
@@ -658,22 +667,22 @@ def test_pidfile_merges_preserve_user_hooks_on_every_event():
             "PreToolUse": [{"matcher": "*", "hooks": []}],
         },
     }
-    merged = merge_session_end_hook(
-        merge_pidfile_write_hook(merge_session_start_hook(existing))
+    merged = merge_marker_remove_hook(
+        merge_marker_write_hook(merge_session_start_hook(existing))
     )
     assert merged["$schema"] == "x"
     assert merged["hooks"]["PreToolUse"] == [{"matcher": "*", "hooks": []}]
     # User groups kept, ours appended after them.
     assert merged["hooks"]["SessionStart"] == [
-        user_ss, _managed_group(), _pidfile_write_group(),
+        user_ss, _managed_group(), _marker_write_group(),
     ]
-    assert merged["hooks"]["SessionEnd"] == [user_se, _pidfile_remove_group()]
+    assert merged["hooks"]["SessionEnd"] == [user_se, _marker_remove_group()]
 
 
 def test_pidfile_merges_do_not_mutate_input():
     src = {"hooks": {"SessionStart": [], "SessionEnd": []}}
-    merge_pidfile_write_hook(src)
-    merge_session_end_hook(src)
+    merge_marker_write_hook(src)
+    merge_marker_remove_hook(src)
     assert src == {"hooks": {"SessionStart": [], "SessionEnd": []}}
 
 
@@ -686,9 +695,9 @@ def test_seed_session_start_preserves_user_sessionend_and_is_idempotent(tmp_path
     assert seed_session_start_hook(path) is True
     data = json.loads(path.read_text())
     assert data["hooks"]["SessionStart"] == [
-        _managed_group(), _pidfile_write_group(),
+        _managed_group(), _marker_write_group(),
     ]
-    assert data["hooks"]["SessionEnd"] == [user_se, _pidfile_remove_group()]
+    assert data["hooks"]["SessionEnd"] == [user_se, _marker_remove_group()]
     assert seed_session_start_hook(path) is False
 
 

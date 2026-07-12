@@ -373,7 +373,7 @@ def _merge_managed_command_hook(
     """UNION-MERGE ONE kanibako-managed ``type:command`` hook into ``hooks.<event>``.
 
     The shared idempotent-append primitive behind every claude JSON hook kanibako
-    seeds (instruction-delivery + the E2g pidfile write/remove).  Returns a NEW
+    seeds (instruction-delivery + the per-PID marker write/remove).  Returns a NEW
     dict (input never mutated):
 
     * ``hooks`` — created if absent; if present, its OTHER event keys are preserved.
@@ -385,7 +385,7 @@ def _merge_managed_command_hook(
     * every OTHER top-level key is preserved untouched.
 
     Keying on the command string keeps each managed command its OWN independent
-    group: the pidfile-WRITE hook and the instruction-delivery hook coexist under
+    group: the marker-WRITE hook and the instruction-delivery hook coexist under
     ``SessionStart`` without either's idempotency swallowing the other.
     """
     merged = copy.deepcopy(settings)
@@ -434,28 +434,36 @@ def merge_session_start_hook(settings: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# E2g — claude panel-agent LIVENESS MARKER (pidfile) write side.
+# E2g / increment 4a — claude agent LIVENESS MARKER (per-PID) write side.
 #
-# The box_supervisor's panel-watch mode (E2f) READS a box-local pidfile to detect
-# a dead VS-Code-panel claude agent; this is the WRITE side.  We seed a claude
-# ``SessionStart`` hook that writes the session's PID to that pidfile and a
-# ``SessionEnd`` hook that removes it on a clean exit — so a live panel agent keeps
-# the marker present and a clean shutdown clears it.  Both are MANAGED as their own
-# groups, idempotent + preserving of user hooks, exactly like the directive hook.
+# The box_supervisor READS a box-local markers DIRECTORY to enumerate which agent
+# sessions are live (panel-watch's dead-panel detection AND increment-4a newcomer
+# detection); this is the WRITE side.  We seed a claude ``SessionStart`` hook that
+# writes a per-PID marker FILE ``<dir>/$PPID`` and a ``SessionEnd`` hook that removes
+# ``<dir>/$PPID`` on a clean exit — so each live agent keeps its OWN marker present
+# and a clean shutdown clears it.  Both are MANAGED as their own groups, idempotent +
+# preserving of user hooks, exactly like the directive hook.
 #
-# SINGLE SOURCE OF TRUTH for the path: :data:`AGENT_PIDFILE_PATH` is defined HERE
-# (the low-level module) and imported by ``commands/start.py`` for BOTH the
-# supervisor's ``--agent-pidfile`` (read end) and the ``KANIBAKO_AGENT_PIDFILE`` env
-# it seeds (write end), so the two ends of the contract can never desync.  The hook
-# command prefers the seeded env (``${KANIBAKO_AGENT_PIDFILE:-...}``) and falls back
-# to the SAME literal built from the constant — so it also works where a
+# ⚑ PER-PID (increment 4a), not a single ``agent.pid`` file: the FILENAME is the PID
+# and the CONTENT is ``$PPID`` too (redundant — readers key on the FILENAME).  The old
+# single-path scheme was last-writer-wins, so a CLI incumbent and a VS Code panel
+# newcomer sharing one path could not both be held; a DIR of per-PID files enumerates
+# the FULL set of live agent PIDs, which the supervisor prunes-dead via ``kill -0`` to
+# detect a newcomer (a live marker PID that is not its own agent).
+#
+# SINGLE SOURCE OF TRUTH for the dir: :data:`AGENT_MARKERS_DIR` is defined HERE (the
+# low-level module) and imported by ``commands/start.py`` for BOTH the supervisor's
+# ``--agent-markers-dir`` (read end) and the ``KANIBAKO_AGENT_MARKERS_DIR`` env it
+# seeds (write end), so the two ends of the contract can never desync.  The hook
+# command prefers the seeded env (``${KANIBAKO_AGENT_MARKERS_DIR:-...}``) and falls
+# back to the SAME literal built from the constant — so it also works where a
 # ``podman exec`` panel agent does not inherit the podman-set env.  It MUST be a
 # LITERAL box-local path (byte-identical on both ends): podman sets the env verbatim
-# and the supervisor reads ``--agent-pidfile`` verbatim, so a shell expression like
-# ``${XDG_RUNTIME_DIR:-/tmp}`` would only resolve in a shell context and otherwise
-# become a literal ``${...}`` filename — the ends would then disagree.  ``/tmp`` is a
-# box-local tmpfs; a pidfile is tiny, so it is a safe universal home (the dir is
-# created by the write hook; the reader treats an absent dir/file as "no panel yet").
+# and the supervisor reads ``--agent-markers-dir`` verbatim, so a shell expression
+# like ``${XDG_RUNTIME_DIR:-/tmp}`` would only resolve in a shell context and
+# otherwise become a literal ``${...}`` path — the ends would then disagree.  ``/tmp``
+# is a box-local tmpfs; the markers are tiny, so it is a safe universal home (the dir
+# is created by the write hook; the reader treats an absent dir as "no agents yet").
 #
 # ⚑ VALIDATION-PENDING (do NOT claim these hold — check at the bifrost e2e):
 #   1. ``$PPID`` inside a claude SessionStart ``command`` hook == the claude agent
@@ -466,31 +474,35 @@ def merge_session_start_hook(settings: dict) -> dict:
 #      hooks at all.  LIKELY but only checkable on a real claude-in-podman box.
 # ---------------------------------------------------------------------------
 
-# The box-local panel-agent liveness MARKER path — the SINGLE source of truth for
-# both ends of the E2f/E2g contract (supervisor ``--agent-pidfile`` read + the
-# ``KANIBAKO_AGENT_PIDFILE`` env write); ``commands/start.py`` imports THIS.
-AGENT_PIDFILE_PATH = "/tmp/kanibako/agent.pid"
+# The box-local per-agent liveness MARKER directory — the SINGLE source of truth for
+# both ends of the detection contract (supervisor ``--agent-markers-dir`` read + the
+# ``KANIBAKO_AGENT_MARKERS_DIR`` env write); ``commands/start.py`` imports THIS.  Each
+# live agent session writes ONE marker FILE named for its PID (``<dir>/$PPID``) and
+# removes it on a clean SessionEnd, so the dir enumerates the set of live agent PIDs.
+AGENT_MARKERS_DIR = "/tmp/kanibako/agents"
 
 # claude SessionEnd sources (per the E2g spike): a broad OR so the marker is cleaned
 # up on ANY clean session end.
 _SESSION_END_MATCHER = "clear|logout|prompt_input_exit|other"
 
-# The pidfile WRITE (SessionStart) + REMOVE (SessionEnd) commands.  Silent-safe
-# (``|| true``): a failure NEVER aborts the session.  The default-path portion is
-# built FROM :data:`AGENT_PIDFILE_PATH` (not a second literal) so it stays in sync
-# with the supervisor's ``--agent-pidfile``.  See the VALIDATION-PENDING note above
-# re: ``$PPID`` being the agent PID.
-_AGENT_PIDFILE_WRITE_COMMAND = (
-    f'f="${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}"; '
-    'mkdir -p "$(dirname "$f")" && printf %s "$PPID" > "$f" || true'
+# The per-PID marker WRITE (SessionStart) + REMOVE (SessionEnd) commands.  Silent-safe
+# (``|| true``): a failure NEVER aborts the session.  The default-dir portion is built
+# FROM :data:`AGENT_MARKERS_DIR` (not a second literal) so it stays in sync with the
+# supervisor's ``--agent-markers-dir``.  The marker FILENAME is ``$PPID`` (the reader
+# keys on it); the CONTENT is ``$PPID`` too, purely for debuggability.  See the
+# VALIDATION-PENDING note above re: ``$PPID`` being the agent PID.
+_AGENT_MARKER_WRITE_COMMAND = (
+    f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
+    'mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'
 )
-_AGENT_PIDFILE_REMOVE_COMMAND = (
-    f'rm -f "${{KANIBAKO_AGENT_PIDFILE:-{AGENT_PIDFILE_PATH}}}" || true'
+_AGENT_MARKER_REMOVE_COMMAND = (
+    f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
+    'rm -f "$d/$PPID" || true'
 )
 
 
-def merge_pidfile_write_hook(settings: dict) -> dict:
-    """UNION-MERGE the E2g pidfile-WRITE ``SessionStart`` hook (its own managed
+def merge_marker_write_hook(settings: dict) -> dict:
+    """UNION-MERGE the per-PID marker-WRITE ``SessionStart`` hook (its own managed
     group, keyed on the exact command) into a claude JSON hooks dict.
 
     A SEPARATE managed group from :func:`merge_session_start_hook` — the two
@@ -501,12 +513,12 @@ def merge_pidfile_write_hook(settings: dict) -> dict:
         settings,
         event="SessionStart",
         matcher=_SESSION_START_MATCHER,
-        command=_AGENT_PIDFILE_WRITE_COMMAND,
+        command=_AGENT_MARKER_WRITE_COMMAND,
     )
 
 
-def merge_session_end_hook(settings: dict) -> dict:
-    """UNION-MERGE the E2g pidfile-REMOVE ``SessionEnd`` hook into a claude JSON
+def merge_marker_remove_hook(settings: dict) -> dict:
+    """UNION-MERGE the per-PID marker-REMOVE ``SessionEnd`` hook into a claude JSON
     hooks dict, returning a NEW dict (input never mutated).
 
     Mirrors :func:`merge_session_start_hook`: a managed ``hooks.SessionEnd`` group
@@ -518,7 +530,7 @@ def merge_session_end_hook(settings: dict) -> dict:
         settings,
         event="SessionEnd",
         matcher=_SESSION_END_MATCHER,
-        command=_AGENT_PIDFILE_REMOVE_COMMAND,
+        command=_AGENT_MARKER_REMOVE_COMMAND,
     )
 
 
@@ -530,8 +542,8 @@ def seed_session_start_hook(settings_path: Path) -> bool:
     preserving every user/other-event hook:
 
     * the instruction-delivery ``SessionStart`` hook (:func:`merge_session_start_hook`);
-    * the E2g pidfile-WRITE ``SessionStart`` hook (:func:`merge_pidfile_write_hook`);
-    * the E2g pidfile-REMOVE ``SessionEnd`` hook (:func:`merge_session_end_hook`).
+    * the per-PID marker-WRITE ``SessionStart`` hook (:func:`merge_marker_write_hook`);
+    * the per-PID marker-REMOVE ``SessionEnd`` hook (:func:`merge_marker_remove_hook`).
 
     The CLAUDE surface (JSON hooks).  codex does NOT use this — its hook lives in
     ``~/.codex/config.toml`` via :func:`seed_codex_config`.  Reads the existing file
@@ -541,8 +553,8 @@ def seed_session_start_hook(settings_path: Path) -> bool:
     """
     existing = _read_existing_config(settings_path)
     merged = merge_session_start_hook(existing)
-    merged = merge_pidfile_write_hook(merged)
-    merged = merge_session_end_hook(merged)
+    merged = merge_marker_write_hook(merged)
+    merged = merge_marker_remove_hook(merged)
     return _write_if_changed(settings_path, existing, merged)
 
 
@@ -853,7 +865,7 @@ def deliver_directive_session_hook(
     config surface, returning whether a write occurred.
 
     * ``claude`` → ``<config_root>/.claude/settings.json`` (the full managed JSON
-      hook set: instruction-delivery ``SessionStart`` + the E2g pidfile write/remove
+      hook set: instruction-delivery ``SessionStart`` + the per-PID marker write/remove
       hooks; all unconditional, orthogonal to *auto_approve* — see
       :func:`seed_session_start_hook`).
     * ``codex``  → ``<config_root>/.codex/config.toml`` (the codex config manager:

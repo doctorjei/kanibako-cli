@@ -8,11 +8,16 @@ dies — so the box persists independent of any one agent session (design princi
 B: only genuine exit-of-everything, or an explicit ``kanibako stop``, tears the box
 down).
 
-This module is INCREMENT 2 (E2a): the supervisor MODULE ONLY.  It makes NO
-launch-model changes — it does not touch ``start.py`` / ``_run_container`` (that is
-E2b, which will `exec python3 -m kanibako.box_supervisor ...` as PID-1).  It also
-does NOT implement eviction / handoff / single-state enforcement (design increment
-4, deferred): there is no agent eviction or process-group killing here.
+This module grew from INCREMENT 2 (E2a) — the supervisor MODULE — through E2b-E2h
+(the launch-model wiring in ``start.py``) and increment 4a (single-state DETECTION).
+Increment 4a adds LOG-ONLY newcomer detection: both loops enumerate the per-agent
+markers dir (:func:`scan_marker_pids`) and log any live marker PID that is NOT the
+supervisor's own agent (:func:`newcomer_pids`) — a second agent has bound the
+session (the split-brain hazard).  4a takes NO action on a newcomer: it does NOT
+implement eviction / SIGSTOP / grace / process-group killing (design increment 4b,
+deferred) — there is no agent eviction or signalling of a newcomer here.
+:meth:`kill_agent_session` is the total-teardown kill on box shutdown ONLY, never a
+newcomer eviction.
 
 Design for testability — the PURE decision logic (:func:`decide`) is split from the
 impure tmux actions, and EVERY subprocess call funnels through an injectable runner
@@ -112,12 +117,13 @@ _Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 # actually wait.
 _Sleeper = Callable[[float], None]
 
-# The panel-agent liveness probes (E2f), injectable so unit tests never touch the
-# real FS / os: ``_PidAlive`` answers "is this PID a live process?" and
-# ``_PidfileReader`` reads the marker file's text (``None`` when it is absent /
-# unreadable).  Defaults below are the real PID-1 implementations.
+# The agent-marker probes (E2f liveness + 4a detection), injectable so unit tests
+# never touch the real FS / os: ``_PidAlive`` answers "is this PID a live process?"
+# and ``_MarkersLister`` returns the PIDs named by the marker FILES in the markers dir
+# (``[]`` when the dir is absent / empty).  Defaults below are the real PID-1
+# implementations.
 _PidAlive = Callable[[int], bool]
-_PidfileReader = Callable[[str], "str | None"]
+_MarkersLister = Callable[[str], "list[int]"]
 
 
 def _default_pid_alive(pid: int) -> bool:
@@ -127,8 +133,8 @@ def _default_pid_alive(pid: int) -> bool:
     ``os.kill(pid, 0)`` sends no signal but raises when the PID is not a live,
     signalable process.  ``ProcessLookupError`` ⇒ dead; ``PermissionError`` ⇒
     ALIVE (the process exists, we merely may not signal it); any other ``OSError``
-    ⇒ treated as not-live (tolerant — the panel-watch caller degrades to "no live
-    panel agent" rather than crashing PID-1).
+    ⇒ treated as not-live (tolerant — the caller degrades to "not a live agent"
+    rather than crashing PID-1).
     """
     try:
         os.kill(pid, 0)
@@ -141,17 +147,69 @@ def _default_pid_alive(pid: int) -> bool:
     return True
 
 
-def _default_read_pidfile(path: str) -> str | None:
-    """Real ``_PidfileReader``: return the marker file's text, or ``None``.
+def _default_list_marker_pids(markers_dir: str) -> list[int]:
+    """Real ``_MarkersLister``: the PIDs named by the marker FILES in *markers_dir*.
 
-    Tolerant (PID-1 must never die on a missing/racing pidfile): an absent file,
-    an unreadable one, or any other ``OSError`` resolves to ``None`` — read by the
-    caller as "no panel agent yet" — never an exception.
+    Each live agent session's start hook writes a per-PID marker FILE named for its
+    ``$PPID`` (``<dir>/<pid>``; :data:`kanibako.vscode_config.AGENT_MARKERS_DIR`), so
+    the FILENAMES enumerate the agent PIDs — no file READ is needed.  Parses each
+    entry name as an ``int``, skipping any non-integer name.  Tolerant (PID-1 must
+    never die on a missing/racing dir): an absent dir or any ``OSError`` resolves to
+    ``[]`` — read by the caller as "no agents yet" — never an exception.
     """
     try:
-        return Path(path).read_text()
+        names = os.listdir(markers_dir)
     except OSError:
-        return None
+        return []
+    pids: list[int] = []
+    for name in names:
+        try:
+            pids.append(int(name))
+        except ValueError:
+            continue
+    return pids
+
+
+def scan_marker_pids(
+    markers_dir: str,
+    *,
+    list_pids: _MarkersLister,
+    pid_alive: _PidAlive,
+) -> tuple[set[int], set[int]]:
+    """PURE-ish: partition the markers dir into (LIVE pids, STALE pids).
+
+    Enumerates the marker PIDs via *list_pids*, drops any non-positive PID, then
+    prunes-dead via *pid_alive*: a marker whose process is live lands in the LIVE
+    set, one whose process is gone (a crash left the marker behind) lands in the
+    STALE set.  A *pid_alive* probe that RAISES for a given PID is swallowed and that
+    PID skipped (tolerant — one bad probe must not crash PID-1).  Deterministic over
+    its injected probes, so tests exhaust it with no real FS / os.
+    """
+    live: set[int] = set()
+    stale: set[int] = set()
+    for pid in list_pids(markers_dir):
+        if pid <= 0:
+            continue
+        try:
+            alive = pid_alive(pid)
+        except Exception:
+            log.debug("scan_marker_pids: liveness probe raised for pid %d; skipping", pid)
+            continue
+        (live if alive else stale).add(pid)
+    return live, stale
+
+
+def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]:
+    """PURE: the LIVE marker PIDs that are NOT the supervisor's OWN agent.
+
+    A newcomer is a second agent that has bound the session — a live marker whose PID
+    the supervisor did not launch/front (the split-brain hazard the design's
+    increment 4 catches).  *own_pids* is the mode-specific set of legitimate agent
+    PIDs (run_forever: the tmux pane PID(s); panel-watch: the tmux pane PID(s) of a
+    self-healed CLI PLUS the fronted panel incumbent — see the loops).  4a only LOGS
+    these; 4b will act.
+    """
+    return live_pids - own_pids
 
 
 # ---------------------------------------------------------------------------
@@ -186,14 +244,17 @@ class SupervisorConfig:
       PID-1 return so the box closes — no self-heal loop while a CLI is the surface.
       Any value other than ``"teardown"`` is treated as ``"self-heal"`` (safe default).
     * *panel_watch* — PANEL-WATCH mode (E2f, design cases 3a/3b): when ``True`` the
-      supervisor starts NO CLI agent (the VS Code panel is the agent), watches the
-      *agent_pidfile* liveness MARKER + the vscode_server surface, and self-heals a
-      CLI agent ONLY when the panel agent DIES with the panel still connected (the
+      supervisor starts NO CLI agent (the VS Code panel is the agent), enumerates the
+      *agent_markers_dir* liveness MARKERS + the vscode_server surface, and self-heals
+      a CLI agent ONLY when the panel agent DIES with the panel still connected (the
       §89-96 fallback).  ``False`` (default) is the E2b-E2e tmux-agent path,
-      byte-unchanged.  This is the ``kanibako code`` AGENT-INDEPENDENT warm-up.
-    * *agent_pidfile* — box-local path to the panel-agent liveness marker (the panel
-      agent's start hook writes its PID here; E2g).  Read tolerantly by
-      :meth:`BoxSupervisor.panel_agent_state`.  Only consulted under *panel_watch*.
+      byte-unchanged EXCEPT the LOG-ONLY 4a newcomer detection.  This is the
+      ``kanibako code`` AGENT-INDEPENDENT warm-up.
+    * *agent_markers_dir* — box-local per-agent liveness MARKERS directory (each agent
+      session's start hook writes a per-PID marker ``<dir>/$PPID``; E2g / increment
+      4a).  Enumerated tolerantly by :meth:`BoxSupervisor.panel_agent_state` (panel
+      liveness) and by the LOG-ONLY 4a newcomer detection wired into BOTH loops.
+      ``None`` (default) disables both (an old launcher that threads no dir).
     * *creds_flag* — box-local ABSOLUTE path to the credential-writeback SIGNAL flag
       (increment D).  On EVERY detach transition (all modes) :meth:`_on_detach`
       writes this flag into the supervisor's OWN box-home (already host-visible via
@@ -215,7 +276,7 @@ class SupervisorConfig:
     send_keys_delay: float = 0.1
     on_agent_exit: str = "self-heal"
     panel_watch: bool = False
-    agent_pidfile: str | None = None
+    agent_markers_dir: str | None = None
     creds_flag: str | None = None
     # Bounded scrollback (lines) captured from the dead agent pane on a foreground
     # teardown and echoed to PID-1's stdout so ``podman logs`` surfaces the agent's
@@ -280,13 +341,15 @@ def decide(
 # ---------------------------------------------------------------------------
 
 class PanelAgentState(Enum):
-    """Liveness of the PANEL-launched agent, from the marker pidfile (E2f).
+    """Liveness of the PANEL-launched agent, from the per-PID markers dir (E2f).
 
-    * :data:`NONE` — no marker yet (file absent / empty / unparseable): no panel
-      agent has started, OR one exited cleanly and removed its marker.
-    * :data:`ALIVE` — the marker names a LIVE process (``os.kill(pid, 0)`` ok).
-    * :data:`DEAD` — the marker names a process that is NOT live (a crash left the
-      pidfile STALE): the panel agent exited.
+    Computed from the NON-OWN markers (excluding a self-healed CLI's own tmux pane):
+
+    * :data:`NONE` — no non-own marker (dir absent, or every panel agent exited
+      cleanly and removed its ``<dir>/$PPID``): no panel agent is present.
+    * :data:`ALIVE` — a non-own marker names a LIVE process (``os.kill(pid, 0)`` ok).
+    * :data:`DEAD` — no live non-own marker but a STALE one remains (a crash left the
+      per-PID file behind): the panel agent exited.
     """
 
     NONE = "none"
@@ -400,7 +463,7 @@ class BoxSupervisor:
         sleep: _Sleeper = time.sleep,
         proc_cmdlines: Iterable[str] | None = None,
         pid_alive: _PidAlive = _default_pid_alive,
-        read_pidfile: _PidfileReader = _default_read_pidfile,
+        list_marker_pids: _MarkersLister = _default_list_marker_pids,
     ) -> None:
         self.config = config
         self._run = run
@@ -409,10 +472,14 @@ class BoxSupervisor:
         # snapshot_attach_state (tests inject it to skip the real ``/proc`` walk);
         # ``None`` ⇒ each snapshot collects fresh from ``/proc`` (the real PID-1 path).
         self._proc_cmdlines = None if proc_cmdlines is None else list(proc_cmdlines)
-        # Panel-agent liveness probes (E2f), injectable so unit tests never touch the
-        # real FS / os; defaults are the real PID-1 implementations.
+        # Agent-marker probes (E2f liveness + 4a detection), injectable so unit tests
+        # never touch the real FS / os; defaults are the real PID-1 implementations.
         self._pid_alive = pid_alive
-        self._read_pidfile = read_pidfile
+        self._list_marker_pids = list_marker_pids
+        # 4a: PIDs already logged as newcomers, so the LOG-ONLY detection announces a
+        # given newcomer ONCE (not every poll tick).  Pruned to the still-present
+        # newcomer set each tick, so a departed-then-returning PID re-logs.
+        self._reported_newcomers: set[int] = set()
         self._stop = False
 
     # -- tmux action helpers (impure; tolerant; injectable ``run``) ----------
@@ -707,44 +774,99 @@ class BoxSupervisor:
         """
         return state.vscode_server
 
-    # -- panel-agent liveness (E2f) ------------------------------------------
+    # -- agent markers: liveness (E2f) + newcomer detection (4a) -------------
+
+    def _scan_markers(self) -> tuple[set[int], set[int]]:
+        """Enumerate the markers dir → (LIVE pids, STALE pids); tolerant.
+
+        Delegates to :func:`scan_marker_pids` with the injected lister + liveness
+        probe.  No dir configured, or any unexpected raise, resolves to two EMPTY
+        sets — PID-1 must never die on a marker enumeration.
+        """
+        markers_dir = self.config.agent_markers_dir
+        if not markers_dir:
+            return set(), set()
+        try:
+            return scan_marker_pids(
+                markers_dir,
+                list_pids=self._list_marker_pids,
+                pid_alive=self._pid_alive,
+            )
+        except Exception:
+            log.debug("_scan_markers: enumeration raised; treating as no markers")
+            return set(), set()
+
+    def _own_agent_pids(self) -> set[int]:
+        """The PIDs of the agent(s) the supervisor itself launched in its tmux session.
+
+        ``tmux list-panes -s -t <session> -F '#{pane_pid}'`` lists the ROOT process of
+        every pane in the session — and because the agent is launched as ``new-session
+        -- <agent argv>`` (no shell wrap), a pane's root process IS the agent.  So the
+        pane PIDs are the supervisor's OWN agents (E2g: the marker they write via
+        ``$PPID`` equals the pane PID), which the 4a newcomer detection excludes.  In
+        panel-watch steady state there is no tmux agent, so this is EMPTY — the fronted
+        panel agent is not a pane the supervisor launched, so the panel-watch loop adds
+        that fronted incumbent to 'own' separately.  Tolerant: a missing tmux / dead
+        server / no session (``None`` output) → empty set; never raises.
+        """
+        out = self._tmux_output(
+            ["list-panes", "-s", "-t", self.config.session, "-F", "#{pane_pid}"]
+        )
+        if not out:
+            return set()
+        pids: set[int] = set()
+        for tok in out.split():
+            try:
+                pids.add(int(tok))
+            except ValueError:
+                continue
+        return pids
+
+    def _log_newcomers(self, live_pids: set[int], own_pids: set[int]) -> None:
+        """LOG-ONLY (increment 4a): warn once per newcomer; take NO action.
+
+        A newcomer is a LIVE marker PID that is not one of *own_pids* (the supervisor's
+        legitimate agent(s) for this mode) — a second agent has bound the session.  4a
+        only LOGS: it emits ONE warning per newly-seen newcomer (deduped via
+        :attr:`_reported_newcomers`, re-pinned to the current newcomer set so a
+        departed-then-returning PID re-logs) and does NOTHING else — NO SIGSTOP, kill,
+        evict, or send-keys.  4b will act on exactly this signal.
+        """
+        newcomers = newcomer_pids(live_pids, own_pids)
+        for pid in sorted(newcomers - self._reported_newcomers):
+            log.warning(
+                "newcomer agent PID %s detected on session "
+                "(increment 4a: detection only, no action)",
+                pid,
+            )
+        self._reported_newcomers = newcomers
 
     def panel_agent_state(self) -> PanelAgentState:
-        """Liveness of the PANEL-launched agent from the marker pidfile (E2f).
+        """Liveness of the PANEL-launched agent from the per-PID markers dir (E2f).
 
-        Reads ``config.agent_pidfile`` via the injected reader and checks the PID
-        via the injected liveness probe (defaults: real FS read + ``os.kill(pid,
-        0)``).  TOLERANT throughout — PID-1 must never die on a bad marker:
+        Enumerates the markers dir (:meth:`_scan_markers`) and EXCLUDES the supervisor's
+        OWN tmux-pane agents (:meth:`_own_agent_pids`) — a self-healed CLI agent writes
+        a marker too and it is NOT the panel.  TOLERANT throughout — PID-1 must never
+        die on a bad marker:
 
-        * no ``agent_pidfile`` configured, file absent / empty / unparseable, or a
-          probe that raises → :data:`PanelAgentState.NONE` ("no live panel agent");
-        * a parseable positive PID that is a LIVE process → :data:`PanelAgentState.ALIVE`;
-        * a parseable positive PID that is NOT live (a stale marker a crash left
-          behind) → :data:`PanelAgentState.DEAD`.
+        * no markers dir configured, or NO non-own markers at all (never started, or a
+          clean SessionEnd removed each) → :data:`PanelAgentState.NONE`;
+        * ≥1 LIVE non-own marker (a panel agent's live PID) → :data:`PanelAgentState.ALIVE`;
+        * no live non-own marker but ≥1 STALE non-own marker (a crash left a per-PID
+          file behind) → :data:`PanelAgentState.DEAD`.
+
+        This preserves the E2f contract the single-pidfile scheme drove (a clean exit →
+        NONE, a crash → DEAD → SELF_HEAL_CLI), now over the per-PID dir.
         """
-        path = self.config.agent_pidfile
-        if not path:
+        if not self.config.agent_markers_dir:
             return PanelAgentState.NONE
-        try:
-            raw = self._read_pidfile(path)
-        except Exception:
-            log.debug("panel_agent_state: pidfile read raised for %r; treating as NONE", path)
-            return PanelAgentState.NONE
-        if not raw or not raw.strip():
-            return PanelAgentState.NONE
-        try:
-            pid = int(raw.strip())
-        except ValueError:
-            log.debug("panel_agent_state: unparseable pidfile contents %r", raw)
-            return PanelAgentState.NONE
-        if pid <= 0:
-            return PanelAgentState.NONE
-        try:
-            alive = self._pid_alive(pid)
-        except Exception:
-            log.debug("panel_agent_state: liveness probe raised for pid %d; treating as NONE", pid)
-            return PanelAgentState.NONE
-        return PanelAgentState.ALIVE if alive else PanelAgentState.DEAD
+        own = self._own_agent_pids()
+        live, stale = self._scan_markers()
+        if live - own:
+            return PanelAgentState.ALIVE
+        if stale - own:
+            return PanelAgentState.DEAD
+        return PanelAgentState.NONE
 
     # -- self-heal -----------------------------------------------------------
 
@@ -917,6 +1039,14 @@ class BoxSupervisor:
             try:
                 cur = self._snapshot()
                 alive = self.agent_session_alive()
+                # 4a LOG-ONLY newcomer detection: a live marker PID that is NOT this
+                # supervisor's own tmux agent = a second agent bound the session (the
+                # split-brain hazard — e.g. the VS Code panel auto-`--resume` over a
+                # live CLI agent).  Gated on a configured markers dir so an old launcher
+                # (or a test) that threads none is byte-unchanged.  NO action (4b acts).
+                if self.config.agent_markers_dir:
+                    live_markers, _stale = self._scan_markers()
+                    self._log_newcomers(live_markers, self._own_agent_pids())
                 action = decide(prev, cur, alive)
                 if action.fire_detach_hook:
                     self._safe_on_detach()
@@ -1007,6 +1137,12 @@ class BoxSupervisor:
         # a never-yet-attached box stays up through the startup grace.  The pre-loop
         # snapshot is guarded like run_forever's startup (a raise must not kill PID-1).
         seen_surface = False
+        # 4a: the fronted panel incumbent PID (first live non-own marker seen).  A
+        # panel-watch box's LEGITIMATE agent is the fronted panel (a non-own marker) or
+        # a self-healed CLI (an own tmux pane); a SECOND live non-own marker beyond the
+        # latched incumbent is a newcomer (a concurrent panel resume).  Latched here so
+        # the fronted panel is not itself flagged.  Cleared when it departs the live set.
+        panel_incumbent: int | None = None
         try:
             prev = self._snapshot()
             if prev.any_attached:
@@ -1024,6 +1160,21 @@ class BoxSupervisor:
                     self._safe_on_detach()
                 tmux_alive = self.agent_session_alive()
                 panel = self.panel_agent_state()
+                # 4a LOG-ONLY newcomer detection (panel-watch): own = the self-healed
+                # CLI's tmux pane(s) PLUS the latched fronted panel incumbent; a live
+                # marker outside that set is a newcomer.  NO action (4b acts).
+                if self.config.agent_markers_dir:
+                    own = self._own_agent_pids()
+                    live_markers, _stale = self._scan_markers()
+                    non_own_live = live_markers - own
+                    if panel_incumbent is not None and panel_incumbent not in non_own_live:
+                        panel_incumbent = None
+                    if panel_incumbent is None and non_own_live:
+                        panel_incumbent = min(non_own_live)
+                    incumbent = (
+                        {panel_incumbent} if panel_incumbent is not None else set()
+                    )
+                    self._log_newcomers(live_markers, own | incumbent)
                 action = decide_panel(
                     tmux_alive, panel, cur.vscode_server, cur.any_attached, seen_surface,
                 )
@@ -1089,15 +1240,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--panel-watch",
         action="store_true",
         help=(
-            "PANEL-WATCH mode (E2f): start NO CLI agent; watch the panel-agent marker "
-            "(--agent-pidfile) + the VS Code server surface and self-heal a CLI agent "
-            "only when the panel agent dies with the panel still connected"
+            "PANEL-WATCH mode (E2f): start NO CLI agent; enumerate the per-agent markers "
+            "dir (--agent-markers-dir) + the VS Code server surface and self-heal a CLI "
+            "agent only when the panel agent dies with the panel still connected"
         ),
     )
     parser.add_argument(
-        "--agent-pidfile",
+        "--agent-markers-dir",
         default=None,
-        help="box-local path to the panel-agent liveness marker (read under --panel-watch)",
+        help=(
+            "box-local per-agent liveness MARKERS dir (each agent writes <dir>/$PPID): "
+            "enumerated for panel-agent liveness (--panel-watch) and LOG-ONLY newcomer "
+            "detection (increment 4a) in both modes"
+        ),
     )
     parser.add_argument(
         "--creds-flag",
@@ -1141,7 +1296,7 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
         max_restart_retries=ns.max_retries,
         on_agent_exit=ns.on_agent_exit,
         panel_watch=ns.panel_watch,
-        agent_pidfile=ns.agent_pidfile,
+        agent_markers_dir=ns.agent_markers_dir,
         creds_flag=ns.creds_flag,
     )
 
@@ -1151,7 +1306,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ``python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
     [--max-retries N] [--continue-cmd 'ARGV'] [--on-agent-exit self-heal|teardown]
-    [--panel-watch --agent-pidfile PATH] [--creds-flag PATH]
+    [--panel-watch] [--agent-markers-dir DIR] [--creds-flag PATH]
     -- <agent entrypoint + argv...>``
 
     In ``--panel-watch`` mode (E2f) the trailing ``-- <agent argv>`` is OMITTED (no

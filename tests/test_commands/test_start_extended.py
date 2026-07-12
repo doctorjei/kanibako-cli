@@ -2172,7 +2172,7 @@ class TestWarmOnlyPanelWatch:
     ``start_detached`` (the ``code`` auto-start entry) launches the box_supervisor
     PID-1 in PANEL-WATCH mode: it starts NO CLI agent (the panel is the sole agent —
     no two-agent split-brain on one ``~/.claude``), watches the panel-agent liveness
-    marker (``--agent-pidfile`` / ``KANIBAKO_AGENT_PIDFILE``), and self-heals a CLI
+    marker (``--agent-markers-dir`` / ``KANIBAKO_AGENT_MARKERS_DIR``), and self-heals a CLI
     agent only if the panel agent dies with the panel still connected.  ``kanibako
     start --detach`` (no ``warm_only``) stays the E2b supervised-agent path.
     """
@@ -2198,7 +2198,7 @@ class TestWarmOnlyPanelWatch:
         """REGRESSION-PIN (the bug no test caught): the warm-up supervisor is
         AGENTLESS — panel-watch, NO agent runs at start.  Mutation-proof: a warm-up
         that ran the CLI agent would emit a trailing ``-- <agent argv>`` payload."""
-        from kanibako.commands.start import AGENT_PIDFILE_PATH, start_detached
+        from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
 
         with start_mocks() as m:
             rc = start_detached(None)
@@ -2207,7 +2207,7 @@ class TestWarmOnlyPanelWatch:
             argv = self._supervisor_argv(script)
             # Panel-watch, agent-independent warm-up.
             assert "--panel-watch" in argv
-            assert argv[argv.index("--agent-pidfile") + 1] == AGENT_PIDFILE_PATH
+            assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
             # MUTATION-PROOF: NO agent runs at start — there is NO standalone `--`
             # payload separator, so the supervisor starts agentless.
             assert "--" not in argv
@@ -2241,20 +2241,23 @@ class TestWarmOnlyPanelWatch:
             assert "box_supervisor" not in fallback       # no agent, no supervisor
             assert "new-session -s kanibako" in fallback   # bare-shell tmux keep-alive
 
-    def test_warm_up_seeds_agent_pidfile_env(self, start_mocks):
-        """The box seeds KANIBAKO_AGENT_PIDFILE (E2g's write side) = the supervisor's
-        --agent-pidfile (this read side): ONE shared marker path."""
-        from kanibako.commands.start import AGENT_PIDFILE_PATH, start_detached
+    def test_warm_up_seeds_agent_markers_dir_env(self, start_mocks):
+        """The box seeds KANIBAKO_AGENT_MARKERS_DIR (E2g's write side) = the supervisor's
+        --agent-markers-dir (this read side): ONE shared markers dir."""
+        from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
 
         with start_mocks() as m:
             assert start_detached(None) == 0
             env = m.runtime.run.call_args.kwargs["env"]
-            assert env["KANIBAKO_AGENT_PIDFILE"] == AGENT_PIDFILE_PATH
+            assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
 
     def test_start_detach_stays_supervised_agent_not_panel_watch(self, start_mocks):
         """REGRESSION GUARD (no over-reach): `kanibako start --detach` (no warm_only)
-        is UNCHANGED — the E2b supervised agent runs at start, no panel-watch, no
-        marker env."""
+        stays the E2b supervised-agent path — the agent runs at start, NO panel-watch.
+        Increment 4a: it NOW also carries the markers dir (+ env) so run_forever can
+        LOG-ONLY detect a panel newcomer; that is detection substrate, not eviction."""
+        from kanibako.commands.start import AGENT_MARKERS_DIR
+
         with start_mocks() as m:
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -2269,8 +2272,12 @@ class TestWarmOnlyPanelWatch:
             # agent entrypoint after it.
             assert "--" in argv
             assert "claude" in argv[argv.index("--") + 1:]
-            # No panel-agent marker env on the E2b path (nothing watches it).
-            assert "KANIBAKO_AGENT_PIDFILE" not in m.runtime.run.call_args.kwargs["env"]
+            # 4a: the markers dir IS threaded (both modes) for newcomer detection —
+            # but this remains the supervised agent path (agent runs at start).
+            assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
+            assert m.runtime.run.call_args.kwargs["env"][
+                "KANIBAKO_AGENT_MARKERS_DIR"
+            ] == AGENT_MARKERS_DIR
 
     @staticmethod
     def _warm_only_args(**over):
@@ -2292,9 +2299,9 @@ class TestWarmOnlyPanelWatch:
     def test_run_start_warm_only_matches_start_detached_panel_watch(self, start_mocks):
         """E2h: `kanibako start --warm-only` yields the SAME launch shape as
         start_detached(warm_only=True) — the panel-watch supervisor argv (agentless,
-        --agent-pidfile), the seeded KANIBAKO_AGENT_PIDFILE env, and NO attach.
+        --agent-markers-dir), the seeded KANIBAKO_AGENT_MARKERS_DIR env, and NO attach.
         Mutation-proof: fails if run_start does not thread warm_only through."""
-        from kanibako.commands.start import AGENT_PIDFILE_PATH, run_start
+        from kanibako.commands.start import AGENT_MARKERS_DIR, run_start
 
         with start_mocks() as m:
             rc = run_start(self._warm_only_args())
@@ -2302,12 +2309,12 @@ class TestWarmOnlyPanelWatch:
             argv = self._supervisor_argv(self._pid1_script(m))
             # Panel-watch, agent-independent — the start_detached(warm_only=True) shape.
             assert "--panel-watch" in argv
-            assert argv[argv.index("--agent-pidfile") + 1] == AGENT_PIDFILE_PATH
+            assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
             # Agentless: no standalone `--` agent payload runs at start.
             assert "--" not in argv
             # The shared marker env is seeded (E2g write side == this read side).
             env = m.runtime.run.call_args.kwargs["env"]
-            assert env["KANIBAKO_AGENT_PIDFILE"] == AGENT_PIDFILE_PATH
+            assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
             # A warm-only launch is DETACHED: this terminal never attaches.
             m.runtime.exec.assert_not_called()
 
