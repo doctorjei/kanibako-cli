@@ -493,6 +493,73 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(func=run_list)
 
 
+def _assert_primary_home_free_for_create(std, name: str) -> None:
+    """Refuse a primary ``create --name <name>`` that would reuse an existing box home.
+
+    ⚑ DATA-LOSS GUARD (box-lifecycle I4).  ``create --name X`` materialises the box
+    at ``std.boxes/X`` with ``mkdir(exist_ok=True)`` — so if that home is already
+    occupied the create MERGES into the existing box's data instead of failing.
+    Combined with the retained metadata of a ``deregistered`` box, a later
+    ``rm X --purge`` (resolving the deregistered entry) would then delete the
+    freshly-created box's home — silent data loss.  Refuse the create up front,
+    naming the ``register`` / ``purge`` recovery.
+
+    Detects, for the target home ``std.boxes/<name>``:
+
+    * DEREGISTERED — a ``registry_store`` deregistered entry parked by ``rm`` (no
+      ``--purge``); the exact hazard.  Recoverable via ``register`` (readopt) or
+      deletable via ``rm --purge``.
+    * ORPHANED metadata — a ``std.boxes/<name>`` dir with NO active membership and
+      NO deregistered entry (a hand-left dir, or a create that crashed before its
+      write-ahead journal entry).  Neither ``register`` nor ``rm`` resolves it by
+      name today, so the guidance points at removing the dir / choosing another name.
+
+    A genuine half-create being RE-RUN (a pending ``create`` journal entry keyed by
+    this home) is the sanctioned recovery re-entry and is NOT refused — it is left
+    to :func:`run_create`'s recovery path.  ACTIVE-name collisions are handled
+    UPSTREAM by :func:`check_primary_box_name_free` (which raises before this runs),
+    so this guard never sees a live-membership name.
+
+    Fires UNCONDITIONALLY of the ``register`` flag: ``run_create`` always resolves
+    with ``register=False`` (deferring the up-front name-uniqueness check), so this
+    is what closes the reuse hole on the deferred path.  Raises
+    :class:`ProjectError` on a conflict; returns ``None`` when the home is free —
+    the common case, leaving a normal create byte-identical.
+    """
+    from kanibako import journal, registry_store
+
+    box_dir = std.boxes / name
+
+    # DEREGISTERED wins over any journal crumb: a box that was deliberately
+    # `rm`-deregistered must be recovered via `register` / deleted via `--purge`,
+    # never silently reused by `create`.  This refusal MUST precede the
+    # pending-create allow below — otherwise a STALE `create` journal entry
+    # (left by a register->clear-window crash that `rm` does not clear) would
+    # FALSE-ALLOW a `create --name X <new path>` to merge into the deregistered
+    # box's retained home (reopening the data-loss window).  A legitimate
+    # half-create has NO deregistered entry, so this ordering never refuses one.
+    if registry_store.lookup_deregistered(std.registry, name) is not None:
+        raise ProjectError(
+            f"a box named '{name}' already exists as a deregistered box "
+            f"(metadata retained by 'rm'); run 'kanibako box register {name}' to "
+            f"recover it or 'kanibako box rm {name} --purge' to delete it, then "
+            f"retry."
+        )
+
+    # A half-create being recovered (pending `create` entry for this home, and
+    # NOT deregistered per the check above) is the legitimate re-entry — never
+    # refuse it (run_create completes the replay).
+    if journal.pending_create(std.journal, box_dir) is not None:
+        return
+
+    if box_dir.is_dir():
+        raise ProjectError(
+            f"a box named '{name}' already has orphaned metadata at {box_dir} "
+            f"(no active or deregistered registration); remove it (e.g. "
+            f"'rm -rf {box_dir}') or choose a different --name, then retry."
+        )
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -547,6 +614,13 @@ def run_create(args: argparse.Namespace) -> int:
                 args.name, str(effective_path),
                 force=getattr(args, "force", False),
             )
+            # ⚑ I4 data-loss guard: ALSO refuse when the box HOME std.boxes/<name>
+            # is occupied by a DEREGISTERED entry or an ORPHANED metadata dir
+            # (active-name collisions are already refused by
+            # check_primary_box_name_free above).  This fires on the register=False
+            # create path that skips the up-front uniqueness check — the reuse hole
+            # a later deregistered-purge would exploit to delete a live box's home.
+            _assert_primary_home_free_for_create(std, args.name)
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -1169,6 +1243,31 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
             f"or delete it with 'kanibako box rm {name} --purge'."
         )
         return 0
+
+    # ⚑ I4 STALE-ENTRY belt-and-suspenders: the name may have been REUSED by a new
+    # ACTIVE box that now occupies the SAME metadata path (e.g. a create that
+    # re-claimed `std.boxes/<name>`).  Purging by this stale deregistered entry
+    # would then delete the LIVE box's home — so refuse, and drop the stale entry
+    # (it is definitively wrong: an active box owns that path) so it stops
+    # shadowing.  NEVER delete the active box's home.
+    if kind == "standalone":
+        active_owner = registry_store.standalone_name_for_root(
+            std.registry, Path(str(metadata)),
+        ) if metadata else None
+    else:
+        active_owner = (
+            name if name in load_primary_boxes(std.primary_workset) else None
+        )
+    if active_owner is not None:
+        print(
+            f"'{name}' now refers to an active box (its metadata at {metadata} is "
+            f"a live box's home); the old deregistered entry is stale — not "
+            f"purging.  Dropped the stale entry (it will no longer shadow the "
+            f"active box).",
+            file=sys.stderr,
+        )
+        registry_store.unregister_deregistered(std.registry, name)
+        return 1
 
     # --purge on a deregistered box: validate + delete its retained metadata.
     try:

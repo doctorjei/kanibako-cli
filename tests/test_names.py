@@ -1024,3 +1024,93 @@ class TestStandaloneDeregisterPurge:
         assert root.is_dir()
         assert (root / "keep.txt").read_text() == "workspace file"
         assert registry_store.lookup_deregistered(std.registry, "k_box") is None
+
+
+# ---------------------------------------------------------------------------
+# box lifecycle I4: purge-side stale-entry guard (belt-and-suspenders)
+# ---------------------------------------------------------------------------
+
+class TestPurgeStaleDeregisteredGuard:
+    """The deregistered ``--purge`` REFUSES to delete a metadata path a NEW active
+    box now occupies (a reused name), dropping the stale entry instead — never
+    deleting the live box's home (box-lifecycle I4, belt-and-suspenders).
+
+    Exercised by calling :func:`_purge_deregistered` directly: through ``run_rm``
+    the active-first name resolution already routes a reused name to the ACTIVE
+    purge, so this is the defensive layer for direct / future callers.
+    """
+
+    def test_primary_stale_entry_refused_active_home_intact(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import _purge_deregistered
+        from kanibako.config import load_config
+        from kanibako.paths import (
+            load_primary_boxes,
+            load_std_paths,
+            register_primary_box_name,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        # An ACTIVE primary box "dup" whose home is std.boxes/dup.
+        ws = tmp_home / "dupws"
+        ws.mkdir()
+        home = std.boxes / "dup"
+        (home / "home").mkdir(parents=True, exist_ok=True)
+        (home / "home" / "LIVE.txt").write_text("live-box-data")
+        register_primary_box_name(
+            std.primary_workset, std.registry, "dup", str(ws),
+        )
+        assert "dup" in load_primary_boxes(std.primary_workset)
+
+        # A STALE deregistered entry pointing at the SAME home path.
+        registry_store.register_deregistered(
+            std.registry, "dup", kind="primary",
+            workspace=str(ws), metadata=str(home),
+        )
+
+        rc = _purge_deregistered(
+            std, "dup",
+            registry_store.lookup_deregistered(std.registry, "dup"),
+            argparse.Namespace(purge=True, force=True),
+        )
+        assert rc == 1
+        # The live box's home is INTACT; the stale entry was dropped.
+        assert (home / "home" / "LIVE.txt").read_text() == "live-box-data"
+        assert registry_store.lookup_deregistered(std.registry, "dup") is None
+        assert "stale" in capsys.readouterr().err.lower()
+
+    def test_standalone_stale_entry_refused_active_root_intact(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako import registry_store
+        from kanibako.commands.box._parser import _purge_deregistered
+        from kanibako.config import load_config
+        from kanibako.paths import _STANDALONE_META_DIR, load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        root = tmp_home / "sabox"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / _STANDALONE_META_DIR / "KEEP.txt").write_text("standalone-live")
+        # ACTIVE standalone box registered at this root.
+        registry_store.register_standalone(std.registry, "sabox", root)
+        # STALE deregistered entry for the same root.
+        registry_store.register_deregistered(
+            std.registry, "sabox", kind="standalone",
+            workspace=str(root), metadata=str(root),
+        )
+
+        rc = _purge_deregistered(
+            std, "sabox",
+            registry_store.lookup_deregistered(std.registry, "sabox"),
+            argparse.Namespace(purge=True, force=True),
+        )
+        assert rc == 1
+        assert (root / _STANDALONE_META_DIR / "KEEP.txt").read_text() == "standalone-live"
+        assert registry_store.lookup_deregistered(std.registry, "sabox") is None
+        assert "stale" in capsys.readouterr().err.lower()
