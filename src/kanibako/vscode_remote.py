@@ -137,6 +137,34 @@ def ssh_command(dest: str, remote_argv: list[str]) -> list[str]:
 _REMOTE_PATH_PREAMBLE = 'PATH="$HOME/.local/bin:$PATH" '
 
 
+def format_remote_failure(command: str, dest: str, remote_output: str) -> str:
+    """Format an ATTRIBUTED failure message for a relayed remote command.
+
+    A remote ``kanibako`` invocation's own stderr is relayed back over ssh
+    verbatim; when the remote's message itself begins with ``Error:`` (its
+    template-staleness gate, an argparse error, etc.), surfacing it raw under a
+    local ``Error:`` line produces TWO stacked ``Error:`` lines with nothing to
+    say the second came from the remote host — the user has to infer the
+    boundary (Jei, rc10 dogfood).  This wraps the remote output under a clear
+    ``Response from remote host:`` header, indented so the boundary between the
+    local surfacing and the remote's own reply is unambiguous.  An empty remote
+    output is called out explicitly (``(no output from remote host)``) rather
+    than left as a bare double error.
+
+    Returns the message body WITHOUT a leading ``Error:`` — the caller prepends
+    it (matching the codebase's ``print(f"Error: {...}")`` convention).
+    """
+    remote = (remote_output or "").strip()
+    if remote:
+        body = "\n".join(f"    {line}" for line in remote.splitlines())
+    else:
+        body = "    (no output from remote host)"
+    return (
+        f"remote '{command}' failed on '{dest}'. "
+        f"Response from remote host:\n{body}"
+    )
+
+
 def remote_run_kanibako(
     dest: str, args: list[str],
 ) -> subprocess.CompletedProcess[str]:

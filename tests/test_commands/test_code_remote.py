@@ -264,6 +264,53 @@ def test_remote_lifecycle_failure_surfaces_remote_stderr(
     assert "kanibako" in err  # the install hint
 
 
+def test_remote_failure_attributes_remote_error_to_host(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    """The remote's OWN error (its stderr, here itself an "Error:" line) is
+    surfaced under a "Response from remote host:" header, indented — so the two
+    stacked "Error:" lines Jei saw in rc10 no longer read as one local double
+    error (the boundary to the remote host is explicit)."""
+    _wire_ok(tmp_path, monkeypatch)
+    remote_err = (
+        "Error: kanibako's bundled templates changed since setup was last run..."
+    )
+    failed = MagicMock(returncode=1, stdout="", stderr=remote_err)
+    with (
+        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    err = capsys.readouterr().err
+    # The local top line names the failed remote command + attributes the reply.
+    assert "failed on 'host'. Response from remote host:" in err
+    # The remote's own message is indented beneath the header (clear delimiter).
+    assert "\n    " + remote_err in err
+
+
+def test_remote_failure_no_remote_output_called_out(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    """A nonzero remote exec that emitted nothing says so, rather than leaving a
+    bare double "Error:" with an empty second line."""
+    _wire_ok(tmp_path, monkeypatch)
+    failed = MagicMock(returncode=1, stdout="", stderr="")
+    with (
+        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Response from remote host:" in err
+    assert "(no output from remote host)" in err
+
+
 def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
