@@ -291,6 +291,32 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rm_p.set_defaults(func=run_rm)
 
+    # kanibako box register <name|path>   (readopt / late standalone register)
+    register_p = box_sub.add_parser(
+        "register",
+        help="Re-register a deregistered box, or register a standalone box on disk",
+        description=(
+            "Bring a box back into the registry — an INDEX-ONLY operation that\n"
+            "never re-seeds or touches the box's home content. Two uses:\n"
+            "  register <name>   readopt a box deregistered by 'rm' (restore\n"
+            "                    its active membership)\n"
+            "  register <path>   register a standalone box that exists on disk\n"
+            "                    (box_data/ + settings.yaml) but has no index entry\n"
+            "Refuses if an active box already occupies the name or workspace."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    register_p.add_argument(
+        "target",
+        help="Deregistered box name, or path to a standalone box on disk",
+    )
+    register_p.add_argument(
+        "--force", action="store_true",
+        help="Re-register even if the name is used by a workset (the box then "
+             "shadows that workset in bare-name resolution)",
+    )
+    register_p.set_defaults(func=run_register)
+
     # kanibako box info / inspect
     info_p = box_sub.add_parser(
         "info",
@@ -1408,6 +1434,183 @@ def run_rm(args: argparse.Namespace) -> int:
             )
 
     return 0
+
+
+def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
+    """Readopt a DEREGISTERED box: move it from ``deregistered`` back to active.
+
+    INDEX-ONLY and SEED-FREE — writes ONLY the active membership index (primary
+    per-workset ``boxes:`` / ``registry.standalone``) and drops the deregistered
+    entry; NEVER touches the box's home content or re-materializes templates
+    (membership is itself the seed signal, so a re-index must not re-seed).
+
+    Per-kind routing off the entry's ``kind``.  Self-heals a stale entry whose
+    metadata is gone (drops it, reports nothing to restore).  Conflict-safe: the
+    reused registration APIs refuse when an ACTIVE box already owns the name
+    (``check_primary_box_name_free`` / the ``standalone`` name check) or the
+    workspace path (``register_workset_box``'s one-box-per-path guard), so a
+    readopt never clobbers a live box.
+    """
+    from kanibako import registry_store
+    from kanibako.box_resolve import standalone_settings_present
+
+    kind = entry.get("kind")
+    workspace = entry.get("workspace")
+    metadata = entry.get("metadata")
+
+    if kind == "standalone":
+        root = Path(str(metadata)).resolve() if metadata else None
+        # Self-heal: the in-tree marker is gone → nothing to restore, drop entry.
+        if root is None or not standalone_settings_present(root):
+            registry_store.unregister_deregistered(std.registry, name)
+            print(
+                f"No standalone metadata found for '{name}' (dropped stale entry); "
+                "nothing to restore.",
+                file=sys.stderr,
+            )
+            return 1
+        # Conflict: the name is already an ACTIVE standalone box at a DIFFERENT
+        # root — refuse rather than clobber the live entry.
+        registered = registry_store.load_standalone(std.registry)
+        other = registered.get(name)
+        if other is not None and Path(other).resolve() != root:
+            print(
+                f"Error: an active standalone box already owns the name '{name}' "
+                f"({other}); refusing to readopt over it. Purge or move it first.",
+                file=sys.stderr,
+            )
+            return 1
+        # Index-only, seed-free re-register (overwrites a matching name->root).
+        registry_store.register_standalone(std.registry, name, root)
+        registry_store.unregister_deregistered(std.registry, name)
+        print(f"Registered standalone box '{name}' at {root}.")
+        return 0
+
+    # PRIMARY (default) box.
+    from kanibako.paths import register_primary_box_name
+
+    metadata_dir = Path(str(metadata)).resolve() if metadata else None
+    # Self-heal: the box dir is gone → nothing to restore, drop entry.
+    if metadata_dir is None or not metadata_dir.is_dir():
+        registry_store.unregister_deregistered(std.registry, name)
+        print(
+            f"No metadata directory found for '{name}' (dropped stale entry); "
+            "nothing to restore.",
+            file=sys.stderr,
+        )
+        return 1
+    if not workspace:
+        print(
+            f"Error: the deregistered entry for '{name}' has no workspace path; "
+            "cannot readopt it.",
+            file=sys.stderr,
+        )
+        return 1
+    # Index-only, seed-free re-register into the PRIMARY membership.  The reused
+    # API enforces the conflict guards ($HOME, SAME-kind active-box name, the
+    # one-box-per-workspace-path invariant, and the CROSS-kind workset-shadow
+    # refusal unless --force); a violation refuses cleanly with guidance.
+    try:
+        register_primary_box_name(
+            std.primary_workset, std.registry, name, str(workspace), force=force,
+        )
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    registry_store.unregister_deregistered(std.registry, name)
+    print(f"Registered primary box '{name}' at {workspace}.")
+    return 0
+
+
+def run_register(args: argparse.Namespace) -> int:
+    """Re-register a box into the registry (INDEX-ONLY, SEED-FREE).
+
+    Unifies two index-only operations (design box-lifecycle I2):
+
+    * READOPT a box deregistered by ``rm`` (no ``--purge``): move it from the
+      global ``deregistered`` section back to active membership (primary
+      per-workset ``boxes:`` / ``registry.standalone``).  Resolved by NAME first.
+    * REGISTER a never-registered STANDALONE box that exists on disk (``box_data/``
+      + root ``settings.yaml``) but has no ``registry.standalone`` entry.
+      Resolved by PATH.
+
+    NEVER re-seeds, NEVER touches the box's home content — registration is purely
+    an index write (membership is itself the seed signal).  Refuses if an ACTIVE
+    box already occupies the target name or workspace path; worksets are refused
+    (they keep their own lifecycle).
+    """
+    from kanibako import registry_store
+    from kanibako.box_resolve import standalone_settings_present
+
+    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    from kanibako.commands.flags import resolve_subject_value
+    target = resolve_subject_value(args.target, getattr(args, "box", None))
+    if not target:
+        print("Error: no box specified to register.", file=sys.stderr)
+        return 1
+
+    force = getattr(args, "force", False)
+
+    # 1. DEREGISTERED readopt — resolve by NAME first (design: a bare name → the
+    #    deregistered section first).  The retained blob carries ``kind``, so the
+    #    per-kind readopt routes off it.
+    dereg = registry_store.lookup_deregistered(std.registry, target)
+    if dereg is not None:
+        return _readopt_deregistered(std, target, dereg, force=force)
+
+    # 2. Already-ACTIVE guards — a clear "already registered" (rc 0, no-op) for a
+    #    live box, and a redirect for a workset (register is box-only).
+    primary_boxes = load_primary_boxes(std.primary_workset)
+    if target in primary_boxes:
+        print(f"'{target}' is already registered (primary box at {primary_boxes[target]}).")
+        return 0
+    standalone = registry_store.load_standalone(std.registry)
+    if target in standalone:
+        print(f"'{target}' is already registered (standalone box at {standalone[target]}).")
+        return 0
+    worksets = read_names(std.registry)["worksets"]
+    if target in worksets:
+        print(
+            f"Error: '{target}' is a workset, not a box. Worksets keep their own "
+            "lifecycle; 'register' applies to primary and standalone boxes only.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # 3. STANDALONE register-later — the target is a PATH to an on-disk standalone
+    #    box (box_data/ + root settings.yaml) with no index entry.  Reuse
+    #    import_standalone: it is INDEX-ONLY + SEED-FREE (the box was seeded where
+    #    it was created) and already composes the kuid-first name + refuses a
+    #    name collision to a different root.
+    candidate = Path(target)
+    if candidate.is_dir():
+        root = candidate.resolve()
+        if standalone_settings_present(root):
+            already = registry_store.standalone_name_for_root(std.registry, root)
+            if already is not None:
+                print(f"'{already}' is already registered (standalone box at {root}).")
+                return 0
+            from kanibako import import_reconcile
+            try:
+                sa_name = import_reconcile.import_standalone(
+                    std.registry, root, journal=std.journal,
+                )
+            except import_reconcile.ImportConflictError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+            print(f"Registered standalone box '{sa_name}' at {root}.")
+            return 0
+
+    # 4. Nothing to register.
+    print(
+        f"Error: '{target}' is neither a deregistered box nor a standalone box on "
+        "disk; nothing to register.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def _format_credential_age(creds_path: Path) -> str:
