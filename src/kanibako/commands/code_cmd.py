@@ -687,12 +687,10 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
                 f"'{dest}'.  Create it THERE first, e.g.: "
                 f"ssh {dest} kanibako create {box}"
             )
-        print(
-            f"Error: remote 'kanibako start --detach --warm-only' failed on "
-            f"'{dest}'.\n"
-            f"{stderr}{hint}",
-            file=sys.stderr,
+        message = vr.format_remote_failure(
+            "kanibako start --detach --warm-only", dest, stderr,
         )
+        print(f"Error: {message}{hint}", file=sys.stderr)
         return 1
     lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
     if not lines:

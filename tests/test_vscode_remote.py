@@ -438,3 +438,33 @@ def test_wrapper_rewritten_when_content_changes():
     wpath.write_text("#!/bin/sh\n# stale\n")
     assert vr.ensure_dispatch_wrapper() == wpath
     assert "kanibako vscode-remote dispatch wrapper" in wpath.read_text()
+
+
+# --- format_remote_failure: attributed remote-error surfacing --------------
+
+def test_format_remote_failure_attributes_and_indents_remote_output():
+    """A relayed remote error is wrapped under a "Response from remote host:"
+    header, each remote line indented — so a remote message that itself begins
+    with "Error:" cannot read as a second, unexplained LOCAL error (Jei rc10)."""
+    msg = vr.format_remote_failure(
+        "kanibako start --detach --warm-only",
+        "kanibako",
+        "Error: kanibako's bundled templates changed since setup was last run\n"
+        "  Run 'kanibako setup' to refresh.",
+    )
+    assert msg.startswith(
+        "remote 'kanibako start --detach --warm-only' failed on 'kanibako'. "
+        "Response from remote host:\n"
+    )
+    # Every remote line is indented under the header (clear boundary).
+    assert "\n    Error: kanibako's bundled templates changed" in msg
+    assert "\n      Run 'kanibako setup' to refresh." in msg
+    # No leading "Error:" — the caller prepends it.
+    assert not msg.startswith("Error:")
+
+
+def test_format_remote_failure_no_output_is_called_out():
+    """An empty remote stderr is stated explicitly rather than left as a bare
+    double error."""
+    msg = vr.format_remote_failure("kanibako start", "host", "   ")
+    assert "Response from remote host:\n    (no output from remote host)" in msg
