@@ -65,7 +65,13 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.code_cmd import add_code_parser
     from kanibako.commands.image import add_parser as add_rig_parser
     from kanibako.commands.box import add_parser as add_box_parser
-    from kanibako.commands.box._parser import run_create, run_list as run_list_fn, run_ps, run_rm
+    from kanibako.commands.box._parser import (
+        run_create,
+        run_list as run_list_fn,
+        run_ps,
+        run_register,
+        run_rm,
+    )
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
     from kanibako.commands.agent_cmd import add_parser as add_agent_parser
@@ -165,6 +171,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rm_p.set_defaults(func=run_rm)
 
+    # register — top-level alias for box register
+    register_p = subparsers.add_parser(
+        "register",
+        help="Re-register a deregistered box, or register a standalone box on disk",
+    )
+    register_p.add_argument(
+        "target",
+        help="Deregistered box name, or path to a standalone box on disk",
+    )
+    register_p.add_argument(
+        "--force", action="store_true",
+        help="Re-register even if the name is used by a workset",
+    )
+    register_p.set_defaults(func=run_register)
+
     # Management commands.
     add_rig_parser(subparsers)
     add_box_parser(subparsers)
@@ -184,7 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 _SUBCOMMANDS = {
     # Top-level aliases (delegate to box subcommands).
-    "start", "stop", "shell", "code", "ps", "list", "create", "rm",
+    "start", "stop", "shell", "code", "ps", "list", "create", "rm", "register",
     # Management commands.
     "box", "rig", "workset", "agent", "system", "baseline",
     # Setup wizard.

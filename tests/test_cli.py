@@ -924,7 +924,7 @@ class TestParser:
         from kanibako.cli import _SUBCOMMANDS
         expected = {
             # Top-level aliases
-            "start", "stop", "shell", "ps", "list", "create", "rm",
+            "start", "stop", "shell", "ps", "list", "create", "rm", "register",
             # Management commands
             "box", "rig", "workset", "agent", "system", "baseline",
             # Setup wizard

@@ -75,6 +75,7 @@ BOX_FLAG_COMMANDS: frozenset[str] = frozenset({
     "box show",
     "box diagnose",
     "box rm",
+    "box register",
     "box remap",
     # auth
     "reauth",
