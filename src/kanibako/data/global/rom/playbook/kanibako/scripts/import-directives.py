@@ -8,16 +8,22 @@ script is that flattener: given a SOURCE "kickoff" file and a DEST path it reads
 the source, resolves every ``@path`` import it finds, and writes a single flat
 document to DEST in which no live import directives remain.
 
-Resolution follows Claude Code's *documented* memory-import spec
-(code.claude.com/docs/en/memory), because the flattened output is the sole place
-imports are ever resolved -- the published contract is the stable target:
+Import *syntax* follows Claude Code's *documented* memory-import spec
+(code.claude.com/docs/en/memory), so that claude reading the same directive
+sources resolves identically to this flattener:
 
   * ``@path`` imports; both relative and absolute paths are allowed.
   * Relative paths resolve relative to the file containing the import, not cwd.
   * ``~`` expands to the home directory.
-  * Imports nest, with a maximum depth of four hops below the source.
   * Import parsing skips Markdown code spans and fenced code blocks; a path
     wrapped in backticks stays literal.
+
+We do NOT honour Claude's documented four-hop depth cap: that bound exists for
+Anthropic's context budget, not ours, and kanibako flattens its own directive
+tree. Imports resolve to FULL depth. Termination and cycle-safety are guaranteed
+independently by import-once collection -- each file is collected exactly once,
+keyed by its resolved path -- so a finite file tree always terminates and cycles
+and diamonds dedup to a single section.
 
 The OUTPUT format is kanibako's own (the spec does not describe flattening into a
 file): rather than splice content in place, each imported file is emitted once as
@@ -38,7 +44,6 @@ import re
 import sys
 from pathlib import Path
 
-MAX_HOPS = 4  # documented import depth below the source file
 CODEX_DOC_LIMIT = 32 * 1024  # codex silently truncates its instruction file here
 
 # An import is ``@`` followed by a path, only at a word boundary so an address
@@ -151,7 +156,7 @@ class Flattener:
             return None
 
     # -- collection --------------------------------------------------------
-    def collect(self, path: Path, hop: int) -> None:
+    def collect(self, path: Path) -> None:
         if path in self.started:
             return
         self.started.add(path)
@@ -163,9 +168,9 @@ class Flattener:
             self.warnings.append(f"unreadable: {path}: {exc}")
             self.sections[path] = f"<!-- kanibako: could not read {path}: {exc} -->"
             return
-        self.sections[path] = self._process_text(raw, path, hop + 1)
+        self.sections[path] = self._process_text(raw, path)
 
-    def _process_text(self, text: str, importing_file: Path, child_hop: int) -> str:
+    def _process_text(self, text: str, importing_file: Path) -> str:
         out: list[str] = []
         in_fence = False
         fence_char = ""
@@ -188,10 +193,10 @@ class Flattener:
                 fence_len = len(fm.group("fence"))
                 out.append(line)
                 continue
-            out.append(self._process_line(line, importing_file, child_hop))
+            out.append(self._process_line(line, importing_file))
         return "\n".join(out)
 
-    def _process_line(self, line: str, importing_file: Path, child_hop: int) -> str:
+    def _process_line(self, line: str, importing_file: Path) -> str:
         spans = code_span_ranges(line)
 
         def repl(m: "re.Match[str]") -> str:
@@ -199,18 +204,20 @@ class Flattener:
                 return m.group(0)  # inside a code span -> literal
             resolved = self.resolve(m.group(1), importing_file)
             if resolved is None:
-                # Not a real file: claude would not import it either, and it will
-                # still not resolve when the flat file is re-read, so leave it be.
-                return m.group(0)
-            path, as_written, trailing = resolved
-            if path not in self.started and child_hop > MAX_HOPS:
-                # A new import beyond the documented depth. Drop it, and neutralise
-                # the mention so the flat file can never re-trigger an import.
-                self.warnings.append(
-                    f"depth>{MAX_HOPS}: dropped @{as_written} (in {importing_file})"
-                )
+                # Target file missing. Neutralize the mention rather than leave a
+                # raw live ``@path`` in the flat output: wrap it in backticks so no
+                # agent -- including a claude re-reading the flattened file -- can
+                # treat it as a live import, while the path stays visible to the
+                # reader. Keeps flattening idempotent (a second pass changes
+                # nothing). Trailing sentence punctuation stays outside the ticks.
+                as_written = m.group(1)
+                trailing = ""
+                while as_written and as_written[-1] in _TRAILING_PUNCT:
+                    trailing = as_written[-1] + trailing
+                    as_written = as_written[:-1]
                 return f"`@{as_written}`{trailing}"
-            self.collect(path, child_hop)
+            path, as_written, trailing = resolved
+            self.collect(path)
             return f"[{as_written}](#{self.anchor(path)}){trailing}"
 
         return IMPORT_RE.sub(repl, line)
@@ -253,7 +260,7 @@ def flatten(source: str, dest: str | None, *, additional_context: bool = False) 
     src = src.resolve()
 
     fl = Flattener()
-    fl.collect(src, 0)
+    fl.collect(src)
     result = fl.render(src)
 
     size = len(result.encode("utf-8"))
