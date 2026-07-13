@@ -3364,7 +3364,15 @@ def _run_container(
                     # get it byte-for-byte.  ``logs`` is still COMPUTED above and read
                     # by BOTH the retry and setup checks below on BOTH paths, so the
                     # auto-retry ("Restarting with a new session.") is unaffected.
-                    if not _interactive_host():
+                    #
+                    # Suppress the raw captured pane at an interactive tty ONLY on a
+                    # CLEAN exit (rc == 0): the human saw the agent's output live and
+                    # does not need the escape-laden pane echoed.  On a CRASH (rc != 0)
+                    # the alt-screen the human watched was just torn down by
+                    # _restore_host_terminal(), so we MUST still surface the logs — the
+                    # death cause — even at a tty (restores commit 05f7f04's contract;
+                    # the FF-10 suppression over-reached to the crash path).
+                    if rc != 0 or not _interactive_host():
                         print(logs, file=sys.stderr)
                     # Auto-retry as new session if the target says so
                     # (once only — _is_retry prevents loops).
