@@ -3436,6 +3436,38 @@ class TestDetachKeepAlive:
             )
             assert "raw pane dump line" in capsys.readouterr().err
 
+    def test_foreground_tty_crash_still_prints_logs(self, start_mocks, capsys):
+        """FF-10 crash contract (restores 05f7f04): on an INTERACTIVE tty the raw
+        captured pane suppression applies ONLY to a CLEAN exit.  When the foreground
+        box exits with a NON-ZERO container code, ``_restore_host_terminal`` has just
+        torn down the alt-screen the human watched live, so the captured dead-agent
+        pane — the death cause — MUST still be echoed at the tty."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._interactive_host", return_value=True,
+        ), patch(
+            "kanibako.commands.start._restore_host_terminal",
+        ), patch(
+            "kanibako.commands.start._container_exit_code", return_value=1,
+        ), patch(
+            "kanibako.commands.start._container_logs",
+            return_value="DEAD_AGENT_MARKER: crashed",
+        ):
+            m.target.should_retry_new_session.return_value = False
+            m.target.should_run_setup.return_value = False
+
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            # The crash (rc != 0) surfaces the captured pane even at the tty.
+            assert "DEAD_AGENT_MARKER: crashed" in capsys.readouterr().err
+
     def test_detach_implies_persistent_from_nonpersistent_arg(self, start_mocks):
         """detach=True forces the persistent/detached launch even if a caller
         passes persistent=False (defensive guard)."""
