@@ -10,11 +10,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **1.7.0 candidate.** The entries below (plus the already-dated `[1.7.0]`
-> section) are the changes shipping in the `1.7.0` release candidates (`1.7.0rcN`
-> on PyPI). They fold into a single `[1.7.0]` on the stable release.
+## [1.7.1] - 2026-07-13
+
+This release completes **codex and goose persona support** — a persona pointed at
+a third-party endpoint now resolves its provider on those harnesses instead of
+coming up bare (the persona feature shipped experimentally in 1.7.0 was most
+complete for claude only) — and hardens the box lifecycle and the foreground
+box-exit terminal handling.
 
 ### Added
+
+- **Codex persona support.** A codex persona now resolves its model provider:
+  harness-aware persona resolution writes a `[model_providers.<node>]` block into
+  the codex `config.toml` at launch, pointing codex at a third-party
+  (self-hosted / OpenAI-compatible) endpoint using the OpenAI **responses** wire
+  API. Previously a codex persona came up bare, with no provider wired. Requires
+  the `kanibako-agent-codex` plugin ≥ 0.2.2.
+- **Goose persona support.** A goose persona is now wired to its endpoint through
+  Goose's built-in `openai` provider.
+- **`kanibako register` (also `kanibako box register`).** A new verb to readopt a
+  deregistered box, or register a standalone box that exists on disk but was never
+  indexed. Registration is index-only — it never re-seeds or touches the box home
+  — and refuses to clobber an active box that already owns the name or workspace.
+
+### Changed
+
+- **Box lifecycle hardening.** `kanibako rm` now deregisters the box (and can
+  purge it by name); `kanibako create` refuses to run over a deregistered or
+  orphaned box home instead of silently colliding with it; and deregistered boxes
+  are surfaced in listings so they no longer silently vanish. Together with the
+  new `register` verb (above) this closes the `rm → deregister → register`
+  recovery loop.
+- **Foreground box-exit terminal handling.** On a foreground box exit the host
+  terminal is now restored — kanibako leaves the alternate screen, resets SGR
+  attributes, and shows the cursor — so a TUI agent that died without cleaning up
+  after itself no longer wedges your terminal. On a **clean** exit at an
+  interactive tty the raw captured pane is suppressed (you already saw the agent's
+  output live), but a **crashing** agent's captured logs are still surfaced so you
+  can see why it died. Piped output / podman logs / CI (no tty) still receive the
+  captured logs verbatim.
+- **Instruction directives resolve their imports to full depth.** The launch-time
+  directive flattener no longer caps how deep it follows imports; an import it
+  cannot resolve now degrades to inert text rather than remaining a live directive.
+
+### Fixed
+
+- **`kanibako code --remote` error attribution.** Errors relayed from the remote
+  host are now attributed to the remote host, rather than surfacing as if they
+  were local failures.
+
+### Removed
+
+- **BREAKING: the `resource.*` config surface is removed.** The spec-dropped
+  `resource.*` settable keys, their override helpers, and the resource-only
+  `--local` set flag are gone; `set resource.*` / `--local` now error as an
+  unknown key / flag. This surface only ever round-tripped through its own
+  get/set/reset and was never read at launch, so no launch behavior changes — but
+  any configuration that named `resource.*` keys no longer has a CLI surface (a
+  pre-existing inert `resource_overrides` table is filtered out of `system show`).
+
+## [1.7.0] - 2026-07-12
+
+This release lands the **persona agents** feature (experimental) — running a named
+identity/mind on top of an agent binary, optionally pointed at a third-party
+endpoint — alongside a **credential-sharing rework** (boolean `group_auth` becomes
+a three-tier global/workset/box sharing model) and a set of config-key renames and
+clean breaks. It also completes a large behind-the-scenes settings/keyspace overhaul
+(KeyStore storage, cascade assembly, and resolution/readiness) that is
+equivalence-preserving for launches. Alongside these it adds **VS Code integration**
+(`kanibako code`, experimental), **always-on boxes** with an in-box session
+supervisor (background/`--detach` launches and reattach), and **private boxes**
+(`kanibako create --private`) that receive no host credentials.
+
+### Added
+
+- **Persona agents (experimental, opt-in).** `--agent` now accepts a
+  `persona+harness` grammar (e.g. `--agent navigator+claude`): a **persona** — a
+  named identity/mind with its own agent store and `agent.<…>.*` keyspace slot —
+  runs on a **harness** (the agent binary, e.g. `claude`). The harness is
+  validated against installed agents; a persona reattaches and stops as a distinct
+  node. A bare `--agent claude` is unchanged and **byte-for-byte identical** to
+  before, so existing boxes are unaffected. Two new per-agent keys back the
+  feature:
+  - **`agent.<agent>.endpoint`** — an alternate harness base-URL (a sibling of
+    `model`), delivered to the harness as its base-URL env var (for Claude,
+    `ANTHROPIC_BASE_URL`). When set, kanibako **does not sync the host Anthropic
+    OAuth credential** to that box (a fail-safe credential fork), so your Anthropic
+    token is never sent to a third-party endpoint.
+  - **`<scope>.secret_path.<VAR> = <host-path>`** (all four scopes; the persona
+    bearer token uses `agent.<agent>.secret_path.ANTHROPIC_AUTH_TOKEN`) — the
+    first-class **SECRET category**: delivers a host-file secret (e.g. a bearer
+    token → `ANTHROPIC_AUTH_TOKEN`) into the box **arm's-length** — the host file is
+    read-only bind-mounted to a fixed in-box location and exported in-box by a shim
+    at agent start, so kanibako **never reads the secret value** (never into process
+    memory, never onto the podman argv, never in the keystore / launch snapshot /
+    any box file / logs — only the path pointer is stored). Resolves through the
+    `system → workset → box → agent` cascade like any category. A
+    missing/unreadable/empty file warns and leaves the var unset (fail-soft).
+    *(Renamed from the rc0-rc2 `agent.<agent>.env_file.<VAR>`, which read the value
+    into the container env — clean break, no alias.)*
+
+  A persona shares the bare harness's plugins/cache (via a symlink shim into the
+  harness store) rather than starting empty.
+
+  **⚠️ Experimental — harness coverage.** Personas are **experimental** in this
+  release, and coverage is uneven across harnesses. The path is most complete for
+  the **claude** harness (the endpoint fork + secret-token delivery above);
+  persona support for **goose** and **codex** is **not yet complete** — treat
+  personas on those harnesses as early/incomplete and expect gaps. Bare
+  `--agent claude` / `--agent goose` / `--agent codex` (no persona) is unaffected
+  and stable.
+
+  **⚠️ Known limitation.** The OAuth credential fork *skips syncing* but does
+  **not scrub** a credential already seeded into a box. Converting an **existing**
+  bare box into a persona (creating it bare, then `start --agent persona+harness`)
+  can leave the real Anthropic token in a box pointed at a custom endpoint. **Only
+  freshly created persona boxes are safe** — create the box as a persona from the
+  start.
+
+- **Streaming native pull progress.** The launch and `setup` image-pull paths now
+  stream podman's layer-by-layer progress (matching `rig prep`), so a slow first
+  pull no longer looks like a hang.
 - **VS Code integration — `kanibako code`** *(experimental)*. Attach a local
   VS Code window to a box's running container (via the Dev Containers "Attach to
   Running Container" flow), with your chosen agent available in the integrated
@@ -49,6 +165,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING (auth): boolean `group_auth` is replaced by a three-tier
+  credential-sharing model.** Credential sharing now composes across **global**
+  (host home), **workset** (per-workset store), and **box** (private) tiers — a box
+  can be global- and/or workset-shared, with **workset taking precedence over
+  global**. A `workset.auth.global_sync` mirror pushes a workset's auth up to
+  global. Sharing is capability-gated per agent (only agents that support it
+  participate). The old `group_auth` keys are gone (clean break, pre-release); a
+  private box is now `box.auth.global_enabled=false` /
+  `box.auth.workset_enabled=false`. (See Removed for the retired `--distinct-auth`
+  flag.)
+- **BREAKING (config): `<scope>.meta` keys move to a top-level `meta.<scope>`
+  namespace.** The protected, read-only identity keys are now `meta.box.*`,
+  `meta.workset.*`, and `meta.agent.<agent>.*` (e.g. `workset.meta.root` →
+  `meta.workset.path`).
+- **BREAKING (config): `box.agent` config key renamed to `box.agent_name`.** The
+  dotted key, the on-disk `[box]` leaf (`agent` → `agent_name`), and the
+  corresponding field are all renamed. No back-compat shim (pre-release).
+- **BREAKING (config file): `kanibako.yaml` → `kanibako_config.yaml`.** The general
+  config file is now named `kanibako_config.yaml` (clean break, no auto-detection
+  of the old name).
+- **BREAKING (CLI): the overloaded `config` subcommand is retired** at every scope
+  (`box`, `workset`, `system`, `agent`) in favor of four discrete verbs —
+  `set` / `get` / `show` / `reset`. There is no `config` alias (clean break,
+  pre-release). The old positional/flag mode-switching maps as follows:
+  - `<scope> config` → `<scope> show`
+  - `<scope> config --effective` → `<scope> show --effective`
+  - `<scope> config <key>` → `<scope> get <key>`
+  - `<scope> config <key>=<value>` → `<scope> set <key>=<value>`
+  - `<scope> config --reset <key>` → `<scope> reset <key>`
+  - `<scope> config --reset --all` → `<scope> reset --all`
+
+  `set` keeps `--force` and `--local` (resource keys); `reset` keeps `--all` and
+  `--force`; `show` keeps `--effective`; `get` is bare. Each scope's positional
+  (box `[project]`, workset/agent `<name>`) is unchanged, as are the
+  config.*-forbid guard, the cross-scope write-direction guard, and the set-time
+  cascade validation — only the parser/dispatch surface changed.
+- **BREAKING (config): `config.*` keys can no longer be set/reset via the CLI.**
+  The keys that *locate* kanibako's storage (`config.data`, `config.settings`,
+  `config.agents`, `config.primary_workset`, `config.registry`) are read-to-locate
+  only; the CLI refuses to write them and points you at the config file. `setup`
+  and programmatic writers still write them.
+- **`setup` compatibility gate reworked into a 5-band BCV/FCV check.** The single
+  `OLDEST_COMPATIBLE_SETUP_VERSION` nudge is replaced by two build constants
+  (backward- and forward-compatible versions) and a five-band gate, so routine
+  releases stay silent, additive releases nudge (non-blocking), and hard breaks
+  error cleanly rather than silently under-configuring.
+- **Under the hood: settings/keyspace overhaul (launch behavior preserved).**
+  Config and settings are now backed by a unified **KeyStore** with a
+  behavior-preserving cascade (base < system < `agent.default` < `agent.<active>` <
+  workset < box), `@`-reference resolution with cycle detection, typed access, and
+  set-time validation. A resolution/readiness layer routes home/vault/channel binds
+  and identity anchors through the keyspace, adds a cross-scope write-direction
+  guard and `box.agent.*` overrides, and seeds box settings at create time keyed off
+  registry membership. A write-ahead **lifecycle journal** makes an interrupted
+  `create` recoverable (replay-idempotent). Users do not configure these internals
+  directly, and normal launches are unchanged.
+- **Launch warnings print once, after the session.** The baseline-tools and
+  bind-shadow warnings no longer print a (wiped) pre-launch copy; each now surfaces
+  exactly once in the post-session reprint and covers reattach.
 - **BREAKING: launching no longer auto-creates a box — run `kanibako create`
   first.** Creating a box is now a deliberate act. `kanibako` (shortcut for
   `start`), `kanibako start`, `kanibako code`, and `kanibako shell` no longer
@@ -160,128 +335,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<data>/primary_workset/env`), mirroring the box tier's `<box>/env`, and a
   primary-workset box's launch env now includes the primary workset's env tier
   (precedence unchanged: system < agent < workset < box).
-
-## [1.7.0] - 2026-07-02
-
-This release lands the **persona agents** feature (experimental) — running a named
-identity/mind on top of an agent binary, optionally pointed at a third-party
-endpoint — alongside a **credential-sharing rework** (boolean `group_auth` becomes
-a three-tier global/workset/box sharing model) and a set of config-key renames and
-clean breaks. It also completes a large behind-the-scenes settings/keyspace overhaul
-(KeyStore storage, cascade assembly, and resolution/readiness) that is
-equivalence-preserving for launches.
-
-### Added
-
-- **Persona agents (experimental, opt-in).** `--agent` now accepts a
-  `persona+harness` grammar (e.g. `--agent navigator+claude`): a **persona** — a
-  named identity/mind with its own agent store and `agent.<…>.*` keyspace slot —
-  runs on a **harness** (the agent binary, e.g. `claude`). The harness is
-  validated against installed agents; a persona reattaches and stops as a distinct
-  node. A bare `--agent claude` is unchanged and **byte-for-byte identical** to
-  before, so existing boxes are unaffected. Two new per-agent keys back the
-  feature:
-  - **`agent.<agent>.endpoint`** — an alternate harness base-URL (a sibling of
-    `model`), delivered to the harness as its base-URL env var (for Claude,
-    `ANTHROPIC_BASE_URL`). When set, kanibako **does not sync the host Anthropic
-    OAuth credential** to that box (a fail-safe credential fork), so your Anthropic
-    token is never sent to a third-party endpoint.
-  - **`<scope>.secret_path.<VAR> = <host-path>`** (all four scopes; the persona
-    bearer token uses `agent.<agent>.secret_path.ANTHROPIC_AUTH_TOKEN`) — the
-    first-class **SECRET category**: delivers a host-file secret (e.g. a bearer
-    token → `ANTHROPIC_AUTH_TOKEN`) into the box **arm's-length** — the host file is
-    read-only bind-mounted to a fixed in-box location and exported in-box by a shim
-    at agent start, so kanibako **never reads the secret value** (never into process
-    memory, never onto the podman argv, never in the keystore / launch snapshot /
-    any box file / logs — only the path pointer is stored). Resolves through the
-    `system → workset → box → agent` cascade like any category. A
-    missing/unreadable/empty file warns and leaves the var unset (fail-soft).
-    *(Renamed from the rc0-rc2 `agent.<agent>.env_file.<VAR>`, which read the value
-    into the container env — clean break, no alias.)*
-
-  A persona shares the bare harness's plugins/cache (via a symlink shim into the
-  harness store) rather than starting empty.
-
-  **⚠️ Experimental — harness coverage.** Personas are **experimental** in this
-  release, and coverage is uneven across harnesses. The path is most complete for
-  the **claude** harness (the endpoint fork + secret-token delivery above);
-  persona support for **goose** and **codex** is **not yet complete** — treat
-  personas on those harnesses as early/incomplete and expect gaps. Bare
-  `--agent claude` / `--agent goose` / `--agent codex` (no persona) is unaffected
-  and stable.
-
-  **⚠️ Known limitation.** The OAuth credential fork *skips syncing* but does
-  **not scrub** a credential already seeded into a box. Converting an **existing**
-  bare box into a persona (creating it bare, then `start --agent persona+harness`)
-  can leave the real Anthropic token in a box pointed at a custom endpoint. **Only
-  freshly created persona boxes are safe** — create the box as a persona from the
-  start.
-
-- **Streaming native pull progress.** The launch and `setup` image-pull paths now
-  stream podman's layer-by-layer progress (matching `rig prep`), so a slow first
-  pull no longer looks like a hang.
-
-### Changed
-
-- **BREAKING (auth): boolean `group_auth` is replaced by a three-tier
-  credential-sharing model.** Credential sharing now composes across **global**
-  (host home), **workset** (per-workset store), and **box** (private) tiers — a box
-  can be global- and/or workset-shared, with **workset taking precedence over
-  global**. A `workset.auth.global_sync` mirror pushes a workset's auth up to
-  global. Sharing is capability-gated per agent (only agents that support it
-  participate). The old `group_auth` keys are gone (clean break, pre-release); a
-  private box is now `box.auth.global_enabled=false` /
-  `box.auth.workset_enabled=false`. (See Removed for the retired `--distinct-auth`
-  flag.)
-- **BREAKING (config): `<scope>.meta` keys move to a top-level `meta.<scope>`
-  namespace.** The protected, read-only identity keys are now `meta.box.*`,
-  `meta.workset.*`, and `meta.agent.<agent>.*` (e.g. `workset.meta.root` →
-  `meta.workset.path`).
-- **BREAKING (config): `box.agent` config key renamed to `box.agent_name`.** The
-  dotted key, the on-disk `[box]` leaf (`agent` → `agent_name`), and the
-  corresponding field are all renamed. No back-compat shim (pre-release).
-- **BREAKING (config file): `kanibako.yaml` → `kanibako_config.yaml`.** The general
-  config file is now named `kanibako_config.yaml` (clean break, no auto-detection
-  of the old name).
-- **BREAKING (CLI): the overloaded `config` subcommand is retired** at every scope
-  (`box`, `workset`, `system`, `agent`) in favor of four discrete verbs —
-  `set` / `get` / `show` / `reset`. There is no `config` alias (clean break,
-  pre-release). The old positional/flag mode-switching maps as follows:
-  - `<scope> config` → `<scope> show`
-  - `<scope> config --effective` → `<scope> show --effective`
-  - `<scope> config <key>` → `<scope> get <key>`
-  - `<scope> config <key>=<value>` → `<scope> set <key>=<value>`
-  - `<scope> config --reset <key>` → `<scope> reset <key>`
-  - `<scope> config --reset --all` → `<scope> reset --all`
-
-  `set` keeps `--force` and `--local` (resource keys); `reset` keeps `--all` and
-  `--force`; `show` keeps `--effective`; `get` is bare. Each scope's positional
-  (box `[project]`, workset/agent `<name>`) is unchanged, as are the
-  config.*-forbid guard, the cross-scope write-direction guard, and the set-time
-  cascade validation — only the parser/dispatch surface changed.
-- **BREAKING (config): `config.*` keys can no longer be set/reset via the CLI.**
-  The keys that *locate* kanibako's storage (`config.data`, `config.settings`,
-  `config.agents`, `config.primary_workset`, `config.registry`) are read-to-locate
-  only; the CLI refuses to write them and points you at the config file. `setup`
-  and programmatic writers still write them.
-- **`setup` compatibility gate reworked into a 5-band BCV/FCV check.** The single
-  `OLDEST_COMPATIBLE_SETUP_VERSION` nudge is replaced by two build constants
-  (backward- and forward-compatible versions) and a five-band gate, so routine
-  releases stay silent, additive releases nudge (non-blocking), and hard breaks
-  error cleanly rather than silently under-configuring.
-- **Under the hood: settings/keyspace overhaul (launch behavior preserved).**
-  Config and settings are now backed by a unified **KeyStore** with a
-  behavior-preserving cascade (base < system < `agent.default` < `agent.<active>` <
-  workset < box), `@`-reference resolution with cycle detection, typed access, and
-  set-time validation. A resolution/readiness layer routes home/vault/channel binds
-  and identity anchors through the keyspace, adds a cross-scope write-direction
-  guard and `box.agent.*` overrides, and seeds box settings at create time keyed off
-  registry membership. A write-ahead **lifecycle journal** makes an interrupted
-  `create` recoverable (replay-idempotent). Users do not configure these internals
-  directly, and normal launches are unchanged.
-- **Launch warnings print once, after the session.** The baseline-tools and
-  bind-shadow warnings no longer print a (wiped) pre-launch copy; each now surfaces
-  exactly once in the post-session reprint and covers reattach.
 
 ### Removed
 
