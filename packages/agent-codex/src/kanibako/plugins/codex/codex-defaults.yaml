@@ -87,7 +87,9 @@ descriptor:
   # also disables the claude-shaped B3 host-dir auto-adopt (MVP keyspace-config only).
   persona:
     endpoint_delivery: config_file
-    wire_api: chat
+    # Codex removed the "chat" wire (openai/codex#7782); "responses" is the only
+    # value current Codex accepts.  NaviGator serves both wires.
+    wire_api: responses
     # config_file delivery already excludes codex from the ENV-only B3 host-dir
     # adopt gate; host_dir_adopt=false is declared for correctness/clarity (codex
     # resolves its endpoint from the KEYSPACE only, never a claude-shaped host dir).

@@ -151,7 +151,7 @@ def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
     return PersonaSpec(
         token_var=raw.get("token_var", ""),
         endpoint_delivery=raw.get("endpoint_delivery", "env"),
-        wire_api=raw.get("wire_api", "chat"),
+        wire_api=raw.get("wire_api", "responses"),
         host_dir_adopt=bool(raw.get("host_dir_adopt", True)),
         provider_pin=provider_pin,
         model_required=bool(raw.get("model_required", False)),
