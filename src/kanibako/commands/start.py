@@ -1252,6 +1252,428 @@ def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]:
     return env
 
 
+def _deliver_panel_permissions(
+    *,
+    target,
+    proj,
+    auto_approve,
+    provider,
+    logger,
+):
+    """Best-effort panel / SessionStart-directive permission delivery.
+
+    Pure side-effects; extracted verbatim from ``_run_container``.  Each
+    delivery is independently best-effort and never blocks the launch.
+    """
+    # Ph4b Vector A: mirror the box's PERSISTED claude ``auto_approve``
+    # into the box's in-box ``~/.claude/settings.json`` so the VS Code
+    # claude-code PANEL (the default `kanibako code` UX) reflects the
+    # box's configured yolo — the CLI flag path only reaches the CLI
+    # claude, not the panel.  This keys on the PERSISTED ``auto_approve``
+    # value (just resolved above), NOT the per-launch ``safe_off`` that
+    # drives ``--dangerously-skip-permissions`` below: the per-launch
+    # ``-S``/``-A`` flags DELIBERATELY do NOT touch the panel — the panel
+    # reflects the box's configured yolo, not a transient launch flag.
+    # SYMMETRIC + CLAUDE-only + best-effort: auto_approve ON SETs the
+    # managed defaultMode, OFF CLEARS it (so toggling off takes effect);
+    # non-claude is inert; a failure here NEVER blocks the launch.
+    try:
+        from kanibako.vscode_config import (
+            deliver_claude_panel_permissions,
+        )
+        deliver_claude_panel_permissions(
+            auto_approve=auto_approve,
+            is_claude=(target is not None and target.name == "claude"),
+            claude_config_dir=proj.shell_path / ".claude",
+        )
+    except Exception:
+        logger.debug(
+            "failed to seed claude bypassPermissions settings",
+            exc_info=True,
+        )
+    # FF-5 permission parity (goose): the ``block.vscode-goose`` panel
+    # spawns its OWN in-box goose WITHOUT kanibako's launch env, so it
+    # never sees the ``GOOSE_MODE`` env var the CLI entrypoint sets.
+    # Persist the box's configured yolo into the box's in-box
+    # ``~/.config/goose/config.yaml`` (``GOOSE_MODE`` is a valid goose
+    # config key) so the panel reflects it.  Keys on the SAME persisted
+    # ``auto_approve`` resolved above (NOT the per-launch flags).
+    # goose-only + best-effort: OFF writes the secure ``approve``
+    # explicitly (unset GOOSE_MODE defaults to permissive ``auto``);
+    # non-goose is inert; a failure here NEVER blocks the launch.
+    try:
+        from kanibako.vscode_config import (
+            deliver_goose_panel_permissions,
+        )
+        deliver_goose_panel_permissions(
+            auto_approve=auto_approve,
+            is_goose=(target is not None and target.name == "goose"),
+            goose_config_dir=proj.shell_path / ".config" / "goose",
+        )
+    except Exception:
+        logger.debug(
+            "failed to seed goose GOOSE_MODE panel permissions",
+            exc_info=True,
+        )
+    # Increment 2b: the instruction-delivery SessionStart hook, routed
+    # to each agent's NATIVE config surface by
+    # ``deliver_directive_session_hook``.  The hook runs the flattener
+    # in ``--additional-context`` mode, injecting the flattened
+    # directive chain as session context.  claude →
+    # ~/.claude/settings.json (JSON hooks).  codex →
+    # ~/.codex/config.toml: codex 0.141.0 defines hooks INLINE in
+    # config.toml (NOT a separate ~/.codex/hooks.json), and gates a
+    # config hook behind a content-hash trust + a directory trust — the
+    # codex manager pre-seeds both so the FIRST launch fires with no
+    # ``/hooks`` prompt, and it folds in the codex approval/sandbox
+    # permission parity (driven by the SAME persisted ``auto_approve``
+    # the claude panel delivery uses above).  The HOOK itself is
+    # UNCONDITIONAL (orthogonal to yolo).  box_config_path/codex_cwd are
+    # the BOX-absolute paths codex reads/runs at in-box (GUEST_HOME);
+    # the workspace WORKDIR is codex's cwd (tmux new-session inherits
+    # it; see _bootstrap_wrap — no ``-c`` override).  Merge never
+    # clobbers a user's own config; idempotent; best-effort so a failure
+    # NEVER blocks the launch.
+    if target is not None and target.name in ("claude", "codex"):
+        try:
+            from kanibako.settings_resolve import GUEST_HOME
+            from kanibako.vscode_config import (
+                deliver_directive_session_hook,
+            )
+            deliver_directive_session_hook(
+                agent_name=target.name,
+                config_root=proj.shell_path,
+                box_codex_config_path=(
+                    f"{GUEST_HOME}/.codex/config.toml"
+                ),
+                codex_cwd=f"{GUEST_HOME}/workspace",
+                auto_approve=auto_approve,
+                # INC 3: a codex persona carries its resolved
+                # model-provider (None for claude / bare / non-persona ⇒
+                # byte-identical write).  This is the SINGLE codex
+                # config.toml write site, reached whenever a box is
+                # (re)started here — first launch after create and start
+                # of a stopped box — so the provider block re-materialises
+                # to the current persona config, exactly like the hook +
+                # trust region beside it.  (A reattach to an ALREADY-running
+                # box early-returns above and does not rewrite config.toml;
+                # harmless — the running box already carries the block.)
+                model_provider=provider,
+            )
+        except Exception:
+            logger.debug(
+                "failed to seed %s SessionStart directive hook",
+                target.name,
+                exc_info=True,
+            )
+
+
+def _assemble_image_sharing_mounts(
+    *,
+    share_images,
+    merged,
+    proj,
+    runtime,
+    std,
+    agent_id,
+    system_settings_path,
+    agent_cfg_path,
+    auth_src,
+    extra_mounts,
+    logger,
+):
+    """Append host image-storage share mounts to ``extra_mounts`` (conditional).
+
+    Extracted verbatim from ``_run_container``; extends the passed
+    ``extra_mounts`` list in place exactly as the inline block did.
+    """
+    if share_images or merged.box_share_images:
+        from kanibako.image_sharing import prepare_image_sharing_sources
+        staging = proj.metadata_path / ".image-sharing"
+        img_sources = prepare_image_sharing_sources(runtime.cmd, staging)
+        if img_sources is not None:
+            graph_root, storage_conf_path = img_sources
+            # Late, CONDITIONAL resolve through the same snapshot pipeline,
+            # carrying ONLY the image table (include_base_families=False) — its
+            # box_dests are disjoint from the main reconcile, so a separate
+            # reconcile is byte-for-byte equivalent.
+            _img_snap, _img_rec = _resolve_launch_snapshot(
+                std=std,
+                proj=proj,
+                agent_name=agent_id,
+                system_settings_path=system_settings_path,
+                agent_cfg_path=agent_cfg_path,
+                desc=None,
+                install=None,
+                target=None,
+                graph_root=graph_root,
+                storage_conf_path=storage_conf_path,
+                shares=auth_src.shares,
+                include_base_families=False,
+            )
+            img_mounts = _emit_category_mounts(_img_rec, label="images")
+            extra_mounts.extend(img_mounts)
+            logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
+        else:
+            print(
+                "Warning: --share-images enabled but host image storage "
+                "could not be detected. Continuing without image sharing.",
+                file=sys.stderr,
+            )
+
+
+def _assemble_launch_env(
+    *,
+    std,
+    proj,
+    agent_cfg,
+    reconciled,
+    state_env,
+    cli_env,
+    target,
+    agent_id,
+    extra_mounts,
+    logger,
+):
+    """Assemble the container environment + secret export list for the launch.
+
+    Extracted verbatim from ``_run_container``.  Extends ``extra_mounts`` with
+    the secret mounts in place (exactly where the inline block did) and returns
+    the assembled ``container_env`` plus the ``secret_export_vars`` list.
+    """
+    # Read environment variables, accumulating across config levels with
+    # the settings-framework precedence (low->high): system < agent <
+    # workset < box.  Target-derived state env and per-run CLI -e env stay
+    # above all config levels.
+    global_env_path = std.data_path / "env"
+    project_env_path = proj.metadata_path / "env"
+    # Workset-level env for named AND primary worksets (F9): the primary's
+    # tier file lives under @config.primary_workset, distinct from the
+    # system tier's @config.data/env (pre-F4 the two aliased, so the
+    # default group was skipped here).
+    ws_env_path = workset_env_path(proj.group)
+    container_env = _build_config_env(
+        global_env_path, agent_cfg.env, ws_env_path, project_env_path,
+    )
+    # Settings-framework env (the `<scope>.env.<VAR>` category) supersedes
+    # the retired `.env` files (Phase 2 decision E).  reconcile (the single
+    # launch reconcile above) picked the most-specific scope per VAR
+    # (system<agent<workset<box), so applying its ENV winners over the legacy
+    # map is the documented config-level precedence.  Each ENV entry carries
+    # the VAR name in ``box_dest`` and the resolved value in ``options``.  It
+    # stays BELOW target state env and CLI -e.  ADDITIVE: with no `env.*` keys
+    # configured the reconciled env set is empty -> byte-identical.
+    container_env.update(
+        {e.box_dest: e.options for e in reconciled.envs}
+    )
+    # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
+    # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
+    # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
+    # SECRET_MOUNT_DIR/<VAR> and exported IN-BOX by a shim at agent start.
+    # kanibako NEVER reads the file VALUE (it is never in container_env, never on
+    # the podman argv, never in the snapshot/keystore/logs) — this REPLACES the
+    # retired env-value read that pulled the secret into our memory + onto the
+    # argv. Missing/unreadable/empty host file -> WARN + VAR unset (fail-soft).
+    # ``secret_export_vars`` drives the box-side export shim below; an EMPTY list
+    # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
+    secret_mounts, secret_export_vars = _emit_secret_mounts(reconciled, logger)
+    extra_mounts.extend(secret_mounts)
+    container_env.update(state_env)                        # target-derived state env
+
+    # Merge per-run -e/--env KEY=VALUE vars (highest priority).
+    container_env.update(_parse_cli_env(cli_env))
+
+    # NOTE: Claude Code telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+    # and the auto-updater disable (DISABLE_AUTOUPDATER) are now carried by
+    # claude's descriptor.container_env, merged via state_env above.  The
+    # former core `target.name == "claude"` special-case has been removed.
+
+    # Inject instance identity for peer communication.
+    if proj.name:
+        container_env["KANIBAKO_NAME"] = proj.name
+
+    # Instruction-delivery SEED (increment 2b): the box-absolute path to the
+    # per-agent kickoff SEED, RO-bound at ~/.config/kanibako/kickoff.md.  The
+    # SessionStart hooks (claude/codex) and the goose launch-flatten shim
+    # reference this to flatten the ``@import`` directive chain into the
+    # agent's native slot.  ABSOLUTE (not ``~``) so it resolves identically in
+    # a hook shell and at exec time.  Global (agent-independent): the per-agent
+    # FINAL-slot path arrives via each descriptor's KANIBAKO_DIRECTIVE_FINAL.
+    from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME
+    container_env["KANIBAKO_DIRECTIVE_SEED"] = (
+        f"{_GUEST_HOME}/.config/kanibako/kickoff.md"
+    )
+
+    # Stamp the resolved agent ON THE CONTAINER (NOT durable config — keeps
+    # `--agent` ephemeral).  On a later `kanibako start` against this running
+    # persistent box, the reattach fast-source reads this back so it can
+    # refresh creds + attach without re-running the resolution cascade (which
+    # would otherwise Gate-2a when there are 2+ agents and no default).  Only
+    # stamped for a real agent launch; no-agent/shell launches (target is
+    # None) carry no agent, so the var is left unset.
+    if target is not None:
+        # Stamp the NODE-name (full persona identity), NOT the harness
+        # (``target.name``): the reattach fast-source + stop writeback read
+        # this back and derive the harness via ``harness_of`` where a target
+        # is needed. Bare node == harness == target.name (byte-identical).
+        container_env["KANIBAKO_AGENT"] = agent_id
+
+    # E2g / increment 4a: seed the per-agent liveness MARKERS DIR so every agent
+    # session's start hook writes a per-PID marker ``<dir>/$PPID`` there; the
+    # supervisor reads the SAME dir via --agent-markers-dir.  Seeded UNCONDITIONALLY
+    # (not just warm-up): the E2b/E2c supervised-agent path (`kanibako start
+    # [--detach]`) now ALSO enumerates the dir so run_forever detects a panel
+    # newcomer (increment 4a), and the warm-up panel-watch path enumerates it for
+    # panel-agent liveness.  Harmless for a non-claude/no-agent box (no marker hook
+    # is seeded, so nothing writes it).
+    container_env["KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
+    return container_env, secret_export_vars
+
+
+def _start_helper_hub(
+    *,
+    runtime,
+    image,
+    container_name,
+    proj,
+    target,
+    install,
+    binary_mnts,
+    tweakcc_entry,
+    std,
+    container_env,
+    entrypoint,
+    box_shell,
+    agent_id,
+    system_settings_path,
+    agent_cfg_path,
+    auth_src,
+    extra_mounts,
+):
+    """Start the helper hub + append its mounts; return the started hub.
+
+    Extracted verbatim from the ``if helpers_enabled:`` block of
+    ``_run_container``.  Extends ``extra_mounts`` in place exactly as the inline
+    block did and returns the started ``HelperHub``.
+    """
+    from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
+    from kanibako.targets.base import Mount as _HMount
+
+    # Socket must live in a short path to stay under the AF_UNIX
+    # ``sun_path`` limit.  ``std.runtime`` is ``$XDG_RUNTIME_DIR/kanibako``
+    # resolved through the hardened XDG resolver (honor-iff-absolute,
+    # with a warn-on-fallback to /run/user/$UID or a 0700 temp dir) —
+    # the single source of truth for the runtime base.
+    _run_dir = std.runtime
+    _run_dir.mkdir(parents=True, exist_ok=True)
+    # Socket name = ``<box>-<ws>`` (box name + workset-name token), so a
+    # project name reused across worksets gets a distinct socket.  The
+    # combined identity is bounded so a long name can't overflow
+    # ``sun_path``; reattach recomputes the same deterministic name.
+    from kanibako.channels import workset_name_token
+    _box_name = proj.name if proj.name else short_hash(proj.project_hash)
+    _ws_token = workset_name_token(proj)
+    socket_path = _run_dir / bounded_socket_name(
+        f"{_box_name}-{_ws_token}", _run_dir,
+    )
+    validate_socket_path(socket_path)
+    # Per-box, per-mode HOST helper log — lives inside the box's own
+    # workset/box tree (PRIMARY → primary_workset/logs/<box>.jsonl,
+    # NAMED → <workset_root>/logs/<box>.jsonl, STANDALONE →
+    # box_data/<box>.jsonl), not the old shared @config.data/logs/<id>/
+    # location.  Guarantee-create the parent before the ro bind (L7).
+    from kanibako.paths import helper_log_path
+    log_path = helper_log_path(std, proj)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Ensure helpers/ dir exists in shell_path
+    helpers_dir = proj.shell_path / "helpers"
+    helpers_dir.mkdir(exist_ok=True)
+
+    # Build context for helper container launches.  Helpers reuse the
+    # agent's delivery binds so an in-helper agent finds the same binary;
+    # `binary_mnts` is the descriptor-assembled delivery mount list built
+    # above (only set when a descriptor-bearing target has a host
+    # install — NoAgentTarget has none, so helpers get just the kanibako
+    # binds).
+    binary_mounts = _kanibako_mounts()
+    if target and install:
+        binary_mounts.extend(binary_mnts)
+
+    # Share tweakcc cache with helpers so they reuse patched binaries
+    if tweakcc_entry is not None:
+        _tweakcc_cache_dir = std.cache_path / "tweakcc"
+        if _tweakcc_cache_dir.is_dir():
+            binary_mounts.append(_HMount(
+                source=_tweakcc_cache_dir,
+                destination=str(_tweakcc_cache_dir),
+                options="ro",
+            ))
+
+    helper_ctx = HelperContext(
+        runtime=runtime,
+        image=image,
+        container_name_prefix=container_name,
+        shell_path=proj.shell_path,
+        helpers_dir=helpers_dir,
+        socket_path=socket_path,
+        binary_mounts=binary_mounts,
+        env=container_env,
+        entrypoint=entrypoint,
+        default_entrypoint=target.default_entrypoint if target else None,
+        box_shell=box_shell,
+        project_path=proj.project_path,
+        data_path=std.data_path,
+        boxes=std.boxes,
+        registry=std.registry,
+        primary_workset=std.primary_workset,
+    )
+
+    msg_log = MessageLog(log_path)
+    hub = HelperHub()
+    hub.start(socket_path, helper_ctx, log=msg_log)
+
+    # Box-side socket + log dests are XDG_STATE_HOME-aware: derived from
+    # the BOX's container env (honor-iff-absolute, else
+    # ``$HOME/.local/state``), the single derivation shared with
+    # ``helper-init.sh`` (`${XDG_STATE_HOME:-$HOME/.local/state}`) and
+    # the in-box CLI (``xdg``) so host and box agree by construction.
+    box_state_kanibako = box_state_home(container_env) / "kanibako"
+
+    # Mount the live helper socket + the per-box message log into the box,
+    # routed through the category resolver (Phase B) instead of hardwired
+    # ``_HMount`` appends.  The runtime-derived box destinations
+    # (``<box_state_kanibako>/helper.sock`` / ``…/helpers.jsonl``) and the
+    # ``.exists()`` skip-if-missing gate are applied in the loader; the
+    # socket keeps options="" (a LIVE unix socket the hub listens on — a
+    # Z/U relabel/chown would break the shared socket topology).
+    kanibako_dir = proj.shell_path / ".local" / "state" / "kanibako"
+    kanibako_dir.mkdir(parents=True, exist_ok=True)
+    # Late, CONDITIONAL resolve through the same snapshot pipeline,
+    # carrying ONLY the helper table (include_base_families=False) — its
+    # runtime-derived box_dests are disjoint from the main reconcile, so a
+    # separate reconcile is byte-for-byte equivalent.
+    _hub_snap, _hub_rec = _resolve_launch_snapshot(
+        std=std,
+        proj=proj,
+        agent_name=agent_id,
+        system_settings_path=system_settings_path,
+        agent_cfg_path=agent_cfg_path,
+        desc=None,
+        install=None,
+        target=None,
+        box_state_kanibako=str(box_state_kanibako),
+        socket_path=socket_path,
+        log_path=log_path,
+        shares=auth_src.shares,
+        include_base_families=False,
+    )
+    helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
+    extra_mounts.extend(helper_hub_mounts)
+    return hub
+
+
+
 def _run_container(
     *,
     project_dir: str | None,
@@ -2099,107 +2521,13 @@ def _run_container(
                     else None
                 )
                 auto_approve = True if _aa is None else _aa
-                # Ph4b Vector A: mirror the box's PERSISTED claude ``auto_approve``
-                # into the box's in-box ``~/.claude/settings.json`` so the VS Code
-                # claude-code PANEL (the default `kanibako code` UX) reflects the
-                # box's configured yolo — the CLI flag path only reaches the CLI
-                # claude, not the panel.  This keys on the PERSISTED ``auto_approve``
-                # value (just resolved above), NOT the per-launch ``safe_off`` that
-                # drives ``--dangerously-skip-permissions`` below: the per-launch
-                # ``-S``/``-A`` flags DELIBERATELY do NOT touch the panel — the panel
-                # reflects the box's configured yolo, not a transient launch flag.
-                # SYMMETRIC + CLAUDE-only + best-effort: auto_approve ON SETs the
-                # managed defaultMode, OFF CLEARS it (so toggling off takes effect);
-                # non-claude is inert; a failure here NEVER blocks the launch.
-                try:
-                    from kanibako.vscode_config import (
-                        deliver_claude_panel_permissions,
-                    )
-                    deliver_claude_panel_permissions(
-                        auto_approve=auto_approve,
-                        is_claude=(target is not None and target.name == "claude"),
-                        claude_config_dir=proj.shell_path / ".claude",
-                    )
-                except Exception:
-                    logger.debug(
-                        "failed to seed claude bypassPermissions settings",
-                        exc_info=True,
-                    )
-                # FF-5 permission parity (goose): the ``block.vscode-goose`` panel
-                # spawns its OWN in-box goose WITHOUT kanibako's launch env, so it
-                # never sees the ``GOOSE_MODE`` env var the CLI entrypoint sets.
-                # Persist the box's configured yolo into the box's in-box
-                # ``~/.config/goose/config.yaml`` (``GOOSE_MODE`` is a valid goose
-                # config key) so the panel reflects it.  Keys on the SAME persisted
-                # ``auto_approve`` resolved above (NOT the per-launch flags).
-                # goose-only + best-effort: OFF writes the secure ``approve``
-                # explicitly (unset GOOSE_MODE defaults to permissive ``auto``);
-                # non-goose is inert; a failure here NEVER blocks the launch.
-                try:
-                    from kanibako.vscode_config import (
-                        deliver_goose_panel_permissions,
-                    )
-                    deliver_goose_panel_permissions(
-                        auto_approve=auto_approve,
-                        is_goose=(target is not None and target.name == "goose"),
-                        goose_config_dir=proj.shell_path / ".config" / "goose",
-                    )
-                except Exception:
-                    logger.debug(
-                        "failed to seed goose GOOSE_MODE panel permissions",
-                        exc_info=True,
-                    )
-                # Increment 2b: the instruction-delivery SessionStart hook, routed
-                # to each agent's NATIVE config surface by
-                # ``deliver_directive_session_hook``.  The hook runs the flattener
-                # in ``--additional-context`` mode, injecting the flattened
-                # directive chain as session context.  claude →
-                # ~/.claude/settings.json (JSON hooks).  codex →
-                # ~/.codex/config.toml: codex 0.141.0 defines hooks INLINE in
-                # config.toml (NOT a separate ~/.codex/hooks.json), and gates a
-                # config hook behind a content-hash trust + a directory trust — the
-                # codex manager pre-seeds both so the FIRST launch fires with no
-                # ``/hooks`` prompt, and it folds in the codex approval/sandbox
-                # permission parity (driven by the SAME persisted ``auto_approve``
-                # the claude panel delivery uses above).  The HOOK itself is
-                # UNCONDITIONAL (orthogonal to yolo).  box_config_path/codex_cwd are
-                # the BOX-absolute paths codex reads/runs at in-box (GUEST_HOME);
-                # the workspace WORKDIR is codex's cwd (tmux new-session inherits
-                # it; see _bootstrap_wrap — no ``-c`` override).  Merge never
-                # clobbers a user's own config; idempotent; best-effort so a failure
-                # NEVER blocks the launch.
-                if target is not None and target.name in ("claude", "codex"):
-                    try:
-                        from kanibako.settings_resolve import GUEST_HOME
-                        from kanibako.vscode_config import (
-                            deliver_directive_session_hook,
-                        )
-                        deliver_directive_session_hook(
-                            agent_name=target.name,
-                            config_root=proj.shell_path,
-                            box_codex_config_path=(
-                                f"{GUEST_HOME}/.codex/config.toml"
-                            ),
-                            codex_cwd=f"{GUEST_HOME}/workspace",
-                            auto_approve=auto_approve,
-                            # INC 3: a codex persona carries its resolved
-                            # model-provider (None for claude / bare / non-persona ⇒
-                            # byte-identical write).  This is the SINGLE codex
-                            # config.toml write site, reached whenever a box is
-                            # (re)started here — first launch after create and start
-                            # of a stopped box — so the provider block re-materialises
-                            # to the current persona config, exactly like the hook +
-                            # trust region beside it.  (A reattach to an ALREADY-running
-                            # box early-returns above and does not rewrite config.toml;
-                            # harmless — the running box already carries the block.)
-                            model_provider=provider,
-                        )
-                    except Exception:
-                        logger.debug(
-                            "failed to seed %s SessionStart directive hook",
-                            target.name,
-                            exc_info=True,
-                        )
+                _deliver_panel_permissions(
+                    target=target,
+                    proj=proj,
+                    auto_approve=auto_approve,
+                    provider=provider,
+                    logger=logger,
+                )
                 safe_off = assembly.effective_safe_mode_off(
                     secure=safe_mode,
                     autonomous=autonomous,
@@ -2379,39 +2707,19 @@ def _run_container(
         # of the bind); those probed/generated paths are injected at the seam into
         # the keyed ``box.bindings.ro.images_*`` binds.  CONDITIONAL: only when
         # sharing is requested AND the host graph root is detectable.
-        if share_images or merged.box_share_images:
-            from kanibako.image_sharing import prepare_image_sharing_sources
-            staging = proj.metadata_path / ".image-sharing"
-            img_sources = prepare_image_sharing_sources(runtime.cmd, staging)
-            if img_sources is not None:
-                graph_root, storage_conf_path = img_sources
-                # Late, CONDITIONAL resolve through the same snapshot pipeline,
-                # carrying ONLY the image table (include_base_families=False) — its
-                # box_dests are disjoint from the main reconcile, so a separate
-                # reconcile is byte-for-byte equivalent.
-                _img_snap, _img_rec = _resolve_launch_snapshot(
-                    std=std,
-                    proj=proj,
-                    agent_name=agent_id,
-                    system_settings_path=system_settings_path,
-                    agent_cfg_path=agent_cfg_path,
-                    desc=None,
-                    install=None,
-                    target=None,
-                    graph_root=graph_root,
-                    storage_conf_path=storage_conf_path,
-                    shares=auth_src.shares,
-                    include_base_families=False,
-                )
-                img_mounts = _emit_category_mounts(_img_rec, label="images")
-                extra_mounts.extend(img_mounts)
-                logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
-            else:
-                print(
-                    "Warning: --share-images enabled but host image storage "
-                    "could not be detected. Continuing without image sharing.",
-                    file=sys.stderr,
-                )
+        _assemble_image_sharing_mounts(
+            share_images=share_images,
+            merged=merged,
+            proj=proj,
+            runtime=runtime,
+            std=std,
+            agent_id=agent_id,
+            system_settings_path=system_settings_path,
+            agent_cfg_path=agent_cfg_path,
+            auth_src=auth_src,
+            extra_mounts=extra_mounts,
+            logger=logger,
+        )
 
         # Peer communication: the channel system (5 types, 2 scopes — TARGET §2f)
         # is now folded into the single launch reconcile above (the per-mode
@@ -2419,92 +2727,18 @@ def _run_container(
         # ``_emit_category_mounts``); the chat ``general.md``/``broadcast.md`` seed
         # side-effect (``_seed_channel_files``) ran just before that emit.
 
-        # Read environment variables, accumulating across config levels with
-        # the settings-framework precedence (low->high): system < agent <
-        # workset < box.  Target-derived state env and per-run CLI -e env stay
-        # above all config levels.
-        global_env_path = std.data_path / "env"
-        project_env_path = proj.metadata_path / "env"
-        # Workset-level env for named AND primary worksets (F9): the primary's
-        # tier file lives under @config.primary_workset, distinct from the
-        # system tier's @config.data/env (pre-F4 the two aliased, so the
-        # default group was skipped here).
-        ws_env_path = workset_env_path(proj.group)
-        container_env = _build_config_env(
-            global_env_path, agent_cfg.env, ws_env_path, project_env_path,
+        container_env, secret_export_vars = _assemble_launch_env(
+            std=std,
+            proj=proj,
+            agent_cfg=agent_cfg,
+            reconciled=reconciled,
+            state_env=state_env,
+            cli_env=cli_env,
+            target=target,
+            agent_id=agent_id,
+            extra_mounts=extra_mounts,
+            logger=logger,
         )
-        # Settings-framework env (the `<scope>.env.<VAR>` category) supersedes
-        # the retired `.env` files (Phase 2 decision E).  reconcile (the single
-        # launch reconcile above) picked the most-specific scope per VAR
-        # (system<agent<workset<box), so applying its ENV winners over the legacy
-        # map is the documented config-level precedence.  Each ENV entry carries
-        # the VAR name in ``box_dest`` and the resolved value in ``options``.  It
-        # stays BELOW target state env and CLI -e.  ADDITIVE: with no `env.*` keys
-        # configured the reconciled env set is empty -> byte-identical.
-        container_env.update(
-            {e.box_dest: e.options for e in reconciled.envs}
-        )
-        # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
-        # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
-        # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
-        # SECRET_MOUNT_DIR/<VAR> and exported IN-BOX by a shim at agent start.
-        # kanibako NEVER reads the file VALUE (it is never in container_env, never on
-        # the podman argv, never in the snapshot/keystore/logs) — this REPLACES the
-        # retired env-value read that pulled the secret into our memory + onto the
-        # argv. Missing/unreadable/empty host file -> WARN + VAR unset (fail-soft).
-        # ``secret_export_vars`` drives the box-side export shim below; an EMPTY list
-        # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
-        secret_mounts, secret_export_vars = _emit_secret_mounts(reconciled, logger)
-        extra_mounts.extend(secret_mounts)
-        container_env.update(state_env)                        # target-derived state env
-
-        # Merge per-run -e/--env KEY=VALUE vars (highest priority).
-        container_env.update(_parse_cli_env(cli_env))
-
-        # NOTE: Claude Code telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
-        # and the auto-updater disable (DISABLE_AUTOUPDATER) are now carried by
-        # claude's descriptor.container_env, merged via state_env above.  The
-        # former core `target.name == "claude"` special-case has been removed.
-
-        # Inject instance identity for peer communication.
-        if proj.name:
-            container_env["KANIBAKO_NAME"] = proj.name
-
-        # Instruction-delivery SEED (increment 2b): the box-absolute path to the
-        # per-agent kickoff SEED, RO-bound at ~/.config/kanibako/kickoff.md.  The
-        # SessionStart hooks (claude/codex) and the goose launch-flatten shim
-        # reference this to flatten the ``@import`` directive chain into the
-        # agent's native slot.  ABSOLUTE (not ``~``) so it resolves identically in
-        # a hook shell and at exec time.  Global (agent-independent): the per-agent
-        # FINAL-slot path arrives via each descriptor's KANIBAKO_DIRECTIVE_FINAL.
-        from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME
-        container_env["KANIBAKO_DIRECTIVE_SEED"] = (
-            f"{_GUEST_HOME}/.config/kanibako/kickoff.md"
-        )
-
-        # Stamp the resolved agent ON THE CONTAINER (NOT durable config — keeps
-        # `--agent` ephemeral).  On a later `kanibako start` against this running
-        # persistent box, the reattach fast-source reads this back so it can
-        # refresh creds + attach without re-running the resolution cascade (which
-        # would otherwise Gate-2a when there are 2+ agents and no default).  Only
-        # stamped for a real agent launch; no-agent/shell launches (target is
-        # None) carry no agent, so the var is left unset.
-        if target is not None:
-            # Stamp the NODE-name (full persona identity), NOT the harness
-            # (``target.name``): the reattach fast-source + stop writeback read
-            # this back and derive the harness via ``harness_of`` where a target
-            # is needed. Bare node == harness == target.name (byte-identical).
-            container_env["KANIBAKO_AGENT"] = agent_id
-
-        # E2g / increment 4a: seed the per-agent liveness MARKERS DIR so every agent
-        # session's start hook writes a per-PID marker ``<dir>/$PPID`` there; the
-        # supervisor reads the SAME dir via --agent-markers-dir.  Seeded UNCONDITIONALLY
-        # (not just warm-up): the E2b/E2c supervised-agent path (`kanibako start
-        # [--detach]`) now ALSO enumerates the dir so run_forever detects a panel
-        # newcomer (increment 4a), and the warm-up panel-watch path enumerates it for
-        # panel-agent liveness.  Harmless for a non-claude/no-agent box (no marker hook
-        # is seeded, so nothing writes it).
-        container_env["KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
 
         # Helper hub: start listener before director, mount socket
         hub = None
@@ -2544,120 +2778,25 @@ def _run_container(
             box_shell = None
 
         if helpers_enabled:
-            from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
-            from kanibako.targets.base import Mount as _HMount
-
-            # Socket must live in a short path to stay under the AF_UNIX
-            # ``sun_path`` limit.  ``std.runtime`` is ``$XDG_RUNTIME_DIR/kanibako``
-            # resolved through the hardened XDG resolver (honor-iff-absolute,
-            # with a warn-on-fallback to /run/user/$UID or a 0700 temp dir) —
-            # the single source of truth for the runtime base.
-            _run_dir = std.runtime
-            _run_dir.mkdir(parents=True, exist_ok=True)
-            # Socket name = ``<box>-<ws>`` (box name + workset-name token), so a
-            # project name reused across worksets gets a distinct socket.  The
-            # combined identity is bounded so a long name can't overflow
-            # ``sun_path``; reattach recomputes the same deterministic name.
-            from kanibako.channels import workset_name_token
-            _box_name = proj.name if proj.name else short_hash(proj.project_hash)
-            _ws_token = workset_name_token(proj)
-            socket_path = _run_dir / bounded_socket_name(
-                f"{_box_name}-{_ws_token}", _run_dir,
-            )
-            validate_socket_path(socket_path)
-            # Per-box, per-mode HOST helper log — lives inside the box's own
-            # workset/box tree (PRIMARY → primary_workset/logs/<box>.jsonl,
-            # NAMED → <workset_root>/logs/<box>.jsonl, STANDALONE →
-            # box_data/<box>.jsonl), not the old shared @config.data/logs/<id>/
-            # location.  Guarantee-create the parent before the ro bind (L7).
-            from kanibako.paths import helper_log_path
-            log_path = helper_log_path(std, proj)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Ensure helpers/ dir exists in shell_path
-            helpers_dir = proj.shell_path / "helpers"
-            helpers_dir.mkdir(exist_ok=True)
-
-            # Build context for helper container launches.  Helpers reuse the
-            # agent's delivery binds so an in-helper agent finds the same binary;
-            # `binary_mnts` is the descriptor-assembled delivery mount list built
-            # above (only set when a descriptor-bearing target has a host
-            # install — NoAgentTarget has none, so helpers get just the kanibako
-            # binds).
-            binary_mounts = _kanibako_mounts()
-            if target and install:
-                binary_mounts.extend(binary_mnts)
-
-            # Share tweakcc cache with helpers so they reuse patched binaries
-            if tweakcc_entry is not None:
-                _tweakcc_cache_dir = std.cache_path / "tweakcc"
-                if _tweakcc_cache_dir.is_dir():
-                    binary_mounts.append(_HMount(
-                        source=_tweakcc_cache_dir,
-                        destination=str(_tweakcc_cache_dir),
-                        options="ro",
-                    ))
-
-            helper_ctx = HelperContext(
+            hub = _start_helper_hub(
                 runtime=runtime,
                 image=image,
-                container_name_prefix=container_name,
-                shell_path=proj.shell_path,
-                helpers_dir=helpers_dir,
-                socket_path=socket_path,
-                binary_mounts=binary_mounts,
-                env=container_env,
-                entrypoint=entrypoint,
-                default_entrypoint=target.default_entrypoint if target else None,
-                box_shell=box_shell,
-                project_path=proj.project_path,
-                data_path=std.data_path,
-                boxes=std.boxes,
-                registry=std.registry,
-                primary_workset=std.primary_workset,
-            )
-
-            msg_log = MessageLog(log_path)
-            hub = HelperHub()
-            hub.start(socket_path, helper_ctx, log=msg_log)
-
-            # Box-side socket + log dests are XDG_STATE_HOME-aware: derived from
-            # the BOX's container env (honor-iff-absolute, else
-            # ``$HOME/.local/state``), the single derivation shared with
-            # ``helper-init.sh`` (`${XDG_STATE_HOME:-$HOME/.local/state}`) and
-            # the in-box CLI (``xdg``) so host and box agree by construction.
-            box_state_kanibako = box_state_home(container_env) / "kanibako"
-
-            # Mount the live helper socket + the per-box message log into the box,
-            # routed through the category resolver (Phase B) instead of hardwired
-            # ``_HMount`` appends.  The runtime-derived box destinations
-            # (``<box_state_kanibako>/helper.sock`` / ``…/helpers.jsonl``) and the
-            # ``.exists()`` skip-if-missing gate are applied in the loader; the
-            # socket keeps options="" (a LIVE unix socket the hub listens on — a
-            # Z/U relabel/chown would break the shared socket topology).
-            kanibako_dir = proj.shell_path / ".local" / "state" / "kanibako"
-            kanibako_dir.mkdir(parents=True, exist_ok=True)
-            # Late, CONDITIONAL resolve through the same snapshot pipeline,
-            # carrying ONLY the helper table (include_base_families=False) — its
-            # runtime-derived box_dests are disjoint from the main reconcile, so a
-            # separate reconcile is byte-for-byte equivalent.
-            _hub_snap, _hub_rec = _resolve_launch_snapshot(
-                std=std,
+                container_name=container_name,
                 proj=proj,
-                agent_name=agent_id,
+                target=target,
+                install=install,
+                binary_mnts=binary_mnts,
+                tweakcc_entry=tweakcc_entry,
+                std=std,
+                container_env=container_env,
+                entrypoint=entrypoint,
+                box_shell=box_shell,
+                agent_id=agent_id,
                 system_settings_path=system_settings_path,
                 agent_cfg_path=agent_cfg_path,
-                desc=None,
-                install=None,
-                target=None,
-                box_state_kanibako=str(box_state_kanibako),
-                socket_path=socket_path,
-                log_path=log_path,
-                shares=auth_src.shares,
-                include_base_families=False,
+                auth_src=auth_src,
+                extra_mounts=extra_mounts,
             )
-            helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
-            extra_mounts.extend(helper_hub_mounts)
 
         # Pre-launch validation: warn about missing mount sources.
         _validate_mounts(extra_mounts, logger)
