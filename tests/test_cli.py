@@ -1587,7 +1587,7 @@ class TestBoxConfigVerbsAcceptBoxFlag:
 
         # ``--box`` names the subject; positional args carry only the key=value.
         args = argparse.Namespace(
-            args=["box.image=subject-img:v1"], force=False, local=False,
+            args=["box.image=subject-img:v1"], force=False,
             box=project_dir,
         )
         rc = run_set(args)
