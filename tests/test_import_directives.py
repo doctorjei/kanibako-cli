@@ -85,10 +85,37 @@ class TestResolution:
         out = _run(home, {"root.md": f"@{target}", "abs.md": "abs body"})
         assert "abs body" in out
 
-    def test_missing_file_left_literal(self, home):
-        out = _run(home, {"root.md": "@nope.md stays literal"})
-        assert "@nope.md stays literal" in out
+    def test_missing_file_neutralised(self, home):
+        out = _run(home, {"root.md": "@nope.md stays inert"})
+        # A missing target is neutralised to an inert backticked form, not left as
+        # a raw live import, and produces no section.
+        assert "`@nope.md`" in out
         assert "## nope" not in out
+        # No live import survives: re-flattening the output changes nothing for it
+        # (idempotent -- the backticked mention is skipped as a code span).
+        (home / "out2src.md").write_text(out, encoding="utf-8")
+        dest2 = home / "out2.md"
+        assert flattener.flatten(str(home / "out2src.md"), str(dest2)) == 0
+        out2 = dest2.read_text(encoding="utf-8")
+        assert "`@nope.md`" in out2
+        assert "## nope" not in out2
+
+    def test_missing_file_trailing_punct_outside_ticks(self, home):
+        out = _run(home, {"root.md": "see @nope.md."})
+        assert "`@nope.md`." in out
+
+    def test_unresolvable_nested_in_resolvable_chain(self, home):
+        # The real-world case (a resolvable guide referencing a not-yet-created
+        # sibling, e.g. KANIBAKO.md -> @CONTENTS.md): the chain still resolves; the
+        # missing mention neutralizes INLINE and never becomes a phantom section.
+        out = _run(home, {
+            "root.md": "@guide.md",
+            "guide.md": "# Guide\nSee @CONTENTS.md for more.",
+        })
+        assert "## guide_md" in out          # the resolvable link/section survives
+        assert "# Guide" in out
+        assert "`@CONTENTS.md`" in out        # missing sibling neutralized inline
+        assert "## CONTENTS" not in out       # no phantom section for the missing file
 
     def test_trailing_punctuation_kept_outside_link(self, home):
         out = _run(home, {"root.md": "see @child.md.", "child.md": "x"})
@@ -128,13 +155,18 @@ class TestDedupAndOrder:
         assert out.count("[shared.md](#shared_md)") == 2
 
     def test_cycle_terminates(self, home):
+        # A deep cycle (>4 hops) still terminates: import-once, not a depth cap,
+        # is the termination guarantee.
         out = _run(home, {
             "root.md": "@a.md",
             "a.md": "A @b.md",
-            "b.md": "B @a.md",
+            "b.md": "B @c.md",
+            "c.md": "C @d.md",
+            "d.md": "D @e.md",
+            "e.md": "E @a.md",
         })
-        assert out.count("## a_md") == 1
-        assert out.count("## b_md") == 1
+        for name in ("a", "b", "c", "d", "e"):
+            assert out.count(f"## {name}_md") == 1
 
     def test_slug_collision_numbered(self, home):
         # ~/a/b.md and ~/a/b_md both normalise to a_b_md -> second gets a suffix.
@@ -147,22 +179,26 @@ class TestDedupAndOrder:
         assert "## a_b_md_2" in out
 
 
-class TestDepthCap:
-    def test_fifth_hop_dropped_and_neutralised(self, home, capsys):
+class TestFullDepthResolution:
+    def test_deep_chain_resolved_no_depth_cap(self, home, capsys):
+        # A chain far deeper than the old four-hop cap resolves in full: every
+        # hop, including the 5th, 6th and 7th, becomes a ## section + link, the
+        # leaf content is present, and no depth warning is emitted.
         out = _run(home, {
             "root.md": "@d1.md",
             "d1.md": "@d2.md",
             "d2.md": "@d3.md",
             "d3.md": "@d4.md",
             "d4.md": "@d5.md",
-            "d5.md": "leaf",
+            "d5.md": "@d6.md",
+            "d6.md": "@d7.md",
+            "d7.md": "leaf",
         })
-        # d1..d4 imported (hops 1-4); d5 (hop 5) dropped + neutralised.
-        assert "## d4_md" in out
-        assert "## d5_md" not in out
-        assert "`@d5.md`" in out
-        assert "leaf" not in out
-        assert "depth>4" in capsys.readouterr().err
+        for n in range(1, 8):
+            assert f"## d{n}_md" in out
+            assert f"[d{n}.md](#d{n}_md)" in out
+        assert "leaf" in out
+        assert "depth>" not in capsys.readouterr().err
 
 
 class TestOutputShape:
