@@ -3983,8 +3983,8 @@ def _resolve_codex_persona_provider(
     * *provider_id* / *name* — the persona segment (``navigator``); the table id +
       the human-readable provider name (INC 3/4 may add a display-name keyspace key).
     * *base_url* — the resolved endpoint.
-    * *wire_api* — the harness default (``chat`` for codex; PROVISIONAL — the
-      chat-vs-responses final call needs a real NaviGator key, settled at INC 4).
+    * *wire_api* — the harness default (``responses`` for codex; Codex removed the
+      ``chat`` wire per openai/codex#7782, validated live against a real NaviGator key).
     * *env_key* — the token var (== the ``secret_path`` key the bearer token is
       delivered through), so codex reads the key kanibako exports.
     * *model* — the CASCADE-resolved active-node model (``agent.<node>.model`` off the

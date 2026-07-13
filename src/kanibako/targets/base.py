@@ -171,8 +171,8 @@ class PersonaSpec:
       var).  ``"config_file"`` ALSO disables the claude-shaped B3 host-dir auto-adopt
       (MVP keyspace-config only).
     * *wire_api* — the config-file harness's model-provider wire protocol (codex
-      ``[model_providers.<id>].wire_api``); default ``"chat"`` (settled with a real
-      key at INC 3/4).  Ignored for ``"env"`` delivery.
+      ``[model_providers.<id>].wire_api``); default ``"responses"`` (Codex removed
+      the ``"chat"`` wire, openai/codex#7782).  Ignored for ``"env"`` delivery.
     * *host_dir_adopt* — whether an ENV-delivery persona with an UNSET keyspace
       endpoint may auto-adopt a config from the CLAUDE-shaped host dir
       ``~/.config/claude/<persona>/`` (the B3 gate in ``start.py``).  Claude is the
@@ -203,7 +203,7 @@ class PersonaSpec:
 
     token_var: str = ""
     endpoint_delivery: str = "env"   # "env" | "config_file"
-    wire_api: str = "chat"
+    wire_api: str = "responses"      # config-file harness wire; codex dropped "chat" (openai/codex#7782)
     host_dir_adopt: bool = True      # env-delivery B3 host-dir auto-adopt (claude only)
     provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
     model_required: bool = False     # error if endpoint set but no model (goose parity)

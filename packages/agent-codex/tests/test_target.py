@@ -408,7 +408,7 @@ class TestSettingDescriptors:
         assert spec is not None
         assert spec.endpoint_delivery == "config_file"
         assert spec.token_var == ""
-        assert spec.wire_api == "chat"
+        assert spec.wire_api == "responses"
 
 
 class TestDefaultShares:

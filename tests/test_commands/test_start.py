@@ -4864,7 +4864,7 @@ class TestPersonaWiring:
         spec = CodexTarget().descriptor.persona
         assert spec is not None
         assert spec.endpoint_delivery == "config_file"
-        assert spec.wire_api == "chat"
+        assert spec.wire_api == "responses"
         w = _persona_wiring(CodexTarget())
         assert w.endpoint_delivery == "config_file"
         assert w.token_var == ""  # dynamic: the configured secret_path key
@@ -5001,7 +5001,7 @@ class TestPreflightCodexPersona:
             provider_id="navigator",
             name="navigator",
             base_url="https://api.ai.example/v1",
-            wire_api="chat",
+            wire_api="responses",
             env_key="NAVIGATOR_API_KEY",   # the configured secret_path key.
             model="gemma-4-31b-it",
         )
