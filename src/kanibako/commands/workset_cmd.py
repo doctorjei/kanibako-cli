@@ -150,7 +150,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     info_p.add_argument("name", help="Name of the working set")
     info_p.set_defaults(func=run_info)
 
-    # kanibako workset set <workset> <key>=<value> [--force] [--local]
+    # kanibako workset set <workset> <key>=<value> [--force]
     set_p = ws_sub.add_parser(
         "set",
         help="Set a working set configuration value",
@@ -158,7 +158,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Set a working set setting (key=value).\n\n"
             "  workset set myws model=sonnet      set 'model'\n"
             "  workset set myws workset.auth.share_allowed=false  set sharing\n"
-            "  workset set myws resource.plugins=/p  set resource path\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -166,10 +165,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     set_p.add_argument("key_value", help="key=value pair")
     set_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompts",
-    )
-    set_p.add_argument(
-        "--local", action="store_true",
-        help="Set resource to project-isolated (resource keys only)",
     )
     set_p.set_defaults(func=run_set)
 
@@ -598,7 +593,6 @@ def run_reset(args: argparse.Namespace) -> int:
     args.reset = "__ALL__" if reset_all else key
     args.key_value = None
     args.effective = False
-    args.local = False
     return _run_workset_config(args)
 
 
@@ -608,7 +602,6 @@ def run_get(args: argparse.Namespace) -> int:
     args.reset = None
     args.reset_all = False
     args.effective = False
-    args.local = False
     return _run_workset_config(args)
 
 
@@ -617,7 +610,6 @@ def run_show(args: argparse.Namespace) -> int:
     args.key_value = None
     args.reset = None
     args.reset_all = False
-    args.local = False
     return _run_workset_config(args)
 
 
@@ -699,10 +691,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     # Parse the key/value argument
     action, key, value = parse_config_arg(key_value)
 
-    # --local flag forces a set operation
-    if args.local and action == ConfigAction.get:
-        action = ConfigAction.set
-
     if action == ConfigAction.show:
         return show_config(
             global_config_path=config_file,
@@ -741,15 +729,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Handle --local for resource keys
-        if args.local:
-            from kanibako.config_interface import _is_resource_key, _resolve_key
-            canonical = _resolve_key(key)
-            if not _is_resource_key(canonical):
-                print("Error: --local only applies to resource.* keys", file=sys.stderr)
-                return 1
-            value = "project"
-
         # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
         # 2026-06-29): the workset is the command scope (ws_config lands in the
         # workset slot); thread the system settings file so an @system.* / lower-

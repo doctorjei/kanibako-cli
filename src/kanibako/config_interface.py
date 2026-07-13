@@ -189,8 +189,8 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.default_agent",
 })
 
-# Prefixes for dynamic keys (env vars, resources).
-DYNAMIC_PREFIXES: tuple[str, ...] = ("env.", "resource.")
+# Prefixes for dynamic keys (env vars).
+DYNAMIC_PREFIXES: tuple[str, ...] = ("env.",)
 
 
 def is_known_key(arg: str) -> bool:
@@ -236,7 +236,7 @@ def is_known_key(arg: str) -> bool:
 # The single source of truth for HOW every non-dynamic, non-env config key is
 # stored.  ``get``/``set``/``reset`` all consult this table so the same key set
 # is recognised on every path (no "get-validated, set-unguarded" asymmetry that
-# crashed H1).  A key absent from here (and not env./resource./agent.*/
+# crashed H1).  A key absent from here (and not env./agent.*/
 # system.path.*) is UNKNOWN — the writer returns an error string, never raises.
 #
 # Each entry maps the canonical key → the nested config location it lands in:
@@ -778,10 +778,6 @@ def _is_env_key(key: str) -> bool:
     return key.startswith("env.")
 
 
-def _is_resource_key(key: str) -> bool:
-    return key.startswith("resource.")
-
-
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
     return key in {
@@ -1050,7 +1046,7 @@ def _is_path_category_key(key: str) -> bool:
 # ---------------------------------------------------------------------------
 
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
-# A key whose first segment is NOT one of these (``env.*`` / ``resource.*`` and
+# A key whose first segment is NOT one of these (``env.*`` and
 # the un-prefixed scalars ``model`` / ``continue_mode`` / ``auto_approve`` /
 # ``allow_helpers``) is SCOPELESS — it always writes to the command
 # scope's OWN file, so the direction guard does not apply to it. ``config`` is a
@@ -1117,12 +1113,12 @@ def _scope_direction_error(
     one).
 
     The guard keys on the key's TOP-LEVEL dotted token. A SCOPELESS key
-    (``env.*`` / ``resource.*`` / the un-prefixed scalars) is always permitted —
+    (``env.*`` / the un-prefixed scalars) is always permitted —
     it writes to the command scope's own file by construction.
     """
     key_scope = canonical.split(".", 1)[0]
     if key_scope not in _SCOPE_NAMESPACES:
-        # Scopeless key (env.*, resource.*, model, allow_helpers, …) — own-file write.
+        # Scopeless key (env.*, model, allow_helpers, …) — own-file write.
         return None
     if key_scope == "meta":
         return (
@@ -1576,15 +1572,6 @@ def get_config_value(
         merged = merge_env(env_global, env_project)
         return merged.get(env_name)
 
-    # resource.* keys — read from resource_overrides in settings.yaml
-    if _is_resource_key(canonical):
-        resource_name = canonical[9:]  # strip "resource."
-        if project_toml and project_toml.exists():
-            data = load_doc(project_toml)
-            overrides = data.get("resource_overrides", {})
-            return str(overrides.get(resource_name, "")) or None
-        return None
-
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
     # read the RAW tuple STORED at ``agent.<node>.bindings.<ro|rw>.<name>`` in the
     # node's OWN settings file ``agents/<node>/settings.yaml`` (the get/set/reset
@@ -1830,7 +1817,7 @@ def set_config_value(
         return _config_key_refusal(canonical, action="set")
 
     # Scope-direction guard (block B4, spec §0 + §2a) — enforced at the TOP, after
-    # canonical key resolution and BEFORE any dispatch branch (env / resource /
+    # canonical key resolution and BEFORE any dispatch branch (env /
     # category / system / regular), so EVERY write path is gated uniformly.
     scope_err = _scope_direction_error(canonical, command_scope)
     if scope_err is not None:
@@ -1876,12 +1863,6 @@ def set_config_value(
         except ValueError as e:
             return f"Error: {e}"
         return f"Set {env_name}={value}"
-
-    # resource.* keys — write to [resource_overrides]
-    if _is_resource_key(canonical):
-        resource_name = canonical[9:]
-        _write_toml_key(config_path, "resource_overrides", resource_name, value)
-        return f"Set resource.{resource_name}={value}"
 
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): write to the
     # agent's OWN settings file ``agents/<node>/settings.yaml`` (NOT the command
@@ -2158,13 +2139,6 @@ def reset_config_value(
         if env_path and unset_env_var(env_path, env_name):
             return f"Unset env.{env_name}"
         return f"No override for env.{env_name}"
-
-    # resource.* keys
-    if _is_resource_key(canonical):
-        resource_name = canonical[9:]
-        if _remove_toml_key(config_path, "resource_overrides", resource_name):
-            return _honest_reset_message(canonical, command_scope)
-        return f"No override for resource.{resource_name}"
 
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
     # remove the source-only repoint from the node's OWN settings file
@@ -2547,7 +2521,7 @@ def _clear_writable_scope_tables(
 
     NEVER touched here: ``agent`` (agent-keyed; cleared by the caller's dedicated
     pass, which holds the scopeless ``model``/``continue_mode`` settings),
-    ``resource_overrides`` (its own surface), ``meta`` (RO identity, §0), and
+    ``meta`` (RO identity, §0), and
     non-scope keys (top-level scalars like ``allow_helpers`` — the flat
     ``load_project_overrides`` pass owns those). When *command_scope* is ``None``
     (no scope context) NOTHING is cleared here — the guard cannot be evaluated.
@@ -2560,11 +2534,11 @@ def _clear_writable_scope_tables(
         return 0
     removed = 0
     # Iterate a snapshot of the top-level tables. Only SCOPE tokens the command
-    # scope may write are candidates; ``agent``/``resource_overrides``/``meta``
-    # are excluded by construction (agent/resource are handled elsewhere; meta is
+    # scope may write are candidates; ``agent``/``meta``
+    # are excluded by construction (agent is handled elsewhere; meta is
     # never in ``_SCOPE_WRITE_ALLOWED`` — it is not a containment scope).
     for token in list(data):
-        if token not in allowed or token in ("agent", "resource_overrides"):
+        if token not in allowed or token == "agent":
             continue
         table = data.get(token)
         if not isinstance(table, dict):
@@ -2587,7 +2561,7 @@ def reset_all(
     """Remove all overrides at this config level.  Confirms unless *force*.
 
     *system_settings_path*, when supplied (SYSTEM scope), is where the SETTINGS
-    (the ``agent`` table + ``resource_overrides`` + nested SCOPE tables) are
+    (the ``agent`` table + nested SCOPE tables) are
     cleared from (``@config.settings`` = ``global/settings.yaml``), while CONFIG
     overrides are cleared from ``config_path``.  When None (box/workset)
     everything is cleared from ``config_path`` as before.
@@ -2596,7 +2570,7 @@ def reset_all(
     tables (residuals item 3): ``--all`` clears a nested table iff a single reset
     of a key in it at this scope would pass ``_scope_direction_error`` — the
     command scope's OWN namespace + those it CONTAINS; an UPWARD table is left
-    intact. When ``None`` the flat/agent/resource/env clears still run (backward
+    intact. When ``None`` the flat/agent/env clears still run (backward
     compatible) but no nested SCOPE table is touched.
     """
     if not force:
@@ -2621,7 +2595,7 @@ def reset_all(
         if unset_project_config_key(config_path, key):
             count += 1
 
-    # Clear target settings + resource overrides.  SYSTEM scope keeps these in
+    # Clear target settings.  SYSTEM scope keeps these in
     # the system settings file (settings_dest); box/workset use config_path.
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path
@@ -2637,10 +2611,6 @@ def reset_all(
                     for k in list(sec):
                         _remove_nested_toml_key(settings_dest, ("agent", agent), k)
                         count += 1
-        if data.get("resource_overrides"):
-            for k in list(data["resource_overrides"]):
-                _remove_toml_key(settings_dest, "resource_overrides", k)
-                count += 1
 
     # Clear the nested SCOPE tables the command scope is permitted to write
     # (residuals item 3): the flat ``load_project_overrides`` pass only reaches
@@ -2669,8 +2639,8 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     ``system.auth.share_allowed``, downward ``workset.*``/``box.*`` defaults)
     in the system SETTINGS file — entries the flat ``KanibakoConfig`` override
     view cannot see.  Flattens every top-level scope table EXCEPT ``agent``
-    (rendered by the agent-settings view) and ``resource_overrides`` (its own
-    surface).  Bools render lowercase, matching ``get``.
+    (rendered by the agent-settings view).  Bools render lowercase, matching
+    ``get``.
     """
     if path is None or not path.exists():
         return {}
@@ -2689,6 +2659,11 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
                 out[f"{prefix}{k}"] = str(v)
 
     for key, val in data.items():
+        # ``resource_overrides`` is the LEGACY dead table of the dropped
+        # ``resource.*`` surface (spec §3 D-M7): the settable code is gone, so a
+        # pre-1.7.x file may still carry an inert table.  Skip it here so it never
+        # renders in ``system show``/``--effective`` — display-only, not a revived
+        # settable surface.
         if key in ("agent", "resource_overrides") or not isinstance(val, dict):
             continue
         _walk(val, f"{key}.")

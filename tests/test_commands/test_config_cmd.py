@@ -214,7 +214,7 @@ class TestBoxConfigSet:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            args=[project_dir, "box.image=new-image:v1"], force=False, local=False,
+            args=[project_dir, "box.image=new-image:v1"], force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -232,7 +232,7 @@ class TestBoxConfigSet:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         args = argparse.Namespace(
-            args=[project_dir, "env.EDITOR=vim"], force=False, local=False,
+            args=[project_dir, "env.EDITOR=vim"], force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -253,7 +253,7 @@ class TestBoxConfigSet:
 
         # Bare agent key at box scope → refused, teaching the mirror form.
         args = argparse.Namespace(
-            args=[project_dir, "model=sonnet"], force=False, local=False,
+            args=[project_dir, "model=sonnet"], force=False,
         )
         rc = run_set(args)
         assert rc == 1
@@ -262,29 +262,12 @@ class TestBoxConfigSet:
 
         # The mirror form is the settable one.
         args = argparse.Namespace(
-            args=[project_dir, "box.agent.model=sonnet"], force=False, local=False,
+            args=[project_dir, "box.agent.model=sonnet"], force=False,
         )
         rc = run_set(args)
         assert rc == 0
         captured = capsys.readouterr()
         assert "Set box.agent.model=sonnet" in captured.out
-
-    def test_set_resource(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_set
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            args=[project_dir, "resource.plugins=/my/plugins"], force=False, local=False,
-        )
-        rc = run_set(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Set resource.plugins=/my/plugins" in captured.out
 
     def test_set_core_bind_repoint_end_to_end(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -303,7 +286,7 @@ class TestBoxConfigSet:
 
         args = argparse.Namespace(
             args=[project_dir, "box.bindings.rw.home=/newhome"],
-            force=False, local=False,
+            force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -391,41 +374,6 @@ class TestBoxConfigReset:
         assert "requires a key" in capsys.readouterr().err
 
 
-class TestBoxConfigLocal:
-    def test_local_flag_on_resource_key(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_set
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            args=[project_dir, "resource.plugins"], force=False, local=True,
-        )
-        rc = run_set(args)
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "Set resource.plugins=project" in captured.out
-
-    def test_local_flag_on_non_resource_key_rejected(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box._parser import run_set
-
-        config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
-        std = load_std_paths(config)
-        project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
-
-        args = argparse.Namespace(
-            args=[project_dir, "box.image"], force=False, local=True,
-        )
-        rc = run_set(args)
-        assert rc == 1
-        assert "--local only applies" in capsys.readouterr().err
-
-
 class TestBoxConfigArgParsing:
     """Test the discrete-verb parsers and their flags."""
 
@@ -482,12 +430,6 @@ class TestBoxConfigArgParsing:
         parser = build_parser()
         args = parser.parse_args(["box", "set", "model=x", "--force"])
         assert args.force is True
-
-    def test_parser_set_local(self):
-        from kanibako.cli import build_parser
-        parser = build_parser()
-        args = parser.parse_args(["box", "set", "resource.plugins", "--local"])
-        assert args.local is True
 
     def test_config_subcommand_is_gone(self):
         """The overloaded ``box config`` subcommand was retired (clean break)."""

@@ -132,9 +132,6 @@ class TestIsKnownKey:
     def test_dynamic_env_prefix(self):
         assert is_known_key("env.MY_VAR") is True
 
-    def test_dynamic_resource_prefix(self):
-        assert is_known_key("resource.plugins") is True
-
     def test_unknown_key(self):
         assert is_known_key("my-project") is False
         assert is_known_key("foobar") is False
@@ -464,51 +461,6 @@ class TestEnvKeys:
 
 
 # ---------------------------------------------------------------------------
-# resource.* keys
-# ---------------------------------------------------------------------------
-
-class TestResourceKeys:
-    """Tests for resource.* config keys."""
-
-    def test_set_resource(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
-        msg = set_config_value(
-            "resource.plugins", "/my/plugins",
-            config_path=project_toml,
-        )
-        assert "Set resource.plugins=/my/plugins" in msg
-
-        # Verify YAML structure
-        data = load_doc(project_toml)
-        assert data["resource_overrides"]["plugins"] == "/my/plugins"
-
-    def test_get_resource(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
-        dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
-
-        val = get_config_value(
-            "resource.plugins",
-            global_config_path=tmp_path / "kanibako_config.yaml",
-            project_toml=project_toml,
-        )
-        assert val == "/a/b"
-
-    def test_reset_resource(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
-        dump_doc(project_toml, {"resource_overrides": {"plugins": "/a/b"}})
-
-        msg = reset_config_value("resource.plugins", config_path=project_toml)
-        # Honest cleared-form (F7), consistent with every other reset branch.
-        assert msg == (
-            "Cleared resource.plugins set on this scope; it now falls back "
-            "through the cascade."
-        ), msg
-
-        data = load_doc(project_toml)
-        assert "resource_overrides" not in data  # section removed when empty
-
-
-# ---------------------------------------------------------------------------
 # Target settings (model, continue_mode, autonomous)
 # ---------------------------------------------------------------------------
 
@@ -702,6 +654,21 @@ class TestShowConfig:
         )
         captured = capsys.readouterr()
         assert "env.RESOLVED_VAR = yes" in captured.out
+
+    def test_show_hides_legacy_resource_overrides_table(self, tmp_path):
+        # The dropped resource.* surface (spec §3 D-M7) may leave an inert
+        # ``resource_overrides`` table in a pre-1.7.x system file; it must NOT
+        # render in the show/effective view (display-only legacy filter) while a
+        # real nested scope table still does.
+        from kanibako.config_interface import _nested_settings_overrides
+        sys_file = tmp_path / "system-settings.yaml"
+        dump_doc(sys_file, {
+            "resource_overrides": {"plugins": "/legacy"},   # dead legacy table
+            "workset": {"auth": {"share_allowed": False}},  # a real nested table
+        })
+        out = _nested_settings_overrides(sys_file)
+        assert not any(k.startswith("resource_overrides") for k in out), out
+        assert out.get("workset.auth.share_allowed") == "false"
 
 
 # ---------------------------------------------------------------------------

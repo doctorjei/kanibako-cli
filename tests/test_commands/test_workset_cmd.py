@@ -677,7 +677,7 @@ class TestWorksetConfig:
 
         set_args = argparse.Namespace(
             workset="authcfg", key_value="workset.auth.share_allowed=false",
-            force=False, local=False,
+            force=False,
         )
         rc = run_set(set_args)
         assert rc == 0
@@ -703,7 +703,7 @@ class TestWorksetConfig:
 
         args = argparse.Namespace(
             workset="regcfg", key_value="workset.vault_ro=/ro",
-            force=False, local=False,
+            force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -723,7 +723,7 @@ class TestWorksetConfig:
         # legal at the workset scope by construction).
         set_args = argparse.Namespace(
             workset="resetcfg", key_value="workset.vault_ro=/ro",
-            force=False, local=False,
+            force=False,
         )
         run_set(set_args)
         capsys.readouterr()
@@ -751,7 +751,7 @@ class TestWorksetConfig:
         # First set an override.
         set_args = argparse.Namespace(
             workset="resetauth", key_value="workset.auth.share_allowed=false",
-            force=False, local=False,
+            force=False,
         )
         run_set(set_args)
         capsys.readouterr()
@@ -780,7 +780,7 @@ class TestWorksetConfig:
         # legal at the workset scope by construction).
         set_args = argparse.Namespace(
             workset="resetall", key_value="workset.vault_ro=/ro",
-            force=False, local=False,
+            force=False,
         )
         run_set(set_args)
         capsys.readouterr()
@@ -837,7 +837,7 @@ class TestDefaultWorksetCli:
 
         args = argparse.Namespace(
             workset="default", key_value="workset.vault_ro=/ro",
-            force=False, local=False,
+            force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -917,7 +917,7 @@ class TestPrimaryWorksetSpecConvergence:
         from kanibako.commands.workset_cmd import run_set
 
         args = argparse.Namespace(
-            workset="default", key_value=key_value, force=False, local=False,
+            workset="default", key_value=key_value, force=False,
         )
         return run_set(args)
 
@@ -1008,7 +1008,7 @@ class TestPrimaryWorksetSpecConvergence:
         ws = create_workset("namedcfg", tmp_home / "ws_namedcfg", std)
         args = argparse.Namespace(
             workset="namedcfg", key_value="workset.vault_ro=/ro",
-            force=False, local=False,
+            force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -1029,7 +1029,7 @@ class TestWorksetEnv:
         std = load_std_paths(load_config(config_file))
         ws = create_workset("envws", tmp_home / "ws_env", std)
         args = argparse.Namespace(
-            workset="envws", key_value="env.EDITOR=vim", force=False, local=False,
+            workset="envws", key_value="env.EDITOR=vim", force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -1043,7 +1043,7 @@ class TestWorksetEnv:
 
         std = load_std_paths(load_config(config_file))
         args = argparse.Namespace(
-            workset="default", key_value="env.EDITOR=vim", force=False, local=False,
+            workset="default", key_value="env.EDITOR=vim", force=False,
         )
         rc = run_set(args)
         assert rc == 0
@@ -1056,7 +1056,7 @@ class TestWorksetEnv:
         std = load_std_paths(load_config(config_file))
         create_workset("envget", tmp_home / "ws_envget", std)
         args = argparse.Namespace(
-            workset="envget", key_value="env.MY_VAR=hello", force=False, local=False,
+            workset="envget", key_value="env.MY_VAR=hello", force=False,
         )
         assert run_set(args) == 0
         capsys.readouterr()
@@ -1072,7 +1072,7 @@ class TestWorksetEnv:
         std = load_std_paths(load_config(config_file))
         ws = create_workset("envreset", tmp_home / "ws_envreset", std)
         args = argparse.Namespace(
-            workset="envreset", key_value="env.MY_VAR=hello", force=False, local=False,
+            workset="envreset", key_value="env.MY_VAR=hello", force=False,
         )
         assert run_set(args) == 0
         reset_args = argparse.Namespace(
@@ -1097,7 +1097,7 @@ class TestWorksetEnv:
         std = load_std_paths(config)
         write_env_file(std.data_path / "env", {"EDITOR": "nano", "PAGER": "less"})
         args = argparse.Namespace(
-            workset="default", key_value="env.EDITOR=vim", force=False, local=False,
+            workset="default", key_value="env.EDITOR=vim", force=False,
         )
         assert run_set(args) == 0
         capsys.readouterr()
@@ -1127,7 +1127,7 @@ class TestPrimaryWorksetMigration:
         from kanibako.commands.workset_cmd import run_set
 
         args = argparse.Namespace(
-            workset="default", key_value=key_value, force=False, local=False,
+            workset="default", key_value=key_value, force=False,
         )
         return run_set(args)
 
