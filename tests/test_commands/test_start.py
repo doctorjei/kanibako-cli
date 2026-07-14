@@ -427,7 +427,7 @@ class TestEffectiveBootstrapResolution:
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
         agent_file = tmp_path / "agents" / "claude" / "settings.yaml"
         agent_file.parent.mkdir(parents=True)
-        dump_doc(agent_file, {"agent": {"bootstrap": "none"}})
+        dump_doc(agent_file, {"self": {"bootstrap": "none"}})
         # The active agent (claude) picks its own-file override over the default.
         assert _effective_bootstrap(
             proj, sys_file, "claude", agent_path=agent_file,
@@ -1944,7 +1944,7 @@ class TestTweakccIntegration:
     def test_disabled_by_default(self, start_mocks):
         """Empty tweakcc config → no patching, normal flow."""
         with start_mocks() as m:
-            assert m.agent_cfg.tweakcc == {}
+            assert m.agent_cfg.transform_settings == {}
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1956,7 +1956,7 @@ class TestTweakccIntegration:
     def test_enabled_calls_apply_tweakcc(self, start_mocks):
         """When tweakcc is enabled in agent config, _apply_tweakcc is called."""
         with start_mocks() as m:
-            m.agent_cfg.tweakcc = {"enabled": True}
+            m.agent_cfg.transform_settings = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
             with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
@@ -1977,7 +1977,7 @@ class TestTweakccIntegration:
         """
         with start_mocks() as m:
             m.target.setting_descriptors.return_value = []
-            m.agent_cfg.tweakcc = {"enabled": True}
+            m.agent_cfg.transform_settings = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
             from kanibako.targets.base import AgentInstall
@@ -2020,7 +2020,7 @@ class TestTweakccIntegration:
         """
         with start_mocks() as m:
             m.target.setting_descriptors.return_value = []
-            m.agent_cfg.tweakcc = {"enabled": True}
+            m.agent_cfg.transform_settings = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
             with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
@@ -2136,7 +2136,7 @@ class TestApplyTweakcc:
         from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
-        agent_cfg = AgentConfig(tweakcc={})
+        agent_cfg = AgentConfig(transform_settings={})
         result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
@@ -2145,7 +2145,7 @@ class TestApplyTweakcc:
         from kanibako.agent_config import AgentConfig
 
         install = MagicMock()
-        agent_cfg = AgentConfig(tweakcc={"enabled": False})
+        agent_cfg = AgentConfig(transform_settings={"enabled": False})
         result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
@@ -2155,7 +2155,7 @@ class TestApplyTweakcc:
         from kanibako.bun_sea import BunSEAError
 
         install = MagicMock()
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(transform_settings={"enabled": True})
         logger = MagicMock()
 
         with patch("kanibako.bun_sea.cli_js_hash") as mock_hash:
@@ -2171,7 +2171,7 @@ class TestApplyTweakcc:
         install = MagicMock()
         install.name = "claude"
         install.install_dir = tmp_path / "install"
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(transform_settings={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -2202,7 +2202,7 @@ class TestApplyTweakcc:
         install.name = "claude"
         install.binary = tmp_path / "binary"
         install.install_dir = tmp_path / "install"
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(transform_settings={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -2233,7 +2233,7 @@ class TestApplyTweakcc:
         install = MagicMock()
         install.name = "claude"
         install.install_dir = tmp_path / "install"
-        agent_cfg = AgentConfig(tweakcc={"enabled": True})
+        agent_cfg = AgentConfig(transform_settings={"enabled": True})
         logger = MagicMock()
 
         fake_entry = MagicMock()
@@ -2630,7 +2630,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
+            f'self:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
         )
         self._call(
             tmp_path,
@@ -2696,7 +2696,7 @@ class TestApplyInitSeeds:
         (src / "root_file.txt").write_text("top")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n      home: ["{src}", "~/"]\n'
+            f'self:\n  default:\n    seeded:\n      home: ["{src}", "~/"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert (shell / "root_file.txt").read_text() == "top"
@@ -2707,7 +2707,7 @@ class TestApplyInitSeeds:
         missing = tmp_path / "does_not_exist"
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n      gone: ["{missing}", "~/gone"]\n'
+            f'self:\n  default:\n    seeded:\n      gone: ["{missing}", "~/gone"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
@@ -2736,7 +2736,7 @@ class TestApplyInitSeeds:
 
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n      pb: ["{src}", "~/"]\n'
+            f'self:\n  default:\n    seeded:\n      pb: ["{src}", "~/"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2755,7 +2755,7 @@ class TestApplyInitSeeds:
         src.write_text("TEMPLATE")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n      note: ["{src}", "~/note.md"]\n'
+            f'self:\n  default:\n    seeded:\n      note: ["{src}", "~/note.md"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2771,7 +2771,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
+            f'self:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
@@ -2799,7 +2799,7 @@ class TestApplyInitSeeds:
         (src / "f.txt").write_text("seed-ws")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'agent:\n  default:\n    seeded:\n'
+            f'self:\n  default:\n    seeded:\n'
             f'      ws: ["{src}", "~/workspace/sub"]\n'
         )
         self._call(tmp_path, proj=proj, agent_config_path=agent_cfg)

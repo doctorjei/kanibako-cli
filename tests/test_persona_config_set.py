@@ -105,7 +105,7 @@ class TestSetPersona:
         assert msg == f"Set agent.navigator+claude.endpoint={_URL}"
         f = _node_file(agents_root)
         assert f.exists()
-        assert load_doc(f) == {"agent": {"endpoint": _URL}}
+        assert load_doc(f) == {"self": {"endpoint": _URL}}
         # The +form dir must NOT exist (mutation guard: the swap really happened).
         assert not (agents_root / "navigator+claude").exists()
 
@@ -120,7 +120,7 @@ class TestSetPersona:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         assert load_doc(_node_file(agents_root)) == {
-            "agent": {"endpoint": _URL, "model": "gemma-4-31b-it"},
+            "self": {"endpoint": _URL, "model": "gemma-4-31b-it"},
         }
 
     def test_set_secret_path_token_lands_in_discriminated_section(
@@ -134,7 +134,7 @@ class TestSetPersona:
         # Stored DISCRIMINATED under agent.<node>.secret_path — the shape
         # _agent_partial reads into the cascade (NOT a flat top-level section).
         assert load_doc(_node_file(agents_root)) == {
-            "agent": {"navigator℘claude": {"secret_path": {_TOKEN_VAR: "/host/token"}}},
+            "self": {"navigator℘claude": {"secret_path": {_TOKEN_VAR: "/host/token"}}},
         }
 
     def test_set_env_var_lands_in_env_section(self, tmp_path, agents_root):
@@ -144,7 +144,7 @@ class TestSetPersona:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         assert load_doc(_node_file(agents_root)) == {
-            "env": {"ANTHROPIC_MODEL": "gemma"},
+            "self": {"env": {"ANTHROPIC_MODEL": "gemma"}},
         }
 
     def test_set_persona_auto_approve_accepts_bool(self, tmp_path, agents_root):
@@ -157,7 +157,7 @@ class TestSetPersona:
         )
         assert msg.startswith("Set")
         assert load_doc(_node_file(agents_root)) == {
-            "agent": {"auto_approve": "false"},
+            "self": {"auto_approve": "false"},
         }
 
     def test_set_persona_auto_approve_typo_rejected(self, tmp_path, agents_root):
@@ -184,10 +184,10 @@ class TestSetPersona:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         data = load_doc(_node_file(agents_root))
-        assert data == {"agent": {"endpoint": _URL}}
-        assert "name" not in data.get("agent", {})
-        assert "env" not in data and "env_file" not in data
-        assert "navigator℘claude" not in data.get("agent", {})
+        assert data == {"self": {"endpoint": _URL}}
+        assert "name" not in data.get("self", {})
+        assert "env" not in data.get("self", {}) and "env_file" not in data
+        assert "navigator℘claude" not in data.get("self", {})
 
 
 # ---------------------------------------------------------------------------

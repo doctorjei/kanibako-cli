@@ -159,54 +159,59 @@ class TestWriteMergedConfig:
 
 
 class TestAgentConfigTweakcc:
-    """Test that AgentConfig round-trips the tweakcc section."""
+    """Test that AgentConfig round-trips the transform_settings section.
+
+    The per-agent settings file is now rooted at ``self:`` and the old
+    top-level ``tweakcc`` section is the ``self.transform_settings`` mapping
+    (loaded into ``AgentConfig.transform_settings``).
+    """
 
     def test_load_with_tweakcc(self, tmp_path):
         from kanibako.agent_config import load_agent_config
 
         yaml_content = """\
-agent:
+self:
   name: "Claude Code"
   shell: "standard"
   run_args: []
   model: "opus"
-
-env: {}
-
-shared: {}
-
-tweakcc:
-  enabled: true
-  config: "~/.tweakcc/config.json"
+  env: {}
+  transform_settings:
+    enabled: true
+    config: "~/.tweakcc/config.json"
 """
         path = tmp_path / "agent.yaml"
         path.write_text(yaml_content)
         cfg = load_agent_config(path)
-        assert cfg.tweakcc == {"enabled": True, "config": "~/.tweakcc/config.json"}
+        assert cfg.transform_settings == {
+            "enabled": True, "config": "~/.tweakcc/config.json",
+        }
 
     def test_load_without_tweakcc(self, tmp_path):
         from kanibako.agent_config import load_agent_config
 
         yaml_content = """\
-agent:
+self:
   name: "Claude Code"
 """
         path = tmp_path / "agent.yaml"
         path.write_text(yaml_content)
         cfg = load_agent_config(path)
-        assert cfg.tweakcc == {}
+        assert cfg.transform_settings == {}
 
     def test_write_with_tweakcc(self, tmp_path):
         from kanibako.agent_config import AgentConfig, load_agent_config, write_agent_config
 
-        cfg = AgentConfig(name="Test", tweakcc={"enabled": True, "config": "/path"})
+        cfg = AgentConfig(
+            name="Test", transform_settings={"enabled": True, "config": "/path"},
+        )
         path = tmp_path / "agent.yaml"
         write_agent_config(path, cfg)
 
         # Round-trip
         loaded = load_agent_config(path)
-        assert loaded.tweakcc["enabled"] is True
-        assert loaded.tweakcc["config"] == "/path"
+        assert loaded.transform_settings["enabled"] is True
+        assert loaded.transform_settings["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
         from kanibako.agent_config import AgentConfig, load_agent_config, write_agent_config
@@ -215,10 +220,10 @@ agent:
         path = tmp_path / "agent.yaml"
         write_agent_config(path, cfg)
         content = path.read_text()
-        # YAML serialization always emits the (empty) tweakcc mapping.
-        assert "tweakcc:" in content
+        # Sparse write: an empty transform_settings is NOT materialized.
+        assert "transform_settings:" not in content
         loaded = load_agent_config(path)
-        assert loaded.tweakcc == {}
+        assert loaded.transform_settings == {}
 
 
 # ── Cache layer tests ────────────────────────────────────────────────

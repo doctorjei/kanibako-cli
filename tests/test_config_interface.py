@@ -277,7 +277,7 @@ class TestRegularConfigKeys:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
-            "agent": {"bootstrap": "none"},
+            "self": {"bootstrap": "none"},
         }
 
 
@@ -347,7 +347,7 @@ class TestContinueMode:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
-            "agent": {"continue_mode": "false"},
+            "self": {"continue_mode": "false"},
         }
 
     def test_bare_continue_mode_refused_at_box_scope(self, tmp_path):
@@ -1144,7 +1144,7 @@ class TestH2BoolCoercion:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
-            "agent": {"allow_helpers": "false"},
+            "self": {"allow_helpers": "false"},
         }
 
     def test_get_auto_approve_round_trips_agent_default(self, tmp_path):
@@ -1172,7 +1172,7 @@ class TestH2BoolCoercion:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
-            "agent": {"auto_approve": "false"},
+            "self": {"auto_approve": "false"},
         }
 
     def test_retired_autonomous_and_access_do_not_route(self, tmp_path):
@@ -2095,7 +2095,7 @@ class TestScopeDirectionGuard:
         assert "cannot be set from the system scope" not in msg
         assert not msg.startswith("Error:"), msg
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
-            "agent": {"model": "opus"},
+            "self": {"model": "opus"},
         }
 
     def test_downward_unknown_key_still_rejected_by_registry(self, tmp_path):
@@ -3285,10 +3285,10 @@ class TestAgentNodeBindRepoint:
             "Set agent.claude.bindings.ro.launcher host source to /newsrc"
         ), msg
         # RAW tuple: new host_src, descriptor box_dest + opts BYTE-RAW from the floor,
-        # nested at agent.<node>.bindings.ro.launcher (the shape _agent_partial reads).
+        # nested at self.<node>.bindings.ro.launcher (the shape _agent_partial reads).
         reg = self._reg()
         _, dest, opts = reg["agent.claude.bindings.ro.launcher"]
-        assert load_doc(node)["agent"]["claude"]["bindings"]["ro"]["launcher"] == [
+        assert load_doc(node)["self"]["claude"]["bindings"]["ro"]["launcher"] == [
             "/newsrc", dest, opts,
         ]
 
@@ -3349,7 +3349,7 @@ class TestAgentNodeBindRepoint:
 
         # The exact shape our config-set write produces in the node file.
         node = tmp_path / "settings.yaml"
-        dump_doc(node, {"agent": {"claude": {"bindings": {"ro": {
+        dump_doc(node, {"self": {"claude": {"bindings": {"ro": {
             "launcher": ["/REPOINT", "/box/launcher", "ro"]}}}}})
 
         snap = build_launch_snapshot(
@@ -3509,7 +3509,7 @@ class TestAgentNodeBindGetReset:
         node_file = agents / "claude" / "settings.yaml"
         # Seed the file with a bind at the descriptor-shaped location so a repoint
         # (which must-exist in the cascade) is not needed to prove routing.
-        dump_doc(node_file, {"agent": {"claude": {"bindings": {"ro": {
+        dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
             "model": ["/hostmodel", "/box/model", "ro"]}}}}})
         val = get_config_value(
             "agent.claude.bindings.ro.model",
@@ -3545,8 +3545,8 @@ class TestPersonaScalarGetResetUnchanged:
             config_path=tmp_path / "x", command_scope=ConfigLevel.system,
             agents_root=agents,
         )
-        # Stored at the FLAT persona slot ``agent.model`` (NOT nested bindings).
-        assert load_doc(node_file) == {"agent": {"model": "opus"}}
+        # Stored at the FLAT persona slot ``self.model`` (NOT nested bindings).
+        assert load_doc(node_file) == {"self": {"model": "opus"}}
         assert get_config_value(
             "agent.claude.model",
             global_config_path=tmp_path / "cfg.yaml", agents_root=agents,

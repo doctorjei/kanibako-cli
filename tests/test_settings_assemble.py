@@ -55,7 +55,7 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     base = _write(tmp_path / "base.yaml", {"system": {"marker": "base"}})
     agent = _write(
         tmp_path / "agent.yaml",
-        {"agent": {"default": {"marker": "adef"}, "claude": {"marker": "aact"}}},
+        {"self": {"default": {"marker": "adef"}, "claude": {"marker": "aact"}}},
     )
     levels = assemble_levels(
         agent_name="claude",
@@ -185,7 +185,7 @@ def test_upward_drop_warns_once_per_agent_file(
     agent = _write(
         tmp_path / "agent.yaml",
         {
-            "agent": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
+            "self": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
             "system": {"auth": {"share_allowed": False}},
         },
     )
@@ -367,7 +367,7 @@ def test_top_level_meta_drop_warns_once_per_agent_file(
     agent = _write(
         tmp_path / "agent.yaml",
         {
-            "agent": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
+            "self": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
             "meta": {"box": {"mode": "x"}},
         },
     )
@@ -391,7 +391,7 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
     agent = _write(
         tmp_path / "agent.yaml",
         {
-            "agent": {
+            "self": {
                 "default": {"auto_approve": True, "model": "dmodel"},
                 "claude": {"model": "cmodel"},
             }
@@ -418,7 +418,7 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
 def test_active_override_not_in_default_and_vice_versa(tmp_path: Path) -> None:
     agent = _write(
         tmp_path / "agent.yaml",
-        {"agent": {"default": {"x": "d"}, "goose": {"y": "g"}}},
+        {"self": {"default": {"x": "d"}, "goose": {"y": "g"}}},
     )
     levels = assemble_levels(agent_name="goose", agent_path=agent)
     active = levels[AGENT_ACTIVE]["agent"]["goose"]
@@ -432,7 +432,7 @@ def test_active_override_not_in_default_and_vice_versa(tmp_path: Path) -> None:
 def test_unknown_active_agent_yields_empty_active_level(tmp_path: Path) -> None:
     agent = _write(
         tmp_path / "agent.yaml",
-        {"agent": {"default": {"x": "d"}, "claude": {"y": "c"}}},
+        {"self": {"default": {"x": "d"}, "claude": {"y": "c"}}},
     )
     levels = assemble_levels(agent_name="codex", agent_path=agent)
     # An active agent absent from the file → empty active level (no agent.codex.*).
@@ -444,7 +444,7 @@ def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
     # An agent-tier bind key keeps the §2d form agent.<active-name>.bindings.*.
     agent = _write(
         tmp_path / "agent.yaml",
-        {"agent": {"claude": {"bindings": {"ro": {"share": ["/h/s", "/g/s"]}}}}},
+        {"self": {"claude": {"bindings": {"ro": {"share": ["/h/s", "/g/s"]}}}}},
     )
     active = assemble_levels(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
     bind = active["agent"]["claude"]["bindings"]["ro"]["share"]
@@ -459,7 +459,7 @@ def test_per_agent_independence_other_agent_under_own_name(tmp_path: Path) -> No
     agent = _write(
         tmp_path / "agent.yaml",
         {
-            "agent": {
+            "self": {
                 "default": {"model": "dm"},
                 "claude": {"model": "cm"},
                 "goose": {"model": "gm"},
@@ -750,7 +750,7 @@ def test_agent_active_override_survives_and_wins_by_name(tmp_path: Path) -> None
     snap = _merged(
         tmp_path,
         agent_name="claude",
-        agent={"agent": {"claude": {"model": "cm"}}},
+        agent={"self": {"claude": {"model": "cm"}}},
         # System file = a legal downward source for agent.* defaults.
         system={"agent": {"default": {"model": "dm"}, "claude": {"model": "sysm"}}},
     )
@@ -770,7 +770,7 @@ def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
     snap = _merged(
         tmp_path,
         agent_name="claude",
-        agent={"agent": {"claude": {"model": "cm"}}},
+        agent={"self": {"claude": {"model": "cm"}}},
         system={
             "agent": {
                 "default": {"model": "dm"},
