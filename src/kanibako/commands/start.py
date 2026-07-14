@@ -1698,7 +1698,6 @@ def _run_container(
     setup_only: bool = False,
     print_container: bool = False,
     warm_only: bool = False,
-    _is_retry: bool = False,
 ) -> int:
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -2565,16 +2564,16 @@ def _run_container(
                 # box whose agent positively has nothing to resume is DOOMED
                 # (goose `session --resume` -> "no session found to resume" ->
                 # fast container death racing the attach into a raw podman
-                # error before the retry below recovers).  Ask the target
-                # (host-side read of the box home only); when it reports no
-                # resumable session, build the new-session command directly —
-                # same as new_session=True.  The base hook defaults True, so
-                # claude/codex/no_agent are byte-identical, and the
-                # should_retry_new_session retry stays as the net for every
-                # other fail mode.  Only the DEFAULT continue path is
-                # affected: an explicit -R (which resolves to "continue" for
-                # a picker-less agent like goose) is left alone per the
-                # brief — `not resume_mode` short-circuits before the hook.
+                # error).  Ask the target (host-side read of the box home only);
+                # when it reports no resumable session, build the new-session
+                # command directly — same as new_session=True.  This is now the
+                # SOLE continue-vs-fresh guard (the launch-time crash-and-retry
+                # net was removed with the dead-pane dependency): claude + goose
+                # override the hook to detect an empty store; a target that keeps
+                # the base default (True) always attempts continue.  Only the
+                # DEFAULT continue path is affected: an explicit -R (which
+                # resolves to "continue" for a picker-less agent like goose) is
+                # left alone — `not resume_mode` short-circuits before the hook.
                 if (
                     mode_key == "continue"
                     and not resume_mode
@@ -3231,43 +3230,14 @@ def _run_container(
                     break
                 time.sleep(0.3)
             else:
-                # Container never started or exited immediately. If the
-                # target says this is recoverable (e.g. "no conversation
-                # to continue"), retry with a fresh session before bailing.
+                # Container never started or exited immediately.  The up-front
+                # continue-vs-fresh decision (``has_resumable_session``) now picks
+                # a new session when there is nothing to resume, so the old
+                # crash-and-retry net was removed (it depended on the dead-pane
+                # capture that a teardown launch no longer arms).
                 logs = _container_logs(runtime, container_name)
                 if logs:
                     print(logs, file=sys.stderr)
-                if (
-                    target
-                    and not new_session
-                    and not _is_retry
-                    and logs
-                    and target.should_retry_new_session(logs)
-                ):
-                    print(
-                        "Restarting with a new session.",
-                        file=sys.stderr,
-                    )
-                    runtime.rm(container_name)
-                    return _run_container(
-                        project_dir=project_dir,
-                        entrypoint=None,
-                        image_override=image_override,
-                        new_session=True,
-                        safe_mode=safe_mode,
-                        autonomous=autonomous,
-                        resume_mode=False,
-                        extra_args=extra_args,
-                        no_helpers=no_helpers,
-                        no_auto_auth=no_auto_auth,
-                        browser=browser,
-                        share_images=share_images,
-                        persistent=persistent,
-                        model_override=model_override,
-                        cli_env=cli_env,
-                        explicit_agent=explicit_agent,
-                        _is_retry=True,
-                    )
                 # FIX 2 (launch-validation): the launched session is GROUND TRUTH
                 # for a bootable config.  If its logs say the agent is still not
                 # configured/authenticated, the in-box setup did NOT take.  This is
@@ -3362,8 +3332,7 @@ def _run_container(
                     # for a human who was just attached, so do NOT echo it at an
                     # interactive tty.  Tooling / ``podman logs`` / CI (non-tty) still
                     # get it byte-for-byte.  ``logs`` is still COMPUTED above and read
-                    # by BOTH the retry and setup checks below on BOTH paths, so the
-                    # auto-retry ("Restarting with a new session.") is unaffected.
+                    # by the setup check below on BOTH paths.
                     #
                     # Suppress the raw captured pane at an interactive tty ONLY on a
                     # CLEAN exit (rc == 0): the human saw the agent's output live and
@@ -3374,38 +3343,6 @@ def _run_container(
                     # the FF-10 suppression over-reached to the crash path).
                     if rc != 0 or not _interactive_host():
                         print(logs, file=sys.stderr)
-                    # Auto-retry as new session if the target says so
-                    # (once only — _is_retry prevents loops).
-                    if (
-                        target
-                        and not new_session
-                        and not _is_retry
-                        and target.should_retry_new_session(logs)
-                    ):
-                        print(
-                            "Restarting with a new session.",
-                            file=sys.stderr,
-                        )
-                        runtime.rm(container_name)
-                        return _run_container(
-                            project_dir=project_dir,
-                            entrypoint=None,
-                            image_override=image_override,
-                            new_session=True,
-                            safe_mode=safe_mode,
-                            autonomous=autonomous,
-                            resume_mode=False,
-                            extra_args=extra_args,
-                            no_helpers=no_helpers,
-                            no_auto_auth=no_auto_auth,
-                            browser=browser,
-                            share_images=share_images,
-                            persistent=persistent,
-                            model_override=model_override,
-                            cli_env=cli_env,
-                            explicit_agent=explicit_agent,
-                            _is_retry=True,
-                        )
                 # FIX 2 (launch-validation): the launched session is GROUND TRUTH
                 # for a bootable config.  If its logs say the agent is still not
                 # configured/authenticated, the in-box setup did NOT take.  BOUNDED
@@ -3421,9 +3358,7 @@ def _run_container(
             # (container still running) AND clean exit (container stopped).  The
             # box's home is a host mount, so the in-box creds are readable
             # whether or not the container is still up; both are writeback
-            # moments so an in-box login reaches the host.  (The new-session
-            # retry above returns early and re-enters this function, which writes
-            # back on its own teardown.)
+            # moments so an in-box login reaches the host.
             writeback_session_credentials(target, proj, auth_src=auth_src)
             # Two-state lifecycle ("d"): an exited box (tmux session ended ->
             # container not running) is torn down so the next start/shell is

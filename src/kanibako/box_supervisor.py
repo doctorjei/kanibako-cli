@@ -612,6 +612,16 @@ class BoxSupervisor:
     def _arm_and_start_session(self, session_argv: list[str]) -> int | None:
         """Arm remain-on-exit + start the detached session; return the tmux rc.
 
+        SOLE / FOREGROUND launch (``on_agent_exit == "teardown"``): do NOT arm
+        ``remain-on-exit`` at all — start a PLAIN detached ``new-session`` so the
+        agent pane CLOSES on ANY exit (clean or crash).  With no lingering dead
+        pane, an attached foreground client returns straight to the shell instead
+        of stranding the user on tmux's "Pane is dead" overlay.  A teardown launch
+        never self-heals, so the dead-pane capture / exit-code machinery it would
+        otherwise arm is not needed (the human saw the agent's output live).
+
+        SELF-HEAL / detached / panel launch: arm ``remain-on-exit`` as before so a
+        dead agent leaves a capturable dead pane for the restart + output capture.
         Normally ONE combined invocation (:meth:`_start_session_argv`).  GUARD: a
         standalone ``;`` token in the agent argv would be read by tmux as a top-level
         command separator in that combined form (``--`` ends new-session's OWN option
@@ -621,6 +631,11 @@ class BoxSupervisor:
         then a best-effort per-session arm — LAUNCH stays correct; only the
         instant-crash dead-pane capture is not guaranteed for this edge.
         """
+        if self.config.on_agent_exit == "teardown":
+            # No remain-on-exit: the pane closes on exit, no dead pane ever.
+            return self._run_tmux(
+                ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
+            )
         if ";" not in session_argv:
             return self._run_tmux(self._start_session_argv(session_argv))
         rc = self._run_tmux(
@@ -738,10 +753,12 @@ class BoxSupervisor:
         ``tmux capture-pane -p -S -<n> -E - -t <session>`` prints the pane's content
         through the END of history.  With ``remain-on-exit on`` the pane PERSISTS
         after the agent exits (a dead pane), so this recovers the exited agent's
-        main-screen output — which the FOREGROUND host relies on (via ``podman
-        logs``) to show the user WHY the agent died and to detect a recoverable "no
-        conversation" retry (:meth:`Target.should_retry_new_session`).  Under the
-        supervisor PID-1 that output lives in the tmux pane, NOT PID-1's own stdout,
+        main-screen output — which the self-heal host relies on (via ``podman
+        logs``) to show the user WHY the agent died.  A ``teardown`` launch does
+        NOT arm ``remain-on-exit`` (the pane simply closes on exit), so this
+        capture is only meaningful for the self-heal / panel modes that keep it
+        armed.  Under the supervisor PID-1 that output lives in the tmux pane,
+        NOT PID-1's own stdout,
         so without echoing it here ``podman logs`` would be empty and both surfaces
         would silently break (the E2c/E2d observability residual).
 
@@ -1202,10 +1219,17 @@ class BoxSupervisor:
         * ``"teardown"`` (foreground CLI, human present) → an agent exit is a NORMAL
           termination, but SURFACE-AWARE (E2e, principle B / ref-count): PID-1 closes
           the box ONLY when no OTHER client surface is still attached.  With no other
-          surface, return the AGENT's own exit code (from the dead pane's
-          ``#{pane_dead_status}``; 0 for a clean exit, 1 when dead-but-unknown) so
-          PID-1 exits with a TRUTHFUL code and the box closes — a supervised agent
-          CRASH surfaces via the host path instead of masquerading as success (E2d).
+          surface, close the box with a TRUTHFUL-as-possible exit code.  A teardown
+          launch does NOT arm ``remain-on-exit`` (:meth:`_arm_and_start_session`), so
+          on exit the pane simply CLOSES and there is no ``#{pane_dead_status}`` to
+          read.  So the code is derived as: an agent that CAME UP and then exited
+          (``started``) returns **0** — a clean quit must NOT masquerade as a failure
+          (the whole point of dropping the dead pane), and a sole-agent CRASH is
+          indistinguishable from a clean exit here so it ALSO returns 0 until a
+          pipe-pane follow-up restores truthful crash codes; an agent that NEVER came
+          up (the initial start failed → ``not started``) returns **1**, a real
+          failure the host must surface.  (If a ``#{pane_dead_status}`` IS somehow
+          present — e.g. a stale armed pane — it is honored verbatim.)
           But when a VS Code PANEL is attached (:meth:`_other_surface_attached`), do
           NOT tear down: stay an AGENTLESS keep-alive (the box persists for the
           panel; do NOT self-heal a CLI agent while the panel is the live surface —
@@ -1231,18 +1255,27 @@ class BoxSupervisor:
         # loop even begins.  On any startup hiccup, degrade to "no attach" and enter
         # the loop — it self-heals (or, under teardown, closes on) a missing agent on
         # its first tick.
+        # Did the agent ever COME UP?  A warm box already has a live session; a cold
+        # box is up iff the initial start returns rc 0.  This distinguishes, in the
+        # teardown branch below, a NEVER-STARTED failure (start failed → the box
+        # closes rc 1) from a normal ran-then-exited quit (→ rc 0) once the pane has
+        # closed and there is no dead-pane status to read.  Defaults True so a
+        # startup-probe hiccup (the except path) prefers 0 (never fabricate a
+        # failure from a clean quit).
+        started = True
         try:
             if not self.agent_session_alive():
                 log.info("no live agent session at startup; starting one detached")
-                if not self.start_agent_session():
+                started = self.start_agent_session()
+                if not started:
                     # A failed INITIAL start is handled UNIFORMLY by the loop's first
                     # tick (E2e factoring): under 'self-heal' the loop self-heals a
                     # missing agent; under 'teardown' the loop's SURFACE-AWARE branch
-                    # closes the box (rc from the dead pane, 1 when unknown) UNLESS a
-                    # panel is attached — in which case it stays up as an agentless
-                    # keep-alive.  No special-case return here (one start attempt, then
-                    # the loop's ref-count policy decides) keeps the teardown decision
-                    # in exactly ONE place (design §86-88, cold-start-error-human-direct).
+                    # closes the box (rc 1 — never came up) UNLESS a panel is attached,
+                    # in which case it stays up as an agentless keep-alive.  No special-
+                    # case return here (one start attempt, then the loop's ref-count
+                    # policy decides) keeps the teardown decision in exactly ONE place
+                    # (design §86-88, cold-start-error-human-direct).
                     log.warning("initial agent start failed; deferring to the loop policy")
             prev = self._snapshot()
         except Exception:
@@ -1297,25 +1330,29 @@ class BoxSupervisor:
                                 )
                                 keepalive_announced = True
                         else:
-                            # No other surface → today's E2d teardown: propagate the
-                            # agent's TRUE exit code as PID-1's own, so the container's
-                            # exit code (and thus the host's foreground error handling)
-                            # is TRUTHFUL — a supervised agent CRASH surfaces instead of
-                            # masquerading as a clean exit.  Read the dead pane's
-                            # ``#{pane_dead_status}``; a clean status-0 exit ⇒ 0, and a
-                            # dead-but-unknown agent (status unreadable, or the session
-                            # vanished entirely) ⇒ 1 — a failure, not a success.
+                            # No other surface → close the box (E2e teardown).  A
+                            # teardown launch does NOT arm ``remain-on-exit``, so the
+                            # pane has CLOSED and ``#{pane_dead_status}`` is normally
+                            # absent.  Derive a truthful-as-possible code:
+                            #   * a dead pane status IS present (stale/armed) ⇒ honor it;
+                            #   * else the agent CAME UP and exited (``started``) ⇒ 0 —
+                            #     a clean quit must not masquerade as a failure (a
+                            #     sole-agent CRASH also lands here as 0 until a pipe-pane
+                            #     follow-up restores truthful crash codes);
+                            #   * else it NEVER came up (initial start failed) ⇒ 1.
                             status = self.agent_pane_dead_status()
-                            code = 1 if status is None else status
-                            # Surface the dead agent's final output to the HOST before
+                            if status is not None:
+                                code = status
+                            else:
+                                code = 0 if started else 1
+                            # Surface any captured agent output to the HOST before
                             # closing.  The host's foreground path reads ``podman logs``
-                            # (PID-1's stdout) to show WHY the agent died and to detect a
-                            # recoverable "no conversation" retry — but the agent ran in a
-                            # tmux pane, so its output never reached PID-1's stdout.  Echo
-                            # the captured pane here so both host paths work again (the
-                            # E2c/E2d observability residual).  Best-effort: a failed
-                            # capture just means the old (empty-logs) behavior, never a
-                            # crash or a masked exit code.
+                            # (PID-1's stdout) to show WHY the agent died — but the agent
+                            # ran in a tmux pane, so its output never reached PID-1's
+                            # stdout.  Echo the captured pane here (best-effort).  With
+                            # ``remain-on-exit`` OFF in teardown the pane has closed and
+                            # this normally captures nothing; it still recovers output
+                            # from a stale/armed pane if one is present.
                             captured = self.capture_agent_output()
                             if captured:
                                 print(captured, flush=True)

@@ -3307,22 +3307,22 @@ class TestDetachKeepAlive:
             )
             assert rc == 0
 
-    def test_foreground_tty_suppresses_raw_logs_but_still_retries(
+    def test_foreground_tty_suppresses_raw_logs_but_still_feeds_setup_gate(
         self, start_mocks, capsys
     ):
         """FF-10 (b): on an INTERACTIVE tty foreground exit the raw captured pane is
-        NOT echoed at the human, yet ``logs`` is still read by the retry gate — the
-        auto-retry stays wired.  Terminal restore (a) fires on the same path."""
+        NOT echoed at the human, yet ``logs`` is still read by the setup gate — the
+        diagnostics drive stays wired.  Terminal restore (a) fires on the same path.
+        (The launch-time crash-and-retry net was removed; the setup gate is now the
+        sole ``logs`` consumer on this path.)"""
         with start_mocks() as m, patch(
             "kanibako.commands.start._interactive_host", return_value=True,
         ), patch(
             "kanibako.commands.start._restore_host_terminal",
         ) as m_restore, patch(
             "kanibako.commands.start._container_logs",
-            return_value="No conversation found to continue",
+            return_value="agent exited cleanly",
         ):
-            # Isolate: no recursion this test — just prove logs reaches the gate.
-            m.target.should_retry_new_session.return_value = False
             m.target.should_run_setup.return_value = False
 
             def _exec_then_exit(*_a, **_k):
@@ -3335,43 +3335,14 @@ class TestDetachKeepAlive:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=True, detach=False,
             )
-            # (b) the retry gate STILL receives the (unchanged) logs...
-            m.target.should_retry_new_session.assert_called_once_with(
-                "No conversation found to continue"
+            # (b) the setup gate STILL receives the (unchanged) logs...
+            m.target.should_run_setup.assert_called_once_with(
+                "agent exited cleanly"
             )
             # ...but the raw pane was NOT echoed at the human's tty.
-            assert "No conversation found to continue" not in capsys.readouterr().err
+            assert "agent exited cleanly" not in capsys.readouterr().err
             # (a) the host terminal was restored on the tty path.
             m_restore.assert_called_once()
-
-    def test_foreground_tty_retry_still_fires(self, start_mocks):
-        """FF-10 (b): the new-session auto-retry fires on the interactive tty exit
-        path exactly as before — ``logs`` drives ``should_retry_new_session`` and the
-        container is rm'd + relaunched (the loop-guard ``_is_retry`` still bounds it)."""
-        with start_mocks() as m, patch(
-            "kanibako.commands.start._interactive_host", return_value=True,
-        ), patch(
-            "kanibako.commands.start._restore_host_terminal",
-        ), patch(
-            "kanibako.commands.start._container_logs",
-            return_value="No conversation found to continue",
-        ):
-            m.target.should_retry_new_session.return_value = True
-            m.target.should_run_setup.return_value = False
-
-            def _exec_then_exit(*_a, **_k):
-                m.runtime.is_running.return_value = False
-                return 0
-
-            m.runtime.exec.side_effect = _exec_then_exit
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, detach=False,
-            )
-            # The retry branch fired: container removed and a fresh launch recursed.
-            m.runtime.rm.assert_called()
-            assert m.resolve_agent.call_count >= 2
 
     def test_foreground_tty_setup_gate_fires_and_suppresses_logs(
         self, start_mocks, capsys
@@ -3392,7 +3363,6 @@ class TestDetachKeepAlive:
         ), patch(
             "kanibako.commands.start._print_setup_did_not_take",
         ) as m_setup_msg:
-            m.target.should_retry_new_session.return_value = False
             m.target.should_run_setup.return_value = True
 
             def _exec_then_exit(*_a, **_k):
@@ -3421,7 +3391,6 @@ class TestDetachKeepAlive:
             "kanibako.commands.start._container_logs",
             return_value="raw pane dump line",
         ):
-            m.target.should_retry_new_session.return_value = False
             m.target.should_run_setup.return_value = False
 
             def _exec_then_exit(*_a, **_k):
@@ -3452,7 +3421,6 @@ class TestDetachKeepAlive:
             "kanibako.commands.start._container_logs",
             return_value="DEAD_AGENT_MARKER: crashed",
         ):
-            m.target.should_retry_new_session.return_value = False
             m.target.should_run_setup.return_value = False
 
             def _exec_then_exit(*_a, **_k):
@@ -3838,80 +3806,6 @@ class TestRunShellBoxShell:
             assert exec_cmd == ["/bin/zsh"]
 
 
-class TestNewSessionRetryPreservesAgent:
-    """W1 regression: the new-session retry must carry the explicit --agent.
-
-    When the box's agent exits and the target asks for a new-session retry
-    ("Restarting with a new session."), _run_container recurses with
-    new_session=True.  The recursion must thread the in-scope ``explicit_agent``
-    through, otherwise the retry re-resolves with explicit_agent=None and the
-    user's --agent is dropped -> resolve_agent's Gate-2a (NoAgentSelectedError)
-    kills the box.  See the two recursive call sites in start.py.
-    """
-
-    def _drive(self, m):
-        from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
-        m.target.name = "claude"
-        m.target.descriptor = _CLAUDE_DESCRIPTOR
-        m.target.setting_descriptors.return_value = []
-        m.agent_cfg.state = {"model": "opus"}
-        m.load_agent_config.return_value = m.agent_cfg
-        # Target requests exactly one new-session retry.
-        m.target.should_retry_new_session.return_value = True
-
-    def test_retry_threads_explicit_agent(self, start_mocks):
-        with start_mocks() as m:
-            self._drive(m)
-            # Simulate "container never comes up" so the for...else retry block
-            # fires: keep is_running False even after run() (override the
-            # fixture's side-effect that flips it True).
-            m.runtime.run.side_effect = None
-            m.runtime.run.return_value = 0
-            m.runtime.is_running.return_value = False
-
-            # The retry only triggers when there are container logs to inspect;
-            # the conftest default stubs _container_logs to "".  Give it real
-            # output once so should_retry_new_session is consulted.
-            with patch(
-                "kanibako.commands.start._container_logs",
-                return_value="No conversation found to continue",
-            ):
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True, explicit_agent="claude",
-                )
-
-            # No Gate-2a was raised (it would propagate out of _run_container).
-            assert rc is not None
-            # resolve_agent was invoked on BOTH the initial launch and the
-            # retry, and BOTH carried the explicit agent — the retry did not
-            # drop it back to None.
-            assert m.resolve_agent.call_count >= 2
-            for call in m.resolve_agent.call_args_list:
-                assert call.kwargs.get("explicit_agent") == "claude"
-
-    def test_retry_without_explicit_agent_stays_none(self, start_mocks):
-        """Control: when no --agent was given, the retry must NOT invent one."""
-        with start_mocks() as m:
-            self._drive(m)
-            m.runtime.run.side_effect = None
-            m.runtime.run.return_value = 0
-            m.runtime.is_running.return_value = False
-            with patch(
-                "kanibako.commands.start._container_logs",
-                return_value="No conversation found to continue",
-            ):
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[], persistent=True,
-                )
-            assert m.resolve_agent.call_count >= 2
-            for call in m.resolve_agent.call_args_list:
-                assert call.kwargs.get("explicit_agent") is None
-
-
 class TestInBoxSetupAtAuthProbe:
     """FIX 2: in-box setup runs at the check_auth-FAILURE point (pre-launch).
 
@@ -3934,7 +3828,6 @@ class TestInBoxSetupAtAuthProbe:
         m.target.setup_entrypoint = "goose"
         m.target.setup_args = ["configure"]
         m.target.check_auth.return_value = check_auth
-        m.target.should_retry_new_session.return_value = False
         m.agent_cfg.state = {}
         m.load_agent_config.return_value = m.agent_cfg
 
@@ -4077,7 +3970,6 @@ class TestPostLaunchSetupDetection:
         m.target.setup_entrypoint = "goose"
         m.target.setup_args = ["configure"]
         m.target.check_auth.return_value = check_auth
-        m.target.should_retry_new_session.return_value = False
         m.agent_cfg.state = {}
         m.load_agent_config.return_value = m.agent_cfg
 

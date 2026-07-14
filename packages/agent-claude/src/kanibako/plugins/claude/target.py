@@ -155,8 +155,39 @@ class ClaudeTarget(Target):
     def default_entrypoint(self) -> str | None:
         return "claude"
 
-    def should_retry_new_session(self, output: str) -> bool:
-        return "No conversation found" in output
+    def has_resumable_session(self, home: Path) -> bool:
+        """Report whether claude has a transcript to resume under the box home.
+
+        ``--continue`` resumes the newest session in claude's per-project
+        transcript dir ``<config>/projects/<cwd-encoded>/`` where ``<cwd>`` is
+        claude's in-box working directory with every ``/`` replaced by ``-``.
+        Kanibako always launches claude at the FIXED container WORKDIR
+        ``GUEST_HOME/workspace`` (``container.py`` ``-w``), so the encoded dir is
+        the constant ``-home-agent-workspace``; the transcripts live HOST-side
+        under ``<home>/.claude/projects/-home-agent-workspace/`` (``home`` is the
+        box home as seen from the host — the home bind source).
+
+        Layout-robust: claude writes sessions as ``*.jsonl`` (archived
+        ``*.jsonl.gz``) directly in that dir, but check recursively so a nested
+        layout (e.g. ``conversation_logs/``) still counts.  ANY transcript ⇒
+        ``True``; a missing / empty dir ⇒ ``False`` (launch fresh — the
+        "No conversation found" case).  Tolerant: any stat/glob error ⇒ ``False``
+        (a fresh start is always safe — the retry net was removed by design).
+        """
+        from kanibako.settings_resolve import GUEST_HOME
+
+        cwd = f"{GUEST_HOME}/workspace"          # /home/agent/workspace
+        encoded = cwd.replace("/", "-")          # -home-agent-workspace
+        projects = home / ".claude" / "projects" / encoded
+        try:
+            if not projects.is_dir():
+                return False
+            return (
+                next(projects.rglob("*.jsonl"), None) is not None
+                or next(projects.rglob("*.jsonl.gz"), None) is not None
+            )
+        except OSError:
+            return False
 
     @property
     def config_dir_name(self) -> str:

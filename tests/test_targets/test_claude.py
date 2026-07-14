@@ -44,6 +44,73 @@ class TestCredentialCheckPath:
         assert t.config_dir_name == ".claude"
 
 
+class TestHasResumableSession:
+    """claude decides continue-vs-fresh UP FRONT off its per-project transcript
+    dir ``<home>/.claude/projects/<cwd-encoded>/`` (the retry net was removed).
+
+    The in-box cwd is the FIXED container WORKDIR ``GUEST_HOME/workspace`` =
+    ``/home/agent/workspace``, encoded (``/``->``-``) as ``-home-agent-workspace``.
+    """
+
+    ENCODED = "-home-agent-workspace"
+
+    def _projects(self, home: Path) -> Path:
+        d = home / ".claude" / "projects" / self.ENCODED
+        d.mkdir(parents=True)
+        return d
+
+    def test_encoded_dir_name_is_the_constant(self):
+        # Pin the constant so a workdir/encoding change is caught here.
+        from kanibako.settings_resolve import GUEST_HOME
+        assert f"{GUEST_HOME}/workspace".replace("/", "-") == self.ENCODED
+
+    def test_false_when_projects_dir_missing(self, tmp_path: Path):
+        # Fresh box, no transcript dir at all -> nothing to resume -> launch fresh.
+        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+
+    def test_false_when_encoded_dir_empty(self, tmp_path: Path):
+        # Dir exists but holds no transcript -> positively nothing to resume.
+        self._projects(tmp_path)
+        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+
+    def test_true_when_flat_jsonl_present(self, tmp_path: Path):
+        # claude's real layout: sessions written directly as <uuid>.jsonl.
+        d = self._projects(tmp_path)
+        (d / "0198abcd-session.jsonl").write_text("{}\n")
+        assert ClaudeTarget().has_resumable_session(tmp_path) is True
+
+    def test_true_when_archived_gz_present(self, tmp_path: Path):
+        # An archived-only session (*.jsonl.gz) still counts as resumable.
+        d = self._projects(tmp_path)
+        (d / "old-session.jsonl.gz").write_bytes(b"\x1f\x8b")
+        assert ClaudeTarget().has_resumable_session(tmp_path) is True
+
+    def test_true_when_nested_layout(self, tmp_path: Path):
+        # Layout-robust: a nested conversation_logs/ transcript still reads True.
+        d = self._projects(tmp_path)
+        nested = d / "conversation_logs"
+        nested.mkdir()
+        (nested / "x.jsonl").write_text("{}\n")
+        assert ClaudeTarget().has_resumable_session(tmp_path) is True
+
+    def test_false_when_only_unrelated_files(self, tmp_path: Path):
+        # Non-transcript files (no *.jsonl / *.jsonl.gz) -> nothing to resume.
+        d = self._projects(tmp_path)
+        (d / "notes.txt").write_text("hi")
+        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+
+    def test_false_on_oserror_launches_fresh(self, tmp_path: Path, monkeypatch):
+        # Tolerant: a stat/glob error -> False (a fresh start is always safe;
+        # the retry net was removed by design).
+        self._projects(tmp_path)
+
+        def _raise(self, *a, **k):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "rglob", _raise)
+        assert ClaudeTarget().has_resumable_session(tmp_path) is False
+
+
 def _anchor_contract(monkeypatch, launcher, install_dir):
     """Point the claude plugin's contract constants at a tmp install.
 

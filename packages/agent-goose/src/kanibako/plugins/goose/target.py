@@ -149,15 +149,6 @@ class GooseTarget(Target):
         """Goose binary as container entrypoint."""
         return "goose"
 
-    def should_retry_new_session(self, output: str) -> bool:
-        # ``continue`` builds ``goose session --resume``; on a fresh box there is
-        # no prior session to resume, so goose exits with this stderr.  Signal
-        # start.py's fallback to relaunch with a new (bare ``session``) session.
-        # Matched case-insensitively: the exact casing of goose's stderr is not
-        # pinned by the repo, so a phrasing-casing tweak still trips the detector
-        # (the secure default is conservative — only this specific phrase fires).
-        return "no session found to resume" in output.lower()
-
     def has_resumable_session(self, home: Path) -> bool:
         """Report whether goose has a session to resume under the box home.
 
@@ -169,10 +160,9 @@ class GooseTarget(Target):
         FAILED resume attempt itself creates the db — so the dir-entry check
         splits exactly right: a FRESH box (init_dirs only, dir empty) reads
         ``False`` (the fix), while a box whose earlier doomed attempt left an
-        empty db reads ``True`` and falls through to the old
-        ``should_retry_new_session`` net — fail-safe either way.  *home* is
-        the box home as seen from the HOST (the home bind source), so the
-        store is readable without touching the container.
+        empty db reads ``True``.  *home* is the box home as seen from the HOST
+        (the home bind source), so the store is readable without touching the
+        container.
 
         KNOWN LIMIT: ``GOOSE_PATH_ROOT`` is user-settable (the env category /
         ``-e``) and would redirect goose's store; this hook's fixed signature
@@ -186,8 +176,7 @@ class GooseTarget(Target):
         attach-race error); returning ``False`` lets start.py go straight to a
         new session.  FAIL-SAFE: ``False`` only when the store positively
         contains no entry (missing dir or empty dir); ANY entry — or any read
-        error — returns ``True`` so a real resume is never wrongly denied
-        (the ``should_retry_new_session`` retry stays the net).
+        error — returns ``True`` so a real resume is never wrongly denied.
         """
         sessions = home / ".local" / "share" / "goose" / "sessions"
         try:

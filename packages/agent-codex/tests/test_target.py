@@ -33,6 +33,53 @@ class TestProperties:
         assert CodexTarget().default_entrypoint == "codex"
 
 
+class TestHasResumableSession:
+    """codex decides continue-vs-fresh UP FRONT off its rollout store (the
+    launch-time crash-and-retry net was removed).  ``continue`` = ``codex resume
+    --last`` replays the newest recorded session; the store is
+    ``<home>/.codex/sessions/<year>/<MM>/<DD>/rollout-*.jsonl`` (CODEX_HOME defaults
+    to ~/.codex; kanibako sets none).  ``resume --last`` is workdir-agnostic, so the
+    WHOLE store is checked.  Verified against openai/codex codex-rs/rollout/src.
+    """
+
+    def _sessions(self, home: Path) -> Path:
+        d = home / ".codex" / "sessions"
+        d.mkdir(parents=True)
+        return d
+
+    def test_false_when_sessions_dir_missing(self, tmp_path: Path):
+        # Fresh box, no rollout store -> resume --last is doomed -> launch fresh.
+        assert CodexTarget().has_resumable_session(tmp_path) is False
+
+    def test_false_when_sessions_dir_empty(self, tmp_path: Path):
+        # Dir exists (e.g. init) but no rollout recorded -> nothing to resume.
+        self._sessions(tmp_path)
+        assert CodexTarget().has_resumable_session(tmp_path) is False
+
+    def test_true_when_dated_rollout_present(self, tmp_path: Path):
+        # Real layout: sessions/<year>/<MM>/<DD>/rollout-<ts>-<uuid>.jsonl.
+        d = self._sessions(tmp_path) / "2026" / "07" / "14"
+        d.mkdir(parents=True)
+        (d / "rollout-2026-07-14T10-00-00-abc.jsonl").write_text("{}\n")
+        assert CodexTarget().has_resumable_session(tmp_path) is True
+
+    def test_false_when_only_unrelated_files(self, tmp_path: Path):
+        # Non-rollout files (no *.jsonl) -> nothing to resume.
+        d = self._sessions(tmp_path)
+        (d / "notes.txt").write_text("hi")
+        assert CodexTarget().has_resumable_session(tmp_path) is False
+
+    def test_false_on_oserror_launches_fresh(self, tmp_path: Path, monkeypatch):
+        # Tolerant: a stat/glob error -> False (a fresh start is always safe).
+        self._sessions(tmp_path)
+
+        def _raise(self, *a, **k):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "rglob", _raise)
+        assert CodexTarget().has_resumable_session(tmp_path) is False
+
+
 def _write_exe(path: Path, data: bytes) -> Path:
     """Write *data* to *path*, mark it executable, and return the path."""
     path.parent.mkdir(parents=True, exist_ok=True)

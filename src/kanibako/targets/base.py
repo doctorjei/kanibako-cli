@@ -471,10 +471,6 @@ class Target(ABC):
         """Binary name for container entrypoint. None = use bash."""
         return None
 
-    def should_retry_new_session(self, output: str) -> bool:
-        """Check if agent output indicates ``--continue`` failed and a new session should be started."""
-        return False
-
     def has_resumable_session(self, home: Path) -> bool:
         """Report whether this agent has a session to resume under *home*.
 
@@ -485,16 +481,16 @@ class Target(ABC):
         but the target positively reports nothing to resume, it builds the
         new-session command directly instead of ATTEMPTING a doomed resume
         (whose fast-dying container races the attach path into a raw runtime
-        error before the ``should_retry_new_session`` retry recovers).
+        error).  The launch-time crash-and-retry net was REMOVED (the dead-pane
+        dependency it relied on is gone), so this hook is now the SOLE
+        continue-vs-fresh guard: a target with a doomable resume MUST override
+        it to positively detect an empty store.
 
-        Implementations read HOST-side state only — no container exec.  This
-        hook is a UX optimization, not a gate: return ``False`` only on a
-        positive determination that no resumable session exists; when unsure
-        or unreadable, return ``True`` (fail-safe — the
-        :meth:`should_retry_new_session` retry remains the net for a resume
-        that fails anyway, while a wrong ``False`` would silently drop a real
-        conversation).  Default ``True``: an agent that does not override
-        keeps the existing always-attempt-continue behavior byte-identical.
+        Implementations read HOST-side state only — no container exec.  Return
+        ``False`` only on a positive determination that no resumable session
+        exists (a wrong ``False`` silently drops a real conversation).  Default
+        ``True``: an agent that does not override keeps the always-attempt-
+        continue behavior byte-identical.
         """
         return True
 

@@ -194,6 +194,35 @@ def test_start_agent_session_emits_new_session_detached():
     assert fake.sub_calls("new-session") == [_START_CALL]
 
 
+def test_start_agent_session_teardown_does_not_arm_remain_on_exit():
+    # SOLE / FOREGROUND launch (on_agent_exit="teardown"): NO remain-on-exit is
+    # armed, so the pane closes on ANY exit (clean or crash) and an attached
+    # foreground client returns to the shell instead of stranding on a dead pane.
+    fake = FakeRun()
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    assert sup.start_agent_session() is True
+    # A PLAIN detached new-session — no combined set-option arm around it.
+    assert fake.sub_calls("new-session") == [
+        ["tmux", "new-session", "-d", "-s", "kanibako", "--",
+         "claude", "--dangerously-skip-permissions"]
+    ]
+    # And NO remain-on-exit was set at all (neither global nor session-local).
+    assert fake.sub_calls("set-option") == []
+    assert not any("remain-on-exit" in c for c in fake.calls)
+
+
+def test_restart_agent_session_teardown_does_not_arm_remain_on_exit():
+    # A teardown launch never self-heals, but the arming path is shared, so a
+    # (defensive) restart under teardown must ALSO stay plain — no dead pane.
+    fake = FakeRun()
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    assert sup.restart_agent_session() is True
+    assert fake.sub_calls("new-session") == [
+        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
+    ]
+    assert not any("remain-on-exit" in c for c in fake.calls)
+
+
 def test_start_agent_session_reports_failure_on_nonzero_rc():
     fake = FakeRun(rc={"new-session": 1})
     sup = BoxSupervisor(_config(), run=fake)
@@ -633,16 +662,16 @@ def test_self_heal_budget_resets_across_separate_deaths():
 # on_agent_exit policy (E2c) — launch-intent-aware teardown vs self-heal.
 # ---------------------------------------------------------------------------
 
-def test_run_forever_teardown_policy_closes_box_on_clean_agent_exit():
-    # Foreground CLI 'teardown' policy: agent alive at startup, then a CLEAN dead
-    # pane (pane_dead_status=0) on tick1 → the loop RETURNS 0 (box closes) WITHOUT
-    # any self-heal restart (no self-heal loop while a human-driven CLI is the
-    # surface).  E2d: the return code is the AGENT's real code, 0 for a clean exit.
+def test_run_forever_teardown_ran_then_exited_returns_zero():
+    # Foreground CLI 'teardown' REALITY: remain-on-exit is NOT armed, so on exit the
+    # pane simply CLOSES and the session VANISHES — there is no dead-pane status to
+    # read.  An agent that CAME UP (alive at startup) and then exited must close the
+    # box with rc 0: a clean quit must NOT masquerade as a failure (the whole point
+    # of dropping the dead pane).  No self-heal while a human-driven CLI is the driver.
     fake = FakeRun(
-        rc={"has-session": [0, 0]},
-        # startup liveness="" (alive); tick1 liveness="0" (dead, clean); teardown
-        # re-read="0".
-        stdout={"display-message": ["", "0", "0"]},
+        # startup liveness="" (alive); tick1 has-session rc 1 (session vanished, no pane).
+        rc={"has-session": [0, 1]},
+        stdout={"display-message": [""]},
     )
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     restarts: list[int] = []
@@ -654,10 +683,20 @@ def test_run_forever_teardown_policy_closes_box_on_clean_agent_exit():
     assert fake.sub_calls("new-session") == []  # and never restarted the agent
 
 
-def test_run_forever_teardown_returns_agent_dead_status():
-    # E2d: under 'teardown', a DEAD pane carrying pane_dead_status=42 (the agent
-    # crashed) makes run_forever return 42 — the agent's TRUE exit code — so the
-    # container's exit code (and the host's error handling) is truthful, not a lie.
+def test_run_forever_teardown_sole_agent_crash_also_returns_zero():
+    # DOCUMENTED tradeoff of "no dead pane ever": with remain-on-exit off a sole-agent
+    # CRASH is INDISTINGUISHABLE from a clean exit (both just vanish the session), so
+    # it ALSO returns rc 0 — until a pipe-pane follow-up restores truthful crash codes.
+    # (Modelled identically to a clean exit: came up, then session gone, no status.)
+    fake = FakeRun(rc={"has-session": [0, 1]}, stdout={"display-message": [""]})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
+    assert sup.run_forever() == 0
+
+
+def test_run_forever_teardown_honors_present_dead_pane_status():
+    # DEFENSIVE: a teardown launch does not arm remain-on-exit, but if a stale/armed
+    # pane IS somehow present carrying a #{pane_dead_status}, honor it VERBATIM rather
+    # than override — so a real code is never discarded when it happens to exist.
     fake = FakeRun(
         rc={"has-session": [0, 0]},
         stdout={"display-message": ["", "42", "42"]},
@@ -672,22 +711,21 @@ def test_run_forever_teardown_returns_agent_dead_status():
     assert fake.sub_calls("new-session") == []
 
 
-def test_run_forever_teardown_echoes_agent_output_to_stdout(capsys):
-    # On teardown the supervisor is PID-1, so the crashed agent's output (living in
-    # its tmux pane) never reaches podman logs unless the supervisor echoes it.  The
-    # host reads podman logs to (a) show the user WHY the agent died and (b) detect a
-    # recoverable "no conversation" retry — so the captured pane MUST be printed to
-    # stdout before the box closes.
+def test_run_forever_teardown_echoes_present_pane_output_to_stdout(capsys):
+    # DEFENSIVE: if a stale/armed pane is present on teardown, its captured output is
+    # echoed to PID-1's stdout (podman logs) before the box closes so the host can
+    # show WHY the agent died.  (In the normal remain-on-exit-off teardown the pane
+    # has closed and this captures nothing; here a pane is mocked present.)
     fake = FakeRun(
         rc={"has-session": [0, 0]},
         stdout={
             "display-message": ["", "1", "1"],
-            "capture-pane": "No conversation found to continue\n",
+            "capture-pane": "agent crashed: boom\n",
         },
     )
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     assert sup.run_forever() == 1
-    assert "No conversation found to continue" in capsys.readouterr().out
+    assert "agent crashed: boom" in capsys.readouterr().out
 
 
 def test_run_forever_teardown_tolerates_empty_capture(capsys):
@@ -700,16 +738,6 @@ def test_run_forever_teardown_tolerates_empty_capture(capsys):
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     assert sup.run_forever() == 3
     assert capsys.readouterr().out == ""
-
-
-def test_run_forever_teardown_returns_one_when_dead_status_unknown():
-    # E2d: under 'teardown', the session VANISHES entirely (has-session != 0), so no
-    # pane_dead_status is readable → a dead-but-unknown agent is a FAILURE, not a
-    # success: run_forever defaults to rc 1.
-    fake = FakeRun(rc={"has-session": [0, 1]})
-    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
-    assert sup.run_forever() == 1
-    assert fake.sub_calls("new-session") == []  # never restarted
 
 
 def test_run_forever_self_heal_restarts_after_dead_pane():
@@ -732,10 +760,13 @@ def test_run_forever_self_heal_restarts_after_dead_pane():
     ]
 
 
-def test_run_forever_teardown_initial_start_failure_returns_and_closes():
-    # Foreground 'teardown': the INITIAL agent start fails (new-session rc!=0) → the
-    # loop returns NON-ZERO so the box closes and the host surfaces the start error,
-    # rather than self-healing (design §86-88 cold-start-error-human-direct).
+def test_run_forever_teardown_initial_start_failure_returns_one():
+    # Foreground 'teardown', NEVER-STARTED case: the INITIAL agent start fails
+    # (new-session rc!=0), so the agent never came up (``started`` is False).  Even
+    # with no dead pane, this is a TRUTHFUL FAILURE → the loop returns rc 1 so the box
+    # closes and the host surfaces the start error (NOT the rc-0 clean-exit path — the
+    # started/never-started distinction is exactly what keeps a real start failure
+    # from masquerading as success).  No self-heal (design §86-88).
     fake = FakeRun(rc={"has-session": 1, "new-session": 1})
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     assert sup.run_forever() == 1
