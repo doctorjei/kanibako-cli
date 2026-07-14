@@ -505,9 +505,9 @@ class TestSparseWrites:
         assert data["self"]["model"] == "opus"
         assert data["self"]["name"] == "Custom"
         assert data["self"]["env"] == {"FOO": "bar"}
-        # secret_path lands DISCRIMINATED under self.<node>.secret_path (the shape
-        # _agent_partial reads into the cascade), NOT a flat top-level section.
-        assert data["self"]["claude"] == {"secret_path": {"TOK": "/p/token"}}
+        # secret_path lands DIRECTLY under self.secret_path (self IS agent.<node>);
+        # the whole self table is what _agent_partial re-roots into the cascade.
+        assert data["self"]["secret_path"] == {"TOK": "/p/token"}
         # secret_path.<VAR> must NOT leak into the plain env table.
         assert "TOK" not in data["self"]["env"]
 
@@ -580,8 +580,8 @@ class TestSparseWrites:
             "self": {
                 "name": "Custom", "endpoint": "x", "model": "opus",
                 "run_args": ["--a"],
-                # secret_path now lives DISCRIMINATED under self.<node>.secret_path.
-                "claude": {"secret_path": {"TOK": "/p"}},
+                # secret_path now lives DIRECTLY under self.secret_path.
+                "secret_path": {"TOK": "/p"},
                 "env": {"FOO": "bar"},
                 "transform_settings": {"theme": "dark"},
             },

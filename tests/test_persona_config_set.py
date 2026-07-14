@@ -123,7 +123,7 @@ class TestSetPersona:
             "self": {"endpoint": _URL, "model": "gemma-4-31b-it"},
         }
 
-    def test_set_secret_path_token_lands_in_discriminated_section(
+    def test_set_secret_path_token_lands_in_self_section(
         self, tmp_path, agents_root,
     ):
         set_config_value(
@@ -131,10 +131,11 @@ class TestSetPersona:
             config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
-        # Stored DISCRIMINATED under agent.<node>.secret_path — the shape
-        # _agent_partial reads into the cascade (NOT a flat top-level section).
+        # Stored DIRECTLY under self.secret_path — self IS agent.<node>, so there is
+        # no second <node> embedding. The whole self table is what _agent_partial
+        # re-roots into the cascade.
         assert load_doc(_node_file(agents_root)) == {
-            "self": {"navigator℘claude": {"secret_path": {_TOKEN_VAR: "/host/token"}}},
+            "self": {"secret_path": {_TOKEN_VAR: "/host/token"}},
         }
 
     def test_set_env_var_lands_in_env_section(self, tmp_path, agents_root):

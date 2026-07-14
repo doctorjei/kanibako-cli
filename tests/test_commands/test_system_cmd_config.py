@@ -434,19 +434,17 @@ class TestSystemPersonaAgentKeys:
         # The now-empty agent table is pruned → the file stays sparse (empty doc).
         assert load_doc(self._file(std)) == {}
 
-    def test_secret_path_token_lands_in_discriminated_section(
+    def test_secret_path_token_lands_in_self_section(
         self, config_file, tmp_home,
     ):
         rc = _set("agent.navigator+claude.secret_path.ANTHROPIC_AUTH_TOKEN=/t/tok")
         assert rc == 0
         std = _std(config_file)
-        # DISCRIMINATED under agent.<node>.secret_path (the cascade shape), NOT a
-        # flat top-level section (RENAMED from rc-only env_file, clean break).
+        # DIRECTLY under self.secret_path — self IS agent.<node>, so no second
+        # <node> embedding (RENAMED from rc-only env_file, clean break).
         assert load_doc(self._file(std)) == {
             "self": {
-                "navigator℘claude": {
-                    "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
-                }
+                "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
             },
         }
 
