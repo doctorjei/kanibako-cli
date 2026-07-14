@@ -72,10 +72,14 @@ def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
     * flat state (``model`` / ``endpoint`` / ``auto_approve`` / …) and ``env.*`` live
       DIRECTLY under ``self`` (``self.<key>`` / ``self.env.<VAR>``) — the shape
       :func:`load_agent_config` reads into ``AgentConfig`` for the launch invocation;
-    * the cascade categories ``secret_path.*`` and ``bindings.{ro,rw}.*`` live in the
-      DISCRIMINATED ``self.<node>.*`` sub-table — the shape ``_agent_partial`` reads
-      into the launch settings cascade (it reads ``self.<node>`` and re-roots to
-      ``agent.<node>``).
+    * ``secret_path.*`` lives DIRECTLY under ``self`` (``self.secret_path.<VAR>``) —
+      ``self`` IS ``agent.<node>``, so there is NO second ``<node>`` embedding. It is
+      read by :func:`load_agent_config` into ``AgentConfig`` for the launch mount.
+    * ``bindings.{ro,rw}.*`` still live in the DISCRIMINATED ``self.<node>.*`` sub-table
+      — the shape ``_agent_partial`` reads into the launch cascade (it reads
+      ``self.<node>`` and re-roots to ``agent.<node>``). Flattening bindings the same
+      way as secret_path is a tracked follow-up (its cascade/repoint machinery needs a
+      separate, careful pass).
 
     Every reader/writer of the file (``agent set``/get/reset, the ``config_interface``
     generic engine's per-node resolvers, and the bind ``repoint_host_src`` write)
@@ -83,7 +87,7 @@ def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
     future rename touches this function alone.
     """
     if tail.startswith("secret_path."):
-        return ("self", node, "secret_path"), tail[len("secret_path."):]
+        return ("self", "secret_path"), tail[len("secret_path."):]
     if tail.startswith("bindings."):
         segs = tail.split(".")  # bindings.<ro|rw>.<name>
         return ("self", node, *segs[:-1]), segs[-1]
@@ -114,12 +118,6 @@ def load_agent_config(path: Path) -> AgentConfig:
 
     data = load_doc(path)
 
-    # The node is the per-agent store dir name (agents/<node>/settings.yaml), which
-    # IS the cascade discriminator ``_agent_partial`` reads (agent_name == node). The
-    # DISCRIMINATED ``agent.<node>.secret_path`` sub-table (first-class category)
-    # lives under the same ``agent:`` table as the flat state — read it by node.
-    node = path.parent.name
-
     agent_sec = data.get("self", {})
     if not isinstance(agent_sec, dict):
         agent_sec = {}
@@ -137,12 +135,11 @@ def load_agent_config(path: Path) -> AgentConfig:
         if k not in IDENTITY_KEYS and not isinstance(v, dict)
     }
     cfg.env = {k: str(v) for k, v in agent_sec.get("env", {}).items()}
-    # secret_path: VAR -> host PATH pointer, read from the DISCRIMINATED
-    # ``agent.<node>.secret_path`` sub-table (spec §2a SECRET category). Stored as a
-    # plain string path; the file's CONTENTS (the secret) are never persisted here
-    # nor read — they are ro-mounted + exported IN-BOX only at launch.
-    node_sub = agent_sec.get(node, {})
-    secret_sub = node_sub.get("secret_path", {}) if isinstance(node_sub, dict) else {}
+    # secret_path: VAR -> host PATH pointer, read DIRECTLY from ``self.secret_path``
+    # (spec §2a SECRET category — ``self`` IS ``agent.<node>``, no second embedding).
+    # Stored as a plain string path; the file's CONTENTS (the secret) are never
+    # persisted here nor read — they are ro-mounted + exported IN-BOX only at launch.
+    secret_sub = agent_sec.get("secret_path", {})
     cfg.secret_path = {
         k: str(v) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
@@ -153,21 +150,19 @@ def load_agent_config(path: Path) -> AgentConfig:
 
 def write_agent_config(path: Path, cfg: AgentConfig) -> None:
     """Write an AgentConfig to a YAML file."""
-    node = path.parent.name
     agent_sec: dict = {
         "name": cfg.name,
         "run_args": list(cfg.run_args),
     }
     for k, v in cfg.state.items():
         agent_sec[k] = v
-    # secret_path (spec §2a SECRET category) is stored DISCRIMINATED under the
-    # ``agent.<node>.secret_path`` sub-table — the SAME first-class category location
-    # ``config set agent.<node>.secret_path.<VAR>`` writes and ``_agent_partial``
-    # reads into the launch cascade — so the persona-adopted token pointer resolves
-    # through the cascade like any other agent-tier category. Only materialized when
-    # non-empty (sparse). NO ``env_file`` section (RENAMED, clean break — rc0-rc2 only).
+    # secret_path (spec §2a SECRET category) is stored DIRECTLY under ``self``
+    # (``self.secret_path.<VAR>`` — ``self`` IS ``agent.<node>``, no second ``<node>``
+    # embedding) — the SAME first-class category location ``config set
+    # agent.<node>.secret_path.<VAR>`` writes and ``_agent_partial`` reads into the
+    # launch cascade. Only materialized when non-empty (sparse).
     if cfg.secret_path:
-        agent_sec[node] = {"secret_path": dict(cfg.secret_path)}
+        agent_sec["secret_path"] = dict(cfg.secret_path)
     # Sparse write — an EMPTY category is not materialized (parity with
     # secret_path above; [[settings-must-map-to-keystore-key]]). A phantom
     # ``transform_settings: {}`` / ``env: {}`` would otherwise be counted as an
