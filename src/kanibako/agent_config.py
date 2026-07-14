@@ -38,7 +38,7 @@ class AgentConfig:
     state: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     secret_path: dict[str, str] = field(default_factory=dict)
-    tweakcc: dict = field(default_factory=dict)
+    transform_settings: dict = field(default_factory=dict)
 
 
 def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
@@ -56,6 +56,40 @@ def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
     Part-3 ``agents/<agent>/{plugins,cache}`` stores.
     """
     return agents_root / agent_id / "settings.yaml"
+
+
+def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
+    """Map a per-agent-file key TAIL to its ``(sections, leaf)`` inside the file.
+
+    *tail* is the part of a canonical per-node agent key AFTER the ``agent.<node>.``
+    prefix (e.g. ``model``, ``env.FOO``, ``secret_path.TOK``, ``bindings.ro.share``);
+    *node* is the agent id (the file's own discriminator).
+
+    SINGLE SOURCE OF TRUTH for the per-agent settings-file shape. The file's own
+    top-level table is ``self`` (its self-reference — the renamed old bare
+    ``agent`` values), and the category split is load-bearing:
+
+    * flat state (``model`` / ``endpoint`` / ``auto_approve`` / …) and ``env.*`` live
+      DIRECTLY under ``self`` (``self.<key>`` / ``self.env.<VAR>``) — the shape
+      :func:`load_agent_config` reads into ``AgentConfig`` for the launch invocation;
+    * the cascade categories ``secret_path.*`` and ``bindings.{ro,rw}.*`` live in the
+      DISCRIMINATED ``self.<node>.*`` sub-table — the shape ``_agent_partial`` reads
+      into the launch settings cascade (it reads ``self.<node>`` and re-roots to
+      ``agent.<node>``).
+
+    Every reader/writer of the file (``agent set``/get/reset, the ``config_interface``
+    generic engine's per-node resolvers, and the bind ``repoint_host_src`` write)
+    routes through here, so ``self`` and the flat/nested split are defined ONCE — a
+    future rename touches this function alone.
+    """
+    if tail.startswith("secret_path."):
+        return ("self", node, "secret_path"), tail[len("secret_path."):]
+    if tail.startswith("bindings."):
+        segs = tail.split(".")  # bindings.<ro|rw>.<name>
+        return ("self", node, *segs[:-1]), segs[-1]
+    if tail.startswith("env."):
+        return ("self", "env"), tail[len("env."):]
+    return ("self",), tail
 
 
 def agent_config_path(
@@ -86,7 +120,7 @@ def load_agent_config(path: Path) -> AgentConfig:
     # lives under the same ``agent:`` table as the flat state — read it by node.
     node = path.parent.name
 
-    agent_sec = data.get("agent", {})
+    agent_sec = data.get("self", {})
     if not isinstance(agent_sec, dict):
         agent_sec = {}
     cfg.name = str(agent_sec.get("name", ""))
@@ -102,7 +136,7 @@ def load_agent_config(path: Path) -> AgentConfig:
         for k, v in agent_sec.items()
         if k not in IDENTITY_KEYS and not isinstance(v, dict)
     }
-    cfg.env = {k: str(v) for k, v in data.get("env", {}).items()}
+    cfg.env = {k: str(v) for k, v in agent_sec.get("env", {}).items()}
     # secret_path: VAR -> host PATH pointer, read from the DISCRIMINATED
     # ``agent.<node>.secret_path`` sub-table (spec §2a SECRET category). Stored as a
     # plain string path; the file's CONTENTS (the secret) are never persisted here
@@ -112,7 +146,7 @@ def load_agent_config(path: Path) -> AgentConfig:
     cfg.secret_path = {
         k: str(v) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
-    cfg.tweakcc = dict(data.get("tweakcc", {}))
+    cfg.transform_settings = dict(agent_sec.get("transform_settings", {}))
 
     return cfg
 
@@ -134,11 +168,18 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
     # non-empty (sparse). NO ``env_file`` section (RENAMED, clean break — rc0-rc2 only).
     if cfg.secret_path:
         agent_sec[node] = {"secret_path": dict(cfg.secret_path)}
+    # Sparse write — an EMPTY category is not materialized (parity with
+    # secret_path above; [[settings-must-map-to-keystore-key]]). A phantom
+    # ``transform_settings: {}`` / ``env: {}`` would otherwise be counted as an
+    # override by ``agent reset --all``. transform_settings is NOT a reset-all
+    # exception — when set it is a normal override, wiped like any other.
+    if cfg.transform_settings:
+        agent_sec["transform_settings"] = dict(cfg.transform_settings)
+    if cfg.env:
+        agent_sec["env"] = dict(cfg.env)
 
     data: dict = {
-        "agent": agent_sec,
-        "env": dict(cfg.env),
-        "tweakcc": dict(cfg.tweakcc),
+        "self": agent_sec,
     }
     # The settings file lives inside the per-agent store dir
     # (agents/<agent>/settings.yaml); ensure that dir exists.

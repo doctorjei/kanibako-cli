@@ -352,6 +352,7 @@ def repoint_host_src(
     new_host_src: str,
     *,
     cascade_bind: "Sequence[str] | None" = None,
+    dest_parts: "Sequence[str] | None" = None,
 ) -> None:
     """Repoint a category key's ``host_src`` in the COMMAND-scope file, RAW (S24).
 
@@ -380,7 +381,12 @@ def repoint_host_src(
     (pre-expansion — the merge stores files' tuples verbatim).
     """
     data = load_doc(scope_path)
-    parts = key.split(".")
+    # *dest_parts*, when supplied, is the FILE location to walk/write (sections +
+    # leaf), overriding the default "split the canonical key". The per-agent file
+    # stores its own keys under ``self`` (not the canonical ``agent`` token), so the
+    # caller passes the SoT-resolved file route (agent_config.agent_file_route); the
+    # canonical *key* is still used for the cascade must-exist semantics + messages.
+    parts = list(dest_parts) if dest_parts is not None else key.split(".")
     leaf_name = parts[-1]
 
     # Walk the command-scope file toward the leaf WITHOUT requiring it: the

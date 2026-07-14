@@ -270,7 +270,7 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
     A missing ``agent`` table, or a *sub_key* with no matching sub-table (e.g. an
     active agent absent from the file), → an empty :class:`KeyStore` level.
     """
-    agent = raw.get("agent") if isinstance(raw, dict) else None
+    agent = raw.get("self") if isinstance(raw, dict) else None
     if not isinstance(agent, dict):
         return KeyStore()
     sub = agent.get(sub_key)

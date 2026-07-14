@@ -1184,7 +1184,7 @@ def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
     from kanibako.tweakcc import build_merged_config, resolve_tweakcc_config, write_merged_config
     from kanibako.tweakcc_cache import TweakccCache, TweakccCacheError, config_hash
 
-    tweakcc_cfg = resolve_tweakcc_config(agent_cfg.tweakcc)
+    tweakcc_cfg = resolve_tweakcc_config(agent_cfg.transform_settings)
     if not tweakcc_cfg.enabled:
         return None
 
@@ -2426,7 +2426,7 @@ def _run_container(
         # tweakcc: patch agent binary if enabled
         tweakcc_entry = None
         tweakcc_cache_obj = None
-        if target and install and agent_cfg.tweakcc:
+        if target and install and agent_cfg.transform_settings:
             result = _apply_tweakcc(
                 install, agent_cfg, std.cache_path, image, runtime.cmd, logger,
             )

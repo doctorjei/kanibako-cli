@@ -625,8 +625,8 @@ def _persona_agent_target(
     Returns one of:
 
     * ``(path, sections, leaf)`` — the route into ``agents/<node>/settings.yaml``
-      (``path``), the nested file table (``("agent",)`` for a flat state leaf,
-      ``("env",)`` for an env pointer), and the leaf name;
+      (``path``), the nested file table (``("self",)`` for a flat state leaf,
+      ``("self", "env")`` for an env pointer), and the leaf name;
     * an ``"Error: ..."`` string — a MALFORMED node ref (validated, never routed);
     * ``None`` — not a persona key, OR *agents_root* was not supplied (the per-
       persona store is global under ``config.agents`` and is only reachable when
@@ -653,16 +653,15 @@ def _persona_agent_target(
             f"node; set the any-agent default with the bare key "
             f"(e.g. '{tail}') instead."
         )
-    from kanibako.agent_config import agent_settings_path
+    from kanibako.agent_config import agent_file_route, agent_settings_path
 
     try:
         parse_agent_ref(node)  # validate only (raises on a malformed ref)
     except ConfigError as exc:
         return f"Error: {exc}"
     path = agent_settings_path(agents_root, node)
-    if tail.startswith("env."):
-        return path, ("env",), tail[len("env."):]
-    return path, ("agent",), tail
+    sections, leaf = agent_file_route(tail, node)
+    return path, sections, leaf
 
 
 def _node_bind_target(
@@ -673,13 +672,14 @@ def _node_bind_target(
     location — the get/reset symmetry twin of the set path (which routes through
     ``_set_category_value`` → ``repoint_host_src``).
 
-    Returns ``(path, sections, leaf)``: the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (*path*), and the nested table the repoint
-    writes — the FULL canonical dotted path ``agent.<node>.bindings.<ro|rw>.<name>``
-    split into ``(sections, leaf)`` EXACTLY as ``repoint_host_src`` splits it
-    (``key.split(".")``), so get/reset read/remove precisely where set wrote (the
-    shape ``_agent_partial`` reads back at launch). The node appears BOTH in the
-    dir path AND in the nested key — that is the launch read shape, not a bug.
+    Returns ``(path, sections, leaf)`` via the file-shape SoT
+    :func:`agent_config.agent_file_route`: the node's OWN settings file
+    ``agents/<node>/settings.yaml`` (*path*), and the nested table the bind write
+    targets — ``self.<node>.bindings.<ro|rw>.<name>`` split into ``(sections, leaf)``
+    (the SAME route the set path passes to ``repoint_host_src`` as ``dest_parts``),
+    so get/reset read/remove precisely where set wrote (the shape ``_agent_partial``
+    reads back at launch). The node appears BOTH in the dir path AND in the nested
+    key — that is the launch read shape, not a bug.
 
     Returns ``None`` when *canonical* is not a node bind, *agents_root* was not
     threaded (the per-node store is global under ``config.agents`` — only reachable
@@ -693,15 +693,17 @@ def _node_bind_target(
     node, _cat, _name = parsed
     if node == _AGENT_DEFAULT_SUB:
         return None
-    from kanibako.agent_config import agent_settings_path
+    from kanibako.agent_config import agent_file_route, agent_settings_path
 
     try:
         parse_agent_ref(node)  # validate only (raises on a malformed ref)
     except ConfigError:
         return None
     path = agent_settings_path(agents_root, node)
-    parts = canonical.split(".")
-    return path, tuple(parts[:-1]), parts[-1]
+    # ``_cat`` is the FULL ``bindings.ro`` / ``bindings.rw`` segment (not the bare
+    # ``ro``/``rw``), so the tail is ``{cat}.{name}`` — no extra ``bindings.`` prefix.
+    sections, leaf = agent_file_route(f"{_cat}.{_name}", node)
+    return path, sections, leaf
 
 
 def _node_secret_target(
@@ -710,13 +712,14 @@ def _node_secret_target(
     """Resolve a canonical ``agent.<node>.secret_path.<VAR>`` key (SECRET category)
     to its FILE write/read/reset location — the get/set/reset symmetry twin.
 
-    Returns ``(path, sections, leaf)``: the node's OWN settings file
+    Returns ``(path, sections, leaf)`` via the file-shape SoT
+    :func:`agent_config.agent_file_route`: the node's OWN settings file
     ``agents/<node>/settings.yaml`` (*path*) and the DISCRIMINATED nested table
-    ``agent.<node>.secret_path`` (*sections*) with *leaf* = the VAR — EXACTLY the
-    shape ``_agent_partial`` reads into the launch cascade (``agent.<node>.
-    secret_path.<VAR>``) and ``load_agent_config`` reads back into
-    ``AgentConfig.secret_path``. The node appears BOTH in the dir path AND the nested
-    key — that is the launch read shape, not a bug (same as ``_node_bind_target``).
+    ``self.<node>.secret_path`` (*sections*) with *leaf* = the VAR — EXACTLY the shape
+    ``_agent_partial`` reads into the launch cascade and ``load_agent_config`` reads
+    back into ``AgentConfig.secret_path``. The node appears BOTH in the dir path AND
+    the nested key — that is the launch read shape, not a bug (same as
+    ``_node_bind_target``).
 
     Returns ``None`` when *canonical* is not a node secret key, *agents_root* was not
     threaded (the per-node store is global under ``config.agents`` — only reachable at
@@ -729,15 +732,15 @@ def _node_secret_target(
     node, _var = parsed
     if node == _AGENT_DEFAULT_SUB:
         return None
-    from kanibako.agent_config import agent_settings_path
+    from kanibako.agent_config import agent_file_route, agent_settings_path
 
     try:
         parse_agent_ref(node)  # validate only (raises on a malformed ref)
     except ConfigError:
         return None
     path = agent_settings_path(agents_root, node)
-    parts = canonical.split(".")  # ["agent", <node>, "secret_path", <VAR>]
-    return path, tuple(parts[:-1]), parts[-1]
+    sections, leaf = agent_file_route(f"secret_path.{_var}", node)
+    return path, sections, leaf
 
 
 def _floor_bind_display(
@@ -1474,8 +1477,26 @@ def _set_category_value(
             else [bind.host, bind.box, bind.opts]
         )
 
+    # A per-node agent bind (``agent.<node>.bindings.*``) is stored in the per-agent
+    # file under its ``self`` table (``self.<node>.bindings.*``), NOT the canonical
+    # ``agent`` token — resolve that FILE route through the shape SoT so the write
+    # lands exactly where ``_agent_partial`` / ``_node_bind_target`` read it. Every
+    # other scope bind (box/workset/system) writes at its canonical split (dest=None).
+    dest_parts: "tuple[str, ...] | None" = None
+    if _is_agent_node_bind_key(canonical):
+        parsed = _parse_agent_node_bind_key(canonical)
+        if parsed is not None:
+            node, _cat, _name = parsed  # _cat = full "bindings.ro"/"bindings.rw"
+            from kanibako.agent_config import agent_file_route
+
+            secs, leaf = agent_file_route(f"{_cat}.{_name}", node)
+            dest_parts = (*secs, leaf)
+
     try:
-        repoint_host_src(config_path, canonical, value, cascade_bind=cascade_tuple)
+        repoint_host_src(
+            config_path, canonical, value,
+            cascade_bind=cascade_tuple, dest_parts=dest_parts,
+        )
     except ConfigSetError as exc:
         return f"Error: {exc}"
 
