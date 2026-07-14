@@ -250,6 +250,33 @@ class CodexTarget(Target):
         """Codex binary as container entrypoint."""
         return "codex"
 
+    def has_resumable_session(self, home: Path) -> bool:
+        """Report whether codex has a recorded session to resume under the box home.
+
+        ``continue`` mode builds ``codex resume --last`` (codex-defaults.yaml), which
+        replays the MOST-RECENT recorded session — a "rollout" ``.jsonl`` file codex
+        persists under ``$CODEX_HOME/sessions/<year>/<MM>/<DD>/rollout-<ts>-<uuid>.jsonl``
+        (verified against openai/codex ``codex-rs/rollout/src``: ``SESSIONS_SUBDIR =
+        "sessions"`` + the ``year/month/day`` push in ``recorder.rs``).  ``CODEX_HOME``
+        defaults to ``~/.codex`` and kanibako sets NO ``CODEX_HOME`` (the descriptor's
+        ``container_env`` is empty), so the box store is ``<home>/.codex/sessions/``.
+        ``resume --last`` is workdir-AGNOSTIC (the newest session regardless of cwd),
+        so — unlike claude's per-project transcript dir — this checks the WHOLE store.
+
+        On a FRESH box the store is absent/empty, so ``resume --last`` is DOOMED (no
+        session -> fast exit); returning ``False`` lets start.py launch a new session
+        instead (the launch-time crash-and-retry net was removed).  Any rollout
+        ``*.jsonl`` (recursively, to cover the date nesting) ⇒ ``True``.  Tolerant:
+        any stat/glob error ⇒ ``False`` (a fresh start is always safe).
+        """
+        sessions = home / ".codex" / "sessions"
+        try:
+            if not sessions.is_dir():
+                return False
+            return next(sessions.rglob("*.jsonl"), None) is not None
+        except OSError:
+            return False
+
     @property
     def setup_entrypoint(self) -> str | None:
         """``codex login`` is codex's interactive in-box login.

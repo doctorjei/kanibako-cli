@@ -33,34 +33,6 @@ class TestProperties:
         assert GooseTarget().config_dir_name == ".config/goose"
 
 
-class TestShouldRetryNewSession:
-    def test_true_on_resume_failure(self):
-        # goose's verbatim stderr when ``session --resume`` finds no prior session.
-        assert GooseTarget().should_retry_new_session(
-            "Error: No session found to resume"
-        )
-
-    def test_true_case_insensitive(self):
-        # The exact casing of goose's stderr is not pinned by the repo, so the
-        # detector matches case-insensitively and still fires on a casing tweak.
-        assert GooseTarget().should_retry_new_session(
-            "ERROR: NO SESSION FOUND TO RESUME"
-        )
-
-    def test_false_on_unrelated_output(self):
-        assert not GooseTarget().should_retry_new_session("some other output")
-
-    def test_false_on_other_failure_no_spurious_retry(self):
-        # A different goose failure (unconfigured) must NOT trigger a new-session
-        # retry — that path is handled by should_run_setup, not a relaunch.
-        assert not GooseTarget().should_retry_new_session(
-            "Goose is not configured. Run 'goose configure' to set up."
-        )
-
-    def test_false_on_empty_output(self):
-        assert not GooseTarget().should_retry_new_session("")
-
-
 class TestHasResumableSession:
     """First-launch death-race fix: goose positively reports whether its
     session store (``<home>/.local/share/goose/sessions``, pre-created empty
@@ -86,8 +58,7 @@ class TestHasResumableSession:
 
     def test_true_when_session_db_present(self, tmp_path: Path):
         # goose 1.37 store layout: a sqlite db inside the sessions dir.  Any
-        # db — even one an earlier FAILED resume created empty — reads True;
-        # the doomed-resume net (should_retry_new_session) still covers that.
+        # db — even one an earlier FAILED resume created empty — reads True.
         sessions = self._store(tmp_path)
         (sessions / "sessions.db").write_bytes(b"SQLite format 3\x00")
         assert GooseTarget().has_resumable_session(tmp_path) is True
@@ -100,8 +71,7 @@ class TestHasResumableSession:
         assert GooseTarget().has_resumable_session(tmp_path) is True
 
     def test_true_when_store_unreadable_fail_safe(self, tmp_path: Path, monkeypatch):
-        # Unreadable store -> unsure -> True (never wrongly deny a real
-        # resume; the should_retry_new_session net still catches a doomed one).
+        # Unreadable store -> unsure -> True (never wrongly deny a real resume).
         self._store(tmp_path)
 
         def _raise(self):

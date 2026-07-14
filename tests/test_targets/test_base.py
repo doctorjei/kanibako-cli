@@ -205,18 +205,29 @@ class TestHasResumableSession:
         missing = tmp_path / "does-not-exist"
         assert self._minimal_target().has_resumable_session(missing) is True
 
-    def test_claude_codex_no_agent_do_not_override(self):
-        """Brief constraint: NO behavior change for claude/codex/no_agent —
-        they must inherit the base default-True hook, not override it."""
-        from kanibako.plugins.claude.target import ClaudeTarget
-        from kanibako.plugins.codex.target import CodexTarget
+    def test_no_agent_does_not_override(self):
+        """no_agent keeps the base default-True hook (a plain shell has no
+        session to resume, so continue-vs-fresh never applies)."""
         from kanibako.targets.no_agent import NoAgentTarget
 
-        for target in (ClaudeTarget(), CodexTarget(), NoAgentTarget()):
+        assert (
+            NoAgentTarget().has_resumable_session.__func__
+            is Target.has_resumable_session
+        )
+
+    def test_agents_with_doomable_resume_override(self):
+        """claude / goose / codex MUST override the hook so a fresh box (empty
+        session store) goes straight to a new session — the retry net was removed,
+        so this is the SOLE continue-vs-fresh guard for each."""
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.plugins.codex.target import CodexTarget
+        from kanibako.plugins.goose.target import GooseTarget
+
+        for target in (ClaudeTarget(), CodexTarget(), GooseTarget()):
             assert (
                 target.has_resumable_session.__func__
-                is Target.has_resumable_session
-            ), f"{target.name} must not override has_resumable_session"
+                is not Target.has_resumable_session
+            ), f"{target.name} must override has_resumable_session"
 
 
 class TestGenerateAgentConfig:

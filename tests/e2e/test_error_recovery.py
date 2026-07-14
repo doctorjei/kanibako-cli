@@ -49,34 +49,9 @@ class TestContainerDeath:
             f"Got raw podman error instead of agent logs:\n{result.stderr}"
         )
 
-
-class TestNoConversationRetry:
-    """Test 10: Auto-retry on 'No conversation found' (persistent only)."""
-
-    def test_retry_succeeds_on_no_conversation(self, e2e_env):
-        """kanibako auto-retries when agent says no conversation found."""
-        env = e2e_env["env"]
-        project = e2e_env["project"]
-
-        result = run_kanibako(
-            ["create", str(project), "--name", "e2e-retry"],
-            env=env,
-        )
-        assert result.returncode == 0
-
-        # Start with no-conversation stub.
-        # First invocation: prints "No conversation found", exits 1.
-        # kanibako detects this and retries with new session.
-        # Second invocation: state file exists, stub succeeds.
-        result = run_kanibako(
-            ["start", "e2e-retry",
-             "-e", "CLAUDE_STUB_MODE=no-conversation",
-             "-e", "CLAUDE_STUB_SLEEP=1"],
-            env=env,
-            timeout=SUBPROCESS_TIMEOUT,
-        )
-
-        # The retry message should appear in stderr
-        assert "Restarting with a new session" in result.stderr, (
-            f"Expected retry message, got:\n{result.stderr}"
-        )
+# NOTE: the former ``TestNoConversationRetry`` (Test 10) was REMOVED with the
+# launch-time crash-and-retry net.  The continue-vs-fresh decision is now made
+# UP FRONT (``Target.has_resumable_session``): a fresh box goes straight to a
+# new session and never hits the "No conversation found" crash, so there is
+# nothing to retry.  A replacement e2e (fresh box -> new-session launch, no
+# crash, no retry message) should be authored during bifrost validation.
