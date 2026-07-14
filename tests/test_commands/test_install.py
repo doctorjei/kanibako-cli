@@ -125,7 +125,7 @@ class TestInstallAgentTomls:
         # Write a custom general settings file before setup
         general_toml = agents_dir / "general" / "settings.yaml"
         general_toml.parent.mkdir(parents=True, exist_ok=True)
-        general_toml.write_text('agent:\n  name: "Custom Shell"\n')
+        general_toml.write_text('self:\n  name: "Custom Shell"\n')
 
         with patch("kanibako.commands.install.ContainerRuntime", side_effect=Exception("no")):
             run(argparse.Namespace())

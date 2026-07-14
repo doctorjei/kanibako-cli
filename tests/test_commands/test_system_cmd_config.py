@@ -410,7 +410,7 @@ class TestSystemPersonaAgentKeys:
         rc = _set("agent.navigator+claude.endpoint=https://ep")
         assert rc == 0
         std = _std(config_file)
-        assert load_doc(self._file(std)) == {"agent": {"endpoint": "https://ep"}}
+        assert load_doc(self._file(std)) == {"self": {"endpoint": "https://ep"}}
         # The +form dir must NOT exist (the ℘ canonicalization really happened).
         assert not (std.agents / "navigator+claude").exists()
 
@@ -443,7 +443,7 @@ class TestSystemPersonaAgentKeys:
         # DISCRIMINATED under agent.<node>.secret_path (the cascade shape), NOT a
         # flat top-level section (RENAMED from rc-only env_file, clean break).
         assert load_doc(self._file(std)) == {
-            "agent": {
+            "self": {
                 "navigator℘claude": {
                     "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
                 }
@@ -454,7 +454,7 @@ class TestSystemPersonaAgentKeys:
         _set("agent.navigator+claude.endpoint=https://ep")
         std = _std(config_file)
         data = load_doc(self._file(std))
-        assert data == {"agent": {"endpoint": "https://ep"}}
+        assert data == {"self": {"endpoint": "https://ep"}}
 
 
 class TestSystemAgentNodeBindRepoint:
@@ -477,7 +477,7 @@ class TestSystemAgentNodeBindRepoint:
         _, dest, opts = agent_default_bind_keys("claude")[
             "agent.claude.bindings.ro.launcher"
         ]
-        assert load_doc(self._file(std))["agent"]["claude"]["bindings"]["ro"][
+        assert load_doc(self._file(std))["self"]["claude"]["bindings"]["ro"][
             "launcher"
         ] == ["/newsrc", dest, opts]
 
@@ -488,7 +488,7 @@ class TestSystemAgentNodeBindRepoint:
         rc = _set("agent.claude.bindings.ro.share=/newshare")
         assert rc == 0
         std = _std(config_file)
-        tup = load_doc(self._file(std))["agent"]["claude"]["bindings"]["ro"]["share"]
+        tup = load_doc(self._file(std))["self"]["claude"]["bindings"]["ro"]["share"]
         assert tup[0] == "/newshare"
         assert tup[1].endswith("/.local/share/claude")  # descriptor box_dest
 
@@ -510,7 +510,7 @@ class TestSystemAgentNodeBindRepoint:
         # And the persona-scalar model still writes verbatim (unchanged path).
         assert _set("agent.claude.model=opus") == 0
         std = _std(config_file)
-        assert load_doc(self._file(std))["agent"]["model"] == "opus"
+        assert load_doc(self._file(std))["self"]["model"] == "opus"
 
     def test_set_then_get_reads_back_the_repoint(
         self, config_file, tmp_home, capsys,

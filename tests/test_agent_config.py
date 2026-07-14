@@ -61,7 +61,7 @@ class TestAgentConfigSecretPath:
     def test_load_secret_path_section(self, tmp_path):
         cfg_path = self._node_file(tmp_path)
         cfg_path.write_text(
-            'agent:\n'
+            'self:\n'
             '  name: "persona"\n'
             '  nav℘claude:\n'
             '    secret_path:\n'
@@ -77,7 +77,7 @@ class TestAgentConfigSecretPath:
 
     def test_load_missing_secret_path_section(self, tmp_path):
         cfg_path = self._node_file(tmp_path)
-        cfg_path.write_text('agent:\n  name: "x"\n')
+        cfg_path.write_text('self:\n  name: "x"\n')
         assert load_agent_config(cfg_path).secret_path == {}
 
     def test_round_trip_secret_path(self, tmp_path):
@@ -146,13 +146,13 @@ class TestLoadAgentConfig:
     def test_load_all_sections(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'agent:\n'
+            'self:\n'
             '  name: "Claude Code"\n'
             '  run_args: ["--verbose", "--debug"]\n'
             '  model: "opus"\n'
             '  access: "permissive"\n'
-            'env:\n'
-            '  MY_VAR: "hello"\n'
+            '  env:\n'
+            '    MY_VAR: "hello"\n'
         )
         cfg = load_agent_config(cfg_path)
         assert cfg.name == "Claude Code"
@@ -163,7 +163,7 @@ class TestLoadAgentConfig:
     def test_load_agent_section_only(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'agent:\n'
+            'self:\n'
             '  name: "Shell"\n'
         )
         cfg = load_agent_config(cfg_path)
@@ -173,10 +173,10 @@ class TestLoadAgentConfig:
         assert cfg.env == {}
 
     def test_load_state_keys_without_identity(self, tmp_path):
-        # [agent] with only state keys (no identity keys) → all land in state.
+        # [self] with only state keys (no identity keys) → all land in state.
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'agent:\n'
+            'self:\n'
             '  access: "safe"\n'
         )
         cfg = load_agent_config(cfg_path)
@@ -184,10 +184,13 @@ class TestLoadAgentConfig:
         assert cfg.state == {"access": "safe"}
 
     def test_load_missing_agent_section(self, tmp_path):
+        # A ``self`` section holding only env (no identity/state keys): env still
+        # loads, name/state stay empty.
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'env:\n'
-            '  FOO: "bar"\n'
+            'self:\n'
+            '  env:\n'
+            '    FOO: "bar"\n'
         )
         cfg = load_agent_config(cfg_path)
         assert cfg.name == ""
@@ -203,7 +206,7 @@ class TestLoadAgentConfig:
     def test_run_args_must_be_list(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
-            'agent:\n'
+            'self:\n'
             '  run_args: "not-a-list"\n'
         )
         cfg = load_agent_config(cfg_path)
@@ -218,9 +221,10 @@ class TestWriteAgentConfig:
 
         assert path.exists()
         content = path.read_text()
-        assert 'agent:' in content
+        assert 'self:' in content
         assert 'state:' not in content
-        assert 'env:' in content
+        # Sparse write: an empty env is NOT materialized (no phantom override).
+        assert 'env:' not in content
 
     def test_write_with_values(self, tmp_path):
         path = tmp_path / "test.yaml"
@@ -295,7 +299,7 @@ class TestRoundTrip:
         write_agent_config(path, original)
         content = path.read_text()
         assert 'state:' not in content
-        assert content.count("agent:") == 1
+        assert content.count("self:") == 1
         assert 'name: Claude Code' in content
         assert 'model: sonnet' in content
 

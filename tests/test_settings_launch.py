@@ -147,7 +147,7 @@ def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
     agent_file = tmp_path / "agent-settings.yaml"
     dump_doc(
         agent_file,
-        {"agent": {"claude": {"bindings": {"ro": {
+        {"self": {"claude": {"bindings": {"ro": {
             "share": [str(repoint), "/box/share"]}}}}},
     )
 
