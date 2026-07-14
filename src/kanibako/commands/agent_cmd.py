@@ -334,7 +334,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # from [agent], every key EXCEPT ``name`` (this removes run_args, all
             # state keys, AND the discriminated ``<node>`` sub-table that holds
             # secret_path / node binds), then prune the now-empty [agent] table.
-            # PRESERVES name + tweakcc — behavior-parity with the old de-sparse reset.
+            # PRESERVES name — behavior-parity with the old de-sparse reset.
             # Sparse write: no default keys re-materialized ([[settings-must-map-to-
             # keystore-key]]).
             #
@@ -346,10 +346,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
             data = load_doc(path)
             count = 0
-            env_tbl = data.pop("env", None)
-            if isinstance(env_tbl, dict):
-                count += len(env_tbl)
-            agent_sec = data.get("agent")
+            agent_sec = data.get("self")
             if isinstance(agent_sec, dict):
                 for k in [k for k in agent_sec if k != "name"]:
                     val = agent_sec[k]
@@ -366,7 +363,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                         count += 1
                     del agent_sec[k]
                 if not agent_sec:
-                    del data["agent"]
+                    del data["self"]
             dump_doc(path, data)
             print(
                 f"Reset {count} override(s)." if count else "No overrides to reset."
@@ -464,23 +461,13 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
 def _agent_key_route(key: str, node: str) -> tuple[tuple[str, ...], str]:
     """Map an agent config *key* to its ``(sections, leaf)`` file path.
 
-    Single source of truth for the SPARSE set/reset routing (mirrors the read
-    routing in :func:`_get_agent_key`). ``secret_path.`` is tested BEFORE ``env.``
-    so ``secret_path.X`` is a pointer named ``X``. A ``secret_path.<VAR>`` pointer is
-    stored DISCRIMINATED under ``agent.<node>.secret_path.<VAR>`` (the SAME first-class
-    SECRET category shape the ``config set agent.<node>.secret_path.<VAR>`` route and
-    ``_agent_partial`` use), so *node* (the agent id) is threaded in. ``name``,
-    ``run_args``, and every other (state) key live under the ``[agent]`` table.
+    Thin delegation to the file-shape SoT :func:`agent_config.agent_file_route`
+    (mirrors the read routing in :func:`_get_agent_key`) — ``self`` and the
+    flat/nested category split live there, defined once.
     """
-    # secret_path.<VAR> — the SECRET category POINTER (host path), discriminated
-    # under agent.<node>.secret_path (spec §2a; RENAMED from rc-only env_file). The
-    # secret stays in the host file; only the PATH is persisted (never read here).
-    if key.startswith("secret_path."):
-        return ("agent", node, "secret_path"), key[len("secret_path."):]
-    if key.startswith("env."):
-        return ("env",), key[len("env."):]
-    # name / run_args / state (model, auto_approve, allow_helpers, …).
-    return ("agent",), key
+    from kanibako.agent_config import agent_file_route
+
+    return agent_file_route(key, node)
 
 
 def _show_agent_config(
