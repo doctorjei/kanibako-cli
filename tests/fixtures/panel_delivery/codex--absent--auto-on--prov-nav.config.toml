@@ -1,6 +1,6 @@
 
+sandbox_mode = "danger-full-access"
 approval_policy = "never"
-sandbox_mode = "workspace-write"
 model = "gemma-4-31b-it"
 model_provider = "navigator"
 

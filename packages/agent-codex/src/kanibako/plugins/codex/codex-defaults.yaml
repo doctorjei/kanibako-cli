@@ -125,7 +125,9 @@ descriptor:
   # own codex binary (spawns `codex app-server`) and runs container-side; panel
   # auth is container-side (`~/.codex/auth.json`, shared with the CLI) and its
   # approval_policy/sandbox_mode come from `~/.codex/config.toml` (kanibako's
-  # config manager seeds those from the box's auto_approve).
+  # config manager seeds approval_policy from the box's auto_approve and forces
+  # sandbox_mode = "danger-full-access" as a box invariant — the container IS the
+  # sandbox, so the panel app-server must not attempt a nested one).
   vscode_extension: openai.chatgpt
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →
