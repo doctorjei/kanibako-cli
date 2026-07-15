@@ -332,6 +332,16 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 > time* silently **forks the session**: both write the same agent history and
 > one surface's turns can be lost with no warning. **Use one agent surface per
 > box at a time** until single-writer enforcement lands.
+>
+> **Codex-specific sharpness:** the Codex panel's sidebar lists the box's
+> recorded CLI sessions, and **one click resumes a CLI session in a second
+> process** — the exact silent-fork above, one click away (codex records
+> sessions with no cross-process locking). Codex offers no knob to hide the
+> CLI's sessions from the panel, so this is a documented limit: while a CLI
+> codex runs in the box, don't resume its session from the panel sidebar
+> (start a new panel conversation instead). The box's permission parity
+> (`approval_policy`/`sandbox_mode`) and kanibako's managed hooks reach the
+> panel automatically via the shared `~/.codex/config.toml`.
 
 `kanibako code [project]` opens your **host** VS Code attached to the box
 (Dev Containers "Attach to Running Container"), at the box's `~/workspace`.

@@ -14,6 +14,12 @@ the seam path was proven byte-identical against them before the legacy
 wrappers were deleted (plan Steps 3-5); this module is now the permanent
 byte-identity net (it also guards the later T2.3 emitter-body moves).
 
+DELIBERATE content changes so far (each = a reviewed regeneration commit):
+
+* Phase 2 D2 (codex liveness markers): the 12 ``codex--*`` fixtures gained the
+  per-PID marker ``[[hooks.SessionStart]]`` group + its ``[hooks.state]`` entry
+  (+10 lines each, nothing else); claude/goose fixtures byte-UNCHANGED.
+
 Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
 ``.config/goose/config.yaml``, codex ``.codex/config.toml``):
 

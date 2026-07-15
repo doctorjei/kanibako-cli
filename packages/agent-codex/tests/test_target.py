@@ -699,10 +699,14 @@ class TestDeliverySeams:
             config_root=tmp_path, auto_approve=True,
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
-        # hook + GUEST_HOME-derived trust literals:
+        # hook + GUEST_HOME-derived trust literals (directive group 0 + the
+        # Phase-2 liveness-marker group 1):
         assert data["hooks"]["SessionStart"]
         state_keys = list(data["hooks"]["state"])
-        assert state_keys == [f"{GUEST_HOME}/.codex/config.toml:session_start:0:0"]
+        assert state_keys == [
+            f"{GUEST_HOME}/.codex/config.toml:session_start:0:0",
+            f"{GUEST_HOME}/.codex/config.toml:session_start:1:0",
+        ]
         assert (
             data["projects"][f"{GUEST_HOME}/workspace"]["trust_level"] == "trusted"
         )
@@ -738,3 +742,29 @@ class TestDeliverySeams:
             config_root=tmp_path, auto_approve=True,
         ) is False
         assert self._config(tmp_path).read_bytes() == before
+
+    def test_directive_hook_delivers_liveness_marker_group(self, tmp_path):
+        """Phase 2 D2: the directive write carries the per-PID liveness-marker
+        SessionStart group (claude's marker command VERBATIM) as the second
+        managed group, with its own trust entry — and NO remove hook (codex has
+        no SessionEnd event; the supervisor's kill-0 scan is the remove side)."""
+        import tomllib
+        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.vscode_config import (
+            _AGENT_MARKER_WRITE_COMMAND,
+            _SESSION_START_COMMAND,
+        )
+        assert CodexTarget().deliver_directive_hook(
+            config_root=tmp_path, auto_approve=False,
+        ) is True
+        out = self._config(tmp_path).read_text()
+        data = tomllib.loads(out)
+        commands = [
+            g["hooks"][0]["command"] for g in data["hooks"]["SessionStart"]
+        ]
+        assert commands == [_SESSION_START_COMMAND, _AGENT_MARKER_WRITE_COMMAND]
+        assert set(data["hooks"]["state"]) == {
+            f"{GUEST_HOME}/.codex/config.toml:session_start:0:0",
+            f"{GUEST_HOME}/.codex/config.toml:session_start:1:0",
+        }
+        assert "SessionEnd" not in out

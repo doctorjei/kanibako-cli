@@ -748,8 +748,8 @@ def test_codex_merge_is_idempotent():
     once = _merge(_TEMPLATE)
     twice = _merge(once)
     assert twice == once
-    # exactly ONE managed group after a re-merge.
-    assert once.count("[[hooks.SessionStart]]") == 1
+    # exactly the TWO managed groups (directive + D2 marker) after a re-merge.
+    assert once.count("[[hooks.SessionStart]]") == 2
 
 
 def test_codex_merge_tolerates_corrupt_text():
@@ -759,7 +759,7 @@ def test_codex_merge_tolerates_corrupt_text():
     assert "this is {not valid toml" in out
     # the command is TOML-escaped in the file, but its stable substring is there.
     assert "import-directives.py" in out
-    assert out.count("[[hooks.SessionStart]]") == 1
+    assert out.count("[[hooks.SessionStart]]") == 2
 
 
 def test_codex_merge_counts_preceding_user_sessionstart_group():
@@ -774,10 +774,12 @@ def test_codex_merge_counts_preceding_user_sessionstart_group():
     )
     out = _merge(text)
     data = tomllib.loads(out)
-    # user group at 0, ours at 1 → state key uses group index 1.
+    # user group at 0, ours at 1 (directive) and 2 (marker) → BOTH state keys
+    # shift with the user count.
     assert f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:1:0" in data["hooks"]["state"]
+    assert f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:2:0" in data["hooks"]["state"]
     groups = data["hooks"]["SessionStart"]
-    assert len(groups) == 2
+    assert len(groups) == 3
     assert groups[0]["hooks"][0]["command"] == "echo hi"
     assert groups[1]["hooks"][0]["command"] == _SESSION_START_COMMAND
 
@@ -996,7 +998,7 @@ def test_codex_merge_with_provider_is_idempotent():
     twice = merge_codex_config(once, **kw)
     assert twice == once
     assert once.count("[model_providers.") == 1
-    assert once.count("[[hooks.SessionStart]]") == 1
+    assert once.count("[[hooks.SessionStart]]") == 2
 
 
 def test_codex_merge_provider_preserves_user_content():
@@ -1272,3 +1274,69 @@ def test_seed_codex_approval_toggle_on_off_on_round_trips(tmp_path):
     assert seed_codex_approval(path, auto_approve=False) is True
     assert seed_codex_approval(path, auto_approve=True) is True
     assert path.read_bytes() == on1
+
+
+# --- Phase 2 D2: codex liveness-marker SessionStart group ---------------------
+#
+# codex has NO SessionEnd hook event (HookEventName verified identical at
+# rust-v0.141.0 and 0.144.x), so the managed region carries ONLY the marker
+# WRITE as its second [[hooks.SessionStart]] group; the remove side is the
+# box_supervisor's kill-0 dead-PID classification.  The command is claude's
+# _AGENT_MARKER_WRITE_COMMAND VERBATIM (one SoT for both agents' marker bytes).
+
+
+def test_codex_merge_marker_group_is_second_managed_group():
+    data = tomllib.loads(_merge(_TEMPLATE))
+    groups = data["hooks"]["SessionStart"]
+    assert len(groups) == 2
+    # directive first (byte-order the goldens freeze), marker second.
+    assert groups[0]["hooks"][0]["command"] == _SESSION_START_COMMAND
+    assert groups[1]["hooks"][0]["command"] == _AGENT_MARKER_WRITE_COMMAND
+    assert groups[1]["matcher"] == _SESSION_START_MATCHER
+    assert groups[1]["hooks"][0]["type"] == "command"
+
+
+def test_codex_merge_marker_group_has_own_trust_entry():
+    """Both managed groups carry their own pre-computed [hooks.state] hash so
+    the FIRST launch fires them with no /hooks prompt — the marker entry is
+    keyed on group index 1 (no user groups) and hashes the MARKER command."""
+    data = tomllib.loads(_merge(_TEMPLATE))
+    state = data["hooks"]["state"]
+    directive_key = f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:0:0"
+    marker_key = f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:1:0"
+    assert set(state) == {directive_key, marker_key}
+    assert state[marker_key]["trusted_hash"] == codex_trusted_hash(
+        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _AGENT_MARKER_WRITE_COMMAND,
+    )
+    assert state[directive_key]["trusted_hash"] == codex_trusted_hash(
+        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _SESSION_START_COMMAND,
+    )
+    # distinct commands ⇒ distinct hashes (a copy-paste of one hash would
+    # trip codex's trust prompt on the other group).
+    assert state[marker_key]["trusted_hash"] != state[directive_key]["trusted_hash"]
+
+
+def test_codex_merge_no_marker_remove_hook_anywhere():
+    """No SessionEnd exists in codex — the region must not emit one (an
+    unknown hooks table would be at best ignored, at worst rejected)."""
+    out = _merge(_TEMPLATE)
+    assert "SessionEnd" not in out
+    assert _AGENT_MARKER_REMOVE_COMMAND not in out
+
+
+def test_codex_marker_group_composes_with_approval_and_provider(tmp_path):
+    """Full composed file (panel approval + directive region with marker +
+    provider) parses and carries everything — the Phase-2 super-set cell."""
+    path = tmp_path / "config.toml"
+    seed_codex_approval(path, auto_approve=True)
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        model_provider=CodexModelProvider(**_NAVIGATOR),
+    )
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "never"
+    assert data["model_provider"] == "navigator"
+    assert [g["hooks"][0]["command"] for g in data["hooks"]["SessionStart"]] == [
+        _SESSION_START_COMMAND, _AGENT_MARKER_WRITE_COMMAND,
+    ]
+    assert len(data["hooks"]["state"]) == 2
