@@ -8,8 +8,9 @@ interactive ``tmux attach`` passthrough runs.  Two lifecycle branches are
 covered:
 
   - :class:`TestInteractiveAttachOnDeath` -- the agent crashes on launch; the
-    death marker must surface and the raw podman error must NOT leak (the
-    "detach -> teardown" half of the two-state lifecycle), and
+    launch must fail cleanly (non-zero exit, prompt teardown) and the raw
+    podman error must NOT leak (the "detach -> teardown" half of the two-state
+    lifecycle; crash-OUTPUT surfacing is deferred to the pipe-pane follow-up), and
   - :class:`TestInteractiveDetach` -- the agent stays alive; a ``Ctrl-b d``
     detach must KEEP the box running, and a reattach must hit the SAME
     container, not recreate it (the "detach -> keep" half).
@@ -187,13 +188,13 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
 class TestInteractiveAttachOnDeath:
     """Interactive (PTY) launch of a box whose agent crashes on start."""
 
-    def test_dead_agent_under_pty_shows_marker_not_raw_error(self, dead_env):
-        """A PTY-launched box with a crashing agent surfaces the agent marker.
+    def test_dead_agent_under_pty_fails_cleanly_not_raw_error(self, dead_env):
+        """A PTY-launched box with a crashing agent fails cleanly.
 
         Under a real PTY the interactive ``tmux attach`` path runs; the agent
-        exits non-zero, and kanibako must show the agent's output (marker)
-        rather than leaking the raw ``container state improper`` podman error,
-        and must itself exit non-zero.
+        exits non-zero, and kanibako must exit non-zero WITHOUT leaking the raw
+        ``container state improper`` podman error, and the crashed box's
+        container must be torn down (nothing left to Ctrl-B x out of).
         """
         env = dead_env["env"]
         project = dead_env["project"]
@@ -225,18 +226,28 @@ class TestInteractiveAttachOnDeath:
 
         out = child.before or ""
 
-        assert "DEAD_AGENT_MARKER" in out, (
-            "Expected the dead-agent death marker in the PTY output, but it was "
-            f"missing.\nCaptured output:\n{out}"
-        )
+        # NOTE (contract change, 07-14b arc): the death-marker assertion
+        # (``"DEAD_AGENT_MARKER" in out``) was REMOVED.  The sole-agent
+        # teardown path no longer arms tmux remain-on-exit, so an instant
+        # crash CLOSES the pane before its output can be captured/seen — the
+        # marker never reaches the PTY.  Crash-output surfacing is
+        # intentionally deferred to the pipe-pane follow-up (tasks.md
+        # 07-14b).  RESTORE the marker assertion when it lands.
         assert "container state improper" not in out, (
             "Raw podman 'container state improper' error leaked to the user "
-            f"instead of the agent's logs.\nCaptured output:\n{out}"
+            f"instead of a clean failure.\nCaptured output:\n{out}"
         )
         assert child.exitstatus not in (0, None), (
             "Expected a non-zero exit status from the crashing launch, got "
             f"exitstatus={child.exitstatus!r} (signalstatus="
             f"{child.signalstatus!r}).\nCaptured output:\n{out}"
+        )
+        # Prompt teardown: the crashed box's container is GONE afterwards (the
+        # two-state lifecycle tears an exited box down; the user lands back in
+        # the shell with no dead pane and no lingering container).
+        assert "kanibako-dead-box" not in _all_containers(), (
+            "Expected the crashed box's container to be torn down after the "
+            "failed PTY launch, but 'kanibako-dead-box' still exists."
         )
 
 
@@ -367,6 +378,19 @@ def live_env(tmp_path, host_storage_conf) -> dict:
                 capture_output=True,
                 timeout=10,
             )
+
+
+def _all_containers() -> set[str]:
+    """Return the names of ALL containers (any state), via ``podman ps -a``."""
+    podman = shutil.which("podman")
+    assert podman is not None, "podman required"
+    out = subprocess.run(
+        [podman, "ps", "-a", "--format", "{{.Names}}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return {line.strip() for line in out.stdout.strip().splitlines()}
 
 
 def _running_containers() -> dict[str, str]:

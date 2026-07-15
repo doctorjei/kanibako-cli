@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+
 import pytest
 
 from tests.e2e.conftest import (
@@ -13,11 +16,24 @@ from tests.e2e.conftest import (
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
 
-class TestContainerDeath:
-    """Test 9: Agent dies immediately → user sees logs, not exec error."""
+def _container_exists(name: str) -> bool:
+    """True iff a container named *name* exists (any state), via ``podman ps -a``."""
+    podman = shutil.which("podman")
+    assert podman is not None, "podman required"
+    out = subprocess.run(
+        [podman, "ps", "-a", "--format", "{{.Names}}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return name in {line.strip() for line in out.stdout.strip().splitlines()}
 
-    def test_death_shows_logs_not_exec_error(self, e2e_env):
-        """When agent exits immediately, stderr contains agent output."""
+
+class TestContainerDeath:
+    """Test 9: Agent dies immediately → crash fails cleanly, no raw exec error."""
+
+    def test_death_fails_cleanly_without_exec_error(self, e2e_env):
+        """An immediately-exiting agent yields rc != 0, no raw error, box gone."""
         env = e2e_env["env"]
         project = e2e_env["project"]
 
@@ -39,14 +55,23 @@ class TestContainerDeath:
         # Should fail
         assert result.returncode != 0
 
-        # stderr should contain the stub's error output
-        assert "agent-crashed-with-error-42" in result.stderr, (
-            f"Expected stub error in stderr, got:\n{result.stderr}"
-        )
+        # NOTE (contract change, 07-14b arc): the crash-output assertion
+        # (``"agent-crashed-with-error-42" in result.stderr``) was REMOVED.
+        # The sole-agent teardown path no longer arms tmux remain-on-exit, so
+        # the pane CLOSES on exit and there is no dead-pane capture to surface
+        # — crash-output surfacing is intentionally deferred to the pipe-pane
+        # follow-up (tasks.md 07-14b).  RESTORE that assertion when it lands.
 
         # stderr should NOT contain the raw podman exec error
         assert "container state improper" not in result.stderr, (
-            f"Got raw podman error instead of agent logs:\n{result.stderr}"
+            f"Got raw podman error leaking to the user:\n{result.stderr}"
+        )
+
+        # Prompt teardown: the crashed box's container is GONE afterwards (the
+        # two-state lifecycle tears an exited box down; nothing lingers).
+        assert not _container_exists("kanibako-e2e-death"), (
+            "Expected the crashed box's container to be torn down after the "
+            "failed start, but 'kanibako-e2e-death' still exists."
         )
 
 # NOTE: the former ``TestNoConversationRetry`` (Test 10) was REMOVED with the
