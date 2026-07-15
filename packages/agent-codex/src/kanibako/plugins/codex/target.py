@@ -292,9 +292,12 @@ class CodexTarget(Target):
         ``openai.chatgpt`` panel spawns its own in-box codex without kanibako's
         launch flags — this config.toml parity is the ONLY way the panel sees
         the box's yolo.  The SOLE writer of those two keys (the directive-hook
-        write below is hook/trust/provider only); ON SETs both managed values,
-        OFF removes each only while it still equals the managed value (a
-        user-chosen value is preserved).  See
+        write below is hook/trust/provider only).  ``approval_policy`` is
+        yolo-gated (ON SETs ``"never"``; OFF removes it only while it still
+        equals the managed value, preserving a user-chosen one); ``sandbox_mode``
+        is a BOX INVARIANT forced to ``"danger-full-access"`` ALWAYS (the
+        container is the sandbox, so the panel's app-server must not attempt a
+        nested one) — independent of *auto_approve*.  See
         :func:`kanibako.vscode_config.seed_codex_approval`.
         """
         from kanibako.vscode_config import seed_codex_approval

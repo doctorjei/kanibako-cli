@@ -20,6 +20,13 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   per-PID marker ``[[hooks.SessionStart]]`` group + its ``[hooks.state]`` entry
   (+10 lines each, nothing else); claude/goose fixtures byte-UNCHANGED.
 
+* sandbox_mode box invariant: the 12 ``codex--*`` fixtures now carry
+  ``sandbox_mode = "danger-full-access"`` UNCONDITIONALLY (was the yolo-gated
+  ``workspace-write``, present only ON) — the panel's own app-server must not
+  attempt a nested bubblewrap sandbox the container blocks.  So the OFF fixtures
+  gain the key and the user fixtures migrate their ``read-only`` to it;
+  approval_policy is unchanged (still yolo-gated).
+
 Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
 ``.config/goose/config.yaml``, codex ``.codex/config.toml``):
 
@@ -165,8 +172,9 @@ _CLAUDE_USER_SETTINGS = (
     + "\n"
 )
 
-# codex: user root keys incl. a user-chosen ``sandbox_mode`` (PRESERVED by OFF,
-# overwritten by ON) + a user table + a user ``[[hooks.SessionStart]]`` group
+# codex: user root keys incl. a ``sandbox_mode`` that kanibako OWNS — always
+# MIGRATED to the ``danger-full-access`` box invariant (both ON and OFF), NOT
+# preserved — + a user table + a user ``[[hooks.SessionStart]]`` group
 # (exercises trust-key ``group_index`` != 0).
 _CODEX_USER_CONFIG = """\
 # user config — hands off
@@ -273,8 +281,10 @@ def _sanity_check(
         assert doc["GOOSE_MODE"] == ("auto" if auto else "approve")
     else:  # codex
         assert "# >>> kanibako-managed (instruction-delivery hook + trust)" in text
+        # approval_policy is yolo-gated; sandbox_mode is a BOX INVARIANT always
+        # forced to danger-full-access (independent of auto_approve).
         assert ('approval_policy = "never"' in text) == auto
-        assert ('sandbox_mode = "workspace-write"' in text) == auto
+        assert 'sandbox_mode = "danger-full-access"' in text
         assert ("# >>> kanibako-managed (model provider)" in text) == (
             provider is not None
         )

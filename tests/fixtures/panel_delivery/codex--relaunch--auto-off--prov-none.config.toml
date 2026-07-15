@@ -1,3 +1,6 @@
+
+sandbox_mode = "danger-full-access"
+
 # >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>
 [[hooks.SessionStart]]
 matcher = "startup|resume|clear|compact"

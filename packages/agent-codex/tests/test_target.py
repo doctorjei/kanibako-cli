@@ -683,14 +683,21 @@ class TestDeliverySeams:
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
         assert data["approval_policy"] == "never"
-        assert data["sandbox_mode"] == "workspace-write"
+        assert data["sandbox_mode"] == "danger-full-access"
         assert "hooks" not in data  # panel seam NEVER writes the hook/trust
 
-    def test_panel_permissions_off_absent_is_inert(self, tmp_path):
+    def test_panel_permissions_off_writes_sandbox_invariant(self, tmp_path):
+        """sandbox_mode is a BOX INVARIANT: an OFF launch on an absent file still
+        writes ``danger-full-access`` (the panel app-server needs it regardless
+        of yolo), with no approval_policy (yolo-gated)."""
+        import tomllib
         assert CodexTarget().deliver_panel_permissions(
             config_root=tmp_path, auto_approve=False,
-        ) is False
-        assert not self._config(tmp_path).exists()
+        ) is True
+        data = tomllib.loads(self._config(tmp_path).read_text())
+        assert data["sandbox_mode"] == "danger-full-access"
+        assert "approval_policy" not in data
+        assert "hooks" not in data
 
     def test_directive_hook_writes_hook_trust_never_approval(self, tmp_path):
         import tomllib

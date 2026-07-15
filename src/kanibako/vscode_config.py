@@ -611,14 +611,29 @@ def seed_session_start_hook(settings_path: Path) -> bool:
 # (``[hooks.SessionStart]``); codex maps it to this event id internally.
 _CODEX_EVENT_KEY = "session_start"
 
-# kanibako's managed permission-parity values, driven by the box's resolved codex
-# ``auto_approve`` (yolo).  ON → SET both; OFF → CLEAR each ONLY when it still
-# equals the managed value (symmetric with :func:`clear_bypass_permissions`; a
-# user-chosen approval_policy/sandbox_mode is never touched).
-_CODEX_APPROVAL_ON = {
-    "approval_policy": "never",
-    "sandbox_mode": "workspace-write",
-}
+# kanibako's two managed root keys split along their DIFFERENT disciplines:
+#
+#   * ``approval_policy`` — YOLO-GATED, driven by the box's resolved codex
+#     ``auto_approve``: ON → SET ``"never"``; OFF → CLEAR ONLY when it still
+#     equals the managed value (symmetric with :func:`clear_bypass_permissions`;
+#     a user-chosen approval_policy is preserved).
+#   * ``sandbox_mode`` — a BOX INVARIANT, NOT yolo-gated.  A kanibako box is a
+#     hardened rootless podman container = the security boundary, so the codex
+#     ``openai.chatgpt`` panel's OWN in-box ``codex app-server`` (which reads
+#     this key and, unlike the kanibako-launched CLI codex, gets NO
+#     ``--dangerously-bypass-approvals-and-sandbox`` flag) must run with
+#     sandboxing OFF.  ``workspace-write`` makes the app-server attempt a NESTED
+#     bubblewrap sandbox, which needs nested user namespaces podman blocks, so it
+#     stalls on sandbox setup ("could not find bubblewrap").  kanibako therefore
+#     OWNS this key and FORCES it to ``"danger-full-access"`` — ALWAYS present,
+#     INDEPENDENT of ``auto_approve``, NEVER removed by the OFF path, and any
+#     prior value (the old managed ``"workspace-write"``, or a user-chosen one
+#     that would re-break the panel) is MIGRATED to it.  Parity with the CLI's
+#     unconditional bypass: the container is the sandbox.
+_CODEX_APPROVAL_POLICY_KEY = "approval_policy"
+_CODEX_APPROVAL_POLICY = "never"
+_CODEX_SANDBOX_MODE_KEY = "sandbox_mode"
+_CODEX_SANDBOX_MODE = "danger-full-access"
 
 # Delimiters bounding the regenerated kanibako-managed region (hook group + trust
 # hash + directory trust).  Everything OUTSIDE this region is preserved verbatim.
@@ -762,19 +777,37 @@ def _strip_codex_region(text: str) -> str:
 
 
 def _reconcile_codex_approval(text: str, auto_approve: bool) -> str:
-    """Reconcile the managed TOP-LEVEL ``approval_policy``/``sandbox_mode`` keys.
+    """Reconcile the managed TOP-LEVEL ``approval_policy``/``sandbox_mode`` keys,
+    each along its OWN discipline (see the constants above):
 
-    ON (yolo) → SET each to its managed value (in place if a root-section line
-    already exists, else inserted before the first table header).  OFF → REMOVE
-    each root-section line ONLY when it still equals the managed value; a
-    user-chosen value is left intact (symmetric with
-    :func:`clear_bypass_permissions`).  Only the ROOT section (before the first
-    ``[table]`` header) is considered, so a same-named key inside a user table
-    (e.g. a ``[profiles.x]`` override) is never touched.
+    * ``approval_policy`` (YOLO-GATED) — ON: SET ``"never"`` (in place if a
+      root-section line exists, else inserted before the first table header);
+      OFF: REMOVE the root-section line ONLY when it still equals the managed
+      value (a user-chosen approval_policy is left intact, symmetric with
+      :func:`clear_bypass_permissions`).
+    * ``sandbox_mode`` (BOX INVARIANT) — ALWAYS SET ``"danger-full-access"``,
+      independent of *auto_approve*: forced in place if a line already exists
+      (so a prior ``"workspace-write"``/user value is MIGRATED) else inserted,
+      and NEVER removed.  kanibako owns this key (a nested sandbox re-breaks the
+      panel app-server).
+
+    Only the ROOT section (before the first ``[table]`` header) is considered,
+    so a same-named key inside a user table (e.g. a ``[profiles.x]`` override) is
+    never touched.
     """
     lines = text.split("\n")
-    for key, managed_val in _CODEX_APPROVAL_ON.items():
-        lines = _apply_root_key(lines, key, managed_val, auto_approve)
+    # sandbox_mode FIRST (it is unconditional — a box invariant, not a yolo
+    # toggle — so it is forced present/migrated even when auto_approve is OFF).
+    # Emitting the always-present invariant before the yolo-toggled
+    # approval_policy makes the freshly-inserted order CANONICAL and toggle-STABLE:
+    # an ON→OFF→ON round-trip re-inserts approval_policy AFTER the surviving
+    # sandbox_mode line, reproducing the original ON bytes exactly.
+    lines = _apply_root_key(
+        lines, _CODEX_SANDBOX_MODE_KEY, _CODEX_SANDBOX_MODE, True,
+    )
+    lines = _apply_root_key(
+        lines, _CODEX_APPROVAL_POLICY_KEY, _CODEX_APPROVAL_POLICY, auto_approve,
+    )
     return "\n".join(lines)
 
 
@@ -1146,18 +1179,21 @@ def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
     those keys; the directive-hook write (:func:`seed_codex_config`) never
     touches them, so no key ever has two writers (T1 seam split).
 
-    Discipline (mirrors :func:`_reconcile_codex_approval`'s ON/OFF contract):
-    ON → SET both managed values; OFF → REMOVE each only while it still equals
-    the managed value (a user-chosen value is preserved).  The managed
-    region(s) — instruction-delivery hook + model provider — are carried through
-    VERBATIM (extracted before the root-key surgery, reattached by the shared
+    Discipline (see :func:`_reconcile_codex_approval`): the yolo-gated
+    ``approval_policy`` is SET on / removed-iff-managed off, while
+    ``sandbox_mode`` is a BOX INVARIANT forced to ``"danger-full-access"``
+    ALWAYS (independent of *auto_approve*, migrating any prior value, never
+    removed) — so even an OFF launch (or one over a file with no ``sandbox_mode``
+    line) writes to establish/repair the invariant.  The managed region(s) —
+    instruction-delivery hook + model provider — are carried through VERBATIM
+    (extracted before the root-key surgery, reattached by the shared
     :func:`_assemble_codex_managed`, so a root-key insert can never land inside
     a region and assembly bytes can never drift from the merge's).
 
     Short-circuits to ``False`` (NO write, no normalization of user bytes) when
-    the approval state is already correct; never creates the file when OFF has
-    nothing to remove.  Returns ``True`` iff it wrote.  Callers wrap
-    best-effort so a failure never blocks the launch.
+    the reconciled state already matches (approval_policy correct AND
+    ``sandbox_mode`` already ``"danger-full-access"``).  Returns ``True`` iff it
+    wrote.  Callers wrap best-effort so a failure never blocks the launch.
     """
     try:
         existing = config_path.read_text()

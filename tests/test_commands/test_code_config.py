@@ -1062,14 +1062,21 @@ def test_seed_codex_approval_on_absent_creates_approval_only(tmp_path):
     assert seed_codex_approval(path, auto_approve=True) is True
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "workspace-write"
+    assert data["sandbox_mode"] == "danger-full-access"
     assert "hooks" not in data  # approval ONLY — no region, no trust
 
 
-def test_seed_codex_approval_off_absent_never_creates(tmp_path):
+def test_seed_codex_approval_off_absent_creates_sandbox_invariant(tmp_path):
+    """sandbox_mode is a BOX INVARIANT: even an OFF launch on an absent file
+    CREATES the config to establish ``danger-full-access`` (the panel
+    app-server needs it regardless of yolo).  approval_policy stays absent
+    (yolo-gated, nothing to set when OFF)."""
     path = tmp_path / ".codex" / "config.toml"
-    assert seed_codex_approval(path, auto_approve=False) is False
-    assert not path.exists()
+    assert seed_codex_approval(path, auto_approve=False) is True
+    data = tomllib.loads(path.read_text())
+    assert data["sandbox_mode"] == "danger-full-access"
+    assert "approval_policy" not in data
+    assert "hooks" not in data
 
 
 def test_seed_codex_approval_idempotent(tmp_path):
@@ -1080,21 +1087,50 @@ def test_seed_codex_approval_idempotent(tmp_path):
     assert path.read_bytes() == before
 
 
-def test_seed_codex_approval_off_preserves_user_chosen_value(tmp_path):
+def test_seed_codex_approval_off_removes_managed_policy_forces_sandbox(tmp_path):
+    """OFF removes a MANAGED approval_policy but sandbox_mode is FORCED to the
+    invariant (kanibako owns it) — a prior user ``read-only`` is migrated, not
+    preserved."""
     path = tmp_path / "config.toml"
     path.write_text('approval_policy = "never"\nsandbox_mode = "read-only"\n')
     assert seed_codex_approval(path, auto_approve=False) is True
     data = tomllib.loads(path.read_text())
     assert "approval_policy" not in data  # was our managed value → removed
-    assert data["sandbox_mode"] == "read-only"  # user value → preserved
+    assert data["sandbox_mode"] == "danger-full-access"  # kanibako-owned → forced
+
+
+def test_seed_codex_approval_off_preserves_user_chosen_approval_policy(tmp_path):
+    """A user-chosen approval_policy (NOT the managed ``never``) survives OFF;
+    sandbox_mode is still forced to the invariant alongside it."""
+    path = tmp_path / "config.toml"
+    path.write_text('approval_policy = "on-request"\n')
+    assert seed_codex_approval(path, auto_approve=False) is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "on-request"  # user value → preserved
+    assert data["sandbox_mode"] == "danger-full-access"
+
+
+def test_seed_codex_approval_migrates_old_workspace_write(tmp_path):
+    """MIGRATION: a config carrying the OLD kanibako-managed
+    ``sandbox_mode = "workspace-write"`` reconciles to ``danger-full-access``
+    on BOTH the ON and OFF paths (the invariant is independent of yolo)."""
+    for auto in (True, False):
+        path = tmp_path / f"config-{auto}.toml"
+        path.write_text('sandbox_mode = "workspace-write"\n')
+        assert seed_codex_approval(path, auto_approve=auto) is True
+        assert tomllib.loads(path.read_text())["sandbox_mode"] == (
+            "danger-full-access"
+        )
 
 
 def test_seed_codex_approval_no_op_never_normalizes_user_bytes(tmp_path):
-    """Short-circuit contract: when the approval state is already correct the
-    seeder must NOT rewrite (no trailing-newline normalization, no region
-    relocation) — today's panel path never touches the codex file at all."""
+    """Short-circuit contract: when the reconciled state already matches
+    (approval_policy correct AND sandbox_mode already the invariant) the seeder
+    must NOT rewrite (no trailing-newline normalization, no region relocation)."""
     path = tmp_path / "config.toml"
-    odd = '# mine\nfoo = "bar"\n\n\n'  # extra trailing newlines
+    # already-correct OFF state: no approval_policy, sandbox at the invariant,
+    # plus extra trailing newlines that must NOT be normalized away.
+    odd = '# mine\nsandbox_mode = "danger-full-access"\nfoo = "bar"\n\n\n'
     path.write_text(odd)
     assert seed_codex_approval(path, auto_approve=False) is False
     assert path.read_text() == odd
@@ -1125,7 +1161,7 @@ def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
     )
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "workspace-write"
+    assert data["sandbox_mode"] == "danger-full-access"
 
 
 def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
@@ -1165,7 +1201,7 @@ def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
     )
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "workspace-write"
+    assert data["sandbox_mode"] == "danger-full-access"
 
 
 def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
@@ -1262,7 +1298,7 @@ def test_seed_codex_approval_on_overrides_user_value(tmp_path):
     assert seed_codex_approval(path, auto_approve=True) is True
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "workspace-write"
+    assert data["sandbox_mode"] == "danger-full-access"
 
 
 def test_seed_codex_approval_toggle_on_off_on_round_trips(tmp_path):
