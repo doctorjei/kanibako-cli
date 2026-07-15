@@ -13,6 +13,11 @@ sequence (``start.py``) with the real call-site arguments:
 2. ``deliver_goose_panel_permissions``   (goose GOOSE_MODE parity, explicit OFF)
 3. ``deliver_directive_session_hook``    (claude/codex only — the 1337 name-gate)
 
+Step 3 adds the SEAM driver beside it: the launching agent's real ``Target``,
+``deliver_panel_permissions`` then ``deliver_directive_hook`` (core's
+de-branched order).  BOTH paths are asserted against the SAME fixtures until
+the wrappers are deleted (plan Step 5); the seam axis then remains permanently.
+
 Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
 ``.config/goose/config.yaml``, codex ``.codex/config.toml``):
 
@@ -248,6 +253,52 @@ def _drive_call_site(
     return wrote
 
 
+def _drive_seam_path(
+    *,
+    agent: str,
+    config_root: Path,
+    auto_approve: bool,
+    provider: CodexModelProvider | None,
+) -> bool:
+    """Drive the T1 SEAM path (plan Step 3): the launching agent's REAL Target,
+    ``deliver_panel_permissions`` then ``deliver_directive_hook`` — core's
+    de-branched call order.  Must reproduce the SAME fixture bytes as the
+    legacy path for every cell.  NO try/except (fail loudly).  Returns whether
+    ANY write occurred.
+    """
+    from kanibako.plugins.claude.target import ClaudeTarget
+    from kanibako.plugins.codex.target import CodexTarget
+    from kanibako.plugins.goose.target import GooseTarget
+
+    target = {
+        "claude": ClaudeTarget,
+        "codex": CodexTarget,
+        "goose": GooseTarget,
+    }[agent]()
+    wrote = target.deliver_panel_permissions(
+        config_root=config_root, auto_approve=auto_approve,
+    )
+    wrote = (
+        target.deliver_directive_hook(
+            config_root=config_root,
+            auto_approve=auto_approve,
+            model_provider=provider,
+        )
+        or wrote
+    )
+    return wrote
+
+
+# Both delivery paths must hit the SAME fixtures: "legacy" = today's wrapper
+# call-site sequence; "seam" = the Target-seam path that replaces it.  The
+# legacy axis is deleted with the wrappers (plan Step 5); the seam axis then
+# remains as the permanent byte-identity net.
+_DRIVERS = {
+    "legacy": _drive_call_site,
+    "seam": _drive_seam_path,
+}
+
+
 def _sanity_check(
     agent: str,
     auto: bool,
@@ -291,8 +342,12 @@ def _sanity_check(
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.parametrize("path", sorted(_DRIVERS))
 @pytest.mark.parametrize(("agent", "pre", "auto", "provider"), _MATRIX, ids=_IDS)
-def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider):
+def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider, path):
+    if path == "seam" and _update_mode():
+        pytest.skip("update mode: fixtures are (re)captured from the legacy path")
+    drive = _DRIVERS[path]
     config_root = tmp_path / "box-home"
     config_root.mkdir()
     delivered_path = config_root / DELIVERED_FILE[agent]
@@ -303,12 +358,12 @@ def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider):
     elif pre == "relaunch":
         # Feed the absent-run output back in: the first pass materializes the
         # delivered file, the second pass must be a byte-level no-op.
-        first = _drive_call_site(
+        first = drive(
             agent=agent, config_root=config_root, auto_approve=auto, provider=provider,
         )
         assert first is True, "absent-state first pass must report a write"
 
-    wrote = _drive_call_site(
+    wrote = drive(
         agent=agent, config_root=config_root, auto_approve=auto, provider=provider,
     )
     if pre == "relaunch":

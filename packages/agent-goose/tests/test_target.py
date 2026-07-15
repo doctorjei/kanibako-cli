@@ -772,3 +772,37 @@ class TestDescriptorAssembly:
             setting_values={"model": "claude-4", "provider": "anthropic"},
         )
         assert env["GOOSE_DISABLE_KEYRING"] == "true"
+
+
+class TestDeliverySeams:
+    """T1 seams: GooseTarget's panel-permission (GOOSE_MODE parity) delivery;
+    the directive hook stays the inherited base no-op (goose has no
+    instruction-delivery hook surface)."""
+
+    def _config(self, config_root: Path) -> Path:
+        return config_root / ".config" / "goose" / "config.yaml"
+
+    def test_panel_permissions_on_writes_auto(self, tmp_path):
+        import yaml
+        assert GooseTarget().deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=True,
+        ) is True
+        doc = yaml.safe_load(self._config(tmp_path).read_text())
+        assert doc["GOOSE_MODE"] == "auto"
+
+    def test_panel_permissions_off_writes_explicit_approve(self, tmp_path):
+        """OFF persists the secure value EXPLICITLY (unset GOOSE_MODE defaults
+        permissive) — even onto an absent file, unlike claude's clear."""
+        import yaml
+        assert GooseTarget().deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=False,
+        ) is True
+        doc = yaml.safe_load(self._config(tmp_path).read_text())
+        assert doc["GOOSE_MODE"] == "approve"
+
+    def test_directive_hook_is_inherited_no_op(self, tmp_path):
+        assert GooseTarget().deliver_directive_hook(
+            config_root=tmp_path, auto_approve=True,
+        ) is False
+        assert not (tmp_path / ".config").exists()
+        assert not (tmp_path / ".goose").exists()

@@ -191,6 +191,29 @@ class GooseTarget(Target):
             )
             return True
 
+    def deliver_panel_permissions(
+        self, *, config_root: Path, auto_approve: bool,
+    ) -> bool:
+        """Persist the box's PERSISTED ``auto_approve`` as the top-level
+        ``GOOSE_MODE`` in the box's in-box ``~/.config/goose/config.yaml`` (FF-5
+        permission parity): the ``block.vscode-goose`` panel spawns its own
+        in-box goose WITHOUT kanibako's launch env, so it never sees the
+        ``GOOSE_MODE`` env var the CLI entrypoint sets.
+
+        ASYMMETRIC vs claude: OFF writes the secure ``approve`` EXPLICITLY (an
+        unset ``GOOSE_MODE`` defaults to permissive ``auto`` — clearing would
+        silently restore permissive).  Merge-preserving + idempotent (see
+        :func:`kanibako.vscode_config.seed_goose_mode`).  goose declares NO
+        directive-hook surface, so ``deliver_directive_hook`` stays the
+        inherited no-op.
+        """
+        from kanibako.vscode_config import seed_goose_mode
+
+        return seed_goose_mode(
+            config_root / ".config" / "goose" / "config.yaml",
+            auto_approve=auto_approve,
+        )
+
     def should_run_setup(self, output: str) -> bool:
         # Launch-time ground truth that goose configure did NOT produce a bootable
         # config: goose's verbatim line is "Goose is not configured. Run 'goose

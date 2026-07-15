@@ -63,6 +63,7 @@ from kanibako.targets.base import (
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
+    from kanibako.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.codex")
 
@@ -279,6 +280,61 @@ class CodexTarget(Target):
             return next(sessions.rglob("*.jsonl"), None) is not None
         except OSError:
             return False
+
+    def deliver_panel_permissions(
+        self, *, config_root: Path, auto_approve: bool,
+    ) -> bool:
+        """Mirror the box's PERSISTED ``auto_approve`` into the managed
+        ``approval_policy``/``sandbox_mode`` root keys of the box's in-box
+        ``~/.codex/config.toml``.
+
+        Codex approval/sandbox has NO VS Code settings key and the
+        ``openai.chatgpt`` panel spawns its own in-box codex without kanibako's
+        launch flags — this config.toml parity is the ONLY way the panel sees
+        the box's yolo.  The SOLE writer of those two keys (the directive-hook
+        write below is hook/trust/provider only); ON SETs both managed values,
+        OFF removes each only while it still equals the managed value (a
+        user-chosen value is preserved).  See
+        :func:`kanibako.vscode_config.seed_codex_approval`.
+        """
+        from kanibako.vscode_config import seed_codex_approval
+
+        return seed_codex_approval(
+            config_root / ".codex" / "config.toml", auto_approve=auto_approve,
+        )
+
+    def deliver_directive_hook(
+        self,
+        *,
+        config_root: Path,
+        auto_approve: bool,
+        model_provider: "CodexModelProvider | None" = None,
+    ) -> bool:
+        """Seed the managed codex config.toml: the instruction-delivery
+        ``[[hooks.SessionStart]]`` group, its pre-computed trust hash, the
+        directory trust, and (for a codex persona) the *model_provider* region.
+
+        NEVER the approval/sandbox keys — those belong to
+        :meth:`deliver_panel_permissions` alone (``include_approval=False``),
+        so no managed key has two writers.  The box-side literals codex keys
+        its trust entries on (the in-box config path and workdir) are derived
+        here from the core :data:`~kanibako.settings_resolve.GUEST_HOME`
+        constant: the workdir is the fixed container WORKDIR
+        ``GUEST_HOME/workspace`` (tmux new-session inherits it — see
+        ``has_resumable_session``, which pins the same literal); promote a seam
+        parameter instead if it ever becomes configurable.
+        """
+        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.vscode_config import seed_codex_config
+
+        return seed_codex_config(
+            config_root / ".codex" / "config.toml",
+            box_config_path=f"{GUEST_HOME}/.codex/config.toml",
+            codex_cwd=f"{GUEST_HOME}/workspace",
+            auto_approve=auto_approve,
+            model_provider=model_provider,
+            include_approval=False,
+        )
 
     @property
     def setup_entrypoint(self) -> str | None:

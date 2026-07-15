@@ -162,6 +162,65 @@ class TestTargetABC:
         t = MinimalTarget()
         assert t.default_seeds() == {}
 
+    def test_delivery_seam_defaults_are_inert(self, tmp_path):
+        """The T1 delivery seams default to no-op ``False`` ("no write") so core
+        can call them UNCONDITIONALLY for every agent: a target without a
+        panel-permission or directive-hook surface (goose directive, no-agent
+        shell, any future plugin) inherits the inert behavior and never touches
+        the filesystem."""
+
+        class PlainTarget(Target):
+            @property
+            def name(self) -> str:
+                return "plain"
+
+            @property
+            def display_name(self) -> str:
+                return "Plain"
+
+            def detect(self):
+                return None
+
+        t = PlainTarget()
+        config_root = tmp_path / "box-home"
+        config_root.mkdir()
+        assert t.deliver_panel_permissions(
+            config_root=config_root, auto_approve=True,
+        ) is False
+        assert t.deliver_panel_permissions(
+            config_root=config_root, auto_approve=False,
+        ) is False
+        assert t.deliver_directive_hook(
+            config_root=config_root, auto_approve=True,
+        ) is False
+        assert t.deliver_directive_hook(
+            config_root=config_root, auto_approve=False, model_provider=None,
+        ) is False
+        # Inert means INERT: nothing was created under the box home.
+        assert list(config_root.iterdir()) == []
+
+    def test_delivery_seams_are_keyword_only(self, tmp_path):
+        """The seam contract is keyword-only — positional use must fail loudly
+        (guards against silent arg-order drift at the unconditional call site)."""
+
+        class PlainTarget(Target):
+            @property
+            def name(self) -> str:
+                return "plain"
+
+            @property
+            def display_name(self) -> str:
+                return "Plain"
+
+            def detect(self):
+                return None
+
+        t = PlainTarget()
+        with pytest.raises(TypeError):
+            t.deliver_panel_permissions(tmp_path, True)  # type: ignore[misc]
+        with pytest.raises(TypeError):
+            t.deliver_directive_hook(tmp_path, True)  # type: ignore[misc]
+
     def test_abstract_methods_enforced(self):
         """Target subclass missing abstract methods cannot be instantiated."""
 

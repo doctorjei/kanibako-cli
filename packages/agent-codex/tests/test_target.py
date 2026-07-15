@@ -655,3 +655,86 @@ class TestDescriptorAssembly:
         # container_env is the instruction-delivery FINAL slot (codex's native
         # ~/.codex/AGENTS.md the box-start flattener writes the guide to).
         assert env == {"KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md"}
+
+
+class TestDeliverySeams:
+    """T1 seams: CodexTarget's panel-permission (approval/sandbox parity) and
+    directive-hook (managed config.toml, ``include_approval=False``) deliveries.
+    Region/trust content is proven at the emitter level in
+    ``tests/test_commands/test_code_config.py``; here we pin the DISPATCH: the
+    right file, the right split (no key with two writers), the GUEST_HOME-derived
+    trust literals, and the provider threading."""
+
+    def _config(self, config_root: Path) -> Path:
+        return config_root / ".codex" / "config.toml"
+
+    def _provider(self):
+        from kanibako.vscode_config import CodexModelProvider
+        return CodexModelProvider(
+            provider_id="navigator", name="navigator",
+            base_url="https://api.example/v1", wire_api="chat",
+            env_key="NAVIGATOR_API_KEY", model="gemma-4-31b-it",
+        )
+
+    def test_panel_permissions_on_writes_approval_only(self, tmp_path):
+        import tomllib
+        assert CodexTarget().deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=True,
+        ) is True
+        data = tomllib.loads(self._config(tmp_path).read_text())
+        assert data["approval_policy"] == "never"
+        assert data["sandbox_mode"] == "workspace-write"
+        assert "hooks" not in data  # panel seam NEVER writes the hook/trust
+
+    def test_panel_permissions_off_absent_is_inert(self, tmp_path):
+        assert CodexTarget().deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=False,
+        ) is False
+        assert not self._config(tmp_path).exists()
+
+    def test_directive_hook_writes_hook_trust_never_approval(self, tmp_path):
+        import tomllib
+        from kanibako.settings_resolve import GUEST_HOME
+        assert CodexTarget().deliver_directive_hook(
+            config_root=tmp_path, auto_approve=True,
+        ) is True
+        data = tomllib.loads(self._config(tmp_path).read_text())
+        # hook + GUEST_HOME-derived trust literals:
+        assert data["hooks"]["SessionStart"]
+        state_keys = list(data["hooks"]["state"])
+        assert state_keys == [f"{GUEST_HOME}/.codex/config.toml:session_start:0:0"]
+        assert (
+            data["projects"][f"{GUEST_HOME}/workspace"]["trust_level"] == "trusted"
+        )
+        # the split: even with auto_approve=True the directive write carries NO
+        # approval keys — those belong solely to deliver_panel_permissions.
+        assert "approval_policy" not in data
+        assert "sandbox_mode" not in data
+
+    def test_directive_hook_threads_model_provider(self, tmp_path):
+        import tomllib
+        assert CodexTarget().deliver_directive_hook(
+            config_root=tmp_path, auto_approve=False,
+            model_provider=self._provider(),
+        ) is True
+        data = tomllib.loads(self._config(tmp_path).read_text())
+        assert data["model_provider"] == "navigator"
+        assert data["model"] == "gemma-4-31b-it"
+        assert data["model_providers"]["navigator"]["env_key"] == (
+            "NAVIGATOR_API_KEY"
+        )
+
+    def test_seam_composition_is_stable(self, tmp_path):
+        """Panel then directive (core call order), twice: second launch is a
+        byte-level no-op — no writer fights the other."""
+        t = CodexTarget()
+        t.deliver_panel_permissions(config_root=tmp_path, auto_approve=True)
+        t.deliver_directive_hook(config_root=tmp_path, auto_approve=True)
+        before = self._config(tmp_path).read_bytes()
+        assert t.deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=True,
+        ) is False
+        assert t.deliver_directive_hook(
+            config_root=tmp_path, auto_approve=True,
+        ) is False
+        assert self._config(tmp_path).read_bytes() == before
