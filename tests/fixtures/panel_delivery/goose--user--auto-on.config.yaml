@@ -1,0 +1,6 @@
+GOOSE_PROVIDER: openai
+GOOSE_MODEL: gpt-4o
+extensions:
+  developer:
+    enabled: true
+GOOSE_MODE: auto

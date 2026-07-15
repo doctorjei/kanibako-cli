@@ -1,0 +1,29 @@
+# user config — hands off
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+
+approval_policy = "never"
+[profiles.fast]
+model = "gpt-5-codex"
+
+[[hooks.SessionStart]]
+matcher = "startup"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "echo user-session-start"
+
+# >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear|compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "python3 \"$HOME/playbook/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:1:0"]
+trusted_hash = "sha256:dd38a689fcecffcbebad00e3e4a1621c709219a2019c09429b71ba112eab6635"
+
+[projects."/home/agent/workspace"]
+trust_level = "trusted"
+# <<< kanibako-managed (instruction-delivery hook + trust) <<<
