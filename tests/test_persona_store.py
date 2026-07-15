@@ -1,9 +1,11 @@
-"""Tests for the persona-grata store discovery + resolve (pure, no box).
+"""Tests for the persona-grata store: discovery, resolve, and import mapping.
 
 Covers ``kanibako.persona_store``: the discovery root builder, entry location
-(store PRESENCE decides persona-vs-plain), and the ``.secret_path`` token
-pointer resolution (expansion + the relative→persona-dir anchor).  Everything
-here is filesystem-only under ``tmp_home`` — no container, no settings writes.
+(store PRESENCE decides persona-vs-plain), the ``.secret_path`` token pointer
+resolution (expansion + the relative→persona-dir anchor), and the import
+mapping (store entry → candidate ``AgentConfig`` → persisted agent settings,
+flat ``self.secret_path.<VAR>`` shape).  Everything here is filesystem-only
+under ``tmp_home`` — no container, no start/create wiring.
 """
 
 from __future__ import annotations
@@ -15,7 +17,10 @@ import pytest
 from kanibako.errors import ConfigError
 from kanibako.persona_store import (
     PersonaEntry,
+    build_candidate,
+    import_persona_entry,
     locate_entry,
+    persist_candidate,
     persona_store_root,
     resolve_secret_path,
 )
@@ -261,3 +266,274 @@ class TestResolveSecretPath:
         path, error = resolve_secret_path(entry)
         assert path is None
         assert error is not None
+
+
+class TestImportMapping:
+    """Store entry -> candidate AgentConfig -> persisted agent settings (Phase 2).
+
+    Uses the REAL codex/claude readers for the round-trips (the extraction seam
+    has its own tests in test_targets/test_persona_settings.py) and a stub
+    Target for the contract edges.  Asserts the persisted shape at the FILE
+    level: flat ``self.secret_path.<VAR>`` (``self`` IS ``agent.<node>`` — no
+    second node embedding) and preservation of everything the import does not
+    own (name, run_args, env, transform_settings, node-bind sub-tables).
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _CODEX_TOML = (
+        'model = "gemma4"\n'
+        "[model_providers.navigator]\n"
+        'name = "navigator"\n'
+        f'base_url = "{_ENDPOINT}"\n'
+        'wire_api = "responses"\n'
+        'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+
+    def _codex_entry(self, tmp_home, *, pointer: str | None = "./token",
+                     config: str | None = None) -> PersonaEntry:
+        persona_dir = _make_store_entry(tmp_home)
+        toml = self._CODEX_TOML if config is None else config
+        if toml:
+            (persona_dir / "codex" / "config.toml").write_text(toml)
+        if pointer is not None:
+            (persona_dir / ".secret_path").write_text(pointer + "\n")
+        entry = locate_entry("navigator+codex")
+        assert entry is not None
+        return entry
+
+    def _agents_root(self, tmp_home) -> Path:
+        return tmp_home / "data" / "agents"
+
+    def _settings_path(self, tmp_home) -> Path:
+        from kanibako.agent_config import agent_settings_path
+
+        return agent_settings_path(self._agents_root(tmp_home), "navigator℘codex")
+
+    # --- full-entry round-trip ----------------------------------------------
+
+    def test_full_codex_import_round_trip(self, tmp_home):
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.codex.target import CodexTarget
+
+        entry = self._codex_entry(tmp_home)
+        result = import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.error is None and result.warning is None
+
+        path = self._settings_path(tmp_home)
+        data = load_doc(path)
+        assert data["self"]["endpoint"] == self._ENDPOINT
+        assert data["self"]["model"] == "gemma4"
+        # FLAT shape: self.secret_path.<VAR>, absolute host path, anchored to
+        # the persona dir (./token) — and NO discriminated node sub-table.
+        assert data["self"]["secret_path"]["NAVIGATOR_API_KEY"] == str(
+            entry.persona_dir / "token"
+        )
+        assert "navigator℘codex" not in path.read_text()
+
+    def test_full_claude_import_round_trip(self, tmp_home):
+        import json
+
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        persona_dir = _make_store_entry(tmp_home, harness="claude")
+        (persona_dir / "claude" / "settings.json").write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": self._ENDPOINT},
+            "model": "gemma4",
+        }))
+        (persona_dir / ".secret_path").write_text("./token\n")
+        entry = locate_entry("navigator+claude")
+        assert entry is not None
+
+        result = import_persona_entry(self._agents_root(tmp_home), entry, ClaudeTarget())
+        assert result.error is None and result.warning is None
+        from kanibako.agent_config import agent_settings_path
+
+        data = load_doc(agent_settings_path(self._agents_root(tmp_home), "navigator℘claude"))
+        assert data["self"]["endpoint"] == self._ENDPOINT
+        assert data["self"]["secret_path"]["ANTHROPIC_AUTH_TOKEN"] == str(
+            entry.persona_dir / "token"
+        )
+
+    # --- build/persist split (the S9 verify seam) ----------------------------
+
+    def test_build_candidate_does_not_persist(self, tmp_home):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        entry = self._codex_entry(tmp_home)
+        result = build_candidate(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.candidate is not None
+        assert result.candidate.state["endpoint"] == self._ENDPOINT
+        assert not self._settings_path(tmp_home).exists()
+
+    def test_persist_candidate_commits_the_candidate(self, tmp_home):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        entry = self._codex_entry(tmp_home)
+        result = build_candidate(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.candidate is not None
+        written = persist_candidate(self._agents_root(tmp_home), entry, result.candidate)
+        assert written == self._settings_path(tmp_home)
+        assert written.exists()
+
+    # --- partial-store cases --------------------------------------------------
+
+    def test_unresolvable_secret_still_imports_endpoint_model(self, tmp_home):
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.codex.target import CodexTarget
+
+        entry = self._codex_entry(tmp_home, pointer=None)  # no .secret_path
+        result = import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.error is None
+        assert result.warning is not None and ".secret_path" in result.warning
+
+        data = load_doc(self._settings_path(tmp_home))
+        assert data["self"]["endpoint"] == self._ENDPOINT
+        assert data["self"]["model"] == "gemma4"
+        assert "secret_path" not in data["self"]  # sparse: nothing to write
+
+    def test_unresolvable_secret_keeps_existing_token(self, tmp_home):
+        from kanibako.agent_config import AgentConfig, write_agent_config
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.codex.target import CodexTarget
+
+        path = self._settings_path(tmp_home)
+        write_agent_config(path, AgentConfig(
+            secret_path={"NAVIGATOR_API_KEY": "/old/known-good/tok"},
+        ))
+        entry = self._codex_entry(tmp_home, pointer=None)
+        result = import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.warning is not None
+
+        data = load_doc(path)
+        assert data["self"]["secret_path"]["NAVIGATOR_API_KEY"] == "/old/known-good/tok"
+        assert data["self"]["endpoint"] == self._ENDPOINT
+
+    def test_unusable_store_config_is_hard_error_and_writes_nothing(self, tmp_home):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        entry = self._codex_entry(tmp_home, config="")  # dir exists, no config.toml
+        result = import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.candidate is None
+        assert result.error is not None and "codex" in result.error
+        assert not self._settings_path(tmp_home).exists()
+
+    def test_endpointless_settings_is_hard_error(self, tmp_home):
+        from kanibako.targets.base import AgentInstall, PersonaSettings, Target
+
+        class _EndpointlessTarget(Target):
+            @property
+            def name(self) -> str:
+                return "stub"
+
+            @property
+            def display_name(self) -> str:
+                return "Stub"
+
+            def detect(self) -> AgentInstall | None:
+                return None
+
+            def read_persona_settings(self, config_dir):
+                return PersonaSettings(endpoint=None, model="m", auth_env="K")
+
+        entry = self._codex_entry(tmp_home)
+        result = import_persona_entry(
+            self._agents_root(tmp_home), entry, _EndpointlessTarget(),
+        )
+        assert result.candidate is None
+        assert result.error is not None and "endpoint" in result.error
+        assert not self._settings_path(tmp_home).exists()
+
+    def test_model_absent_in_store_leaves_existing_model(self, tmp_home):
+        from kanibako.agent_config import AgentConfig, write_agent_config
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.codex.target import CodexTarget
+
+        path = self._settings_path(tmp_home)
+        write_agent_config(path, AgentConfig(state={"model": "user-set"}))
+        toml_no_model = self._CODEX_TOML.replace('model = "gemma4"\n', "")
+        entry = self._codex_entry(tmp_home, config=toml_no_model)
+        result = import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.error is None
+
+        data = load_doc(path)
+        assert data["self"]["model"] == "user-set"  # no store value to sync
+        assert data["self"]["endpoint"] == self._ENDPOINT
+
+    # --- non-destructive read-modify-write ------------------------------------
+
+    def test_preserves_values_the_import_does_not_own(self, tmp_home):
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.codex.target import CodexTarget
+
+        path = self._settings_path(tmp_home)
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "self:\n"
+            "  name: My Codex\n"
+            "  run_args:\n"
+            "  - --verbose\n"
+            "  auto_approve: 'false'\n"
+            "  endpoint: https://stale.example\n"
+            "  model: stale-model\n"
+            "  env:\n"
+            "    KEEP_ME: 'yes'\n"
+            "  transform_settings:\n"
+            "    theme: dark\n"
+            "  secret_path:\n"
+            "    OTHER_TOKEN: /keep/this/tok\n"
+            "  \"navigator℘codex\":\n"
+            "    bindings:\n"
+            "      ro:\n"
+            "        share: /host/share:/box/share\n"
+        )
+        entry = self._codex_entry(tmp_home)
+        result = import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+        assert result.error is None and result.warning is None
+
+        data = load_doc(path)
+        sec = data["self"]
+        # Owned values replaced:
+        assert sec["endpoint"] == self._ENDPOINT
+        assert sec["model"] == "gemma4"
+        assert sec["secret_path"]["NAVIGATOR_API_KEY"] == str(entry.persona_dir / "token")
+        # Unowned values preserved verbatim:
+        assert sec["name"] == "My Codex"
+        assert sec["run_args"] == ["--verbose"]
+        assert sec["auto_approve"] == "false"
+        assert sec["env"] == {"KEEP_ME": "yes"}
+        assert sec["transform_settings"] == {"theme": "dark"}
+        assert sec["secret_path"]["OTHER_TOKEN"] == "/keep/this/tok"
+        assert sec["navigator℘codex"]["bindings"]["ro"]["share"] == (
+            "/host/share:/box/share"
+        )
+
+    def test_reimport_of_unchanged_store_is_idempotent(self, tmp_home):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        entry = self._codex_entry(tmp_home)
+        root = self._agents_root(tmp_home)
+        import_persona_entry(root, entry, CodexTarget())
+        first = self._settings_path(tmp_home).read_bytes()
+        import_persona_entry(root, entry, CodexTarget())
+        assert self._settings_path(tmp_home).read_bytes() == first
+
+    def test_reimport_replaces_stale_owned_values(self, tmp_home):
+        from kanibako.agent_config import AgentConfig, write_agent_config
+        from kanibako.config_io import load_doc
+        from kanibako.plugins.codex.target import CodexTarget
+
+        path = self._settings_path(tmp_home)
+        write_agent_config(path, AgentConfig(
+            state={"endpoint": "https://old.example", "model": "old"},
+            secret_path={"NAVIGATOR_API_KEY": "/old/tok"},
+        ))
+        entry = self._codex_entry(tmp_home)
+        import_persona_entry(self._agents_root(tmp_home), entry, CodexTarget())
+
+        data = load_doc(path)
+        assert data["self"]["endpoint"] == self._ENDPOINT
+        assert data["self"]["model"] == "gemma4"
+        assert data["self"]["secret_path"]["NAVIGATOR_API_KEY"] == str(
+            entry.persona_dir / "token"
+        )

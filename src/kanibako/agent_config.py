@@ -10,6 +10,12 @@ from kanibako.config_io import dump_doc, load_doc
 # Keys that live directly in the [agent] section as agent identity (not state).
 IDENTITY_KEYS = frozenset({"name", "run_args"})
 
+# Every schema-owned (MODELLED) key of the per-agent file. Anything else that is
+# dict-valued under ``self`` is a discriminated ``self.<node>.*`` sub-table and
+# rides ``AgentConfig.node_tables`` opaquely; the modelled keys must never be
+# captured there (load) nor clobbered from there (write).
+_MODELED_KEYS = IDENTITY_KEYS | frozenset({"env", "secret_path", "transform_settings"})
+
 
 @dataclass
 class AgentConfig:
@@ -31,6 +37,13 @@ class AgentConfig:
                      precedence. The value is a PATH only — at launch it is ro-bind-
                      mounted arm's-length + exported IN-BOX; kanibako NEVER reads the
                      secret VALUE (never in the snapshot/keystore/logs/argv).
+      node_tables  — the DISCRIMINATED ``self.<node>.*`` sub-tables (bindings —
+                     the shape ``agent_file_route`` still routes ``bindings.*`` to,
+                     pending the tracked bindings flatten). NOT modelled here (they
+                     ride ``_agent_partial`` into the launch cascade, not the launch
+                     invocation) but carried OPAQUELY through the load→write
+                     round-trip so a read-modify-write persist (persona adopt /
+                     store import) never drops a user's node binds.
     """
 
     name: str = ""
@@ -39,6 +52,7 @@ class AgentConfig:
     env: dict[str, str] = field(default_factory=dict)
     secret_path: dict[str, str] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
+    node_tables: dict[str, dict] = field(default_factory=dict)
 
 
 def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
@@ -144,6 +158,15 @@ def load_agent_config(path: Path) -> AgentConfig:
         k: str(v) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
     cfg.transform_settings = dict(agent_sec.get("transform_settings", {}))
+    # Any OTHER dict-valued entry under ``self`` is a discriminated
+    # ``self.<node>.*`` sub-table (node binds).  Carry it OPAQUELY (see the
+    # class docstring): without this, every load→write round-trip (the launch
+    # persist at start.py, the persona import) would silently DROP it.
+    cfg.node_tables = {
+        k: dict(v)
+        for k, v in agent_sec.items()
+        if isinstance(v, dict) and k not in _MODELED_KEYS
+    }
 
     return cfg
 
@@ -172,6 +195,14 @@ def write_agent_config(path: Path, cfg: AgentConfig) -> None:
         agent_sec["transform_settings"] = dict(cfg.transform_settings)
     if cfg.env:
         agent_sec["env"] = dict(cfg.env)
+    # Discriminated ``self.<node>.*`` sub-tables (node binds) re-emitted
+    # opaquely — sparse (an empty table is dropped, parity with the categories
+    # above); see :func:`load_agent_config` and the class docstring.  A
+    # schema-owned key can never ride through here (guard both ends: load never
+    # captures one, and a hand-built config cannot clobber a modelled table).
+    for node_key, node_table in cfg.node_tables.items():
+        if node_table and node_key not in _MODELED_KEYS:
+            agent_sec[node_key] = dict(node_table)
 
     data: dict = {
         "self": agent_sec,
