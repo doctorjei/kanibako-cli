@@ -315,3 +315,98 @@ class TestRoundTrip:
         write_agent_config(path, original)
         loaded = load_agent_config(path)
         assert loaded.run_args == ["--foo", "--bar", "baz"]
+
+
+class TestNodeTablesCarryThrough:
+    """The discriminated ``self.<node>.*`` sub-table (node binds) must survive
+    the load→write round-trip OPAQUELY.  AgentConfig does not model it (it
+    rides ``_agent_partial`` into the launch cascade), but before the
+    ``node_tables`` carry every read-modify-write persist (launch adopt,
+    persona import) silently DROPPED a user's node binds."""
+
+    _NODE_YAML = (
+        "self:\n"
+        "  name: Nav\n"
+        "  model: gemma4\n"
+        "  \"nav℘codex\":\n"
+        "    bindings:\n"
+        "      ro:\n"
+        "        share: /host/share:/box/share\n"
+    )
+
+    def test_default_empty(self):
+        assert AgentConfig().node_tables == {}
+
+    def test_load_captures_node_sub_table(self, tmp_path):
+        path = tmp_path / "settings.yaml"
+        path.write_text(self._NODE_YAML)
+        cfg = load_agent_config(path)
+        assert cfg.node_tables == {
+            "nav℘codex": {"bindings": {"ro": {"share": "/host/share:/box/share"}}}
+        }
+        # And it is NOT mistaken for flat state (dict-valued entries excluded).
+        assert "nav℘codex" not in cfg.state
+
+    def test_round_trip_preserves_node_sub_table(self, tmp_path):
+        from kanibako.config_io import load_doc
+
+        path = tmp_path / "settings.yaml"
+        path.write_text(self._NODE_YAML)
+        cfg = load_agent_config(path)
+        cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
+        write_agent_config(path, cfg)
+
+        data = load_doc(path)
+        assert data["self"]["nav℘codex"]["bindings"]["ro"]["share"] == (
+            "/host/share:/box/share"
+        )
+        assert data["self"]["endpoint"] == "https://e.example"
+
+    def test_env_secret_transform_not_double_captured(self, tmp_path):
+        path = tmp_path / "settings.yaml"
+        path.write_text(
+            "self:\n"
+            "  env:\n"
+            "    A: b\n"
+            "  secret_path:\n"
+            "    TOK: /t\n"
+            "  transform_settings:\n"
+            "    theme: dark\n"
+        )
+        cfg = load_agent_config(path)
+        assert cfg.node_tables == {}
+
+    def test_empty_node_table_not_materialized(self, tmp_path):
+        from kanibako.config_io import load_doc
+
+        path = tmp_path / "settings.yaml"
+        write_agent_config(path, AgentConfig(node_tables={"nav℘codex": {}}))
+        assert "nav℘codex" not in load_doc(path)["self"]
+
+    def test_schema_owned_dict_keys_never_captured(self, tmp_path):
+        # Malformed dict-valued identity keys must not ride node_tables (they
+        # would clobber the emitted string ``name`` on the next write).
+        path = tmp_path / "settings.yaml"
+        path.write_text(
+            "self:\n"
+            "  name:\n"
+            "    weird: 1\n"
+            "  run_args:\n"
+            "    weird: 2\n"
+        )
+        cfg = load_agent_config(path)
+        assert cfg.node_tables == {}
+
+    def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
+        # A hand-built config cannot smuggle a "node table" named after a
+        # modelled key over the real category (guarded at BOTH ends).
+        from kanibako.config_io import load_doc
+
+        path = tmp_path / "settings.yaml"
+        write_agent_config(path, AgentConfig(
+            env={"A": "b"},
+            node_tables={"env": {"EVIL": "x"}, "name": {"evil": "y"}},
+        ))
+        data = load_doc(path)
+        assert data["self"]["env"] == {"A": "b"}
+        assert data["self"]["name"] == ""

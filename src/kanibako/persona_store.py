@@ -1,4 +1,4 @@
-"""persona-grata store discovery + resolve (PURE — no box, no settings writes).
+"""persona-grata store discovery, resolve, and import mapping (no box).
 
 The persona-grata STANDARD lays down per-persona / per-harness harness-native
 config under a fixed discovery root (design SOT
@@ -17,12 +17,26 @@ sync, never file sync — DESIGN §2b).  Store PRESENCE decides persona-vs-plain
 (DESIGN §4): everything here returns a clean "not a persona" ``None`` on a
 miss so callers fall through to normal agent handling.
 
-This module is the PURE half of that pipeline — locate an entry and resolve
-its ``.secret_path`` token pointer.  Harness-config extraction lives on the
-Target plugins (:meth:`kanibako.targets.base.Target.read_persona_settings`);
-the import/write side and the start-flow hook are separate phases.  Nothing
-here reads the TOKEN file itself (the pointer is handled arm's-length, exactly
-like the ``secret_path`` keyspace category it feeds).
+Two halves live here:
+
+* **discovery + resolve** (pure reads): locate an entry and resolve its
+  ``.secret_path`` token pointer.  Harness-config extraction lives on the
+  Target plugins (:meth:`kanibako.targets.base.Target.read_persona_settings`).
+* **import mapping** (the settings sync): :func:`build_candidate` turns a
+  located entry into an IN-MEMORY candidate :class:`AgentConfig` (current
+  agent-file values + the store's endpoint/model/token-pointer applied), and
+  :func:`persist_candidate` commits it through ``write_agent_config`` — which
+  routes the values to ``self.endpoint`` / ``self.model`` /
+  ``self.secret_path.<VAR>`` (the flattened shape, ``agent_file_route`` SoT).
+  The split is load-bearing: the start-flow hook (Phase 3) VERIFIES the
+  candidate first and persists only on PASS (verified swap — DESIGN §2b), while
+  keeping the on-disk last-known-good on FAIL.  :func:`import_persona_entry`
+  is the build+persist convenience for the unverified paths (initial create
+  registration).
+
+The start-flow / create wiring itself is NOT here.  Nothing in this module
+reads the TOKEN file itself (the pointer is handled arm's-length, exactly like
+the ``secret_path`` keyspace category it feeds).
 """
 
 from __future__ import annotations
@@ -30,10 +44,19 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
+from kanibako.agent_config import (
+    AgentConfig,
+    agent_settings_path,
+    load_agent_config,
+    write_agent_config,
+)
 from kanibako.agent_ref import harness_of, parse_agent_ref, persona_of
 from kanibako.paths import xdg
+
+if TYPE_CHECKING:
+    from kanibako.targets.base import Target
 
 #: Read cap for ``.secret_path`` (bytes).  The file holds one token path
 #: (PATH_MAX-ish); anything larger is a malformed store — rejected WITHOUT
@@ -183,3 +206,117 @@ def resolve_secret_path(entry: PersonaEntry) -> SecretPathResult:
         # (embedded NUL) / OSError.  All are malformed-pointer shapes; the
         # never-raises-through contract holds.
         return SecretPathResult(None, f"cannot resolve {pointer}: {exc}")
+
+
+# --------------------------------------------------------------------------
+# Import mapping (DESIGN §2b/§3): store entry -> agent-scope settings sync.
+# --------------------------------------------------------------------------
+
+
+class ImportResult(NamedTuple):
+    """Outcome of building (and optionally persisting) a persona import.
+
+    * *candidate* — the in-memory :class:`AgentConfig` with the store's values
+      applied on top of the CURRENT agent-file values; ``None`` on a hard
+      failure (nothing importable — the store's harness config is missing /
+      unusable, or names no endpoint).
+    * *error* — the hard-failure reason (*candidate* is ``None``).
+    * *warning* — a SOFT, caller-warnable condition on a successful build:
+      the ``.secret_path`` pointer did not resolve, so the endpoint/model were
+      imported but the existing (last-known-good) token pointer was KEPT —
+      the DESIGN §5b fail-safe shape.  ``None`` when everything resolved.
+    """
+
+    candidate: AgentConfig | None
+    error: str | None
+    warning: str | None
+
+
+def build_candidate(
+    agents_root: Path, entry: PersonaEntry, target: Target,
+) -> ImportResult:
+    """Build the IN-MEMORY candidate agent settings for a store *entry*.
+
+    Read-modify-write shape, WITHOUT the write: load the node's CURRENT
+    settings file (absent file = fresh defaults), then apply ONLY the values
+    the store owns (DESIGN §2b — the store owns the AGENT scope):
+
+    * ``state["endpoint"]`` ← the harness config's endpoint (REQUIRED: a
+      persona import with no endpoint is unusable → hard error);
+    * ``state["model"]`` ← the harness config's model, when it names one (a
+      config that names none leaves any existing agent-scope model untouched —
+      there is no store value to sync);
+    * ``secret_path[<auth_env>]`` ← the resolved ABSOLUTE host token path.  An
+      unresolvable ``.secret_path`` is a WARNING, not a failure: endpoint and
+      model still import, the existing token pointer (last-known-good) is
+      kept, and the reason rides ``ImportResult.warning``.
+
+    Everything else in the file (name, run_args, env, transform_settings,
+    other secret_path vars, the discriminated node-bind sub-tables) is
+    PRESERVED verbatim — this function does not own it.  NOTHING is persisted
+    here: the caller verifies the candidate (Phase 3 S9) and commits via
+    :func:`persist_candidate` only on PASS.
+    """
+    settings = target.read_persona_settings(entry.config_dir)
+    if settings is None:
+        return ImportResult(None, (
+            f"persona store entry for '{entry.node}' has no usable "
+            f"{entry.harness} config under {entry.config_dir}"
+        ), None)
+    if not settings.endpoint:
+        return ImportResult(None, (
+            f"persona store config at {entry.config_dir} names no endpoint; "
+            f"a persona import needs one"
+        ), None)
+
+    cfg = load_agent_config(agent_settings_path(agents_root, entry.node))
+    cfg.state["endpoint"] = settings.endpoint
+    if settings.model:
+        cfg.state["model"] = settings.model
+
+    warning: str | None = None
+    token = resolve_secret_path(entry)
+    if token.path is not None:
+        cfg.secret_path[settings.auth_env] = str(token.path)
+    else:
+        warning = (
+            f"persona '{entry.node}': token pointer did not resolve "
+            f"({token.error}); keeping the existing secret_path values"
+        )
+    return ImportResult(cfg, None, warning)
+
+
+def persist_candidate(
+    agents_root: Path, entry: PersonaEntry, candidate: AgentConfig,
+) -> Path:
+    """Commit a verified *candidate* to the node's settings file.
+
+    Routes through :func:`~kanibako.agent_config.write_agent_config` — the
+    established persist seam — which stores the persona values as
+    ``self.endpoint`` / ``self.model`` and ``self.secret_path.<VAR>`` (the
+    FLATTENED shape: ``self`` IS ``agent.<node>``, no second node embedding)
+    and re-emits everything the candidate carried through.  Returns the
+    settings-file path written.
+    """
+    path = agent_settings_path(agents_root, entry.node)
+    write_agent_config(path, candidate)
+    return path
+
+
+def import_persona_entry(
+    agents_root: Path, entry: PersonaEntry, target: Target,
+) -> ImportResult:
+    """Build AND persist a persona import (the UNVERIFIED convenience).
+
+    :func:`build_candidate` + :func:`persist_candidate` in one step, for the
+    paths that import without a verify probe (the initial ``create``
+    registration — DESIGN §4).  A hard failure persists NOTHING (the on-disk
+    file, if any, is untouched); a soft ``warning`` still persists (endpoint/
+    model imported, existing token kept) and is the caller's to surface.
+    The start-flow reparse (Phase 3 S9) must NOT use this — it verifies the
+    candidate first and swaps only on PASS.
+    """
+    result = build_candidate(agents_root, entry, target)
+    if result.candidate is not None:
+        persist_candidate(agents_root, entry, result.candidate)
+    return result
