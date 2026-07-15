@@ -106,6 +106,27 @@ def test_agent_partial_inserted():
     assert snap_default.agent.claude.bindings.ro.share.host == "/orig"
 
 
+def test_agent_partial_surfaces_flat_secret_path():
+    # REGRESSION (2026-07-15c): the 2026-07-14b flatten moved the per-agent file's
+    # secret_path to the TOP-LEVEL ``self.secret_path`` (self IS agent.<node>), but
+    # the cascade reader kept reading the nested ``self.<node>`` sub-table — so an
+    # agent-scope secret_path became INVISIBLE to the launch cascade (which drives
+    # the token ro-mount + $VAR export), silently breaking persona auth. The active
+    # layer must surface the flat secret_path as ``agent.<node>.secret_path``; the
+    # all-agents ``default`` layer must NOT (it is the file's own node's secret).
+    from kanibako.settings_assemble import _agent_partial
+
+    raw = {"self": {
+        "name": "OpenAI Codex CLI",
+        "secret_path": {"API_KEY": "/home/agent/.config/personas/navigator/token"},
+    }}
+    active = _agent_partial(raw, sub_key="navigator℘codex")
+    assert (active.agent["navigator℘codex"].secret_path["API_KEY"]
+            == "/home/agent/.config/personas/navigator/token")
+    # The default layer never carries the file's own secret_path.
+    assert _agent_partial(raw, sub_key="default") == KeyStore()
+
+
 def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
     # A user-settable ``agent.<name>.bindings.{ro,rw}.<key>`` written on a scope
     # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY

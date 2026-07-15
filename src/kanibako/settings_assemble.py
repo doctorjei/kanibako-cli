@@ -274,14 +274,26 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
     if not isinstance(agent, dict):
         return KeyStore()
     sub = agent.get(sub_key)
-    if not isinstance(sub, dict):
+    node_tbl: dict = dict(sub) if isinstance(sub, dict) else {}
+    # ``self`` IS ``agent.<active-node>``: the FLATTENED cascade category
+    # ``secret_path`` lives at the file's TOP level (``self.secret_path`` since the
+    # 2026-07-14b flatten), NOT in the nested ``self.<node>`` sub-table (which still
+    # holds bindings, pending their own flatten). It belongs to THIS node, so re-root
+    # it alongside the sub-table for the ACTIVE layer ONLY — never the all-agents
+    # ``default`` layer. Without this the launch SECRET export (which reads the
+    # reconciled cascade) never sees an agent-scope secret_path → no token mount.
+    if sub_key != _AGENT_DEFAULT_SUB:
+        flat_secret = agent.get("secret_path")
+        if isinstance(flat_secret, dict) and flat_secret:
+            node_tbl["secret_path"] = flat_secret
+    if not node_tbl:
         return KeyStore()
     # Re-root the sub-table under its TRUE discriminated name ``agent.<sub_key>``
     # (NO bare-token collapse). _parse_node handles the bind/category structure
     # inside. The discriminator (``default`` / the active agent's name) is the §2d
     # key form and is load-bearing — it keeps the all-agents fallback layer and any
     # per-agent override distinct under the cascade merge.
-    parsed_sub = _parse_node(sub, in_binds=False)
+    parsed_sub = _parse_node(node_tbl, in_binds=False)
     agent_node = KeyStore()
     agent_node[sub_key] = parsed_sub
     store = KeyStore()
