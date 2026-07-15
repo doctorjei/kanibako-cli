@@ -9,8 +9,10 @@ real agent, no real waiting.
 
 from __future__ import annotations
 
+import os as _os
 import signal
 import subprocess
+from pathlib import Path as _Path
 
 import pytest
 
@@ -1906,3 +1908,143 @@ def test_box_supervisor_import_chain_is_stdlib_only():
         "ImportError and every launch would degrade to the bare-shell fallback — "
         "see this test's docstring"
     )
+
+
+# --- zombie-aware liveness probe + PID-1 child reaping (bifrost defect) ------
+#
+# A panel process orphaned onto supervisor PID-1 that then dies becomes a
+# ZOMBIE; ``os.kill(pid, 0)`` answers True for zombies, so the marker probe
+# read ALIVE forever and both SELF_HEAL_CLI and TEARDOWN wedged (bifrost
+# repro: ``[sleep] <defunct>`` PPID 1, 60+ s silent).  Fix = both ends:
+# the probe treats state ``Z`` as dead, and the supervise ticks reap.
+#
+# The zombie-forking tests work because THIS TEST PROCESS is the parent: we
+# ``os.fork()`` a child that ``os._exit``s immediately and deliberately do NOT
+# ``waitpid`` it — the kernel keeps it as OUR zombie (visible in /proc with
+# state Z) until the test reaps it in ``finally`` (so no zombie outlives the
+# test either way).
+
+
+def _fork_zombie() -> int:
+    """Fork a child that exits immediately; return its PID WITHOUT reaping it."""
+    pid = _os.fork()
+    if pid == 0:  # child
+        _os._exit(0)
+    # Parent: wait until the kernel shows the child as a zombie (state Z) —
+    # bounded spin; the transition is normally immediate.
+    for _ in range(200):
+        state = bs._proc_stat_state(pid)
+        if state == "Z":
+            break
+    return pid
+
+
+def _reap_quietly(pid: int) -> None:
+    try:
+        _os.waitpid(pid, 0)
+    except ChildProcessError:
+        pass  # something (the code under test) already reaped it — fine
+
+
+@pytest.mark.skipif(not _Path("/proc").is_dir(), reason="needs /proc (Linux)")
+class TestZombieAwareProbe:
+    def test_real_zombie_reads_dead(self):
+        """A REAL zombie child: kill-0 says it exists, the probe must say DEAD."""
+        pid = _fork_zombie()
+        try:
+            _os.kill(pid, 0)  # precondition: kill-0 CAN see it (the old bug)
+            assert bs._proc_stat_state(pid) == "Z"
+            assert bs._default_pid_alive(pid) is False
+        finally:
+            _reap_quietly(pid)
+
+    def test_live_process_reads_alive(self):
+        """Sanity: a genuinely live PID (our own) still reads alive."""
+        assert bs._default_pid_alive(_os.getpid()) is True
+
+    def test_never_existed_pid_reads_dead(self):
+        # PID 2^22+1 is above the default pid_max on most systems; if it does
+        # exist the kill-0 path still answers correctly, so probe our own
+        # guaranteed-dead child instead for determinism.
+        pid = _fork_zombie()
+        _reap_quietly(pid)  # fully reaped → the PID no longer exists
+        assert bs._default_pid_alive(pid) is False
+
+    def test_unreadable_stat_falls_back_to_kill0_verdict(self, monkeypatch):
+        """stat unreadable/unparseable (None) → keep the kill-0 verdict (True
+        for an existing process), never raise."""
+        monkeypatch.setattr(bs, "_proc_stat_state", lambda pid: None)
+        assert bs._default_pid_alive(_os.getpid()) is True
+
+
+class TestParseStatState:
+    def test_plain_comm(self):
+        assert bs._parse_stat_state("123 (sleep) Z 1 123 0 0 -1") == "Z"
+
+    def test_comm_with_spaces_and_parens(self):
+        """comm is process-controlled and may contain ``) (`` — the state is
+        the first field after the LAST ')'."""
+        line = "42 (a) (b R fake) S 1 42 0"
+        assert bs._parse_stat_state(line) == "S"
+
+    def test_comm_containing_zombie_lookalike(self):
+        # a comm that CONTAINS " Z " must not fool the parser.
+        line = "7 (evil Z name) R 1 7 0"
+        assert bs._parse_stat_state(line) == "R"
+
+    def test_no_parens_is_none(self):
+        assert bs._parse_stat_state("garbage with no parens") is None
+
+    def test_nothing_after_paren_is_none(self):
+        assert bs._parse_stat_state("9 (comm)") is None
+
+
+@pytest.mark.skipif(not _Path("/proc").is_dir(), reason="needs /proc (Linux)")
+class TestReapZombieChildren:
+    def test_drains_multiple_zombies(self):
+        pids = [_fork_zombie() for _ in range(3)]
+        try:
+            assert bs.reap_zombie_children() >= 3
+            # all three are really gone: an explicit waitpid finds no child.
+            for pid in pids:
+                with pytest.raises(ChildProcessError):
+                    _os.waitpid(pid, _os.WNOHANG)
+        finally:
+            for pid in pids:
+                _reap_quietly(pid)
+
+    def test_no_children_is_quiet_zero(self, monkeypatch):
+        monkeypatch.setattr(
+            bs.os, "waitpid",
+            lambda *a: (_ for _ in ()).throw(ChildProcessError()),
+        )
+        assert bs.reap_zombie_children() == 0
+
+    def test_oserror_is_swallowed(self, monkeypatch):
+        def _boom(*a):
+            raise OSError("waitpid exploded")
+        monkeypatch.setattr(bs.os, "waitpid", _boom)
+        assert bs.reap_zombie_children() == 0  # tolerant: no raise, no reaps
+
+    def test_bounded_per_call(self, monkeypatch):
+        """A zombie burst larger than the bound is drained across calls, never
+        stalling one tick."""
+        calls = {"n": 0}
+        def _endless(*a):
+            calls["n"] += 1
+            return (10_000 + calls["n"], 0)
+        monkeypatch.setattr(bs.os, "waitpid", _endless)
+        assert bs.reap_zombie_children(max_reaps=5) == 5
+        assert calls["n"] == 5
+
+    def test_zombie_end_to_end_probe_unblinds_after_reap(self):
+        """The bifrost wedge in miniature: zombie reads dead via the probe
+        even BEFORE the reap, and after the reap the PID is gone entirely."""
+        pid = _fork_zombie()
+        try:
+            assert bs._default_pid_alive(pid) is False  # probe end
+            assert bs.reap_zombie_children() >= 1       # reap end
+            with pytest.raises(ChildProcessError):
+                _os.waitpid(pid, _os.WNOHANG)
+        finally:
+            _reap_quietly(pid)
