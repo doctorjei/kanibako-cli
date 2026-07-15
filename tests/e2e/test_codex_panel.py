@@ -98,10 +98,21 @@ def _seed_codex_stub(e2e_env: dict) -> None:
 
 
 def _find_box_codex_config(e2e_env: dict) -> Path:
-    """The box-home host-side ~/.codex/config.toml the launch delivery wrote."""
-    candidates = list(e2e_env["data_home"].rglob(".codex/config.toml"))
+    """The BOX-HOME host-side ~/.codex/config.toml the launch delivery wrote.
+
+    Filtered to the box-home tree (``boxes/*/home/``): the data home ALSO holds
+    an agent-template copy of ``.codex/config.toml`` (the packaged template the
+    seed stages), which a bare rglob would pick up and trip the ambiguity
+    assert (bifrost finding).
+    """
+    candidates = [
+        p
+        for p in e2e_env["data_home"].rglob(".codex/config.toml")
+        if "boxes" in p.parts and "home" in p.parts
+    ]
     assert candidates, (
-        ".codex/config.toml not delivered anywhere under the fixture data home"
+        ".codex/config.toml not delivered under any box home "
+        f"(data home: {e2e_env['data_home']})"
     )
     assert len(candidates) == 1, f"ambiguous box homes: {candidates}"
     return candidates[0]

@@ -154,15 +154,57 @@ _PidAlive = Callable[[int], bool]
 _MarkersLister = Callable[[str], "list[int]"]
 
 
-def _default_pid_alive(pid: int) -> bool:
-    """Real ``_PidAlive``: is *pid* a live process? (``os.kill(pid, 0)``).
+def _parse_stat_state(stat_text: str) -> str | None:
+    """PURE: the process STATE character from a ``/proc/<pid>/stat`` line.
 
-    Shared PID namespace (the supervisor is PID-1, so it sees the panel agent):
-    ``os.kill(pid, 0)`` sends no signal but raises when the PID is not a live,
-    signalable process.  ``ProcessLookupError`` ⇒ dead; ``PermissionError`` ⇒
-    ALIVE (the process exists, we merely may not signal it); any other ``OSError``
-    ⇒ treated as not-live (tolerant — the caller degrades to "not a live agent"
-    rather than crashing PID-1).
+    The stat line is ``<pid> (<comm>) <state> <ppid> …`` — and ``comm`` is
+    attacker/filename-controlled text that may itself contain spaces AND
+    parentheses (e.g. a process named ``a) (b``), so a naive ``split()`` is
+    wrong.  The kernel emits ``comm`` as the ONLY parenthesised field, so the
+    state is the first token AFTER the **last** ``)``.  Returns ``None`` when
+    the text has no ``)`` or nothing after it (unparseable — the caller falls
+    back to its kill-0 verdict).
+    """
+    _, sep, tail = stat_text.rpartition(")")
+    if not sep:
+        return None
+    fields = tail.split()
+    return fields[0] if fields else None
+
+
+def _proc_stat_state(pid: int) -> str | None:
+    """The kernel state char for *pid* from ``/proc/<pid>/stat``, or ``None``.
+
+    ``None`` on ANY read/parse problem (proc entry raced away, no /proc, …) —
+    tolerant; the caller falls back to its kill-0 verdict, never raises.
+    """
+    try:
+        text = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    return _parse_stat_state(text)
+
+
+def _default_pid_alive(pid: int) -> bool:
+    """Real ``_PidAlive``: is *pid* a live (non-zombie) process?
+
+    Shared PID namespace (the supervisor is PID-1, so it sees the panel agent).
+    Two layers:
+
+    * EXISTENCE — ``os.kill(pid, 0)`` sends no signal but raises when the PID
+      is not a signalable process.  ``ProcessLookupError`` ⇒ dead;
+      ``PermissionError`` ⇒ exists (we merely may not signal it); any other
+      ``OSError`` ⇒ treated as not-live (tolerant — the caller degrades to
+      "not a live agent" rather than crashing PID-1).
+    * ⚑ ZOMBIE — ``kill -0`` answers True for a ZOMBIE (an exited child not
+      yet ``wait()``ed by its parent — and orphaned processes reparent to the
+      supervisor itself, PID-1, so an unreaped panel agent would read ALIVE
+      **forever** and wedge both SELF_HEAL_CLI and TEARDOWN).  So an existing
+      PID is additionally checked against ``/proc/<pid>/stat``: state ``Z`` ⇒
+      dead.  An unreadable/unparseable stat (``None``) falls back to the
+      kill-0 verdict (True here) — never raises.  See also
+      :func:`reap_zombie_children`, the PID-1 duty that clears the zombie
+      itself.
     """
     try:
         os.kill(pid, 0)
@@ -172,7 +214,43 @@ def _default_pid_alive(pid: int) -> bool:
         return True
     except OSError:
         return False
-    return True
+    return _proc_stat_state(pid) != "Z"
+
+
+def reap_zombie_children(max_reaps: int = 32) -> int:
+    """Bounded non-blocking reap of this process's exited children (PID-1 duty).
+
+    The supervisor is the box's PID-1, so every ORPHANED in-box process (e.g. a
+    panel-spawned agent whose own parent already exited) reparents to it — and
+    on exit sits as a ZOMBIE until PID-1 ``wait()``s it.  Without reaping, the
+    zombie both leaks a process-table slot and (before the
+    :func:`_default_pid_alive` zombie check) blinded the liveness probe.
+
+    Reaping our OWN children is always safe here regardless of PID-1-ness: the
+    supervisor collects no child exit statuses anywhere else (its only child
+    mechanism is inline ``subprocess.run``, which waits its child synchronously
+    on the same single thread — there is no concurrent waiter to rob), so both
+    supervise loops call this unconditionally at the top of every tick.
+
+    BOUNDED to *max_reaps* per call so a burst of zombies cannot stall a tick
+    (the next tick continues the drain).  ``ChildProcessError`` (no children at
+    all) ends the sweep; any other ``OSError`` is swallowed — PID-1's tick must
+    never die here.  Returns the number reaped.
+    """
+    reaped = 0
+    for _ in range(max_reaps):
+        try:
+            pid, _status = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            break
+        except OSError:
+            log.debug("reap_zombie_children: waitpid raised; ending sweep", exc_info=True)
+            break
+        if pid == 0:  # children exist but none exited — done this tick
+            break
+        reaped += 1
+        log.debug("reaped exited child pid %d", pid)
+    return reaped
 
 
 def _default_list_marker_pids(markers_dir: str) -> list[int]:
@@ -1296,6 +1374,10 @@ class BoxSupervisor:
 
         while not self._stop:
             try:
+                # PID-1 duty FIRST: reap exited (orphan-reparented) children so
+                # a dead panel process cannot sit as a zombie and read ALIVE to
+                # the marker probes below.
+                reap_zombie_children()
                 cur = self._snapshot()
                 alive = self.agent_session_alive()
                 # Newcomer detection: a live marker PID that is NOT this supervisor's
@@ -1430,6 +1512,11 @@ class BoxSupervisor:
 
         while not self._stop:
             try:
+                # PID-1 duty FIRST: reap exited (orphan-reparented) children so
+                # a dead panel agent cannot sit as a zombie and hold
+                # panel_agent_state at ALIVE forever (wedging SELF_HEAL_CLI and
+                # TEARDOWN alike).
+                reap_zombie_children()
                 cur = self._snapshot()
                 if cur.any_attached:
                     seen_surface = True
