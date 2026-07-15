@@ -143,7 +143,7 @@ descriptor:
       filtered: false
     # config.yaml is a two-way SYNC file (in-box `goose configure` -> host), BUT it
     # is FILTERED (transform_cred) so the box-local panel-parity GOOSE_MODE
-    # (seeded by deliver_goose_panel_permissions for the VS Code panel's yolo) is
+    # (seeded by GooseTarget.deliver_panel_permissions for the VS Code panel's yolo) is
     # NOT written back over the host's own GOOSE_MODE.  On writeback the host's
     # GOOSE_MODE is preserved; every other key the user changed in-box still flows.
     - home_rel: ".config/goose/config.yaml"

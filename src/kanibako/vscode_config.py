@@ -306,7 +306,7 @@ def seed_claude_bypass_permissions(settings_path: Path) -> bool:
     Reads the existing file tolerantly (absent/corrupt → ``{}``), merges via
     :func:`merge_bypass_permissions`, and writes it back as pretty JSON (creating
     parent dirs) iff it changed (idempotent).  Returns ``True`` iff it wrote the
-    file.  The ON-direction of :func:`deliver_claude_panel_permissions`.
+    file.  The ON-direction of ``ClaudeTarget.deliver_panel_permissions``.
     """
     existing = _read_existing_config(settings_path)
     return _write_if_changed(
@@ -321,7 +321,7 @@ def clear_claude_bypass_permissions(settings_path: Path) -> bool:
     No-ops when the file is ABSENT (nothing to clear — never creates it).  Reads
     tolerantly, applies :func:`clear_bypass_permissions`, and writes back iff it
     changed (idempotent).  Returns ``True`` iff it wrote the file.  The
-    OFF-direction of :func:`deliver_claude_panel_permissions`.
+    OFF-direction of ``ClaudeTarget.deliver_panel_permissions``.
     """
     if not settings_path.exists():
         return False
@@ -571,10 +571,15 @@ def seed_session_start_hook(settings_path: Path) -> bool:
 # (``[projects."<cwd>"] trust_level``); pre-seeding both makes the FIRST launch
 # fire the hook with no interactive ``/hooks`` prompt.
 #
-# This is the SINGLE place kanibako's managed codex config.toml writes happen —
-# it reconciles the hook group, the trust hash, the directory trust, AND the
-# permission-parity keys (approval_policy/sandbox_mode) together.  A later
-# increment (goose / auth-parity) builds on this shape.
+# The managed codex config.toml has exactly TWO writers, split along the T1
+# Target seams so no managed key is ever written by both:
+#   * :func:`seed_codex_config` (``CodexTarget.deliver_directive_hook``) — the
+#     hook group + trust hash + directory trust (+ the persona model-provider
+#     region), i.e. everything region-shaped;
+#   * :func:`seed_codex_approval` (``CodexTarget.deliver_panel_permissions``) —
+#     ONLY the top-level approval_policy/sandbox_mode permission-parity keys.
+# Both share the surgical primitives below (regions + root-key line surgery +
+# :func:`_assemble_codex_managed`), so their composed output is byte-stable.
 #
 # NO tomlkit dependency (kanibako ships stdlib-only: argcomplete/PyYAML/packaging).
 # tomllib is read-only and cannot round-trip comments, and re-serialising an
@@ -842,26 +847,18 @@ def merge_codex_config(
     *,
     box_config_path: str,
     codex_cwd: str,
-    auto_approve: bool,
     model_provider: CodexModelProvider | None = None,
-    include_approval: bool = True,
 ) -> str:
     """Return *text* with kanibako's managed codex config MERGED in (pure).
 
-    Strips any prior managed region, reconciles the managed root keys
-    (approval_policy/sandbox_mode per *auto_approve*), then regenerates the
-    managed region at the file's end.  All other user content — comments and data
-    alike — is preserved byte-for-byte.  Idempotent: re-merging its own output
-    reproduces it exactly.
+    Strips any prior managed region, then regenerates it at the file's end.
+    All other user content — comments and data alike — is preserved
+    byte-for-byte.  Idempotent: re-merging its own output reproduces it exactly.
 
-    *include_approval* (TRANSITIONAL, T1-seam Steps 2-4): ``False`` skips the
-    approval/sandbox reconcile entirely — the merge is then hook/trust/provider
-    ONLY, for the ``Target.deliver_directive_hook`` seam path whose
-    approval/sandbox parity is delivered separately (and solely) by
-    :func:`seed_codex_approval` via ``Target.deliver_panel_permissions``.  The
-    ``True`` default keeps the legacy single-write path byte-identical until the
-    wrappers are deleted (plan Step 5), when the reconcile leaves this merge for
-    good.
+    Hook/trust/provider ONLY: the managed ``approval_policy``/``sandbox_mode``
+    parity keys are NEVER touched here — they belong solely to
+    :func:`seed_codex_approval` (``Target.deliver_panel_permissions``), so no
+    managed key has two writers (T1 seam split).
 
     When *model_provider* is supplied (INC 3 persona wiring), a SECOND managed
     region — the ``[model_providers.<id>]`` table plus the top-level
@@ -878,8 +875,6 @@ def merge_codex_config(
         # Strip our OWN prior provider region too, so the provider root keys and
         # table are reconciled (not duplicated) across re-merges.
         body = _strip_codex_provider_region(body).rstrip("\n")
-    if include_approval:
-        body = _reconcile_codex_approval(body, auto_approve)
     if model_provider is not None:
         # Provider root keys are applied to the CLEAN body (no managed regions
         # yet), so they land in the legal top-level position (before any table)
@@ -1054,13 +1049,16 @@ def seed_codex_config(
     *,
     box_config_path: str,
     codex_cwd: str,
-    auto_approve: bool,
     model_provider: CodexModelProvider | None = None,
-    include_approval: bool = True,
 ) -> bool:
     """Read-modify-write the box's in-box ``~/.codex/config.toml`` (host path
-    *config_path*): merge kanibako's managed hook group, trust hash, directory
-    trust, and approval/sandbox parity.
+    *config_path*): merge kanibako's managed hook group, trust hash, and
+    directory trust.
+
+    The codex DIRECTIVE-HOOK write (``CodexTarget.deliver_directive_hook``).
+    Never the approval/sandbox parity keys — those are written solely by
+    :func:`seed_codex_approval` (the panel-permissions seam), so no managed key
+    has two writers.
 
     Reads tolerantly (absent → empty; the file is TEXT, so a "corrupt" TOML file
     is handled at the text level and never crashes), merges via
@@ -1072,11 +1070,7 @@ def seed_codex_config(
 
     *model_provider* (default ``None``) is the INC-3 seam: when supplied the
     merged config also carries the model-provider region; when ``None`` the write
-    is BYTE-IDENTICAL to today's.
-
-    *include_approval* forwards to :func:`merge_codex_config` (TRANSITIONAL —
-    see there): the seam path passes ``False`` so this write is hook/trust/
-    provider only and :func:`seed_codex_approval` is the SOLE approval writer.
+    is BYTE-IDENTICAL to a provider-less one.
     """
     try:
         existing = config_path.read_text()
@@ -1086,9 +1080,7 @@ def seed_codex_config(
         existing,
         box_config_path=box_config_path,
         codex_cwd=codex_cwd,
-        auto_approve=auto_approve,
         model_provider=model_provider,
-        include_approval=include_approval,
     )
     if config_path.exists() and merged == existing:
         return False
@@ -1105,10 +1097,9 @@ def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
     the ``openai.chatgpt`` panel spawns its OWN in-box codex without kanibako's
     launch flags, and codex approval/sandbox has NO VS Code settings key — the
     box's resolved ``auto_approve`` reaches the panel only via the managed
-    ``approval_policy``/``sandbox_mode`` root keys here.  After the T1 seam
-    split this is the SOLE writer of those keys; the directive-hook write
-    (:func:`seed_codex_config` with ``include_approval=False``) never touches
-    them, so no key ever has two writers.
+    ``approval_policy``/``sandbox_mode`` root keys here.  The SOLE writer of
+    those keys; the directive-hook write (:func:`seed_codex_config`) never
+    touches them, so no key ever has two writers (T1 seam split).
 
     Discipline (mirrors :func:`_reconcile_codex_approval`'s ON/OFF contract):
     ON → SET both managed values; OFF → REMOVE each only while it still equals
@@ -1148,78 +1139,6 @@ def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
     return True
 
 
-def deliver_directive_session_hook(
-    *,
-    agent_name: str,
-    config_root: Path,
-    box_codex_config_path: str,
-    codex_cwd: str,
-    auto_approve: bool,
-    model_provider: CodexModelProvider | None = None,
-) -> bool:
-    """Route the instruction-delivery SessionStart hook to the agent's NATIVE
-    config surface, returning whether a write occurred.
-
-    * ``claude`` → ``<config_root>/.claude/settings.json`` (the full managed JSON
-      hook set: instruction-delivery ``SessionStart`` + the per-PID marker write/remove
-      hooks; all unconditional, orthogonal to *auto_approve* — see
-      :func:`seed_session_start_hook`).
-    * ``codex``  → ``<config_root>/.codex/config.toml`` (the codex config manager:
-      hook + trust + approval/sandbox parity, the SINGLE managed-write site).
-    * any other agent → inert (``False``).
-
-    *model_provider* (default ``None``) is the INC-3 codex-persona seam: for a codex
-    persona launch the caller passes the resolved
-    :class:`CodexModelProvider` so the SAME config.toml write that lands the hook +
-    trust ALSO lands the ``[model_providers.<id>]`` block + top-level
-    ``model``/``model_provider`` selection.  It is IGNORED on the claude branch
-    (claude carries its persona endpoint/token via env, not config.toml).  When
-    ``None`` (claude, bare codex, any non-persona) the codex write is BYTE-IDENTICAL
-    to before this seam.
-
-    The single dispatch point for the launch-side directive-hook delivery (mirrors
-    :func:`deliver_claude_panel_permissions`); callers wrap best-effort so a
-    failure never blocks the launch.
-    """
-    if agent_name == "claude":
-        return seed_session_start_hook(config_root / ".claude" / "settings.json")
-    if agent_name == "codex":
-        return seed_codex_config(
-            config_root / ".codex" / "config.toml",
-            box_config_path=box_codex_config_path,
-            codex_cwd=codex_cwd,
-            auto_approve=auto_approve,
-            model_provider=model_provider,
-        )
-    return False
-
-
-def deliver_claude_panel_permissions(
-    *, auto_approve: bool, is_claude: bool, claude_config_dir: Path,
-) -> bool:
-    """GATE + deliver the SYMMETRIC Vector A yolo state for the VS Code panel.
-
-    The single mutation-provable gate for the launch-side Vector A delivery,
-    driven by the box's resolved claude ``auto_approve``:
-
-    * non-claude box → inert, does NOTHING (returns ``False``).
-    * claude + ``auto_approve`` ON → SET ``permissions.defaultMode=bypassPermissions``
-      in ``<claude_config_dir>/settings.json``.
-    * claude + ``auto_approve`` OFF → CLEAR that managed value (no-op if the file
-      is absent) so toggling yolo off takes effect in the panel.
-
-    Both directions merge (never clobber a user's own settings) and are
-    idempotent.  Returns whether a write occurred.  Callers wrap this best-effort
-    so a failure never blocks the launch.
-    """
-    if not is_claude:
-        return False
-    settings_path = claude_config_dir / "settings.json"
-    if auto_approve:
-        return seed_claude_bypass_permissions(settings_path)
-    return clear_claude_bypass_permissions(settings_path)
-
-
 # ---------------------------------------------------------------------------
 # FF-5 permission parity (goose surface): in-box goose config.yaml GOOSE_MODE.
 #
@@ -1243,46 +1162,20 @@ _GOOSE_MODE_ON = "auto"
 _GOOSE_MODE_OFF = "approve"
 
 
-def deliver_goose_panel_permissions(
-    *, auto_approve: bool, is_goose: bool, goose_config_dir: Path,
-) -> bool:
-    """GATE + deliver the goose panel-permission (GOOSE_MODE) parity, returning
-    whether a write occurred.
-
-    Driven by the box's resolved goose ``auto_approve`` and mirroring
-    :func:`deliver_claude_panel_permissions`, EXCEPT it writes the OFF value
-    explicitly rather than clearing:
-
-    * non-goose box → inert, does NOTHING (returns ``False``).
-    * goose + ``auto_approve`` ON  → SET ``GOOSE_MODE: "auto"``.
-    * goose + ``auto_approve`` OFF → SET ``GOOSE_MODE: "approve"`` — an UNSET
-      ``GOOSE_MODE`` defaults to ``auto`` (permissive), so OFF must persist the
-      secure value explicitly, NOT clear the key.
-
-    Merge-preserving (only the top-level ``GOOSE_MODE`` key is set; every other
-    key in ``<goose_config_dir>/config.yaml`` is preserved; an absent file is
-    created with just ``GOOSE_MODE``) and idempotent (no write when the key
-    already equals the desired value).  Returns whether a write occurred.
-    Callers wrap this best-effort so a failure never blocks the launch.
-    """
-    if not is_goose:
-        return False
-    return seed_goose_mode(
-        goose_config_dir / "config.yaml", auto_approve=auto_approve,
-    )
-
-
 def seed_goose_mode(config_path: Path, *, auto_approve: bool) -> bool:
     """Read-modify-write the box's in-box goose ``config.yaml`` (host path
     *config_path*): SET the top-level ``GOOSE_MODE`` to the box's yolo parity
     value.
 
-    The goose PANEL-permissions emitter (``Target.deliver_panel_permissions`` /
-    the legacy :func:`deliver_goose_panel_permissions` gate): ON → ``auto``
-    (approvals off), OFF → the EXPLICIT secure ``approve`` (an unset
-    ``GOOSE_MODE`` defaults to permissive ``auto``, so OFF must persist, not
-    clear — see the FF-5 block comment above).  Merge-preserving and idempotent
-    per the wrapper's contract; returns whether a write occurred.
+    The goose PANEL-permissions emitter behind
+    ``GooseTarget.deliver_panel_permissions``: ON → ``auto`` (approvals off),
+    OFF → the EXPLICIT secure ``approve`` (an unset ``GOOSE_MODE`` defaults to
+    permissive ``auto``, so OFF must persist, not clear — see the FF-5 block
+    comment above).  Merge-preserving (only the top-level ``GOOSE_MODE`` key is
+    set; every other key is preserved; an absent file is created with just
+    ``GOOSE_MODE``) and idempotent (no write when the key already equals the
+    desired value).  Returns whether a write occurred.  Callers wrap this
+    best-effort so a failure never blocks the launch.
     """
     desired = _GOOSE_MODE_ON if auto_approve else _GOOSE_MODE_OFF
     existing = load_doc(config_path)

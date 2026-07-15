@@ -6,17 +6,13 @@ agent's panel-visible config surface, captured at the pre-change SHA.  Every
 later step (Target seams, codex approval split, wrapper deletion) must keep the
 delivered files BYTE-IDENTICAL — this module is the gate that proves it.
 
-The driver reproduces TODAY's exact ``_deliver_panel_permissions`` call-site
-sequence (``start.py``) with the real call-site arguments:
-
-1. ``deliver_claude_panel_permissions``  (claude panel yolo, symmetric SET/CLEAR)
-2. ``deliver_goose_panel_permissions``   (goose GOOSE_MODE parity, explicit OFF)
-3. ``deliver_directive_session_hook``    (claude/codex only — the 1337 name-gate)
-
-Step 3 adds the SEAM driver beside it: the launching agent's real ``Target``,
-``deliver_panel_permissions`` then ``deliver_directive_hook`` (core's
-de-branched order).  BOTH paths are asserted against the SAME fixtures until
-the wrappers are deleted (plan Step 5); the seam axis then remains permanently.
+The driver reproduces the ``start.py:_deliver_panel_permissions`` call-site
+sequence: the launching agent's real ``Target``, ``deliver_panel_permissions``
+then ``deliver_directive_hook`` — core's unconditional seam order (T1.1/T1.2).
+The fixtures were CAPTURED from the pre-seam legacy pipeline at ``27d5bd6`` and
+the seam path was proven byte-identical against them before the legacy
+wrappers were deleted (plan Steps 3-5); this module is now the permanent
+byte-identity net (it also guards the later T2.3 emitter-body moves).
 
 Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
 ``.config/goose/config.yaml``, codex ``.codex/config.toml``):
@@ -53,13 +49,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.settings_resolve import GUEST_HOME
-from kanibako.vscode_config import (
-    CodexModelProvider,
-    deliver_claude_panel_permissions,
-    deliver_directive_session_hook,
-    deliver_goose_panel_permissions,
-)
+from kanibako.vscode_config import CodexModelProvider
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "panel_delivery"
 
@@ -209,50 +199,6 @@ _USER_CONTENT = {
 # --------------------------------------------------------------------------- #
 
 
-def _drive_call_site(
-    *,
-    agent: str,
-    config_root: Path,
-    auto_approve: bool,
-    provider: CodexModelProvider | None,
-) -> bool:
-    """Reproduce ``start.py:_deliver_panel_permissions`` for a launch of *agent*.
-
-    Same three calls, same order (claude panel → goose panel → directive), same
-    argument expressions (``is_claude``/``is_goose`` computed from the launching
-    agent's name; directive gated on ``name in ("claude", "codex")``;
-    ``box_codex_config_path``/``codex_cwd`` = the GUEST_HOME literals).  NO
-    try/except here — a delivery failure must fail the golden loudly, never
-    silently capture broken bytes.  Returns whether ANY write occurred.
-    """
-    wrote = deliver_claude_panel_permissions(
-        auto_approve=auto_approve,
-        is_claude=(agent == "claude"),
-        claude_config_dir=config_root / ".claude",
-    )
-    wrote = (
-        deliver_goose_panel_permissions(
-            auto_approve=auto_approve,
-            is_goose=(agent == "goose"),
-            goose_config_dir=config_root / ".config" / "goose",
-        )
-        or wrote
-    )
-    if agent in ("claude", "codex"):
-        wrote = (
-            deliver_directive_session_hook(
-                agent_name=agent,
-                config_root=config_root,
-                box_codex_config_path=f"{GUEST_HOME}/.codex/config.toml",
-                codex_cwd=f"{GUEST_HOME}/workspace",
-                auto_approve=auto_approve,
-                model_provider=provider,
-            )
-            or wrote
-        )
-    return wrote
-
-
 def _drive_seam_path(
     *,
     agent: str,
@@ -260,11 +206,12 @@ def _drive_seam_path(
     auto_approve: bool,
     provider: CodexModelProvider | None,
 ) -> bool:
-    """Drive the T1 SEAM path (plan Step 3): the launching agent's REAL Target,
+    """Drive the delivery for a launch of *agent*: its REAL Target,
     ``deliver_panel_permissions`` then ``deliver_directive_hook`` — core's
-    de-branched call order.  Must reproduce the SAME fixture bytes as the
-    legacy path for every cell.  NO try/except (fail loudly).  Returns whether
-    ANY write occurred.
+    exact call order (order is load-bearing for the composed codex/claude
+    bytes).  The sole driver AND the ``KANI_UPDATE_GOLDENS`` capture source.
+    NO try/except here — a delivery failure must fail the golden loudly, never
+    silently capture broken bytes.  Returns whether ANY write occurred.
     """
     from kanibako.plugins.claude.target import ClaudeTarget
     from kanibako.plugins.codex.target import CodexTarget
@@ -287,16 +234,6 @@ def _drive_seam_path(
         or wrote
     )
     return wrote
-
-
-# Both delivery paths must hit the SAME fixtures: "legacy" = today's wrapper
-# call-site sequence; "seam" = the Target-seam path that replaces it.  The
-# legacy axis is deleted with the wrappers (plan Step 5); the seam axis then
-# remains as the permanent byte-identity net.
-_DRIVERS = {
-    "legacy": _drive_call_site,
-    "seam": _drive_seam_path,
-}
 
 
 def _sanity_check(
@@ -342,12 +279,9 @@ def _sanity_check(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("path", sorted(_DRIVERS))
 @pytest.mark.parametrize(("agent", "pre", "auto", "provider"), _MATRIX, ids=_IDS)
-def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider, path):
-    if path == "seam" and _update_mode():
-        pytest.skip("update mode: fixtures are (re)captured from the legacy path")
-    drive = _DRIVERS[path]
+def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider):
+    drive = _drive_seam_path
     config_root = tmp_path / "box-home"
     config_root.mkdir()
     delivered_path = config_root / DELIVERED_FILE[agent]
