@@ -849,6 +849,37 @@ def run_create(args: argparse.Namespace) -> int:
                         f"forward host credentials."
                     )
 
+        # Persist the box's AGENT SELECTION (`create --agent <ref>`): write
+        # `box.agent_name` into the box settings via the SANCTIONED settings
+        # write (the same route `config set box.agent_name` uses — single-route,
+        # no bespoke YAML poke), so a plain `start` resolves this agent through
+        # the normal cascade (explicit > box > workset > system default) instead
+        # of falling through to the system default.  Applies to ANY selector —
+        # persona or plain (`create --agent goose` must make plain start launch
+        # goose too).  The RAW user ref is stored (`resolve_agent` canonicalizes
+        # on read, exactly as for a hand-set key); `start --agent <other>`
+        # remains an ephemeral override on top (CLI args ephemeral over
+        # settings — start never persists).  Fresh create only: a recovery
+        # re-create reuses the half-built box's on-disk record (parity with the
+        # image/--private writes above).
+        _agent_sel = getattr(args, "agent", None)
+        if isinstance(_agent_sel, str) and _agent_sel.strip():
+            from kanibako.config_interface import ConfigLevel, set_config_value
+            _msg = set_config_value(
+                "box.agent_name", _agent_sel.strip(),
+                config_path=project_toml,
+                command_scope=ConfigLevel.box,
+            )
+            if not _msg.startswith("Set "):
+                # A silent no-op would create a box whose plain start launches
+                # a DIFFERENT agent than the one the user just selected.
+                print(
+                    f"Error: failed to persist the box agent selection "
+                    f"({_msg}).",
+                    file=sys.stderr,
+                )
+                return 1
+
         # Write .gitignore for standalone projects only — at the project ROOT
         # (metadata_path), where box_data/ + vault/ live and need ignoring (drift
         # H+I: project_path is the workspace subdir, not the root).

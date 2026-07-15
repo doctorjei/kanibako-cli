@@ -2347,3 +2347,160 @@ class TestImportPersonaStoreForCreate:
         err = self._call(tmp_home, "navigator+codex", monkeypatch, target=resolved)
         assert err is None  # never crashes a create
         assert "could not verify" in capsys.readouterr().err
+
+
+class TestCreatePersistsAgentSelection:
+    """`create --agent <ref>` persists `box.agent_name` (Jei 2026-07-15).
+
+    Real-path ``run_create`` runs: the selection lands in the box settings file
+    through the sanctioned settings write, so a PLAIN ``start`` resolves the
+    selected agent via the normal cascade (explicit > box > workset > system
+    default) instead of falling through to the system default.  ``start
+    --agent <other>`` stays an ephemeral override (never persisted — covered by
+    the cascade precedence assert below).
+    """
+
+    def _create(self, tmp_home, *, agent=None):
+        import argparse
+
+        from kanibako.commands.box._parser import run_create
+
+        ns = argparse.Namespace(
+            path=str(tmp_home / "project"), standalone=False, no_vault=True,
+            name=None, image=None, agent=agent, allow_home=False,
+        )
+        return run_create(ns)
+
+    def _box_settings(self, config_file, tmp_home):
+        from kanibako.commands.start import _resolve_existing_box
+        from kanibako.config import load_config
+        from kanibako.paths import BOX_META_FILE, load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+        assert proj is not None
+        return proj.metadata_path / BOX_META_FILE
+
+    def test_create_with_agent_persists_box_agent_name(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.config_io import load_doc
+
+        assert self._create(tmp_home, agent="claude") == 0
+        settings = self._box_settings(config_file, tmp_home)
+        data = load_doc(settings)
+        assert data["box"]["agent_name"] == "claude"
+
+    def test_plain_create_writes_no_agent_name(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.config_io import load_doc
+
+        assert self._create(tmp_home) == 0
+        settings = self._box_settings(config_file, tmp_home)
+        data = load_doc(settings)
+        assert "agent_name" not in data.get("box", {})
+
+    def test_persisted_selection_drives_plain_start_resolution(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The read side: a plain start (explicit_agent=None) resolves the
+        persisted box.agent_name; an explicit --agent still wins ephemerally."""
+        from kanibako.config import load_merged_config, resolve_agent
+
+        assert self._create(tmp_home, agent="claude") == 0
+        settings = self._box_settings(config_file, tmp_home)
+        merged = load_merged_config(config_file, settings)
+        assert merged.box_agent_name == "claude"
+        resolved = resolve_agent(
+            explicit_agent=None,
+            box_agent_name=merged.box_agent_name,
+            workset_agent=None,
+            system_default_path=None,
+            project_path=tmp_home / "project",
+        )
+        assert resolved == "claude"
+        # Ephemeral override on top: explicit wins, nothing re-persisted.
+        assert resolve_agent(
+            explicit_agent="goose",
+            box_agent_name=merged.box_agent_name,
+            workset_agent=None,
+            system_default_path=None,
+            project_path=tmp_home / "project",
+        ) == "goose"
+
+    def test_persona_ref_is_persisted_raw(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """A persona selector persists as TYPED (`+` form; the read side
+        canonicalizes) — and the persona store import still ran (settings.yaml
+        for the node was registered from the store)."""
+        from kanibako.config_io import load_doc
+
+        # Lay down a conforming store entry + a real token file so the persona
+        # create verdict (codex: usable token + model) passes on the real path.
+        persona_dir = tmp_home / "config" / "personas" / "navigator"
+        (persona_dir / "codex").mkdir(parents=True)
+        (persona_dir / "codex" / "config.toml").write_text(
+            'model = "gemma4"\n'
+            "[model_providers.navigator]\n"
+            'name = "navigator"\n'
+            'base_url = "https://api.navigator.example/v1"\n'
+            'wire_api = "responses"\n'
+            'env_key = "NAVIGATOR_API_KEY"\n'
+        )
+        (persona_dir / ".secret_path").write_text("./token\n")
+        (persona_dir / "token").write_text("sk-test\n")
+
+        assert self._create(tmp_home, agent="navigator+codex") == 0
+        settings = self._box_settings(config_file, tmp_home)
+        assert load_doc(settings)["box"]["agent_name"] == "navigator+codex"
+        # The store import registered the agent node as part of the create.
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        node_settings = load_doc(std.agents / "navigator℘codex" / "settings.yaml")
+        assert node_settings["self"]["endpoint"] == "https://api.navigator.example/v1"
+
+    def test_failing_verdict_leaves_no_box_and_no_agent_name(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
+        leave NO box (no meta, no ``box.agent_name`` anywhere).  The verdict
+        runs BEFORE box materialisation and before the agent-selection write —
+        pin that ordering.  The agents/<node>/settings.yaml written by the
+        store import is the ONE documented exception (STORE-OWNED, reconciled
+        every start — not a create artifact)."""
+        from kanibako.commands.start import _resolve_existing_box
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths
+
+        # Conforming store entry whose token POINTER resolves but whose token
+        # FILE does not exist: the import succeeds; the create verdict's
+        # usable-token gate then refuses the create.
+        persona_dir = tmp_home / "config" / "personas" / "navigator"
+        (persona_dir / "codex").mkdir(parents=True)
+        (persona_dir / "codex" / "config.toml").write_text(
+            'model = "gemma4"\n'
+            "[model_providers.navigator]\n"
+            'name = "navigator"\n'
+            'base_url = "https://api.navigator.example/v1"\n'
+            'wire_api = "responses"\n'
+            'env_key = "NAVIGATOR_API_KEY"\n'
+        )
+        (persona_dir / ".secret_path").write_text("./token\n")
+        # NO token file written -> pointer unusable -> verdict refuses.
+
+        assert self._create(tmp_home, agent="navigator+codex") == 1
+        assert "Error" in capsys.readouterr().err
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        # No box was materialised: nothing resolves, no settings file exists,
+        # so box.agent_name cannot have been written anywhere.
+        assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
+        # The documented store-import exception: the agent node registration
+        # remains (by design; idempotently re-reconciled at every start).
+        assert (std.agents / "navigator℘codex" / "settings.yaml").exists()
