@@ -20,8 +20,18 @@ matcher = "startup|resume|clear|compact"
 type = "command"
 command = "python3 \"$HOME/playbook/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
 
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear|compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "d=\"${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}\"; mkdir -p \"$d\" && printf %s \"$PPID\" > \"$d/$PPID\" || true"
+
 [hooks.state."/home/agent/.codex/config.toml:session_start:1:0"]
 trusted_hash = "sha256:dd38a689fcecffcbebad00e3e4a1621c709219a2019c09429b71ba112eab6635"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:2:0"]
+trusted_hash = "sha256:1e3cf5c337cafcb027e68d507c303734be24da775b1e101f1e84e3266e952636"
 
 [projects."/home/agent/workspace"]
 trust_level = "trusted"

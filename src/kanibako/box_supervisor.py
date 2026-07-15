@@ -1088,6 +1088,18 @@ class BoxSupervisor:
 
         This preserves the E2f contract the single-pidfile scheme drove (a clean exit →
         NONE, a crash → DEAD → SELF_HEAL_CLI), now over the per-PID dir.
+
+        ⚑ AGENT ASYMMETRY (Phase 2 D2): only claude has a marker-REMOVE hook —
+        codex's hook surface has NO SessionEnd/exit event (verified against
+        codex-rs at rust-v0.141.0 and 0.144.x), so a cleanly-exited codex agent
+        leaves a stale marker and reads DEAD here, never NONE.  Intended: the
+        codex panel's sessions are threads inside one long-lived ``codex
+        app-server`` process, so its marker-PID dying ≈ the panel process
+        itself is gone — DEAD (→ SELF_HEAL_CLI when the VS Code server is still
+        attached) is the useful verdict, and at worst a clean exit costs one
+        benign self-heal.  Do NOT "fix" this by janitor-unlinking stale
+        markers at scan: DEAD-vs-NONE is exactly the information
+        :func:`decide_panel` consumes.
         """
         if not self.config.agent_markers_dir:
             return PanelAgentState.NONE

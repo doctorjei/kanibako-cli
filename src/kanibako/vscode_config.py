@@ -439,11 +439,20 @@ def merge_session_start_hook(settings: dict) -> dict:
 #
 # The box_supervisor READS a box-local markers DIRECTORY to enumerate which agent
 # sessions are live (panel-watch's dead-panel detection AND increment-4a newcomer
-# detection); this is the WRITE side.  We seed a claude ``SessionStart`` hook that
-# writes a per-PID marker FILE ``<dir>/$PPID`` and a ``SessionEnd`` hook that removes
-# ``<dir>/$PPID`` on a clean exit — so each live agent keeps its OWN marker present
-# and a clean shutdown clears it.  Both are MANAGED as their own groups, idempotent +
-# preserving of user hooks, exactly like the directive hook.
+# detection); this is the WRITE side, delivered per agent:
+#
+#   * claude — a ``SessionStart`` hook writes the per-PID marker FILE
+#     ``<dir>/$PPID`` and a ``SessionEnd`` hook removes it on a clean exit, so a
+#     clean shutdown clears its own marker.  Both are MANAGED as their own
+#     groups, idempotent + preserving of user hooks, exactly like the directive
+#     hook.
+#   * codex (D2) — the SAME marker-WRITE command, delivered as the second
+#     managed ``[[hooks.SessionStart]]`` group in the config.toml region
+#     (:func:`_build_codex_managed_region`).  ⚑ codex has NO SessionEnd hook
+#     event, so there is NO remove side: a cleanly-exited codex leaves a stale
+#     marker that the supervisor's ``kill -0`` scan classifies dead (see the
+#     region builder's docstring for why that is the intended semantics).
+#   * goose — no marker delivery yet (no panel-liveness surface).
 #
 # ⚑ PER-PID (increment 4a), not a single ``agent.pid`` file: the FILENAME is the PID
 # and the CONTENT is ``$PPID`` too (redundant — readers key on the FILENAME).  The old
@@ -810,17 +819,43 @@ def _build_codex_managed_region(
 ) -> str:
     """Build the regenerated kanibako-managed TOML region.
 
-    Holds the managed ``[[hooks.SessionStart]]`` group (the flattener in
-    ``--additional-context`` mode), the pre-computed ``[hooks.state]`` trusted
-    hash keyed on ``<box_config_path>:session_start:<group_index>:0``, and the
-    ``[projects."<codex_cwd>"] trust_level = "trusted"`` directory trust.
+    Holds TWO managed ``[[hooks.SessionStart]]`` groups, each with its own
+    pre-computed ``[hooks.state]`` trusted hash, plus the
+    ``[projects."<codex_cwd>"] trust_level = "trusted"`` directory trust:
+
+    * group *group_index* (state key ``…:session_start:<group_index>:0``) — the
+      instruction-delivery hook (the flattener in ``--additional-context``
+      mode), exactly as claude's;
+    * group *group_index*+1 (state key ``…:session_start:<group_index+1>:0``) —
+      the per-PID liveness MARKER write (codex D2), reusing claude's
+      :data:`_AGENT_MARKER_WRITE_COMMAND` VERBATIM (one SoT for the command
+      bytes on both agents).
+
+    TWO SINGLE-HANDLER groups, deliberately NOT one two-handler group: the
+    trust hash (:func:`codex_trusted_hash`) is oracle-pinned for the
+    ``{event_name, matcher, hooks:[ONE command]}`` identity; a multi-handler
+    group's per-handler hash shape is unverified upstream.  ⚑ codex has NO
+    SessionEnd/exit hook event (``HookEventName`` verified identical at
+    ``rust-v0.141.0`` and 0.144.x: SessionStart/Stop/… — ``Stop`` is per-TURN,
+    not process exit), so there is NO marker-REMOVE hook here: a clean codex
+    exit leaves a stale marker whose PID the box_supervisor's ``kill -0`` scan
+    classifies dead.  That is the intended semantics — the panel's sessions are
+    threads inside one long-lived ``codex app-server`` process, so marker-PID
+    death ≈ the panel process itself is gone.
+
     ``box_config_path`` is the BOX-absolute config path
     (``/home/agent/.codex/config.toml``), NOT the host write path — codex keys
-    trust by the path it reads in-box.
+    trust by the path it reads in-box.  *group_index* is the count of USER
+    ``[[hooks.SessionStart]]`` groups (the managed groups are appended after
+    them, so codex indexes them ``group_index`` and ``group_index + 1``).
     """
-    state_key = f"{box_config_path}:{_CODEX_EVENT_KEY}:{group_index}:0"
-    thash = codex_trusted_hash(
+    directive_key = f"{box_config_path}:{_CODEX_EVENT_KEY}:{group_index}:0"
+    directive_hash = codex_trusted_hash(
         _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _SESSION_START_COMMAND,
+    )
+    marker_key = f"{box_config_path}:{_CODEX_EVENT_KEY}:{group_index + 1}:0"
+    marker_hash = codex_trusted_hash(
+        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _AGENT_MARKER_WRITE_COMMAND,
     )
     return "\n".join(
         [
@@ -832,8 +867,18 @@ def _build_codex_managed_region(
             'type = "command"',
             f"command = {_toml_basic_string(_SESSION_START_COMMAND)}",
             "",
-            f"[hooks.state.{_toml_basic_string(state_key)}]",
-            f"trusted_hash = {_toml_basic_string(thash)}",
+            "[[hooks.SessionStart]]",
+            f"matcher = {_toml_basic_string(_SESSION_START_MATCHER)}",
+            "",
+            "[[hooks.SessionStart.hooks]]",
+            'type = "command"',
+            f"command = {_toml_basic_string(_AGENT_MARKER_WRITE_COMMAND)}",
+            "",
+            f"[hooks.state.{_toml_basic_string(directive_key)}]",
+            f"trusted_hash = {_toml_basic_string(directive_hash)}",
+            "",
+            f"[hooks.state.{_toml_basic_string(marker_key)}]",
+            f"trusted_hash = {_toml_basic_string(marker_hash)}",
             "",
             f"[projects.{_toml_basic_string(codex_cwd)}]",
             'trust_level = "trusted"',
