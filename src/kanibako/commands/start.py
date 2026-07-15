@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from kanibako.agent_config import AgentConfig
     from kanibako.config import KanibakoConfig
     from kanibako.paths import ProjectPaths, StandardPaths
     from kanibako.settings_launch import AuthSource
@@ -2041,6 +2042,22 @@ def _run_container(
     else:
         agent_cfg = load_agent_config(agent_cfg_path)
 
+    # PERSONA-GRATA STORE RECONCILE (the persona analog of credsync): a PERSONA
+    # agent whose persona-grata store entry exists reparses the store EVERY
+    # launch and verified-swaps the agent-scope values BEFORE the launch
+    # decisions below consume ``agent_cfg`` (store = source of truth; agent
+    # settings = the synced copy; higher scopes still override via the normal
+    # cascade).  IN-MEMORY only here — the swap rides ``agent_cfg_dirty`` into
+    # the existing gated persist AFTER the load-or-error pre-flight, so an
+    # unloadable persona still errors out with NOTHING left behind.  Bare
+    # agents and store-less personas do zero new work (the store is never
+    # touched for a bare node).
+    _persona_synced = False
+    if target is not None and harness_of(agent_id) != agent_id:
+        agent_cfg, _persona_synced = _reconcile_persona_store(
+            std.agents, agent_id, target, agent_cfg, logger,
+        )
+
     # Auth 3-tier SHARING chain + persona endpoint: resolve BOTH per-box decisions
     # ONCE off a SINGLE launch snapshot (single-route) — MOVED AHEAD of every
     # persona artifact so the load-or-error gate below is a TRUE pre-flight.  Reads
@@ -2075,7 +2092,9 @@ def _run_container(
     # ``seed_codex_config``).  Init None here so the non-persona launch reaches the
     # write with a None provider (byte-identical) instead of an unbound local.
     provider: CodexModelProvider | None = None
-    agent_cfg_dirty = target is not None and not agent_cfg_exists
+    agent_cfg_dirty = (
+        target is not None and not agent_cfg_exists
+    ) or _persona_synced
     if target is not None and harness_of(agent_id) != agent_id:
         (
             active_endpoint, persona_error, persona_adopted, provider,
@@ -3868,6 +3887,104 @@ def _name_new_box_probe(std, proj) -> None:
         )
     else:
         proj.name = short_hash(proj.project_hash)
+
+
+def _reconcile_persona_store(
+    agents_root, agent_id: str, target, agent_cfg, logger,
+) -> "tuple[AgentConfig, bool]":
+    """Per-launch persona-grata store reconcile (the persona ANALOG of credsync).
+
+    Called for a PERSONA agent only (caller gates ``harness_of != node``),
+    BEFORE the launch decisions consume ``agent_cfg``.  Reparses the
+    persona-grata store entry for *agent_id* (when one exists) into a
+    CANDIDATE config and applies the DESIGN §2b/§5b verified-swap rules:
+
+    * no store entry → not a store-managed persona: return unchanged;
+    * store present but unusable / candidate unbuildable → WARN, keep the
+      current (last-known-good) config, continue the launch;
+    * candidate == current owned values (endpoint/model/secret_path) → nothing
+      to sync (no probe spent);
+    * changed + probe PASS → SWAP (return the candidate; the caller's normal
+      gated persist writes it AFTER the load-or-error pre-flight, so an
+      unloadable persona still errors out with nothing left behind);
+    * changed + FAIL/unverifiable → WARN + KEEP last-known-good + continue
+      (never clobber working creds; never block a launch on a blip);
+    * changed + FIRST-EVER (no prior endpoint — nothing working to protect) →
+      use the candidate UNVERIFIED + WARN, whatever the probe said (refusing
+      would only re-error as "no endpoint configured", masking the cause).
+
+    Returns ``(agent_cfg, synced)`` — the EFFECTIVE config for the launch and
+    whether it changed (the caller folds *synced* into ``agent_cfg_dirty`` so
+    the existing post-preflight persist commits the swap).  NEVER persists
+    here and NEVER raises through (a reconcile failure warns and launches on
+    the last-known-good values).
+    """
+    from kanibako.persona_store import build_candidate, locate_entry
+
+    entry = locate_entry(agent_id)
+    if entry is None:
+        return agent_cfg, False
+    display = display_agent_ref(agent_id)
+    result = build_candidate(agents_root, entry, target, base=agent_cfg)
+    if result.candidate is None:
+        print(
+            f"Warning: persona store entry for '{display}' is unusable "
+            f"({result.error}); keeping the current agent settings.",
+            file=sys.stderr,
+        )
+        return agent_cfg, False
+    if result.warning is not None:
+        print(f"Warning: {result.warning}", file=sys.stderr)
+
+    candidate = result.candidate
+    changed = (
+        candidate.state.get("endpoint") != agent_cfg.state.get("endpoint")
+        or candidate.state.get("model") != agent_cfg.state.get("model")
+        or candidate.secret_path != agent_cfg.secret_path
+    )
+    if not changed:
+        logger.debug("persona '%s': store values unchanged; no sync", display)
+        return agent_cfg, False
+
+    verdict: "bool | None" = None
+    if (
+        result.settings is not None
+        and result.settings.endpoint
+        and result.token_path is not None
+    ):
+        try:
+            verdict = target.verify_persona(
+                result.settings.endpoint, result.token_path, result.settings.model,
+            )
+        except Exception:
+            # The probe contract is never-raise; hold a misbehaving plugin to
+            # it here so no persona launch can die on a probe bug (verdict
+            # stays None = unverifiable).
+            verdict = None
+    if verdict is True:
+        logger.debug("persona '%s': store values verified; syncing", display)
+        return candidate, True
+
+    first_ever = not agent_cfg.state.get("endpoint")
+    why = (
+        "the endpoint rejected the token"
+        if verdict is False
+        else "the endpoint could not be verified (unreachable, or no probe "
+             "was possible)"
+    )
+    if first_ever:
+        print(
+            f"Warning: persona '{display}': {why}; no last-known-good values "
+            f"exist, so the store values are used UNVERIFIED.",
+            file=sys.stderr,
+        )
+        return candidate, True
+    print(
+        f"Warning: persona '{display}': the store values changed but {why}; "
+        f"keeping the last-known-good agent settings for this launch.",
+        file=sys.stderr,
+    )
+    return agent_cfg, False
 
 
 def _persona_wiring(target) -> "PersonaSpec":

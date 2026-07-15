@@ -56,7 +56,7 @@ from kanibako.agent_ref import harness_of, parse_agent_ref, persona_of
 from kanibako.paths import xdg
 
 if TYPE_CHECKING:
-    from kanibako.targets.base import Target
+    from kanibako.targets.base import PersonaSettings, Target
 
 #: Read cap for ``.secret_path`` (bytes).  The file holds one token path
 #: (PATH_MAX-ish); anything larger is a malformed store — rejected WITHOUT
@@ -225,21 +225,53 @@ class ImportResult(NamedTuple):
       the ``.secret_path`` pointer did not resolve, so the endpoint/model were
       imported but the existing (last-known-good) token pointer was KEPT —
       the DESIGN §5b fail-safe shape.  ``None`` when everything resolved.
+    * *settings* — the parsed :class:`~kanibako.targets.base.PersonaSettings`
+      (``None`` only when the store config itself was unusable), so the
+      start-flow verify hook can probe WITHOUT re-parsing the store.
+    * *token_path* — the resolved ABSOLUTE token path (``None`` when the
+      pointer did not resolve — the *warning* case), for the same reason.
     """
 
     candidate: AgentConfig | None
     error: str | None
     warning: str | None
+    settings: PersonaSettings | None = None
+    token_path: Path | None = None
+
+
+def _copy_config(cfg: AgentConfig) -> AgentConfig:
+    """A per-container copy of *cfg* safe to mutate as a CANDIDATE.
+
+    Every dict/list container is copied one level deep (the import only ever
+    REPLACES whole values inside them, never mutates nested content), so a
+    candidate that fails verification leaves the caller's config untouched.
+    """
+    return AgentConfig(
+        name=cfg.name,
+        run_args=list(cfg.run_args),
+        state=dict(cfg.state),
+        env=dict(cfg.env),
+        secret_path=dict(cfg.secret_path),
+        transform_settings=dict(cfg.transform_settings),
+        node_tables={k: dict(v) for k, v in cfg.node_tables.items()},
+    )
 
 
 def build_candidate(
-    agents_root: Path, entry: PersonaEntry, target: Target,
+    agents_root: Path,
+    entry: PersonaEntry,
+    target: Target,
+    *,
+    base: AgentConfig | None = None,
 ) -> ImportResult:
     """Build the IN-MEMORY candidate agent settings for a store *entry*.
 
-    Read-modify-write shape, WITHOUT the write: load the node's CURRENT
-    settings file (absent file = fresh defaults), then apply ONLY the values
-    the store owns (DESIGN §2b — the store owns the AGENT scope):
+    Read-modify-write shape, WITHOUT the write: start from *base* when given
+    (a COPY of the caller's in-memory config — the start-flow hook passes the
+    launch's live ``agent_cfg``, which for a first-use launch carries
+    generated defaults that exist in NO file yet), else load the node's
+    CURRENT settings file (absent file = fresh defaults).  Then apply ONLY the
+    values the store owns (DESIGN §2b — the store owns the AGENT scope):
 
     * ``state["endpoint"]`` ← the harness config's endpoint (REQUIRED: a
       persona import with no endpoint is unusable → hard error);
@@ -267,9 +299,12 @@ def build_candidate(
         return ImportResult(None, (
             f"persona store config at {entry.config_dir} names no endpoint; "
             f"a persona import needs one"
-        ), None)
+        ), None, settings)
 
-    cfg = load_agent_config(agent_settings_path(agents_root, entry.node))
+    if base is not None:
+        cfg = _copy_config(base)
+    else:
+        cfg = load_agent_config(agent_settings_path(agents_root, entry.node))
     cfg.state["endpoint"] = settings.endpoint
     if settings.model:
         cfg.state["model"] = settings.model
@@ -283,7 +318,7 @@ def build_candidate(
             f"persona '{entry.node}': token pointer did not resolve "
             f"({token.error}); keeping the existing secret_path values"
         )
-    return ImportResult(cfg, None, warning)
+    return ImportResult(cfg, None, warning, settings, token.path)
 
 
 def persist_candidate(

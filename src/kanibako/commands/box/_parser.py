@@ -554,6 +554,88 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
         )
 
 
+def _import_persona_store_for_create(std, agent_ref: str, project_path) -> str | None:
+    """Initial persona-grata store import for ``create --agent <pid>+<hid>``.
+
+    The create-side trigger (DESIGN §4): when the explicit agent ref names a
+    persona whose persona-grata store entry EXISTS, register the agent node by
+    importing the store into ``agents/<node>/settings.yaml`` (endpoint/model +
+    the resolved token pointer) BEFORE the persona create verdict — so the
+    verdict's load-or-error gate sees the imported endpoint and passes for a
+    conforming store.  The import itself is first-ever (no last-known-good to
+    protect — DESIGN §5b), so it always lands; the probe here is WARN-ONLY and
+    never fails the create.  It is also the values' ONE verify: the start-flow
+    reconcile probes only when the store values CHANGE, and a start right after
+    this import sees them unchanged — without this probe a create-imported
+    token would never be verified at all.
+
+    Returns an ``"Error: …"`` message for the caller to print-and-refuse
+    (malformed ref, unusable store config, corrupt existing agent settings), or
+    ``None`` when there is nothing to do (bare/plain ref, no store entry,
+    harness not installed — all fall through to today's create behavior) or
+    the import succeeded (a soft token-pointer warning is printed here).
+    """
+    import yaml
+
+    from kanibako.agent_ref import display_agent_ref
+    from kanibako.errors import ConfigError
+    from kanibako.persona_store import import_persona_entry, locate_entry
+
+    try:
+        entry = locate_entry(agent_ref)
+    except ConfigError as e:
+        return f"Error: {e}"
+    if entry is None:
+        return None  # not a persona / no store entry -> normal create handling
+    target = resolve_target(entry.harness, project_path)
+    if target is None:
+        return None  # harness not installed -> the normal machinery errors
+    display = display_agent_ref(entry.node)
+    try:
+        result = import_persona_entry(std.agents, entry, target)
+    except yaml.YAMLError as e:
+        # The node's EXISTING settings.yaml is corrupt — surface it actionably
+        # (the launch would hit the same file); never traceback-crash a create.
+        return (
+            f"Error: the agent settings file for '{display}' is corrupt and "
+            f"cannot be updated from the persona store ({e}).\n"
+            f"  Fix or remove agents/{entry.node}/settings.yaml, then retry."
+        )
+    if result.error is not None:
+        return f"Error: {result.error}"
+    if result.warning is not None:
+        print(f"Warning: {result.warning}", file=sys.stderr)
+    # WARN-ONLY first-ever probe (see the docstring): the start-flow reconcile
+    # probes only on CHANGED store values, so this is these values' one verify.
+    if (
+        result.settings is not None
+        and result.settings.endpoint
+        and result.token_path is not None
+    ):
+        try:
+            verdict = target.verify_persona(
+                result.settings.endpoint, result.token_path, result.settings.model,
+            )
+        except Exception:
+            verdict = None  # probe contract is never-raise; hold plugins to it
+        if verdict is False:
+            print(
+                f"Warning: the persona endpoint rejected the token for "
+                f"'{display}'; imported anyway — fix the token in the store "
+                f"before starting.",
+                file=sys.stderr,
+            )
+        elif verdict is None:
+            print(
+                f"Warning: could not verify the persona endpoint for "
+                f"'{display}' (unreachable, or no probe was possible); "
+                f"imported unverified.",
+                file=sys.stderr,
+            )
+    print(f"Imported persona '{display}' from the persona store.")
+    return None
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -659,6 +741,21 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
     _name_new_box_probe(std, _probe)
+    # PERSONA-GRATA STORE IMPORT (create trigger): an explicit --agent persona
+    # ref whose store entry exists registers + imports the node's settings NOW,
+    # BEFORE the verdict below — which then gates the imported endpoint through
+    # the same load-or-error pre-flight as any keyspace-configured persona.
+    # Bare refs / absent store entries fall through untouched.  The agents/
+    # <node>/settings.yaml written here is STORE-OWNED and idempotent (every
+    # start re-reconciles it), so it is not a create artifact to roll back.
+    _agent_arg = getattr(args, "agent", None)
+    if isinstance(_agent_arg, str) and _agent_arg:
+        _store_err = _import_persona_store_for_create(
+            std, _agent_arg, _probe.project_path,
+        )
+        if _store_err is not None:
+            print(_store_err, file=sys.stderr)
+            return 1
     _persona_err = persona_create_verdict(
         std, config, _probe, explicit_agent=getattr(args, "agent", None)
     )

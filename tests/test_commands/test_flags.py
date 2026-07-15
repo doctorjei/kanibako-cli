@@ -83,6 +83,17 @@ class TestRelevance:
     def test_agent_relevant_on_agent_reauth(self, parser):
         check_flag_relevance(_parse(parser, ["agent", "reauth", "--agent", "x"]))
 
+    def test_agent_relevant_on_create(self, parser):
+        # The `create --agent` fix (persona-grata trigger): no longer rejected.
+        check_flag_relevance(
+            _parse(parser, ["create", "--agent", "navigator+codex"])
+        )
+
+    def test_agent_relevant_on_box_create(self, parser):
+        check_flag_relevance(
+            _parse(parser, ["box", "create", "--agent", "navigator+codex"])
+        )
+
     def test_agent_irrelevant_on_list_errors(self, parser):
         with pytest.raises(FlagRelevanceError):
             check_flag_relevance(_parse(parser, ["list", "--agent", "claude"]))
@@ -134,6 +145,8 @@ class TestRelevance:
         # Guardrail: every declared command key is a real dotted path shape.
         assert "start" in AGENT_FLAG_COMMANDS
         assert "agent reauth" in AGENT_FLAG_COMMANDS
+        assert "create" in AGENT_FLAG_COMMANDS
+        assert "box create" in AGENT_FLAG_COMMANDS
         assert "start" in BOX_FLAG_COMMANDS
         assert "workset disconnect" in BOX_FLAG_COMMANDS
 

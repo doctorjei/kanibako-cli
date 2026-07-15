@@ -2185,3 +2185,165 @@ class TestBoxListStandalone:
         out = capsys.readouterr().out
         assert proj.name in out
         assert "missing" in out
+
+
+class TestImportPersonaStoreForCreate:
+    """The create-side persona-grata trigger (`create --agent <pid>+<hid>`).
+
+    ``_import_persona_store_for_create`` registers + imports the node's
+    settings when a store entry exists; bare/plain refs, absent entries, and
+    uninstalled harnesses fall through (return None, write nothing) so create
+    behaves exactly as today for them.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _CODEX_TOML = (
+        'model = "gemma4"\n'
+        "[model_providers.navigator]\n"
+        'name = "navigator"\n'
+        'base_url = "https://api.navigator.example/v1"\n'
+        'wire_api = "responses"\n'
+        'env_key = "NAVIGATOR_API_KEY"\n'
+    )
+
+    def _std(self, tmp_home):
+        import types
+
+        return types.SimpleNamespace(agents=tmp_home / "data" / "agents")
+
+    def _store(self, tmp_home, *, config=True, pointer=True):
+        persona_dir = tmp_home / "config" / "personas" / "navigator"
+        (persona_dir / "codex").mkdir(parents=True)
+        if config:
+            (persona_dir / "codex" / "config.toml").write_text(self._CODEX_TOML)
+        if pointer:
+            (persona_dir / ".secret_path").write_text("./token\n")
+        return persona_dir
+
+    def _call(self, tmp_home, ref, monkeypatch, *, target="real", verdict=True):
+        import kanibako.commands.box._parser as parser_mod
+        from kanibako.commands.box._parser import _import_persona_store_for_create
+
+        if target == "real":
+            from kanibako.plugins.codex.target import CodexTarget
+
+            resolved = CodexTarget()
+            # Stub the network probe (instance-level): unit tests never do
+            # real I/O; the wire itself is covered in test_persona_settings.
+            resolved.verify_persona = (  # type: ignore[method-assign]
+                lambda *a, **k: verdict
+            )
+        else:
+            resolved = target
+        monkeypatch.setattr(
+            parser_mod, "resolve_target", lambda *a, **k: resolved,
+        )
+        return _import_persona_store_for_create(
+            self._std(tmp_home), ref, tmp_home / "project",
+        )
+
+    def _settings_path(self, tmp_home):
+        return (
+            tmp_home / "data" / "agents" / "navigator℘codex" / "settings.yaml"
+        )
+
+    def test_bare_ref_falls_through(self, tmp_home, monkeypatch):
+        self._store(tmp_home)
+        assert self._call(tmp_home, "codex", monkeypatch) is None
+        assert not (tmp_home / "data" / "agents").exists()
+
+    def test_persona_without_store_falls_through(self, tmp_home, monkeypatch):
+        assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
+        assert not (tmp_home / "data" / "agents").exists()
+
+    def test_uninstalled_harness_falls_through(self, tmp_home, monkeypatch):
+        self._store(tmp_home)
+        assert (
+            self._call(tmp_home, "navigator+codex", monkeypatch, target=None)
+            is None
+        )
+        assert not (tmp_home / "data" / "agents").exists()
+
+    def test_store_entry_registers_and_imports(self, tmp_home, monkeypatch, capsys):
+        from kanibako.config_io import load_doc
+
+        persona_dir = self._store(tmp_home)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is None
+        data = load_doc(self._settings_path(tmp_home))
+        assert data["self"]["endpoint"] == self._ENDPOINT
+        assert data["self"]["model"] == "gemma4"
+        assert data["self"]["secret_path"]["NAVIGATOR_API_KEY"] == str(
+            persona_dir / "token"
+        )
+        assert "Imported persona 'navigator+codex'" in capsys.readouterr().out
+
+    def test_unusable_store_config_is_an_error(self, tmp_home, monkeypatch):
+        self._store(tmp_home, config=False)  # entry dir, no config.toml
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is not None and err.startswith("Error:")
+        assert not self._settings_path(tmp_home).exists()
+
+    def test_malformed_ref_is_an_error(self, tmp_home, monkeypatch):
+        err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
+        assert err is not None and err.startswith("Error:")
+
+    def test_token_pointer_warning_still_imports(self, tmp_home, monkeypatch, capsys):
+        from kanibako.config_io import load_doc
+
+        self._store(tmp_home, pointer=False)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is None
+        assert "Warning:" in capsys.readouterr().err
+        data = load_doc(self._settings_path(tmp_home))
+        assert data["self"]["endpoint"] == self._ENDPOINT
+        assert "secret_path" not in data["self"]
+
+    def test_corrupt_existing_settings_is_a_clean_error(self, tmp_home, monkeypatch):
+        self._store(tmp_home)
+        path = self._settings_path(tmp_home)
+        path.parent.mkdir(parents=True)
+        path.write_text("self: [unclosed\n")
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is not None and "corrupt" in err
+
+    # --- the create-time WARN-ONLY probe (these values' ONE verify: the
+    # --- start reconcile probes only on CHANGED store values) ---------------
+
+    def test_verified_import_emits_no_warning(self, tmp_home, monkeypatch, capsys):
+        self._store(tmp_home)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=True)
+        assert err is None
+        assert "Warning" not in capsys.readouterr().err
+
+    def test_rejected_token_warns_but_still_imports(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        self._store(tmp_home)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=False)
+        assert err is None  # warn-only: create still succeeds
+        assert "rejected the token" in capsys.readouterr().err
+        assert self._settings_path(tmp_home).exists()
+
+    def test_unverifiable_endpoint_warns_but_still_imports(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        self._store(tmp_home)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=None)
+        assert err is None
+        assert "could not verify" in capsys.readouterr().err
+        assert self._settings_path(tmp_home).exists()
+
+    def test_probe_raise_is_held_to_the_contract(self, tmp_home, monkeypatch, capsys):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        self._store(tmp_home)
+
+        def _boom(*a, **k):
+            raise RuntimeError("misbehaving plugin probe")
+
+        resolved = CodexTarget()
+        resolved.verify_persona = _boom  # type: ignore[method-assign]
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=resolved)
+        assert err is None  # never crashes a create
+        assert "could not verify" in capsys.readouterr().err
