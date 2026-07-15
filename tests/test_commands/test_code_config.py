@@ -22,9 +22,6 @@ from kanibako.vscode_config import (
     clear_bypass_permissions,
     clear_claude_bypass_permissions,
     codex_trusted_hash,
-    deliver_claude_panel_permissions,
-    deliver_directive_session_hook,
-    deliver_goose_panel_permissions,
     merge_attached_container_config,
     merge_bypass_permissions,
     merge_codex_config,
@@ -339,83 +336,6 @@ def test_clear_claude_bypass_idempotent(tmp_path):
     path.write_text(json.dumps({"permissions": {"defaultMode": "plan"}}))
     # A user's own mode → no change, no write.
     assert clear_claude_bypass_permissions(path) is False
-
-
-# --- Ph4b Vector A gate: deliver_claude_panel_permissions (SYMMETRIC) --------
-
-def test_deliver_on_claude_sets(tmp_path):
-    """auto_approve ON + claude → SETs bypassPermissions."""
-    wrote = deliver_claude_panel_permissions(
-        auto_approve=True, is_claude=True, claude_config_dir=tmp_path,
-    )
-    assert wrote is True
-    written = json.loads((tmp_path / "settings.json").read_text())
-    assert written["permissions"]["defaultMode"] == "bypassPermissions"
-
-
-def test_deliver_off_clears_our_bypass(tmp_path):
-    """auto_approve OFF + an existing MANAGED bypass → CLEARED (mutation-proven).
-
-    Reverting the clear-path (making the OFF branch inert) reddens this test."""
-    path = tmp_path / "settings.json"
-    path.write_text(json.dumps({"permissions": {"defaultMode": "bypassPermissions"}}))
-    wrote = deliver_claude_panel_permissions(
-        auto_approve=False, is_claude=True, claude_config_dir=tmp_path,
-    )
-    assert wrote is True
-    assert json.loads(path.read_text()) == {}
-
-
-def test_deliver_off_preserves_user_mode(tmp_path):
-    """auto_approve OFF + a user's own ``plan`` mode → left intact (no write)."""
-    path = tmp_path / "settings.json"
-    path.write_text(json.dumps({"permissions": {"defaultMode": "plan"}}))
-    wrote = deliver_claude_panel_permissions(
-        auto_approve=False, is_claude=True, claude_config_dir=tmp_path,
-    )
-    assert wrote is False
-    assert json.loads(path.read_text()) == {"permissions": {"defaultMode": "plan"}}
-
-
-def test_deliver_off_no_file_is_noop(tmp_path):
-    """auto_approve OFF + no file → no-op, file NOT created."""
-    wrote = deliver_claude_panel_permissions(
-        auto_approve=False, is_claude=True, claude_config_dir=tmp_path,
-    )
-    assert wrote is False
-    assert not (tmp_path / "settings.json").exists()
-
-
-def test_deliver_off_clears_default_mode_keeps_allow_deny(tmp_path):
-    """OFF + permissions with allow/deny AND our bypass defaultMode → defaultMode
-    cleared, allow/deny kept."""
-    path = tmp_path / "settings.json"
-    path.write_text(json.dumps({
-        "permissions": {
-            "defaultMode": "bypassPermissions",
-            "allow": ["Bash(ls)"],
-            "deny": ["Bash(rm)"],
-        },
-    }))
-    wrote = deliver_claude_panel_permissions(
-        auto_approve=False, is_claude=True, claude_config_dir=tmp_path,
-    )
-    assert wrote is True
-    perms = json.loads(path.read_text())["permissions"]
-    assert "defaultMode" not in perms
-    assert perms["allow"] == ["Bash(ls)"]
-    assert perms["deny"] == ["Bash(rm)"]
-
-
-def test_deliver_non_claude_is_inert(tmp_path):
-    """Non-claude agent → NOTHING written in EITHER direction."""
-    assert deliver_claude_panel_permissions(
-        auto_approve=True, is_claude=False, claude_config_dir=tmp_path,
-    ) is False
-    assert deliver_claude_panel_permissions(
-        auto_approve=False, is_claude=False, claude_config_dir=tmp_path,
-    ) is False
-    assert not (tmp_path / "settings.json").exists()
 
 
 # --- merge_session_start_hook (pure, increment 2b) -------------------------
@@ -750,10 +670,9 @@ _TEMPLATE = (
 )
 
 
-def _merge(text, *, auto_approve=True):
+def _merge(text):
     return merge_codex_config(
         text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=auto_approve,
     )
 
 
@@ -792,34 +711,23 @@ def test_codex_merge_command_roundtrips_through_toml_unexpanded():
     assert '"$HOME' in cmd and '"$KANIBAKO_DIRECTIVE_SEED"' in cmd
 
 
-def test_codex_merge_approval_parity_on_sets_both():
-    data = tomllib.loads(_merge(_TEMPLATE, auto_approve=True))
-    assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "workspace-write"
-
-
-def test_codex_merge_approval_parity_off_omits_both():
-    data = tomllib.loads(_merge(_TEMPLATE, auto_approve=False))
+def test_codex_merge_never_writes_approval_keys():
+    """T1 seam split: the directive merge NEVER writes the approval/sandbox
+    parity keys — those have exactly one writer, ``seed_codex_approval``."""
+    data = tomllib.loads(_merge(_TEMPLATE))
     assert "approval_policy" not in data
     assert "sandbox_mode" not in data
     # hook + trust are UNCONDITIONAL (orthogonal to yolo).
     assert "SessionStart" in data["hooks"]
 
 
-def test_codex_merge_off_clears_only_managed_value():
-    """OFF removes our managed approval value but LEAVES a user-chosen one."""
+def test_codex_merge_passes_existing_approval_keys_through(tmp_path):
+    """Keys already in the file (whoever wrote them — the approval seeder or
+    the user) pass through the directive merge byte-untouched."""
     text = 'approval_policy = "never"\nsandbox_mode = "read-only"\n'
-    data = tomllib.loads(_merge(text, auto_approve=False))
-    assert "approval_policy" not in data  # was our managed value → removed
-    assert data["sandbox_mode"] == "read-only"  # user value → preserved
-
-
-def test_codex_merge_on_overrides_user_approval():
-    """ON SETS the managed value even over a user-chosen one (mirrors claude
-    merge_bypass_permissions ON-direction)."""
-    text = 'approval_policy = "untrusted"\n'
-    data = tomllib.loads(_merge(text, auto_approve=True))
+    data = tomllib.loads(_merge(text))
     assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "read-only"
 
 
 def test_codex_merge_preserves_unrelated_user_keys_and_comments():
@@ -834,8 +742,6 @@ def test_codex_merge_preserves_unrelated_user_keys_and_comments():
     data = tomllib.loads(out)
     assert data["model"] == "gpt-5-codex"
     assert data["mcp_servers"]["foo"]["command"] == "serve"
-    # managed root keys land BEFORE the first table (legal top-level position).
-    assert data["approval_policy"] == "never"
 
 
 def test_codex_merge_is_idempotent():
@@ -844,19 +750,6 @@ def test_codex_merge_is_idempotent():
     assert twice == once
     # exactly ONE managed group after a re-merge.
     assert once.count("[[hooks.SessionStart]]") == 1
-
-
-def test_codex_merge_idempotent_off_direction():
-    off_once = _merge(_TEMPLATE, auto_approve=False)
-    off_twice = _merge(off_once, auto_approve=False)
-    assert off_twice == off_once
-
-
-def test_codex_merge_toggle_on_then_off_then_on():
-    on1 = _merge(_TEMPLATE, auto_approve=True)
-    off = _merge(on1, auto_approve=False)
-    on2 = _merge(off, auto_approve=True)
-    assert on2 == on1  # round-trips back to the ON state
 
 
 def test_codex_merge_tolerates_corrupt_text():
@@ -889,170 +782,25 @@ def test_codex_merge_counts_preceding_user_sessionstart_group():
     assert groups[1]["hooks"][0]["command"] == _SESSION_START_COMMAND
 
 
-# --- seed_codex_config (I/O) + deliver_directive_session_hook dispatch -------
+# --- seed_codex_config (I/O; the directive-hook write) ----------------------
 
 def test_seed_codex_config_writes_and_is_idempotent(tmp_path):
     path = tmp_path / "config.toml"
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is True
     tomllib.loads(path.read_text())  # valid
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is False
 
 
 def test_seed_codex_config_absent_file_is_created(tmp_path):
     path = tmp_path / "nested" / "config.toml"
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is True
     assert path.exists()
-
-
-def test_deliver_directive_codex_writes_config_toml_not_hooks_json(tmp_path):
-    """The codex branch writes ~/.codex/config.toml (TOML) — NOT a hooks.json."""
-    wrote = deliver_directive_session_hook(
-        agent_name="codex",
-        config_root=tmp_path,
-        box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD,
-        auto_approve=True,
-    )
-    assert wrote is True
-    cfg = tmp_path / ".codex" / "config.toml"
-    assert cfg.exists()
-    assert not (tmp_path / ".codex" / "hooks.json").exists()
-    data = tomllib.loads(cfg.read_text())
-    assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
-        _SESSION_START_COMMAND
-    )
-    assert data["projects"][_CODEX_CWD]["trust_level"] == "trusted"
-
-
-def test_deliver_directive_claude_writes_settings_json(tmp_path):
-    """The claude branch still writes ~/.claude/settings.json (JSON hooks)."""
-    wrote = deliver_directive_session_hook(
-        agent_name="claude",
-        config_root=tmp_path,
-        box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD,
-        auto_approve=True,
-    )
-    assert wrote is True
-    settings = tmp_path / ".claude" / "settings.json"
-    assert settings.exists()
-    assert not (tmp_path / ".codex" / "config.toml").exists()
-    data = json.loads(settings.read_text())
-    assert data["hooks"] == _full_managed_hooks()
-
-
-def test_deliver_directive_other_agent_is_inert(tmp_path):
-    """A non-claude agent (goose) gets NO claude hooks — no pidfile write/remove."""
-    assert deliver_directive_session_hook(
-        agent_name="goose",
-        config_root=tmp_path,
-        box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD,
-        auto_approve=True,
-    ) is False
-    assert not (tmp_path / ".codex").exists()
-    assert not (tmp_path / ".claude").exists()
-
-
-# --- FF-5 permission parity: deliver_goose_panel_permissions ----------------
-
-def _goose_cfg(tmp_path) -> Path:
-    return tmp_path / "config.yaml"
-
-
-def test_deliver_goose_on_writes_auto(tmp_path):
-    """auto_approve ON + goose → GOOSE_MODE: auto."""
-    wrote = deliver_goose_panel_permissions(
-        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
-    )
-    assert wrote is True
-    assert yaml.safe_load(_goose_cfg(tmp_path).read_text()) == {
-        "GOOSE_MODE": "auto",
-    }
-
-
-def test_deliver_goose_off_writes_approve(tmp_path):
-    """auto_approve OFF + goose → GOOSE_MODE: approve (EXPLICIT secure value, not
-    cleared — an unset GOOSE_MODE defaults to permissive ``auto``)."""
-    wrote = deliver_goose_panel_permissions(
-        auto_approve=False, is_goose=True, goose_config_dir=tmp_path,
-    )
-    assert wrote is True
-    assert yaml.safe_load(_goose_cfg(tmp_path).read_text()) == {
-        "GOOSE_MODE": "approve",
-    }
-
-
-def test_deliver_goose_non_goose_is_inert(tmp_path):
-    """Non-goose agent → NOTHING written in EITHER direction."""
-    assert deliver_goose_panel_permissions(
-        auto_approve=True, is_goose=False, goose_config_dir=tmp_path,
-    ) is False
-    assert deliver_goose_panel_permissions(
-        auto_approve=False, is_goose=False, goose_config_dir=tmp_path,
-    ) is False
-    assert not _goose_cfg(tmp_path).exists()
-
-
-def test_deliver_goose_absent_file_created_with_just_goose_mode(tmp_path):
-    """An absent config.yaml is created with ONLY the GOOSE_MODE key."""
-    path = _goose_cfg(tmp_path)
-    assert not path.exists()
-    assert deliver_goose_panel_permissions(
-        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
-    ) is True
-    assert yaml.safe_load(path.read_text()) == {"GOOSE_MODE": "auto"}
-
-
-def test_deliver_goose_preserves_unrelated_keys(tmp_path):
-    """Pre-existing unrelated keys are preserved across the write."""
-    path = _goose_cfg(tmp_path)
-    path.write_text(yaml.safe_dump({
-        "GOOSE_PROVIDER": "anthropic",
-        "extensions": {"foo": {"enabled": True}},
-    }))
-    assert deliver_goose_panel_permissions(
-        auto_approve=False, is_goose=True, goose_config_dir=tmp_path,
-    ) is True
-    written = yaml.safe_load(path.read_text())
-    assert written["GOOSE_PROVIDER"] == "anthropic"
-    assert written["extensions"] == {"foo": {"enabled": True}}
-    assert written["GOOSE_MODE"] == "approve"
-
-
-def test_deliver_goose_is_idempotent(tmp_path):
-    """A second call with the same state returns False and does not rewrite."""
-    assert deliver_goose_panel_permissions(
-        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
-    ) is True
-    before = _goose_cfg(tmp_path).read_text()
-    assert deliver_goose_panel_permissions(
-        auto_approve=True, is_goose=True, goose_config_dir=tmp_path,
-    ) is False
-    assert _goose_cfg(tmp_path).read_text() == before
-
-
-def test_deliver_goose_overwrites_conflicting_existing_value(tmp_path):
-    """A pre-existing GOOSE_MODE with a DIFFERENT value is OVERWRITTEN to the
-    desired one (guards against a setdefault-style mutant that would leave a
-    stale permissive ``auto`` in place for an OFF box)."""
-    path = _goose_cfg(tmp_path)
-    path.write_text(yaml.safe_dump({
-        "GOOSE_MODE": "auto",
-        "GOOSE_PROVIDER": "anthropic",
-    }))
-    assert deliver_goose_panel_permissions(
-        auto_approve=False, is_goose=True, goose_config_dir=tmp_path,
-    ) is True
-    written = yaml.safe_load(path.read_text())
-    assert written["GOOSE_MODE"] == "approve"
-    assert written["GOOSE_PROVIDER"] == "anthropic"
 
 
 # --- Codex personas INC 1: merge_codex_model_provider (pure; text→text) ------
@@ -1204,11 +952,11 @@ def test_codex_merge_no_provider_is_byte_identical():
     """DEFAULT (model_provider=None) is BYTE-IDENTICAL to the pre-provider merge:
     no provider region, no model/model_provider keys."""
     default = merge_codex_config(
-        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     )
     explicit_none = merge_codex_config(
         _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, model_provider=None,
+        model_provider=None,
     )
     assert default == explicit_none
     assert "model_providers" not in default
@@ -1221,7 +969,7 @@ def test_codex_merge_with_provider_composes_both_regions():
     mp = CodexModelProvider(**_NAVIGATOR)
     out = merge_codex_config(
         _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, model_provider=mp,
+        model_provider=mp,
     )
     data = tomllib.loads(out)
     # hook region intact
@@ -1229,7 +977,6 @@ def test_codex_merge_with_provider_composes_both_regions():
         _SESSION_START_COMMAND
     )
     assert data["projects"][_CODEX_CWD]["trust_level"] == "trusted"
-    assert data["approval_policy"] == "never"
     # provider region present
     assert data["model"] == "gemma-4-31b-it"
     assert data["model_provider"] == "navigator"
@@ -1243,8 +990,7 @@ def test_codex_merge_with_provider_is_idempotent():
     reconciled, not duplicated)."""
     mp = CodexModelProvider(**_NAVIGATOR)
     kw = dict(
-        box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
-        model_provider=mp,
+        box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=mp,
     )
     once = merge_codex_config(_TEMPLATE, **kw)
     twice = merge_codex_config(once, **kw)
@@ -1264,7 +1010,7 @@ def test_codex_merge_provider_preserves_user_content():
     mp = CodexModelProvider(**_NAVIGATOR)
     out = merge_codex_config(
         text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, model_provider=mp,
+        model_provider=mp,
     )
     assert "# keep me" in out
     data = tomllib.loads(out)
@@ -1280,10 +1026,10 @@ def test_seed_codex_config_no_provider_byte_identical(tmp_path):
     p1 = tmp_path / "a.toml"
     p2 = tmp_path / "b.toml"
     seed_codex_config(
-        p1, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        p1, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     )
     seed_codex_config(
-        p2, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        p2, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=None,
     )
     assert p1.read_text() == p2.read_text()
@@ -1294,7 +1040,7 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
     path = tmp_path / "config.toml"
     mp = CodexModelProvider(**_NAVIGATOR)
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, auto_approve=True,
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=mp,
     ) is True
     data = tomllib.loads(path.read_text())
@@ -1302,79 +1048,11 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
     assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
 
 
-# --- INC 3 dispatch seam: deliver_directive_session_hook(model_provider=...) --
-
-def test_deliver_directive_codex_with_provider_writes_region(tmp_path):
-    """INC 3: a codex-persona launch threads the provider through the SINGLE
-    config.toml write site — the file carries BOTH the hook/trust region AND the
-    [model_providers.<id>] block + model/model_provider selection."""
-    mp = CodexModelProvider(**_NAVIGATOR)
-    wrote = deliver_directive_session_hook(
-        agent_name="codex",
-        config_root=tmp_path,
-        box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD,
-        auto_approve=True,
-        model_provider=mp,
-    )
-    assert wrote is True
-    data = tomllib.loads((tmp_path / ".codex" / "config.toml").read_text())
-    # hook/trust region intact alongside the provider region.
-    assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == (
-        _SESSION_START_COMMAND
-    )
-    assert data["projects"][_CODEX_CWD]["trust_level"] == "trusted"
-    assert data["model"] == "gemma-4-31b-it"
-    assert data["model_provider"] == "navigator"
-    assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
-
-
-def test_deliver_directive_codex_no_provider_byte_identical(tmp_path):
-    """A bare codex launch (model_provider omitted) writes a config.toml
-    BYTE-IDENTICAL to an explicit model_provider=None — no provider region."""
-    r1 = tmp_path / "a"
-    r2 = tmp_path / "b"
-    deliver_directive_session_hook(
-        agent_name="codex", config_root=r1, box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD, auto_approve=True,
-    )
-    deliver_directive_session_hook(
-        agent_name="codex", config_root=r2, box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD, auto_approve=True, model_provider=None,
-    )
-    a = (r1 / ".codex" / "config.toml").read_text()
-    b = (r2 / ".codex" / "config.toml").read_text()
-    assert a == b
-    assert "model_providers" not in a
-    assert "model_provider = " not in a
-
-
-def test_deliver_directive_claude_ignores_provider(tmp_path):
-    """The claude branch IGNORES model_provider (claude carries its persona via env,
-    not config.toml): the settings.json is byte-identical to a no-provider write and
-    NO codex config.toml is created."""
-    mp = CodexModelProvider(**_NAVIGATOR)
-    r1 = tmp_path / "with"
-    r2 = tmp_path / "without"
-    deliver_directive_session_hook(
-        agent_name="claude", config_root=r1, box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD, auto_approve=True, model_provider=mp,
-    )
-    deliver_directive_session_hook(
-        agent_name="claude", config_root=r2, box_codex_config_path=_BOX_CFG,
-        codex_cwd=_CODEX_CWD, auto_approve=True,
-    )
-    assert (r1 / ".claude" / "settings.json").read_text() == (
-        (r2 / ".claude" / "settings.json").read_text()
-    )
-    assert not (r1 / ".codex").exists()
-
-
 # --- T1 seam Step 2: seed_codex_approval (standalone approval writer) --------
 #
 # The codex panel-permissions emitter behind ``Target.deliver_panel_permissions``.
-# After the seam split it is the SOLE writer of approval_policy/sandbox_mode; the
-# directive write (seed_codex_config include_approval=False) never touches them.
+# The SOLE writer of approval_policy/sandbox_mode; the directive write
+# (seed_codex_config) never touches them.
 
 
 def test_seed_codex_approval_on_absent_creates_approval_only(tmp_path):
@@ -1429,7 +1107,6 @@ def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
     path = tmp_path / "config.toml"
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=False, include_approval=False,
     )
     region_only = path.read_text()
     assert region_only.lstrip().startswith("# >>> kanibako-managed")
@@ -1443,7 +1120,6 @@ def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
     # ...and a subsequent directive re-merge does NOT swallow the keys:
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, include_approval=False,
     )
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
@@ -1461,20 +1137,18 @@ def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
     launch's region strip.  The seam extracts BOTH regions before the root-key
     surgery, so the keys land in the TRUE root section and survive.  This is
     the one composition cell that is byte-DIVERGENT from legacy, in the
-    bug-fix direction; the legacy path (and its hazard) dies at plan Step 5."""
+    bug-fix direction; the legacy path (and its hazard) was deleted at plan Step 5."""
     path = tmp_path / "config.toml"
     # Persona launch with approval keys absent (auto_approve=False history):
     seed_codex_approval(path, auto_approve=False)
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=False, model_provider=CodexModelProvider(**_NAVIGATOR),
-        include_approval=False,
+        model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     # BARE relaunch (provider=None), yolo toggled ON — the hazard cell:
     assert seed_codex_approval(path, auto_approve=True) is True
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, include_approval=False,
     )
     out = path.read_text()
     assert out.index("approval_policy") < out.index(
@@ -1485,8 +1159,7 @@ def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
     seed_codex_approval(path, auto_approve=True)
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, model_provider=CodexModelProvider(**_NAVIGATOR),
-        include_approval=False,
+        model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
@@ -1499,8 +1172,7 @@ def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
     path = tmp_path / "config.toml"
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=False, model_provider=CodexModelProvider(**_NAVIGATOR),
-        include_approval=False,
+        model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     assert seed_codex_approval(path, auto_approve=True) is True
     data = tomllib.loads(path.read_text())
@@ -1513,53 +1185,13 @@ def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
     assert key in data["hooks"]["state"]
 
 
-# --- T1 seam Step 2: the seam composition == the legacy single write ---------
+# --- T1 seam: the composed codex writes are stable -------------------------
 #
-# The unit-level byte-identity proof behind the golden fixtures: panel seam
-# (seed_codex_approval) FIRST, directive seam (include_approval=False) SECOND
-# must reproduce the legacy coupled write (include_approval=True) EXACTLY, for
-# every pre-state x auto_approve x provider combination.
-
-
-def _legacy_vs_seam_paths(tmp_path, *, pre_text, auto_approve, provider):
-    legacy = tmp_path / "legacy" / "config.toml"
-    seam = tmp_path / "seam" / "config.toml"
-    for p in (legacy, seam):
-        if pre_text is not None:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(pre_text)
-    seed_codex_config(
-        legacy, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=auto_approve, model_provider=provider,
-    )
-    seed_codex_approval(seam, auto_approve=auto_approve)
-    seed_codex_config(
-        seam, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=auto_approve, model_provider=provider,
-        include_approval=False,
-    )
-    return legacy.read_bytes(), seam.read_bytes()
-
-
-def test_codex_seam_composition_matches_legacy_write(tmp_path):
-    user = (
-        '# user config\nsandbox_mode = "read-only"\n\n[profiles.fast]\n'
-        'model = "gpt-5-codex"\n'
-    )
-    cases = []
-    for pre_text in (None, _TEMPLATE, user):
-        for auto in (True, False):
-            for provider in (None, CodexModelProvider(**_NAVIGATOR)):
-                cases.append((pre_text, auto, provider))
-    for i, (pre_text, auto, provider) in enumerate(cases):
-        legacy, seam = _legacy_vs_seam_paths(
-            tmp_path / f"case-{i}", pre_text=pre_text,
-            auto_approve=auto, provider=provider,
-        )
-        assert legacy == seam, (
-            f"seam-composed bytes drifted from legacy write "
-            f"(pre={pre_text!r:.30}, auto={auto}, provider={provider is not None})"
-        )
+# The legacy-vs-seam byte-equivalence matrix retired WITH the legacy write
+# (plan Step 5); the golden fixtures (test_panel_delivery_golden.py) carry the
+# byte-identity guarantee permanently.  What stays unit-pinned here is the
+# composition's stability: a relaunch over the two writers' own output is a
+# byte-level no-op (no writer fights the other).
 
 
 def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
@@ -1568,54 +1200,13 @@ def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
     seed_codex_approval(path, auto_approve=True)
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, include_approval=False,
     )
     before = path.read_bytes()
     assert seed_codex_approval(path, auto_approve=True) is False
     assert seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, include_approval=False,
     ) is False
     assert path.read_bytes() == before
-
-
-# --- T1 seam Step 2: merge_codex_config include_approval=False ---------------
-
-
-def test_codex_merge_exclude_approval_writes_no_approval_keys():
-    for auto in (True, False):
-        out = merge_codex_config(
-            _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-            auto_approve=auto, include_approval=False,
-        )
-        data = tomllib.loads(out)
-        assert "approval_policy" not in data
-        assert "sandbox_mode" not in data
-
-
-def test_codex_merge_exclude_approval_ignores_auto_approve():
-    on = merge_codex_config(
-        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=True, include_approval=False,
-    )
-    off = merge_codex_config(
-        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=False, include_approval=False,
-    )
-    assert on == off
-
-
-def test_codex_merge_exclude_approval_preserves_existing_keys():
-    """Excluded means UNTOUCHED — keys already in the file (whoever wrote them)
-    pass through byte-for-byte, even managed values with auto_approve=False."""
-    text = 'approval_policy = "never"\nsandbox_mode = "read-only"\n'
-    out = merge_codex_config(
-        text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-        auto_approve=False, include_approval=False,
-    )
-    data = tomllib.loads(out)
-    assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "read-only"
 
 
 # --- T1 seam Step 2: seed_goose_mode (extracted GOOSE_MODE emitter) ----------
@@ -1646,12 +1237,38 @@ def test_seed_goose_mode_idempotent_and_merge_preserving(tmp_path):
     assert path.read_bytes() == before
 
 
-def test_goose_wrapper_delegates_to_seed_goose_mode(tmp_path):
-    """The legacy gate wrapper and the emitter produce identical bytes."""
-    d1 = tmp_path / "wrapper"
-    d2 = tmp_path / "emitter"
-    assert deliver_goose_panel_permissions(
-        auto_approve=False, is_goose=True, goose_config_dir=d1,
-    ) is True
-    assert seed_goose_mode(d2 / "config.yaml", auto_approve=False) is True
-    assert (d1 / "config.yaml").read_bytes() == (d2 / "config.yaml").read_bytes()
+def test_seed_goose_mode_overwrites_conflicting_existing_value(tmp_path):
+    """A pre-existing GOOSE_MODE with a DIFFERENT value is OVERWRITTEN to the
+    desired one (guards against a setdefault-style mutant that would leave a
+    stale permissive ``auto`` in place for an OFF box)."""
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({
+        "GOOSE_MODE": "auto",
+        "GOOSE_PROVIDER": "anthropic",
+    }))
+    assert seed_goose_mode(path, auto_approve=False) is True
+    written = yaml.safe_load(path.read_text())
+    assert written["GOOSE_MODE"] == "approve"
+    assert written["GOOSE_PROVIDER"] == "anthropic"
+
+
+def test_seed_codex_approval_on_overrides_user_value(tmp_path):
+    """ON SETS the managed value even over a user-chosen one (mirrors claude
+    merge_bypass_permissions ON-direction)."""
+    path = tmp_path / "config.toml"
+    path.write_text('approval_policy = "untrusted"\n')
+    assert seed_codex_approval(path, auto_approve=True) is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "workspace-write"
+
+
+def test_seed_codex_approval_toggle_on_off_on_round_trips(tmp_path):
+    """ON → OFF → ON round-trips back to the ON bytes (the toggle discipline
+    that lived in the retired coupled merge, now the seeder's contract)."""
+    path = tmp_path / "config.toml"
+    seed_codex_approval(path, auto_approve=True)
+    on1 = path.read_bytes()
+    assert seed_codex_approval(path, auto_approve=False) is True
+    assert seed_codex_approval(path, auto_approve=True) is True
+    assert path.read_bytes() == on1

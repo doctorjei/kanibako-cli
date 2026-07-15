@@ -315,8 +315,9 @@ class CodexTarget(Target):
         directory trust, and (for a codex persona) the *model_provider* region.
 
         NEVER the approval/sandbox keys — those belong to
-        :meth:`deliver_panel_permissions` alone (``include_approval=False``),
-        so no managed key has two writers.  The box-side literals codex keys
+        :meth:`deliver_panel_permissions` alone, so no managed key has two
+        writers (*auto_approve* is accepted per the seam contract but unused
+        here).  The box-side literals codex keys
         its trust entries on (the in-box config path and workdir) are derived
         here from the core :data:`~kanibako.settings_resolve.GUEST_HOME`
         constant: the workdir is the fixed container WORKDIR
@@ -331,9 +332,7 @@ class CodexTarget(Target):
             config_root / ".codex" / "config.toml",
             box_config_path=f"{GUEST_HOME}/.codex/config.toml",
             codex_cwd=f"{GUEST_HOME}/workspace",
-            auto_approve=auto_approve,
             model_provider=model_provider,
-            include_approval=False,
         )
 
     @property

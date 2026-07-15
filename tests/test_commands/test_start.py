@@ -5186,14 +5186,16 @@ class TestGooseProviderAutoPin:
 
 class TestCodexPersonaLaunchWiring:
     """INC 3 launch-site: ``_run_container`` threads the preflight-resolved codex
-    provider into the SINGLE config.toml write (``deliver_directive_session_hook``),
-    and passes ``None`` for claude / bare codex (byte-identical write).
+    provider into the UNCONDITIONAL ``Target.deliver_directive_hook`` seam call
+    (T1.2 — no name-gate in core), and passes ``None`` for claude / bare codex
+    (byte-identical write).  The sibling ``Target.deliver_panel_permissions``
+    seam (T1.1) is pinned here too: same call site, same unconditional contract.
 
     Reached on EVERY launch (first-launch-after-create, start, reattach — all funnel
     through this one call site), so this proves the create/start/reattach coverage.
     The box materialisation is mocked exactly as the other ``start_mocks`` launch
-    tests do; the config.toml provider-region content is proven at the dispatch level
-    in ``test_code_config.py``.
+    tests do (``m.target`` records the seam calls); the delivered-file content is
+    proven at the emitter/Target level in ``test_code_config.py`` + the golden.
     """
 
     def _provider(self):
@@ -5212,14 +5214,9 @@ class TestCodexPersonaLaunchWiring:
             m.resolve_agent.return_value = "navigator℘codex"
             m.target.name = "codex"
             m.target.descriptor = CodexTarget().descriptor
-            with (
-                patch(
-                    "kanibako.commands.start._preflight_persona_load",
-                    return_value=("https://api.example/v1", None, False, prov),
-                ),
-                patch(
-                    "kanibako.vscode_config.deliver_directive_session_hook",
-                ) as m_deliver,
+            with patch(
+                "kanibako.commands.start._preflight_persona_load",
+                return_value=("https://api.example/v1", None, False, prov),
             ):
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -5227,10 +5224,18 @@ class TestCodexPersonaLaunchWiring:
                     extra_args=[], explicit_agent="navigator+codex",
                 )
             assert rc == 0
-            m_deliver.assert_called_once()
-            assert m_deliver.call_args.kwargs["agent_name"] == "codex"
-            # the SAME provider the preflight resolved reaches the config.toml write.
-            assert m_deliver.call_args.kwargs["model_provider"] is prov
+            m.target.deliver_directive_hook.assert_called_once()
+            kwargs = m.target.deliver_directive_hook.call_args.kwargs
+            # config_root is THE box home as seen from the host — identity, not
+            # a bare called-once (R5: a typo'd kwarg must not silently pass).
+            assert kwargs["config_root"] is m.proj.shell_path
+            assert kwargs["auto_approve"] is True
+            # the SAME provider the preflight resolved reaches the seam.
+            assert kwargs["model_provider"] is prov
+            # the sibling panel seam fires unconditionally at the same site.
+            m.target.deliver_panel_permissions.assert_called_once_with(
+                config_root=m.proj.shell_path, auto_approve=True,
+            )
 
     def test_bare_codex_launch_passes_no_provider(self, start_mocks):
         from kanibako.plugins.codex.target import CodexTarget
@@ -5238,35 +5243,40 @@ class TestCodexPersonaLaunchWiring:
             m.resolve_agent.return_value = "codex"
             m.target.name = "codex"
             m.target.descriptor = CodexTarget().descriptor
-            with patch(
-                "kanibako.vscode_config.deliver_directive_session_hook",
-            ) as m_deliver:
-                rc = _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            assert rc == 0
-            m_deliver.assert_called_once()
-            assert m_deliver.call_args.kwargs["agent_name"] == "codex"
-            # bare (non-persona) codex → no provider → byte-identical write.
-            assert m_deliver.call_args.kwargs["model_provider"] is None
-
-    def test_claude_launch_passes_no_provider(self, start_mocks):
-        # default start_mocks target is claude; a non-persona claude launch never
-        # resolves a provider → deliver gets model_provider=None (byte-identical).
-        with start_mocks(), patch(
-            "kanibako.vscode_config.deliver_directive_session_hook",
-        ) as m_deliver:
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
             assert rc == 0
-            m_deliver.assert_called_once()
-            assert m_deliver.call_args.kwargs["agent_name"] == "claude"
-            assert m_deliver.call_args.kwargs["model_provider"] is None
+            # bare (non-persona) codex → no provider → byte-identical write.
+            m.target.deliver_directive_hook.assert_called_once_with(
+                config_root=m.proj.shell_path,
+                auto_approve=True,
+                model_provider=None,
+            )
+            m.target.deliver_panel_permissions.assert_called_once_with(
+                config_root=m.proj.shell_path, auto_approve=True,
+            )
+
+    def test_claude_launch_passes_no_provider(self, start_mocks):
+        # default start_mocks target is claude; a non-persona claude launch never
+        # resolves a provider → the seam gets model_provider=None (byte-identical).
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m.target.deliver_directive_hook.assert_called_once_with(
+                config_root=m.proj.shell_path,
+                auto_approve=True,
+                model_provider=None,
+            )
+            m.target.deliver_panel_permissions.assert_called_once_with(
+                config_root=m.proj.shell_path, auto_approve=True,
+            )
 
 
 class TestPersonaCreateVerdict:

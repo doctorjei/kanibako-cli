@@ -659,7 +659,7 @@ class TestDescriptorAssembly:
 
 class TestDeliverySeams:
     """T1 seams: CodexTarget's panel-permission (approval/sandbox parity) and
-    directive-hook (managed config.toml, ``include_approval=False``) deliveries.
+    directive-hook (managed config.toml, hook/trust/provider only) deliveries.
     Region/trust content is proven at the emitter level in
     ``tests/test_commands/test_code_config.py``; here we pin the DISPATCH: the
     right file, the right split (no key with two writers), the GUEST_HOME-derived

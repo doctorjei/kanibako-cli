@@ -86,7 +86,7 @@ class GooseTarget(Target):
 
         * ``"in"`` (host->box seed/refresh): wholesale copy — the box gets the host's
           config.yaml verbatim (its box-local panel-parity GOOSE_MODE is (re)seeded
-          separately by ``deliver_goose_panel_permissions`` at attach).
+          separately by :meth:`deliver_panel_permissions` at launch).
         * ``"out"`` (box->host writeback): merge the box's config.yaml back to the
           host BUT preserve the host's OWN GOOSE_MODE.  ``GOOSE_MODE`` in the box is a
           box-local PANEL-parity value (the panel's yolo), NOT user config, so it must

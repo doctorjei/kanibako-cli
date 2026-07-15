@@ -1263,110 +1263,56 @@ def _deliver_panel_permissions(
 ):
     """Best-effort panel / SessionStart-directive permission delivery.
 
-    Pure side-effects; extracted verbatim from ``_run_container``.  Each
-    delivery is independently best-effort and never blocks the launch.
+    Pure side-effects.  The two ``Target`` delivery seams are called
+    UNCONDITIONALLY for every agent — no name-branching in core (T1.1/T1.2);
+    an agent without a behavior inherits the base no-op.  Each seam call is
+    independently best-effort and never blocks the launch.
+
+    Both deliveries key on the box's PERSISTED ``auto_approve`` (resolved just
+    above at the call site), NOT the per-launch ``-S``/``-A`` flags: the VS
+    Code panels spawn their OWN in-box agents without kanibako's launch
+    env/flags, so they see only what is persisted onto each agent's native
+    config surface — the panel reflects the box's configured yolo, not a
+    transient launch flag.  What lands where is each plugin's knowledge (see
+    the ``Target.deliver_panel_permissions`` / ``deliver_directive_hook``
+    docstrings and the plugin implementations); ``proj.shell_path`` is the box
+    home as seen from the host — the one root every surface lives under.
+
+    ORDER is load-bearing: panel permissions FIRST, directive hook SECOND
+    (claude's two writes hit the same ``settings.json``; codex's approval keys
+    land before the managed region write — the byte-order the golden fixtures
+    freeze).  *provider* is the launch's resolved persona model-provider
+    (``None`` for bare / non-persona ⇒ byte-identical write); this call site is
+    reached whenever a box is (re)started — first launch after create and start
+    of a stopped box — so the provider block re-materialises to the current
+    persona config.  (A reattach to an ALREADY-running box early-returns above
+    and does not re-deliver; harmless — the running box already carries it.)
     """
-    # Ph4b Vector A: mirror the box's PERSISTED claude ``auto_approve``
-    # into the box's in-box ``~/.claude/settings.json`` so the VS Code
-    # claude-code PANEL (the default `kanibako code` UX) reflects the
-    # box's configured yolo — the CLI flag path only reaches the CLI
-    # claude, not the panel.  This keys on the PERSISTED ``auto_approve``
-    # value (just resolved above), NOT the per-launch ``safe_off`` that
-    # drives ``--dangerously-skip-permissions`` below: the per-launch
-    # ``-S``/``-A`` flags DELIBERATELY do NOT touch the panel — the panel
-    # reflects the box's configured yolo, not a transient launch flag.
-    # SYMMETRIC + CLAUDE-only + best-effort: auto_approve ON SETs the
-    # managed defaultMode, OFF CLEARS it (so toggling off takes effect);
-    # non-claude is inert; a failure here NEVER blocks the launch.
+    if target is None:
+        return
     try:
-        from kanibako.vscode_config import (
-            deliver_claude_panel_permissions,
-        )
-        deliver_claude_panel_permissions(
+        target.deliver_panel_permissions(
+            config_root=proj.shell_path,
             auto_approve=auto_approve,
-            is_claude=(target is not None and target.name == "claude"),
-            claude_config_dir=proj.shell_path / ".claude",
         )
     except Exception:
         logger.debug(
-            "failed to seed claude bypassPermissions settings",
+            "failed to deliver %s panel permissions",
+            target.name,
             exc_info=True,
         )
-    # FF-5 permission parity (goose): the ``block.vscode-goose`` panel
-    # spawns its OWN in-box goose WITHOUT kanibako's launch env, so it
-    # never sees the ``GOOSE_MODE`` env var the CLI entrypoint sets.
-    # Persist the box's configured yolo into the box's in-box
-    # ``~/.config/goose/config.yaml`` (``GOOSE_MODE`` is a valid goose
-    # config key) so the panel reflects it.  Keys on the SAME persisted
-    # ``auto_approve`` resolved above (NOT the per-launch flags).
-    # goose-only + best-effort: OFF writes the secure ``approve``
-    # explicitly (unset GOOSE_MODE defaults to permissive ``auto``);
-    # non-goose is inert; a failure here NEVER blocks the launch.
     try:
-        from kanibako.vscode_config import (
-            deliver_goose_panel_permissions,
-        )
-        deliver_goose_panel_permissions(
+        target.deliver_directive_hook(
+            config_root=proj.shell_path,
             auto_approve=auto_approve,
-            is_goose=(target is not None and target.name == "goose"),
-            goose_config_dir=proj.shell_path / ".config" / "goose",
+            model_provider=provider,
         )
     except Exception:
         logger.debug(
-            "failed to seed goose GOOSE_MODE panel permissions",
+            "failed to seed %s SessionStart directive hook",
+            target.name,
             exc_info=True,
         )
-    # Increment 2b: the instruction-delivery SessionStart hook, routed
-    # to each agent's NATIVE config surface by
-    # ``deliver_directive_session_hook``.  The hook runs the flattener
-    # in ``--additional-context`` mode, injecting the flattened
-    # directive chain as session context.  claude →
-    # ~/.claude/settings.json (JSON hooks).  codex →
-    # ~/.codex/config.toml: codex 0.141.0 defines hooks INLINE in
-    # config.toml (NOT a separate ~/.codex/hooks.json), and gates a
-    # config hook behind a content-hash trust + a directory trust — the
-    # codex manager pre-seeds both so the FIRST launch fires with no
-    # ``/hooks`` prompt, and it folds in the codex approval/sandbox
-    # permission parity (driven by the SAME persisted ``auto_approve``
-    # the claude panel delivery uses above).  The HOOK itself is
-    # UNCONDITIONAL (orthogonal to yolo).  box_config_path/codex_cwd are
-    # the BOX-absolute paths codex reads/runs at in-box (GUEST_HOME);
-    # the workspace WORKDIR is codex's cwd (tmux new-session inherits
-    # it; see _bootstrap_wrap — no ``-c`` override).  Merge never
-    # clobbers a user's own config; idempotent; best-effort so a failure
-    # NEVER blocks the launch.
-    if target is not None and target.name in ("claude", "codex"):
-        try:
-            from kanibako.settings_resolve import GUEST_HOME
-            from kanibako.vscode_config import (
-                deliver_directive_session_hook,
-            )
-            deliver_directive_session_hook(
-                agent_name=target.name,
-                config_root=proj.shell_path,
-                box_codex_config_path=(
-                    f"{GUEST_HOME}/.codex/config.toml"
-                ),
-                codex_cwd=f"{GUEST_HOME}/workspace",
-                auto_approve=auto_approve,
-                # INC 3: a codex persona carries its resolved
-                # model-provider (None for claude / bare / non-persona ⇒
-                # byte-identical write).  This is the SINGLE codex
-                # config.toml write site, reached whenever a box is
-                # (re)started here — first launch after create and start
-                # of a stopped box — so the provider block re-materialises
-                # to the current persona config, exactly like the hook +
-                # trust region beside it.  (A reattach to an ALREADY-running
-                # box early-returns above and does not rewrite config.toml;
-                # harmless — the running box already carries the block.)
-                model_provider=provider,
-            )
-        except Exception:
-            logger.debug(
-                "failed to seed %s SessionStart directive hook",
-                target.name,
-                exc_info=True,
-            )
 
 
 def _assemble_image_sharing_mounts(
@@ -2088,7 +2034,7 @@ def _run_container(
     #
     # ``provider`` is the resolved codex CodexModelProvider for a config-file
     # (codex) persona (None for claude / non-persona / bare) — INC 3 threads it into
-    # the codex config.toml write below (``deliver_directive_session_hook`` →
+    # the codex config.toml write below (``Target.deliver_directive_hook`` →
     # ``seed_codex_config``).  Init None here so the non-persona launch reaches the
     # write with a None provider (byte-identical) instead of an unbound local.
     provider: CodexModelProvider | None = None
@@ -4037,7 +3983,7 @@ def _resolve_codex_persona_provider(
 
     A pure assembly of the persona's resolved values (no I/O) into the
     :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 feeds through
-    :func:`~kanibako.vscode_config.deliver_directive_session_hook` →
+    ``CodexTarget.deliver_directive_hook`` →
     :func:`~kanibako.vscode_config.seed_codex_config`:
 
     * *provider_id* / *name* — the persona segment (``navigator``); the table id +
