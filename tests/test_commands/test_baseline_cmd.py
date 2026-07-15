@@ -97,6 +97,7 @@ class TestRunList:
         assert pkgs == sorted(pkgs)  # sorted, stable
         assert set(pkgs) == {
             "tmux", "inotify-tools", "ripgrep", "fd-find", "openssh-client",
+            "bubblewrap",
         }
 
     def test_list_executables_format(self, capsys) -> None:
@@ -195,7 +196,10 @@ class TestRunVerify:
         ):
             args = argparse.Namespace(
                 image="img", all_images=False, only=None,
-                skip=["ripgrep", "fd-find", "openssh-client", "inotify-tools"],
+                skip=[
+                    "ripgrep", "fd-find", "openssh-client", "inotify-tools",
+                    "bubblewrap",
+                ],
             )
             rc = run_verify(args)
         assert rc == 0
