@@ -27,3 +27,7 @@ inotify-tools: [inotifywait, inotifywatch]
 ripgrep: [rg]
 fd-find: [fdfind]
 openssh-client: [ssh]
+# codex's app-server resolves bubblewrap on PATH for its own sandbox; without a
+# system bwrap it falls back to a bundled copy and logs an error. First-class
+# for every box so codex (and any future bwrap user) has it universally.
+bubblewrap: [bwrap]

@@ -15,6 +15,7 @@ _SHIPPED = {
     "ripgrep": ["rg"],
     "fd-find": ["fdfind"],
     "openssh-client": ["ssh"],
+    "bubblewrap": ["bwrap"],
 }
 
 
@@ -47,6 +48,7 @@ class TestShippedDefault:
         assert ("ripgrep", "rg") in pairs
         assert ("fd-find", "fdfind") in pairs
         assert ("openssh-client", "ssh") in pairs
+        assert ("bubblewrap", "bwrap") in pairs
         # Sorted by (package, executable).
         assert pairs == sorted(pairs)
 
