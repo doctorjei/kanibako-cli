@@ -34,7 +34,9 @@ from kanibako.vscode_config import (
     merge_session_start_hook,
     seed_attached_container_config,
     seed_claude_bypass_permissions,
+    seed_codex_approval,
     seed_codex_config,
+    seed_goose_mode,
     seed_session_start_hook,
 )
 
@@ -1366,3 +1368,290 @@ def test_deliver_directive_claude_ignores_provider(tmp_path):
         (r2 / ".claude" / "settings.json").read_text()
     )
     assert not (r1 / ".codex").exists()
+
+
+# --- T1 seam Step 2: seed_codex_approval (standalone approval writer) --------
+#
+# The codex panel-permissions emitter behind ``Target.deliver_panel_permissions``.
+# After the seam split it is the SOLE writer of approval_policy/sandbox_mode; the
+# directive write (seed_codex_config include_approval=False) never touches them.
+
+
+def test_seed_codex_approval_on_absent_creates_approval_only(tmp_path):
+    path = tmp_path / ".codex" / "config.toml"
+    assert seed_codex_approval(path, auto_approve=True) is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "workspace-write"
+    assert "hooks" not in data  # approval ONLY — no region, no trust
+
+
+def test_seed_codex_approval_off_absent_never_creates(tmp_path):
+    path = tmp_path / ".codex" / "config.toml"
+    assert seed_codex_approval(path, auto_approve=False) is False
+    assert not path.exists()
+
+
+def test_seed_codex_approval_idempotent(tmp_path):
+    path = tmp_path / "config.toml"
+    assert seed_codex_approval(path, auto_approve=True) is True
+    before = path.read_bytes()
+    assert seed_codex_approval(path, auto_approve=True) is False
+    assert path.read_bytes() == before
+
+
+def test_seed_codex_approval_off_preserves_user_chosen_value(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('approval_policy = "never"\nsandbox_mode = "read-only"\n')
+    assert seed_codex_approval(path, auto_approve=False) is True
+    data = tomllib.loads(path.read_text())
+    assert "approval_policy" not in data  # was our managed value → removed
+    assert data["sandbox_mode"] == "read-only"  # user value → preserved
+
+
+def test_seed_codex_approval_no_op_never_normalizes_user_bytes(tmp_path):
+    """Short-circuit contract: when the approval state is already correct the
+    seeder must NOT rewrite (no trailing-newline normalization, no region
+    relocation) — today's panel path never touches the codex file at all."""
+    path = tmp_path / "config.toml"
+    odd = '# mine\nfoo = "bar"\n\n\n'  # extra trailing newlines
+    path.write_text(odd)
+    assert seed_codex_approval(path, auto_approve=False) is False
+    assert path.read_text() == odd
+
+
+def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
+    """The insert-inside-region hazard: a region-bearing file with NO user
+    tables — a naive root-key insert would land after the region's BEGIN marker
+    (the first ``[`` line is the region's own table) and be swallowed by the
+    next regeneration.  The seeder must extract the region, edit the clean
+    body, and carry the region through VERBATIM."""
+    path = tmp_path / "config.toml"
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=False, include_approval=False,
+    )
+    region_only = path.read_text()
+    assert region_only.lstrip().startswith("# >>> kanibako-managed")
+    assert seed_codex_approval(path, auto_approve=True) is True
+    out = path.read_text()
+    # keys present, and BEFORE the region begin marker (root section):
+    assert out.index("approval_policy") < out.index("# >>> kanibako-managed")
+    # region carried through verbatim:
+    begin = out.index("# >>> kanibako-managed")
+    assert out[begin:] == region_only.lstrip("\n").rstrip("\n") + "\n"
+    # ...and a subsequent directive re-merge does NOT swallow the keys:
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, include_approval=False,
+    )
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "workspace-write"
+
+
+def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
+    """The provider-region variant of the insert hazard — a KNOWN, WANTED
+    divergence from the legacy write (Editor round 5, characterized): on a
+    provider-region-bearing file with the approval keys ABSENT and a
+    ``model_provider=None`` launch, the LEGACY merge leaves the provider region
+    embedded in the body (it strips it only when a provider is passed) and its
+    root-key insert lands INSIDE the region — after the BEGIN marker, before
+    the ``[model_providers…]`` table — to be swallowed by the next persona
+    launch's region strip.  The seam extracts BOTH regions before the root-key
+    surgery, so the keys land in the TRUE root section and survive.  This is
+    the one composition cell that is byte-DIVERGENT from legacy, in the
+    bug-fix direction; the legacy path (and its hazard) dies at plan Step 5."""
+    path = tmp_path / "config.toml"
+    # Persona launch with approval keys absent (auto_approve=False history):
+    seed_codex_approval(path, auto_approve=False)
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=False, model_provider=CodexModelProvider(**_NAVIGATOR),
+        include_approval=False,
+    )
+    # BARE relaunch (provider=None), yolo toggled ON — the hazard cell:
+    assert seed_codex_approval(path, auto_approve=True) is True
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, include_approval=False,
+    )
+    out = path.read_text()
+    assert out.index("approval_policy") < out.index(
+        "# >>> kanibako-managed (model provider)"
+    )
+    # …and a subsequent PERSONA launch (provider region regenerated) must NOT
+    # swallow them — the exact loss the legacy insert position caused:
+    seed_codex_approval(path, auto_approve=True)
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, model_provider=CodexModelProvider(**_NAVIGATOR),
+        include_approval=False,
+    )
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "workspace-write"
+
+
+def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
+    """Both managed regions (hook + model provider) survive an approval toggle
+    verbatim, provider root keys included."""
+    path = tmp_path / "config.toml"
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=False, model_provider=CodexModelProvider(**_NAVIGATOR),
+        include_approval=False,
+    )
+    assert seed_codex_approval(path, auto_approve=True) is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "never"
+    assert data["model_provider"] == "navigator"
+    assert data["model_providers"]["navigator"]["base_url"] == (
+        _NAVIGATOR["base_url"]
+    )
+    key = f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:0:0"
+    assert key in data["hooks"]["state"]
+
+
+# --- T1 seam Step 2: the seam composition == the legacy single write ---------
+#
+# The unit-level byte-identity proof behind the golden fixtures: panel seam
+# (seed_codex_approval) FIRST, directive seam (include_approval=False) SECOND
+# must reproduce the legacy coupled write (include_approval=True) EXACTLY, for
+# every pre-state x auto_approve x provider combination.
+
+
+def _legacy_vs_seam_paths(tmp_path, *, pre_text, auto_approve, provider):
+    legacy = tmp_path / "legacy" / "config.toml"
+    seam = tmp_path / "seam" / "config.toml"
+    for p in (legacy, seam):
+        if pre_text is not None:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(pre_text)
+    seed_codex_config(
+        legacy, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=auto_approve, model_provider=provider,
+    )
+    seed_codex_approval(seam, auto_approve=auto_approve)
+    seed_codex_config(
+        seam, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=auto_approve, model_provider=provider,
+        include_approval=False,
+    )
+    return legacy.read_bytes(), seam.read_bytes()
+
+
+def test_codex_seam_composition_matches_legacy_write(tmp_path):
+    user = (
+        '# user config\nsandbox_mode = "read-only"\n\n[profiles.fast]\n'
+        'model = "gpt-5-codex"\n'
+    )
+    cases = []
+    for pre_text in (None, _TEMPLATE, user):
+        for auto in (True, False):
+            for provider in (None, CodexModelProvider(**_NAVIGATOR)):
+                cases.append((pre_text, auto, provider))
+    for i, (pre_text, auto, provider) in enumerate(cases):
+        legacy, seam = _legacy_vs_seam_paths(
+            tmp_path / f"case-{i}", pre_text=pre_text,
+            auto_approve=auto, provider=provider,
+        )
+        assert legacy == seam, (
+            f"seam-composed bytes drifted from legacy write "
+            f"(pre={pre_text!r:.30}, auto={auto}, provider={provider is not None})"
+        )
+
+
+def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
+    """Second seam pass over its own output: neither call writes."""
+    path = tmp_path / "config.toml"
+    seed_codex_approval(path, auto_approve=True)
+    seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, include_approval=False,
+    )
+    before = path.read_bytes()
+    assert seed_codex_approval(path, auto_approve=True) is False
+    assert seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, include_approval=False,
+    ) is False
+    assert path.read_bytes() == before
+
+
+# --- T1 seam Step 2: merge_codex_config include_approval=False ---------------
+
+
+def test_codex_merge_exclude_approval_writes_no_approval_keys():
+    for auto in (True, False):
+        out = merge_codex_config(
+            _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+            auto_approve=auto, include_approval=False,
+        )
+        data = tomllib.loads(out)
+        assert "approval_policy" not in data
+        assert "sandbox_mode" not in data
+
+
+def test_codex_merge_exclude_approval_ignores_auto_approve():
+    on = merge_codex_config(
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=True, include_approval=False,
+    )
+    off = merge_codex_config(
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=False, include_approval=False,
+    )
+    assert on == off
+
+
+def test_codex_merge_exclude_approval_preserves_existing_keys():
+    """Excluded means UNTOUCHED — keys already in the file (whoever wrote them)
+    pass through byte-for-byte, even managed values with auto_approve=False."""
+    text = 'approval_policy = "never"\nsandbox_mode = "read-only"\n'
+    out = merge_codex_config(
+        text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        auto_approve=False, include_approval=False,
+    )
+    data = tomllib.loads(out)
+    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "read-only"
+
+
+# --- T1 seam Step 2: seed_goose_mode (extracted GOOSE_MODE emitter) ----------
+
+
+def test_seed_goose_mode_on_writes_auto(tmp_path):
+    path = tmp_path / "config.yaml"
+    assert seed_goose_mode(path, auto_approve=True) is True
+    assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "auto"
+
+
+def test_seed_goose_mode_off_writes_explicit_approve(tmp_path):
+    path = tmp_path / "config.yaml"
+    assert seed_goose_mode(path, auto_approve=False) is True
+    assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "approve"
+
+
+def test_seed_goose_mode_idempotent_and_merge_preserving(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("GOOSE_PROVIDER: openai\nextensions:\n  developer:\n    enabled: true\n")
+    assert seed_goose_mode(path, auto_approve=True) is True
+    doc = yaml.safe_load(path.read_text())
+    assert doc["GOOSE_MODE"] == "auto"
+    assert doc["GOOSE_PROVIDER"] == "openai"
+    assert doc["extensions"]["developer"]["enabled"] is True
+    before = path.read_bytes()
+    assert seed_goose_mode(path, auto_approve=True) is False
+    assert path.read_bytes() == before
+
+
+def test_goose_wrapper_delegates_to_seed_goose_mode(tmp_path):
+    """The legacy gate wrapper and the emitter produce identical bytes."""
+    d1 = tmp_path / "wrapper"
+    d2 = tmp_path / "emitter"
+    assert deliver_goose_panel_permissions(
+        auto_approve=False, is_goose=True, goose_config_dir=d1,
+    ) is True
+    assert seed_goose_mode(d2 / "config.yaml", auto_approve=False) is True
+    assert (d1 / "config.yaml").read_bytes() == (d2 / "config.yaml").read_bytes()

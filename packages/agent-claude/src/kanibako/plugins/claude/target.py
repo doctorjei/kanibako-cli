@@ -37,6 +37,7 @@ from kanibako.plugins.claude.credentials import (
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
+    from kanibako.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.claude")
 
@@ -201,6 +202,52 @@ class ClaudeTarget(Target):
     @property
     def config_dir_name(self) -> str:
         return ".claude"
+
+    def deliver_panel_permissions(
+        self, *, config_root: Path, auto_approve: bool,
+    ) -> bool:
+        """Mirror the box's PERSISTED ``auto_approve`` into the box's in-box
+        ``~/.claude/settings.json`` so the VS Code claude-code PANEL reflects
+        the configured yolo (Ph4b Vector A — the panel spawns its own claude
+        without kanibako's launch flags).
+
+        SYMMETRIC: ON SETs the managed ``permissions.defaultMode=
+        bypassPermissions``; OFF CLEARS it (no-op on an absent file), so
+        toggling yolo off takes effect in the panel.  Both directions merge
+        (never clobber user settings) and are idempotent (core emitters in
+        :mod:`kanibako.vscode_config`).
+        """
+        from kanibako.vscode_config import (
+            clear_claude_bypass_permissions,
+            seed_claude_bypass_permissions,
+        )
+
+        settings_path = config_root / ".claude" / "settings.json"
+        if auto_approve:
+            return seed_claude_bypass_permissions(settings_path)
+        return clear_claude_bypass_permissions(settings_path)
+
+    def deliver_directive_hook(
+        self,
+        *,
+        config_root: Path,
+        auto_approve: bool,
+        model_provider: "CodexModelProvider | None" = None,
+    ) -> bool:
+        """Seed claude's full managed JSON hook set into the box's in-box
+        ``~/.claude/settings.json``: the instruction-delivery ``SessionStart``
+        hook + the per-PID liveness-marker write/remove hooks.
+
+        UNCONDITIONAL — orthogonal to *auto_approve* — and *model_provider* is
+        IGNORED (claude carries its persona endpoint/token via env, not config;
+        the write is byte-identical either way).  Union-merge, idempotent (see
+        :func:`kanibako.vscode_config.seed_session_start_hook`).
+        """
+        from kanibako.vscode_config import seed_session_start_hook
+
+        return seed_session_start_hook(
+            config_root / ".claude" / "settings.json",
+        )
 
     def credential_check_path(self, home: Path) -> Path | None:
         return home / ".claude" / ".credentials.json"

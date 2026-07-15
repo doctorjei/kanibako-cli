@@ -769,3 +769,66 @@ class TestTransformCred:
 
         data = json.loads(dst.read_text())
         assert data["claudeAiOauth"]["token"] == "wb"
+
+
+class TestDeliverySeams:
+    """T1 seams: ClaudeTarget's panel-permission + directive-hook deliveries
+    (thin dispatch over the core emitters in :mod:`kanibako.vscode_config`)."""
+
+    def _settings(self, config_root: Path) -> Path:
+        return config_root / ".claude" / "settings.json"
+
+    def test_panel_permissions_on_sets_bypass(self, tmp_path):
+        t = ClaudeTarget()
+        assert t.deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=True,
+        ) is True
+        doc = json.loads(self._settings(tmp_path).read_text())
+        assert doc["permissions"]["defaultMode"] == "bypassPermissions"
+
+    def test_panel_permissions_off_clears_managed_value(self, tmp_path):
+        t = ClaudeTarget()
+        t.deliver_panel_permissions(config_root=tmp_path, auto_approve=True)
+        assert t.deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=False,
+        ) is True
+        doc = json.loads(self._settings(tmp_path).read_text())
+        assert "defaultMode" not in doc.get("permissions", {})
+
+    def test_panel_permissions_off_absent_is_inert(self, tmp_path):
+        assert ClaudeTarget().deliver_panel_permissions(
+            config_root=tmp_path, auto_approve=False,
+        ) is False
+        assert not self._settings(tmp_path).exists()
+
+    def test_directive_hook_seeds_managed_hook_set(self, tmp_path):
+        assert ClaudeTarget().deliver_directive_hook(
+            config_root=tmp_path, auto_approve=False,
+        ) is True
+        doc = json.loads(self._settings(tmp_path).read_text())
+        commands = [
+            h["command"]
+            for group in doc["hooks"]["SessionStart"]
+            for h in group["hooks"]
+        ]
+        assert any("import-directives.py" in c for c in commands)
+        assert "SessionEnd" in doc["hooks"]  # marker-remove hook
+        # orthogonal to auto_approve: NO permission key was written here
+        assert "permissions" not in doc
+
+    def test_directive_hook_ignores_model_provider(self, tmp_path):
+        """claude carries its persona via env, not config — the write is
+        byte-identical with or without a provider."""
+        from kanibako.vscode_config import CodexModelProvider
+        t = ClaudeTarget()
+        r1 = tmp_path / "with"
+        r2 = tmp_path / "without"
+        t.deliver_directive_hook(
+            config_root=r1, auto_approve=True,
+            model_provider=CodexModelProvider(
+                provider_id="p", name="p", base_url="https://x/v1",
+                wire_api="chat", env_key="K", model="m",
+            ),
+        )
+        t.deliver_directive_hook(config_root=r2, auto_approve=True)
+        assert self._settings(r1).read_bytes() == self._settings(r2).read_bytes()

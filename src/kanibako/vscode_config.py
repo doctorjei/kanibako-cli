@@ -682,25 +682,60 @@ def _first_table_index(lines: list[str]) -> int:
     return len(lines)
 
 
-def _strip_delimited_region(text: str, begin: str, end: str) -> str:
-    """Remove a comment-delimited managed region (*begin*..*end*, inclusive).
+def _extract_delimited_region(
+    text: str, begin: str, end: str,
+) -> tuple[str, str | None]:
+    """Split a comment-delimited managed region (*begin*..*end*, inclusive) OUT
+    of *text*, returning ``(body_without_region, region_text | None)``.
 
     The shared primitive behind every kanibako-managed codex config.toml region
     (the instruction-delivery hook region AND the model-provider region).
     Idempotence + re-run safety: a region is regenerated each write, so it is
-    stripped first so the surviving text is pure user content.  A malformed
-    region missing its END marker is stripped to end-of-file.  No *begin* marker
-    → text unchanged.
+    split off first so the surviving body is pure user content.  A malformed
+    region missing its END marker extends to end-of-file.  No *begin* marker →
+    ``(text, None)``.
+
+    The EXTRACT (vs. strip) form exists for :func:`seed_codex_approval`, which
+    must edit the ROOT-section approval keys while carrying the managed
+    region(s) through VERBATIM: root-key surgery inserts before the first
+    ``[table]`` line, and in a region-bearing file with no user tables that
+    first table is the managed region's own — a naive in-place insert would land
+    INSIDE the region and be swallowed by the next regeneration.
     """
     lines = text.split("\n")
     begins = [i for i, ln in enumerate(lines) if ln.strip() == begin]
     if not begins:
-        return text
+        return text, None
     b = begins[0]
     ends = [i for i, ln in enumerate(lines) if ln.strip() == end and i >= b]
     e = ends[0] if ends else len(lines) - 1
+    region = "\n".join(lines[b : e + 1])
     del lines[b : e + 1]
-    return "\n".join(lines)
+    return "\n".join(lines), region
+
+
+def _strip_delimited_region(text: str, begin: str, end: str) -> str:
+    """Remove a comment-delimited managed region (see
+    :func:`_extract_delimited_region` — this is its body-only form)."""
+    return _extract_delimited_region(text, begin, end)[0]
+
+
+def _assemble_codex_managed(body: str, regions: list[str]) -> str:
+    """Assemble a managed codex config.toml: clean user *body* + regenerated /
+    carried-through managed *regions*, in order.
+
+    The SINGLE source of truth for the separator/trailing-newline bytes between
+    the body and the managed regions — used by :func:`merge_codex_config`
+    (regenerated regions) AND :func:`seed_codex_approval` (regions carried
+    verbatim), so the two writers can never drift on assembly bytes.  *body*
+    must already be rstripped of trailing newlines.
+    """
+    if not regions:
+        return body + "\n" if body else ""
+    region = "\n\n".join(regions)
+    if body:
+        return body + "\n\n" + region + "\n"
+    return region + "\n"
 
 
 def _strip_codex_region(text: str) -> str:
@@ -809,6 +844,7 @@ def merge_codex_config(
     codex_cwd: str,
     auto_approve: bool,
     model_provider: CodexModelProvider | None = None,
+    include_approval: bool = True,
 ) -> str:
     """Return *text* with kanibako's managed codex config MERGED in (pure).
 
@@ -817,6 +853,15 @@ def merge_codex_config(
     managed region at the file's end.  All other user content — comments and data
     alike — is preserved byte-for-byte.  Idempotent: re-merging its own output
     reproduces it exactly.
+
+    *include_approval* (TRANSITIONAL, T1-seam Steps 2-4): ``False`` skips the
+    approval/sandbox reconcile entirely — the merge is then hook/trust/provider
+    ONLY, for the ``Target.deliver_directive_hook`` seam path whose
+    approval/sandbox parity is delivered separately (and solely) by
+    :func:`seed_codex_approval` via ``Target.deliver_panel_permissions``.  The
+    ``True`` default keeps the legacy single-write path byte-identical until the
+    wrappers are deleted (plan Step 5), when the reconcile leaves this merge for
+    good.
 
     When *model_provider* is supplied (INC 3 persona wiring), a SECOND managed
     region — the ``[model_providers.<id>]`` table plus the top-level
@@ -833,7 +878,8 @@ def merge_codex_config(
         # Strip our OWN prior provider region too, so the provider root keys and
         # table are reconciled (not duplicated) across re-merges.
         body = _strip_codex_provider_region(body).rstrip("\n")
-    body = _reconcile_codex_approval(body, auto_approve)
+    if include_approval:
+        body = _reconcile_codex_approval(body, auto_approve)
     if model_provider is not None:
         # Provider root keys are applied to the CLEAN body (no managed regions
         # yet), so they land in the legal top-level position (before any table)
@@ -842,22 +888,24 @@ def merge_codex_config(
             body, model=model_provider.model, provider_id=model_provider.provider_id,
         )
     group_index = _count_session_start_groups(body)
-    region = _build_codex_managed_region(
-        box_config_path=box_config_path,
-        codex_cwd=codex_cwd,
-        group_index=group_index,
-    )
-    if model_provider is not None:
-        region = region + "\n\n" + _build_codex_provider_region(
-            provider_id=model_provider.provider_id,
-            name=model_provider.name,
-            base_url=model_provider.base_url,
-            wire_api=model_provider.wire_api,
-            env_key=model_provider.env_key,
+    regions = [
+        _build_codex_managed_region(
+            box_config_path=box_config_path,
+            codex_cwd=codex_cwd,
+            group_index=group_index,
         )
-    if body:
-        return body + "\n\n" + region + "\n"
-    return region + "\n"
+    ]
+    if model_provider is not None:
+        regions.append(
+            _build_codex_provider_region(
+                provider_id=model_provider.provider_id,
+                name=model_provider.name,
+                base_url=model_provider.base_url,
+                wire_api=model_provider.wire_api,
+                env_key=model_provider.env_key,
+            )
+        )
+    return _assemble_codex_managed(body, regions)
 
 
 # ---------------------------------------------------------------------------
@@ -1008,6 +1056,7 @@ def seed_codex_config(
     codex_cwd: str,
     auto_approve: bool,
     model_provider: CodexModelProvider | None = None,
+    include_approval: bool = True,
 ) -> bool:
     """Read-modify-write the box's in-box ``~/.codex/config.toml`` (host path
     *config_path*): merge kanibako's managed hook group, trust hash, directory
@@ -1024,6 +1073,10 @@ def seed_codex_config(
     *model_provider* (default ``None``) is the INC-3 seam: when supplied the
     merged config also carries the model-provider region; when ``None`` the write
     is BYTE-IDENTICAL to today's.
+
+    *include_approval* forwards to :func:`merge_codex_config` (TRANSITIONAL —
+    see there): the seam path passes ``False`` so this write is hook/trust/
+    provider only and :func:`seed_codex_approval` is the SOLE approval writer.
     """
     try:
         existing = config_path.read_text()
@@ -1035,7 +1088,59 @@ def seed_codex_config(
         codex_cwd=codex_cwd,
         auto_approve=auto_approve,
         model_provider=model_provider,
+        include_approval=include_approval,
     )
+    if config_path.exists() and merged == existing:
+        return False
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(merged)
+    return True
+
+
+def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
+    """Read-modify-write ONLY the managed codex approval/sandbox parity keys in
+    the box's in-box ``~/.codex/config.toml`` (host path *config_path*).
+
+    The codex PANEL-permissions deliverer (``Target.deliver_panel_permissions``):
+    the ``openai.chatgpt`` panel spawns its OWN in-box codex without kanibako's
+    launch flags, and codex approval/sandbox has NO VS Code settings key — the
+    box's resolved ``auto_approve`` reaches the panel only via the managed
+    ``approval_policy``/``sandbox_mode`` root keys here.  After the T1 seam
+    split this is the SOLE writer of those keys; the directive-hook write
+    (:func:`seed_codex_config` with ``include_approval=False``) never touches
+    them, so no key ever has two writers.
+
+    Discipline (mirrors :func:`_reconcile_codex_approval`'s ON/OFF contract):
+    ON → SET both managed values; OFF → REMOVE each only while it still equals
+    the managed value (a user-chosen value is preserved).  The managed
+    region(s) — instruction-delivery hook + model provider — are carried through
+    VERBATIM (extracted before the root-key surgery, reattached by the shared
+    :func:`_assemble_codex_managed`, so a root-key insert can never land inside
+    a region and assembly bytes can never drift from the merge's).
+
+    Short-circuits to ``False`` (NO write, no normalization of user bytes) when
+    the approval state is already correct; never creates the file when OFF has
+    nothing to remove.  Returns ``True`` iff it wrote.  Callers wrap
+    best-effort so a failure never blocks the launch.
+    """
+    try:
+        existing = config_path.read_text()
+    except OSError:
+        existing = ""
+    body, hook_region = _extract_delimited_region(
+        existing, _CODEX_REGION_BEGIN, _CODEX_REGION_END,
+    )
+    body, provider_region = _extract_delimited_region(
+        body, _CODEX_PROVIDER_REGION_BEGIN, _CODEX_PROVIDER_REGION_END,
+    )
+    clean = body.rstrip("\n")
+    reconciled = _reconcile_codex_approval(clean, auto_approve)
+    if reconciled == clean:
+        # Approval state already correct — NEVER rewrite (no gratuitous
+        # normalization of user bytes; OFF on an absent file never creates it).
+        return False
+    regions = [r for r in (hook_region, provider_region) if r is not None]
+    merged = _assemble_codex_managed(reconciled, regions)
     if config_path.exists() and merged == existing:
         return False
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1162,7 +1267,23 @@ def deliver_goose_panel_permissions(
     """
     if not is_goose:
         return False
-    config_path = goose_config_dir / "config.yaml"
+    return seed_goose_mode(
+        goose_config_dir / "config.yaml", auto_approve=auto_approve,
+    )
+
+
+def seed_goose_mode(config_path: Path, *, auto_approve: bool) -> bool:
+    """Read-modify-write the box's in-box goose ``config.yaml`` (host path
+    *config_path*): SET the top-level ``GOOSE_MODE`` to the box's yolo parity
+    value.
+
+    The goose PANEL-permissions emitter (``Target.deliver_panel_permissions`` /
+    the legacy :func:`deliver_goose_panel_permissions` gate): ON → ``auto``
+    (approvals off), OFF → the EXPLICIT secure ``approve`` (an unset
+    ``GOOSE_MODE`` defaults to permissive ``auto``, so OFF must persist, not
+    clear — see the FF-5 block comment above).  Merge-preserving and idempotent
+    per the wrapper's contract; returns whether a write occurred.
+    """
     desired = _GOOSE_MODE_ON if auto_approve else _GOOSE_MODE_OFF
     existing = load_doc(config_path)
     if existing.get("GOOSE_MODE") == desired:

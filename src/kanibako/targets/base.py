@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
+    from kanibako.vscode_config import CodexModelProvider
 
 # A STRUCTURED category bind default (spec §2a "REPRESENTATION"): a 2- or
 # 3-element ``(host_src, box_dest[, options])`` tuple — NOT a colon-joined
@@ -626,6 +627,63 @@ class Target(ABC):
     def credential_check_path(self, home: Path) -> Path | None:
         """Path to check for credential existence, or None."""
         return None
+
+    def deliver_panel_permissions(
+        self, *, config_root: Path, auto_approve: bool,
+    ) -> bool:
+        """Persist the box's resolved ``auto_approve`` onto this agent's
+        PANEL-visible config surface under *config_root*.
+
+        *config_root* is the box home as seen from the HOST (``proj.shell_path``)
+        — the launch call site passes it unconditionally for EVERY agent, and
+        each implementation appends its own config surface beneath it (claude
+        ``.claude/settings.json``, goose ``.config/goose/config.yaml``, codex
+        ``.codex/config.toml``).  The VS Code panel spawns its OWN in-box agent
+        WITHOUT kanibako's launch env, so the box's configured yolo must be
+        PERSISTED onto the agent's native config surface to reach it; this hook
+        is that delivery, keyed on the PERSISTED ``auto_approve`` (never the
+        per-launch ``-A``/``-S`` flags).
+
+        Best-effort contract: the caller wraps the call, so a failure never
+        blocks the launch — but implementations should still be merge-preserving
+        and idempotent.  Returns whether a write occurred.  Default: no-op
+        (``False``) — an agent with no panel-permission surface simply inherits
+        it.
+        """
+        return False
+
+    def deliver_directive_hook(
+        self,
+        *,
+        config_root: Path,
+        auto_approve: bool,
+        model_provider: "CodexModelProvider | None" = None,
+    ) -> bool:
+        """Seed this agent's instruction-delivery SessionStart hook (plus any
+        coupled managed config) onto its NATIVE config surface under
+        *config_root*.
+
+        *config_root* is the box home as seen from the HOST (``proj.shell_path``);
+        see :meth:`deliver_panel_permissions`.  Box-side literals an
+        implementation needs (e.g. codex's in-box config path and cwd for its
+        trust keys) are derived by the PLUGIN from the core
+        :data:`~kanibako.settings_resolve.GUEST_HOME` constant — deliberately
+        NOT seam parameters while they are constants with a single consumer; if
+        the in-box workdir ever becomes key-configurable, promote an
+        agent-agnostic ``box_workdir`` parameter here instead of letting plugins
+        drift.
+
+        *model_provider* is the launch's resolved persona model-provider bundle
+        (``None`` for bare / non-persona launches — the write must then be
+        byte-identical to a provider-less one).  Today only codex consumes it;
+        the type generalizes when the emitter bodies move into the plugins
+        (findings T2.3 / persona phase 2).
+
+        Best-effort contract as :meth:`deliver_panel_permissions`.  Returns
+        whether a write occurred.  Default: no-op (``False``) — an agent with no
+        directive-hook surface (goose, no-agent shell) inherits it.
+        """
+        return False
 
     def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
         """Extract persona values from a rendered harness config in *config_dir*.
