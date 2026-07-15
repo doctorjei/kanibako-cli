@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from kanibako.plugins.claude.target import ClaudeTarget
 from kanibako.plugins.codex.target import CodexTarget
 from kanibako.plugins.goose.target import GooseTarget
@@ -181,3 +183,267 @@ class TestCodexReadPersonaSettings:
 
     def test_absent_file(self, tmp_path):
         assert CodexTarget().read_persona_settings(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# verify_persona: the minimal real-completion probe (tri-state verdict)
+# ---------------------------------------------------------------------------
+
+
+class _ProbeServer:
+    """A scriptable local HTTP endpoint for verify_persona probes.
+
+    Records the last request (path, auth header, JSON body) and answers with a
+    scripted status — or hangs (timeout case).  Runs on 127.0.0.1:<ephemeral>.
+    """
+
+    def __init__(self, status: int = 200, hang: float = 0.0):
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        outer = self
+        self.status = status
+        self.hang = hang
+        self.last_path: str | None = None
+        self.last_auth: str | None = None
+        self.last_version: str | None = None
+        self.last_body: dict | None = None
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802 (http.server API name)
+                import time
+
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length)
+                outer.last_path = self.path
+                outer.last_auth = self.headers.get("Authorization")
+                outer.last_version = self.headers.get("anthropic-version")
+                try:
+                    outer.last_body = json.loads(raw)
+                except ValueError:
+                    outer.last_body = None
+                if outer.hang:
+                    time.sleep(outer.hang)
+                self.send_response(outer.status)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *args):  # silence test output
+                pass
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.endpoint = f"http://127.0.0.1:{self._server.server_port}"
+        self._thread = threading.Thread(
+            target=self._server.serve_forever, daemon=True,
+        )
+        self._thread.start()
+
+    def close(self):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+@pytest.fixture
+def token_file(tmp_path):
+    tok = tmp_path / "token"
+    tok.write_text("sk-test-secret\n")
+    return tok
+
+
+def _probe(target, server, token_file, *, model="gemma4", timeout=5.0):
+    return target.verify_persona(
+        server.endpoint, token_file, model, timeout=timeout,
+    )
+
+
+class TestVerifyPersonaBase:
+    def test_base_default_is_unverifiable(self, tmp_path):
+        assert (
+            NoAgentTarget().verify_persona("https://e.example", tmp_path, "m")
+            is None
+        )
+
+    def test_goose_inherits_unverifiable(self, tmp_path):
+        assert (
+            GooseTarget().verify_persona("https://e.example", tmp_path, "m")
+            is None
+        )
+
+
+class TestVerifyPersonaWire:
+    """Both harness probes against a live local endpoint: verdicts + wire shape."""
+
+    @pytest.mark.parametrize("target_cls,path,versioned", [
+        (ClaudeTarget, "/v1/messages", True),
+        (CodexTarget, "/responses", False),
+    ])
+    def test_accepting_endpoint_passes(
+        self, token_file, target_cls, path, versioned,
+    ):
+        server = _ProbeServer(status=200)
+        try:
+            assert _probe(target_cls(), server, token_file) is True
+        finally:
+            server.close()
+        assert server.last_path == path
+        assert server.last_auth == "Bearer sk-test-secret"
+        assert (server.last_version is not None) is versioned
+        assert server.last_body is not None
+        assert server.last_body["model"] == "gemma4"
+
+    @pytest.mark.parametrize("status", [401, 403])
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_auth_reject_fails(self, token_file, target_cls, status):
+        server = _ProbeServer(status=status)
+        try:
+            assert _probe(target_cls(), server, token_file) is False
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("status", [404, 429, 500])
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_ambiguous_status_is_unverifiable(self, token_file, target_cls, status):
+        server = _ProbeServer(status=status)
+        try:
+            assert _probe(target_cls(), server, token_file) is None
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_unreachable_endpoint_is_unverifiable(self, token_file, target_cls):
+        server = _ProbeServer()
+        server.close()  # closed port -> connection refused
+        assert _probe(target_cls(), server, token_file) is None
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_timeout_is_unverifiable(self, token_file, target_cls):
+        server = _ProbeServer(status=200, hang=2.0)
+        try:
+            assert (
+                _probe(target_cls(), server, token_file, timeout=0.3) is None
+            )
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_garbage_response_is_unverifiable(self, token_file, target_cls):
+        import socket
+        import threading
+
+        # A raw socket that answers with non-HTTP garbage then closes.
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        port = sock.getsockname()[1]
+
+        def _serve_garbage():
+            conn, _ = sock.accept()
+            conn.recv(4096)
+            conn.sendall(b"utter garbage\r\n\r\n")
+            conn.close()
+
+        thread = threading.Thread(target=_serve_garbage, daemon=True)
+        thread.start()
+        try:
+            target = target_cls()
+            assert target.verify_persona(
+                f"http://127.0.0.1:{port}", token_file, "gemma4", timeout=2.0,
+            ) is None
+        finally:
+            sock.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_redirect_not_followed_and_token_not_resent(
+        self, token_file, target_cls,
+    ):
+        # TOKEN HYGIENE: urllib re-sends every header (the Authorization
+        # bearer) when following a redirect — the probe must refuse them.  A
+        # 3xx is an ambiguous answer (-> unverifiable) and the redirect target
+        # must never see a request.
+        import socket
+        import threading
+
+        leak_target = _ProbeServer(status=200)
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        port = sock.getsockname()[1]
+
+        def _serve_redirect():
+            conn, _ = sock.accept()
+            conn.recv(65536)
+            conn.sendall(
+                b"HTTP/1.1 302 Found\r\n"
+                b"Location: " + leak_target.endpoint.encode() + b"/v1/messages\r\n"
+                b"Content-Length: 0\r\n\r\n"
+            )
+            conn.close()
+
+        threading.Thread(target=_serve_redirect, daemon=True).start()
+        try:
+            verdict = target_cls().verify_persona(
+                f"http://127.0.0.1:{port}", token_file, "gemma4", timeout=2.0,
+            )
+        finally:
+            sock.close()
+            leak_target.close()
+        assert verdict is None  # 302 = ambiguous, not pass/fail
+        assert leak_target.last_path is None  # bearer never left for the target
+        assert leak_target.last_auth is None
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_missing_token_file_is_unverifiable(self, tmp_path, target_cls):
+        server = _ProbeServer(status=200)
+        try:
+            assert _probe(
+                target_cls(), server, tmp_path / "nonexistent-token",
+            ) is None
+            assert server.last_path is None  # no request was even sent
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_empty_token_file_is_unverifiable(self, tmp_path, target_cls):
+        tok = tmp_path / "token"
+        tok.write_text("   \n")
+        server = _ProbeServer(status=200)
+        try:
+            assert _probe(target_cls(), server, tok) is None
+            assert server.last_path is None
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_no_model_is_unverifiable(self, token_file, target_cls):
+        server = _ProbeServer(status=200)
+        try:
+            assert _probe(target_cls(), server, token_file, model=None) is None
+            assert server.last_path is None  # a real call needs a model id
+        finally:
+            server.close()
+
+    def test_claude_sends_anthropic_version_header_and_one_token(self, token_file):
+        server = _ProbeServer(status=200)
+        try:
+            _probe(ClaudeTarget(), server, token_file)
+        finally:
+            server.close()
+        assert server.last_body == {
+            "model": "gemma4",
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "ping"}],
+        }
+
+    def test_codex_sends_responses_wire_body(self, token_file):
+        server = _ProbeServer(status=200)
+        try:
+            _probe(CodexTarget(), server, token_file)
+        finally:
+            server.close()
+        assert server.last_body == {
+            "model": "gemma4",
+            "input": "ping",
+            "max_output_tokens": 16,
+        }

@@ -40,12 +40,17 @@ from kanibako.errors import SubjectConflictError
 
 # ``--agent`` is the ephemeral agent-resolver override.  Relevant ONLY to the
 # commands that run the unified cascade with the explicit-agent seam: the launch
-# path (start + its box alias) and reauth (top-level + the ``agent`` subcommand).
+# path (start + its box alias), reauth (top-level + the ``agent`` subcommand),
+# and create (top-level + its box alias) — ``run_create`` threads the explicit
+# agent to the persona verdict + the home seed, and a persona ref whose
+# persona-grata store entry exists drives the initial store import.
 # ``shell`` is NOT here — it bypasses agent resolution entirely (the no-agent
 # recovery hatch).  ``setup`` is NOT here — it has its own persistent --agent.
 AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({
     "start",
     "box start",
+    "create",
+    "box create",
     "reauth",
     "agent reauth",
 })

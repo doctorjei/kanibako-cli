@@ -24,6 +24,8 @@ from kanibako.targets.base import (
     PluginDescriptor,
     Target,
     TargetSetting,
+    http_probe_status,
+    probe_verdict,
 )
 
 from kanibako.plugins.claude.credentials import (
@@ -237,6 +239,47 @@ class ClaudeTarget(Target):
         return PersonaSettings(
             endpoint=base_url, model=model, auth_env=_PERSONA_TOKEN_VAR,
         )
+
+    def verify_persona(
+        self,
+        endpoint: str,
+        token_path: Path,
+        model: str | None,
+        *,
+        timeout: float = 5.0,
+    ) -> bool | None:
+        """Minimal anthropic ``/v1/messages`` ack against a persona endpoint.
+
+        A genuine 1-token completion request (the messages wire an
+        ``ANTHROPIC_BASE_URL`` endpoint serves), bearer-authed with the token
+        at *token_path* — the same delivery shape the box uses
+        (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  Tri-state per
+        the base contract: 2xx → PASS, 401/403 → FAIL, anything else
+        (unreachable, no readable token, no *model* to name — the messages API
+        requires one) → UNVERIFIABLE ``None``.  The token is read transiently
+        for this request only; never logged or persisted.
+        """
+        if not model:
+            return None  # cannot build a real messages call without a model id
+        try:
+            token = token_path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError):
+            return None
+        if not token:
+            return None
+        return probe_verdict(http_probe_status(
+            endpoint.rstrip("/") + "/v1/messages",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "anthropic-version": "2023-06-01",
+            },
+            body={
+                "model": model,
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}],
+            },
+            timeout=timeout,
+        ))
 
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files from a shell directory."""

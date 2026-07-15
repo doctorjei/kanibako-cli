@@ -57,6 +57,8 @@ from kanibako.targets.base import (
     PluginDescriptor,
     Target,
     TargetSetting,
+    http_probe_status,
+    probe_verdict,
 )
 
 if TYPE_CHECKING:
@@ -452,6 +454,46 @@ class CodexTarget(Target):
         if not isinstance(model, str) or not model:
             model = None
         return PersonaSettings(endpoint=base_url, model=model, auth_env=env_key)
+
+    def verify_persona(
+        self,
+        endpoint: str,
+        token_path: Path,
+        model: str | None,
+        *,
+        timeout: float = 5.0,
+    ) -> bool | None:
+        """Minimal OpenAI ``/responses`` ack against a persona endpoint.
+
+        A genuine few-token completion on the RESPONSES wire (the only wire
+        current codex speaks — the provider block's ``wire_api = "responses"``;
+        the endpoint is the provider ``base_url``, which by that convention
+        already carries the ``/v1``-style prefix codex appends ``/responses``
+        to).  Bearer-authed with the token at *token_path* (the ``env_key``
+        var's value in-box).  Tri-state per the base contract: 2xx → PASS,
+        401/403 → FAIL, anything else (unreachable, no readable token, no
+        *model* — a codex persona always names one) → UNVERIFIABLE ``None``.
+        The token is read transiently for this request only; never logged or
+        persisted.
+        """
+        if not model:
+            return None  # a real /responses call requires a model id
+        try:
+            token = token_path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError):
+            return None
+        if not token:
+            return None
+        return probe_verdict(http_probe_status(
+            endpoint.rstrip("/") + "/responses",
+            headers={"Authorization": f"Bearer {token}"},
+            body={
+                "model": model,
+                "input": "ping",
+                "max_output_tokens": 16,
+            },
+            timeout=timeout,
+        ))
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex crab configuration."""

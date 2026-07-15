@@ -5866,3 +5866,210 @@ class TestAgentCriticalDests:
             dests = _agent_critical_dests()
 
         assert dests.count((".local/bin/dup", "file")) == 1
+
+
+class TestReconcilePersonaStore:
+    """The per-launch persona-grata store reconcile (the credsync analog).
+
+    Exercises the verified-swap state machine of ``_reconcile_persona_store``
+    with a scripted duck-typed target: no-entry / unusable-store / unchanged /
+    PASS-swap / FAIL-keep / unreachable-keep / first-ever-adopt / token-
+    unresolved.  The hook must NEVER persist (the swap rides agent_cfg_dirty
+    into the existing gated write) and never raise through.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+
+    class _StoreTarget:
+        """Duck-typed target: fixed PersonaSettings + a scripted verify verdict."""
+
+        def __init__(self, verdict=None, settings=None):
+            from kanibako.targets.base import PersonaSettings
+
+            self.settings = settings if settings is not None else PersonaSettings(
+                endpoint="https://api.navigator.example/v1",
+                model="gemma4",
+                auth_env="NAV_KEY",
+            )
+            self.verdict = verdict
+            self.verify_calls: list = []
+
+        def read_persona_settings(self, config_dir):
+            return self.settings
+
+        def verify_persona(self, endpoint, token_path, model, *, timeout=5.0):
+            self.verify_calls.append((endpoint, token_path, model))
+            return self.verdict
+
+    def _store(self, tmp_home, *, pointer: str | None = "./token"):
+        """Lay down $XDG_CONFIG_HOME/personas/navigator/codex/; return persona dir."""
+        persona_dir = tmp_home / "config" / "personas" / "navigator"
+        (persona_dir / "codex").mkdir(parents=True)
+        if pointer is not None:
+            (persona_dir / ".secret_path").write_text(pointer + "\n")
+        return persona_dir
+
+    def _reconcile(self, tmp_home, target, agent_cfg):
+        from kanibako.commands.start import _reconcile_persona_store
+        from kanibako.log import get_logger
+
+        agents_root = tmp_home / "data" / "agents"
+        return _reconcile_persona_store(
+            agents_root, "navigator℘codex", target, agent_cfg,
+            get_logger("test"),
+        )
+
+    def _synced_cfg(self, tmp_home):
+        """An AgentConfig already carrying exactly the store's owned values."""
+        from kanibako.agent_config import AgentConfig
+
+        token = tmp_home / "config" / "personas" / "navigator" / "token"
+        return AgentConfig(
+            state={"endpoint": self._ENDPOINT, "model": "gemma4"},
+            secret_path={"NAV_KEY": str(token)},
+        )
+
+    def test_no_store_entry_returns_unchanged(self, tmp_home):
+        from kanibako.agent_config import AgentConfig
+
+        cfg = AgentConfig(state={"endpoint": "https://old.example"})
+        target = self._StoreTarget(verdict=True)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert out is cfg
+        assert synced is False
+        assert target.verify_calls == []
+
+    def test_unusable_store_warns_and_keeps(self, tmp_home, capsys):
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home)
+        cfg = AgentConfig(state={"endpoint": "https://old.example"})
+        target = self._StoreTarget(verdict=True)
+        target.settings = None  # read_persona_settings -> None (unusable)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert out is cfg
+        assert synced is False
+        assert "unusable" in capsys.readouterr().err
+
+    def test_unchanged_values_spend_no_probe(self, tmp_home):
+        self._store(tmp_home)
+        cfg = self._synced_cfg(tmp_home)
+        target = self._StoreTarget(verdict=True)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert out is cfg
+        assert synced is False
+        assert target.verify_calls == []  # nothing changed -> no probe cost
+
+    def test_changed_and_pass_swaps(self, tmp_home):
+        from kanibako.agent_config import AgentConfig
+
+        persona_dir = self._store(tmp_home)
+        cfg = AgentConfig(
+            name="Keep Me",
+            state={"endpoint": "https://old.example", "model": "old"},
+            secret_path={"NAV_KEY": "/old/tok"},
+        )
+        target = self._StoreTarget(verdict=True)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert synced is True
+        assert out is not cfg
+        assert out.state["endpoint"] == self._ENDPOINT
+        assert out.state["model"] == "gemma4"
+        assert out.secret_path["NAV_KEY"] == str(persona_dir / "token")
+        assert out.name == "Keep Me"  # unowned values carried through
+        # The probe got the parsed values (no store re-parse needed).
+        assert target.verify_calls == [
+            (self._ENDPOINT, persona_dir / "token", "gemma4"),
+        ]
+        # The ORIGINAL config was not mutated (candidate was a copy).
+        assert cfg.state["endpoint"] == "https://old.example"
+
+    def test_changed_and_fail_keeps_last_known_good(self, tmp_home, capsys):
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home)
+        cfg = AgentConfig(state={"endpoint": "https://old.example"})
+        target = self._StoreTarget(verdict=False)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert out is cfg
+        assert synced is False
+        err = capsys.readouterr().err
+        assert "rejected" in err and "last-known-good" in err
+
+    def test_changed_and_unreachable_keeps_last_known_good(self, tmp_home, capsys):
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home)
+        cfg = AgentConfig(state={"endpoint": "https://old.example"})
+        target = self._StoreTarget(verdict=None)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert out is cfg
+        assert synced is False
+        assert "last-known-good" in capsys.readouterr().err
+
+    def test_first_ever_unverifiable_adopts_with_warning(self, tmp_home, capsys):
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home)
+        cfg = AgentConfig()  # no prior endpoint -> first-ever
+        target = self._StoreTarget(verdict=None)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert synced is True
+        assert out.state["endpoint"] == self._ENDPOINT
+        assert "UNVERIFIED" in capsys.readouterr().err
+
+    def test_first_ever_rejected_still_adopts(self, tmp_home, capsys):
+        # A positive reject with NOTHING working to protect: refusing would
+        # only re-error as "no endpoint configured", masking the cause.
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home)
+        cfg = AgentConfig()
+        target = self._StoreTarget(verdict=False)
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert synced is True
+        assert out.state["endpoint"] == self._ENDPOINT
+        assert "UNVERIFIED" in capsys.readouterr().err
+
+    def test_token_unresolved_means_no_probe_and_keeps(self, tmp_home, capsys):
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home, pointer=None)  # no .secret_path
+        cfg = AgentConfig(state={"endpoint": "https://old.example"})
+        target = self._StoreTarget(verdict=True)  # verdict would pass, but…
+        out, synced = self._reconcile(tmp_home, target, cfg)
+        assert target.verify_calls == []  # …no token -> no probe possible
+        assert out is cfg
+        assert synced is False
+        err = capsys.readouterr().err
+        assert "token pointer did not resolve" in err
+
+    def test_hook_never_persists(self, tmp_home):
+        from kanibako.agent_config import AgentConfig
+
+        self._store(tmp_home)
+        target = self._StoreTarget(verdict=True)
+        self._reconcile(tmp_home, target, AgentConfig())
+        agents_root = tmp_home / "data" / "agents"
+        assert not (agents_root / "navigator℘codex" / "settings.yaml").exists()
+        assert not agents_root.exists()  # nothing at all was written
+
+    def test_bare_agent_never_touches_the_store(self, tmp_home, monkeypatch):
+        # Even a mis-gated call with a BARE agent id does zero store access:
+        # locate_entry returns before the store root is even built.
+        import kanibako.persona_store as ps
+        from kanibako.agent_config import AgentConfig
+        from kanibako.commands.start import _reconcile_persona_store
+        from kanibako.log import get_logger
+
+        def _boom():
+            raise AssertionError("store accessed for a bare agent")
+
+        monkeypatch.setattr(ps, "persona_store_root", _boom)
+        cfg = AgentConfig()
+        out, synced = _reconcile_persona_store(
+            tmp_home / "data" / "agents", "claude", self._StoreTarget(), cfg,
+            get_logger("test"),
+        )
+        assert out is cfg
+        assert synced is False

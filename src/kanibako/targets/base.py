@@ -209,6 +209,71 @@ class PersonaSpec:
     model_required: bool = False     # error if endpoint set but no model (goose parity)
 
 
+def http_probe_status(
+    url: str,
+    *,
+    headers: dict[str, str],
+    body: dict,
+    timeout: float,
+) -> int | None:
+    """POST *body* as JSON to *url*; return the HTTP status, else ``None``.
+
+    The shared transport for :meth:`Target.verify_persona` probes.  Returns the
+    integer status for ANY HTTP response (an error status like 401 is a real
+    ANSWER from the endpoint, not a transport failure) and ``None`` on any
+    transport-level failure (DNS, refused, TLS, timeout, malformed URL, …) —
+    the probe's "unreachable / can't-tell" shape.  NEVER raises, and NEVER logs
+    the request (*headers* carry a bearer token).  Redirects are NOT followed:
+    urllib would re-send EVERY header — the ``Authorization`` bearer included —
+    to the redirect target, possibly cross-origin; a 3xx comes back as its
+    status (→ unverifiable).  The response body is not read — the status alone
+    answers "does this endpoint accept this token".
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    class _NoRedirects(urllib.request.HTTPRedirectHandler):
+        """Refuse every redirect (token hygiene — see the docstring)."""
+
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+            return None
+
+    data = _json.dumps(body).encode("utf-8")
+    try:
+        req = urllib.request.Request(url, data=data, method="POST")
+        for key, value in headers.items():
+            req.add_header(key, value)
+        req.add_header("Content-Type", "application/json")
+        opener = urllib.request.build_opener(_NoRedirects)
+        with opener.open(req, timeout=timeout) as resp:  # noqa: S310
+            return int(resp.status)
+    except urllib.error.HTTPError as exc:
+        return int(exc.code)
+    except Exception:
+        # URLError / socket.timeout / ConnectionError / ssl / ValueError (bad
+        # URL) — all transport shapes; the probe contract is never-raises.
+        return None
+
+
+def probe_verdict(status: int | None) -> bool | None:
+    """Map an HTTP probe *status* to the tri-state persona-verify verdict.
+
+    * 2xx — the endpoint accepted the token and answered → ``True`` (PASS);
+    * 401 / 403 — a POSITIVE auth reject → ``False`` (FAIL);
+    * anything else (404 wrong path, 429 rate-limit — the token was accepted,
+      5xx, or ``None`` transport failure) → ``None`` (UNVERIFIABLE / can't-tell:
+      never punish a launch for an endpoint blip — DESIGN §5b).
+    """
+    if status is None:
+        return None
+    if 200 <= status < 300:
+        return True
+    if status in (401, 403):
+        return False
+    return None
+
+
 class PersonaSettings(NamedTuple):
     """Persona-SPECIFIC values EXTRACTED from a rendered harness config.
 
@@ -574,6 +639,35 @@ class Target(ABC):
         warns and falls through.  Default: ``None`` (harness has no persona
         reader yet — goose/no_agent; add per-harness later or stay a no-op).
         Pure read; never writes, never reads the token file.
+        """
+        return None
+
+    def verify_persona(
+        self,
+        endpoint: str,
+        token_path: Path,
+        model: str | None,
+        *,
+        timeout: float = 5.0,
+    ) -> bool | None:
+        """Probe *endpoint* with the token at *token_path* — a minimal real ack.
+
+        The persona verified-swap probe (DESIGN §2b/§3b): a FEW-token genuine
+        completion round-trip against the persona's endpoint, harness-API
+        specific (anthropic messages vs OpenAI responses wire).  TRI-STATE:
+
+        * ``True``  — PASS: the endpoint accepted the token and responded;
+        * ``False`` — FAIL: a POSITIVE auth reject (401/403) — the caller keeps
+          the last-known-good values;
+        * ``None``  — UNVERIFIABLE: no probe implemented for this harness, the
+          endpoint is unreachable, the token/model is unavailable, or the
+          answer is ambiguous.  NOT pass/fail — the caller applies the DESIGN
+          §5b rules (keep last-known-good; first-ever → candidate unverified).
+
+        Contract: NEVER raises; SHORT *timeout* (a launch must not hang on a
+        blip); the token value is read TRANSIENTLY for the request only —
+        never logged, never persisted, never returned.  Default: ``None``
+        (base has no wire knowledge — goose/no_agent add theirs later).
         """
         return None
 
