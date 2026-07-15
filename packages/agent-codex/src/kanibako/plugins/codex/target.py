@@ -53,6 +53,7 @@ from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
+    PersonaSettings,
     PluginDescriptor,
     Target,
     TargetSetting,
@@ -401,6 +402,56 @@ class CodexTarget(Target):
             return True
 
         return False
+
+    def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
+        """Extract persona values from a rendered codex ``config.toml``.
+
+        The persona-grata store renders a codex persona as the SAME
+        ``[model_providers.<id>]`` shape kanibako itself emits at launch
+        (``vscode_config.CodexModelProvider`` → ``_build_codex_provider_region``),
+        so this reader parses the inverse: ``base_url`` → endpoint, ``env_key``
+        → auth_env (codex configs SELF-NAME the bearer var), and the top-level
+        ``model``.  Provider-table selection: the top-level ``model_provider``
+        key when it names a present table (what kanibako writes), else the
+        single table when exactly one exists; zero tables or an unresolvable
+        ambiguity → ``None``.
+
+        FAIL-SOFT (base-class contract): absent / unreadable / malformed TOML,
+        no usable provider table, or a missing/empty ``base_url``/``env_key``
+        (a codex persona is meaningless without both) → ``None``.  Pure read
+        via stdlib ``tomllib``; never touches the token.
+        """
+        import tomllib
+
+        cfg = config_dir / "config.toml"
+        try:
+            data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            # OSError: absent/unreadable; ValueError covers both
+            # tomllib.TOMLDecodeError and UnicodeDecodeError.
+            return None
+        providers = data.get("model_providers")
+        if not isinstance(providers, dict) or not providers:
+            return None
+        selected = data.get("model_provider")
+        if isinstance(selected, str) and selected in providers:
+            table = providers[selected]
+        elif len(providers) == 1:
+            table = next(iter(providers.values()))
+        else:
+            return None  # several tables, none selected -> ambiguous
+        if not isinstance(table, dict):
+            return None
+        base_url = table.get("base_url")
+        env_key = table.get("env_key")
+        if not isinstance(base_url, str) or not base_url:
+            return None
+        if not isinstance(env_key, str) or not env_key:
+            return None
+        model = data.get("model")
+        if not isinstance(model, str) or not model:
+            model = None
+        return PersonaSettings(endpoint=base_url, model=model, auth_env=env_key)
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex crab configuration."""

@@ -20,6 +20,7 @@ from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
     CredFileSpec,
+    PersonaSettings,
     PluginDescriptor,
     Target,
     TargetSetting,
@@ -49,6 +50,12 @@ _UPDATE_TIMEOUT = 300
 # container).  Anchoring confines trust to the user's home dir.
 _LAUNCHER = Path.home() / ".local" / "bin" / "claude"
 _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
+
+# Persona wiring constants (claude's FIXED env vars; mirror the launch-side
+# ``_PERSONA_BASE_URL_VAR`` / ``_PERSONA_TOKEN_VAR`` in core start.py — claude's
+# settings.json does not self-name its token var the way codex ``env_key`` does).
+_PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
+_PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
 
 
 # Declarative descriptor for the generalized plugin interface.  LIVE: core
@@ -195,6 +202,41 @@ class ClaudeTarget(Target):
 
     def credential_check_path(self, home: Path) -> Path | None:
         return home / ".claude" / ".credentials.json"
+
+    def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
+        """Extract persona values from a rendered claude ``settings.json``.
+
+        The persona-grata store renders a claude persona as a harness-native
+        ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
+        endpoint and whose top-level ``model`` (when present) names the model —
+        the same shape the launch-time B3 host-dir adopt reads.  The bearer
+        token var is claude's FIXED ``ANTHROPIC_AUTH_TOKEN`` (the harness does
+        not self-name it, unlike codex's ``env_key``).
+
+        FAIL-SOFT (base-class contract): absent / unreadable / malformed JSON,
+        a non-object document, a non-object ``env``, or a missing/empty
+        ``ANTHROPIC_BASE_URL`` (a claude persona config without an endpoint is
+        unusable) → ``None``.  Pure read; never touches the token.
+        """
+        settings = config_dir / "settings.json"
+        try:
+            data = json.loads(settings.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        env = data.get("env")
+        if not isinstance(env, dict):
+            return None
+        base_url = env.get(_PERSONA_BASE_URL_VAR)
+        if not isinstance(base_url, str) or not base_url:
+            return None
+        model = data.get("model")
+        if not isinstance(model, str) or not model:
+            model = None
+        return PersonaSettings(
+            endpoint=base_url, model=model, auth_env=_PERSONA_TOKEN_VAR,
+        )
 
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files from a shell directory."""

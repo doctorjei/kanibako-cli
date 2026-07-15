@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
@@ -207,6 +207,25 @@ class PersonaSpec:
     host_dir_adopt: bool = True      # env-delivery B3 host-dir auto-adopt (claude only)
     provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
     model_required: bool = False     # error if endpoint set but no model (goose parity)
+
+
+class PersonaSettings(NamedTuple):
+    """Persona-SPECIFIC values EXTRACTED from a rendered harness config.
+
+    The persona-grata store (``$XDG_CONFIG_HOME/personas/<pid>/<hid>/``) lays
+    down a harness-NATIVE config file (codex ``config.toml``, claude
+    ``settings.json``); :meth:`Target.read_persona_settings` parses the one it
+    understands into this harness-NEUTRAL triple, which the auto-import maps
+    onto the agent keyspace (``self.endpoint`` / ``self.model`` /
+    ``self.secret_path.<auth_env>``).  Distinct from :class:`PersonaSpec`,
+    which declares HOW a harness DELIVERS these values into the box — this is
+    the values themselves, read back OUT of a rendered config.
+    """
+
+    endpoint: str | None   # the alternate base URL (codex base_url / claude ANTHROPIC_BASE_URL)
+    model: str | None      # the provider model id, when the config names one
+    auth_env: str          # env var the bearer token is exported as (codex env_key /
+                           # claude's fixed ANTHROPIC_AUTH_TOKEN)
 
 
 @dataclass(frozen=True)
@@ -541,6 +560,21 @@ class Target(ABC):
 
     def credential_check_path(self, home: Path) -> Path | None:
         """Path to check for credential existence, or None."""
+        return None
+
+    def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
+        """Extract persona values from a rendered harness config in *config_dir*.
+
+        *config_dir* is a persona-grata store entry's harness dir
+        (``$XDG_CONFIG_HOME/personas/<pid>/<hid>/``) holding this harness's
+        NATIVE config file.  A plugin that models the store's rendering parses
+        it into a :class:`PersonaSettings`; the auto-import maps that onto the
+        agent keyspace.  FAIL-SOFT contract: absent / unreadable / malformed /
+        missing-required-keys config → ``None`` (never raises) — the caller
+        warns and falls through.  Default: ``None`` (harness has no persona
+        reader yet — goose/no_agent; add per-harness later or stay a no-op).
+        Pure read; never writes, never reads the token file.
+        """
         return None
 
     def invalidate_credentials(self, home: Path) -> None:
