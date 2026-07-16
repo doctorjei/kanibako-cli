@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-07-16
+
+This release completes **Codex support inside VS Code and multi-shell boxes**:
+mounted secrets now reach every in-box shell, and the in-box Codex configuration
+is kept in sync with the active agent on every launch.
+
+### Fixed
+
+- **Secrets reach every in-box shell.** A configured `secret_path.<VAR>` (e.g. an
+  API key) is now exported into every login shell in the box — the VS Code
+  integrated terminal and the Codex panel's app-server, not just the supervised
+  agent process — via an `/etc/profile.d` drop-in. Previously only the agent's own
+  process saw the variable, so Codex launched from a panel or terminal failed to
+  authenticate even though the secret was correctly mounted.
+
+### Changed
+
+- **The in-box Codex config is now a reconciled projection.** `~/.codex/config.toml`
+  is reconciled to the resolved active agent on every launch: a persona writes its
+  model provider; a bare (non-persona) Codex box wipes the managed
+  `model`/`model_provider` selection back to stock. Your own unrelated config
+  (extra `[model_providers.*]` tables, other keys) is preserved untouched.
+  Previously a box switched from a persona back to bare Codex kept silently running
+  the old persona's provider. Reattaching an already-running box now prints a note
+  that Codex config changes take effect after a restart. Requires
+  `kanibako-agent-codex >= 0.2.4`.
+- **Codex `sandbox_mode` is a box invariant** (`danger-full-access`) — the box
+  *is* the sandbox, and this stops the Codex panel's app-server from stalling on a
+  nested sandbox. `bubblewrap` is now part of the universal image baseline.
+
+VS Code integration and persona agents remain **experimental**; the in-box
+graphical Codex panel is a known upstream limitation.
+
 ## [1.7.1] - 2026-07-13
 
 This release completes **codex and goose persona support** — a persona pointed at
