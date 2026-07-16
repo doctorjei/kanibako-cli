@@ -338,6 +338,20 @@ class CodexTarget(Target):
             model_provider=model_provider,
         )
 
+    def reattach_config_notice(self) -> str | None:
+        """codex's ``config.toml`` is a RECONCILED PROJECTION (D1): the launch
+        seams re-materialise its model/provider/approval elements only on start
+        of a STOPPED box.  A reattach to a live box does NOT re-deliver (and
+        rewriting under the panel's already-running codex app-server is unsafe),
+        so warn that codex config changes apply only after a restart — kanibako
+        reconciles the file to the resolved active agent on the next start.
+        """
+        return (
+            "Note: this box is already running; codex config changes (model / "
+            "provider / approvals) take effect only after restarting the box "
+            "('kanibako stop' then 'kanibako start')."
+        )
+
     @property
     def setup_entrypoint(self) -> str | None:
         """``codex login`` is codex's interactive in-box login.

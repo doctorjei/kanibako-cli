@@ -4145,6 +4145,40 @@ class TestWritebackAllPaths:
             assert m.credsync.writeback_box_credentials.called
             assert m.target.writeback_extra.called
 
+    def test_reattach_prints_config_notice_without_rewriting(
+        self, start_mocks, capsys,
+    ):
+        """D1: reattach to a running box prints the target's
+        ``reattach_config_notice`` (codex's restart heads-up) to STDERR and does
+        NOT re-deliver / rewrite the live config (deliver_directive_hook is on the
+        NON-reattach path)."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.target.reattach_config_notice.return_value = "RESTART-TO-APPLY-XYZ"
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+        assert "RESTART-TO-APPLY-XYZ" in capsys.readouterr().err
+        # reattach fast path never re-delivers the projected config.
+        assert not m.target.deliver_directive_hook.called
+
+    def test_reattach_suppresses_notice_when_target_returns_none(
+        self, start_mocks, capsys,
+    ):
+        """An agent whose reattach notice is None (base default) prints nothing
+        extra on the reattach path (no name-branching; inherited no-op)."""
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.target.reattach_config_notice.return_value = None
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+        assert "None" not in capsys.readouterr().err
+
     def test_no_writeback_when_group_auth_false(self, start_mocks):
         """Distinct auth (PRIVATE box, auth_src.shares False) -> NO writeback on
         any path."""

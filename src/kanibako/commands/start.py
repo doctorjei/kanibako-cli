@@ -1286,7 +1286,9 @@ def _deliver_panel_permissions(
     reached whenever a box is (re)started — first launch after create and start
     of a stopped box — so the provider block re-materialises to the current
     persona config.  (A reattach to an ALREADY-running box early-returns above
-    and does not re-deliver; harmless — the running box already carries it.)
+    and does not re-deliver — a config change made while the box ran is NOT
+    picked up until restart, so that path prints ``reattach_config_notice``
+    instead of rewriting the live file; reconciled on the next start.)
     """
     if target is None:
         return
@@ -2152,6 +2154,16 @@ def _run_container(
                 f"(agent: {agent_label}).",
                 file=sys.stderr,
             )
+            # Reconciled-projection heads-up (D1): a reattach does NOT re-deliver
+            # the agent's launch-projected config, and rewriting under a live
+            # app-server is unsafe.  Agents whose config is a reconciled
+            # projection (codex) return a notice; core prints it WITHOUT touching
+            # the live file (reconciled on next start).  Seam call, no
+            # name-branching — a bare-config agent inherits the None default.
+            if target is not None:
+                _reattach_notice = target.reattach_config_notice()
+                if _reattach_notice:
+                    print(_reattach_notice, file=sys.stderr)
             # Refresh credentials before reattaching
             if target and auth_src.shares:
                 if desc is not None:

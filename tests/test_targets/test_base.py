@@ -199,6 +199,25 @@ class TestTargetABC:
         # Inert means INERT: nothing was created under the box home.
         assert list(config_root.iterdir()) == []
 
+    def test_reattach_config_notice_default_is_none(self):
+        """The reattach-notice seam defaults to ``None`` (no notice) — an agent
+        with no launch-projected config surface inherits it, so core prints
+        nothing on its reattach path."""
+
+        class PlainTarget(Target):
+            @property
+            def name(self) -> str:
+                return "plain"
+
+            @property
+            def display_name(self) -> str:
+                return "Plain"
+
+            def detect(self):
+                return None
+
+        assert PlainTarget().reattach_config_notice() is None
+
     def test_delivery_seams_are_keyword_only(self, tmp_path):
         """The seam contract is keyword-only — positional use must fail loudly
         (guards against silent arg-order drift at the unconditional call site)."""
