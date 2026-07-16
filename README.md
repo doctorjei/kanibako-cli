@@ -23,98 +23,58 @@ by the `kanibako` meta-package); other agents can be added as plugins.
 
 ## Quick Start
 
-1. Install - `uv tool install kanibako` or `pipx install kanibako` or `pip install kanibako`
-2. Setup - `kanibako setup`
-3. Create a box for your project -- a one-time step per directory
-4. bash```
-cd ~/my-project
-kanibako create
-5. Launch the agent session -- that's it!
+```bash
+# Install & Setup
+pipx install kanibako   # uv and pip also work!
+kanibako setup
+
+# Create a box for your project - a one-time step per project 'box':
+cd ~/my-project && kanibako create
+
+# Launch the agent session -- that's it!
 kanibako
-6. Optional - launch in VS Code (new, experimental):
+
+# Optional - launch in VS Code (new, experimental):
 kanibako code
 ```
 
 ## Features
 
-- **Safe by default** -- rootless containers with no host access; the sandbox
-  is what makes it safe to give agents real autonomy
-- **Automatic sandboxing** -- no Docker or Podman experience required;
-  Kanibako manages all container operations for you
-- **Session continuity** -- `kanibako start` defaults to `--continue`, picking
-  up where you left off; persistent tmux sessions survive SSH disconnects
-- **Per-box isolation** -- each box gets its own home, config, and
-  credentials (three modes: primary, workset/named, standalone)
-- **Credential forwarding** -- host credentials are synced into the box
-  and written back after each session
-- **Setup wizard** -- `kanibako setup` detects installed agents, checks your
-  container runtime, and lets you pick a default agent (the only interactive
-  prompt in the CLI); no manual configuration needed
-- **Diagnostics** -- `kanibako system diagnose` checks runtime, images,
-  agents, and storage; `box diagnose` and `rig diagnose` drill into specific
-  scopes
-- **Vault snapshots** -- per-box read-only and read-write shared
-  directories with smart snapshot strategy detection (reflink, hardlink,
-  or tar.xz depending on filesystem)
-- **Shell customization** -- per-box environment variables (`box set
-  env.*`), drop-in init scripts (`shell.d/`), and layered seed-once home
-  templates
-- **Agent configuration** -- per-agent YAML config with default args, state
-  knobs, env vars, and shared caches; per-box setting overrides via
-  `box set`
-- **Shared caches** -- global download caches (pip, cargo, npm, etc.)
-  shared across boxes; agent-level caches via the agent config
-- **Plugin system** -- agent-agnostic core (`kanibako-cli`); Claude/Codex/Goose
-  plugins (`kanibako-agent-*`) ship with the meta-package; descriptor-only
-  three-tier discovery (entry points, user directory, project directory)
-- **Rig freshness checks** -- non-blocking digest comparison against GHCR
-  on startup (24h cache)
-- **Helper spawning** -- spawn child agent instances for parallel workloads
-  with budget-controlled depth and breadth
-- **Concurrency lock** -- prevents two sessions from running in the same
-  project simultaneously
+- **Seamless Isolation** -- rootless containers with no host access, so its safe to give agents autonomy
+- **Automatic Sandboxing** -- no Docker or Podman experience required - it's all automated
+- **Session Continuity** -- `kanibako start` by default to picks up where you left off
+- **Painless Persistence** -- boxes launch in tmux by default - so you can detach and leave agents running
+- **Credential Forwarding** -- host credentials optionally synced into the box from host
+- **Customized, Per-Box** -- each box gets its own home, config, & credentials (multiple sharing modes)
+- **Layered Customizations** -- per box/workset/agent and global customizations (settings, scripts, etc.)
+- **Nuanced Custrols** --per box/workset/agent and global environment, mount, and share controls
+- **Helper / Subagents** -- subagent spawning system for distributed workloads
+- **Diagnostics** -- `kanibako system diagnose` (runtime, images, agents, & storage)
+- **Plugins** -- agent-agnostic core (`kanibako-cli`) with custom plguin system for others harnesses
 
-## Prerequisites
+## Using Kanibako
+See the [Quick Start](#quick-start) Guide for get started right away; below are the nitty-gritty details.
+
+### Prerequisites
 
 - Python 3.11+
-- [Podman](https://podman.io/) 4.3+ (recommended) or Docker -- just needs to be
-  installed; Kanibako manages all container operations automatically
-- An AI coding agent installed on the host (e.g.
-  [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
+- [Podman](https://podman.io/) 4.3+ (recommended) or Docker (Containers managed automatically)
+- An agent harness or full agent system (e.g., Claude Code, Codex, or Goose)
 
-## Installation
-
-Kanibako runs *your own* agent CLI inside a sandbox — it doesn't ship one, so make
-sure an agent (e.g. Claude Code, Codex, or Goose) is installed on the host first
-(see [Prerequisites](#prerequisites)).
+### Install from Source
 
 ```bash
-# Recommended -- isolated install of the CLI + Claude, Codex, and Goose plugins
-uv tool install kanibako
-# -- or --
-pipx install kanibako
-# -- or --
-pip install kanibako
-
-# Agent-agnostic base only (no plugins -- plain shell mode)
-pip install kanibako-cli
-
-# From source (development)
 git clone https://github.com/doctorjei/kanibako.git
 cd kanibako
 pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-codex/ -e packages/agent-goose/
 ```
 
-> Want the bleeding edge? Add `--prerelease allow` (uv) or `--pre` (pip/pipx) to
-> pull the newest release candidate.
-
 On first use, Kanibako automatically creates its config and data directories.
 Run `kanibako setup` to verify your environment and pick a default agent. If you
-have **more than one** agent installed (the meta-package ships all three), you
-**must** choose one — either with `setup` or per-run with `--agent <name>` —
+have **more than one** agent harness installed (the meta-package ships all three),
+you **must** choose one — either with `setup` or per-run with `--agent <name>` —
 otherwise `kanibako` will error rather than guess. With a single agent installed
 it is used automatically. See [Agent Selection](#agent-selection).
-
 
 No `docker run`, no volume flags, no Containerfile. The first launch pulls the
 container rig and copies in your agent credentials; after that, `kanibako` in the
@@ -133,69 +93,47 @@ kanibako --image kanibako-min:latest   # launch on a specific rig
 Creating a box is deliberate: a launch (`kanibako` / `start` / `code` / `shell`)
 never invents one, so a typo'd path or wrong directory can't silently make a box.
 
-## Example: Python Project
+### Example: Python Project
 
 The default `kanibako-oci` rig (based on droste-fiber) includes Python, git,
 gh, nano, jq, ripgrep, tmux, Podman, and common dev tools.  This is enough for
 most Python, JavaScript, and general scripting work.
 
 ```bash
-# 1. Install kanibako (see Installation)
-pipx install kanibako
-
-# 2. Create or clone a project
-mkdir ~/my-flask-app && cd ~/my-flask-app
-git init
-# (or: git clone https://github.com/you/my-flask-app.git && cd my-flask-app)
-
-# 3. Create the box for this project (explicit, one-time)
-kanibako create
-
-# 4. Launch -- that's it
-kanibako
+pipx install kanibako                       # installation
+mkdir ~/my-flask-app && cd ~/my-flask-app   # Create project
+git init                                    # New git repo (alt: clone a project)
+kanibako create                             # Create new box for project (one-time)
+kanibako                                    # launch (app done!)
 ```
 
-`kanibako create` sets up an isolated environment for this project.  On the
-first launch, Kanibako will:
+`kanibako create` builds an isolated environment. On first launch, Kanibako will automatically...
 - Pull the base container rig (once, cached afterwards)
 - Copy your agent credentials into the sandbox
 - Drop you into an agent session inside the container
 
-The agent sees your project files in `~/workspace/` and has full access to
-Python, git, and the other base tools.  When you exit, your project files
-and agent state are preserved -- next time you run `kanibako` in the same
-directory, it picks up where you left off.
+The agent sees your project files in `~/workspace/` and has full access to standard tools. On exit,
+project files and agent state are preserved; on next run, `kanibako` will pick up where you left off.
 
 ```bash
-# Later: come back to the same project
+# Come back to the same project latyer...
 cd ~/my-flask-app
 kanibako              # resumes your previous session
 kanibako -N           # or start a fresh conversation
 ```
 
-## Example: C/Rust Project (custom rig)
+### Example: C/Rust Project (custom rig)
 
-For projects that need compiled languages, create a custom rig with the
-toolchains you need:
+For projects that need compiled languages, create a custom rig with needed tools:
 
 ```bash
-# 1. Build the bundled C/C++ + Rust toolchain template
-kanibako rig prep systems
-# (or build one interactively with: kanibako rig extend my-systems --from kanibako-oci)
-
-# 2. Create the box for your project, pinned to that rig (explicit, one-time)
-cd ~/my-rust-project
-kanibako create --image kanibako-template-systems
-
-# 3. Launch
-kanibako
+kanibako rig prep systems                          # Build bundled C/C++ + Rust toolchain template
+cd ~/my-rust-project                               # Enter the project directory
+kanibako create --image kanibako-template-systems  # Create a box using the systems template
+kanibako                                           # Start & enter the box
 ```
 
-`kanibako create` pins the rig choice for this project, so you can just run
-`kanibako` next time.
-
-See [Container Rigs](#container-rigs) for the base rigs and custom rig
-creation.
+See [Container Rigs](#container-rigs) for the base rigs and custom rig creation.
 
 ## Commands
 
@@ -329,6 +267,12 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 | `system set` / `system get` / `system show` / `system reset` | View or modify global configuration |
 | `system upgrade` | Self-update (`--check` for dry run) |
 | `system diagnose` | Check system health (runtime, images, agents, storage) |
+
+## Preview / Experimental Features
+- **Vault snapshots** -- per-box read-only and read-write shared
+  directories with smart snapshot strategy detection (reflink, hardlink,
+  or tar.xz depending on filesystem)
+- Build rigs interactively with: kanibako rig extend my-systems --from kanibako-oci)
 
 ## VS Code Integration
 
