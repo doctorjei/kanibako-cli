@@ -282,10 +282,15 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
         "kanibako-entry"
     )
     entry_path = Path(str(entry_ref))
+    secrets_ref = importlib.resources.files("kanibako.scripts").joinpath(
+        "kanibako-secrets.sh"
+    )
+    secrets_path = Path(str(secrets_ref))
 
     sources: dict[str, str] = {
         "kani_pkg": str(pkg_dir),
         "kani_bin": str(entry_path),
+        "secret_export": str(secrets_path),
     }
 
     binds: dict[str, tuple[str, str, str]] = {}

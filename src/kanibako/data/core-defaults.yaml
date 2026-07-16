@@ -217,6 +217,20 @@ kani:
     source: kani_bin
     box_dest: "~/.local/bin/kanibako"
     options: "ro"
+  # Universal secret export → /etc/profile.d/kanibako-secrets.sh (ro).  A generic,
+  # self-adapting profile.d snippet that every LOGIN shell sources; it exports each
+  # mounted secret from SECRET_MOUNT_DIR (/run/kanibako/secrets) in-box, so a
+  # `podman exec` login shell (VS Code integrated terminal, codex panel app-server)
+  # sees $API_KEY etc. — the paths the PID-1 `_secret_export_shim` cannot reach
+  # (those non-login execs never inherit its env).  UNCONDITIONAL/universal: the
+  # snippet no-ops when nothing is mounted, so it is safe on every box.  The value
+  # is still read IN-BOX from the ro mount — kanibako only binds the snippet PATH,
+  # never the token (arm's-length preserved; nothing leaks to `podman inspect`).
+  - key: secret_export
+    category: bindings.ro
+    source: secret_export
+    box_dest: "/etc/profile.d/kanibako-secrets.sh"
+    options: "ro"
   # NOTE: the read-only built-in directive tree (KANIBAKO.md + flattener scripts,
   # formerly the single ``playbook_kanibako`` whole-dir RO bind) is no longer a
   # hand-declared entry here.  It is enumerated PER FILE from the packaged rom root
