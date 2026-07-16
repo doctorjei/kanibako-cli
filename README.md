@@ -70,25 +70,29 @@ by the `kanibako` meta-package); other agents can be added as plugins.
 
 ## Installation
 
-> **Pre-release:** the current line (`1.7.0`) is still in release candidates, so
-> add `--pre` (pip/pipx) or `--prerelease allow` (uv) to get the newest rc. Plain
-> `pip install kanibako` gets the last *stable* release (`1.6.0`). Once `1.7.0`
-> ships, drop the flag.
+Kanibako runs *your own* agent CLI inside a sandbox — it doesn't ship one, so make
+sure an agent (e.g. Claude Code, Codex, or Goose) is installed on the host first
+(see [Prerequisites](#prerequisites)).
 
 ```bash
-# Standard install (cli + Claude, Codex, and Goose plugins) -- current rc
-uv tool install --prerelease allow kanibako
+# Recommended -- isolated install of the CLI + Claude, Codex, and Goose plugins
+uv tool install kanibako
 # -- or --
-pip install --pre kanibako
+pipx install kanibako
+# -- or --
+pip install kanibako
 
-# Base only (no agent plugins -- agent-agnostic shell mode)
-pip install --pre kanibako-cli
+# Agent-agnostic base only (no plugins -- plain shell mode)
+pip install kanibako-cli
 
-# Development install
+# From source (development)
 git clone https://github.com/doctorjei/kanibako.git
 cd kanibako
 pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-codex/ -e packages/agent-goose/
 ```
+
+> Want the bleeding edge? Add `--prerelease allow` (uv) or `--pre` (pip/pipx) to
+> pull the newest release candidate.
 
 On first use, Kanibako automatically creates its config and data directories.
 Run `kanibako setup` to verify your environment and pick a default agent. If you
@@ -99,32 +103,36 @@ it is used automatically. See [Agent Selection](#agent-selection).
 
 ## Quick Start
 
+Three steps from install to a running agent:
+
 ```bash
-# Create a box for the current directory (a deliberate, one-time step)
+# 1. Pick a default agent (only needed if you installed more than one)
+kanibako setup
+
+# 2. Create a box for your project -- a one-time step per directory
 cd ~/my-project
 kanibako create
 
-# Start an agent session (shortcut for `kanibako start`)
+# 3. Launch the agent session -- that's it
 kanibako
-
-# Start with a specific rig
-kanibako --image kanibako-min:latest
-
-# Open a plain bash shell (no agent)
-kanibako shell
-
-# Run a one-shot command in the container
-kanibako shell -- echo hello
-
-# Start a new conversation
-kanibako -N
 ```
 
-That's it -- no `docker run`, no volume flags, no Containerfile.  Creating a box
-is an explicit step (`kanibako create`); a launch (`kanibako` / `start` / `code` /
-`shell`) never invents a box, so a typo'd project or wrong directory can't
-silently make one.  On the first launch of a box, Kanibako pulls the container
-rig and syncs your credentials; subsequent runs pick up where you left off.
+No `docker run`, no volume flags, no Containerfile. The first launch pulls the
+container rig and copies in your agent credentials; after that, `kanibako` in the
+same directory picks up right where you left off.
+
+More ways to launch:
+
+```bash
+kanibako -N                            # start a fresh conversation
+kanibako shell                         # plain bash shell, no agent
+kanibako shell -- echo hello           # run a one-shot command in the box
+kanibako --agent codex                 # choose the agent for this run
+kanibako --image kanibako-min:latest   # launch on a specific rig
+```
+
+Creating a box is deliberate: a launch (`kanibako` / `start` / `code` / `shell`)
+never invents one, so a typo'd path or wrong directory can't silently make a box.
 
 ## Example: Python Project
 
@@ -133,8 +141,8 @@ gh, nano, jq, ripgrep, tmux, Podman, and common dev tools.  This is enough for
 most Python, JavaScript, and general scripting work.
 
 ```bash
-# 1. Install kanibako (--pre while 1.7.0 is in rc; see Installation)
-pip install --pre kanibako
+# 1. Install kanibako (see Installation)
+pipx install kanibako
 
 # 2. Create or clone a project
 mkdir ~/my-flask-app && cd ~/my-flask-app
