@@ -812,9 +812,20 @@ def _reconcile_codex_approval(text: str, auto_approve: bool) -> str:
 
 
 def _apply_root_key(
-    lines: list[str], key: str, managed_val: str, auto_approve: bool
+    lines: list[str], key: str, managed_val: str, auto_approve: bool,
+    *, unconditional: bool = False,
 ) -> list[str]:
-    """Apply the ON/OFF discipline for one managed root key.  Returns NEW list."""
+    """Apply the ON/OFF discipline for one managed root key.  Returns NEW list.
+
+    ON (*auto_approve*): SET *key* to *managed_val* (in place if a root-section
+    line exists, else inserted before the first table header).  OFF: REMOVE the
+    root-section line — by DEFAULT only when it still equals *managed_val* (a
+    user-chosen value survives, symmetric with :func:`clear_bypass_permissions`);
+    with *unconditional* the line is removed REGARDLESS of value.  The
+    unconditional OFF is for keys kanibako OWNS OUTRIGHT as a derived projection
+    rather than a hand-edit surface (D1: the codex ``model``/``model_provider``
+    wipe when a box goes bare — *managed_val* is then irrelevant and unused).
+    """
     result = list(lines)
     table = _first_table_index(result)
     key_re = re.compile(r"\s*" + re.escape(key) + r"\s*=")
@@ -826,8 +837,13 @@ def _apply_root_key(
         else:
             result.insert(table, new_line)
         return result
-    # OFF: remove ONLY our managed value; leave a user-chosen one.
+    # OFF: remove the root-section line.  Unconditional (kanibako-owned key) →
+    # drop regardless of value; otherwise drop ONLY our managed value, leaving a
+    # user-chosen one intact.
     if found is not None:
+        if unconditional:
+            del result[found]
+            return result
         val_re = re.compile(r"\s*" + re.escape(key) + r'\s*=\s*"([^"]*)"')
         m = val_re.match(result[found])
         if m is not None and m.group(1) == managed_val:
@@ -938,28 +954,45 @@ def merge_codex_config(
     :func:`seed_codex_approval` (``Target.deliver_panel_permissions``), so no
     managed key has two writers (T1 seam split).
 
-    When *model_provider* is supplied (INC 3 persona wiring), a SECOND managed
-    region — the ``[model_providers.<id>]`` table plus the top-level
-    ``model``/``model_provider`` root keys (see :func:`merge_codex_model_provider`)
-    — is composed in alongside the hook region.  When it is ``None`` (the
-    default) the output is BYTE-IDENTICAL to the pre-provider behaviour: no
-    provider region, no ``model``/``model_provider`` keys.
+    The model-provider selection is a RECONCILED PROJECTION kanibako OWNS (D1),
+    reconciled SYMMETRICALLY every merge — the managed ``[model_providers.<id>]``
+    region and the top-level ``model``/``model_provider`` root keys are stripped
+    FIRST regardless of *model_provider*:
+
+    * *model_provider* supplied (persona active) → REPLACE: the provider region
+      is regenerated and the two root keys are SET (see
+      :func:`merge_codex_model_provider`);
+    * *model_provider* ``None`` (bare / non-persona) → WIPE: the region stays
+      stripped and the two root keys are REMOVED UNCONDITIONALLY — kanibako owns
+      these outright, so a stale persona/custom selection never lingers on a box
+      that has gone bare.
+
+    The wipe is SCOPED to the critical set: a user's INDEPENDENT (non-managed)
+    ``[model_providers.<other>]`` table and every non-critical key/comment are
+    preserved byte-for-byte (only the two named root keys + the delimited managed
+    region are touched).  Idempotent in BOTH directions (re-merging own output
+    reproduces it: a second WIPE finds nothing left to strip/remove).
     """
     # rstrip the region separator immediately so re-merges do not accumulate
     # blank lines (idempotence); reconcile + region append operate on the clean
     # user body.
     body = _strip_codex_region(text).rstrip("\n")
+    # Strip our OWN prior provider region UNCONDITIONALLY (both directions), so a
+    # stale managed region is reconciled — regenerated on REPLACE, gone on WIPE.
+    body = _strip_codex_provider_region(body).rstrip("\n")
     if model_provider is not None:
-        # Strip our OWN prior provider region too, so the provider root keys and
-        # table are reconciled (not duplicated) across re-merges.
-        body = _strip_codex_provider_region(body).rstrip("\n")
-    if model_provider is not None:
-        # Provider root keys are applied to the CLEAN body (no managed regions
-        # yet), so they land in the legal top-level position (before any table)
-        # and OUTSIDE both regenerated regions — never swallowed by a re-strip.
+        # REPLACE: provider root keys are applied to the CLEAN body (no managed
+        # regions yet), so they land in the legal top-level position (before any
+        # table) and OUTSIDE both regenerated regions — never swallowed by a
+        # re-strip.
         body = _apply_provider_root_keys(
             body, model=model_provider.model, provider_id=model_provider.provider_id,
         )
+    else:
+        # WIPE: remove the kanibako-owned model/model_provider root keys
+        # unconditionally (scoped to those two keys — a user's independent
+        # provider table and all other content survive).
+        body = _remove_provider_root_keys(body)
     group_index = _count_session_start_groups(body)
     regions = [
         _build_codex_managed_region(
@@ -1061,6 +1094,26 @@ def _apply_provider_root_keys(body: str, *, model: str, provider_id: str) -> str
     return "\n".join(lines)
 
 
+def _remove_provider_root_keys(body: str) -> str:
+    """REMOVE the kanibako-owned top-level ``model``/``model_provider`` root keys
+    (the OFF/WIPE direction of :func:`_apply_provider_root_keys`).
+
+    The bare / non-persona projection (D1): kanibako owns these two keys
+    outright, so they are dropped UNCONDITIONALLY (regardless of value — a stale
+    persona selection is not a hand-edit to preserve).  SCOPED to the root
+    section (before the first table header) and to exactly these two keys, so a
+    same-named key inside a user table (e.g. ``[profiles.x].model``) and a user's
+    independent ``[model_providers.<other>]`` table are never touched.  *body*
+    must be CLEAN user content (managed regions already stripped).
+    """
+    lines = body.split("\n")
+    lines = _apply_root_key(lines, "model", "", False, unconditional=True)
+    lines = _apply_root_key(
+        lines, "model_provider", "", False, unconditional=True,
+    )
+    return "\n".join(lines)
+
+
 def _build_codex_provider_region(
     *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str
 ) -> str:
@@ -1146,9 +1199,12 @@ def seed_codex_config(
     Returns ``True`` iff it wrote.  Callers wrap best-effort so a failure never
     blocks the launch.
 
-    *model_provider* (default ``None``) is the INC-3 seam: when supplied the
-    merged config also carries the model-provider region; when ``None`` the write
-    is BYTE-IDENTICAL to a provider-less one.
+    *model_provider* is the reconciled projection seam (D1): when supplied the
+    merged config carries the model-provider region + root keys (REPLACE); when
+    ``None`` (bare / non-persona) the managed region and the kanibako-owned
+    ``model``/``model_provider`` root keys are WIPED back to stock (see
+    :func:`merge_codex_config`).  Either way the write fires iff the bytes
+    changed, so a box already in the correct state is a no-op.
     """
     try:
         existing = config_path.read_text()

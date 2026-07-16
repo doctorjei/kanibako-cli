@@ -32,6 +32,14 @@ class TestProperties:
     def test_default_entrypoint(self):
         assert CodexTarget().default_entrypoint == "codex"
 
+    def test_reattach_config_notice_warns_restart(self):
+        """codex's config.toml is a reconciled projection re-materialised only on
+        start, so a reattach-to-running notice tells the user to restart for
+        config changes to apply (base default is None; codex overrides)."""
+        notice = CodexTarget().reattach_config_notice()
+        assert notice is not None
+        assert "restart" in notice.lower()
+
 
 class TestHasResumableSession:
     """codex decides continue-vs-fresh UP FRONT off its rollout store (the

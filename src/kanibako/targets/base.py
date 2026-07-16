@@ -685,6 +685,22 @@ class Target(ABC):
         """
         return False
 
+    def reattach_config_notice(self) -> str | None:
+        """A heads-up to print when REATTACHING to an ALREADY-RUNNING box.
+
+        The launch-time delivery seams (:meth:`deliver_panel_permissions` /
+        :meth:`deliver_directive_hook`) re-materialise this agent's native config
+        surface only on (re)start of a STOPPED box; a reattach to a live box
+        early-returns and does NOT re-deliver, and it is unsafe to rewrite config
+        under an app-server that already read it.  So an agent whose config is a
+        RECONCILED PROJECTION (D1: codex's ``config.toml`` model/provider/approval)
+        returns a one-line notice that config changes won't take effect until the
+        box is restarted; core prints it on the reattach path (never rewriting the
+        live file, reconciling on next start).  Default ``None`` — no notice (an
+        agent with no launch-projected config surface inherits it).
+        """
+        return None
+
     def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
         """Extract persona values from a rendered harness config in *config_dir*.
 

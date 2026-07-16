@@ -731,16 +731,20 @@ def test_codex_merge_passes_existing_approval_keys_through(tmp_path):
 
 
 def test_codex_merge_preserves_unrelated_user_keys_and_comments():
+    # A genuinely UNRELATED root key (``model_reasoning_effort`` — NOT the
+    # kanibako-owned ``model``/``model_provider``) is preserved through the bare
+    # (provider=None) merge, along with the comment and the user's table.  (The
+    # kanibako-owned root keys are covered by the WIPE tests below.)
     text = (
         "# my header comment\n"
-        'model = "gpt-5-codex"\n\n'
+        'model_reasoning_effort = "high"\n\n'
         "[mcp_servers.foo]\n"
         'command = "serve"\n'
     )
     out = _merge(text)
     assert "# my header comment" in out  # comment preserved
     data = tomllib.loads(out)
-    assert data["model"] == "gpt-5-codex"
+    assert data["model_reasoning_effort"] == "high"
     assert data["mcp_servers"]["foo"]["command"] == "serve"
 
 
@@ -1022,6 +1026,160 @@ def test_codex_merge_provider_preserves_user_content():
     assert out.count("model = ") == 1
 
 
+# --- D1: bare/non-persona reconciled WIPE (OFF direction) -------------------
+#
+# kanibako OWNS model/model_provider + the managed provider region and
+# reconciles them every merge: REPLACE with a persona, WIPE to stock when bare.
+
+
+def _merge_prov(text, **overrides):
+    """merge_codex_config with the navigator provider (REPLACE direction)."""
+    mp = CodexModelProvider(**{**_NAVIGATOR, **overrides})
+    return merge_codex_config(
+        text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=mp,
+    )
+
+
+def test_codex_merge_bare_wipes_stale_provider_region_and_root_keys():
+    """persona → bare: re-merging a provider-bearing config with provider=None
+    STRIPS the managed provider region AND removes the model/model_provider root
+    keys (the box no longer runs the stale custom provider)."""
+    on = _merge_prov(_TEMPLATE)
+    assert "# >>> kanibako-managed (model provider)" in on
+    off = _merge(on)  # provider=None
+    assert "# >>> kanibako-managed (model provider)" not in off
+    data = tomllib.loads(off)
+    assert "model" not in data
+    assert "model_provider" not in data
+    assert "model_providers" not in data
+    # the instruction-delivery hook region survives (only the provider projection
+    # is wiped, not the whole managed surface).
+    assert "SessionStart" in data["hooks"]
+
+
+def test_codex_merge_bare_wipes_hand_edited_root_keys_unconditionally():
+    """The wipe is UNCONDITIONAL over the owned keys: a hand-set model /
+    model_provider (NOT our managed value) is still removed on the bare merge."""
+    text = 'model = "gpt-5-codex"\nmodel_provider = "someone-else"\n'
+    off = _merge(text)
+    data = tomllib.loads(off)
+    assert "model" not in data
+    assert "model_provider" not in data
+
+
+def test_codex_merge_bare_wipes_over_preexisting_stale_managed_region():
+    """A file already carrying a stale managed provider region (not from an ON
+    merge in this call) is wiped clean by a bare merge."""
+    stale = (
+        'model = "gemma-4-31b-it"\n'
+        'model_provider = "navigator"\n\n'
+        "# >>> kanibako-managed (model provider) — do not edit >>>\n"
+        '[model_providers."navigator"]\n'
+        'name = "NaviGator"\n'
+        'base_url = "https://api.ai.it.ufl.edu/v1"\n'
+        'wire_api = "chat"\n'
+        'env_key = "NAVIGATOR_API_KEY"\n'
+        "# <<< kanibako-managed (model provider) <<<\n"
+    )
+    off = _merge(stale)
+    assert "# >>> kanibako-managed (model provider)" not in off
+    data = tomllib.loads(off)
+    assert "model" not in data
+    assert "model_provider" not in data
+    assert "model_providers" not in data
+
+
+def test_codex_merge_bare_preserves_independent_provider_table():
+    """CONTRACT INVERSION guard: a user's INDEPENDENT (non-managed)
+    ``[model_providers.<other>]`` table, a ``[profiles.x].model`` sub-table key,
+    and unrelated root keys are PRESERVED through a bare wipe — only the two
+    owned root keys + the delimited managed region are touched."""
+    text = (
+        "# header\n"
+        'model = "gpt-5-codex"\n'
+        'model_provider = "navigator"\n'
+        'model_reasoning_effort = "high"\n\n'
+        "[profiles.fast]\n"
+        'model = "gpt-5-codex"\n\n'
+        "[model_providers.other]\n"
+        'name = "Other"\n'
+        'base_url = "https://other.example/v1"\n\n'
+        "# >>> kanibako-managed (model provider) — do not edit >>>\n"
+        '[model_providers."navigator"]\n'
+        'name = "NaviGator"\n'
+        'base_url = "https://api.ai.it.ufl.edu/v1"\n'
+        'wire_api = "chat"\n'
+        'env_key = "NAVIGATOR_API_KEY"\n'
+        "# <<< kanibako-managed (model provider) <<<\n"
+    )
+    off = _merge(text)
+    assert "# header" in off
+    data = tomllib.loads(off)
+    # owned root keys wiped
+    assert "model" not in data
+    assert "model_provider" not in data
+    # everything the box does NOT own is intact
+    assert data["model_reasoning_effort"] == "high"
+    assert data["profiles"]["fast"]["model"] == "gpt-5-codex"
+    assert data["model_providers"]["other"]["name"] == "Other"
+    assert data["model_providers"]["other"]["base_url"] == "https://other.example/v1"
+    # the MANAGED navigator provider region (and its table) is gone
+    assert "navigator" not in data["model_providers"]
+
+
+def test_codex_merge_persona_to_persona_replaces_no_dup():
+    """persona → different persona: the region + root keys are RECONCILED, not
+    duplicated — single region, single root key pair, updated values."""
+    first = _merge_prov(_TEMPLATE)
+    second = _merge_prov(first, provider_id="scholar", model="gemma-4-70b-it")
+    data = tomllib.loads(second)
+    assert data["model"] == "gemma-4-70b-it"
+    assert data["model_provider"] == "scholar"
+    assert list(data["model_providers"]) == ["scholar"]
+    assert second.count("# >>> kanibako-managed (model provider)") == 1
+    assert second.count("model_provider = ") == 1
+    assert second.count("model = ") == 1
+
+
+def test_codex_merge_bare_is_idempotent():
+    """The WIPE reproduces its own output: a second bare merge finds nothing left
+    to strip/remove (idempotence in the OFF direction)."""
+    once = _merge(_merge_prov(_TEMPLATE))
+    twice = _merge(once)
+    assert twice == once
+
+
+def test_codex_merge_replace_wipe_replace_round_trips():
+    """ON → OFF → ON reproduces the ON bytes exactly (both-direction stability —
+    the wipe leaves a clean body the replace rebuilds identically)."""
+    on = _merge_prov(_TEMPLATE)
+    back = _merge_prov(_merge(on))
+    assert back == on
+
+
+def test_seed_codex_config_bare_wipes_prior_provider(tmp_path):
+    """I/O seam: seed a provider-bearing config, then a bare seed WIPES it (writes
+    once, then is a no-op)."""
+    path = tmp_path / "config.toml"
+    mp = CodexModelProvider(**_NAVIGATOR)
+    assert seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=mp,
+    ) is True
+    # bare re-seed reconciles the file back to stock
+    assert seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=None,
+    ) is True
+    text = path.read_text()
+    assert "# >>> kanibako-managed (model provider)" not in text
+    data = tomllib.loads(text)
+    assert "model" not in data
+    assert "model_provider" not in data
+    # already reconciled → second bare seed writes nothing
+    assert seed_codex_config(
+        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=None,
+    ) is False
+
+
 def test_seed_codex_config_no_provider_byte_identical(tmp_path):
     """seed_codex_config default write is byte-identical to an explicit
     model_provider=None write (the INC-3 I/O seam is inert by default)."""
@@ -1165,17 +1323,13 @@ def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
 
 
 def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
-    """The provider-region variant of the insert hazard — a KNOWN, WANTED
-    divergence from the legacy write (Editor round 5, characterized): on a
-    provider-region-bearing file with the approval keys ABSENT and a
-    ``model_provider=None`` launch, the LEGACY merge leaves the provider region
-    embedded in the body (it strips it only when a provider is passed) and its
-    root-key insert lands INSIDE the region — after the BEGIN marker, before
-    the ``[model_providers…]`` table — to be swallowed by the next persona
-    launch's region strip.  The seam extracts BOTH regions before the root-key
-    surgery, so the keys land in the TRUE root section and survive.  This is
-    the one composition cell that is byte-DIVERGENT from legacy, in the
-    bug-fix direction; the legacy path (and its hazard) was deleted at plan Step 5."""
+    """``seed_codex_approval`` extracts BOTH managed regions before the root-key
+    surgery, so its approval keys land in the TRUE root section — never INSIDE
+    the provider region (the legacy insert lost them there; the hazard was
+    deleted at plan Step 5).  Under D1 the provider region only exists on a
+    PERSONA launch (a bare launch WIPES it), so the region-present cell is a
+    persona launch: with approval keys absent, toggle yolo ON and confirm the
+    keys sit OUTSIDE (before) the provider region."""
     path = tmp_path / "config.toml"
     # Persona launch with approval keys absent (auto_approve=False history):
     seed_codex_approval(path, auto_approve=False)
@@ -1183,18 +1337,15 @@ def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    # BARE relaunch (provider=None), yolo toggled ON — the hazard cell:
+    # Toggle yolo ON on the provider-region-bearing file — the keys must NOT land
+    # inside the provider region:
     assert seed_codex_approval(path, auto_approve=True) is True
-    seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-    )
     out = path.read_text()
     assert out.index("approval_policy") < out.index(
         "# >>> kanibako-managed (model provider)"
     )
     # …and a subsequent PERSONA launch (provider region regenerated) must NOT
     # swallow them — the exact loss the legacy insert position caused:
-    seed_codex_approval(path, auto_approve=True)
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
@@ -1202,6 +1353,13 @@ def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
     assert data["sandbox_mode"] == "danger-full-access"
+    # D1: a BARE relaunch WIPES the provider region but the approval/sandbox keys
+    # (owned by the separate approval seam, not the provider projection) SURVIVE.
+    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
+    wiped = tomllib.loads(path.read_text())
+    assert "model_providers" not in wiped
+    assert wiped["approval_policy"] == "never"
+    assert wiped["sandbox_mode"] == "danger-full-access"
 
 
 def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
