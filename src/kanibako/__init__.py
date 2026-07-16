@@ -1,6 +1,6 @@
 """kanibako: Run AI coding agents in rootless containers with per-project isolation."""
 
-__version__ = "1.7.1"
+__version__ = "1.7.2"
 
 # Two-tier setup/config compatibility constants for the 5-band setup-completion
 # gate (design: ``plans/2026-06-23-setup-version-tiers-NEXT.md``).  Both are
