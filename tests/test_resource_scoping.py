@@ -81,6 +81,100 @@ class TestKanibakoMounts:
         )
 
 
+class TestSecretExportBind:
+    """D2: the universal `/etc/profile.d` secret-export snippet, delivered as an
+    UNCONDITIONAL kani ro bind (models on kani_pkg/kani_bin).  It reaches the
+    non-login `podman exec` paths (VS Code terminal, codex panel app-server) that
+    the PID-1 `_secret_export_shim` cannot; the shim stays for the supervised
+    PID-1 path (non-login `sh -c`, no profile.d)."""
+
+    _SNIPPET_NAME = "kanibako-secrets.sh"
+
+    def _snippet_path(self):
+        import importlib.resources
+        from pathlib import Path
+
+        ref = importlib.resources.files("kanibako.scripts").joinpath(self._SNIPPET_NAME)
+        return Path(str(ref))
+
+    def test_bind_emitted_with_dest_options_and_real_source(self):
+        """`kani_default_categories()` emits `box.bindings.ro.secret_export`
+        pointing at a REAL regular-file host source, dest `/etc/profile.d/…`, ro."""
+        from pathlib import Path
+
+        from kanibako import core_defaults
+
+        cats = core_defaults.kani_default_categories()
+        assert "box.bindings.ro.secret_export" in cats
+        src, dest, opts = cats["box.bindings.ro.secret_export"]
+        assert dest == "/etc/profile.d/kanibako-secrets.sh"
+        assert opts == "ro"
+        assert Path(src).is_file()
+        # The resolved source IS the packaged snippet.
+        assert Path(src) == self._snippet_path()
+
+    def test_snippet_drift_guard_matches_secret_mount_dir(self):
+        """The shipped snippet hardcodes SECRET_MOUNT_DIR's value — a change to the
+        constant that forgot the snippet would desync silently, so lock it here."""
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+
+        text = self._snippet_path().read_text()
+        assert SECRET_MOUNT_DIR in text
+        # The self-adapting glob + empty-dir guard + read/export mechanics.
+        assert f"{SECRET_MOUNT_DIR}/*" in text
+        assert '[ -e "$f" ]' in text
+        assert "basename" in text and "cat" in text and "export" in text
+
+    def test_snippet_passes_sh_syntax_check(self):
+        """`sh -n` must accept the snippet (it is sourced by every login shell)."""
+        import subprocess
+
+        r = subprocess.run(
+            ["sh", "-n", str(self._snippet_path())],
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 0, r.stderr
+
+    def test_snippet_exports_mounted_secrets(self, tmp_path):
+        """Runtime exercise: with token files present, the snippet exports each
+        var with the file's (newline-stripped) contents."""
+        import subprocess
+
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+
+        secrets = tmp_path / "secrets"
+        secrets.mkdir()
+        (secrets / "FOO").write_text("foo-token-value\n")
+        (secrets / "BAR").write_text("bar-val")  # no trailing newline
+        body = self._snippet_path().read_text().replace(str(SECRET_MOUNT_DIR), str(secrets))
+        script = body + '\nprintf "FOO=[%s]\\nBAR=[%s]\\n" "$FOO" "$BAR"\n'
+        r = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert "FOO=[foo-token-value]" in r.stdout
+        assert "BAR=[bar-val]" in r.stdout
+
+    def test_snippet_is_noop_when_empty_or_absent(self, tmp_path):
+        """No secrets mounted → the literal glob is guarded to a clean no-op (both
+        an empty dir and an absent dir), even under `set -e`."""
+        import subprocess
+
+        from kanibako.settings_categories import SECRET_MOUNT_DIR
+
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        absent = tmp_path / "does-not-exist"
+        for target in (empty, absent):
+            body = self._snippet_path().read_text().replace(
+                str(SECRET_MOUNT_DIR), str(target)
+            )
+            r = subprocess.run(
+                ["sh", "-c", "set -e\n" + body + '\necho DONE\n'],
+                capture_output=True, text=True,
+            )
+            assert r.returncode == 0, r.stderr
+            assert "DONE" in r.stdout
+
+
 class TestBuildEffectiveState:
     """Tests for the ``config --effective`` behavior read
     (``start._effective_behavior_for_display``, block 7c — the snapshot-based
