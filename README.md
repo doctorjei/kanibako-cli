@@ -21,6 +21,20 @@ No Docker or Podman experience required.  Just `cd` into a project and run
 Claude Code, Codex, and Goose ship as first-class agent plugins (all installed
 by the `kanibako` meta-package); other agents can be added as plugins.
 
+## Quick Start
+
+1. Install - `uv tool install kanibako` or `pipx install kanibako` or `pip install kanibako`
+2. Setup - `kanibako setup`
+3. Create a box for your project -- a one-time step per directory
+4. bash```
+cd ~/my-project
+kanibako create
+5. Launch the agent session -- that's it!
+kanibako
+6. Optional - launch in VS Code (new, experimental):
+kanibako code
+```
+
 ## Features
 
 - **Safe by default** -- rootless containers with no host access; the sandbox
@@ -101,21 +115,6 @@ have **more than one** agent installed (the meta-package ships all three), you
 otherwise `kanibako` will error rather than guess. With a single agent installed
 it is used automatically. See [Agent Selection](#agent-selection).
 
-## Quick Start
-
-Three steps from install to a running agent:
-
-```bash
-# 1. Pick a default agent (only needed if you installed more than one)
-kanibako setup
-
-# 2. Create a box for your project -- a one-time step per directory
-cd ~/my-project
-kanibako create
-
-# 3. Launch the agent session -- that's it
-kanibako
-```
 
 No `docker run`, no volume flags, no Containerfile. The first launch pulls the
 container rig and copies in your agent credentials; after that, `kanibako` in the
