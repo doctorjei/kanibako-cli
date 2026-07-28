@@ -10,6 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Box directive templates reorganised into a three-part "handbook".** The seeded
+  home tree now ships three roots instead of one: `~/playbook/` (global, agent and
+  workset directives + resources), `~/notebook/` (box-specific directives, archives
+  and resources), and `~/workbook/` (box process, progress and state — `devnotes.md`,
+  `tasks.md`). Keeping these out of `~/workspace` leaves the workspace dedicated to
+  project source. The layout is documented in the seeded
+  `playbook/general/directives/rules/HANDBOOK.md`.
+  - The box brief moved from `playbook/box/directives/BOX.md` to
+    `notebook/directives/BRIEF_BOX.md`, and a `notebook/directives/CONVENTIONS.md`
+    stub was added for project-specific conventions.
+  - Scope briefs are now named `BRIEF_<SCOPE>.md`; `rules/WORKPOLICY.md` became
+    `rules/DATAPOLICY.md`.
+  - Agent plugins no longer ship a directive stub — they seed harness config only
+    (the box brief now lives in the notebook). This removes an unused file that
+    nothing loaded.
+  - **New boxes only.** The home seed runs once at box creation, so existing boxes
+    keep their current tree and are not migrated.
+
+- **The directive flattener strips HTML comments.** Comments in directive sources
+  are authoring guidance for whoever edits the template; they are now removed from
+  the flattened artifact delivered to each agent. Sources keep their comments —
+  only the generated file is stripped. Comments inside fenced code blocks survive,
+  so a comment shown *as* example markdown is preserved.
+  - This also fixes a latent bug: an example `@path` written inside a comment was
+    resolved as a **live import**, silently pulling the target into every session
+    whenever that file happened to exist.
+
 ## [1.7.2] - 2026-07-16
 
 This release completes **Codex support inside VS Code and multi-shell boxes**:

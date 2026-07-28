@@ -99,20 +99,31 @@ class SeedFile:
 
 # --- SEED layer: every file a claude PRIMARY box must have seeded at home. ---
 #
-# base layer  = data/global/template  (the writable user playbook tree)
+# base layer  = data/global/template  (the writable user HANDBOOK tree)
 # agent layer = plugins/claude/data/template  (the claude harness template)
+#
+# The base layer seeds all THREE handbook roots (playbook / notebook / workbook);
+# see playbook/general/directives/rules/HANDBOOK.md for what each one holds.
+# The agent layer ships harness CONFIG only — its directive stub was dropped when
+# the box brief moved to the notebook, so no agent-layer playbook file is seeded.
 #
 # The workset layer is INTENTIONALLY absent: a primary box's default workset
 # template dir ships no files, so its (skip-if-absent) layer contributes none.
 SEED_MANIFEST: tuple[SeedFile, ...] = (
-    # ---- base template tree (create-if-absent playbook skeleton) ----
+    # ---- base: playbook — global / agent / workset directives ----
     SeedFile("base", "playbook/CONTENTS.md"),
-    SeedFile("base", "playbook/agents/directives/AGENTS.md"),
-    SeedFile("base", "playbook/box/directives/BOX.md"),
-    SeedFile("base", "playbook/general/directives/GENERAL.md"),
+    SeedFile("base", "playbook/agents/default/directives/BRIEF_AGENTS.md"),
+    SeedFile("base", "playbook/general/directives/BRIEF_GENERAL.md"),
+    SeedFile("base", "playbook/general/directives/rules/DATAPOLICY.md"),
+    SeedFile("base", "playbook/general/directives/rules/HANDBOOK.md"),
     SeedFile("base", "playbook/general/directives/rules/INTERACTION.md"),
-    SeedFile("base", "playbook/general/directives/rules/WORKPOLICY.md"),
-    SeedFile("base", "playbook/workset/directives/WORKSET.md"),
+    SeedFile("base", "playbook/workset/directives/BRIEF_WORKSET.md"),
+    # ---- base: notebook — box-specific directives + history ----
+    SeedFile("base", "notebook/directives/BRIEF_BOX.md"),
+    SeedFile("base", "notebook/directives/CONVENTIONS.md"),
+    # ---- base: workbook — process / progress / state ----
+    SeedFile("base", "workbook/devnotes.md"),
+    SeedFile("base", "workbook/tasks.md"),
     # ---- claude agent template tree (harness config stubs) ----
     SeedFile("agent:claude", ".claude.json"),
     SeedFile("agent:claude", ".claude/settings.json"),

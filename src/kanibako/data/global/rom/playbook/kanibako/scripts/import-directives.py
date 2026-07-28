@@ -34,6 +34,16 @@ text regardless. Files are imported once, keyed by resolved path, so a file
 referenced from several places contributes a single section that all mentions
 point at.
 
+HTML comments are STRIPPED from the output -- an output-format decision of the
+same kind as the section/fragment shape above; the import *syntax* still matches
+the spec. Directive sources use comments for authoring guidance aimed at whoever
+EDITS the template, which is noise in every runtime session and, worse, makes an
+example ``@path`` inside a comment resolve as a LIVE import. Stripping removes
+both problems. Comments are removed only OUTSIDE fenced code blocks, so a comment
+shown *as* example markdown survives; the generated header is added after
+processing and is unaffected. Sources keep their comments -- only the flattened
+artifact is clean.
+
 Usage: import-directives.py SOURCE DEST
 """
 from __future__ import annotations
@@ -55,6 +65,11 @@ IMPORT_RE = re.compile(r"(?<![\w@])@([\w./~-]+)")
 # A fenced code block opens/closes with a line of >=3 backticks or tildes,
 # optionally indented up to three spaces.
 FENCE_RE = re.compile(r"^\s{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+
+# HTML comment delimiters. Tracked with open/close STATE rather than a per-line
+# regex because a comment may span many lines or sit inline mid-line.
+COMMENT_OPEN = "<!--"
+COMMENT_CLOSE = "-->"
 
 _TRAILING_PUNCT = ".,;:!?)]}'\""
 
@@ -93,6 +108,33 @@ def code_span_ranges(line: str) -> list[tuple[int, int]]:
         if not closed:
             i = j
     return ranges
+
+
+def strip_comments(line: str, in_comment: bool) -> tuple[str, bool]:
+    """Remove HTML-comment spans from *line*.
+
+    Returns the surviving text plus the comment state at end of line. Handles a
+    comment that opens and/or closes mid-line, several comments on one line, and
+    a comment that spans lines (via the carried ``in_comment`` flag).
+    """
+    out: list[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        if in_comment:
+            j = line.find(COMMENT_CLOSE, i)
+            if j < 0:
+                break                      # rest of the line is inside the comment
+            i = j + len(COMMENT_CLOSE)
+            in_comment = False
+        else:
+            j = line.find(COMMENT_OPEN, i)
+            if j < 0:
+                out.append(line[i:])
+                break
+            out.append(line[i:j])
+            i = j + len(COMMENT_OPEN)
+            in_comment = True
+    return "".join(out), in_comment
 
 
 class Flattener:
@@ -175,10 +217,13 @@ class Flattener:
         in_fence = False
         fence_char = ""
         fence_len = 0
-        for line in text.splitlines():
-            fm = FENCE_RE.match(line)
+        in_comment = False
+        for raw_line in text.splitlines():
             if in_fence:
-                out.append(line)
+                # Inside a fence everything is literal -- including any comment
+                # delimiters, which is why comment state is not touched here.
+                out.append(raw_line)
+                fm = FENCE_RE.match(raw_line)
                 if (
                     fm
                     and fm.group("fence")[0] == fence_char
@@ -187,6 +232,13 @@ class Flattener:
                 ):
                     in_fence = False
                 continue
+            # Outside a fence, drop comment content BEFORE anything else, so an
+            # example ``@path`` inside a comment never reaches import parsing.
+            was_in_comment = in_comment
+            line, in_comment = strip_comments(raw_line, in_comment)
+            if (was_in_comment or line != raw_line) and not line.strip():
+                continue          # the whole line was comment -> emit nothing
+            fm = FENCE_RE.match(line)
             if fm:
                 in_fence = True
                 fence_char = fm.group("fence")[0]
