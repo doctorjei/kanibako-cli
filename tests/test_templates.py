@@ -381,18 +381,25 @@ class TestLayeredHomeSeed:
 # ---------------------------------------------------------------------------
 
 class TestInstallPackagedTemplates:
-    def test_base_playbook_landed(self, std):
-        """The packaged base playbook tree is copied to @system.base_template."""
+    def test_base_handbook_landed(self, std):
+        """The packaged base tree — all THREE handbook roots — is copied to
+        @system.base_template (playbook / notebook / workbook; see HANDBOOK.md)."""
         install_packaged_templates(std, ["claude", "goose", "codex"])
         assert (std.base_template / "playbook" / "CONTENTS.md").is_file()
+        assert (std.base_template / "notebook" / "directives" / "BRIEF_BOX.md").is_file()
+        assert (std.base_template / "workbook" / "devnotes.md").is_file()
 
     def test_claude_template_landed(self, std):
-        """The claude agent template (.claude.json stub + settings + playbook AGENTS) is copied."""
+        """The claude agent template (.claude.json stub + settings) is copied.
+
+        The agent layer ships harness CONFIG only — its directive stub was dropped
+        when the box brief moved to the notebook, so it seeds no playbook file.
+        """
         install_packaged_templates(std, ["claude"])
         dest = std.agents / "claude" / "template"
         assert (dest / ".claude.json").is_file()
         assert (dest / ".claude" / "settings.json").is_file()
-        assert (dest / "playbook" / "agents" / "directives" / "AGENTS.md").is_file()
+        assert not (dest / "playbook").exists()
         assert not (dest / "CLAUDE.md").exists()
         import json
         data = json.loads((dest / ".claude.json").read_text())

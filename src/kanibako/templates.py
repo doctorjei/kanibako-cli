@@ -202,11 +202,17 @@ def _packaged_base_template() -> Path | None:
 
     Repointed (instruction-delivery redesign) from the retired
     ``kanibako.data/templates/base`` (which shipped only ``INSTRUCTIONS.md``) to
-    ``kanibako.data/global/template`` — the SEEDED, writable user tree
-    (``playbook/CONTENTS.md`` + the scoped directive skeleton).  Because that dir
-    contains ``playbook/...``, installing it into ``@system.base_template`` and
-    seeding that layer at box home ``~`` deposits ``~/playbook/...`` (create-if-
-    absent).  It carries NO ``kanibako/`` subdir, so it never collides with the RO
+    ``kanibako.data/global/template`` — the SEEDED, writable user tree.  It holds
+    the THREE handbook roots (see ``playbook/general/directives/rules/HANDBOOK.md``):
+
+      * ``playbook/``  global / agent / workset directives + resources
+      * ``notebook/``  box-specific directives, archives, resources
+      * ``workbook/``  box-specific process, progress, state
+
+    Because that dir contains those roots verbatim, installing it into
+    ``@system.base_template`` and seeding the layer at box home ``~`` deposits
+    ``~/playbook/...``, ``~/notebook/...`` and ``~/workbook/...`` (create-if-absent).
+    It carries NO ``playbook/kanibako/`` subdir, so it never collides with the RO
     built-in bundle bound live at ``~/playbook/kanibako``.
     """
     try:
