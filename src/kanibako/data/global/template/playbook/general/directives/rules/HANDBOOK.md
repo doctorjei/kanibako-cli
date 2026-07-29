@@ -16,6 +16,20 @@ that, follow them as written.**
 **Create each directory listed below when first writing into it; do not pre-create them.** A
 directory that does not yet exist is not missing — it has no content yet.
 
+## Directives vs. procedures
+
+**`directives/` holds only what MUST be loaded up front; `procedures/` holds everything else.**
+A file earns a place in `directives/` only if a session needs it in context *before* knowing what
+the work is. Those files are loaded automatically, every session, and cost context whether or not
+they are used. Everything else — how to carry out a particular procedure, reference consulted only
+when a task calls for it — belongs in `procedures/`, which is never auto-loaded and is read on
+demand. **When in doubt, it is a procedure:** an unread procedure costs nothing, while an unneeded
+directive is paid for in every session.
+
+This is also what makes pointers work correctly. **Do not point at a directive** — it is already in
+context, so the pointer adds nothing and rots when the file moves. **Do point at a procedure** by
+name and path — it is *not* in context, and the pointer is the only way a session knows it exists.
+
 ## Playbook
 
 Split directives and/or information in the playbook into multiple files as useful for organization.
@@ -25,7 +39,8 @@ These are the standard, recognized Kanibako playbook formats & paths:
 |---------------------------|-------------|-------------------------------------|
 | `<scope>/directives/BRIEF_<scope>.md` | Initial / startup briefing for the specified scope | Yes |
 | `<scope>/directives/CONVENTIONS.md` | Technical expectations (coding, architecture, commands, etc) | If referenced |
-| `<scope>/directives/` | Additional directive files, as appropriate | If referenced |
+| `<scope>/directives/` | Additional directive files that must be in context up front | If referenced |
+| `<scope>/procedures/` | Procedures & reference for the scope, read on demand — **never auto-loaded** | No |
 | `<scope>/scripts/` | Reusable helper scripts applying to the scope | No |
 
 Keep script documentation in `--help` within scripts themselves, not in session files to avoid
@@ -44,7 +59,8 @@ The project/box-specific `~/notebook` and `~/workbook` also have standard conven
 | `archives/` | Completed plans & historical devnotes, documents, & information (i.e., "the archive" or "the archives"); the **authoritative historical record** | No |
 | `directives/BRIEF_BOX.md` | Initial / startup briefing for this specific box (project) | Yes |
 | `directives/CONVENTIONS.md` | Technical expectations (coding, architecture, commands, etc) | If referenced |
-| `directives/` | Additional directive files, as appropriate | If referenced |
+| `directives/` | Additional directive files that must be in context up front | If referenced |
+| `procedures/` | Box procedures & reference, read on demand — **never auto-loaded** | No |
 | `scripts/` | Reusable helper scripts applying to the scope | No |
 
 ### Workbook
