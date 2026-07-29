@@ -386,10 +386,10 @@ class TestSettingDescriptors:
 
 class TestDefaultShares:
     """Part 3b: the resource_mappings abstraction was deleted (all PROJECT —
-    those dirs live in the box home bind).  goose declares no agent shares."""
+    those dirs live in the box home bind).  goose declares no agent chares."""
 
     def test_no_default_shares(self):
-        assert GooseTarget().default_shares() == {}
+        assert GooseTarget().default_common() == {}
 
 
 class TestDescriptor:

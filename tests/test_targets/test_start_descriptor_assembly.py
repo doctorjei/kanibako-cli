@@ -487,10 +487,10 @@ class TestDescriptorMounts:
         }
 
     def test_plugins_not_a_descriptor_binding(self, tmp_path):
-        """Part 3a: plugins is an ``agent.shared`` category entry, not a binding.
+        """Part 3a: plugins is an ``agent.<agent>.common`` category entry, not a binding.
 
         The descriptor's delivery binds no longer include plugins (or cache);
-        those flow through the category resolver from ``default_shares()``.
+        those flow through the category resolver from ``default_common()``.
         """
         target = ClaudeTarget()
         install = self._install(tmp_path)

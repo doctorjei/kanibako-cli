@@ -4,13 +4,13 @@ Each agent plugin package (``kanibako.plugins.claude`` / ``…goose`` / ``…cod
 owns ONE declarative defaults file (``<agent>-defaults.yaml``) holding that
 agent's complete DEFAULT-SET — its :class:`~kanibako.targets.base.PluginDescriptor`
 data (bindings, launch grammar, settings, container env, cred files, …) plus its
-AGENT-scope ``default_shares`` — in the specced structured form.  This mirrors how
+AGENT-scope ``default_common`` — in the specced structured form.  This mirrors how
 the system/core defaults ship (:mod:`kanibako.core_defaults` /
 ``kanibako/data/core-defaults.yaml``) and how containerfiles/templates ship via
 :mod:`importlib.resources`.
 
 This module is the THIN reader those plugins call from their ``descriptor`` /
-``default_shares`` properties.  It builds the descriptor from the file so the
+``default_common`` properties.  It builds the descriptor from the file so the
 in-code descriptor is no longer hand-written per plugin.
 
 Split (documented in each YAML header too):
@@ -19,7 +19,7 @@ Split (documented in each YAML header too):
   detected install field supplies the host source — a declarative string, NOT a
   probed value), box-side destinations, the mode/operations grammar, settings
   routing, container env, cred-file lifecycle, host_prep/init_dirs, and the
-  agent-share box_dests.  Box-side destinations under the guest home are written
+  agent-common box_dests.  Box-side destinations under the guest home are written
   as ``$GUEST_HOME`` EXPRESSIONS (e.g. ``$GUEST_HOME/.local/bin/claude``) that
   this loader expands from the single :data:`~kanibako.settings_resolve.GUEST_HOME`
   constant — no ``/home/agent`` literal in the file.
@@ -203,24 +203,27 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     )
 
 
-def load_category_binds(package: str, filename: str) -> dict[str, BindDefault]:
+def load_category_binds(
+    package: str, filename: str, agent: str
+) -> dict[str, BindDefault]:
     """Build a plugin's AGENT-scope ``@``-ref-sourced category BINDS from its file.
 
     Each entry in the file's ``category_binds:`` section declares one agent-scope
     category default whose HOST SOURCE is an ``@``-ref (``meta_ref``) — the mirror
     of :mod:`kanibako.core_defaults`'s ``meta_ref`` bind shape, at AGENT scope.  It
-    returns a mapping of the (un-discriminated) scoped category key
-    ``agent.<category>.<key>`` → a STRUCTURED bind tuple ``(meta_ref, box_dest[,
-    "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).
+    returns a mapping of the DISCRIMINATED scoped category key
+    ``agent.<agent>.<category>.<key>`` → a STRUCTURED bind tuple ``(meta_ref,
+    box_dest[, "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).  *agent* is
+    the declaring plugin's own name; the agent tier is DISCRIMINATED (§2d / §0 L21 —
+    there is NO bare ``agent.<key>``), so the key is built discriminated HERE rather
+    than re-rooted downstream.
 
     The value's element 0 is the RAW ``@``-ref STRING (e.g. a ``"@system.*"``
     source key); the launch category cascade folds it into the floor and ``expand``
     resolves it to the referenced path — so a plugin declares a bind to a shared
     source WITHOUT any per-harness path knowledge in core (spec §2d L608).
-    ``start.py`` unions this table
-    into ``default_categories`` alongside :func:`load_shares`; the bare
-    ``agent.<category>.*`` key is re-rooted to the active slot by
-    ``settings_launch._agent_scope_qualify`` exactly like a share.
+    ``start.py`` unions this table into ``default_categories`` alongside
+    :func:`load_common`.
 
     ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression (``$GUEST_HOME`` is
     expanded here; a leading ``~`` is left for the box-side ``box_dest`` resolve in
@@ -231,7 +234,7 @@ def load_category_binds(package: str, filename: str) -> dict[str, BindDefault]:
     """
     binds: dict[str, BindDefault] = {}
     for entry in _load_doc(package, filename).get("category_binds", []):
-        key = f"agent.{entry['category']}.{entry['key']}"
+        key = f"agent.{agent}.{entry['category']}.{entry['key']}"
         box_dest = _expand(entry["box_dest"])
         host_src = entry["meta_ref"]
         if entry.get("ro", False):
@@ -241,22 +244,26 @@ def load_category_binds(package: str, filename: str) -> dict[str, BindDefault]:
     return binds
 
 
-def load_shares(package: str, filename: str) -> dict[str, BindDefault]:
-    """Build a plugin's AGENT-scope ``default_shares`` map from its defaults file.
+def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefault]:
+    """Build a plugin's AGENT-scope ``default_common`` map from its defaults file.
 
-    Each entry maps a scoped category key (``agent.shared.<name>``) to a STRUCTURED
-    bind pair ``(host_src, box_dest)`` (spec §2a — a tuple, NOT a colon-joined
-    string).  The relative ``host_src`` joins under the per-agent store root in the
-    category resolver; ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.
-    Returns ``{}`` when the file declares no shares.
+    Each entry maps a DISCRIMINATED scoped category key
+    (``agent.<agent>.common.<name>``, built here from the file's bare ``key:`` leaf)
+    to a STRUCTURED bind pair ``(host_src, box_dest)`` (spec §2a — a tuple, NOT a
+    colon-joined string).  *agent* is the declaring plugin's own name; the agent tier
+    is DISCRIMINATED (§2d / §0 L21 — there is NO bare ``agent.<key>``).  The relative
+    ``host_src`` joins under the per-agent store root in the category resolver;
+    ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.  Returns ``{}`` when
+    the file declares no commons.
     """
-    shares: dict[str, BindDefault] = {}
-    for entry in _load_doc(package, filename).get("shares", []):
+    commons: dict[str, BindDefault] = {}
+    for entry in _load_doc(package, filename).get("common", []):
+        key = f"agent.{agent}.common.{entry['key']}"
         options = entry.get("options")
         if options is not None:
-            shares[entry["key"]] = (
+            commons[key] = (
                 entry["host_src"], _expand(entry["box_dest"]), options,
             )
         else:
-            shares[entry["key"]] = (entry["host_src"], _expand(entry["box_dest"]))
-    return shares
+            commons[key] = (entry["host_src"], _expand(entry["box_dest"]))
+    return commons

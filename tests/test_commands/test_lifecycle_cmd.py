@@ -413,7 +413,7 @@ class TestConvertMoveCrossKindName:
         """t1: convert --default --name <workset> without --force → clean rc=1,
         teaches --force, and mints NO box (refused before any copy)."""
         config, std, tmp_home = env
-        create_workset("shared", tmp_home / "ws_root", std)
+        create_workset("common", tmp_home / "ws_root", std)
         pdir = _standalone(env)  # standalone source → true mint path
 
         import io
@@ -421,39 +421,39 @@ class TestConvertMoveCrossKindName:
         buf = io.StringIO()
         with redirect_stderr(buf):
             rc = run_convert(
-                _convert_args(pdir, to_default=True, name="shared", force=False)
+                _convert_args(pdir, to_default=True, name="common", force=False)
             )
         assert rc == 1
         assert "--force" in buf.getvalue()
         # No primary box minted under the workset name; workset intact; source
         # still standalone (nothing copied/registered on refusal).
-        assert "shared" not in load_primary_boxes(std.primary_workset)
-        assert not (std.boxes / "shared").exists()
+        assert "common" not in load_primary_boxes(std.primary_workset)
+        assert not (std.boxes / "common").exists()
         from kanibako import registry_store
-        assert "shared" in registry_store.load_section(std.registry, "worksets")
+        assert "common" in registry_store.load_section(std.registry, "worksets")
         assert (pdir / "box_data").is_dir()
 
     def test_convert_default_name_collides_workset_force_shadows(self, env):
         """t2: with --force the box takes the workset name (deliberate shadow);
         both coexist and a bare resolve now hits the BOX."""
         config, std, tmp_home = env
-        create_workset("shared", tmp_home / "ws_root", std)
+        create_workset("common", tmp_home / "ws_root", std)
         pdir = _standalone(env)
 
         rc = run_convert(
-            _convert_args(pdir, to_default=True, name="shared", force=True)
+            _convert_args(pdir, to_default=True, name="common", force=True)
         )
         assert rc == 0
         # Box registered under the shadowed name; workset still registered.
-        assert "shared" in load_primary_boxes(std.primary_workset)
+        assert "common" in load_primary_boxes(std.primary_workset)
         from kanibako import registry_store
-        assert "shared" in registry_store.load_section(std.registry, "worksets")
+        assert "common" in registry_store.load_section(std.registry, "worksets")
         # Bare resolution is deterministic — the primary box wins (shadow).
         from pathlib import Path
 
         from kanibako.paths import resolve_name
         _resolved, kind = resolve_name(
-            std.registry, "shared", cwd=Path(tmp_home),
+            std.registry, "common", cwd=Path(tmp_home),
             primary_workset=std.primary_workset,
         )
         assert kind == "project"
@@ -485,7 +485,7 @@ class TestConvertMoveCrossKindName:
         """t4: box move --default --name <workset> mirror of t1 — refuses without
         --force and moves no files."""
         config, std, tmp_home = env
-        create_workset("shared", tmp_home / "ws_root", std)
+        create_workset("common", tmp_home / "ws_root", std)
         pdir = _default(env, name="mvsrc")
         dest = tmp_home / "mv_dest"
 
@@ -494,14 +494,14 @@ class TestConvertMoveCrossKindName:
         buf = io.StringIO()
         with redirect_stderr(buf):
             rc = run_move(
-                _move_args(pdir, dest, to_default=True, name="shared", force=False)
+                _move_args(pdir, dest, to_default=True, name="common", force=False)
             )
         assert rc == 1
         assert "--force" in buf.getvalue()
         # No copy performed (refused up front); dest absent, source intact.
         assert not dest.exists()
         assert pdir.is_dir()
-        assert "shared" not in load_primary_boxes(std.primary_workset)
+        assert "common" not in load_primary_boxes(std.primary_workset)
 
     def test_convert_named_workset_name_equals_global_workset_succeeds(self, env):
         """t5: the cross-kind guard must NOT reach a NAMED-workset target — a

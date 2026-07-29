@@ -481,23 +481,23 @@ class TestDefaultShares:
 
     The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
     in the box home bind, fresh per box); plugins + cache are now category
-    ``agent.shared.*`` defaults rooted at ``@system.agents/claude``.
+    ``agent.claude.shared.*`` defaults rooted at ``@system.agents/claude``.
     """
 
     def test_declares_plugins_and_cache(self):
         t = ClaudeTarget()
-        shares = t.default_shares()
+        commons = t.default_common()
         # STRUCTURED form (spec §2a): each value is a (host_src, box_dest) tuple,
         # NOT a colon-joined string.
-        assert shares == {
-            "agent.shared.plugins": ("plugins", "/home/agent/.claude/plugins"),
-            "agent.shared.cache": ("cache", "/home/agent/.claude/cache"),
+        assert commons == {
+            "agent.claude.common.plugins": ("plugins", "/home/agent/.claude/plugins"),
+            "agent.claude.common.cache": ("cache", "/home/agent/.claude/cache"),
         }
 
     def test_share_values_are_relative_host_src(self):
         """host_src is the relative key name (joined under the agent store root)."""
         t = ClaudeTarget()
-        for value in t.default_shares().values():
+        for value in t.default_common().values():
             host_src, box_dest = value
             assert not host_src.startswith("/")
             assert box_dest.startswith("/home/agent/.claude/")
@@ -626,7 +626,7 @@ class TestDescriptor:
         d = ClaudeTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
         # Part 3a: the ``plugins`` SHARED_STORE binding was removed; plugins (and
-        # cache) are now AGENT-scope ``shared`` category entries (default_shares),
+        # cache) are now AGENT-scope ``shared`` category entries (default_common),
         # so only the two AGENT_CRITICAL delivery binds remain — plus the best-effort
         # kickoff-loader SEED (managed_pointer).
         assert set(bindings) == {"share", "launcher", "managed_pointer"}

@@ -69,7 +69,7 @@ _AGENT_DEFAULTS = (
 
 # The structured-binding category names (spec §2a): each is a dict[name -> pair]
 # where every pair is a 2-/3-element list/tuple — NEVER a colon-joined string.
-_PAIR_CATEGORIES = ("bindings", "caches", "seeded", "shared", "synced")
+_PAIR_CATEGORIES = ("bindings", "caches", "seeded", "common", "synced")
 
 # The repo root (this file lives in <repo>/tests/).
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -277,30 +277,34 @@ class TestAgentDefaultsShape:
                 )
 
     def test_shares_are_structured_pairs(self):
-        """Any ``shares`` block declares structured 2-/3-element bind pairs.
+        """Any ``common`` block declares structured 2-/3-element bind pairs.
 
         ``shared`` is one of the spec §2a structured-pair categories.  Files that
-        declare no shares (goose/codex) yield an empty map — also valid.
+        declare no commons (goose/codex) yield an empty map — also valid.
         """
         for package, filename in _AGENT_DEFAULTS:
             doc = _load_yaml(package, filename)
-            for entry in doc.get("shares", []):
+            for entry in doc.get("common", []):
                 assert isinstance(entry, dict), (
-                    f"{filename}: share entry must be a mapping: {entry!r}"
+                    f"{filename}: common entry must be a mapping: {entry!r}"
                 )
                 assert "key" in entry and "host_src" in entry and "box_dest" in entry
                 assert entry["box_dest"].startswith("$GUEST_HOME"), (
-                    f"{filename}: share box_dest must be a $GUEST_HOME expression: "
+                    f"{filename}: common box_dest must be a $GUEST_HOME expression: "
                     f"{entry!r}"
                 )
 
-            # And the LOADED shares are real 2-/3-tuples (BindDefault).
-            shares = agent_defaults.load_shares(package, filename)
-            assert isinstance(shares, dict)
-            for key, pair in shares.items():
-                _assert_structured_pair(pair, f"{filename} share {key}")
+            # And the LOADED commons are real 2-/3-tuples (BindDefault).
+            agent = filename.removesuffix("-defaults.yaml")
+            commons = agent_defaults.load_common(package, filename, agent)
+            assert all(k.startswith(f"agent.{agent}.common.") for k in commons), (
+                f"{filename}: loaded common keys must be DISCRIMINATED: {list(commons)}"
+            )
+            assert isinstance(commons, dict)
+            for key, pair in commons.items():
+                _assert_structured_pair(pair, f"{filename} common {key}")
                 assert pair[1].startswith(GUEST_HOME), (
-                    f"{filename}: loaded share {key} box_dest not under GUEST_HOME: "
+                    f"{filename}: loaded common {key} box_dest not under GUEST_HOME: "
                     f"{pair!r}"
                 )
 

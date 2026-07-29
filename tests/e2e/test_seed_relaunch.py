@@ -53,7 +53,7 @@ from tests.e2e.conftest import (
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
-# The seeded category dest, mirroring the user's real ``agent.seeded.playbook``
+# The seeded category dest, mirroring the user's real ``agent.<agent>.seeded.playbook``
 # (the file that was clobbered).  ``~/playbook`` expands, in guest space, to
 # ``/home/agent/playbook``; on the host it lands under ``<shell_path>/playbook``.
 SEED_GUEST_DEST = "~/playbook"
@@ -146,7 +146,7 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     The create path reads ``seeded`` category keys from ``@system.settings`` ==
     ``{XDG_DATA_HOME}/kanibako/global/settings.yaml`` (see
     ``_category_resolution_inputs``).  We point a ``~/playbook``-style seed at
-    *host_seed_dir*, mirroring the user's real ``agent.seeded.playbook`` entry
+    *host_seed_dir*, mirroring the user's real ``agent.<agent>.seeded.playbook`` entry
     that was clobbered.  The value form is a structured ``[host_src, guest_dest]``
     pair (the keyspace rework rejects the legacy ``<host_src>:<guest_dest>`` string).
 

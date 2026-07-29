@@ -102,12 +102,12 @@ class TestWorksetCreate:
         config = load_config(config_file)
         std = load_std_paths(config)
         register_primary_box_name(
-            std.primary_workset, std.registry, "shared", str(tmp_home / "box"),
+            std.primary_workset, std.registry, "common", str(tmp_home / "box"),
         )
 
         ws_root = tmp_home / "shared_ws"
         args = argparse.Namespace(
-            path=str(ws_root), name="shared",
+            path=str(ws_root), name="common",
             standalone=False, image=None, no_vault=False, force=False,
         )
         rc = run_create(args)
@@ -127,12 +127,12 @@ class TestWorksetCreate:
         config = load_config(config_file)
         std = load_std_paths(config)
         register_primary_box_name(
-            std.primary_workset, std.registry, "shared", str(tmp_home / "box"),
+            std.primary_workset, std.registry, "common", str(tmp_home / "box"),
         )
 
         ws_root = tmp_home / "shared_ws"
         args = argparse.Namespace(
-            path=str(ws_root), name="shared",
+            path=str(ws_root), name="common",
             standalone=False, image=None, no_vault=False, force=True,
         )
         rc = run_create(args)
@@ -157,8 +157,8 @@ class TestWorksetCreate:
         # cleanly (no auto-suffix) via the WorksetError caught in run_create.
         from kanibako.commands.workset_cmd import run_create
 
-        (tmp_home / "shared").mkdir()
-        first = tmp_home / "a" / "shared"
+        (tmp_home / "common").mkdir()
+        first = tmp_home / "a" / "common"
         args1 = argparse.Namespace(
             path=str(first), name=None,
             standalone=False, image=None, no_vault=False,
@@ -166,7 +166,7 @@ class TestWorksetCreate:
         assert run_create(args1) == 0
         capsys.readouterr()
 
-        second = tmp_home / "b" / "shared"
+        second = tmp_home / "b" / "common"
         args2 = argparse.Namespace(
             path=str(second), name=None,
             standalone=False, image=None, no_vault=False,

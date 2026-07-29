@@ -1643,7 +1643,7 @@ class TestCategoryConfigSet:
         """`is_known_key` recognizes category keys (D1 — get/set symmetry)."""
         assert is_known_key("box.bindings.rw.home")
         assert is_known_key("system.caches.x")
-        assert is_known_key("workset.shared.plugins")
+        assert is_known_key("workset.common.plugins")
         assert not is_known_key("some-project-name")
 
 
@@ -1741,18 +1741,18 @@ class TestCrossScopeCascadeConfigSet:
         dump_doc(ws_f, {
             "workset": {
                 "vault_ro": "/srv/vault/ro",
-                "shared": {"x": ["/old", "/home/agent/x"]},
+                "common": {"x": ["/old", "/home/agent/x"]},
             },
         })
         # Reference BOTH the system.* floor and a sibling workset key. The system.*
         # floor is folded in by _category_set_lookups regardless of cascade files.
         msg = set_config_value(
-            "workset.shared.x", "@workset.vault_ro/sub",
+            "workset.common.x", "@workset.vault_ro/sub",
             config_path=ws_f,
             cascade_workset_path=ws_f,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ws_f)["workset"]["shared"]["x"][0] == "@workset.vault_ro/sub"
+        assert load_doc(ws_f)["workset"]["common"]["x"][0] == "@workset.vault_ro/sub"
 
 
 # ---------------------------------------------------------------------------
@@ -2178,14 +2178,14 @@ class TestScopeDirectionGuard:
 
     def test_workset_scope_allows_workset_key(self, tmp_path):
         f = tmp_path / "ws-settings.yaml"
-        dump_doc(f, {"workset": {"shared": {"x": ["/old", "/home/agent/x"]}}})
+        dump_doc(f, {"workset": {"common": {"x": ["/old", "/home/agent/x"]}}})
         msg = set_config_value(
-            "workset.shared.x", "/new",
+            "workset.common.x", "/new",
             config_path=f, cascade_workset_path=f,
             command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(f)["workset"]["shared"]["x"][0] == "/new"
+        assert load_doc(f)["workset"]["common"]["x"][0] == "/new"
 
     def test_system_config_key_refused_with_ruled_message(self, tmp_path):
         """Block B2: ``config.*`` foundation keys are NEVER CLI-settable — refused
@@ -3200,7 +3200,8 @@ class TestF10CoreFloorRepoint:
 class TestAgentNodeBindRouting:
     """The ``agent.<node>.bindings.{ro,rw}.<name>`` predicate + its routing order:
     it is a per-node DESCRIPTOR bind (item-0), NOT a persona scalar, NOT a box.agent
-    mirror, NOT the bare-``agent`` category form."""
+    mirror. (There is no bare ``agent.bindings.*`` form to distinguish it from — the
+    agent tier is DISCRIMINATED, spec §2d / §0 L21.)"""
 
     def test_predicate_matches_node_bind_only(self):
         from kanibako.config_interface import (
@@ -3213,7 +3214,10 @@ class TestAgentNodeBindRouting:
         k = "agent.claude.bindings.ro.launcher"
         assert _is_agent_node_bind_key(k)
         assert not _is_box_agent_key(k)
-        assert not _is_path_category_key(k)  # BIND_KEY_RE never matches the node form
+        # BIND_KEY_RE ALSO matches it — a discriminated node bind is a well-formed
+        # category key. Both predicates fire; the node-bind is checked FIRST in every
+        # dispatch, so routing is unambiguous.
+        assert _is_path_category_key(k)
         assert not _is_persona_agent_key(k)  # launcher is not a state leaf
 
     def test_bind_named_model_is_a_bind_not_a_persona_scalar(self):
@@ -3242,14 +3246,18 @@ class TestAgentNodeBindRouting:
         assert _is_box_agent_key("box.agent.bindings.ro.x")
 
     def test_bare_agent_category_is_not_a_node_bind(self):
-        # The bare ``agent.bindings.*`` (no node) stays on the ordinary category
-        # (BIND_KEY_RE) path — the node-bind regex requires a node segment.
+        # The BARE ``agent.bindings.*`` (no node) is NOT A KEY: the keyspace is
+        # CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0 L21), so
+        # BOTH the node-bind regex and the ordinary category regex REFUSE it. A
+        # discriminated key takes the ordinary category path.
         from kanibako.config_interface import (
             _is_agent_node_bind_key,
             _is_path_category_key,
         )
         assert not _is_agent_node_bind_key("agent.bindings.ro.foo")
-        assert _is_path_category_key("agent.bindings.ro.foo")
+        assert not _is_path_category_key("agent.bindings.ro.foo")
+        assert _is_path_category_key("agent.claude.bindings.ro.foo")
+        assert _is_path_category_key("agent.default.caches.foo")
 
     def test_resolve_key_canonicalizes_node_plus_form(self):
         from kanibako.config_interface import _resolve_key

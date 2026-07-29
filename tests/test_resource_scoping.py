@@ -3,7 +3,7 @@
 The ``_build_resource_mounts`` / ``ResourceMapping`` / ``ResourceScope`` resource
 abstraction was DELETED in 1.6.0 (Part 3b): every shipped mapping was PROJECT
 (lives in the box home bind, no mount), and claude's only shared dirs (plugins +
-cache) are now ``agent.shared.*`` category entries.  Those tests are removed.
+cache) are now ``agent.<agent>.common.*`` category entries.  Those tests are removed.
 """
 
 from __future__ import annotations

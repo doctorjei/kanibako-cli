@@ -158,7 +158,7 @@ class TestSystemAuthShareAllowed:
         _set("system.auth.share_allowed=false")
         a = _launch_auth_source(std)
         assert a.tier == "box"
-        assert a.shares is False
+        assert a.creds_shared is False
 
     def test_reset_removes_from_settings_file(self, config_file, tmp_home):
         _set("system.auth.share_allowed=false")

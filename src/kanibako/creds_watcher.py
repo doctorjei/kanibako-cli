@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ``python3 -m kanibako.creds_watcher --box <subject> [--poll SEC]``
 
-    A PRIVATE box (``auth_src.shares`` False) never propagates credentials, so the
+    A PRIVATE box (``auth_src.creds_shared`` False) never propagates credentials, so the
     watcher no-ops and exits immediately (the host spawner also skips spawning one).
     Best-effort throughout: a resolution failure logs and exits 0 (a watcher that
     can't resolve its box is simply not needed — never a crash that surfaces to a
@@ -349,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     runtime, proj, container_name, target, auth_src = ctx
 
-    if not auth_src.shares:
+    if not auth_src.creds_shared:
         # Private/box-tier box: writeback is a no-op, so watching is pointless.
         log.info("box %s is private (no shared creds); watcher exiting", container_name)
         return 0

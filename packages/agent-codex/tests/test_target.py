@@ -468,10 +468,10 @@ class TestSettingDescriptors:
 
 class TestDefaultShares:
     """Part 3b: the resource_mappings abstraction was deleted (all PROJECT —
-    those dirs live in the box home bind).  codex declares no agent shares."""
+    those dirs live in the box home bind).  codex declares no agent chares."""
 
     def test_no_default_shares(self):
-        assert CodexTarget().default_shares() == {}
+        assert CodexTarget().default_common() == {}
 
 
 class TestDescriptor:

@@ -136,7 +136,7 @@ class TestTargetABC:
         assert t.display_name == "Dummy Agent"
         assert t.detect() is None
         assert t.check_auth() is True  # default no-op returns True
-        assert t.default_shares() == {}
+        assert t.default_common() == {}
 
     def test_default_seeds(self):
         """Default default_seeds() returns empty dict (no seeds)."""

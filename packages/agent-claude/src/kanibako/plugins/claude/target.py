@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from kanibako.agent_defaults import (
     load_category_binds,
     load_descriptor,
-    load_shares,
+    load_common,
 )
 from kanibako.log import get_logger
 from kanibako.targets.base import (
@@ -383,12 +383,12 @@ class ClaudeTarget(Target):
             state={"model": "opus"},
         )
 
-    def default_shares(self) -> dict[str, BindDefault]:
+    def default_common(self) -> dict[str, BindDefault]:
         """Declare claude's AGENT-scope shared dirs (plugins + cache).
 
         Both are shared across every box that runs claude and rooted under the
         per-agent store dir ``@meta.agent.claude.path`` = ``@system.agents/claude``
-        (core's ``agent.shared`` scope-root).  The relative ``host_src`` (the key
+        (core's ``agent.<agent>.common`` scope-root).  The relative ``host_src`` (the key
         name) joins under that root, so the resolved host paths are
         ``<data>/agents/claude/{plugins,cache}`` bound rw to ``~/.claude/{plugins,cache}``:
 
@@ -397,12 +397,12 @@ class ClaudeTarget(Target):
         * ``cache``   — general cache (just changelog.md); promoted from a PROJECT
           ``ResourceMapping`` so it persists across boxes of this agent.
 
-        The base ``default_shares()`` returns ``{}``; this override injects these
+        The base ``default_common()`` returns ``{}``; this override injects these
         as the AGENT level's declared defaults (overridable/suppressible by the
         user at a more-specific level).  The share keys + box_dests are declared
         in this plugin's ``claude-defaults.yaml`` (read via the loader).
         """
-        return load_shares(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+        return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
     def default_category_binds(self) -> dict[str, BindDefault]:
         """Declare claude's AGENT-scope ``@``-ref-sourced category binds.
@@ -412,7 +412,7 @@ class ClaudeTarget(Target):
         bind was retired — the box guide now ships via the RO ``~/playbook/kanibako``
         bundle + the flattened per-agent FINAL file.
         """
-        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.
