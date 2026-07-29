@@ -5,7 +5,7 @@
 # data (delivery binds, launch grammar, settings routing, container env, cred-file
 # lifecycle, host_prep/init_dirs) PLUS its AGENT-scope `shared` defaults.  It is
 # read by the thin loader :mod:`kanibako.agent_defaults`, which builds the
-# PluginDescriptor / default_shares exactly as the old hand-written `target.py`
+# PluginDescriptor / default_common exactly as the old hand-written `target.py`
 # values did — so core start.py still assembles claude's argv / env / delivery
 # mounts / credential lifecycle from the descriptor.
 #
@@ -126,14 +126,15 @@ descriptor:
   vscode_extension: anthropic.claude-code
 
 # AGENT-scope shared dirs (plugins + cache), rooted under the per-agent store dir
-# @meta.agent.claude.path = @system.agents/claude (core's agent.shared scope-root).
+# @meta.agent.claude.path = @system.agents/claude (core's agent.<agent>.common scope-root).
 # The relative host_src (the key name) joins under that root; box_dest is a
-# $GUEST_HOME expression.
-shares:
-  - key: agent.shared.plugins
+# $GUEST_HOME expression.  `key` is the bare LEAF name — the loader builds the
+# discriminated `agent.<agent>.common.<key>` (there is no bare `agent.<category>`).
+common:
+  - key: plugins
     host_src: plugins
     box_dest: "$GUEST_HOME/.claude/plugins"
-  - key: agent.shared.cache
+  - key: cache
     host_src: cache
     box_dest: "$GUEST_HOME/.claude/cache"
 

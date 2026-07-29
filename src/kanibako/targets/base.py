@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 # A STRUCTURED category bind default (spec §2a "REPRESENTATION"): a 2- or
 # 3-element ``(host_src, box_dest[, options])`` tuple — NOT a colon-joined
-# string. Emitted by ``default_shares()`` / ``default_seeds()`` and consumed by
+# string. Emitted by ``default_common()`` / ``default_seeds()`` and consumed by
 # :func:`kanibako.settings_resolve.unpack_bind` through the category resolver.
 BindDefault = tuple[str, str] | tuple[str, str, str]
 
@@ -478,23 +478,24 @@ class Target(ABC):
         """
         return None
 
-    def default_shares(self) -> dict[str, BindDefault]:
-        """Declare default AGENT-scope shares/caches for this agent.
+    def default_common(self) -> dict[str, BindDefault]:
+        """Declare default AGENT-scope commons/caches for this agent.
 
-        Returns a mapping of full scoped category keys
-        (``agent.shared.<name>`` / ``agent.caches.<name>``) to STRUCTURED bind
+        Returns a mapping of full DISCRIMINATED scoped category keys
+        (``agent.<agent>.common.<name>`` / ``agent.<agent>.caches.<name>``) to STRUCTURED bind
         pairs ``(host_src, box_dest[, options])`` (spec §2a — a tuple, NOT a
         colon-joined string). These are injected as the AGENT level's *declared
         defaults* (``default_categories``) in the category resolver — a user can
         override or suppress (terminal "") any of them at a more-specific level.
-        The default returns {} (no shares).
+        The default returns {} (no commons).
         """
         return {}
 
     def default_seeds(self) -> dict[str, BindDefault]:
         """Declare default copy-once-at-init seeds for this agent.
 
-        Returns a mapping of full seed keys (``agent.seeded.<name>``) to
+        Returns a mapping of full DISCRIMINATED seed keys
+        (``agent.<agent>.seeded.<name>``) to
         STRUCTURED bind pairs ``(host_src, box_dest[, options])`` (spec §2a — a
         tuple, NOT a colon-joined string), injected as the AGENT level's declared
         defaults (``default_categories``) in the category resolver. A user can
@@ -507,12 +508,13 @@ class Target(ABC):
     def default_category_binds(self) -> dict[str, BindDefault]:
         """Declare default AGENT-scope ``@``-ref-sourced category binds.
 
-        Returns a mapping of scoped category keys (``agent.bindings.ro.<name>``) to
+        Returns a mapping of DISCRIMINATED scoped category keys
+        (``agent.<agent>.bindings.ro.<name>``) to
         STRUCTURED bind tuples ``(meta_ref, box_dest[, "ro"])`` (spec §2a) whose
         HOST SOURCE is an ``@``-ref STRING resolved by the launch category cascade —
         the AGENT-scope mirror of :mod:`kanibako.core_defaults`'s ``meta_ref`` bind
         shape.  These are injected as the AGENT level's declared defaults
-        (``default_categories``) alongside :meth:`default_shares`; a user can
+        (``default_categories``) alongside :meth:`default_common`; a user can
         override or suppress (terminal "") any of them at a more-specific level.
 
         A plugin owns its own harness-slot ``box_dest`` while an ``@``-ref source

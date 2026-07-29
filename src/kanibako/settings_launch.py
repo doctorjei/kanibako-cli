@@ -17,7 +17,7 @@ by-dest consumer, fed from the snapshot's category subtrees).
 What lands in the one snapshot
 ------------------------------
 The launch has SEVERAL runtime-computed ``default_categories`` tables (channel /
-core / kani / helper / image binds, agent shares/seeds, masks) and a behavior
+core / kani / helper / image binds, agent commons/seeds, masks) and a behavior
 floor — today each rode a per-family ``LevelView``'s ``defaults=`` (the cascade
 FLOOR). They ALL fold into ONE ``floor`` dict passed to
 ``assemble_levels(floor=…)`` (2a folds it UNDER the base file, so a file at any
@@ -90,7 +90,7 @@ from kanibako.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
 # ``<scope>.<category>`` subtrees. ``bindings`` carries ``ro`` / ``rw`` sub-nodes;
 # the rest are flat ``<category>.<name>`` bind maps.
 _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
-    {"caches", "seeded", "shared", "synced"}
+    {"caches", "seeded", "common", "synced"}
 )
 # Aliases the single-source scope-containment tuple (settings_store) so this
 # consumer never re-declares the scope set — the old byte-identical literal was a
@@ -641,8 +641,8 @@ class AuthSource:
     workset_source: str | None
 
     @property
-    def shares(self) -> bool:
-        """True when the box shares creds at ANY tier (not private/box).
+    def creds_shared(self) -> bool:
+        """True when the box receives shared creds at ANY tier (not private/box).
 
         The single-bool analog of the old ``effective_group_auth`` for the gates
         that only care "is this box sharing at all" (auto-auth, the host-source
@@ -802,9 +802,9 @@ def build_launch_snapshot(
     """Build the ONE expanded launch snapshot.
 
     Folds the behavior floor (mapped to ``agent.default.<key>`` — OS1, the
-    all-agents backstop) and every runtime ``default_categories`` table (a bare
-    ``agent.<cat>.*`` table key re-rooted to the active slot ``agent.<agent_name>.
-    <cat>.*``) into ONE base-level floor, assembles the 6-level cascade (S8) with
+    all-agents backstop) and every runtime ``default_categories`` table (agent-scope
+    tables arrive ALREADY DISCRIMINATED as ``agent.<agent_name>.<cat>.*``, built by
+    the declaring plugin) into ONE base-level floor, assembles the 6-level cascade (S8) with
     7a's *agent_partial* inserted as an additional agent-level source (S27), merges
     (S15), and expands (S17/S19) with *ctx*. There is NO bare ``agent.<key>`` in the
     snapshot (spec §2d / §0 L21) — the agent tier is DISCRIMINATED throughout.
@@ -853,20 +853,19 @@ def build_launch_snapshot(
     # workset FILE ""-suppression of an inherited default is a separate path —
     # see the module note; no shipped default table uses "".)
     #
-    # OS1 (agent scope): the default tables emit BARE ``agent.<category>.<name>``
-    # keys (``default_shares()`` → ``agent.shared.plugins``, ``default_seeds()`` →
-    # ``agent.seeded.*``, the agent ``scope_roots`` families). The snapshot agent
-    # tier is DISCRIMINATED (§2d / §0 L21 — NO bare ``agent.<key>``); these are the
-    # ACTIVE agent's own declared defaults (they come from the active target), so
-    # re-root them to the active slot ``agent.<agent_name>.<category>.<name>``. A
-    # box/workset/agent file STILL overrides them by name through the merge, and the
-    # adapter's active-over-default pick reads them. (``agent.default.*`` from the
-    # behavior floor above + any explicitly-default-keyed table entry are left as-is.)
+    # OS1 (agent scope): the agent-scope default tables arrive ALREADY DISCRIMINATED
+    # (``default_common()`` → ``agent.<agent>.common.plugins``, ``default_seeds()`` →
+    # ``agent.<agent>.seeded.*``) — the declaring plugin builds the discriminated key
+    # in :mod:`kanibako.agent_defaults`, because the snapshot agent tier is
+    # DISCRIMINATED (§2d / §0 L21 — NO bare ``agent.<key>``) and the bare form must
+    # not exist anywhere. A box/workset/agent file STILL overrides them by name
+    # through the merge, and the adapter's active-over-default pick reads them.
+    # (``agent.default.*`` from the behavior floor above is the agent tier's
+    # FALLBACK — a legitimate discriminator, left as-is.)
     if default_categories:
         for key, val in default_categories.items():
             if val == "":
                 continue
-            key = _agent_scope_qualify(key, agent_name)
             # masks BRIDGE: a live ``<scope>.masks`` value is a LIST[box_dest]
             # (the shipped/file form); the KeyStore model is a keyed
             # ``dict[box_dest → bool]`` (S5/§6f). Convert here so the snapshot's
@@ -1220,28 +1219,6 @@ def _box_agent_category_fold(
     return folded
 
 
-def _agent_scope_qualify(key: str, agent_name: str) -> str:
-    """Re-root a BARE ``agent.<category>.*`` default-table key onto the active slot.
-
-    A category default table emits bare ``agent.<category>.<name>`` keys (no
-    discriminator). The snapshot agent tier is DISCRIMINATED (§2d / §0 L21 — NO bare
-    ``agent.<key>``), so a bare ``agent.*`` key is re-rooted to
-    ``agent.<agent_name>.<category>.<name>`` (the active agent's own declared
-    default). A key that is ALREADY discriminated (``agent.default.*`` or
-    ``agent.<agent_name>.*``) or is not agent-scoped is returned unchanged.
-    """
-    if not key.startswith("agent."):
-        return key
-    second = key.split(".", 2)[1]
-    # Already discriminated (a real agent slot) → leave as-is. The discriminators in
-    # play here are ``default`` and the active agent name; a bare category token
-    # (``shared`` / ``caches`` / ``bindings`` / ``seeded`` / ``synced`` / ``masks`` /
-    # ``env``) means UN-discriminated and must be re-rooted to the active slot.
-    if second in ("default", agent_name):
-        return key
-    return f"agent.{agent_name}.{key[len('agent.'):]}"
-
-
 # --------------------------------------------------------------------------- #
 # Behavior read — typed off the ONE snapshot                                  #
 # --------------------------------------------------------------------------- #
@@ -1275,7 +1252,7 @@ def effective_behavior(
     DISCOVER every scalar behavior leaf present under ``agent.<active>`` ∪
     ``agent.default`` (so any undeclared agent-scope scalar keys survive as
     pass-through, matching the old reader's key union). Category subtrees
-    (``bindings`` / ``meta`` / ``shared`` / …) and ``Bind`` leaves are NOT behavior
+    (``bindings`` / ``meta`` / ``common`` / …) and ``Bind`` leaves are NOT behavior
     and are skipped.
 
     A key absent from BOTH slots is omitted. A present-``None`` scalar
@@ -1349,7 +1326,7 @@ def agent_delivery_mounts(
     critical_keys: "frozenset[str]",
 ):
     """Emit the AGENT delivery :class:`~kanibako.targets.base.Mount`s from the
-    reconciled ``agent.bindings.{ro,rw}`` winners — the single-route replacement
+    reconciled ``agent.<agent>.bindings.{ro,rw}`` winners — the single-route replacement
     for ``descriptor_mounts``' MOUNT role (S27).
 
     *reconciled_mounts* is the full MOUNT winner list from
@@ -1417,7 +1394,7 @@ def snapshot_category_entries(
 
     host_src is read from the expanded ``Bind`` (already host-resolved at build),
     then ROOT-JOINED: a RELATIVE host_src under a group that has a *scope_roots*
-    entry (``agent.shared`` → the per-agent store dir, ``agent.bindings.ro`` → the
+    entry (``agent.<agent>.common`` → the per-agent store dir, ``agent.<agent>.bindings.ro`` → the
     share root, etc.) is prefixed with that root — replicating the old by-name
     resolver's join EXACTLY (relative-only, root absolute). box_dest is
     resolved BOX-side here (this is a ``box_dest`` consumer, B6): ``~`` →
@@ -1443,14 +1420,19 @@ def snapshot_category_entries(
         return host_src
 
     for scope in _SCOPES:
+        group_scope = scope
         if scope == "agent":
             # §2d active-over-default pick: effective agent node = agent.default
-            # overlaid by agent.<active> (the emitted scope/group are the BARE
-            # ``agent`` token). The box's box.agent.* CATEGORY tweaks already merged
+            # overlaid by agent.<active>. The emitted ``CategoryEntry.scope`` stays the
+            # BARE ``agent`` token (it is the precedence identity), but the
+            # ``scope_roots`` GROUP is DISCRIMINATED (``agent.<active>.<category>``) —
+            # there is no bare ``agent.*`` anywhere outside an explicit agent name or
+            # ``default``. The box's box.agent.* CATEGORY tweaks already merged
             # INTO agent.<active> at box precedence (the pre-merge fold,
             # ``_box_agent_category_fold``), so the PURE pick already carries them —
             # NO separate post-expand box.agent overlay (single-route, §2b L411 / §0).
             scope_node = _agent_pick_node(snapshot, active_agent)
+            group_scope = f"agent.{active_agent}"
         else:
             scope_node = dict.get(snapshot, scope, _MISSING)
         if not isinstance(scope_node, KeyStore):
@@ -1459,6 +1441,7 @@ def snapshot_category_entries(
         _emit_scope_node(
             collected, scope_node, order=order, scope=scope,
             box_dest_fn=_box_dest, root_join_fn=_root_join,
+            group_scope=group_scope,
         )
 
     collected.sort(key=lambda pair: pair[0])
@@ -1471,11 +1454,11 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     overlay.
 
     Returns a FRESH ``KeyStore`` shaped like a single (bare) agent scope node — its
-    ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` / ``shared`` / ``synced`` /
+    ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` / ``common`` / ``synced`` /
     ``masks`` / ``env`` subtrees + behavior leaves holding the per-name winner: the
     active slot's leaf wherever it set that name, else the ``agent.default`` leaf.
-    The overlay is PER NAME (deep) so an active ``agent.<active>.shared.cache`` and a
-    default-only ``agent.default.shared.plugins`` BOTH survive. A present-``None``
+    The overlay is PER NAME (deep) so an active ``agent.<active>.common.cache`` and a
+    default-only ``agent.default.common.plugins`` BOTH survive. A present-``None``
     reset was already OMITted by the merge (§3 / §6e), so it never reaches here.
 
     This is the subtree the box.agent.* mirror is MATERIALIZED from (block B5,
@@ -1530,16 +1513,19 @@ def _emit_scope_node(
     scope: str,
     box_dest_fn,
     root_join_fn,
+    group_scope: str | None = None,
 ) -> None:
     """Emit every category entry under ONE (bare) scope NODE.
 
     *scope_node* is a single scope's category subtree (``snapshot.<scope>`` for a
     non-agent scope; the effective agent node for the agent scope). *scope* is the
-    BARE scope token used for the emitted ``CategoryEntry.scope`` and the
-    ``scope_roots`` group prefix (``agent.<category>``) — the load-bearing scope
-    identity, NOT the snapshot's agent discriminator. Reads via unbound ``dict``
-    ops (S3).
+    BARE scope token used for the emitted ``CategoryEntry.scope`` — the load-bearing
+    precedence identity. *group_scope* is the prefix the ``scope_roots`` GROUP is
+    built from and defaults to *scope*; the agent tier passes the DISCRIMINATED
+    ``agent.<active>`` so no bare ``agent.*`` group exists. Reads via unbound
+    ``dict`` ops (S3).
     """
+    group_scope = group_scope or scope
     # bindings.{ro,rw}
     bindings = dict.get(scope_node, "bindings", _MISSING)
     if isinstance(bindings, KeyStore):
@@ -1548,7 +1534,7 @@ def _emit_scope_node(
             if not isinstance(mode_node, KeyStore):
                 continue
             category = f"bindings.{mode}"
-            group = f"{scope}.{category}"
+            group = f"{group_scope}.{category}"
             for name in dict.keys(mode_node):
                 bind = dict.__getitem__(mode_node, name)
                 _emit_bind(
@@ -1556,12 +1542,12 @@ def _emit_scope_node(
                     box_dest_fn, root_join_fn, group,
                 )
 
-    # caches / seeded / shared / synced
+    # caches / seeded / common / synced
     for category in _BIND_LEAF_CATEGORIES:
         cat_node = dict.get(scope_node, category, _MISSING)
         if not isinstance(cat_node, KeyStore):
             continue
-        group = f"{scope}.{category}"
+        group = f"{group_scope}.{category}"
         for name in dict.keys(cat_node):
             bind = dict.__getitem__(cat_node, name)
             _emit_bind(

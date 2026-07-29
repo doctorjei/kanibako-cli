@@ -18,9 +18,9 @@ from kanibako.settings_launch import AuthSource
 
 # Auth 3-tier SHARING fixtures replacing the old ``effective_group_auth`` bool
 # (2026-07-01 redesign). ``_resolve_box_auth_source`` returns an ``AuthSource``;
-# ``.shares`` is the single-bool gate the reauth path consults. A SHARING box
-# picks a non-``box`` tier (here ``global``, ``.shares`` True); a PRIVATE box is
-# tier ``box`` (``.shares`` False), the old distinct-auth.
+# ``.creds_shared`` is the single-bool gate the reauth path consults. A SHARING box
+# picks a non-``box`` tier (here ``global``, ``.creds_shared`` True); a PRIVATE box is
+# tier ``box`` (``.creds_shared`` False), the old distinct-auth.
 _SHARED_AUTH = AuthSource(
     tier="global",
     global_enabled=True,
@@ -675,7 +675,7 @@ class TestRunReauth:
             patch("kanibako.targets.resolve_target") as mock_target,
             # The box's SHARING decision is resolved through the launch capability
             # chain (auth 3-tier redesign), which needs a real ``proj.mode``; stub
-            # it to a SHARING AuthSource so the ``auth_src.shares`` branch under
+            # it to a SHARING AuthSource so the ``auth_src.creds_shared`` branch under
             # test is reached unchanged.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
@@ -852,7 +852,7 @@ class TestRunReauth:
         with (
             patch("kanibako.config.resolve_agent", return_value="claude"),
             patch("kanibako.targets.resolve_target") as mock_target,
-            # Distinct auth = PRIVATE box (tier ``box``, ``.shares`` False); stub a
+            # Distinct auth = PRIVATE box (tier ``box``, ``.creds_shared`` False); stub a
             # private AuthSource so the distinct-auth branch is taken.
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",

@@ -109,7 +109,7 @@ _log = logging.getLogger(__name__)
 # nested shape and are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw``
 # sub-tables, each of which holds bind leaves.
 _BIND_CATEGORIES: frozenset[str] = frozenset(
-    {"bindings", "caches", "seeded", "shared", "synced"}
+    {"bindings", "caches", "seeded", "common", "synced"}
 )
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
@@ -448,7 +448,7 @@ def _overlay(base: KeyStore, top: KeyStore) -> None:
     the single ``base`` level (so a base-file set-value beats the floor default).
     This is NOT the cascade merge (block 2b) — it is a same-level union of two
     SOURCES (floor defaults + the base file). It descends matching :class:`KeyStore`
-    subtrees so a deep base-file leaf (``agent.bindings.rw.x``) overlays the same
+    subtrees so a deep base-file leaf (``agent.<agent>.bindings.rw.x``) overlays the same
     deep floor leaf without clobbering sibling floor leaves; a non-subtree leaf in
     *top* replaces *base*'s same key wholesale (the file is the authoritative
     source at this level). Uses unbound ``dict`` ops (S3) — both stores are

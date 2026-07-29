@@ -495,7 +495,7 @@ def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
                 },
                 "caches": {"c": ["/h/c", "/g/c"]},
                 "seeded": {"t": ["/h/t", "/g/t"]},
-                "shared": {"p": ["/h/p", "/g/p"]},
+                "common": {"p": ["/h/p", "/g/p"]},
                 "synced": {"cred": ["/h/cred", "/g/cred"]},
             }
         },
@@ -505,7 +505,7 @@ def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
     assert rw_home == Bind("/host/home", "~/", None)
     assert isinstance(rw_home, Bind)
     assert box_scope["bindings"]["ro"]["sock"] == Bind("/h/s", "/g/s", "z")
-    for cat, name in [("caches", "c"), ("seeded", "t"), ("shared", "p"), ("synced", "cred")]:
+    for cat, name in [("caches", "c"), ("seeded", "t"), ("common", "p"), ("synced", "cred")]:
         assert isinstance(box_scope[cat][name], Bind)
 
 

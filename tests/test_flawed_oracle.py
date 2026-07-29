@@ -1,6 +1,31 @@
-"""Unit tests for the unified scope-category resolver (pure, no I/O)."""
+"""Unit tests for the unified scope-category resolver + the FROZEN oracle it uses.
+
+⚠⚠⚠  READ BEFORE COPYING ANYTHING OUT OF THIS FILE  ⚠⚠⚠
+
+This file holds BOTH the frozen snapshot of the RETIRED by-name category resolver
+(``flawed_oracle_categories``, formerly ``resolve_categories``) and the tests that
+drive it. They live together so the retired model occupies exactly ONE file — it is
+a drift tripwire, NOT the live route and NOT a correctness authority. Adjudicate any
+divergence against the SPEC, never against this file.
+
+Because it is frozen, it still speaks the retired UNDISCRIMINATED key shape
+``agent.<category>.<name>``. **That form is not a key and does not exist anywhere in
+live kanibako** — the keyspace is CLOSED (spec §0) and the agent tier is
+DISCRIMINATED (§2d / §0 L21), so every real agent key is ``agent.<agent>.…`` or
+``agent.default.…``, and the live patterns in ``kanibako.settings_categories``
+REFUSE the bare form.
+
+So: the ``agent.caches.x`` / ``agent.bindings.rw.x`` strings below are FROZEN LEGACY
+FIXTURES, quarantined to this file. Do not copy them into new tests, into production
+code, or into a config file. If you are writing a new test against the LIVE route,
+write ``agent.<agent>.<category>.<name>``.
+"""
 
 from __future__ import annotations
+
+from re import compile as _re_compile
+
+from collections.abc import Callable, Mapping
 
 import pytest
 
@@ -19,14 +44,275 @@ from kanibako.settings_resolve import (
     _Unset,
     expand_expr,
     resolve_value,
+    unpack_bind,
 )
 
-# The FROZEN legacy by-name resolver (retired from the product; a tests-only
-# drift tripwire, NOT a correctness authority — adjudicate divergences vs SPEC).
-from tests.support.flawed_oracle import (
-    flawed_oracle_categories,
-    flawed_oracle_is_category_key,
+# ─── FORKED FROM live ``kanibako.settings_categories`` — FROZEN COPIES ─────────
+# These were imported from live code until 2026-07-29. A "frozen baseline" that
+# imports live internals is NOT frozen: a live edit silently rewrites the thing the
+# live code is being checked against, and the tripwire stops tripping. They are
+# copies ON PURPOSE. If a live edit makes the equivalence test fail, that is the
+# tripwire WORKING — decide deliberately whether to update these copies, do not
+# reflexively re-import.
+_FROZEN_COPY = "COPY"
+_FROZEN_ENV = "ENV"
+_FROZEN_MOUNT = "MOUNT"
+
+_DISABLE_SENTINEL = "empty"
+_SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
+
+_DELIVERY = {
+    "masks": _FROZEN_MOUNT,
+    "bindings.ro": _FROZEN_MOUNT,
+    "bindings.rw": _FROZEN_MOUNT,
+    "caches": _FROZEN_MOUNT,
+    "seeded": _FROZEN_COPY,
+    "common": _FROZEN_MOUNT,
+    "synced": _FROZEN_COPY,
+    "env": _FROZEN_ENV,
+    "secret_path": _FROZEN_MOUNT,
+}
+
+
+def _bind_options(category: str) -> str:
+    """FROZEN copy of the live mount-option rule (ro for bindings.ro, else Z,U)."""
+    return "ro" if category == "bindings.ro" else "Z,U"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠⚠⚠  FROZEN LEGACY KEY SHAPES — DO NOT COPY, DO NOT IMPORT, DO NOT IMITATE  ⚠⚠⚠
+#
+# These three patterns accept the RETIRED, UNDISCRIMINATED ``agent.<category>``
+# form. That form IS NOT A KEY and does not exist anywhere in live kanibako: the
+# keyspace is CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0 L21),
+# so every real agent key is ``agent.<agent>.…`` or ``agent.default.…``.
+#
+# They live HERE, and only here, because this module is a FROZEN snapshot of the
+# retired by-name resolver, kept as a drift tripwire. Reproducing the old model is
+# its entire job. The live patterns in ``kanibako.settings_categories`` REFUSE this
+# shape on purpose.
+#
+# If you are reading this because you want an ``agent.<category>`` key to work:
+# you don't. Write ``agent.<agent>.<category>.<name>``.
+# ═══════════════════════════════════════════════════════════════════════════════
+_LEGACY_CATEGORY_ALT = "|".join(
+    c.replace(".", r"\.")
+    for c in ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
 )
+BIND_KEY_RE = _re_compile(
+    rf"^(?P<scope>system|agent|workset|box)\.(?P<category>{_LEGACY_CATEGORY_ALT})"
+    r"\.(?P<name>.+)$"
+)
+MASK_KEY_RE = _re_compile(r"^(?P<scope>system|agent|workset|box)\.masks$")
+ENV_KEY_RE = _re_compile(
+    r"^(?P<scope>system|agent|workset|box)\.env\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
+)
+
+
+def flawed_oracle_is_category_key(key: str) -> bool:
+    """True if *key* is any scope-category key (one of the eight shapes)."""
+    return (
+        BIND_KEY_RE.match(key) is not None
+        or MASK_KEY_RE.match(key) is not None
+        or ENV_KEY_RE.match(key) is not None
+    )
+
+
+def _as_scalar(value: object) -> str:
+    """Narrow a resolved ``env`` value to its scalar ``str`` form.
+
+    The LOAD layer preserves structured category leaves (binding pair/tuple,
+    ``masks`` list — spec §2a), so a resolved value is typed ``object``.  ``env``
+    is the one remaining scalar category (its value is a plain VAR value); this
+    narrows it to ``str`` (a real ``str`` passes through untouched).  Binding and
+    ``masks`` leaves are unpacked structurally (:func:`unpack_bind` /
+    :func:`_mask_dests`) and do NOT pass through here.
+    """
+    return value if isinstance(value, str) else str(value)
+
+
+def _discover(levels: list[LevelView], pred: Callable[[str], bool]) -> set[str]:
+    """Collect every key (values AND defaults, all levels) matching *pred*."""
+    keys: set[str] = set()
+    for level in levels:
+        for key in level.values:
+            if pred(key):
+                keys.add(key)
+        for key in level.defaults:
+            if pred(key):
+                keys.add(key)
+    return keys
+
+
+def _mask_dests(value: object) -> list[str]:
+    """Narrow a resolved ``masks`` value to its real ``list[box_dest]``.
+
+    Per spec §2a ``masks`` is a real ``list[box_dest]`` — the LOAD layer (P1)
+    preserves a YAML list verbatim, so the common case is an actual ``list`` /
+    ``tuple`` whose elements ARE the box-dest paths (each kept as-is, NOT
+    re-derived from a flattened string — the old comma-string shim
+    ``str()``-reprd a preserved list into garbage, the latent corruption this
+    closes).  A bare scalar ``str`` (a single-mask config or in-code default) is
+    a one-element list.  Empty / whitespace-only elements are dropped.
+    """
+    raw = value if isinstance(value, (list, tuple)) else [value]
+    return [s for s in (str(e).strip() for e in raw) if s]
+
+
+def flawed_oracle_categories(
+    *,
+    levels: list[LevelView],
+    ctx: ResolveCtx,
+    lookup: Callable[[str, tuple[str, ...]], str],
+    scope_roots: Mapping[str, str] | None = None,
+) -> list[CategoryEntry]:
+    """Resolve the unified scope-category config into ordered entries.
+
+    .. note::
+       **FROZEN LEGACY BASELINE — NO product caller.** This is the OLD by-NAME
+       LevelView-cascade resolver, RETIRED because it was WRONG in a number of
+       cases.  The launch + CLI paths now resolve categories through the KeyStore
+       snapshot pipeline (``build_launch_snapshot`` →
+       ``snapshot_category_entries`` → :func:`reconcile_categories`).  This
+       function is kept SOLELY as the drift TRIPWIRE that
+       ``tests/test_settings_launch_equivalence.py`` compares the snapshot path
+       against.  It is NOT a correctness authority: on a divergence the SPEC
+       (``reference/settings-keyspace-1.6.0-target.md``) adjudicates, never this
+       code (the OLD path here could be the buggy side).
+
+    *levels* are MOST-SPECIFIC-FIRST (``[box, workset, agent, system, ...]``).
+    *lookup* resolves ``@``-refs.  *scope_roots* maps a group prefix
+    (``"{scope}.<category>"``) to a host-space root expression; absent/empty
+    means no root join (bind-shaped categories only).
+
+    Returns entries in apply order (see :mod:`kanibako.settings_categories`
+    module docstring).  Does NOT resolve cross-category collisions (sub-step 4b).
+    Raises :class:`SettingsError` if a non-suppressed bind value is not a
+    structured 2-/3-element pair/tuple
+    (:func:`~kanibako.settings_resolve.unpack_bind`).
+    """
+    entries: list[tuple[tuple[int, str, str], CategoryEntry]] = []
+
+    # --- bind-shaped categories: bindings.{ro,rw} / caches / seeded / shared / synced
+    for key in _discover(levels, lambda k: BIND_KEY_RE.match(k) is not None):
+        m = BIND_KEY_RE.match(key)
+        assert m is not None
+        scope = m.group("scope")
+        category = m.group("category")
+        name = m.group("name")
+        group = f"{scope}.{category}"
+        delivery = _DELIVERY[category]
+
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset):
+            continue
+        if rv.terminal:
+            # Explicit "" — suppressed.
+            continue
+        if delivery == _FROZEN_COPY and rv.value == _DISABLE_SENTINEL:
+            # "empty" sentinel disables a COPY (seed/synced) entry.
+            continue
+
+        # Structured unpack (spec §2a): a category binding value is a 2-/3-element
+        # list/tuple, NOT a colon-string. The optional 3rd element is the
+        # per-entry options override (``opts_override``): when PRESENT (a 3-element
+        # entry — incl. an explicit empty string ``""``) it OVERRIDES the category
+        # default for THIS entry; when absent (``None``, a 2-element entry) the
+        # category default applies.
+        try:
+            host_src_raw, guest_dest_raw, opts_override = unpack_bind(rv.value)
+        except SettingsError as exc:
+            raise SettingsError(f"Category '{key}': {exc}") from exc
+
+        host_src = expand_expr(host_src_raw, space="host", ctx=ctx, lookup=lookup)
+        guest_dest = expand_expr(guest_dest_raw, space="guest", ctx=ctx, lookup=lookup)
+
+        # Root join: only for a relative host_src under a group that has a root.
+        root_expr = scope_roots.get(group) if scope_roots else None
+        if root_expr and not host_src.startswith("/"):
+            root = expand_expr(root_expr, space="host", ctx=ctx, lookup=lookup)
+            host_src = f"{root.rstrip('/')}/{host_src}"
+
+        # Per-entry options override (spec §2a): an explicit 3rd element wins for
+        # this MOUNT entry (incl. an explicit ``""`` — no relabel); a 2-element
+        # entry (``opts_override is None``) falls back to the category default.
+        # COPY / ENV deliveries carry no mount flags (options stays ``""``).
+        if delivery == _FROZEN_MOUNT:
+            options = opts_override if opts_override is not None else _bind_options(category)
+        else:
+            options = ""
+        sort_key = (_SCOPE_APPLY_ORDER[scope], category, name)
+        entries.append(
+            (
+                sort_key,
+                CategoryEntry(
+                    category=category,
+                    scope=scope,
+                    box_dest=guest_dest,
+                    host_src=host_src,
+                    delivery=delivery,
+                    options=options,
+                    name=name,
+                ),
+            )
+        )
+
+    # --- masks: {scope}.masks = list[box_dest] (tmpfs hide; no host source)
+    for key in _discover(levels, lambda k: MASK_KEY_RE.match(k) is not None):
+        m = MASK_KEY_RE.match(key)
+        assert m is not None
+        scope = m.group("scope")
+
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset) or rv.terminal:
+            continue
+        for idx, raw_dest in enumerate(_mask_dests(rv.value)):
+            box_dest = expand_expr(raw_dest, space="guest", ctx=ctx, lookup=lookup)
+            sort_key = (_SCOPE_APPLY_ORDER[scope], "masks", f"{idx:04d}:{box_dest}")
+            entries.append(
+                (
+                    sort_key,
+                    CategoryEntry(
+                        category="masks",
+                        scope=scope,
+                        box_dest=box_dest,
+                        host_src=None,
+                        delivery=_FROZEN_MOUNT,
+                        options="ro",
+                        name=box_dest,
+                    ),
+                )
+            )
+
+    # --- env: {scope}.env.{VAR} = value (scalar; no host source, no guest path)
+    for key in _discover(levels, lambda k: ENV_KEY_RE.match(k) is not None):
+        m = ENV_KEY_RE.match(key)
+        assert m is not None
+        scope = m.group("scope")
+        var = m.group("name")
+
+        rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
+        if isinstance(rv, _Unset) or rv.terminal:
+            continue
+        value = expand_expr(_as_scalar(rv.value), space="guest", ctx=ctx, lookup=lookup)
+        sort_key = (_SCOPE_APPLY_ORDER[scope], "env", var)
+        entries.append(
+            (
+                sort_key,
+                CategoryEntry(
+                    category="env",
+                    scope=scope,
+                    box_dest=var,
+                    host_src=None,
+                    delivery=_FROZEN_ENV,
+                    options=value,
+                    name=var,
+                ),
+            )
+        )
+
+    entries.sort(key=lambda pair: pair[0])
+    return [entry for _, entry in entries]
+
 
 HOST_HOME = "/home/u"
 
@@ -111,9 +397,9 @@ class TestEachCategoryShape:
     def test_shared_is_mount_zu(self):
         ctx = make_ctx()
         e = _one(
-            [LevelView("workset", {"workset.shared.team": ["/h/s", "~/shared"]})], ctx
+            [LevelView("workset", {"workset.common.team": ["/h/s", "~/shared"]})], ctx
         )
-        assert e.category == "shared"
+        assert e.category == "common"
         assert e.delivery == MOUNT
         assert e.options == "Z,U"
 
@@ -250,7 +536,7 @@ class TestPerEntryOptionsOverride:
         ctx = make_ctx()
         ec = _one([LevelView("box", {"box.caches.c": ["/h/c", "/g/c", "U"]})], ctx)
         assert ec.options == "U"
-        es = _one([LevelView("box", {"box.shared.s": ["/h/s", "/g/s", ""]})], ctx)
+        es = _one([LevelView("box", {"box.common.s": ["/h/s", "/g/s", ""]})], ctx)
         assert es.options == ""
 
     def test_copy_category_ignores_options_slot(self):
@@ -373,7 +659,7 @@ class TestDeliveryTagging:
                     "box.synced.y": ["/h/y", "~/y"],
                     "box.bindings.rw.b": ["/h/b", "~/b"],
                     "box.caches.c": ["/h/c", "~/c"],
-                    "box.shared.h": ["/h/h", "~/h"],
+                    "box.common.h": ["/h/h", "~/h"],
                 },
             ),
         ]
@@ -382,7 +668,7 @@ class TestDeliveryTagging:
         assert by_cat["synced"] == COPY
         assert by_cat["bindings.rw"] == MOUNT
         assert by_cat["caches"] == MOUNT
-        assert by_cat["shared"] == MOUNT
+        assert by_cat["common"] == MOUNT
 
 
 # ---------------------------------------------------------------------------
@@ -549,7 +835,7 @@ class TestIsCategoryKey:
         assert flawed_oracle_is_category_key("box.bindings.rw.x")
         assert flawed_oracle_is_category_key("agent.caches.k")
         assert flawed_oracle_is_category_key("agent.seeded.t")
-        assert flawed_oracle_is_category_key("workset.shared.s")
+        assert flawed_oracle_is_category_key("workset.common.s")
         assert flawed_oracle_is_category_key("agent.synced.c")
         assert flawed_oracle_is_category_key("box.env.FOO")
         # Dotted name allowed for bind categories.
@@ -572,13 +858,13 @@ class TestIsCategoryKey:
 # Authority order (identical box_dest, later WINS): seed < cache < binding <
 # shared < synced < masks. Ties within a category -> box scope wins. synced
 # (COPY) vs binding (MOUNT) at the same dest -> ConfigError. MOUNTs emit
-# depth-sorted (shallow first). shares=False suppresses synced + cred seeds.
+# depth-sorted (shallow first). deliver_creds=False suppresses synced + cred seeds.
 # ---------------------------------------------------------------------------
 
 
-def _reconcile(levels, ctx, *, shares=True, scope_roots=None):
+def _reconcile(levels, ctx, *, deliver_creds=True, scope_roots=None):
     return reconcile_categories(
-        _resolve(levels, ctx, scope_roots=scope_roots), shares=shares
+        _resolve(levels, ctx, scope_roots=scope_roots), deliver_creds=deliver_creds
     )
 
 
@@ -610,10 +896,10 @@ class TestReconcileAuthorityOrder:
         # seed < cache < binding < shared < synced < masks
         D = "/g/x"
         for top, rest in [
-            ("masks", ["shared", "bindings.rw", "caches", "seeded"]),
-            ("masks", ["synced", "shared", "caches", "seeded"]),
-            ("synced", ["shared", "caches", "seeded"]),
-            ("shared", ["bindings.rw", "caches", "seeded"]),
+            ("masks", ["common", "bindings.rw", "caches", "seeded"]),
+            ("masks", ["synced", "common", "caches", "seeded"]),
+            ("synced", ["common", "caches", "seeded"]),
+            ("common", ["bindings.rw", "caches", "seeded"]),
             ("bindings.rw", ["caches", "seeded"]),
             ("caches", ["seeded"]),
         ]:
@@ -637,7 +923,7 @@ class TestReconcileAuthorityOrder:
                     "box.seeded.s": ["/h/s", "/g/x"],
                     "box.caches.c": ["/h/c", "/g/x"],
                     "box.bindings.rw.b": ["/h/b", "/g/x"],
-                    "box.shared.h": ["/h/h", "/g/x"],
+                    "box.common.h": ["/h/h", "/g/x"],
                     "box.masks": "/g/x",
                 },
             ),
@@ -687,7 +973,7 @@ class TestReconcileSyncedBindingError:
     def test_synced_and_shared_same_dest_is_not_an_error(self):
         # Only synced<->binding is the hard error; synced beats shared cleanly.
         synced = _entry("synced", box_dest="/g/ok")
-        shared = _entry("shared", box_dest="/g/ok")
+        shared = _entry("common", box_dest="/g/ok")
         rec = reconcile_categories([synced, shared])
         assert [w.category for w in (rec.mounts + rec.copies)] == ["synced"]
 
@@ -730,7 +1016,7 @@ class TestReconcileGroupAuthGate:
     def test_shares_false_suppresses_synced(self):
         synced = _entry("synced", box_dest="/g/cred")
         binding = _entry("bindings.rw", box_dest="/g/keep")
-        rec = reconcile_categories([synced, binding], shares=False)
+        rec = reconcile_categories([synced, binding], deliver_creds=False)
         cats = [w.category for w in (rec.mounts + rec.copies)]
         assert "synced" not in cats
         assert "bindings.rw" in cats
@@ -738,7 +1024,7 @@ class TestReconcileGroupAuthGate:
     def test_shares_false_suppresses_credential_seed_only(self):
         cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
         plain_seed = _entry("seeded", box_dest="/g/plain", is_credential=False)
-        rec = reconcile_categories([cred_seed, plain_seed], shares=False)
+        rec = reconcile_categories([cred_seed, plain_seed], deliver_creds=False)
         dests = [c.box_dest for c in rec.copies]
         assert "/g/cred" not in dests
         assert "/g/plain" in dests
@@ -746,7 +1032,7 @@ class TestReconcileGroupAuthGate:
     def test_shares_true_keeps_synced_and_cred_seed(self):
         synced = _entry("synced", box_dest="/g/s")
         cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
-        rec = reconcile_categories([synced, cred_seed], shares=True)
+        rec = reconcile_categories([synced, cred_seed], deliver_creds=True)
         dests = {c.box_dest for c in rec.copies}
         assert dests == {"/g/s", "/g/cred"}
 
@@ -754,7 +1040,7 @@ class TestReconcileGroupAuthGate:
         # synced suppressed by gate -> no clash with the binding at same dest.
         synced = _entry("synced", box_dest="/g/d")
         binding = _entry("bindings.rw", box_dest="/g/d")
-        rec = reconcile_categories([synced, binding], shares=False)
+        rec = reconcile_categories([synced, binding], deliver_creds=False)
         assert [m.category for m in rec.mounts] == ["bindings.rw"]
 
 
@@ -991,208 +1277,3 @@ class TestCoreDefaultCategories:
         assert "/home/agent" in dests
         assert "/home/agent/workspace" in dests
         assert dests.index("/home/agent") < dests.index("/home/agent/workspace")
-
-
-# ---------------------------------------------------------------------------
-# B2b: per-mode BYTE-IDENTITY of the @-ref-routed home/vault binds (the
-# equivalence bar) + the box.bindings.rw.home cascade override + workset anchors.
-# ---------------------------------------------------------------------------
-
-
-def _resolve_home_vault(floor, *, mode):
-    """Resolve home/vault through the LIVE build_launch_snapshot pipeline (the
-    single route the launch uses) → {box_dest: host_src}."""
-    from kanibako.settings_launch import (
-        build_launch_snapshot,
-        snapshot_category_entries,
-    )
-
-    ctx = make_ctx(workset_name=None)
-    snap = build_launch_snapshot(
-        agent_name="claude", ctx=ctx,
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        default_categories=floor,
-    )
-    rec = reconcile_categories(
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-    )
-    return {m.box_dest: m.host_src for m in rec.mounts}
-
-
-class TestB2bHomeVaultByteIdentity:
-    """The equivalence bar: a DEFAULT box's resolved home/vault binds are
-    byte-identical to the pre-B2b proj-attr literals, per mode."""
-
-    def test_primary_named_home_vault_resolve_to_proj_literals(self):
-        # PRIMARY/NAMED: @workset.boxes/@meta.box.name/home (+ vault) resolve to the
-        # SAME literal proj.shell_path / proj.vault_*_path the old injection used.
-        from kanibako.settings_launch import (
-            meta_identity_floor,
-            workset_anchor_floor,
-        )
-
-        # The launch materializes these from proj: workset.boxes = shell_path's box-
-        # parent, workset.vault_* = vault parent; meta.box.name = box name.
-        floor = {
-            "box.bindings.rw.home": (
-                "@workset.boxes/@meta.box.name/home", "~", "Z,U",
-            ),
-            "box.bindings.ro.vault": (
-                "@workset.vault_ro/@meta.box.name", "~/vault/ro", "ro",
-            ),
-            "box.bindings.rw.vault": (
-                "@workset.vault_rw/@meta.box.name", "~/vault/rw", "Z,U",
-            ),
-        }
-        floor.update(workset_anchor_floor(
-            mode="primary",
-            boxes="/data/pw/boxes",
-            vault_ro="/data/pw/vault/ro",
-            vault_rw="/data/pw/vault/rw",
-            logs="/data/pw/logs",
-            helper_log="/data/pw/logs/mybox.jsonl",
-        ))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw",
-        ))
-        by_dest = _resolve_home_vault(floor, mode="primary")
-        # Byte-identical to proj.shell_path = boxes/<name>/home, vault/{ro,rw}/<name>.
-        assert by_dest["/home/agent"] == "/data/pw/boxes/mybox/home"
-        assert by_dest["/home/agent/vault/ro"] == "/data/pw/vault/ro/mybox"
-        assert by_dest["/home/agent/vault/rw"] == "/data/pw/vault/rw/mybox"
-
-    def test_standalone_home_vault_resolve_to_proj_literals(self):
-        # STANDALONE: home/vault route the TRUE spec @meta.workset.path/* chains
-        # (§2c L427/425/428).  After the B2b ws_root fix, meta.workset.path = the
-        # project ROOT (<root>, = str(proj.metadata_path)), so the chains resolve to
-        # <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
-        # proj.vault_{ro,rw}_path — byte-identical, no invented *_src anchor.
-        from kanibako.settings_launch import (
-            meta_runtime_floor,
-            workset_anchor_floor,
-        )
-
-        floor = {
-            "box.bindings.rw.home": (
-                "@meta.workset.path/box_data/home", "~", "Z,U",
-            ),
-            "box.bindings.ro.vault": (
-                "@meta.workset.path/vault/ro", "~/vault/ro", "ro",
-            ),
-            "box.bindings.rw.vault": (
-                "@meta.workset.path/vault/rw", "~/vault/rw", "Z,U",
-            ),
-        }
-        # meta.workset.path = @meta.runtime.ws_root = <root> (the B2b fix passes
-        # str(proj.metadata_path) = the project ROOT as ws_root_literal).
-        floor.update(meta_runtime_floor(
-            mode="standalone", ws_name="__STANDALONE__", ws_root_literal="/proj",
-        ))
-        floor.update(workset_anchor_floor(
-            mode="standalone",
-            boxes=None, vault_ro=None, vault_rw=None, logs=None,
-            helper_log="/proj/box_data/sb.jsonl",
-        ))
-        by_dest = _resolve_home_vault(floor, mode="standalone")
-        # <root>=/proj: home = /proj/box_data/home, vault = /proj/vault/{ro,rw}.
-        assert by_dest["/home/agent"] == "/proj/box_data/home"
-        assert by_dest["/home/agent/vault/ro"] == "/proj/vault/ro"
-        assert by_dest["/home/agent/vault/rw"] == "/proj/vault/rw"
-
-    def test_box_bindings_home_cascade_override_wins(self):
-        # Option A: a box.bindings.rw.home CASCADE override (box scope) WINS over the
-        # spec-derived @workset.boxes/@meta.box.name/home default (the new mechanism
-        # for a custom home, replacing the dropped meta["shell"] override).
-        from kanibako.settings_launch import (
-            build_launch_snapshot,
-            meta_identity_floor,
-            snapshot_category_entries,
-            workset_anchor_floor,
-        )
-
-        floor = {
-            "box.bindings.rw.home": (
-                "@workset.boxes/@meta.box.name/home", "~", "Z,U",
-            ),
-        }
-        floor.update(workset_anchor_floor(
-            mode="primary", boxes="/data/pw/boxes", vault_ro="/v/ro",
-            vault_rw="/v/rw", logs="/l", helper_log="/l/mybox.jsonl",
-        ))
-        floor.update(meta_identity_floor(
-            box_name="mybox", project_path="/code/x", inbox="/i",
-            share_global="/sg", share_workset="/sw",
-        ))
-        ctx = make_ctx(workset_name=None)
-        # A box settings FILE setting box.bindings.rw.home to a custom host path.
-        box_overrides = {
-            "box": {"bindings": {"rw": {"home": ["/custom/home", "~"]}}},
-        }
-        import yaml
-        import tempfile
-        import os
-        fd, path = tempfile.mkstemp(suffix=".yaml")
-        os.write(fd, yaml.safe_dump(box_overrides).encode())
-        os.close(fd)
-        try:
-            from pathlib import Path
-            snap = build_launch_snapshot(
-                agent_name="claude", ctx=ctx,
-                system_path=None, agent_path=None, workset_path=None,
-                box_path=Path(path),
-                default_categories=floor,
-            )
-            rec = reconcile_categories(
-                snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-            )
-            by_dest = {m.box_dest: m.host_src for m in rec.mounts}
-            # The box cascade override WINS over the spec-derived default.
-            assert by_dest["/home/agent"] == "/custom/home"
-        finally:
-            os.unlink(path)
-
-
-class TestB2bWorksetAnchors:
-    """B2b workset path-anchor materialization (JC-B2b-1)."""
-
-    def test_primary_named_anchors_present(self):
-        from kanibako.settings_launch import workset_anchor_floor
-
-        floor = workset_anchor_floor(
-            mode="named", boxes="/ws/boxes", vault_ro="/ws/vault/ro",
-            vault_rw="/ws/vault/rw", logs="/ws/logs",
-            helper_log="/ws/logs/b.jsonl",
-            workset_channels={"commons": "/ws/ch/commons", "chat": "/ws/ch/chat",
-                              "share": "/ws/ch/share"},
-        )
-        assert floor["workset.boxes"] == "/ws/boxes"
-        assert floor["workset.vault_ro"] == "/ws/vault/ro"
-        assert floor["workset.vault_rw"] == "/ws/vault/rw"
-        assert floor["workset.logs"] == "/ws/logs"
-        assert floor["meta.box.helper_log"] == "/ws/logs/b.jsonl"
-        assert floor["workset.channels.commons"] == "/ws/ch/commons"
-
-    def test_standalone_anchors_are_none(self):
-        from kanibako.settings_launch import workset_anchor_floor
-
-        floor = workset_anchor_floor(
-            mode="standalone", boxes=None, vault_ro=None, vault_rw=None,
-            logs=None, helper_log="/proj/box_data/b.jsonl",
-        )
-        # Spec §2c L416: standalone workset path anchors are None — home/vault route
-        # the TRUE @meta.workset.path/* chains (no invented *_src anchors; the B2b
-        # ws_root fix made those unnecessary).
-        assert floor["workset.boxes"] is None
-        assert floor["workset.vault_ro"] is None
-        assert floor["workset.vault_rw"] is None
-        assert floor["workset.logs"] is None
-        # helper_log still routes a whole-value anchor (the .jsonl regex-parse limit
-        # is independent of ws_root).
-        assert floor["meta.box.helper_log"] == "/proj/box_data/b.jsonl"
-        # No invented resolved-literal home/vault anchors remain.
-        assert "meta.box.home_src" not in floor
-        assert "meta.box.vault_ro_src" not in floor
-        assert "meta.box.vault_rw_src" not in floor
-        # No workset channels for standalone.
-        assert "workset.channels.commons" not in floor

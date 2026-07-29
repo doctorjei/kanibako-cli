@@ -21,14 +21,14 @@ from kanibako.settings_launch import AuthSource
 # Auth-level redesign: the boolean ``effective_group_auth`` was replaced by an
 # ``AuthSource`` (``kanibako.settings_launch``).  These two module-level
 # constants stand in for the two ends the old bool covered:
-#   * ``_SHARED_AUTH`` — a sharing box (``.shares`` True; old ``group_auth=True``).
+#   * ``_SHARED_AUTH`` — a sharing box (``.creds_shared`` True; old ``group_auth=True``).
 #     A minimal GLOBAL-tier source (the common shared case).
-#   * ``_PRIVATE_AUTH`` — a private/distinct box (``.shares`` False; tier "box";
+#   * ``_PRIVATE_AUTH`` — a private/distinct box (``.creds_shared`` False; tier "box";
 #     old ``group_auth=False``).  ``_selected_source_root`` is ``None`` → the
 #     credsync primitives no-op.
 # Tests that need PRIVATE behavior must patch ``_resolve_box_auth_source`` to
 # return ``_PRIVATE_AUTH`` explicitly: ``start_mocks`` leaves that resolver REAL,
-# and against the MagicMock ``proj`` it resolves to the GLOBAL tier (shares True).
+# and against the MagicMock ``proj`` it resolves to the GLOBAL tier (creds_shared True).
 _SHARED_AUTH = AuthSource(
     tier="global",
     global_enabled=True,
@@ -803,7 +803,7 @@ class TestDistinctAuth:
     """Verify distinct auth skips host credential sync."""
 
     def test_distinct_auth_skips_refresh(self, start_mocks):
-        """A PRIVATE box (auth_src.shares False) -> refresh_credentials skipped."""
+        """A PRIVATE box (auth_src.creds_shared False) -> refresh_credentials skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
             return_value=(_PRIVATE_AUTH, None, None),
@@ -822,7 +822,7 @@ class TestDistinctAuth:
             m.target.writeback_credentials.assert_not_called()
 
     def test_distinct_auth_skips_check_auth(self, start_mocks):
-        """A PRIVATE box (auth_src.shares False) -> check_auth skipped."""
+        """A PRIVATE box (auth_src.creds_shared False) -> check_auth skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
             return_value=(_PRIVATE_AUTH, None, None),
@@ -840,13 +840,13 @@ class TestDistinctAuth:
             m.target.check_auth.assert_not_called()
 
     def test_shared_auth_calls_refresh(self, start_mocks):
-        """A SHARING box (auth_src.shares True) -> refresh_credentials is called.
+        """A SHARING box (auth_src.creds_shared True) -> refresh_credentials is called.
 
         Pins the legacy (descriptor-less) credential hook: a descriptor-bearing
         target routes refresh through the credsync engine instead, covered by
         TestCredsyncRouting.test_descriptor_refresh_uses_refresh_cred_files.
         The real ``_resolve_box_auth_source`` (unpatched here) resolves the
-        MagicMock proj to the GLOBAL tier, so ``.shares`` is True.
+        MagicMock proj to the GLOBAL tier, so ``.creds_shared`` is True.
         """
         with start_mocks() as m:
             m.target.descriptor = None
@@ -1155,11 +1155,11 @@ class TestInstructionDeliveryActivation:
 
 class TestPluginsAndCacheShares:
     """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``shared``
-    category entries (the plugin's ``default_shares()``), rooted at
+    category entries (the plugin's ``default_common()``), rooted at
     ``@system.agents/claude`` = ``<data>/agents/claude`` and bound rw to
     ``~/.claude/{plugins,cache}`` — NOT the old SHARED_STORE descriptor binding.
 
-    Driven through the LIVE single-route path (7c): the claude ``default_shares()``
+    Driven through the LIVE single-route path (7c): the claude ``default_common()``
     table resolved via ``build_launch_snapshot`` (``_resolve_launch_snapshot``) and
     emitted via ``_emit_category_mounts`` with a REAL ``std`` so the agent-scope
     root-join + host paths + L7 guarantee-create are exercised end-to-end.
@@ -1193,9 +1193,9 @@ class TestPluginsAndCacheShares:
         from kanibako.plugins.claude.target import ClaudeTarget
 
         target = ClaudeTarget()
-        # NARROW snapshot resolve: inject ONLY the claude agent shares (the share
+        # NARROW snapshot resolve: inject ONLY the claude agent commons (the share
         # root-join + L7 guarantee-create exercised here), not the core/channel
-        # families. ``default_shares()`` is the claude plugin's agent-scope shared
+        # families. ``default_common()`` is the claude plugin's agent-scope shared
         # table (plugins/cache under @system.agents/claude). All scope files are
         # absent (None) — this isolates the agent-share resolution.
         _snap, reconciled = _resolve_launch_snapshot(
@@ -1209,8 +1209,8 @@ class TestPluginsAndCacheShares:
             target=target,
             agent_cfg=None,
             include_base_families=False,
-            extra_default_categories=target.default_shares(),
-            shares=True,
+            extra_default_categories=target.default_common(),
+            deliver_creds=True,
         )
         return _emit_category_mounts(reconciled, label="share")
 
@@ -1249,14 +1249,14 @@ class TestPersonaShareSymlinks:
     _HARNESS = "claude"
     _NODE = "navigator℘claude"
 
-    def _target(self, shares=None):
+    def _target(self, commons=None):
         from types import SimpleNamespace
-        if shares is None:
-            shares = {
-                "agent.shared.plugins": ("plugins", "/home/agent/.claude/plugins"),
-                "agent.shared.cache": ("cache", "/home/agent/.claude/cache"),
+        if commons is None:
+            commons = {
+                "agent.claude.common.plugins": ("plugins", "/home/agent/.claude/plugins"),
+                "agent.claude.common.cache": ("cache", "/home/agent/.claude/cache"),
             }
-        return SimpleNamespace(name=self._HARNESS, default_shares=lambda: shares)
+        return SimpleNamespace(name=self._HARNESS, default_common=lambda: commons)
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
@@ -1337,7 +1337,7 @@ class TestPersonaShareSymlinks:
 
     def test_bare_agent_noop_even_with_shares(self, tmp_path):
         # Same as above but proves the guard is on node==harness, not on empty
-        # shares: a fully-declared target still yields no dirs for bare.
+        # commons: a fully-declared target still yields no dirs for bare.
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         target = self._target()
@@ -1405,7 +1405,7 @@ class TestCredsyncRouting:
             assert call.args[0] is m.target.descriptor
             assert call.args[1] is m.target
             assert call.kwargs["project_home"] is m.proj.shell_path
-            assert call.kwargs["auth"].shares is True
+            assert call.kwargs["auth"].creds_shared is True
             from pathlib import Path
             assert call.kwargs["host_home"] == Path.home()
 
@@ -1425,7 +1425,7 @@ class TestCredsyncRouting:
             call = m_credsync.refresh_box_credentials.call_args
             assert call.args[0] is m.target.descriptor
             assert call.kwargs["project_home"] is m.proj.shell_path
-            assert call.kwargs["auth"].shares is True
+            assert call.kwargs["auth"].creds_shared is True
             m.target.refresh_credentials.assert_not_called()
 
     def test_descriptor_writeback_uses_writeback_cred_files(self, start_mocks):
@@ -1444,7 +1444,7 @@ class TestCredsyncRouting:
             call = m_credsync.writeback_box_credentials.call_args
             assert call.args[0] is m.target.descriptor
             assert call.kwargs["project_home"] is m.proj.shell_path
-            assert call.kwargs["auth"].shares is True
+            assert call.kwargs["auth"].creds_shared is True
             m.target.writeback_credentials.assert_not_called()
 
     def test_descriptor_reattach_refresh_uses_refresh_cred_files(self, start_mocks):
@@ -1464,9 +1464,9 @@ class TestCredsyncRouting:
             m.target.refresh_credentials.assert_not_called()
 
     def test_descriptor_distinct_auth_still_seeds_but_skips_sync(self, start_mocks):
-        """PRIVATE box (auth_src.shares False): init still seeds (the orchestrator
+        """PRIVATE box (auth_src.creds_shared False): init still seeds (the orchestrator
         creates the box home/dirs; a private tier seeds no cred content), but
-        refresh/writeback are gated out by the ``auth_src.shares`` guard
+        refresh/writeback are gated out by the ``auth_src.creds_shared`` guard
         (credsync.refresh/writeback never reached)."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
@@ -1484,9 +1484,9 @@ class TestCredsyncRouting:
             assert rc == 0
             # seed_box_credentials runs on init regardless of tier (it creates the
             # box home dirs; a private tier seeds no cred content internally); but
-            # the auth_src.shares guard skips refresh/writeback.
+            # the auth_src.creds_shared guard skips refresh/writeback.
             m_credsync.seed_box_credentials.assert_called_once()
-            assert m_credsync.seed_box_credentials.call_args.kwargs["auth"].shares is False
+            assert m_credsync.seed_box_credentials.call_args.kwargs["auth"].creds_shared is False
             m_credsync.refresh_box_credentials.assert_not_called()
             m_credsync.writeback_box_credentials.assert_not_called()
 
@@ -2293,7 +2293,7 @@ class TestPrepareHostHook:
             assert m.target.prepare_host.call_args.kwargs["auto_auth"] is False
 
     def test_hook_auto_auth_false_for_distinct_auth(self, start_mocks):
-        """Distinct auth (PRIVATE box, auth_src.shares False) -> auto_auth=False."""
+        """Distinct auth (PRIVATE box, auth_src.creds_shared False) -> auto_auth=False."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
             return_value=(_PRIVATE_AUTH, None, None),
@@ -2546,7 +2546,7 @@ class TestApplyInitSeeds:
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
             # New config.*/system.* fields read by the ResolveCtx (config
-            # foundation) + resolved_sys (shares/seeds wiring).
+            # foundation) + resolved_sys (commons/seeds wiring).
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",
@@ -2594,7 +2594,7 @@ class TestApplyInitSeeds:
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, agent_config_path=None,
-              shares=True):
+              deliver_creds=True):
         from kanibako.commands.start import _apply_init_seeds
         # P6c: the box-tier seed config is single-sourced off proj.metadata_path/
         # settings.yaml (box_workset_settings_paths); tests place it there directly.
@@ -2606,7 +2606,7 @@ class TestApplyInitSeeds:
             global_config_path=global_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
-            shares=shares,
+            deliver_creds=deliver_creds,
         )
 
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
@@ -2648,7 +2648,7 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.seeded.x": (str(src), "~/x")},
+            default_seeds=lambda: {"agent.claude.seeded.x": (str(src), "~/x")},
         )
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
@@ -2675,9 +2675,9 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.seeded.x": (str(src), "~/x")},
+            default_seeds=lambda: {"agent.claude.seeded.x": (str(src), "~/x")},
         )
-        # The default seed ``agent.seeded.x`` is re-rooted onto the active slot
+        # The default seed ``agent.claude.seeded.x`` is DISCRIMINATED at source
         # ``agent.claude.seeded.x`` (the discriminated §2d shape); the box
         # suppresses it through its §2b box.agent.* mirror — the spec-legal
         # same-scope box→agent tweak.
@@ -2762,7 +2762,7 @@ class TestApplyInitSeeds:
         assert (shell / "note.md").read_text() == "USER EDIT"
 
     def test_non_credential_seed_copied_even_when_not_sharing(self, tmp_path):
-        """shares=False (private box) suppresses only credential-flagged seeds; a
+        """deliver_creds=False (private box) suppresses only credential-flagged seeds; a
         plain config seed (is_credential False) still copies (D-M4 gate is
         scoped)."""
         shell = self._shell(tmp_path)
@@ -2775,7 +2775,7 @@ class TestApplyInitSeeds:
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
-            shares=False,
+            deliver_creds=False,
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
@@ -2863,7 +2863,7 @@ class TestApplySyncedCopies:
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, agent_config_path=None,
-              shares=True):
+              deliver_creds=True):
         from kanibako.commands.start import _apply_synced_copies
         # P6c: the box-tier synced config is single-sourced off proj.metadata_path/
         # settings.yaml (box_workset_settings_paths); tests place it there directly.
@@ -2875,7 +2875,7 @@ class TestApplySyncedCopies:
             global_config_path=global_config_path,
             agent_config_path=agent_config_path,
             logger=self._logger(),
-            shares=shares,
+            deliver_creds=deliver_creds,
         )
 
     def test_empty_no_config_copies_nothing(self, tmp_path):
@@ -2895,7 +2895,7 @@ class TestApplySyncedCopies:
         assert (shell / "cred.txt").read_text() == "token"
 
     def test_synced_suppressed_when_not_sharing(self, tmp_path):
-        """shares=False (private box) suppresses every synced entry (D-M4)."""
+        """deliver_creds=False (private box) suppresses every synced entry (D-M4)."""
         shell = self._shell(tmp_path)
         src = tmp_path / "creds.txt"
         src.write_text("token")
@@ -2903,7 +2903,7 @@ class TestApplySyncedCopies:
         ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
         self._call(
             tmp_path, proj=self._proj(shell),
-            shares=False,
+            deliver_creds=False,
         )
         assert not (shell / "cred.txt").exists()
 
@@ -4180,7 +4180,7 @@ class TestWritebackAllPaths:
         assert "None" not in capsys.readouterr().err
 
     def test_no_writeback_when_group_auth_false(self, start_mocks):
-        """Distinct auth (PRIVATE box, auth_src.shares False) -> NO writeback on
+        """Distinct auth (PRIVATE box, auth_src.creds_shared False) -> NO writeback on
         any path."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",

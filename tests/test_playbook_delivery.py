@@ -196,7 +196,7 @@ class TestBaseTemplateSeedsPlaybook:
             global_config_path=std.settings,
             agent_config_path=std.agents / "claude" / "settings.yaml",
             logger=logging.getLogger("test-playbook-seed"),
-            shares=True,
+            deliver_creds=True,
         )
         assert (proj.shell_path / "playbook" / "CONTENTS.md").is_file()
 

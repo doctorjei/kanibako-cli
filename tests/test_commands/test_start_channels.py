@@ -91,7 +91,7 @@ def _build(std, proj):
         agent_cfg=None,
         include_base_families=False,
         extra_default_categories=_channel_default_categories(std, proj),
-        shares=True,
+        deliver_creds=True,
     )
     mounts = _emit_category_mounts(reconciled, label="channel")
     return {

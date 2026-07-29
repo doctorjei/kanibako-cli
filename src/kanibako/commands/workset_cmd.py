@@ -806,7 +806,7 @@ def run_share_add(args: argparse.Namespace) -> int:
 
     Writes ``workset.bindings.{mode}.{name} = host_src:guest_dest`` into the
     working set's ``settings.yaml``. Re-running with the same name overwrites the
-    mapping (this is how a share is "updated"; shares are live bind mounts and
+    mapping (this is how a binding is "updated"; bindings are live bind mounts and
     no content sync exists).
     """
     from kanibako.config_io import dump_doc
@@ -922,12 +922,12 @@ def run_share_remove(args: argparse.Namespace) -> int:
 def run_share_list(args: argparse.Namespace) -> int:
     """List a working set's shared directories.
 
-    Default: print the working set's own configured shares (raw NAME/MODE →
+    Default: print the working set's own configured bindings (raw NAME/MODE →
     bind). With ``--effective``: resolve through the KeyStore snapshot pipeline
     (``assemble_levels → merge → expand → snapshot_category_entries``, scoped to
     the workset file) using the same workset-root join a launch would apply, and
     print the final mounts. Single-route (7c): no second ``resolve_shares`` /
-    ``read_shares`` resolver path.
+    ``read_bindings`` resolver path.
     """
     ws, std = _resolve_share_workset(args.workset)
     if ws is None:
@@ -937,7 +937,7 @@ def run_share_list(args: argparse.Namespace) -> int:
     raw_shares = _workset_raw_shares(ws_config)
 
     if not raw_shares:
-        print(f"No shares configured for working set '{ws.name}'.")
+        print(f"No bindings configured for working set '{ws.name}'.")
         return 0
 
     if getattr(args, "effective", False):
@@ -962,7 +962,7 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     ``{(mode, name): raw_value}`` map for the RAW display view.
 
     Reads the workset partial through the committed ``assemble_levels`` (the SAME
-    file reader the launch snapshot uses — single-route, no ``read_shares``), then
+    file reader the launch snapshot uses — single-route, no ``read_bindings``), then
     walks its ``workset.bindings.{ro,rw}`` subtree. The raw value is the structured
     ``Bind`` (``@``-refs / ``$XDG`` / ``~`` UNRESOLVED, per §0). Missing file → {}.
     """
@@ -1003,12 +1003,12 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
 
 
 def _print_effective_shares(ws, std, ws_config: Path) -> int:
-    """Resolve and print the workset's shares as launch-time mounts.
+    """Resolve and print the workset's bindings as launch-time mounts.
 
     Single-route (7c): resolves through the committed KeyStore snapshot pipeline
     (``assemble_levels → merge → expand → snapshot_category_entries``) scoped to
     the workset file — the SAME resolver the launch uses — replacing the retired
-    ``resolve_shares``/``read_shares``/``LevelView`` path. A relative host_src is
+    ``resolve_shares``/``read_bindings``/``LevelView`` path. A relative host_src is
     joined under the working set root; an absolute host_src passes through; the
     default workset has no root, so relative paths are not joined.
     """
@@ -1068,7 +1068,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    print(f"Effective shares for working set '{ws.name}':")
+    print(f"Effective bindings for working set '{ws.name}':")
     for entry in entries:
         if entry.category not in ("bindings.ro", "bindings.rw"):
             continue

@@ -286,7 +286,7 @@ class TestStandaloneLaunch:
         box has no WORKSET group, so the workset tier degenerates false — but the
         GLOBAL tier is still enabled by default (``box.auth.global_enabled``), so
         the resolved :class:`AuthSource` has ``tier == "global"`` and
-        ``auth_src.shares`` is True.  The ``if target and auth_src.shares``
+        ``auth_src.creds_shared`` is True.  The ``if target and auth_src.creds_shared``
         cred-refresh / writeback gates therefore FIRE (source = the host home).
         (The prior "standalone short-circuits auth OFF" behavior was removed with
         the boolean group_auth chain.)

@@ -70,7 +70,7 @@ class GooseTarget(Target):
         instructions bind was retired — the box guide now ships via the RO
         ``~/playbook/kanibako`` bundle + the flattened per-agent FINAL file.
         """
-        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+        return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
     def transform_cred(
         self,

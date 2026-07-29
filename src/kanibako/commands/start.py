@@ -129,13 +129,13 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     dir is its own store, but whose plugins/cache SHOULD be shared with the bare
     harness (``agents/claude/``) rather than starting empty.  Rather than re-root
     the resolver, we lay a SYMLINK shim: for every agent-scope share the target
-    declares (``target.default_shares()`` — claude's ``plugins`` / ``cache``),
+    declares (``target.default_common()`` — claude's ``plugins`` / ``cache``),
     ``agents/<node>/<host_src>`` becomes a symlink -> ``agents/<harness>/<host_src>``.
     The resolver + spec are UNCHANGED; the L7 guarantee-create later (``mkdir
     parents=True, exist_ok=True`` on the rw source) is a no-op on the symlink-to-
     existing-dir, so the harness dir is the real writeback target.
 
-    Driven by the descriptor's declared shares (generic over harnesses; NO
+    Driven by the descriptor's declared commons (generic over harnesses; NO
     per-plugin code).  Call at persona-dir MATERIALIZATION, BEFORE mount assembly /
     share source resolution, so the symlink pre-dates any real-dir guarantee-create.
 
@@ -158,7 +158,7 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
 
     logger = get_logger("start")
     agents_root = std.agents
-    for host_src, *_rest in target.default_shares().values():
+    for host_src, *_rest in target.default_common().values():
         harness_dir = Path(agents_root) / harness / host_src
         node_link = Path(agents_root) / agent_id / host_src
 
@@ -1357,7 +1357,7 @@ def _assemble_image_sharing_mounts(
                 target=None,
                 graph_root=graph_root,
                 storage_conf_path=storage_conf_path,
-                shares=auth_src.shares,
+                deliver_creds=auth_src.creds_shared,
                 include_base_families=False,
             )
             img_mounts = _emit_category_mounts(_img_rec, label="images")
@@ -1614,7 +1614,7 @@ def _start_helper_hub(
         box_state_kanibako=str(box_state_kanibako),
         socket_path=socket_path,
         log_path=log_path,
-        shares=auth_src.shares,
+        deliver_creds=auth_src.creds_shared,
         include_base_families=False,
     )
     helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
@@ -2165,7 +2165,7 @@ def _run_container(
                 if _reattach_notice:
                     print(_reattach_notice, file=sys.stderr)
             # Refresh credentials before reattaching
-            if target and auth_src.shares:
+            if target and auth_src.creds_shared:
                 if desc is not None:
                     credsync.refresh_box_credentials(
                         desc, target, auth=auth_src, host_home=Path.home(),
@@ -2302,12 +2302,12 @@ def _run_container(
         # descriptor-driven; this is settings-driven), so there is no double
         # application.  ADDITIVE: with no `synced.*` keys configured the
         # reconciled copy set has no synced winners -> no-op.  The share gate
-        # (D-M4) suppresses every synced entry for a PRIVATE box (shares False).
+        # (D-M4) suppresses every synced entry for a PRIVATE box (deliver_creds False).
         _apply_synced_copies(
             std=std, proj=proj, agent_name=agent_id, target=target,
             global_config_path=system_settings_path,
             agent_config_path=agent_cfg_path,
-            logger=logger, shares=auth_src.shares,
+            logger=logger, deliver_creds=auth_src.creds_shared,
         )
 
         # Plugin-owned pre-launch host preparation (agent-agnostic call).
@@ -2320,7 +2320,7 @@ def _run_container(
         if target and install and is_agent_mode:
             target.prepare_host(
                 install,
-                auto_auth=bool(auth_src.shares and not no_auto_auth),
+                auto_auth=bool(auth_src.creds_shared and not no_auto_auth),
                 data_path=std.data_path,
             )
             # Re-detect after the update gate.  prepare_host() can repoint /
@@ -2375,7 +2375,7 @@ def _run_container(
         # agent with no setup command (claude, by default) errors out here as
         # before.  ``needs_inbox_setup`` carries the decision to the launch block.
         needs_inbox_setup = False
-        if target and install and auth_src.shares:
+        if target and install and auth_src.creds_shared:
             if not target.check_auth():
                 if target.setup_entrypoint is not None:
                     needs_inbox_setup = True
@@ -2389,7 +2389,7 @@ def _run_container(
                     return 1
 
         # Credential refresh via target (skip for a private/distinct box)
-        if target and auth_src.shares:
+        if target and auth_src.creds_shared:
             if desc is not None:
                 credsync.refresh_box_credentials(
                     desc, target, auth=auth_src, host_home=Path.home(),
@@ -2426,7 +2426,7 @@ def _run_container(
             install=install,
             target=target,
             agent_cfg=agent_cfg,
-            shares=auth_src.shares,
+            deliver_creds=auth_src.creds_shared,
         )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d L557,
@@ -2618,12 +2618,12 @@ def _run_container(
         extra_mounts = []
 
         # AGENT delivery binds: the AGENT_CRITICAL delivery binds (binary +
-        # launcher) now flow through the snapshot's ``agent.bindings.*`` subtree
+        # launcher) now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree
         # (single-route, 7a) and are emitted by ``agent_delivery_mounts`` — a
         # missing/unresolvable AGENT_CRITICAL source raises BindingSourceError ->
         # clean safe-fail (preserved from ``descriptor_mounts``), not a crun crash.
         # Agent-scope shared dirs (claude's plugins/cache) are NOT delivery binds;
-        # they flow through the category mounts below from ``default_shares()``.
+        # they flow through the category mounts below from ``default_common()``.
         # Placed FIRST in extra_mounts (matching the old binary_mnts position,
         # before kani/core), so podman order is preserved.  ``binary_mnts`` is
         # reused by the helper context further down (an in-helper agent reuses the
@@ -2657,7 +2657,7 @@ def _run_container(
 
         # The remaining category MOUNT winners (kani / core / channel / share —
         # the kanibako CLI binds, the box's own home/workspace/vault binds, the
-        # per-mode channel binds, and any scoped bindings/caches/shared), emitted
+        # per-mode channel binds, and any scoped bindings/caches/common), emitted
         # ONCE from the single reconcile (depth-sorted across all families
         # together; podman's last-``-v``-wins/depth-sort resolves nested dests).
         # ``masks`` (tmpfs, no host source) and the agent delivery binds are split
@@ -3188,7 +3188,7 @@ def _run_container(
             # back the creds the box signals on detach, so spawn the trusted per-box
             # HOST watcher — but ONLY for a SHARED-tier box (a private box never
             # propagates creds, so there is nothing to watch).
-            if auth_src.shares:
+            if auth_src.creds_shared:
                 _spawn_creds_watcher(proj)
             _print_launch_issues(std, container_name)
             _print_shadow_issues(std, container_name)
@@ -3398,7 +3398,7 @@ def _spawn_creds_watcher(proj) -> None:
     It re-resolves the host config from the box SUBJECT (``proj.project_path``), the
     same way ``kanibako stop`` does, so cwd is irrelevant.  The watcher itself skips a
     private box + holds a single-instance lock, but the caller ALSO gates on
-    ``auth_src.shares`` (don't even spawn for a private box — cheaper).  Best-effort:
+    ``auth_src.creds_shared`` (don't even spawn for a private box — cheaper).  Best-effort:
     a spawn failure is logged, never crashes the launch (the flag's lazy fallback on
     the next host op still covers the writeback).
     """
@@ -3427,7 +3427,7 @@ def writeback_session_credentials(
 
     Gated on *auth_src* (the resolved
     :class:`~kanibako.settings_launch.AuthSource`): a PRIVATE box (tier ``"box"``,
-    ``auth_src.shares`` False) keeps its credentials project-local and never
+    ``auth_src.creds_shared`` False) keeps its credentials project-local and never
     propagates them.  Otherwise the box writes BOTTOM-UP to the selected source
     (host home for GLOBAL, the workset dir for WORKSET, then up to global when
     ``global_sync``).  No-ops when *target* is None (no-agent box) or has no
@@ -3440,7 +3440,7 @@ def writeback_session_credentials(
     clobbering machine-specific fields).  Best-effort: a writeback failure must
     never crash the lifecycle path that called it.
     """
-    if target is None or not auth_src.shares:
+    if target is None or not auth_src.creds_shared:
         return
     desc = target.descriptor
     host_home = Path.home()
@@ -3464,7 +3464,7 @@ def writeback_session_credentials(
             # used), NOT unconditionally to host home — otherwise a workset-tier box
             # (which explicitly isolated its identity to the workset store) would leak
             # its oauthAccount to GLOBAL. The private/box tier is already excluded by
-            # the ``auth_src.shares`` guard above.
+            # the ``auth_src.creds_shared`` guard above.
             extra_dest = credsync.selected_source_root(auth_src, host_home=host_home)
             if extra_dest is not None:
                 target.writeback_extra(
@@ -4637,11 +4637,13 @@ def _launch_snapshot_inputs(
     """
     agent_share_root = str(std.agents / agent_name / "share")
     agent_store_root = str(std.agents / agent_name)
+    # DISCRIMINATED agent groups (``agent.<agent>.<category>``): there is no bare
+    # ``agent.*`` anywhere outside an explicit agent name or ``default``.
     scope_roots = {
-        "agent.bindings.ro": agent_share_root,
-        "agent.bindings.rw": agent_share_root,
-        "agent.shared": agent_store_root,
-        "agent.caches": agent_store_root,
+        f"agent.{agent_name}.bindings.ro": agent_share_root,
+        f"agent.{agent_name}.bindings.rw": agent_share_root,
+        f"agent.{agent_name}.common": agent_store_root,
+        f"agent.{agent_name}.caches": agent_store_root,
     }
     if proj.group is not None and not proj.group.is_default:
         ws_root = str(proj.group.root)
@@ -4871,7 +4873,7 @@ def _resolve_launch_snapshot(
     log_path=None,
     graph_root=None,
     storage_conf_path=None,
-    shares: bool = True,
+    deliver_creds: bool = True,
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
 ):
@@ -4887,7 +4889,7 @@ def _resolve_launch_snapshot(
     is then adapted to ``CategoryEntry`` and reconciled ONCE.
 
     Returns ``(snapshot, reconciled)``.  AGENT_CRITICAL delivery binds
-    now flow through the snapshot's ``agent.bindings.*`` subtree (single-route),
+    now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree (single-route),
     emitted by :func:`kanibako.settings_launch.agent_delivery_mounts` at the call
     site — NOT a parallel ``descriptor_mounts`` route.
 
@@ -4898,7 +4900,7 @@ def _resolve_launch_snapshot(
     them only inside their conditional block.
 
     *include_base_families* gates the always-available tables (core / kani /
-    channel / shares / seeds).  It is True for the MAIN launch snapshot and False
+    channel / commons / seeds).  It is True for the MAIN launch snapshot and False
     for the late, conditional image/helper resolves (whose box_dests are disjoint),
     so the image/helper reconcile carries ONLY their own table + any config-file
     keys — byte-for-byte the old per-family ``_build_image_mounts`` /
@@ -4927,12 +4929,12 @@ def _resolve_launch_snapshot(
         default_categories.update(core_defaults.rom_default_categories())
         default_categories.update(_channel_default_categories(std, proj))
         if target is not None:
-            default_categories.update(target.default_shares())
+            default_categories.update(target.default_common())
             default_categories.update(target.default_seeds())
             # PLUGIN-declared @-ref-sourced agent binds (spec §2d L608): a generic
-            # AGENT-scope category-bind extension point.  Unioned like a share; each
-            # bare ``agent.bindings.*`` key is re-rooted to the active slot and its
-            # ``@``-ref source is resolved by ``expand`` from the ``resolved_sys``
+            # AGENT-scope category-bind extension point.  Unioned like a share; the
+            # plugin builds each key DISCRIMINATED (``agent.<agent>.bindings.*``) and
+            # its ``@``-ref source is resolved by ``expand`` from the ``resolved_sys``
             # floor.  Currently empty for all first-party plugins (the former
             # ``@system.instructions`` instructions bind was retired — the guide now
             # ships via the RO bundle + launch-flatten).
@@ -5008,7 +5010,7 @@ def _resolve_launch_snapshot(
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,
     )
-    reconciled = reconcile_categories(entries, shares=shares)
+    reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
     return snapshot, reconciled
 
 
@@ -5103,7 +5105,7 @@ def _seed_box_home(
     _apply_init_seeds(
         std=std, proj=proj, agent_name=agent_id, target=target,
         global_config_path=system_settings_path, agent_config_path=agent_cfg_path,
-        logger=logger, shares=auth_src.shares,
+        logger=logger, deliver_creds=auth_src.creds_shared,
     )
 
 
@@ -5447,7 +5449,7 @@ def _apply_init_seeds(
     global_config_path,
     agent_config_path,
     logger,
-    shares: bool = True,
+    deliver_creds: bool = True,
 ) -> None:
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
 
@@ -5468,7 +5470,7 @@ def _apply_init_seeds(
     source dir is absent (e.g. an unpopulated ``@workset.template``) is skipped.
 
     The credential gate (D-M4) is applied during reconcile: a credential-flagged
-    ``seeded`` entry is suppressed for a PRIVATE box (*shares* False).
+    ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
     """
     from kanibako.settings_resolve import GUEST_HOME
     from kanibako.templates import (
@@ -5491,7 +5493,7 @@ def _apply_init_seeds(
     # ``extra_default_categories`` injects ONLY the target's declared seeds + the
     # template layer keys (NOT the unrelated core/channel/share families). The
     # agent-binding inputs (``desc``/``install``) are omitted — they feed only
-    # ``agent.bindings.*`` MOUNTs, never the seeded COPY winners.
+    # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
     _snapshot, reconciled = _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -5504,7 +5506,7 @@ def _apply_init_seeds(
         agent_cfg=None,
         include_base_families=False,
         extra_default_categories={**default_seeds, **template_seeds},
-        shares=shares,
+        deliver_creds=deliver_creds,
     )
 
     # Group the seeded COPY winners by resolved guest dest, PRESERVING the reconcile
@@ -5559,7 +5561,7 @@ def _apply_synced_copies(
     global_config_path,
     agent_config_path,
     logger,
-    shares: bool = True,
+    deliver_creds: bool = True,
 ) -> None:
     """Apply the ``<scope>.synced.<name>`` category copies into the box shell dir.
 
@@ -5575,7 +5577,7 @@ def _apply_synced_copies(
     not overlap, so there is no double application.
 
     The credential gate (D-M4) is applied during reconcile: every ``synced``
-    entry is suppressed for a PRIVATE box (*shares* False).
+    entry is suppressed for a PRIVATE box (*deliver_creds* False).
 
     ADDITIVE: with no ``synced.*`` keys configured (and no target default synced
     entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
@@ -5603,7 +5605,7 @@ def _apply_synced_copies(
         target=target,
         agent_cfg=None,
         include_base_families=False,
-        shares=shares,
+        deliver_creds=deliver_creds,
     )
 
     for sync in reconciled.copies:
@@ -5653,7 +5655,7 @@ def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
     the STATIC structure + box-side destinations live in the shipped system/core
     defaults file (P6b coalesce); the loader injects the runtime-probed host
     sources.  Injected through the category resolver (D-B1 precedence + depth-sort
-    + L7 guarantee-create) exactly like masks/shares.  PRIMARY + NAMED get the
+    + L7 guarantee-create) exactly like masks/commons.  PRIMARY + NAMED get the
     three workset-local roots; STANDALONE OMITS them (A10).
     """
     return core_defaults.channel_default_categories(std, proj)
@@ -5699,7 +5701,7 @@ def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
     shipped system/core defaults file (``core:`` list); the loader injects the
     runtime-probed host sources off ``ProjectPaths``.  Injected through the category
     resolver (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like
-    masks/shares/channels.  home + workspace are unconditional; the vault binds are
+    masks/commons/channels.  home + workspace are unconditional; the vault binds are
     gated on ``proj.enable_vault`` AND the source dir existing (reproducing the old
     hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
     """

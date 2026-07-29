@@ -198,8 +198,8 @@ def test_loop_successful_writeback_clears_flag_and_stops_retrying():
 # --------------------------------------------------------------------------- #
 
 class _FakeAuth:
-    def __init__(self, shares):
-        self.shares = shares
+    def __init__(self, creds_shared):
+        self.creds_shared = creds_shared
 
 
 class _FakeProj:
@@ -215,7 +215,7 @@ def test_main_skips_a_private_box(monkeypatch, tmp_path):
     proj = _FakeProj(tmp_path)
     monkeypatch.setattr(
         cw, "_resolve_watch_context",
-        lambda box: (object(), proj, "kanibako-x", object(), _FakeAuth(shares=False)),
+        lambda box: (object(), proj, "kanibako-x", object(), _FakeAuth(creds_shared=False)),
     )
     # A private box returns 0 WITHOUT ever taking the lock or looping.
     called = {"lock": 0}
@@ -230,7 +230,7 @@ def test_main_exits_when_another_watcher_holds_the_lock(monkeypatch, tmp_path):
     proj = _FakeProj(tmp_path)
     monkeypatch.setattr(
         cw, "_resolve_watch_context",
-        lambda box: (object(), proj, "kanibako-x", object(), _FakeAuth(shares=True)),
+        lambda box: (object(), proj, "kanibako-x", object(), _FakeAuth(creds_shared=True)),
     )
     monkeypatch.setattr(cw, "_single_instance_lock", lambda p: None)  # lock held
     ran = {"run": 0}

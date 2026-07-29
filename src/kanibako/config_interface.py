@@ -537,9 +537,12 @@ def _is_auto_approve_key(canonical: str) -> bool:
 # {ro,rw}.`` segment splits node from name (a bind literally NAMED ``model`` — the
 # name group — is thus ``agent.<node>.bindings.ro.model``, disambiguated from the
 # persona state leaf ``agent.<node>.model`` by the ``bindings.{ro,rw}`` segment).
-# NOTE: this is the ``agent.<node>.*`` (node-in-key) form; it does NOT match the
-# BARE ``agent.bindings.*`` category form (``BIND_KEY_RE``, no node) nor the
-# ``box.agent.bindings.*`` box-mirror form (a ``box`` top-token).
+# NOTE: the agent tier is DISCRIMINATED — ``agent.<node>`` is the ONLY agent form
+# (§2d / §0 L21); an undiscriminated ``agent.<category>`` is not a key and
+# ``BIND_KEY_RE`` refuses it. ``BIND_KEY_RE`` DOES match this node form (it is a
+# well-formed category key), so both predicates fire — every dispatch checks the
+# node-bind FIRST. This does not match the ``box.agent.bindings.*`` box-mirror form
+# (a ``box`` top-token).
 _AGENT_NODE_BIND_RE = re.compile(
     r"^agent\.(?P<node>.+?)\.(?P<cat>bindings\.(?:ro|rw))\.(?P<name>.+)$"
 )
@@ -1287,9 +1290,9 @@ def _category_set_lookups(
     # box_dest + options with a PLACEHOLDER host_src — exactly what the repoint needs
     # (``repoint_host_src`` keeps only ``base[1:]``, discarding the placeholder). The
     # keys are ALREADY fully scope-qualified (``box.*``), so this is a DIRECT union
-    # (no ``_agent_scope_qualify`` re-rooting — that launch step re-roots BARE
-    # ``agent.<cat>.*`` default tables, which this bindings-only registry never
-    # emits). A scope FILE tuple at the same key still OVERRIDES this floor via merge
+    # (no agent-scope discrimination needed — agent-scope default tables are built
+    # DISCRIMINATED by the declaring plugin, and this bindings-only registry emits
+    # only ``box.*`` keys anyway). A scope FILE tuple at the same key still OVERRIDES this floor via merge
     # (base is least-specific), so an already-file-set bind repoints from the file
     # (no regression), and a box-scope written tuple wins at launch by reconcile
     # precedence (box beats the base floor).

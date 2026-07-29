@@ -2,7 +2,7 @@
 
 The baseline is a mapping of ``apt-package-name -> [executables]``.  The shipped
 default lives in :mod:`kanibako.data` (``image-baseline.yaml``); site and user
-overlays are merged on top **additively** (the scoped-shares spirit in
+overlays are merged on top **additively** (the scoped-commons spirit in
 :mod:`kanibako.settings_shares`): later layers add new packages or override an
 existing package's executable list.  Precedence, least- to most-specific:
 

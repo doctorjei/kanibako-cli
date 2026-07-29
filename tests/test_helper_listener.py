@@ -719,16 +719,11 @@ class TestHelperDefaultCategories:
         # socket depends on.
         from kanibako import core_defaults
         from kanibako.settings_categories import reconcile_categories
-        from kanibako.settings_resolve import (
-            LevelView,
-            ResolveCtx,
-            _Unset,
-            expand_expr,
-            resolve_value,
+        from kanibako.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
         )
-
-        # Frozen legacy by-name resolver (tests-only drift tripwire, not an authority).
-        from tests.support.flawed_oracle import flawed_oracle_categories
+        from kanibako.settings_resolve import ResolveCtx
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
@@ -736,31 +731,24 @@ class TestHelperDefaultCategories:
             socket_path=sock,
             log_path=log,
         )
-        # B2b: helper_log routes through @meta.box.helper_log — materialize the
-        # anchor (as the launch floor does) so the ref resolves.
-        levels = [
-            LevelView("box", {"meta.box.helper_log": str(log)}),
-            LevelView("agent", cats),
-        ]
+        # Resolved through the LIVE launch route (build_launch_snapshot →
+        # snapshot_category_entries → reconcile), the same single route a real
+        # launch takes. B2b: helper_log routes through @meta.box.helper_log —
+        # materialize the anchor in the floor, as the launch does.
         ctx = ResolveCtx(
             agent_name="claude",
             workset_name="ws",
             host_home="/home/u",
             xdg={},
         )
-
-        def lookup(ref, chain):
-            rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
-            if isinstance(rv, _Unset):
-                raise AssertionError(ref)
-            return expand_expr(
-                rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain
-            )
-
-        entries = flawed_oracle_categories(
-            levels=levels, ctx=ctx, lookup=lookup, scope_roots=None
+        floor = {"meta.box.helper_log": str(log), **cats}
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            default_categories=floor,
         )
-        reconciled = reconcile_categories(entries, shares=True)
+        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        reconciled = reconcile_categories(entries, deliver_creds=True)
         sock_mount = next(
             e for e in reconciled.mounts if e.name == "helper_sock"
         )

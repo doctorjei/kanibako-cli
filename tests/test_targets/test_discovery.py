@@ -217,23 +217,23 @@ class TestDirectoryPluginDiscovery:
 
     def test_project_plugin_overrides_user_plugin(self, tmp_path, monkeypatch):
         """Project-level plugin overrides user-level with same name."""
-        # User plugin named "shared" from user_shared.py
+        # User plugin named "common" from user_shared.py
         user_plugins = tmp_path / "data" / "kanibako" / "plugins"
-        _write_plugin(user_plugins, "user_shared.py", "shared")
+        _write_plugin(user_plugins, "user_shared.py", "common")
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
 
-        # Project plugin also named "shared" from proj_shared.py
+        # Project plugin also named "common" from proj_shared.py
         proj = tmp_path / "project"
         proj_plugins = proj / "box_data" / "plugins"
-        _write_plugin(proj_plugins, "proj_shared.py", "shared")
+        _write_plugin(proj_plugins, "proj_shared.py", "common")
 
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets(project_path=proj)
 
-        assert "shared" in targets
+        assert "common" in targets
         # The class should come from the project dir, not user dir.
         # Different filenames produce different module names.
-        cls = targets["shared"]
+        cls = targets["common"]
         assert cls.__module__ == "kanibako_plugin_proj_shared"
 
     def test_underscore_files_skipped(self, tmp_path, monkeypatch):

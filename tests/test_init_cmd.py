@@ -442,7 +442,7 @@ class TestCreatePrivate:
         m_credsync.seed_box_credentials.assert_called_once()
         auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
         assert auth.tier == "box"
-        assert auth.shares is False
+        assert auth.creds_shared is False
 
     def test_default_seed_resolves_tier_global_forwards(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -459,7 +459,7 @@ class TestCreatePrivate:
         m_credsync.seed_box_credentials.assert_called_once()
         auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
         assert auth.tier == "global"
-        assert auth.shares is True
+        assert auth.creds_shared is True
 
     # ---- black-box proof: the real credential file is / isn't seeded -------
 
@@ -507,4 +507,4 @@ class TestCreatePrivate:
         m_credsync.seed_box_credentials.assert_called_once()
         auth = m_credsync.seed_box_credentials.call_args.kwargs["auth"]
         assert auth.tier == "box"
-        assert auth.shares is False
+        assert auth.creds_shared is False

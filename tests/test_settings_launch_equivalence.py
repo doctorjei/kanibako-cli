@@ -37,7 +37,7 @@ from kanibako.settings_resolve import LevelView, ResolveCtx
 # path DRIFTED from this recorded baseline, and a human adjudicates the correct
 # value against the SPEC (reference/settings-keyspace-1.6.0-target.md) — the OLD
 # resolver here may itself be the wrong side.
-from tests.support.flawed_oracle import flawed_oracle_categories
+from tests.test_flawed_oracle import flawed_oracle_categories
 
 
 def _ctx(agent: str, workset: str | None) -> ResolveCtx:
@@ -53,10 +53,10 @@ def _scope_roots(agent: str, ws_root: str | None) -> dict[str, str]:
     share = f"/data/agents/{agent}/share"
     store = f"/data/agents/{agent}"
     roots = {
-        "agent.bindings.ro": share,
-        "agent.bindings.rw": share,
-        "agent.shared": store,
-        "agent.caches": store,
+        f"agent.{agent}.bindings.ro": share,
+        f"agent.{agent}.bindings.rw": share,
+        f"agent.{agent}.common": store,
+        f"agent.{agent}.caches": store,
     }
     if ws_root is not None:
         roots["workset.bindings.ro"] = ws_root
@@ -91,11 +91,16 @@ def _entry_set(rec: ReconciledCategories) -> dict:
 # A representative category config exercising: rw/ro binds, a root-joined relative
 # agent share, a box-side ``~`` dest, an embedded ``@``-ref host_src, a mask, an env
 # var, and a per-entry options override (3rd tuple slot).
-def _default_categories() -> dict:
+def _default_categories(agent: str) -> dict:
+    """The production-shaped default table: agent-scope keys are DISCRIMINATED.
+
+    A plugin builds its own ``agent.<agent>.<category>.<name>`` keys (there is no
+    bare ``agent.<category>`` anywhere), so the table is agent-specific.
+    """
     return {
         "box.bindings.rw.home": ("/h/home", "~/", "Z,U"),
         "box.bindings.ro.kani": ("/opt/k", "/opt/kanibako", "ro"),
-        "agent.shared.plugins": ("plugins", "~/.claude/plugins"),  # relative → join
+        f"agent.{agent}.common.plugins": ("plugins", "~/.claude/plugins"),  # relative → join
         "box.bindings.rw.data": ("@system.data/x", "/home/agent/x"),  # @-ref host
         "box.masks": ["/home/agent/secret"],
         "box.env.FOO": "bar",
@@ -112,9 +117,22 @@ def _default_categories() -> dict:
     ],
 )
 def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
-    cats = _default_categories()
+    cats = _default_categories(agent)
     ctx = _ctx(agent, workset)
     roots = _scope_roots(agent, ws_root)
+
+    # The FROZEN oracle is the retired BY-NAME resolver: it reads a LevelView keyed
+    # at the reconcile shape ``<scope>.<category>.<name>``, which never carried the
+    # agent discriminator. Strip it for the baseline side ONLY — the undiscriminated
+    # ``agent.<category>`` form is QUARANTINED to this frozen retired-model baseline
+    # and exists NOWHERE else (spec §0 L21). The new path takes the production
+    # (discriminated) table and roots as-is.
+    def _undiscriminate(key: str) -> str:
+        prefix = f"agent.{agent}."
+        return f"agent.{key[len(prefix):]}" if key.startswith(prefix) else key
+
+    legacy_cats = {_undiscriminate(k): v for k, v in cats.items()}
+    legacy_roots = {_undiscriminate(k): v for k, v in roots.items()}
 
     # --- FROZEN BASELINE path: the retired by-name resolver over a single
     # AGENT-level LevelView whose defaults carry the tables + the resolved
@@ -122,7 +140,7 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
     old_levels = [
         LevelView("box", {}),
         LevelView("workset", {}),
-        LevelView("agent", {}, defaults=dict(cats)),
+        LevelView("agent", {}, defaults=legacy_cats),
         LevelView("system", {}),
     ]
 
@@ -132,7 +150,7 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
         raise AssertionError(f"unexpected @-ref {ref}")
 
     old_entries = flawed_oracle_categories(
-        levels=old_levels, ctx=ctx, lookup=_lookup, scope_roots=roots,
+        levels=old_levels, ctx=ctx, lookup=_lookup, scope_roots=legacy_roots,
     )
     old_rec = reconcile_categories(old_entries)
 

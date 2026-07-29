@@ -10,7 +10,7 @@ mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
 Cross-category collision resolution (identical-dest authority order, depth-order,
-``synced``↔``binding`` errors, the credential ``shares`` gate) is
+``synced``↔``binding`` errors, the credential ``deliver_creds`` gate) is
 :func:`reconcile_categories` (sub-step 4b), layered on top of category entries.
 
 **Block 7c status:** :func:`reconcile_categories` is LIVE — the by-dest pass the
@@ -34,7 +34,7 @@ category         key shape                              host_src      delivery
 ``bindings.rw``  ``{scope}.bindings.rw.{name}``         bind          MOUNT
 ``caches``       ``{scope}.caches.{name}``              bind          MOUNT
 ``seeded``       ``{scope}.seeded.{name}``              bind          COPY
-``shared``       ``{scope}.shared.{name}``              bind          MOUNT
+``common``       ``{scope}.common.{name}``              bind          MOUNT
 ``synced``       ``{scope}.synced.{name}``              bind          COPY
 ``env``          ``{scope}.env.{VAR}``  (value)         ``None``      ENV
 ``secret_path``  ``{scope}.secret_path.{VAR}`` (path)   host path     MOUNT
@@ -61,11 +61,11 @@ Delivery
 ~~~~~~~~
 * ``seeded`` and ``synced`` are file **COPIES** (synced creds inode-swap, which
   breaks single-file binds — they are copy-synced).
-* ``caches``, ``bindings.ro``, ``bindings.rw``, ``shared``, ``masks`` are podman
+* ``caches``, ``bindings.ro``, ``bindings.rw``, ``common``, ``masks`` are podman
   **MOUNTs** that physically shadow whatever is at the same path.
 * ``env`` is neither — it is delivered as an environment variable (``ENV``).
 
-Two orthogonal axes (unchanged from shares/seeds)
+Two orthogonal axes (unchanged from commons/seeds)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 * **The KEY's scope** selects the source root (via *scope_roots*) the relative
   ``host_src`` is joined under, and — for ``bindings`` — the mount mode.
@@ -85,8 +85,9 @@ Within a scope they are ordered ``(category, name)`` ascending for determinism.
 Root-join rule
 ~~~~~~~~~~~~~~~
 *scope_roots* maps a GROUP PREFIX (the key up to and including the category
-token, e.g. ``"agent.bindings.rw"`` or ``"workset.shared"``) to a host-space
-root expression.  When a root exists for a key's group AND the resolved
+token, e.g. ``"agent.claude.bindings.rw"`` or ``"workset.common"``) to a
+host-space root expression.  Agent-scope groups are DISCRIMINATED — there is no
+bare ``agent.*`` outside an explicit agent name or ``default``.  When a root exists for a key's group AND the resolved
 ``host_src`` is not absolute, the source becomes ``root / host_src``; otherwise
 ``host_src`` is used as-is.  Groups absent from *scope_roots* mean no join.
 """
@@ -116,9 +117,9 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 # ``env`` (a scalar) have bespoke key shapes handled separately below.
 #
 # NOTE the regex order: ``bindings.ro`` / ``bindings.rw`` must precede a bare
-# ``bindings`` (there is none) and ``seeded``/``shared``/``synced`` are distinct
+# ``bindings`` (there is none) and ``seeded``/``common``/``synced`` are distinct
 # tokens.  Listed longest-first so the alternation is unambiguous.
-_BIND_CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "shared", "synced")
+_BIND_CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
 
 # delivery per category (the COPY/MOUNT split — design §3).
 _DELIVERY: dict[str, Delivery] = {
@@ -127,7 +128,7 @@ _DELIVERY: dict[str, Delivery] = {
     "bindings.rw": MOUNT,
     "caches": MOUNT,
     "seeded": COPY,
-    "shared": MOUNT,
+    "common": MOUNT,
     "synced": COPY,
     "env": ENV,
     # secret_path: scalar host PATH delivered as a ro MOUNT (spec §2a SECRET
@@ -138,16 +139,25 @@ _DELIVERY: dict[str, Delivery] = {
 
 # One regex for the bind-shaped categories: scope . <category> . name
 # (name greedily captures the remainder, which may contain dots).
+#
+# ⚠ The AGENT scope is DISCRIMINATED and there is NO exception: it is written
+# ``agent.<agent>`` (an explicit agent name) or ``agent.default`` (the agent tier's
+# FALLBACK). A BARE ``agent.<category>.<name>`` is NOT A KEY — the keyspace is
+# CLOSED (spec §0), an undeclared key is not a key, so these patterns must REFUSE
+# it rather than quietly accept it. Do not "helpfully" widen this back.
+_AGENT_SCOPE = r"agent\.[^.]+"
 _CATEGORY_ALT = "|".join(c.replace(".", r"\.") for c in _BIND_CATEGORIES)
 BIND_KEY_RE = re.compile(
-    rf"^(?P<scope>system|agent|workset|box)\.(?P<category>{_CATEGORY_ALT})\.(?P<name>.+)$"
+    rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})"
+    rf"\.(?P<category>{_CATEGORY_ALT})\.(?P<name>.+)$"
 )
 # ``{scope}.masks`` — value-less category (a list of box_dest paths). The KEY has
 # no per-entry name; entries are expanded per list element (name = the index).
-MASK_KEY_RE = re.compile(r"^(?P<scope>system|agent|workset|box)\.masks$")
+MASK_KEY_RE = re.compile(rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})\.masks$")
 # ``{scope}.env.{VAR}`` — scalar env var; VAR may NOT contain dots (env names).
 ENV_KEY_RE = re.compile(
-    r"^(?P<scope>system|agent|workset|box)\.env\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
+    rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})"
+    r"\.env\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
 )
 # ``{scope}.secret_path.{VAR}`` — the SECRET category (spec §2a, 2026-07-06): a
 # scalar host PATH keyed by the env VAR it delivers. VAR is the env-name shape
@@ -171,7 +181,7 @@ _DISABLE_SENTINEL = "empty"
 _SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
 # Category AUTHORITY order for an identical ``box_dest`` (D-B1; later WINS /
-# applied-on-top): ``seed < cache < binding < shared < synced < masks``.
+# applied-on-top): ``seed < cache < binding < common < synced < masks``.
 # ``bindings.ro`` and ``bindings.rw`` collapse to the single ``binding`` rank;
 # ``seeded`` -> seed, ``caches`` -> cache.  ``env`` is not a path category (its
 # "dest" is a VAR name, never a guest path) so it has no authority rank and never
@@ -181,7 +191,7 @@ _CATEGORY_AUTHORITY: dict[str, int] = {
     "caches": 1,        # cache
     "bindings.ro": 2,   # binding
     "bindings.rw": 2,   # binding
-    "shared": 3,        # shared
+    "common": 3,        # common
     "synced": 4,        # synced
     "masks": 5,         # masks
     # secret_path: a ro MOUNT whose box_dest IS a real guest path (unlike ``env``),
@@ -198,7 +208,7 @@ class CategoryEntry:
     """One resolved scope-category entry (pre-collision-resolution).
 
     *category* is the category token (``"masks"``, ``"bindings.ro"``,
-    ``"bindings.rw"``, ``"caches"``, ``"seeded"``, ``"shared"``, ``"synced"``,
+    ``"bindings.rw"``, ``"caches"``, ``"seeded"``, ``"common"``, ``"synced"``,
     ``"env"``, ``"secret_path"``).  *scope* is the KEY's scope.  *box_dest* is the
     in-box destination (a guest path for path categories — INCLUDING
     ``secret_path``'s ``SECRET_MOUNT_DIR/{VAR}``; the VAR name for ``env``).
@@ -214,8 +224,8 @@ class CategoryEntry:
     resolved variable VALUE (env carries no path / mount flags).
 
     *is_credential* tags an entry whose content is an agent CREDENTIAL.  It is the
-    hook the credential ``shares`` gate (D-M4) keys off for ``seeded`` entries: a
-    credential ``seeded`` copy is suppressed when the box is PRIVATE (``shares``
+    hook the credential ``deliver_creds`` gate (D-M4) keys off for ``seeded`` entries: a
+    credential ``seeded`` copy is suppressed when the box is PRIVATE (``deliver_creds``
     False), exactly as ``synced`` (always credential-bearing) is.  Core never sets
     it; the agent
     plugin marks its cred seeds (Phase 8).  Defaults to False.
@@ -235,7 +245,7 @@ def _bind_options(category: str) -> str:
     """Mount options for a bind-shaped MOUNT category.
 
     ``bindings.ro`` is read-only; every other rw bind category (``bindings.rw``,
-    ``caches``, ``shared``) gets ``Z,U`` (SELinux relabel + userns chown), the
+    ``caches``, ``common``) gets ``Z,U`` (SELinux relabel + userns chown), the
     same options the old ``share_rw`` mounts used.
     """
     return "ro" if category == "bindings.ro" else "Z,U"
@@ -246,7 +256,7 @@ class ReconciledCategories:
     """The reconciled, emit-ready partition of category entries (sub-step 4b).
 
     *mounts* are the MOUNT-delivered winners (``caches``, ``bindings.{ro,rw}``,
-    ``shared``, ``masks``), depth-sorted by ``box_dest`` path-depth ASCENDING
+    ``common``, ``masks``), depth-sorted by ``box_dest`` path-depth ASCENDING
     (shallower first), so a later ``-v`` / podman's own depth-sort lands the most
     specific mount on top (mask-inside-``~/workspace``, ``home``-under-everything).
     *copies* are the COPY-delivered winners (``seeded``, ``synced``) in a
@@ -279,7 +289,7 @@ def _path_depth(box_dest: str) -> int:
 def reconcile_categories(
     entries: list[CategoryEntry],
     *,
-    shares: bool = True,
+    deliver_creds: bool = True,
 ) -> ReconciledCategories:
     """Resolve cross-category collisions and partition for emission (4b, D-B1).
 
@@ -289,7 +299,7 @@ def reconcile_categories(
     with the per-dest winners split into MOUNT / COPY / ENV lists.
 
     Authority order (identical ``box_dest`` -> later WINS / applied-on-top):
-    ``seed < cache < binding < shared < synced < masks`` (D-B1).  Among entries
+    ``seed < cache < binding < common < synced < masks`` (D-B1).  Among entries
     sharing a resolved ``box_dest`` the HIGHEST-authority category wins; ties
     WITHIN one authority rank are broken by :data:`_SCOPE_APPLY_ORDER` (box scope
     wins), then by the input order (stable) for full determinism.
@@ -303,14 +313,14 @@ def reconcile_categories(
     (mask-inside-``~/workspace``, ``home``-under-everything).  COPY and ENV lists
     keep a deterministic order.
 
-    *shares* gates credential delivery (D-M4; auth-level design step 4): when
+    *deliver_creds* gates credential delivery (D-M4; auth-level design step 4): when
     False — the box is PRIVATE (auth tier ``"box"``, no shared source, today's
     distinct-auth) — every ``synced`` entry is SUPPRESSED, as is any ``seeded``
     entry flagged :attr:`CategoryEntry.is_credential` (the plugin's cred-seed
-    hook).  When True (the box shares at the global OR workset tier) they are kept.
+    hook).  When True (the box receives creds at the global OR workset tier) they are kept.
     The gate is applied BEFORE collision resolution, so a suppressed ``synced``
     cannot win — or error against — a colliding binding. (Callers pass
-    ``shares=auth.shares`` off the resolved
+    ``deliver_creds=auth.creds_shared`` off the resolved
     :class:`~kanibako.settings_launch.AuthSource`.)
 
     Raises :class:`~kanibako.errors.ConfigError` on a ``synced``↔``binding``
@@ -318,11 +328,11 @@ def reconcile_categories(
     """
     from kanibako.errors import ConfigError
 
-    # --- share gate (D-M4): a PRIVATE box (shares=False) suppresses cred
+    # --- credential-delivery gate (D-M4): a PRIVATE box (deliver_creds=False) suppresses cred
     # deliveries up front — the same drop today's group_auth=False produced.
     gated: list[CategoryEntry] = []
     for e in entries:
-        if not shares:
+        if not deliver_creds:
             if e.category == "synced":
                 continue
             if e.category == "seeded" and e.is_credential:

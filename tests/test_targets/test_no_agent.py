@@ -31,7 +31,7 @@ class TestNoAgentTarget:
         assert self.target.check_auth() is True
 
     def test_default_shares_empty(self):
-        assert self.target.default_shares() == {}
+        assert self.target.default_common() == {}
 
     def test_apply_state_returns_empty(self):
         cli_args, env_vars = self.target.apply_state({"model": "opus"})

@@ -161,7 +161,7 @@ class ProjectGroup:
     (``ProjectPaths.group`` is None).
 
     *local_shared_base* is the root under which the local-shared path lives
-    (``base / "shared"``): the standard data path for the default
+    (``base / "common"``): the standard data path for the default
     group, the workset root for a workset group.
     """
 

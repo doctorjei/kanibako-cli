@@ -416,7 +416,7 @@ class TestRunCreateCrossKindName:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        register_name(std.registry, "shared", str(tmp_home / "ws"), section="worksets")
+        register_name(std.registry, "common", str(tmp_home / "ws"), section="worksets")
 
         seed_called = {"v": False}
         monkeypatch.setattr(
@@ -424,7 +424,7 @@ class TestRunCreateCrossKindName:
             lambda std, config, proj, **kw: seed_called.__setitem__("v", True),
         )
 
-        rc = run_create(_create_args(tmp_home / "project", name="shared"))
+        rc = run_create(_create_args(tmp_home / "project", name="common"))
         assert rc == 1
         # Refused up front: nothing materialized or seeded.
         assert seed_called["v"] is False
@@ -441,17 +441,17 @@ class TestRunCreateCrossKindName:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        register_name(std.registry, "shared", str(tmp_home / "ws"), section="worksets")
+        register_name(std.registry, "common", str(tmp_home / "ws"), section="worksets")
 
         monkeypatch.setattr(
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
 
-        rc = run_create(_create_args(tmp_home / "project", name="shared", force=True))
+        rc = run_create(_create_args(tmp_home / "project", name="common", force=True))
         assert rc == 0
         # --force let the box take the shadowed name → registered in membership.
-        assert "shared" in _primary_names(std)
+        assert "common" in _primary_names(std)
 
     def test_name_collides_with_primary_box_refuses_even_with_force(
         self, config_file, tmp_home, credentials_dir, monkeypatch
@@ -465,7 +465,7 @@ class TestRunCreateCrossKindName:
         config = load_config(config_file)
         std = load_std_paths(config)
         register_primary_box_name(
-            std.primary_workset, std.registry, "shared", str(tmp_home / "other"),
+            std.primary_workset, std.registry, "common", str(tmp_home / "other"),
         )
 
         monkeypatch.setattr(
@@ -473,7 +473,7 @@ class TestRunCreateCrossKindName:
             lambda std, config, proj, **kw: None,
         )
 
-        rc = run_create(_create_args(tmp_home / "project", name="shared", force=True))
+        rc = run_create(_create_args(tmp_home / "project", name="common", force=True))
         assert rc == 1
 
 

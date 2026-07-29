@@ -263,24 +263,24 @@ def test_adapter_root_joins_relative_host_src():
     # The agent scope is DISCRIMINATED (agent.<active>.*); the adapter does the
     # §2d active-over-default pick and emits the BARE agent scope + group.
     snap = KeyStore(
-        {"agent": {"claude": {"shared": {
+        {"agent": {"claude": {"common": {
             "plugins": Bind("plugins", "/box/plugins", None)}}}}
     )
-    roots = {"agent.shared": "/data/agents/claude"}
+    roots = {"agent.claude.common": "/data/agents/claude"}
     entries = snapshot_category_entries(
         snap, active_agent="claude", box_ctx=_ctx(), scope_roots=roots,
     )
     assert entries[0].scope == "agent"  # BARE scope token (not the discriminator).
     assert entries[0].host_src == "/data/agents/claude/plugins"
-    # rw category default options (shared → Z,U) when opts is None.
+    # rw category default options (common → Z,U) when opts is None.
     assert entries[0].options == "Z,U"
 
 
 def test_adapter_absolute_host_src_not_joined():
     snap = KeyStore(
-        {"agent": {"claude": {"shared": {"x": Bind("/abs/x", "/box/x", None)}}}}
+        {"agent": {"claude": {"common": {"x": Bind("/abs/x", "/box/x", None)}}}}
     )
-    roots = {"agent.shared": "/data/agents/claude"}
+    roots = {"agent.claude.common": "/data/agents/claude"}
     entries = snapshot_category_entries(
         snap, active_agent="claude", box_ctx=_ctx(), scope_roots=roots,
     )
@@ -289,13 +289,13 @@ def test_adapter_absolute_host_src_not_joined():
 
 def test_adapter_active_over_default_pick():
     # §2d L368: the active slot wins a name; agent.default fills the gaps. Both an
-    # active-only and a default-only shared bind survive (no sibling clobber).
+    # active-only and a default-only common bind survive (no sibling clobber).
     snap = KeyStore({"agent": {
-        "default": {"shared": {
+        "default": {"common": {
             "common": Bind("/abs/common", "/box/common", None),
             "plugins": Bind("/abs/default-plugins", "/box/plugins", None),
         }},
-        "claude": {"shared": {
+        "claude": {"common": {
             "plugins": Bind("/abs/active-plugins", "/box/plugins", None),
         }},
     }})
@@ -584,7 +584,7 @@ def test_auth_primary_default_workset_tier(tmp_path):
     assert a.global_enabled and a.workset_enabled
     assert a.workset_source is not None and a.workset_source.endswith("/auth/claude")
     assert a.global_sync is True
-    assert a.shares is True
+    assert a.creds_shared is True
 
 
 def test_auth_named_default_workset_tier(tmp_path):
@@ -601,7 +601,7 @@ def test_auth_capability_gating_no_share_support(tmp_path):
     )
     assert a.tier == "box"
     assert not a.global_enabled and not a.workset_enabled
-    assert a.shares is False
+    assert a.creds_shared is False
 
 
 def test_auth_box_opts_out_of_workset_falls_to_global(tmp_path):
@@ -629,7 +629,7 @@ def test_auth_box_opts_out_of_both_is_private(tmp_path):
         mode="primary",
     )
     assert a.tier == "box"
-    assert a.shares is False
+    assert a.creds_shared is False
 
 
 def test_auth_standalone_global_only(tmp_path):
@@ -680,7 +680,7 @@ def test_auth_no_box_node_fails_closed():
         workset_path=None, box_path=None,
     )
     a = resolve_auth_source(snap)
-    assert a.tier == "box" and a.shares is False
+    assert a.tier == "box" and a.creds_shared is False
 
 
 def test_auth_clean_break_no_group_auth_keys():
@@ -1148,7 +1148,7 @@ def test_meta_runtime_coexists_with_auth_chain():
     assert dict.get(box_meta, "mode") == "primary"
     # auth still resolves to sharing (the chain is untouched by B1).
     a = resolve_auth_source(snap, mode="primary")
-    assert a.shares is True
+    assert a.creds_shared is True
 
 
 # --------------------------------------------------------------------------- #
@@ -1379,7 +1379,7 @@ def test_box_agent_mirror_defaults_to_resolved_active_agent():
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus", "auto_approve": "true"},
         default_categories={
-            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
         },
     )
     # The resolved active-agent values (agent.default backstop for behavior; the
@@ -1387,9 +1387,9 @@ def test_box_agent_mirror_defaults_to_resolved_active_agent():
     assert snap.box.agent.model == snap.agent.default.model == "opus"
     assert snap.box.agent.auto_approve == "true"
     # The whole subtree mirrors — including category subtrees (a Bind leaf).
-    mirrored = snap.box.agent.shared.plugins
+    mirrored = snap.box.agent.common.plugins
     assert isinstance(mirrored, Bind)
-    assert mirrored == snap.agent.claude.shared.plugins
+    assert mirrored == snap.agent.claude.common.plugins
 
 
 def test_box_agent_mirror_box_file_override_wins(tmp_path: Path):
@@ -1430,36 +1430,47 @@ def test_box_agent_mirror_copy_is_not_an_alias():
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories={
-            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
         },
     )
     # The nested category subtree is copied, not aliased.
-    assert snap.box.agent.shared is not snap.agent.claude.shared
+    assert snap.box.agent.common is not snap.agent.claude.common
     # A nested Bind leaf is equal (immutable) but the holding KeyStore is fresh.
-    snap.box.agent.shared["plugins"] = Bind("/tweaked", "~/.claude/plugins")
-    assert snap.agent.claude.shared.plugins.host == "/store/plugins"
+    snap.box.agent.common["plugins"] = Bind("/tweaked", "~/.claude/plugins")
+    assert snap.agent.claude.common.plugins.host == "/store/plugins"
 
 
 def test_box_agent_mirror_repoints_on_agent_name_change():
     # Re-materialized when box.agent_name changes: agent_name IS the launch-resolved
     # active agent, so a different agent_name mirrors a different subtree.
+    # Each agent's default table is DISCRIMINATED at source (the declaring plugin
+    # builds ``agent.<agent>.*``), so each snapshot carries its own table.
     common = dict(
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus"},
-        default_categories={
-            "agent.shared.plugins": ("/claude/plugins", "~/.claude/plugins"),
-        },
     )
-    snap_claude = build_launch_snapshot(agent_name="claude", **common)
-    snap_goose = build_launch_snapshot(agent_name="goose", **common)
-    # Both mirror their OWN active agent's re-rooted share default.
-    assert snap_claude.box.agent.shared.plugins.host == "/claude/plugins"
-    assert snap_goose.box.agent.shared.plugins.host == "/claude/plugins"
+    snap_claude = build_launch_snapshot(
+        agent_name="claude",
+        default_categories={
+            "agent.claude.common.plugins": ("/claude/plugins", "~/.claude/plugins"),
+        },
+        **common,
+    )
+    snap_goose = build_launch_snapshot(
+        agent_name="goose",
+        default_categories={
+            "agent.goose.common.plugins": ("/goose/plugins", "~/.goose/plugins"),
+        },
+        **common,
+    )
+    # Both mirror their OWN active agent's share default.
+    assert snap_claude.box.agent.common.plugins.host == "/claude/plugins"
+    assert snap_goose.box.agent.common.plugins.host == "/goose/plugins"
     # And the mirror tracks the active slot each names (the goose snapshot's mirror
     # comes from agent.goose, the claude snapshot's from agent.claude).
-    assert snap_claude.box.agent.shared.plugins == snap_claude.agent.claude.shared.plugins
-    assert snap_goose.box.agent.shared.plugins == snap_goose.agent.goose.shared.plugins
+    assert snap_claude.box.agent.common.plugins == snap_claude.agent.claude.common.plugins
+    assert snap_goose.box.agent.common.plugins == snap_goose.agent.goose.common.plugins
 
 
 def test_no_agent_box_has_no_box_agent_mirror():
@@ -1487,25 +1498,25 @@ def test_box_agent_category_tweak_merges_into_active_agent_slot(tmp_path: Path):
     # merge).
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"shared": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
+        {"box": {"agent": {"common": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         default_categories={
-            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
-            "agent.shared.cache": ("/store/cache", "~/.claude/cache"),
+            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common.cache": ("/store/cache", "~/.claude/cache"),
         },
     )
     # The box-overridden leaf wins in the box.agent mirror; the sibling default leaf
     # still mirrors (per-name gap-fill).
-    assert snap.box.agent.shared.plugins.host == "/box/plugins"
-    assert snap.box.agent.shared.cache.host == "/store/cache"
+    assert snap.box.agent.common.plugins.host == "/box/plugins"
+    assert snap.box.agent.common.cache.host == "/store/cache"
     # SEAM-1 invariant: the box CATEGORY tweak IS in the merged active agent slot
     # (the fold at box precedence); the un-tweaked sibling keeps its default.
-    assert snap.agent.claude.shared.plugins.host == "/box/plugins"
-    assert snap.agent.claude.shared.cache.host == "/store/cache"
+    assert snap.agent.claude.common.plugins.host == "/box/plugins"
+    assert snap.agent.claude.common.cache.host == "/store/cache"
 
 
 def test_box_agent_category_present_none_suppresses_through_adapter(tmp_path: Path):
@@ -1521,7 +1532,7 @@ def test_box_agent_category_present_none_suppresses_through_adapter(tmp_path: Pa
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
     )
     # Merge-time OMIT: suppressed name absent from BOTH the agent slot and the mirror.
     assert "x" not in snap.agent.claude.seeded
@@ -1544,7 +1555,7 @@ def test_box_agent_category_positive_tweak_delivers_through_adapter(tmp_path: Pa
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     seeded = {e.name: e for e in entries if e.category == "seeded"}
@@ -1567,7 +1578,7 @@ def test_box_agent_category_from_workset_file_delivers_and_suppresses(tmp_path: 
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=ws_pos, box_path=None,
-        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
     )
     seeded = {
         e.name: e.host_src
@@ -1583,7 +1594,7 @@ def test_box_agent_category_from_workset_file_delivers_and_suppresses(tmp_path: 
     snap2 = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=ws_null, box_path=None,
-        default_categories={"agent.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
     )
     names = {
         e.name
@@ -1656,17 +1667,17 @@ def test_box_agent_bindings_override_changes_category_entries(tmp_path: Path):
     # effective agent (the override feeds category resolution).
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"shared": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
+        {"box": {"agent": {"common": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         default_categories={
-            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
         },
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    plug = [e for e in entries if e.category == "shared" and e.name == "plugins"]
+    plug = [e for e in entries if e.category == "common" and e.name == "plugins"]
     assert len(plug) == 1, entries
     # The box.agent override host_src WON over the agent-tier default.
     assert plug[0].host_src == "/box/plugins"
@@ -1682,7 +1693,7 @@ def test_box_agent_env_override_changes_category_entries(tmp_path: Path):
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.env.MY_VAR": "agent_val"},
+        default_categories={"agent.claude.env.MY_VAR": "agent_val"},
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     envs = [e for e in entries if e.category == "env" and e.name == "MY_VAR"]
@@ -1697,8 +1708,8 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories={
-            "agent.shared.plugins": ("/store/plugins", "~/.claude/plugins"),
-            "agent.env.MY_VAR": "agent_val",
+            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.env.MY_VAR": "agent_val",
         },
     )
     snap = build_launch_snapshot(**common)
@@ -1709,7 +1720,9 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
     )
     # Exactly the agent-tier defaults — the box.agent mirror reproduced them, so the
     # overlay added/changed nothing.
+    # sorted(): ``common`` now precedes ``env`` (it did not when the category was
+    # named ``shared``).
     assert agent_entries == [
+        ("common", "plugins", "/store/plugins", "Z,U"),
         ("env", "MY_VAR", None, "agent_val"),
-        ("shared", "plugins", "/store/plugins", "Z,U"),
     ]

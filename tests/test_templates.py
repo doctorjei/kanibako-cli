@@ -237,7 +237,7 @@ class _FakeTarget:
         return {}
 
 
-def _seed(std, proj, *, agent="claude", shares=True):
+def _seed(std, proj, *, agent="claude", deliver_creds=True):
     """Drive the one-time home seed (the unified keystore-routed route)."""
     from kanibako.commands.start import _apply_init_seeds
 
@@ -249,7 +249,7 @@ def _seed(std, proj, *, agent="claude", shares=True):
         global_config_path=std.settings,
         agent_config_path=std.agents / "claude" / "settings.yaml",
         logger=logging.getLogger("test-seed"),
-        shares=shares,
+        deliver_creds=deliver_creds,
     )
 
 
@@ -342,10 +342,10 @@ class TestLayeredHomeSeed:
         assert not (home / ".claude.json").exists()
 
     def test_private_box_keeps_template_layers(self, std, config, primary_proj):
-        """shares=False (PRIVATE box) suppresses CREDENTIAL seeds only — the
+        """deliver_creds=False (PRIVATE box) suppresses CREDENTIAL seeds only — the
         template layers are non-credential and STILL seed (D-M4 gate exemption)."""
         self._populate(std, primary_proj)
-        _seed(std, primary_proj, shares=False)
+        _seed(std, primary_proj, deliver_creds=False)
         home = primary_proj.shell_path
         assert (home / "playbook" / "CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()

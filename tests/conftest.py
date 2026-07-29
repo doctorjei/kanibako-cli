@@ -269,7 +269,7 @@ def start_mocks():
             patch("kanibako.templates.stage_layers"),
             # Block 7b: the launch-time CATEGORY resolution now runs through ONE
             # snapshot + ONE reconcile (``_resolve_launch_snapshot``) for the
-            # always-available families (core / kani / channel / shares / seeds),
+            # always-available families (core / kani / channel / commons / seeds),
             # then the conditional image/helper resolves at their own sites.
             # Driven with the MagicMock ``std``/``proj`` here, the category sources
             # are MagicMock repr strings whose L7 guarantee-create would mkdir
@@ -495,7 +495,7 @@ def start_mocks():
             # ``Mount(src, dest, opts)`` construction, so use REAL paths under a
             # temp dir (created here so they actually exist on disk).  Plugins +
             # cache are no longer descriptor bindings (Part 3a) — they flow
-            # through the category resolver from ``default_shares()``.
+            # through the category resolver from ``default_common()``.
             import tempfile
             _install_root = Path(tempfile.mkdtemp(prefix="kanibako-test-install-"))
             _install_dir = _install_root / "share" / "claude"
@@ -604,7 +604,7 @@ def start_mocks():
                     snap, active_agent=_node, box_ctx=ctx,
                 )
                 rec = reconcile_categories(
-                    entries, shares=kw.get("shares", True),
+                    entries, deliver_creds=kw.get("deliver_creds", True),
                 )
                 return snap, rec
 

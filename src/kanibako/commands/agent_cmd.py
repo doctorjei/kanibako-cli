@@ -565,7 +565,7 @@ def run_reauth(args: argparse.Namespace) -> int:
 
     # Auth 3-tier SHARING + persona endpoint: resolve BOTH per-box decisions off ONE
     # launch snapshot (single-route — the same pipeline ``start`` uses), for the
-    # resolved agent. The auth display below gates on whether the box shares; the
+    # resolved agent. The auth display below gates on whether the box receives shared creds; the
     # endpoint drives the OAuth-suppress cred fork (block B) so a reauth on a
     # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
@@ -586,7 +586,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     )
     suppress_oauth = active_endpoint is not None
 
-    if not auth_src.shares:
+    if not auth_src.creds_shared:
         # Private box: check project's own credentials instead of the source.
         creds_path = target.credential_check_path(proj.shell_path)
         if creds_path and creds_path.is_file():
@@ -610,7 +610,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         # (desc is None) targets fall back to the per-plugin refresh hook.  An
         # ungated target.refresh_credentials here would push a descriptor agent
         # (e.g. goose) down its legacy path / bespoke copy.
-        if auth_src.shares:
+        if auth_src.creds_shared:
             from pathlib import Path
 
             from kanibako.targets import credsync

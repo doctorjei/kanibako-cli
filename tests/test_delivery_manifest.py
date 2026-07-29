@@ -197,7 +197,7 @@ class TestSeededManifest:
             global_config_path=std.settings,
             agent_config_path=std.agents / "claude" / "settings.yaml",
             logger=logging.getLogger("test-delivery-manifest"),
-            shares=True,
+            deliver_creds=True,
         )
         return proj.shell_path
 
