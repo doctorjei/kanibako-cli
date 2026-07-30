@@ -16,7 +16,21 @@ kanibako = "kanibako.cli:main"
 no_agent = "kanibako.targets.no_agent:NoAgentTarget"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-cov", "mypy", "ruff", "bump2version", "pexpect>=4.8"]
+# The three GATE tools (``ruff``, ``mypy``, ``pytest``) are PINNED, not floated.
+# A floating gate makes a CI result ambiguous: an upstream release changes the
+# verdict on source nobody touched, so a local green stops predicting CI (a
+# floating ruff once reported 972 findings against a tree that was clean at the
+# pinned version). Bumping a pin — and adopting whatever new rules or behaviour
+# it brings — is a deliberate change of its own, made in its own commit, never a
+# side effect of an unrelated install. The rest are not gate tools and float.
+dev = [
+    "pytest==9.0.2",
+    "pytest-cov",
+    "mypy==1.19.1",
+    "ruff==0.15.5",
+    "bump2version",
+    "pexpect>=4.8",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
