@@ -1726,3 +1726,179 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
         ("common", "plugins", "/store/plugins", "Z,U"),
         ("env", "MY_VAR", None, "agent_val"),
     ]
+
+
+# --------------------------------------------------------------------------- #
+# P1: workset_anchor_floor — the layout anchors + the RO BOX ROOT              #
+# (spec §2c L740/L770 per-mode; §2a "Declaration roots" L505)                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_workset_anchor_floor_rejects_unknown_mode():
+    """An undeclared mode is REFUSED, never silently given the primary/named arm.
+
+    The floor picks a per-mode arm for ``workset.boxes`` / ``workset.logs`` /
+    ``meta.box.path``; a typo'd or new mode taking the wrong arm would relocate the
+    box root SILENTLY, so the variant is checked rather than defaulted.
+    """
+    from kanibako.settings_launch import workset_anchor_floor
+
+    with pytest.raises(_SettingsError) as exc:
+        workset_anchor_floor(mode="local", helper_log="/l/b.jsonl")
+    assert "local" in str(exc.value)
+    # The three real modes are accepted.
+    for mode in ("primary", "named", "standalone"):
+        assert workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl")
+
+
+def test_workset_anchor_floor_meta_box_path_per_mode():
+    """``meta.box.path`` carries the per-mode box-root formula — and ONLY here.
+
+    primary/named append the box-name leaf; standalone is the EMPTY LEAF (a BARE
+    whole-value ref: ``workset.boxes`` IS the box root), so no separator is emitted
+    and nothing downstream needs a per-mode arm.
+    """
+    from kanibako.settings_launch import workset_anchor_floor
+
+    for mode in ("primary", "named"):
+        floor = workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl")
+        assert floor["meta.box.path"] == "@workset.boxes/@meta.box.name"
+        assert floor["workset.boxes"] == "@meta.workset.path/boxes"
+        assert floor["workset.logs"] == "@meta.workset.path/logs"
+
+    floor = workset_anchor_floor(mode="standalone", helper_log="/l/b.jsonl")
+    assert floor["meta.box.path"] == "@workset.boxes"
+    assert not floor["meta.box.path"].endswith("/")
+    assert floor["workset.boxes"] == "@meta.workset.path/box_data"
+    assert floor["workset.logs"] == "@meta.box.path"
+
+    # The vault roots are UNIFORM in every mode (spec §2c ALL PROJECTS) — only the
+    # BOX BIND differs (the per-box subdir a lone box does not need).
+    for mode in ("primary", "named", "standalone"):
+        floor = workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl")
+        assert floor["workset.vault_ro"] == "@meta.workset.path/vault/ro"
+        assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
+
+
+def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
+    """A box root that resolves to nothing RAISES, naming the key.
+
+    ⚑ WHY THIS EXISTS. ``box.bindings.rw.home`` is ``@meta.box.path/home`` — an
+    EMBEDDED ref, and the embedded rule coerces an absent / present-None referent
+    to ``""``. So a box root that fails to resolve does not error: it yields the
+    host_src ``/home``, which the L7 guarantee-create then mkdir's and mounts OVER
+    the box home. Silent, catastrophic, and user-reachable — a workset settings
+    file may set ``workset.boxes: null``, which the cascade honours as a
+    present-None terminal.
+
+    MUTATION-PROOF: without the assertion in ``build_launch_snapshot`` this test
+    observes a successfully-built snapshot whose home host_src is ``/home`` (that
+    was confirmed RED before the guard was added), so it cannot pass vacuously.
+    """
+    from kanibako.config_io import dump_doc
+    from kanibako.settings_launch import workset_anchor_floor
+
+    ws_file = tmp_path / "workset-settings.yaml"
+    dump_doc(ws_file, {"workset": {"boxes": None}})
+    # BOTH arms are covered because they fail DIFFERENTLY: primary/named dereference
+    # the box root through an EMBEDDED ref (-> "/mybox"), standalone through a
+    # WHOLE-VALUE ref (-> the host "/home"). Confirmed pre-guard.
+    for mode in ("primary", "standalone"):
+        floor: dict[str, object] = {
+            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
+            "meta.box.name": "mybox",
+            "meta.workset.path": "/data/ws",
+        }
+        floor.update(workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl"))
+        with pytest.raises(_SettingsError) as exc:
+            build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(),
+                system_path=None, agent_path=None, workset_path=ws_file,
+                box_path=None,
+                default_categories=floor,
+                workset_anchor=floor,
+            )
+        assert "meta.box.path" in str(exc.value), mode
+        assert "workset.boxes" in str(exc.value), mode
+
+
+def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
+    """An EMPTY ``meta.box.name`` must not silently yield the SHARED box store.
+
+    primary/named spell the root ``@workset.boxes/@meta.box.name``, so an empty or
+    None name leaves ``<…>/boxes/`` — and the home host_src ``<…>/boxes//home``,
+    which is the box STORE's home rather than this box's. Every box in the workset
+    would resolve the same home directory.
+
+    Reachable today: ``paths._resolve_local_dir``'s unregistered-primary fallback
+    returns an empty name and the launch passes ``proj.name`` through unexamined.
+    The value is a perfectly good non-empty string, so only the trailing-separator
+    shape distinguishes it (confirmed: pre-fix this produced
+    ``/data/ws/boxes//home`` with no error).
+    """
+    from kanibako.settings_launch import workset_anchor_floor
+
+    for name in ("", None):
+        floor: dict[str, object] = {
+            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
+            "meta.box.name": name,
+            "meta.workset.path": "/data/ws",
+        }
+        floor.update(workset_anchor_floor(mode="primary", helper_log="/l/b.jsonl"))
+        with pytest.raises(_SettingsError) as exc:
+            build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(),
+                system_path=None, agent_path=None, workset_path=None, box_path=None,
+                default_categories=floor,
+                workset_anchor=floor,
+            )
+        assert "meta.box.path" in str(exc.value), name
+        assert "trailing separator" in str(exc.value), name
+
+
+def test_box_root_assertion_is_skipped_for_a_partial_floor():
+    """A caller that does not supply the box root is NOT forced to.
+
+    Narrow resolves and focused tests fold only part of the floor; the check keys
+    on the anchor being SUPPLIED, so those callers are unaffected.
+    """
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        workset_anchor={"workset.boxes": "/floor/boxes"},
+    )
+    assert snap.workset.boxes == "/floor/boxes"
+
+
+def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
+    """A settings file's top-level ``meta:`` cannot repoint the RO box root.
+
+    ``meta.box.path`` is RO by contract (§0 meta ⟺ not-settable). Relocating box
+    data is done one level up, through the SETTABLE ``workset.boxes``. This pins
+    the file half of that contract for the box root specifically: the anchor is a
+    mount SOURCE, so a file that could forge it could redirect the box home to any
+    host directory. (The CLI half — ``config set`` refusing every ``meta.*`` key —
+    is pinned in ``tests/test_config_interface.py``.)
+    """
+    from kanibako.config_io import dump_doc
+    from kanibako.settings_launch import workset_anchor_floor
+
+    hostile = tmp_path / "hostile.yaml"
+    dump_doc(
+        hostile,
+        {
+            "box": {"image": "img"},  # a legitimate same-scope key — must survive
+            "meta": {"box": {"path": "/evil"}},  # forge the RO box root
+        },
+    )
+    floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
+    floor.update(workset_anchor_floor(mode="primary", helper_log="/l/b.jsonl"))
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=hostile,
+        default_categories=floor,
+        workset_anchor=floor,
+    )
+    # The floor's derivation stands; the forged value is gone.
+    assert snap.meta.box.path == "/data/ws/boxes/b"
+    assert snap.box.image == "img"  # the legitimate key survived the meta drop

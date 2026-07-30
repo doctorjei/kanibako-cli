@@ -207,13 +207,17 @@ def core_default_categories(
             # rather than silently dropped when the source happens to be absent.
             src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
-        # B2/B2b: an entry routed through an @-ref carries either a single
-        # ``meta_ref`` (mode-independent) OR a ``mode_meta_ref`` PER-MODE map (spec
-        # §2c home/vault differ by mode: primary/named @workset.* vs standalone
-        # @meta.workset.path/*).  The host_src is the @-ref STRING, which ``expand``
-        # resolves to the SAME runtime-probed literal (byte-identical) because the
-        # workset.* / meta.workset.path anchors are materialized to the launch's own
-        # resolved roots.  Falls back to the probed source for an un-routed entry.
+        # An entry routed through an @-ref carries either a single ``meta_ref``
+        # (MODE-INDEPENDENT — home and workspace) OR a ``mode_meta_ref`` PER-MODE
+        # map.  The per-mode form now serves the VAULT binds ONLY, and for a real
+        # reason: primary/named take the per-box ``/@meta.box.name`` subdir that a
+        # lone standalone box does not have (spec §2c).  Both vault arms root at the
+        # SAME ``@workset.vault_*`` anchor.  home no longer needs an arm at all — it
+        # roots at ``@meta.box.path``, which is where the per-mode variation lives.
+        # The host_src is the @-ref STRING, which ``expand`` resolves to the SAME
+        # runtime-probed literal (byte-identical) because the workset.* /
+        # meta.workset.path anchors resolve to the launch's own roots.  Falls back to
+        # the probed source for an un-routed entry.
         mode_ref = entry.get("mode_meta_ref")
         if mode_ref is not None:
             host_src = mode_ref[mode]

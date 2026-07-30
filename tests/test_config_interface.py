@@ -3617,3 +3617,28 @@ class TestCoreBindGetReset:
             "box.bindings.ro.vault_ro",
             global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
         ) is None
+
+
+def test_meta_box_path_is_read_only_from_every_scope():
+    """The RO box root is not settable from ANY command scope (spec §0 meta-RO).
+
+    ``meta.box.path`` is a mount SOURCE — the box home binds from it — so a
+    settable box root would let a config set redirect the box home to an arbitrary
+    host directory. It is RO by NAMESPACE (nothing per-key registers it), and this
+    pins that the namespace rule actually covers it, including the no-command-scope
+    path. The FILE half (a top-level ``meta:`` table being dropped at assembly) is
+    pinned in ``tests/test_settings_launch.py``.
+    """
+    from kanibako.config_interface import (
+        ConfigLevel,
+        _scope_direction_error,
+        is_known_key,
+    )
+
+    for scope in (*ConfigLevel, None):
+        err = _scope_direction_error("meta.box.path", scope)
+        assert err is not None, scope
+        assert "meta.box.path" in err, scope
+        assert "read-only" in err, scope
+    # And it is never mistaken for a project name / settable key.
+    assert is_known_key("meta.box.path") is False

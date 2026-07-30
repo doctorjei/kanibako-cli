@@ -1106,10 +1106,11 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         )
         # home: rw bind, dest ~ , options Z,U (the structured 3-tuple's 3rd slot).
-        # B2b: PRIMARY home host_src is the per-mode @workset.boxes/@meta.box.name/
-        # home REF (spec §2c L444), resolved at launch-expand to str(proj.shell_path).
+        # The home host_src is the MODE-INDEPENDENT @meta.box.path/home REF (spec §2c
+        # ALL PROJECTS), resolved at launch-expand to str(proj.shell_path).  The
+        # per-mode variation lives in meta.box.path, not here.
         assert binds["box.bindings.rw.home"] == (
-            "@workset.boxes/@meta.box.name/home",
+            "@meta.box.path/home",
             "~",
             "Z,U",
         )
@@ -1126,24 +1127,37 @@ class TestCoreDefaultCategories:
             assert isinstance(v, tuple) and len(v) == 3
             assert ":" not in v[1]
 
-    def test_home_standalone_routes_through_meta_workset_path(self, tmp_path):
-        """B2b: STANDALONE home/vault route the TRUE spec @meta.workset.path/* chains
-        (§2c L427/425/428).  The B2b ws_root fix made meta.workset.path = the project
-        ROOT (<root>), so these resolve byte-identically — no invented *_src anchor."""
+    def test_home_is_mode_independent_and_vault_roots_at_workset(self, tmp_path):
+        """The home DECLARATION is one line for every mode; vault roots at @workset.*.
+
+        Spec §2c ALL PROJECTS gives ``box.bindings.rw.home`` a single mode-independent
+        form, so STANDALONE emits the SAME tuple as primary/named — the per-mode
+        variation moved up into ``meta.box.path``.  The vault bind stays per-mode (a
+        lone box has no per-box ``/@meta.box.name`` subdir) but BOTH arms now root at
+        the SAME ``@workset.vault_*`` anchor; the standalone arm used to carry a
+        SECOND spelling of that root (``@meta.workset.path/vault/*``).
+        """
         from kanibako import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         binds = core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="standalone",
         )
-        assert binds["box.bindings.rw.home"] == (
-            "@meta.workset.path/box_data/home", "~", "Z,U",
+        primary = core_defaults.core_default_categories(
+            None, proj, enable_vault=True, mode="primary",
         )
+        assert binds["box.bindings.rw.home"] == ("@meta.box.path/home", "~", "Z,U")
+        # ONE declaration: byte-equal to the primary arm.
+        assert binds["box.bindings.rw.home"] == primary["box.bindings.rw.home"]
         assert binds["box.bindings.ro.vault"] == (
-            "@meta.workset.path/vault/ro", "~/vault/ro", "ro",
+            "@workset.vault_ro", "~/vault/ro", "ro",
         )
         assert binds["box.bindings.rw.vault"] == (
-            "@meta.workset.path/vault/rw", "~/vault/rw", "Z,U",
+            "@workset.vault_rw", "~/vault/rw", "Z,U",
+        )
+        # The vault BIND is still per-mode — primary/named carry the box-name leaf.
+        assert primary["box.bindings.ro.vault"] == (
+            "@workset.vault_ro/@meta.box.name", "~/vault/ro", "ro",
         )
 
     def test_vault_keys_present_when_enabled_and_dirs_exist(self, tmp_path):
@@ -1228,13 +1242,19 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         )
         ctx = make_ctx()
-        # B2/B2b: workspace routes through @meta.box.workspace; home/vault through
-        # @workset.boxes|vault_*/@meta.box.name (PRIMARY).  Provide the materialized
-        # anchors (as the launch floor does) so the refs resolve.
+        # workspace routes through @meta.box.workspace; home through the RO box
+        # root @meta.box.path; vault through @workset.vault_*/@meta.box.name
+        # (PRIMARY).  Provide the materialized anchors (as the launch floor does) so
+        # the refs resolve.  The box root carries its @-REF FORMULA, not a resolved
+        # literal, so this stays sensitive to a wrong formula: the oracle resolves
+        # @-refs TRANSITIVELY, exactly as the launch expand does.  The keys must be
+        # LISTED, though — this dict IS the whole keyspace for the oracle, so an
+        # omitted key is simply an unknown @-reference.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
                 "meta.box.name": "mybox",
+                "meta.box.path": "@workset.boxes/@meta.box.name",
                 "workset.boxes": "/data/pw/boxes",
                 "workset.vault_ro": "/data/pw/vault/ro",
                 "workset.vault_rw": "/data/pw/vault/rw",
@@ -1259,12 +1279,16 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         )
         ctx = make_ctx()
-        # B2/B2b: workspace via @meta.box.workspace; home/vault via @workset.*/
-        # @meta.box.name (PRIMARY).  Provide the anchors.
+        # workspace via @meta.box.workspace; home via the RO box root
+        # @meta.box.path; vault via @workset.vault_*/@meta.box.name (PRIMARY).
+        # The box root carries its @-REF FORMULA (the oracle resolves @-refs
+        # transitively), so a wrong formula would show up here; every key it walks
+        # must be LISTED, since this dict IS the oracle's whole keyspace.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
                 "meta.box.name": "mybox",
+                "meta.box.path": "@workset.boxes/@meta.box.name",
                 "workset.boxes": "/data/pw/boxes",
                 "workset.vault_ro": "/data/pw/vault/ro",
                 "workset.vault_rw": "/data/pw/vault/rw",

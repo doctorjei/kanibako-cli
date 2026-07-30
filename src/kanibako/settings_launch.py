@@ -415,9 +415,16 @@ def meta_runtime_floor(
 # (meta.workset.name is now a meta_runtime_floor anchor into meta.runtime.ws_name —
 #  the single source for the partition token, spec §2c 2026-07-04 — NOT a B2 key.)
 #
-# meta.box.settings (P6c, 2026-07-04) is the RO box-TIER settings-file anchor (spec
-# §2c L493 primary/named = @workset.boxes/@meta.box.name/settings.yaml; §2c L472
-# standalone = <None>, box tier EMPTY). Materialized here as the RESOLVED LITERAL
+# meta.box.settings (P6c, 2026-07-04) is the RO box-TIER settings-file anchor. The
+# SHIPPED form is per-mode (primary/named = the box's own settings.yaml; standalone
+# = <None>, box tier EMPTY), which is what is materialized below. ⚑ The spec has
+# since made it the UNIFORM @meta.box.path/settings.yaml in every mode — code does
+# NOT match spec here yet; that cutover (and the standalone box tier it creates) is
+# its own phase, because the WRITE target must move in the same change as the READ
+# or a set lands in a file the read ignores. Note it cannot simply become the @-ref:
+# a bootstrap anchor may not derive from a key at the scope it bootstraps, and this
+# one resolves BEFORE the cascade exists (unlike the launch-time home bind, which is
+# why THAT one may root at @meta.box.path). Materialized here as the RESOLVED LITERAL
 # the launch computes (the box's own <metadata_path>/settings.yaml for primary/
 # named; None for standalone) — the SAME value the cascade uses as its box-tier
 # file path (single-sourced in start.py's _launch_snapshot_inputs), so the anchor
@@ -519,84 +526,121 @@ def meta_identity_floor(
 
 
 # --------------------------------------------------------------------------- #
-# WORKSET path-anchor materialization (block B2b — spec §2c §1, §2g)           #
+# LAYOUT-anchor materialization: workset roots + the RO BOX ROOT (spec §2a/§2c) #
 # --------------------------------------------------------------------------- #
 #
-# B2b completes the single-route: it materializes the workset-scope PATH anchors
-# the spec's §2c per-mode binds reference (workset.{boxes,vault_ro,vault_rw,logs}
-# + the workset-local channels), plus meta.box.helper_log, as REAL @-referenceable
-# floor keys. The core home/vault/helper_log binds then route through these anchors
-# (@workset.boxes/@meta.box.name/home, …) so the bind host_src RESOLVES via the
-# snapshot instead of a proj-attr literal injected at the seam (the payoff).
+# This is the single-route payoff: it materializes the workset-scope PATH anchors
+# the spec's §2c binds reference (workset.{boxes,vault_ro,vault_rw,logs} + the
+# workset-local channels), the RO per-mode BOX ROOT ``meta.box.path``, and
+# ``meta.box.helper_log``, as REAL @-referenceable floor keys. The core home/vault/
+# helper_log binds route through these anchors so the bind host_src RESOLVES via the
+# snapshot instead of a proj-attr literal injected at the seam.
 #
-# JC-B2b-1: these workset.* keys do NOT exist as resolvable snapshot keys today —
+# JC-B2b-1: these workset.* keys do NOT exist as resolvable snapshot keys otherwise —
 # resolve_system_paths derives only the PRIMARY pseudo-keys (system._boxes /
 # system._primary_vault_* / system._primary_logs) into StandardPaths; there is no
-# workset.* tier in the snapshot. B2b MATERIALIZES them here.
+# workset.* tier in the snapshot. They are MATERIALIZED here.
 #
-# ⚑ EQUIVALENCE IS THE BAR. Every value is the RESOLVED LITERAL the launch already
-# computes — derived DIRECTLY off the ProjectPaths the seam holds (the box-home
-# parent dir, the vault parent dirs, the logs dir) — so an @workset.*-routed bind
-# expands BYTE-IDENTICALLY to the proj-attr host_src it replaces, regardless of the
-# per-mode path-helper internals. PRIMARY/NAMED root under @meta.workset.path
-# (spec §2c ALL WORKSETS); STANDALONE's workset path anchors are <None> (spec §2c
-# L416) — its home/vault route through @meta.workset.path/box_data|vault/* directly
-# (the core-defaults `mode_meta_ref` standalone arm), now byte-identical because the
-# B2b ws_root fix made meta.workset.path = the project ROOT (<root>).
+# ⚑ WHERE THE PER-MODE VARIATION LIVES (spec §2c L740). It lives HERE and nowhere
+# downstream, so every rooted key + the box home spell themselves ONCE against
+# ``@meta.box.path`` / ``@workset.*``. Each anchor is the spec's own self-resolving
+# @-ref FORMULA (not a proj-attr literal): the formulas were verified equal to the
+# layout helpers they replace in every mode —
+#   workset.boxes      primary  @meta.workset.path/boxes    == std.boxes (paths.py)
+#                      named    @meta.workset.path/boxes    == ws.projects_dir
+#                      s'alone  @meta.workset.path/box_data == _standalone_box_paths
+#   workset.vault_*    ALL      @meta.workset.path/vault/{ro,rw}  (ALL PROJECTS)
+#   workset.logs       p/n      @meta.workset.path/logs     == helper_log_path parent
+#                      s'alone  @meta.box.path              == helper_log_path parent
+# — and the whole chain is gated by a launch-path byte-identity check on the
+# resolved home/vault/helper_log mounts.
+#
+# ⚑ A BOX ROOT THAT DOES NOT RESOLVE IS CATASTROPHIC, NOT COSMETIC. The consumer
+# ``box.bindings.rw.home = (@meta.box.path/home, ~)`` is an EMBEDDED ref, and the
+# embedded rule (§6b) coerces an absent / present-None referent to ``""`` — so a
+# box root that fails to resolve yields the host_src ``/home``, which the L7
+# guarantee-create then mkdir's and mounts OVER the box home, silently. The floor
+# values below are constants and cannot be None; a user's ``workset.boxes: null``
+# in a settings file still can, which is why ``build_launch_snapshot`` asserts the
+# resolved ``meta.box.path`` is a non-empty absolute path.
+
+
+#: The box modes this floor knows how to root. An undeclared variant is NOT a mode
+#: and is REFUSED rather than silently taking the primary/named arm.
+_BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
 
 
 def workset_anchor_floor(
     *,
     mode: str,
-    boxes: str | None,
-    vault_ro: str | None,
-    vault_rw: str | None,
-    logs: str | None,
     helper_log: str,
     workset_channels: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
-    """Build the workset PATH-anchor floor keys (block B2b — spec §2c/§2g).
+    """Build the LAYOUT-anchor floor keys — workset roots + the box root (spec §2c).
 
     Returns the ``{dotted_key: value}`` floor fragment for the spec's workset-scope
-    path anchors the @-ref-routed core binds reference. Folded into
+    path anchors and the RO per-mode box root. Folded into
     ``build_launch_snapshot``'s floor (like :func:`meta_identity_floor`) so
-    ``expand`` resolves the @workset.* binds ONCE (single-route).
+    ``expand`` resolves the @workset.* / @meta.box.path binds ONCE (single-route).
 
-    PRIMARY/NAMED (spec §2c ALL WORKSETS L436-439): ``workset.{boxes,vault_ro,
-    vault_rw,logs}`` are the RESOLVED LITERAL roots the launch computes
-    (``proj.shell_path``'s box-parent, the vault parent dirs, the logs dir) — so a
-    bind re-pointed to ``@workset.boxes/@meta.box.name/home`` expands byte-identically
-    to the old ``str(proj.shell_path)`` injection.
+    Every anchor is the spec's self-resolving @-ref FORMULA, so the per-mode
+    variation is spelled HERE and nowhere downstream (spec §2c L740, §2a
+    "Declaration roots"):
 
-    STANDALONE (spec §2c L416): the workset path anchors are ``<None>`` — its home/
-    vault route through the TRUE spec ``@meta.workset.path/{box_data/home,vault/ro,
-    vault/rw}`` chains directly (the core-defaults standalone ``mode_meta_ref`` arm).
-    These resolve byte-identically because the B2b fix made the standalone
-    ``meta.runtime.ws_root`` (→ ``meta.workset.path``) the project ROOT (``<root>``,
-    via ``str(proj.metadata_path)``), so ``@meta.workset.path/box_data/home`` =
-    ``<root>/box_data/home`` = ``proj.shell_path``. So these keys carry ``None`` and
-    are not referenced — no invented resolved-literal anchor is needed.
+    * ``workset.boxes`` — PER-MODE: ``@meta.workset.path/boxes`` (primary/named,
+      §2c L760) · ``@meta.workset.path/box_data`` (standalone, §2c L727).
+    * ``workset.vault_{ro,rw}`` — UNIFORM in every mode (§2c ALL PROJECTS L786-787):
+      ``@meta.workset.path/vault/{ro,rw}``. Only the BOX BIND differs per mode (the
+      per-box ``/@meta.box.name`` subdir a lone box does not need).
+    * ``workset.logs`` — PER-MODE: ``@meta.workset.path/logs`` (primary/named, §2c
+      L761) · ``@meta.box.path`` (standalone, §2c L728).
+    * ``meta.box.path`` — the RO BOX ROOT: ``@workset.boxes/@meta.box.name``
+      (primary/named, §2c L770) · ``@workset.boxes`` (standalone, §2c L740). The
+      standalone form is the EMPTY LEAF: a BARE whole-value @-ref, so the resolver
+      inherits ``@workset.boxes`` verbatim (``_is_whole_value_ref`` decides the shape
+      by PARSE) — there is no join, hence no trailing separator and no empty path
+      segment. Being ``meta.*`` it is RO by contract (§0 meta ⟺ not-settable): the
+      CLI refuses a ``meta.*`` set and ``assemble_levels`` drops a top-level ``meta:``
+      table from every settings file. Relocating box data is done one level up, via
+      the settable ``workset.boxes``.
 
     ``meta.box.helper_log`` is materialized in EVERY mode to the resolved helper-log
     path (= ``str(helper_log_path(std, proj))``) so the helper_log bind routes a
-    SINGLE whole-value @-ref (the spec's ``@workset.logs/@meta.box.name.jsonl``
-    suffix-after-ref form is not expand-parseable — the greedy ref regex would
-    swallow ``.jsonl`` into the key name; this is independent of ws_root).
+    SINGLE whole-value @-ref for all modes. ⚑ The spec's literal spelling for that
+    bind (``@workset.logs/`` + a ref + a ``.jsonl`` suffix) is NOT expressible in the
+    current grammar: an @-ref name is a greedy dotted run, so the trailing ``.jsonl``
+    is swallowed INTO the ref name, which then resolves absent → ``""``. That is a
+    resolver-syntax question (escalated), not something to work around here — the
+    single-row anchor below is the working equivalent and satisfies the same "ONE row
+    for all modes" requirement.
 
     *workset_channels* (PRIMARY/NAMED only) maps ``commons``/``chat``/``share`` to
     the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
     materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c
     L452-454) route through them. ``None`` for STANDALONE (no workset channels).
     """
+    if mode not in _BOX_MODES:
+        raise SettingsError(
+            f"workset_anchor_floor: unknown box mode {mode!r} (expected one of "
+            f"{', '.join(sorted(_BOX_MODES))})"
+        )
+    standalone = mode == "standalone"
     floor: dict[str, object] = {
-        # The workset path anchors (spec §2c ALL WORKSETS L436-439). None for
-        # STANDALONE (spec §2c L416) — present-None whole-value terminals.
-        "workset.boxes": boxes,
-        "workset.vault_ro": vault_ro,
-        "workset.vault_rw": vault_rw,
-        "workset.logs": logs,
+        # The workset path anchors. boxes/logs are PER-MODE; the vault roots are
+        # UNIFORM (spec §2c ALL PROJECTS) — only the box BIND differs per mode.
+        "workset.boxes": (
+            "@meta.workset.path/box_data" if standalone else "@meta.workset.path/boxes"
+        ),
+        "workset.vault_ro": "@meta.workset.path/vault/ro",
+        "workset.vault_rw": "@meta.workset.path/vault/rw",
+        "workset.logs": "@meta.box.path" if standalone else "@meta.workset.path/logs",
+        # The RO per-mode BOX ROOT — the anchor every rooted box key spells itself
+        # against. STANDALONE is the EMPTY LEAF (a bare whole-value ref).
+        "meta.box.path": (
+            "@workset.boxes" if standalone else "@workset.boxes/@meta.box.name"
+        ),
         # The resolved helper-log path anchor (every mode) — the single-route
-        # target for the helper_log bind (see the docstring's parse-limitation note).
+        # target for the helper_log bind (see the docstring's grammar note).
         "meta.box.helper_log": helper_log,
     }
     if workset_channels is not None:
@@ -978,7 +1022,103 @@ def build_launch_snapshot(
     # box-scoped mirror of the active agent's WHOLE resolved settings subtree as a
     # COPY-on-current-engine step, AFTER expand so the values are resolved terminals.
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
+    if workset_anchor and _BOX_ROOT_KEY in workset_anchor:
+        _assert_box_root_resolved(expanded)
     return expanded
+
+
+#: The RO per-mode box-root anchor (spec §2c). Every rooted box key spells itself
+#: against it, so it is the one anchor whose failure to resolve is unsurvivable.
+_BOX_ROOT_KEY = "meta.box.path"
+#: The SETTABLE key the box root dereferences. It is validated ALONGSIDE the root
+#: because a broken source does not always produce a broken-LOOKING root — see
+#: :func:`_assert_box_root_resolved`.
+_BOX_STORE_KEY = "workset.boxes"
+
+
+def _snapshot_leaf(snapshot: KeyStore, dotted: str) -> object:
+    """Read the resolved leaf at *dotted*, or ``_MISSING``. UNBOUND protocol (S3)."""
+    node: object = snapshot
+    for seg in dotted.split("."):
+        if not isinstance(node, KeyStore):
+            return _MISSING
+        node = dict.get(node, seg, _MISSING)
+        if node is _MISSING:
+            return _MISSING
+    return node
+
+
+def _assert_box_root_resolved(snapshot: KeyStore) -> None:
+    """Fail LOUDLY when the box root, or the store it derives from, did not resolve.
+
+    ⚑ A box root that resolves to nothing does NOT surface as an error on its own.
+    ``box.bindings.rw.home`` is ``(@meta.box.path/home, ~)`` — an EMBEDDED ``@``-ref,
+    and the embedded rule (§6b) coerces an absent / present-``None`` referent to
+    ``""``. The L7 guarantee-create then ``mkdir``\\ s whatever that produced and
+    mounts it OVER the box home, so the box comes up with the wrong host directory
+    as its home and nothing anywhere reports an error.
+
+    ⚑ AND THE RESULT CAN LOOK PERFECTLY VALID, which is why BOTH keys are checked.
+    With ``workset.boxes`` present-``None``:
+
+    * standalone — ``meta.box.path`` is the bare ``@workset.boxes`` (whole-value), so
+      the root inherits ``None`` and the home host_src becomes the host's ``/home``.
+      A root-level check catches this.
+    * primary/named — ``meta.box.path`` is ``@workset.boxes/@meta.box.name``
+      (embedded), so the empty substitution yields ``/mybox``: a syntactically
+      perfect absolute path that no shape check would reject, pointing at a
+      top-level directory that is not the box's. Only validating the SOURCE catches
+      it.
+
+    The floor values themselves are constants and cannot be ``None``, but the anchor
+    dereferences the SETTABLE ``workset.boxes``, so a settings file carrying
+    ``workset: {boxes: null}`` (or an empty-string terminal) still reaches this.
+
+    Checked ONLY when the caller actually supplied the anchor in its floor fragment,
+    so narrow resolves and partial-floor callers are unaffected.
+
+    ⚑ AND A THIRD SHAPE: a root ending in ``/`` means the LEAF vanished, not the
+    root. With ``meta.box.name`` empty or ``None``, the primary/named formula
+    ``@workset.boxes/@meta.box.name`` yields ``<…>/boxes/`` and the home host_src
+    becomes ``<…>/boxes//home`` — the BOXES DIRECTORY's home, which every box in the
+    workset would then share. That is reachable today: the unregistered-primary
+    fallback in ``paths._resolve_local_dir`` returns an empty name, and the launch
+    passes ``proj.name`` through unexamined.
+
+    ⚑ THE TEST IS EXISTENCE + LEAF, NOT ABSOLUTENESS — deliberately, and please do
+    not "tighten" it to require a leading ``/``. That was tried: it reddens 131 tests
+    in ``tests/test_commands/test_start.py``, which mock ``load_std_paths()``
+    wholesale, so ``config.primary_workset`` stringifies to ``"<MagicMock …>"`` and
+    the resolved root is legitimately not a real path in that context. No production
+    path reaches this check non-absolute (the foundation is a real ``Path``), so the
+    absoluteness arm bought nothing and cost a harness-wide false positive. What
+    catches the real hazard is the §3 three-state (absent / present-``None`` /
+    ``""``-terminal) plus the vanished-leaf shape below.
+    """
+    for key in (_BOX_STORE_KEY, _BOX_ROOT_KEY):
+        value = _snapshot_leaf(snapshot, key)
+        if isinstance(value, str) and value != "" and not value.endswith("/"):
+            continue
+        got = "absent" if value is _MISSING else repr(value)
+        trailing = isinstance(value, str) and value.endswith("/")
+        why = (
+            "its trailing separator means the final path segment resolved to "
+            "nothing (an empty @meta.box.name leaves the box root pointing at the "
+            "SHARED box store, so every box in the workset would resolve the same "
+            "home)"
+            if trailing
+            else (
+                f"the box root '{_BOX_ROOT_KEY}' derives from '@{_BOX_STORE_KEY}', "
+                f'so a settings file that sets workset.boxes to null / "" — or '
+                f"removes it — leaves every key rooted at the box root pointing "
+                f"somewhere at the filesystem root"
+            )
+        )
+        raise SettingsError(
+            f"The box store/root key '{key}' did not resolve to a usable path (got "
+            f"{got}): {why}. Refusing to continue: the box home bind would otherwise "
+            f"be silently mounted from the wrong host directory."
+        )
 
 
 # --------------------------------------------------------------------------- #
