@@ -2561,8 +2561,8 @@ class TestApplyInitSeeds:
             # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
             channels_commons=tmp_path / "channels" / "commons",
             channels_chat=tmp_path / "channels" / "chat",
-            # B2b: the PRIMARY logs dir helper_log_path reads (the workset.logs +
-            # meta.box.helper_log anchors).
+            # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
+            # workset.logs anchor the helper-log bind routes through).
             primary_logs=tmp_path / "primary_workset" / "logs",
         )
 
@@ -2830,8 +2830,8 @@ class TestApplySyncedCopies:
             # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
             channels_commons=tmp_path / "channels" / "commons",
             channels_chat=tmp_path / "channels" / "chat",
-            # B2b: the PRIMARY logs dir helper_log_path reads (the workset.logs +
-            # meta.box.helper_log anchors).
+            # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
+            # workset.logs anchor the helper-log bind routes through).
             primary_logs=tmp_path / "primary_workset" / "logs",
         )
 

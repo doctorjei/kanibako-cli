@@ -531,10 +531,10 @@ def meta_identity_floor(
 #
 # This is the single-route payoff: it materializes the workset-scope PATH anchors
 # the spec's §2c binds reference (workset.{boxes,vault_ro,vault_rw,logs} + the
-# workset-local channels), the RO per-mode BOX ROOT ``meta.box.path``, and
-# ``meta.box.helper_log``, as REAL @-referenceable floor keys. The core home/vault/
-# helper_log binds route through these anchors so the bind host_src RESOLVES via the
-# snapshot instead of a proj-attr literal injected at the seam.
+# workset-local channels) and the RO per-mode BOX ROOT ``meta.box.path``, as REAL
+# @-referenceable floor keys. The core home/vault/helper_log binds route through
+# these anchors so the bind host_src RESOLVES via the snapshot instead of a
+# proj-attr literal injected at the seam.
 #
 # JC-B2b-1: these workset.* keys do NOT exist as resolvable snapshot keys otherwise —
 # resolve_system_paths derives only the PRIMARY pseudo-keys (system._boxes /
@@ -573,7 +573,6 @@ _BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
 def workset_anchor_floor(
     *,
     mode: str,
-    helper_log: str,
     workset_channels: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Build the LAYOUT-anchor floor keys — workset roots + the box root (spec §2c).
@@ -604,15 +603,16 @@ def workset_anchor_floor(
       table from every settings file. Relocating box data is done one level up, via
       the settable ``workset.boxes``.
 
-    ``meta.box.helper_log`` is materialized in EVERY mode to the resolved helper-log
-    path (= ``str(helper_log_path(std, proj))``) so the helper_log bind routes a
-    SINGLE whole-value @-ref for all modes. ⚑ The spec's literal spelling for that
-    bind (``@workset.logs/`` + a ref + a ``.jsonl`` suffix) is NOT expressible in the
-    current grammar: an @-ref name is a greedy dotted run, so the trailing ``.jsonl``
-    is swallowed INTO the ref name, which then resolves absent → ``""``. That is a
-    resolver-syntax question (escalated), not something to work around here — the
-    single-row anchor below is the working equivalent and satisfies the same "ONE row
-    for all modes" requirement.
+    ⚑ ``workset.logs`` is what makes the helper-log bind a SINGLE row for all modes:
+    the bind is the spec's own ``@workset.logs/@{meta.box.name}.jsonl`` (§2c ALL
+    PROJECTS), so the per-mode variation is this anchor and nothing downstream. The
+    braced ``@{...}`` delimits the ref so the ``.jsonl`` suffix survives — the bare
+    form would swallow it into the ref name (PHASE R; ``settings_resolve.match_ref``).
+    There is deliberately NO ``meta.box.helper_log`` anchor: that construct-time
+    LITERAL existed only because the spec's spelling did not parse, and it is not a
+    spec-declared key (§2c declares ``meta.box.{path,name,workspace,inbox,share_*,
+    auth.*}`` and never it), so under §0's closed keyspace it was not a key at all.
+    Do not reintroduce it — one bind, one spelling.
 
     *workset_channels* (PRIMARY/NAMED only) maps ``commons``/``chat``/``share`` to
     the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
@@ -639,9 +639,6 @@ def workset_anchor_floor(
         "meta.box.path": (
             "@workset.boxes" if standalone else "@workset.boxes/@meta.box.name"
         ),
-        # The resolved helper-log path anchor (every mode) — the single-route
-        # target for the helper_log bind (see the docstring's grammar note).
-        "meta.box.helper_log": helper_log,
     }
     if workset_channels is not None:
         for leaf, path in workset_channels.items():
@@ -955,9 +952,9 @@ def build_launch_snapshot(
             floor[key] = val
 
     # workset PATH-anchor materialization (block B2b): the workset-scope path
-    # anchors (workset.{boxes,vault_ro,vault_rw,logs} + workset.channels.* +
-    # meta.box.helper_log) the @-ref-routed core home/vault/helper_log/workset-
-    # channel binds reference (spec §2c/§2g). Folded into the SAME floor so
+    # anchors (workset.{boxes,vault_ro,vault_rw,logs} + workset.channels.*) and the
+    # RO box root the @-ref-routed core home/vault/helper_log/workset-channel binds
+    # reference (spec §2c/§2g). Folded into the SAME floor so
     # ``expand`` resolves the @workset.* binds ONCE (single-route). Built per box by
     # :func:`workset_anchor_floor`. ``None`` for a narrow resolve. A scope FILE MAY
     # legitimately override a workset.* key (workset.* is a settable settings tier),

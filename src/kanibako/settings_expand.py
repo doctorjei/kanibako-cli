@@ -80,11 +80,11 @@ from __future__ import annotations
 from typing import overload
 
 from kanibako.settings_resolve import (
-    _REF_NAME_RE,
     MAX_REF_DEPTH,
     ResolveCtx,
     SettingsError,
     expand_expr,
+    match_ref,
 )
 from kanibako.settings_store import Bind, KeyStore, StoreValue
 
@@ -136,19 +136,40 @@ def _is_whole_value_ref(value: str) -> str | None:
     """Return the dotted ref name iff *value* IS exactly one whole-value ``@``-ref.
 
     S18 — the shape is decided by PARSE, never guessed: a value is whole-value iff
-    it is ``@`` followed by a dotted ref name (``_REF_NAME_RE``) and NOTHING else
-    (no leading/trailing characters, no embedded literal). ``"@a.b"`` → ``"a.b"``;
-    ``"@a-@b"`` / ``"x@a"`` / ``"@a/c"`` / ``"@a "`` → ``None`` (embedded — handled
-    by :func:`~kanibako.settings_resolve.expand_expr` substitution). A leading
-    ``~`` or ``$`` is therefore never whole-value (those are environment tokens,
-    not config refs).
+    it is ONE ``@``-reference (:func:`~kanibako.settings_resolve.match_ref` — the
+    shared grammar, so BOTH the bare ``@a.b`` and braced ``@{a.b}`` spellings
+    qualify) and NOTHING else (no leading/trailing characters, no embedded
+    literal). ``"@a.b"`` / ``"@{a.b}"`` → ``"a.b"``; ``"@a-@b"`` / ``"x@a"`` /
+    ``"@a/c"`` / ``"@a "`` / ``"@{a.b}x"`` → ``None`` (embedded — handled by
+    :func:`~kanibako.settings_resolve.expand_expr` substitution). A leading ``~``
+    or ``$`` is therefore never whole-value (those are environment tokens, not
+    config refs).
+
+    ⚑ THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH. This predicate is
+    the ONLY thing that decides the shape, and the two paths differ in a way that
+    is invisible until it bites: a whole-value ref inherits the referent's full
+    3-state VERBATIM (absent → the key is dropped; present-``None`` → ``None``),
+    while an embedded token is pure string substitution and ``_lookup_str``
+    coerces absent/``None`` to ``""``. So a braced whole-value ref misrouted to the
+    embedded path would silently turn a ``None`` (the §3 "omit this bind"
+    terminal) into an empty-string terminal — a real value where the spec means
+    absence. ``@{a.b}`` and ``@a.b`` therefore resolve through the SAME call.
+
+    NEVER RAISES — a total predicate. A malformed reference (``"@{a.b"``,
+    ``"@{"``) answers ``None`` so it falls through to
+    :meth:`_Expander._expand_embedded`, where ``expand_expr`` raises it with the
+    same message from the same place it always has. That keeps error provenance
+    identical for malformed input in STRICT and LENIENT mode alike; the only
+    behaviour delta in this function is that a WELL-FORMED braced ref now answers
+    its name instead of ``None``.
     """
     if not value or value[0] != "@":
         return None
-    m = _REF_NAME_RE.match(value, 1)
-    if m is None or m.end() != len(value):
+    try:
+        name, end = match_ref(value, 0)
+    except SettingsError:
         return None
-    return m.group(0)
+    return name if end == len(value) else None
 
 
 @overload

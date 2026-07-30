@@ -244,6 +244,77 @@ def test_escaped_at_is_literal_not_a_ref() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# BRACED @{name} refs (PHASE R) — one grammar with the resolver               #
+# --------------------------------------------------------------------------- #
+
+
+def test_braced_ref_scans_as_one_token_not_a_swallowed_suffix() -> None:
+    # ``_scan_tokens`` calls the resolver's OWN parser, so the ref name stops at
+    # the closing brace and the ``.jsonl`` suffix is a literal — the whole point
+    # of the form. (Bare ``@box.meta.name.jsonl`` would yield one dotted name.)
+    from kanibako.settings_configset import _scan_tokens
+
+    assert _scan_tokens("@{box.meta.name}.jsonl") == (["box.meta.name"], [])
+    assert _scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
+    assert _scan_tokens("@box.meta.name.jsonl") == (["box.meta.name.jsonl"], [])
+
+
+def test_braced_ref_that_resolves_is_ok() -> None:
+    # ``box.meta.name`` exists in _KEYSPACE → the E3 probe resolves cleanly.
+    v = _validate(
+        "box.bindings.ro.helper_log",
+        "@workset.boxes/@{box.meta.name}.jsonl",
+        is_category=True,
+    )
+    assert v is OK
+
+
+def test_dangling_braced_ref_is_hard_error_like_a_bare_one() -> None:
+    # PHASE R: a dangling BRACED ref is judged exactly as a dangling bare one.
+    braced = _validate(
+        "box.bindings.rw.home", "@{nope.missing}/x", is_category=True
+    )
+    bare = _validate("box.bindings.rw.home", "@nope.missing/x", is_category=True)
+    assert isinstance(braced, Error) and isinstance(bare, Error)
+    assert "nope.missing" in braced.message
+
+
+def test_malformed_braced_ref_is_hard_error() -> None:
+    for value in ("@{a b}/x", "@{unclosed/x", "@{}/x"):
+        v = _validate("box.bindings.rw.home", value, is_category=True)
+        assert isinstance(v, Error), value
+        assert "malformed" in v.message.lower(), value
+
+
+def test_both_token_families_report_in_the_resolvers_message_style() -> None:
+    """One grammar means one ERROR STYLE too, for ``$`` and ``@`` alike.
+
+    PHASE R first routed only the ``@`` arm through the resolver's parser, which
+    left ``_scan_tokens`` speaking two message styles in one function — the exact
+    "two forms for one thing" this codebase treats as a defect, and the kind that
+    gets copied. Both arms now re-raise the resolver's own text.
+    """
+    from kanibako.settings_configset import _scan_tokens
+
+    for value, expected in (
+        ("@", "Malformed @-reference at:"),
+        ("$", "Malformed variable reference at:"),
+        ("@{x", "Unterminated @{...} reference:"),
+        ("${X", "Unterminated ${...} reference:"),
+    ):
+        with pytest.raises(ValueError) as ei:
+            _scan_tokens(value)
+        assert str(ei.value).startswith(expected), (value, str(ei.value))
+
+
+def test_escaped_at_brace_is_literal_not_a_ref() -> None:
+    # ``\@{`` is the escape hatch for a literal ``@{`` — not a token, so no
+    # dangling-ref error (matches expand_expr's escape rule).
+    v = _validate("box.bindings.rw.home", r"\@{nope}/x", is_category=True)
+    assert v is OK
+
+
+# --------------------------------------------------------------------------- #
 # Verdict — not-yet-existent host path → Warn (proceed)                        #
 # --------------------------------------------------------------------------- #
 

@@ -4814,12 +4814,10 @@ def _launch_snapshot_inputs(
     # the spec's own self-resolving @-ref formulas and are built ENTIRELY from
     # *mode* inside ``workset_anchor_floor`` — the per-mode variation lives THERE
     # and nowhere downstream (spec §2c L740), so this seam no longer derives any
-    # per-mode root literal off ``proj``. The only proj-derived value still needed
-    # is the helper-log path (whose bind cannot be spelled as an @-ref chain; see
-    # the ``workset_anchor_floor`` docstring) and the workset-local channel roots.
-    from kanibako.paths import helper_log_path
-
-    _log_path = helper_log_path(std, proj)
+    # per-mode root literal off ``proj``. The only proj-derived values still needed
+    # are the workset-local channel roots — the helper-log path is no longer among
+    # them: its bind is now the spec's own ``@workset.logs/@{meta.box.name}.jsonl``
+    # @-ref chain (PHASE R), which resolves from the anchors below.
     # The resolved workset-local channel roots (PRIMARY/NAMED only; STANDALONE has
     # no workset-local channels, spec §2c).
     _wch = None if mode == "standalone" else _channels.workset_channel_paths(proj, std)
@@ -4834,7 +4832,6 @@ def _launch_snapshot_inputs(
     )
     workset_anchor = settings_launch_module.workset_anchor_floor(
         mode=mode,
-        helper_log=str(_log_path),
         workset_channels=_ws_channels,
     )
     return (

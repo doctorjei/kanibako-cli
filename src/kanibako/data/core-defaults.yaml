@@ -249,25 +249,23 @@ helpers:
     source: helper_sock
     options: ""
   # Per-box helper message log → <box_state_kanibako>/helpers.jsonl (ro).
-  # Routed through @meta.box.helper_log (the materialized resolved log path) — ONE
-  # row for every mode, which is what the spec asks of this bind.
+  # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS): @workset.logs/@{meta.box.name}.jsonl
+  # — ONE row for every mode, because `workset.logs` carries the per-mode variation
+  # (primary/named @meta.workset.path/logs · standalone @meta.box.path).
   #
-  # ⚑ The spec's LITERAL spelling for it is NOT EXPRESSIBLE in the current grammar,
-  # and this is a known escalation, not an oversight.  That spelling puts a literal
-  # ``.jsonl`` suffix DIRECTLY after a dotted @-ref; an @-ref name is a GREEDY dotted
-  # run, so the suffix is swallowed INTO the ref name (the parser reads the key as
-  # ``…name.jsonl``), which then resolves absent → the embedded rule substitutes ""
-  # → the host_src loses both the box name and the extension.  There is no escape or
-  # delimiter for "the ref ends here" today; adding one (a brace form) is a RESOLVER
-  # SYNTAX change and therefore a spec-level decision, so it is NOT worked around
-  # here.  Materializing meta.box.helper_log to the launch's own resolved log path
-  # (= str(helper_log_path(std, proj))) routes a SINGLE whole-value @-ref that
-  # resolves byte-identically across all three modes — the working equivalent of the
-  # spec's intent, pending that decision.
+  # ⚑ THE BRACES ARE LOAD-BEARING, do not "simplify" them away.  A literal `.jsonl`
+  # follows a dotted @-ref here, and the BARE form cannot express that: an @-ref name
+  # is a GREEDY dotted run, so `@meta.box.name.jsonl` parses as the single ref name
+  # `meta.box.name.jsonl`, which resolves ABSENT and then coerces to "" under the
+  # embedded rule — silently yielding a host_src that has lost both the box name and
+  # the extension.  `@{...}` delimits the name explicitly so the suffix stays a
+  # literal (resolver: settings_resolve.match_ref; ruled by Jei 2026-07-30b, PHASE R).
+  # This row was ASPIRATIONAL until that landed; the code used an equivalent single
+  # key `@meta.box.helper_log`, now retired.
   - key: helper_log
     category: bindings.ro
     source: helper_log
-    meta_ref: "@meta.box.helper_log"
+    meta_ref: "@workset.logs/@{meta.box.name}.jsonl"
     options: "ro"
 
 # Image-sharing bind (Phase B, D-M8).  The host image graph root + the GENERATED

@@ -8,8 +8,9 @@ THIS — this module does NOT touch ``cli.py`` or the live setter):
 1. :func:`validate_config_set` — the set-time validation. A PURE function
    returning a typed :class:`Verdict` (``OK`` / :class:`Warn` / :class:`Error`).
    It REUSES the resolver's parse grammar (``split_bind`` for the ``:`` notation;
-   ``_VAR_NAME_RE`` / ``_REF_NAME_RE`` + the same escape / ``$VAR`` / ``@ref`` scan
-   as :func:`kanibako.settings_resolve.expand_expr`) and the
+   the resolver's OWN ``match_var`` / ``match_ref`` token parsers, called rather
+   than re-derived, inside the same escape-aware scan as
+   :func:`kanibako.settings_resolve.expand_expr`) and the
    :mod:`kanibako.config_interface` key registry (``KEY_TYPES`` / ``_coerce_value``)
    — it does NOT invent a second validator (S25). Q9 (spec §2a, ruling 2026-06-29):
    the dangling/unknown/cycle judgement is now FULL RESOLUTION via the injected E3
@@ -77,7 +78,12 @@ from typing import Callable, Sequence, Union
 
 from kanibako.config_interface import KEY_TYPES, _coerce_value
 from kanibako.config_io import dump_doc, load_doc
-from kanibako.settings_resolve import _REF_NAME_RE, _VAR_NAME_RE, split_bind
+from kanibako.settings_resolve import (
+    SettingsError,
+    match_ref,
+    match_var,
+    split_bind,
+)
 
 __all__ = [
     "Verdict",
@@ -175,13 +181,17 @@ def _scan_tokens(value: str) -> tuple[list[str], list[str]]:
     §6d: validate references for well-formedness, never expand to a literal).
 
     This mirrors :func:`kanibako.settings_resolve.expand_expr`'s scanner EXACTLY
-    (the same escape rule, the same ``$VAR`` / ``${VAR}`` and ``@ref`` token shapes
-    via the shared ``_VAR_NAME_RE`` / ``_REF_NAME_RE``), so "well-formed" here means
-    EXACTLY what the build expander will later accept — one grammar, not a second
-    (S25). A leading ``~`` is the home token (environment, validated for existence
-    elsewhere / box-deferred); it carries no name to check. A malformed ``$`` /
-    ``@`` token raises :class:`ValueError` (the caller maps it to an
-    :class:`Error`).
+    (the same escape rule, and BOTH token families via the scanner's own parsers —
+    :func:`~kanibako.settings_resolve.match_var` for ``$VAR`` / ``${VAR}`` and
+    :func:`~kanibako.settings_resolve.match_ref` for ``@ref`` / ``@{ref}``, called
+    rather than re-derived), so "well-formed" here means EXACTLY what the build
+    expander will later accept — one grammar, not a second (S25). Both ``@``
+    spellings are accepted, bare ``@a.b`` and braced ``@{a.b}``, and a DANGLING
+    braced ref is judged exactly like a dangling bare one (the E3 ``resolves``
+    probe at step 3a, which sees only the ref NAME this returns). A leading ``~``
+    is the home token (environment, validated for existence elsewhere /
+    box-deferred); it carries no name to check. A malformed ``$`` / ``@`` token
+    raises :class:`ValueError` (the caller maps it to an :class:`Error`).
     """
     refs: list[str] = []
     var_names: list[str] = []
@@ -195,27 +205,24 @@ def _scan_tokens(value: str) -> tuple[list[str], list[str]]:
             i += 2
             continue
         if c == "$":
-            braced = i + 1 < n and value[i + 1] == "{"
-            name_start = i + 2 if braced else i + 1
-            m = _VAR_NAME_RE.match(value, name_start)
-            if m is None:
-                raise ValueError(f"malformed variable reference at {value[i:]!r}")
-            end = m.end()
-            if braced:
-                if end >= n or value[end] != "}":
-                    raise ValueError(
-                        f"unterminated ${{...}} reference at {value[i:]!r}"
-                    )
-                end += 1
-            var_names.append(m.group(0))
-            i = end
+            # Same deal as the ``@`` arm below: the resolver's OWN parser, not a
+            # third copy of it. Both token families now speak one grammar AND one
+            # error style; hand-rolling either here is what let them drift.
+            try:
+                name, i = match_var(value, i)
+            except SettingsError as exc:
+                raise ValueError(str(exc)) from None
+            var_names.append(name)
             continue
         if c == "@":
-            m = _REF_NAME_RE.match(value, i + 1)
-            if m is None:
-                raise ValueError(f"malformed @-reference at {value[i:]!r}")
-            refs.append(m.group(0))
-            i = m.end()
+            # BOTH spellings via the shared parser: bare ``@a.b`` and braced
+            # ``@{a.b}`` (which lets a literal suffix follow — ``@{a.b}.jsonl``
+            # yields the ONE ref ``a.b``, not the swallowed ``a.b.jsonl``).
+            try:
+                name, i = match_ref(value, i)
+            except SettingsError as exc:
+                raise ValueError(str(exc)) from None
+            refs.append(name)
             continue
         i += 1
     return refs, var_names
