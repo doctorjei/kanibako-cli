@@ -63,14 +63,25 @@ requires_tmux = pytest.mark.skipif(
 
 
 def _image_available() -> bool:
-    """Check if the e2e test image is available locally."""
+    """Check if the e2e test image is available locally.
+
+    ⚑ Runs at COLLECTION time (the ``requires_image`` marker below is built at
+    module scope), so it must never raise: this module is collected by the plain
+    ``pytest tests/`` unit run too, where the e2e tests are all deselected. An
+    escaping exception there is a COLLECTION ERROR, which aborts the whole run
+    before a single unit test executes — a probe for an optional dependency
+    taking the entire suite down with it.
+    """
     if _podman is None:
         return False
-    result = subprocess.run(
-        [_podman, "image", "inspect", E2E_IMAGE],
-        capture_output=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            [_podman, "image", "inspect", E2E_IMAGE],
+            capture_output=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
     return result.returncode == 0
 
 
@@ -81,16 +92,27 @@ def _host_podman_storage() -> tuple[str, str] | None:
     subprocess's podman storage back to the host's real location via
     storage.conf. Without this, kanibako-launched podman looks for images
     in the test's tmp dir and never finds them.
+
+    ⚑ Like :func:`_image_available`, this runs at COLLECTION time and must never
+    raise. A ``podman info`` that is merely SLOW — a cold or contended daemon on a
+    shared CI runner — used to escape as ``TimeoutExpired`` and abort collection of
+    the entire suite, so the unit job reported ``1 error`` having run ZERO tests.
+    The timeout is a failure to learn the host storage, which this function's own
+    contract already describes as ``None``; it is not a reason to fail a run that
+    was not going to touch podman at all.
     """
     if _podman is None:
         return None
-    result = subprocess.run(
-        [_podman, "info", "--format",
-         "{{.Store.GraphRoot}}\n{{.Store.RunRoot}}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            [_podman, "info", "--format",
+             "{{.Store.GraphRoot}}\n{{.Store.RunRoot}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
     if result.returncode != 0:
         return None
     lines = result.stdout.strip().splitlines()
