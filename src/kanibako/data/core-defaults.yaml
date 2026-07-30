@@ -129,25 +129,18 @@ core:
   # (not ``~/``) so the dest is exactly ``/home/agent`` — no trailing slash, byte-
   # identical to the old hardwired ``{shell_path}:/home/agent:Z,U`` bind.
   #
-  # B2b: routed through the spec §2c per-mode home @-ref (single-route, the payoff).
-  #   primary/named → @workset.boxes/@meta.box.name/home  (L444)
-  #   standalone    → @meta.workset.path/box_data/home     (L427)
-  # `mode_meta_ref` is a PER-MODE @-ref map the loader picks by `proj.mode`; each
-  # resolves to the SAME literal `proj.shell_path` produces (byte-identical) because
-  # the loader materializes workset.boxes / meta.workset.path to the launch's own
-  # resolved roots.  `source: shell_path` is kept as the documentary symbolic name.
+  # Routed through the RO per-mode BOX ROOT `@meta.box.path` — ONE declaration for
+  # EVERY mode (spec §2c ALL PROJECTS: `box.bindings.rw.home | (@meta.box.path/home,
+  # ~/)`).  This REPLACES the old 3-arm `mode_meta_ref` map: the per-mode variation
+  # now lives in `meta.box.path` itself (settings_launch.workset_anchor_floor) and
+  # nowhere downstream, which is the whole point of the anchor.  It resolves to the
+  # SAME literal `proj.shell_path` produces in every mode (byte-identical — gated by
+  # a launch-path before/after comparison of the resolved mount).
+  # `source: shell_path` is kept as the documentary symbolic name.
   - key: home
     category: bindings.rw
     source: shell_path
-    mode_meta_ref:
-      primary: "@workset.boxes/@meta.box.name/home"
-      named: "@workset.boxes/@meta.box.name/home"
-      # standalone: the TRUE spec chain (§2c L427).  meta.workset.path resolves to
-      # the project ROOT (the B1 standalone meta.runtime.ws_root defect was FIXED in
-      # B2b — see _launch_snapshot_inputs: ws_root = str(proj.metadata_path) = <root>,
-      # NOT <root>/workspace), so this resolves to <root>/box_data/home =
-      # proj.shell_path (byte-identical).
-      standalone: "@meta.workset.path/box_data/home"
+    meta_ref: "@meta.box.path/home"
     box_dest: "~"
     options: "Z,U"
     scope: system
@@ -164,32 +157,33 @@ core:
     options: "Z,U"
     scope: system
   # Read-only vault (only when vault enabled; source is created if missing).
-  # B2b: routed per-mode (spec §2c) — primary/named @workset.vault_ro/@meta.box.name
-  # (L442), standalone @meta.workset.path/vault/ro (L425).
+  # Routed per-mode (spec §2c) — BOTH arms now root at the SAME `@workset.vault_ro`
+  # anchor, which is UNIFORM across modes (§2c ALL PROJECTS: `workset.vault_ro |
+  # @meta.workset.path/vault/ro`).  Only the BIND differs, and it differs for a real
+  # reason: primary/named get the per-box `/@meta.box.name` subdir (§2c ALL WORKSETS)
+  # that a lone standalone box does not need (§2c STANDALONE).  The standalone arm
+  # used to spell `@meta.workset.path/vault/ro` — a SECOND spelling of the same root;
+  # that duplication is what this collapses.
   - key: vault
     category: bindings.ro
     source: vault_ro_path
     mode_meta_ref:
       primary: "@workset.vault_ro/@meta.box.name"
       named: "@workset.vault_ro/@meta.box.name"
-      # standalone: the TRUE spec chain (§2c L425) — meta.workset.path = <root>
-      # (B2b ws_root fix), so this resolves to <root>/vault/ro = proj.vault_ro_path.
-      standalone: "@meta.workset.path/vault/ro"
+      standalone: "@workset.vault_ro"
     box_dest: "~/vault/ro"
     options: "ro"
     scope: vault
   # Read-write vault (only when vault enabled; source is created if missing).
-  # B2b: routed per-mode (spec §2c) — primary/named @workset.vault_rw/@meta.box.name
-  # (L445), standalone @meta.workset.path/vault/rw (L428).
+  # Same shape as the ro vault above: both arms root at the UNIFORM
+  # `@workset.vault_rw`; only the per-box `/@meta.box.name` subdir is per-mode.
   - key: vault
     category: bindings.rw
     source: vault_rw_path
     mode_meta_ref:
       primary: "@workset.vault_rw/@meta.box.name"
       named: "@workset.vault_rw/@meta.box.name"
-      # standalone: the TRUE spec chain (§2c L428) — meta.workset.path = <root>
-      # (B2b ws_root fix), so this resolves to <root>/vault/rw = proj.vault_rw_path.
-      standalone: "@meta.workset.path/vault/rw"
+      standalone: "@workset.vault_rw"
     box_dest: "~/vault/rw"
     options: "Z,U"
     scope: vault
@@ -255,15 +249,21 @@ helpers:
     source: helper_sock
     options: ""
   # Per-box helper message log → <box_state_kanibako>/helpers.jsonl (ro).
-  # B2b: routed through @meta.box.helper_log (the materialized resolved log path).
-  # The spec form @workset.logs/@meta.box.name.jsonl (primary/named) /
-  # @meta.workset.path/box_data/@meta.box.name.jsonl (standalone) embeds a literal
-  # ``.jsonl`` suffix DIRECTLY after a dotted @-ref — which the GREEDY _REF_NAME_RE
-  # would swallow into the key name (``meta.box.name.jsonl``), so it is NOT
-  # expand-parseable as written.  Materializing meta.box.helper_log to the launch's
-  # own resolved log path (= str(helper_log_path(std, proj))) routes a SINGLE
-  # whole-value @-ref that resolves byte-identically across all three modes
-  # (JC-B2b-3-adjacent — the suffix-after-ref parse limitation).
+  # Routed through @meta.box.helper_log (the materialized resolved log path) — ONE
+  # row for every mode, which is what the spec asks of this bind.
+  #
+  # ⚑ The spec's LITERAL spelling for it is NOT EXPRESSIBLE in the current grammar,
+  # and this is a known escalation, not an oversight.  That spelling puts a literal
+  # ``.jsonl`` suffix DIRECTLY after a dotted @-ref; an @-ref name is a GREEDY dotted
+  # run, so the suffix is swallowed INTO the ref name (the parser reads the key as
+  # ``…name.jsonl``), which then resolves absent → the embedded rule substitutes ""
+  # → the host_src loses both the box name and the extension.  There is no escape or
+  # delimiter for "the ref ends here" today; adding one (a brace form) is a RESOLVER
+  # SYNTAX change and therefore a spec-level decision, so it is NOT worked around
+  # here.  Materializing meta.box.helper_log to the launch's own resolved log path
+  # (= str(helper_log_path(std, proj))) routes a SINGLE whole-value @-ref that
+  # resolves byte-identically across all three modes — the working equivalent of the
+  # spec's intent, pending that decision.
   - key: helper_log
     category: bindings.ro
     source: helper_log

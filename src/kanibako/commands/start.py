@@ -4719,10 +4719,11 @@ def _launch_snapshot_inputs(
         # degenerate workset to root at the project dir itself.  ``resolve_standalone
         # _project`` sets ``metadata_path = root`` (the resolved project dir) and
         # ``project_path = root/"workspace"`` — so ``proj.metadata_path`` IS <root>
-        # exactly (verified: it equals ``Path(raw).resolve()``).  This makes the spec
-        # @meta.workset.path/{box_data/home,vault/ro,vault/rw} chains resolve to the
-        # box's real home/vault (byte-identical to proj.shell_path/vault_*_path), so
-        # the standalone home/vault binds route the TRUE spec form (no workaround).
+        # exactly (verified: it equals ``Path(raw).resolve()``).  Every standalone
+        # layout anchor hangs off this: workset.boxes = @meta.workset.path/box_data
+        # (hence meta.box.path, hence the home bind) and workset.vault_* =
+        # @meta.workset.path/vault/*, all byte-identical to proj.shell_path /
+        # proj.vault_*_path.
         ws_root_literal = str(proj.metadata_path)
     else:
         ws_root_literal = None  # primary uses the @config.primary_workset @-ref
@@ -4807,47 +4808,32 @@ def _launch_snapshot_inputs(
         agent_auth_share_support=agent_auth_support,
     )
 
-    # workset PATH-anchor materialization (block B2b, spec §2c/§2g). The workset-
-    # scope path anchors the @-ref-routed core home/vault/helper_log/workset-channel
-    # binds reference. Every value is the RESOLVED LITERAL the launch computes —
-    # derived DIRECTLY off ``proj`` so an @workset.*-routed bind expands byte-
-    # identically to the proj-attr host_src it replaces (the equivalence bar):
-    #   workset.boxes    = proj.shell_path's box-PARENT (boxes/<name>/home → boxes)
-    #   workset.vault_ro = proj.vault_ro_path's PARENT  (vault/ro/<name> → vault/ro)
-    #   workset.vault_rw = proj.vault_rw_path's PARENT
-    #   workset.logs     = the logs dir (helper_log_path's PARENT)
-    # PRIMARY/NAMED root these under @meta.workset.path; STANDALONE's are <None>
-    # (spec §2c L416) — its home/vault route through the TRUE @meta.workset.path/*
-    # spec chains directly (byte-identical now that the B2b ws_root fix made the
-    # standalone meta.workset.path = the project ROOT <root>, not <root>/workspace).
+    # LAYOUT-anchor materialization (spec §2c/§2g): the workset-scope path anchors
+    # AND the RO per-mode box root ``meta.box.path`` that the @-ref-routed core
+    # home/vault/helper_log/workset-channel binds reference. The anchor VALUES are
+    # the spec's own self-resolving @-ref formulas and are built ENTIRELY from
+    # *mode* inside ``workset_anchor_floor`` — the per-mode variation lives THERE
+    # and nowhere downstream (spec §2c L740), so this seam no longer derives any
+    # per-mode root literal off ``proj``. The only proj-derived value still needed
+    # is the helper-log path (whose bind cannot be spelled as an @-ref chain; see
+    # the ``workset_anchor_floor`` docstring) and the workset-local channel roots.
     from kanibako.paths import helper_log_path
 
     _log_path = helper_log_path(std, proj)
-    if mode == "standalone":
-        _boxes = _vault_ro = _vault_rw = _logs = None
-        _ws_channels = None
-    else:
-        _boxes = str(proj.shell_path.parent.parent)
-        _vault_ro = str(proj.vault_ro_path.parent)
-        _vault_rw = str(proj.vault_rw_path.parent)
-        _logs = str(_log_path.parent)
-        # The resolved workset-local channel roots (PRIMARY/NAMED only).
-        _wch = _channels.workset_channel_paths(proj, std)
-        _ws_channels = (
-            {
-                "commons": str(_wch.commons),
-                "chat": str(_wch.chat),
-                "share": str(_wch.share),
-            }
-            if _wch is not None
-            else None
-        )
+    # The resolved workset-local channel roots (PRIMARY/NAMED only; STANDALONE has
+    # no workset-local channels, spec §2c).
+    _wch = None if mode == "standalone" else _channels.workset_channel_paths(proj, std)
+    _ws_channels = (
+        {
+            "commons": str(_wch.commons),
+            "chat": str(_wch.chat),
+            "share": str(_wch.share),
+        }
+        if _wch is not None
+        else None
+    )
     workset_anchor = settings_launch_module.workset_anchor_floor(
         mode=mode,
-        boxes=_boxes,
-        vault_ro=_vault_ro,
-        vault_rw=_vault_rw,
-        logs=_logs,
         helper_log=str(_log_path),
         workset_channels=_ws_channels,
     )
@@ -5304,6 +5290,17 @@ def _box_journal_key(proj) -> str:
     ``home/``, so its parent is the host-side box dir that CONTAINS ``home/``
     (PRIMARY/NAMED ``boxes/<name>``; STANDALONE ``<root>/box_data``).  Known at
     write-ahead time; no per-mode special-casing.
+
+    ⚑ THIS IS ``meta.box.path``, SPELLED BY HAND — deliberately, and it is the one
+    place that is allowed to be.  Everything else that needs the box root reads the
+    ``meta.box.path`` anchor from the resolved snapshot (that is the whole point of
+    the anchor), so a second hand-derivation would normally be drift.  This one
+    cannot use the anchor: the journal entry is WRITE-AHEAD.  It is written BEFORE
+    the box directory exists and before any settings snapshot is built — recording
+    the INTENT to create is precisely what makes recovery possible — so there is no
+    keystore to read at the moment this value is needed.  A key that must exist
+    before the thing that resolves keys cannot come from it.  If the box-root
+    derivation ever changes, this is the site that must change with it.
     """
     return str(Path(proj.shell_path).parent)
 

@@ -976,8 +976,8 @@ def resolve_project(
 
     # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_ro"]/["vault_rw"]
     # custom-path OVERRIDE is DROPPED.  home/vault are now SOLELY the spec-derived
-    # default location (@workset.boxes/@meta.box.name/home + @workset.vault_{ro,rw}/
-    # @meta.box.name; the launch routes the home/vault binds through those @-refs).
+    # default location (@meta.box.path/home + @workset.vault_{ro,rw}/@meta.box.name;
+    # the launch routes the home/vault binds through those @-refs).
     # A user customizing home/vault now sets the box.bindings.{rw,ro}.{home,vault}
     # CASCADE override (which wins naturally), NOT a stored shell path.  The
     # ``shell``/``vault_*`` fields are no longer written to disk at all under sparse
