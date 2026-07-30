@@ -245,6 +245,93 @@ def unpack_bind(value: object) -> tuple[str, str, str | None]:
     )
 
 
+def match_var(expr: str, i: int) -> tuple[str, int]:
+    """Parse the ``$VAR`` / ``${VAR}`` reference starting at index *i* (the ``$``).
+
+    Returns ``(var_name, end_index)`` — the name WITHOUT its ``$`` (and without
+    the braces, when braced), plus the index one past the whole token.  Raises
+    :class:`SettingsError` on a malformed reference.
+
+    ⚑ PRECONDITION: ``expr[i] == "$"``.  The caller has already dispatched on that
+    character; this function does NOT re-verify it and will happily parse a name
+    starting at ``i + 1`` regardless of what ``expr[i]`` actually is.
+
+    The SINGLE parser for the ``$`` token family, exactly as :func:`match_ref` is
+    for ``@``: shared by :func:`_expand_var` (which resolves the name),
+    :func:`_scan_var_span` (which re-emits the source span for ``defer_env``) and
+    ``settings_configset._scan_tokens`` (which collects names for set-time
+    validation).  Those three carried THREE copies of this ten-line parse before;
+    one grammar, one copy, so a change to the token shape cannot land in some of
+    them and not others.
+    """
+    n = len(expr)
+    braced = i + 1 < n and expr[i + 1] == "{"
+    name_start = i + 2 if braced else i + 1
+    m = _VAR_NAME_RE.match(expr, name_start)
+    if m is None:
+        raise SettingsError(f"Malformed variable reference at: {expr[i:]!r}")
+    end = m.end()
+    if braced:
+        if end >= n or expr[end] != "}":
+            raise SettingsError(f"Unterminated ${{...}} reference: {expr[i:]!r}")
+        end += 1
+    return m.group(0), end
+
+
+def match_ref(expr: str, i: int) -> tuple[str, int]:
+    """Parse the ``@``-reference starting at index *i* (the ``@``).
+
+    Returns ``(ref_name, end_index)`` — the dotted name WITHOUT its ``@`` (and
+    without the braces, when braced), plus the index one past the whole token.
+    Raises :class:`SettingsError` on a malformed reference.
+
+    ⚑ PRECONDITION: ``expr[i] == "@"``.  Every caller dispatches on that character
+    before calling, and this function does NOT re-verify it — ``match_ref("xa.b",
+    0)`` returns ``("a.b", 4)`` rather than raising.  It is stated because this is
+    a cross-module seam, not a file-private helper: a new caller that scans for
+    ``@`` differently must still hand over the index OF the ``@``.
+
+    TWO SPELLINGS, one meaning:
+
+    * **BARE** ``@a.b.c`` — the dotted name runs greedily and ends at the first
+      character outside the name set (``@a.b/x`` refs ``a.b``).  This is the
+      NORMAL spelling and is unchanged.
+    * **BRACED** ``@{a.b.c}`` — the same name, delimited explicitly, so a LITERAL
+      SUFFIX may follow it: ``@{a.b.c}x`` resolves ``a.b.c`` then appends ``x``.
+      Braces are needed ONLY where the next character would otherwise be eaten by
+      the greedy name match — the spec's
+      ``@workset.logs/@{meta.box.name}.jsonl`` is exactly that case, since bare
+      ``@meta.box.name.jsonl`` parses as the single (absent) name
+      ``meta.box.name.jsonl`` and silently loses both the box name and the
+      extension.  Where both forms are expressible they resolve identically.
+
+    This is the SINGLE parser for both spellings, shared by the scanner
+    (:func:`_expand_ref`), the whole-value shape test
+    (``settings_expand._is_whole_value_ref``) and set-time validation
+    (``settings_configset._scan_tokens``) — one grammar, not three (seam S25).
+
+    The braced form deliberately MIRRORS ``${...}`` (:func:`_expand_var` /
+    :func:`_scan_var_span`): optional brace, the same name regex, a required
+    closing brace, and a distinct "unterminated" error.  Same idea, same
+    spelling, so the two token families cannot drift apart.  NESTING IS NOT
+    SUPPORTED and fails loudly (``@{a@{b}}`` is unterminated): a substituted
+    value is a LEAF and is never re-scanned, so a nested form would imply a
+    second, contradictory model of when expansion happens.
+    """
+    n = len(expr)
+    braced = i + 1 < n and expr[i + 1] == "{"
+    name_start = i + 2 if braced else i + 1
+    m = _REF_NAME_RE.match(expr, name_start)
+    if m is None:
+        raise SettingsError(f"Malformed @-reference at: {expr[i:]!r}")
+    end = m.end()
+    if braced:
+        if end >= n or expr[end] != "}":
+            raise SettingsError(f"Unterminated @{{...}} reference: {expr[i:]!r}")
+        end += 1
+    return m.group(0), end
+
+
 def expand_expr(
     expr: str,
     *,
@@ -271,9 +358,14 @@ def expand_expr(
       ``ctx.agent_name``, ``WORKSET`` → ``ctx.workset_name``, ``XDG_*`` →
       ``ctx.xdg[name]``.  Unknown names, or known names whose context value is
       ``None``/missing, raise :class:`SettingsError`.
-    * **``@``-ref:** ``@`` then a dotted name ``[A-Za-z0-9_]+(\\.[...])*``.  The
-      ref name ends at the first char outside that set.  Cycle-guarded against
-      *chain* and capped at :data:`MAX_REF_DEPTH`.  Substitutes
+    * **``@``-ref:** two spellings, parsed by :func:`match_ref` and resolved
+      IDENTICALLY.  BARE ``@a.b.c`` — ``@`` then a dotted name
+      ``[A-Za-z0-9_]+(\\.[...])*`` that ends at the first char outside that set.
+      BRACED ``@{a.b.c}`` — the same name delimited explicitly, so a LITERAL
+      SUFFIX may follow (``@{a.b.c}.jsonl``, which the bare form cannot express
+      because the name match would swallow ``.jsonl``).  Braces are needed only
+      there; ``@a.b.c`` stays the normal spelling.  Either way: cycle-guarded
+      against *chain*, capped at :data:`MAX_REF_DEPTH`, and substitutes
       ``lookup(ref_name, chain + (ref_name,))``; the result is a leaf.
 
     *defer_env* (default ``False`` — existing callers are byte-for-byte
@@ -352,36 +444,22 @@ def _scan_var_span(expr: str, i: int) -> tuple[str, int]:
     expansion agree on token boundaries), but emits the source text unchanged
     (``$XDG_STATE_HOME`` / ``${XDG_STATE_HOME}``) rather than a resolved value. A
     malformed reference raises identically to :func:`_expand_var` — a deferred
-    token must still be well-formed at build, just not resolved here.
+    token must still be well-formed at build, just not resolved here — because
+    both delegate the parse to :func:`match_var`; "identically" is now structural
+    rather than two copies that happen to agree.
     """
-    n = len(expr)
-    braced = i + 1 < n and expr[i + 1] == "{"
-    name_start = i + 2 if braced else i + 1
-    m = _VAR_NAME_RE.match(expr, name_start)
-    if m is None:
-        raise SettingsError(f"Malformed variable reference at: {expr[i:]!r}")
-    end = m.end()
-    if braced:
-        if end >= n or expr[end] != "}":
-            raise SettingsError(f"Unterminated ${{...}} reference: {expr[i:]!r}")
-        end += 1
+    _name, end = match_var(expr, i)
     return expr[i:end], end
 
 
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]:
-    """Expand a ``$VAR`` or ``${VAR}`` starting at index *i* (the ``$``)."""
-    n = len(expr)
-    braced = i + 1 < n and expr[i + 1] == "{"
-    name_start = i + 2 if braced else i + 1
-    m = _VAR_NAME_RE.match(expr, name_start)
-    if m is None:
-        raise SettingsError(f"Malformed variable reference at: {expr[i:]!r}")
-    name = m.group(0)
-    end = m.end()
-    if braced:
-        if end >= n or expr[end] != "}":
-            raise SettingsError(f"Unterminated ${{...}} reference: {expr[i:]!r}")
-        end += 1
+    """Expand a ``$VAR`` or ``${VAR}`` starting at index *i* (the ``$``).
+
+    Parses via the shared :func:`match_var`; only the RESOLUTION of the name is
+    this function's own (the ``defer_env`` twin :func:`_scan_var_span` re-emits
+    the source span instead, from the same parse).
+    """
+    name, end = match_var(expr, i)
     return _resolve_var(name, ctx), end
 
 
@@ -408,12 +486,13 @@ def _expand_ref(
     lookup: Callable[[str, tuple[str, ...]], str],
     chain: tuple[str, ...],
 ) -> tuple[str, int]:
-    """Expand an ``@ref`` starting at index *i* (the ``@``)."""
-    m = _REF_NAME_RE.match(expr, i + 1)
-    if m is None:
-        raise SettingsError(f"Malformed @-reference at: {expr[i:]!r}")
-    ref_name = m.group(0)
-    end = m.end()
+    """Expand an ``@ref`` starting at index *i* (the ``@``).
+
+    Both spellings (bare ``@a.b.c`` and braced ``@{a.b.c}``) are parsed by the
+    shared :func:`match_ref`; everything below — the cycle guard, the depth cap,
+    the ``lookup`` substitution — is spelling-agnostic and identical for the two.
+    """
+    ref_name, end = match_ref(expr, i)
     if ref_name in chain:
         cycle = " -> ".join((*chain, ref_name))
         raise SettingsError(f"Cyclic @-reference: {cycle}")

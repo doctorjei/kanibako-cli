@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.agent_ref import CANONICAL_SEP
 from kanibako.settings_resolve import (
     GUEST_HOME,
     MAX_REF_DEPTH,
@@ -13,6 +14,8 @@ from kanibako.settings_resolve import (
     ResolvedValue,
     SettingsError,
     expand_expr,
+    match_ref,
+    match_var,
     resolve_value,
     split_bind,
     unpack_bind,
@@ -244,6 +247,224 @@ def test_expand_ref_ends_at_nonname_char() -> None:
     assert seen == ["a.b.c"]
 
 
+# ---------------------------------------------------------------------------
+# expand_expr — BRACED @{name} refs (PHASE R)
+#
+# ``@{<name>}`` delimits the ref name explicitly so a LITERAL SUFFIX may follow.
+# The bare form is unchanged and stays the normal spelling; braces are needed
+# only where the next character would otherwise be eaten by the greedy dotted
+# name match. Both forms resolve identically where both are expressible.
+# ---------------------------------------------------------------------------
+
+
+def test_expand_braced_ref_with_literal_suffix() -> None:
+    # THE case the form exists for (spec §2c helper_log): a ``.jsonl`` suffix
+    # directly after a dotted ref. Bare ``@meta.box.name.jsonl`` parses as the
+    # single name ``meta.box.name.jsonl`` (asserted in the companion test below),
+    # swallowing the extension; the braced form keeps them separate.
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "/ws/logs/mybox"
+
+    assert (
+        expand_expr("@{meta.box.name}.jsonl", space="host", ctx=make_ctx(), lookup=lookup)
+        == "/ws/logs/mybox.jsonl"
+    )
+    assert seen == ["meta.box.name"]  # the suffix is NOT part of the ref name.
+
+
+def test_expand_bare_ref_still_swallows_a_dotted_suffix() -> None:
+    # The limitation the braced form works around, pinned so it cannot silently
+    # change: bare ``@a.b.c`` is GREEDY over dot-separated segments.
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "/x"
+
+    expand_expr("@meta.box.name.jsonl", space="host", ctx=make_ctx(), lookup=lookup)
+    assert seen == ["meta.box.name.jsonl"]
+
+
+def test_expand_braced_and_bare_agree_where_both_expressible() -> None:
+    # Where the bare form CAN express it (a ``/`` ends the name), the two
+    # spellings are the same expression.
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        assert ref == "a.b.c"
+        return "/root"
+
+    braced = expand_expr("@{a.b.c}/x", space="host", ctx=make_ctx(), lookup=lookup)
+    bare = expand_expr("@a.b.c/x", space="host", ctx=make_ctx(), lookup=lookup)
+    assert braced == bare == "/root/x"
+
+
+def test_expand_braced_ref_alone_equals_bare_alone() -> None:
+    # Nothing following the brace → identical to the bare form (the whole-value
+    # position; its 3-state behaviour is covered in test_settings_expand.py).
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        assert ref == "a.b.c"
+        return "/root"
+
+    braced = expand_expr("@{a.b.c}", space="host", ctx=make_ctx(), lookup=lookup)
+    bare = expand_expr("@a.b.c", space="host", ctx=make_ctx(), lookup=lookup)
+    assert braced == bare == "/root"
+
+
+def test_expand_braced_ref_admits_persona_separator() -> None:
+    # The braced form shares ``_REF_SEG`` with the bare one, so the persona node
+    # separator ``℘`` stays ONE ref component inside braces too (it is not a
+    # second char class that could drift).
+    ref_name = f"meta.agent.navigator{CANONICAL_SEP}claude.auth.share_support"
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "true"
+
+    assert (
+        expand_expr(
+            "@{" + ref_name + "}.x", space="host", ctx=make_ctx(), lookup=lookup
+        )
+        == "true.x"
+    )
+    assert seen == [ref_name]
+
+
+def test_expand_brace_not_after_at_is_literal() -> None:
+    # A ``{`` that does NOT immediately follow ``@`` is an ordinary literal: the
+    # bare ref ends at it, and the braces pass through untouched.
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "/x"
+
+    assert (
+        expand_expr("@a.b{x}", space="host", ctx=make_ctx(), lookup=lookup) == "/x{x}"
+    )
+    assert seen == ["a.b"]
+
+
+def test_expand_escaped_at_brace_is_literal() -> None:
+    # The escape rule is unchanged and takes precedence — this is the way to
+    # write a literal ``@{`` in a value.
+    assert (
+        expand_expr("\\@{a.b}", space="host", ctx=make_ctx(), lookup=no_lookup)
+        == "@{a.b}"
+    )
+
+
+def test_expand_braced_ref_in_guest_space() -> None:
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        assert ref == "a.b"
+        return "/g"
+
+    assert (
+        expand_expr("~/x/@{a.b}.log", space="guest", ctx=make_ctx(), lookup=lookup)
+        == f"{GUEST_HOME}/x//g.log"
+    )
+
+
+def test_expand_braced_ref_expands_under_defer_env() -> None:
+    # defer_env defers ENVIRONMENT tokens only; ``@``-refs (CONFIG) still expand,
+    # in either spelling.
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        assert ref == "a.b"
+        return "/cfg"
+
+    assert (
+        expand_expr(
+            "$XDG_STATE_HOME/@{a.b}.jsonl",
+            space="host",
+            ctx=make_ctx(),
+            lookup=lookup,
+            defer_env=True,
+        )
+        == "$XDG_STATE_HOME//cfg.jsonl"
+    )
+
+
+def test_expand_braced_ref_cycle_via_lookup_reentry_raises() -> None:
+    # The cycle guard lives past the parse and is spelling-agnostic.
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        return expand_expr(
+            "@{a}", space="host", ctx=make_ctx(), lookup=lookup, chain=chain
+        )
+
+    with pytest.raises(SettingsError, match="Cyclic"):
+        expand_expr("@{a}x", space="host", ctx=make_ctx(), lookup=lookup)
+
+
+# ---------------------------------------------------------------------------
+# match_ref — the shared parser's own contract (used by settings_expand +
+# settings_configset, so the returned END INDEX is load-bearing, not internal)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "expr,name,end",
+    [
+        ("@a.b.c", "a.b.c", 6),
+        ("@a.b.c/x", "a.b.c", 6),  # bare name ends at the non-name char.
+        ("@{a.b.c}", "a.b.c", 8),  # end is PAST the closing brace.
+        ("@{a.b.c}.jsonl", "a.b.c", 8),
+        ("@{a}", "a", 4),
+    ],
+)
+def test_match_ref_name_and_end(expr: str, name: str, end: int) -> None:
+    assert match_ref(expr, 0) == (name, end)
+
+
+def test_match_ref_at_an_offset() -> None:
+    # Callers scan left-to-right and hand it the index OF the ``@``.
+    assert match_ref("pre-@{a.b}-post", 4) == ("a.b", 10)
+
+
+@pytest.mark.parametrize(
+    "expr,name,end",
+    [
+        ("$AGENT", "AGENT", 6),
+        ("$XDG_DATA_HOME/x", "XDG_DATA_HOME", 14),
+        ("${XDG_DATA_HOME}", "XDG_DATA_HOME", 16),  # end is PAST the brace.
+        ("${A}b", "A", 4),
+    ],
+)
+def test_match_var_name_and_end(expr: str, name: str, end: int) -> None:
+    assert match_var(expr, 0) == (name, end)
+
+
+def test_match_var_is_the_one_parser_for_the_dollar_family() -> None:
+    """``_expand_var`` / ``_scan_var_span`` / ``_scan_tokens`` share ONE parse.
+
+    They carried three copies of the same ten lines. Agreement on token
+    BOUNDARIES is what the ``defer_env`` deferral depends on (the span re-emitted
+    box-side must be exactly the span the host-side expander would have consumed),
+    so it is asserted structurally rather than left to three copies happening to
+    match — the same argument that made ``match_ref`` public.
+    """
+    from kanibako.settings_configset import _scan_tokens
+    from kanibako.settings_resolve import _scan_var_span
+
+    for expr in ("$AGENT", "${XDG_DATA_HOME}", "$XDG_DATA_HOME/x"):
+        name, end = match_var(expr, 0)
+        span, span_end = _scan_var_span(expr, 0)
+        assert span_end == end  # identical boundary...
+        assert span == expr[:end]  # ...and the span IS that slice.
+        assert name in span
+        assert _scan_tokens(expr)[1] == [name]  # ...and the same name.
+
+
+@pytest.mark.parametrize(
+    "expr,match",
+    [("$", "Malformed"), ("${", "Malformed"), ("$/x", "Malformed"), ("${X", "Unterminated")],
+)
+def test_match_var_malformed_raises(expr: str, match: str) -> None:
+    with pytest.raises(SettingsError, match=match):
+        match_var(expr, 0)
+
+
 def test_expand_substituted_value_is_leaf() -> None:
     # A returned value containing $ / @ is NOT re-scanned.
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
@@ -301,6 +522,30 @@ def test_expand_cycle_via_lookup_reentry_raises() -> None:
 
     with pytest.raises(SettingsError, match="Cyclic"):
         expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup)
+
+
+@pytest.mark.parametrize(
+    "expr,match",
+    [
+        # No name at all after the brace.
+        ("@{", "Malformed"),
+        ("@{}", "Malformed"),
+        # A name that never closes — the ``${...}`` unterminated case, mirrored.
+        ("@{a.b.c", "Unterminated"),
+        # The name stops at the offending char and the next char is not ``}``.
+        ("@{a b}", "Unterminated"),
+        ("@{a.b.}", "Unterminated"),
+        # NESTING IS NOT SUPPORTED and must fail loudly: a substituted value is a
+        # leaf and is never re-scanned, so a nested form would imply a second,
+        # contradictory model of when expansion happens.
+        ("@{a@{b}}", "Unterminated"),
+        # Embedded position fails the same way (one parser, one grammar).
+        ("pre-@{a b}-post", "Unterminated"),
+    ],
+)
+def test_expand_malformed_braced_ref_raises(expr: str, match: str) -> None:
+    with pytest.raises(SettingsError, match=match):
+        expand_expr(expr, space="host", ctx=make_ctx(), lookup=no_lookup)
 
 
 def test_expand_depth_cap_raises() -> None:

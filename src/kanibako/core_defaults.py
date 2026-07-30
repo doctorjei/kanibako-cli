@@ -447,9 +447,14 @@ def helper_default_categories(
         if not src_path.exists():
             continue
         category = entry["category"]
-        # B2b: helper_log routes through @meta.box.helper_log (the materialized
-        # resolved log path) — byte-identical to the probed ``src_path`` because the
-        # anchor holds ``str(helper_log_path(std, proj))``.  helper_sock is NOT
+        # B2b: helper_log routes through the spec's own formula
+        # ``@workset.logs/@{meta.box.name}.jsonl`` (§2c) — byte-identical to the
+        # probed ``src_path`` in all three modes, since ``workset.logs`` and
+        # ``meta.box.name`` resolve to exactly what ``helper_log_path(std, proj)``
+        # builds (gated by a before/after comparison of the resolved bind, PHASE R).
+        # ⚑ The ``.exists()`` gate above keys off the PROBED path while the emitted
+        # host_src is the FORMULA, so a user repointing ``workset.logs`` moves the
+        # MOUNT but not the hub's WRITER — see migration M-14.  helper_sock is NOT
         # routed: its host path is the LENGTH-BOUNDED (hashable) socket name
         # ``bounded_socket_name(<box>-<ws>, run_dir)``, which the spec form
         # ``@system.runtime/<box>-<ws>.sock`` cannot reproduce when the name is

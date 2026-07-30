@@ -101,7 +101,7 @@ class TestB2bHomeVaultByteIdentity:
             mode="primary", ws_name="__PRIMARY__",
         ))
         floor.update(workset_anchor_floor(
-            mode="primary", helper_log="/data/pw/logs/mybox.jsonl",
+            mode="primary",
         ))
         floor.update(meta_identity_floor(
             box_name="mybox", project_path="/code/x", inbox="/i",
@@ -139,7 +139,7 @@ class TestB2bHomeVaultByteIdentity:
             mode="standalone", ws_name="__STANDALONE__", ws_root_literal="/proj",
         ))
         floor.update(workset_anchor_floor(
-            mode="standalone", helper_log="/proj/box_data/sb.jsonl",
+            mode="standalone",
         ))
         floor.update(meta_identity_floor(
             box_name="sb", project_path="/proj/workspace", inbox="/i",
@@ -168,7 +168,7 @@ class TestB2bHomeVaultByteIdentity:
         }
         floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
         floor.update(workset_anchor_floor(
-            mode="primary", helper_log="/l/mybox.jsonl",
+            mode="primary",
         ))
         floor.update(meta_identity_floor(
             box_name="mybox", project_path="/code/x", inbox="/i",
@@ -213,7 +213,6 @@ class TestB2bWorksetAnchors:
 
         floor = workset_anchor_floor(
             mode="named",
-            helper_log="/ws/logs/b.jsonl",
             workset_channels={"commons": "/ws/ch/commons", "chat": "/ws/ch/chat",
                               "share": "/ws/ch/share"},
         )
@@ -224,8 +223,16 @@ class TestB2bWorksetAnchors:
         assert floor["workset.logs"] == "@meta.workset.path/logs"
         # The RO box root: primary/named carry the per-box name leaf.
         assert floor["meta.box.path"] == "@workset.boxes/@meta.box.name"
-        assert floor["meta.box.helper_log"] == "/ws/logs/b.jsonl"
         assert floor["workset.channels.commons"] == "/ws/ch/commons"
+        # ⚑ NO construct-time literals here — every anchor is a FORMULA. The
+        # retired ``meta.box.helper_log`` was the last one; the helper-log bind
+        # now spells itself ``@workset.logs/@{meta.box.name}.jsonl`` (PHASE R).
+        assert "meta.box.helper_log" not in floor
+        assert all(
+            not isinstance(v, str) or v.startswith("@")
+            for k, v in floor.items()
+            if k.startswith("meta.box.") or k.startswith("workset.vault")
+        ), floor
 
     def test_standalone_anchors(self):
         """Standalone's anchors carry REAL values (they used to be ``None``).
@@ -246,7 +253,7 @@ class TestB2bWorksetAnchors:
         from kanibako.settings_launch import workset_anchor_floor
 
         floor = workset_anchor_floor(
-            mode="standalone", helper_log="/proj/box_data/b.jsonl",
+            mode="standalone",
         )
         # Standalone roots its degenerate workset at the project dir: the box store
         # is the box_data/ marker dir, and the logs live inside the box root itself.
@@ -259,11 +266,12 @@ class TestB2bWorksetAnchors:
         # there is no join, hence no trailing separator and no empty path segment.
         assert floor["meta.box.path"] == "@workset.boxes"
         assert not floor["meta.box.path"].endswith("/")
-        # helper_log still routes a whole-value anchor (the spec's literal spelling
-        # is not expressible — the ref-name grammar swallows the .jsonl suffix).
-        assert floor["meta.box.helper_log"] == "/proj/box_data/b.jsonl"
-        # No invented resolved-literal home/vault anchors remain.
+        # No invented resolved-literal anchors remain — not for home/vault, and
+        # (since PHASE R made the spec's spelling expressible) not for the log
+        # either: the bind is ``@workset.logs/@{meta.box.name}.jsonl``, and
+        # ``workset.logs = @meta.box.path`` above is what makes it standalone.
         assert "meta.box.home_src" not in floor
+        assert "meta.box.helper_log" not in floor
         assert "meta.box.vault_ro_src" not in floor
         assert "meta.box.vault_rw_src" not in floor
         # No workset channels for standalone.
@@ -375,7 +383,7 @@ def _probe_snapshot(mode, proj, ws_root, helper_log):
         box_name=proj.name, project_path=str(proj.project_path),
         inbox="/i", share_global="/sg", share_workset=None,
     ))
-    floor.update(workset_anchor_floor(mode=mode, helper_log=str(helper_log)))
+    floor.update(workset_anchor_floor(mode=mode))
     snap = build_launch_snapshot(
         agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
         workset_path=None, box_path=None, default_categories=floor,
@@ -440,6 +448,48 @@ class TestP1BoxRootAnchor:
         }
         assert emitted["primary"] == ("@meta.box.path/home", "~", "Z,U")
         assert len(set(emitted.values())) == 1, emitted
+
+    def test_helper_log_bind_is_the_spec_formula_and_mode_independent(self, tmp_path):
+        """The helper-log host_src IS the spec's row, spelled once for all modes.
+
+        PHASE R. ``test_vault_and_logs_resolve_identically_in_all_three_modes``
+        proves the chain RESOLVES to the right absolute path; this proves it is
+        spelled the way the spec says (§2c ALL PROJECTS,
+        ``@workset.logs/@{meta.box.name}.jsonl``) rather than resolving correctly
+        by some other route. Two things it stops from creeping back:
+
+        * the retired ``@meta.box.helper_log`` construct-time literal, which
+          existed ONLY because the braced form did not parse — a second spelling
+          for one bind, and an undeclared key besides;
+        * a per-mode arm, the duplication ``workset.logs`` exists to absorb.
+
+        ⚑ The BRACES are the load-bearing part: bare ``@meta.box.name.jsonl``
+        parses as one greedy dotted name, resolves absent, and coerces to "" —
+        losing both the box name and the extension. That failure is silent at
+        every layer, which is why the spelling is pinned and not just the result.
+        """
+        from kanibako import core_defaults
+
+        log = tmp_path / "b.jsonl"
+        log.touch()
+        emitted = core_defaults.helper_default_categories(
+            box_state_kanibako="/home/agent/.local/state/kanibako",
+            socket_path=log,  # any existing path; only the log row is asserted.
+            log_path=log,
+        )["box.bindings.ro.helper_log"]
+        assert emitted == (
+            "@workset.logs/@{meta.box.name}.jsonl",
+            "/home/agent/.local/state/kanibako/helpers.jsonl",
+            "ro",
+        )
+        # ONE ROW FOR ALL MODES is structural, not a coincidence of three equal
+        # arms: the builder takes no ``mode`` at all, so there is nowhere for a
+        # per-mode arm to live. ``workset.logs`` carries the whole variation.
+        import inspect
+
+        assert "mode" not in inspect.signature(
+            core_defaults.helper_default_categories
+        ).parameters
 
     def test_meta_box_path_is_the_box_root_per_mode(self, tmp_path):
         """The anchor means what its name says: the host-side BOX ROOT.

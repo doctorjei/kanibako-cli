@@ -687,13 +687,13 @@ class TestHelperDefaultCategories:
             socket_path=sock,
             log_path=log,
         )
-        # B2b: helper_log routes through @meta.box.helper_log (the materialized
-        # resolved log path) — the spec @workset.logs/@meta.box.name.jsonl form is
-        # not expand-parseable (the greedy ref regex swallows the .jsonl suffix), so
-        # a single whole-value @-ref to the resolved literal is used.  The .exists()
-        # gate still keys off the probed log; only the emitted host_src is the @-ref.
+        # B2b: helper_log routes through the SPEC'S OWN formula (§2c ALL PROJECTS),
+        # expressible since PHASE R added the braced @{...} form — the braces keep
+        # the ``.jsonl`` suffix out of the ref name, which the greedy bare form
+        # would swallow.  The .exists() gate still keys off the probed log; only the
+        # emitted host_src is the @-ref chain.
         assert cats["box.bindings.ro.helper_log"] == (
-            "@meta.box.helper_log",
+            "@workset.logs/@{meta.box.name}.jsonl",
             "/home/agent/.local/state/kanibako/helpers.jsonl",
             "ro",
         )
@@ -733,15 +733,26 @@ class TestHelperDefaultCategories:
         )
         # Resolved through the LIVE launch route (build_launch_snapshot →
         # snapshot_category_entries → reconcile), the same single route a real
-        # launch takes. B2b: helper_log routes through @meta.box.helper_log —
-        # materialize the anchor in the floor, as the launch does.
+        # launch takes. B2b: helper_log routes through
+        # ``@workset.logs/@{meta.box.name}.jsonl``, so the floor below STANDS IN FOR
+        # ``workset_anchor_floor`` / ``meta_identity_floor`` with LITERALS.
+        # ⚑ Not the same thing: the real ``workset_anchor_floor`` materializes
+        # ``workset.logs`` as the FORMULA ``@meta.workset.path/logs``, so this test
+        # does NOT exercise the anchor chain — it pins the LAST link, that the bind's
+        # own @-ref resolves back to the same path the ``.exists()`` gate probed.
+        # The anchor chain itself is covered by ``test_categories_live`` and the
+        # three-mode before/after probe.
         ctx = ResolveCtx(
             agent_name="claude",
             workset_name="ws",
             host_home="/home/u",
             xdg={},
         )
-        floor = {"meta.box.helper_log": str(log), **cats}
+        floor = {
+            "workset.logs": str(log.parent),
+            "meta.box.name": log.stem,
+            **cats,
+        }
         snap = build_launch_snapshot(
             agent_name="claude", ctx=ctx,
             system_path=None, agent_path=None, workset_path=None, box_path=None,
@@ -756,3 +767,7 @@ class TestHelperDefaultCategories:
         assert sock_mount.box_dest == (
             "/home/agent/.local/state/kanibako/helper.sock"
         )
+        # And the log bind's @-ref chain resolves back to the probed log path —
+        # the formula and the .exists()-gated literal must agree (PHASE R).
+        log_mount = next(e for e in reconciled.mounts if e.name == "helper_log")
+        assert log_mount.host_src == str(log)

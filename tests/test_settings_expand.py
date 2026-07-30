@@ -186,6 +186,121 @@ def test_whole_value_present_none_propagates_none() -> None:
     assert _probe(out, "c") is None
 
 
+# --------------------------------------------------------------------------- #
+# BRACED @{name} whole-value refs (PHASE R) — the 3-state MUST be inherited    #
+# --------------------------------------------------------------------------- #
+#
+# ⚑ WHY THIS BLOCK EXISTS. ``@{a.b}`` with nothing following is a WHOLE-VALUE ref
+# and must inherit the referent's 3-state VERBATIM, exactly as ``@a.b`` does. If
+# ``_is_whole_value_ref`` failed to recognise the braced form, the value would
+# fall through to the EMBEDDED path, where ``_lookup_str`` coerces absent/None to
+# "" — silently turning the §3 "omit this bind" None terminal into a real
+# empty-string value. That substitution is invisible at every other layer, so it
+# is pinned here. Each test below mirrors its bare-form sibling above one-for-one.
+
+
+def test_braced_whole_value_absent_drops_key_full_chain() -> None:
+    # Mirror of test_whole_value_absent_drops_key_full_chain with braces.
+    snap = KeyStore({"a": "@{b}", "b": "@{c}"})
+    out = expand(snap, _ctx())
+    assert _probe(out, "a") is _MISSING
+    assert _probe(out, "b") is _MISSING
+
+
+def test_braced_whole_value_present_none_propagates_none() -> None:
+    # ⚑ THE silent-behaviour-change guard. c is present-None; a and b must carry
+    # None — NOT "" (the embedded coercion) and NOT "None" (a stringification).
+    snap = KeyStore({"a": "@{b}", "b": "@{c}", "c": None})
+    out = expand(snap, _ctx())
+    for key in ("a", "b", "c"):
+        got = _probe(out, key)
+        assert got is None, f"{key}: expected the None terminal, got {got!r}"
+        # Asserted both ways: a coerced "" and a stringified "None" are the two
+        # ways this can silently pass while meaning something else entirely.
+        assert got != ""
+        assert got != "None"
+
+
+def test_braced_whole_value_multi_hop_chain() -> None:
+    # Mixed spellings across hops collapse to the same terminal.
+    snap = KeyStore({"a": "@{b}", "b": "@c", "c": "/leaf"})
+    out = expand(snap, _ctx())
+    assert out["a"] == "/leaf" and out["b"] == "/leaf"
+
+
+def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
+    # VERBATIM means type-preserving, not just None-preserving: a bool referent
+    # comes back a bool, never the string "True".
+    snap = KeyStore({"avail": "@{workset.enabled}", "workset": {"enabled": True}})
+    out = expand(snap, _ctx())
+    assert out["avail"] is True
+
+
+def test_braced_embedded_absent_coerces_empty_and_keeps_key() -> None:
+    # THE CONTRAST that proves the two shapes stay distinguished: the SAME ref,
+    # with a suffix, is EMBEDDED — absent coerces to "" and the key survives.
+    snap = KeyStore({"a": "@{x.y}.jsonl", "c": "/ok"})
+    out = expand(snap, _ctx())
+    assert out["a"] == ".jsonl"
+    assert out["c"] == "/ok"
+
+
+def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@{missing}", "~/x")}}}})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "x") is _MISSING
+
+
+def test_braced_bind_whole_value_host_present_none_carries_none() -> None:
+    snap = KeyStore({
+        "src": None,
+        "box": {"bindings": {"rw": {"x": Bind("@{src}", "~/x")}}},
+    })
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "x") is None
+
+
+def test_braced_bind_host_suffix_resolves_like_the_spec_row() -> None:
+    # The shape the spec's helper_log row uses, end to end through ``expand``.
+    snap = KeyStore({
+        "workset": {"logs": "/ws/logs"},
+        "meta": {"box": {"name": "mybox"}},
+        "box": {"bindings": {"ro": {"helper_log": Bind(
+            "@workset.logs/@{meta.box.name}.jsonl",
+            "$XDG_STATE_HOME/kanibako/helpers.jsonl",
+            "ro",
+        )}}},
+    })
+    out = expand(snap, _ctx())
+    b = out["box"]["bindings"]["ro"]["helper_log"]
+    assert b.host == "/ws/logs/mybox.jsonl"
+    # box_dest keeps its ENVIRONMENT token RAW (deferred box-side, S17).
+    assert b.box == "$XDG_STATE_HOME/kanibako/helpers.jsonl"
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("@a.b", "a.b"),  # bare — unchanged.
+        ("@{a.b}", "a.b"),  # braced, nothing following → WHOLE-VALUE.
+        ("@{a.b}x", None),  # a suffix makes it embedded.
+        ("@{a.b}/c", None),
+        ("x@{a.b}", None),
+        ("@{a.b", None),  # malformed → None, and must NOT raise (see below).
+        ("@{", None),
+        ("@{}", None),
+        ("@{a@{b}}", None),
+        ("", None),
+        ("~/x", None),
+    ],
+)
+def test_is_whole_value_ref_braced_shapes(value: str, expected: str | None) -> None:
+    # The predicate is TOTAL: malformed input answers None rather than raising, so
+    # it falls through to the embedded path and ``expand_expr`` raises there —
+    # keeping the error message and its raising site identical to before PHASE R.
+    assert _is_whole_value_ref(value) == expected
+
+
 def test_whole_value_resolves_terminal() -> None:
     snap = KeyStore({"avail": "@workset.enabled", "workset": {"enabled": True}})
     out = expand(snap, _ctx())
@@ -537,6 +652,29 @@ def test_lenient_collects_dangling_embedded_ref() -> None:
     snap = KeyStore({"a": "pre-@nope.x-post", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "nope.x" in errors["a"]
+    assert _probe(expanded, "a") is _MISSING
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_collects_dangling_braced_ref_like_a_bare_one() -> None:
+    # PHASE R: "set-time validation treats a dangling BRACED ref exactly as it
+    # treats a dangling bare one" — same error map, same key, same named ref, in
+    # BOTH the whole-value and the embedded (suffixed) position.
+    snap = KeyStore({"a": "@{nope.missing}", "b": "@{nope.missing}.jsonl", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "nope.missing" in errors["a"]
+    assert "b" in errors and "nope.missing" in errors["b"]
+    assert _probe(expanded, "a") is _MISSING
+    assert _probe(expanded, "b") is _MISSING
+    assert expanded["c"] == "/ok"
+
+
+def test_lenient_collects_malformed_braced_ref() -> None:
+    # A malformed brace is a defect RECORDED against its leaf, not a raise that
+    # takes the whole lenient pass down (the ``config set`` path depends on this).
+    snap = KeyStore({"a": "@{nope", "c": "/ok"})
+    expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "a" in errors and "Unterminated" in errors["a"]
     assert _probe(expanded, "a") is _MISSING
     assert expanded["c"] == "/ok"
 

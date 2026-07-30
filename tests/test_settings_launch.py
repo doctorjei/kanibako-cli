@@ -1744,11 +1744,11 @@ def test_workset_anchor_floor_rejects_unknown_mode():
     from kanibako.settings_launch import workset_anchor_floor
 
     with pytest.raises(_SettingsError) as exc:
-        workset_anchor_floor(mode="local", helper_log="/l/b.jsonl")
+        workset_anchor_floor(mode="local")
     assert "local" in str(exc.value)
     # The three real modes are accepted.
     for mode in ("primary", "named", "standalone"):
-        assert workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl")
+        assert workset_anchor_floor(mode=mode)
 
 
 def test_workset_anchor_floor_meta_box_path_per_mode():
@@ -1761,12 +1761,12 @@ def test_workset_anchor_floor_meta_box_path_per_mode():
     from kanibako.settings_launch import workset_anchor_floor
 
     for mode in ("primary", "named"):
-        floor = workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl")
+        floor = workset_anchor_floor(mode=mode)
         assert floor["meta.box.path"] == "@workset.boxes/@meta.box.name"
         assert floor["workset.boxes"] == "@meta.workset.path/boxes"
         assert floor["workset.logs"] == "@meta.workset.path/logs"
 
-    floor = workset_anchor_floor(mode="standalone", helper_log="/l/b.jsonl")
+    floor = workset_anchor_floor(mode="standalone")
     assert floor["meta.box.path"] == "@workset.boxes"
     assert not floor["meta.box.path"].endswith("/")
     assert floor["workset.boxes"] == "@meta.workset.path/box_data"
@@ -1775,7 +1775,7 @@ def test_workset_anchor_floor_meta_box_path_per_mode():
     # The vault roots are UNIFORM in every mode (spec §2c ALL PROJECTS) — only the
     # BOX BIND differs (the per-box subdir a lone box does not need).
     for mode in ("primary", "named", "standalone"):
-        floor = workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl")
+        floor = workset_anchor_floor(mode=mode)
         assert floor["workset.vault_ro"] == "@meta.workset.path/vault/ro"
         assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
 
@@ -1809,7 +1809,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
             "meta.box.name": "mybox",
             "meta.workset.path": "/data/ws",
         }
-        floor.update(workset_anchor_floor(mode=mode, helper_log="/l/b.jsonl"))
+        floor.update(workset_anchor_floor(mode=mode))
         with pytest.raises(_SettingsError) as exc:
             build_launch_snapshot(
                 agent_name="claude", ctx=_ctx(),
@@ -1844,7 +1844,7 @@ def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
             "meta.box.name": name,
             "meta.workset.path": "/data/ws",
         }
-        floor.update(workset_anchor_floor(mode="primary", helper_log="/l/b.jsonl"))
+        floor.update(workset_anchor_floor(mode="primary"))
         with pytest.raises(_SettingsError) as exc:
             build_launch_snapshot(
                 agent_name="claude", ctx=_ctx(),
@@ -1892,7 +1892,7 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
         },
     )
     floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
-    floor.update(workset_anchor_floor(mode="primary", helper_log="/l/b.jsonl"))
+    floor.update(workset_anchor_floor(mode="primary"))
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=hostile,
