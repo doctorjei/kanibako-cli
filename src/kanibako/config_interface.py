@@ -1820,6 +1820,83 @@ def _render_stored_scalar(v: object) -> str | None:
     return str(v) if v != "" else None
 
 
+def _has_dedicated_route(canonical: str) -> bool:
+    """Does SOME ``set_config_value`` branch claim *canonical*?
+
+    ⚑ MIRRORS THE DISPATCH CHAIN in :func:`set_config_value`, in the same order.
+    A branch added there without a term here would make this say "no route" for a
+    key that in fact has one — so the two must be edited together, and
+    ``TestSetDispatchCoverage`` fails if they drift.
+
+    Its ONE job is to keep :func:`_probes_at_set_time` off keys nothing handles,
+    so an unknown key still reaches the routing table at the bottom of the
+    dispatch and is reported as ``unknown config key: <key>`` — the error §0
+    requires, which NAMES the key, rather than a resolution complaint about a
+    value on a key that does not exist.
+    """
+    return (
+        _is_env_key(canonical)
+        or _is_agent_node_bind_key(canonical)
+        or _is_agent_node_secret_key(canonical)
+        or _is_scope_secret_key(canonical)
+        or _is_persona_agent_key(canonical)
+        or _is_agent_setting(canonical)
+        or _is_box_agent_key(canonical)
+        or _is_path_category_key(canonical)
+        or _is_default_agent_key(canonical)
+        or _is_system_path_key(canonical)
+        or _route_key(canonical) in _KEY_ROUTES
+    )
+
+
+def _probes_at_set_time(canonical: str) -> bool:
+    """Does a ``config set`` of *canonical* run the E3 RESOLUTION probe?
+
+    The test is **"does this value reach the expander"**, NOT "is it a scalar".
+    A value the expander never sees carries no ``@``/``$`` SYNTAX — those
+    characters are DATA in it — so probing would refuse legitimate input with no
+    correct spelling available.
+
+    Excluded, and why:
+
+    * **The docker ``.env`` family (bare ``env.<VAR>``).** It is written VERBATIM
+      by ``shellenv.set_env_var`` and read verbatim into the container env; it
+      never enters the settings snapshot. So ``env.EMAIL=jei@example.com`` and
+      ``env.MY_PATH=$HOME/bin`` are ordinary values — the second deliberately
+      names a GUEST-side variable, which is the whole point of deferral. ⚑ The
+      escape hatch does not help here and must not be suggested: ``\\@`` passes
+      the probe but lands in the file WITH the backslash, because the write is
+      verbatim while only the probe unescapes. There is no CLI spelling that
+      would produce the right value, which is what makes this an exclusion rather
+      than a documented sharp edge.
+    * **The two CATEGORY paths.** They run their own probe with
+      ``is_category=True``, which additionally enforces the source-only and
+      self-resolving rules; probing twice would only duplicate the diagnosis.
+    * **Keys nothing claims.** They must reach the routing table and be reported
+      as an unknown KEY (see :func:`_has_dedicated_route`).
+
+    ⚑ RULED, not incidental — the exclusion is the DOCKER family and nothing
+    more. Every other scalar whose value the expander DOES see stays LOUD:
+    ``box.shell``, ``workset.boxes``, ``<scope>.secret_path.<VAR>`` and the rest
+    all probe, because for them a dangling ref really does resolve to ``""``
+    silently at launch.
+
+    ⚑ The KEYSPACE env arm ``<scope>.env.<VAR>`` (``box.env.FOO``) is a DIFFERENT
+    key from the bare ``env.FOO`` above and is deliberately NOT excluded here — it
+    IS host-expanded at launch (``settings_launch._emit_scope_node`` reads it off
+    the EXPANDED snapshot). It is nonetheless unreachable from ``config set``
+    today for an unrelated reason: no dispatch branch claims it, so it is reported
+    as an unknown key. When a route for it is added it will probe by default,
+    which is the intended direction — do not "fix" that by widening
+    :func:`_is_env_key`, which would silence the arm that needs the check.
+    """
+    if _is_env_key(canonical):
+        return False
+    if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
+        return False
+    return _has_dedicated_route(canonical)
+
+
 def set_config_value(
     key: str,
     value: str,
@@ -1912,6 +1989,41 @@ def set_config_value(
     # the auth-critical key), not ``allow_helpers`` / ``model``.
     if _is_auto_approve_key(canonical) and coerce_bool(value) is None:
         return f"Error: auto_approve must be a boolean (true/false); got {value!r}"
+
+    # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a
+    # / Q9).  See :func:`_probes_at_set_time` for exactly which keys qualify and
+    # why the test is "does this value reach ``expand``" rather than "is it a
+    # scalar".
+    #
+    # The probe was wired ONLY at the category path, so a set accepted a value
+    # whose ``@``-ref or ``$VAR`` does not resolve — e.g.
+    # ``config set workset.boxes "@meta.nope.key/boxes"``. For an expanded value
+    # that is not inert: an embedded dangling ref is substituted with the EMPTY
+    # STRING at launch (§6b) and the key silently resolves to something else.
+    #
+    # The probe blocks ONLY on the edited value's own transitive upstream chain,
+    # so an UNRELATED pre-existing defect still allows the set and ``config set``
+    # stays usable to REPAIR a broken config. ``--reset`` is untouched: removing
+    # an override cannot introduce a dangling ref in the removed value.
+    if _probes_at_set_time(canonical):
+        from kanibako.settings_configset import Error as _SetError
+        from kanibako.settings_configset import validate_config_set
+
+        _resolves, _ = _category_set_lookups(
+            config_path,
+            canonical=canonical,
+            system_path=cascade_system_path,
+            agent_path=cascade_agent_path,
+            workset_path=cascade_workset_path,
+            box_path=cascade_box_path,
+            agent_name=cascade_agent_name,
+            default_categories=default_categories,
+        )
+        scalar_verdict = validate_config_set(
+            canonical, value, is_category=False, resolves=_resolves,
+        )
+        if isinstance(scalar_verdict, _SetError):
+            return f"Error: {scalar_verdict.message}"
 
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path
@@ -2734,6 +2846,128 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     return out
 
 
+def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
+    """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
+
+    Every CONCRETE binding is listed with the destination it occupies, and every
+    ABSTRACT declaration (``common`` / ``caches`` / ``seeded``) is listed with the
+    ``meta.derived.<declaration-key>`` binding it produces indented beneath it —
+    so a reader can see the declaration AND the mount it becomes, which is the
+    whole point of materialising the derivation.
+
+    Both halves are read off the SAME snapshot: the declaration at its own key,
+    the derivation at ``meta.derived.<that key>``.  Nothing is re-derived here.
+    """
+    from kanibako.settings_store import Bind, KeyStore
+    from kanibako.settings_views import derived_bindings
+
+    print("", file=out)
+    if error is not None:
+        for line in error.splitlines():
+            print(f"  {line}" if line else "", file=out)
+        return
+
+    def _leaf(dotted: str) -> Any:
+        node: Any = snapshot
+        for seg in dotted.split("."):
+            if not isinstance(node, KeyStore):
+                return None
+            node = dict.get(node, seg, None)
+        return node
+
+    def _pair(bind: Bind) -> str:
+        opts = f"  [{bind.opts}]" if bind.opts else ""
+        return f"{bind.host} -> {bind.box}{opts}"
+
+    # CONCRETE first — the source of truth a mount is emitted from.
+    for scope in ("system", "agent", "workset", "box"):
+        scope_node = _leaf(scope)
+        if not isinstance(scope_node, KeyStore):
+            continue
+        for tier, prefix in _iter_agent_tiers(scope, scope_node):
+            for mode in ("ro", "rw"):
+                mode_node = _sub(tier, ("bindings", mode))
+                if not isinstance(mode_node, KeyStore):
+                    continue
+                for name in sorted(dict.keys(mode_node)):
+                    bind = dict.__getitem__(mode_node, name)
+                    if isinstance(bind, Bind):
+                        print(
+                            f"  {prefix}.bindings.{mode}.{name} = {_pair(bind)}",
+                            file=out,
+                        )
+
+    # ABSTRACT declarations, each with the binding it derives.
+    #
+    # ⚑ The derivation line carries its DELIVERY. ``seeded`` derives a COPY, not
+    # a mount (spec §0), and the two are not interchangeable at all: a mount is
+    # live and shadows the dest, while a copy runs once at create and is then the
+    # box's own file. A reader who cannot tell them apart cannot answer the
+    # question this display exists for — WHY is this here, and what happens if I
+    # change it.
+    derived_node = _leaf("meta.derived")
+    if isinstance(derived_node, KeyStore):
+        for decl_key, bind in sorted(derived_bindings(derived_node).items()):
+            declaration = _leaf(decl_key)
+            if isinstance(declaration, Bind):
+                print(f"  {decl_key} = {_pair(declaration)}", file=out)
+            kind = "copy" if _declaration_delivery(decl_key) == "COPY" else "mount"
+            print(
+                f"    meta.derived.{decl_key} = {_pair(bind)}  ({kind})",
+                file=out,
+            )
+
+
+def _declaration_delivery(decl_key: str) -> str:
+    """The COPY/MOUNT delivery of a declaration key, from the category table.
+
+    The category is the segment after the scope, and the AGENT scope is
+    DISCRIMINATED — two segments (``agent.<tier>``) where every other scope is
+    one. Parsed by position rather than by substring search, so a name that
+    happens to spell a category (``box.caches.common``) cannot be misread.
+
+    The delivery itself is read off ``settings_categories._DELIVERY``: it has ONE
+    definition, and a display keeping its own copy would drift the moment a
+    category moved between COPY and MOUNT.
+    """
+    from kanibako.settings_categories import _DELIVERY
+
+    parts = decl_key.split(".")
+    idx = 2 if parts[0] == "agent" else 1
+    category = parts[idx] if len(parts) > idx else ""
+    return _DELIVERY.get(category, "MOUNT")
+
+
+def _iter_agent_tiers(scope: str, scope_node: Any):
+    """``(node, key-prefix)`` per DISCRIMINATED tier of *scope*.
+
+    Only the agent scope has tiers (``agent.default`` / ``agent.<agent>``); every
+    other scope is itself.  Keeps the display from printing the bare
+    ``agent.bindings.*`` form, which is not a key (spec §0 L21).
+    """
+    from kanibako.settings_store import KeyStore
+
+    if scope != "agent":
+        yield scope_node, scope
+        return
+    for tier in sorted(dict.keys(scope_node)):
+        tier_node = dict.__getitem__(scope_node, tier)
+        if isinstance(tier_node, KeyStore):
+            yield tier_node, f"agent.{tier}"
+
+
+def _sub(node: Any, path: "tuple[str, ...]") -> Any:
+    """Walk *path* under *node* with unbound ``dict`` ops (S3); ``None`` if absent."""
+    from kanibako.settings_store import KeyStore
+
+    cur: Any = node
+    for seg in path:
+        if not isinstance(cur, KeyStore):
+            return None
+        cur = dict.get(cur, seg, None)
+    return cur
+
+
 def show_config(
     *,
     global_config_path: Path,
@@ -2746,11 +2980,27 @@ def show_config(
     agent_state: dict[str, str] | None = None,
     env_resolved: dict[str, str] | None = None,
     system_settings_path: Path | None = None,
+    category_snapshot: Any = None,
+    category_error: str | None = None,
 ) -> int:
     """Display config values.  Returns exit code.
 
     - *effective=False*: show only overrides at this level.
     - *effective=True*: show all resolved values including inherited defaults.
+
+    *category_snapshot* (BOX scope, ``--effective`` only) is the resolved launch
+    KeyStore.  When supplied, the PATH-DELIVERY categories are rendered too: each
+    binding, and each ABSTRACT declaration paired with the ``meta.derived.*``
+    binding it produces (spec §0 — "``--effective`` shows BOTH the declaration and
+    the derived binding and a user can see WHY a mount exists").  *category_error*
+    carries a collision message when the snapshot could not be resolved, so
+    ``config show --effective`` REPORTS an M-7 collision rather than dying on it —
+    it is the migration's own detection recipe.
+
+    ⚑ ONE SCOPE. The workset / system / agent ``config show --effective`` verbs
+    still render no category key at all: that display predates the keystore and
+    reads ``load_merged_config``.  Extending it across all five scopes is a
+    read-surface job with its own owner, not a side effect of this one.
 
     *system_settings_path*, when supplied (SYSTEM scope), is the file the agent
     SETTINGS + ``system.default_agent`` are DISPLAYED from (``@config.settings``
@@ -2807,6 +3057,10 @@ def show_config(
                 print("", file=out)
                 for k in sorted(nested):
                     print(f"  {k} = {nested[k]}", file=out)
+
+        # Path-delivery CATEGORIES + their materialised derivations (§0).
+        if category_error is not None or category_snapshot is not None:
+            _print_category_block(category_snapshot, category_error, out)
 
         # Env vars.  Prefer the fully-resolved env (box view) when supplied.
         merged = (

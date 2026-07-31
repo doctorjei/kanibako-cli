@@ -9,7 +9,7 @@ tagged with its *delivery* (COPY vs MOUNT).  It is **pure**: no file I/O, no
 mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
-Cross-category collision resolution (identical-dest authority order, depth-order,
+Cross-category collision resolution (the spec §0 identical-dest TABLE, depth-order,
 ``synced``↔``binding`` errors, the credential ``deliver_creds`` gate) is
 :func:`reconcile_categories` (sub-step 4b), layered on top of category entries.
 
@@ -54,8 +54,9 @@ ro-bind-mounted to a fixed, non-persistent in-box location
 that mount — so kanibako NEVER reads the secret VALUE (never in process memory /
 the podman argv / the snapshot / keystore / logs). Keyed per ``{VAR}`` (same
 cascade merge + reserved-name floor as ``env.{VAR}``); its ``box_dest`` IS a real
-guest path (so it participates in box_dest collisions with a binding-level
-authority rank), and its ``host_src`` is the SCALAR path (NOT a Bind tuple).
+guest path (so it participates in box_dest collisions, as a CONCRETE-layer peer of
+``bindings.{ro,rw}`` — see :data:`CONCRETE_CATEGORIES` for the per-VAR carve-out),
+and its ``host_src`` is the SCALAR path (NOT a Bind tuple).
 
 Delivery
 ~~~~~~~~
@@ -98,7 +99,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final, Literal, Mapping
+from typing import TYPE_CHECKING, Final, Literal, Mapping
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from kanibako.settings_store import Bind
 
 # Delivery tags.
 Delivery = Literal["COPY", "MOUNT", "ENV"]
@@ -200,27 +204,26 @@ _DISABLE_SENTINEL = "empty"
 # Apply order: REVERSE of precedence (most-specific scope lands LAST).
 _SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
-# Category AUTHORITY order for an identical ``box_dest`` (D-B1; later WINS /
-# applied-on-top): ``seed < cache < binding < common < synced < masks``.
-# ``bindings.ro`` and ``bindings.rw`` collapse to the single ``binding`` rank;
-# ``seeded`` -> seed, ``caches`` -> cache.  ``env`` is not a path category (its
-# "dest" is a VAR name, never a guest path) so it has no authority rank and never
-# participates in box_dest collisions.
-_CATEGORY_AUTHORITY: dict[str, int] = {
-    "seeded": 0,        # seed
-    "caches": 1,        # cache
-    "bindings.ro": 2,   # binding
-    "bindings.rw": 2,   # binding
-    "common": 3,        # common
-    "synced": 4,        # synced
-    "masks": 5,         # masks
-    # secret_path: a ro MOUNT whose box_dest IS a real guest path (unlike ``env``),
-    # so it CAN collide on box_dest. Ranked at binding-level (2) — its dests live in
-    # the disjoint ``SECRET_MOUNT_DIR`` namespace, so a collision only ever occurs
-    # between two secret_path entries for the SAME VAR (identical box_dest), resolved
-    # by scope apply-order (box wins) exactly like env precedence.
-    "secret_path": 2,   # binding-level
-}
+# The CONCRETE MOUNT categories — the layer §0 calls the SOURCE OF TRUTH. A mount
+# is emitted from a ``bindings.{ro,rw}`` declaration and from nothing else; the
+# abstract categories reach a mount only by DERIVING one of these.
+#
+# ``secret_path`` is filed here because it is likewise an explicit, actionable
+# declaration that emits a mount directly and takes no root — it is a concrete
+# peer, not an abstraction. ⚑ D2 CARVE-OUT: a group whose concrete members are ALL
+# ``secret_path`` is NOT a row-1 collision. Its dest is ``SECRET_MOUNT_DIR/{VAR}``
+# by construction, so two such entries at one dest are always the SAME VAR arriving
+# from two scopes — the ordinary per-VAR cascade that spec §2a documents as a
+# FEATURE ("a box ``secret_path.<VAR>`` overrides a workset's pointer for the same
+# VAR"), not two different names contending for one destination.
+CONCRETE_CATEGORIES: Final[tuple[str, ...]] = (
+    "bindings.ro", "bindings.rw", "secret_path",
+)
+
+# The release in which the §0 collision table replaced the flat authority ladder.
+# Named ONCE: it appears in the migration-grade paragraph of every error message
+# whose OUTCOME changed (M-7), and nowhere else.
+_RULE_CHANGE_RELEASE: Final[str] = "1.8.0"
 
 
 @dataclass(frozen=True)
@@ -243,6 +246,19 @@ class CategoryEntry:
     For ``env`` entries, *box_dest* is the variable NAME and *options* holds the
     resolved variable VALUE (env carries no path / mount flags).
 
+    *key* is the FULL DECLARED KEY this entry came from
+    (``agent.claude.common.plugins``, ``box.bindings.rw.home``) — the
+    DISCRIMINATED spelling, so its agent segment names a real agent tier
+    (``agent.<agent>`` / ``agent.default``) and never the bare ``agent.`` form
+    §0 L21 forbids. It is DISTINCT from *scope*, which is the BARE precedence
+    token, and it replaces nothing: three consumers need it and none of them can
+    be served by *scope* + *category* + *name*.
+
+    * the derived-binding materialisation key (``meta.derived.<key>``, §0);
+    * every collision error / warning message (a message that named only the
+      category would not tell a user which declaration to edit);
+    * the base-vs-extension provenance the §0 collision table reads.
+
     *is_credential* tags an entry whose content is an agent CREDENTIAL.  It is the
     hook the credential ``deliver_creds`` gate (D-M4) keys off for ``seeded`` entries: a
     credential ``seeded`` copy is suppressed when the box is PRIVATE (``deliver_creds``
@@ -258,6 +274,7 @@ class CategoryEntry:
     delivery: Delivery
     options: str
     name: str
+    key: str
     is_credential: bool = False
 
 
@@ -269,6 +286,36 @@ def _bind_options(category: str) -> str:
     same options the old ``share_rw`` mounts used.
     """
     return "ro" if category == "bindings.ro" else "Z,U"
+
+
+@dataclass(frozen=True)
+class CategoryCollision:
+    """One SAME-SCOPE abstraction ambiguity at one ``box_dest`` (§0 row 5).
+
+    Returned as DATA by :func:`reconcile_categories` — which stays PURE — and
+    rendered by the one emission seam
+    (``kanibako.commands.start.emit_collision_warnings``).  *scope* is the bare
+    scope token both declarations share; *winner_key* is the declaration that
+    survives the existing ordering; *loser_keys* are the same-scope declarations
+    at that dest which do not.
+    """
+
+    box_dest: str
+    scope: str
+    winner_key: str
+    loser_keys: tuple[str, ...]
+
+    def message(self) -> str:
+        """The rendered warning line (one per collision, §0 "WARN every launch")."""
+        losers = ", ".join(self.loser_keys)
+        ignored = "is" if len(self.loser_keys) == 1 else "are"
+        return (
+            f"Two {self.scope!r}-scope declarations target {self.box_dest!r}: "
+            f"{self.winner_key} wins, {losers} {ignored} ignored. A same-scope "
+            f"collision is ambiguous — kanibako keeps the existing ordering but "
+            f"cannot know which you meant. Suppress one (set it to null) or "
+            f"repoint it. This warning repeats every launch until it is fixed."
+        )
 
 
 @dataclass(frozen=True)
@@ -284,16 +331,23 @@ class ReconciledCategories:
     their "dest" is a VAR name), in deterministic order.
 
     Each MOUNT ``box_dest`` appears at most once (mounts SHADOW, so an
-    identical-dest collision is resolved to one authority winner). COPIES OVERLAY
-    rather than shadow, so a dest targeted by copies ONLY keeps every copy (in
-    apply order) — the layered ``seeded.template`` trio all seed into ``~`` and
-    last-wins-merge there. A dest shared by a mount and copies reverts to the
-    single mount winner (the copy cannot survive under a live shadow mount).
+    identical-dest collision is resolved to one winner per the §0 table). COPIES
+    OVERLAY rather than shadow, so a dest targeted by ``seeded`` copies ONLY keeps
+    every copy (in apply order) — the layered ``seeded.template`` trio all seed
+    into ``~`` and last-wins-merge there. A dest shared by a mount and copies
+    reverts to the single mount winner (the copy cannot survive under a live
+    shadow mount) EXCEPT for a ``synced`` copy-sync, which outranks a non-``masks``
+    mount exactly as it always has.
+
+    *warnings* carries the §0 row-5 SAME-SCOPE abstraction ambiguities as DATA.
+    This function stays PURE (no logging, no process state), so the caller owns
+    emission — see ``kanibako.commands.start.emit_collision_warnings``.
     """
 
     mounts: list[CategoryEntry]
     copies: list[CategoryEntry]
     envs: list[CategoryEntry]
+    warnings: tuple[CategoryCollision, ...] = ()
 
 
 def _path_depth(box_dest: str) -> int:
@@ -318,15 +372,46 @@ def reconcile_categories(
     docstring) and returns a :class:`ReconciledCategories`
     with the per-dest winners split into MOUNT / COPY / ENV lists.
 
-    Authority order (identical ``box_dest`` -> later WINS / applied-on-top):
-    ``seed < cache < binding < common < synced < masks`` (D-B1).  Among entries
-    sharing a resolved ``box_dest`` the HIGHEST-authority category wins; ties
-    WITHIN one authority rank are broken by :data:`_SCOPE_APPLY_ORDER` (box scope
-    wins), then by the input order (stable) for full determinism.
+    The §0 COLLISION TABLE (2026-07-29) — keyed on the resolved ``box_dest``,
+    NEVER on the name. It replaced the flat authority ladder
+    ``seed < cache < binding < common < synced < masks``, which resolved every
+    collision to one silent winner:
 
-    A ``synced`` (COPY) and a ``binding`` (MOUNT) naming the EXACT same
-    ``box_dest`` is a CONFIG ERROR (a copy cannot override a live mount) — raised
-    as :class:`~kanibako.errors.ConfigError`, never a silent no-op.
+    ==== ============================================ ==========================
+    row  case                                          outcome
+    ==== ============================================ ==========================
+    1    two CONCRETE declarations at one dest         **ERROR** — always
+    2    ``masks`` at a dest a binding occupies        OVERRIDE (that is its job)
+    3    an ABSTRACTION extending onto an occupied     **ERROR** — refuse the
+         dest                                          EXTENSION, keep the base
+    4    abstraction vs abstraction, DIFFERENT scopes  scope precedence, SILENT
+    5    abstraction vs abstraction, SAME scope        existing ordering + WARN
+    ==== ============================================ ==========================
+
+    Rows 1/3 raise :class:`~kanibako.errors.CategoryCollisionError`; row 5 is
+    RETURNED as data on :attr:`ReconciledCategories.warnings` (this function is
+    pure — the caller emits).  "The existing ordering" is the input order the
+    adapter produced (``scope`` apply order, then ``(category, name)``), LAST
+    wins — the same ordering the retired ladder produced for every abstract pair,
+    because ``common`` outranked ``caches`` there and also sorts after it here.
+
+    ⚑ **The table governs MOUNT-vs-MOUNT only.**  The COPY layer and the
+    copies-vs-mounts boundary keep their own, UNCHANGED rules (spec §0 L119-124
+    states them independently of the table):
+
+    * a PURE-``seeded`` dest keeps EVERY entry — copies OVERLAY, they do not
+      shadow, so the layered ``seeded.template`` trio is not a collision at all;
+    * a ``synced`` copy-sync replaces a ``seeded`` at the same dest;
+    * a ``synced`` (COPY) and a ``binding`` (MOUNT) at the EXACT same dest is a
+      CONFIG ERROR (a copy cannot override a live mount), never a silent no-op;
+    * otherwise, where a MOUNT winner and a COPY winner name one dest: ``masks``
+      beats everything including ``synced``; ``synced`` beats every other mount;
+      every mount beats ``seeded``.
+
+    ⚑ Rows 1 and 3 are evaluated BEFORE the row-2 mask OVERRIDE.  §0 states row 1
+    as "ERROR, always — any scope, any mode", and a mask that happens to cover a
+    contradictory pair does not make the contradiction go away; it only hides its
+    consequence.  A mask over ONE binding (the shipped shape) is untouched.
 
     The emitted MOUNT list is sorted by ``box_dest`` path-depth ASCENDING so
     podman's last-``-v``-wins/depth-sort resolves nested-but-different dests
@@ -343,13 +428,14 @@ def reconcile_categories(
     ``deliver_creds=auth.creds_shared`` off the resolved
     :class:`~kanibako.settings_launch.AuthSource`.)
 
-    Raises :class:`~kanibako.errors.ConfigError` on a ``synced``↔``binding``
-    identical-dest collision.
+    Raises :class:`~kanibako.errors.CategoryCollisionError` (a
+    :class:`~kanibako.errors.ConfigError`) on a row-1 / row-3 collision and on a
+    ``synced``↔``binding`` identical-dest collision.
     """
-    from kanibako.errors import ConfigError
-
     # --- credential-delivery gate (D-M4): a PRIVATE box (deliver_creds=False) suppresses cred
     # deliveries up front — the same drop today's group_auth=False produced.
+    # ⚑ BEFORE collision resolution, deliberately: a suppressed ``synced`` must not
+    # be able to error against — or win over — a binding it never delivers.
     gated: list[CategoryEntry] = []
     for e in entries:
         if not deliver_creds:
@@ -363,52 +449,18 @@ def reconcile_categories(
     envs = [e for e in gated if e.delivery == ENV]
     path_entries = [e for e in gated if e.delivery != ENV]
 
-    # --- group by resolved box_dest; pick the per-dest authority winner.
-    # Preserve input order so ties beyond (authority, scope) are stable.
+    # --- group by resolved box_dest; resolve each group per §0.
+    # Preserve input order — "the existing ordering" the table's row 5 defers to.
     by_dest: dict[str, list[CategoryEntry]] = {}
     for e in path_entries:
         by_dest.setdefault(e.box_dest, []).append(e)
 
     winners: list[CategoryEntry] = []
+    warnings: list[CategoryCollision] = []
     for box_dest, group in by_dest.items():
-        # synced (COPY) vs binding (MOUNT) at the EXACT same dest -> config error.
-        has_synced = any(e.category == "synced" for e in group)
-        has_binding = any(
-            e.category in ("bindings.ro", "bindings.rw") for e in group
-        )
-        if has_synced and has_binding:
-            raise ConfigError(
-                f"Category collision at '{box_dest}': a 'synced' copy and a "
-                f"'binding' mount target the same destination. A copy cannot "
-                f"override a live mount — resolve by removing one (e.g. drop the "
-                f"binding or point the synced copy elsewhere)."
-            )
-        # SEEDS OVERLAY, MOUNTS SHADOW. A ``seeded`` COPY merges its tree into the
-        # dest PER-FILE (later scope overlays earlier — the module's "most-specific
-        # scope lands LAST" apply order); it does NOT physically shadow the whole
-        # dest the way a MOUNT does. So when a dest is targeted by ``seeded`` copies
-        # ONLY, KEEP THEM ALL, in apply order (``group`` preserves the input order =
-        # system, agent, workset, box). This is what lets the layered
-        # ``seeded.template`` trio (system+agent+workset, all seeding into ``~``)
-        # co-exist and last-wins-merge at the seam that applies them
-        # (:func:`kanibako.commands.start._apply_init_seeds` stages same-dest seeds
-        # in this order). Restricted to a PURE ``seeded`` group so the ``synced``↔
-        # ``seeded`` / mount authority ordering (a cred sync or a shadow mount at
-        # the same dest) is untouched — those revert to the single-winner pick.
-        if all(e.category == "seeded" for e in group):
-            winners.extend(group)
-            continue
-        # Highest authority wins; tie -> box scope wins (apply order); then the
-        # stable input order. ``enumerate`` index keeps the original sequence.
-        winner = max(
-            enumerate(group),
-            key=lambda pair: (
-                _CATEGORY_AUTHORITY[pair[1].category],
-                _SCOPE_APPLY_ORDER[pair[1].scope],
-                pair[0],
-            ),
-        )[1]
-        winners.append(winner)
+        kept, group_warnings = _resolve_dest_group(box_dest, group)
+        winners.extend(kept)
+        warnings.extend(group_warnings)
 
     # --- partition winners by delivery; depth-sort the mounts (shallow first).
     mounts = [w for w in winners if w.delivery == MOUNT]
@@ -420,4 +472,311 @@ def reconcile_categories(
     # COPY: deterministic by box_dest (no depth constraint).
     copies.sort(key=lambda e: e.box_dest)
 
-    return ReconciledCategories(mounts=mounts, copies=copies, envs=envs)
+    return ReconciledCategories(
+        mounts=mounts, copies=copies, envs=envs, warnings=tuple(warnings),
+    )
+
+
+def _resolve_dest_group(
+    box_dest: str, group: list[CategoryEntry],
+) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
+    """Resolve ONE ``box_dest`` group per §0 → (survivors, row-5 warnings).
+
+    *group* is in input (apply) order.  The three layers are resolved
+    independently and then reconciled across the delivery boundary; each step is
+    named for the rule it implements so no single ladder stands in for five
+    different decisions.
+    """
+    from kanibako.errors import CategoryCollisionError
+
+    # The copy-vs-mount CONFIG ERROR (spec §0 L119-124) — stated independently of
+    # the collision table and UNCHANGED by it, so it is checked first and carries
+    # no rule-changed paragraph.
+    synced = [e for e in group if e.category == "synced"]
+    bindings = [e for e in group if e.category in ("bindings.ro", "bindings.rw")]
+    if synced and bindings:
+        raise CategoryCollisionError(
+            f"Category collision at '{box_dest}': a 'synced' copy and a "
+            f"'binding' mount target the same destination.\n"
+            + _entry_lines(synced + bindings)
+            + "A copy cannot override a live mount — resolve by removing one "
+            "(e.g. drop the binding or point the synced copy elsewhere).",
+            kind="synced_vs_binding",
+            box_dest=box_dest,
+            entries=tuple((e.key, e.host_src) for e in synced + bindings),
+        )
+
+    mount_sub = [e for e in group if e.delivery == MOUNT]
+    copy_sub = [e for e in group if e.delivery == COPY]
+
+    mount_winner, warnings = _resolve_mount_group(box_dest, mount_sub)
+    copy_winners = _resolve_copy_group(copy_sub)
+
+    # CROSS-DELIVERY (preserved, unchanged): a mount physically shadows a copied
+    # file, so it beats a ``seeded`` copy; a ``synced`` inode-swap cannot live
+    # under a bind, so it beats every non-``masks`` mount; a ``masks`` tmpfs hides
+    # the dest outright, so it beats even a ``synced``.
+    if mount_winner is not None and copy_winners:
+        if mount_winner.category == "masks":
+            return [mount_winner], warnings
+        if any(e.category == "synced" for e in copy_winners):
+            return copy_winners, warnings
+        return [mount_winner], warnings
+    if mount_winner is not None:
+        return [mount_winner], warnings
+    return copy_winners, warnings
+
+
+def _resolve_mount_group(
+    box_dest: str, mount_sub: list[CategoryEntry],
+) -> tuple[CategoryEntry | None, list[CategoryCollision]]:
+    """Apply §0 rows 1-5 to the MOUNT entries at ONE dest (input order kept)."""
+    from kanibako.errors import CategoryCollisionError
+
+    if not mount_sub:
+        return None, []
+    if len(mount_sub) == 1:
+        return mount_sub[0], []
+
+    concrete = [e for e in mount_sub if e.category in CONCRETE_CATEGORIES]
+    abstract = [e for e in mount_sub if e.category in ABSTRACT_CATEGORIES]
+    masks = [e for e in mount_sub if e.category == "masks"]
+
+    # ROW 1 — two CONCRETE declarations at one dest: ERROR, always. D2 carve-out:
+    # an ALL-``secret_path`` set is the documented per-VAR cascade (one NAME from
+    # two scopes), not two names contending, so it falls through to the ordinary
+    # last-wins pick below.
+    if len(concrete) > 1 and not all(
+        e.category == "secret_path" for e in concrete
+    ):
+        raise CategoryCollisionError(
+            f"Two bindings target the same box destination '{box_dest}':\n"
+            + _entry_lines(concrete)
+            + "A destination may be bound exactly once. Choosing one silently "
+            "would give you a\nread-only mount where the other declaration asked "
+            "for read-write.\n\n"
+            + _rule_changed(
+                "Until {rel} the more specific scope won, silently — a "
+                "configuration that\nlaunched before can refuse to launch now. "
+                "Your files did not change; the rule did."
+            )
+            + _suppress_then_add(concrete[0].key, ambiguous=True),
+            kind="binding_vs_binding",
+            box_dest=box_dest,
+            entries=tuple((e.key, e.host_src) for e in concrete),
+        )
+
+    # ROW 3 — an ABSTRACTION extending onto a dest the CONCRETE base occupies:
+    # ERROR, refusing the EXTENSION. "I wrote it down literally" wins.
+    if concrete and abstract:
+        base = concrete[-1]
+        extension = abstract[-1]
+        raise CategoryCollisionError(
+            f"'{extension.key}' extends onto '{box_dest}', which\n"
+            f"'{base.key}' already binds.\n"
+            "'common', 'caches' and 'seeded' are ABSTRACT declarations: each "
+            "derives a\nbindings.rw entry. The explicit binding is the BASE and "
+            "survives; the derived\nextension is refused.\n\n"
+            + _rule_changed(
+                "Until {rel} a 'common' silently overrode a binding at the same "
+                "destination,\nand a 'caches' silently lost to one — two "
+                "abstractions, two opposite silent\noutcomes. Both are now "
+                "refused."
+            )
+            + _suppress_then_add(base.key),
+            kind="extension_onto_occupied",
+            box_dest=box_dest,
+            entries=tuple((e.key, e.host_src) for e in (extension, base)),
+        )
+
+    # ROW 2 — a mask OVERRIDES whatever else lands here (hiding a bound path is
+    # the whole job). Several masks at one dest are the same instruction twice.
+    if masks:
+        return _most_specific(masks), []
+
+    # ROWS 4/5 — abstraction vs abstraction. SCOPE PRECEDENCE decides (row 4),
+    # then the existing ordering within a scope; a collision WITHIN the winning
+    # scope is the ambiguity §0 says to proceed on and WARN about (row 5).
+    winner = _most_specific(mount_sub)
+    same_scope_losers = tuple(
+        e.key for e in mount_sub
+        if e is not winner
+        and e.scope == winner.scope
+        and e.category in ABSTRACT_CATEGORIES
+    )
+    warnings: list[CategoryCollision] = []
+    if same_scope_losers and winner.category in ABSTRACT_CATEGORIES:
+        # ⚑ Only the WINNING scope's internal ambiguity is reported — spec §0
+        # row 5's qualifier ("the warn applies to the WINNING scope's own
+        # ambiguity", 2026-07-31). A losing scope's tie is wholly masked by row 4.
+        warnings.append(CategoryCollision(
+            box_dest=box_dest,
+            scope=winner.scope,
+            winner_key=winner.key,
+            loser_keys=same_scope_losers,
+        ))
+    return winner, warnings
+
+
+def _resolve_copy_group(copy_sub: list[CategoryEntry]) -> list[CategoryEntry]:
+    """Resolve the COPY entries at ONE dest (unchanged by the §0 table).
+
+    SEEDS OVERLAY, MOUNTS SHADOW. A ``seeded`` COPY merges its tree into the dest
+    PER-FILE (later scope overlays earlier — the module's "most-specific scope
+    lands LAST" apply order); it does NOT physically shadow the whole dest the way
+    a MOUNT does. So a dest targeted by ``seeded`` copies ONLY keeps them ALL, in
+    apply order — which is what lets the layered ``seeded.template`` trio
+    (system+agent+workset, all seeding into ``~``) co-exist and last-wins-merge at
+    the seam that applies them (``commands.start._apply_init_seeds`` stages
+    same-dest seeds in this order). Overlaying copies displace nothing, so this is
+    not a collision and never warns.
+
+    A ``synced`` cred copy-sync is not a layer: it REPLACES whatever else copies to
+    that dest. ⚑ That pick is resolved by SCOPE PRECEDENCE, not input order, and it
+    is the CREDENTIAL pick — getting it wrong copies the wrong credentials into the
+    box, silently.
+    """
+    if not copy_sub:
+        return []
+    synced = [e for e in copy_sub if e.category == "synced"]
+    if synced:
+        return [_most_specific(synced)]
+    return list(copy_sub)
+
+
+def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry:
+    """The winner among same-layer peers: SCOPE PRECEDENCE first, then input order.
+
+    Spec §0 row 4 says scope precedence decides an abstraction-vs-abstraction
+    collision across scopes, so the CALLER's list order must not be able to
+    override it (``reconcile_categories`` takes an arbitrary list; only the live
+    adapter happens to hand it apply-ordered).  Within one scope the input order
+    decides, LAST wins — which reproduces the retired ladder exactly, because its
+    only same-scope abstract pair was ``common`` over ``caches`` and ``common``
+    also sorts after ``caches``.
+    """
+    return max(
+        enumerate(entries),
+        key=lambda pair: (_SCOPE_APPLY_ORDER[pair[1].scope], pair[0]),
+    )[1]
+
+
+def _entry_lines(entries: list[CategoryEntry]) -> str:
+    """``    <key>  ->  <host_src>`` lines, key-column aligned."""
+    width = max((len(e.key) for e in entries), default=0)
+    return "".join(
+        f"    {e.key.ljust(width)}  ->  {e.host_src}\n" for e in entries
+    )
+
+
+def _rule_changed(body: str) -> str:
+    """The migration-grade paragraph (M-7) — ONLY on a rule whose outcome changed.
+
+    Putting it on a rule that did NOT change trains a reader to skip it, so the
+    unchanged ``synced``↔``binding`` error deliberately does not carry it.
+    """
+    return (
+        f"⚑ THIS RULE CHANGED IN kanibako {_RULE_CHANGE_RELEASE}. "
+        + body.format(rel=_RULE_CHANGE_RELEASE)
+        + "\n\n"
+    )
+
+
+def _suppress_then_add(occupant_key: str, *, ambiguous: bool = False) -> str:
+    """The SUPPRESS-THEN-ADD remedy (§0), spelled as the YAML edit it really is.
+
+    ⚑ There is NO CLI verb for suppression today: ``config set`` writes a string
+    value, the category set path is source-only by contract, and ``--reset``
+    REMOVES this file's own override (the opposite operation — it re-exposes the
+    inherited entry). So the remedy is a hand edit of the settings file that owns
+    the key, and the message says so rather than naming a command that would not
+    work. It also names the SCOPE, because a box file may not suppress a
+    containing scope's key (``settings_assemble._drop_upward_scopes`` drops it) —
+    the edit belongs in that scope's own file.
+
+    *ambiguous* is True when the caller could not know WHICH entry the user wants
+    to keep (row 1: two peers, either is a legitimate choice), so the printed
+    block is labelled an example rather than a prescription. Row 3 passes False —
+    there the occupant is determined, because the base always survives.
+    """
+    parts = occupant_key.split(".")
+    scope = parts[0]
+    indent = "  "
+    lines = [f"{scope}:"]
+    for depth, seg in enumerate(parts[1:], start=1):
+        lines.append(f"{indent * depth}{seg}:" if depth < len(parts) - 1
+                     else f"{indent * depth}{seg}: null")
+    # ⚑ The AGENT scope stores its own node under ``self.<node>`` in the per-agent
+    # settings file (the shape ``_agent_partial`` reads back); the canonical
+    # ``agent.<node>`` spelling is what a CONTAINING scope's file writes as a
+    # defaults-down override. Printing one shape without saying so would hand the
+    # reader an edit that silently does nothing in the other file.
+    caveat = (
+        "\n⚑ In the per-agent settings file itself the node is spelled "
+        f"'self.{parts[1]}' rather\nthan '{scope}.{parts[1]}'; the form above is "
+        "what a CONTAINING scope's file writes.\n"
+        if scope == "agent" and len(parts) > 1 else ""
+    )
+    which = (
+        "Either entry may be the one you keep — the block below suppresses "
+        f"'{occupant_key}';\nuse whichever key you do NOT want.\n\n"
+        if ambiguous else ""
+    )
+    return (
+        "To change what occupies a destination you must SUPPRESS the entry you do "
+        "not\nwant and then declare the one you do. An override is not enough: "
+        "these are two\ndifferent KEYS, so both survive the cascade. Set the "
+        "unwanted key to null in the\nsettings file for its scope (a file may "
+        "write its own scope and the scopes it\ncontains):\n\n"
+        + which
+        + "\n".join(lines)
+        + "\n"
+        + caveat
+    )
+
+
+def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
+    """The MATERIALISED derived bindings for the ABSTRACT declarations (§0).
+
+    ``common`` / ``caches`` / ``seeded`` are ROOTED declarations that EXTEND
+    ``bindings.rw``; §0 requires the binding each one produces to be materialised
+    BESIDE the declaration so ``--effective`` can show both and a reader can see
+    WHY a mount exists.  The key is ``meta.derived.<declaration-key>`` (spec §0,
+    declared 2026-07-31) — mechanically one fixed prefix on the declaration key,
+    so the pairing is a string operation and cannot drift.
+
+    ⚑ It is deliberately NOT written into ``<scope>.bindings.rw.<name>``, which is
+    §0's own ruling.  Be precise about WHY, because the obvious argument is
+    wrong: this map does not feed back into the entry list, so filing it under
+    ``bindings.rw`` would NOT break row 3 at runtime — the reconcile never reads
+    it.  What it would break is MEANING.  The concrete category is the layer §0
+    calls the source of truth; a key sitting in it that no user wrote and that
+    emits no mount is a FORGERY of the one thing the table reads.  Every reader —
+    ``config show``, the ``--effective`` block, a future validator, the next
+    person to add a consumer — would have to learn a rule ("some
+    ``bindings.rw.*`` are real and some are shadows") that the ``meta.derived``
+    prefix states structurally and for free.  ``meta.*`` is also RO by contract,
+    which is exactly the status a derivation has.
+
+    PURE — takes the adapter's entry list, returns a fresh ``{key: Bind}`` map;
+    the ONE seam that installs it into a snapshot is
+    ``commands.start._resolve_launch_snapshot``.  Every abstract entry that
+    survived the credential gate gets one, WINNERS AND LOSERS ALIKE: a losing
+    declaration's derivation is exactly what explains the warning that names it,
+    so hiding it would defeat the purpose.  ``seeded`` derives a COPY rather than
+    a mount; the resolved pair is identical, only the delivery differs.
+
+    ⚑ Distinct by NAME from the READ lens ``settings_views.derived_bindings`` —
+    one PRODUCES the keys, the other READS them back off a snapshot.
+    """
+    from kanibako.settings_store import Bind
+
+    out: dict[str, Bind] = {}
+    for e in entries:
+        if e.category not in ABSTRACT_CATEGORIES:
+            continue
+        out[f"meta.derived.{e.key}"] = Bind(
+            host=e.host_src or "", box=e.box_dest,
+            opts=e.options or None,
+        )
+    return out

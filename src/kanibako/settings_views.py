@@ -17,7 +17,7 @@ Three tiers (design §5)
 2. **Typed CATEGORY accessors** — each §2a category has DYNAMIC keys but ONE
    known value type, so it is a typed read-only mapping:
    :func:`bind_category` → ``Mapping[str, Bind]`` for ``bindings.{ro,rw}`` /
-   ``caches`` / ``seeded`` / ``shared`` / ``synced``; :func:`env_view` →
+   ``caches`` / ``seeded`` / ``common`` / ``synced``; :func:`env_view` →
    ``Mapping[str, scalar]`` for ``env``; :func:`masks_set` → ``set[box_dest]``
    for the resolved ``masks`` (design §6f).
 3. **Raw attribute / ``[]`` access** returning the full union — already on
@@ -76,6 +76,7 @@ __all__ = [
     "ViewError",
     "bind_category",
     "bindings",
+    "derived_bindings",
     "env_view",
     "masks_set",
     "typed_field",
@@ -209,7 +210,7 @@ def bind_category(node: KeyStore, *, label: str = "bindings") -> Mapping[str, Bi
     """A typed ``Mapping[str, Bind]`` lens over a bind-category NODE (tier-2, S21).
 
     *node* is a category :class:`KeyStore` subtree whose leaves are all
-    :class:`Bind` — a ``caches`` / ``seeded`` / ``shared`` / ``synced`` node, or
+    :class:`Bind` — a ``caches`` / ``seeded`` / ``common`` / ``synced`` node, or
     one of the ``bindings.ro`` / ``bindings.rw`` sub-nodes (see :func:`bindings`
     for splitting a whole ``bindings`` node into its two modes). The returned
     mapping is READ-ONLY and does NOT copy the node (the snapshot stays the
@@ -243,6 +244,51 @@ def bindings(node: KeyStore, *, label: str = "bindings") -> tuple[
         bind_category(_sub_or_empty(node, "ro"), label=f"{label}.ro"),
         bind_category(_sub_or_empty(node, "rw"), label=f"{label}.rw"),
     )
+
+
+def derived_bindings(
+    node: KeyStore, *, label: str = "meta.derived",
+) -> dict[str, Bind]:
+    """FLATTEN the ``meta.derived`` subtree to ``{declaration-key: Bind}`` (§0).
+
+    *node* is the ``meta.derived`` :class:`KeyStore` subtree — the MATERIALISED
+    binding each ABSTRACT declaration (``common`` / ``caches`` / ``seeded``)
+    derives, filed at ``meta.derived.<declaration-key>`` so a reader can see the
+    declaration AND the binding it produces (spec §0, declared 2026-07-31).
+
+    Unlike the tier-2 lenses this returns a fresh dict rather than a live view:
+    the family is PARAMETRIC over the whole key space below it
+    (``meta.derived.agent.claude.common.plugins``), so the useful shape is the
+    FLAT declaration key, which no lens over one node can present. The Binds
+    themselves are shared, not copied — they are immutable.
+
+    An absent / empty node yields ``{}``. A non-``Bind`` leaf RAISES
+    :class:`ViewError` (S22 — a build breach, never type-laundered).
+
+    ⚑ This is the READ half only. The keys are PRODUCED by
+    :func:`kanibako.settings_categories.derive_binding_keys`, which is
+    deliberately named differently: two functions with one name in two modules is
+    exactly the confusion the conventions open with.
+    """
+    _require_node(node, label)
+    out: dict[str, Bind] = {}
+
+    def _walk(sub: KeyStore, prefix: str) -> None:
+        for key in dict.keys(sub):
+            value = dict.__getitem__(sub, key)
+            dotted = f"{prefix}.{key}" if prefix else str(key)
+            if isinstance(value, Bind):
+                out[dotted] = value
+            elif isinstance(value, KeyStore):
+                _walk(value, dotted)
+            else:
+                raise ViewError(
+                    f"{label}.{dotted} is {type(value).__name__}, expected a "
+                    f"Bind (the materialised derivation of a declaration)"
+                )
+
+    _walk(node, "")
+    return out
 
 
 def env_view(node: KeyStore, *, label: str = "env") -> Mapping[str, "str | int | float | bool"]:

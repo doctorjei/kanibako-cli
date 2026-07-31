@@ -4434,6 +4434,7 @@ class TestEmitSecretMounts:
                 category="secret_path", scope="agent",
                 box_dest=f"{SECRET_MOUNT_DIR}/{var}", host_src=path,
                 delivery="MOUNT", options="ro", name=var,
+                key=f"agent.claude.secret_path.{var}",
             )
             for var, path in pointers.items()
         ]

@@ -620,6 +620,20 @@ def meta_identity_floor(
 #: and is REFUSED rather than silently taking the primary/named arm.
 _BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
 
+#: The DECLARED ``workset.channels.*`` leaves (spec §2c L802-806, L861). The floor
+#: MANUFACTURES these keys from a caller-supplied mapping, so without this set it
+#: was a free-form passthrough: any leaf the caller invented became a key, which is
+#: precisely what the CLOSED keyspace (spec §0) forbids — an undeclared key is not
+#: a key, and code must REFUSE it rather than quietly accept it.
+#:
+#: ⚑ It is the SPEC's declared family, not the subset the one live caller happens
+#: to pass (``{common, chat, share}``). Pinning it to today's caller would refuse a
+#: declared key the moment a second caller supplied one — the check exists to stop
+#: FABRICATION, not to freeze the current call.
+_WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset(
+    {"common", "chat", "broadcast", "share", "mailboxes"}
+)
+
 
 def workset_anchor_floor(
     *,
@@ -669,6 +683,10 @@ def workset_anchor_floor(
     the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
     materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c
     L452-454) route through them. ``None`` for STANDALONE (no workset channels).
+    ⚑ Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an
+    undeclared one is REFUSED: this is the one place a floor builds a key from a
+    caller-supplied NAME, and a free-form passthrough there would open the closed
+    keyspace (spec §0) from inside the floor.
     """
     if mode not in _BOX_MODES:
         raise SettingsError(
@@ -693,6 +711,14 @@ def workset_anchor_floor(
     }
     if workset_channels is not None:
         for leaf, path in workset_channels.items():
+            if leaf not in _WORKSET_CHANNEL_LEAVES:
+                raise SettingsError(
+                    f"workset_anchor_floor: workset.channels.{leaf} is not a "
+                    f"declared key; the declared channel type-roots are "
+                    f"{', '.join(sorted(_WORKSET_CHANNEL_LEAVES))} (spec §2c). "
+                    f"The keyspace is CLOSED (spec §0) — a floor may not "
+                    f"manufacture a key from a caller-supplied name."
+                )
             floor[f"workset.channels.{leaf}"] = path
     return floor
 
@@ -1621,20 +1647,71 @@ def snapshot_category_entries(
                     if isinstance(tier_node, KeyStore):
                         _assert_declared_categories(f"agent.{tier}", tier_node)
             scope_node = _agent_pick_node(snapshot, active_agent)
+            decl_scope_fn = _agent_decl_scope_fn(agent_node, active_agent)
         else:
             scope_node = dict.get(snapshot, scope, _MISSING)
             if isinstance(scope_node, KeyStore):
                 _assert_declared_categories(scope, scope_node)
+            decl_scope_fn = _fixed_decl_scope_fn(scope)
         if not isinstance(scope_node, KeyStore):
             continue
         order = scope_order[scope]
         _emit_scope_node(
             collected, scope_node, order=order, scope=scope,
-            box_dest_fn=_box_dest,
+            box_dest_fn=_box_dest, decl_scope_fn=decl_scope_fn,
         )
 
     collected.sort(key=lambda pair: pair[0])
     return [entry for _, entry in collected]
+
+
+def _fixed_decl_scope_fn(scope: str):
+    """The DECLARATION-scope resolver for a non-agent scope: always *scope*.
+
+    A ``system`` / ``workset`` / ``box`` key is spelled with its bare scope token,
+    so the declaration scope and the precedence scope are the same string. The
+    agent tier is the only one where they can differ — see
+    :func:`_agent_decl_scope_fn`.
+    """
+    def decl(category: str, name: str) -> str:
+        return scope
+    return decl
+
+
+def _agent_decl_scope_fn(agent_node: object, active_agent: str):
+    """The DECLARATION-scope resolver for the agent tier: which TIER declared it.
+
+    :func:`_agent_pick_node` collapses ``agent.default`` and ``agent.<active>``
+    into ONE effective node per NAME before emission, and the emitted
+    ``CategoryEntry.scope`` is the BARE ``agent`` precedence token. But an entry's
+    declared KEY must be DISCRIMINATED: a bare ``agent.<category>.<name>`` is not
+    a key at all (spec §0 L21), so a message or a ``meta.derived.*`` key spelled
+    that way would name a shape the keyspace forbids and point a reader at
+    something they cannot write.
+
+    So recover the tier the same way the pick decides it, and from the same RAW
+    tiers ``snapshot_category_entries`` already walks: a leaf declared by the
+    ACTIVE slot came from ``agent.<active>``; otherwise it came from
+    ``agent.default``, which is the only other tier that can have contributed it.
+    This reads the raw tiers directly and does NOT thread per-leaf provenance
+    through :func:`_overlay_into` — the pick's own rule is enough to answer it.
+    """
+    active_tier = (
+        dict.get(agent_node, active_agent, _MISSING)
+        if isinstance(agent_node, KeyStore) else _MISSING
+    )
+
+    def decl(category: str, name: str) -> str:
+        node: object = active_tier
+        for seg in (*category.split("."), name):
+            if not isinstance(node, KeyStore):
+                return "agent.default"
+            node = dict.get(node, seg, _MISSING)
+        if node is _MISSING:
+            return "agent.default"
+        return f"agent.{active_agent}"
+
+    return decl
 
 
 def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
@@ -1780,6 +1857,7 @@ def _emit_scope_node(
     order: int,
     scope: str,
     box_dest_fn,
+    decl_scope_fn,
 ) -> None:
     """Emit every category entry under ONE (bare) scope NODE.
 
@@ -1787,6 +1865,13 @@ def _emit_scope_node(
     non-agent scope; the effective agent node for the agent scope). *scope* is the
     BARE scope token used for the emitted ``CategoryEntry.scope`` — the load-bearing
     precedence identity. Reads via unbound ``dict`` ops (S3).
+
+    *decl_scope_fn* ``(category, name)`` answers the OTHER scope question: which
+    DISCRIMINATED scope the entry was DECLARED under, for
+    ``CategoryEntry.key``. The two coincide everywhere but the agent tier
+    (``_agent_decl_scope_fn``), and they are different facts — collapsing them
+    would either lose the precedence token or emit a bare ``agent.<category>``
+    key, which is not a key (spec §0 L21).
 
     EMISSION ONLY. The undeclared-shape refusal ran earlier, in
     :func:`snapshot_category_entries`, against the RAW tiers — so it could name the
@@ -1806,6 +1891,7 @@ def _emit_scope_node(
                 bind = dict.__getitem__(mode_node, name)
                 _emit_bind(
                     collected, order, scope, category, name, bind, box_dest_fn,
+                    key=f"{decl_scope_fn(category, name)}.{category}.{name}",
                 )
 
     # caches / seeded / common / synced
@@ -1817,6 +1903,7 @@ def _emit_scope_node(
             bind = dict.__getitem__(cat_node, name)
             _emit_bind(
                 collected, order, scope, category, name, bind, box_dest_fn,
+                key=f"{decl_scope_fn(category, name)}.{category}.{name}",
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped
@@ -1836,6 +1923,7 @@ def _emit_scope_node(
                     delivery="MOUNT",
                     options="ro",
                     name=box_dest,
+                    key=f"{decl_scope_fn('masks', raw_dest)}.masks.{raw_dest}",
                 ),
             ))
 
@@ -1857,6 +1945,7 @@ def _emit_scope_node(
                     delivery="ENV",
                     options=value if isinstance(value, str) else str(value),
                     name=var,
+                    key=f"{decl_scope_fn('env', var)}.env.{var}",
                 ),
             ))
 
@@ -1888,6 +1977,7 @@ def _emit_scope_node(
                     delivery="MOUNT",
                     options="ro",
                     name=var,
+                    key=f"{decl_scope_fn('secret_path', var)}.secret_path.{var}",
                 ),
             ))
 
@@ -1900,6 +1990,8 @@ def _emit_bind(
     name: str,
     bind: object,
     box_dest_fn,
+    *,
+    key: str,
 ) -> None:
     """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY) for *bind*.
 
@@ -1909,10 +2001,15 @@ def _emit_bind(
     leaf is a build-invariant breach; raise loudly (never type-launder).
     The host_src is used AS-IS — a stored source resolves on its own (spec §2a
     L474-486) and NOTHING is prefixed here; *box_dest_fn* resolves box-side.
+
+    *key* is the DISCRIMINATED declaration key the caller built from
+    ``decl_scope_fn`` — carried on the entry for the collision messages and the
+    ``meta.derived.*`` materialisation, and used here so even the malformed-leaf
+    raise names the key the user actually wrote.
     """
     if not isinstance(bind, Bind):
         raise SettingsError(
-            f"category {scope}.{category}.{name} is {type(bind).__name__}, "
+            f"category {key} is {type(bind).__name__}, "
             f"expected a Bind (present-None binds are omitted at build, §3/§6e)"
         )
     delivery = _DELIVERY[category]
@@ -1939,6 +2036,7 @@ def _emit_bind(
             delivery=delivery,
             options=options,
             name=name,
+            key=key,
         ),
     ))
 

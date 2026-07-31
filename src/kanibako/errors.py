@@ -9,6 +9,46 @@ class ConfigError(KanibakoError):
     """Configuration file missing or malformed."""
 
 
+class CategoryCollisionError(ConfigError):
+    """Two category declarations target one resolved ``box_dest`` (spec §0).
+
+    A user CONFIGURATION fault (hence a :class:`ConfigError`, like the
+    ``synced``↔``binding`` raise it joins), carried STRUCTURED so tests assert on
+    fields rather than on message text and so a CLI seam can enrich the rendered
+    text with the scope→file mapping the pure resolver does not know.
+
+    *kind* discriminates the §0 table row that fired:
+
+    ``"binding_vs_binding"``
+        Row 1 — two ``bindings.{ro,rw}`` (or a ``bindings.*`` and a
+        ``secret_path``) at one destination. ERROR always, any scope, any mode.
+    ``"extension_onto_occupied"``
+        Row 3 — an ABSTRACT declaration (``common`` / ``caches``) deriving a
+        binding onto a destination an explicit binding already occupies. The
+        base survives; the EXTENSION is refused.
+    ``"synced_vs_binding"``
+        The pre-existing copy-vs-mount rule (spec §0 L119-124), unchanged by the
+        collision table — a ``synced`` COPY cannot override a live MOUNT.
+
+    *box_dest* is the collision key. *entries* is the ordered tuple of
+    ``(key, host_src)`` pairs that participate, declaration key first — the
+    rendered message names them in that order.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: str,
+        box_dest: str,
+        entries: "tuple[tuple[str, str | None], ...]" = (),
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.box_dest = box_dest
+        self.entries = entries
+
+
 class ProjectError(KanibakoError):
     """Project path does not exist or cannot be resolved."""
 

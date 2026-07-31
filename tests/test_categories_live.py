@@ -647,3 +647,233 @@ class TestDeclarationRoots:
         assert by_dest["/home/agent/.claude/cache"] == (
             "/data/agents/claude/common/cache"
         )
+
+
+class TestDeclarationKeyIsDiscriminated:
+    """Every entry carries the DISCRIMINATED key it was declared under (§0 L21).
+
+    ``CategoryEntry.scope`` is the BARE precedence token (``agent``), but
+    ``CategoryEntry.key`` must name a real tier — ``agent.<agent>`` or
+    ``agent.default``. A bare ``agent.<category>.<name>`` is not a key at all, so
+    a collision message or a ``meta.derived.*`` key spelled that way would point
+    a reader at something the keyspace forbids them to write.
+
+    ⚑ The agent tier is the ONLY place the two can differ, because
+    ``_agent_pick_node`` collapses ``agent.default`` and ``agent.<active>`` into
+    one effective node BEFORE emission. Both arms are asserted: a name the active
+    slot sets, and a name only ``agent.default`` sets.
+    """
+
+    @staticmethod
+    def _entries(floor, *, agent="claude"):
+        from kanibako.settings_launch import (
+            build_launch_snapshot,
+            meta_identity_floor,
+            snapshot_category_entries,
+        )
+
+        ctx = make_ctx(
+            workset_name=None,
+            config={"config.data": "/data", "config.agents": "/data/agents"},
+        )
+        base: dict[str, object] = dict(meta_identity_floor(
+            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+            share_workset=None, agent_name=agent,
+        ))
+        base.update(floor)
+        snap = build_launch_snapshot(
+            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=base,
+        )
+        return {
+            e.name: e
+            for e in snapshot_category_entries(
+                snap, active_agent=agent, box_ctx=ctx,
+            )
+        }
+
+    def test_active_slot_and_default_tier_keys_are_told_apart(self):
+        by_name = self._entries({
+            "agent.claude.common.plugins": ("/store/plugins", "/g/plugins"),
+            "agent.default.common.shared_dir": ("/store/shared", "/g/shared"),
+        })
+        assert by_name["plugins"].key == "agent.claude.common.plugins"
+        assert by_name["shared_dir"].key == "agent.default.common.shared_dir"
+        # The PRECEDENCE token stays bare for both — they are different facts.
+        assert by_name["plugins"].scope == "agent"
+        assert by_name["shared_dir"].scope == "agent"
+
+    def test_the_active_slot_wins_a_name_the_default_tier_also_sets(self):
+        by_name = self._entries({
+            "agent.default.caches.build": ("/default/build", "/g/build"),
+            "agent.claude.caches.build": ("/active/build", "/g/build"),
+        })
+        assert by_name["build"].host_src == "/active/build"
+        assert by_name["build"].key == "agent.claude.caches.build"
+
+    def test_no_emitted_key_uses_the_bare_agent_form(self):
+        for entry in self._entries({
+            "agent.claude.common.plugins": ("/store/plugins", "/g/plugins"),
+            "agent.default.seeded.template": ("/store/tpl", "~"),
+            "agent.claude.env.FOO": "bar",
+            "agent.claude.secret_path.TOK": "/secrets/tok",
+            "box.bindings.rw.home": ("/boxes/b/home", "~"),
+        }).values():
+            assert not entry.key.startswith("agent.common")
+            assert not entry.key.startswith("agent.seeded")
+            assert not entry.key.startswith("agent.env")
+            assert not entry.key.startswith("agent.secret_path")
+        # And the non-agent scopes are spelled with their bare token, as always.
+        by_name = self._entries({"box.bindings.rw.home": ("/boxes/b/home", "~")})
+        assert by_name["home"].key == "box.bindings.rw.home"
+
+
+class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
+    """A DISPLAY verb must not write to disk.
+
+    ``box config show --effective`` resolves the SAME core table a launch does,
+    and that table create-if-missings the vault source dirs so the bind is always
+    emitted. Rendering a box must not make that true on disk — so the read path
+    passes ``guarantee_create=False``, which suppresses ONLY the mkdir. The binds
+    are emitted identically either way, which is what makes the display honest
+    rather than merely quiet.
+    """
+
+    class _P:
+        enable_vault = True
+
+        def __init__(self, root):
+            self.shell_path = root / "box_data" / "home"
+            self.project_path = root / "workspace"
+            self.vault_ro_path = root / "vault" / "ro"
+            self.vault_rw_path = root / "vault" / "rw"
+
+    def test_launch_creates_the_vault_sources(self, tmp_path):
+        from kanibako import core_defaults
+
+        proj = self._P(tmp_path)
+        core_defaults.core_default_categories(
+            None, proj, enable_vault=True, mode="standalone",
+        )
+        assert proj.vault_ro_path.is_dir()
+        assert proj.vault_rw_path.is_dir()
+
+    def test_a_read_only_resolve_creates_nothing(self, tmp_path):
+        from kanibako import core_defaults
+
+        proj = self._P(tmp_path)
+        core_defaults.core_default_categories(
+            None, proj, enable_vault=True, mode="standalone",
+            guarantee_create=False,
+        )
+        assert not proj.vault_ro_path.exists()
+        assert not proj.vault_rw_path.exists()
+
+    def test_the_emitted_binds_are_identical_either_way(self, tmp_path):
+        """The flag gates the SIDE EFFECT, not the result — otherwise the
+        display would be showing a different box than the launch mounts."""
+        from kanibako import core_defaults
+
+        read = core_defaults.core_default_categories(
+            None, self._P(tmp_path / "r"), enable_vault=True,
+            mode="standalone", guarantee_create=False,
+        )
+        launch = core_defaults.core_default_categories(
+            None, self._P(tmp_path / "l"), enable_vault=True,
+            mode="standalone",
+        )
+        # Same keys, same shapes; only the tmp root differs in the sources.
+        assert set(read) == set(launch)
+        assert [v[1:] for v in read.values()] == [v[1:] for v in launch.values()]
+
+
+class TestEffectiveBlockAgainstARealAgentPlugin:
+    """N1 — the declaration/derivation pairing, driven by a REAL ``ClaudeTarget``.
+
+    Every other test of the ``--effective`` block builds its snapshot by hand, so
+    the pairing is only ever proven against declarations a test wrote. This one
+    takes the SHIPPED claude plugin's own ``default_common()`` /
+    ``default_category_binds()`` tables through the REAL
+    ``build_launch_snapshot → snapshot_category_entries → derive_binding_keys``
+    chain and renders THAT — so a plugin whose declarations do not survive the
+    derivation, or whose keys come out undiscriminated, fails here.
+    """
+
+    @staticmethod
+    def _snapshot():
+        from kanibako.commands.start import _install_derived_bindings
+        from kanibako.settings_categories import derive_binding_keys
+        from kanibako.settings_launch import (
+            build_launch_snapshot,
+            meta_agent_path_floor,
+            meta_identity_floor,
+            snapshot_category_entries,
+        )
+        from kanibako.plugins.claude import ClaudeTarget
+
+        target = ClaudeTarget()
+        ctx = make_ctx(
+            workset_name=None,
+            xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
+            config={"config.data": "/data", "config.agents": "/data/agents"},
+        )
+        floor: dict[str, object] = {"system.cache": "/xcache/kanibako"}
+        floor.update(meta_identity_floor(
+            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+            share_workset=None, agent_name=target.name,
+        ))
+        floor.update(meta_agent_path_floor(target.name))
+        floor.update(target.default_common())
+        floor.update(target.default_seeds())
+        floor.update(target.default_category_binds())
+        snap = build_launch_snapshot(
+            agent_name=target.name, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        entries = snapshot_category_entries(
+            snap, active_agent=target.name, box_ctx=ctx,
+        )
+        _install_derived_bindings(snap, derive_binding_keys(entries))
+        return snap, entries
+
+    def test_the_plugins_own_declarations_derive_discriminated_keys(self):
+        from kanibako.settings_store import KeyStore
+        from kanibako.settings_views import derived_bindings
+
+        snap, entries = self._snapshot()
+        abstract = [
+            e for e in entries
+            if e.category in ("common", "caches", "seeded")
+        ]
+        assert abstract, "the claude plugin declares no abstract category"
+
+        node = dict.get(dict.get(snap, "meta"), "derived")
+        assert isinstance(node, KeyStore)
+        derived = derived_bindings(node)
+        # One derivation per abstract declaration, keyed by the DISCRIMINATED
+        # declaration key — never the bare ``agent.<category>`` form (§0 L21).
+        assert set(derived) == {e.key for e in abstract}
+        for key in derived:
+            assert key.startswith(("agent.claude.", "agent.default.",
+                                   "system.", "workset.", "box."))
+        # And the derivation carries the RESOLVED guest dest, not the raw one.
+        for entry in abstract:
+            assert derived[entry.key].box == entry.box_dest
+
+    def test_the_block_renders_the_pair_for_a_real_declaration(self):
+        import io
+
+        from kanibako.config_interface import _print_category_block
+
+        snap, entries = self._snapshot()
+        buf = io.StringIO()
+        _print_category_block(snap, None, buf)
+        text = buf.getvalue()
+        for entry in entries:
+            if entry.category not in ("common", "caches", "seeded"):
+                continue
+            assert f"  {entry.key} = " in text, entry.key
+            assert f"    meta.derived.{entry.key} = " in text, entry.key
+        # The bare agent form never appears (it is not a key).
+        assert "agent.common" not in text
+        assert "agent.caches" not in text

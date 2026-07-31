@@ -4856,6 +4856,7 @@ def _resolve_launch_snapshot(
     deliver_creds: bool = True,
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
+    guarantee_create: bool = True,
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
 
@@ -4879,6 +4880,12 @@ def _resolve_launch_snapshot(
     their binds do NOT appear otherwise — exactly as the per-family path emitted
     them only inside their conditional block.
 
+    *guarantee_create* (default True — a LAUNCH) gates the core table's
+    create-if-missing of the vault source dirs. A READ-ONLY consumer of this
+    resolve — ``box config show --effective``, which renders the resolved
+    categories — passes False: it must show what a launch WOULD mount without
+    making it so. Nothing else about the resolve differs.
+
     *include_base_families* gates the always-available tables (core / kani /
     channel / common / seeded).  It is True for the MAIN launch snapshot and False
     for the late, conditional image/helper resolves (whose box_dests are disjoint),
@@ -4888,7 +4895,10 @@ def _resolve_launch_snapshot(
     """
     from kanibako import settings_launch
     from kanibako.agent_representation import agent_default_partial
-    from kanibako.settings_categories import reconcile_categories
+    from kanibako.settings_categories import (
+        derive_binding_keys,
+        reconcile_categories,
+    )
 
     (
         ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
@@ -4900,7 +4910,9 @@ def _resolve_launch_snapshot(
     # namespace), so a plain union is well-defined.
     default_categories: dict[str, object] = {}
     if include_base_families:
-        default_categories.update(_core_default_categories(std, proj))
+        default_categories.update(_core_default_categories(
+            std, proj, guarantee_create=guarantee_create,
+        ))
         default_categories.update(core_defaults.kani_default_categories())
         # Per-file READ-ONLY rom binds: every shipped file under the packaged rom
         # root bound ro at its mirrored ~ path (the KANIBAKO.md guide + flattener
@@ -4990,8 +5002,79 @@ def _resolve_launch_snapshot(
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=agent_name, box_ctx=ctx,
     )
+    # MATERIALISE each ABSTRACT declaration's derived binding beside it, at
+    # ``meta.derived.<declaration-key>`` (spec §0), BEFORE the reconcile — the
+    # derivation is a property of the declaration, not of whether it won.
+    _install_derived_bindings(snapshot, derive_binding_keys(entries))
     reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
+    emit_collision_warnings(reconciled.warnings)
     return snapshot, reconciled
+
+
+def _install_derived_bindings(snapshot, derived: "Mapping[str, object]") -> None:
+    """Write the ``meta.derived.*`` materialisation into *snapshot* in place.
+
+    Mirrors ``settings_launch._materialize_box_agent_mirror``: a post-expand
+    ``meta.*`` write into the built snapshot at ONE seam.  ``meta.*`` is RO by
+    contract, and ``assemble_levels`` drops a top-level ``meta:`` table from every
+    settings file, so nothing a user writes can forge or collide with these.
+    """
+    from kanibako.settings_store import KeyStore
+
+    for dotted, value in derived.items():
+        node = snapshot
+        parts = dotted.split(".")
+        for seg in parts[:-1]:
+            child = dict.get(node, seg, None)
+            if not isinstance(child, KeyStore):
+                child = KeyStore()
+                node[seg] = child
+            node = child
+        node[parts[-1]] = value
+
+
+#: Process-scoped DISPLAY state for :func:`emit_collision_warnings`: the
+#: ``(box_dest, scope)`` pairs already reported. It can change no resolution
+#: outcome — the resolver returns collisions as DATA and stays pure — which is
+#: exactly why it is allowed to be module-level at all.
+#:
+#: ⚑ It carries no BOX identity. One process resolving two different boxes would
+#: report a shared ``(dest, scope)`` ambiguity once, not twice. That is correct
+#: for the CLI (one box per invocation) and is recorded rather than defended: a
+#: future multi-box process must key this by box.
+_COLLISION_WARNED: "set[tuple[str, str]]" = set()
+
+
+def reset_collision_warnings() -> None:
+    """Clear the per-process collision-warning memo (test seam)."""
+    _COLLISION_WARNED.clear()
+
+
+def emit_collision_warnings(collisions) -> None:
+    """Log each SAME-SCOPE abstraction ambiguity ONCE PER PROCESS (spec §0 row 5).
+
+    §0 requires the warning "every launch (not deduplicated, not once-ever — a
+    same-scope collision is a real ambiguity and stays visible until fixed)". The
+    prohibition is on CROSS-LAUNCH suppression: there is no marker file, no
+    registry flag, no per-box state, so the next launch warns again and the one
+    after that, until the config is fixed.
+
+    ⚑ What IS collapsed is the FIVE in-process re-resolutions of one declaration
+    set: ``_resolve_launch_snapshot`` runs up to five times per ``kanibako
+    start`` (the main resolve, the conditional image + helper resolves, the seed
+    resolve, the ``synced`` copy resolve) and every one of them reads the user's
+    settings FILES, so one same-scope collision declared in a box file surfaces in
+    several of them. Printing it five times is one ambiguity reported five times,
+    not five ambiguities — so the memo is keyed ``(box_dest, scope)`` and lives
+    for the process, never beyond it.
+    """
+    logger = get_logger(__name__)
+    for collision in collisions:
+        memo = (collision.box_dest, collision.scope)
+        if memo in _COLLISION_WARNED:
+            continue
+        _COLLISION_WARNED.add(memo)
+        logger.warning("%s", collision.message())
 
 
 def _emit_category_mounts(reconciled, *, label: str) -> list:
@@ -5682,7 +5765,9 @@ def _seed_channel_files(std, proj) -> None:
             pass
 
 
-def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
+def _core_default_categories(
+    std, proj, *, guarantee_create: bool = True,
+) -> dict[str, tuple[str, str, str]]:
     """Build the core box mounts as ``default_categories`` (step 3).
 
     Thin reader over :func:`kanibako.core_defaults.core_default_categories`: the
@@ -5695,7 +5780,8 @@ def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
     hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
     """
     return core_defaults.core_default_categories(
-        std, proj, enable_vault=proj.enable_vault, mode=proj.mode.value
+        std, proj, enable_vault=proj.enable_vault, mode=proj.mode.value,
+        guarantee_create=guarantee_create,
     )
 
 
