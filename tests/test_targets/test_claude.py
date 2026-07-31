@@ -487,11 +487,11 @@ class TestDefaultShares:
 
     def test_declares_plugins_and_cache(self):
         t = ClaudeTarget()
-        commons = t.default_common()
+        common_binds = t.default_common()
         # STRUCTURED form (spec §2a): each value is a (host_src, box_dest) tuple,
         # NOT a colon-joined string.  The host_src is the STORED, fully
         # self-resolving @-ref — no layer prepends a root later (§2a L474-486).
-        assert commons == {
+        assert common_binds == {
             "agent.claude.common.plugins": (
                 "@meta.agent.claude.path/common/plugins",
                 "/home/agent/.claude/plugins",

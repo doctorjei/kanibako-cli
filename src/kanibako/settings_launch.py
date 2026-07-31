@@ -17,7 +17,7 @@ by-dest consumer, fed from the snapshot's category subtrees).
 What lands in the one snapshot
 ------------------------------
 The launch has SEVERAL runtime-computed ``default_categories`` tables (channel /
-core / kani / helper / image binds, agent commons/seeds, masks) and a behavior
+core / kani / helper / image binds, agent common/seeded, masks) and a behavior
 floor — today each rode a per-family ``LevelView``'s ``defaults=`` (the cascade
 FLOOR). They ALL fold into ONE ``floor`` dict passed to
 ``assemble_levels(floor=…)`` (2a folds it UNDER the base file, so a file at any
@@ -455,7 +455,7 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     of ``meta.agent.<a>.name`` at both seams, and the flat form avoids a floor entry
     that references its own sibling. Both resolve identically (verified).
 
-    ⚑ NODE **and** HARNESS. ``load_common`` keys its commons on the plugin's own
+    ⚑ NODE **and** HARNESS. ``load_common`` keys its entries on the plugin's own
     ``Target.name`` (the HARNESS, e.g. ``claude``) while callers pass the ACTIVE
     NODE (``navigator℘claude`` for a persona). On a persona box those differ, so
     materializing only the node would leave the harness-keyed refs DANGLING. Both are

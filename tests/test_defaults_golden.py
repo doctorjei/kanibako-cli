@@ -280,7 +280,7 @@ class TestAgentDefaultsShape:
         """Any ``common`` block declares structured 2-/3-element bind pairs.
 
         ``common`` is one of the spec §2a structured-pair categories.  Files that
-        declare no commons (goose/codex) yield an empty map — also valid.
+        declare no ``common`` entries (goose/codex) yield an empty map — also valid.
 
         ⚑ THE host_src ASSERTIONS ARE LOAD-BEARING, at BOTH levels.  Every generic
         predicate here (2-/3-tuple, no ``:``, no ``,``, dest under ``$GUEST_HOME``)
@@ -309,14 +309,15 @@ class TestAgentDefaultsShape:
                     f"{entry!r}"
                 )
 
-            # And the LOADED commons are real 2-/3-tuples (BindDefault).
-            commons = agent_defaults.load_common(package, filename, agent)
-            assert all(k.startswith(f"agent.{agent}.common.") for k in commons), (
-                f"{filename}: loaded common keys must be DISCRIMINATED: {list(commons)}"
+            # And the LOADED entries are real 2-/3-tuples (BindDefault).
+            common_binds = agent_defaults.load_common(package, filename, agent)
+            assert all(k.startswith(f"agent.{agent}.common.") for k in common_binds), (
+                f"{filename}: loaded common keys must be DISCRIMINATED: "
+                f"{list(common_binds)}"
             )
-            assert isinstance(commons, dict)
+            assert isinstance(common_binds, dict)
             root_ref = agent_category_root_ref(agent, "common")
-            for key, pair in commons.items():
+            for key, pair in common_binds.items():
                 _assert_structured_pair(pair, f"{filename} common {key}")
                 assert pair[1].startswith(GUEST_HOME), (
                     f"{filename}: loaded common {key} box_dest not under GUEST_HOME: "

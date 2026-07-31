@@ -738,9 +738,9 @@ tweakcc:
 - `tweakcc:` -- optional tweakcc integration for binary patching
   (see [docs/tweakcc.md](docs/tweakcc.md))
 
-Per-agent shares/caches are declared by the plugin (`agent.<agent>.shared.*` /
+Per-agent common dirs/caches are declared by the plugin (`agent.<agent>.common.*` /
 `agent.<agent>.caches.*`) and served from the per-agent store dir
-(`agents/<agent>/{plugins,cache}`).
+(`agents/<agent>/{common,caches}/<name>`).
 
 Manage agent settings via the CLI:
 

@@ -271,7 +271,7 @@ def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefaul
     colon-joined string).  *agent* is the declaring plugin's own name; the agent tier
     is DISCRIMINATED (§2d / §0 L21 — there is NO bare ``agent.<key>``).
     ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.  Returns ``{}`` when
-    the file declares no commons.
+    the file declares no ``common`` entries.
 
     ROOTED AT DECLARATION (spec §2a L487-517).  An author writes a bare leaf
     (``plugins``); what is STORED is the full self-resolving
@@ -289,13 +289,13 @@ def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefaul
     the key.
     """
     root_ref = agent_category_root_ref(agent, "common")
-    commons: dict[str, BindDefault] = {}
+    common_binds: dict[str, BindDefault] = {}
     for entry in _load_doc(package, filename).get("common", []):
         key = f"agent.{agent}.common.{entry['key']}"
         host_src = root_relative_source(entry["host_src"], root_ref)
         options = entry.get("options")
         if options is not None:
-            commons[key] = (host_src, _expand(entry["box_dest"]), options)
+            common_binds[key] = (host_src, _expand(entry["box_dest"]), options)
         else:
-            commons[key] = (host_src, _expand(entry["box_dest"]))
-    return commons
+            common_binds[key] = (host_src, _expand(entry["box_dest"]))
+    return common_binds

@@ -65,8 +65,8 @@ Delivery
   **MOUNTs** that physically shadow whatever is at the same path.
 * ``env`` is neither — it is delivered as an environment variable (``ENV``).
 
-Two orthogonal axes (unchanged from commons/seeds)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Two orthogonal axes (unchanged from ``common``/``seeded``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 * **The KEY's scope** selects — for ``bindings`` — the mount mode, and names the
   DECLARATION ROOT an abstract-category source is spelled against when it is
   declared (spec §2a; the rooting happens at the declaration site, never here).

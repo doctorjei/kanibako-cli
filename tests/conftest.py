@@ -269,7 +269,7 @@ def start_mocks():
             patch("kanibako.templates.stage_layers"),
             # Block 7b: the launch-time CATEGORY resolution now runs through ONE
             # snapshot + ONE reconcile (``_resolve_launch_snapshot``) for the
-            # always-available families (core / kani / channel / commons / seeds),
+            # always-available families (core / kani / channel / common / seeded),
             # then the conditional image/helper resolves at their own sites.
             # Driven with the MagicMock ``std``/``proj`` here, the category sources
             # are MagicMock repr strings whose L7 guarantee-create would mkdir

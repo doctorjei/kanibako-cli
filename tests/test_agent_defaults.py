@@ -64,8 +64,8 @@ class TestLoadCommonRooting:
             "    host_src: cache\n"
             "    box_dest: \"$GUEST_HOME/.claude/cache\"\n"
         )
-        commons = agent_defaults.load_common(package, filename, "claude")
-        assert commons == {
+        common_binds = agent_defaults.load_common(package, filename, "claude")
+        assert common_binds == {
             "agent.claude.common.plugins": (
                 "@meta.agent.claude.path/common/plugins",
                 "/home/agent/.claude/plugins",
@@ -89,9 +89,9 @@ class TestLoadCommonRooting:
             "    host_src: plugins\n"
             "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
         )
-        commons = agent_defaults.load_common(package, filename, "claude")
-        assert list(commons) == ["agent.claude.common.p"]
-        assert commons["agent.claude.common.p"][0] == (
+        common_binds = agent_defaults.load_common(package, filename, "claude")
+        assert list(common_binds) == ["agent.claude.common.p"]
+        assert common_binds["agent.claude.common.p"][0] == (
             "@meta.agent.claude.path/common/plugins"
         )
 
@@ -111,8 +111,8 @@ class TestLoadCommonRooting:
             f"    host_src: \"{src}\"\n"
             "    box_dest: \"$GUEST_HOME/.thing\"\n"
         )
-        commons = agent_defaults.load_common(package, filename, "claude")
-        assert commons["agent.claude.common.thing"][0] == src
+        common_binds = agent_defaults.load_common(package, filename, "claude")
+        assert common_binds["agent.claude.common.thing"][0] == src
 
     def test_options_are_preserved_on_a_rooted_entry(self, declfile):
         """A 3-tuple (explicit mount options) roots its source the same way."""
@@ -123,8 +123,8 @@ class TestLoadCommonRooting:
             "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
             "    options: ro\n"
         )
-        commons = agent_defaults.load_common(package, filename, "claude")
-        assert commons["agent.claude.common.plugins"] == (
+        common_binds = agent_defaults.load_common(package, filename, "claude")
+        assert common_binds["agent.claude.common.plugins"] == (
             "@meta.agent.claude.path/common/plugins",
             "/home/agent/.claude/plugins",
             "ro",
