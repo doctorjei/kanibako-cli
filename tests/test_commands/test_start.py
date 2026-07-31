@@ -1160,15 +1160,21 @@ class TestInstructionDeliveryActivation:
 
 
 class TestPluginsAndCacheShares:
-    """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``shared``
-    category entries (the plugin's ``default_common()``), rooted at
-    ``@system.agents/claude`` = ``<data>/agents/claude`` and bound rw to
-    ``~/.claude/{plugins,cache}`` — NOT the old SHARED_STORE descriptor binding.
+    """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``common``
+    category entries (the plugin's ``default_common()``), ROOTED AT DECLARATION at
+    ``@meta.agent.claude.path/common`` = ``<data>/agents/claude/common`` and bound
+    rw to ``~/.claude/{plugins,cache}``.
 
     Driven through the LIVE single-route path (7c): the claude ``default_common()``
     table resolved via ``build_launch_snapshot`` (``_resolve_launch_snapshot``) and
-    emitted via ``_emit_category_mounts`` with a REAL ``std`` so the agent-scope
-    root-join + host paths + L7 guarantee-create are exercised end-to-end.
+    emitted via ``_emit_category_mounts`` with a REAL ``std``, so the STORED
+    ``@meta.agent.claude.path/common/<leaf>`` ref must actually resolve (the
+    ``meta.agent.<a>.path`` anchor + the ``@config.agents`` chain) and the host
+    paths + L7 guarantee-create are exercised end-to-end.
+
+    ⚑ There is NO root-join left to exercise (P3 deleted ``scope_roots``); these
+    assert the DECLARED ref resolving.  The ``common/`` segment in the expected
+    paths is P3's one intended path move (M-3).
     """
 
     _PLUGINS_DEST = "/home/agent/.claude/plugins"
@@ -1227,18 +1233,18 @@ class TestPluginsAndCacheShares:
         mounts = self._build(std, config_file, tmp_path)
         pm = self._by_dest(mounts, self._PLUGINS_DEST)
         assert len(pm) == 1
-        assert pm[0].source == std.agents / "claude" / "plugins"
+        assert pm[0].source == std.agents / "claude" / "common" / "plugins"
         assert pm[0].options == "Z,U"  # rw
         # Host source guarantee-created (L7) so podman binds a real persistent dir.
-        assert (std.agents / "claude" / "plugins").is_dir()
+        assert (std.agents / "claude" / "common" / "plugins").is_dir()
 
     def test_cache_mounted_from_agent_store(self, std, config_file, tmp_path):
         mounts = self._build(std, config_file, tmp_path)
         cm = self._by_dest(mounts, self._CACHE_DEST)
         assert len(cm) == 1
-        assert cm[0].source == std.agents / "claude" / "cache"
+        assert cm[0].source == std.agents / "claude" / "common" / "cache"
         assert cm[0].options == "Z,U"  # rw
-        assert (std.agents / "claude" / "cache").is_dir()
+        assert (std.agents / "claude" / "common" / "cache").is_dir()
 
     def test_single_mount_per_dest(self, std, config_file, tmp_path):
         mounts = self._build(std, config_file, tmp_path)
@@ -1256,19 +1262,73 @@ class TestPersonaShareSymlinks:
     _NODE = "navigator℘claude"
 
     def _target(self, commons=None):
+        """A stand-in target returning the REAL ``default_common()`` SHAPE.
+
+        ⚑ The values are the DECLARATION-ROOTED ``@``-refs the live claude plugin
+        emits, NOT the pre-P3 bare leaves.  A fixture carrying the old shape kept
+        every test in this class green while production built a garbage path out of
+        the ref (see ``test_links_are_under_the_common_dir``) — a stale fixture
+        masking a real regression is worse than no fixture, so this one is
+        cross-checked against the live plugin by
+        ``test_fixture_shape_matches_the_live_plugin``.
+        """
         from types import SimpleNamespace
         if commons is None:
             commons = {
-                "agent.claude.common.plugins": ("plugins", "/home/agent/.claude/plugins"),
-                "agent.claude.common.cache": ("cache", "/home/agent/.claude/cache"),
+                "agent.claude.common.plugins": (
+                    "@meta.agent.claude.path/common/plugins",
+                    "/home/agent/.claude/plugins",
+                ),
+                "agent.claude.common.cache": (
+                    "@meta.agent.claude.path/common/cache",
+                    "/home/agent/.claude/cache",
+                ),
             }
         return SimpleNamespace(name=self._HARNESS, default_common=lambda: commons)
+
+    def test_fixture_shape_matches_the_live_plugin(self):
+        """The fixture above cannot silently rot: it must equal what the REAL
+        claude plugin declares, key-for-key and value-for-value."""
+        from kanibako.plugins.claude import ClaudeTarget
+
+        assert self._target().default_common() == ClaudeTarget().default_common()
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
         agents = tmp_path / "agents"
         agents.mkdir()
         return SimpleNamespace(agents=agents)
+
+    def test_links_are_under_the_common_dir(self, tmp_path):
+        """T7 — the shim reads the REAL (declaration-rooted) commons shape.
+
+        ⚑ THIS IS THE ONE THAT CAUGHT THE BREAKAGE.  The shim used to build its
+        paths from the ``host_src`` VALUE, which was a bare leaf (``plugins``).
+        After P3 that value is ``@meta.agent.claude.path/common/plugins``, so the
+        old code would have created the literal directory
+        ``agents/<node>/@meta.agent.claude.path/common/plugins`` — a garbage path —
+        while every OTHER test in this class stayed green on a stale fixture that
+        still returned the bare leaf.  The leaf now comes from the KEY
+        (``agent.<a>.common.<leaf>``) and both sides are built from the SAME layout
+        helper the ref builder uses, so the two cannot drift.
+
+        (Mutation: derive the leaf from ``host_src`` again → the ``@``-ref becomes
+        a path component → RED.)
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        for name in ("plugins", "cache"):
+            node_link = std.agents / self._NODE / "common" / name
+            harness_dir = std.agents / self._HARNESS / "common" / name
+            assert node_link.is_symlink(), f"{name}: no link at {node_link}"
+            assert harness_dir.is_dir(), f"{name}: no harness dir at {harness_dir}"
+            assert node_link.readlink() == harness_dir
+        # And NOTHING was created from the raw @-ref value.
+        assert not any(
+            "@" in p.name for p in (std.agents / self._NODE).rglob("*")
+        ), sorted(str(p) for p in (std.agents / self._NODE).rglob("*"))
 
     # --- persona: symlinks created, harness dir first, no dangling -------------
 
@@ -1277,8 +1337,8 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         for name in ("plugins", "cache"):
-            node_link = std.agents / self._NODE / name
-            harness_dir = std.agents / self._HARNESS / name
+            node_link = std.agents / self._NODE / "common" / name
+            harness_dir = std.agents / self._HARNESS / "common" / name
             assert node_link.is_symlink(), f"{name} not a symlink"
             # Harness dir made FIRST -> the link is NOT dangling.
             assert harness_dir.is_dir(), f"harness {name} dir missing"
@@ -1290,13 +1350,13 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         before = {
-            name: (std.agents / self._NODE / name).readlink()
+            name: (std.agents / self._NODE / "common" / name).readlink()
             for name in ("plugins", "cache")
         }
         # Second call: still symlinks, same target (no clobber, no error).
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         for name in ("plugins", "cache"):
-            link = std.agents / self._NODE / name
+            link = std.agents / self._NODE / "common" / name
             assert link.is_symlink()
             assert link.readlink() == before[name]
 
@@ -1304,7 +1364,7 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         # A persona that legitimately has its OWN real plugins dir.
-        real = std.agents / self._NODE / "plugins"
+        real = std.agents / self._NODE / "common" / "plugins"
         real.mkdir(parents=True)
         (real / "sentinel.txt").write_text("mine")
         ensure_persona_share_symlinks(std, self._NODE, self._target())
@@ -1312,7 +1372,7 @@ class TestPersonaShareSymlinks:
         assert real.is_dir() and not real.is_symlink()
         assert (real / "sentinel.txt").read_text() == "mine"
         # The OTHER share (cache) still got its symlink.
-        cache_link = std.agents / self._NODE / "cache"
+        cache_link = std.agents / self._NODE / "common" / "cache"
         assert cache_link.is_symlink()
 
     def test_persona_wrong_target_symlink_left_alone(self, tmp_path):
@@ -1321,7 +1381,7 @@ class TestPersonaShareSymlinks:
         # Pre-existing symlink pointing somewhere ELSE (not the harness dir).
         elsewhere = tmp_path / "elsewhere_plugins"
         elsewhere.mkdir()
-        node_link = std.agents / self._NODE / "plugins"
+        node_link = std.agents / self._NODE / "common" / "plugins"
         node_link.parent.mkdir(parents=True)
         node_link.symlink_to(elsewhere)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
@@ -1366,11 +1426,13 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        node_link = std.agents / self._NODE / "plugins"
+        node_link = std.agents / self._NODE / "common" / "plugins"
         # Simulate the L7 guarantee-create on the (already-symlinked) source.
         node_link.mkdir(parents=True, exist_ok=True)
         assert node_link.is_symlink()  # NOT replaced by a real dir
-        assert node_link.resolve() == (std.agents / self._HARNESS / "plugins").resolve()
+        assert node_link.resolve() == (
+            std.agents / self._HARNESS / "common" / "plugins"
+        ).resolve()
 
 
 class TestCredsyncRouting:

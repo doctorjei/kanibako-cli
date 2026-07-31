@@ -547,3 +547,79 @@ class TestSystemAgentNodeBindRepoint:
         std = _std(config_file)
         # The override is gone; the now-empty tables are pruned (sparse file).
         assert load_doc(self._file(std)) == {}
+
+
+class TestRelativeCategorySourceRefusedEndToEnd:
+    """The bare-relative category refusal, and its hint, through the REAL setter.
+
+    Driven at SYSTEM scope because that is a scope from which an agent-scope
+    category key can legitimately be written (containment: system ⊃ agent), and
+    because ``system set`` routes an ``agent.<node>.*`` key through the validating
+    engine (``set_config_value`` → ``validate_config_set``).
+
+    ⚑ THE HINT MUST BE ACCEPTABLE. The refusal tells the user to spell the source as
+    ``@meta.agent.<agent>.path/<category>/<name>``; if the SET-TIME validation
+    snapshot did not materialize ``meta.agent.<a>.path``, that very value would come
+    straight back as an unresolvable ``@``-reference. A tool that refuses its own
+    suggestion is worse than one that suggests nothing — so the round trip (refuse,
+    read the hint, set the hinted value, succeed) is pinned end to end here, not
+    only at the pure-validator level.
+    """
+
+    _KEY = "agent.claude.common.plugins"
+    _HINTED = "@meta.agent.claude.path/common/plugins"
+
+    def test_relative_source_is_refused_with_a_per_scope_hint(
+        self, config_file, tmp_home, capsys,
+    ):
+        rc = _set(f"{self._KEY}=plugins")
+        out = capsys.readouterr()
+        msg = out.out + out.err
+        assert rc != 0, msg
+        assert "bare relative path" in msg
+        assert self._HINTED in msg
+
+    def test_the_hinted_value_is_ACCEPTED(self, config_file, tmp_home, capsys):
+        """The round trip: the exact string the refusal suggested sets cleanly.
+
+        The key is seeded first because ``config set`` is SOURCE-ONLY — it repoints
+        an existing bind and never creates one (F10 must-exist). That gate is a
+        separate, documented rule; what is under test here is that the SUGGESTED
+        VALUE resolves.
+
+        (Mutation: drop the ``meta_agent_path_floor`` contribution from
+        ``config_interface._category_set_lookups`` → the hinted value comes back as
+        ``dangling @-reference '@meta.agent.claude.path'`` → RED. That dead end is
+        what this pins.)
+        """
+        _write_nested_toml_key(
+            config_file, ("agent", "claude", "common"), "plugins",
+            ["/seed/src", "/home/agent/.claude/plugins"],
+        )
+        rc = _set(f"{self._KEY}={self._HINTED}")
+        out = capsys.readouterr()
+        msg = out.out + out.err
+        assert rc == 0, msg
+        assert "@-reference" not in msg
+        # Stored VERBATIM (§0 files store UNRESOLVED), box_dest preserved.
+        assert load_doc(config_file)["agent"]["claude"]["common"]["plugins"] == [
+            self._HINTED, "/home/agent/.claude/plugins",
+        ]
+
+    def test_a_relative_source_is_still_refused_when_the_key_EXISTS(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Control: the refusal is about the VALUE, not about the must-exist gate —
+        it still fires on a key that is present in the cascade."""
+        _write_nested_toml_key(
+            config_file, ("agent", "claude", "common"), "plugins",
+            ["/seed/src", "/home/agent/.claude/plugins"],
+        )
+        rc = _set(f"{self._KEY}=plugins")
+        out = capsys.readouterr()
+        assert rc != 0
+        assert "bare relative path" in out.out + out.err
+        # And NOTHING was written — the stored tuple is untouched.
+        assert load_doc(config_file)["agent"]["claude"]["common"]["plugins"] == [
+            "/seed/src", "/home/agent/.claude/plugins",
+        ]

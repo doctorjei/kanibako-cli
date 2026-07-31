@@ -1038,7 +1038,7 @@ def _is_path_category_key(key: str) -> bool:
 
     The source-only RAW repoint (spec §2a / design §6d / S24) applies to the
     bind-shaped categories ONLY — ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
-    ``shared`` / ``synced`` (a 2-/3-element ``[host_src, box_dest[, options]]``
+    ``common`` / ``synced`` (a 2-/3-element ``[host_src, box_dest[, options]]``
     tuple). ``env`` (scalar) is routed by the earlier ``_is_env_key`` branch;
     ``masks`` (a keyed list) is YAML-only (spec §2a L216) and is NOT matched here.
     """
@@ -1195,6 +1195,23 @@ def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     )
 
 
+def _agent_scope_node(key: str) -> str:
+    """The agent NODE a discriminated agent-scope *key* names, else ``""``.
+
+    ``agent.claude.common.plugins`` -> ``claude``; ``box.bindings.rw.home`` -> ``""``.
+    Reads the scope token the category regex already parses, so the discriminator is
+    split the one canonical way (a persona node carries no dot, so the first two
+    segments are the whole scope).
+    """
+    from kanibako.settings_categories import BIND_KEY_RE
+
+    m = BIND_KEY_RE.match(key)
+    if m is None:
+        return ""
+    scope = m.group("scope")
+    return scope.split(".", 1)[1] if scope.startswith("agent.") else ""
+
+
 def _category_set_lookups(
     config_path: Path,
     *,
@@ -1277,6 +1294,29 @@ def _category_set_lookups(
                 floor[dotted] = str(path)
     except Exception:
         pass
+
+    # The agent STORE-ROOT anchors (spec §2d L515), from the SAME builder the launch
+    # floor uses. Load-bearing for the bare-relative refusal: that error tells the
+    # user to spell an abstract-category source as
+    # ``@meta.agent.<a>.path/<category>/<name>``, and without this the very value the
+    # tool just recommended would be rejected here as a dangling @-reference. A hint
+    # the tool then refuses is worse than no hint.
+    #
+    # Anchored for BOTH the agent the command targets AND the agent the EDITED KEY
+    # names. The second is not redundancy: the per-node routing that supplies
+    # *agent_name* covers ``agent.<node>.bindings.*`` only, so an agent-scope
+    # ``common`` / ``caches`` / ``seeded`` set arrives here with no agent name at all
+    # — and the store root a value needs is the one its own key names, whichever
+    # agent the surrounding command happens to be about.
+    #
+    # With no agent in play at either seam the key stays absent, so an
+    # ``@meta.agent.*`` source is correctly a DANGLING ref rather than a
+    # silently-empty one.
+    from kanibako.settings_launch import meta_agent_path_floor
+
+    for anchor_agent in (agent_name, _agent_scope_node(canonical)):
+        if anchor_agent:
+            floor.update(meta_agent_path_floor(anchor_agent))
 
     ctx = _set_time_ctx(config=config_foundation)
 

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from kanibako.vscode_config import CodexModelProvider
 
 from kanibako.agent_config import (
+    agent_category_root,
     agent_settings_path,
     load_agent_config,
     write_agent_config,
@@ -127,12 +128,22 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
     dir is its own store, but whose plugins/cache SHOULD be shared with the bare
     harness (``agents/claude/``) rather than starting empty.  Rather than re-root
-    the resolver, we lay a SYMLINK shim: for every agent-scope share the target
+    the resolver, we lay a SYMLINK shim: for every agent-scope common the target
     declares (``target.default_common()`` — claude's ``plugins`` / ``cache``),
-    ``agents/<node>/<host_src>`` becomes a symlink -> ``agents/<harness>/<host_src>``.
+    ``agents/<node>/common/<leaf>`` becomes a symlink ->
+    ``agents/<harness>/common/<leaf>``.
     The resolver + spec are UNCHANGED; the L7 guarantee-create later (``mkdir
     parents=True, exist_ok=True`` on the rw source) is a no-op on the symlink-to-
     existing-dir, so the harness dir is the real writeback target.
+
+    ⚑ THE LEAF COMES FROM THE KEY, NOT THE VALUE, and both sides are built from
+    :func:`~kanibako.agent_config.agent_category_root` — the SAME layout helper the
+    declaration-time ref builder uses.  The ``host_src`` VALUE is now the fully
+    self-resolving ``@meta.agent.<a>.path/common/<leaf>`` (spec §2a), so reading a
+    path component off it would produce the literal directory
+    ``agents/<node>/@meta.agent.<a>.path/common/<leaf>``.  Single-sourcing the
+    layout is also what stops this shim and the resolver from drifting apart —
+    they are two consumers of ONE layout fact.
 
     Driven by the descriptor's declared commons (generic over harnesses; NO
     per-plugin code).  Call at persona-dir MATERIALIZATION, BEFORE mount assembly /
@@ -156,10 +167,13 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
         return
 
     logger = get_logger("start")
-    agents_root = std.agents
-    for host_src, *_rest in target.default_common().values():
-        harness_dir = Path(agents_root) / harness / host_src
-        node_link = Path(agents_root) / agent_id / host_src
+    agents_root = Path(std.agents)
+    for key in target.default_common():
+        # ``agent.<a>.common.<leaf>`` -> ``<leaf>`` (the keyspace name, which IS the
+        # store's dir name; the host_src value is an @-ref, not a path component).
+        leaf = key.rsplit(".", 1)[-1]
+        harness_dir = agent_category_root(agents_root, harness, "common") / leaf
+        node_link = agent_category_root(agents_root, agent_id, "common") / leaf
 
         # Create the harness (real) dir FIRST so the symlink never dangles.
         harness_dir.mkdir(parents=True, exist_ok=True)
@@ -175,22 +189,22 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
             if correct:
                 continue
             logger.debug(
-                "persona share %s: node link %s -> %s (not the harness dir %s); "
+                "persona common %s: node link %s -> %s (not the harness dir %s); "
                 "leaving as-is",
-                host_src, node_link, os.readlink(node_link), harness_dir,
+                leaf, node_link, os.readlink(node_link), harness_dir,
             )
             continue
         if node_link.exists():
             # A real dir/file already at the node path: the persona owns it; leave.
             logger.debug(
-                "persona share %s: node path %s is a real dir; leaving as-is "
+                "persona common %s: node path %s is a real dir; leaving as-is "
                 "(not sharing the harness dir)",
-                host_src, node_link,
+                leaf, node_link,
             )
             continue
         node_link.symlink_to(harness_dir)
         logger.debug(
-            "persona share %s: linked %s -> %s", host_src, node_link, harness_dir,
+            "persona common %s: linked %s -> %s", leaf, node_link, harness_dir,
         )
 
 
@@ -2096,9 +2110,9 @@ def _run_container(
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → NOW materialise the persona artifacts.  Persist the
-    # agent config (freshly generated OR B3-adopted); the share shim points
-    # ``agents/<node>/{plugins,cache}`` at the harness's dirs BEFORE mount assembly
-    # resolves them.  A bare agent (node == harness) is a no-op for the shim, and
+    # agent config (freshly generated OR B3-adopted); the commons shim points
+    # ``agents/<node>/common/{plugins,cache}`` at the harness's dirs BEFORE mount
+    # assembly resolves them.  A bare agent (node == harness) is a no-op for the shim, and
     # writes only when the config is new — byte-identical to before this pre-flight.
     if target and agent_cfg_dirty:
         write_agent_config(agent_cfg_path, agent_cfg)
@@ -4464,7 +4478,7 @@ def _resolve_box_auth_source(
     from kanibako import settings_launch
 
     (
-        ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     chain = settings_launch.auth_chain_floor(
@@ -4537,7 +4551,7 @@ def _resolve_box_launch_decisions(
     from kanibako import settings_launch
 
     (
-        ctx, _scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
     chain = settings_launch.auth_chain_floor(
@@ -4604,13 +4618,14 @@ def _launch_snapshot_inputs(
     proj,
     agent_name: str,
 ):
-    """Build the (ctx, scope_roots, resolved_sys, meta_runtime, meta_identity,
-    workset_anchor, cascade_box_path, cascade_workset_path) the launch SNAPSHOT
-    path needs.
+    """Build the (ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+    cascade_box_path, cascade_workset_path) the launch SNAPSHOT path needs.
 
-    Constructs the host_home / xdg / workset name / per-scope source roots /
-    resolved ``system.*`` map the ONE-resolve snapshot path (block 7b) feeds to
-    ``build_launch_snapshot`` so @-refs and root-joins resolve correctly. This is
+    Constructs the host_home / xdg / workset name / resolved ``system.*`` map the
+    ONE-resolve snapshot path (block 7b) feeds to ``build_launch_snapshot`` so
+    every @-ref resolves. There is NO per-scope source-root table: a stored source
+    resolves on its own (spec §2a L474-486) and the abstract categories are rooted
+    at DECLARATION, so nothing is prefixed on the way to a mount. This is
     now the SOLE category-resolution input builder — the old per-family
     ``_category_resolution_inputs`` (a second LevelView-cascade route) was retired
     in block 7c; the snapshot pipeline is the single route for both reads and the
@@ -4633,21 +4648,6 @@ def _launch_snapshot_inputs(
     a real box tier (absent by default) over the ROOT file that plays the workset
     tier; primary/named unchanged.
     """
-    agent_share_root = str(std.agents / agent_name / "share")
-    agent_store_root = str(std.agents / agent_name)
-    # DISCRIMINATED agent groups (``agent.<agent>.<category>``): there is no bare
-    # ``agent.*`` anywhere outside an explicit agent name or ``default``.
-    scope_roots = {
-        f"agent.{agent_name}.bindings.ro": agent_share_root,
-        f"agent.{agent_name}.bindings.rw": agent_share_root,
-        f"agent.{agent_name}.common": agent_store_root,
-        f"agent.{agent_name}.caches": agent_store_root,
-    }
-    if proj.group is not None and not proj.group.is_default:
-        ws_root = str(proj.group.root)
-        scope_roots["workset.bindings.ro"] = ws_root
-        scope_roots["workset.bindings.rw"] = ws_root
-
     workset_name = (
         proj.group.name
         if (proj.group is not None and not proj.group.is_default)
@@ -4832,7 +4832,7 @@ def _launch_snapshot_inputs(
         workset_channels=_ws_channels,
     )
     return (
-        ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
         cascade_box_path, cascade_workset_path,
     )
 
@@ -4891,7 +4891,7 @@ def _resolve_launch_snapshot(
     from kanibako.settings_categories import reconcile_categories
 
     (
-        ctx, scope_roots, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
 
@@ -4988,7 +4988,7 @@ def _resolve_launch_snapshot(
         workset_anchor=workset_anchor,
     )
     entries = settings_launch.snapshot_category_entries(
-        snapshot, active_agent=agent_name, box_ctx=ctx, scope_roots=scope_roots,
+        snapshot, active_agent=agent_name, box_ctx=ctx,
     )
     reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
     return snapshot, reconciled
@@ -5240,7 +5240,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → materialise the persona artifacts (write the fresh /
-    # B3-adopted config, then the share shim) BEFORE the seed reconcile reads them.
+    # B3-adopted config, then the commons shim) BEFORE the seed reconcile reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
         write_agent_config(agent_cfg_path, seed_agent_cfg)

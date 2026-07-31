@@ -87,11 +87,68 @@ class TestShareAdd:
         assert bindings == {"workset.bindings.rw.data": ["/host/b", "/g"]}
         assert "Updated rw share 'data'" in capsys.readouterr().out
 
-    def test_add_relative_host_src_allowed(self, config_file, tmp_home, workset):
+    def test_add_relative_is_absolutised_at_write(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """T6 — a bare-relative host source is resolved against the working set
+        root AT WRITE TIME and STORED absolute (spec §2a L474-486).
+
+        The documented convenience is preserved (same input, same mount — see
+        ``test_list_effective_relative_joins_root``); what changes is the ARTIFACT.
+        A stored relative only resolved in the one context that knew the root, and
+        the root lived in two places besides.
+
+        (Mutation: store the raw relative again → the stored value is ``sub/dir``
+        → RED here, and RED in the ``--effective`` twin.)
+        """
         rc = run_share_add(_add_args(bind="sub/dir:/home/agent/data"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        assert bindings["workset.bindings.rw.data"] == ["sub/dir", "/home/agent/data"]
+        assert bindings["workset.bindings.rw.data"] == [
+            str(workset.root / "sub" / "dir"), "/home/agent/data",
+        ]
+        # The user is TOLD the path was rewritten (a silent rewrite of a path the
+        # user typed is the kind of thing they should hear about once).
+        assert str(workset.root / "sub" / "dir") in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "src", ["/abs/host", "~/tdir", "$XDG_DATA_HOME/x", "@system.channelroot/x"],
+    )
+    def test_add_absolute_tilde_var_ref_are_stored_verbatim(
+        self, config_file, tmp_home, workset, src
+    ):
+        """A source that already resolves on its own is stored UNTOUCHED — the
+        root is a default for RELATIVE sources, not a universal law (§2a L518-525).
+        """
+        rc = run_share_add(_add_args(bind=f"{src}:/home/agent/data"))
+        assert rc == 0
+        bindings = read_bindings(workset.root / "settings.yaml")
+        assert bindings["workset.bindings.rw.data"] == [src, "/home/agent/data"]
+
+    def test_add_relative_on_default_workset_is_refused(
+        self, config_file, tmp_home, capsys
+    ):
+        """The DEFAULT working set has no bindings root, so a relative source has
+        nowhere to resolve — it is REFUSED at the moment of the mistake.
+
+        Pre-P3 it was stored and then went to the mount spec as a relative string
+        (both root tables set the workset arms only ``if not is_default``), i.e. it
+        resolved against whatever the process CWD happened to be.
+        """
+        rc = run_share_add(_add_args(workset="default", bind="sub/dir:/g"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "sub/dir" in err
+        assert "default working set" in err
+
+    def test_add_absolute_on_default_workset_is_allowed(
+        self, config_file, tmp_home, std,
+    ):
+        """The refusal is narrow: only the shape that cannot resolve is refused."""
+        rc = run_share_add(_add_args(workset="default", bind="/abs/h:/g"))
+        assert rc == 0
+        bindings = read_bindings(std.primary_workset / "settings.yaml")
+        assert bindings["workset.bindings.rw.data"] == ["/abs/h", "/g"]
 
     @pytest.mark.parametrize("bind", ["nocolon", ":/dest", "/src:", "a:b:c"])
     def test_add_rejects_bad_bind(self, config_file, tmp_home, workset, bind, capsys):
@@ -209,6 +266,14 @@ class TestShareList:
         assert "/abs/host -> /home/agent/data  [rw]" in out
 
     def test_list_effective_relative_joins_root(self, config_file, tmp_home, workset, capsys):
+        """The USER-VISIBLE outcome of a relative source is UNCHANGED by P3.
+
+        The join moved from launch/display time to WRITE time, so the same input
+        still prints (and mounts) the same absolute path — that equivalence is the
+        whole reason the move is safe.  What is gone is the second implementation
+        of the root: this display no longer joins anything, it just resolves what
+        was stored.
+        """
         run_share_add(_add_args(bind="sub/dir:/home/agent/data", mode="rw"))
         capsys.readouterr()
         rc = run_share_list(_list_args(effective=True))

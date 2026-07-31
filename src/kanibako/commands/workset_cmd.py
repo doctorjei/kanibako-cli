@@ -249,8 +249,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Add a shared directory to a working set. Re-running 'add' with the "
             "same NAME overwrites the existing mapping (this is how you 'update' "
-            "a share). BIND is 'host_src:guest_dest'; a relative host_src is "
-            "resolved under the working set root."
+            "a share). BIND is 'host_src:guest_dest'. The host source must "
+            "resolve on its own — give an absolute path, '~/…', '$VAR' or an "
+            "'@'-reference. A plain relative path is resolved against the working "
+            "set root WHEN THE SHARE IS ADDED and stored absolute; it is not "
+            "re-interpreted later. (The default working set has no BINDINGS root, "
+            "so a relative path is refused there.)"
         ),
     )
     share_add_p.add_argument("workset", help="Name of the working set")
@@ -291,8 +295,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "List the shared directories configured for a working set. With "
             "--effective, resolve each share the way a box launch would and show "
-            "the final source -> dest [mode] mounts (relative host paths joined "
-            "under the working set root)."
+            "the final source -> dest [mode] mounts."
         ),
     )
     share_list_p.add_argument("workset", help="Name of the working set")
@@ -804,11 +807,31 @@ def _load_share_doc(ws_config: Path) -> dict:
 def run_share_add(args: argparse.Namespace) -> int:
     """Add (or overwrite) a workset-scoped shared directory.
 
-    Writes ``workset.bindings.{mode}.{name} = host_src:guest_dest`` into the
+    Writes ``workset.bindings.{mode}.{name} = [host_src, guest_dest]`` into the
     working set's ``settings.yaml``. Re-running with the same name overwrites the
     mapping (this is how a binding is "updated"; bindings are live bind mounts and
     no content sync exists).
+
+    ⚑ A BARE-RELATIVE host source is ABSOLUTISED AGAINST THE WORKSET ROOT HERE, at
+    WRITE time (spec §2a L474-486: a stored source must fully resolve on its own).
+    The documented convenience — "a relative host_src is resolved under the working
+    set root" — is preserved EXACTLY: the same input yields the same mount, because
+    this join is the one the launch used to apply (the retired assembly-time
+    prepend). What changes is the ARTIFACT: the stored value is now the full path,
+    so it resolves the same in every context that reads it (launch, ``--effective``,
+    another tool) instead of only in the one that knew the root.
+
+    The DEFAULT workset REFUSES a relative source instead. It has no bindings root:
+    both live root tables deliberately excluded it (``_launch_snapshot_inputs`` and
+    ``_print_effective_shares`` set the workset arms only ``if not is_default``), so
+    a relative source there never joined and went to the mount spec as a relative
+    string — resolved against whatever the process CWD happened to be. There is no
+    defensible root to pick at write time either: ``@config.primary_workset`` is
+    kanibako's own internal store, not a user project dir, so rooting there would
+    swap a visible failure for a silent wrong path. Refusing names the mistake at
+    the moment it is made.
     """
+    from kanibako.agent_config import is_self_resolving
     from kanibako.config_io import dump_doc
     from kanibako.settings_resolve import split_bind
 
@@ -845,6 +868,23 @@ def run_share_add(args: argparse.Namespace) -> int:
     if ws is None:
         return 1
 
+    typed_host_src = host_src
+    if not is_self_resolving(host_src):
+        if ws.is_default:
+            print(
+                f"Error: relative host source '{host_src}' cannot be resolved for "
+                f"the default working set (it has no bindings root — its own "
+                f"directory is kanibako's internal store, not a project dir). "
+                f"Give a path "
+                "that resolves on its own: an absolute path, '~/…', '$VAR' or an "
+                "'@'-reference.",
+                file=sys.stderr,
+            )
+            return 1
+        # Absolutise against the working set root — the SAME join the launch used
+        # to apply, moved to write time so the STORED value resolves on its own.
+        host_src = str(ws.root / host_src)
+
     ws_config = _workset_config_path(ws)
     data = _load_share_doc(ws_config)
     subtree = data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
@@ -862,6 +902,14 @@ def run_share_add(args: argparse.Namespace) -> int:
     print(
         f"{verb} {args.mode} share '{name}' for working set '{ws.name}': {bind}"
     )
+    if host_src != typed_host_src:
+        # Say what was actually stored: the value is no longer the string the user
+        # typed, and a silent rewrite of a path is exactly the kind of thing a user
+        # should be told about once rather than discover later.
+        print(
+            f"  (relative source resolved under the working set root and stored "
+            f"as {host_src})"
+        )
     print(_NEXT_LAUNCH_REMINDER)
     return 0
 
@@ -925,9 +973,9 @@ def run_share_list(args: argparse.Namespace) -> int:
     Default: print the working set's own configured bindings (raw NAME/MODE →
     bind). With ``--effective``: resolve through the KeyStore snapshot pipeline
     (``assemble_levels → merge → expand → snapshot_category_entries``, scoped to
-    the workset file) using the same workset-root join a launch would apply, and
-    print the final mounts. Single-route (7c): no second ``resolve_shares`` /
-    ``read_bindings`` resolver path.
+    the workset file) — the SAME resolver a launch uses — and print the final
+    mounts. Single-route (7c): no second ``resolve_shares`` / ``read_bindings``
+    resolver path, and (P3) no root-join on either side to keep in step.
     """
     ws, std = _resolve_share_workset(args.workset)
     if ws is None:
@@ -1008,9 +1056,13 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     Single-route (7c): resolves through the committed KeyStore snapshot pipeline
     (``assemble_levels → merge → expand → snapshot_category_entries``) scoped to
     the workset file — the SAME resolver the launch uses — replacing the retired
-    ``resolve_shares``/``read_bindings``/``LevelView`` path. A relative host_src is
-    joined under the working set root; an absolute host_src passes through; the
-    default workset has no root, so relative paths are not joined.
+    ``resolve_shares``/``read_bindings``/``LevelView`` path.
+
+    Every stored host_src resolves ON ITS OWN (spec §2a L474-486) — ``share add``
+    absolutises a relative source at WRITE time — so there is no root to apply
+    here. This display therefore cannot diverge from what a launch mounts, which
+    it previously could: the old join lived in TWO places (here and
+    ``_launch_snapshot_inputs``) and neither applied to the default workset.
     """
     from kanibako.paths import host_xdg_map
     from kanibako.settings_assemble import assemble_levels
@@ -1018,12 +1070,6 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     from kanibako.settings_launch import snapshot_category_entries
     from kanibako.settings_merge import merge
     from kanibako.settings_resolve import ResolveCtx, SettingsError
-
-    scope_roots: dict[str, str] = {}
-    if not ws.is_default:
-        ws_root = str(ws.root)
-        scope_roots["workset.bindings.ro"] = ws_root
-        scope_roots["workset.bindings.rw"] = ws_root
 
     # Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` → ``ctx.config``
     # foundation; Layer-2 ``system.*`` → the snapshot floor.  The xdg map is the
@@ -1062,7 +1108,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         snapshot = merge(levels)
         expanded = expand(snapshot, ctx)
         entries = snapshot_category_entries(
-            expanded, active_agent="general", box_ctx=ctx, scope_roots=scope_roots,
+            expanded, active_agent="general", box_ctx=ctx,
         )
     except SettingsError as e:
         print(f"Error: {e}", file=sys.stderr)

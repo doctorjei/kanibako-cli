@@ -3,7 +3,7 @@
 #
 # This file holds claude's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery binds, launch grammar, settings routing, container env, cred-file
-# lifecycle, host_prep/init_dirs) PLUS its AGENT-scope `shared` defaults.  It is
+# lifecycle, host_prep/init_dirs) PLUS its AGENT-scope `common` defaults.  It is
 # read by the thin loader :mod:`kanibako.agent_defaults`, which builds the
 # PluginDescriptor / default_common exactly as the old hand-written `target.py`
 # values did — so core start.py still assembles claude's argv / env / delivery
@@ -125,11 +125,17 @@ descriptor:
   # goose/codex leave this UNSET (→ None) until their Phase-5 support lands.
   vscode_extension: anthropic.claude-code
 
-# AGENT-scope shared dirs (plugins + cache), rooted under the per-agent store dir
-# @meta.agent.claude.path = @system.agents/claude (core's agent.<agent>.common scope-root).
-# The relative host_src (the key name) joins under that root; box_dest is a
-# $GUEST_HOME expression.  `key` is the bare LEAF name — the loader builds the
-# discriminated `agent.<agent>.common.<key>` (there is no bare `agent.<category>`).
+# AGENT-scope common dirs (plugins + cache), stored under the per-agent store dir
+# @meta.agent.claude.path = @config.agents/claude — spec §2a's agent DECLARATION
+# ROOT.  ROOTED AT DECLARATION: the bare `host_src` leaf written here is turned by
+# the loader into the full self-resolving `@meta.agent.claude.path/common/<leaf>`,
+# so the STORED value needs no later prepend (§2a L474-517) and the dirs live at
+# `agents/claude/common/{plugins,cache}`.  An already-self-resolving host_src
+# (absolute / ~ / $var / @-ref) is stored verbatim instead (§2a L518-525).
+# box_dest is a $GUEST_HOME expression (kanibako owns the HOST layout only — the
+# guest dest is always spelled out).  `key` is the bare LEAF name — the loader
+# builds the discriminated `agent.<agent>.common.<key>` (there is no bare
+# `agent.<category>`); `key` and `host_src` are INDEPENDENT (see load_common).
 common:
   - key: plugins
     host_src: plugins

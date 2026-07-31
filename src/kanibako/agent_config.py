@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final, Mapping
 
 from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 
 # Keys that live directly in the [agent] section as agent identity (not state).
 IDENTITY_KEYS = frozenset({"name", "run_args"})
@@ -67,9 +69,130 @@ def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
     (``@meta.agent.<agent>.path`` = ``agents/<agent>/``) as ``settings.yaml``
     — NOT the old sibling ``agents/<agent>.yaml`` file (D-2026-06-22).  This
     parallels the per-agent template dir ``agents/<agent>/template`` and the
-    Part-3 ``agents/<agent>/{plugins,cache}`` stores.
+    per-category store dirs ``agents/<agent>/{common,caches,seeded}/`` (see
+    :data:`AGENT_CATEGORY_DIRNAME`).
     """
     return agents_root / agent_id / "settings.yaml"
+
+
+# --------------------------------------------------------------------------- #
+# The per-agent HOST LAYOUT of the ABSTRACT categories (spec §2a L487-525)      #
+# --------------------------------------------------------------------------- #
+#
+# THE single source of the agent-store category layout. Both consumers read it
+# from here — the declaration-time ref builder (``agent_defaults.load_common``)
+# and the persona symlink shim (``commands.start.ensure_persona_share_symlinks``)
+# — so the dirname is spelled ONCE and the two cannot drift (design principle 2:
+# no duplicated shared data).
+
+#: category -> the FIXED sub-dirname under the per-agent store root.
+#: "The root dirname is FIXED MACHINERY, not a key" (spec §2a L512-517): it is not
+#: user-settable, because every reasonable want is served better by an absolute
+#: ``bindings`` entry or by moving the scope root (``config.agents``), both of
+#: which ARE keys.
+#:
+#: DERIVED from the category list rather than re-typed: the dirname IS the category
+#: name, so spelling the three names twice would be two copies of one fact.
+AGENT_CATEGORY_DIRNAME: Final[Mapping[str, str]] = {
+    category: category for category in ABSTRACT_CATEGORIES
+}
+
+
+def agent_category_dirname(category: str) -> str:
+    """The FIXED sub-dirname for an ABSTRACT *category* in a per-agent store.
+
+    An undeclared category is NOT one of the abstract three and is REFUSED rather
+    than silently taking a bare root (closed-keyspace rule, spec §0): the concrete
+    ``bindings.{ro,rw}`` categories take NO root at any scope (§2a), so asking for
+    their dirname is a caller bug.
+    """
+    try:
+        return AGENT_CATEGORY_DIRNAME[category]
+    except KeyError:
+        raise ValueError(
+            f"{category!r} is not an ABSTRACT category with a per-agent store dir "
+            f"(declared: {', '.join(sorted(AGENT_CATEGORY_DIRNAME))}); "
+            "bindings.{ro,rw} take no root at any scope (spec §2a)"
+        ) from None
+
+
+def agent_category_root(agents_root: Path, agent: str, category: str) -> Path:
+    """The REAL host dir an abstract *category* stores under for *agent*.
+
+    ``<agents_root>/<agent>/<dirname>`` — the resolved twin of
+    :func:`agent_category_root_ref`. Used where a caller needs a real
+    :class:`~pathlib.Path` (the persona shim), never to build a stored value.
+    """
+    return agents_root / agent / agent_category_dirname(category)
+
+
+def agent_category_root_ref(agent: str, category: str) -> str:
+    """The self-resolving ``@``-ref an abstract *category*'s sources root at.
+
+    ``@meta.agent.<agent>.path/<dirname>`` — the AGENT row of the spec's
+    DECLARATION-ROOT table (§2a L487-517), read from the single copy of that table
+    in :data:`~kanibako.settings_categories.DECLARATION_ROOT_REF`. This is what a
+    loader STORES, so the stored value resolves on its own with no layer prepending
+    anything later (§2a L474-486).
+    """
+    root = DECLARATION_ROOT_REF["agent"].format(agent=agent)
+    return f"{root}/{agent_category_dirname(category)}"
+
+
+#: The TOKEN prefixes that make a ``host_src`` resolve on its own when UNESCAPED
+#: (spec §2a L474-486: ``~``, ``$var`` or an ``@``-ref). A leading ``/`` is handled
+#: separately — see :func:`is_self_resolving`.
+_SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ("~", "$", "@")
+
+
+def is_self_resolving(src: str) -> bool:
+    r"""Whether *src* resolves on its own (spec §2a L474-486).
+
+    True iff *src* is ABSOLUTE, or begins with an UNESCAPED ``~`` / ``$`` / ``@``.
+    Anything else is a BARE RELATIVE leaf: meaningful only under a root, and a
+    DEFECT wherever no root exists.
+
+    ⚑ ESCAPES ARE READ THE WAY THE RESOLVER READS THEM, and the two leading-escape
+    cases fall on OPPOSITE sides — which is why this cannot be a plain first-char
+    test:
+
+    * ``\/foo`` unescapes to ``/foo``, which is ABSOLUTE. The retired post-expand
+      join never joined it (it tested the unescaped string for a leading ``/``), so
+      calling it relative here would DIVERGE from the behaviour this phase
+      preserves.
+    * ``\~foo`` unescapes to the literal ``~foo`` — a plain relative dir that
+      merely starts with a tilde, NOT a home reference. The retired join did not
+      join it either, but only because ``~foo`` expands home-ward before the test;
+      the answer (leave it alone / treat as relative) matches.
+
+    So a leading ``/`` is tested AFTER unescaping, while the token prefixes count
+    only when they are NOT escaped.
+    """
+    if src[:1] in _SELF_RESOLVING_TOKENS:
+        return True
+    # A leading ``/``, escaped or not, is absolute once the resolver unescapes it.
+    return src[:1] == "/" or src[:2] == "\\/"
+
+
+def root_relative_source(src: str, root_ref: str) -> str:
+    """Root a BARE RELATIVE *src* under *root_ref*; return it unchanged otherwise.
+
+    THE declaration-time rooting, implemented ONCE (spec §2a L474-525): a
+    self-resolving source (:func:`is_self_resolving`) is emitted VERBATIM; a bare
+    relative leaf becomes ``<root_ref>/<src>``.
+
+    ⚑ An ABSOLUTE (or ``~`` / ``$var`` / ``@``-ref) source in an abstract category
+    is LEGAL and is NOT root-joined — the root is a DEFAULT FOR RELATIVE SOURCES,
+    not a universal law (spec §2a L518-525; the spec's own ``caches.transform``
+    worked example is an ``@system.cache``-rooted identity mount).
+
+    Applied ONLY by the ABSTRACT-category declaration loaders.
+    ``bindings.{ro,rw}`` take no root at any scope, so a relative source there is a
+    DEFECT, not a shorthand, and is refused where it is declared.
+    """
+    if is_self_resolving(src):
+        return src
+    return f"{root_ref}/{src}"
 
 
 def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:

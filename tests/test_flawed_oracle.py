@@ -771,6 +771,18 @@ class TestPrecedenceAndSuppression:
 
 
 class TestRootJoin:
+    """⚑ DELETED BEHAVIOUR — these guard NOTHING in the product (P3, 2026-07-31).
+
+    The assembly-time root-prepend they exercise lives ONLY in this file's frozen
+    copy of the retired by-name resolver. The live path no longer joins anything:
+    sources are rooted at DECLARATION and a stored source resolves on its own
+    (spec §2a L474-486, which names the mechanism and requires its deletion).
+
+    They stay because this whole file is a QUARANTINED frozen baseline — deleting
+    parts of a frozen artefact defeats its purpose — but do NOT read them as a
+    statement about how kanibako resolves a source, and do NOT copy the shape.
+    """
+
     def test_relative_host_src_joined_under_group_root(self):
         ctx = make_ctx(agent_name="claude")
         levels = [

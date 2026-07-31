@@ -384,13 +384,16 @@ class ClaudeTarget(Target):
         )
 
     def default_common(self) -> dict[str, BindDefault]:
-        """Declare claude's AGENT-scope shared dirs (plugins + cache).
+        """Declare claude's AGENT-scope common dirs (plugins + cache).
 
-        Both are shared across every box that runs claude and rooted under the
-        per-agent store dir ``@meta.agent.claude.path`` = ``@system.agents/claude``
-        (core's ``agent.<agent>.common`` scope-root).  The relative ``host_src`` (the key
-        name) joins under that root, so the resolved host paths are
-        ``<data>/agents/claude/{plugins,cache}`` bound rw to ``~/.claude/{plugins,cache}``:
+        Both are shared across every box that runs claude and live under the
+        per-agent store dir ``@meta.agent.claude.path`` = ``@config.agents/claude``
+        — spec §2a's agent DECLARATION ROOT.  The bare ``host_src`` leaf in the
+        YAML is rooted BY THE LOADER, so what is STORED is the self-resolving
+        ``@meta.agent.claude.path/common/<leaf>`` and no later layer prepends
+        anything (§2a L474-517).  The resolved host paths are
+        ``<data>/agents/claude/common/{plugins,cache}``, bound rw to
+        ``~/.claude/{plugins,cache}``:
 
         * ``plugins`` — installed claude plugins (was an AGENT-scope SHARED_STORE
           ``Binding`` under the removed ``shared/<agent_id>/`` store).
@@ -399,7 +402,7 @@ class ClaudeTarget(Target):
 
         The base ``default_common()`` returns ``{}``; this override injects these
         as the AGENT level's declared defaults (overridable/suppressible by the
-        user at a more-specific level).  The share keys + box_dests are declared
+        user at a more-specific level).  The common keys + box_dests are declared
         in this plugin's ``claude-defaults.yaml`` (read via the loader).
         """
         return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
