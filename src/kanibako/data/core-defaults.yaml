@@ -45,10 +45,10 @@ channels:
   # resolved["system.channels.*"]`; the same flat foundation, byte-identical). The
   # `source` symbolic name is kept for documentation; the loader emits `meta_ref`
   # as the host_src and folds the resolved system.channels.* literal into the floor.
-  - key: global_commons
-    source: channels_commons
-    meta_ref: "@system.channels.commons"
-    box_dest: "~/channels/commons"
+  - key: global_common
+    source: channels_common
+    meta_ref: "@system.channels.common"
+    box_dest: "~/channels/common"
     scope: system
   - key: global_chat
     source: channels_chat
@@ -85,10 +85,10 @@ channels:
   # resolved workset channel literal into the floor under that key and emits the
   # @-ref as the host_src (byte-identical to the runtime-probed `wch.*`).  The
   # `source` gate still drops these entries for a standalone box (no workset paths).
-  - key: workset_commons
-    source: workset_commons
-    meta_ref: "@workset.channels.commons"
-    box_dest: "~/channels/workset/commons"
+  - key: workset_common
+    source: workset_common
+    meta_ref: "@workset.channels.common"
+    box_dest: "~/channels/workset/common"
     scope: workset
   - key: workset_chat
     source: workset_chat

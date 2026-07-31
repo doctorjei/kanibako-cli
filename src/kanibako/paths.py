@@ -104,7 +104,7 @@ class StandardPaths:
     cache: Path
     runtime: Path
     # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
-    channels_commons: Path
+    channels_common: Path
     channels_chat: Path
     channels_broadcast: Path
     channels_mailboxes: Path
@@ -651,7 +651,7 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.cache": "$XDG_CACHE_HOME/kanibako",
     "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
     # Channels skeleton (the type-roots derive from system.channelroot).
-    "system.channels.commons": "@system.channelroot/commons",
+    "system.channels.common": "@system.channelroot/common",
     "system.channels.chat": "@system.channelroot/chat",
     "system.channels.broadcast": "@system.channels.chat/broadcast.md",
     "system.channels.mailboxes": "@system.channelroot/mailboxes",
@@ -913,7 +913,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         journal=resolved["config.journal"],
         cache=resolved["system.cache"],
         runtime=resolved["system.runtime"],
-        channels_commons=resolved["system.channels.commons"],
+        channels_common=resolved["system.channels.common"],
         channels_chat=resolved["system.channels.chat"],
         channels_broadcast=resolved["system.channels.broadcast"],
         channels_mailboxes=resolved["system.channels.mailboxes"],

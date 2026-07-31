@@ -1585,7 +1585,7 @@ def _relocate_channel_partition(
     BEST-EFFORT (D-M10): any failure — missing source, destination already
     present, permission — is WARNED and swallowed; the lifecycle continues.  No
     forwarding marker is left for stale cross-box references to the old address.
-    Workset-LOCAL channels (commons/chat) are scope-owned, not box-owned, so they
+    Workset-LOCAL channels (common/chat) are scope-owned, not box-owned, so they
     are NOT relocated (the box simply stops mounting the old workset's local
     channels and starts mounting the new one's).
     """

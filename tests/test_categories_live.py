@@ -213,7 +213,7 @@ class TestB2bWorksetAnchors:
 
         floor = workset_anchor_floor(
             mode="named",
-            workset_channels={"commons": "/ws/ch/commons", "chat": "/ws/ch/chat",
+            workset_channels={"common": "/ws/ch/common", "chat": "/ws/ch/chat",
                               "share": "/ws/ch/share"},
         )
         # Every anchor is the spec's self-resolving @-ref FORMULA (spec §2c).
@@ -223,7 +223,7 @@ class TestB2bWorksetAnchors:
         assert floor["workset.logs"] == "@meta.workset.path/logs"
         # The RO box root: primary/named carry the per-box name leaf.
         assert floor["meta.box.path"] == "@workset.boxes/@meta.box.name"
-        assert floor["workset.channels.commons"] == "/ws/ch/commons"
+        assert floor["workset.channels.common"] == "/ws/ch/common"
         # ⚑ NO construct-time literals here — every anchor is a FORMULA. The
         # retired ``meta.box.helper_log`` was the last one; the helper-log bind
         # now spells itself ``@workset.logs/@{meta.box.name}.jsonl`` (PHASE R).
@@ -275,7 +275,7 @@ class TestB2bWorksetAnchors:
         assert "meta.box.vault_ro_src" not in floor
         assert "meta.box.vault_rw_src" not in floor
         # No workset channels for standalone.
-        assert "workset.channels.commons" not in floor
+        assert "workset.channels.common" not in floor
 
 
 # ---------------------------------------------------------------------------

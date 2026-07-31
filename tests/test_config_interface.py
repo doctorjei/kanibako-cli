@@ -92,7 +92,7 @@ class TestIsKnownKey:
             "workset.vault_ro",
             "workset.vault_rw",
             "workset.logs",
-            "workset.channels.commons",
+            "workset.channels.common",
             "workset.channels.chat",
             "workset.channels.share",
         ):
@@ -978,15 +978,15 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert msg.startswith("Set"), msg
         assert load_doc(project_toml)["workset"]["auth"]["path"] == "/srv/auth"
 
-    def test_set_workset_channels_commons_nests_under_channels(self, tmp_path):
-        """P6a: ``workset.channels.commons`` nests under ``workset.channels``."""
+    def test_set_workset_channels_common_nests_under_channels(self, tmp_path):
+        """P6a: ``workset.channels.common`` nests under ``workset.channels``."""
         project_toml = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "workset.channels.commons", "/srv/commons", config_path=project_toml
+            "workset.channels.common", "/srv/common", config_path=project_toml
         )
         assert msg.startswith("Set"), msg
         assert (
-            load_doc(project_toml)["workset"]["channels"]["commons"] == "/srv/commons"
+            load_doc(project_toml)["workset"]["channels"]["common"] == "/srv/common"
         )
 
     def test_set_workset_anchor_preserves_other_workset_keys(self, tmp_path):
@@ -1302,7 +1302,7 @@ class TestSystemConfigFileOnly:
         for key in (
             "system.cache", "system.backup", "system.channelroot",
             "system.base_template", "system.runtime",
-            "system.channels.commons", "system.setup_completed",
+            "system.channels.common", "system.setup_completed",
         ):
             msg = set_config_value(key, "x", config_path=cf)
             assert msg.startswith("Error:"), key

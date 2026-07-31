@@ -87,7 +87,7 @@ class TestResolveSystemPathsDefaults:
     def test_channels_skeleton_resolves(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
         channels = tmp_path / "kanibako" / "channels"
-        assert resolved["system.channels.commons"] == channels / "commons"
+        assert resolved["system.channels.common"] == channels / "common"
         assert resolved["system.channels.chat"] == channels / "chat"
         assert resolved["system.channels.broadcast"] == channels / "chat" / "broadcast.md"
         assert resolved["system.channels.mailboxes"] == channels / "mailboxes"
@@ -198,9 +198,9 @@ class TestLoadConfigPaths:
 
     def test_nested_system_subkey_flattens(self, tmp_path):
         toml = tmp_path / "kanibako_config.yaml"
-        toml.write_text('system:\n  channels:\n    commons: "/c"\n')
+        toml.write_text('system:\n  channels:\n    common: "/c"\n')
         cfg = load_config(toml)
-        assert cfg.config_paths == {"system.channels.commons": "/c"}
+        assert cfg.config_paths == {"system.channels.common": "/c"}
 
     def test_empty_config_has_no_config_paths(self, tmp_path):
         cfg = load_config(tmp_path / "absent.yaml")

@@ -4687,11 +4687,11 @@ def _launch_snapshot_inputs(
         "system.channelroot": str(std.channels),
         "system.base_template": str(std.base_template),
         # B2b: the resolved system channel type-roots (spec §2g) — folded in so the
-        # @system.channels.* ALL-PROJECTS channel binds (global_commons/chat/share/
+        # @system.channels.* ALL-PROJECTS channel binds (global_common/chat/share/
         # mailboxes, §2c L471-474) resolve from the snapshot.  Each equals the
         # corresponding ``std.channels_*`` (the same flat foundation resolves both),
         # so the @-ref-routed bind is byte-identical to the runtime-probed literal.
-        "system.channels.commons": str(std.channels_commons),
+        "system.channels.common": str(std.channels_common),
         "system.channels.chat": str(std.channels_chat),
         "system.channels.share": str(std.channels_share),
         "system.channels.mailboxes": str(std.channels_mailboxes),
@@ -4820,7 +4820,7 @@ def _launch_snapshot_inputs(
     _wch = None if mode == "standalone" else _channels.workset_channel_paths(proj, std)
     _ws_channels = (
         {
-            "commons": str(_wch.commons),
+            "common": str(_wch.common),
             "chat": str(_wch.chat),
             "share": str(_wch.share),
         }

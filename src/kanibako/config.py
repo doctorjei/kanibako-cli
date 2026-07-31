@@ -153,7 +153,7 @@ def load_config(path: Path) -> KanibakoConfig:
         # keys (``config.<leaf>``) and the Layer-2 ``[system]`` path settings
         # (``system.<leaf>``), merged into one ``config_paths`` set keyed by full
         # dotted name.  Each table is flattened so nested sub-keys (e.g.
-        # ``system.channels.commons``) become dotted keys; scalar leaves
+        # ``system.channels.common``) become dotted keys; scalar leaves
         # (e.g. ``config.data``) stay flat.
         merged: dict[str, str] = {}
         config_tbl = data.get("config", {})

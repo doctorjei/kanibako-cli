@@ -716,13 +716,13 @@ class TestChannelPartitionRelocation:
         assert "already exists" in capsys.readouterr().err
 
     def test_workset_local_channels_not_relocated(self, env):
-        """Workset-LOCAL channels (commons/chat) are scope-owned, not moved."""
+        """Workset-LOCAL channels (common/chat) are scope-owned, not moved."""
         config, std, tmp_home = env
         from kanibako.channels import WS_TOKEN_PRIMARY
 
         pdir = _make_default(env)
         # Seed a PRIMARY workset-local channels tree (scope-owned).
-        local = std.primary_workset / "channels" / "commons"
+        local = std.primary_workset / "channels" / "common"
         local.mkdir(parents=True, exist_ok=True)
         (local / "shared.txt").write_text("scope")
         self._seed_partition(std, WS_TOKEN_PRIMARY, "proj")
@@ -732,7 +732,7 @@ class TestChannelPartitionRelocation:
             state, TargetSpec(location=INPLACE, ownership="standalone"),
             std, config, confirm=_conf_yes(),
         )
-        # Workset-local commons untouched — the box stops MOUNTING it, the dir
+        # Workset-local common untouched — the box stops MOUNTING it, the dir
         # itself is not relocated.
         assert (local / "shared.txt").read_text() == "scope"
 

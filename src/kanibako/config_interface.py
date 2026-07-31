@@ -152,7 +152,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.vault_ro",
     "workset.vault_rw",
     "workset.logs",
-    "workset.channels.commons",
+    "workset.channels.common",
     "workset.channels.chat",
     "workset.channels.share",
     # Per-workset template SOURCE (template-trio, spec §2c L507; Q3 2026-07-09).
@@ -289,7 +289,7 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "workset.vault_ro": (("workset",), "vault_ro"),
     "workset.vault_rw": (("workset",), "vault_rw"),
     "workset.logs": (("workset",), "logs"),
-    "workset.channels.commons": (("workset", "channels"), "commons"),
+    "workset.channels.common": (("workset", "channels"), "common"),
     "workset.channels.chat": (("workset", "channels"), "chat"),
     "workset.channels.share": (("workset", "channels"), "share"),
     # Per-workset template SOURCE (template-trio, spec §2c L507; Q3): the layer-3
