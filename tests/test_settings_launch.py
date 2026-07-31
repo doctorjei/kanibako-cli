@@ -2304,3 +2304,274 @@ class TestNoImplicitRootPrepend:
             "the implicit root-prepend mechanism reappeared in shipped source "
             "(spec §2a L474-486 requires its deletion):\n" + "\n".join(hits)
         )
+
+
+# --------------------------------------------------------------------------- #
+# ``pref.*`` at the LAUNCH seam (spec §2h) — the behavioural half of P6        #
+# --------------------------------------------------------------------------- #
+
+from kanibako.settings_prefs import AgentNames as _AgentNames  # noqa: E402
+from kanibako.settings_resolve import SettingsError  # noqa: E402
+
+_PREF_AGENTS = _AgentNames({"claude", "goose", "codex"})
+
+
+def _write_yaml(path, doc):
+    """Write *doc* as YAML, creating parents (the module-level ``_yaml`` helper
+    above assumes the parent exists)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return _yaml(path, doc)
+
+
+def _pref_snap(tmp_path, *, box=None, workset=None, floor=None, **kw):
+    """A launch snapshot over hand-written box / workset files.
+
+    *floor* injects declared defaults through ``default_categories`` — the floor
+    folds UNDER ``base`` (``assemble_levels(floor=…)``), which is exactly the
+    "inherited value a pref overrides or suppresses" position. ``build_launch_
+    snapshot`` takes no ``base_path``, and widening a production signature for a
+    test affordance would be the wrong trade; the base FILE path is exercised
+    where it belongs, against ``assemble_levels`` in test_settings_assemble.py.
+    """
+    box_p = _write_yaml(tmp_path / "box.yaml", box) if box is not None else None
+    ws_p = _write_yaml(tmp_path / "ws.yaml", workset) if workset is not None else None
+    return build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=None,
+        agent_path=None,
+        workset_path=ws_p,
+        box_path=box_p,
+        default_categories=floor,
+        valid_agents=_PREF_AGENTS,
+        **kw,
+    )
+
+
+class TestPrefRecomputeNotDelta:
+    """spec §2h L1260-1261 — 'RECOMPUTE, not delta.'"""
+
+    def test_a_key_derived_from_a_prefd_value_updates(self, tmp_path):
+        """⚑ THE discriminator for the delta implementation.
+
+        ``box.bindings.rw.probe``'s host is ``@agent.claude.template/sub``. If
+        prefs were installed by patching the EXPANDED snapshot (the delta), the
+        target key would be right but this DERIVED value would still carry the
+        old root — here, an empty substitution yielding ``/sub``.
+        INVERT: install prefs after ``expand`` -> this reddens.
+        """
+        snap = _pref_snap(
+            tmp_path,
+            box={
+                "pref": {"agent": {"claude": {"template": "/custom/tpl"}}},
+                "box": {"bindings": {"rw": {
+                    "probe": ["@agent.claude.template/sub", "~/probe"],
+                }}},
+            },
+        )
+        assert snap.agent.claude.template == "/custom/tpl"
+        assert snap.box.bindings.rw.probe.host == "/custom/tpl/sub"
+
+    def test_a_key_derived_from_a_prefd_system_agent_updates(self, tmp_path):
+        """The P7-critical key: ``@system.agent`` resolves to the REQUESTED
+        value everywhere it is referenced, not just at its own key."""
+        snap = _pref_snap(
+            tmp_path,
+            box={
+                "pref": {"system": {"agent": "goose"}},
+                "box": {"bindings": {"rw": {
+                    "probe": ["/src/@system.agent", "~/probe"],
+                }}},
+            },
+        )
+        assert snap.system.agent == "goose"
+        assert snap.box.bindings.rw.probe.host == "/src/goose"
+
+    def test_a_pref_need_not_be_a_literal(self, tmp_path):
+        """§2h L1258-1259 — the value is installed as an ordinary (possibly
+        UNRESOLVED) value and resolution handles it like any other key."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"template": "@workset.template/x"}}}},
+            workset={"workset": {"template": "/ws/tpl"}},
+        )
+        assert snap.agent.claude.template == "/ws/tpl/x"
+
+
+class TestPrefNullSuppression:
+    """spec §2h L1265-1272 — values install VERBATIM, including ``None``."""
+
+    def test_a_null_pref_suppresses_an_inherited_agent_bind(self, tmp_path):
+        """⚑ The named silent hazard. ``if value is None: continue`` in the
+        install loop deletes a box's ONLY suppression channel with no error and
+        no diff. INVERT: add that guard -> this reddens."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"common": {"plugins": None}}}}},
+            floor={"agent.claude.common.plugins": ("/host/plugins", "~/.claude/plugins")},
+        )
+        # The inherited bind is GONE (present-None on a category leaf -> OMIT).
+        common = snap.agent.claude.common if "common" in snap.agent.claude else None
+        assert common is None or "plugins" not in dict.keys(common)
+
+    def test_the_request_itself_stays_visible_after_resolution(self, tmp_path):
+        """§2h read verbs — prefs are KEPT IN MEMORY, so ``--effective`` can
+        show the request beside the result."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"common": {"plugins": None}}}}},
+        )
+        node = snap["pref"]["agent"]["claude"]["common"]
+        assert dict.__getitem__(node, "plugins") is None
+
+    def test_a_null_pref_on_a_SCALAR_leaf_is_kept_as_none(self, tmp_path):
+        """§2b L703-708 — ``pref.system.agent: null`` is how the NO-AGENT
+        plain-shell box is expressed, and it is a capability GAIN. Present-None
+        on a SCALAR leaf is KEPT."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"system": {"agent": None}}},
+            floor={"system.agent": "claude"},
+        )
+        assert "agent" in dict.keys(snap.system)
+        assert dict.__getitem__(snap.system, "agent") is None
+
+
+class TestPrefLevelPrecedence:
+    def test_box_pref_beats_workset_pref(self, tmp_path):
+        """§1A L364-367 — box beats workset by ASSIGNMENT ORDER.
+        INVERT: swap the two overlays' splice positions -> this reddens."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"system": {"agent": "goose"}}},
+            workset={"pref": {"system": {"agent": "codex"}}},
+        )
+        assert snap.system.agent == "goose"
+
+    def test_a_workset_pref_applies_when_the_box_is_silent(self, tmp_path):
+        snap = _pref_snap(
+            tmp_path,
+            box={"box": {"image": "x"}},
+            workset={"pref": {"system": {"agent": "codex"}}},
+        )
+        assert snap.system.agent == "codex"
+
+    def test_a_pref_beats_the_base_floor_value(self, tmp_path):
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"model": "opus"}}}},
+            floor={"agent.claude.model": "sonnet"},
+        )
+        assert snap.agent.claude.model == "opus"
+
+    def test_the_box_agent_CATEGORY_fold_still_beats_a_box_pref(self, tmp_path):
+        """⚑ TRANSITIONAL, and P7 DELETES THIS CONTEST.
+
+        ``_box_agent_category_fold`` splices the retiring ``box.agent.<category>``
+        tweak ABOVE ``box``, while a pref sits BELOW its own level's partial (§2h
+        expands prefs before the level resolves). So for a CATEGORY the legacy
+        mirror wins today. P7 retires settable ``box.agent.*``, which removes the
+        contender — when this test changes in P7 that is the expected flip, not a
+        regression.
+        """
+        snap = _pref_snap(
+            tmp_path,
+            box={
+                "pref": {"agent": {"claude": {"common": {
+                    "plugins": ["/from/pref", "~/.claude/plugins"],
+                }}}},
+                "box": {"agent": {"common": {
+                    "plugins": ["/from/mirror", "~/.claude/plugins"],
+                }}},
+            },
+        )
+        assert snap.agent.claude.common.plugins.host == "/from/mirror"
+
+    def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
+        """⚑ MEASURED, and it corrects the brief's prediction.
+
+        The fold is CATEGORY-only (``_box_agent_category_fold``); a SCALAR
+        ``box.agent.<key>`` is not spliced into ``agent.<active>`` at all — the
+        scalar mirror is a post-expand READ-BACK
+        (``_materialize_box_agent_mirror``). So there is no scalar contest and
+        the pref, which really does target the agent tier, wins. The brief
+        predicted the mirror would win here; it does not, and only the category
+        half of the transitional contest is real.
+        """
+        snap = _pref_snap(
+            tmp_path,
+            box={
+                "pref": {"agent": {"claude": {"model": "from-pref"}}},
+                "box": {"agent": {"model": "from-mirror"}},
+            },
+        )
+        assert snap.agent.claude.model == "from-pref"
+
+
+class TestPrefRejectionAtLaunch:
+    def test_a_bad_pref_fails_the_launch(self, tmp_path):
+        """§2h L1280-1283 — the launch FAILS rather than proceeding with a
+        partially-applied request. INVERT: warn-and-continue -> reddens."""
+        box_p = _write_yaml(
+            tmp_path / "box.yaml",
+            {"pref": {"agent": {"zippity": {"model": "x"}}}},
+        )
+        with pytest.raises(SettingsError) as exc:
+            build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(),
+                system_path=None, agent_path=None,
+                workset_path=None, box_path=box_p,
+                valid_agents=_PREF_AGENTS,
+            )
+        msg = str(exc.value)
+        assert "pref.agent.zippity.model" in msg
+        assert "at the box level" in msg
+        assert str(box_p) in msg
+
+class TestPrefIsInertWhereItMustBe:
+    def test_a_pref_subtree_yields_no_category_entries(self, tmp_path):
+        """``snapshot_category_entries`` walks ``_SCOPES`` only, so ``pref`` is
+        never read as a category. Asserted because a future scope-loop edit
+        would break it silently."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"common": {"x": ["/s", "~/d"]}}}}},
+        )
+        entries = snapshot_category_entries(
+            snap, active_agent="claude", box_ctx=_ctx(),
+        )
+        assert all(not e.key.startswith("pref.") for e in entries)
+        # ...but the INSTALLED target IS emitted.
+        assert any(e.key == "agent.claude.common.x" for e in entries)
+
+
+class TestPrefFreeByteIdentity:
+    """GATE HALF A — a pref-free config must resolve EXACTLY as before.
+
+    Compares the ordinary path against an explicitly pref-disabled build over
+    the same inputs, across modes x agent shapes. The delivery goldens
+    (test_delivery_manifest / test_defaults_golden) are the cross-check against
+    the pre-P6 world; this is the in-suite proof that the splice is inert when
+    there is nothing to splice.
+    """
+
+    @pytest.mark.parametrize("agent_name", ["claude", "general", "navigator℘claude"])
+    def test_identical_when_no_pref_table_exists(self, tmp_path, agent_name):
+        box = {"box": {"image": "img", "bindings": {"rw": {
+            "home": ["/host/home", "~/"],
+        }}}}
+        ws = {"workset": {"boxes": "/ws/boxes"}}
+        box_p = _write_yaml(tmp_path / "box.yaml", box)
+        ws_p = _write_yaml(tmp_path / "ws.yaml", ws)
+
+        def build(prefs):
+            return build_launch_snapshot(
+                agent_name=agent_name, ctx=_ctx(),
+                system_path=None, agent_path=None,
+                workset_path=ws_p, box_path=box_p,
+                default_categories={"agent.default.model": "sonnet"},
+                prefs=prefs, valid_agents=_PREF_AGENTS,
+            )
+
+        assert build(None) == build([])
+        assert "pref" not in build(None)

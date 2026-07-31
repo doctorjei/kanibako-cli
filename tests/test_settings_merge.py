@@ -416,3 +416,46 @@ def test_snapshot_is_fresh_not_aliased() -> None:
     snap_rw = _probe(snap, "box", "bindings", "rw")
     assert snap_rw == inner
     assert snap_rw is not inner  # a distinct, freshly-built node
+
+
+# ---------------------------------------------------------------------------
+# ``pref.*`` — the REQUEST subtree is EXEMPT from the present-None type-split
+# ---------------------------------------------------------------------------
+
+class TestPrefSubtreeIsNotClassified:
+    """spec §2h — 'the pref layer MUST NOT interpret emptiness AT ALL'.
+
+    ⚑ Without the exemption the category rule fires on the REQUEST's own path
+    (``pref.agent.claude.common.plugins`` has ``common`` among its ancestors),
+    so a ``null`` request would be OMITted from the snapshot — applied, but
+    invisible to ``config show`` / ``--effective``.
+    """
+
+    def test_null_request_at_a_category_shaped_target_survives_the_merge(self):
+        """INVERT: remove the ``pref`` guard in ``_resolve_present_none`` ->
+        this reddens."""
+        box = KeyStore(
+            {"pref": {"agent": {"claude": {"common": {"plugins": None}}}}}
+        )
+        snap = merge([box])
+        node = snap["pref"]["agent"]["claude"]["common"]
+        assert "plugins" in dict.keys(node)
+        assert dict.__getitem__(node, "plugins") is None
+
+    def test_null_request_at_a_masks_shaped_target_survives(self):
+        box = KeyStore({"pref": {"agent": {"claude": {"masks": None}}}})
+        snap = merge([box])
+        assert "masks" in dict.keys(snap["pref"]["agent"]["claude"])
+
+    def test_the_installed_target_is_still_classified_normally(self):
+        """The exemption is scoped to the REQUEST record; the ordinary rule
+        still OMITs a present-None category leaf at the TARGET path."""
+        overlay = KeyStore({"agent": {"claude": {"common": {"plugins": None}}}})
+        snap = merge([overlay])
+        assert "plugins" not in dict.keys(snap["agent"]["claude"]["common"])
+
+    def test_a_category_named_pref_deeper_down_is_unaffected(self):
+        """The guard keys on the ROOT segment, not on the name ``pref``."""
+        box = KeyStore({"box": {"common": {"pref": None}}})
+        snap = merge([box])
+        assert "pref" not in dict.keys(snap["box"]["common"])

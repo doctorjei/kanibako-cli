@@ -844,3 +844,81 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
     assert dict.get(ws, "marker", _MISSING) == "w"
     # box.* still resolves too (both scopes coexist at the workset tier).
     assert _box_enable_vault(snap) is False
+
+
+# --------------------------------------------------------------------------- #
+# ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h L1252-1254)   #
+# --------------------------------------------------------------------------- #
+
+
+class TestPrefTableWriteSiteAtAssembly:
+    """D4 — WARN + DROP in a file where a pref is illegal.
+
+    Same treatment ``_drop_upward_scopes`` gives the sibling mis-scope: two
+    behaviours for one fault class is the confusion §0's convention 0 forbids.
+    The HARD refusal §2h calls for lives at the WRITE site (``config set``).
+    """
+
+    def test_base_file_pref_table_warns_and_drops(self, tmp_path, caplog) -> None:
+        """INVERT: drop it silently -> the caplog assertion reddens."""
+        base = _write(
+            tmp_path / "base.yaml",
+            {"pref": {"system": {"agent": "goose"}}, "system": {"cache": "/c"}},
+        )
+        with caplog.at_level("WARNING"):
+            levels = assemble_levels(agent_name="claude", base_path=base)
+        assert "pref" not in levels[BASE]
+        assert levels[BASE].system.cache == "/c"   # the rest of the file survives
+        assert "workset or box settings file" in caplog.text
+        assert "bounds the resolution recursion" in caplog.text
+
+    def test_system_file_pref_table_warns_and_drops(self, tmp_path, caplog) -> None:
+        sysf = _write(
+            tmp_path / "system.yaml", {"pref": {"system": {"agent": "goose"}}},
+        )
+        with caplog.at_level("WARNING"):
+            levels = assemble_levels(agent_name="claude", system_path=sysf)
+        assert "pref" not in levels[SYSTEM]
+        assert "workset or box settings file" in caplog.text
+
+    def test_agent_file_pref_table_warns_and_drops(self, tmp_path, caplog) -> None:
+        """⚑ Why the refusal runs on the RAW view: the agent tier never mirrors
+        a non-``agent:`` table into its partial, so a post-partial filter could
+        not see (or warn about) a ``pref:`` table here at all."""
+        agentf = _write(
+            tmp_path / "agent.yaml",
+            {"pref": {"system": {"agent": "goose"}},
+             "self": {"claude": {"model": "opus"}}},
+        )
+        with caplog.at_level("WARNING"):
+            levels = assemble_levels(agent_name="claude", agent_path=agentf)
+        assert "pref" not in levels[AGENT_ACTIVE]
+        assert levels[AGENT_ACTIVE].agent.claude.model == "opus"
+        assert "workset or box settings file" in caplog.text
+
+    def test_box_and_workset_pref_tables_are_KEPT(self, tmp_path, caplog) -> None:
+        """The whole point: these two files are where a pref is legal."""
+        box = _write(
+            tmp_path / "box.yaml", {"pref": {"system": {"agent": "goose"}}},
+        )
+        ws = _write(
+            tmp_path / "ws.yaml", {"pref": {"agent": {"claude": {"model": "opus"}}}},
+        )
+        with caplog.at_level("WARNING"):
+            levels = assemble_levels(
+                agent_name="claude", box_path=box, workset_path=ws,
+            )
+        assert levels[BOX].pref.system.agent == "goose"
+        assert levels[WORKSET].pref.agent.claude.model == "opus"
+        assert "workset or box settings file" not in caplog.text
+
+    def test_a_bind_shaped_pref_value_is_parsed_as_a_bind(self, tmp_path) -> None:
+        """The pref path mirrors its target's, so ``_parse_node``'s ancestor
+        test makes a bind-shaped request a real ``Bind`` — the property that
+        makes the NESTED-only spelling load-bearing (D5)."""
+        box = _write(
+            tmp_path / "box.yaml",
+            {"pref": {"agent": {"claude": {"common": {"x": ["/s", "~/d"]}}}}},
+        )
+        levels = assemble_levels(agent_name="claude", box_path=box)
+        assert isinstance(levels[BOX].pref.agent.claude.common.x, Bind)

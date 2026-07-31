@@ -35,7 +35,8 @@ from kanibako.agent_ref import (
 )
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import ConfigError, UserCancelled
-from kanibako.settings_store import SCOPE_CONTAINMENT
+from kanibako.settings_prefs import PREF_ROOT
+from kanibako.settings_store import SCOPE_CONTAINMENT, ReservedKeyError
 from kanibako.shellenv import (
     merge_env,
     read_env_file,
@@ -199,6 +200,11 @@ def is_known_key(arg: str) -> bool:
         return True
     if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
         return True
+    # pref.<target-key> — the §2h REQUEST family. SHAPE-only here: this is the
+    # positional-vs-key disambiguator, and no project is named ``pref.…``. The
+    # three filters run in the set / get / reset branches.
+    if _is_pref_key(arg):
+        return True
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind key
     # (item-0): a settable key (recognised on the +form too, before canonicalization)
     # so get/show + the project-name heuristic treat it as a KEY. Checked BEFORE the
@@ -332,13 +338,15 @@ KEY_TYPES: dict[str, str] = {
 }
 
 
-def _coerce_value(canonical: str, value: str) -> object | str:
+def _coerce_value(canonical: str, value: "str | None") -> object | str | None:
     """Coerce *value* to the typed form declared for *canonical* in KEY_TYPES.
 
     Returns the typed Python value (e.g. a real ``bool``) on success, or an
     ``"Error: ..."`` string when a bool key is given an unparseable value.
     Scalars (no KEY_TYPES entry) pass through unchanged as the raw string.
     """
+    if value is None:
+        return None  # an explicit present-None request (--null): never coerced.
     kind = KEY_TYPES.get(canonical)
     if kind == "bool":
         coerced = coerce_bool(value)
@@ -364,7 +372,9 @@ class ConfigAction(Enum):
     reset = "reset"
 
 
-def parse_config_arg(arg: str | None) -> tuple[ConfigAction, str, str]:
+def parse_config_arg(
+    arg: str | None, *, set_null: bool = False,
+) -> "tuple[ConfigAction, str, str | None]":
     """Parse a single positional config argument.
 
     Returns ``(action, key, value)``.
@@ -372,7 +382,25 @@ def parse_config_arg(arg: str | None) -> tuple[ConfigAction, str, str]:
     - ``"key=value"`` → ``(set, key, value)``
     - ``"key"``       → ``(get, key, "")``
     - ``None``        → ``(show, "", "")``
+
+    *set_null* is the ``--null`` flag: ``config set --null <key>`` is a SET whose
+    value is Python ``None`` — an explicit present-``None``, distinct from the
+    terminal empty string ``key=`` and from ``--reset`` (which REMOVES the
+    override rather than writing one).
+
+    ⚑ Why a FLAG and not a magic value token. ``config set`` stores scalars
+    VERBATIM — nothing in it YAML- or literal-parses a value (only keys declared
+    ``bool`` in ``KEY_TYPES`` coerce) — so there is no existing rule under which
+    the string ``"null"`` would become ``None``, and inventing one for this route
+    alone would be a dialect: ``env.X=null`` and ``box.image=null`` are
+    legitimate strings. The flag says what is meant, applies to EVERY key whose
+    leaf accepts the §3 present-``None`` terminal, and cannot collide with data.
+    It is the CLI spelling of §2h's suppression request
+    (``pref.agent.<agent>.<category>.<name>: null``), which is the ONLY channel a
+    box has to drop something its agent declares.
     """
+    if set_null:
+        return (ConfigAction.set, (arg or "").strip(), None)
     if arg is None:
         return (ConfigAction.show, "", "")
     if "=" in arg:
@@ -1033,6 +1061,199 @@ def _is_scope_secret_key(key: str) -> bool:
     return _SCOPE_SECRET_RE.match(key) is not None
 
 
+def _is_pref_key(key: str) -> bool:
+    """True iff *key* is a ``pref.<target-key>`` REQUEST key (spec §2h).
+
+    SHAPE ONLY — deliberately not a validity test. Its job on the
+    :func:`is_known_key` path is the positional-vs-key DISAMBIGUATOR (is this
+    argument a config key or a project name?), and for that the prefix is both
+    sufficient and correct: no project is named ``pref.something``. The real
+    validation runs in the set / get / reset branches, where a bad request can
+    be reported with a reason instead of silently reinterpreted as a project.
+    """
+    return key.startswith(f"{PREF_ROOT}.")
+
+
+def _pref_level(command_scope: "ConfigLevel | None") -> str | None:
+    """The pref LEVEL name for a command scope, or ``None`` where a pref is
+    illegal (spec §2h L1252-1254 — workset and box ONLY)."""
+    if command_scope is ConfigLevel.box:
+        return "box"
+    if command_scope is ConfigLevel.workset:
+        return "workset"
+    return None
+
+
+def _pref_write_site_error(
+    canonical: str, command_scope: "ConfigLevel | None", *, verb: str = "set",
+) -> str | None:
+    """Refuse a ``pref.*`` WRITE outside the workset / box scopes (spec §2h).
+
+    ⚑ *"Where a pref may be written. Workset (L3.2) and box (L4.2) levels ONLY —
+    never base, system or agent. **This is what BOUNDS the recursion**, so it is
+    a hard rule, not a convenience.* ``config set pref.<key> <value>`` at
+    base/system/agent scope must RAISE, not silently write a dead entry."*
+
+    Checked BEFORE the three TARGET filters: a user at the system scope must be
+    told the FILE is wrong regardless of the target's quality — fixing the target
+    first would only surface this error afterwards.
+
+    Returns an ``Error: …`` string when refused, else ``None``.
+    """
+    if not _is_pref_key(canonical):
+        return None
+    if _pref_level(command_scope) is not None:
+        return None
+    if command_scope is None:
+        return None  # no command-scope context — the guard is skipped, as elsewhere.
+    target = canonical[len(PREF_ROOT) + 1:]
+    scope = target.split(".", 1)[0]
+    hint = (
+        f" Set '{target}' directly at the {scope} scope instead."
+        if scope in ("system", "agent", "workset", "box") else ""
+    )
+    return (
+        f"Error: '{canonical}' cannot be {verb} from the {command_scope.value} "
+        f"scope. A pref is a REQUEST written in a workset or box settings file "
+        f"only (spec §2h) — that restriction is what bounds the resolution "
+        f"recursion.{hint}"
+    )
+
+
+def _pref_target_error(
+    canonical: str, command_scope: "ConfigLevel | None",
+) -> str | None:
+    """Run the three §2h filters on the ``pref.*`` TARGET KEY at SET time.
+
+    Same predicate the launch path applies TO THE KEY. ⚑ The KEY is only half of
+    a request: the VALUE is checked separately by :func:`_pref_value_error`,
+    against the TARGET's shape and resolution. An earlier version of this
+    docstring claimed set-time and launch-time validation were equivalent —
+    they were not, and the gap was real: a scalar at a bind-shaped target, and an
+    unresolvable ``@``-ref, were both accepted here and failed at LAUNCH.
+    """
+    from kanibako.settings_prefs import (
+        PrefRequest,
+        default_valid_agents,
+        validate_pref,
+    )
+
+    level = _pref_level(command_scope)
+    if level is None:
+        return None  # the write-site guard already refused (or there is no scope).
+    target = canonical[len(PREF_ROOT) + 1:]
+    why = validate_pref(
+        PrefRequest(target=target, value=None, level=level),
+        valid_agents=default_valid_agents(),
+    )
+    if why is None:
+        return None
+    return f"Error: '{canonical}' was refused: {why}."
+
+
+def _pref_sections_leaf(canonical: str) -> "tuple[tuple[str, ...], str]":
+    """The nested write location for a pref: ``(("pref", *head), leaf)``."""
+    parts = canonical.split(".")
+    return tuple(parts[:-1]), parts[-1]
+
+
+def _pref_value_error(
+    canonical: str,
+    value: "str | None",
+    *,
+    config_path: Path,
+    system_path: Path | None,
+    agent_path: Path | None,
+    workset_path: Path | None,
+    box_path: Path | None,
+    agent_name: str,
+    default_categories: "Mapping[str, object] | None",
+) -> str | None:
+    """Validate a pref's VALUE against the shape + resolution of its TARGET key.
+
+    ⚑ THE VALUE IS VALIDATED AT THE **TARGET** PATH, NEVER AT THE ``pref.*`` PATH.
+    A pref's key position says nothing about what value is legal there — the
+    TARGET does. Two consequences, both of which bit before this existed:
+
+    * **A structured target rejects a scalar.** ``pref.agent.claude.common.x
+      just-a-string`` used to be accepted and then killed the LAUNCH with
+      "category agent.claude.common.x is str, expected a Bind" — naming a key the
+      user never wrote. The direct category route refuses a malformed value at
+      set time; the pref route must too, or it is a hole in the same wall.
+    * **The E3 resolution probe must run at the TARGET.** Probing at
+      ``pref.<target>`` is a NO-OP by construction: ``expand`` carries the
+      ``pref`` subtree through unexpanded (spec §2h L1263), so no ``@``-ref in it
+      is ever resolved and no defect can be recorded. ``pref.agent.claude.template
+      @typo`` was therefore accepted and then silently DROPPED the target at
+      launch. Applying the candidate at the target path is what makes the probe
+      mean anything.
+
+    Returns an ``Error: …`` string when refused, else ``None``. A ``None`` *value*
+    (the ``--null`` suppression request) is always shape-legal: present-``None``
+    is the §3 terminal every category and scalar leaf accepts, and it is §2h's
+    ONLY suppression channel.
+    """
+    from kanibako.settings_categories import BIND_KEY_RE, MASK_KEY_RE
+
+    target = canonical[len(PREF_ROOT) + 1:]
+    if value is None:
+        return None  # the suppression request — legal at any leaf (§3 / §2h).
+
+    # ⚑ DELIBERATE, DO NOT "FIX": the VALUE of ``pref.system.agent`` is NOT
+    # checked against the installed agents. §2h validates the TARGET KEY, and
+    # its own agent rule is about the DISCRIMINATOR in ``agent.*.**`` — *"the
+    # agent test is 'is it a VALID agent', NOT 'is it the ACTIVE agent' — so
+    # pre-configuring an agent you may switch to is allowed"* (§2h L1221-1222).
+    # An unknown NAME here surfaces at agent RESOLUTION (P7), with the error that
+    # subsystem already owns, rather than being pre-judged by the config writer.
+
+    if BIND_KEY_RE.match(target) is not None or MASK_KEY_RE.match(target) is not None:
+        return (
+            f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
+            f"category entry — a binding is a pair [host_src, box_dest], never a "
+            f"scalar (spec §2a). Write the request in the settings file:\n"
+            f"  pref:\n"
+            f"    {chr(10).join(_yaml_skeleton(target)).lstrip()}\n"
+            f"...or suppress the entry with: --null {canonical}"
+        )
+
+    # A SCALAR target: run the same E3 resolution probe the direct scalar route
+    # runs, applied AT THE TARGET so the expander actually sees the candidate.
+    resolves, _raw = _category_set_lookups(
+        config_path,
+        canonical=target,
+        system_path=system_path,
+        agent_path=agent_path,
+        workset_path=workset_path,
+        box_path=box_path,
+        agent_name=agent_name,
+        default_categories=default_categories,
+    )
+    defect = resolves(target, value)
+    if defect is not None:
+        return (
+            f"Error: '{canonical}' value {value!r} does not resolve at its target "
+            f"'{target}': {defect}. A pref is installed at the target key and "
+            f"resolved like any other value (spec §2h), so an unresolvable request "
+            f"would silently change or drop '{target}' at launch."
+        )
+    return None
+
+
+def _yaml_skeleton(target: str) -> list[str]:
+    """The nested-YAML skeleton for *target*, for a refusal message.
+
+    A user refused a CLI spelling needs the spelling that DOES work; printing the
+    dotted key they just typed would only repeat what failed.
+    """
+    parts = target.split(".")
+    lines = []
+    for i, seg in enumerate(parts):
+        lines.append("  " * (i + 1) + f"{seg}:" if i < len(parts) - 1
+                     else "  " * (i + 1) + f"{seg}: [<host_src>, <box_dest>]")
+    return lines
+
+
 def _is_path_category_key(key: str) -> bool:
     """True iff *key* is a PATH-TUPLE category key settable via ``config set``.
 
@@ -1389,7 +1610,14 @@ def _category_set_lookups(
         # sufficient for the E3 upstream-chain check — ``_expand_str`` resolves it
         # host-side exactly as ``_expand_bind`` resolves the host half.
         candidate = _clone_keystore(base_snapshot)
-        _set_leaf(candidate, key.split("."), value)
+        try:
+            _set_leaf(candidate, key.split("."), value)
+        except ReservedKeyError as exc:
+            # A RESERVED leaf name (``…common.get``) is a set-time DEFECT, not a
+            # crash: ReservedKeyError is a KeyError, so it escaped this closure
+            # and broke set_config_value's "returns an error string, NEVER
+            # raises" contract (the H1 rule). Report it as the defect it is.
+            return str(exc)
         result = expand(candidate, ctx, collect_errors=True)
         assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
         errors = result[1]
@@ -1630,6 +1858,13 @@ def get_config_value(
         system_settings_path if system_settings_path is not None else project_toml
     )
 
+    # pref.<target-key> — return the REQUEST stored at this noun (spec §2h
+    # "config get pref.system.agent returns the REQUEST"; clause 5's plain
+    # get = stored-at-noun). The RESOLVED result is the --effective view.
+    if _is_pref_key(canonical):
+        sections, leaf = _pref_sections_leaf(canonical)
+        return _read_stored_pref(noun_file, sections, leaf)
+
     # env.* keys — read from env files
     if _is_env_key(canonical):
         env_name = canonical[4:]  # strip "env."
@@ -1813,6 +2048,41 @@ def _read_stored_leaf(
     return _render_stored_scalar(node[leaf])
 
 
+def _read_stored_pref(
+    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
+) -> str | None:
+    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart.
+
+    ⚑ The general :func:`_read_stored_leaf` renders a stored ``""`` as ``None``
+    ("(not set)") — the "empty ⇒ unset" convention. That convention is WRONG for
+    a pref: §2h designates ``get`` as the verb that *"returns the REQUEST"*, and
+    the three idioms it must forward untouched (present-``None``, terminal ``""``,
+    and absence) are three DIFFERENT requests. Collapsing two of them into one
+    display makes the suppression request — the only channel a box has to drop
+    something its agent declares — indistinguishable from having asked nothing.
+
+    absent → ``None`` ("(not set)") · present-``None`` → ``"null"`` ·
+    ``""`` → ``'""'`` · else the value.
+    """
+    if noun_file is None or not noun_file.exists():
+        return None
+    node: object = load_doc(noun_file)
+    for sec in sections:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(sec)
+    if not isinstance(node, dict) or leaf not in node:
+        return None
+    v = node[leaf]
+    if v is None:
+        return "null"
+    if v == "":
+        return '""'
+    if isinstance(v, bool):
+        return str(v).lower()
+    return str(v)
+
+
 def _render_stored_scalar(v: object) -> str | None:
     """Render a stored scalar for ``get`` output: bools lowercase, empty → None."""
     if isinstance(v, bool):
@@ -1835,7 +2105,8 @@ def _has_dedicated_route(canonical: str) -> bool:
     value on a key that does not exist.
     """
     return (
-        _is_env_key(canonical)
+        _is_pref_key(canonical)
+        or _is_env_key(canonical)
         or _is_agent_node_bind_key(canonical)
         or _is_agent_node_secret_key(canonical)
         or _is_scope_secret_key(canonical)
@@ -1894,12 +2165,23 @@ def _probes_at_set_time(canonical: str) -> bool:
         return False
     if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
         return False
+    if _is_pref_key(canonical):
+        # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and must not run
+        # there: ``expand`` carries the ``pref`` subtree through unexpanded (spec
+        # §2h L1263), so nothing in it is ever resolved and no defect can be
+        # recorded. Worse, applying the candidate at the pref path WRITES the
+        # target's leaf names into a KeyStore, so a target whose leaf is a
+        # RESERVED name (``…common.get``) raised ReservedKeyError straight out of
+        # this function — breaking ``set_config_value``'s "returns an error
+        # string, never raises" contract. The pref route runs the REAL probe at
+        # the TARGET path instead (:func:`_pref_value_error`).
+        return False
     return _has_dedicated_route(canonical)
 
 
 def set_config_value(
     key: str,
-    value: str,
+    value: "str | None",
     *,
     config_path: Path,
     env_path: Path | None = None,
@@ -1957,6 +2239,17 @@ def set_config_value(
     if canonical.startswith("config."):
         return _config_key_refusal(canonical, action="set")
 
+    # ``pref.*`` WRITE-SITE guard (spec §2h L1252-1254) — BEFORE the three TARGET
+    # filters and before the scope guard. A pref is legal only in a workset or box
+    # settings file, and that restriction is what BOUNDS the resolution recursion,
+    # so it is a hard rule rather than a convenience. Checked ahead of the target
+    # filters deliberately: a user at the system scope must be told the FILE is
+    # wrong regardless of the target's quality, or they fix the target and only
+    # then discover the write site was never legal.
+    pref_site_err = _pref_write_site_error(canonical, command_scope, verb="set")
+    if pref_site_err is not None:
+        return pref_site_err
+
     # Scope-direction guard (block B4, spec §0 + §2a) — enforced at the TOP, after
     # canonical key resolution and BEFORE any dispatch branch (env /
     # category / system / regular), so EVERY write path is gated uniformly.
@@ -1977,6 +2270,37 @@ def set_config_value(
     if bare_err is not None:
         return bare_err
 
+    # ``--null`` ROUTE COVERAGE. The RULE is uniform — ``--null <key>`` writes an
+    # explicit present-``None`` at that key — but two write MECHANISMS cannot
+    # express it, and silently doing something else would be worse than refusing:
+    #
+    # * ``env.<VAR>`` is a docker ``.env`` STRING store (``shellenv.set_env_var``);
+    #   it has no null, and writing the text "None" is the bug this refuses.
+    # * the CATEGORY route is a SOURCE-ONLY REPOINT (``repoint_host_src``) — it
+    #   rewrites the host half of an EXISTING tuple and has no null form. Direct
+    #   category suppression is its own feature (write ``null`` in the settings
+    #   file); it is NOT part of this phase, and half-implementing it here would
+    #   put two spellings of one idea in the tree.
+    #
+    # Everything else lands through a nested YAML write, which carries ``None``
+    # natively — so ``pref.*``, ``box.agent.*`` and the routed scalars all work.
+    if value is None:
+        if _is_env_key(canonical):
+            return (
+                f"Error: --null is not supported for '{canonical}': the env file "
+                f"is a plain string store with no null value. Use "
+                f"'--reset {canonical}' to remove the variable."
+            )
+        if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
+            return (
+                f"Error: --null is not yet supported for the category key "
+                f"'{canonical}' (a config set of a category is a source-only "
+                f"repoint, which has no null form). Suppress the entry by "
+                f"writing 'null' at the key in the settings file, or request the "
+                f"suppression from a box/workset with "
+                f"'--null pref.{canonical}' (spec §2h)."
+            )
+
     # Write-time validation for the auth-critical ``auto_approve`` permission key
     # (Editor finding B). It routes VERBATIM below (bare -> ``_is_agent_setting``;
     # per-node -> ``_is_persona_agent_key``) and is ``coerce_bool``'d at LAUNCH with
@@ -1987,7 +2311,11 @@ def set_config_value(
     # coercion uses — the happy literals (true/false/1/0/yes/no/on/off, any case)
     # still write verbatim as before; ONLY ``auto_approve`` is guarded (Jei: only
     # the auth-critical key), not ``allow_helpers`` / ``model``.
-    if _is_auto_approve_key(canonical) and coerce_bool(value) is None:
+    if (
+        value is not None
+        and _is_auto_approve_key(canonical)
+        and coerce_bool(value) is None
+    ):
         return f"Error: auto_approve must be a boolean (true/false); got {value!r}"
 
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a
@@ -2005,7 +2333,7 @@ def set_config_value(
     # so an UNRELATED pre-existing defect still allows the set and ``config set``
     # stays usable to REPAIR a broken config. ``--reset`` is untouched: removing
     # an override cannot introduce a dangling ref in the removed value.
-    if _probes_at_set_time(canonical):
+    if value is not None and _probes_at_set_time(canonical):
         from kanibako.settings_configset import Error as _SetError
         from kanibako.settings_configset import validate_config_set
 
@@ -2029,11 +2357,40 @@ def set_config_value(
         system_settings_path if system_settings_path is not None else config_path
     )
 
+    # pref.<target-key> — the §2h REQUEST. Validated with the SAME three filters
+    # the launch applies (so a stored request cannot fail every future launch),
+    # then written to the COMMAND scope's settings file at the NESTED
+    # ``pref.<target…>`` slot — the shape ``assemble_levels`` mirrors and
+    # ``collect_prefs`` reads. NESTED, never a dotted literal (a bind-shaped
+    # value spelled the dotted way would never be bind-parsed, so the two
+    # spellings would behave differently — see settings_prefs).
+    if _is_pref_key(canonical):
+        target_err = _pref_target_error(canonical, command_scope)
+        if target_err is not None:
+            return target_err
+        value_err = _pref_value_error(
+            canonical, value,
+            config_path=config_path,
+            system_path=cascade_system_path,
+            agent_path=cascade_agent_path,
+            workset_path=cascade_workset_path,
+            box_path=cascade_box_path,
+            agent_name=cascade_agent_name,
+            default_categories=default_categories,
+        )
+        if value_err is not None:
+            return value_err
+        sections, leaf = _pref_sections_leaf(canonical)
+        _write_nested_toml_key(settings_dest, sections, leaf, value)
+        return f"Set {canonical}={'null' if value is None else value}"
+
     # env.* keys
     if _is_env_key(canonical):
         env_name = canonical[4:]
         if env_path is None:
             return f"Error: no env file path for key {canonical}"
+        # value is narrowed by the --null route guard above (env has no null).
+        assert value is not None
         try:
             set_env_var(env_path, env_name, value)
         except ValueError as e:
@@ -2069,6 +2426,8 @@ def set_config_value(
     # (``agent_representation.agent_default_bind_keys``) as ``default_categories`` so
     # the must-exist gate sees the launch-only descriptor floor.
     if _is_agent_node_bind_key(canonical):
+        # Narrowed by the --null route guard above (a repoint has no null form).
+        assert value is not None
         return _set_category_value(
             canonical, value, config_path=config_path,
             system_path=cascade_system_path,
@@ -2152,7 +2511,7 @@ def set_config_value(
         # file (== config_path at box/workset; the system settings file at
         # SYSTEM — a downward write never lands in the Layer-1 config file).
         _write_nested_toml_key(settings_dest, sections, leaf, value)
-        return f"Set {canonical}={value}"
+        return f"Set {canonical}={'null' if value is None else value}"
 
     # Path-TUPLE category keys (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
     # ``shared`` / ``synced``) — the source-only RAW repoint (S24/S25, spec §2a,
@@ -2166,6 +2525,8 @@ def set_config_value(
     # creates one. ``env`` (scalar) was handled above; ``masks`` is YAML-only
     # (spec §2a L216) — not a tuple, so a repoint is refused as non-category.
     if _is_path_category_key(canonical):
+        # Narrowed by the --null route guard above (a repoint has no null form).
+        assert value is not None
         return _set_category_value(
             canonical, value, config_path=config_path,
             system_path=cascade_system_path,
@@ -2228,7 +2589,7 @@ def set_config_value(
         _write_nested_toml_key(dest, sections, leaf, typed)
     else:
         _write_toml_key_root(dest, leaf, typed)
-    return f"Set {_dot_to_flat(routed)}={value}"
+    return f"Set {_dot_to_flat(routed)}={'null' if value is None else value}"
 
 
 def reset_config_value(
@@ -2284,6 +2645,11 @@ def reset_config_value(
     if canonical.startswith("config."):
         return _config_key_refusal(canonical, action="reset")
 
+    # ``pref.*`` WRITE-SITE guard, symmetric with set (a reset is a WRITE).
+    pref_site_err = _pref_write_site_error(canonical, command_scope, verb="reset")
+    if pref_site_err is not None:
+        return pref_site_err
+
     # Scope-direction guard (block B2 RESET-GUARD, mirrors set_config_value's B4
     # guard, spec §0 + §2a) — after config.* forbid and BEFORE any dispatch branch,
     # so every reset path is gated uniformly.
@@ -2308,6 +2674,14 @@ def reset_config_value(
     settings_dest = (
         system_settings_path if system_settings_path is not None else config_path
     )
+
+    # pref.<target-key> — remove the REQUEST from this noun's settings file
+    # (symmetric with the set/get branches: reset clears exactly where set wrote).
+    if _is_pref_key(canonical):
+        sections, leaf = _pref_sections_leaf(canonical)
+        if _remove_nested_toml_key(settings_dest, sections, leaf):
+            return f"Cleared {canonical}"
+        return f"No override for {canonical}"
 
     # env.* keys
     if _is_env_key(canonical):
@@ -2846,6 +3220,110 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     return out
 
 
+def _pref_overrides(path: Path | None) -> dict[str, str]:
+    """Flatten a settings file's ``pref:`` table to ``pref.<target> -> value``.
+
+    ``config show`` must LIST prefs (spec §2h read verbs). The box/workset plain
+    view reads ``load_project_overrides`` + ``read_agent_settings``, neither of
+    which can see a ``pref:`` table, so it is flattened here with the SAME walk
+    ``_nested_settings_overrides`` uses. A present-``None`` request renders as
+    ``null`` — it is a REQUEST TO SUPPRESS, and showing it as blank would make
+    the one thing a box cannot otherwise express look like nothing at all.
+    """
+    if path is None or not path.exists():
+        return {}
+    data = load_doc(path)
+    if not isinstance(data, dict):
+        return {}
+    table = data.get(PREF_ROOT)
+    if not isinstance(table, dict):
+        return {}
+    out: dict[str, str] = {}
+
+    def _walk(node: dict, prefix: str) -> None:
+        for k, v in node.items():
+            if isinstance(v, dict):
+                _walk(v, f"{prefix}{k}.")
+            elif isinstance(v, bool):
+                out[f"{prefix}{k}"] = str(v).lower()
+            elif v is None:
+                out[f"{prefix}{k}"] = "null"
+            else:
+                out[f"{prefix}{k}"] = str(v)
+
+    _walk(table, f"{PREF_ROOT}.")
+    return out
+
+
+def _print_pref_block(snapshot: Any, out: Any) -> None:
+    """Render each ``pref`` REQUEST beside the RESULT it produced (spec §2h).
+
+    *"--effective shows BOTH the request and the resulting value — so 'why did
+    system.agent resolve to zippity' is answerable from the snapshot instead of
+    by reading files. This is what closes the 'I set it and nothing happened'
+    failure family."*
+
+    Both halves come off the SAME snapshot, and that is exactly why ``expand``
+    carries the ``pref`` subtree through UNEXPANDED: the request is readable in
+    the form it was WRITTEN (``@meta.workset.path/tpl``) while the target holds
+    the resolved terminal. Rendering an expanded request beside its result would
+    print the same string twice and answer nothing.
+    """
+    from kanibako.settings_store import Bind, KeyStore
+
+    node = snapshot
+    for seg in (PREF_ROOT,):
+        if not isinstance(node, KeyStore):
+            return
+        node = dict.get(node, seg, None)
+    if not isinstance(node, KeyStore):
+        return
+
+    requests: dict[str, Any] = {}
+
+    def _walk(sub: Any, prefix: str) -> None:
+        for k in dict.keys(sub):
+            v = dict.__getitem__(sub, k)
+            if isinstance(v, KeyStore):
+                _walk(v, f"{prefix}{k}.")
+            else:
+                requests[f"{prefix}{k}"] = v
+
+    _walk(node, "")
+    if not requests:
+        return
+
+    def _render(value: Any) -> str:
+        if isinstance(value, Bind):
+            opts = f"  [{value.opts}]" if value.opts else ""
+            return f"{value.host} -> {value.box}{opts}"
+        if value is None:
+            return "null"
+        return str(value)
+
+    print("", file=out)
+    for target in sorted(requests):
+        print(f"  {PREF_ROOT}.{target} = {_render(requests[target])}", file=out)
+        # The RESULT, read at the TARGET key in the same snapshot.
+        cur: Any = snapshot
+        missing = False
+        for seg in target.split("."):
+            if not isinstance(cur, KeyStore) or dict.get(cur, seg, _NO_KEY) is _NO_KEY:
+                missing = True
+                break
+            cur = dict.get(cur, seg)
+        if missing:
+            # The ordinary present-None rule OMITTED it: a bind / category /
+            # masks leaf was suppressed. Saying so is the whole point — this is
+            # the difference between "suppressed" and "unset".
+            result = "(omitted — the entry is suppressed; no mount)"
+        elif cur is None:
+            result = "(unset — the consumer applies its default)"
+        else:
+            result = _render(cur)
+        print(f"    -> {target} = {result}", file=out)
+
+
 def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
@@ -3058,6 +3536,10 @@ def show_config(
                 for k in sorted(nested):
                     print(f"  {k} = {nested[k]}", file=out)
 
+        # ``pref`` REQUESTS + the RESULT each produced (spec §2h read verbs).
+        if category_snapshot is not None:
+            _print_pref_block(category_snapshot, out)
+
         # Path-delivery CATEGORIES + their materialised derivations (§0).
         if category_error is not None or category_snapshot is not None:
             _print_category_block(category_snapshot, category_error, out)
@@ -3096,6 +3578,12 @@ def show_config(
             for k, v in sorted(nested.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True
+
+        # ``pref`` REQUESTS stored at this noun (spec §2h "config show lists
+        # prefs"). They ARE overrides at this level, so the plain view shows them.
+        for k, v in sorted(_pref_overrides(config_path).items()):
+            print(f"  {k} = {v}", file=out)
+            has_output = True
 
         # Env vars (project-level only)
         if env_project:

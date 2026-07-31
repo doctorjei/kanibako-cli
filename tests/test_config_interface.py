@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+import yaml
+
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.config_interface import (
     ConfigAction,
@@ -3953,3 +3956,373 @@ class TestEffectiveCategoryBlock:
         )
         assert rc == 0
         assert "Two bindings target the same box destination" in buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# ``pref.*`` — the verb surface (spec §2h read verbs + write site)
+# ---------------------------------------------------------------------------
+
+class TestPrefWriteSite:
+    """§2h L1252-1254 — a pref may be WRITTEN at workset and box scope ONLY.
+    *"This is what BOUNDS the recursion, so it is a hard rule."*"""
+
+    @pytest.mark.parametrize("scope", [ConfigLevel.system, ConfigLevel.agent])
+    def test_set_at_an_illegal_scope_is_refused(self, tmp_path, scope):
+        """INVERT: remove ``_pref_write_site_error`` -> reddens."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.system.agent", "goose",
+            config_path=f, system_settings_path=f, command_scope=scope,
+        )
+        assert msg.startswith("Error:")
+        assert "workset or box settings file" in msg
+        assert "bounds the resolution recursion" in msg
+        assert not f.exists()  # nothing was written
+
+    @pytest.mark.parametrize("scope", [ConfigLevel.system, ConfigLevel.agent])
+    def test_reset_at_an_illegal_scope_is_refused(self, tmp_path, scope):
+        f = tmp_path / "settings.yaml"
+        msg = reset_config_value(
+            "pref.system.agent",
+            config_path=f, system_settings_path=f, command_scope=scope,
+        )
+        assert msg.startswith("Error:")
+        assert "workset or box settings file" in msg
+
+    def test_the_write_site_is_checked_before_the_target_filters(self, tmp_path):
+        """A user at the system scope must be told the FILE is wrong regardless
+        of the target's quality — fixing the target first would only surface
+        this error afterwards."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.zippity.model", "x",
+            config_path=f, system_settings_path=f,
+            command_scope=ConfigLevel.system,
+        )
+        assert "workset or box settings file" in msg
+        assert "not a valid agent" not in msg
+
+
+class TestPrefSetGetReset:
+    """§2h — set / get / reset all operate on prefs."""
+
+    def test_set_writes_a_nested_table_and_get_returns_the_request(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.system.agent", "goose",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg == "Set pref.system.agent=goose"
+        # NESTED on disk, never a dotted literal (settings_prefs D5).
+        assert yaml.safe_load(f.read_text()) == {"pref": {"system": {"agent": "goose"}}}
+        got = get_config_value(
+            "pref.system.agent",
+            global_config_path=tmp_path / "global.yaml", project_toml=f,
+            command_scope=ConfigLevel.box,
+        )
+        assert got == "goose"
+
+    def test_a_deep_agent_pref_round_trips(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        set_config_value(
+            "pref.agent.claude.model", "opus",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert yaml.safe_load(f.read_text()) == {
+            "pref": {"agent": {"claude": {"model": "opus"}}}
+        }
+        assert get_config_value(
+            "pref.agent.claude.model",
+            global_config_path=tmp_path / "g.yaml", project_toml=f,
+            command_scope=ConfigLevel.workset,
+        ) == "opus"
+
+    def test_reset_clears_exactly_where_set_wrote(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        set_config_value(
+            "pref.system.agent", "goose",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        msg = reset_config_value(
+            "pref.system.agent", config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert "Cleared pref.system.agent" == msg
+        assert get_config_value(
+            "pref.system.agent",
+            global_config_path=tmp_path / "g.yaml", project_toml=f,
+            command_scope=ConfigLevel.box,
+        ) is None
+
+    def test_reset_of_an_absent_pref_is_honest(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = reset_config_value(
+            "pref.system.agent", config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg == "No override for pref.system.agent"
+
+
+class TestPrefTargetFiltersAtSetTime:
+    """The SAME three filters the launch applies — so a request ``config set``
+    accepts is one the launch honours, and one refused here can never become a
+    stored request that fails every future launch."""
+
+    def test_an_undeclared_target_is_refused(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.notakey", "x",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:")
+        assert "not a declared" in msg
+        assert not f.exists()
+
+    def test_a_non_allowlisted_target_is_refused(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.box.image", "x",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert "not requestable" in msg
+        assert "directly at the box scope" in msg
+
+    def test_a_meta_target_is_refused(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.meta.box.path", "/x",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert "categorical tier" in msg
+
+    def test_a_new_name_in_a_parametric_family_is_accepted(self, tmp_path):
+        """VALIDITY, not existence (§2h)."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.model", "opus",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Set")
+
+
+class TestPrefIsKnownKey:
+    def test_a_pref_key_is_recognised_as_a_key_not_a_project_name(self):
+        """The positional-vs-key disambiguator — otherwise ``box config
+        pref.system.agent`` is read as a PROJECT called ``pref.system.agent``."""
+        assert is_known_key("pref.system.agent")
+        assert is_known_key("pref.agent.claude.model")
+        assert not is_known_key("someproject")
+
+    def test_the_scope_env_arm_is_still_unknown_to_config_set(self, tmp_path):
+        """⚑ P5-inherited hazard, pinned. ``<scope>.env.<VAR>`` is a DIFFERENT
+        key from the bare ``env.<VAR>`` and has no dispatch route; when one is
+        added it will probe by default, which is the intended direction. P6 adds
+        a route for ``pref.*`` ONLY — this pins that it did not widen the env arm.
+        """
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "box.env.FOO", "x", config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert "unknown config key" in msg
+
+
+class TestPrefShow:
+    def test_show_lists_prefs_at_box_scope(self, tmp_path, capsys):
+        """§2h — 'config show lists prefs'."""
+        f = tmp_path / "settings.yaml"
+        f.write_text(yaml.safe_dump({
+            "pref": {"system": {"agent": "goose"},
+                     "agent": {"claude": {"common": {"plugins": None}}}},
+        }))
+        show_config(
+            global_config_path=tmp_path / "g.yaml", config_path=f, effective=False,
+        )
+        out = capsys.readouterr().out
+        assert "pref.system.agent = goose" in out
+        # A suppression REQUEST must be visible as such, not blank.
+        assert "pref.agent.claude.common.plugins = null" in out
+
+    def test_effective_shows_request_and_result(self, tmp_path, capsys):
+        """§2h — '--effective shows BOTH the request and the resulting value'."""
+        from kanibako.settings_store import KeyStore
+
+        snap = KeyStore({
+            "pref": {"system": {"agent": "goose"},
+                     "agent": {"claude": {"template": "@workset.template/x"}}},
+            "system": {"agent": "goose"},
+            "agent": {"claude": {"template": "/ws/tpl/x"}},
+        })
+        show_config(
+            global_config_path=tmp_path / "g.yaml",
+            config_path=tmp_path / "s.yaml",
+            effective=True, category_snapshot=snap,
+        )
+        out = capsys.readouterr().out
+        assert "pref.system.agent = goose" in out
+        assert "-> system.agent = goose" in out
+        # ⚑ The REQUEST is shown as WRITTEN while the RESULT is resolved — the
+        # whole reason expand carries the pref subtree through unexpanded.
+        assert "pref.agent.claude.template = @workset.template/x" in out
+        assert "-> agent.claude.template = /ws/tpl/x" in out
+
+    def test_effective_distinguishes_suppressed_from_unset(self, tmp_path, capsys):
+        from kanibako.settings_store import KeyStore
+
+        snap = KeyStore({
+            "pref": {"agent": {"claude": {"common": {"plugins": None},
+                                          "model": None}}},
+            # common.plugins was OMITTED by the merge (suppressed); model is a
+            # scalar and was KEPT as None (unset).
+            "agent": {"claude": {"common": KeyStore(), "model": None}},
+        })
+        show_config(
+            global_config_path=tmp_path / "g.yaml",
+            config_path=tmp_path / "s.yaml",
+            effective=True, category_snapshot=snap,
+        )
+        out = capsys.readouterr().out
+        assert "(omitted — the entry is suppressed; no mount)" in out
+        assert "(unset — the consumer applies its default)" in out
+
+
+# ---------------------------------------------------------------------------
+# Editor review — the pref VALUE surface (MUST-1) and the read verb (SHOULD-2)
+# ---------------------------------------------------------------------------
+
+class TestPrefValueValidation:
+    """MUST-1(a) — the VALUE is validated against the TARGET, not the pref path."""
+
+    def test_a_scalar_at_a_bind_shaped_target_is_refused(self, tmp_path):
+        """Before this, the set was ACCEPTED and the LAUNCH died with 'category
+        agent.claude.common.x is str, expected a Bind' — naming a key the user
+        never wrote. INVERT: drop the shape check -> reddens."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.common.x", "just-a-string",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:")
+        assert "STRUCTURED" in msg
+        assert "--null" in msg          # the suppression spelling is offered
+        assert not f.exists()
+
+    def test_an_unresolvable_scalar_value_is_refused(self, tmp_path):
+        """The E3 probe must run AT THE TARGET: probing at the pref path is a
+        no-op because expand skips the pref subtree, so `@typo` used to be
+        accepted and then silently DROPPED the target at launch."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.template", "@nope.nothing/x",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:")
+        assert "does not resolve at its target" in msg
+        assert "agent.claude.template" in msg
+
+    def test_a_resolvable_scalar_value_is_accepted(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.template", "/plain/path",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Set")
+
+    def test_a_reserved_leaf_returns_an_error_and_never_raises(self, tmp_path):
+        """set_config_value's contract is 'returns an error string, NEVER
+        raises'. ReservedKeyError is a KeyError and used to escape."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.common.get", "x",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:") and "RESERVED" in msg
+
+    def test_pref_system_agent_value_is_NOT_checked_against_installed_agents(
+        self, tmp_path,
+    ):
+        """⚑ DELIBERATE (§2h L1221-1222): the agent test is 'is it a VALID
+        agent' about the KEY's discriminator, not about this VALUE. An unknown
+        name surfaces at agent RESOLUTION (P7), not here."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.system.agent", "zippity",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Set")
+
+
+class TestNullSpelling:
+    """MUST-1(c) — the suppression request needs a working CLI spelling."""
+
+    def test_parse_config_arg_null_flag_yields_a_None_value(self):
+        action, key, value = parse_config_arg(
+            "pref.agent.claude.common.plugins", set_null=True,
+        )
+        assert action == ConfigAction.set
+        assert key == "pref.agent.claude.common.plugins"
+        assert value is None
+
+    def test_the_string_null_is_NOT_magic(self, tmp_path):
+        """No pref-only dialect: `config set` stores scalars verbatim, so the
+        literal text 'null' must stay a string wherever it is legal."""
+        f = tmp_path / "settings.yaml"
+        set_config_value(
+            "pref.agent.claude.template", "null",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert yaml.safe_load(f.read_text())["pref"]["agent"]["claude"][
+            "template"
+        ] == "null"
+
+    def test_null_writes_a_real_yaml_null(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.common.plugins", None,
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg == "Set pref.agent.claude.common.plugins=null"
+        doc = yaml.safe_load(f.read_text())
+        assert doc["pref"]["agent"]["claude"]["common"]["plugins"] is None
+
+    def test_null_is_refused_where_the_write_mechanism_has_no_null(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "env.FOO", None, config_path=f, env_path=tmp_path / "env",
+            command_scope=ConfigLevel.box,
+        )
+        assert "not supported" in msg and "--reset" in msg
+
+
+class TestPrefGetRendersAllThreeEmptyIdioms:
+    """SHOULD-2 — `get` is the verb §2h designates as 'returns the REQUEST'; it
+    cannot conflate two of the three empty idioms."""
+
+    def _get(self, tmp_path, f, key):
+        return get_config_value(
+            key, global_config_path=tmp_path / "g.yaml", project_toml=f,
+            command_scope=ConfigLevel.box,
+        )
+
+    def test_present_none_terminal_empty_and_absent_are_distinguishable(
+        self, tmp_path,
+    ):
+        f = tmp_path / "settings.yaml"
+        f.write_text(yaml.safe_dump({"pref": {"agent": {"claude": {
+            "common": {"plugins": None},
+            "template": "",
+        }}}}))
+        assert self._get(tmp_path, f, "pref.agent.claude.common.plugins") == "null"
+        assert self._get(tmp_path, f, "pref.agent.claude.template") == '""'
+        assert self._get(tmp_path, f, "pref.agent.claude.model") is None
+
+
+def test_a_reserved_leaf_on_the_DIRECT_category_route_returns_an_error(tmp_path):
+    """The pre-existing escape: ReservedKeyError is a KeyError and used to fly
+    out of set_config_value, whose contract is 'returns an error string, NEVER
+    raises' (the H1 rule). The pref route is caught earlier by the key validator,
+    so only the DIRECT route exercises the probe-seam catch."""
+    f = tmp_path / "settings.yaml"
+    msg = set_config_value(
+        "agent.claude.common.get", "/x",
+        config_path=f, command_scope=ConfigLevel.system,
+    )
+    assert msg.startswith("Error:")
+    assert "reserved" in msg.lower()
