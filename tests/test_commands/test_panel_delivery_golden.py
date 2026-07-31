@@ -20,6 +20,16 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   per-PID marker ``[[hooks.SessionStart]]`` group + its ``[hooks.state]`` entry
   (+10 lines each, nothing else); claude/goose fixtures byte-UNCHANGED.
 
+* C-CANON R1 (flattener relocation, P-2): the SessionStart hook command in all 6
+  ``claude--*`` and 12 ``codex--*`` fixtures moves from
+  ``$HOME/playbook/kanibako/scripts/import-directives.py`` to
+  ``/opt/kanibako/kanibako/scripts/import-directives.py``. The flattener is
+  MACHINERY, not canon: it now ships in the kanibako package and arrives through
+  the existing unconditional ``kani_pkg`` bind, so the read-only canon holds only
+  instructional text. The codex ``trusted_hash`` moves with it BY DESIGN — it is a
+  content hash OF the hook command, so a command change that left it untouched
+  would be the bug (codex would prompt at ``/hooks`` on first launch).
+
 * sandbox_mode box invariant: the 12 ``codex--*`` fixtures now carry
   ``sandbox_mode = "danger-full-access"`` UNCONDITIONALLY (was the yolo-gated
   ``workspace-write``, present only ON) — the panel's own app-server must not

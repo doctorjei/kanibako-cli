@@ -335,7 +335,10 @@ def clear_claude_bypass_permissions(settings_path: Path) -> bool:
 # Increment 2b: the instruction-delivery SessionStart hook (claude + codex).
 #
 # The kickoff SEED (~/.config/kanibako/kickoff.md) is a single ``@import`` chain;
-# the flattener (RO-bound at ~/playbook/kanibako/scripts/import-directives.py)
+# the flattener (RO-delivered by the kani_pkg bind at
+# /opt/kanibako/kanibako/scripts/import-directives.py — machinery, so it ships in
+# the package, NOT in the canon; ⚑ the SAME literal is carried by
+# ``start._directive_flatten_shim`` and the two must move TOGETHER)
 # resolves it and, in ``--additional-context`` mode, prints a SessionStart hook
 # payload whose ``hookSpecificOutput.additionalContext`` is the flattened text.
 # A ``SessionStart`` hook runs the flattener and injects that as context — the
@@ -355,15 +358,16 @@ def clear_claude_bypass_permissions(settings_path: Path) -> bool:
 #     the hook with no ``/hooks`` prompt.
 #
 # The command is SILENT-SAFE (``|| true``): a missing SEED or flattener error
-# never aborts the session.  ``$HOME``/``$KANIBAKO_DIRECTIVE_SEED`` expand at
-# hook-run time in-box.  Schemas verified against code.claude.com/docs/en/hooks.md
+# never aborts the session.  ``$KANIBAKO_DIRECTIVE_SEED`` expands at hook-run time
+# in-box (the flattener path is now an ABSOLUTE package-bind path, so ``$HOME`` no
+# longer appears here).  Schemas verified against code.claude.com/docs/en/hooks.md
 # and learn.chatgpt.com/docs/hooks (codex): both accept an OR-pattern matcher
 # (``startup|resume|clear|compact``).
 # ---------------------------------------------------------------------------
 
 _SESSION_START_MATCHER = "startup|resume|clear|compact"
 _SESSION_START_COMMAND = (
-    'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
+    'python3 "/opt/kanibako/kanibako/scripts/import-directives.py" '
     '--additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'
 )
 

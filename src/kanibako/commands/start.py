@@ -3724,9 +3724,15 @@ def _directive_flatten_shim(
     ``~/.codex/AGENTS.md``, goose ``~/.config/goose/.additionalContext.md``).  This
     lands the FULL guide in the native, always-loaded instruction file — the strong,
     uncapped channel — instead of the 2K/10K-capped ``additionalContext`` hook (kept
-    as a secondary/future channel).  The flattener lives at the RO bundle path
-    ``$HOME/playbook/kanibako/scripts/import-directives.py``; no sudo — the native
-    slots are agent-owned.  SILENT-SAFE (``|| true``) and GUARDED on
+    as a secondary/future channel).  The flattener is MACHINERY, not instructional
+    text, so it does not live in the canon: it ships in the kanibako package itself
+    and rides the existing unconditional ``kani_pkg`` bind (whole package dir, ro)
+    to ``/opt/kanibako/kanibako/scripts/import-directives.py`` — no extra bind, no
+    extra key.  No sudo — the native slots are agent-owned.  ⚑ The SAME literal is
+    carried by the SessionStart hook command in :mod:`kanibako.vscode_config`; the
+    two must move TOGETHER, because a one-sided change is SILENT (``|| true``
+    swallows the failure and the box just loses its directives).  SILENT-SAFE
+    (``|| true``) and GUARDED on
     ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive slot
     (e.g. a no-agent shell) skips the flatten cleanly.
 
@@ -3738,7 +3744,7 @@ def _directive_flatten_shim(
     """
     script = (
         'if [ -n "$KANIBAKO_DIRECTIVE_FINAL" ]; then '
-        'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
+        'python3 "/opt/kanibako/kanibako/scripts/import-directives.py" '
         '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL" || true; '
         'fi; '
         'exec "$@"'
@@ -4953,10 +4959,11 @@ def _resolve_launch_snapshot(
             std, proj, guarantee_create=guarantee_create,
         ))
         default_categories.update(core_defaults.kani_default_categories())
-        # Per-file READ-ONLY rom binds: every shipped file under the packaged rom
-        # root bound ro at its mirrored ~ path (the KANIBAKO.md guide + flattener
-        # scripts).  Generalizes the retired single ``playbook_kanibako`` whole-dir
-        # RO bind — enumerated per file so containing dirs stay writable.
+        # The packaged CANON: two READ-ONLY binds (spec §2c) — the COLLECTION.md
+        # index (a FILE bind, so ~/canon itself stays writable for the SEEDED
+        # notebook/workbook) and the whole BIBLE directory.  Replaces the retired
+        # per-leaf-file rom enumeration, which existed only because rom used to
+        # land inside the writable ~/playbook.
         default_categories.update(core_defaults.rom_default_categories())
         default_categories.update(_channel_default_categories(std, proj))
         if target is not None:
@@ -4970,6 +4977,18 @@ def _resolve_launch_snapshot(
                 node_name=agent_name,
                 harness=target.name,
             ))
+            # The plugin's BIBLE CHAPTER (spec §2c ``canon_bible_agent``), emitted
+            # by CORE from the RESOLVED target beside the two core canon binds —
+            # gated on the plugin actually shipping one.  Its dest NESTS inside
+            # ~/canon/bible BY DESIGN: the ascending mount depth-sort lands it last
+            # so the plugin's chapter SHADOWS core's placeholder (whole-directory
+            # shadowing, never a merge).  A box-scoped INTERNAL bind, not an agent
+            # key — so the bible's agent chapter stays as unrepointable as the rest
+            # of the book, and the bind follows the resolved target however the
+            # agent was selected.
+            default_categories.update(
+                core_defaults.rom_agent_default_categories(target)
+            )
             default_categories.update(target.default_seeds())
             # PLUGIN-declared @-ref-sourced agent binds (spec §2d L608): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the

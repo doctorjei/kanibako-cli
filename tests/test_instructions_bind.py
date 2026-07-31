@@ -1,7 +1,8 @@
 """Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.
 
 Each agent plugin ships a KICKOFF-LOADER (the flattener SEED): a tiny static file
-whose whole content is a single ``@~/playbook/kanibako/directives/KANIBAKO.md``
+whose whole content is the canon entry import ``@~/canon/COLLECTION.md`` plus, for
+ONE transition release, the pre-canon ``@~/playbook/kanibako/directives/KANIBAKO.md``
 import.  The plugin declares it as a best-effort descriptor ``managed_pointer``
 binding delivered read-only to ``~/.config/kanibako/kickoff.md``, and names the
 native instruction slot the box-start flattener will write the flattened per-agent
@@ -10,13 +11,13 @@ prove that declaration for all three first-party agents:
 
 * the ``managed_pointer`` binding resolves its shipped kickoff-loader source and,
   driven through ``descriptor_mounts``, mounts RO at the kickoff slot;
-* the kickoff-loader content is exactly the single directive import; and
+* the kickoff-loader content is exactly the declared directive imports; and
 * ``descriptor.container_env["KANIBAKO_DIRECTIVE_FINAL"]`` is the right native slot.
 
 The former Route-A ``@system.instructions`` → native-slot category bind is RETIRED
-(the guide now reaches the box via the RO ``~/playbook/kanibako/`` bundle + the
-flattened FINAL file), so we also prove no plugin still emits it.  The start-time
-flatten + hook is a LATER increment and is NOT exercised here.
+(the guide now reaches the box inside the RO ``~/canon/bible`` bind + the flattened
+FINAL file), so we also prove no plugin still emits it.  The start-time flatten +
+hook is a LATER increment and is NOT exercised here.
 """
 
 from __future__ import annotations
@@ -42,8 +43,17 @@ _AGENTS = ["claude", "codex", "goose"]
 # The single box-side kickoff slot the SEED is delivered to (uniform across agents).
 _KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
 
-# The kickoff-loader's whole content: one @import of the RO directive bundle.
-_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
+# The kickoff-loader's whole content: the canon ENTRY POINT (spec §2c / C-CANON
+# P-4) plus, for ONE transition release, the pre-canon import.
+_DIRECTIVE_IMPORT = "@~/canon/COLLECTION.md"
+
+# ⚑ TRANSITION (one release only — brief §3.4 mitigation 1). The KICKOFF ships in
+# three INDEPENDENTLY PUBLISHED plugin packages while the canon paths live in the
+# base, so either publish order alone would silently break EVERY box: the flattener
+# degrades a missing import target to an inert backticked mention, and the launch
+# shim's ``|| true`` hides it. Carrying BOTH imports makes the plugin work against
+# either base. Pinned here so REMOVING it (migration M-12) is deliberate.
+_LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
 
 # The native instruction slot the box-start flattener writes the FINAL file to.
 _EXPECTED_FINAL = {
@@ -87,8 +97,9 @@ def test_kickoff_binding_shape(agent: str):
 
 
 @pytest.mark.parametrize("agent", _AGENTS)
-def test_kickoff_content_is_single_directive_import(agent: str):
-    """The shipped kickoff-loader content is exactly the one directive @import."""
+def test_kickoff_content_is_the_declared_directive_imports(agent: str):
+    """The shipped kickoff-loader content is exactly the declared @imports — the
+    canon entry FIRST, then the one transition import, and nothing else."""
     b = _kickoff_binding(agent)
     assert b.literal_src is not None
     text = b.literal_src.read_text()
@@ -97,8 +108,9 @@ def test_kickoff_content_is_single_directive_import(agent: str):
         for ln in text.splitlines()
         if ln.strip() and not ln.strip().startswith("<!--")
     ]
-    assert import_lines == [_DIRECTIVE_IMPORT], (
-        f"{agent}: kickoff-loader must be the single directive import, got {import_lines!r}"
+    assert import_lines == [_DIRECTIVE_IMPORT, _LEGACY_DIRECTIVE_IMPORT], (
+        f"{agent}: kickoff-loader must carry exactly the canon entry plus the "
+        f"transition import, got {import_lines!r}"
     )
 
 
@@ -119,6 +131,7 @@ def test_kickoff_delivered_ro_at_kickoff_slot(agent: str):
     assert m.destination == _KICKOFF_DEST
     assert m.options == "ro"
     assert _DIRECTIVE_IMPORT in Path(m.source).read_text()
+    assert _LEGACY_DIRECTIVE_IMPORT in Path(m.source).read_text()
 
 
 @pytest.mark.parametrize("agent", _AGENTS)

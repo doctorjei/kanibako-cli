@@ -4620,10 +4620,12 @@ class TestDirectiveFlattenShim:
         assert ep == "sh"
         assert args[0] == "-c"
         script = args[1]
-        # Runs the RO-bundle flattener in SOURCE->DEST file mode, silent-safe,
-        # then execs the agent with its args intact.
+        # Runs the flattener in SOURCE->DEST file mode, silent-safe, then execs the
+        # agent with its args intact.  The flattener is MACHINERY, not canon: it
+        # arrives via the unconditional ``kani_pkg`` package bind, NOT from the
+        # read-only canon tree (C-CANON R1, P-2).
         assert (
-            '"$HOME/playbook/kanibako/scripts/import-directives.py"' in script
+            '"/opt/kanibako/kanibako/scripts/import-directives.py"' in script
         )
         assert '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"' in script
         assert "|| true" in script
