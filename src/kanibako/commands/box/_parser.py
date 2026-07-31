@@ -20,6 +20,10 @@ from kanibako.errors import ContainerError, ProjectError
 from kanibako.names import read_names, unregister_name
 from kanibako.paths import (
     xdg,
+    BoxMode,
+    _box_settings_files,
+    _standalone_settings_files,
+    box_workset_settings_paths,
     check_primary_box_name_free,
     iter_projects,
     iter_workset_projects,
@@ -32,7 +36,6 @@ from kanibako.paths import (
     resolve_standalone_project,
     unregister_primary_box_name,
     workset_env_path,
-    workset_settings_path,
 )
 from kanibako.agent_ref import harness_of, with_harness
 from kanibako.targets import resolve_target
@@ -808,9 +811,13 @@ def run_create(args: argparse.Namespace) -> int:
     # re-create reuses the half-built box's already-written meta (the on-disk
     # record is authoritative; do not overwrite it with possibly-different args).
     if proj.is_new:
-        # Persist image setting.
+        # Persist image setting.  The write target is the BOX-TIER settings file from
+        # the ONE pair (M-8) — for standalone that is ``box_data/settings.yaml``, the
+        # same file ``box set box.image=…`` writes and the launch cascade reads as the
+        # box tier.  Deriving it independently here is exactly the split M-8 exists
+        # to prevent.
         image = args.image or config.box_image
-        project_toml = proj.metadata_path / BOX_META_FILE
+        project_toml, _ = box_workset_settings_paths(proj)
         write_project_config(project_toml, image)
 
         # --private: turn the box PRIVATE *before* the home seed runs, so the
@@ -818,12 +825,15 @@ def run_create(args: argparse.Namespace) -> int:
         # toggles OFF into the box settings.yaml via the SANCTIONED settings
         # write (set_config_value; NOT a raw yaml dump) — the same box-scope
         # path `config set` uses, so the keys land in the box.auth.* slot the
-        # launch snapshot reads.  This writes to the SAME `project_toml` that
-        # seed_new_box's `resolve_auth_source` reads (the box-tier settings
-        # file, `box_workset_settings_paths`), and it runs BEFORE the seed
-        # below — so the seed then resolves tier="box" (source_root=None) and
-        # `seed_cred_files` no-ops.  Additive/non-destructive: no scrub, only
-        # two boolean overrides.
+        # launch snapshot reads.  `project_toml` IS the box-tier file from
+        # `box_workset_settings_paths` — the SAME file seed_new_box's
+        # `resolve_auth_source` reads through the snapshot's box tier — and this
+        # runs BEFORE the seed below, so the seed then resolves tier="box"
+        # (source_root=None) and `seed_cred_files` no-ops.  ⚑ AUTH-CRITICAL that the
+        # two agree: if this wrote a file the snapshot did not read as the box tier,
+        # a supposedly-private box would resolve a sharing tier and leak the host
+        # OAuth token into the seed.  Additive/non-destructive: no scrub, only two
+        # boolean overrides.
         if getattr(args, "private", False):
             from kanibako.config_interface import ConfigLevel, set_config_value
             from kanibako.errors import KanibakoError
@@ -1337,8 +1347,11 @@ def _teardown_standalone_box(root: Path) -> bool:
     metadata_dir = root / _STANDALONE_META_DIR
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
-        # Drift I: the box settings.yaml lives at the ROOT, not in box_data/ —
-        # drop it too so the box is not re-detected.
+        # The ROOT settings.yaml is the WORKSET tier and the other half of the §5
+        # detection marker — drop it too so the box is not re-detected.  (The BOX
+        # tier lives INSIDE box_data/ and went with the dir above; the old comment
+        # here said settings lived "at the ROOT, not in box_data/", which is the
+        # retired pre-P2 model.)
         settings_file = root / BOX_META_FILE
         if settings_file.is_file():
             settings_file.unlink()
@@ -1371,6 +1384,17 @@ def _read_box_image(settings_file: Path) -> str | None:
         return str(image) if image else None
     except Exception:  # noqa: BLE001 - image capture is best-effort
         return None
+
+
+def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None:
+    """:func:`_read_box_image` over a ``(box_tier, workset_tier)`` pair, box wins.
+
+    ``box.image`` is a BOX-scope key, so it is read from the box tier; the workset
+    tier is consulted only as the R2 downward-default.  That fallback is what keeps
+    a pre-P2 standalone box — whose ``box.image`` was written to its ROOT file when
+    that file WAS the box tier (M-8) — capturable into the deregistered blob.
+    """
+    return _read_box_image(box_tier) or _read_box_image(workset_tier)
 
 
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int:
@@ -1551,7 +1575,13 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
             kind="standalone",
             workspace=str(root_path),
             metadata=str(root_path),
-            image=_read_box_image(root_path / BOX_META_FILE),
+            # The box's ``box.image`` lives in the BOX tier (M-8); the ROOT file is
+            # the workset tier and may still carry it as a pre-P2 downward default,
+            # so fall back to it.  Best-effort capture for a later readopt — either
+            # read failing degrades to None.
+            image=_read_box_image_tiered(
+                *_standalone_settings_files(root_path)
+            ),
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
         print(
@@ -1677,7 +1707,9 @@ def run_rm(args: argparse.Namespace) -> int:
                 kind="primary",
                 workspace=path,
                 metadata=str(metadata_dir),
-                image=_read_box_image(metadata_dir / BOX_META_FILE),
+                image=_read_box_image(
+                    _box_settings_files(BoxMode.primary, metadata_dir, None)[0],
+                ),
                 deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
             )
             print(
@@ -1951,8 +1983,7 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     # Load merged config for image info.
-    project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = workset_settings_path(proj.group)
+    project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
@@ -2145,7 +2176,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             except ProjectError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
-            project_toml = proj.metadata_path / BOX_META_FILE
+            project_toml, _ = box_workset_settings_paths(proj)
             env_path = proj.metadata_path / "env"
             msg = reset_all(
                 config_path=project_toml,
@@ -2163,13 +2194,14 @@ def _run_box_config(args: argparse.Namespace) -> int:
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        project_toml = proj.metadata_path / BOX_META_FILE
+        # The box-tier target AND the workset tier come from the ONE pair (M-8), so
+        # reset clears exactly the file set/get address.
+        project_toml, reset_ws_path = box_workset_settings_paths(proj)
         env_path = proj.metadata_path / "env"
         # Full launch cascade so the honest cleared-message can name the
         # now-effective value + source tier (item 1) — the SAME context the box
         # SET handler threads. A resolution failure just leaves the agent name
         # empty → the message degrades to the cleared-only form.
-        reset_ws_path = workset_settings_path(proj.group)
         reset_agent_name = ""
         try:
             from kanibako.config import load_merged_config, resolve_agent
@@ -2218,12 +2250,15 @@ def _run_box_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    project_toml = proj.metadata_path / BOX_META_FILE
+    # ⚑ THE M-8 CHOKEPOINT: get / set / show / reset all address the box through the
+    # ONE pair, so a box-scope write and the read that follows it CANNOT disagree.
+    # (The box ``env`` tier stays at ``<metadata_path>/env`` in every mode — read and
+    # write both spell it that way, so there is no split to close there.)
+    project_toml, workset_path = box_workset_settings_paths(proj)
     env_global = std.data_path / "env"
     env_project = proj.metadata_path / "env"
 
     if action == ConfigAction.show:
-        workset_path = workset_settings_path(proj.group)
         agent_state = None
         env_resolved = None
         if args.effective:
@@ -2326,8 +2361,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # OTHER cascade files may carry (mirroring _effective_behavior_for_display,
         # which likewise passes agent_path=None — the per-agent file stores behavior
         # FLAT, so assemble_levels reads no category subtree from it). A resolution
-        # failure just leaves the agent name empty.
-        cascade_workset_path = workset_settings_path(proj.group)
+        # failure just leaves the agent name empty.  The workset tier is the one the
+        # pair named above — NOT a second derivation (M-8).
+        cascade_workset_path = workset_path
         cascade_agent_name = ""
         try:
             from kanibako.config import load_merged_config, resolve_agent

@@ -30,7 +30,6 @@ from kanibako.agent_config import (
 from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.config import (
-    BOX_META_FILE,
     coerce_bool,
     config_file_path,
     load_config,
@@ -51,11 +50,11 @@ from kanibako.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
 from kanibako.paths import (
     _upgrade_shell,
     box_state_home,
+    box_workset_settings_paths,
     xdg,
     load_std_paths,
     resolve_box_target,
     workset_env_path,
-    workset_settings_path,
 )
 from kanibako.agent_ref import (
     canonicalize_agent_ref,
@@ -715,13 +714,14 @@ def _effective_bootstrap(
             agent_state = dict(load_agent_config(agent_path).state)
         except Exception:
             agent_state = None
+    _bootstrap_box_path, _bootstrap_ws_path = box_workset_settings_paths(proj)
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_id,
         ctx=ctx,
         system_path=system_settings_path,
         agent_path=None,
-        workset_path=workset_settings_path(proj.group),
-        box_path=proj.metadata_path / BOX_META_FILE,
+        workset_path=_bootstrap_ws_path,
+        box_path=_bootstrap_box_path,
         # Seed the behavior FLOOR with just ``bootstrap`` (→ agent.default.bootstrap
         # = tmux) so the snapshot's ``agent`` node ALWAYS exists.  Without it, a box
         # whose SOLE agent-scope setting is the ``box.agent.bootstrap`` mirror (e.g.
@@ -768,10 +768,9 @@ def _resolve_bootstrap_program(
             std, config, project_dir,
             initialize=False, register=False, warn=False,
         )
+        _box_path, _ws_path = box_workset_settings_paths(proj)
         merged = load_merged_config(
-            config_file,
-            proj.metadata_path / BOX_META_FILE,
-            workset_path=workset_settings_path(proj.group),
+            config_file, _box_path, workset_path=_ws_path,
         )
         from kanibako.config import resolve_agent
 
@@ -1730,8 +1729,7 @@ def _run_container(
     _orphan_hint()
 
     # Load merged config (global + workset + project)
-    project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = workset_settings_path(proj.group)
+    project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file,
         project_toml,
@@ -2073,8 +2071,7 @@ def _run_container(
         # the real ``box.toml``, never ``__unregistered__/``.  (For a deferred
         # EXISTING box the probe already had the real path; this recomputes the
         # same values — a harmless no-op.)
-        project_toml = proj.metadata_path / BOX_META_FILE
-        workset_path = workset_settings_path(proj.group)
+        project_toml, workset_path = box_workset_settings_paths(proj)
         merged = load_merged_config(
             config_file,
             project_toml,
@@ -4627,13 +4624,14 @@ def _launch_snapshot_inputs(
     runtime project dir literal (``str(proj.project_path)``). Folded into the
     snapshot floor so ``expand`` resolves the @-ref chain ONCE (single-route).
 
-    *cascade_box_path* / *cascade_workset_path* (P6c) are the mode-aware box-tier /
+    *cascade_box_path* / *cascade_workset_path* are the mode-aware box-tier /
     workset-tier settings-file paths the cascade mounts (``box_workset_settings_
     paths``): the SINGLE SOURCE the snapshot resolvers pass as
     ``build_launch_snapshot(box_path=…, workset_path=…)``, and the SAME box-tier path
     that materializes ``meta.box.settings`` — so the anchor and the cascade cannot
-    drift. STANDALONE = ``(None, <root>/settings.yaml)`` (box tier EMPTY; its single
-    file plays the workset tier); primary/named unchanged.
+    drift. STANDALONE = ``(<root>/box_data/settings.yaml, <root>/settings.yaml)``:
+    a real box tier (absent by default) over the ROOT file that plays the workset
+    tier; primary/named unchanged.
     """
     agent_share_root = str(std.agents / agent_name / "share")
     agent_store_root = str(std.agents / agent_name)
@@ -4777,15 +4775,14 @@ def _launch_snapshot_inputs(
                 agent_name,
             )
             agent_auth_support = False
-    # The SINGLE-SOURCE launch-cascade (box_tier, workset_tier) settings-file pair
-    # (P6c standalone TIER MODEL). primary/named = (box's settings.yaml,
-    # workset_settings_path); standalone = (None, <root>/settings.yaml — its single
-    # file plays the WORKSET tier, box tier EMPTY). The SAME pair feeds BOTH the
+    # The SINGLE-SOURCE (box_tier, workset_tier) settings-file pair (M-8). It is
+    # UNIFORM now: primary/named = (the box's own settings.yaml, the workset root's);
+    # standalone = (<root>/box_data/settings.yaml, <root>/settings.yaml) — the box
+    # tier is a real path in EVERY mode, merely ABSENT BY DEFAULT for standalone
+    # (spec §2c ALL PROJECTS + §5 L1407). The SAME pair feeds BOTH the
     # meta.box.settings anchor (box tier path, below) AND the cascade box_path/
     # workset_path the snapshot resolvers pass to build_launch_snapshot (returned
     # last) — so the anchor and the cascade cannot drift.
-    from kanibako.paths import box_workset_settings_paths
-
     cascade_box_path, cascade_workset_path = box_workset_settings_paths(proj)
     meta_identity = settings_launch_module.meta_identity_floor(
         box_name=proj.name,
@@ -4795,11 +4792,11 @@ def _launch_snapshot_inputs(
         share_workset=(
             str(addr.share_workset) if addr.share_workset is not None else None
         ),
-        # meta.box.settings — the box-TIER file path (str) for primary/named; None
-        # (box tier EMPTY) for standalone. SAME value as cascade_box_path (P6c).
-        box_settings=(
-            str(cascade_box_path) if cascade_box_path is not None else None
-        ),
+        # meta.box.settings — the box-TIER file path (str), in EVERY mode. The SAME
+        # value as cascade_box_path, so the anchor names exactly the file the cascade
+        # reads and `config set` writes (M-8). No per-mode branch: the box tier is
+        # non-optional by TYPE (`box_workset_settings_paths` -> tuple[Path, ...]).
+        box_settings=str(cascade_box_path),
         # The agent identity key (spec §2d L514): the cascade discriminator AND the
         # value are the resolved agent name (install.name). Omitted for a NO-AGENT
         # box (empty name) — it has no agent identity.
@@ -5111,8 +5108,7 @@ def persona_create_verdict(
     """
     logger = get_logger("start")
     system_settings_path = std.settings
-    project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = workset_settings_path(proj.group)
+    project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
         project_toml, workset_path=workset_path,
@@ -5167,8 +5163,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     """
     logger = get_logger("start")
     system_settings_path = std.settings
-    project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = workset_settings_path(proj.group)
+    project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
         project_toml,

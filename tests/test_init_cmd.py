@@ -333,6 +333,40 @@ class TestCreateNoVault:
         assert (project / "vault" / "rw").is_dir()
 
 
+def _standalone_tiers(config_file, project_dir):
+    """The standalone box's ``(box_tier, workset_tier)`` settings files.
+
+    Sourced from ``box_workset_settings_paths`` — the SAME single source production
+    uses (M-8) — rather than hard-coded, so a test can never assert a location the
+    code no longer writes.  (Before P2 these tests spelled ``<root>/settings.yaml``
+    directly; that IS the workset tier now, and the box keys live one level down in
+    ``box_data/``.)
+
+    ⚑ Sourcing BOTH positions from the code under test would make every caller
+    self-consistent and therefore BLIND to a swapped pair — the exact defect found in
+    the cascade-order test.  So this helper ASSERTS the two literal spec positions
+    (§5 L1403/L1407) before returning them: the blindness is closed here, once, for
+    every caller.
+    """
+    from kanibako.config import load_config
+    from kanibako.paths import (
+        box_workset_settings_paths,
+        load_std_paths,
+        resolve_standalone_project,
+    )
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    proj = resolve_standalone_project(
+        std, config, str(project_dir.resolve()), initialize=False,
+    )
+    box_tier, ws_tier = box_workset_settings_paths(proj)
+    root = project_dir.resolve()
+    assert box_tier == root / "box_data" / "settings.yaml", box_tier
+    assert ws_tier == root / "settings.yaml", ws_tier
+    return box_tier, ws_tier
+
+
 class TestCreateImage:
     """Tests for --image flag persistence."""
 
@@ -347,9 +381,12 @@ class TestCreateImage:
         ])
         run_create(args)
 
-        project_toml = project_dir.resolve() / "settings.yaml"
-        merged = load_merged_config(config_file, project_toml)
+        box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+        merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
         assert merged.box_image == "kanibako-template-jvm-oci"
+        # And it is the BOX tier that holds it, not the workset/root file.
+        from kanibako.config_io import load_doc
+        assert load_doc(box_tier)["box"]["image"] == "kanibako-template-jvm-oci"
 
     def test_create_default_image_persisted(
         self, config_file, credentials_dir, project_dir, capsys,
@@ -359,9 +396,14 @@ class TestCreateImage:
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
 
-        project_toml = project_dir.resolve() / "settings.yaml"
-        merged = load_merged_config(config_file, project_toml)
+        box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+        merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
         assert "kanibako" in merged.box_image
+        # Assert PERSISTENCE, not just the merged default: the create-time write must
+        # actually be in the box tier.  (Reading merged alone passes vacuously — the
+        # built-in default also contains "kanibako".)
+        from kanibako.config_io import load_doc
+        assert "kanibako" in load_doc(box_tier)["box"]["image"]
 
 
 class TestCreatePrivate:
@@ -375,10 +417,18 @@ class TestCreatePrivate:
     """
 
     @staticmethod
-    def _box_auth(project_dir):
+    def _box_auth(config_file, project_dir):
+        """Read ``box.auth`` from the BOX TIER — the file the launch snapshot reads.
+
+        ⚑ AUTH-CRITICAL that this reads the same file ``resolve_auth_source`` does: if
+        --private wrote somewhere the snapshot does not read as the box tier, a
+        supposedly-private box would resolve a sharing tier and forward the host OAuth
+        token into the seed.  Sourced from ``box_workset_settings_paths`` so the test
+        cannot drift from production (M-8).
+        """
         from kanibako.config import load_doc
-        settings = project_dir.resolve() / "settings.yaml"
-        return (load_doc(settings).get("box") or {}).get("auth") or {}
+        box_tier, _ = _standalone_tiers(config_file, project_dir)
+        return (load_doc(box_tier).get("box") or {}).get("auth") or {}
 
     @staticmethod
     def _shell_home(project_dir):
@@ -393,7 +443,7 @@ class TestCreatePrivate:
             ["box", "create", "--standalone", "--private", str(project_dir)]
         )
         assert run_create(args) == 0
-        auth = self._box_auth(project_dir)
+        auth = self._box_auth(config_file, project_dir)
         assert auth.get("global_enabled") is False
         assert auth.get("workset_enabled") is False
 
@@ -406,7 +456,7 @@ class TestCreatePrivate:
             ["box", "create", "--standalone", "--private", str(project_dir)]
         )
         assert run_create(args) == 0
-        auth = self._box_auth(project_dir)
+        auth = self._box_auth(config_file, project_dir)
         assert set(auth) == {"global_enabled", "workset_enabled"}
 
     def test_default_create_writes_no_auth_toggles(
@@ -418,7 +468,7 @@ class TestCreatePrivate:
             ["box", "create", "--standalone", str(project_dir)]
         )
         assert run_create(args) == 0
-        assert self._box_auth(project_dir) == {}
+        assert self._box_auth(config_file, project_dir) == {}
 
     # ---- mechanism proof: the seed reads the toggles (tier="box") ----------
 

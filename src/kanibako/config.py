@@ -299,23 +299,82 @@ def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
         dump_doc(path, existing)
 
 
-def read_box_enable_vault(path: Path) -> bool:
+def read_box_enable_vault(path: Path, *, default_from: Path | None = None) -> bool:
     """Return the box-scope ``box.enable_vault`` value stored at *path*.
 
     The single reader for the settable box-scope ``box.enable_vault`` key (P2
     clean break): it sources the flag DIRECTLY from the ``box:`` table of the
-    box ``settings.yaml``.  An absent file, an absent ``box:`` table, or an
-    absent key all yield the default ``True`` (vault on).
+    box-tier ``settings.yaml``.  An absent file, an absent ``box:`` table, or an
+    absent key all fall through to *default_from* (when given), then to the
+    built-in default ``True`` (vault on).
+
+    *default_from* is the WORKSET-tier settings file, consulted ONLY when the key
+    is absent from the box tier — the R2 downward-default (``box`` ⊂ ``workset``:
+    a ``box.*`` key stored at the workset tier is an overridable default for the
+    box).  This key is NOT cascade-resolved — it is read directly, off the launch
+    path — so the fallback has to be spelled here rather than falling out of the
+    resolver.
+
+    ⚑ Only the STANDALONE resolver passes it, and it is load-bearing there: a
+    standalone box's ROOT ``settings.yaml`` WAS its box file before the box tier
+    moved to ``box_data/settings.yaml`` (M-8), and is its workset tier after — so
+    the fallback is what lets an existing standalone box keep a stored
+    ``box.enable_vault: false`` with ZERO migration.  Primary/named pass nothing,
+    so their behaviour is byte-identical to before P2.  (Generalizing the fallback
+    to every mode would make a ``workset set box.enable_vault=false`` — today a
+    silent no-op — go live machine-wide; a real defect, but not this phase's.)
 
     Box identity derives entirely from the registries (``box_resolve``) — there
     is no on-disk ``project:`` identity section (P8b sparse create) — while
     ``enable_vault`` stays a plain box-settings read: the two concerns are
     decoupled.  Paired writer: :func:`write_box_enable_vault`.
     """
-    if not path.exists():
-        return True
-    data = load_doc(path)
-    return (data.get("box") or {}).get("enable_vault", True)
+    for candidate in (path, default_from):
+        if candidate is None or not candidate.exists():
+            continue
+        box_tbl = load_doc(candidate).get("box") or {}
+        if "enable_vault" in box_tbl:
+            return box_tbl["enable_vault"]
+    return True
+
+
+def carried_box_settings(box_tier: Path, workset_tier: Path | None) -> dict:
+    """The box-scope settings a LIFECYCLE op carries from a source box.
+
+    ``convert`` / ``move`` / ``duplicate`` all make a NEW box that inherits the
+    source's box-scope settings.  Post-P2 those live in the source's BOX TIER, so
+    that file's content is carried verbatim (including non-``box:`` sections such
+    as agent config).
+
+    **The legacy underlay.** A standalone box created BEFORE the box tier existed
+    wrote its ``box.*`` keys into its ROOT file — which is its WORKSET tier now
+    (M-8).  Its box tier is therefore absent or partial, so the workset tier's
+    ``box:`` subtree is underlaid beneath the box tier's (box tier WINS, per R2).
+    Without this, every pre-P2 standalone box silently loses ``box.image`` and
+    friends the first time it is converted, moved or duplicated.
+
+    **``workset:`` is never carried.**  Workset-scope keys are the source's OWN
+    identity (``workset.kuid``); the destination establishes its own.  ⚑ This is
+    HYGIENE, not a hazard fix: a stray ``workset.kuid`` sitting in a BOX TIER is
+    INERT, because the kuid is read directly from the ROOT file, never resolved
+    through the cascade — pinned by
+    ``test_kuid_is_read_from_the_root_file_not_the_box_tier`` and verified
+    experimentally.  (An earlier version of this code claimed carrying it would
+    OVERRIDE the destination's fresh kuid and used that to justify dropping the
+    legacy underlay entirely.  That claim was wrong on both counts, and dropping
+    the underlay is what caused the loss described above.)
+
+    Returns the DOC to write at the DESTINATION's box tier; ``{}`` when the source
+    carries nothing.
+    """
+    doc = dict(load_doc(box_tier))
+    legacy = (load_doc(workset_tier).get("box") or {}) if workset_tier else {}
+    if isinstance(legacy, dict) and legacy:
+        box_sec = dict(legacy)
+        box_sec.update(doc.get("box") or {})   # box tier wins (R2)
+        doc["box"] = box_sec
+    doc.pop("workset", None)
+    return doc
 
 
 def read_workset_kuid(path: Path) -> str:

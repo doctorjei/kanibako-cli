@@ -272,19 +272,19 @@ def auth_chain_floor(
 #                             | named      = str(proj.group.root)        (resolved literal)
 #                             | standalone = str(proj.metadata_path)     (the project ROOT <root>;
 #                                            B2b fixed this from the B1 <root>/workspace defect)
-#   meta.runtime.ws_settings  | ALL modes = "@meta.runtime.ws_root/settings.yaml" (@-ref;
-#                             |   UNIFORM 2026-07-04/P6c — standalone no longer <None>: its
-#                             |   single <ws_root>/settings.yaml plays the WORKSET tier)
 #   meta.runtime.project_type | proj.mode.value  ("primary"|"named"|"standalone")
 #
+# (There is NO meta.runtime.ws_settings: spec §1A L367-368 CUT it — "no longer needed
+#  (unified path)". It was a one-consumer alias for the value string below.)
+#
 # Then the SINGLE-SOURCE re-root (spec §1A L239-241; §2c L397/406/414/432):
-#   meta.workset.path     = "@meta.runtime.ws_root"        (UNIFORM all modes)
-#   meta.workset.settings = "@meta.runtime.ws_settings"
+#   meta.workset.path     = "@meta.runtime.ws_root"                (UNIFORM all modes)
+#   meta.workset.settings = "@meta.workset.path/settings.yaml"     (UNIFORM; spec 2c L804)
 #   meta.box.mode         = "@meta.runtime.project_type"   (RO identity anchor; spec §2b L486)
 #
 # These resolve transitively in the ONE expand pass (e.g. primary:
 # meta.workset.path → @meta.runtime.ws_root → @config.primary_workset → foundation;
-# standalone: meta.workset.settings → @meta.runtime.ws_settings →
+# standalone: meta.workset.settings → @meta.workset.path/settings.yaml →
 # @meta.runtime.ws_root/settings.yaml → <root>/settings.yaml, the workset tier).
 #
 # This block is ADDITIVE (B1): the keys appear in the snapshot but NO consumer
@@ -356,18 +356,21 @@ def meta_runtime_floor(
             )
         floor["meta.runtime.ws_root"] = ws_root_literal
 
-    # meta.runtime.ws_settings (spec §1A L235-236, UNIFORM 2026-07-04 / P6c):
-    #   ALL modes → @meta.runtime.ws_root/settings.yaml (embedded @-ref).
-    # Standalone is NO LONGER a <None> terminal: the standalone unification makes a
-    # lone box a one-box WORKSET, so its single <ws_root>/settings.yaml plays the
-    # WORKSET tier (box tier empty — see meta_identity_floor's meta.box.settings).
-    # The embedded @-ref resolves against ws_root per mode (standalone: the runtime
-    # project dir literal → <root>/settings.yaml).
-    floor["meta.runtime.ws_settings"] = "@meta.runtime.ws_root/settings.yaml"
-
     # Single-source re-root (spec §1A L239-241; §2c) — UNIFORM all modes.
     floor["meta.workset.path"] = "@meta.runtime.ws_root"
-    floor["meta.workset.settings"] = "@meta.runtime.ws_settings"
+    # meta.workset.settings — the SPEC's own spelling, §2c L804:
+    # ``@meta.workset.path/settings.yaml``. That chains through the anchor set two
+    # lines up (meta.workset.path = @meta.runtime.ws_root), which the ONE expand pass
+    # resolves transitively — the same chained-floor-ref pattern the box-root anchors
+    # use. Spelling it off @meta.runtime.ws_root instead would resolve to the
+    # byte-identical value but DIVERGE from the spec, and the spec is authority.
+    # ⚑ The intermediate ``meta.runtime.ws_settings`` key is CUT from the keyspace
+    # (spec §1A L367-368, "no longer needed (unified path)"): it held exactly this
+    # value and had exactly ONE consumer — this key — so substituting its definition
+    # removes a hop without changing a single resolved value. Under §0's CLOSED
+    # KEYSPACE an undeclared key is not a key, so it does not linger as an alias;
+    # ``@meta.workset.settings`` is the only spelling.
+    floor["meta.workset.settings"] = "@meta.workset.path/settings.yaml"
     # meta.workset.name anchors into meta.runtime.ws_name (spec §2c L442/449/457,
     # 2026-07-04) — the SINGLE SOURCE for the partition token; block B2 no longer
     # sets it directly.
@@ -415,20 +418,19 @@ def meta_runtime_floor(
 # (meta.workset.name is now a meta_runtime_floor anchor into meta.runtime.ws_name —
 #  the single source for the partition token, spec §2c 2026-07-04 — NOT a B2 key.)
 #
-# meta.box.settings (P6c, 2026-07-04) is the RO box-TIER settings-file anchor. The
-# SHIPPED form is per-mode (primary/named = the box's own settings.yaml; standalone
-# = <None>, box tier EMPTY), which is what is materialized below. ⚑ The spec has
-# since made it the UNIFORM @meta.box.path/settings.yaml in every mode — code does
-# NOT match spec here yet; that cutover (and the standalone box tier it creates) is
-# its own phase, because the WRITE target must move in the same change as the READ
-# or a set lands in a file the read ignores. Note it cannot simply become the @-ref:
-# a bootstrap anchor may not derive from a key at the scope it bootstraps, and this
-# one resolves BEFORE the cascade exists (unlike the launch-time home bind, which is
-# why THAT one may root at @meta.box.path). Materialized here as the RESOLVED LITERAL
-# the launch computes (the box's own <metadata_path>/settings.yaml for primary/
-# named; None for standalone) — the SAME value the cascade uses as its box-tier
-# file path (single-sourced in start.py's _launch_snapshot_inputs), so the anchor
-# and the cascade cannot drift. meta.box.{workspace(named),container_name,
+# meta.box.settings is the RO box-TIER settings-file anchor, and it is UNIFORM in
+# EVERY mode (spec §2c ALL PROJECTS L817: @meta.box.path/settings.yaml). Standalone is
+# NOT a <None> terminal: its box tier is <root>/box_data/settings.yaml — a real path,
+# merely ABSENT BY DEFAULT (§5 L1407), an absent file being an empty tier. The WRITE
+# target moved with the READ in the same change (M-8), so a `config set box.*` lands
+# in exactly the file this anchor names. Note it still cannot simply BE the
+# @meta.box.path/settings.yaml @-ref: a bootstrap anchor may not derive from a key at
+# the scope it bootstraps, and this one resolves BEFORE the cascade exists (unlike the
+# launch-time home bind, which is why THAT one may root at @meta.box.path).
+# Materialized here as the RESOLVED LITERAL the launch computes — the SAME value the
+# cascade uses as its box-tier file path (single-sourced through
+# paths.box_workset_settings_paths in start.py's _launch_snapshot_inputs), so the
+# anchor and the cascade cannot drift. meta.box.{workspace(named),container_name,
 # helper_num} per the spec are non-bind RENDER targets (container_name from
 # name+helper_num); B2 materializes the IDENTITY leaves the eligible BINDS reference
 # + the agent name (meta.workset.name moved to meta_runtime_floor as an anchor). The
@@ -465,18 +467,20 @@ def meta_identity_floor(
 
     *share_workset* is ``None`` for STANDALONE (no workset-local channels, spec
     §2c L469) → materialized as a whole-value ``None`` terminal (the key is PRESENT
-    with value ``None``). (This is a DIFFERENT rationale from ``meta.box.settings``'s
-    standalone ``None`` — share_workset is None because a lone box has no
-    workset-LOCAL channel dir; ws_settings itself is now uniform-non-None, P6c.)
+    with value ``None``). It is now the ONLY standalone ``None`` terminal here: a lone
+    box genuinely has no workset-LOCAL channel dir, whereas it DOES have a box
+    settings tier (see *box_settings*).
 
-    *box_settings* (P6c) is the RO box-TIER settings-file anchor ``meta.box.settings``
-    (spec §2c L493/L472): the box's own ``<metadata_path>/settings.yaml`` path STRING
-    for primary/named, or ``None`` for STANDALONE (box tier EMPTY — box-scope values
-    resolve from the workset tier ``@meta.workset.settings`` as R2 downward-defaults).
-    The key is ALWAYS PRESENT (a present-key ``None`` terminal for standalone, like
-    ``meta.box.share_workset``). It is single-sourced with the cascade's box-tier file
-    path (both derive from one mode-aware computation in ``_launch_snapshot_inputs``),
-    so the anchor and the cascade cannot drift.
+    *box_settings* is the RO box-TIER settings-file anchor ``meta.box.settings``
+    (spec §2c ALL PROJECTS L817): the box tier's ``settings.yaml`` path STRING, in
+    EVERY mode — the box's own ``<metadata_path>/settings.yaml`` for primary/named and
+    ``<root>/box_data/settings.yaml`` for standalone (ABSENT BY DEFAULT, §5 L1407; an
+    absent file is an empty tier, and box-scope values then resolve from the workset
+    tier ``@meta.workset.settings`` as R2 downward-defaults). It is single-sourced with
+    the cascade's box-tier file path (both come from ``box_workset_settings_paths`` in
+    ``_launch_snapshot_inputs``), so the anchor and the cascade cannot drift. The
+    parameter stays optional for narrow/partial resolves that materialize no box tier;
+    the launch always passes a real path.
 
     *agent_name* / *agent_real_name*: when an agent exists, ``meta.agent.<a>.name``
     is the plugin-set agent name (spec §2d L514, REQUIRED). ``agent_name`` is the
@@ -498,10 +502,11 @@ def meta_identity_floor(
         "meta.box.inbox": inbox,
         "meta.box.share_global": share_global,
         "meta.box.share_workset": share_workset,
-        # The RO box-TIER settings-file anchor (spec §2c L493/L472, P6c). The box's
-        # own <metadata_path>/settings.yaml for primary/named; None (box tier EMPTY)
-        # for standalone — a present-key None terminal (like share_workset above).
-        # Single-sourced with the cascade box-tier path in _launch_snapshot_inputs.
+        # The RO box-TIER settings-file anchor (spec §2c ALL PROJECTS L817). UNIFORM:
+        # the box tier's settings.yaml in EVERY mode (standalone = box_data/, absent by
+        # default). Single-sourced with the cascade box-tier path in
+        # _launch_snapshot_inputs, so the anchor names the file the cascade reads and
+        # `config set` writes.
         "meta.box.settings": box_settings,
         # NOTE: meta.workset.name is NO LONGER set here — it anchors into
         # meta.runtime.ws_name (the single source, spec §2c 2026-07-04), set by

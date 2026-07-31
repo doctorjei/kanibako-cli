@@ -43,7 +43,9 @@ from kanibako.paths import (
     WorksetSpec,
     _find_workset_for_path,
     _register_workset_box_membership,
+    _box_settings_files,
     assign_primary_box_name,
+    box_metadata_dir,
     check_primary_box_name_free,
     detect_project_mode,
     primary_box_name_for_workspace,
@@ -354,7 +356,9 @@ def _default_state_from_meta(
         workspace_path=workspace.resolve(), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=read_box_enable_vault(metadata_path / BOX_META_FILE),
+        enable_vault=read_box_enable_vault(
+            _box_settings_files(BoxMode.primary, metadata_path, None)[0],
+        ),
     )
 
 
@@ -958,6 +962,32 @@ def _copy_metadata(
     return dst_shell
 
 
+def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None:
+    """Write the source box's carried box-scope settings to *dst_box_tier* (M-8).
+
+    A convert/move makes a NEW box that inherits the source's box settings. The
+    source's box tier and the destination's are BOTH resolved through the single
+    derivation, so the settings land where the destination will actually read them
+    — and a pre-P2 standalone source's root-stored ``box.*`` keys are underlaid
+    rather than lost (:func:`kanibako.config.carried_box_settings`).
+
+    A no-op when the source carries nothing, so a box with no settings file still
+    produces no destination file (sparse — matching create).
+    """
+    from kanibako.config import carried_box_settings
+    from kanibako.config_io import dump_doc
+    from kanibako.paths import _box_settings_files
+
+    # group=None: only the STANDALONE arm consults it, and standalone's workset tier
+    # is derived from the root, not from a ProjectGroup (which ProjectState does not
+    # carry).  For primary/named the workset tier is therefore None — no legacy
+    # underlay, so those modes stay byte-identical to pre-P2.
+    src_box, src_ws = _box_settings_files(state.mode, state.metadata_path, None)
+    carried = carried_box_settings(src_box, src_ws)
+    if carried:
+        dump_doc(dst_box_tier, carried)
+
+
 def _remove_old_metadata(
     state: ProjectState,
     std: StandardPaths,
@@ -1115,13 +1145,19 @@ def _to_default(
 
     # When the name is reused in place, the metadata already lives at the
     # destination — copying would be a (failing) copy-onto-self, so reuse it.
+    # ⚑ Copy from the box METADATA DIR, not from ``metadata_path``: for a
+    # standalone source those differ (root vs ``box_data/``), and copying the root
+    # would drag workspace+vault into the box dir AND put the source's WORKSET-tier
+    # file at the destination's BOX tier (M-8).
+    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path)
     if dst_metadata.resolve() == state.metadata_path.resolve():
         dst_shell = state.shell_path
     else:
         dst_shell = _copy_metadata(
-            state.metadata_path, state.shell_path, dst_metadata,
+            src_meta_dir, state.shell_path, dst_metadata,
             shell_into_metadata=True, unwind=unwind,
         )
+        _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
 
     # Phase 5 fixed PRIMARY table: vault under @config.primary_workset.
     vault_ro = std.primary_vault_ro / project_name
@@ -1291,16 +1327,20 @@ def _to_standalone(
     workspace_subdir = root / "workspace"
     _consolidate_workspace_subdir(root, workspace_subdir, unwind)
 
+    # Copy from the box METADATA DIR (``box_data/`` for a standalone source, so a
+    # standalone→standalone move does not strand ``<dst>/box_data/box_data/``).
     dst_shell = _copy_metadata(
-        state.metadata_path, state.shell_path, dst_metadata,
-        shell_into_metadata=True, home_leaf="home", unwind=unwind,
+        box_metadata_dir(state.mode, state.metadata_path), state.shell_path,
+        dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
-    # The source settings.yaml copied into box_data/ (when the source's metadata
-    # dir held one) is an orphan now that the box meta lives at the ROOT; drop it
-    # so detection only ever sees the canonical <root>/settings.yaml (drift I).
-    stale = dst_metadata / BOX_META_FILE
-    if stale.exists():
-        stale.unlink()
+    # The settings.yaml that lands in box_data/ IS the destination's BOX TIER now
+    # (spec §2c ALL PROJECTS: meta.box.settings = @meta.box.path/settings.yaml, and
+    # @meta.box.path for standalone IS box_data/).  It used to be deleted here as an
+    # "orphan" on the theory that the box meta lived only at the ROOT — that theory
+    # is the retired model, and deleting the file now discards the box's settings.
+    # Detection is unaffected either way: it reads the ROOT file (§5 L1425-1427),
+    # which ``establish_standalone`` writes below.
+    _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
 
     # Establish the standalone identity + meta + registration via the shared
     # core.  ``requested_name`` is the user's explicit ``--name`` (empty when
@@ -1387,7 +1427,9 @@ def _to_workset(
     # Default: the live source paths.  For a workset source we release the
     # registration FIRST (see below), which deletes those dirs, so we copy from a
     # stash instead.
-    metadata_source = state.metadata_path
+    # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those
+    # differ (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
+    metadata_source = box_metadata_dir(state.mode, state.metadata_path)
     shell_source = state.shell_path
 
     source_is_workset = state.mode == BoxMode.named
@@ -1442,6 +1484,10 @@ def _to_workset(
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
+    # The destination's BOX TIER gets the source's carried box settings (M-8) — for a
+    # standalone source the copy above cannot supply them, since its box tier is a
+    # different file from the root one a pre-P2 box stored them in.
+    _deliver_carried_box_settings(state, dst_project / BOX_META_FILE)
     dst_shell = dst_project / "home"
     if shell_source.is_dir():
         shutil.copytree(shell_source, dst_shell, dirs_exist_ok=True)

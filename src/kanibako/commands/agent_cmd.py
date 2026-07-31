@@ -512,14 +512,13 @@ def _show_agent_config(
 def run_reauth(args: argparse.Namespace) -> int:
     """Check authentication and login if needed."""
     from kanibako.config import (
-        BOX_META_FILE,
         config_file_path,
         load_config,
         load_merged_config,
         resolve_agent,
     )
     from kanibako.agent_ref import harness_of
-    from kanibako.paths import xdg, load_std_paths, workset_settings_path
+    from kanibako.paths import box_workset_settings_paths, xdg, load_std_paths
     from kanibako.targets import resolve_target
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -541,8 +540,9 @@ def run_reauth(args: argparse.Namespace) -> int:
     # agent-requiring command, so a resolution failure raises a typed
     # AgentResolutionError that the top-level cli.py handler surfaces verbatim
     # (Gate-2a/2b) with a non-zero exit — never a silent fall-through.
-    project_toml = proj.metadata_path / BOX_META_FILE
-    workset_path = workset_settings_path(proj.group)
+    # The box/workset tier pair from the ONE source (M-8) — so `crab reauth` resolves
+    # the agent from the SAME box-tier file `box set box.agent_name=…` writes.
+    project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file,
         project_toml if project_toml.exists() else None,
