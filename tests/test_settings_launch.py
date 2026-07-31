@@ -1268,13 +1268,13 @@ class TestMetaAgentPath:
     such source dangles."""
 
     def test_meta_agent_path_materialised_for_node_and_harness(self):
-        """A PERSONA materializes BOTH slots. ``load_common`` keys its commons on
+        """A PERSONA materializes BOTH slots. ``load_common`` keys its entries on
         the plugin's own ``Target.name`` (the HARNESS), while this floor is built
         with the ACTIVE NODE — so a node-only materialization would leave the
         harness-keyed refs dangling.
 
         (Mutation: dropping the harness from the loop → the harness key is absent
-        → RED, and a persona's commons ref would resolve to nothing.)"""
+        → RED, and a persona's ``common`` ref would resolve to nothing.)"""
         floor = meta_identity_floor(
             box_name="x", project_path="/p", inbox="/i", share_global="/s",
             share_workset=None, agent_name="navigator℘claude",
@@ -1614,7 +1614,7 @@ def test_box_agent_mirror_repoints_on_agent_name_change():
         },
         **common,
     )
-    # Both mirror their OWN active agent's share default.
+    # Both mirror their OWN active agent's ``common`` default.
     assert snap_claude.box.agent.common.plugins.host == "/claude/plugins"
     assert snap_goose.box.agent.common.plugins.host == "/goose/plugins"
     # And the mirror tracks the active slot each names (the goose snapshot's mirror

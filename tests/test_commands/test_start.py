@@ -1205,11 +1205,12 @@ class TestPluginsAndCacheShares:
         from kanibako.plugins.claude.target import ClaudeTarget
 
         target = ClaudeTarget()
-        # NARROW snapshot resolve: inject ONLY the claude agent commons (the share
-        # root-join + L7 guarantee-create exercised here), not the core/channel
-        # families. ``default_common()`` is the claude plugin's agent-scope shared
-        # table (plugins/cache under @system.agents/claude). All scope files are
-        # absent (None) — this isolates the agent-share resolution.
+        # NARROW snapshot resolve: inject ONLY the claude agent ``common`` entries
+        # (declaration-rooted sources + L7 guarantee-create exercised here), not the
+        # core/channel families. ``default_common()`` is the claude plugin's
+        # agent-scope ``common`` table (plugins/cache under
+        # ``@meta.agent.claude.path/common``). All scope files are absent (None) —
+        # this isolates the agent-scope category resolution.
         _snap, reconciled = _resolve_launch_snapshot(
             std=std,
             proj=self._proj(std),
@@ -1261,7 +1262,7 @@ class TestPersonaShareSymlinks:
     _HARNESS = "claude"
     _NODE = "navigator℘claude"
 
-    def _target(self, commons=None):
+    def _target(self, common_binds=None):
         """A stand-in target returning the REAL ``default_common()`` SHAPE.
 
         ⚑ The values are the DECLARATION-ROOTED ``@``-refs the live claude plugin
@@ -1273,8 +1274,8 @@ class TestPersonaShareSymlinks:
         ``test_fixture_shape_matches_the_live_plugin``.
         """
         from types import SimpleNamespace
-        if commons is None:
-            commons = {
+        if common_binds is None:
+            common_binds = {
                 "agent.claude.common.plugins": (
                     "@meta.agent.claude.path/common/plugins",
                     "/home/agent/.claude/plugins",
@@ -1284,7 +1285,9 @@ class TestPersonaShareSymlinks:
                     "/home/agent/.claude/cache",
                 ),
             }
-        return SimpleNamespace(name=self._HARNESS, default_common=lambda: commons)
+        return SimpleNamespace(
+            name=self._HARNESS, default_common=lambda: common_binds
+        )
 
     def test_fixture_shape_matches_the_live_plugin(self):
         """The fixture above cannot silently rot: it must equal what the REAL
@@ -1300,7 +1303,7 @@ class TestPersonaShareSymlinks:
         return SimpleNamespace(agents=agents)
 
     def test_links_are_under_the_common_dir(self, tmp_path):
-        """T7 — the shim reads the REAL (declaration-rooted) commons shape.
+        """T7 — the shim reads the REAL (declaration-rooted) ``common`` shape.
 
         ⚑ THIS IS THE ONE THAT CAUGHT THE BREAKAGE.  The shim used to build its
         paths from the ``host_src`` VALUE, which was a bare leaf (``plugins``).
@@ -1396,14 +1399,14 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._HARNESS, self._target())
         # Mutation-check: NOTHING created for a bare agent — no node dir, no
-        # harness share dirs, no symlink.  (If the helper failed to early-return,
-        # it would have made agents/claude/{plugins,cache}.)
+        # harness common dirs, no symlink.  (If the helper failed to early-return,
+        # it would have made agents/claude/common/{plugins,cache}.)
         assert not (std.agents / self._HARNESS).exists()
         assert list(std.agents.iterdir()) == []
 
     def test_bare_agent_noop_even_with_shares(self, tmp_path):
         # Same as above but proves the guard is on node==harness, not on empty
-        # commons: a fully-declared target still yields no dirs for bare.
+        # ``common`` entries: a fully-declared target still yields no dirs for bare.
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         target = self._target()
@@ -2614,7 +2617,7 @@ class TestApplyInitSeeds:
             data_home=tmp_path / "data_home",
             data_path=tmp_path / "data",
             # New config.*/system.* fields read by the ResolveCtx (config
-            # foundation) + resolved_sys (commons/seeds wiring).
+            # foundation) + resolved_sys (common/seeded wiring).
             data=tmp_path / "data",
             channels=tmp_path / "channels",
             base_template=tmp_path / "base_template",

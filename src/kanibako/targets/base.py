@@ -479,7 +479,7 @@ class Target(ABC):
         return None
 
     def default_common(self) -> dict[str, BindDefault]:
-        """Declare default AGENT-scope commons/caches for this agent.
+        """Declare default AGENT-scope common/caches binds for this agent.
 
         Returns a mapping of full DISCRIMINATED scoped category keys
         (``agent.<agent>.common.<name>`` / ``agent.<agent>.caches.<name>``) to STRUCTURED bind
@@ -487,7 +487,7 @@ class Target(ABC):
         colon-joined string). These are injected as the AGENT level's *declared
         defaults* (``default_categories``) in the category resolver — a user can
         override or suppress (terminal "") any of them at a more-specific level.
-        The default returns {} (no commons).
+        The default returns {} (no declared entries).
         """
         return {}
 

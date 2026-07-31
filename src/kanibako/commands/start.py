@@ -123,7 +123,7 @@ def _agent_critical_dests() -> list[tuple[str, str]]:
 
 
 def ensure_persona_share_symlinks(std, agent_id, target) -> None:
-    """Point a persona's agent-scope share dirs at the harness's (symlink shim).
+    """Point a persona's agent-scope common dirs at the harness's (symlink shim).
 
     A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
     dir is its own store, but whose plugins/cache SHOULD be shared with the bare
@@ -145,9 +145,9 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     layout is also what stops this shim and the resolver from drifting apart —
     they are two consumers of ONE layout fact.
 
-    Driven by the descriptor's declared commons (generic over harnesses; NO
+    Driven by the descriptor's declared ``common`` entries (generic over harnesses; NO
     per-plugin code).  Call at persona-dir MATERIALIZATION, BEFORE mount assembly /
-    share source resolution, so the symlink pre-dates any real-dir guarantee-create.
+    category source resolution, so the symlink pre-dates any real-dir guarantee-create.
 
     Edge cases (idempotent + fail-safe, NEVER clobber):
       * BARE (``agent_id == harness``) -> return immediately, do nothing.  Every
@@ -181,7 +181,7 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
 
         if node_link.is_symlink():
             # An existing symlink: no-op if it already points at the harness dir,
-            # otherwise LEAVE it (a persona that repointed its own share wins).
+            # otherwise LEAVE it (a persona that repointed its own common dir wins).
             try:
                 correct = node_link.readlink() == harness_dir
             except OSError:
@@ -2110,7 +2110,7 @@ def _run_container(
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → NOW materialise the persona artifacts.  Persist the
-    # agent config (freshly generated OR B3-adopted); the commons shim points
+    # agent config (freshly generated OR B3-adopted); the common-dir shim points
     # ``agents/<node>/common/{plugins,cache}`` at the harness's dirs BEFORE mount
     # assembly resolves them.  A bare agent (node == harness) is a no-op for the shim, and
     # writes only when the config is new — byte-identical to before this pre-flight.
@@ -4880,7 +4880,7 @@ def _resolve_launch_snapshot(
     them only inside their conditional block.
 
     *include_base_families* gates the always-available tables (core / kani /
-    channel / commons / seeds).  It is True for the MAIN launch snapshot and False
+    channel / common / seeded).  It is True for the MAIN launch snapshot and False
     for the late, conditional image/helper resolves (whose box_dests are disjoint),
     so the image/helper reconcile carries ONLY their own table + any config-file
     keys — byte-for-byte the old per-family ``_build_image_mounts`` /
@@ -5240,7 +5240,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → materialise the persona artifacts (write the fresh /
-    # B3-adopted config, then the commons shim) BEFORE the seed reconcile reads them.
+    # B3-adopted config, then the common-dir shim) BEFORE the seed reconcile reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
         write_agent_config(agent_cfg_path, seed_agent_cfg)
@@ -5644,7 +5644,7 @@ def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
     the STATIC structure + box-side destinations live in the shipped system/core
     defaults file (P6b coalesce); the loader injects the runtime-probed host
     sources.  Injected through the category resolver (D-B1 precedence + depth-sort
-    + L7 guarantee-create) exactly like masks/commons.  PRIMARY + NAMED get the
+    + L7 guarantee-create) exactly like masks/common.  PRIMARY + NAMED get the
     three workset-local roots; STANDALONE OMITS them (A10).
     """
     return core_defaults.channel_default_categories(std, proj)
@@ -5690,7 +5690,7 @@ def _core_default_categories(std, proj) -> dict[str, tuple[str, str, str]]:
     shipped system/core defaults file (``core:`` list); the loader injects the
     runtime-probed host sources off ``ProjectPaths``.  Injected through the category
     resolver (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like
-    masks/commons/channels.  home + workspace are unconditional; the vault binds are
+    masks/common/channels.  home + workspace are unconditional; the vault binds are
     gated on ``proj.enable_vault`` AND the source dir existing (reproducing the old
     hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
     """
