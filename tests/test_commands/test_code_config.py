@@ -380,9 +380,15 @@ def test_merge_session_start_into_empty_creates_hooks_block():
 
 def test_merge_session_start_command_is_additional_context_flattener():
     """The managed command runs the flattener in --additional-context mode,
-    silent-safe, referencing the SEED env var."""
+    silent-safe, referencing the SEED env var.
+
+    ⚑ The flattener path is the SAME literal ``start._directive_flatten_shim``
+    carries — the package-bind path, not a canon path (C-CANON R1, P-2). The two
+    must move together: a one-sided change is SILENT, because ``|| true`` swallows
+    the failure and the box just loses its directives.
+    """
     assert _SESSION_START_COMMAND == (
-        'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
+        'python3 "/opt/kanibako/kanibako/scripts/import-directives.py" '
         '--additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'
     )
     assert _SESSION_START_MATCHER == "startup|resume|clear|compact"
@@ -708,7 +714,12 @@ def test_codex_merge_command_roundtrips_through_toml_unexpanded():
     data = tomllib.loads(_merge(_TEMPLATE))
     cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
     assert cmd == _SESSION_START_COMMAND
-    assert '"$HOME' in cmd and '"$KANIBAKO_DIRECTIVE_SEED"' in cmd
+    # The remaining ``$VAR`` must survive VERBATIM — it expands in-box at hook-run
+    # time, and the trust hash is computed on the raw string.  (The flattener path
+    # is now an absolute package-bind path, so ``$HOME`` no longer appears; the
+    # unexpanded-env-var property is what this test is about, not that literal.)
+    assert '"$KANIBAKO_DIRECTIVE_SEED"' in cmd
+    assert '"/opt/kanibako/kanibako/scripts/import-directives.py"' in cmd
 
 
 def test_codex_merge_never_writes_approval_keys():

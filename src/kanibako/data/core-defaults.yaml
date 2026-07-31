@@ -225,12 +225,17 @@ kani:
     source: secret_export
     box_dest: "/etc/profile.d/kanibako-secrets.sh"
     options: "ro"
-  # NOTE: the read-only built-in directive tree (KANIBAKO.md + flattener scripts,
-  # formerly the single ``playbook_kanibako`` whole-dir RO bind) is no longer a
-  # hand-declared entry here.  It is enumerated PER FILE from the packaged rom root
-  # (``global/rom``) by ``core_defaults.rom_default_categories`` — ANY file under
-  # ``rom/`` is bound ro at its mirrored ``~`` path, the RO-bind dual of the
-  # per-file ``template/`` writable seed.
+  # NOTE: the read-only packaged CANON is not a hand-declared entry here either.
+  # ``core_defaults.rom_default_categories`` emits TWO binds from the packaged rom
+  # root (``global/rom``) — ``canon_collection`` (the COLLECTION.md index, a FILE
+  # bind so ``~/canon`` itself stays writable for the SEEDED notebook/workbook) and
+  # ``canon_bible`` (the whole ``canon/bible`` directory) — and
+  # ``rom_agent_default_categories`` adds the resolved plugin's own chapter at
+  # ``~/canon/bible/agent`` when it ships one.  All three are INTERNAL/generated
+  # (spec §2c): not user keys, in no set-time floor, not repointable.
+  # ⚑ The flattener (``import-directives.py``) is MACHINERY, not canon: it ships in
+  # the package and reaches the box through the ``kani_pkg`` bind above, at
+  # ``/opt/kanibako/kanibako/scripts/import-directives.py``.
 
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
 # message LOG, routed through the category resolver instead of the hardwired

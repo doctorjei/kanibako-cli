@@ -1,8 +1,8 @@
 """E2e: the per-agent kickoff-loader SEED is delivered on real podman.
 
 Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.  Each agent
-plugin ships a kickoff-loader (the flattener SEED, a single
-``@~/playbook/kanibako/directives/KANIBAKO.md`` import) declared as a best-effort
+plugin ships a kickoff-loader (the flattener SEED, whose primary import is
+``@~/canon/COLLECTION.md`` — the canon index) declared as a best-effort
 descriptor ``managed_pointer`` bind delivered read-only to
 ``~/.config/kanibako/kickoff.md``; goose's ``CONTEXT_FILE_NAMES`` env still lists
 AGENTS.md (its native slot the FINAL flatten will land in).  This proves the real
@@ -20,9 +20,10 @@ inspect the exited container's Mounts/Env.
 ``_ensure_initialized`` early-returns and the packaged-template install is skipped.
 Each test runs the real ``install_packaged_templates`` against the fixture data dir
 first — exactly what first-init does — so the install + bind path is genuinely
-exercised.  (The KANIBAKO.md guide itself is delivered live via the per-file rom
-RO bind at ``~/playbook/kanibako/directives/KANIBAKO.md`` + launch-flatten, not
-installed to a host path.)
+exercised.  (The box guide itself is delivered live inside the whole-dir canon RO
+bind at ``~/canon/bible`` — the guide sits at
+``bible/general/directives/ROM_GENERAL.md`` — plus launch-flatten, not installed
+to a host path.)
 """
 
 from __future__ import annotations
@@ -97,7 +98,37 @@ def run_install(env: dict) -> None:
 
 
 KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
-DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
+
+# The canon ENTRY POINT the kickoff loader imports (spec §2c / C-CANON P-4).
+DIRECTIVE_IMPORT = "@~/canon/COLLECTION.md"
+
+# ⚑ TRANSITION (one release only): the kickoff also carries the PRE-CANON import so
+# a plugin release works against a base that still binds the old rom layout.  Pinned
+# so its REMOVAL (migration M-12) is a deliberate edit here, not a silent drift.
+LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
+
+# The two CORE canon binds (spec §2c), asserted on the REAL container Mounts — the
+# physical materialization host-side tests cannot see.  ⚑ COLLECTION.md is a FILE
+# bind precisely so ~/canon itself stays WRITABLE for the seeded notebook/workbook.
+CANON_COLLECTION_DEST = f"{GUEST_HOME}/canon/COLLECTION.md"
+CANON_BIBLE_DEST = f"{GUEST_HOME}/canon/bible"
+
+
+def assert_canon_binds_ro(cfg: dict) -> None:
+    """The packaged canon is mounted READ-ONLY at both declared guest slots.
+
+    Host-side tests prove the SOURCE→DEST mapping; only a real container proves the
+    binds actually materialize — and that ``~/canon`` itself is NOT mounted, which
+    is what keeps the seeded books writable.
+    """
+    for dest in (CANON_COLLECTION_DEST, CANON_BIBLE_DEST):
+        m = find_mount(cfg, dest)
+        assert m is not None, f"canon bind missing at {dest}"
+        assert m.get("RW") is False, f"canon bind at {dest} must be read-only"
+    assert find_mount(cfg, f"{GUEST_HOME}/canon") is None, (
+        "~/canon must NOT be bound — it has to stay writable for the seeded "
+        "notebook/workbook books"
+    )
 
 
 def test_claude_kickoff_loader_delivery(e2e_env):
@@ -122,7 +153,10 @@ def test_claude_kickoff_loader_delivery(e2e_env):
         km = find_mount(cfg, KICKOFF_DEST)
         assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
         assert km.get("RW") is False, "kickoff-loader bind must be read-only"
-        assert DIRECTIVE_IMPORT in Path(km["Source"]).read_text()
+        kickoff = Path(km["Source"]).read_text()
+        assert DIRECTIVE_IMPORT in kickoff
+        assert LEGACY_DIRECTIVE_IMPORT in kickoff
+        assert_canon_binds_ro(cfg)
     finally:
         rm(container_name(box))
 
@@ -154,7 +188,10 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
         km = find_mount(cfg, KICKOFF_DEST)
         assert km is not None, "kickoff-loader not bound to ~/.config/kanibako/kickoff.md"
         assert km.get("RW") is False, "kickoff-loader bind must be read-only"
-        assert DIRECTIVE_IMPORT in Path(km["Source"]).read_text()
+        kickoff = Path(km["Source"]).read_text()
+        assert DIRECTIVE_IMPORT in kickoff
+        assert LEGACY_DIRECTIVE_IMPORT in kickoff
+        assert_canon_binds_ro(cfg)
         assert "AGENTS.md" in json.loads(
             env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")
         )

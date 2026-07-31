@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/playbook/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
+            "command": "python3 \"/opt/kanibako/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
           }
         ]
       },

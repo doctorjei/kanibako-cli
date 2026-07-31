@@ -23,6 +23,7 @@ from kanibako.templates import (
     stage_layers,
     template_seed_defaults,
 )
+from kanibako.core_defaults import ROM_GUIDE_REL as _GUIDE_REL
 from kanibako.workset import add_project, create_workset
 
 
@@ -442,17 +443,18 @@ class TestInstallPackagedTemplates:
 
 class TestPackagedTemplatesDigest:
     """``packaged_templates_digest`` — deterministic content hash over the
-    packaged base + RO bundle (carrying KANIBAKO.md) + each agent template tree."""
+    packaged base + RO canon (carrying the box guide) + each agent template tree."""
 
     def _fake_trees(self, monkeypatch, tmp_path, *, base="B", guide="G", claude="C"):
         base_dir = tmp_path / "pbase"
         base_dir.mkdir()
         (base_dir / "INSTRUCTIONS.md").write_text(base)
-        # The RO built-in bundle carries the KANIBAKO.md guide at
-        # directives/KANIBAKO.md — the SOLE manifest source of the guide now.
+        # The RO packaged CANON carries the box guide at
+        # canon/bible/general/directives/ROM_GENERAL.md — the SOLE manifest
+        # source of the guide now (C-CANON R1).
         bundle_dir = tmp_path / "pbundle"
-        (bundle_dir / "directives").mkdir(parents=True)
-        (bundle_dir / "directives" / "KANIBAKO.md").write_text(guide)
+        (bundle_dir / _GUIDE_REL).parent.mkdir(parents=True)
+        (bundle_dir / _GUIDE_REL).write_text(guide)
         claude_dir = tmp_path / "pclaude"
         claude_dir.mkdir()
         (claude_dir / ".claude.json").write_text(claude)
@@ -484,21 +486,21 @@ class TestPackagedTemplatesDigest:
     def test_changes_when_guide_changes(self, monkeypatch, tmp_path):
         _, bundle_dir, _ = self._fake_trees(monkeypatch, tmp_path)
         before = packaged_templates_digest(["claude"])
-        (bundle_dir / "directives" / "KANIBAKO.md").write_text("NEW GUIDE")
+        (bundle_dir / _GUIDE_REL).write_text("NEW GUIDE")
         assert packaged_templates_digest(["claude"]) != before
 
     def test_kanibako_md_hashed_exactly_once(self, monkeypatch, tmp_path):
         """Regression: the guide is enumerated ONCE (only via the RO bundle).
 
         The retired ``@system.instructions`` flat-copy used to add a SECOND
-        ``instructions/KANIBAKO.md`` manifest entry beside the bundle's
-        ``shared/directives/KANIBAKO.md`` — double-hashing the same bytes so a
-        relocation flipped the digest and spuriously tripped the setup gate.
+        ``instructions/KANIBAKO.md`` manifest entry beside the bundle's own —
+        double-hashing the same bytes so a relocation flipped the digest and
+        spuriously tripped the setup gate.
         """
         self._fake_trees(monkeypatch, tmp_path)
         keys = [k for k, _ in _packaged_manifest_entries(["claude"])]
-        kani = [k for k in keys if k.endswith("KANIBAKO.md")]
-        assert kani == ["shared/directives/KANIBAKO.md"], keys
+        guide = [k for k in keys if k.endswith("ROM_GENERAL.md")]
+        assert guide == [f"shared/{_GUIDE_REL}"], keys
 
     def test_changes_when_agent_template_changes(self, monkeypatch, tmp_path):
         _, _, claude_dir = self._fake_trees(monkeypatch, tmp_path)

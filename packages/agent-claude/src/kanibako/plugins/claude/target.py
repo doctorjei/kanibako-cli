@@ -412,8 +412,8 @@ class ClaudeTarget(Target):
 
         Read from ``claude-defaults.yaml`` (via the loader).  Currently EMPTY: the
         former ``@system.instructions`` → ``~/.claude/KANIBAKO.md`` instructions
-        bind was retired — the box guide now ships via the RO ``~/playbook/kanibako``
-        bundle + the flattened per-agent FINAL file.
+        bind was retired — the box guide now ships INSIDE the RO whole-dir canon
+        bind at ``~/canon/bible`` + the flattened per-agent FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 

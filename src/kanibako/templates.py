@@ -9,7 +9,7 @@ import tempfile
 from typing import TYPE_CHECKING
 from pathlib import Path
 
-from kanibako.core_defaults import packaged_data_dir
+from kanibako.core_defaults import ROM_ROOT_PARTS, packaged_data_dir
 
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
@@ -212,8 +212,10 @@ def _packaged_base_template() -> Path | None:
     Because that dir contains those roots verbatim, installing it into
     ``@system.base_template`` and seeding the layer at box home ``~`` deposits
     ``~/playbook/...``, ``~/notebook/...`` and ``~/workbook/...`` (create-if-absent).
-    It carries NO ``playbook/kanibako/`` subdir, so it never collides with the RO
-    built-in bundle bound live at ``~/playbook/kanibako``.
+    It cannot collide with the RO built-in canon, which binds under ``~/canon``
+    exclusively — an invariant ASSERTED, not assumed, by
+    :func:`kanibako.core_defaults.assert_canon_bind_seed_disjoint` (prefix
+    containment of this tree's rel paths against the canon bind dests).
     """
     try:
         ref = packaged_data_dir("global", "template")
@@ -224,18 +226,23 @@ def _packaged_base_template() -> Path | None:
 
 
 def _packaged_shared_bundle() -> Path | None:
-    """Locate the packaged read-only built-in directive bundle.
+    """Locate the packaged read-only built-in CANON tree (the rom root).
 
-    ``kanibako.data/global/rom/playbook/kanibako`` — the KANIBAKO.md +
-    flattener scripts that the launch path bind-mounts LIVE (ro) at their mirrored
-    ``~`` paths (see ``core_defaults.rom_default_categories``, the per-file rom RO
-    enumerator).  It is NOT copied/seeded to a host runtime dir, so it has no
+    ``kanibako.data/global/rom`` — the ``canon/COLLECTION.md`` index + the whole
+    ``canon/bible/`` book, which the launch path bind-mounts LIVE (ro) at
+    ``~/canon/COLLECTION.md`` and ``~/canon/bible`` (see
+    :func:`kanibako.core_defaults.rom_default_categories`).  It is NOT
+    copied/seeded to a host runtime dir, so it has no
     ``install``/``plan_template_refresh`` target; it is enumerated here only for the
-    staleness DIGEST (this bundle root is the whole rom subtree today) so the setup
-    gate still trips when the shipped bundle content drifts.
+    staleness DIGEST so the setup gate still trips when the shipped canon content
+    drifts.
+
+    ⚑ Repointed from the retired ``global/rom/playbook/kanibako`` bundle root when
+    rom became the canon: the rom ROOT is now the digest root, so a file added
+    anywhere under ``rom/`` is watched.
     """
     try:
-        ref = packaged_data_dir("global", "rom", "playbook", "kanibako")
+        ref = packaged_data_dir(*ROM_ROOT_PARTS)
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))
@@ -268,10 +275,10 @@ def install_packaged_templates(
     ``template/``.  Called from first-run init; safe to re-run (idempotent for
     unchanged trees).
 
-    The agent-agnostic box guide (``KANIBAKO.md``) is NOT installed here — it is
-    delivered LIVE from the read-only built-in bundle (bound at
-    ``~/playbook/kanibako`` + flattened into each agent's native instruction slot
-    at launch), so it has no host runtime-install target.
+    The agent-agnostic box guide (the bible's ``ROM_GENERAL.md``) is NOT installed
+    here — it is delivered LIVE from the read-only packaged canon (bound at
+    ``~/canon/bible`` + flattened into each agent's native instruction slot at
+    launch), so it has no host runtime-install target.
 
     Default (``refresh=False``) is CREATE-IF-ABSENT (never clobbers user edits) —
     the first-run behaviour.  ``refresh=True`` is the TRUE-REFRESH path (``kanibako
@@ -298,13 +305,14 @@ def install_packaged_templates(
 def _is_shipped_content(entry: Path) -> bool:
     """True iff *entry* is a real shipped file (not a build/editor artifact).
 
-    The RO built-in bundle is the first digest source to contain ``.py`` files,
-    so a dev/editable checkout (or the repo's own test suite, which
-    ``exec_module``s ``import-directives.py``) can drop a ``__pycache__/*.pyc``
-    beside them.  Those never ship in a wheel, so hashing them would make the
-    staleness digest non-deterministic across environments/Python versions and
-    spuriously trip the setup gate.  Exclude Python bytecode caches and common
-    editor/OS junk from the CONTENT manifest.
+    Build and editor junk (``__pycache__``/``*.pyc``, ``.DS_Store``) never ships in
+    a wheel, so hashing it would make the staleness digest non-deterministic across
+    environments/Python versions and spuriously trip the setup gate.  The filter
+    was written when the RO bundle still carried the flattener ``.py`` beside the
+    guide (a dev checkout, or the repo's own suite ``exec_module``-ing it, dropped a
+    ``__pycache__`` right in the digest source).  The canon ships NO ``.py`` at all
+    now — the flattener moved into the package proper — but the filter stays as the
+    general junk guard for every packaged content tree it walks.
     """
     if not entry.is_file():
         return False
@@ -321,8 +329,9 @@ def walk_shipped_files(root: Path) -> list[tuple[str, Path]]:
     """Return the SORTED ``(posix-relpath, file-path)`` shipped-file list under *root*.
 
     The ONE traversal shared by the two consumers of a packaged content tree — the
-    staleness DIGEST (:func:`_packaged_manifest_entries`) and the rom RO-bind
-    enumerator (:func:`kanibako.core_defaults.rom_default_categories`).  Walks
+    staleness DIGEST (:func:`_packaged_manifest_entries`) and the canon rom emitter
+    (:func:`kanibako.core_defaults.rom_default_categories`, which no longer binds
+    per file but still walks the rom root for its fail-closed guards).  Walks
     *root* recursively, keeps only real SHIPPED files (:func:`_is_shipped_content`
     drops ``__pycache__``/``.pyc``/``.DS_Store`` build-and-editor junk), and returns
     each survivor as ``(<root-relative posix path>, <absolute path>)`` SORTED by the
@@ -342,10 +351,10 @@ def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]
 
     Enumerates every packaged file the setup gate must watch — the base seed tree
     (``_packaged_base_template``), each installed agent's ``template/``
-    (``_packaged_agent_template``), AND the RO built-in bundle
+    (``_packaged_agent_template``), AND the RO packaged canon
     (``_packaged_shared_bundle``, which is bind-mounted rather than installed but
-    still needs drift detection; it carries the KANIBAKO.md guide at
-    ``directives/KANIBAKO.md``).  Each file contributes exactly ONE
+    still needs drift detection; it carries the box guide at
+    ``canon/bible/general/directives/ROM_GENERAL.md``).  Each file contributes ONE
     ``(namespaced-relative-path, file-bytes)`` pair under a source-distinct
     prefix (``base/`` / ``shared/`` / ``agent/<name>/``), so no file is
     double-counted; the pairs are SORTED so the manifest is deterministic across
@@ -358,14 +367,13 @@ def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]
         for rel, entry in walk_shipped_files(base_src):
             entries.append((f"base/{rel}", entry.read_bytes()))
 
-    # The RO built-in bundle (bound live at ~/playbook/kanibako, never installed)
-    # is enumerated here ONLY so the setup gate still trips when the shipped
-    # KANIBAKO.md/flattener-script content drifts — it has no install target.  It
-    # is the SOLE source of the KANIBAKO.md guide in this manifest (the retired
-    # ``@system.instructions`` flat-copy no longer contributes a second entry).
-    # NOTE: the digest walks the shared BUNDLE root (rom/playbook/kanibako) so the
-    # namespaced keys stay ``shared/directives/...`` — the rom RO-bind enumerator
-    # walks the rom ROOT (rom/) via the SAME helper for its ~-mirrored dests.
+    # The RO packaged canon (bound live at ~/canon/{COLLECTION.md,bible}, never
+    # installed) is enumerated here ONLY so the setup gate still trips when the
+    # shipped canon content drifts — it has no install target.  It is the SOLE
+    # source of the box guide in this manifest (the retired ``@system.instructions``
+    # flat-copy no longer contributes a second entry).  Both this digest and the
+    # canon emitter now walk the SAME rom ROOT, so the namespaced keys read
+    # ``shared/canon/...``.
     bundle_src = _packaged_shared_bundle()
     if bundle_src is not None:
         for rel, entry in walk_shipped_files(bundle_src):

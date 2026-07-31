@@ -138,7 +138,7 @@ def test_codex_delivery_real_box(e2e_env):
         groups = data["hooks"]["SessionStart"]
         commands = [g["hooks"][0]["command"] for g in groups]
         assert len(groups) == 2, f"expected directive+marker groups, got {commands}"
-        assert "import-directives.py" in commands[0]
+        assert "/opt/kanibako/kanibako/scripts/import-directives.py" in commands[0]
         assert MARKERS_DIR in commands[1] and "$PPID" in commands[1]
         box_cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {

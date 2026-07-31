@@ -505,6 +505,45 @@ class Target(ABC):
         """
         return {}
 
+    def rom_root(self) -> Path | None:
+        """Locate this plugin's packaged BIBLE CHAPTER root (``<pkg>/data/rom``).
+
+        The source of the ``box.bindings.ro.canon_bible_agent`` bind (spec §2c),
+        which CORE emits from the resolved target — see
+        :func:`kanibako.core_defaults.rom_agent_default_categories`.  The plugin's
+        ``data/rom`` IS the chapter root: it ships ``directives/ROM_AGENT.md``, not
+        a deep ``canon/bible/agent/...`` mirror, so CONTAINMENT holds by
+        construction (a plugin cannot place a file outside its own chapter, so
+        there is nothing to guard and no silently-ignored out-of-chapter file).
+
+        The package is derived from ``sys.modules[type(self).__module__].__package__``
+        rather than from :attr:`name`: ``name`` is the HARNESS name and only happens
+        to match ``kanibako.plugins.<name>`` for the first-party plugins, while
+        ``__package__`` is correct whether the Target class lives in
+        ``<pkg>/target.py`` or in ``<pkg>/__init__.py`` (a naive
+        ``__module__.rsplit(".", 1)[0]`` is wrong for the latter).
+
+        Returns ``None`` on ANY failure — no such module entry, no ``__package__``,
+        an unimportable/absent package, or no ``data/rom`` directory.  Directory
+        plugins (``~/.local/share/kanibako/plugins/``, ``{project}/.kanibako/
+        plugins/``) are not ``kanibako.plugins.*`` packages and simply resolve to
+        ``None``, which is the right answer for them.  Additive and defaulted, so
+        no plugin needs to override it and no plugin interface breaks.
+        """
+        import importlib.resources
+        import sys
+
+        try:
+            module = sys.modules[type(self).__module__]
+            package = getattr(module, "__package__", None)
+            if not package:
+                return None
+            ref = importlib.resources.files(package).joinpath("data", "rom")
+            path = Path(str(ref))
+        except Exception:
+            return None
+        return path if path.is_dir() else None
+
     def default_category_binds(self) -> dict[str, BindDefault]:
         """Declare default AGENT-scope ``@``-ref-sourced category binds.
 
@@ -519,9 +558,12 @@ class Target(ABC):
 
         A plugin owns its own harness-slot ``box_dest`` while an ``@``-ref source
         keeps core agent-agnostic.  (The former per-agent instructions bind was
-        retired — the box guide now ships via the RO ``~/playbook/kanibako`` bundle
-        + launch-flatten — so no first-party plugin declares one today.)  The
-        default returns ``{}`` (no category binds).
+        retired — the box guide now ships in the packaged CANON, bound ro at
+        ``~/canon/bible`` + launch-flatten — so no first-party plugin declares one
+        today.  A plugin's own bible chapter is NOT declared here either: it is the
+        INTERNAL ``canon_bible_agent`` bind core emits from :meth:`rom_root`, kept
+        out of the agent keyspace precisely so it stays unrepointable like the rest
+        of the book.)  The default returns ``{}`` (no category binds).
         """
         return {}
 

@@ -24,9 +24,8 @@ Split (documented in the YAML header too):
 
 from __future__ import annotations
 
-import hashlib
 import importlib.resources
-import re
+from collections.abc import Iterable
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -35,6 +34,7 @@ import yaml
 
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
+    from kanibako.targets.base import Target
 
 
 def packaged_data_dir(*parts: str) -> Traversable:
@@ -43,9 +43,9 @@ def packaged_data_dir(*parts: str) -> Traversable:
     Single source of truth for ``importlib.resources.files("kanibako.data")``
     joined with ``*parts`` — returns the same ``Traversable`` the inline
     ``files("kanibako.data").joinpath(*parts)`` expression produced (callers wrap
-    it in ``Path(str(...))`` as before).  Notably it centralizes the rom-bundle
-    subpath literal ``("global", "rom", "playbook", "kanibako")`` that was
-    resolved verbatim in both this module and :mod:`kanibako.templates`.
+    it in ``Path(str(...))`` as before).  Notably it centralizes the rom-root
+    subpath literal :data:`ROM_ROOT_PARTS` (``("global", "rom")``) that is
+    resolved in both this module and :mod:`kanibako.templates`.
     """
     return importlib.resources.files("kanibako.data").joinpath(*parts)
 
@@ -316,52 +316,125 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
     return binds
 
 
-# The packaged rom root — the READ-ONLY built-in tree whose every shipped file is
-# bind-mounted live (ro) at its mirrored ``~`` path.  A module constant (symmetric
-# with :func:`templates._packaged_base_template`'s hardcoded ``("global","template")``
+# The packaged rom root — the READ-ONLY built-in CANON content (the BIBLE, plus the
+# COLLECTION.md index that enters it).  A module constant (symmetric with
+# :func:`templates._packaged_base_template`'s hardcoded ``("global","template")``
 # writable-seed root): rom is the RO-bind DUAL of that writable template seed.
 ROM_ROOT_PARTS = ("global", "rom")
 
-# The load-bearing box guide, as its rom-ROOT-relative posix path.  The enumeration
-# MUST include this file whenever the rom root is populated (fail-closed guard) —
-# a box launched without the guide is a silent degradation of EVERY box.
-ROM_GUIDE_REL = "playbook/kanibako/directives/KANIBAKO.md"
+# The rom-ROOT-relative posix paths of the two CANON bind SOURCES (spec §2c).  The
+# packaged tree MIRRORS the guest layout, so each rel path is also its ``~/``-dest.
+ROM_COLLECTION_REL = "canon/COLLECTION.md"
+ROM_BIBLE_REL = "canon/bible"
+
+# The load-bearing box guide (the bible's GENERAL chapter), rom-root-relative.  It
+# MUST ship whenever the rom root is populated (fail-closed guard) — a box launched
+# without the guide is a silent degradation of EVERY box.
+ROM_GUIDE_REL = "canon/bible/general/directives/ROM_GENERAL.md"
+
+# ⚑ The plugin chapter's MOUNTPOINT, which core's packaged rom must ship as a REAL
+# directory.  A nested bind's mountpoint has to exist inside its PARENT's SOURCE —
+# and when it does not, podman does NOT error: it silently ``mkdir``s the missing
+# mountpoint INTO the parent bind's host source, which here is the packaged tree in
+# site-packages (bifrost experiment, podman 5.4.2/crun 1.21, 2026-07-31).  The
+# 0-byte ``agent/directives/ROM_AGENT.md`` placeholder is what makes this directory
+# exist in git AND in the wheel; it is load-bearing, not decoration.
+ROM_AGENT_CHAPTER_REL = "canon/bible/agent"
+
+# The plugin-rom EMISSION GATE marker, relative to a plugin's ``data/rom`` chapter
+# root: a plugin gets a bible chapter bind ONLY if it actually ships one.
+PLUGIN_CHAPTER_MARKER_REL = "directives/ROM_AGENT.md"
+
+
+def assert_canon_bind_seed_disjoint(
+    bind_dests: Iterable[str], seed_rels: Iterable[str],
+) -> None:
+    """RAISE if any template SEED lands at or under a ``~/canon`` BIND dest.
+
+    Both arguments are ``~``-RELATIVE posix paths (``canon/bible``,
+    ``playbook/CONTENTS.md``, …): *bind_dests* are the canon binds' guest dests,
+    *seed_rels* the files a seed layer would copy to the box home.
+
+    ⚑ SCOPE OF WHAT IS ACTUALLY CHECKED TODAY. The only caller
+    (:func:`rom_default_categories`) passes the PACKAGED BASE template layer's walk
+    — i.e. layer 1 of the three in :func:`kanibako.templates.template_seed_defaults`.
+    The AGENT and WORKSET layers (``@agent.<a>.template`` / ``@workset.template``,
+    both user-repointable and both resolved at seed time, not here) are NOT covered,
+    and neither are a plugin's ``default_seeds()``. This function does not decide
+    that scope, it only enforces what it is handed — WIDENING THE INPUTS IS THE
+    CALLER'S JOB, which is exactly why the bind dests and seed rels are parameters
+    rather than computed inside. The seeds/handbook sub-phase extends BOTH sides:
+    it appends ``canon/handbook`` (+ its three chapter dests) to *bind_dests* and,
+    where it can resolve them, the remaining seed layers to *seed_rels*.
+
+    PREFIX CONTAINMENT, not set intersection.  A whole-directory bind shadows a
+    whole SUBTREE, so a seed does not have to hit the bind's exact path to be
+    swallowed — ``canon/bible/general/x.md`` is just as invisible under the
+    ``canon/bible`` bind as ``canon/bible`` itself would be.  Spec §0's
+    copy-vs-mount rule makes that shadowing ORDER-INDEPENDENT and SILENT: the
+    seeded bytes are neither merged nor reported, they simply never appear.  Hence
+    a guard rather than a runtime resolution.
+
+    THE SHARED ENTRY POINT between the two C-CANON halves (brief §4): the ROM half
+    supplies ``{canon/COLLECTION.md, canon/bible}``; the SEEDS/handbook half extends
+    it, with no edit to the rom emitter.  Spec §2c states the rule this enforces:
+    *"a template MUST NOT seed into ``canon/COLLECTION.md``, ``canon/bible/…`` or
+    ``canon/handbook/…``; seeds target ``canon/{notebook,workbook}`` ONLY."*
+    """
+    dests = sorted(set(bind_dests))
+    violations: list[str] = []
+    for rel in sorted(set(seed_rels)):
+        for dest in dests:
+            if rel == dest or rel.startswith(f"{dest}/"):
+                violations.append(f"{rel!r} is at/under the canon bind dest {dest!r}")
+    if violations:
+        raise RuntimeError(
+            "template seed collides with a canon RO bind (the mount SHADOWS the "
+            "copied file at the same path regardless of order, so the seeded "
+            "content would be silently invisible — never merged, never an error):\n"
+            + "\n".join(f"  - {v}" for v in violations)
+            + "\nSeeds target canon/{notebook,workbook} ONLY (spec §2c)."
+        )
 
 
 def rom_default_categories() -> dict[str, tuple[str, str, str]]:
-    """Build the per-FILE read-only rom binds as ``default_categories``.
+    """Build the TWO read-only CANON binds as ``default_categories`` (spec §2c).
 
-    Enumerates every shipped file under the packaged rom root
-    (:data:`ROM_ROOT_PARTS`) and emits ONE ``box.bindings.ro.<key>`` bind per file
-    that mounts it READ-ONLY at its mirrored guest ``~`` path.  This GENERALIZES the
-    retired single-special-case ``playbook_kanibako`` whole-dir RO bind: instead of a
-    hand-maintained ``core-defaults.yaml`` entry per rom subtree, ANY file dropped
-    anywhere under ``rom/`` is bound at ``~/<rom-relative path>`` by this loader —
-    the RO-bind dual of the per-file ``template/`` writable seed (both co-populate
-    ``~`` with zero directory collision because only the exact mirror FILES are
-    bound, leaving containing dirs — ``~/playbook``, ``~/playbook/kanibako`` — as
-    ordinary WRITABLE mountpoints).
+    ::
 
-    Granularity is per LEAF FILE, never per directory: a ``rom/playbook ->
-    ~/playbook`` RO bind would make the template-seeded writable ``~/playbook``
-    read-only (a fatal shadow), so every emitted dest is a FILE.
+        box.bindings.ro.canon_collection = (<rom>/canon/COLLECTION.md, ~/canon/COLLECTION.md, ro)
+        box.bindings.ro.canon_bible      = (<rom>/canon/bible,         ~/canon/bible,         ro)
 
-    Key = a deterministic ``rom_<slug>_<hash>`` where ``<slug>`` slugifies the
-    rom-relative posix path (every non-alphanumeric char → ``_``) and ``<hash>`` is
-    the first 6 hex of the sha256 of that rel path (slug-collision safety, e.g.
-    ``a/b.md`` vs ``a/b_md``).  The enumeration is SORTED so the key set is identical
-    across machines.
+    Both are INTERNAL/generated binds, not user keys: they are absent from every
+    set-time floor registry (:func:`core_default_bind_keys` covers home/workspace/
+    vault only), so ``config set`` refuses them exactly as it does ``kani_pkg`` and
+    ``images_conf``.  Spec §0's test — *"could a user reasonably want to override
+    it?"* — answers itself here: the one book a user cannot edit is also the one
+    they cannot repoint, and ``COLLECTION.md`` is the INDEX that defines the canon's
+    shape and load order, so a repointable index would mean no guaranteed structure.
 
-    FAIL-CLOSED guide guard: if the rom root exists and is non-empty but the
-    enumeration does NOT include the load-bearing guide (:data:`ROM_GUIDE_REL`), this
-    RAISES rather than launch a box missing the guide (guards the empty-glob /
-    wrong-root / over-broad-filter failure class).  An empty/absent rom root yields
-    an empty dict (a no-rom install) — that is fine.
+    ⚑ WHOLE-DIR, replacing the retired per-LEAF-FILE enumeration (and its
+    ``rom_<slug>_<hash>`` keys).  That enumeration existed for ONE reason — rom used
+    to land inside the template-seeded WRITABLE ``~/playbook``, where a directory
+    bind would have turned the user's own tree read-only.  ``~/canon/bible`` is a
+    dedicated root with no writable co-tenant, so the constraint is gone.
+    ``COLLECTION.md`` stays a FILE bind because ``~/canon`` ITSELF must remain
+    writable for the SEEDED ``notebook/`` + ``workbook/`` books.
 
-    DISJOINTNESS guard: the set of rom ``~``-relative file paths must NOT intersect
-    the ``template/`` writable-seed ``~``-relative file paths (computed via the SAME
-    walk).  An overlap is a content-design bug where an RO bind would silently shadow
-    a writable seed → RAISE.
+    FAIL-CLOSED guards (a mis-pathed or half-shipped canon must RAISE, never
+    silently launch a box with no directives):
+
+    * the guide is physically on disk but absent from the shipped-file walk → the
+      over-broad-filter / empty-glob / broken-walk class;
+    * the rom root is POPULATED but any of ``COLLECTION.md`` / the guide /
+      ``bible/`` / the ``bible/agent/`` mountpoint placeholder is missing.
+
+    An absent or genuinely EMPTY rom root yields an empty dict — a no-rom install,
+    which is fine.
+
+    DISJOINTNESS: delegated to :func:`assert_canon_bind_seed_disjoint` (prefix
+    containment against the template seed tree) — the shared entry point the
+    seeds/handbook sub-phase extends.
     """
     from kanibako import templates
 
@@ -372,9 +445,9 @@ def rom_default_categories() -> dict[str, tuple[str, str, str]]:
     rom_files = templates.walk_shipped_files(rom_root)
     rom_rels = {rel for rel, _ in rom_files}
 
-    # FAIL-CLOSED: the guide SHIPS under the rom root, so if that file is
-    # physically present on disk it MUST appear in the enumeration.  Anchoring the
-    # guard to the guide's on-disk presence (NOT to a non-empty filtered list)
+    # FAIL-CLOSED (a): the guide SHIPS under the rom root, so if that file is
+    # physically present on disk it MUST appear in the shipped-file walk.  Anchoring
+    # the guard to the guide's on-disk presence (NOT to a non-empty filtered list)
     # catches the over-broad-filter / empty-glob / broken-walk class where the walk
     # silently returns nothing while the guide still ships — that must RAISE, never
     # short-circuit to a guide-less launch (MEMORY: "check the file COUNT, never
@@ -382,38 +455,105 @@ def rom_default_categories() -> dict[str, tuple[str, str, str]]:
     guide_shipped = (rom_root / ROM_GUIDE_REL).is_file()
     if guide_shipped and ROM_GUIDE_REL not in rom_rels:
         raise RuntimeError(
-            "rom RO-bind enumeration is missing the load-bearing box guide "
+            "rom shipped-file walk is missing the load-bearing box guide "
             f"{ROM_GUIDE_REL!r} (the guide file ships under rom root {rom_root} but "
-            f"the enumeration produced {sorted(rom_rels)}); refusing to launch a "
-            "box without the guide."
+            f"the walk produced {sorted(rom_rels)}); refusing to launch a box "
+            "without the guide."
         )
 
-    # A genuinely empty rom root (the guide is not shipped here) is a no-rom
+    # A genuinely empty rom root (the guide is not shipped here either) is a no-rom
     # install — emit nothing.  Reached only when the guide is NOT on disk (the
     # fail-closed guard above already raised if it was).
     if not rom_files:
         return {}
 
-    # DISJOINTNESS: no rom RO file may collide with a template writable-seed file
-    # (same ~-relative path) — that would silently shadow the writable seed.
+    # FAIL-CLOSED (b): the rom root is POPULATED, so the WHOLE canon payload must be
+    # there.  Under a whole-dir bind an empty/half-shipped ``bible/`` no longer
+    # raises anything by itself (there is no per-file enumeration left to come up
+    # short), so each required member is checked explicitly.
+    required: list[tuple[str, bool]] = [
+        (ROM_COLLECTION_REL, (rom_root / ROM_COLLECTION_REL).is_file()),
+        (ROM_GUIDE_REL, guide_shipped),
+        (ROM_BIBLE_REL, (rom_root / ROM_BIBLE_REL).is_dir()),
+        (ROM_AGENT_CHAPTER_REL, (rom_root / ROM_AGENT_CHAPTER_REL).is_dir()),
+    ]
+    missing = [rel for rel, present in required if not present]
+    if missing:
+        raise RuntimeError(
+            f"the packaged canon under rom root {rom_root} is incomplete — missing "
+            f"{missing}. The rom root is populated, so this is a PACKAGING defect, "
+            "not a no-rom install; refusing to launch a box with a partial canon. "
+            f"(NOTE {ROM_AGENT_CHAPTER_REL!r} must exist as a real DIRECTORY: it is "
+            "the plugin chapter's nested mountpoint, and podman silently mkdirs a "
+            "missing one into this packaged tree.)"
+        )
+
+    # DISJOINTNESS: no template seed may land at or under a canon bind dest.
     template_root = templates._packaged_base_template()
     if template_root is not None:
-        template_rels = {rel for rel, _ in templates.walk_shipped_files(template_root)}
-        overlap = rom_rels & template_rels
-        if overlap:
-            raise RuntimeError(
-                "rom RO binds collide with template writable seeds at "
-                f"{sorted(overlap)} (an RO bind would shadow the writable seed); "
-                "a rom file and a template file must never map to the same ~ path."
-            )
+        assert_canon_bind_seed_disjoint(
+            (ROM_COLLECTION_REL, ROM_BIBLE_REL),
+            (rel for rel, _ in templates.walk_shipped_files(template_root)),
+        )
 
-    binds: dict[str, tuple[str, str, str]] = {}
-    for rel, path in rom_files:
-        slug = re.sub(r"[^A-Za-z0-9]", "_", rel)
-        digest = hashlib.sha256(rel.encode("utf-8")).hexdigest()[:6]
-        key = f"rom_{slug}_{digest}"
-        binds[f"box.bindings.ro.{key}"] = (str(path), f"~/{rel}", "ro")
-    return binds
+    return {
+        "box.bindings.ro.canon_collection": (
+            str(rom_root / ROM_COLLECTION_REL), f"~/{ROM_COLLECTION_REL}", "ro",
+        ),
+        "box.bindings.ro.canon_bible": (
+            str(rom_root / ROM_BIBLE_REL), f"~/{ROM_BIBLE_REL}", "ro",
+        ),
+    }
+
+
+def rom_agent_default_categories(
+    target: "Target",
+) -> dict[str, tuple[str, str, str]]:
+    """Build the PLUGIN's bible chapter bind — the SEVENTH canon bind (spec §2c).
+
+    ::
+
+        box.bindings.ro.canon_bible_agent = (<plugin pkg>/data/rom, ~/canon/bible/agent, ro)
+
+    Emitted by CORE from the RESOLVED *target*, beside the two core canon binds —
+    NOT by the plugin, and NOT through the agent-scope descriptor route.  That
+    choice is the whole design: an ``agent.<node>.bindings.ro.rom`` key would ride
+    ``agent_default_bind_keys`` into the set-time floor and make the bible's agent
+    chapter the SOLE repointable page of an otherwise unrepointable book, and it
+    would discriminate on the NODE (a persona) while the content is a property of
+    the HARNESS PACKAGE.  As a box-scoped INTERNAL bind there is no discriminator
+    at all, which is spec §2d's *"storage is varied, binding is not"* verbatim.
+
+    ⚑ bible/agent = per-HARNESS (packaged, one per plugin).  handbook/agent =
+    per-AGENT-NODE (host, ``agent.<agent>.canon``, personas included).  A persona
+    has no package, so it has no bible chapter; what it can have is a handbook
+    chapter.  Two books, two cardinalities, no overlap.
+
+    NESTING is by DESIGN, not a collision: this dest sits INSIDE ``canon_bible``'s,
+    so the plugin's chapter SHADOWS core's placeholder one (whole-directory
+    shadowing, never a merge — spec §2c).  The existing ASCENDING mount depth-sort
+    in :func:`~kanibako.settings_categories.reconcile_categories` already lands the
+    deeper dest last, and the collision table explicitly blesses nested-but-
+    different dests.
+
+    GATE — emit ONLY when the plugin actually ships a chapter (``rom_root`` exists
+    AND contains ``directives/ROM_AGENT.md``).  A plugin shipping a bare/empty
+    ``data/rom/`` would otherwise SHADOW core's placeholder chapter with nothing,
+    turning ``ROM_CONTENTS.md``'s ``@agent/directives/ROM_AGENT.md`` into a dangling
+    import.  (Belt: ``_emit_category_mounts`` drops a ro bind with a missing source
+    anyway — but with a per-launch WARNING, which is the wrong signal for the
+    perfectly ordinary "this plugin has no chapter".)
+    """
+    rom_root = target.rom_root()
+    if rom_root is None:
+        return {}
+    if not (rom_root / PLUGIN_CHAPTER_MARKER_REL).is_file():
+        return {}
+    return {
+        "box.bindings.ro.canon_bible_agent": (
+            str(rom_root), f"~/{ROM_AGENT_CHAPTER_REL}", "ro",
+        ),
+    }
 
 
 def helper_default_categories(

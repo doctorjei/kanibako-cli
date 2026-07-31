@@ -31,8 +31,9 @@ descriptor:
       scope: agent_critical
       ro: true
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
-    # delivered RO to ~/.config/kanibako/kickoff.md.  Its whole content is a single
-    # `@~/playbook/kanibako/directives/KANIBAKO.md` import — the entrypoint the
+    # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
+    # import `@~/canon/COLLECTION.md` (plus, for ONE transition release, the
+    # pre-canon `@~/playbook/kanibako/directives/KANIBAKO.md`) — the entrypoint the
     # box-start flattener resolves into the flattened per-agent FINAL file at codex's
     # native slot ~/.codex/AGENTS.md (named by KANIBAKO_DIRECTIVE_FINAL below).  The
     # start-time flatten + hook is a LATER increment; this declaration only ships the
@@ -131,6 +132,6 @@ descriptor:
   vscode_extension: openai.chatgpt
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →
-# ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box via the RO
-# `~/playbook/kanibako/` bundle + the flattened per-agent FINAL file (seeded by the
+# ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box INSIDE the RO
+# whole-dir canon bind at `~/canon/bible` + the flattened per-agent FINAL file (seeded by the
 # `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
