@@ -492,6 +492,7 @@ def _agent_mount(name: str, host: str, dest: str = "/box/x", opts: str = "ro"):
         delivery="MOUNT",
         options=opts,
         name=name,
+        key=f"agent.claude.bindings.ro.{name}",
     )
 
 
@@ -530,6 +531,7 @@ def test_delivery_ignores_non_agent_entries(tmp_path: Path):
     box_entry = CategoryEntry(
         category="bindings.rw", scope="box", box_dest="/home/agent",
         host_src=str(src), delivery="MOUNT", options="Z,U", name="home",
+        key="box.bindings.rw.home",
     )
     mounts = agent_delivery_mounts([box_entry], critical_keys=frozenset())
     assert mounts == []
@@ -1899,6 +1901,56 @@ def test_workset_anchor_floor_rejects_unknown_mode():
     # The three real modes are accepted.
     for mode in ("primary", "named", "standalone"):
         assert workset_anchor_floor(mode=mode)
+
+
+def test_workset_anchor_floor_refuses_an_undeclared_channel_leaf():
+    """The floor MANUFACTURES ``workset.channels.<leaf>`` from a caller mapping.
+
+    Without a check that is a free-form passthrough: whatever leaf the caller
+    invents becomes a key, which is exactly what spec §0's CLOSED keyspace
+    forbids — an undeclared key is not a key and must be REFUSED, not quietly
+    accepted. The error names the leaf so the fabrication is visible.
+    """
+    from kanibako.settings_launch import workset_anchor_floor
+
+    with pytest.raises(_SettingsError) as exc:
+        workset_anchor_floor(
+            mode="primary", workset_channels={"scratchpad": "/ws/scratchpad"},
+        )
+    assert "scratchpad" in str(exc.value)
+    assert "not a declared key" in str(exc.value)
+
+    # The leaves the live caller passes all survive, spelled as spec §2c keys.
+    floor = workset_anchor_floor(
+        mode="primary",
+        workset_channels={
+            "common": "/ws/channels/common",
+            "chat": "/ws/channels/chat",
+            "share": "/ws/channels/share",
+        },
+    )
+    assert floor["workset.channels.common"] == "/ws/channels/common"
+    assert floor["workset.channels.chat"] == "/ws/channels/chat"
+    assert floor["workset.channels.share"] == "/ws/channels/share"
+
+
+def test_workset_anchor_floor_allows_every_spec_declared_channel_leaf():
+    """The allowlist is the SPEC's family, not the subset today's caller passes.
+
+    Pinning it to the live call would refuse a declared key the moment a second
+    caller supplied one; the check exists to stop FABRICATION.
+    """
+    from kanibako.settings_launch import workset_anchor_floor
+
+    floor = workset_anchor_floor(
+        mode="named",
+        workset_channels={
+            leaf: f"/ws/{leaf}"
+            for leaf in ("common", "chat", "broadcast", "share", "mailboxes")
+        },
+    )
+    assert floor["workset.channels.broadcast"] == "/ws/broadcast"
+    assert floor["workset.channels.mailboxes"] == "/ws/mailboxes"
 
 
 def test_workset_anchor_floor_meta_box_path_per_mode():

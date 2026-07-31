@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping
 
 import pytest
 
-from kanibako.errors import ConfigError
+from kanibako.errors import CategoryCollisionError, ConfigError
 from kanibako.settings_categories import (
     COPY,
     ENV,
@@ -252,6 +252,7 @@ def flawed_oracle_categories(
                     delivery=delivery,
                     options=options,
                     name=name,
+                    key=f"{scope}.{category}.{name}",
                 ),
             )
         )
@@ -279,6 +280,7 @@ def flawed_oracle_categories(
                         delivery=_FROZEN_MOUNT,
                         options="ro",
                         name=box_dest,
+                        key=f"{scope}.masks.{raw_dest}",
                     ),
                 )
             )
@@ -306,6 +308,7 @@ def flawed_oracle_categories(
                     delivery=_FROZEN_ENV,
                     options=value,
                     name=var,
+                    key=f"{scope}.env.{var}",
                 ),
             )
         )
@@ -865,12 +868,21 @@ class TestIsCategoryKey:
 
 
 # ---------------------------------------------------------------------------
-# 4b — collision / precedence resolver (reconcile_categories)
+# 4b — collision resolver (reconcile_categories)
 #
-# Authority order (identical box_dest, later WINS): seed < cache < binding <
-# shared < synced < masks. Ties within a category -> box scope wins. synced
-# (COPY) vs binding (MOUNT) at the same dest -> ConfigError. MOUNTs emit
-# depth-sorted (shallow first). deliver_creds=False suppresses synced + cred seeds.
+# ⚑ These drive the LIVE ``reconcile_categories``. They live in this quarantined
+# file for history, not because they are frozen: the frozen thing here is
+# ``flawed_oracle_categories``, and moving these out would silently relocate the
+# drift tripwire. The spec §0 TABLE's own cases are in
+# ``tests/test_category_collisions.py``.
+#
+# The flat authority ladder (seed < cache < binding < common < synced < masks)
+# was DELETED in favour of the §0 table: two concrete declarations at one dest
+# ERROR; a mask OVERRIDES; an abstraction extending onto an occupied dest ERRORs;
+# abstraction-vs-abstraction is decided by scope, silently across scopes and with
+# a WARN within one. Unchanged: synced (COPY) vs binding (MOUNT) at one dest ->
+# ConfigError; MOUNTs emit depth-sorted (shallow first); deliver_creds=False
+# suppresses synced + cred seeds.
 # ---------------------------------------------------------------------------
 
 
@@ -880,13 +892,23 @@ def _reconcile(levels, ctx, *, deliver_creds=True, scope_roots=None):
     )
 
 
-def _entry(category, *, box_dest, scope="box", host_src="/h", is_credential=False):
-    """Build a CategoryEntry directly (bypasses parsing) for precise collisions."""
+def _entry(
+    category, *, box_dest, scope="box", host_src="/h", is_credential=False,
+    name=None,
+):
+    """Build a CategoryEntry directly (bypasses parsing) for precise collisions.
+
+    *name* defaults to *box_dest* (the historical shape). Pass it explicitly when
+    a case needs two DISTINCT declarations at one dest — under the spec §0
+    collision table the declaration KEY is what the outcome and the message are
+    stated in terms of, so two entries must not share one key.
+    """
     from kanibako.settings_categories import _DELIVERY, _bind_options
 
     delivery = _DELIVERY[category]
     host = None if category in ("masks", "env") else host_src
     options = _bind_options(category) if delivery == MOUNT else ""
+    leaf = box_dest if name is None else name
     return CategoryEntry(
         category=category,
         scope=scope,
@@ -894,47 +916,61 @@ def _entry(category, *, box_dest, scope="box", host_src="/h", is_credential=Fals
         host_src=host,
         delivery=delivery,
         options=options,
-        name=box_dest,
+        name=leaf,
+        key=f"{scope}.{category}.{leaf}",
         is_credential=is_credential,
     )
 
 
-class TestReconcileAuthorityOrder:
-    def test_identical_dest_full_authority_ladder(self):
-        # The authority ladder at one dest: each category beats every category
-        # BELOW it. synced<->binding is a hard error so it's never co-stacked;
-        # we test each rung against the rungs beneath it (excluding the
-        # synced/binding pairing, which has its own error test).
-        # seed < cache < binding < shared < synced < masks
+class TestReconcileCollisionTable:
+    def test_identical_dest_outcomes_follow_the_collision_table(self):
+        # RETIRED: the flat ladder ``seed < cache < binding < common < synced <
+        # masks`` resolved every rung silently. Under the spec §0 table, three of
+        # the six rungs below are now ERRORS (an abstraction meeting the concrete
+        # layer) and the rest are decided by rules that are not a total order.
         D = "/g/x"
-        for top, rest in [
-            ("masks", ["common", "bindings.rw", "caches", "seeded"]),
-            ("masks", ["synced", "common", "caches", "seeded"]),
-            ("synced", ["common", "caches", "seeded"]),
-            ("common", ["bindings.rw", "caches", "seeded"]),
-            ("bindings.rw", ["caches", "seeded"]),
-            ("caches", ["seeded"]),
-        ]:
-            entries = [_entry(c, box_dest=D) for c in rest] + [
-                _entry(top, box_dest=D)
-            ]
-            rec = reconcile_categories(entries)
-            winners = rec.mounts + rec.copies
-            assert len(winners) == 1, (top, winners)
-            assert winners[0].category == top, top
+        # Every stack that mixes the CONCRETE layer with an ABSTRACTION is row 3.
+        for rest in (
+            ["common", "bindings.rw", "caches", "seeded"],
+            ["bindings.rw", "caches", "seeded"],
+        ):
+            with pytest.raises(CategoryCollisionError) as exc:
+                reconcile_categories([_entry(c, box_dest=D) for c in rest])
+            assert exc.value.kind == "extension_onto_occupied"
+        # masks OVERRIDES an all-abstract + synced pile (row 2 + the unchanged
+        # cross-delivery rule: a tmpfs mask beats even a cred copy-sync).
+        rec = reconcile_categories([
+            _entry(c, box_dest=D)
+            for c in ("synced", "common", "caches", "seeded", "masks")
+        ])
+        assert [w.category for w in rec.mounts + rec.copies] == ["masks"]
+        # synced still beats every non-mask mount (cross-delivery, unchanged);
+        # the common/caches pair underneath it is a same-scope row-5 ambiguity.
+        rec = reconcile_categories([
+            _entry(c, box_dest=D) for c in ("common", "caches", "seeded", "synced")
+        ])
+        assert [w.category for w in rec.mounts + rec.copies] == ["synced"]
+        assert len(rec.warnings) == 1
+        # A mount beats a seeded copy (cross-delivery, unchanged).
+        rec = reconcile_categories([
+            _entry(c, box_dest=D) for c in ("seeded", "caches")
+        ])
+        assert [w.category for w in rec.mounts + rec.copies] == ["caches"]
 
-    def test_mask_beats_synced_beats_shared_beats_binding_beats_cache_beats_seed(
-        self,
-    ):
+    def test_mask_overrides_every_other_category_at_one_dest(self):
+        """Spec §0 row 2 — the ONE rung of the retired ladder that survives.
+
+        A mask says NOTHING MAY BE HERE, so it overrides whatever else lands at
+        the dest. The binding is deliberately absent: mixing the concrete layer
+        with an abstraction is row 3 (an error), which is asserted separately.
+        """
         ctx = make_ctx()
-        # Five categories piled on /g/x via config; mask is highest authority.
         levels = [
             LevelView(
                 "box",
                 {
                     "box.seeded.s": ["/h/s", "/g/x"],
                     "box.caches.c": ["/h/c", "/g/x"],
-                    "box.bindings.rw.b": ["/h/b", "/g/x"],
                     "box.common.h": ["/h/h", "/g/x"],
                     "box.masks": "/g/x",
                 },
@@ -944,6 +980,22 @@ class TestReconcileAuthorityOrder:
         winners = rec.mounts + rec.copies
         assert [w.category for w in winners] == ["masks"]
 
+    def test_mask_does_not_excuse_a_contradictory_pair_underneath_it(self):
+        """Rows 1/3 are evaluated BEFORE the row-2 override.
+
+        §0 states row 1 as "ERROR, always — any scope, any mode". A mask that
+        happens to cover a contradiction hides its consequence, not the
+        contradiction, so the error still fires. Pinned because the opposite
+        ordering is an equally implementable reading.
+        """
+        with pytest.raises(CategoryCollisionError) as exc:
+            reconcile_categories([
+                _entry("bindings.rw", box_dest="/g/x", name="b"),
+                _entry("common", box_dest="/g/x", name="h"),
+                _entry("masks", box_dest="/g/x"),
+            ])
+        assert exc.value.kind == "extension_onto_occupied"
+
     def test_seed_beats_nothing_alone_survives(self):
         # A lone seed at a dest with no higher-authority collider survives.
         rec = reconcile_categories([_entry("seeded", box_dest="/g/only")])
@@ -951,14 +1003,19 @@ class TestReconcileAuthorityOrder:
         assert rec.mounts == []
 
 
-class TestReconcileTieBreak:
-    def test_tie_within_category_box_scope_wins(self):
-        # Two bindings at the same dest from different scopes -> box wins.
+class TestReconcileScopePrecedence:
+    def test_two_bindings_at_one_dest_no_longer_tie_break_they_ERROR(self):
+        """INVERTED by spec §0 row 1 (was: the more specific scope won silently).
+
+        This is the M-7 upgrade hazard in one assertion: the exact configuration
+        that used to resolve to ``/box`` now refuses to launch.
+        """
         sys_e = _entry("bindings.rw", box_dest="/g/d", scope="system", host_src="/sys")
         box_e = _entry("bindings.rw", box_dest="/g/d", scope="box", host_src="/box")
-        rec = reconcile_categories([sys_e, box_e])
-        assert len(rec.mounts) == 1
-        assert rec.mounts[0].host_src == "/box"
+        with pytest.raises(CategoryCollisionError) as exc:
+            reconcile_categories([sys_e, box_e])
+        assert exc.value.kind == "binding_vs_binding"
+        assert exc.value.box_dest == "/g/d"
 
     def test_tie_within_category_box_wins_regardless_of_input_order(self):
         sys_e = _entry("caches", box_dest="/g/c", scope="system", host_src="/sys")

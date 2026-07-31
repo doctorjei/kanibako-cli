@@ -2261,6 +2261,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
     if action == ConfigAction.show:
         agent_state = None
         env_resolved = None
+        category_snapshot = None
+        category_error = None
         if args.effective:
             from kanibako.config import load_merged_config
             from kanibako.agent_config import (
@@ -2319,6 +2321,28 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 ws_env_path,
                 proj.metadata_path / "env",
             )
+            # The PATH-DELIVERY categories + their materialised derivations (§0):
+            # resolved off the SAME single launch pipeline a start takes, so the
+            # display cannot drift from what actually mounts. A collision is
+            # REPORTED rather than raised — this display is the M-7 detection
+            # recipe ("resolve the snapshot and look for duplicate dests"), so
+            # dying on the very fault it exists to surface would be backwards.
+            from kanibako.commands.start import _resolve_launch_snapshot
+            from kanibako.errors import KanibakoError
+            try:
+                category_snapshot, _ = _resolve_launch_snapshot(
+                    std=std, proj=proj, agent_name=agent_id,
+                    system_settings_path=std.settings,
+                    agent_cfg_path=agent_cfg_path,
+                    desc=None, install=None,
+                    target=target, agent_cfg=agent_cfg,
+                    # A DISPLAY verb must not write to disk: the core table's
+                    # vault create-if-missing is a LAUNCH guarantee, not a
+                    # read one. The binds are emitted either way.
+                    guarantee_create=False,
+                )
+            except KanibakoError as exc:
+                category_error = str(exc)
         return show_config(
             global_config_path=config_file,
             config_path=project_toml,
@@ -2328,6 +2352,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
             workset_path=workset_path,
             agent_state=agent_state,
             env_resolved=env_resolved,
+            category_snapshot=category_snapshot,
+            category_error=category_error,
         )
 
     if action == ConfigAction.get:

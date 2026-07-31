@@ -606,6 +606,14 @@ def start_mocks():
                 rec = reconcile_categories(
                     entries, deliver_creds=kw.get("deliver_creds", True),
                 )
+                # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
+                # ``meta.derived.*`` materialisation (``derive_binding_keys``) and
+                # emits the §0 row-5 collision warnings. This stub does NEITHER,
+                # because mirroring them would put a second copy of that seam in
+                # the test harness — the drift risk the single-route rule exists
+                # to avoid, and this snapshot carries no abstract declarations to
+                # derive from anyway. Tests that need either use the REAL path or
+                # call the functions directly (tests/test_category_collisions.py).
                 return snap, rec
 
             m_launch_mount_stubs[

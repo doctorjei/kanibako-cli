@@ -151,7 +151,8 @@ def channel_default_categories(
 
 
 def core_default_categories(
-    std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str
+    std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str,
+    guarantee_create: bool = True,
 ) -> dict[str, tuple[str, str, str]]:
     """Build the core box mounts as ``default_categories`` (step 3).
 
@@ -205,7 +206,14 @@ def core_default_categories(
             # Vault is UNIVERSAL unless disabled: ensure the source dir exists
             # (create-if-missing) so the bind is always emitted when enabled,
             # rather than silently dropped when the source happens to be absent.
-            src_path.mkdir(parents=True, exist_ok=True)
+            #
+            # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is
+            # still emitted with the same host_src, so a read-only consumer sees
+            # exactly what a launch would mount without making it so. It exists
+            # because ``box config show --effective`` resolves this same table:
+            # a DISPLAY verb must not write to disk.
+            if guarantee_create:
+                src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
         # An entry routed through an @-ref carries either a single ``meta_ref``
         # (MODE-INDEPENDENT — home and workspace) OR a ``mode_meta_ref`` PER-MODE

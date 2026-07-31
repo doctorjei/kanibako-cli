@@ -3642,3 +3642,314 @@ def test_meta_box_path_is_read_only_from_every_scope():
         assert "read-only" in err, scope
     # And it is never mistaken for a project name / settable key.
     assert is_known_key("meta.box.path") is False
+
+
+# ---------------------------------------------------------------------------
+# The SET-TIME resolution probe (spec §2a E3 / Q9) and what it does NOT touch
+# ---------------------------------------------------------------------------
+
+class TestSetTimeResolutionProbe:
+    """T16 — a dangling ``@``-ref is REFUSED in a value the EXPANDER will see.
+
+    Before this, the E3 probe was wired only at the CATEGORY set path, so a set
+    accepted a value whose ref does not resolve. For an expanded value that is
+    not inert: an embedded dangling ref is substituted with the EMPTY STRING
+    (§6b) and the key silently resolves to something else entirely.
+    """
+
+    def test_dangling_embedded_ref_is_refused_and_names_the_referent(self, tmp_path):
+        msg = set_config_value(
+            "workset.boxes", "@meta.nope.key/boxes",
+            config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.workset,
+        )
+        assert msg.startswith("Error:")
+        assert "meta.nope.key" in msg
+        assert not (tmp_path / "settings.yaml").exists()  # nothing written
+
+    def test_a_resolvable_ref_is_accepted(self, tmp_path):
+        cfg = tmp_path / "settings.yaml"
+        cfg.write_text("workset:\n  template: /ws/template\n")
+        msg = set_config_value(
+            "workset.boxes", "@workset.template/boxes",
+            config_path=cfg, cascade_workset_path=cfg,
+            command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+
+    def test_an_unrelated_pre_existing_defect_still_allows_the_set(self, tmp_path):
+        """``config set`` must stay usable to REPAIR a broken config: the probe
+        blocks only on the EDITED value's own transitive upstream chain."""
+        cfg = tmp_path / "settings.yaml"
+        cfg.write_text("workset:\n  logs: '@meta.also.nope/logs'\n")
+        msg = set_config_value(
+            "workset.boxes", "/abs/boxes",
+            config_path=cfg, cascade_workset_path=cfg,
+            command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+
+    def test_a_colon_in_a_scalar_value_is_ordinary_content(self, tmp_path):
+        """The ``src:dest`` refusal is a CATEGORY rule about the BIND SHAPE.
+
+        A scalar has no such shape — ``box.image = ghcr.io/…:latest`` is the
+        obvious case — so leaving that check ungated would have made the probe
+        unshippable the moment it reached a non-category key.
+        """
+        msg = set_config_value(
+            "box.image", "ghcr.io/doctorjei/kanibako-oci:latest",
+            config_path=tmp_path / "settings.yaml",
+        )
+        assert not msg.startswith("Error:"), msg
+        assert "ghcr.io/doctorjei/kanibako-oci:latest" in msg
+
+    def test_reset_is_untouched(self, tmp_path):
+        """Removing an override cannot introduce a dangling ref in the removed
+        value, so ``--reset`` does not run the probe."""
+        cfg = tmp_path / "settings.yaml"
+        cfg.write_text("box:\n  image: 'custom:v2'\n")
+        msg = reset_config_value("box.image", config_path=cfg)
+        assert not msg.startswith("Error:"), msg
+
+    def test_docker_env_values_are_DATA_not_syntax(self, tmp_path):
+        """A bare ``env.<VAR>`` never reaches the expander: ``shellenv.set_env_var``
+        writes it VERBATIM and the launch reads it verbatim into the container
+        env. So ``@`` and ``$`` in it are ordinary characters, and probing would
+        refuse legitimate values.
+
+        ⚑ The escape hatch cannot rescue this and must not be suggested:
+        ``jei\\@example.com`` passes the probe but lands in the file WITH the
+        backslash, because the write is verbatim while only the probe unescapes.
+        There is no CLI spelling that produces the right value — which is what
+        makes this an exclusion rather than a documented sharp edge.
+        """
+        env_path = tmp_path / ".env"
+        for var, value in (
+            ("EMAIL", "jei@example.com"),
+            ("MY_PATH", "$HOME/bin"),
+            ("GREETING", "hi @ $HOME"),
+        ):
+            msg = set_config_value(
+                f"env.{var}", value,
+                config_path=tmp_path / "settings.yaml", env_path=env_path,
+            )
+            assert not msg.startswith("Error:"), (var, msg)
+        text = env_path.read_text()
+        # Landed VERBATIM — no expansion, no escaping, no mangling.
+        assert "EMAIL=jei@example.com" in text
+        assert "MY_PATH=$HOME/bin" in text
+
+    def test_guest_side_dollar_in_a_docker_env_value_is_the_whole_point(self, tmp_path):
+        """``$HOME`` here is the GUEST's home — the variable deferral exists for
+        exactly this, so a host-side resolution check would be wrong twice over.
+        """
+        env_path = tmp_path / ".env"
+        set_config_value(
+            "env.MY_PATH", "$HOME/bin",
+            config_path=tmp_path / "settings.yaml", env_path=env_path,
+        )
+        assert env_path.read_text().strip().endswith("$HOME/bin")
+
+    def test_an_expanded_scalar_key_still_refuses_a_dangling_ref(self, tmp_path):
+        """The exclusion is the DOCKER family and nothing more.
+
+        A scalar whose value the expander DOES see stays LOUD — otherwise the
+        ruling would have quietly disarmed the check it was meant to narrow.
+        """
+        for key in ("box.shell", "box.secret_path.TOK"):
+            msg = set_config_value(
+                key, "@meta.nope.key/x",
+                config_path=tmp_path / f"{key.replace('.', '_')}.yaml",
+                command_scope=ConfigLevel.box,
+            )
+            assert msg.startswith("Error:"), (key, msg)
+            assert "meta.nope.key" in msg
+
+    def test_an_unknown_key_is_named_as_an_unknown_KEY(self, tmp_path):
+        """SHOULD-3 / spec §0: the error must NAME the key.
+
+        Probing first would diagnose the VALUE of a key that does not exist —
+        ``Unknown variable: $BAR`` instead of ``unknown config key: run_args`` —
+        which sends the reader after the wrong thing entirely.
+        """
+        msg = set_config_value(
+            "run_args", "--env FOO=$BAR", config_path=tmp_path / "settings.yaml",
+        )
+        assert msg == "Error: unknown config key: run_args"
+
+
+class TestSetDispatchCoverage:
+    """``_has_dedicated_route`` MIRRORS the ``set_config_value`` dispatch chain.
+
+    It exists so the E3 probe stays off keys nothing handles. If a dispatch
+    branch is added without a matching term, this drifts silently — so every
+    routing-table key and one representative of each special family is pinned.
+    """
+
+    def test_every_routing_table_key_has_a_route(self):
+        from kanibako.config_interface import _KEY_ROUTES, _has_dedicated_route
+
+        for key in _KEY_ROUTES:
+            assert _has_dedicated_route(key), key
+
+    def test_each_special_family_is_claimed(self):
+        from kanibako.config_interface import _has_dedicated_route
+
+        for key in (
+            "env.FOO",                            # docker .env
+            "agent.claude.bindings.ro.launcher",  # per-node descriptor bind
+            "agent.claude.secret_path.TOK",       # per-node secret
+            "box.secret_path.TOK",                # scope secret
+            "agent.claude.model",                 # persona setting
+            "model",                              # bare agent setting
+            "box.agent.model",                    # box agent mirror
+            "box.common.plugins",                 # path category
+            "system.cache",                       # system path tier
+        ):
+            assert _has_dedicated_route(key), key
+
+    def test_a_fabricated_key_is_claimed_by_nothing(self):
+        from kanibako.config_interface import _has_dedicated_route
+
+        for key in ("run_args", "box.env.FOO", "nonsense.key"):
+            assert not _has_dedicated_route(key), key
+
+    def test_the_probe_is_off_for_the_docker_env_and_category_families(self):
+        from kanibako.config_interface import _probes_at_set_time
+
+        for off in ("env.FOO", "box.common.plugins",
+                    "agent.claude.bindings.ro.launcher", "run_args"):
+            assert not _probes_at_set_time(off), off
+        for on in ("box.shell", "box.secret_path.TOK", "model", "box.image"):
+            assert _probes_at_set_time(on), on
+
+
+# ---------------------------------------------------------------------------
+# `--effective` renders the declaration AND the binding it derives (spec §0)
+# ---------------------------------------------------------------------------
+
+class TestEffectiveCategoryBlock:
+    """T15 — the materialisation is observable end-to-end (D6, box scope)."""
+
+    @staticmethod
+    def _snapshot():
+        from kanibako.commands.start import _install_derived_bindings
+        from kanibako.settings_categories import (
+            CategoryEntry,
+            derive_binding_keys,
+        )
+        from kanibako.settings_store import Bind, KeyStore
+
+        snapshot = KeyStore()
+        agent = KeyStore()
+        claude = KeyStore()
+        common = KeyStore()
+        common["plugins"] = Bind(
+            host="/store/agents/claude/common/plugins",
+            box="~/.claude/plugins", opts=None,
+        )
+        seeded = KeyStore()
+        seeded["template"] = Bind(host="/store/template", box="~", opts=None)
+        claude["common"] = common
+        claude["seeded"] = seeded
+        agent["claude"] = claude
+        snapshot["agent"] = agent
+        box = KeyStore()
+        bindings = KeyStore()
+        rw = KeyStore()
+        rw["home"] = Bind(host="/boxes/mybox/home", box="/home/agent", opts="Z,U")
+        bindings["rw"] = rw
+        box["bindings"] = bindings
+        snapshot["box"] = box
+        _install_derived_bindings(snapshot, derive_binding_keys([
+            CategoryEntry(
+                category="common", scope="agent",
+                box_dest="/home/agent/.claude/plugins",
+                host_src="/store/agents/claude/common/plugins",
+                delivery="MOUNT", options="Z,U", name="plugins",
+                key="agent.claude.common.plugins",
+            ),
+            CategoryEntry(
+                category="seeded", scope="agent",
+                box_dest="/home/agent", host_src="/store/template",
+                delivery="COPY", options="", name="template",
+                key="agent.claude.seeded.template",
+            ),
+        ]))
+        return snapshot
+
+    def _render(self, tmp_path):
+        import io
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            config_path=tmp_path / "settings.yaml",
+            effective=True,
+            file=buf,
+            category_snapshot=self._snapshot(),
+        )
+        return buf.getvalue()
+
+    def test_declaration_and_derived_binding_print_adjacently(self, tmp_path):
+        lines = self._render(tmp_path).splitlines()
+        decl = next(
+            i for i, ln in enumerate(lines)
+            if ln.strip().startswith("agent.claude.common.plugins =")
+        )
+        assert lines[decl + 1].strip().startswith(
+            "meta.derived.agent.claude.common.plugins ="
+        )
+        # The declaration carries the DEFERRED box-side ``~``; the derivation
+        # carries the resolved guest dest. Seeing both is the point.
+        assert "~/.claude/plugins" in lines[decl]
+        assert "/home/agent/.claude/plugins" in lines[decl + 1]
+
+    def test_the_derivation_line_states_its_DELIVERY(self, tmp_path):
+        """N2 — ``seeded`` derives a COPY, not a mount (spec §0), and the two are
+        not interchangeable: a mount is live and shadows the dest, a copy runs
+        once at create and is then the box's own file. A reader who cannot tell
+        them apart cannot answer the question this display exists for."""
+        text = self._render(tmp_path)
+        assert "meta.derived.agent.claude.seeded.template" in text
+        seeded_line = next(
+            ln for ln in text.splitlines()
+            if "meta.derived.agent.claude.seeded.template" in ln
+        )
+        assert seeded_line.rstrip().endswith("(copy)")
+        common_line = next(
+            ln for ln in text.splitlines()
+            if "meta.derived.agent.claude.common.plugins" in ln
+        )
+        assert common_line.rstrip().endswith("(mount)")
+
+    def test_concrete_bindings_are_listed_too(self, tmp_path):
+        text = self._render(tmp_path)
+        assert "box.bindings.rw.home = /boxes/mybox/home -> /home/agent" in text
+
+    def test_the_bare_agent_form_is_never_printed(self, tmp_path):
+        """``agent.<category>`` is not a key (spec §0 L21), so a display that
+        spelled it would teach a shape the keyspace forbids."""
+        text = self._render(tmp_path)
+        assert "agent.common" not in text
+        assert "agent.bindings" not in text
+
+    def test_a_collision_is_REPORTED_rather_than_raised(self, tmp_path):
+        """This display is M-7's own detection recipe ("resolve the snapshot and
+        look for duplicate dests"), so dying on the fault it exists to surface
+        would be backwards."""
+        import io
+
+        buf = io.StringIO()
+        rc = show_config(
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            config_path=tmp_path / "settings.yaml",
+            effective=True,
+            file=buf,
+            category_error=(
+                "Two bindings target the same box destination '/home/agent':\n"
+                "    system.bindings.ro.home  ->  /a\n"
+            ),
+        )
+        assert rc == 0
+        assert "Two bindings target the same box destination" in buf.getvalue()

@@ -309,7 +309,8 @@ def validate_config_set(
 
     Severity (spec §2a, the Q9 + E3 ruling):
 
-    * **Error** — malformed syntax / the forbidden ``:`` ``src:dest`` notation; a
+    * **Error** — malformed syntax / the forbidden ``:`` ``src:dest`` notation
+      (CATEGORY keys only — a colon is ordinary content in a scalar value); a
       typed-scalar type mismatch; OR the edited value's own transitive upstream
       chain stays unresolvable post-edit (``resolves`` returns a reason — a
       dangling ``@``-ref / unknown ``$VAR`` / cycle the edit does NOT fix).
@@ -322,8 +323,16 @@ def validate_config_set(
     #    delimiter; a tuple is never a colon-joined string). ``split_bind`` returns
     #    a non-None 2nd half iff an UNESCAPED ``:`` is present — the exact parse the
     #    resolver uses, so an ESCAPED ``\:`` (a literal colon in a path) is allowed.
+    #
+    #    ⚑ CATEGORY-ONLY, like step 1b beneath it. The rule is about the BIND
+    #    SHAPE: a category value is a structured pair, so a colon in it means the
+    #    author reached for the forbidden joined spelling. A SCALAR key has no
+    #    such shape and a colon in it is ordinary content — ``endpoint =
+    #    https://api.anthropic.com`` is the obvious case. Ungated, this refused
+    #    every such value the moment a scalar caller existed, which is exactly
+    #    what happened when the E3 probe was wired to the scalar path.
     _src, dest = split_bind(value)
-    if dest is not None:
+    if is_category and dest is not None:
         return Error(
             f"'{key}': the ':' src:dest notation is not allowed "
             f"(config set is source-only; got {value!r}). Use the value alone; "
