@@ -345,11 +345,9 @@ def as_opt_path(value: Any) -> Path | None:
 
     The optional-path variant of :func:`as_path` for a finite-view field whose
     spec value is a path OR ``<None>`` (a whole-value ``@``-ref None terminal that
-    survived as a real ``None`` leaf — e.g. ``meta.box.settings`` /
-    ``meta.box.share_workset`` for STANDALONE, spec §2c L472/L469; note
-    ``meta.runtime.ws_settings`` is UNIFORM-non-None since P6c 2026-07-04). A
-    present ``None`` is honest and returned as-is; a non-str / non-None leaf is
-    rejected (never laundered).
+    survived as a real ``None`` leaf — e.g. ``meta.box.share_workset`` for
+    STANDALONE, spec §2c L469).  A present ``None`` is honest and returned as-is; a
+    non-str / non-None leaf is rejected (never laundered).
     """
     if value is None:
         return None
@@ -455,16 +453,17 @@ class MetaRuntimeView(FiniteView):
     """Typed finite view over the ``meta.runtime`` NODE (block B1, spec §1A L230-241).
 
     Surfaces the runtime-resolved identity anchors at their EXACT types: the
-    workset root (``ws_root`` — a resolved ``Path``), the workset settings file
-    (``ws_settings`` — a ``Path`` for ALL modes since P6c 2026-07-04, incl.
-    standalone whose ``<root>/settings.yaml`` plays the workset tier; spec §1A
-    L261-262), and the resolved mode token (``project_type`` — a ``str``,
-    one of ``"primary"`` / ``"named"`` / ``"standalone"``). Read-only; wraps
-    ``store.meta.runtime``. ADDITIVE — no consumer reads it yet (B1).
+    workset root (``ws_root`` — a resolved ``Path``) and the resolved mode token
+    (``project_type`` — a ``str``, one of ``"primary"`` / ``"named"`` /
+    ``"standalone"``). Read-only; wraps ``store.meta.runtime``. ADDITIVE — no
+    consumer reads it yet (B1).
+
+    ⚑ There is NO ``ws_settings`` field: ``meta.runtime.ws_settings`` is CUT from the
+    keyspace (spec §1A L367-368). The workset-tier settings FILE is
+    ``MetaWorksetView.settings``, which now spells itself directly off ``ws_root``.
     """
 
     ws_root: Path = typed_field(as_path)  # type: ignore[assignment]
-    ws_settings: "Path | None" = typed_field(as_opt_path)  # type: ignore[assignment]
     project_type: str = typed_field(as_str)  # type: ignore[assignment]
 
 
@@ -484,8 +483,11 @@ class MetaBoxView(FiniteView):
     * ``share_global`` (B2) — this box's system-scope share dir (spec §2c L468).
     * ``share_workset`` (B2) — this box's workset-local share dir, ``None`` for
       STANDALONE (spec §2c L469).
-    * ``settings`` (P6c) — the RO box-TIER settings-file path (spec §2c L493), or
-      ``None`` for STANDALONE (box tier EMPTY, spec §2c L472).
+    * ``settings`` — the RO box-TIER settings-file path, UNIFORM in every mode (spec
+      §2c ALL PROJECTS L817). Standalone's is ``<root>/box_data/settings.yaml``, a
+      real path that is merely ABSENT BY DEFAULT (§5 L1407) — NOT a ``None`` terminal.
+      (Typed ``Path | None`` because a narrow/partial resolve may materialize no box
+      tier; the launch always supplies one.)
 
     Read-only; wraps ``store.meta.box``. (``container_name`` / ``helper_num`` are
     a non-bind RENDER, not materialized here — JC-B2-3.)
@@ -504,9 +506,10 @@ class MetaWorksetView(FiniteView):
     """Typed finite view over the ``meta.workset`` NODE (block B1 + B2, spec §1A/§2c).
 
     Exposes the single-source-re-rooted ``path`` (= ``@meta.runtime.ws_root``, a
-    resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_settings``, a
-    ``Path`` for ALL modes since P6c 2026-07-04 incl. standalone — spec §1A
-    L261-262), plus the
+    resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_root/settings.yaml``, a
+    ``Path`` for ALL modes incl. standalone, whose ROOT file plays the workset tier —
+    spelled directly off ``ws_root`` now that the ``meta.runtime.ws_settings`` hop is
+    CUT, spec §1A L367-368), plus the
     ``name`` partition token (``__PRIMARY__`` / ``<named>`` / ``__STANDALONE__``) —
     now the ``@meta.runtime.ws_name`` anchor (block B1, single source, spec §1A/§2c
     2026-07-04; was a direct B2 literal). Read-only; wraps ``store.meta.workset``.

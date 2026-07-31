@@ -349,11 +349,17 @@ class TestEffectiveBootstrapResolution:
 
     def _proj(self, tmp_path):
         from types import SimpleNamespace
+        from kanibako.paths import BoxMode
         box_dir = tmp_path / "box"
         box_dir.mkdir()
-        # group=None → standalone (no workset-tier file); keeps the test focused
-        # on the system/agent cascade.
-        return SimpleNamespace(metadata_path=box_dir, group=None)
+        # PRIMARY with no group → the tier pair is (box_dir/settings.yaml, None):
+        # a box tier and NO workset-tier file, which keeps the test focused on the
+        # system/agent cascade.  ``mode`` is required because the tier pair is
+        # mode-aware (``box_workset_settings_paths``); it is NOT standalone — that
+        # mode's box tier would be box_dir/box_data/settings.yaml.
+        return SimpleNamespace(
+            metadata_path=box_dir, group=None, mode=BoxMode.primary,
+        )
 
     def test_default_is_tmux_when_unset(self, tmp_path):
         from kanibako.commands.start import _effective_bootstrap

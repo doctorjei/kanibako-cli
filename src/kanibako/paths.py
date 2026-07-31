@@ -52,6 +52,14 @@ class BoxMode(Enum):
     standalone = "standalone"
 
 
+# The STANDALONE box-store dir name.  It is ``@meta.box.path`` for a standalone box
+# (the empty leaf of ``@workset.boxes``, spec §2c L759) and half of the §5 detection
+# marker (``box_data/`` dir + the ROOT ``settings.yaml``).  Defined here, at the top,
+# because ``_box_settings_files`` below needs it and it is a LAYOUT constant, not a
+# detail of the detection helper that used to own it.
+_STANDALONE_META_DIR = "box_data"
+
+
 class DetectionResult(NamedTuple):
     """Result of box mode detection.
 
@@ -285,35 +293,92 @@ class ProjectPaths:
     group: ProjectGroup | None = field(default=None)
 
 
-def box_workset_settings_paths(
-    proj: ProjectPaths,
-) -> tuple[Path | None, Path | None]:
-    """THE mode-aware launch-cascade ``(box_tier, workset_tier)`` settings-file pair
-    (P6c standalone TIER MODEL, spec §2c L472/L493).
+def _standalone_settings_files(root: Path) -> tuple[Path, Path]:
+    """The STANDALONE ``(box_tier, workset_tier)`` pair — BOTH always real paths.
 
-    The SINGLE SOURCE for which files the launch cascade mounts as the box tier and
-    the workset tier — used by ``start.py``'s snapshot resolvers AND to materialize
-    the ``meta.box.settings`` anchor, so the two cannot drift:
+    The standalone arm of :func:`_box_settings_files`, split out because it is the one
+    mode whose workset tier is unconditional (it is the project ROOT file, not a
+    ``ProjectGroup`` lookup that can come back ``None``).  Callers inside the
+    standalone resolver need that stronger type — they read and write both files — and
+    getting it from the type system beats asserting it at each site.  Still ONE
+    derivation: ``_box_settings_files`` delegates here rather than restating it.
+    """
+    return root / _STANDALONE_META_DIR / BOX_META_FILE, root / BOX_META_FILE
+
+
+def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path:
+    """The DIR holding a box's own metadata — home, session state, box tier.
+
+    Equals ``metadata_path`` for primary/named, but for STANDALONE
+    ``metadata_path`` is the PROJECT ROOT, whose box metadata lives one level down
+    in ``box_data/`` (beside ``workspace/`` and ``vault/``, which are NOT box
+    metadata).
+
+    ⚑ Lifecycle ops (convert / move / duplicate) must copy from HERE, not from
+    ``metadata_path``.  Copying a standalone ROOT "as if it were box metadata"
+    both drags the workspace + vault into the destination's box dir AND delivers
+    the source's WORKSET-tier file to the destination's BOX tier — which after P2
+    means the real box settings (one level down) are never read again.
+    """
+    if mode is BoxMode.standalone:
+        return metadata_path / _STANDALONE_META_DIR
+    return metadata_path
+
+
+def _box_settings_files(
+    mode: BoxMode,
+    metadata_path: Path,
+    group: "ProjectGroup | None",
+) -> tuple[Path, Path | None]:
+    """THE ``(box_tier, workset_tier)`` settings-file derivation (spec §2c).
+
+    ONE expression, spelled ONCE.  ``meta.box.settings`` is the UNIFORM
+    ``@meta.box.path/settings.yaml`` in EVERY mode (spec §2c ALL PROJECTS L817), so
+    the box tier is ALWAYS a real path — never ``None``:
 
     * **primary / named** — box tier = the box's own ``<metadata_path>/settings.yaml``
-      (``BOX_META_FILE``); workset tier = ``workset_settings_path(proj.group)`` (the
-      workset root's ``settings.yaml``). UNCHANGED from pre-P6c.
-    * **standalone** — box tier = ``None`` (EMPTY: a lone box is a one-box workset, so
-      it has no distinct box-tier file); workset tier = the box's single
-      ``<metadata_path>/settings.yaml``, which now plays the WORKSET tier. A
-      ``box.*`` key set in that file still resolves for box scope via R2
-      downward-defaults (``box`` ⊂ ``workset`` in ``SCOPE_CONTAINMENT`` — the
-      workset-tier read KEEPS ``box.*``).
+      (``BOX_META_FILE``, which IS ``@meta.box.path`` for these modes); workset tier =
+      ``workset_settings_path(group)`` (the workset root's ``settings.yaml``).
+    * **standalone** — ``@meta.box.path`` is the ``box_data/`` marker dir (the empty
+      leaf of ``@workset.boxes``), so the box tier is
+      ``<root>/box_data/settings.yaml`` — **ABSENT BY DEFAULT** (spec §5 L1407): an
+      absent file is an empty tier, and ``config_io.load_doc`` yields ``{}`` for it,
+      so a standalone box with no box file resolves byte-identically to one with no
+      box tier at all.  The workset tier is the ROOT ``<root>/settings.yaml`` — the
+      file that plays the WORKSET tier for a degenerate one-box workset, and the file
+      §5 DETECTION reads (``box_resolve.standalone_settings_present``).  A ``box.*``
+      key stored THERE still resolves for box scope via R2 downward-defaults
+      (``box`` ⊂ ``workset`` in ``SCOPE_CONTAINMENT`` — the workset-tier read KEEPS
+      ``box.*``), which is exactly how a pre-P2 standalone box keeps working with no
+      migration.
 
-    This is the LAUNCH-CASCADE view ONLY: a standalone ``config set`` still WRITES
-    to ``<metadata_path>/settings.yaml`` (the write target is unchanged); P6c only
-    mounts that file as the workset tier at launch.
+    ⚑ This pair is the SINGLE SOURCE for READ, WRITE **and** ANCHOR (M-8): the launch
+    cascade's ``box_path``/``workset_path``, the ``meta.box.settings`` anchor, and the
+    ``config set`` / ``get`` / ``show`` / ``reset`` target all derive from here.  A
+    second, independent spelling of either path is the M-8 bug ("I set it and nothing
+    changed") and must not be re-introduced.
+
+    ⚑ The return type says ``Path``, not ``Path | None``, deliberately: the
+    non-optional box tier is TYPE-CHECKED, so mypy rejects any re-introduction of a
+    ``None`` box tier and flags any stale ``is None`` narrowing at a call site.
+
+    Takes the three primitives rather than a :class:`ProjectPaths` because the
+    standalone/primary/named resolvers must consult it WHILE that dataclass is still
+    being constructed (``enable_vault`` is read before the instance exists).
+    :func:`box_workset_settings_paths` is the ``ProjectPaths`` adapter.
     """
-    box_meta = proj.metadata_path / BOX_META_FILE
-    if proj.mode is BoxMode.standalone:
-        # Box tier EMPTY; the single <root>/settings.yaml plays the workset tier.
-        return None, box_meta
-    return box_meta, workset_settings_path(proj.group)
+    if mode is BoxMode.standalone:
+        return _standalone_settings_files(metadata_path)
+    return metadata_path / BOX_META_FILE, workset_settings_path(group)
+
+
+def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
+    """The :class:`ProjectPaths` ADAPTER over :func:`_box_settings_files`.
+
+    The name every caller uses.  Carries no logic of its own — the derivation lives
+    in one place so the pair cannot be spelled twice.
+    """
+    return _box_settings_files(proj.mode, proj.metadata_path, proj.group)
 
 
 class _WorksetLike(Protocol):
@@ -982,13 +1047,17 @@ def resolve_project(
     # CASCADE override (which wins naturally), NOT a stored shell path.  The
     # ``shell``/``vault_*`` fields are no longer written to disk at all under sparse
     # create (P8b/Option A) — they are always the spec-derived default location.
-    project_toml = metadata_path / BOX_META_FILE
+    project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
     shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
         std, metadata_path, project_name or metadata_path.name,
     )
     # enable_vault (P5a): an explicit param wins; otherwise the stored box-scope
     # ``box.enable_vault`` (absent ⇒ True).  Decoupled from box identity — which
     # now derives from the registries (``box_resolve``), not ``read_project_meta``.
+    # NO ``default_from``: PRIMARY reads the box tier ONLY, exactly as before P2.
+    # Extending the R2 workset fallback here would make a workset-tier
+    # ``box.enable_vault`` — today an inert silent no-op — go live for every box in
+    # the workset; a real defect, tracked separately, deliberately NOT this phase's.
     actual_vault_enabled = (
         enable_vault if enable_vault is not None
         else read_box_enable_vault(project_toml)
@@ -1042,7 +1111,7 @@ def resolve_project(
         shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
             std, metadata_path, project_name,
         )
-        project_toml = metadata_path / BOX_META_FILE
+        project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
 
         # Creation ownership for the unwind below: capture whether the box dir
         # ALREADY existed at its FINAL (post-``name_override`` reassignment) path,
@@ -1383,9 +1452,6 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
             best = registered
             best_depth = depth
     return best
-
-
-_STANDALONE_META_DIR = "box_data"
 
 
 def _is_standalone_meta_dir(root: Path) -> bool:
@@ -1871,7 +1937,7 @@ def resolve_workset_project(
     # ``resolved.workspace`` read (P7 drops that consumer).  *project_path* (the
     # ``workspaces/<name>`` symlink for a connect) resolves through the symlink,
     # so it path-matches the registered external entry.
-    project_toml = metadata_path / BOX_META_FILE
+    project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
     from kanibako import box_resolve
     identity = box_resolve.resolve_box_identity(project_path, std, config)
     if identity is not None:
@@ -1886,6 +1952,8 @@ def resolve_workset_project(
     )
     # enable_vault (P5a): explicit param wins; else the stored box-scope
     # ``box.enable_vault`` (absent ⇒ True), read via the box-settings path.
+    # NO ``default_from``: NAMED reads the box tier ONLY, exactly as before P2 (see
+    # the PRIMARY resolver for why the R2 workset fallback is standalone-only).
     actual_vault_enabled = (
         enable_vault if enable_vault is not None
         else read_box_enable_vault(project_toml)
@@ -2395,7 +2463,16 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
         return proj
     from kanibako import kuid
 
-    settings_file = proj.metadata_path / BOX_META_FILE
+    # ``workset.kuid`` / ``workset.skip_kuid_check`` are WORKSET-scope keys, so they
+    # are read from the WORKSET tier of the ONE pair — for standalone that is the ROOT
+    # ``settings.yaml``, exactly where ``establish_standalone`` writes them.  Sourced
+    # from the pair rather than re-spelled, so this cannot drift from the writer.
+    _, settings_file = box_workset_settings_paths(proj)
+    if settings_file is None:
+        # Unreachable for standalone (its workset tier is the ROOT file, always a
+        # path).  The guard exists so the reads below are TYPED — it is not handling
+        # a real case.
+        return proj
     value = read_workset_kuid(settings_file)
     if (
         value != kuid.SENTINEL
@@ -2453,12 +2530,15 @@ def establish_standalone(
        ``registry.standalone``) when *name* is empty, otherwise honoring the
        supplied (lowercased) ``--name``: a verbatim canonical id if free (else
        refuse), or a fresh prefix over the supplied string as the leaf;
-    2. writes a SPARSE ``<root>/settings.yaml`` (P8b/Option A): the settable
-       ``workset.kuid`` (which MATERIALIZES the file — the standalone marker) plus
-       a NON-default ``box.enable_vault``.  NO ``project:``/``resolved:`` identity
-       is written — the name/mode/workspace derive from ``registry.standalone`` +
-       the live kuid.  The file lives at the ROOT (the ``box_data/`` marker dir
-       holds only ``home/`` + the ``<box>.jsonl`` helper log);
+    2. writes the SPARSE settings, each key AT ITS OWN SCOPE'S TIER (M-8): the
+       workset-scope ``workset.kuid`` into the ROOT ``<root>/settings.yaml`` (which
+       MATERIALIZES that file — half the §5 standalone detection marker), and a
+       NON-default box-scope ``box.enable_vault`` into the BOX tier
+       ``<root>/box_data/settings.yaml`` — the SAME file ``config set box.*`` writes,
+       so create and set can never disagree.  A default-vault box therefore writes NO
+       box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§5 L1407).  NO
+       ``project:``/``resolved:`` identity is written — the name/mode/workspace derive
+       from ``registry.standalone`` + the live kuid;
     3. registers the box in ``registry.standalone`` (``box_name`` → *root*).
 
     *root* is the standalone project dir.  The box-data dir (``root/box_data``)
@@ -2482,16 +2562,19 @@ def establish_standalone(
     existing = registry_store.standalone_box_names(std.registry)
     box_name = box_identity.resolve_standalone_name(root, name, existing)
 
-    settings_file = root / BOX_META_FILE
+    box_settings, settings_file = _standalone_settings_files(root)
     # Sparse create (P8b/Option A): NO ``project:``/``resolved:`` identity — the
     # standalone box's name is registered in ``registry.standalone`` (below) and
     # re-composed LIVE from the sparse ``workset.kuid`` (written just below) +
-    # the dir leaf.  Only a NON-default ``box.enable_vault`` is persisted here;
-    # the settings.yaml FILE (the standalone marker, alongside ``box_data/``) is
-    # still MATERIALIZED unconditionally by the ``workset.kuid`` write below.
-    write_box_enable_vault(settings_file, enable_vault)
-    # Persist the GENERATED kuid as the settable ``workset.kuid`` key (P6d), sparsely
-    # (read-modify-write, merging with the sparse ``box.enable_vault`` above) via the
+    # the dir leaf.  Only a NON-default ``box.enable_vault`` is persisted, and it goes
+    # to the BOX tier (``box_data/settings.yaml``) because it is a box-scope key —
+    # the same file ``config set box.enable_vault`` writes (M-8: ONE write target).
+    # The ROOT settings.yaml (the standalone marker, alongside ``box_data/``) is
+    # MATERIALIZED unconditionally by the ``workset.kuid`` write below, so moving the
+    # box key out does NOT cost the file detection needs.
+    write_box_enable_vault(box_settings, enable_vault)
+    # Persist the GENERATED kuid as the settable ``workset.kuid`` key (P6d) into the
+    # WORKSET tier (the ROOT file — kuid is a workset-scope key), sparsely, via the
     # SAME keystore sparse-write engine ``config set`` uses — [[settings-must-map-to-keystore-key]].
     # The kuid IS the name's prefix (``box_identity.standalone_kuid``); storing it
     # makes it the STABLE cross-move handle (the launch re-composes the name as
@@ -2551,7 +2634,10 @@ def resolve_standalone_project(
     metadata_path = root
     box_data = root / _STANDALONE_META_DIR
     project_path = root / "workspace"
-    project_toml = root / BOX_META_FILE
+    # The mode-aware tier pair from the ONE derivation (M-8): the BOX tier is
+    # ``box_data/settings.yaml`` (absent by default) and the WORKSET tier is the ROOT
+    # ``settings.yaml`` — the file §5 detection reads and where ``workset.kuid`` lives.
+    box_settings, project_toml = _standalone_settings_files(root)
 
     # STANDALONE paths are ALWAYS derived from the (current) root, never the
     # stored absolutes: a standalone tree is drop-in portable, so a moved/
@@ -2560,10 +2646,13 @@ def resolve_standalone_project(
     # live at the fixed box_data/home + <root>/vault/{ro,rw} positions.
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
     # enable_vault (P5a): explicit param wins; else the stored box-scope
-    # ``box.enable_vault`` (absent ⇒ True), read via the box-settings path.
+    # ``box.enable_vault`` — read from the BOX tier, falling back to the WORKSET tier
+    # (the ROOT file) as an R2 downward-default.  That fallback is what keeps a
+    # pre-P2 standalone box, whose value was written to the root file, working with
+    # no migration (M-8).
     actual_vault_enabled = (
         enable_vault if enable_vault is not None
-        else read_box_enable_vault(project_toml)
+        else read_box_enable_vault(box_settings, default_from=project_toml)
     )
 
     # Box identity name (P8a): sourced from ``box_resolve`` for a MATERIALIZED

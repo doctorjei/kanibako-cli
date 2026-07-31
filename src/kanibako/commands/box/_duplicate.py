@@ -7,7 +7,12 @@ import shutil
 import sys
 from pathlib import Path
 
-from kanibako.config import config_file_path, load_config
+from kanibako.config import (
+    carried_box_settings,
+    config_file_path,
+    load_config,
+)
+from kanibako.config_io import dump_doc
 from kanibako.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
@@ -15,6 +20,8 @@ from kanibako.paths import (
     _resolve_local_dir,
     _resolve_workset_or_connected,
     assign_primary_box_name,
+    box_metadata_dir,
+    box_workset_settings_paths,
     xdg,
     detect_project_mode,
     load_std_paths,
@@ -212,7 +219,9 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     dst_metadata = new_path / _STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
-    dst_settings = new_path / BOX_META_FILE
+    # (The destination ROOT settings.yaml is written by ``establish_standalone`` below
+    # — it is the WORKSET tier and carries the FRESH workset.kuid, never a copy of the
+    # source's.  The box tier is ``dst_metadata / BOX_META_FILE``, handled further down.)
 
     # Ensure new_path exists for bare duplicates.
     new_path.mkdir(parents=True, exist_ok=True)
@@ -233,15 +242,21 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
             shutil.rmtree(dst_shell)
         shutil.copytree(src_proj.shell_path, dst_shell)
 
-    # Copy the source settings.yaml to the destination ROOT so establish can
-    # preserve any non-identity sections (e.g. agent config) when it rewrites
-    # the meta in place.
-    src_settings = src_proj.metadata_path / BOX_META_FILE
-    if src_settings.is_file():
-        if force and dst_settings.exists():
-            dst_settings.unlink()
-        if not dst_settings.exists():
-            shutil.copy2(src_settings, dst_settings)
+    # Carry the source's box-scope settings into the destination's BOX TIER (M-8) —
+    # box tier first, with a pre-P2 standalone source's root-stored ``box.*`` keys
+    # underlaid (:func:`kanibako.config.carried_box_settings`).  Without that underlay
+    # EVERY box created before the box tier existed loses box.image & friends on the
+    # first duplicate.  ``establish_standalone`` below then read-modify-writes
+    # ``box.enable_vault`` into this SAME file, preserving what was carried, and
+    # writes the FRESH ``workset.kuid`` to the destination ROOT.
+    src_box, src_ws = box_workset_settings_paths(src_proj)
+    carried = carried_box_settings(src_box, src_ws)
+    dst_box_settings = dst_metadata / BOX_META_FILE
+    if carried:
+        if force and dst_box_settings.exists():
+            dst_box_settings.unlink()
+        if not dst_box_settings.exists():
+            dump_doc(dst_box_settings, carried)
 
     # Establish the canonical standalone shape (mode=standalone, a FRESH
     # <kuid>_<leaf> identity even from a standalone source, the standalone
@@ -313,7 +328,6 @@ def _assert_dup_home_free(std, name: str) -> None:
 def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into default-mode layout for new_path."""
     from kanibako.config import BOX_META_FILE
-    from kanibako.paths import BoxMode
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
@@ -330,17 +344,17 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # (name already unwound); callers surface it.  No-op for a fresh dup name.
     _assert_dup_home_free(std, project_name)
 
-    # The source box's metadata dir (home + agent/session state + settings.yaml):
-    # for primary/named it is ``metadata_path`` (boxes/<name>/), but for a
-    # standalone source ``metadata_path`` is the project ROOT — its box metadata
-    # lives in ``box_data/`` with settings.yaml at the root.  Copy from the right
-    # place per mode so the workspace tree is not dragged into the box dir.
-    if src_proj.mode is BoxMode.standalone:
-        src_meta_dir = src_proj.shell_path.parent   # <root>/box_data
-        src_settings = src_proj.metadata_path / BOX_META_FILE  # <root>/settings.yaml
-    else:
-        src_meta_dir = src_proj.metadata_path
-        src_settings = src_proj.metadata_path / BOX_META_FILE
+    # The source box's metadata dir (home + agent/session state): for primary/named it
+    # is ``metadata_path`` (boxes/<name>/), but for a standalone source
+    # ``metadata_path`` is the project ROOT — its box metadata lives in ``box_data/``.
+    # Copy from the right place per mode so the workspace tree is not dragged into the
+    # box dir.  The carried box settings come from the ONE pair (M-8), mode-aware:
+    # box tier <root>/box_data/settings.yaml for a standalone source,
+    # <metadata_path>/settings.yaml otherwise — with a pre-P2 standalone source's
+    # root-stored ``box.*`` keys underlaid so a legacy box does not lose them.
+    src_box, src_ws = box_workset_settings_paths(src_proj)
+    carried = carried_box_settings(src_box, src_ws)
+    src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path)
 
     # Failure-consistency: a crash AFTER assign_primary_box_name (which registers it)
     # but DURING the metadata/shell copy below would otherwise strand a
@@ -354,10 +368,13 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
             src_meta_dir, dst_project,
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )
-        # Place the source settings.yaml at the box dir root (for a standalone
-        # source it lived at the project root, not inside box_data/).
-        if src_settings.is_file():
-            shutil.copy2(src_settings, dst_project / BOX_META_FILE)
+        # Deliver the carried box settings to the DESTINATION's box tier (which for a
+        # primary/named destination is <dst_project>/settings.yaml).  The copytree
+        # above already places a standalone source's box tier there; this overwrites
+        # it with the carried doc so the legacy underlay is applied and the source's
+        # ``workset:`` identity is not inherited.
+        if carried:
+            dump_doc(dst_project / BOX_META_FILE, carried)
 
         # Ensure home is inside the project dir.
         if src_proj.shell_path.is_dir():

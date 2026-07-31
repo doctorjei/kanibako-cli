@@ -586,3 +586,278 @@ class TestSplitConfigKey:
         from kanibako.config import _split_config_key
         assert _split_config_key("allow_helpers") == ("", "allow_helpers")
         assert _split_config_key("unknown_prefix_key") == ("", "unknown_prefix_key")
+
+
+# ---------------------------------------------------------------------------
+# P2 / M-8 — the STANDALONE box tier: ONE file for READ, WRITE and ANCHOR
+# ---------------------------------------------------------------------------
+
+class TestStandaloneBoxTierRoundTrip:
+    """A standalone box has a BOX TIER at ``box_data/settings.yaml`` (spec §2c ALL
+    PROJECTS), absent by default, over the ROOT ``settings.yaml`` that plays the
+    WORKSET tier.  ``config set`` must WRITE the box tier that ``get`` READS — the
+    whole point of M-8: a read/write split is the silent "I set it and nothing
+    changed" failure, with no error anywhere."""
+
+    def _standalone(self, config_file, tmp_home):
+        from kanibako.paths import load_std_paths, resolve_standalone_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa"
+        root.mkdir()
+        resolve_standalone_project(std, config, str(root), initialize=True)
+        return root
+
+    @staticmethod
+    def _files(root):
+        """``(root_file, box_file)`` at their LITERAL spec positions (§5 L1403/L1407).
+
+        ⚑ Deliberately NOT sourced from ``box_workset_settings_paths``: a test that
+        gets both positions from the code under test is self-consistent and therefore
+        BLIND to a swapped pair.  These literals are what make the swap mutation
+        redden here."""
+        from kanibako.paths import _STANDALONE_META_DIR, BOX_META_FILE
+
+        return root / BOX_META_FILE, root / _STANDALONE_META_DIR / BOX_META_FILE
+
+    def test_set_writes_the_box_tier_and_leaves_the_root_file_alone(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_set
+        from kanibako.config_io import load_doc
+
+        root = self._standalone(config_file, tmp_home)
+        root_file, box_file = self._files(root)
+        assert not box_file.exists()          # ABSENT BY DEFAULT (spec §5 L1407)
+        root_before = root_file.read_text()
+
+        rc = run_set(argparse.Namespace(
+            args=[str(root), "box.image=probe/img:1"], box=None, force=False,
+        ))
+        assert rc == 0
+        capsys.readouterr()
+
+        # The value landed in the BOX tier...
+        assert load_doc(box_file)["box"]["image"] == "probe/img:1"
+        # ...and the ROOT file (the WORKSET tier + the detection marker) is untouched.
+        assert root_file.read_text() == root_before
+
+    def test_get_reads_where_set_wrote(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ THE M-8 GATE. A set followed by a get must round-trip through ONE file.
+        (Mutation: leave `config set` on the old ``metadata_path/settings.yaml``
+        derivation while the read moves → get prints "(not set)" → RED.)"""
+        from kanibako.commands.box._parser import run_get, run_set
+
+        root = self._standalone(config_file, tmp_home)
+        run_set(argparse.Namespace(
+            args=[str(root), "box.image=probe/img:1"], box=None, force=False,
+        ))
+        capsys.readouterr()
+        rc = run_get(argparse.Namespace(
+            args=[str(root), "box.image"], box=None, force=False,
+        ))
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "probe/img:1"
+
+    def test_show_effective_agrees_with_the_stored_value(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_set, run_show
+
+        root = self._standalone(config_file, tmp_home)
+        run_set(argparse.Namespace(
+            args=[str(root), "box.image=probe/img:1"], box=None, force=False,
+        ))
+        capsys.readouterr()
+        rc = run_show(argparse.Namespace(
+            args=[str(root)], box=None, effective=True, force=False,
+        ))
+        assert rc == 0
+        assert "probe/img:1" in capsys.readouterr().out
+
+    def test_absent_box_file_shows_no_overrides(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The ABSENCE case: with no box-tier file, a standalone box reports exactly
+        what it reported before P2 — an absent file is an EMPTY tier
+        (``config_io.load_doc`` → ``{}``), not a broken one."""
+        from kanibako.commands.box._parser import run_show
+
+        root = self._standalone(config_file, tmp_home)
+        assert not self._files(root)[1].exists()
+        rc = run_show(argparse.Namespace(
+            args=[str(root)], box=None, effective=False, force=False,
+        ))
+        assert rc == 0
+        assert "no overrides" in capsys.readouterr().out
+
+    def test_root_stored_value_is_not_a_box_override_but_is_effective(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ The one USER-VISIBLE read-surface change (M-8).  A LEGACY standalone box
+        stored ``box.*`` in its ROOT file — which is the WORKSET tier now.  A plain
+        ``get`` is stored-at-noun (spec §5 read verbs), so it honestly reports the key
+        as not stored AT THE BOX; ``show --effective`` still resolves it via the R2
+        downward-default.  Nothing is lost; the read got truthful."""
+        from kanibako.commands.box._parser import run_get, run_show
+        from kanibako.config_io import dump_doc, load_doc
+
+        root = self._standalone(config_file, tmp_home)
+        root_file, box_file = self._files(root)
+        doc = load_doc(root_file)
+        doc.setdefault("box", {})["image"] = "legacy/img:9"
+        dump_doc(root_file, doc)
+        assert not box_file.exists()
+
+        run_get(argparse.Namespace(
+            args=[str(root), "box.image"], box=None, force=False,
+        ))
+        captured = capsys.readouterr()
+        assert captured.out.strip() == ""
+        assert "(not set)" in captured.err
+
+        run_show(argparse.Namespace(
+            args=[str(root)], box=None, effective=True, force=False,
+        ))
+        assert "legacy/img:9" in capsys.readouterr().out
+
+    def test_primary_set_get_is_unchanged(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Regression pin: PRIMARY still writes and reads its own
+        ``<metadata_path>/settings.yaml`` — no ``box_data/`` anywhere."""
+        from kanibako.commands.box._parser import run_get, run_set
+        from kanibako.config_io import load_doc
+        from kanibako.paths import BOX_META_FILE, load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        run_set(argparse.Namespace(
+            args=[project_dir, "box.image=probe/prim:1"], box=None, force=False,
+        ))
+        capsys.readouterr()
+        run_get(argparse.Namespace(
+            args=[project_dir, "box.image"], box=None, force=False,
+        ))
+        assert capsys.readouterr().out.strip() == "probe/prim:1"
+        assert (
+            load_doc(proj.metadata_path / BOX_META_FILE)["box"]["image"]
+            == "probe/prim:1"
+        )
+        assert not (proj.metadata_path / "box_data").exists()
+
+    def test_private_create_lands_auth_keys_in_the_box_tier(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ AUTH-CRITICAL.  ``create --private`` persists ``box.auth.*=false``, and
+        ``seed_new_box``'s ``resolve_auth_source`` reads them off the snapshot's BOX
+        tier.  If the write went to a file the snapshot does not read as the box tier,
+        a supposedly-private box would resolve a sharing tier and forward the host
+        OAuth token into the seed.  Pin that they are the SAME file."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.config_io import load_doc
+        from kanibako.paths import (
+            box_workset_settings_paths,
+            load_std_paths,
+            resolve_standalone_project,
+        )
+
+        root = tmp_home / "priv"
+        root.mkdir()
+        rc = run_create(argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True, private=True,
+            name=None, image=None, agent=None, allow_home=False,
+        ))
+        capsys.readouterr()
+        assert rc == 0
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_standalone_project(std, config, str(root), initialize=False)
+        box_tier, _ = box_workset_settings_paths(proj)
+        # ⚑ LITERAL position too: asserting only against the pair function would make
+        # this AUTH-CRITICAL test self-consistent and blind to a swapped pair, which
+        # would point it at the ROOT file while the launch snapshot reads box_data/.
+        assert box_tier == root / "box_data" / "settings.yaml"
+        auth = load_doc(box_tier)["box"]["auth"]
+        assert auth["global_enabled"] is False
+        assert auth["workset_enabled"] is False
+
+    def test_duplicate_carries_the_box_tier_not_the_root_file(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``box duplicate`` must carry the source's BOX TIER (M-8).  It reads the box
+        settings WITHOUT the pair idiom, so it was missed by the first sweep and found
+        by a final grep — a ``box set box.image=X`` followed by a duplicate would
+        otherwise silently lose X.
+
+        ⚑ It must ALSO not carry the source's ``workset.kuid``: that lives in the ROOT
+        file (the workset tier), and copying it into the duplicate's box tier would
+        OVERRIDE the fresh kuid ``establish_standalone`` generates, giving the new box
+        its source's identity."""
+        from kanibako.commands.box._duplicate import run_duplicate
+        from kanibako.commands.box._parser import run_set
+        from kanibako.config import read_workset_kuid
+        from kanibako.config_io import load_doc
+
+        src = self._standalone(config_file, tmp_home)
+        run_set(argparse.Namespace(
+            args=[str(src), "box.image=probe/img:1"], box=None, force=False,
+        ))
+        capsys.readouterr()
+        src_root, _ = self._files(src)
+        src_kuid = read_workset_kuid(src_root)
+
+        dst = tmp_home / "dup"
+        rc = run_duplicate(argparse.Namespace(
+            source_path=str(src), new_path=str(dst), to_mode="standalone",
+            bare=False, force=True, box=None,   # force: skip the interactive confirm
+        ))
+        out = capsys.readouterr()
+        assert rc == 0, f"out={out.out!r} err={out.err!r}"
+
+        dst_root, dst_box = self._files(dst)
+        # The box-scope value came across, in the BOX tier.
+        assert load_doc(dst_box)["box"]["image"] == "probe/img:1"
+        # ...and the duplicate got a FRESH workset identity, not the source's.
+        assert read_workset_kuid(dst_root) != src_kuid
+        assert "workset" not in load_doc(dst_box)
+
+    def test_duplicate_of_a_LEGACY_box_carries_root_stored_settings(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ A PRE-P2 standalone box kept its ``box.*`` in the ROOT file and has NO
+        box tier.  Carrying the box tier alone drops those settings on the first
+        duplicate — silently, since the duplicate simply comes up with defaults.
+        The workset tier's ``box:`` subtree must be underlaid."""
+        from kanibako.commands.box._duplicate import run_duplicate
+        from kanibako.config import read_workset_kuid
+        from kanibako.config_io import dump_doc, load_doc
+
+        src = self._standalone(config_file, tmp_home)
+        src_root, src_box = self._files(src)
+        doc = load_doc(src_root)
+        doc.setdefault("box", {})["image"] = "legacy/img:9"
+        dump_doc(src_root, doc)
+        assert not src_box.exists()          # the pre-P2 on-disk shape
+        src_kuid = read_workset_kuid(src_root)
+
+        dst = tmp_home / "dup_legacy"
+        rc = run_duplicate(argparse.Namespace(
+            source_path=str(src), new_path=str(dst), to_mode="standalone",
+            bare=False, force=True, box=None,
+        ))
+        out = capsys.readouterr()
+        assert rc == 0, f"out={out.out!r} err={out.err!r}"
+
+        dst_root, dst_box = self._files(dst)
+        assert load_doc(dst_box)["box"]["image"] == "legacy/img:9"
+        # ...and the duplicate still mints its OWN identity.
+        assert read_workset_kuid(dst_root) != src_kuid
+        assert "workset" not in load_doc(dst_box)

@@ -18,13 +18,14 @@ from kanibako.commands.box._lifecycle import (
     run_remap,
 )
 from kanibako.config import load_config
-from kanibako.config_io import load_doc
+from kanibako.config_io import dump_doc, load_doc
 from kanibako.paths import load_primary_boxes
 from kanibako.paths import (
     BoxMode,
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
+    resolve_workset_project,
 )
 from kanibako.utils import project_hash
 from kanibako.workset import add_project, create_workset, load_workset
@@ -637,3 +638,181 @@ class TestMigrateGone:
         for verb, args_list in argv.items():
             args = parser.parse_args(args_list)
             assert args.box_command == verb
+
+
+# ---------------------------------------------------------------------------
+# P2 / M-8 — lifecycle ops must CARRY the source box's box-scope settings
+# ---------------------------------------------------------------------------
+
+class TestLifecycleCarriesBoxSettings:
+    """``convert`` / ``move`` make a NEW box that INHERITS the source's box-scope
+    settings.  Post-P2 a standalone box keeps those in ``box_data/settings.yaml``,
+    one level below the ROOT file — so an op that copies ``metadata_path`` "as if it
+    were box metadata" delivers the source's WORKSET tier to the destination's BOX
+    tier and the real settings are never read again.
+
+    ⚑ These pin the CARRIED VALUE end-to-end (set → convert/move → read back), not a
+    file location, because the loss they guard is silent: every existing test passed
+    green over it."""
+
+    @staticmethod
+    def _set_box_image(pdir, value):
+        """Set a box-scope value through the REAL ``box set`` path."""
+        from kanibako.commands.box._parser import run_set
+        rc = run_set(argparse.Namespace(
+            args=[str(pdir), f"box.image={value}"], box=None, force=False,
+        ))
+        assert rc == 0
+
+    @staticmethod
+    def _effective_image(config, box_tier, ws_tier):
+        from kanibako.config import load_merged_config, config_file_path
+        from kanibako.paths import xdg
+        return load_merged_config(
+            config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
+            box_tier, workset_path=ws_tier,
+        ).box_image
+
+    def test_convert_standalone_to_default_carries_box_settings(self, env, capsys):
+        config, std, tmp_home = env
+        pdir = _standalone(env)
+        self._set_box_image(pdir, "carry/img:7")
+        capsys.readouterr()
+
+        assert run_convert(_convert_args(pdir, to_default=True)) == 0
+        capsys.readouterr()
+
+        proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
+        from kanibako.paths import box_workset_settings_paths
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        assert self._effective_image(config, box_tier, ws_tier) == "carry/img:7"
+        # ...and it is the destination's BOX TIER that holds it.
+        assert load_doc(box_tier)["box"]["image"] == "carry/img:7"
+
+    def test_convert_standalone_to_workset_carries_box_settings(self, env, capsys):
+        config, std, tmp_home = env
+        create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _standalone(env)
+        self._set_box_image(pdir, "carry/img:8")
+        capsys.readouterr()
+
+        assert run_convert(_convert_args(pdir, to_workset="ws")) == 0
+        capsys.readouterr()
+
+        from kanibako.paths import WorksetSpec, box_workset_settings_paths
+        ws = load_workset(tmp_home / "ws_root")
+        names = list(ws.project_names) if hasattr(ws, "project_names") else [
+            p.name for p in ws.projects
+        ]
+        assert len(names) == 1, names
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), names[0], std, config,
+        )
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        assert self._effective_image(config, box_tier, ws_tier) == "carry/img:8"
+
+    def test_move_standalone_to_default_carries_box_settings(self, env, capsys):
+        config, std, tmp_home = env
+        pdir = _standalone(env)
+        self._set_box_image(pdir, "carry/img:9")
+        capsys.readouterr()
+
+        dest = tmp_home / "moved"
+        assert run_move(_move_args(pdir, dest, to_default=True)) == 0
+        capsys.readouterr()
+
+        proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
+        from kanibako.paths import box_workset_settings_paths
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        assert self._effective_image(config, box_tier, ws_tier) == "carry/img:9"
+
+    def test_move_standalone_to_standalone_does_not_nest_box_data(self, env, capsys):
+        """A standalone→standalone move copies from ``box_data/``, so the destination
+        gets ``<dst>/box_data/…`` — never a stranded ``<dst>/box_data/box_data/``."""
+        config, std, tmp_home = env
+        pdir = _standalone(env)
+        self._set_box_image(pdir, "carry/img:10")
+        capsys.readouterr()
+
+        dest = tmp_home / "moved_sa"
+        assert run_move(_move_args(pdir, dest, to_standalone=True)) == 0
+        capsys.readouterr()
+
+        assert not (dest / "box_data" / "box_data").exists()
+        assert load_doc(dest / "box_data" / "settings.yaml")["box"]["image"] == (
+            "carry/img:10"
+        )
+        # The ROOT file still exists (detection marker) and carries the FRESH kuid.
+        assert (dest / "settings.yaml").is_file()
+
+    def test_legacy_root_stored_settings_are_carried_on_convert(self, env, capsys):
+        """⚑ A PRE-P2 standalone box kept its ``box.*`` in the ROOT file.  Its box
+        tier is absent, so a box-tier-only carry silently drops the settings on the
+        first convert.  The workset tier's ``box:`` subtree must be underlaid."""
+        config, std, tmp_home = env
+        pdir = _standalone(env)
+        # Simulate the pre-P2 on-disk shape: box keys in the ROOT, no box tier.
+        root_doc = load_doc(pdir / "settings.yaml")
+        root_doc.setdefault("box", {})["image"] = "legacy/img:11"
+        dump_doc(pdir / "settings.yaml", root_doc)
+        assert not (pdir / "box_data" / "settings.yaml").exists()
+
+        assert run_convert(_convert_args(pdir, to_default=True)) == 0
+        capsys.readouterr()
+
+        proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
+        from kanibako.paths import box_workset_settings_paths
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        assert self._effective_image(config, box_tier, ws_tier) == "legacy/img:11"
+        # ⚑ and the source's workset IDENTITY is NOT inherited.
+        assert "workset" not in load_doc(box_tier)
+
+    def test_legacy_root_stored_settings_are_carried_on_convert_to_workset(
+        self, env, capsys,
+    ):
+        """The WORKSET destination needs the carry for the LEGACY shape specifically.
+
+        For a post-P2 source the metadata copytree already lands ``box_data/
+        settings.yaml`` at the destination's box tier, so the delivery looks
+        redundant — it is NOT: a pre-P2 source has no box tier, and only the
+        workset-tier underlay recovers its ``box.*`` keys."""
+        config, std, tmp_home = env
+        create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _standalone(env)
+        root_doc = load_doc(pdir / "settings.yaml")
+        root_doc.setdefault("box", {})["image"] = "legacy/img:12"
+        dump_doc(pdir / "settings.yaml", root_doc)
+        assert not (pdir / "box_data" / "settings.yaml").exists()
+
+        assert run_convert(_convert_args(pdir, to_workset="ws")) == 0
+        capsys.readouterr()
+
+        from kanibako.paths import WorksetSpec, box_workset_settings_paths
+        ws = load_workset(tmp_home / "ws_root")
+        names = list(ws.project_names) if hasattr(ws, "project_names") else [
+            p.name for p in ws.projects
+        ]
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), names[0], std, config,
+        )
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        assert self._effective_image(config, box_tier, ws_tier) == "legacy/img:12"
+
+    def test_legacy_root_stored_settings_are_carried_on_move_to_standalone(
+        self, env, capsys,
+    ):
+        """Same for the STANDALONE destination (the S1 site)."""
+        config, std, tmp_home = env
+        pdir = _standalone(env)
+        root_doc = load_doc(pdir / "settings.yaml")
+        root_doc.setdefault("box", {})["image"] = "legacy/img:13"
+        dump_doc(pdir / "settings.yaml", root_doc)
+        assert not (pdir / "box_data" / "settings.yaml").exists()
+
+        dest = tmp_home / "moved_legacy"
+        assert run_move(_move_args(pdir, dest, to_standalone=True)) == 0
+        capsys.readouterr()
+
+        assert load_doc(dest / "box_data" / "settings.yaml")["box"]["image"] == (
+            "legacy/img:13"
+        )

@@ -305,16 +305,17 @@ def _resolve_box_agent_name(runtime, std, proj, container_name: str) -> str | No
 
         # Pre-stamp (older) box: fall back to the create-time resolve_agent cascade.
         from kanibako.config import (
-            BOX_META_FILE,
             load_merged_config,
             resolve_agent,
         )
-        from kanibako.paths import workset_settings_path
+        from kanibako.paths import box_workset_settings_paths
 
+        # The ONE tier pair (M-8): read the agent from the same box-tier file
+        # ``box set box.agent_name=…`` writes.
+        _box_path, _ws_path = box_workset_settings_paths(proj)
         merged = load_merged_config(
             config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
-            proj.metadata_path / BOX_META_FILE,
-            workset_path=workset_settings_path(proj.group),
+            _box_path, workset_path=_ws_path,
         )
         return resolve_agent(
             explicit_agent=None,
@@ -365,13 +366,15 @@ def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
     if image:
         return image
     try:
-        from kanibako.config import BOX_META_FILE, load_merged_config
-        from kanibako.paths import workset_settings_path
+        from kanibako.config import load_merged_config
+        from kanibako.paths import box_workset_settings_paths
 
+        # The ONE tier pair (M-8): the configured image comes from the same box-tier
+        # file ``box set box.image=…`` writes.
+        _box_path, _ws_path = box_workset_settings_paths(proj)
         merged = load_merged_config(
             config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
-            proj.metadata_path / BOX_META_FILE,
-            workset_path=workset_settings_path(proj.group),
+            _box_path, workset_path=_ws_path,
         )
         return merged.box_image or None
     except Exception:

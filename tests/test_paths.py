@@ -1814,9 +1814,10 @@ class TestP5aStandalonePresenceSwitch:
 
 
 class TestBoxWorksetSettingsPaths:
-    """P6c: the mode-aware (box_tier, workset_tier) launch-cascade file pair
-    (``box_workset_settings_paths``) — the SINGLE SOURCE the snapshot resolvers
-    and the ``meta.box.settings`` anchor both derive from."""
+    """P2/M-8: the mode-aware (box_tier, workset_tier) settings-file pair
+    (``box_workset_settings_paths``) — the SINGLE SOURCE for READ, WRITE and the
+    ``meta.box.settings`` ANCHOR.  ``meta.box.settings`` is the UNIFORM
+    ``@meta.box.path/settings.yaml`` in EVERY mode (spec §2c ALL PROJECTS)."""
 
     def _proj(self, tmp_path: Path, *, mode: "BoxMode", group):
         from kanibako.paths import ProjectPaths
@@ -1833,14 +1834,55 @@ class TestBoxWorksetSettingsPaths:
             group=group,
         )
 
-    def test_standalone_box_tier_empty_file_is_workset_tier(self, tmp_path: Path):
+    def test_standalone_box_tier_is_the_box_data_settings_file(self, tmp_path: Path):
+        """STANDALONE gains a real BOX TIER at ``box_data/settings.yaml`` (spec §2c
+        L817 + §5 L1407); the ROOT file keeps playing the WORKSET tier.  (Mutation:
+        reverting the standalone arm to ``None`` → RED.)"""
         from kanibako.paths import BoxMode, box_workset_settings_paths
 
         proj = self._proj(tmp_path, mode=BoxMode.standalone, group=None)
         box_tier, ws_tier = box_workset_settings_paths(proj)
-        # Box tier EMPTY; the single <root>/settings.yaml plays the WORKSET tier.
-        assert box_tier is None
+        assert box_tier == proj.metadata_path / "box_data" / "settings.yaml"
         assert ws_tier == proj.metadata_path / "settings.yaml"
+
+    def test_standalone_box_tier_lives_under_the_box_data_marker(self, tmp_path: Path):
+        """The two tiers are the two SPEC positions, not two arbitrary files: the box
+        tier sits inside ``box_data/`` (= ``@meta.box.path``) and the workset tier is
+        the ROOT file (= the file §5 DETECTION reads).  (Mutation: swapping the
+        returned pair → RED.)"""
+        from kanibako.paths import (
+            _STANDALONE_META_DIR,
+            BoxMode,
+            box_workset_settings_paths,
+        )
+
+        proj = self._proj(tmp_path, mode=BoxMode.standalone, group=None)
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        assert box_tier.parent.name == _STANDALONE_META_DIR
+        assert box_tier.parent.parent == proj.metadata_path
+        assert ws_tier is not None and ws_tier.parent == proj.metadata_path
+
+    def test_box_tier_is_never_none_in_any_mode(self, tmp_path: Path):
+        """The UNIFORM anchor: every mode has a box-tier FILE PATH.  Absence of the
+        file is an empty tier — it is NOT a ``None`` tier.  (Mutation: any
+        re-introduction of a ``None`` box tier → RED, and mypy rejects it too, since
+        the return type is ``tuple[Path, Path | None]``.)"""
+        from kanibako.paths import BoxMode, ProjectGroup, box_workset_settings_paths
+
+        group = ProjectGroup(
+            name="default", root=tmp_path / "pw", is_default=True,
+            local_shared_base=tmp_path / "data",
+        )
+        for mode, grp in (
+            (BoxMode.primary, group),
+            (BoxMode.named, group),
+            (BoxMode.standalone, None),
+        ):
+            box_tier, _ = box_workset_settings_paths(
+                self._proj(tmp_path, mode=mode, group=grp)
+            )
+            assert box_tier is not None, mode
+            assert box_tier.name == "settings.yaml", mode
 
     def test_primary_named_pair_unchanged_vs_pre_p6c(self, tmp_path: Path):
         # BYTE-IDENTITY (equivalence bar): for primary/named the pair MUST equal the
@@ -1879,3 +1921,156 @@ class TestBoxWorksetSettingsPaths:
         # Mutation-guard: box tier is a REAL file (not None) for primary/named —
         # swapping the standalone branch to cover these modes would make box_p None.
         assert box_p is not None and box_n is not None
+        # And NEITHER primary nor named routes through ``box_data/`` — that leaf is
+        # standalone's alone (mutation: making the box_data arm unconditional → RED).
+        assert "box_data" not in box_p.parts
+        assert "box_data" not in box_n.parts
+
+
+class TestStandaloneDetectionIsRootFileOnly:
+    """§5 L1422-1427: STANDALONE detection = the ``box_data/`` marker DIR + the ROOT
+    ``settings.yaml`` (the WORKSET-tier file).  P2 introduces a BOX-tier file at
+    ``box_data/settings.yaml``; detection must NOT come to depend on it, or the
+    ancestor-walk that finds a standalone project at all would break."""
+
+    def test_root_file_alone_detects_without_a_box_tier_file(self, tmp_home):
+        from kanibako.config import BOX_META_FILE, dump_doc
+        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+
+        root = tmp_home / "sa"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        dump_doc(root / BOX_META_FILE, {"workset": {"kuid": "abcde"}})
+        # No box_data/settings.yaml at all — the ABSENT-BY-DEFAULT shape.
+        assert not (root / _STANDALONE_META_DIR / BOX_META_FILE).exists()
+        assert _is_standalone_meta_dir(root) is True
+
+    def test_box_tier_file_alone_is_not_a_standalone_marker(self, tmp_home):
+        """⚑ THE mutation guard for "do not unify detection".  A Writer tidying the
+        two settings paths into one would point detection at ``box_data/settings.yaml``
+        — and this box, which has NO root file, would start being detected → RED."""
+        from kanibako.config import BOX_META_FILE, dump_doc
+        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+
+        root = tmp_home / "sa"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        dump_doc(root / _STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
+        assert not (root / BOX_META_FILE).exists()
+        assert _is_standalone_meta_dir(root) is False
+
+    def test_both_files_present_still_detects(self, tmp_home):
+        """The new box tier does not DISTURB detection either — presence of both is
+        the normal post-``config set`` shape."""
+        from kanibako.config import BOX_META_FILE, dump_doc
+        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+
+        root = tmp_home / "sa"
+        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        dump_doc(root / BOX_META_FILE, {"workset": {"kuid": "abcde"}})
+        dump_doc(root / _STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
+        assert _is_standalone_meta_dir(root) is True
+
+    def test_kuid_is_read_from_the_root_file_not_the_box_tier(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``workset.kuid`` is a WORKSET-scope key and MUST stay in the ROOT file: it
+        is what materializes half the detection marker.  A later tidy-up that "moves
+        the remaining box-ish keys" into ``box_data/`` would break detection in a way
+        that looks unrelated — so pin the read side explicitly."""
+        from kanibako.config import BOX_META_FILE, read_workset_kuid
+        from kanibako.paths import (
+            _STANDALONE_META_DIR,
+            resolve_standalone_project,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa"
+        root.mkdir()
+        resolve_standalone_project(std, config, str(root), initialize=True)
+
+        # create wrote the kuid to the ROOT file, and NOT to the box tier.
+        assert read_workset_kuid(root / BOX_META_FILE) != "00000"
+        assert read_workset_kuid(
+            root / _STANDALONE_META_DIR / BOX_META_FILE
+        ) == "00000"
+
+
+class TestStandaloneEnableVaultTier:
+    """``box.enable_vault`` is read DIRECTLY (not via the cascade), so P2's tier move
+    has to be handled at the reader: box tier wins, the ROOT file is the R2
+    downward-default that keeps a pre-P2 standalone box working with no migration."""
+
+    def _standalone(self, config_file, tmp_home, *, box=None, root_extra=None):
+        from kanibako.config import BOX_META_FILE
+        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.paths import _STANDALONE_META_DIR, resolve_standalone_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa"
+        root.mkdir()
+        resolve_standalone_project(std, config, str(root), initialize=True)
+        if root_extra is not None:
+            doc = load_doc(root / BOX_META_FILE)
+            doc.setdefault("box", {}).update(root_extra)
+            dump_doc(root / BOX_META_FILE, doc)
+        box_file = root / _STANDALONE_META_DIR / BOX_META_FILE
+        if box is not None:
+            doc = load_doc(box_file)
+            doc.setdefault("box", {}).update(box)
+            dump_doc(box_file, doc)
+        else:
+            box_file.unlink(missing_ok=True)
+        return resolve_standalone_project(
+            std, config, str(root), initialize=False,
+        ).enable_vault
+
+    def test_box_tier_wins_over_the_root_file(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """box tier is the LAST cascade level — it beats the workset tier."""
+        assert self._standalone(
+            config_file, tmp_home,
+            root_extra={"enable_vault": True}, box={"enable_vault": False},
+        ) is False
+
+    def test_legacy_root_only_value_still_resolves(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """⚑ THE no-migration claim: a pre-P2 standalone box stored the value in its
+        ROOT file (which was its box file then, and is its workset tier now).  It must
+        keep resolving.  (Mutation: dropping ``default_from`` → True → RED.)"""
+        assert self._standalone(
+            config_file, tmp_home, root_extra={"enable_vault": False}, box=None,
+        ) is False
+
+    def test_absent_everywhere_is_the_builtin_default(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        assert self._standalone(config_file, tmp_home, box=None) is True
+
+    def test_primary_ignores_a_workset_tier_value(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """PRIMARY is UNCHANGED by P2: the R2 workset fallback is standalone-only, so
+        a workset-tier ``box.enable_vault`` stays inert here (a real defect, tracked
+        separately).  Pinned so extending the fallback is a DELIBERATE change, not an
+        accidental one."""
+        from kanibako.config import BOX_META_FILE
+        from kanibako.config_io import dump_doc, load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=True,
+        )
+        ws_file = std.primary_workset / BOX_META_FILE
+        doc = load_doc(ws_file)
+        doc.setdefault("box", {})["enable_vault"] = False
+        dump_doc(ws_file, doc)
+        (proj.metadata_path / BOX_META_FILE).unlink(missing_ok=True)
+
+        proj2 = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=False,
+        )
+        assert proj2.enable_vault is True
