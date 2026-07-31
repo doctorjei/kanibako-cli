@@ -53,7 +53,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     set_p.add_argument("agent_id", help="Agent identifier")
-    set_p.add_argument("key_value", help="key=value pair")
+    set_p.add_argument("key_value", nargs="?", help="key=value pair")
+    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
     set_p.set_defaults(func=run_set)
 
     # agent reset <agent> <key> | --all  [--force]

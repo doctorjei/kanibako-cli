@@ -71,7 +71,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Mapping
+from typing import Collection, Literal, Mapping, Sequence
 
 from kanibako.agent_ref import harness_of
 from kanibako.settings_assemble import assemble_levels
@@ -83,6 +83,7 @@ from kanibako.settings_categories import (
 )
 from kanibako.settings_expand import expand
 from kanibako.settings_merge import merge
+from kanibako.settings_prefs import PrefRequest, apply_prefs, collect_prefs
 from kanibako.settings_resolve import ResolveCtx, SettingsError, expand_expr
 from kanibako.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
 
@@ -916,6 +917,8 @@ def build_launch_snapshot(
     meta_runtime: Mapping[str, object] | None = None,
     meta_identity: Mapping[str, object] | None = None,
     workset_anchor: Mapping[str, object] | None = None,
+    prefs: "Sequence[PrefRequest] | None" = None,
+    valid_agents: "Collection[str] | None" = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -951,6 +954,14 @@ def build_launch_snapshot(
     core binds (workspace / inbox) reference (spec §2c/§2d). Folded into the SAME
     floor so ``expand`` resolves the @meta.* binds ONCE (single-route). ``None`` for
     a narrow resolve.
+
+    *prefs* are the ``pref.*`` REQUESTS (spec §2h) of the workset + box files, in
+    application order. ``None`` (the default) means COLLECT THEM HERE from
+    *workset_path* / *box_path* — the fail-safe default, so a caller cannot omit
+    them by accident. Supplying them is a CACHE, not a second source: the one
+    collector is ``settings_prefs.collect_prefs`` either way, and validation runs
+    here regardless. *valid_agents* injects the agent-validity set (defaults to
+    plugin discovery); tests supply their own.
 
     Returns the expanded ``snapshot``.
     """
@@ -1062,6 +1073,26 @@ def build_launch_snapshot(
     #   agent_partial    — 7a descriptor DEFAULT delivery, the LEAST-specific agent
     #                      rung (just below agent.default) so any
     #                      agent.<active>/workset/box repoint wins.
+    #   pref overlays    — the ``pref.*`` REQUESTS of the workset and box files
+    #                      (spec §2h), each installed IMMEDIATELY BELOW its own
+    #                      level's partial. §2h expands a level's prefs "at the
+    #                      START of that level, BEFORE the level resolves", so the
+    #                      level's own keys are applied AFTER and win; and the BOX
+    #                      overlay precedes the WORKSET overlay, which IS
+    #                      box-beats-workset by assignment order (§1A L364-367).
+    #                      Nothing LEGAL contends with either: a box/workset file
+    #                      may not set system.agent or agent.<a>.* at all (upward
+    #                      writes, dropped by _drop_upward_scopes).
+    #                      ⚑ CONSEQUENCE, recorded deliberately: because nothing
+    #                      legal contends, the BELOW-vs-ABOVE placement is
+    #                      currently UNOBSERVABLE — moving an overlay above its
+    #                      level's partial breaks no test. It is spelled this way
+    #                      because §2h says prefs expand "at the START of that
+    #                      level, BEFORE the level resolves", and it becomes
+    #                      observable the moment the allowlist grows to a target a
+    #                      lower file may also set. Left unpinned on purpose: a
+    #                      test asserting an unobservable ordering would be
+    #                      asserting the implementation, not the behaviour.
     state_partial = _agent_state_partial(agent_name, agent_state)
     # box.agent.* CATEGORY fold (spec §2b L411 / §0 L32-42): the box's same-scope
     # tweak of its active agent's category tables, re-rooted to agent.<active> at BOX
@@ -1073,14 +1104,44 @@ def build_launch_snapshot(
     # carry no ``box`` node), and splices them as a GROUP ABOVE box so
     # the cascade settles box.agent.<key> among its sources with the winner at BOX
     # precedence (matching the old overlay). NO-AGENT box → [].
+    #
+    # ⚑ TRANSITIONAL, and it interacts with ``pref`` (§2h): this fold is spliced
+    # ABOVE ``box`` while a pref overlay sits BELOW its own level's partial, so
+    # for a CATEGORY the retiring ``box.agent.<cat>`` tweak still beats a box's
+    # ``pref.agent.<a>.<cat>``. For a SCALAR there is no contest at all — the
+    # fold is category-only and the scalar mirror is a post-expand READ-BACK
+    # (``_materialize_box_agent_mirror``), so a scalar pref simply wins. P7
+    # retires settable ``box.agent.*`` and the contest disappears; both halves
+    # are test-pinned (tests/test_settings_launch.py TestPrefLevelPrecedence).
     box_agent_folds = _box_agent_category_fold(
         [base_levels[0], base_levels[1], base_levels[4], base_levels[5]], agent_name
     )
 
+    # ``pref.*`` REQUESTS (spec §2h). Collected from the two pref-LEGAL files, and
+    # collected HERE when the caller did not supply them, so no call path can
+    # silently skip them (the seed / synced / image / helper narrow resolves must
+    # see a pref on ``agent.<a>.seeded.*`` too). A caller that already collected
+    # them — ``_resolve_launch_snapshot``, which runs several resolves per launch,
+    # and P7's agent selection — passes the SAME list, so there is one read and no
+    # possibility of the two disagreeing. Validation runs in ``apply_prefs``
+    # regardless of who collected, so supplying the list cannot bypass a filter.
+    requests = list(prefs) if prefs is not None else collect_prefs(
+        workset_path, box_path,
+    )
+    # ``valid_agents`` is passed through UNRESOLVED (``None`` = "decide inside"):
+    # apply_prefs reaches plugin discovery only when a request actually names
+    # ``agent.*``, so a pref-free launch pays nothing. ``is None``, not falsy — an
+    # empty AgentNames is a legitimate caller-supplied value.
+    ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
+
     levels: list[KeyStore] = []
     levels.extend(box_agent_folds)                      # box.agent categories (top)
     levels.append(base_levels[0])                       # box
+    if box_prefs:
+        levels.append(box_prefs)                        # box pref REQUESTS
     levels.append(base_levels[1])                       # workset
+    if ws_prefs:
+        levels.append(ws_prefs)                         # workset pref REQUESTS
     if state_partial is not None:
         levels.append(state_partial)                    # per-agent FILE behavior
     levels.append(base_levels[2])                       # agent.<active> (file tables)

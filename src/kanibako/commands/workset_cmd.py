@@ -162,7 +162,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     set_p.add_argument("workset", help="Name of the working set")
-    set_p.add_argument("key_value", help="key=value pair")
+    set_p.add_argument("key_value", nargs="?", help="key=value pair")
+    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
     set_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompts",
     )
@@ -692,7 +693,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     # Parse the key/value argument
-    action, key, value = parse_config_arg(key_value)
+    action, key, value = parse_config_arg(
+        key_value, set_null=getattr(args, "null", False),
+    )
 
     if action == ConfigAction.show:
         return show_config(

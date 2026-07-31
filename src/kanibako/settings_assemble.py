@@ -98,6 +98,7 @@ from typing import Any
 
 from kanibako.config import settings_base_path
 from kanibako.config_io import load_doc
+from kanibako.settings_prefs import refuse_pref_table
 from kanibako.settings_resolve import unpack_bind
 from kanibako.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
 
@@ -410,6 +411,22 @@ def assemble_levels(
     # anchors. ``file_scope="base"`` yields an empty containing set, so this drops
     # ONLY meta from base — its ``system.*`` scope floor stays exempt. (A nested
     # ``<scope>.meta`` bootstrap table is TOP-LEVEL-untouched — see the drop fn.)
+    # ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h L1252-1254 —
+    # "this is what BOUNDS the recursion"). A ``pref:`` table in the base /
+    # system / agent file is DROPPED with a warning, the SAME treatment the
+    # sibling mis-scope above gets: two behaviours for one fault class is the
+    # confusion §0's convention 0 forbids, and dropping preserves the recursion
+    # bound at least as strongly as erroring would. The HARD refusal §2h calls
+    # for lives at the WRITE site (``config set pref.*`` at these scopes RAISES),
+    # which is the only way a user creates one short of hand-editing.
+    #
+    # Run on the RAW view for the same reason ``_drop_upward_scopes`` is: the
+    # agent tier never mirrors a non-``agent:`` table into its partial, so a
+    # post-partial filter could not see (or warn about) a ``pref:`` table there.
+    raw_base = refuse_pref_table(raw_base, level="base", path=base_p)
+    raw_system = refuse_pref_table(raw_system, level="system", path=system_path)
+    raw_agent = refuse_pref_table(raw_agent, level="agent", path=agent_path)
+
     raw_base = _drop_upward_scopes(raw_base, file_scope="base", path=base_p)
     raw_box = _drop_upward_scopes(raw_box, file_scope="box", path=box_path)
     raw_workset = _drop_upward_scopes(

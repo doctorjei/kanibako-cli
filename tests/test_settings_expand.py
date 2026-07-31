@@ -768,3 +768,93 @@ def test_lenient_bind_box_dest_xdg_deferred_not_a_defect() -> None:
     bind = expanded["x"]
     assert isinstance(bind, Bind)
     assert bind.box == "$XDG_CACHE_HOME/d"  # deferred raw.
+
+
+# ---------------------------------------------------------------------------
+# ``pref.*`` — never participates in resolution as a derivable key (spec §2h)
+# ---------------------------------------------------------------------------
+
+class TestPrefSubtreeIsNotExpanded:
+    """spec §2h L1263 — 'pref.* keys never participate in resolution as
+    derivable keys — resolve_key_set ignores them.'"""
+
+    def test_the_pref_subtree_is_carried_through_raw(self):
+        """The RAW request must survive expansion so ``--effective`` can show
+        BOTH the request and the result.
+        INVERT: remove the expand skip -> the request resolves and this reddens.
+        """
+        snap = KeyStore({
+            "workset": {"template": "/ws/tpl"},
+            "pref": {"agent": {"claude": {"template": "@workset.template/sub"}}},
+            "agent": {"claude": {"template": "@workset.template/sub"}},
+        })
+        out = expand(snap, _ctx())
+        # The REQUEST stays raw ...
+        assert out["pref"]["agent"]["claude"]["template"] == "@workset.template/sub"
+        # ... while the same expression AT THE TARGET resolves.
+        assert out["agent"]["claude"]["template"] == "/ws/tpl/sub"
+
+    def test_a_null_request_survives_expansion(self):
+        snap = KeyStore({"pref": {"agent": {"claude": {"model": None}}}})
+        out = expand(snap, _ctx())
+        assert dict.__getitem__(out["pref"]["agent"]["claude"], "model") is None
+
+    def test_a_dangling_ref_in_a_request_does_not_drop_the_request(self):
+        """A whole-value dangling ref would normally DROP its key (§6b). The
+        request record is not resolved, so it cannot be dropped by resolution —
+        the user can still SEE what they asked for while the target reports the
+        failure."""
+        snap = KeyStore({"pref": {"system": {"agent": "@nope.nothing"}}})
+        out = expand(snap, _ctx())
+        assert out["pref"]["system"]["agent"] == "@nope.nothing"
+
+    def test_the_carried_subtree_is_a_fresh_copy(self):
+        """S19 — expansion never aliases its input."""
+        inner = KeyStore({"system": {"agent": "goose"}})
+        snap = KeyStore({"pref": inner})
+        out = expand(snap, _ctx())
+        assert out["pref"] == inner
+        assert out["pref"] is not inner
+
+    def test_a_key_named_pref_deeper_down_is_still_expanded(self):
+        """The skip keys on the ROOT segment only."""
+        snap = KeyStore({
+            "system": {"cache": "/c"},
+            "box": {"env": {"P": "@system.cache/x"}},
+            "workset": {"caches": {"pref": Bind("@system.cache/p", "~/p")}},
+        })
+        out = expand(snap, _ctx())
+        assert out["workset"]["caches"]["pref"].host == "/c/p"
+
+
+class TestPrefReferencesAreRefused:
+    """A ``@pref.…`` reference is REFUSED, never resolved (spec §2h L1263)."""
+
+    def test_strict_mode_raises(self):
+        """INVERT: return ``_ABSENT`` instead -> the referring key would be
+        silently DROPPED and this reddens."""
+        snap = KeyStore({
+            "pref": {"system": {"agent": "goose"}},
+            "box": {"shell": "@pref.system.agent"},
+        })
+        with pytest.raises(SettingsError) as exc:
+            expand(snap, _ctx())
+        assert "not resolvable" in str(exc.value)
+        assert "REQUEST, not a value" in str(exc.value)
+
+    def test_embedded_reference_also_raises(self):
+        snap = KeyStore({
+            "pref": {"system": {"agent": "goose"}},
+            "box": {"shell": "/bin/@pref.system.agent"},
+        })
+        with pytest.raises(SettingsError):
+            expand(snap, _ctx())
+
+    def test_lenient_mode_records_it_against_the_owning_leaf(self):
+        snap = KeyStore({
+            "pref": {"system": {"agent": "goose"}},
+            "box": {"shell": "@pref.system.agent"},
+        })
+        expanded, errors = expand(snap, _ctx(), collect_errors=True)
+        assert "box.shell" in errors
+        assert "not resolvable" in errors["box.shell"]

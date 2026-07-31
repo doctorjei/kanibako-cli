@@ -706,3 +706,91 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
                 entry("bindings.rw", name="b", scope="box"),
             ])
         assert "self." not in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# A collision on a PREF-INSTALLED declaration must name the REQUEST
+# ---------------------------------------------------------------------------
+
+class TestPrefOriginEnrichment:
+    """A collision names the DECLARATION key. When a pref installed it, that key
+    is one the user never wrote and cannot write — so the message must also name
+    the request, or it sends them looking for a key in none of their files."""
+
+    def test_the_error_names_the_installing_pref(self, tmp_path):
+        """INVERT: drop the enrichment -> reddens."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings_prefs import PrefRequest
+
+        src = Path(tmp_path) / "box.yaml"
+        exc = CategoryCollisionError(
+            "two declarations at /home/agent/workspace",
+            kind="extension_onto_occupied",
+            box_dest="/home/agent/workspace",
+            entries=(("agent.claude.common.newthing", "/src"),
+                     ("box.bindings.rw.workspace", "/proj")),
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.common.newthing", value=("/src", "~/workspace"),
+            level="box", source=src,
+        )]
+        out = _annotate_pref_origin(exc, prefs)
+        text = str(out)
+        assert "agent.claude.common.newthing' was installed by" in text
+        assert "'pref.agent.claude.common.newthing'" in text
+        assert "box settings file" in text
+        assert str(src) in text
+        assert "edit or remove that request" in text
+        # The structured fields survive so downstream consumers still work.
+        assert out.kind == exc.kind and out.box_dest == exc.box_dest
+
+    def test_an_unrelated_collision_is_returned_unchanged(self):
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+
+        exc = CategoryCollisionError(
+            "boom", kind="binding_vs_binding", box_dest="/d",
+            entries=(("box.bindings.ro.a", "/s"),),
+        )
+        assert _annotate_pref_origin(exc, []) is exc
+
+
+class TestPrefOriginOnTheAdapterRaise:
+    """MUST-1(b) — a pref-installed key can also kill the launch through the
+    category ADAPTER (a malformed shape), which raises a plain SettingsError
+    with no structured participants. That path must name the REQUEST too."""
+
+    def test_a_plain_settings_error_is_annotated_from_the_message(self, tmp_path):
+        """INVERT: drop the message-matching branch -> reddens."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.settings_prefs import PrefRequest
+        from kanibako.settings_resolve import SettingsError
+
+        src = Path(tmp_path) / "box.yaml"
+        exc = SettingsError(
+            "category agent.claude.common.x is str, expected a Bind "
+            "(present-None binds are omitted at build, §3/§6e)"
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.common.x", value="just-a-string",
+            level="box", source=src,
+        )]
+        out = _annotate_pref_origin(exc, prefs)
+        text = str(out)
+        assert isinstance(out, SettingsError)
+        assert "expected a Bind" in text                 # the original diagnosis
+        assert "'agent.claude.common.x' was installed by" in text
+        assert "'pref.agent.claude.common.x'" in text
+        assert str(src) in text
+
+    def test_an_unrelated_settings_error_is_returned_unchanged(self):
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.settings_resolve import SettingsError
+
+        exc = SettingsError("something else entirely")
+        assert _annotate_pref_origin(exc, []) is exc

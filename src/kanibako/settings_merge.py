@@ -53,6 +53,13 @@ from kanibako.settings_store import _MISSING, KeyStore, StoreValue
 # bool|None category (S5), the bind-shaped categories are ``_BIND_CATEGORIES``.
 _MASKS_SEGMENT = "masks"
 
+# The top-level table holding ``pref.*`` REQUESTS (spec §2h). Its subtree is
+# EXEMPT from the present-None type-split — see :func:`_resolve_present_none`.
+# Spelled here rather than imported from ``settings_prefs`` to keep this module's
+# import surface at ``settings_assemble`` + ``settings_store`` (it is one fixed
+# token, and ``settings_prefs`` imports the settings stack, which would cycle).
+_PREF_ROOT = "pref"
+
 # The agent tier keeps its ``default`` / ``<active-name>`` discriminator as the true
 # §2d key (``agent.default.*`` / ``agent.<active-name>.*``) in 2a — the merge unions
 # by that scope-qualified name like every other level. The cascade ends at ``box``
@@ -82,7 +89,11 @@ def merge(levels: list[KeyStore]) -> KeyStore:
       scopes), and the snapshot result depends on the category —
       ``scalar leaf`` → KEEP ``None`` (the consumer applies its default);
       ``bind / category leaf`` → OMIT (no mount; build-4 tier-2 honesty, §5);
-      ``masks leaf`` → OMIT (unmask that path; §6f).
+      ``masks leaf`` → OMIT (unmask that path; §6f);
+      ``anything under the top-level ``pref`` table`` → KEEP verbatim, with NO
+      classification at all — a pref is a REQUEST, not a value (spec §2h), and
+      the request's path mirrors its target's, so classifying it would delete
+      the RECORD of a ``null`` request. See :func:`_resolve_present_none`.
 
     Returns the merged ``snapshot``. PURE: no I/O; ``@``-ref / ``$var`` / ``~``
     tokens stay RAW (expansion is block 3); the input partials are NOT mutated
@@ -213,6 +224,19 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     it — no mount / unmask) or ``None`` for a scalar leaf (keep it — consumer
     default).
 
+    ⚑ **The ``pref`` subtree is EXEMPT — no classification at all.** A pref is a
+    REQUEST, not a value (spec §2h), and the request's own path mirrors its
+    TARGET's, so ``pref.agent.claude.common.plugins`` carries ``common`` among
+    its ancestors and the category rule below would OMIT it — deleting the
+    RECORD of a ``null`` request from the snapshot while the request itself was
+    applied, so ``config show`` / ``--effective`` could not show it. It is also
+    the literal implementation of §2h's *"the pref layer MUST NOT interpret
+    emptiness AT ALL"*: three idioms already exist downstream (present-``None``,
+    terminal ``""``, the COPY-disable sentinel) and the pref layer must not
+    become a fourth place deciding what "empty" means. The classification the
+    spec DOES want happens at the INSTALLED target key, where the path is
+    ``agent.claude.common.plugins`` and the ordinary rule below applies.
+
     *path* is the full segment trail to the leaf. A leaf is a category leaf when
     EITHER an ANCESTOR segment is a bind category / ``masks`` (an ENTRY reset like
     ``bindings.rw.foo = None`` / ``masks./p = None`` — the same "any ancestor is a
@@ -225,6 +249,8 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     its consistent extension (the design is silent on a whole-category reset — flag
     raised in chat). A non-category scalar leaf → KEEP ``None``.
     """
+    if path and path[0] == _PREF_ROOT:
+        return None  # a REQUEST record — kept verbatim, never classified (§2h).
     own = path[-1] if path else ""
     ancestors = path[:-1]
     if own in _BIND_CATEGORIES or own == _MASKS_SEGMENT:

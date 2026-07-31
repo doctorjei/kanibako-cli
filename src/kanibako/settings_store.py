@@ -332,3 +332,38 @@ class KeyStore(dict):  # type: ignore[type-arg]
     # Equality / hashing inherited from dict: two KeyStores are equal iff they
     # hold equal keys -> equal values, and a KeyStore equals a plain dict with
     # the same (wrapped) contents. dict is unhashable; KeyStore stays unhashable.
+
+
+def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
+    """Install *value* at the dotted path *dotted* in *store*, VERBATIM.
+
+    Walks/creates the intermediate :class:`KeyStore` nodes and sets the terminal
+    leaf to *value* exactly as given — no bind parsing, no coercion, no
+    emptiness interpretation. A non-``KeyStore`` value sitting at an
+    intermediate segment is REPLACED by a fresh node (the caller is installing a
+    deeper key, so the shallower leaf cannot survive as a leaf).
+
+    THE single non-parsing dotted installer. Two callers need exactly this:
+    the ``meta.derived.*`` materialisation
+    (``kanibako.commands.start._install_derived_bindings``) and the ``pref.*``
+    overlay builder (:func:`kanibako.settings_prefs.pref_overlay`), whose
+    contract is *"values are installed VERBATIM — including ``None``"* (spec
+    §2h). It is DELIBERATELY distinct from
+    ``kanibako.settings_assemble._insert_dotted``, which does a DIFFERENT job:
+    that one PARSES the terminal through ``_parse_node`` so a floor entry under
+    a bind-shaped category becomes a :class:`Bind`. Two spellings of one walk
+    would be a rule-0 trap; two walks with different jobs are not, provided the
+    difference is stated — which is what this paragraph is for.
+
+    Uses the UNBOUND ``dict.get`` (S3): a key legitimately named ``get`` must
+    not shadow the protocol into a crash.
+    """
+    parts = dotted.split(".")
+    node: KeyStore = store
+    for seg in parts[:-1]:
+        child = dict.get(node, seg, None)
+        if not isinstance(child, KeyStore):
+            child = KeyStore()
+            node[seg] = child
+        node = child
+    node[parts[-1]] = value

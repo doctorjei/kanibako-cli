@@ -4895,10 +4895,13 @@ def _resolve_launch_snapshot(
     """
     from kanibako import settings_launch
     from kanibako.agent_representation import agent_default_partial
+    from kanibako.errors import CategoryCollisionError
     from kanibako.settings_categories import (
         derive_binding_keys,
         reconcile_categories,
     )
+    from kanibako.settings_prefs import collect_prefs
+    from kanibako.settings_resolve import SettingsError
 
     (
         ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
@@ -4984,6 +4987,15 @@ def _resolve_launch_snapshot(
         if agent_cfg is not None:
             agent_state = dict(agent_cfg.state)
 
+    # ``pref.*`` REQUESTS (spec §2h) — collected ONCE here, at the single launch
+    # aggregation point, and threaded into the snapshot build. This function runs
+    # up to five times per ``kanibako start``, so collecting inside each build
+    # would re-read the same two files five times over; more importantly, ONE
+    # list means the five resolves cannot disagree about what was requested.
+    # (P7's agent selection collects the same way, BEFORE the agent is known, and
+    # passes its list here — see settings_prefs.collect_prefs.)
+    prefs = collect_prefs(cascade_workset_path, cascade_box_path)
+
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_name,
         ctx=ctx,
@@ -4998,17 +5010,87 @@ def _resolve_launch_snapshot(
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
+        prefs=prefs,
     )
-    entries = settings_launch.snapshot_category_entries(
-        snapshot, active_agent=agent_name, box_ctx=ctx,
-    )
+    try:
+        entries = settings_launch.snapshot_category_entries(
+            snapshot, active_agent=agent_name, box_ctx=ctx,
+        )
+    except SettingsError as exc:
+        # A malformed CATEGORY shape raises here naming the DECLARATION key
+        # (e.g. "category agent.claude.common.x is str, expected a Bind"). When a
+        # pref installed that key the name is one the user never wrote, so the
+        # same enrichment the collision path gets applies — otherwise the box
+        # fails to start pointing at a key that is in none of their files.
+        raise _annotate_pref_origin(exc, prefs) from None
     # MATERIALISE each ABSTRACT declaration's derived binding beside it, at
     # ``meta.derived.<declaration-key>`` (spec §0), BEFORE the reconcile — the
     # derivation is a property of the declaration, not of whether it won.
     _install_derived_bindings(snapshot, derive_binding_keys(entries))
-    reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
+    try:
+        reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
+    except CategoryCollisionError as exc:
+        # A collision names the DECLARATION key. When that declaration was
+        # INSTALLED BY A PREF, the named key is one the user never wrote and
+        # cannot write (``agent.claude.common.x`` from
+        # ``pref.agent.claude.common.x``), so the message would send them looking
+        # for a key that is not in any of their files. Enrich it HERE — the one
+        # seam that holds both the error and the requests.
+        raise _annotate_pref_origin(exc, prefs) from None
     emit_collision_warnings(reconciled.warnings)
     return snapshot, reconciled
+
+
+def _annotate_pref_origin(exc, prefs):
+    """Return *exc*, or a copy naming the ``pref`` that installed a participant.
+
+    Covers BOTH launch failures a pref can cause by installing a key at a scope
+    the user does not write:
+
+    * ``CategoryCollisionError`` — carries its participants STRUCTURALLY
+      (``entries`` = ``(key, host_src)`` pairs) precisely so a CLI seam can
+      enrich the rendered text with what the pure resolver does not know.
+    * a plain ``SettingsError`` from the category ADAPTER (an undeclared shape /
+      a non-``Bind`` at a category leaf) — it has no structured participants, so
+      the pref TARGETS are matched against the message text instead.
+
+    Either way the point is the same: a message naming ``agent.claude.common.x``
+    is useless to a user whose files only contain
+    ``pref.agent.claude.common.x``.
+    """
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings_prefs import pref_origin
+
+    def _line(key, req):
+        return (
+            f"'{key}' was installed by '{req.key}' in the {req.level} "
+            f"settings file {req.where}"
+        )
+
+    entries = getattr(exc, "entries", None)
+    if entries is not None:
+        origins = [
+            _line(key, req)
+            for key, _src in entries
+            if (req := pref_origin(key, prefs)) is not None
+        ]
+        if not origins:
+            return exc
+        return CategoryCollisionError(
+            f"{exc}\n  ⚑ " + "; ".join(origins) + " — edit or remove that request.",
+            kind=exc.kind,
+            box_dest=exc.box_dest,
+            entries=exc.entries,
+        )
+
+    # No structured participants: match the pref TARGETS against the message.
+    text = str(exc)
+    origins = [_line(req.target, req) for req in prefs if req.target in text]
+    if not origins:
+        return exc
+    return type(exc)(
+        f"{text}\n  ⚑ " + "; ".join(origins) + " — edit or remove that request."
+    )
 
 
 def _install_derived_bindings(snapshot, derived: "Mapping[str, object]") -> None:

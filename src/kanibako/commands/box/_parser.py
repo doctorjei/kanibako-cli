@@ -342,6 +342,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "  box set model=sonnet            set 'model' for cwd project\n"
             "  box set myproj model=sonnet     set 'model' for named project\n"
             "  box set env.MY_VAR=hello        set env var\n"
+            "  box set --null pref.agent.claude.common.plugins\n"
+            "                                  request that the agent's bind be\n"
+            "                                  SUPPRESSED for this box (spec §2h)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -349,6 +352,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     set_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompts",
     )
+    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
     set_p.set_defaults(func=run_set)
 
     # kanibako box reset [project] <key> | --all  [--force]
@@ -2241,7 +2245,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
         return 0
 
     # Parse the key/value argument
-    action, key, value = parse_config_arg(key_value_arg)
+    action, key, value = parse_config_arg(
+        key_value_arg, set_null=getattr(args, "null", False),
+    )
 
     # Resolve the project
     try:

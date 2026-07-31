@@ -37,7 +37,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    set_p.add_argument("key_value", help="key=value pair")
+    set_p.add_argument("key_value", nargs="?", help="key=value pair")
+    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
     set_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompts",
     )
@@ -273,7 +274,9 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.errors import ConfigError
 
     key_value = getattr(args, "key_value", None)
-    action, key, value = parse_config_arg(key_value)
+    action, key, value = parse_config_arg(
+        key_value, set_null=getattr(args, "null", False),
+    )
 
     # --reset --all
     if args.reset and getattr(args, "all_keys", False):
