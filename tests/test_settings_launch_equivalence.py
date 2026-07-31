@@ -1,6 +1,6 @@
 """DRIFT TRIPWIRE: the live snapshot category path vs the FROZEN legacy by-name
-resolver (``tests/support/flawed_oracle.py``) reconcile to the SAME mount/copy/env
-set.
+resolver (``flawed_oracle_categories``, quarantined in
+``tests/test_flawed_oracle.py``) reconcile to the SAME mount/copy/env set.
 
 The live ``build_launch_snapshot → snapshot_category_entries →
 reconcile_categories`` path is compared, for a representative category config,
@@ -12,10 +12,18 @@ resolver because it was wrong in a number of cases). A mismatch therefore means
 the live path DRIFTED from the recorded baseline — NOT that the live path is
 wrong. On a divergence a HUMAN adjudicates the correct value against the SPEC
 (``reference/settings-keyspace-1.6.0-target.md``); the frozen side may itself be
-the buggy one. Parametrised over the scope-root shapes that distinguish the launch
-MODES (standalone has no workset root; named/primary add the workset binding roots)
-and the AGENT (the agent-store root differs by agent name), since those are the only
-launch-variant inputs the category resolution depends on.
+the buggy one.
+
+⚑ SCOPE NARROWED BY P3. The two paths agreed on ROOT-JOINING a relative source,
+and that is precisely where they now differ BY DESIGN: the live path no longer
+joins anything (sources are rooted at DECLARATION, spec §2a L487-517) while the
+frozen oracle keeps its own join forever. Re-basing the comparison by feeding the
+oracle pre-rooted values would make it assert a tautology, so instead the fixture
+carries NO bare-relative source and the parametrisation no longer varies a root
+table. What survives is a real tripwire over everything else the two share
+(rw/ro binds, ``@``-ref sources, box-side ``~``, masks, env, per-entry options).
+The root-join drift instrument is now the P3 gate probe + the structural
+no-resurrection scan in ``test_settings_launch.py``.
 """
 
 from __future__ import annotations
@@ -49,21 +57,6 @@ def _ctx(agent: str, workset: str | None) -> ResolveCtx:
     )
 
 
-def _scope_roots(agent: str, ws_root: str | None) -> dict[str, str]:
-    share = f"/data/agents/{agent}/share"
-    store = f"/data/agents/{agent}"
-    roots = {
-        f"agent.{agent}.bindings.ro": share,
-        f"agent.{agent}.bindings.rw": share,
-        f"agent.{agent}.common": store,
-        f"agent.{agent}.caches": store,
-    }
-    if ws_root is not None:
-        roots["workset.bindings.ro"] = ws_root
-        roots["workset.bindings.rw"] = ws_root
-    return roots
-
-
 # The resolved system.* tier (what the old _lookup map carried / the new path folds
 # into the floor so @-refs resolve from the snapshot).
 _RESOLVED_SYS = {
@@ -88,9 +81,10 @@ def _entry_set(rec: ReconciledCategories) -> dict:
     }
 
 
-# A representative category config exercising: rw/ro binds, a root-joined relative
-# agent share, a box-side ``~`` dest, an embedded ``@``-ref host_src, a mask, an env
-# var, and a per-entry options override (3rd tuple slot).
+# A representative category config exercising: rw/ro binds, an agent-scope common
+# with a self-resolving ``@``-ref source, a box-side ``~`` dest, an embedded
+# ``@``-ref host_src, a mask, an env var, and a per-entry options override (3rd
+# tuple slot). NO bare-relative source — see the module docstring.
 def _default_categories(agent: str) -> dict:
     """The production-shaped default table: agent-scope keys are DISCRIMINATED.
 
@@ -100,7 +94,9 @@ def _default_categories(agent: str) -> dict:
     return {
         "box.bindings.rw.home": ("/h/home", "~/", "Z,U"),
         "box.bindings.ro.kani": ("/opt/k", "/opt/kanibako", "ro"),
-        f"agent.{agent}.common.plugins": ("plugins", "~/.claude/plugins"),  # relative → join
+        f"agent.{agent}.common.plugins": (
+            f"@system.agents/{agent}/common/plugins", "~/.claude/plugins",
+        ),
         "box.bindings.rw.data": ("@system.data/x", "/home/agent/x"),  # @-ref host
         "box.masks": ["/home/agent/secret"],
         "box.env.FOO": "bar",
@@ -108,31 +104,29 @@ def _default_categories(agent: str) -> dict:
 
 
 @pytest.mark.parametrize(
-    "agent,workset,ws_root",
+    "agent,workset",
     [
-        ("claude", None, None),                 # standalone (no workset root)
-        ("claude", "myws", "/ws/myws"),         # named/primary
-        ("goose", None, None),                  # different agent store root
-        ("codex", "w2", "/ws/w2"),
+        ("claude", None),        # standalone (no workset tier)
+        ("claude", "myws"),      # named/primary
+        ("goose", None),         # a different agent store
+        ("codex", "w2"),
     ],
 )
-def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
+def test_snapshot_path_matches_legacy_path(agent, workset):
     cats = _default_categories(agent)
     ctx = _ctx(agent, workset)
-    roots = _scope_roots(agent, ws_root)
 
     # The FROZEN oracle is the retired BY-NAME resolver: it reads a LevelView keyed
     # at the reconcile shape ``<scope>.<category>.<name>``, which never carried the
     # agent discriminator. Strip it for the baseline side ONLY — the undiscriminated
     # ``agent.<category>`` form is QUARANTINED to this frozen retired-model baseline
     # and exists NOWHERE else (spec §0 L21). The new path takes the production
-    # (discriminated) table and roots as-is.
+    # (discriminated) table as-is.
     def _undiscriminate(key: str) -> str:
         prefix = f"agent.{agent}."
         return f"agent.{key[len(prefix):]}" if key.startswith(prefix) else key
 
     legacy_cats = {_undiscriminate(k): v for k, v in cats.items()}
-    legacy_roots = {_undiscriminate(k): v for k, v in roots.items()}
 
     # --- FROZEN BASELINE path: the retired by-name resolver over a single
     # AGENT-level LevelView whose defaults carry the tables + the resolved
@@ -149,8 +143,11 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
             return _RESOLVED_SYS[ref]
         raise AssertionError(f"unexpected @-ref {ref}")
 
+    # No root table on either side: the fixture has no bare-relative source, so
+    # the oracle's own (retained) join has nothing to act on and the comparison is
+    # about everything ELSE the two paths share.
     old_entries = flawed_oracle_categories(
-        levels=old_levels, ctx=ctx, lookup=_lookup, scope_roots=legacy_roots,
+        levels=old_levels, ctx=ctx, lookup=_lookup,
     )
     old_rec = reconcile_categories(old_entries)
 
@@ -164,7 +161,7 @@ def test_snapshot_path_matches_legacy_path(agent, workset, ws_root):
         default_categories=floor,
     )
     new_entries = snapshot_category_entries(
-        snap, active_agent=agent, box_ctx=ctx, scope_roots=roots,
+        snap, active_agent=agent, box_ctx=ctx,
     )
     new_rec = reconcile_categories(new_entries)
 

@@ -259,32 +259,59 @@ def test_adapter_emits_bind_entry_with_box_side_resolution():
     assert e.options == "Z,U"  # per-entry opts override carried.
 
 
-def test_adapter_root_joins_relative_host_src():
-    # The agent scope is DISCRIMINATED (agent.<active>.*); the adapter does the
-    # §2d active-over-default pick and emits the BARE agent scope + group.
+def test_adapter_emits_the_stored_host_src_verbatim():
+    """The adapter passes ``host_src`` through UNTOUCHED (spec §2a L474-486).
+
+    Replaces the retired ``test_adapter_root_joins_relative_host_src``: the
+    assembly-time prepend it asserted is the shape §2a L487-517 calls FORBIDDEN,
+    and the mechanism is gone. Sources are rooted at DECLARATION now, so the
+    adapter's whole contract on this axis is "do not touch it".
+
+    The agent scope is DISCRIMINATED (agent.<active>.*); the adapter does the §2d
+    active-over-default pick and emits the BARE agent scope token.
+    """
     snap = KeyStore(
         {"agent": {"claude": {"common": {
-            "plugins": Bind("plugins", "/box/plugins", None)}}}}
+            "plugins": Bind("/data/agents/claude/common/plugins",
+                            "/box/plugins", None)}}}}
     )
-    roots = {"agent.claude.common": "/data/agents/claude"}
     entries = snapshot_category_entries(
-        snap, active_agent="claude", box_ctx=_ctx(), scope_roots=roots,
+        snap, active_agent="claude", box_ctx=_ctx(),
     )
     assert entries[0].scope == "agent"  # BARE scope token (not the discriminator).
-    assert entries[0].host_src == "/data/agents/claude/plugins"
+    assert entries[0].host_src == "/data/agents/claude/common/plugins"
     # rw category default options (common → Z,U) when opts is None.
     assert entries[0].options == "Z,U"
 
 
 def test_adapter_absolute_host_src_not_joined():
+    """The surviving control from the retired pair: an absolute source passes
+    through — which is now the ONLY behaviour, for every source shape."""
     snap = KeyStore(
         {"agent": {"claude": {"common": {"x": Bind("/abs/x", "/box/x", None)}}}}
     )
-    roots = {"agent.claude.common": "/data/agents/claude"}
     entries = snapshot_category_entries(
-        snap, active_agent="claude", box_ctx=_ctx(), scope_roots=roots,
+        snap, active_agent="claude", box_ctx=_ctx(),
     )
     assert entries[0].host_src == "/abs/x"
+
+
+def test_adapter_does_not_root_a_relative_host_src():
+    """⚑ A bare-relative source is emitted AS-IS — it is NOT silently rooted.
+
+    Such a value should never reach here (the declaration loaders root it, and
+    both write surfaces refuse or absolutise it), but if one does, the adapter must
+    not invent a root: an invented root is exactly the silent-wrong-path failure
+    §2a L474-486 exists to prevent. Pinning the pass-through is what makes a
+    re-introduced prepend RED.
+    """
+    snap = KeyStore(
+        {"agent": {"claude": {"common": {"p": Bind("plugins", "/box/p", None)}}}}
+    )
+    entries = snapshot_category_entries(
+        snap, active_agent="claude", box_ctx=_ctx(),
+    )
+    assert entries[0].host_src == "plugins"
 
 
 def test_adapter_active_over_default_pick():
@@ -840,6 +867,7 @@ def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveC
         xdg={"XDG_DATA_HOME": "/data"},
         config={
             "config.data": "/data",
+            "config.agents": "/data/agents",
             "config.primary_workset": primary_workset,
         },
     )
@@ -1231,6 +1259,58 @@ def test_meta_identity_agent_name_under_discriminated_slot():
     snap = _identity_snapshot(agent_name="claude")
     ma = _meta_node(snap, "meta", "agent", "claude")
     assert dict.get(ma, "name") == "claude"
+
+
+class TestMetaAgentPath:
+    """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d L515) that is also
+    §2a's agent DECLARATION ROOT: an abstract-category source stores
+    ``@meta.agent.<a>.path/<category>/<leaf>``, so this key MUST resolve or every
+    such source dangles."""
+
+    def test_meta_agent_path_materialised_for_node_and_harness(self):
+        """A PERSONA materializes BOTH slots. ``load_common`` keys its commons on
+        the plugin's own ``Target.name`` (the HARNESS), while this floor is built
+        with the ACTIVE NODE — so a node-only materialization would leave the
+        harness-keyed refs dangling.
+
+        (Mutation: dropping the harness from the loop → the harness key is absent
+        → RED, and a persona's commons ref would resolve to nothing.)"""
+        floor = meta_identity_floor(
+            box_name="x", project_path="/p", inbox="/i", share_global="/s",
+            share_workset=None, agent_name="navigator℘claude",
+        )
+        assert floor["meta.agent.navigator℘claude.path"] == (
+            "@config.agents/navigator℘claude"
+        )
+        assert floor["meta.agent.claude.path"] == "@config.agents/claude"
+
+    def test_bare_agent_materialises_one_slot(self):
+        """node == harness for a bare agent → ONE entry, byte-identical to the
+        pre-P3 single-slot shape."""
+        floor = meta_identity_floor(
+            box_name="x", project_path="/p", inbox="/i", share_global="/s",
+            share_workset=None, agent_name="claude",
+        )
+        paths = {k for k in floor if k.endswith(".path")}
+        assert paths == {"meta.agent.claude.path"}
+
+    def test_meta_agent_path_resolves_to_the_store_dir(self):
+        """It RESOLVES (the whole point): the @config.agents chain expands to the
+        real per-agent store dir in the built snapshot.  The ctx carries the
+        Layer-1 ``config.agents`` foundation, as every live caller's does
+        (``_launch_snapshot_inputs`` / ``_print_effective_shares``)."""
+        snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
+        ma = _meta_node(snap, "meta", "agent", "claude")
+        assert dict.get(ma, "path") == "/data/agents/claude"
+
+    def test_view_exposes_path(self):
+        """``MetaAgentView.path`` is materialized now — its docstring no longer
+        defers it."""
+        from kanibako import settings_views as views
+
+        snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
+        ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
+        assert ma.path == "/data/agents/claude"
 
 
 def test_meta_identity_no_agent_omits_agent_key():
@@ -1972,3 +2052,203 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
     # The floor's derivation stands; the forged value is gone.
     assert snap.meta.box.path == "/data/ws/boxes/b"
     assert snap.box.image == "img"  # the legitimate key survived the meta drop
+
+
+# --------------------------------------------------------------------------- #
+# CATEGORY-ROOT refusal — a value where a namespace belongs (spec §2d L906-910) #
+# --------------------------------------------------------------------------- #
+
+
+class TestCategoryRootRefusal:
+    """T8 — a VALUE at a category root is an UNDECLARED shape and ERRORS.
+
+    ⚑ Before P3 every one of these was SILENTLY DROPPED by an
+    ``isinstance(x, KeyStore)`` guard: the user's binding simply never appeared,
+    with nothing said anywhere.  Silent acceptance of an undeclared shape is
+    exactly what the closed-keyspace rule (spec §0) forbids — an undeclared key is
+    an ERROR that names itself.
+
+    The refusal lives in ``_emit_scope_node`` because that is the ONE site that
+    sees the MERGED snapshot, so it catches such a value from ANY origin (a plugin
+    defaults table, a workset/box YAML, a ``config set``) without duplication.
+    """
+
+    @staticmethod
+    def _entries(node: dict):
+        return snapshot_category_entries(
+            KeyStore(node), active_agent="claude", box_ctx=_ctx(),
+        )
+
+    def test_scalar_at_bindings_root_errors(self):
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"agent": {"default": {"bindings": "/some/path"}}})
+        msg = str(e.value)
+        assert "CATEGORY ROOT" in msg
+        # It names the per-arm declaration form the user actually wants.
+        assert "agent.default.bindings.{ro,rw}.<name>" in msg
+
+    @pytest.mark.parametrize("tier", ["default", "claude"])
+    def test_agent_message_names_the_DISCRIMINATED_tier(self, tier):
+        """⚑ The message must name ``agent.<tier>.bindings``, NEVER the bare
+        ``agent.bindings``.
+
+        The bare form is not a key (spec §0 L21: the agent tier is DISCRIMINATED
+        everywhere). An error naming it would be telling the reader to go look at —
+        or worse, write — a shape the keyspace forbids, which is exactly the
+        confusion the closed-keyspace rule exists to prevent. It also has to say
+        WHICH tier holds the bad value, since ``agent.default`` and
+        ``agent.<active>`` are different files.
+
+        This is why the refusal runs on the RAW tiers rather than on the merged
+        agent node: after ``_agent_pick_node`` the tier of origin is gone and only
+        the bare token remains.
+        """
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"agent": {tier: {"common": "/some/path"}}})
+        msg = str(e.value)
+        assert f"agent.{tier}.common" in msg
+        # The forbidden bare form must not appear ANYWHERE in the message.
+        assert "agent.common" not in msg
+
+    def test_arm_less_agent_message_names_the_discriminated_tier(self):
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"agent": {"claude": {"bindings": {
+                "mydir": Bind("/h", "/b", None),
+            }}}})
+        msg = str(e.value)
+        assert "agent.claude.bindings.mydir" in msg
+        assert "agent.claude.bindings.ro.mydir" in msg
+        assert "agent.bindings" not in msg
+
+    def test_a_NON_ACTIVE_agent_tier_is_still_checked(self):
+        """Every discriminated tier present in the snapshot is validated, not just
+        the active one — a malformed ``agent.goose.*`` is undeclared whether or not
+        goose is the agent being launched."""
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"agent": {"goose": {"caches": "/x"}}})
+        assert "agent.goose.caches" in str(e.value)
+
+    def test_bind_at_a_leaf_category_root_errors(self):
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"workset": {"common": Bind("/h", "/b", None)}})
+        msg = str(e.value)
+        assert "workset.common" in msg
+        assert "workset.common.<name>" in msg
+
+    def test_list_at_a_category_root_errors(self):
+        with pytest.raises(_SettingsError):
+            self._entries({"box": {"caches": ["/a", "/b"]}})
+
+    def test_none_at_a_category_root_errors(self):
+        """``null`` is a VALUE too — a whole-category present-None is not a
+        declared reset shape (per-NAME present-None is, and is handled at merge)."""
+        with pytest.raises(_SettingsError):
+            self._entries({"box": {"seeded": None}})
+
+    def test_arm_less_binding_errors(self):
+        """A ``bindings`` child outside ``{ro, rw}`` is an arm-less bind."""
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"box": {"bindings": {
+                "mydir": Bind("/h", "/b", None),
+            }}})
+        msg = str(e.value)
+        assert "box.bindings.mydir" in msg
+        assert "box.bindings.ro.mydir" in msg and "box.bindings.rw.mydir" in msg
+
+    def test_value_at_an_arm_root_errors(self):
+        """A value AT an arm (``bindings.ro = "/x"``) is the same defect one level
+        down — declaration is per NAME under the arm.
+
+        ⚑ Slightly WIDER than the boundary the P3 plan spelled out (which named the
+        category root and the arm-less child).  Left silent it would be the one
+        remaining hole in the function whose entire purpose is to close silent
+        drops; it is a separate branch so it can be removed on its own.
+        """
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"box": {"bindings": {"ro": "/x"}}})
+        assert "box.bindings.ro" in str(e.value)
+
+    def test_present_but_empty_is_not_an_error(self):
+        """An empty node is byte-indistinguishable from an absent one after
+        ``assemble``, so erroring would trap a no-op.  §2d itself calls the
+        ``agent.default.bindings | {}`` row "documentation of intent"."""
+        assert self._entries({"agent": {"default": {"bindings": KeyStore({})}}}) == []
+        assert self._entries({"workset": {"common": KeyStore({})}}) == []
+        assert self._entries(
+            {"box": {"bindings": KeyStore({"ro": KeyStore({})})}}
+        ) == []
+
+    def test_a_valid_declaration_still_emits(self):
+        """Control: the refusal does not eat well-formed declarations."""
+        entries = self._entries({"box": {"bindings": {"rw": {
+            "home": Bind("/h/home", "/box/home", None),
+        }}}})
+        assert [(e.scope, e.category, e.name) for e in entries] == [
+            ("box", "bindings.rw", "home"),
+        ]
+
+
+# --------------------------------------------------------------------------- #
+# STRUCTURAL: the implicit-root-prepend mechanism must not come back           #
+# --------------------------------------------------------------------------- #
+
+
+class TestNoImplicitRootPrepend:
+    """T10 — the DELETION instrument.
+
+    ⚑ THE BEHAVIOURAL GATE CANNOT SEE THIS CHANGE, and saying so out loud is the
+    point. Once every source is rooted at DECLARATION, an assembly-time join
+    no-ops on the (now absolute) inputs — so leaving the mechanism in place
+    produces a byte-identical mount map. A gate that silently cannot see half the
+    change is worse than no gate, so the deletion gets a STRUCTURAL instrument
+    instead: the identifiers must appear NOWHERE in the shipped source, comments
+    included (the prose truth pass is part of the change — a comment describing a
+    mechanism that no longer exists is worse than no comment).
+
+    Spec §2a L474-486 does not merely prefer this; it names ``scope_roots`` and
+    says it MUST BE DELETED. Re-adding an inert, defaulted parameter would already
+    be the invitation to re-populate it — which is why this scan is not limited to
+    live call sites.
+    """
+
+    _FORBIDDEN = ("scope_roots", "_root_join")
+
+    @staticmethod
+    def _shipped_sources():
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parent.parent
+        files = list((root / "src" / "kanibako").rglob("*.py"))
+        for pkg in sorted((root / "packages").glob("*")):
+            src = pkg / "src"
+            if src.is_dir():
+                files.extend(src.rglob("*.py"))
+        # ``build/`` holds stale wheel-build copies of the plugin trees, and
+        # ``.claude/worktrees/`` may hold another agent's live worktree — neither
+        # is shipped source and neither is ours to edit.
+        return [
+            f for f in files
+            if "build" not in f.parts and ".claude" not in f.parts
+        ]
+
+    def test_scan_covers_a_representative_source_set(self):
+        """Guard the guard: an empty or tiny file list would make the scan below
+        pass vacuously."""
+        files = self._shipped_sources()
+        names = {f.name for f in files}
+        assert len(files) > 50, len(files)
+        assert {"settings_launch.py", "settings_categories.py", "start.py"} <= names
+        # The plugin packages are in scope too (they declare category defaults).
+        assert any("plugins" in f.parts for f in files), sorted(names)[:5]
+
+    def test_scope_roots_mechanism_is_absent(self):
+        hits = []
+        for path in self._shipped_sources():
+            text = path.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if any(token in line for token in self._FORBIDDEN):
+                    hits.append(f"{path}:{lineno}: {line.strip()}")
+        assert not hits, (
+            "the implicit root-prepend mechanism reappeared in shipped source "
+            "(spec §2a L474-486 requires its deletion):\n" + "\n".join(hits)
+        )

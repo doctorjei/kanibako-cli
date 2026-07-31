@@ -234,12 +234,19 @@ def test_bare_dollar_then_nonname_is_hard_error() -> None:
 def test_escaped_dollar_is_literal_not_a_var() -> None:
     # ``\$`` is an escaped literal ``$`` — NOT a variable token, so no unknown-var
     # error (matches expand_expr's escape rule).
-    v = _validate("box.bindings.rw.home", r"\$NOTAVAR/x", is_category=True)
+    #
+    # ⚑ Anchored ABSOLUTE so the escape rule is what is under test.  P3 added a
+    # separate refusal for a bare-relative category source, and ``\$NOTAVAR/x`` is
+    # bare-relative once unescaped — it would now be refused for that OTHER reason,
+    # which would leave this test green for the wrong cause (or red for one).  The
+    # interaction itself is asserted in
+    # ``TestRelativeCategorySourceRefused::test_escaped_token_still_relative``.
+    v = _validate("box.bindings.rw.home", r"/abs/\$NOTAVAR/x", is_category=True)
     assert v is OK
 
 
 def test_escaped_at_is_literal_not_a_ref() -> None:
-    v = _validate("box.bindings.rw.home", r"\@nope/x", is_category=True)
+    v = _validate("box.bindings.rw.home", r"/abs/\@nope/x", is_category=True)
     assert v is OK
 
 
@@ -310,7 +317,8 @@ def test_both_token_families_report_in_the_resolvers_message_style() -> None:
 def test_escaped_at_brace_is_literal_not_a_ref() -> None:
     # ``\@{`` is the escape hatch for a literal ``@{`` — not a token, so no
     # dangling-ref error (matches expand_expr's escape rule).
-    v = _validate("box.bindings.rw.home", r"\@{nope}/x", is_category=True)
+    # Anchored ABSOLUTE — see ``test_escaped_dollar_is_literal_not_a_var``.
+    v = _validate("box.bindings.rw.home", r"/abs/\@{nope}/x", is_category=True)
     assert v is OK
 
 
@@ -725,3 +733,108 @@ def test_validate_then_repoint_roundtrip(tmp_path: Path) -> None:
         "@workset.boxes/custom",
         "~/vault",
     ]
+
+
+# --------------------------------------------------------------------------- #
+# A bare-relative category host_src → Error (P3 / spec §2a L474-486)          #
+# --------------------------------------------------------------------------- #
+
+
+class TestRelativeCategorySourceRefused:
+    """T9 — ``config set`` REFUSES a bare-relative category ``host_src``.
+
+    ⚑ Nothing else can catch this.  A literal ``plugins`` resolves PERFECTLY (to
+    the relative string ``plugins``), so the E3 resolution probe passes it; the
+    mount spec then interprets it against whatever the launching process's CWD
+    happens to be.  It is not a broken value, it is a value that silently means
+    somewhere else — and the layer that used to supply a root (``scope_roots``) is
+    gone, because sources are rooted AT DECLARATION now and ``config set`` is not a
+    declaration site.
+
+    ``workset share add`` is deliberately ASYMMETRIC (it absolutises instead): it
+    DOCUMENTED a join and must keep producing the same mount for the same input.
+    ``config set`` never promised one, so there is nothing to preserve and no
+    defensible root to invent.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "box.bindings.rw.home",
+            "workset.bindings.ro.docs",
+            "agent.claude.common.plugins",
+            "agent.claude.caches.transform",
+            "system.seeded.template",
+        ],
+    )
+    def test_relative_source_is_refused(self, key) -> None:
+        v = _validate(key, "plugins", is_category=True)
+        assert isinstance(v, Error)
+        assert key in v.message
+        assert "plugins" in v.message
+
+    @pytest.mark.parametrize(
+        ("key", "rooted"),
+        [
+            ("agent.claude.common.plugins",
+             "@meta.agent.claude.path/common/plugins"),
+            ("agent.navigator℘claude.caches.x",
+             "@meta.agent.navigator℘claude.path/caches/x"),
+            ("workset.common.x", "@meta.workset.path/common/x"),
+            ("box.seeded.x", "@meta.box.path/seeded/x"),
+            ("system.caches.x", "@config.data/caches/x"),
+        ],
+    )
+    def test_rooted_hint_is_per_scope(self, key, rooted) -> None:
+        """⚑ The hint names the root of the scope the user actually typed.
+
+        Spec §2a L487-517 gives a DIFFERENT root per scope. A single agent-shaped
+        hint would tell someone editing ``workset.common.x`` to spell an
+        ``@meta.agent.*`` root that has nothing to do with their key — a
+        confidently wrong instruction, which is worse than saying nothing.
+
+        The agent row names the agent the user typed (persona nodes included), so
+        the suggestion is copy-pasteable rather than a ``<agent>`` placeholder.
+        """
+        value = key.rsplit(".", 1)[-1]
+        v = _validate(key, value, is_category=True)
+        assert isinstance(v, Error)
+        assert rooted in v.message
+
+    @pytest.mark.parametrize(
+        "key", ["box.bindings.rw.home", "workset.bindings.ro.d", "agent.c.synced.s"],
+    )
+    def test_concrete_category_gets_no_rooted_hint(self, key) -> None:
+        """``bindings.{ro,rw}`` and ``synced`` take NO root at any scope (spec §2a),
+        so there is no rooted form to suggest — suggesting one would be a lie."""
+        v = _validate(key, "sub/dir", is_category=True)
+        assert isinstance(v, Error)
+        assert "rooted form" not in v.message
+        assert "@meta." not in v.message
+
+    @pytest.mark.parametrize(
+        "value",
+        ["/abs/dir", "~/tdir", "$XDG_DATA_HOME/x", "@workset.boxes/x"],
+    )
+    def test_self_resolving_sources_still_pass(self, value) -> None:
+        v = _validate("box.bindings.rw.home", value, is_category=True)
+        assert not isinstance(v, Error), v
+
+    @pytest.mark.parametrize(
+        "value", [r"\$NOTAVAR/x", r"\@nope/x", r"\@{nope}/x", r"\~foo/x"],
+    )
+    def test_escaped_token_still_relative(self, value) -> None:
+        """An ESCAPED leading token is a literal character, not a token — so the
+        value is still a BARE RELATIVE path and is refused.
+
+        This is the same answer the retired assembly-time join gave (it tested the
+        post-unescape string for a leading ``/``), reached earlier.
+        """
+        v = _validate("box.bindings.rw.home", value, is_category=True)
+        assert isinstance(v, Error)
+        assert "relative" in v.message
+
+    def test_scalar_keys_are_untouched(self) -> None:
+        """The refusal is CATEGORY-only: a scalar setting is not a path source."""
+        v = _validate("model", "sonnet", is_category=False)
+        assert not isinstance(v, Error), v

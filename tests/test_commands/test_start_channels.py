@@ -237,8 +237,19 @@ class TestChannelDefaultCategories:
 
 
 def _workset_anchor(std, proj):
-    """The ``workset_anchor`` floor fragment the LIVE launch path produces."""
-    return _launch_snapshot_inputs(std=std, proj=proj, agent_name="general")[5]
+    """The ``workset_anchor`` floor fragment the LIVE launch path produces.
+
+    ⚑ Unpacked BY NAME, not by index. This was ``[5]`` and silently started
+    returning ``cascade_box_path`` when P3 dropped an element from the tuple —
+    a positional index into a 7-tuple fails as a confusing ``TypeError`` three
+    frames away (or, worse, could pick a same-typed neighbour and pass). The full
+    unpack fails loudly AT THIS LINE on any arity change.
+    """
+    (
+        _ctx, _resolved_sys, _meta_runtime, _meta_identity, workset_anchor,
+        _cascade_box_path, _cascade_workset_path,
+    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name="general")
+    return workset_anchor
 
 
 class TestWorksetChannelFloorLeaf:

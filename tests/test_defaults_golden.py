@@ -279,11 +279,22 @@ class TestAgentDefaultsShape:
     def test_shares_are_structured_pairs(self):
         """Any ``common`` block declares structured 2-/3-element bind pairs.
 
-        ``shared`` is one of the spec §2a structured-pair categories.  Files that
+        ``common`` is one of the spec §2a structured-pair categories.  Files that
         declare no commons (goose/codex) yield an empty map — also valid.
+
+        ⚑ THE host_src ASSERTIONS ARE LOAD-BEARING, at BOTH levels.  Every generic
+        predicate here (2-/3-tuple, no ``:``, no ``,``, dest under ``$GUEST_HOME``)
+        is satisfied by an ``@``-ref just as it was by a bare leaf, so without an
+        explicit shape check this "golden" guard would silently stop guarding
+        ``host_src`` across P3's declaration-rooting flip.  The YAML level pins the
+        AUTHORED form (a bare leaf is what an author may write); the LOADED level
+        pins the STORED form (self-resolving, spec §2a L474-486).
         """
+        from kanibako.agent_config import agent_category_root_ref, is_self_resolving
+
         for package, filename in _AGENT_DEFAULTS:
             doc = _load_yaml(package, filename)
+            agent = filename.removesuffix("-defaults.yaml")
             for entry in doc.get("common", []):
                 assert isinstance(entry, dict), (
                     f"{filename}: common entry must be a mapping: {entry!r}"
@@ -293,19 +304,53 @@ class TestAgentDefaultsShape:
                     f"{filename}: common box_dest must be a $GUEST_HOME expression: "
                     f"{entry!r}"
                 )
+                assert isinstance(entry["host_src"], str) and entry["host_src"], (
+                    f"{filename}: common host_src must be a non-empty string: "
+                    f"{entry!r}"
+                )
 
             # And the LOADED commons are real 2-/3-tuples (BindDefault).
-            agent = filename.removesuffix("-defaults.yaml")
             commons = agent_defaults.load_common(package, filename, agent)
             assert all(k.startswith(f"agent.{agent}.common.") for k in commons), (
                 f"{filename}: loaded common keys must be DISCRIMINATED: {list(commons)}"
             )
             assert isinstance(commons, dict)
+            root_ref = agent_category_root_ref(agent, "common")
             for key, pair in commons.items():
                 _assert_structured_pair(pair, f"{filename} common {key}")
                 assert pair[1].startswith(GUEST_HOME), (
                     f"{filename}: loaded common {key} box_dest not under GUEST_HOME: "
                     f"{pair!r}"
+                )
+                # The STORED source must resolve on its own — a bare relative leaf
+                # here would need a layer to prepend a root, which is exactly what
+                # spec §2a L474-486 forbids.
+                assert is_self_resolving(pair[0]), (
+                    f"{filename}: loaded common {key} host_src {pair[0]!r} does not "
+                    "resolve on its own (spec §2a L474-486)"
+                )
+                # A leaf the author wrote bare is rooted at the agent DECLARATION
+                # ROOT; an author-supplied self-resolving source is stored verbatim.
+                authored = next(
+                    e["host_src"] for e in doc.get("common", [])
+                    if f"agent.{agent}.common.{e['key']}" == key
+                )
+                expected = (
+                    authored if is_self_resolving(authored)
+                    else f"{root_ref}/{authored}"
+                )
+                # ⚑ TAUTOLOGY WARNING — this comparison builds ``expected`` from
+                # the SAME helpers the loader uses, so it verifies the loader APPLIED
+                # the rule, not that the rule produces the right PATH. Change the
+                # layout (e.g. drop the ``common/`` segment) and both sides move
+                # together and this stays GREEN. The LITERAL carriers — the ones that
+                # spell the resolved path out and go red on a layout change — are
+                # ``test_targets/test_claude.py::TestDefaultShares`` (the stored ref)
+                # and ``test_categories_live.py::TestDeclarationRoots::
+                # test_claude_commons_resolve_under_common_dir`` (the resolved mount).
+                assert pair[0] == expected, (
+                    f"{filename}: loaded common {key} host_src {pair[0]!r} != "
+                    f"{expected!r}"
                 )
 
 

@@ -526,3 +526,124 @@ class TestP1BoxRootAnchor:
         proj, ws_root, hl = cases["standalone"]
         snap, _ = _probe_snapshot("standalone", proj, ws_root, hl)
         assert snap.meta.box.path == snap.workset.boxes
+
+
+class TestDeclarationRoots:
+    """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a L487-525).
+
+    The rule, driven through the REAL pipeline (build → snapshot → reconcile):
+    a bare relative leaf resolves under ``<agent-store>/<category>/``; an already
+    self-resolving source (absolute / ``~`` / ``$var`` / ``@``-ref) is NOT rooted.
+    There is no assembly-time prepend left to compensate for either way.
+    """
+
+    @staticmethod
+    def _resolve(entries: dict[str, object], *, agent: str = "claude"):
+        """Resolve a floor of agent-scope category entries into ``{dest: src}``."""
+        from kanibako.settings_launch import (
+            build_launch_snapshot,
+            meta_identity_floor,
+            snapshot_category_entries,
+        )
+
+        ctx = make_ctx(
+            workset_name=None,
+            xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
+            config={"config.data": "/data", "config.agents": "/data/agents"},
+        )
+        floor: dict[str, object] = {"system.cache": "$XDG_CACHE_HOME/kanibako"}
+        floor.update(meta_identity_floor(
+            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+            share_workset=None, agent_name=agent,
+        ))
+        floor.update(entries)
+        snap = build_launch_snapshot(
+            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        rec = reconcile_categories(
+            snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx)
+        )
+        # MOUNTs and COPYs together — ``seeded`` is a COPY, so a mounts-only view
+        # would silently skip the one abstract category that is not a mount.
+        return {e.box_dest: e.host_src for e in (*rec.mounts, *rec.copies)}
+
+    def test_absolute_and_ref_sources_are_not_rooted(self):
+        """T4 — the spec's own ``caches.transform`` worked example.
+
+        ``agent.<a>.caches.transform = (@system.cache/tweakcc, =)`` (§2d L980/L1041)
+        is an IDENTITY mount rooted DELIBERATELY at ``@system.cache``.  A rule that
+        prefixed it would break the spec's own example — which is why §2a L518-525
+        reversed the "absolute source is a category mismatch" ruling.
+
+        ⚑ THIS TEST IS *NOT* THE INSTRUMENT FOR AN UNCONDITIONAL-ROOTING BUG.
+        It injects the entry straight into the floor, which is where a STORED value
+        already sits — so it never runs ``root_relative_source`` and stays GREEN if
+        that function drops its prefix test (verified by running that mutation).
+        What it pins is the OTHER half: that nothing DOWNSTREAM of the declaration
+        re-roots a self-resolving source. The declaration-time rule is instrumented
+        by ``tests/test_agent_defaults.py`` (``test_self_resolving_source_is_stored
+        _verbatim`` + ``TestLayoutSingleSource::test_prefix_rule``), which drive the
+        real loader.
+        """
+        by_dest = self._resolve({
+            "agent.claude.caches.transform": (
+                "@system.cache/tweakcc", "@system.cache/tweakcc",
+            ),
+        })
+        # No ``common/``, no ``caches/``, no agent-store prefix ANYWHERE.
+        assert by_dest["/xcache/kanibako/tweakcc"] == "/xcache/kanibako/tweakcc"
+        assert not any("agents/claude" in src for src in by_dest.values())
+
+    def test_self_resolving_shapes_pass_through_untouched(self):
+        by_dest = self._resolve({
+            "agent.claude.common.a": ("/abs/dir", "/g/a"),
+            "agent.claude.common.b": ("~/tdir", "/g/b"),
+            "agent.claude.common.c": ("$XDG_DATA_HOME/x", "/g/c"),
+            "agent.claude.common.d": ("@meta.agent.claude.path/own", "/g/d"),
+        })
+        assert by_dest["/g/a"] == "/abs/dir"
+        assert by_dest["/g/b"] == f"{HOST_HOME}/tdir"
+        assert by_dest["/g/c"] == "/data/x"
+        assert by_dest["/g/d"] == "/data/agents/claude/own"
+
+    def test_bare_relative_leaf_is_rooted_under_its_category_dir(self):
+        """T5 — the POSITIVE case, per abstract category.
+
+        The rooting happens at DECLARATION, so what the pipeline sees is already
+        the full ref; this pins that the ref a declaration loader BUILDS resolves
+        to ``<store>/<category>/<leaf>``.
+        """
+        from kanibako.agent_config import agent_category_root_ref, root_relative_source
+
+        entries = {
+            f"agent.claude.{cat}.probe": (
+                root_relative_source(
+                    "leaf", agent_category_root_ref("claude", cat),
+                ),
+                f"/g/{cat}",
+            )
+            for cat in ("common", "caches", "seeded")
+        }
+        by_dest = self._resolve(entries)
+        assert by_dest["/g/common"] == "/data/agents/claude/common/leaf"
+        assert by_dest["/g/caches"] == "/data/agents/claude/caches/leaf"
+        # ``seeded`` is a COPY, not a MOUNT — but it roots identically.
+        assert by_dest["/g/seeded"] == "/data/agents/claude/seeded/leaf"
+
+    def test_claude_commons_resolve_under_common_dir(self):
+        """T11 — the PERMANENT form of the gate's one intended change (M-3).
+
+        The REAL ``default_common()`` through the REAL pipeline lands at
+        ``<data>/agents/claude/common/{plugins,cache}``.  This is the standing
+        replacement for the one-off before/after gate diff.
+        """
+        from kanibako.plugins.claude import ClaudeTarget
+
+        by_dest = self._resolve(dict(ClaudeTarget().default_common()))
+        assert by_dest["/home/agent/.claude/plugins"] == (
+            "/data/agents/claude/common/plugins"
+        )
+        assert by_dest["/home/agent/.claude/cache"] == (
+            "/data/agents/claude/common/cache"
+        )

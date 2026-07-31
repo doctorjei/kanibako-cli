@@ -477,29 +477,46 @@ class TestRefreshCredentials:
 
 
 class TestDefaultShares:
-    """Part 3a: claude declares plugins + cache as AGENT-scope ``shared`` entries.
+    """Part 3a: claude declares plugins + cache as AGENT-scope ``common`` entries.
 
     The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
     in the box home bind, fresh per box); plugins + cache are now category
-    ``agent.claude.shared.*`` defaults rooted at ``@system.agents/claude``.
+    ``agent.claude.common.*`` defaults ROOTED AT DECLARATION under the agent store
+    root ``@meta.agent.claude.path`` (spec §2a L487-517).
     """
 
     def test_declares_plugins_and_cache(self):
         t = ClaudeTarget()
         commons = t.default_common()
         # STRUCTURED form (spec §2a): each value is a (host_src, box_dest) tuple,
-        # NOT a colon-joined string.
+        # NOT a colon-joined string.  The host_src is the STORED, fully
+        # self-resolving @-ref — no layer prepends a root later (§2a L474-486).
         assert commons == {
-            "agent.claude.common.plugins": ("plugins", "/home/agent/.claude/plugins"),
-            "agent.claude.common.cache": ("cache", "/home/agent/.claude/cache"),
+            "agent.claude.common.plugins": (
+                "@meta.agent.claude.path/common/plugins",
+                "/home/agent/.claude/plugins",
+            ),
+            "agent.claude.common.cache": (
+                "@meta.agent.claude.path/common/cache",
+                "/home/agent/.claude/cache",
+            ),
         }
 
-    def test_share_values_are_relative_host_src(self):
-        """host_src is the relative key name (joined under the agent store root)."""
+    def test_share_values_are_self_resolving_host_src(self):
+        """host_src RESOLVES ON ITS OWN (spec §2a L474-486).
+
+        ⚑ The pre-P3 form of this test asserted ``not host_src.startswith("/")``,
+        which an ``@``-ref also satisfies — it would have passed VACUOUSLY over the
+        new shape while guarding nothing.  Inverted: assert the anchored form
+        positively, so a regression to a bare leaf is RED.
+        """
+        from kanibako.agent_config import is_self_resolving
+
         t = ClaudeTarget()
-        for value in t.default_common().values():
+        for key, value in t.default_common().items():
             host_src, box_dest = value
-            assert not host_src.startswith("/")
+            assert is_self_resolving(host_src), key
+            assert host_src.startswith("@meta.agent.claude.path/common/"), key
             assert box_dest.startswith("/home/agent/.claude/")
 
 

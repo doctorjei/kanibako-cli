@@ -67,8 +67,9 @@ Delivery
 
 Two orthogonal axes (unchanged from commons/seeds)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-* **The KEY's scope** selects the source root (via *scope_roots*) the relative
-  ``host_src`` is joined under, and — for ``bindings`` — the mount mode.
+* **The KEY's scope** selects — for ``bindings`` — the mount mode, and names the
+  DECLARATION ROOT an abstract-category source is spelled against when it is
+  declared (spec §2a; the rooting happens at the declaration site, never here).
 * **The LEVEL where the key is SET** decides *precedence*.  A box may set a
   system-scoped key to a terminal ``""`` to suppress an inherited entry.
 
@@ -82,21 +83,22 @@ an earlier one and podman's "last ``-v`` wins" dedup honor box over system.
 Within a scope they are ordered ``(category, name)`` ascending for determinism.
 4b imposes the cross-category authority order on top of this.
 
-Root-join rule
+No root-join
 ~~~~~~~~~~~~~~~
-*scope_roots* maps a GROUP PREFIX (the key up to and including the category
-token, e.g. ``"agent.claude.bindings.rw"`` or ``"workset.common"``) to a
-host-space root expression.  Agent-scope groups are DISCRIMINATED — there is no
-bare ``agent.*`` outside an explicit agent name or ``default``.  When a root exists for a key's group AND the resolved
-``host_src`` is not absolute, the source becomes ``root / host_src``; otherwise
-``host_src`` is used as-is.  Groups absent from *scope_roots* mean no join.
+There is NONE, by rule.  Every ``host_src`` reaching this module already resolves
+ON ITS OWN — absolute, ``~``, ``$var`` or an ``@``-ref (spec §2a L474-486) —
+because the ABSTRACT categories (``common``/``caches``/``seeded``) are rooted at
+DECLARATION: an author writes a bare leaf and the declaring loader stores the full
+``@<scope-root>/<category>/<leaf>``.  A layer that prefixed a root on the way to a
+mount is the shape §2a L487-517 calls FORBIDDEN: it hides the true source and
+resolves differently in any other context.  Nothing here joins anything.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, Mapping
 
 # Delivery tags.
 Delivery = Literal["COPY", "MOUNT", "ENV"]
@@ -120,6 +122,24 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 # ``bindings`` (there is none) and ``seeded``/``common``/``synced`` are distinct
 # tokens.  Listed longest-first so the alternation is unambiguous.
 _BIND_CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
+
+# The ABSTRACT categories — the three that let an author write a bare LEAF, rooted
+# at DECLARATION under ``<scope-root>/<category>/`` (spec §2a L487-517). The rest
+# (``bindings.{ro,rw}``, ``synced``) are CONCRETE: they take NO root at any scope,
+# so a relative source there is a defect, not a shorthand.
+ABSTRACT_CATEGORIES: Final[tuple[str, ...]] = ("common", "caches", "seeded")
+
+# spec §2a DECLARATION ROOTS — the per-SCOPE root an abstract category's sources
+# are spelled against. THE single copy of the spec's table; ``{agent}`` is the only
+# placeholder (the agent tier is discriminated, so its root names the agent).
+# Consumers: the declaration-time ref builder (agent scope) and the ``config set``
+# refusal message, which must name the root of the scope the user actually typed.
+DECLARATION_ROOT_REF: Final[Mapping[str, str]] = {
+    "system": "@config.data",
+    "agent": "@meta.agent.{agent}.path",
+    "workset": "@meta.workset.path",
+    "box": "@meta.box.path",
+}
 
 # delivery per category (the COPY/MOUNT split — design §3).
 _DELIVERY: dict[str, Delivery] = {

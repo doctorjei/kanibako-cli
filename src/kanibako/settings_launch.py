@@ -49,7 +49,7 @@ a per-agent file land). Both the behavior read
 (:func:`snapshot_category_entries`) do the active-over-default value-pick PER NAME
 HERE — the consumer's job, since 2a/7a / the merge deliberately keep both slots'
 keys discriminated. Emitted ``CategoryEntry``\\ s carry the BARE ``agent`` scope
-token (load-bearing for ``scope_roots`` + reconcile, NOT the discriminator).
+token (load-bearing for reconcile precedence, NOT the discriminator).
 
 box_dest deferral (S17 / B6)
 ----------------------------
@@ -73,6 +73,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Mapping
 
+from kanibako.agent_ref import harness_of
 from kanibako.settings_assemble import assemble_levels
 from kanibako.settings_categories import (
     _DELIVERY,
@@ -438,6 +439,41 @@ def meta_runtime_floor(
 # @workset.* (JC-B2-3 / JC-B2-4 — see the return docstring), a tracked follow-up.
 
 
+def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
+    """The agent STORE-ROOT anchors ``meta.agent.<a>.path`` for *agent_name*.
+
+    THE single builder for this key, used by BOTH the launch floor
+    (:func:`meta_identity_floor`) and the ``config set`` SET-TIME validation
+    snapshot. That sharing is load-bearing, not tidiness: ``config set``'s refusal
+    message tells a user to spell an abstract-category source as
+    ``@meta.agent.<agent>.path/<category>/<name>``, and if the set-time snapshot did
+    not carry the key, the very value the tool just recommended would be rejected as
+    a dangling ``@``-reference. A hint that cannot be accepted is worse than none.
+
+    Spelled ``@config.agents/<name>`` rather than the spec's
+    ``@config.agents/@meta.agent.<a>.name`` chain (§2d L515): ``<name>`` IS the value
+    of ``meta.agent.<a>.name`` at both seams, and the flat form avoids a floor entry
+    that references its own sibling. Both resolve identically (verified).
+
+    ⚑ NODE **and** HARNESS. ``load_common`` keys its commons on the plugin's own
+    ``Target.name`` (the HARNESS, e.g. ``claude``) while callers pass the ACTIVE
+    NODE (``navigator℘claude`` for a persona). On a persona box those differ, so
+    materializing only the node would leave the harness-keyed refs DANGLING. Both are
+    materialized; for a bare agent node == harness and this is a single entry.
+
+    ⚑ The harness entry is INTENTIONALLY PARTIAL on a persona box: it gets a
+    ``path`` but no ``name`` / ``auth.share_support`` (those stay the ACTIVE agent's,
+    which is what every consumer of them means). Nothing reads
+    ``meta.agent.<harness>.name`` — the partial node exists solely so a
+    harness-keyed store ref resolves — so the asymmetry is inert, and making it
+    symmetric would invent a second identity for one agent.
+    """
+    return {
+        f"meta.agent.{store_agent}.path": f"@config.agents/{store_agent}"
+        for store_agent in {agent_name, harness_of(agent_name)}
+    }
+
+
 def meta_identity_floor(
     *,
     box_name: str,
@@ -487,6 +523,13 @@ def meta_identity_floor(
     cascade discriminator (``install.name``); ``agent_real_name`` is the value
     (the plugin's ``meta.agent.<agent>.name`` — normally the same string). Both
     ``None`` for a NO-AGENT box (skips the agent identity key).
+
+    ⚑ The STORE-ROOT anchor ``meta.agent.<a>.path`` is keyed on the DISCRIMINATOR
+    (*agent_name*), not on *agent_real_name* — the store dir is
+    ``agents/<discriminator>/``, which is what ``agent_settings_path`` and the
+    persona shim use. The two are the same string for every shipped plugin; if a
+    plugin ever returned a different ``name``, the path anchor would still (rightly)
+    follow the store, while ``meta.agent.<a>.name`` reported the plugin's value.
     """
     floor: dict[str, object] = {
         # Box identity (spec §2c). The box name is carried on ``proj.name``
@@ -518,6 +561,9 @@ def meta_identity_floor(
         floor[f"meta.agent.{agent_name}.name"] = (
             agent_real_name if agent_real_name is not None else agent_name
         )
+        # The agent's STORE ROOT — see :func:`meta_agent_path_floor` (shared with
+        # the SET-TIME validation snapshot, so a value that validates resolves).
+        floor.update(meta_agent_path_floor(agent_name))
         # The agent's credential-SHARING CAPABILITY (spec §2d; design step 2):
         # plugin-set, RO — the hard floor a user can't fake. The auth chain's
         # meta.box.agent.auth.share_support mirror views UP to this key, so it must
@@ -1511,7 +1557,6 @@ def snapshot_category_entries(
     *,
     active_agent: str,
     box_ctx: ResolveCtx,
-    scope_roots: Mapping[str, str] | None = None,
 ) -> list[CategoryEntry]:
     """Walk the snapshot's category subtrees → the ``list[CategoryEntry]``
     :func:`reconcile_categories` consumes (the SAME shape the retired by-name
@@ -1520,9 +1565,8 @@ def snapshot_category_entries(
     For every ``<scope>.<category>`` subtree present it emits one entry per leaf.
     The four scopes are the SAME ``system, agent, workset, box`` apply order the
     old by-name resolver used (so a reconcile tie breaks identically), and
-    every emitted entry's ``scope`` / root-join ``group`` is the BARE scope token
-    (``agent`` / ``agent.<category>``) — the load-bearing scope identity (§7 /
-    ``scope_roots``), NOT the snapshot's agent discriminator.
+    every emitted entry's ``scope`` is the BARE scope token (``agent``) — the
+    load-bearing scope identity (§7), NOT the snapshot's agent discriminator.
 
     The AGENT scope is DISCRIMINATED in the snapshot (``agent.default.*`` /
     ``agent.<active>.*``, spec §2d / §0 L21 — NO bare ``agent.<key>``). This
@@ -1534,11 +1578,11 @@ def snapshot_category_entries(
     all-agents declared defaults live under ``agent.default`` — so this pick is the
     delivery-side analog of :func:`effective_behavior`'s read.
 
-    host_src is read from the expanded ``Bind`` (already host-resolved at build),
-    then ROOT-JOINED: a RELATIVE host_src under a group that has a *scope_roots*
-    entry (``agent.<agent>.common`` → the per-agent store dir, ``agent.<agent>.bindings.ro`` → the
-    share root, etc.) is prefixed with that root — replicating the old by-name
-    resolver's join EXACTLY (relative-only, root absolute). box_dest is
+    host_src is read from the expanded ``Bind`` (already host-resolved at build)
+    and used AS-IS: NOTHING is prefixed here, ever. A stored source resolves ON ITS
+    OWN (spec §2a L474-486); the abstract categories are rooted at DECLARATION, and
+    an assembly-time root-prepend is the shape §2a L487-517 calls FORBIDDEN. Do not
+    reintroduce a per-scope root table here — a structural test scans for it. box_dest is
     resolved BOX-side here (this is a ``box_dest`` consumer, B6): ``~`` →
     ``GUEST_HOME`` and ``$XDG`` against *box_ctx* — matching the old
     ``space="guest"`` pass — so reconcile keys on the SAME absolute dest. ``env``
@@ -1548,42 +1592,45 @@ def snapshot_category_entries(
     """
     collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
     scope_order = {"system": 0, "agent": 1, "workset": 2, "box": 3}
-    roots = scope_roots or {}
 
     def _box_dest(raw: str) -> str:
         return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
 
-    def _root_join(group: str, host_src: str) -> str:
-        # Replicate the retired by-name resolver's root-join: a RELATIVE host_src under a
-        # group with a root is prefixed with that (absolute) root; else as-is.
-        root = roots.get(group)
-        if root and not host_src.startswith("/"):
-            return f"{root.rstrip('/')}/{host_src}"
-        return host_src
-
     for scope in _SCOPES:
-        group_scope = scope
         if scope == "agent":
             # §2d active-over-default pick: effective agent node = agent.default
             # overlaid by agent.<active>. The emitted ``CategoryEntry.scope`` stays the
-            # BARE ``agent`` token (it is the precedence identity), but the
-            # ``scope_roots`` GROUP is DISCRIMINATED (``agent.<active>.<category>``) —
-            # there is no bare ``agent.*`` anywhere outside an explicit agent name or
+            # BARE ``agent`` token (it is the precedence identity); the snapshot's
+            # own agent tier is DISCRIMINATED (``agent.<active>``) — there is no bare
+            # ``agent.*`` anywhere outside an explicit agent name or
             # ``default``. The box's box.agent.* CATEGORY tweaks already merged
             # INTO agent.<active> at box precedence (the pre-merge fold,
             # ``_box_agent_category_fold``), so the PURE pick already carries them —
             # NO separate post-expand box.agent overlay (single-route, §2b L411 / §0).
+            #
+            # ⚑ The undeclared-shape REFUSAL runs on the RAW TIERS, before the pick,
+            # so its message can name the DISCRIMINATED key the user actually wrote
+            # (``agent.default.bindings`` vs ``agent.<active>.bindings``). Checking
+            # the merged node instead would only be able to say ``agent.bindings``
+            # — a bare form that is NOT a key (§0 L21), i.e. an error message
+            # instructing the reader toward a shape the keyspace forbids.
+            agent_node = dict.get(snapshot, "agent", _MISSING)
+            if isinstance(agent_node, KeyStore):
+                for tier in dict.keys(agent_node):
+                    tier_node = dict.__getitem__(agent_node, tier)
+                    if isinstance(tier_node, KeyStore):
+                        _assert_declared_categories(f"agent.{tier}", tier_node)
             scope_node = _agent_pick_node(snapshot, active_agent)
-            group_scope = f"agent.{active_agent}"
         else:
             scope_node = dict.get(snapshot, scope, _MISSING)
+            if isinstance(scope_node, KeyStore):
+                _assert_declared_categories(scope, scope_node)
         if not isinstance(scope_node, KeyStore):
             continue
         order = scope_order[scope]
         _emit_scope_node(
             collected, scope_node, order=order, scope=scope,
-            box_dest_fn=_box_dest, root_join_fn=_root_join,
-            group_scope=group_scope,
+            box_dest_fn=_box_dest,
         )
 
     collected.sort(key=lambda pair: pair[0])
@@ -1647,6 +1694,85 @@ def _overlay_into(base: KeyStore, top: KeyStore) -> None:
             base[key] = top_val
 
 
+def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
+    """Refuse every UNDECLARED category shape under ONE scope node (spec §2d
+    L906-910), naming the key with the prefix it is really written under.
+
+    *key_prefix* is the DISCRIMINATED key prefix — a bare scope token for
+    system/workset/box, and ``agent.default`` / ``agent.<active>`` for the agent
+    tier. That is the whole reason this runs on the RAW tiers rather than on the
+    merged agent node: an error that said ``agent.bindings`` would be naming a
+    shape §0 L21 forbids, and would point the reader at a key they cannot write.
+
+    ⚑ COVERAGE IS THE THREE BIND FAMILIES ONLY — ``bindings.{ro,rw}`` and the
+    ``caches``/``seeded``/``common``/``synced`` leaf categories. ``env``, ``masks``
+    and ``secret_path`` keep their pre-existing SILENT SKIP of a non-``KeyStore``
+    node: they were outside the boundary approved for this change, and widening
+    them is a decision (their shapes differ — ``masks`` is keyed-by-dest, ``env`` /
+    ``secret_path`` are scalar-valued), not an omission to fix in passing. Tracked
+    for P5 with the rest of the undeclared-shape sweep.
+    """
+    bindings = dict.get(node, "bindings", _MISSING)
+    if bindings is not _MISSING:
+        _require_category_node(key_prefix, "bindings", bindings)
+        for name in dict.keys(bindings):
+            if name not in ("ro", "rw"):
+                raise SettingsError(
+                    f"{key_prefix}.bindings.{name} is an ARM-LESS binding, which is "
+                    f"not a declared key; bindings are declared per arm — "
+                    f"{key_prefix}.bindings.ro.{name} / "
+                    f"{key_prefix}.bindings.rw.{name} (spec §2d L906-910)"
+                )
+        for mode in ("ro", "rw"):
+            mode_node = dict.get(bindings, mode, _MISSING)
+            if mode_node is not _MISSING:
+                _require_category_node(key_prefix, f"bindings.{mode}", mode_node)
+    for category in _BIND_LEAF_CATEGORIES:
+        cat_node = dict.get(node, category, _MISSING)
+        if cat_node is not _MISSING:
+            _require_category_node(key_prefix, category, cat_node)
+
+
+def _require_category_node(key_prefix: str, category: str, node: object) -> None:
+    """Refuse a VALUE sitting at a CATEGORY ROOT (spec §2d L906-910).
+
+    A category token names a NAMESPACE of per-name entries; it is not itself a
+    declared key, so a scalar / :class:`Bind` / list there is an UNDECLARED shape.
+    Under the closed-keyspace rule (spec §0) an undeclared key is an ERROR that
+    names itself — never a silent accept. The check runs against the ASSEMBLED
+    snapshot, so it catches such a value from any origin that reaches it — a plugin
+    defaults table, a workset or box YAML, a ``config set`` — in ONE place.
+
+    ⚑ ONE ROUTE DOES NOT REACH IT: ``workset share list --effective`` returns
+    "No bindings configured" and never resolves when a workset file's ONLY
+    ``bindings`` content is the malformed value, because its raw-shares reader
+    walks for per-name leaves and finds none. The launch path still refuses.
+
+    Before P3 these shapes were SILENTLY DROPPED by ``isinstance(x, KeyStore)``
+    guards — the user's binding simply never appeared, with nothing said.
+
+    PRESENT-BUT-EMPTY (``bindings: {}`` / ``common: {}``) is NOT an error: an empty
+    node is byte-indistinguishable from an absent one after ``assemble``, so
+    erroring would trap a no-op. §2d itself calls the ``agent.default.bindings |
+    {}`` row "documentation of intent, not a required default".
+    """
+    if isinstance(node, KeyStore):
+        return
+    if "." in category:
+        # An ARM (``bindings.ro``) — names live under it, values do not.
+        declared = f"{key_prefix}.{category}.<name>"
+    else:
+        declared = (
+            f"{key_prefix}.bindings.{{ro,rw}}.<name>" if category == "bindings"
+            else f"{key_prefix}.{category}.<name>"
+        )
+    raise SettingsError(
+        f"{key_prefix}.{category} is a value at a CATEGORY ROOT "
+        f"({type(node).__name__}: {node!r}), which is not a declared key; "
+        f"declare {declared} (spec §2d L906-910)"
+    )
+
+
 def _emit_scope_node(
     collected: list[tuple[tuple[int, str, str], CategoryEntry]],
     scope_node: KeyStore,
@@ -1654,20 +1780,20 @@ def _emit_scope_node(
     order: int,
     scope: str,
     box_dest_fn,
-    root_join_fn,
-    group_scope: str | None = None,
 ) -> None:
     """Emit every category entry under ONE (bare) scope NODE.
 
     *scope_node* is a single scope's category subtree (``snapshot.<scope>`` for a
     non-agent scope; the effective agent node for the agent scope). *scope* is the
     BARE scope token used for the emitted ``CategoryEntry.scope`` — the load-bearing
-    precedence identity. *group_scope* is the prefix the ``scope_roots`` GROUP is
-    built from and defaults to *scope*; the agent tier passes the DISCRIMINATED
-    ``agent.<active>`` so no bare ``agent.*`` group exists. Reads via unbound
-    ``dict`` ops (S3).
+    precedence identity. Reads via unbound ``dict`` ops (S3).
+
+    EMISSION ONLY. The undeclared-shape refusal ran earlier, in
+    :func:`snapshot_category_entries`, against the RAW tiers — so it could name the
+    discriminated key. By the time a node reaches here every category token it
+    carries is a ``KeyStore``, and the ``isinstance`` skips below are unreachable
+    guards rather than the silent drops they were before P3.
     """
-    group_scope = group_scope or scope
     # bindings.{ro,rw}
     bindings = dict.get(scope_node, "bindings", _MISSING)
     if isinstance(bindings, KeyStore):
@@ -1676,12 +1802,10 @@ def _emit_scope_node(
             if not isinstance(mode_node, KeyStore):
                 continue
             category = f"bindings.{mode}"
-            group = f"{group_scope}.{category}"
             for name in dict.keys(mode_node):
                 bind = dict.__getitem__(mode_node, name)
                 _emit_bind(
-                    collected, order, scope, category, name, bind,
-                    box_dest_fn, root_join_fn, group,
+                    collected, order, scope, category, name, bind, box_dest_fn,
                 )
 
     # caches / seeded / common / synced
@@ -1689,12 +1813,10 @@ def _emit_scope_node(
         cat_node = dict.get(scope_node, category, _MISSING)
         if not isinstance(cat_node, KeyStore):
             continue
-        group = f"{group_scope}.{category}"
         for name in dict.keys(cat_node):
             bind = dict.__getitem__(cat_node, name)
             _emit_bind(
-                collected, order, scope, category, name, bind,
-                box_dest_fn, root_join_fn, group,
+                collected, order, scope, category, name, bind, box_dest_fn,
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped
@@ -1778,8 +1900,6 @@ def _emit_bind(
     name: str,
     bind: object,
     box_dest_fn,
-    root_join_fn,
-    group: str,
 ) -> None:
     """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY) for *bind*.
 
@@ -1787,8 +1907,8 @@ def _emit_bind(
     present-``None`` / mistyped leaf cannot reach here — the merge OMITs a
     present-None bind (§3/§6e) and the views' S22 contract holds — so a non-Bind
     leaf is a build-invariant breach; raise loudly (never type-launder).
-    *root_join_fn* prefixes a RELATIVE host_src with *group*'s scope-root
-    (replicating the retired by-name resolver); *box_dest_fn* resolves box-side.
+    The host_src is used AS-IS — a stored source resolves on its own (spec §2a
+    L474-486) and NOTHING is prefixed here; *box_dest_fn* resolves box-side.
     """
     if not isinstance(bind, Bind):
         raise SettingsError(
@@ -1796,7 +1916,7 @@ def _emit_bind(
             f"expected a Bind (present-None binds are omitted at build, §3/§6e)"
         )
     delivery = _DELIVERY[category]
-    host_src = root_join_fn(group, bind.host)
+    host_src = bind.host
     box_dest = box_dest_fn(bind.box)
     if delivery == "MOUNT":
         # opts: the per-entry override (bind.opts) wins; else the category default.

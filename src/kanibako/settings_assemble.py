@@ -49,7 +49,8 @@ Keyspace convention — scope token KEPT; DOWNWARD/same-scope only (§0)
 --------------------------------------------------------------------
 Settings files are scope-ROOTED on disk (``config.py:_flatten_categories`` —
 ``{system: {bindings: {rw: {foo: …}}}}`` → ``system.bindings.rw.foo``). The scope
-token is LOAD-BEARING (it picks the source-root + mount mode via ``scope_roots``)
+token is LOAD-BEARING (it names the DECLARATION ROOT an abstract-category source
+is spelled against, and picks the mount mode for ``bindings``)
 and namespace is ORTHOGONAL to cascade level (§0). A file may hold keys of its OWN
 scope AND of scopes it CONTAINS (``system ⊃ agent ⊃ workset ⊃ box``) as
 OVERRIDABLE defaults-down — e.g. a workset file may set ``box.*`` and it flows.

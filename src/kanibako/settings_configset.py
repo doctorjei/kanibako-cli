@@ -76,6 +76,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence, Union
 
+from kanibako.agent_config import is_self_resolving
 from kanibako.config_interface import KEY_TYPES, _coerce_value
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.settings_resolve import (
@@ -233,6 +234,41 @@ def _scan_tokens(value: str) -> tuple[list[str], list[str]]:
 # --------------------------------------------------------------------------- #
 
 
+def _rooted_form_hint(key: str) -> str:
+    """The rooted spelling to suggest for *key*, or ``""`` when there is none.
+
+    Only the ABSTRACT categories (``common``/``caches``/``seeded``) have a
+    declaration root; ``bindings.{ro,rw}`` and ``synced`` take none at ANY scope
+    (spec §2a), so a relative source there gets the bare refusal — suggesting a
+    rooted form for them would be inventing a root the keyspace does not have.
+
+    ⚑ THE ROOT IS PER SCOPE, and reading it off the spec's own table is the point:
+    §2a L487-517 gives ``@config.data`` for system, ``@meta.agent.<a>.path`` for
+    agent, ``@meta.workset.path`` for workset and ``@meta.box.path`` for box. A
+    single agent-shaped hint would send a user editing ``workset.common.x`` to a
+    root that has nothing to do with their key — a confidently wrong instruction,
+    which is worse than saying nothing.
+    """
+    from kanibako.settings_categories import (
+        ABSTRACT_CATEGORIES,
+        BIND_KEY_RE,
+        DECLARATION_ROOT_REF,
+    )
+
+    m = BIND_KEY_RE.match(key)
+    if m is None:
+        return ""
+    category = m.group("category")
+    if category not in ABSTRACT_CATEGORIES:
+        return ""
+    scope = m.group("scope")
+    # The agent scope is DISCRIMINATED (``agent.<agent>``); name the agent the user
+    # actually typed rather than a placeholder, so the hint is copy-pasteable.
+    agent = scope.split(".", 1)[1] if scope.startswith("agent.") else ""
+    root = DECLARATION_ROOT_REF["agent" if agent else scope].format(agent=agent)
+    return f"{root}/{category}"
+
+
 def validate_config_set(
     key: str,
     value: str,
@@ -292,6 +328,38 @@ def validate_config_set(
             f"'{key}': the ':' src:dest notation is not allowed "
             f"(config set is source-only; got {value!r}). Use the value alone; "
             f"to embed a literal ':' in a path, escape it as '\\:'."
+        )
+
+    # 1b. A category ``host_src`` must FULLY RESOLVE ON ITS OWN (spec §2a
+    #     L474-486): absolute, ``~``, ``$var`` or an ``@``-ref. A bare relative
+    #     source is REFUSED at set time.
+    #
+    #     ⚑ Why this cannot be left to the resolution probe below: a literal
+    #     ``plugins`` resolves PERFECTLY — to the relative string ``plugins``,
+    #     which the mount spec then interprets against whatever the launching
+    #     process's CWD happens to be. It is not a broken value, it is a value that
+    #     silently means somewhere else. Nothing downstream can catch it, because
+    #     the assembly-time layer that used to supply a root is GONE: sources are
+    #     rooted AT DECLARATION now, and ``config set`` is not a declaration site.
+    #
+    #     ⚑ Why REFUSE rather than absolutise (asymmetric with ``workset share
+    #     add``, deliberately): ``share add`` DOCUMENTED a join and must keep
+    #     producing the same mount for the same input, so it preserves that promise
+    #     by joining at write time. ``config set`` never promised one, so there is
+    #     nothing to preserve — and no defensible root to invent, since the key may
+    #     name any scope and any category. The message shows the rooted form for an
+    #     ABSTRACT category, read PER SCOPE off the spec's declaration-root table
+    #     (:data:`~kanibako.settings_categories.DECLARATION_ROOT_REF`) — and the
+    #     set-time snapshot materializes ``meta.agent.<a>.path``, so the suggested
+    #     value is one the very next ``config set`` ACCEPTS.
+    if is_category and not is_self_resolving(value):
+        rooted = _rooted_form_hint(key)
+        hint = f" The rooted form for this key is '{rooted}/{value}'." if rooted else ""
+        return Error(
+            f"'{key}': host source {value!r} is a bare relative path and cannot "
+            f"resolve on its own. Give an absolute path, '~/…', '$VAR' or an "
+            f"'@'-reference (spec §2a: a stored source carries no implicit "
+            f"root).{hint}"
         )
 
     # 2. Token well-formedness (reuse the resolver parse grammar; NEVER resolve to a

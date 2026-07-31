@@ -524,13 +524,16 @@ class MetaAgentView(FiniteView):
     """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2, spec §2d).
 
     Exposes the plugin-set ``name`` (spec §2d L514 — REQUIRED when an agent
-    exists; identifies the store dir & cascade key). Read-only; wraps
-    ``store.meta.agent.<agent>``. (``path`` / ``settings`` — §2d L515-516 — are
-    deeper @config.agents/@meta.agent.*-chained values, materialized when their
-    consumers move onto @meta.*; B2 ships only ``name``.)
+    exists; identifies the store dir & cascade key) and the agent STORE ROOT
+    ``path`` (§2d L515 = ``@config.agents/<agent>``), which is also §2a's agent
+    DECLARATION ROOT: an abstract-category source stores
+    ``@meta.agent.<agent>.path/<category>/<leaf>``, so the key resolves for real.
+    Read-only; wraps ``store.meta.agent.<agent>``. (``settings`` — §2d L516 — is
+    still unmaterialized; its consumers have not moved onto @meta.* yet.)
     """
 
     name: str = typed_field(as_str)  # type: ignore[assignment]
+    path: str = typed_field(as_str)  # type: ignore[assignment]
 
 
 # --------------------------------------------------------------------------- #

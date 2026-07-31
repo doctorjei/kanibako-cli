@@ -39,7 +39,12 @@ from typing import Any
 
 import yaml
 
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.agent_config import (
+    agent_category_root_ref,
+    is_self_resolving,
+    root_relative_source,
+)
+from kanibako.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
     BindDefault,
     BindKind,
@@ -231,12 +236,25 @@ def load_category_binds(
     the explicit ``"ro"`` mount option (element 2); otherwise a 2-tuple is emitted
     and reconcile falls back to the category default.  Returns ``{}`` when the file
     declares no category binds.
+
+    ⚑ NO ROOT IS SUPPLIED HERE, and a bare-relative ``meta_ref`` is REFUSED.  This
+    section declares CONCRETE ``bindings.{ro,rw}`` entries, which take no root at
+    any scope (spec §2a's DECLARATION-ROOT table covers the ABSTRACT categories
+    only) — so a relative source is a plugin DEFECT that would silently resolve
+    against the process CWD, not a shorthand.  The refusal names the file and key.
     """
     binds: dict[str, BindDefault] = {}
     for entry in _load_doc(package, filename).get("category_binds", []):
         key = f"agent.{agent}.{entry['category']}.{entry['key']}"
         box_dest = _expand(entry["box_dest"])
         host_src = entry["meta_ref"]
+        if not is_self_resolving(host_src):
+            raise SettingsError(
+                f"{filename}: category_bind {key!r} declares a bare-relative "
+                f"host source {host_src!r}; a source must fully resolve on its "
+                "own (absolute, ~, $var or an @-ref) — bindings take no root at "
+                "any scope (spec §2a L474-486)"
+            )
         if entry.get("ro", False):
             binds[key] = (host_src, box_dest, "ro")
         else:
@@ -251,19 +269,33 @@ def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefaul
     (``agent.<agent>.common.<name>``, built here from the file's bare ``key:`` leaf)
     to a STRUCTURED bind pair ``(host_src, box_dest)`` (spec §2a — a tuple, NOT a
     colon-joined string).  *agent* is the declaring plugin's own name; the agent tier
-    is DISCRIMINATED (§2d / §0 L21 — there is NO bare ``agent.<key>``).  The relative
-    ``host_src`` joins under the per-agent store root in the category resolver;
+    is DISCRIMINATED (§2d / §0 L21 — there is NO bare ``agent.<key>``).
     ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.  Returns ``{}`` when
     the file declares no commons.
+
+    ROOTED AT DECLARATION (spec §2a L487-517).  An author writes a bare leaf
+    (``plugins``); what is STORED is the full self-resolving
+    ``@meta.agent.<agent>.path/common/plugins``, so no later layer prepends
+    anything (§2a L474-486 — a source must fully resolve on its own).  A source
+    that is ALREADY self-resolving (absolute / ``~`` / ``$var`` / ``@``-ref) is
+    stored VERBATIM (§2a L518-525); :func:`~kanibako.agent_config.
+    root_relative_source` owns that rule and
+    :func:`~kanibako.agent_config.agent_category_root_ref` owns the layout.
+
+    ⚑ ``key`` and ``host_src`` are INDEPENDENT.  ``key`` names the keyspace entry
+    (``agent.<a>.common.<key>``); ``host_src`` is the path leaf that gets rooted.
+    They are coincidentally equal for claude's two entries, but keeping them
+    separate is what lets a user's override repoint the source without renaming
+    the key.
     """
+    root_ref = agent_category_root_ref(agent, "common")
     commons: dict[str, BindDefault] = {}
     for entry in _load_doc(package, filename).get("common", []):
         key = f"agent.{agent}.common.{entry['key']}"
+        host_src = root_relative_source(entry["host_src"], root_ref)
         options = entry.get("options")
         if options is not None:
-            commons[key] = (
-                entry["host_src"], _expand(entry["box_dest"]), options,
-            )
+            commons[key] = (host_src, _expand(entry["box_dest"]), options)
         else:
-            commons[key] = (entry["host_src"], _expand(entry["box_dest"]))
+            commons[key] = (host_src, _expand(entry["box_dest"]))
     return commons
