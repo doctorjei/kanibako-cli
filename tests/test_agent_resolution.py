@@ -1,4 +1,12 @@
-"""Tests for the cascade agent resolver + installed-count rule (W1 Phase C1)."""
+"""Tests for the agent SELECTION seam + installed-count rule.
+
+⮕ **P7 (spec §1A / §2g / §2h).** The cascade moved OUT of ``config.resolve_agent``:
+``system.agent`` and the workset/box ``pref.system.agent`` requests are resolved
+off the settings snapshot (``settings_launch.resolve_selected_agent``), and
+``resolve_agent`` keeps only what is NOT a key — name validation, persona-ref
+canonicalisation and the installed-count rule. The retired ``box.agent_name`` /
+``workset_agent`` / ``system_default_path`` parameters are gone.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +15,8 @@ import pytest
 from kanibako.config import (
     config_file_path,
     load_config,
+    read_system_agent,
     resolve_agent,
-    write_agent_setting,
 )
 from kanibako.errors import (
     AgentNotInstalledError,
@@ -37,8 +45,11 @@ def _patch_targets(monkeypatch, names: list[str]) -> None:
 
 
 def _no_default(monkeypatch) -> None:
-    """Force the system-default tier to None (disk-light precedence tests)."""
-    monkeypatch.setattr("kanibako.config.read_default_agent", lambda *a, **k: None)
+    """No-op kept for readability: ``resolve_agent`` no longer reads any file.
+
+    The stored ``system.agent`` reaches it only as the caller-supplied
+    *requested* value (P7), so "no system default" is simply omitting it.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -46,34 +57,12 @@ def _no_default(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_precedence_cascade(monkeypatch):
-    # All candidate names installed so a resolved name validates.
-    _patch_targets(monkeypatch, ["claude", "goose", "codex", "sysdef"])
-    monkeypatch.setattr(
-        "kanibako.config.read_default_agent", lambda *a, **k: "sysdef"
-    )
-
-    def res(**kw):
-        base = dict(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
-        base.update(kw)
-        return resolve_agent(**base)
-
-    # explicit beats box beats workset beats system-default.
-    assert (
-        res(explicit_agent="claude", box_agent_name="goose", workset_agent="codex")
-        == "claude"
-    )
-    # box beats workset beats system-default (explicit absent).
-    assert res(box_agent_name="goose", workset_agent="codex") == "goose"
-    # workset beats system-default (explicit + box absent).
-    assert res(workset_agent="codex") == "codex"
-    # system-default wins when all higher tiers absent.
-    assert res() == "sysdef"
+def test_precedence_explicit_beats_requested(monkeypatch):
+    """§1A: the CLI level outranks whatever the settings cascade resolved."""
+    _patch_targets(monkeypatch, ["claude", "goose"])
+    assert resolve_agent(explicit_agent="claude", requested="goose") == "claude"
+    assert resolve_agent(explicit_agent=None, requested="goose") == "goose"
+    assert resolve_agent(explicit_agent="", requested="goose") == "goose"
 
 
 # ---------------------------------------------------------------------------
@@ -85,12 +74,7 @@ def test_single_installed_autopick(monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested=None)
         == "claude"
     )
 
@@ -119,12 +103,7 @@ def test_zero_installed_gate2b(monkeypatch, envset, substring):
         monkeypatch.setenv(k, v)
 
     with pytest.raises(NoAgentInstalledError) as ei:
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested=None)
     msg = str(ei.value)
     assert "No agent plugins are installed" in msg
     assert substring in msg
@@ -140,12 +119,7 @@ def test_multi_installed_gate2a(monkeypatch):
     _patch_targets(monkeypatch, ["claude", "goose"])
     _no_default(monkeypatch)
     with pytest.raises(NoAgentSelectedError) as ei:
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested=None)
     assert str(ei.value) == GATE_2A
 
 
@@ -160,12 +134,7 @@ def test_one_real_plus_pseudo_autopicks_real(monkeypatch):
     _patch_targets(monkeypatch, ["claude", "no_agent", "general"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested=None)
         == "claude"
     )
 
@@ -175,12 +144,7 @@ def test_two_real_plus_pseudo_still_gate2a(monkeypatch):
     _patch_targets(monkeypatch, ["claude", "goose", "no_agent"])
     _no_default(monkeypatch)
     with pytest.raises(NoAgentSelectedError):
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested=None)
 
 
 def test_only_pseudo_installed_gate2b(monkeypatch):
@@ -193,12 +157,7 @@ def test_only_pseudo_installed_gate2b(monkeypatch):
     monkeypatch.setattr("sys.prefix", "/usr")
     monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
     with pytest.raises(NoAgentInstalledError):
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested=None)
 
 
 def test_explicit_pseudo_agent_still_selectable(monkeypatch):
@@ -207,12 +166,7 @@ def test_explicit_pseudo_agent_still_selectable(monkeypatch):
     _patch_targets(monkeypatch, ["claude", "no_agent"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent="no_agent",
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent="no_agent", requested=None)
         == "no_agent"
     )
 
@@ -231,12 +185,7 @@ def test_resolved_name_not_installed(monkeypatch):
     monkeypatch.setattr("sys.prefix", "/usr")
     monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
     with pytest.raises(AgentNotInstalledError) as ei:
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name="claude",
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested="claude")
     msg = str(ei.value)
     assert "claude" in msg
     assert "pip install kanibako-agent-claude" in msg
@@ -254,12 +203,7 @@ def test_persona_explicit_returns_node_name(monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent="navigator+claude",
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent="navigator+claude", requested=None)
         == "navigator℘claude"
     )
 
@@ -269,12 +213,7 @@ def test_persona_canonical_separator_accepted(monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent="navigator℘claude",
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent="navigator℘claude", requested=None)
         == "navigator℘claude"
     )
 
@@ -292,12 +231,7 @@ def test_persona_harness_not_installed_errors_on_harness(monkeypatch):
         "kanibako.install_method.is_externally_managed", lambda: False
     )
     with pytest.raises(AgentNotInstalledError) as ei:
-        resolve_agent(
-            explicit_agent="navigator+claude",
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent="navigator+claude", requested=None)
     msg = str(ei.value)
     # Names the harness for the install hint; does NOT leak the persona/node.
     assert "kanibako-agent-claude" in msg
@@ -309,12 +243,7 @@ def test_bare_claude_unchanged_with_persona_support(monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent="claude",
-            box_agent_name=None,
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent="claude", requested=None)
         == "claude"
     )
 
@@ -324,12 +253,7 @@ def test_persona_box_tier_canonicalized(monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (
-        resolve_agent(
-            explicit_agent=None,
-            box_agent_name="navigator+claude",
-            workset_agent=None,
-            system_default_path=None,
-        )
+        resolve_agent(explicit_agent=None, requested="navigator+claude")
         == "navigator℘claude"
     )
 
@@ -339,20 +263,32 @@ def test_persona_box_tier_canonicalized(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_system_default_real_file(tmp_home, config_file, monkeypatch):
-    """Exercise read_default_agent against an on-disk system settings file."""
+def test_system_agent_round_trips_through_the_system_table(
+    tmp_home, config_file, monkeypatch,
+):
+    """``system.agent`` stores in the ``system:`` table and reads back (P7).
+
+    INVERT: write it to the retired ``agent.default.default_agent`` location and
+    ``read_system_agent`` returns None -> this reddens.
+    """
+    from kanibako.config_interface import ConfigLevel, set_config_value
+
     _patch_targets(monkeypatch, ["claude"])
     cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     ssp = load_std_paths(load_config(cf)).settings
-    # system.default_agent lives under agent.default.default_agent.
-    write_agent_setting(ssp, "default_agent", "claude", "default")
-    name = resolve_agent(
-        explicit_agent=None,
-        box_agent_name=None,
-        workset_agent=None,
-        system_default_path=ssp,
+    ssp.parent.mkdir(parents=True, exist_ok=True)
+    msg = set_config_value(
+        "system.agent", "claude",
+        config_path=cf, system_settings_path=ssp,
+        command_scope=ConfigLevel.system,
     )
-    assert name == "claude"
+    assert msg.startswith("Set "), msg
+    # Stored where the SYSTEM settings tier reads it — not in agent.default.
+    from kanibako.config_io import load_doc
+    assert load_doc(ssp)["system"]["agent"] == "claude"
+    assert read_system_agent(ssp) == "claude"
+    # …and it validates through the arbiter exactly like any other name.
+    assert resolve_agent(explicit_agent=None, requested="claude") == "claude"
 
 
 # ---------------------------------------------------------------------------
@@ -435,12 +371,7 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     )
     from kanibako.settings_resolve import ResolveCtx
 
-    name = resolve_agent(
-        explicit_agent="claude",
-        box_agent_name=None,
-        workset_agent=None,
-        system_default_path=None,
-    )
+    name = resolve_agent(explicit_agent="claude", requested=None)
     ctx = ResolveCtx(
         agent_name=name, workset_name=None, host_home="/home/agent", xdg={},
     )
@@ -452,25 +383,26 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     return name, effective_behavior(snap, active_agent=name)
 
 
-def test_two_pass_box_beats_agent(tmp_home, config_file, monkeypatch):
+def test_two_pass_box_pref_beats_agent(tmp_home, config_file, monkeypatch):
     from kanibako.config_io import dump_doc
 
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
 
-    # A box tweaks its active agent through the box-scoped box.agent.* mirror
-    # (§2b B5) — a same-scope box write. (A box file may NOT set agent.<name>.*
-    # directly: that is an upward write dropped at RESOLVE, spec §0 directional
-    # enforcement; the mirror is the spec-legal box→agent tweak.)
+    # A box tweaks its active agent with the §2h REQUEST pref.agent.<a>.<key>.
+    # (A box file may NOT set agent.<name>.* directly: that is an upward write
+    # dropped at RESOLVE, spec §0. ⮕ P7: this used to use the box.agent.* mirror,
+    # which spec §2b RETIRED — the pref is the replacement, and it targets the
+    # agent tier properly instead of smuggling a box-scope key into it.)
     box_path = tmp_home / "box_settings.yaml"
-    dump_doc(box_path, {"box": {"agent": {"model": "box-wins"}}})
+    dump_doc(box_path, {"pref": {"agent": {"claude": {"model": "box-wins"}}}})
 
     name, eff = _two_pass_behavior(
         agent_state={"model": "agent-default"},  # the agent tier
         box_path=box_path,
     )
     assert name == "claude"
-    # The box.agent tweak (more specific) wins over the agent-state default.
+    # The box's request (more specific) wins over the agent-state default.
     assert eff["model"] == "box-wins"
 
 

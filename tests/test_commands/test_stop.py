@@ -272,13 +272,26 @@ class TestStopWriteback:
                 target, proj, auth_src=_SHARED_AUTH
             )
 
-    def test_no_writeback_without_agent_stamp(self, mock_runtime):
+    @pytest.mark.parametrize("stamp", [None, ""])
+    def test_no_writeback_without_agent_stamp(self, mock_runtime, stamp):
+        """A box with NO agent — a ``pref.system.agent: null`` box (D-M6) or a
+        pre-stamp box — writes nothing back.
+
+        ⚑ This is also what keeps the P7 credential-path fix safe on the writeback
+        side: the auth resolve is fed ``{"system.agent": <stamp>}``, so an EMPTY
+        stamp would rebuild the collapsed ``<auth>/`` source. It never gets there —
+        the guard returns BEFORE the auth resolve. Both falsy shapes are pinned
+        because ``inspect_env`` can yield either.
+        """
         mock_runtime.is_running.return_value = True
-        mock_runtime.inspect_env.return_value = None  # unstamped box
+        mock_runtime.inspect_env.return_value = stamp  # unstamped / no-agent box
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
             patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch(
+                "kanibako.commands.start._resolve_box_auth_source"
+            ) as m_auth,
             patch(
                 "kanibako.commands.start.writeback_session_credentials"
             ) as m_wb,
@@ -286,6 +299,7 @@ class TestStopWriteback:
             m_resolve.return_value = MagicMock()
             _stop_one(mock_runtime, project_dir=None)
             m_wb.assert_not_called()
+            m_auth.assert_not_called()
 
     def test_no_writeback_when_not_running(self, mock_runtime):
         mock_runtime.is_running.return_value = False

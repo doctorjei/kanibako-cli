@@ -200,33 +200,33 @@ class TestBuildEffectiveState:
                 write_agent_setting(global_toml, k, v, "claude")
         return global_toml
 
-    def _make_workset_config(self, tmp_path, settings=None):
+    def _make_workset_config(self, tmp_path, settings=None, agent="claude"):
         """Create a minimal workset config.yaml, optionally with a box→agent tweak.
 
-        A workset-scope per-agent behavior override rides the box.agent.* mirror
-        as a spec-legal DEFAULTS-DOWN write (§2b): the workset file sets
-        box.agent.<key>, which flows into the box scope it CONTAINS. (A workset
-        file may NOT set agent.<name>.* directly — that is an upward write dropped
-        at RESOLVE, spec §0; workset ⊂ agent.)
+        A workset-scope per-agent behavior override rides the §2h REQUEST
+        ``pref.agent.<agent>.<key>`` — prefs are legal in the WORKSET and BOX
+        files, and a workset's request applies to its boxes. (A workset file may
+        NOT set ``agent.<name>.*`` directly — that is an upward write dropped at
+        RESOLVE, spec §0; workset ⊂ agent. ⮕ P7: was the ``box.agent.*``
+        defaults-down mirror, retired by §2b.)
         """
         from kanibako.config_io import dump_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         ws_toml = tmp_path / "config.yaml"
         if settings:
-            dump_doc(ws_toml, {"box": {"agent": dict(settings)}})
+            dump_doc(ws_toml, {"pref": {"agent": {agent: dict(settings)}}})
         else:
             ws_toml.write_text("")
         return ws_toml
 
-    def _make_project_toml(self, tmp_path, settings=None):
+    def _make_project_toml(self, tmp_path, settings=None, agent="claude"):
         """Create a minimal box settings.yaml, optionally with a box→agent tweak.
 
-        A per-agent behavior override at the BOX scope rides the box.agent.*
-        mirror (§2b B5) — the spec-legal same-scope box write. (A box file may NOT
-        set agent.<name>.* directly: that is an upward write dropped at RESOLVE,
-        spec §0.) The mirror targets the ACTIVE agent; per-agent discrimination
-        for a NON-active agent must ride a legal downward source (the system file).
+        A per-agent behavior override at the BOX scope rides the §2h REQUEST
+        ``pref.agent.<agent>.<key>``. (A box file may NOT set ``agent.<name>.*``
+        directly: that is an upward write dropped at RESOLVE, spec §0.) ⮕ P7: this
+        used the ``box.agent.*`` mirror, which spec §2b RETIRED.
         """
         from kanibako.config import write_project_config
         from kanibako.config_io import dump_doc, load_doc
@@ -234,14 +234,14 @@ class TestBuildEffectiveState:
         tmp_path.mkdir(parents=True, exist_ok=True)
         project_toml = tmp_path / "settings.yaml"
         # A minimal box-tier settings file (P8b sparse create writes no identity
-        # section; the box.agent overrides below are what this scoping test cares
-        # about).
+        # section; the pref requests below are what this scoping test cares about).
         write_project_config(project_toml, "base:image")
         if settings:
             doc = load_doc(project_toml)
-            box = doc.setdefault("box", {})
-            agent = box.setdefault("agent", {})
-            agent.update(settings)
+            node = doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
+                agent, {},
+            )
+            node.update(settings)
             dump_doc(project_toml, doc)
         return project_toml
 

@@ -74,7 +74,7 @@ from pathlib import Path
 from typing import Collection, Literal, Mapping, Sequence
 
 from kanibako.agent_ref import harness_of
-from kanibako.settings_assemble import assemble_levels
+from kanibako.settings_assemble import assemble_levels, dotted_partial
 from kanibako.settings_categories import (
     _DELIVERY,
     SECRET_MOUNT_DIR,
@@ -122,12 +122,14 @@ _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 #   system.auth.share_allowed             = true           global share allowed?
 #   workset.auth.share_allowed            = @system.auth.share_allowed
 #   workset.auth.global_sync              = @system.auth.share_allowed
-#   meta.box.agent.auth.share_support     = @meta.agent.<@box.agent_name>.auth.share_support
-#                                           (mirror, materialized when box.agent_name set)
+#   meta.box.agent.auth.share_support     = @meta.agent.<@system.agent>.auth.share_support
+#                                           (mirror, materialized from the SELECTED node —
+#                                            the <...> node selector is not expressible; see
+#                                            auth_chain_floor)
 #   box.auth.global_enabled  = %@meta.box.agent.auth.share_support && @system.auth.share_allowed%
 #   box.auth.workset_enabled = %@meta.box.agent.auth.share_support && @workset.auth.share_allowed%
 #   workset.auth.path        = @meta.workset.path/auth        (workset auth dir, per workset; SETTABLE)
-#   meta.box.auth.workset_path = @workset.auth.path/@box.agent_name  (this box's per-agent source
+#   meta.box.auth.workset_path = @workset.auth.path/@system.agent  (this box's per-agent source
 #                                           root — RO DERIVED meta anchor, change 8: NOT settable, so a
 #                                           user can't repoint it to garbage; the ONLY settable auth-
 #                                           location surface is ``workset.auth.path``)
@@ -194,14 +196,36 @@ def auth_chain_floor(
     floor: dict[str, object] = {
         # The GLOBAL-share gate — the single host-wide allow flag (settable).
         _SYSTEM_SHARE_ALLOWED_KEY: True,
-        # The box-scoped MIRROR of the active agent's capability (RO / meta). The
-        # 29g box.agent mirror pattern: rather than re-do the nested dynamic lookup
-        # ``@meta.agent.<@box.agent_name>.auth.share_support`` at every reference,
-        # materialize a box-scoped @-ref to the ACTIVE agent's capability slot,
-        # which ``expand`` follows by literal path. The plugin/agent capability
-        # ``meta.agent.<agent>.auth.share_support`` rides the meta identity floor.
+        # The box-scoped MIRROR of the active agent's capability (RO / meta).
+        #
+        # ⚑ The spec (§2c L936) writes this as
+        # ``@meta.agent.<@system.agent>.auth.share_support``. That is NODE-SELECTOR
+        # NOTATION, and it is NOT EXPRESSIBLE by the resolver — a reference name is
+        # a literal, there is no second pass, and PHASE R's ``@{name}`` DELIMITS a
+        # name so a literal SUFFIX may follow it; it does not nest a reference
+        # INSIDE a name. So the shipped mechanism is the documented equivalent: the
+        # selected node is interpolated HERE and the resulting @-ref is followed by
+        # ``expand`` on a literal path. What P7 changed is only the PROVENANCE of
+        # *agent_name* — it is now the value the §1A selection level installs at
+        # ``system.agent``, i.e. the same string the spelled anchor above resolves.
+        # (Spec follow-up, queued for Jei: either §2c gains a note that this anchor
+        # is MATERIALIZED, or a future grammar phase adds node selection.)
+        # The plugin/agent capability ``meta.agent.<agent>.auth.share_support``
+        # rides the meta identity floor.
+        # ⚑ A BLANK agent is pinned to the LITERAL ``False``, not spelled as a ref.
+        # ``f"@meta.agent.{''}.auth.share_support"`` is ``@meta.agent..auth.share_support``
+        # — a MALFORMED ref with an empty segment, which resolves to a leftover
+        # string and then crashes ``resolve_auth_source``'s strict ``as_bool``
+        # ("expected bool, got str"). No caller passes blank today (the launch uses
+        # the ``"general"`` slot for a shell box; stop/creds-watch return early on an
+        # absent ``KANIBAKO_AGENT`` stamp), but P7 made ``""`` a MEANINGFUL value —
+        # the D-M6 suppression — so the trap is one careless caller away. ``False``
+        # is also the semantically right answer: no agent ⇒ no sharing capability,
+        # which is exactly the hard RO floor §2c describes.
         "meta.box.agent.auth.share_support": (
             f"@meta.agent.{agent_name}.auth.share_support"
+            if agent_name and agent_name.strip()
+            else False
         ),
         # The two INDEPENDENT box ENABLE knobs (COMPOSE — a box can be global-
         # AND/OR workset-shared). Settable per-tier opt-out defaults (True = opt
@@ -219,10 +243,22 @@ def auth_chain_floor(
         # ``meta.agent.<agent>.*`` source; this is a per-box LOCATION, not an agent
         # capability). Being ``meta.*`` it is dropped from every settings FILE in
         # assembly, so a user CANNOT repoint it to a dangling @-ref / garbage — the
-        # only settable auth-location surface is ``workset.auth.path``. The literal-
-        # interpolated ``{agent_name}`` resolves IDENTICALLY to the spec
-        # ``@workset.auth.path/@box.agent_name`` form (equivalence bar).
-        "meta.box.auth.workset_path": f"@workset.auth.path/{agent_name}",
+        # only settable auth-location surface is ``workset.auth.path``.
+        #
+        # ⚑ P7: SPELLED EXACTLY AS THE SPEC (§2c L792) — ``@workset.auth.path/
+        # @system.agent`` — instead of interpolating the active agent in Python.
+        # It is a CONSTANT now: the per-box variation arrives through
+        # ``pref.system.agent`` (§2h) and the §1A selection level, both of which
+        # are applied BEFORE this level resolves. NO braces are needed: the first
+        # ref is terminated by ``/`` (not segment-legal) and the second ends the
+        # value, so ``_REF_NAME_RE``'s greed cannot swallow anything (PHASE R's
+        # ``@{name}`` exists for a LITERAL SUFFIX after a ref — there is none here).
+        # Both refs are EMBEDDED, so an absent ``system.agent`` coerces to ``""``
+        # (§6b) rather than dropping the key: a NO-AGENT box resolves this to
+        # ``<auth.path>/``. That is INERT — ``resolve_auth_source`` scrubs
+        # ``workset_source`` for every non-workset tier and the workset tier needs
+        # ``share_support``, which no-agent cannot have.
+        "meta.box.auth.workset_path": "@workset.auth.path/@system.agent",
     }
     if mode == "standalone":
         # STANDALONE: a lone box has no workset group → the workset allow keys are
@@ -919,6 +955,7 @@ def build_launch_snapshot(
     workset_anchor: Mapping[str, object] | None = None,
     prefs: "Sequence[PrefRequest] | None" = None,
     valid_agents: "Collection[str] | None" = None,
+    selection_level: Mapping[str, object] | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -962,6 +999,29 @@ def build_launch_snapshot(
     collector is ``settings_prefs.collect_prefs`` either way, and validation runs
     here regardless. *valid_agents* injects the agent-validity set (defaults to
     plugin discovery); tests supply their own.
+
+    *selection_level* is the §1A **top-most input level** — above every settings
+    file AND every pref (*"The COMMAND LINE is its OWN LEVEL — the highest… a
+    GENERAL rule, not a carve-out"*). P7 uses it for exactly one key,
+    ``system.agent``, carrying the RESOLVED selection
+    (:func:`kanibako.agent_select.select_agent`) whichever of its three sources
+    won — ``--agent``, the cascade, or the installed-count rule. Installing it
+    ALWAYS (not only for ``--agent``) is what keeps ``@system.agent`` equal to the
+    node that actually runs, which the two re-pointed §2c anchors depend on. P8
+    generalises this level to every key-shadowing flag.
+
+    ⚑ WHO MUST PASS IT, precisely — "the narrow resolves can skip it" is NOT the
+    rule, and reading it that way is what cost the credential path once already:
+      * **REQUIRED** by every resolve that carries the ``auth_chain`` floor
+        (``_resolve_box_auth_source`` / ``_resolve_box_launch_decisions``, on the
+        launch AND on stop / creds-watch / reauth / the ``--effective`` display),
+        because ``meta.box.auth.workset_path`` = ``@workset.auth.path/@system.agent``
+        — omit it and the per-agent credential dir collapses to the workset auth
+        ROOT. Those two functions take it as a REQUIRED keyword for that reason.
+      * **Not needed** by the seed / synced / image / helper narrow resolves: they
+        carry no auth chain and no shipped declaration references ``@system.agent``.
+      * ``None`` for a NO-AGENT box — ``system.agent`` must stay absent/``None``
+        there, not be pinned to the ``"general"`` template slot.
 
     Returns the expanded ``snapshot``.
     """
@@ -1093,38 +1153,32 @@ def build_launch_snapshot(
     #                      lower file may also set. Left unpinned on purpose: a
     #                      test asserting an unobservable ordering would be
     #                      asserting the implementation, not the behaviour.
+    #   selection_level  — the §1A CLI-class level: ABOVE EVERYTHING (index 0).
+    #                      P7 puts the RESOLVED ``system.agent`` there.
     state_partial = _agent_state_partial(agent_name, agent_state)
     # box.agent.* CATEGORY fold (spec §2b L411 / §0 L32-42): the box's same-scope
-    # tweak of its active agent's category tables, re-rooted to agent.<active> at BOX
-    # precedence so it rides the ORDINARY cascade merge — a box present-None category
-    # leaf OMITs the inherited bind AT MERGE (§3), no post-expand overlay. ``box.*`` is
-    # DEFAULTS-DOWN (spec §0), so a CONTAINING file (workset/system/base) may set
-    # box.agent.* too; the fold sources each file-backed level's RAW box.agent SEPAR-
-    # ATELY, MOST-SPECIFIC-FIRST (box, workset, system, base — the agent partials
-    # carry no ``box`` node), and splices them as a GROUP ABOVE box so
-    # the cascade settles box.agent.<key> among its sources with the winner at BOX
-    # precedence (matching the old overlay). NO-AGENT box → [].
+    # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7). It existed to give a box's
+    # SETTABLE ``box.agent.<category>`` tweak box-precedence inside the active
+    # agent's slot. Spec §2b retires the settable mirror wholesale: ``box.agent.*``
+    # is now the RO read-back ``meta.box.agent.*``, and a box tweaks its agent with
+    # ``pref.agent.<agent>.<key>`` (§2h) — which is a pref overlay, already spliced
+    # below. So the fold has no settable input left to fold, and removing it FLIPS
+    # the transitional contest P6 pinned (a box pref now wins a CATEGORY, as it
+    # already won a SCALAR): tests/test_settings_launch.py TestPrefLevelPrecedence.
     #
-    # ⚑ TRANSITIONAL, and it interacts with ``pref`` (§2h): this fold is spliced
-    # ABOVE ``box`` while a pref overlay sits BELOW its own level's partial, so
-    # for a CATEGORY the retiring ``box.agent.<cat>`` tweak still beats a box's
-    # ``pref.agent.<a>.<cat>``. For a SCALAR there is no contest at all — the
-    # fold is category-only and the scalar mirror is a post-expand READ-BACK
-    # (``_materialize_box_agent_mirror``), so a scalar pref simply wins. P7
-    # retires settable ``box.agent.*`` and the contest disappears; both halves
-    # are test-pinned (tests/test_settings_launch.py TestPrefLevelPrecedence).
-    box_agent_folds = _box_agent_category_fold(
-        [base_levels[0], base_levels[1], base_levels[4], base_levels[5]], agent_name
-    )
-
     # ``pref.*`` REQUESTS (spec §2h). Collected from the two pref-LEGAL files, and
     # collected HERE when the caller did not supply them, so no call path can
     # silently skip them (the seed / synced / image / helper narrow resolves must
-    # see a pref on ``agent.<a>.seeded.*`` too). A caller that already collected
-    # them — ``_resolve_launch_snapshot``, which runs several resolves per launch,
-    # and P7's agent selection — passes the SAME list, so there is one read and no
-    # possibility of the two disagreeing. Validation runs in ``apply_prefs``
-    # regardless of who collected, so supplying the list cannot bypass a filter.
+    # see a pref on ``agent.<a>.seeded.*`` too). ``_resolve_launch_snapshot``, which
+    # runs several resolves per launch, collects ONCE and passes the SAME list to
+    # all of them. Validation runs in ``apply_prefs`` regardless of who collected,
+    # so supplying the list cannot bypass a filter.
+    #
+    # ⚑ P7's SELECTION pass (``resolve_selected_agent``) is a SEPARATE read, not a
+    # share: it runs BEFORE the agent is known, so there is no launch-side list to
+    # hand it. That is two reads of the same two files per launch, and they cannot
+    # disagree — the pair comes from ``paths._box_settings_files`` (a runtime
+    # treewalk consulting no settings key) and nothing writes between them.
     requests = list(prefs) if prefs is not None else collect_prefs(
         workset_path, box_path,
     )
@@ -1135,7 +1189,9 @@ def build_launch_snapshot(
     ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
 
     levels: list[KeyStore] = []
-    levels.extend(box_agent_folds)                      # box.agent categories (top)
+    if selection_level:
+        # §1A: the CLI-class level, ABOVE EVERYTHING (settings files AND prefs).
+        levels.append(dotted_partial(dict(selection_level)))
     levels.append(base_levels[0])                       # box
     if box_prefs:
         levels.append(box_prefs)                        # box pref REQUESTS
@@ -1153,13 +1209,99 @@ def build_launch_snapshot(
 
     snapshot = merge(levels)
     expanded = expand(snapshot, ctx)
-    # box.agent.* mirror (block B5, spec §2b L380 / §0 directional). Materialize the
-    # box-scoped mirror of the active agent's WHOLE resolved settings subtree as a
-    # COPY-on-current-engine step, AFTER expand so the values are resolved terminals.
+    # meta.box.agent.* RO mirror (block B5, spec §2b L709). Materialize the
+    # box-scoped READ-BACK of the active agent's WHOLE resolved settings subtree as
+    # a COPY-on-current-engine step, AFTER expand so the values are resolved
+    # terminals.
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
     if workset_anchor and _BOX_ROOT_KEY in workset_anchor:
         _assert_box_root_resolved(expanded)
     return expanded
+
+
+# --------------------------------------------------------------------------- #
+# Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7)  #
+# --------------------------------------------------------------------------- #
+
+#: The key that names the agent a box runs (spec §2g L1187).
+SELECTION_KEY = "system.agent"
+
+
+def resolve_selected_agent(
+    *,
+    ctx: ResolveCtx,
+    system_path: Path | None,
+    workset_path: Path | None,
+    box_path: Path | None,
+    prefs: "Sequence[PrefRequest] | None" = None,
+    valid_agents: "Collection[str] | None" = None,
+) -> object:
+    """Resolve ``system.agent`` as the settings files + their prefs give it.
+
+    Returns the resolved value in THREE distinguishable states (the caller MUST
+    keep them apart — see :mod:`kanibako.agent_select`):
+
+    * ``str``      — a name: the stored ``system.agent``, or a ``pref.system.agent``
+      request from the box (beats) or workset file (§2h);
+    * ``None``     — PRESENT-``None``: an explicit ``pref.system.agent: null``
+      SUPPRESSION ⇒ the NO-AGENT plain-shell box (spec §2b L703-708, D-M6). A
+      present-``None`` on a SCALAR leaf is KEPT by ``_resolve_present_none``, which
+      is exactly what makes this reachable — ``if value is None: continue`` anywhere
+      on this path silently deletes the capability;
+    * ``_MISSING`` — nothing ever set it ⇒ the caller falls through to the
+      installed-count rule.
+
+    **Why this is a SEPARATE resolve.** ``build_launch_snapshot`` needs the active
+    agent BEFORE it assembles (it discriminates the agent tier, wraps the per-agent
+    file's state, builds the meta-agent floor), and the active agent is now a key
+    INSIDE that cascade. The pass is safe to run first because the pref-legal file
+    pair comes from the runtime TREEWALK (``paths._box_settings_files``), which
+    consults no settings key — see the termination note in
+    :mod:`kanibako.settings_prefs`.
+
+    **Why LENIENT expand.** ``expand`` is whole-tree, and in STRICT mode a defect
+    anywhere would abort selection — e.g. a perfectly legitimate ``$AGENT`` in some
+    unrelated bind source raises here, because this pass has no active agent yet
+    (``ctx.agent_name`` is ``None``) and ``_resolve_var`` refuses an unset
+    ``$AGENT``. LENIENT mode (``collect_errors=True``, the same arm set-time
+    validation uses) RECORDS each defective leaf and omits it, so unrelated defects
+    cannot decide which agent runs — while a defect ON ``system.agent`` itself is in
+    the error map and is RAISED here, naming the key and the reason (§2h: *"We don't
+    want to just moving on with bad settings"*). Never a silent fall-through to
+    no-agent.
+
+    No ``agent_path`` is passed: the agent-tier FILE is selected BY this key, so
+    reading it here would be the chicken-and-egg this function exists to break.
+    """
+    requests = list(prefs) if prefs is not None else collect_prefs(
+        workset_path, box_path,
+    )
+    ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
+    base_levels = assemble_levels(
+        agent_name="",
+        system_path=system_path,
+        agent_path=None,
+        workset_path=workset_path,
+        box_path=box_path,
+        floor={},
+    )
+    levels: list[KeyStore] = [base_levels[0]]              # box
+    if box_prefs:
+        levels.append(box_prefs)                          # box pref REQUESTS
+    levels.append(base_levels[1])                         # workset
+    if ws_prefs:
+        levels.append(ws_prefs)                           # workset pref REQUESTS
+    levels.extend([base_levels[4], base_levels[5]])       # system, base
+    expanded, errors = expand(merge(levels), ctx, collect_errors=True)
+    if SELECTION_KEY in errors:
+        raise SettingsError(
+            f"The agent selection key '{SELECTION_KEY}' did not resolve: "
+            f"{errors[SELECTION_KEY]}. Refusing to launch rather than falling back "
+            f"to a different agent — set it with `kanibako system config set "
+            f"{SELECTION_KEY}=<name>`, or request one per box with "
+            f"`kanibako box set pref.{SELECTION_KEY}=<name>` (spec §2h)."
+        )
+    return _snapshot_leaf(expanded, SELECTION_KEY)
 
 
 #: The RO per-mode box-root anchor (spec §2c). Every rooted box key spells itself
@@ -1257,114 +1399,131 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# box.agent.* mirror materialization (block B5 — spec §2b L380, §0 directional) #
+# meta.box.agent.* RO mirror materialization (block B5 — spec §2b L709)        #
 # --------------------------------------------------------------------------- #
 #
-# Spec §2b L380: ``box.agent.<key>`` is the box's box-scoped mirror of its active
-# agent's WHOLE settings subtree — it DEFAULTS (views up) to the resolved
-# ``agent.<box.agent_name>.<key>`` (with the ``agent.default`` fallback), and the
-# box overriding any ``box.agent.<key>`` is an ORDINARY same-scope (box) write
-# (§0: the no-special-case R2-legal downward tweak). Re-materialized when
-# ``box.agent_name`` changes. Spec impl note: COPY (pure) or shared REF (equivalent
-# — one box per process). Keystone D-D: COPY is conceptually purer; REF equivalent
-# since one box per process; the spec defines the SEMANTICS.
+# Spec §2b L709: ``meta.box.agent.<key>`` is the box-scoped READ-BACK of its
+# active agent's WHOLE resolved settings subtree — ``agent.<@system.agent>.<key>``
+# with the ``agent.default`` fallback. Values are still READABLE here; they are
+# no longer SETTABLE. Being ``meta.*`` it is RO BY CONTRACT (§0: meta ⟺ not
+# settable), so it cannot be set to a dangling @-ref and no settings file can
+# contribute to it. Re-materialized whenever the effective agent changes.
+#
+# ⮕ P7 RETIRED THE SETTABLE ``box.agent.*`` MIRROR that used to live here. It was
+#   one of the three devices §2h replaced (*"Every solution is a hack/exception,
+#   so I'm biting the bullet"*): it made a BOX-scope key the input to the agent
+#   tier, and it made the L4.1 anchors derive from a settable key at their own
+#   level. A box now tweaks its agent with ``pref.agent.<agent>.<key>`` (§2h),
+#   which targets the AGENT tier properly and needs no mirror. TWO consequences,
+#   both deliberate:
+#     * there is no gap-FILL any more — nothing can pre-set a name under
+#       ``meta.box.agent`` — so the materialization is a straight COPY;
+#     * the ``box.agent.<category>`` → ``agent.<active>`` pre-merge FOLD is gone
+#       with it (see build_launch_snapshot), which flips P6's transitional pin.
 #
 # MECHANISM (JC-B5-1 — COPY, materialized on the current engine, no resolver
 # inversion). The resolved active-agent subtree only EXISTS post-merge/expand
 # (the cascade keeps ``agent.default`` and ``agent.<active>`` DISCRIMINATED and the
 # active-over-default value-pick is a CONSUMER step — :func:`_agent_pick_node`).
-# So box.agent.* is materialized AFTER ``expand`` as a deep COPY of that resolved
-# effective-agent node into ``snapshot["box"]["agent"]``, filling ONLY names the
-# box did not already set. This satisfies the three requirements:
-#   (a) box.agent.<key> with NO box override DEFAULTS to the resolved
-#       agent.<active>.<key> (agent.default fallback included) — the effective node
-#       IS ``agent.default`` overlaid by ``agent.<active>`` (§2d L368 pick), so each
-#       copied leaf is exactly what ``agent.<box.agent_name>.<key>`` resolves to.
-#   (b) a box-file box.agent.<key> WINS — the box settings file's ``box.agent.*``
-#       entries merge in at BOX scope (``_file_partial`` keeps the scope token, so
-#       they land under ``snapshot["box"]["agent"]`` BEFORE this step). The copy is
-#       gap-filling (per-name ``_MISSING`` probe): a box-set name is left untouched,
-#       so the box override stands. This is the ORDINARY same-scope box write — the
-#       cascade already gave it box precedence; we never overwrite it.
-#   (c) NO leak — the materialized subtree is a FRESH deep COPY (``_deep_copy_store``
-#       leaves immutable Bind/scalar/None leaves shared but never aliases a nested
-#       KeyStore), written ONLY under ``box.agent.*``. ``snapshot["agent"]`` is never
-#       mutated, so a box.agent tweak (a box-file override, or a later in-place edit)
-#       cannot escape into the shared agent subtree or to another box. (One box per
-#       process anyway — but the COPY makes no-leak hold structurally, not by luck.)
-# Re-materialization on box.agent_name change is AUTOMATIC: ``agent_name`` is the
-# launch-resolved active agent (``box_agent_name`` → ``system.default_agent``
-# fallback), threaded into every snapshot build; change box.agent_name → a different
-# ``agent_name`` → a different effective node copied next launch.
+# So ``meta.box.agent.*`` is materialized AFTER ``expand`` as a deep COPY of that
+# resolved effective-agent node into ``snapshot["meta"]["box"]["agent"]``:
+#   (a) ``meta.box.agent.<key>`` reads back exactly what
+#       ``agent.<@system.agent>.<key>`` resolved to (the effective node IS
+#       ``agent.default`` overlaid by ``agent.<active>``, §2d L368 pick) — including
+#       any ``pref.agent.<agent>.<key>`` the box requested, since a pref is an INPUT
+#       to that resolution rather than a patch on top of it;
+#   (b) NO LEAK — the materialized subtree is a FRESH deep COPY
+#       (``_deep_copy_store`` leaves immutable Bind/scalar/None leaves shared but
+#       never aliases a nested KeyStore), written ONLY under ``meta.box.agent.*``.
+#       ``snapshot["agent"]`` is never mutated, so a later in-place edit of the
+#       read-back cannot escape into the shared agent subtree.
+# Re-materialization on an agent change is AUTOMATIC: ``agent_name`` is the
+# launch-resolved active agent (``@system.agent`` — the stored key, a
+# ``pref.system.agent`` request, ``--agent``, or the installed-count rule; see
+# :mod:`kanibako.agent_select`), threaded into every snapshot build.
 #
-# NO-AGENT box (box.agent_name <None> → empty ``agent_name``): there is NO agent
-# subtree to mirror, so box.agent.* is left empty/absent (spec requirement). The
-# guard is the empty/blank ``active_agent`` short-circuit below — even though
-# ``agent.default`` exists in the snapshot, a NO-AGENT box has no ACTIVE agent whose
-# subtree the spec mirrors, so nothing is materialized.
+# ⚑ NO-AGENT box — WHAT ACTUALLY HAPPENS, measured, because the inherited comment
+# here was WRONG twice over (it claimed a spec requirement that §2b does not state,
+# and a caller behaviour no caller has):
+#   * The LAUNCH passes ``agent_name="general"`` for a no-agent/shell box
+#     (``start.py``: ``agent_id = with_harness(...) if target else "general"``), so
+#     the blank short-circuit below does NOT fire and the mirror is materialized
+#     from the §2d pick — which for ``"general"`` is the ``agent.default`` backstop
+#     alone (no ``agent.general`` table exists anywhere). MEASURED on the launch
+#     shape: ``meta.box.agent`` holds ``auth`` (the floor's capability key) PLUS the
+#     agent.default behavior leaves (``auto_approve`` / ``bootstrap`` / ``model``).
+#     That is a defensible read-back — it IS the effective subtree when the
+#     effective agent is the default backstop — and NOTHING consumes those leaves
+#     (the only runtime reader under ``meta.box.agent`` is ``auth.share_support``,
+#     which the auth FLOOR materializes pre-expand, not this copy).
+#   * A caller that passes a BLANK ``active_agent`` (tests, and any future caller
+#     that wants the strict reading) gets an EMPTY mirror — the short-circuit below.
+# Both shapes are PINNED (tests/test_settings_launch.py). If the strict reading is
+# ever wanted at the launch too, the change belongs at the ``agent_id`` seam in
+# start.py, not here — this function mirrors whatever active agent it is given.
 
 
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None:
-    """Materialize ``box.agent.*`` = the resolved active-agent subtree (block B5).
+    """Materialize ``meta.box.agent.*`` = the resolved active-agent subtree (B5).
 
-    The box's box-scoped mirror of its active agent's WHOLE resolved settings
-    subtree (spec §2b L380): a deep COPY of the resolved effective-agent node
+    The box-scoped RO read-back of its active agent's WHOLE resolved settings
+    subtree (spec §2b L709): a deep COPY of the resolved effective-agent node
     (``agent.default`` overlaid by ``agent.<active_agent>`` — the §2d L368 pick) is
-    written under ``snapshot["box"]["agent"]``, filling ONLY names the box did NOT
-    already set (the box's own ``box.agent.*`` overrides, merged in at box scope,
-    are LEFT INTACT — they win, the ordinary same-scope box write of §0). Mutates
-    *snapshot* in place (it is the launch-local expanded tree, owned by the caller).
+    written under ``snapshot["meta"]["box"]["agent"]``. Mutates *snapshot* in place
+    (it is the launch-local expanded tree, owned by the caller).
 
-    *active_agent* is the launch-resolved active agent name. A NO-AGENT box has a
-    blank name → NO active-agent subtree to mirror → nothing materialized (spec:
-    box.agent.* empty/absent for a NO-AGENT box). The mirror tracks ``box.agent_name``
-    because *active_agent* IS the resolved active agent for this launch.
+    *active_agent* is the launch-resolved active agent name. A BLANK name → NO
+    active-agent subtree to mirror → nothing materialized. ⚑ The LAUNCH does not
+    pass blank for a no-agent box; it passes ``"general"`` — see the module note
+    above for the measured shape and why it is harmless.
 
-    COPY (not REF) — keystone D-D / JC-B5-1: a fresh deep copy guarantees no box
-    tweak leaks into the shared ``agent.*`` subtree or across boxes (no-leak holds
-    STRUCTURALLY, not just because one box runs per process). Reads/writes via the
-    UNBOUND ``dict`` protocol (S3) so a key named ``get`` / ``agent`` cannot shadow.
+    ⚑ The auth floor separately materializes ``meta.box.agent.auth.share_support``
+    (the capability mirror, a PRE-expand floor key), so this copy must not clobber
+    it: an existing name under ``meta.box.agent`` is LEFT INTACT.
+
+    COPY (not REF) — keystone D-D / JC-B5-1: a fresh deep copy guarantees no edit
+    of the read-back leaks into the shared ``agent.*`` subtree or across boxes.
+    Reads/writes via the UNBOUND ``dict`` protocol (S3) so a key named ``get`` /
+    ``agent`` cannot shadow.
     """
     if not active_agent or not active_agent.strip():
-        # NO-AGENT box — no active agent subtree to mirror (spec). Leave box.agent.*
-        # absent; do NOT fall back to agent.default (that is the all-agents backstop,
-        # not an ACTIVE agent the box runs).
+        # NO-AGENT box — no active agent subtree to mirror (spec). Leave
+        # meta.box.agent.* absent; do NOT fall back to agent.default (that is the
+        # all-agents backstop, not an ACTIVE agent the box runs).
         return
-    # The PURE pick (agent.default ⊕ agent.<active>). This ALREADY reflects the box's
-    # box.agent.* CATEGORY tweaks — they merged INTO agent.<active> at box precedence
-    # via the pre-merge fold (``_box_agent_category_fold``) — so the mirror gap-fills
-    # box.agent.* FROM the box-tweaked pick (a suppressed name is absent here too, so
-    # there is nothing to refill; a positive tweak round-trips). Behavior scalars are
-    # NOT folded, so the box's own box.agent behavior overrides (merged at box scope
-    # under ``box.agent``) still gap-fill correctly below.
+    # The PURE pick (agent.default ⊕ agent.<active>), which already carries any
+    # ``pref.agent.<agent>.*`` the box requested (a pref is a cascade INPUT).
     effective = _agent_pick_node(snapshot, active_agent)
     if not dict.__len__(effective):
         # The active agent set NO category/behavior leaves (and no default backstop
-        # either) — nothing to mirror; leave box.agent.* absent.
+        # either) — nothing to mirror; leave meta.box.agent.* absent.
         return
-    box_node = dict.get(snapshot, "box", _MISSING)
-    if not isinstance(box_node, KeyStore):
-        box_node = KeyStore()
-        snapshot["box"] = box_node
-    box_agent = dict.get(box_node, "agent", _MISSING)
+    meta_node = dict.get(snapshot, "meta", _MISSING)
+    if not isinstance(meta_node, KeyStore):
+        meta_node = KeyStore()
+        snapshot["meta"] = meta_node
+    meta_box = dict.get(meta_node, "box", _MISSING)
+    if not isinstance(meta_box, KeyStore):
+        meta_box = KeyStore()
+        meta_node["box"] = meta_box
+    box_agent = dict.get(meta_box, "agent", _MISSING)
     if not isinstance(box_agent, KeyStore):
         box_agent = KeyStore()
-        box_node["agent"] = box_agent
-    # Gap-fill: copy each resolved effective-agent name the box did NOT already set.
-    # A box-set name (the box-file ``box.agent.<key>`` override, present under
-    # ``box.agent`` from the box-scope merge) is LEFT UNTOUCHED — it wins (b). A
-    # nested KeyStore (e.g. ``bindings``) is filled PER NAME so a box override of one
-    # leaf (``box.agent.bindings.ro.share``) coexists with mirrored sibling leaves.
+        meta_box["agent"] = box_agent
+    # Copy each resolved effective-agent name, leaving intact anything already
+    # there (the auth floor's ``auth.share_support`` capability mirror). A nested
+    # KeyStore is filled PER NAME so the auth subtree coexists with mirrored
+    # siblings.
     _mirror_fill(box_agent, effective)
 
 
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
     """Deep gap-fill *box_node* from *agent_node*: copy each *agent_node* name the
     *box_node* does NOT already set; recurse into matching KeyStore subtrees so a
-    box override of ONE leaf does not suppress mirrored siblings (block B5).
+    pre-set leaf does not suppress mirrored siblings (block B5).
 
-    A box-set leaf (the box-file override) is LEFT INTACT (it wins — spec §2b L380
-    ORDINARY same-scope write). A name absent from *box_node* is set to a FRESH deep
+    A leaf already present (the auth floor's capability mirror) is LEFT INTACT.
+    A name absent from *box_node* is set to a FRESH deep
     COPY of the agent value (``_deep_copy_store`` for a subtree; an immutable Bind /
     scalar / None / a fresh ``list`` for a leaf) so no box edit aliases the shared
     ``agent.*`` subtree (no-leak, (c)). Unbound ``dict`` protocol (S3).
@@ -1418,81 +1577,6 @@ def _agent_state_partial(
     return partial
 
 
-# The §2a category tokens carried by the box.agent.* → agent.<active> fold: the
-# same set ``_emit_scope_node`` walks (``bindings`` holds ro/rw; the bind-leaf
-# maps; the keyed ``masks``; the scalar ``env``). Behavior scalar leaves (model /
-# auto_approve / …) are NOT folded — they stay on the box.agent mirror overlay,
-# read directly by :func:`effective_behavior` (byte-identical behavior path).
-_FOLD_CATEGORY_TOKENS: frozenset[str] = frozenset(
-    {"bindings", *_BIND_LEAF_CATEGORIES, "masks", "env", "secret_path"}
-)
-
-
-def _box_agent_category_fold(
-    file_levels: "list[KeyStore]", agent_name: str
-) -> "list[KeyStore]":
-    """Re-root each file-backed level's ``box.agent.<category>.*`` CATEGORY subtrees
-    to ``agent.<agent_name>.<category>.*``, as a GROUP of box-precedence merge
-    partials (one per source level, in the SAME most-specific-first order).
-
-    The §2b ``box.agent.*`` mirror is the box's ORDINARY same-scope (box) write of
-    its active agent's WHOLE subtree (spec §2b L411 / §0 L32-42). Folding its
-    CATEGORY leaves into the active agent's discriminated slot at BOX precedence
-    makes that write ride the ORDINARY cascade merge — so a box present-``None``
-    category leaf OMITs the inherited bind AT MERGE (the §3 type-split,
-    :func:`~kanibako.settings_merge._resolve_present_none`), exactly like a
-    same-scope category ``None``. This is the single-route replacement for the old
-    post-expand ``box.agent`` overlay in the category adapter (no post-expand patch).
-
-    ``box.agent.<key>`` is a ``box``-scope key, and a CONTAINING scope file may hold
-    it as a DEFAULTS-DOWN default (spec §0: a workset/system/base file may set
-    ``box.*``). The old overlay read the MERGED ``box.agent`` node, which already
-    included those container-sourced leaves; to preserve that (and NOT lose the §3
-    present-``None`` via a pre-fold merge), the fold sources each file-backed level's
-    RAW ``box.agent`` partial SEPARATELY and returns them in the input order — so the
-    normal cascade settles ``box.agent.<key>`` AMONG its sources (box file beats
-    workset file beats system/base), with the winner applied at BOX precedence.
-
-    *file_levels* are the file-backed partials MOST-SPECIFIC-FIRST (``assemble_levels``
-    idx 0/1/4/5 = box / workset / system / base; the agent partials carry no ``box``
-    node). Each is sourced PRE-merge so an un-classified present-``None`` leaf is
-    folded verbatim and the merge does the OMIT. Only the seven §2a category subtrees
-    (:data:`_FOLD_CATEGORY_TOKENS`) are folded; behavior scalars stay on the mirror.
-    A NO-AGENT box (blank *agent_name*) has no active slot to fold into → ``[]``.
-    Reads via the UNBOUND ``dict`` protocol (S3); each returned partial is a FRESH
-    tree (subtrees deep-copied, never aliased). A level with no ``box.agent`` category
-    subtree contributes no partial.
-    """
-    from kanibako.settings_merge import _deep_copy_store
-
-    if not agent_name or not agent_name.strip():
-        return []
-    folded: "list[KeyStore]" = []
-    for level in file_levels:
-        box_node = dict.get(level, "box", _MISSING)
-        if not isinstance(box_node, KeyStore):
-            continue
-        box_agent = dict.get(box_node, "agent", _MISSING)
-        if not isinstance(box_agent, KeyStore):
-            continue
-        active_node = KeyStore()
-        for token in dict.keys(box_agent):
-            if token not in _FOLD_CATEGORY_TOKENS:
-                continue  # behavior scalar leaf → stays on the mirror, not folded.
-            sub = dict.__getitem__(box_agent, token)
-            if isinstance(sub, KeyStore):
-                active_node[token] = _deep_copy_store(sub)
-            else:
-                active_node[token] = sub  # a present-None whole-category reset.
-        if not dict.__len__(active_node):
-            continue
-        agent_node = KeyStore()
-        agent_node[agent_name] = active_node
-        partial = KeyStore()
-        partial["agent"] = agent_node
-        folded.append(partial)
-    return folded
-
 
 # --------------------------------------------------------------------------- #
 # Behavior read — typed off the ONE snapshot                                  #
@@ -1543,25 +1627,20 @@ def effective_behavior(
         return out
     active_node = dict.get(agent_node, active_agent, _MISSING)
     default_node = dict.get(agent_node, "default", _MISSING)
-    # box.agent.* mirror (block B5, spec §2b L380 / §0): the box's box-scoped agent
-    # override is the HIGHEST-precedence behavior source — it WINS the §2d pick (the
-    # box's downward tweak takes EFFECT). With NO override the mirror leaf EQUALS the
-    # pick (gap-filled), so this overlay is a NO-OP for default boxes (the
-    # equivalence guard). A NO-AGENT box has no box.agent node → absent.
-    box_node = dict.get(snapshot, "box", _MISSING)
-    box_agent_node = (
-        dict.get(box_node, "agent", _MISSING)
-        if isinstance(box_node, KeyStore)
-        else _MISSING
-    )
+    # ⚑ NO ``box.agent.*`` OVERLAY (P7). The settable box-scoped agent mirror is
+    # RETIRED (spec §2b L709 — it is now the RO read-back ``meta.box.agent.*``), so
+    # there is no box-scope behavior source to overlay here: a box tweaks its
+    # agent's behavior with ``pref.agent.<agent>.<key>`` (§2h), which is an ordinary
+    # cascade level and is therefore ALREADY resolved into the active slot below.
+    # Reading ``meta.box.agent`` here instead would be a cycle — that node is
+    # MATERIALIZED FROM this pick.
 
     if keys is None:
-        # DISCOVER: the union of scalar-leaf names across the box.agent override,
-        # the active slot, and the default backstop (box.agent first so a box-only
-        # behavior key is discovered too). Category subtrees / Bind leaves are
-        # filtered out per-key below.
+        # DISCOVER: the union of scalar-leaf names across the active slot and the
+        # default backstop. Category subtrees / Bind leaves are filtered out
+        # per-key below.
         discovered: dict[str, None] = {}
-        for node in (box_agent_node, active_node, default_node):
+        for node in (active_node, default_node):
             if isinstance(node, KeyStore):
                 for name in dict.keys(node):
                     discovered.setdefault(name, None)
@@ -1570,13 +1649,10 @@ def effective_behavior(
         key_iter = keys
 
     for key in key_iter:
-        # box.agent override WINS (block B5) → active-over-default pick (§2d L368).
-        # Probe the box.agent mirror first; then the active slot; then default. A
-        # present value (incl. present-None) SETS the key and shadows lower sources.
+        # The §2d L368 active-over-default pick. A present value (incl.
+        # present-None) SETS the key and shadows the default backstop below it.
         val: object = _MISSING
-        if isinstance(box_agent_node, KeyStore):
-            val = dict.get(box_agent_node, key, _MISSING)
-        if val is _MISSING and isinstance(active_node, KeyStore):
+        if isinstance(active_node, KeyStore):
             val = dict.get(active_node, key, _MISSING)
         if val is _MISSING and isinstance(default_node, KeyStore):
             # Neither box nor active set it → fall back to the agent.default backstop.
@@ -1690,10 +1766,11 @@ def snapshot_category_entries(
             # BARE ``agent`` token (it is the precedence identity); the snapshot's
             # own agent tier is DISCRIMINATED (``agent.<active>``) — there is no bare
             # ``agent.*`` anywhere outside an explicit agent name or
-            # ``default``. The box's box.agent.* CATEGORY tweaks already merged
-            # INTO agent.<active> at box precedence (the pre-merge fold,
-            # ``_box_agent_category_fold``), so the PURE pick already carries them —
-            # NO separate post-expand box.agent overlay (single-route, §2b L411 / §0).
+            # ``default``. A box's ``pref.agent.<agent>.<category>`` requests (§2h)
+            # merged INTO agent.<active> as an ordinary cascade level, so the PURE
+            # pick already carries them — NO post-expand overlay (single-route).
+            # (P7: this used to say the same of the retired settable ``box.agent.*``
+            # mirror and its pre-merge fold; both are gone.)
             #
             # ⚑ The undeclared-shape REFUSAL runs on the RAW TIERS, before the pick,
             # so its message can name the DISCRIMINATED key the user actually wrote
@@ -1788,15 +1865,14 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     default-only ``agent.default.common.plugins`` BOTH survive. A present-``None``
     reset was already OMITted by the merge (§3 / §6e), so it never reaches here.
 
-    This is the subtree the box.agent.* mirror is MATERIALIZED from (block B5,
-    ``_materialize_box_agent_mirror``) — it must NOT itself read box.agent.* (no
-    chicken-and-egg). It is ALSO the effective agent node the category adapter
-    (:func:`snapshot_category_entries`) walks: the box's box.agent.* CATEGORY tweaks
-    already merged INTO ``agent.<active>`` at box precedence (the pre-merge fold
-    :func:`_box_agent_category_fold`), so this PURE pick already carries them — the
-    box's downward tweak is live in category resolution with NO separate post-expand
-    overlay (single-route, §2b L411 / §0 L32-42). Reads via the UNBOUND ``dict``
-    protocol (S3); never mutates the snapshot.
+    This is the subtree the ``meta.box.agent.*`` RO mirror is MATERIALIZED from
+    (block B5, ``_materialize_box_agent_mirror``) — it must NOT itself read
+    ``meta.box.agent.*`` (no chicken-and-egg). It is ALSO the effective agent node
+    the category adapter (:func:`snapshot_category_entries`) walks: a box's
+    ``pref.agent.<agent>.<category>`` requests (§2h) merged INTO ``agent.<active>``
+    as an ordinary cascade level, so this PURE pick already carries them — the box's
+    tweak is live in category resolution with NO post-expand overlay (single-route).
+    Reads via the UNBOUND ``dict`` protocol (S3); never mutates the snapshot.
     """
     agent_node = dict.get(snapshot, "agent", _MISSING)
     if not isinstance(agent_node, KeyStore):

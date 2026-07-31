@@ -12,6 +12,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: a box no longer names its agent with a key of its own — it REQUESTS
+  one.** `box.agent_name` is RETIRED; the replacement is `pref.system.agent`, a
+  request written in the box (or workset) settings file to set a key that resolves
+  *earlier* than the file making it. Clean break — no alias, no deprecation window.
+
+  ```yaml
+  # box settings.yaml
+  pref:
+    system:
+      agent: goose        # was:  box: {agent_name: goose}
+  ```
+
+  - `kanibako box set pref.system.agent=<name>` writes it; `kanibako box set --null
+    pref.system.agent` writes a suppression (see the no-agent box below).
+  - `kanibako create --agent <name>` persists the request, so a plain `kanibako
+    start` runs that agent — unchanged behaviour, new storage.
+  - **Why:** the old key made two read-only anchors (`meta.box.auth.workset_path`,
+    `meta.box.agent.auth.share_support`) derive from a *settable* key at their own
+    level, which the bootstrap order forbids.
+  - **A box that still carries `box.agent_name` REFUSES TO LAUNCH**, naming the key,
+    the file, and the one-line fix. It is not migrated automatically and it is not
+    ignored: guessing would launch a different agent and seed *that* agent's
+    credentials into the box.
+
+- **BREAKING: `system.default_agent` → `system.agent`**, and it moves out of the
+  reserved `agent.default` table into the `system:` table of the same settings file
+  (`~/.local/share/kanibako/global/settings.yaml`). `kanibako setup` writes the new
+  location; `kanibako system config set system.agent=<name>` now works as an ordinary
+  setting (it was previously special-cased). A stale `agent.default.default_agent`
+  is refused by name, like the key above.
+
+- **A box can now opt OUT of an agent entirely, even when a system default is set.**
+  `kanibako box set --null pref.system.agent` gives a plain-shell box: no agent
+  binds, no credentials, no agent template layer, and no `KANIBAKO_AGENT` stamp —
+  so `stop` / the credential watcher write nothing back for it either. Previously a
+  host-wide default always re-supplied an agent, so this was unreachable.
+
+- **BREAKING: the settable `box.agent.*` mirror is retired.** A box tweaks its
+  agent's settings with `pref.agent.<agent>.<key>` (including `null` to suppress an
+  inherited bind); the effective values are readable at the read-only
+  `meta.box.agent.<key>` via `--effective`. `box set`/`reset box.agent.<key>` refuse
+  with the replacement spelling, and a bare `box set model=…` now points at
+  `pref.agent.<agent>.model`.
+
+### Fixed
+
+- **Persona boxes get their agent's shared directories.** A persona
+  (`navigator+claude`) mounted NEITHER `~/.claude/plugins` NOR `~/.claude/cache`: the
+  plugin declares those against its harness name while the resolver reads them under
+  the persona's node name, so nothing matched and the symlink shim that points
+  `agents/<persona>/common/…` at `agents/<harness>/common/…` had no consumer. They
+  are now emitted under the active node, which is what makes that sharing real.
+  Bare (non-persona) agents are unaffected.
+
 - **Box directive templates reorganised into a three-part "handbook".** The seeded
   home tree now ships three roots instead of one: `~/playbook/` (global, agent and
   workset directives + resources), `~/notebook/` (box-specific directives, archives

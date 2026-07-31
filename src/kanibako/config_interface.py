@@ -107,9 +107,9 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # launch; spec §3 L769 "``start_mode`` fully covered by ``continue_mode`` +
     # ``auto_approve``" — 1.7.0-rc clean break, no alias).
     "continue_mode",
-    # Box
+    # Box.  ⚑ NO ``box.agent_name`` (P7): the agent SELECTION is the §2h request
+    # ``pref.system.agent`` (spec §2b RETIRED the box key).
     "box.image",
-    "box.agent_name",
     "box.share_images",
     "box.shell",
     # Auth sharing — settable 3-tier chain (system/workset/box.auth.*)
@@ -184,10 +184,14 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.base_template",
     "system.cache",
     "system.runtime",
-    # system.default_agent: the lone system.*-named SETTING (behavior, not a
-    # config path).  Routed to the SYSTEM settings tier (the agent.default
-    # table), NOT the [system] config table — handled explicitly below.
-    "system.default_agent",
+    # system.agent (spec §2g L1187): the CURRENT agent's name — a system-scope
+    # SETTING (behavior, not a config path), so it routes to the ``system:`` table
+    # of the SYSTEM SETTINGS file, NOT the [system] config table.  ⮕ P7 RENAMED it
+    # from ``system.default_agent`` AND relocated it out of the reserved
+    # ``agent.default`` table, where it had been an undeclared key riding the AGENT
+    # tier of the real cascade; it is now an ordinary ``_KEY_ROUTES`` entry and the
+    # four-site special case is gone.
+    "system.agent",
 })
 
 # Prefixes for dynamic keys (env vars).
@@ -253,13 +257,17 @@ def is_known_key(arg: str) -> bool:
 _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # Box section ([box] table).
     "box.image": (("box",), "image"),
-    "box.agent_name": (("box",), "agent_name"),
     "box.shell": (("box",), "shell"),
     "box.share_images": (("box",), "share_images"),
     # Auth sharing — settable 3-tier chain (system/workset/box.auth.*). These are
     # ordinary SETTINGS keys: each routes to its nested ``<scope>.auth.<leaf>``
     # slot in the command-scope settings file (the same nested-settings pattern as
     # ``box.image`` etc.), NOT the [project] meta table.
+    # system.agent — the agent SELECTION default (spec §2g L1187). An ORDINARY
+    # settings-tier route (P7): the ``system:`` table of the system settings file,
+    # which is exactly where ``assemble_levels`` reads the system tier and where
+    # ``config.read_system_agent`` reads it back.
+    "system.agent": (("system",), "agent"),
     "system.auth.share_allowed": (("system", "auth"), "share_allowed"),
     "workset.auth.share_allowed": (("workset", "auth"), "share_allowed"),
     "workset.auth.global_sync": (("workset", "auth"), "global_sync"),
@@ -821,22 +829,43 @@ def _is_agent_setting(key: str) -> bool:
 
 
 def _is_box_agent_key(key: str) -> bool:
-    """The box-scoped agent mirror ``box.agent.<key>`` (block B5, spec §2b L380).
+    """The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b).
 
-    The box's box-scoped mirror of its active agent's WHOLE settings subtree —
-    ``box.agent.<key>`` DEFAULTS (views up) to the resolved ``agent.<box.agent_name>.
-    <key>`` and the box overriding any ``box.agent.<key>`` is an ORDINARY same-scope
-    (box) write (§0: the no-special-case downward tweak; §2b). It is the BOX
-    namespace (top-level token ``box``), so the B4 directional guard ALLOWS
-    ``box set box.agent.<key>`` as a same-scope write (the guard keys on the
-    ``box`` token). It is settable here so the override lands in the box settings
-    file — exactly the box-scope override the materializer (settings_launch) then
-    keeps (it gap-fills only the names the box did NOT set).
+    ⮕ **P7 RETIRED THE SETTABLE MIRROR.** ``box.agent.<key>`` was the box's
+    box-scoped override of its active agent's settings subtree. Spec §2b L709
+    replaces it with the RO read-back ``meta.box.agent.<key>`` (readable, never
+    settable — ``meta.*`` is RO by contract), and a box tweaks its agent with the
+    §2h request ``pref.agent.<agent>.<key>``, which targets the AGENT tier properly
+    instead of smuggling a box-scope key into it.
 
-    Matched strictly as ``box.agent.<something>`` so it does NOT collide with the
-    flat box scalar ``box.agent_name`` (which has no dotted tail).
+    This predicate now exists ONLY to RECOGNISE the retired spelling so set / reset
+    / get can refuse it with the cure (:func:`box_agent_retired_error`) rather than
+    fail as an unknown key — a user who has the old form in muscle memory must be
+    TOLD what replaced it.
     """
     return key.startswith("box.agent.")
+
+
+def box_agent_retired_error(
+    canonical: str, *, verb: str, active_agent: str | None = None,
+) -> str:
+    """The refusal + cure for a RETIRED ``box.agent.<key>`` op (P7, spec §2b).
+
+    ⚑ The pointer names what ``--effective`` ACTUALLY RENDERS — the ``pref`` block,
+    which prints each REQUEST beside the value it produced. It deliberately does NOT
+    promise ``meta.box.agent.<key>``: that key is real in the snapshot (the RO
+    read-back) but no renderer emits it today, and a cure that points at output the
+    user will not find is worse than no pointer.
+    """
+    tail = canonical[len("box.agent."):]
+    agent = active_agent or "<agent>"
+    return (
+        f"Error: '{canonical}' is RETIRED — a box no longer carries a settable "
+        f"mirror of its agent's settings (spec §2b). Tweak the agent for THIS box "
+        f"with the request '{verb} pref.agent.{agent}.{tail}' (spec §2h); "
+        f"'kanibako box config --effective' then shows that request beside the "
+        f"value it produced."
+    )
 
 
 # The command scopes that CANNOT write a BARE agent behavior key: a bare key
@@ -854,23 +883,33 @@ _NO_BARE_AGENT_KEY_SCOPES: "frozenset[ConfigLevel]" = frozenset(
 
 
 def box_agent_redirect_key(
-    canonical: str, command_scope: "ConfigLevel | None",
+    canonical: str,
+    command_scope: "ConfigLevel | None",
+    active_agent: str | None = None,
 ) -> str | None:
-    """The canonical ``box.agent.<key>`` mirror a BARE agent behavior key redirects
-    to at BOX command scope, or ``None`` when this case does not apply.
+    """The canonical ``pref.agent.<active>.<key>`` request a BARE agent behavior key
+    redirects to at BOX command scope, or ``None`` when this case does not apply.
+
+    ⮕ **P7 RETARGETED THIS.** It used to name the settable ``box.agent.<key>``
+    mirror, which spec §2b retired; the box-scoped way to set an agent value is now
+    the §2h request. *active_agent* is the box's resolved agent NODE — required,
+    because the request targets a DISCRIMINATED agent slot (there is no bare
+    ``agent.<key>``, §0 L21). With no resolvable agent there is nothing to redirect
+    to, so this returns ``None`` and the caller falls through to the ordinary
+    bare-key refusal, which names the shape.
 
     A BARE agent behavior key — the WHOLE :func:`_is_agent_setting` family
     (``model`` / ``auto_approve`` / ``bootstrap`` / ``endpoint`` /
     ``allow_helpers`` / ``continue_mode``), uniformly, NOT a per-key list — targets
     the any-agent ``agent.default`` tier. From a BOX that is an UPWARD write (agent
-    ⊃ box in the containment order): spec L440 ("a box tweaks its agent through its
-    own box-scoped ``box.agent.*`` mirror") + the §0 directional rule REFUSE it.
+    ⊃ box in the containment order): the §0 directional rule REFUSES it (spec §2h
+    replaced the old "box tweaks its agent through its own mirror" device).
     The old code wrote ``agent.default.<key>`` into the BOX settings file, which
     ``settings_assemble._drop_upward_scopes`` then DROPPED at launch (a box file may
     not set a containing ``agent`` table) — a silent no-op the CLI still reported as
-    "Set". So the bare form at box scope is REDIRECTED to the box's active-agent
-    mirror ``box.agent.<key>``: ``set``/``reset`` REFUSE (the value lives at, and is
-    set/reset at, the mirror), ``get`` reads/names the mirror.
+    "Set". So the bare form at box scope is REDIRECTED to the box's request
+    ``pref.agent.<active>.<key>``: ``set``/``reset`` REFUSE (the value lives at, and
+    is set/reset at, the request), ``get`` reads/names the request.
 
     Fires ONLY for the bare form at BOX command scope (the mirror is box-specific).
     A WORKSET bare agent key is caught by :func:`bare_agent_key_scope_error`
@@ -880,13 +919,21 @@ def box_agent_redirect_key(
     key at SYSTEM scope is a DOWNWARD write (agent is a scope the system CONTAINS).
     None of those match, so all stay unaffected.
     """
-    if command_scope is ConfigLevel.box and _is_agent_setting(canonical):
-        return f"box.agent.{canonical}"
+    if (
+        command_scope is ConfigLevel.box
+        and _is_agent_setting(canonical)
+        and active_agent
+    ):
+        return f"pref.agent.{active_agent}.{canonical}"
     return None
 
 
 def bare_agent_key_scope_error(
-    canonical: str, command_scope: "ConfigLevel | None", *, verb: str,
+    canonical: str,
+    command_scope: "ConfigLevel | None",
+    *,
+    verb: str,
+    active_agent: str | None = None,
 ) -> str | None:
     """Error string refusing a WRITE-shaped op on a BARE agent behavior key at a
     scope that cannot write it (box / workset), or ``None`` when it is permitted.
@@ -900,46 +947,47 @@ def bare_agent_key_scope_error(
     (the box ``get`` instead REDIRECTS via :func:`box_agent_redirect_key`).
 
     *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``).
+    *active_agent* names the box's resolved agent in the cure so the suggested
+    command is COPY-PASTEABLE (``pref.agent.claude.model``) rather than a shape to
+    fill in; the placeholder is used only where no agent resolves.
 
-    * **BOX** — a box has a single active agent, so the refusal TEACHES the
-      ``box.agent.<key>`` mirror (the box-scoped tweak surface; spec §2b L380).
+    * **BOX** — a box has a single active agent, so the refusal TEACHES the §2h
+      request ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface since P7
+      retired the ``box.agent.*`` mirror).
     * **WORKSET** — a workset spans multiple boxes/agents, so there is deliberately
-      NO ``workset.agent.*`` mirror (no single "the agent"). The refusal points at
-      system scope (all agents) or the per-box ``box.agent.<key>`` mirror.
+      no single "the agent". The refusal points at system scope (all agents) or the
+      per-box request.
 
     Returns ``None`` for every other scope — a bare key at SYSTEM scope is a legit
     DOWNWARD write; ``agent`` / ``system`` (no command scope) is unconstrained here.
     """
     if not _is_agent_setting(canonical) or command_scope not in _NO_BARE_AGENT_KEY_SCOPES:
         return None
+    agent = active_agent or "<agent>"
     if command_scope is ConfigLevel.box:
         return (
             f"Error: box-scope agent settings can't be {verb} bare (a bare agent "
             f"key targets agent.default, which a box cannot write). "
-            f"Use '{verb} box.agent.<key>' — did you mean '{verb} box.agent.{canonical}'?"
+            f"Use '{verb} pref.agent.{agent}.<key>' — did you mean "
+            f"'{verb} pref.agent.{agent}.{canonical}'? (spec §2h)"
         )
     # workset — no mirror; point at system (all agents) or the per-box mirror.
+    # WORKSET keeps the PLACEHOLDER on purpose: a workset spans many boxes and many
+    # agents, so naming one box's resolved agent here would be a lie.
     return (
         f"Error: agent settings can't be {verb} at workset scope (a workset spans "
         f"multiple boxes/agents, so there's no single agent to configure). "
         f"Configure them at system scope to apply to all agents, or per-box via "
-        f"'box.agent.{canonical}'."
+        f"'pref.agent.<agent>.{canonical}' (spec §2h)."
     )
 
 
-# ``system.default_agent`` is the lone ``system.*``-named SETTING (behavior, not
-# a config path).  It does NOT land in the ``[system]`` config table; it lands in
-# the SYSTEM settings tier — the reserved any-agent ``agent.default`` table, key
-# ``default_agent`` — where ``config.read_default_agent`` reads it back.  Phase 5
-# re-points the system settings tier to ``@config.settings``.
-_DEFAULT_AGENT_KEY = "system.default_agent"
-_DEFAULT_AGENT_SECTIONS: tuple[str, ...] = ("agent", "default")
-_DEFAULT_AGENT_LEAF = "default_agent"
-
-
-def _is_default_agent_key(key: str) -> bool:
-    """The ``system.default_agent`` SETTING (routed to the settings tier)."""
-    return key == _DEFAULT_AGENT_KEY
+# ⚑ ``system.default_agent``'s four-site SPECIAL CASE is GONE (P7). The key is
+# now ``system.agent`` (spec §2g) and routes like any other scope-prefixed
+# settings key, through ``_KEY_ROUTES`` → the ``system:`` table of the settings
+# file. The special case existed only because the old spelling was stored in the
+# reserved ``agent.default`` table, a location that made it an undeclared key
+# inside the AGENT tier of the real cascade.
 
 
 def _is_system_path_key(key: str) -> bool:
@@ -954,7 +1002,7 @@ def _is_system_path_key(key: str) -> bool:
 
     The F2/F3 fix: this is a PRECISE family membership check, NOT a
     ``system.*``-wide catch-all.  A ``system.*`` SETTINGS key (the auth chain
-    ``system.auth.share_allowed``, ``system.default_agent``, categories, env)
+    ``system.auth.share_allowed``, ``system.agent``, categories, env)
     is NOT this family — ``resolve_system_paths`` drops unknown ``[system]``
     entries, so routing such a key to the config file was a write-only no-op;
     the launch reads them from the system SETTINGS file (``@config.settings``).
@@ -1812,14 +1860,20 @@ def get_config_value(
     system_settings_path: Path | None = None,
     agents_root: Path | None = None,
     command_scope: "ConfigLevel | None" = None,
+    active_agent: str | None = None,
 ) -> str | None:
     """Read a single config value from the appropriate store.
+
+    *active_agent* is the box's resolved agent NODE, needed ONLY to redirect a
+    BARE agent behavior key at box scope to its ``pref.agent.<active>.<key>``
+    request (P7 — see :func:`box_agent_redirect_key`). Absent/unknown ⇒ no
+    redirect.
 
     Returns the resolved (merged) value as a string, or None if the key
     is not set.
 
     *system_settings_path*, when supplied (the SYSTEM scope), is the file used
-    for SETTINGS reads (``system.default_agent`` + agent settings) — i.e.
+    for SETTINGS reads (``system.agent`` + agent settings) — i.e.
     ``@config.settings`` = ``global/settings.yaml``.  When None (box/workset
     scope) the existing ``project_toml``/``global_config_path`` paths are used,
     so those scopes keep their own ``settings.yaml`` behavior.  CONFIG
@@ -1846,7 +1900,9 @@ def get_config_value(
     # so a workset bare-agent-key get is REFUSED at the command handler
     # (:func:`bare_agent_key_scope_error`, verb "read"), not here — this forgiving
     # read only applies to box. Every other form / scope is unchanged.
-    _box_agent_redirect = box_agent_redirect_key(canonical, command_scope)
+    _box_agent_redirect = box_agent_redirect_key(
+        canonical, command_scope, active_agent,
+    )
     if _box_agent_redirect is not None:
         canonical = _box_agent_redirect
 
@@ -1940,36 +1996,14 @@ def get_config_value(
                 return settings[canonical]
         return None
 
-    # system.default_agent — the SETTING (not a config path).  Read it from the
-    # NOUN's settings file ONLY (spec §2a "Read verbs", clause 5): the system
-    # settings tier (``@config.settings`` = ``global/settings.yaml``,
-    # ``system_settings_path``) at the SYSTEM scope, else this noun's own settings
-    # file (``project_toml``).  The OLD box/workset path also fell back to
-    # ``global_config_path`` — reading the CONTAINING (global) tier's value from a
-    # lower noun, the clause-5 violation ("never another tier's value"; that is the
-    # ``--effective`` cascade view).  ``noun_file`` is exactly where ``set``/
-    # ``reset`` write this key, so get now reads where set wrote (residuals item 2).
-    if _is_default_agent_key(canonical):
-        if noun_file is None or not noun_file.exists():
-            return None
-        settings = read_agent_settings(noun_file, "default")
-        if _DEFAULT_AGENT_LEAF in settings:
-            return settings[_DEFAULT_AGENT_LEAF] or None
-        return None
-
-    # box.agent.<key> — the box-scoped agent mirror (F5, block B5, spec §2b
-    # L380). SYMMETRIC with the set/reset branches: read the value STORED at the
-    # nested ``box.agent.<key>`` path in the NOUN's settings file (== the box
-    # file at box scope). ``get_config_value`` previously lacked this branch (set
-    # was test-pinned; get untested), so a ``box get box.agent.<key>`` returned
-    # "(not set)" for what ``box set box.agent.<key>`` had just written. Checked
-    # BEFORE the routing table so a ``box.agent.bindings.ro.X`` reads its box
-    # override, not a routing miss. A plain get is stored-at-noun-only (the
-    # cascade fallback to the mirrored ``agent.<box.agent_name>.<key>`` default is
-    # the ``--effective`` view, not this).
+    # box.agent.<key> — RETIRED (P7, spec §2b): there is no settable box-scoped
+    # agent mirror any more, so there is no stored value to read. Returning ``None``
+    # (rather than reading a hand-written legacy leaf) is deliberate: reading it
+    # would report a value that no longer has ANY effect on the launch, which is
+    # worse than "(not set)". The set/reset verbs refuse with the cure; the
+    # effective value is readable at ``meta.box.agent.<key>`` via --effective.
     if _is_box_agent_key(canonical):
-        tail = canonical.split(".")  # ["box", "agent", <key...>, leaf]
-        return _read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
+        return None
 
     # Path-TUPLE category keys (``<scope>.bindings.{ro,rw}.<name>`` / ``caches`` /
     # ``seeded`` / ``shared`` / ``synced``) — the get/set/reset symmetry twin of the
@@ -2114,7 +2148,6 @@ def _has_dedicated_route(canonical: str) -> bool:
         or _is_agent_setting(canonical)
         or _is_box_agent_key(canonical)
         or _is_path_category_key(canonical)
-        or _is_default_agent_key(canonical)
         or _is_system_path_key(canonical)
         or _route_key(canonical) in _KEY_ROUTES
     )
@@ -2200,7 +2233,7 @@ def set_config_value(
 
     *config_path* is the settings.yaml (for box/workset) or kanibako_config.yaml
     (for system).  *system_settings_path*, when supplied (the SYSTEM scope), is
-    the file SETTINGS (``system.default_agent`` + agent settings) are written to
+    the file SETTINGS (``system.agent`` + agent settings) are written to
     — ``@config.settings`` = ``global/settings.yaml`` — keeping them out of the
     kanibako_config.yaml CONFIG file.  When None (box/workset) writes go to
     ``config_path`` as before.  Returns a human-readable confirmation message.
@@ -2266,7 +2299,10 @@ def set_config_value(
     # (NOT a per-key list). Legitimate forms untouched: ``box.agent.<key>`` is
     # ``_is_box_agent_key`` (a SAME-scope box write); ``agent.<name>.<key>`` is
     # ``_is_persona_agent_key``; a bare key at SYSTEM scope is a DOWNWARD write.
-    bare_err = bare_agent_key_scope_error(canonical, command_scope, verb="set")
+    bare_err = bare_agent_key_scope_error(
+        canonical, command_scope, verb="set",
+        active_agent=cascade_agent_name or None,
+    )
     if bare_err is not None:
         return bare_err
 
@@ -2504,14 +2540,9 @@ def set_config_value(
     # (no tuple parse here — full structured binds belong in the YAML, like every
     # category; this convenience write matches a hand-edit of the box file).
     if _is_box_agent_key(canonical):
-        tail = canonical.split(".")  # ["box", "agent", <key...>, leaf]
-        sections = tuple(tail[:-1])  # ("box", "agent", ...)
-        leaf = tail[-1]
-        # A BOX-namespace settings key: lands in the command scope's SETTINGS
-        # file (== config_path at box/workset; the system settings file at
-        # SYSTEM — a downward write never lands in the Layer-1 config file).
-        _write_nested_toml_key(settings_dest, sections, leaf, value)
-        return f"Set {canonical}={'null' if value is None else value}"
+        return box_agent_retired_error(
+            canonical, verb="set", active_agent=cascade_agent_name or None,
+        )
 
     # Path-TUPLE category keys (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
     # ``shared`` / ``synced``) — the source-only RAW repoint (S24/S25, spec §2a,
@@ -2537,24 +2568,12 @@ def set_config_value(
             default_categories=default_categories,
         )
 
-    # system.default_agent — a SETTING (F3): lands in the settings tier's
-    # reserved any-agent ``agent.default`` table, leaf ``default_agent`` —
-    # EXACTLY where the shipped reader (``config.read_default_agent``) reads it
-    # back and where ``setup`` writes it.  settings_dest is the system settings
-    # file (``@config.settings``) at the SYSTEM scope; set/get/launch all agree
-    # on that one location.
-    if _is_default_agent_key(canonical):
-        _write_nested_toml_key(
-            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF, value,
-        )
-        return f"Set {canonical}={value}"
-
     # STRUCTURAL system.* path-tier keys (the SYSTEM_PATH_DEFAULTS family) —
     # FILE-ONLY: they live in kanibako_config.yaml's [system] table (the file
     # ``resolve_system_paths`` reads), editable there or via ``kanibako setup``
     # (write_system_value bypasses this guard).  The refusal names THAT file.
     # This is a precise family check (F2): a system.* SETTINGS key (auth chain /
-    # default_agent / categories / env) was routed above or falls through to the
+    # system.agent / categories / env) was routed above or falls through to the
     # routing table below — it is never refused here.
     if _is_system_path_key(canonical):
         return _system_key_refusal(canonical)
@@ -2610,7 +2629,7 @@ def reset_config_value(
     """Remove an override for a single key.  Returns confirmation message.
 
     *system_settings_path*, when supplied (SYSTEM scope), is where SETTINGS
-    (``system.default_agent`` + agent settings) are removed from
+    (``system.agent`` + agent settings) are removed from
     (``@config.settings`` = ``global/settings.yaml``); when None (box/workset)
     they are removed from ``config_path`` as before.
 
@@ -2667,7 +2686,10 @@ def reset_config_value(
     # ``reset box.agent.<key>`` mirror; workset refuses (no mirror). Uniform over the
     # whole ``_is_agent_setting`` family; SYSTEM-scope bare resets + the
     # ``box.agent.<key>`` / per-agent forms are UNAFFECTED.
-    bare_err = bare_agent_key_scope_error(canonical, command_scope, verb="reset")
+    bare_err = bare_agent_key_scope_error(
+        canonical, command_scope, verb="reset",
+        active_agent=cascade_agent_name or None,
+    )
     if bare_err is not None:
         return bare_err
 
@@ -2765,21 +2787,14 @@ def reset_config_value(
             return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
-    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380):
-    # reset = remove the box-scope override so box.agent.<key> falls back to the
-    # mirrored agent.<box.agent_name>.<key> default again. Symmetric with the set
-    # branch (same nested box.agent.<key> location in the box settings file).
+    # box.agent.<key> — RETIRED (P7, spec §2b). Symmetric with set: refuse with the
+    # cure rather than silently clearing a key that no longer does anything — and
+    # with the SAME named agent the set path uses, so the two verbs prescribe the
+    # identical spelling.
     if _is_box_agent_key(canonical):
-        tail = canonical.split(".")
-        sections = tuple(tail[:-1])
-        leaf = tail[-1]
-        # Symmetric with set: the command scope's SETTINGS file. The honest
-        # cleared-message form (F7) — same as every other reset branch — replaces
-        # the older plain "Reset <key>" so the box.agent mirror reset reads
-        # consistently with the rest (residuals item 5).
-        if _remove_nested_toml_key(settings_dest, sections, leaf):
-            return _honest_reset_message(canonical, command_scope)
-        return f"No override for {canonical}"
+        return box_agent_retired_error(
+            canonical, verb="reset", active_agent=cascade_agent_name or None,
+        )
 
     # Path-TUPLE category keys — reset symmetry with the category SET branch
     # (F10, spec §2a): remove the COMMAND-scope override tuple from the SAME file
@@ -2801,16 +2816,6 @@ def reset_config_value(
         if _remove_nested_toml_key(config_path, tuple(tail[:-1]), tail[-1]):
             floor = _floor_bind_display(canonical, default_categories)
             return _honest_reset_message(canonical, command_scope, floor)
-        return f"No override for {canonical}"
-
-    # system.default_agent — a SETTING (F3), symmetric with set: remove it from
-    # the settings tier's ``agent.default`` table (where ``read_default_agent``
-    # reads), reverting to "no system default" (agent auto-detect).
-    if _is_default_agent_key(canonical):
-        if _remove_nested_toml_key(
-            settings_dest, _DEFAULT_AGENT_SECTIONS, _DEFAULT_AGENT_LEAF,
-        ):
-            return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
     # STRUCTURAL system.* path-tier keys — FILE-ONLY (see set_config_value).
@@ -3481,7 +3486,7 @@ def show_config(
     read-surface job with its own owner, not a side effect of this one.
 
     *system_settings_path*, when supplied (SYSTEM scope), is the file the agent
-    SETTINGS + ``system.default_agent`` are DISPLAYED from (``@config.settings``
+    SETTINGS + ``system.agent`` are DISPLAYED from (``@config.settings``
     = ``global/settings.yaml``); the ``system.*`` CONFIG display always uses
     ``global_config_path``.  When None (box/workset) settings display reads
     ``config_path`` as before.

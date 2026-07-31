@@ -349,8 +349,9 @@ targets not already found via entry points.
 
 When a user runs `kanibako start`, kanibako calls `discover_targets()`, which
 loads all registered entry points and scans `kanibako.plugins.*`, then resolves
-the active agent via `resolve_agent()` — the cascade `--agent > box.agent >
-workset default > system.default_agent`.  When nothing in the cascade resolves,
+the active agent via `agent_select.select_agent()` — the cascade `--agent > box
+pref > workset pref > system.agent`, where a box/workset REQUESTS an agent with
+`pref.system.agent`.  When nothing in the cascade resolves,
 the **installed-agent count** decides (no ordering, no tie-break): exactly one
 installed target is used implicitly; **zero or 2+ raise an `AgentResolutionError`**
 (install a plugin, or run `kanibako setup` / pass `--agent` to pick one).  This

@@ -227,3 +227,59 @@ def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
         else:
             binds[key] = (FLOOR_PLACEHOLDER_SRC, binding.box_dest)
     return binds
+
+
+def agent_common_for_node(
+    table: "dict[str, tuple]", *, node_name: str, harness: str,
+) -> "dict[str, tuple]":
+    """Re-key a plugin's ``default_common()`` table from the HARNESS to the NODE.
+
+    A plugin declares its agent-scope commons against its OWN name — the HARNESS
+    (``load_common(pkg, file, self.name)`` → ``agent.claude.common.plugins``) — but
+    the §2d read pick overlays ``agent.default`` ∪ ``agent.<ACTIVE NODE>``. For a
+    PERSONA the active node is ``navigator℘claude``, so every harness-keyed common
+    was invisible: a persona box mounted NEITHER ``~/.claude/plugins`` NOR
+    ``~/.claude/cache``, and ``ensure_persona_share_symlinks`` maintained links
+    nothing consumed. This is the P7 fix for that live bug (found while planning
+    P3; deliberately deferred to here, where the agent-key semantics were open).
+
+    **A persona INHERITS its harness's commons** — that is the documented intent of
+    the symlink shim, which points ``agents/<node>/common/<leaf>`` at
+    ``agents/<harness>/common/<leaf>`` and explicitly steps aside when the persona
+    has a real dir of its own. Both halves are re-keyed so that intent holds:
+
+    * the KEY ``agent.<harness>.common.<leaf>`` → ``agent.<node>.common.<leaf>``,
+      so the pick actually sees it;
+    * the SOURCE ``@meta.agent.<harness>.path/common/<leaf>`` →
+      ``@meta.agent.<node>.path/common/<leaf>``, so the bind resolves through the
+      NODE path — the symlink (shared with the harness) by default, or the persona's
+      OWN directory when it has one. Re-keying WITHOUT re-rooting would bind the
+      harness dir directly and make the shim's own-dir branch unreachable.
+
+    ⚑ The re-root rule is deliberately NARROW: only a source that is exactly the
+    harness's declaration root for this category is moved. An absolute / ``~`` /
+    ``$var`` / unrelated ``@``-ref source is carried VERBATIM — those are
+    self-resolving by the plugin's own choice (spec §2a L518-525) and are not the
+    plugin saying "my store dir".
+
+    A BARE agent (``node_name == harness``) gets the IDENTITY back — byte-identical
+    to the plugin's table, so nothing about a non-persona launch changes.
+    """
+    from kanibako.agent_config import agent_category_root_ref
+
+    if not node_name or node_name == harness:
+        return dict(table)
+    harness_root = agent_category_root_ref(harness, "common") + "/"
+    node_root = agent_category_root_ref(node_name, "common") + "/"
+    prefix = f"agent.{harness}.common."
+    out: "dict[str, tuple]" = {}
+    for key, value in table.items():
+        if not key.startswith(prefix):
+            out[key] = value  # not this harness's common — leave untouched.
+            continue
+        new_key = f"agent.{node_name}.common.{key[len(prefix):]}"
+        host_src = value[0]
+        if isinstance(host_src, str) and host_src.startswith(harness_root):
+            host_src = node_root + host_src[len(harness_root):]
+        out[new_key] = (host_src, *value[1:])
+    return out

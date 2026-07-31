@@ -28,7 +28,7 @@ then work top-to-bottom.
 | Per-agent YAML section | `crab:` | `agent:` (§9) |
 | Box-side vault dest | `~/share-ro` / `~/share-rw` | `~/vault/ro` / `~/vault/rw` (§4.7, §9) |
 | Agent selection | arbitrary auto-pick among installed agents | cascade + installed-count rule; **2+ agents with no choice = error** (§10) |
-| Choosing a default agent | `kanibako system config system.default_agent …` | `kanibako setup` / edit the file — `system.*` is file-only (§10) |
+| Choosing a default agent | `kanibako system config system.default_agent …` | `kanibako setup` / edit the file — `system.*` is file-only (§10) *(superseded in v1.8.0 — see §12)* |
 | Targeting a non-cwd box | `refresh -p/--project` | `--box <name-or-path>` (universal); `-p/--project` removed (§10) |
 
 ---
@@ -926,6 +926,9 @@ shows** them; it refuses to set them and points you at the config file:
 
 - To set the default agent: run **`kanibako setup`** (it writes it for you), or edit
   `global/settings.yaml`'s `[agent.default] default_agent` directly.
+  > ⮕ **SUPERSEDED IN v1.8.0** (§12): the key is now `system.agent`, it lives in that
+  > file's `system:` table, and it IS CLI-settable — `kanibako system config set
+  > system.agent=<name>`. Only the layout-PATH keys stay file-only.
 - To change a structural path (e.g. `system.data`): edit `~/.config/kanibako.yaml`.
 
 Non-`system.`-prefixed settings (e.g. `model`, `box.image`) remain CLI-settable at
@@ -1029,3 +1032,70 @@ mv ~/.config/kanibako/env <data>/env
 ```
 
 (`$XDG_CONFIG_HOME` defaults to `~/.config`. Adjust if you set it explicitly.)
+
+---
+
+## 12. v1.8.0 — agent selection is a KEY (BREAKING, no aliases)
+
+Two stored spellings are retired with no deprecation window. **A box carrying either
+one refuses to launch**, naming the key, the file and the fix — it is not migrated for
+you, and it is deliberately not ignored: guessing would launch a *different agent* and
+seed that agent's credentials into the box.
+
+### 12.1 `box.agent_name` → `pref.system.agent`
+
+```yaml
+# <workset>/boxes/<box>/settings.yaml   (or a standalone box_data/settings.yaml,
+#                                        or the workset root settings.yaml)
+box:
+  agent_name: goose        # ← REMOVE
+pref:                      # ← ADD (nested; never a dotted "pref.system.agent:" literal)
+  system:
+    agent: goose
+```
+
+Or let the CLI do it: `kanibako box set pref.system.agent=goose`, then delete the old
+entry. A `box.agent_name` found in a **system or agent** file has no legal equivalent
+(a request may only be written in a workset or box file) — remove it and set
+`system.agent` instead.
+
+**Why.** `pref.<key>` is a REQUEST to set a key that resolves *earlier* than the file
+making it. The old key made two read-only anchors derive from a settable key at their
+own level, which the bootstrap order forbids; the request has no such problem, and it
+is the same mechanism a box uses to tweak its agent's settings
+(`pref.agent.<agent>.<key>`).
+
+**New capability:** `kanibako box set --null pref.system.agent` gives a plain-shell
+box with no agent at all, *even when a host-wide default is set* — previously the
+default always re-supplied one.
+
+### 12.2 `system.default_agent` → `system.agent`
+
+Same file (`~/.local/share/kanibako/global/settings.yaml`), different table:
+
+```yaml
+agent:
+  default:
+    default_agent: claude   # ← REMOVE
+system:
+  agent: claude             # ← ADD
+```
+
+`kanibako setup` writes the new location. Unlike the layout-PATH keys, this one is
+CLI-settable: `kanibako system config set system.agent=claude`.
+
+### 12.3 `box.agent.*` → `pref.agent.<agent>.*` (+ the read-back)
+
+The settable box-scoped mirror of the agent's settings is retired. Tweak the agent for
+one box with a request, and read the effective values back at the read-only
+`meta.box.agent.<key>`:
+
+```bash
+kanibako box set pref.agent.claude.model=opus
+kanibako box set --null pref.agent.claude.common.plugins   # suppress an inherited bind
+kanibako box config --effective                            # shows meta.box.agent.*
+```
+
+A hand-written `box: {agent: {…}}` table is now INERT (it is not read); `box set` /
+`box reset` of `box.agent.<key>` refuse and name the replacement, and a bare
+`kanibako box set model=…` points at `pref.agent.<agent>.model`.

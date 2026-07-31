@@ -863,24 +863,25 @@ def run_create(args: argparse.Namespace) -> int:
                         f"forward host credentials."
                     )
 
-        # Persist the box's AGENT SELECTION (`create --agent <ref>`): write
-        # `box.agent_name` into the box settings via the SANCTIONED settings
-        # write (the same route `config set box.agent_name` uses — single-route,
-        # no bespoke YAML poke), so a plain `start` resolves this agent through
-        # the normal cascade (explicit > box > workset > system default) instead
-        # of falling through to the system default.  Applies to ANY selector —
-        # persona or plain (`create --agent goose` must make plain start launch
-        # goose too).  The RAW user ref is stored (`resolve_agent` canonicalizes
-        # on read, exactly as for a hand-set key); `start --agent <other>`
-        # remains an ephemeral override on top (CLI args ephemeral over
-        # settings — start never persists).  Fresh create only: a recovery
-        # re-create reuses the half-built box's on-disk record (parity with the
-        # image/--private writes above).
+        # Persist the box's AGENT SELECTION (`create --agent <ref>`): write the
+        # REQUEST `pref.system.agent` into the box settings via the SANCTIONED
+        # settings write (the same route `box set pref.system.agent=<ref>` uses —
+        # single-route, no bespoke YAML poke), so a plain `start` resolves this
+        # agent through the ordinary §2h pref path instead of falling through to
+        # the system default.  ⮕ P7: this used to write the RETIRED `box.agent_name`
+        # (spec §2b); a pref is how a box influences a key that resolves above it.
+        # Applies to ANY selector — persona or plain (`create --agent goose` must
+        # make plain start launch goose too).  The RAW user ref is stored
+        # (selection canonicalizes on read, exactly as for a hand-set key);
+        # `start --agent <other>` remains an ephemeral override on top (CLI args
+        # ephemeral over settings — start never persists).  Fresh create only: a
+        # recovery re-create reuses the half-built box's on-disk record (parity
+        # with the image/--private writes above).
         _agent_sel = getattr(args, "agent", None)
         if isinstance(_agent_sel, str) and _agent_sel.strip():
             from kanibako.config_interface import ConfigLevel, set_config_value
             _msg = set_config_value(
-                "box.agent_name", _agent_sel.strip(),
+                "pref.system.agent", _agent_sel.strip(),
                 config_path=project_toml,
                 command_scope=ConfigLevel.box,
             )
@@ -2003,22 +2004,39 @@ def run_info(args: argparse.Namespace) -> int:
     # Resolve target for credential check path.  This is an INFORMATIONAL
     # display (box status), not an agent-requiring launch — so a resolution
     # failure (no default + 2+ agents, 0 agents, adapter missing) degrades to
-    # "n/a (no target)" rather than erroring out.  Uses the unified
-    # resolve_agent cascade (workset_agent=None: merged.box_agent_name already folds
-    # the workset tier).
+    # "n/a (no target)" rather than erroring out.  Uses the ONE selection seam
+    # (agent_select.select_agent — system.agent < workset pref < box pref).
+    agent_display = "n/a (unresolved)"
     try:
-        from kanibako.config import resolve_agent
-        agent_name = resolve_agent(
-            explicit_agent=None,
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=std.settings,
-            project_path=proj.project_path,
+        from kanibako.agent_ref import display_agent_ref
+        from kanibako.agent_select import select_agent
+        _sel = select_agent(std=std, proj=proj)
+        agent_name = _sel.node
+        # ⚑ SHOW WHERE IT CAME FROM (P7). "Which agent does this box run, and WHY?"
+        # is the question a retired-key or wrong-default box makes urgent, and the
+        # answer is not in any one file: it may be the stored ``system.agent``, a
+        # workset/box ``pref.system.agent``, or the installed-count rule picking the
+        # only agent installed. ``AgentSelection.source`` already carries it — this
+        # is the one place a user can read it.
+        agent_display = (
+            f"{display_agent_ref(agent_name)}  (from: {_sel.source})"
+            if agent_name
+            else f"none — plain shell  (from: {_sel.source})"
         )
-        target = resolve_target(harness_of(agent_name), proj.project_path)
-        creds_file = target.credential_check_path(proj.shell_path)
-    except Exception:
+        target = (
+            resolve_target(harness_of(agent_name), proj.project_path)
+            if agent_name
+            else None
+        )
+        creds_file = (
+            target.credential_check_path(proj.shell_path) if target else None
+        )
+    except Exception as exc:
         creds_file = None
+        # A refused RETIRED key (migration M-4) surfaces HERE rather than being
+        # swallowed as "unresolved" — `box info` is where a user looks when a box
+        # will not start.
+        agent_display = f"n/a ({exc})" if "RETIRED" in str(exc) else agent_display
     cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
 
     # Display mode name with dashes for readability.
@@ -2039,6 +2057,7 @@ def run_info(args: argparse.Namespace) -> int:
         ("Image", merged.box_image),
         ("Lock", "ACTIVE" if lock_held else "none"),
         ("Container", container_detail),
+        ("Agent", agent_display),
         ("Credentials", cred_age),
     ])
 
@@ -2208,18 +2227,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # empty → the message degrades to the cleared-only form.
         reset_agent_name = ""
         try:
-            from kanibako.config import load_merged_config, resolve_agent
-            _merged = load_merged_config(
-                config_file, project_toml if project_toml.exists() else None,
-                workset_path=reset_ws_path,
-            )
-            reset_agent_name = resolve_agent(
-                explicit_agent=None,
-                box_agent_name=_merged.box_agent_name,
-                workset_agent=None,
-                system_default_path=std.settings,
-                project_path=proj.project_path,
-            )
+            from kanibako.agent_select import select_agent
+            reset_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             reset_agent_name = ""
         # Bug 2: thread the context-light CORE box-mount floor registry (the SAME
@@ -2270,7 +2279,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_snapshot = None
         category_error = None
         if args.effective:
-            from kanibako.config import load_merged_config
             from kanibako.agent_config import (
                 agent_settings_path,
                 load_agent_config,
@@ -2280,24 +2288,20 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 _build_config_env,
                 _effective_behavior_for_display,
             )
-            merged = load_merged_config(
-                config_file, project_toml if project_toml.exists() else None,
-                workset_path=workset_path,
-            )
+            agent_name = ""
+            effective_selection = None
             try:
-                from kanibako.config import resolve_agent
+                from kanibako.agent_select import select_agent
                 # Informational --effective display: tolerate a resolution
                 # failure (degrade to the "general" no-agent state below)
-                # rather than erroring.  Unified cascade; workset_agent=None
-                # since merged.box_agent_name already folds the workset tier.
-                agent_name = resolve_agent(
-                    explicit_agent=None,
-                    box_agent_name=merged.box_agent_name,
-                    workset_agent=None,
-                    system_default_path=std.settings,
-                    project_path=proj.project_path,
+                # rather than erroring.  The ONE selection seam (§1A/§2h).
+                effective_selection = select_agent(std=std, proj=proj)
+                agent_name = effective_selection.node
+                target = (
+                    resolve_target(harness_of(agent_name), proj.project_path)
+                    if agent_name
+                    else None
                 )
-                target = resolve_target(harness_of(agent_name), proj.project_path)
             except Exception:
                 target = None
             # NODE-name keys the agent.<node>.* keyspace slot / agents/<node>/ dir
@@ -2346,6 +2350,18 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     # vault create-if-missing is a LAUNCH guarantee, not a
                     # read one. The binds are emitted either way.
                     guarantee_create=False,
+                    # ⚑ The SAME §1A selection level the launch installs (P7) —
+                    # without it this display would resolve ``@system.agent``
+                    # differently from the launch it claims to show (e.g. an
+                    # autopicked or ``--agent`` box: the displayed
+                    # ``meta.box.auth.workset_path`` would drop the agent segment).
+                    # A display that disagrees with the launch is worse than no
+                    # display.
+                    selection_level=(
+                        effective_selection.selection_level
+                        if effective_selection is not None
+                        else None
+                    ),
                 )
             except KanibakoError as exc:
                 category_error = str(exc)
@@ -2363,6 +2379,15 @@ def _run_box_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
+        # The box's resolved agent NODE — needed to name/READ the box-scoped
+        # request a BARE agent key redirects to (``pref.agent.<active>.<key>``,
+        # P7). Best-effort: an unresolvable agent just means no redirect.
+        _get_agent_name = ""
+        try:
+            from kanibako.agent_select import select_agent
+            _get_agent_name = select_agent(std=std, proj=proj).node
+        except Exception:
+            _get_agent_name = ""
         val = get_config_value(
             key,
             global_config_path=config_file,
@@ -2370,13 +2395,16 @@ def _run_box_config(args: argparse.Namespace) -> int:
             env_global=env_global,
             env_project=env_project,
             command_scope=ConfigLevel.box,
+            active_agent=_get_agent_name or None,
         )
         # A BARE agent behavior key at box scope has no box-writable value of its
-        # own: get_config_value redirected the READ to the box's active-agent mirror
-        # ``box.agent.<key>``. Name the value with that canonical form so the read
-        # teaches the mirror (mirrors the refuse-message ``set`` prints).
+        # own: get_config_value redirected the READ to the box's §2h request
+        # ``pref.agent.<active>.<key>``. Name the value with that canonical form so
+        # the read teaches the request (mirrors the refuse-message ``set`` prints).
         from kanibako.config_interface import _resolve_key, box_agent_redirect_key
-        redirect = box_agent_redirect_key(_resolve_key(key), ConfigLevel.box)
+        redirect = box_agent_redirect_key(
+            _resolve_key(key), ConfigLevel.box, _get_agent_name or None,
+        )
         if val is not None:
             print(f"{redirect}={val}" if redirect is not None else val)
         else:
@@ -2398,18 +2426,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         cascade_workset_path = workset_path
         cascade_agent_name = ""
         try:
-            from kanibako.config import load_merged_config, resolve_agent
-            merged = load_merged_config(
-                config_file, project_toml if project_toml.exists() else None,
-                workset_path=cascade_workset_path,
-            )
-            cascade_agent_name = resolve_agent(
-                explicit_agent=None,
-                box_agent_name=merged.box_agent_name,
-                workset_agent=None,
-                system_default_path=std.settings,
-                project_path=proj.project_path,
-            )
+            from kanibako.agent_select import select_agent
+            cascade_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             cascade_agent_name = ""
 

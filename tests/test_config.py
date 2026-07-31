@@ -141,10 +141,12 @@ class TestReadSetupCompleted:
         # No setup marker on a fresh config.
         assert "setup_completed" not in data.get("system", {})
         assert read_setup_completed(cf) is None
-        # No system default agent written (box.agent_name default is empty, not 'none').
+        # No agent key written ANYWHERE (P7): ``box.agent_name`` is RETIRED and
+        # ``write_global_config`` no longer emits it — a BOX key had no business in
+        # the CONFIG file, and nothing ever read it back from here (migration M-4
+        # records the stale copies on existing hosts).
         assert "agent" not in data
-        assert data["box"]["agent_name"] == ""
-        assert data["box"]["agent_name"] != "none"
+        assert "agent_name" not in data["box"]
 
 
 class TestReadTemplatesStamp:
@@ -536,7 +538,7 @@ class TestScalarOverlayPrecedence:
 
     def test_full_precedence_user_workset_project(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: user:2\n  agent_name: claude\n")
+        global_path.write_text("box:\n  image: user:2\n  shell: bash\n")
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: ws:3\n")
         project_path = tmp_path / "settings.yaml"
@@ -544,9 +546,12 @@ class TestScalarOverlayPrecedence:
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
         )
-        # project wins for image; agent only set at user-global so it survives.
+        # project wins for image; shell only set at user-global so it survives.
+        # (⮕ P7: this used ``agent_name``, a key that no longer exists — the agent
+        # SELECTION is the §2h request ``pref.system.agent``, resolved off the
+        # snapshot, not by this flat scalar loader.)
         assert merged.box_image == "proj:4"
-        assert merged.box_agent_name == "claude"
+        assert merged.box_shell == "bash"
 
     def test_missing_global_file_is_empty_level(self, tmp_path):
         # No file at all → built-in defaults.
@@ -598,18 +603,21 @@ class TestScalarOverlayPrecedence:
 
     def test_empty_string_is_a_real_value_not_unset(self, tmp_path):
         """``""`` is a real value distinct from ``null``: a lower layer sets a
-        non-empty box_agent_name, a higher layer sets ``""`` and that ``""`` wins
-        (it does NOT reset to box_agent_name's built-in default, which is also "")."""
+        non-empty box_shell, a higher layer sets ``""`` and that ``""`` wins (it
+        does NOT reset to box_shell's built-in default, which is also "").
+
+        (⮕ P7: was written against ``box_agent_name``, retired with spec §2b; the
+        SHAPE under test is the presence-based scalar overlay, not that key.)"""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text('box:\n  agent_name: foo\n')
+        global_path.write_text('box:\n  shell: foo\n')
         project_path = tmp_path / "settings.yaml"
         # Quoted empty string is a real value, not null.
-        project_path.write_text('box:\n  agent_name: ""\n')
+        project_path.write_text('box:\n  shell: ""\n')
         merged = load_merged_config(global_path, project_path)
-        assert merged.box_agent_name == ""
+        assert merged.box_shell == ""
         # Sanity: a non-empty lower value is what we are overriding away from.
         merged_global_only = load_merged_config(global_path)
-        assert merged_global_only.box_agent_name == "foo"
+        assert merged_global_only.box_shell == "foo"
 
     def test_higher_layer_overrides_after_null(self, tmp_path):
         """A null reset is not terminal: a higher layer (CLI override) can set a

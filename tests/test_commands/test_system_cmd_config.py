@@ -12,7 +12,7 @@ launch reads those keys from the system SETTINGS file (``@config.settings`` =
   ``[system]`` table — set/reset refused, get/show still read, and the refusal
   names the file that hand-editing actually honors.
 * system-scope SETTINGS (``system.auth.share_allowed``,
-  ``system.default_agent``, ``env.*``, agent settings) route to the SAME
+  ``system.agent``, ``env.*``, agent settings) route to the SAME
   storage the launch cascade reads: the system settings file for keyed
   settings, ``@config.data/env`` for the env tier.  set → get → show
   --effective → launch agree on ONE location per key.
@@ -28,7 +28,7 @@ import argparse
 from pathlib import Path
 
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
-from kanibako.config import load_config, read_default_agent
+from kanibako.config import load_config, read_system_agent
 from kanibako.config_io import load_doc
 from kanibako.config_interface import _write_nested_toml_key
 from kanibako.paths import load_std_paths
@@ -55,15 +55,15 @@ def _std(config_file):
     return load_std_paths(load_config(config_file))
 
 
-def _seed_default_agent(config_file, name):
-    """Programmatically seed system.default_agent into the settings file.
+def _seed_system_agent(config_file, name):
+    """Programmatically seed system.agent into the settings file.
 
     Mirrors what ``kanibako setup`` does; the CLI ``set`` now writes the SAME
     location (F3), so this stays only as the setup-write stand-in.
     """
     std = _std(config_file)
     std.settings.parent.mkdir(parents=True, exist_ok=True)
-    _write_nested_toml_key(std.settings, ("agent", "default"), "default_agent", name)
+    _write_nested_toml_key(std.settings, ("system",), "agent", name)
     return std
 
 
@@ -171,53 +171,53 @@ class TestSystemAuthShareAllowed:
 
 
 class TestSystemDefaultAgentSetting:
-    """F3: ``system.default_agent`` — a SETTING routed to the settings tier's
+    """F3: ``system.agent`` — a SETTING routed to the settings tier's
     ``agent.default`` table, EXACTLY where the shipped reader
-    (``config.read_default_agent``) and ``setup`` already live."""
+    (``config.read_system_agent``) and ``setup`` already live."""
 
-    def test_set_writes_where_read_default_agent_reads(
+    def test_set_writes_where_read_system_agent_reads(
         self, config_file, tmp_home,
     ):
-        rc = _set("system.default_agent=goose")
+        rc = _set("system.agent=goose")
         assert rc == 0
         std = _std(config_file)
-        assert load_doc(std.settings)["agent"]["default"]["default_agent"] == "goose"
+        assert load_doc(std.settings)["system"]["agent"] == "goose"
         # The LAUNCH reader sees the CLI-set value (set/launch agreement).
-        assert read_default_agent(std.settings) == "goose"
+        assert read_system_agent(std.settings) == "goose"
         # Nothing landed in the kanibako_config.yaml CONFIG file.
         assert "agent" not in load_doc(config_file)
 
     def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
-        _set("system.default_agent=goose")
+        _set("system.agent=goose")
         capsys.readouterr()
-        rc = _get("system.default_agent")
+        rc = _get("system.agent")
         assert rc == 0
-        assert "system.default_agent=goose" in capsys.readouterr().out
+        assert "system.agent=goose" in capsys.readouterr().out
 
     def test_get_reads_setup_written_value(self, config_file, tmp_home, capsys):
         """A ``setup``-written value (the programmatic path) reads back through
         ``system get`` — one storage location for both writers."""
-        _seed_default_agent(config_file, "codex")
+        _seed_system_agent(config_file, "codex")
         capsys.readouterr()
-        rc = _get("system.default_agent")
+        rc = _get("system.agent")
         assert rc == 0
-        assert "system.default_agent=codex" in capsys.readouterr().out
+        assert "system.agent=codex" in capsys.readouterr().out
 
     def test_reset_removes_the_setting(self, config_file, tmp_home):
-        std = _seed_default_agent(config_file, "claude")
-        rc = _reset("system.default_agent")
+        std = _seed_system_agent(config_file, "claude")
+        rc = _reset("system.agent")
         assert rc == 0
-        assert read_default_agent(std.settings) is None
+        assert read_system_agent(std.settings) is None
 
     def test_reset_unset_reports_no_override(self, config_file, tmp_home, capsys):
-        rc = _reset("system.default_agent")
+        rc = _reset("system.agent")
         assert rc == 0
         assert "No override" in capsys.readouterr().out
 
     def test_show_renders_default_agent_from_settings_file(
         self, config_file, tmp_home, capsys,
     ):
-        _seed_default_agent(config_file, "goose")
+        _seed_system_agent(config_file, "goose")
         capsys.readouterr()
         rc = _show()
         assert rc == 0

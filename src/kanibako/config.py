@@ -42,7 +42,6 @@ def coerce_bool(value: object) -> bool | None:
 _DEFAULTS = {
     "paths_project_toml": BOX_META_FILE,
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "box_agent_name": "",
     "box_shell": "",
 }
 
@@ -53,7 +52,10 @@ class KanibakoConfig:
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     box_image: str = _DEFAULTS["box_image"]
-    box_agent_name: str = _DEFAULTS["box_agent_name"]
+    # ⚑ ``box_agent_name`` is GONE (P7, spec §2b L698): ``box.agent_name`` is
+    # RETIRED and a box selects its agent with the REQUEST ``pref.system.agent``
+    # (§2h), resolved off the launch snapshot by :mod:`kanibako.agent_select`.
+    # There is no flat-scalar agent field any more — the selection is a KEY.
     box_shell: str = _DEFAULTS["box_shell"]
     box_share_images: bool = False
     # Bootstrap PATH set-values keyed by full dotted name — the MERGED Layer-1
@@ -253,9 +255,12 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
             "cache": "$XDG_CACHE_HOME/kanibako",
             "runtime": "$XDG_RUNTIME_DIR/kanibako",
         },
+        # ⚑ NO ``agent_name`` row (P7): ``box.agent_name`` is RETIRED (§2b), and
+        # writing a BOX key into the CONFIG file was wrong even while it existed —
+        # nothing ever read it back from here. Stale copies in existing
+        # ``kanibako_config.yaml`` files are documentation-only (migration M-4).
         "box": {
             "image": cfg.box_image,
-            "agent_name": cfg.box_agent_name,
             "share_images": cfg.box_share_images,
         },
     }
@@ -509,8 +514,8 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     over the reserved any-agent ``agent.default`` tier (the agent-specific value
     wins within a single file). This stops an override set while a box is on one
     agent (e.g. ``model`` under ``agent.claude``) from bleeding onto another
-    agent after the box is switched (e.g. to ``goose``); identity keys live in
-    ``box.agent_name``, not here.
+    agent after the box is switched (e.g. to ``goose``); the agent SELECTION is
+    not here either — it is the request ``pref.system.agent`` (spec §2h).
 
     ``agent.default`` is RESERVED as the any-agent default tier; no real agent
     may be named ``default``.
@@ -537,25 +542,40 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     return out
 
 
-def read_default_agent(system_path: Path | None) -> str | None:
-    """Read the ``system.default_agent`` SETTING from the system settings tier.
+def read_system_agent(system_path: Path | None) -> str | None:
+    """Read the stored ``system.agent`` SETTING from the system settings tier.
 
-    ``system.default_agent`` is the lone ``system.*``-named key that lives in the
-    SETTINGS file set (it is behavior, not a config path).  Its system tier reads
-    from ``@config.settings`` = ``@config.data/global/settings.yaml`` (the ``std.settings``
-    path) — the same place the system settings tier of :func:`load_settings`
-    reads from — in the reserved any-agent ``agent.default`` table, under the key
-    ``default_agent``.  Callers pass that settings-file path as *system_path*
-    (NOT the ``~/.config/kanibako_config.yaml`` CONFIG file, which holds only
-    ``system.*`` layout keys).
+    ``system.agent`` (spec §2g L1187) is the CURRENT agent's name — a system-scope
+    SETTINGS key (behavior, not a config path), so it lives in the ``system:``
+    table of the system settings file ``@config.settings`` =
+    ``@config.data/global/settings.yaml`` (the ``std.settings`` path), exactly
+    where ``assemble_levels`` reads the system tier from.  Callers pass that
+    settings-file path as *system_path* (NOT ``~/.config/kanibako_config.yaml``,
+    which holds only the bootstrap PATH tables).
 
-    Returns the configured agent name, or ``None`` when unset/empty (meaning
-    "no system default" — callers fall through to today's auto-detect).
+    ⮕ **RENAMED + RELOCATED (P7, spec §2g).**  Was ``read_default_agent``, reading
+    ``system.default_agent`` out of the reserved any-agent ``agent.default`` table
+    under the leaf ``default_agent`` — a location that made the stored default an
+    UNDECLARED key riding the AGENT tier of the real cascade.  A store still
+    carrying the old leaf is migration M-4 (documentation only) and is REFUSED by
+    name at assembly (``settings_assemble`` retired-key check).
+
+    ⚑ This is the PRE-CASCADE reader, kept for the two callers that need the
+    stored value before a snapshot exists (``start``'s box-independent persona
+    pre-flight, and ``setup``'s round-trip).  The LAUNCH does not use it: agent
+    selection resolves ``system.agent`` off the snapshot, prefs included
+    (:mod:`kanibako.agent_select`).
+
+    Returns the configured agent name, or ``None`` when unset/empty (meaning "no
+    system default" — callers fall through to the installed-count rule).
     """
     if system_path is None or not system_path.exists():
         return None
-    settings = read_agent_settings(system_path, "default")
-    value = settings.get("default_agent", "").strip()
+    data = load_doc(system_path)
+    system = data.get("system")
+    if not isinstance(system, dict):
+        return None
+    value = str(system.get("agent") or "").strip()
     return value or None
 
 
@@ -564,7 +584,7 @@ def read_setup_completed(config_path: Path | None) -> str | None:
 
     ``system.setup_completed`` is a host-global ``system.*`` value recording the
     build version at which ``kanibako setup`` last succeeded (W1).  Unlike
-    ``system.default_agent`` it is a plain ``[system]`` leaf in
+    ``system.agent`` it is a plain ``[system]`` leaf in
     ``~/.config/kanibako_config.yaml`` (NOT a settings-tier value), and the typed loader
     (``load_config`` → ``KanibakoConfig``) maps only KNOWN system leaves and
     ignores unknown ones — so this RAW reader is required for the setup-completion
@@ -721,23 +741,28 @@ def setup_compat_gate(config_path: Path | None) -> str | None:
 
 # Pseudo-agents are DISCOUNTED from the implicit installed-count rule (so a host
 # with one real agent + no_agent is unambiguous, not "2+"), but remain EXPLICITLY
-# selectable via the cascade (``--agent no_agent`` / ``box.agent_name``).
+# selectable (``--agent no_agent`` / ``pref.system.agent: no_agent``).
 _PSEUDO_AGENTS = frozenset({"no_agent", "general"})
 
 
 def resolve_agent(
     *,
     explicit_agent: str | None,
-    box_agent_name: str | None,
-    workset_agent: str | None,
-    system_default_path: Path | None,
+    requested: str | None = None,
     project_path: Path | None = None,
 ) -> str:
-    """Resolve the effective agent name (cascade + installed-count rule).
+    """Validate/arbitrate the effective agent name (+ the installed-count rule).
 
-    Cascade precedence (highest first): *explicit_agent* > *box_agent_name* >
-    *workset_agent* > system default (read from *system_default_path* via
-    :func:`read_default_agent`).  The FIRST non-empty tier "resolves a name".
+    ⮕ **P7:** the CASCADE moved out.  ``system.agent`` and the ``pref.system.agent``
+    requests of the workset/box files are resolved off the launch snapshot by
+    :func:`kanibako.agent_select.select_agent`, which passes the winner here as
+    *requested*.  What stays here is what is NOT a key: name VALIDATION against the
+    installed set, persona-ref canonicalisation, and the installed-count rule.
+    (Was: ``explicit_agent > box_agent_name > workset_agent > system default``,
+    with ``box.agent_name`` — RETIRED, spec §2b — as the box tier.)
+
+    Precedence: *explicit_agent* (the §1A CLI level) > *requested* (whatever the
+    settings cascade resolved).  The FIRST non-empty one "resolves a name".
 
     A resolved name is validated against the installed set
     (``discover_targets`` keys — exactly what ``agent list`` uses):
@@ -781,12 +806,7 @@ def resolve_agent(
     # node-name (``persona℘harness``; bare stays byte-identical) so callers see a
     # uniform node-name.  The canonicalize call also VALIDATES the ref shape
     # (raises ConfigError on a malformed segment).
-    raw_resolved = (
-        _clean(explicit_agent)
-        or _clean(box_agent_name)
-        or _clean(workset_agent)
-        or _clean(read_default_agent(system_default_path))
-    )
+    raw_resolved = _clean(explicit_agent) or _clean(requested)
 
     if raw_resolved:
         # Canonicalise ``+`` -> ``℘`` and validate the ref shape; the HARNESS

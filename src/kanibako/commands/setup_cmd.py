@@ -69,8 +69,8 @@ def _settings_paths() -> tuple[Path, Path]:
 
     ``config_file`` = ``~/.config/kanibako_config.yaml`` (holds ``[system]`` values like
     ``setup_completed``).  ``system_settings_file`` = ``@config.settings`` =
-    ``global/settings.yaml`` (holds the ``default_agent`` SETTING, where
-    ``read_default_agent`` reads it back).
+    ``global/settings.yaml`` (holds the ``system.agent`` SETTING, where
+    ``read_system_agent`` reads it back).
     """
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import load_std_paths, xdg
@@ -81,19 +81,23 @@ def _settings_paths() -> tuple[Path, Path]:
     return cf, std.settings
 
 
-def _write_default_agent(name: str) -> None:
-    """Programmatically write the ``default_agent`` SETTING.
+def _write_system_agent(name: str) -> None:
+    """Programmatically write the ``system.agent`` SETTING (spec §2g L1187).
 
-    Bypasses the file-only CLI guard (Phase A): writes ``agent.default``'s
-    ``default_agent`` leaf into the system settings file via the same preserving
-    low-level path ``set_config_value`` uses for agent settings, so it round-trips
-    through ``read_default_agent``.
+    Writes the ``system:`` table's ``agent`` leaf into the system settings file via
+    the same preserving low-level path ``set_config_value`` uses, so it round-trips
+    through ``config.read_system_agent`` AND is read by the ordinary system tier of
+    the settings cascade.
+
+    ⮕ P7: was ``_write_default_agent``, writing ``agent.default``'s
+    ``default_agent`` leaf — a location that made the stored default an undeclared
+    key riding the AGENT tier. Migration M-4 (documentation only).
     """
     from kanibako.config_interface import _write_nested_toml_key
 
     _, ssp = _settings_paths()
     ssp.parent.mkdir(parents=True, exist_ok=True)
-    _write_nested_toml_key(ssp, ("agent", "default"), "default_agent", name)
+    _write_nested_toml_key(ssp, ("system",), "agent", name)
 
 
 def _write_setup_marker() -> None:
@@ -399,7 +403,7 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
                 "Install the plugin (e.g. pip install kanibako-agent-"
                 f"{requested}) or pick from the list above."
             )
-        _write_default_agent(requested)
+        _write_system_agent(requested)
         print(f"  [ok] Default agent set to '{requested}'.")
         return requested
 
@@ -423,6 +427,6 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
     if chosen is None:
         print("  [--] No default agent set.")
         return None
-    _write_default_agent(chosen)
+    _write_system_agent(chosen)
     print(f"  [ok] Default agent set to '{chosen}'.")
     return chosen

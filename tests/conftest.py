@@ -12,6 +12,7 @@ from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
+from kanibako.agent_select import AgentSelection as _AgentSelection
 from kanibako.config import KanibakoConfig, load_config, write_global_config
 
 # The REAL launch-snapshot orchestrator, captured at import time (before any
@@ -250,14 +251,17 @@ def start_mocks():
             patch("kanibako.commands.start.load_merged_config") as m_merged,
             patch("kanibako.commands.start.ContainerRuntime") as m_rt_cls,
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
-            # W1 unified resolver: _run_container resolves the agent name via
-            # config.resolve_agent (cascade + installed-count rule) BEFORE
-            # resolve_target.  Patch it to a fixed name so _run_container tests
-            # don't depend on the host's installed-agent set (which would
-            # otherwise trigger Gate-2a with the meta package's 3 adapters).
-            # Tests exercising the no-agent / ambiguous paths re-patch it.
+            # P7 unified SELECTION seam: _run_container resolves the agent via
+            # agent_select.select_agent (system.agent < workset pref < box pref <
+            # --agent, then the installed-count rule) BEFORE resolve_target.
+            # Patch it to a fixed selection so _run_container tests don't depend
+            # on the host's installed-agent set (which would otherwise trigger
+            # Gate-2a with the meta package's 3 adapters). Tests exercising the
+            # no-agent / ambiguous paths re-patch it. (Was
+            # ``kanibako.config.resolve_agent``, whose cascade P7 moved out.)
             patch(
-                "kanibako.config.resolve_agent", return_value="claude",
+                "kanibako.agent_select.select_agent",
+                return_value=_AgentSelection(node="claude", source="settings"),
             ) as m_resolve_agent,
             patch("kanibako.commands.start._upgrade_shell"),
             # The layered template seed now flows through the keystore-routed
@@ -306,12 +310,14 @@ def start_mocks():
                 _pending_create_entry=DEFAULT,
                 _register_new_box=DEFAULT,
                 # The load-or-error pre-flight resolves the box-INDEPENDENT agent
-                # (explicit --agent OR the system default) to decide whether to
-                # DEFER box materialisation.  With a MagicMock ``std.settings`` the
-                # real reader would feed a MagicMock to yaml (>10 GB balloon risk),
-                # so default it to "no system default" (bare — today's behavior).
-                # Tests exercising a system-default persona override its return.
-                read_default_agent=DEFAULT,
+                # (explicit --agent OR the stored ``system.agent``) to decide
+                # whether to DEFER box materialisation.  With a MagicMock
+                # ``std.settings`` the real reader would feed a MagicMock to yaml
+                # (>10 GB balloon risk), so default it to "no system default"
+                # (bare — today's behavior). Tests exercising a system-default
+                # persona override its return. (P7: renamed from
+                # ``read_default_agent``.)
+                read_system_agent=DEFAULT,
                 # AGENT-scope ``bootstrap`` resolution (spec §2d L579): the
                 # authoritative per-launch value _run_container reads off the
                 # settings snapshot.  With a MagicMock ``std``/``proj`` the real
@@ -387,7 +393,7 @@ def start_mocks():
             m_launch_mount_stubs["_register_new_box"].return_value = None
             # Default: no system-default agent → non-explicit launches are NOT
             # deferred (byte-identical to today's single materialising resolve).
-            m_launch_mount_stubs["read_default_agent"].return_value = None
+            m_launch_mount_stubs["read_system_agent"].return_value = None
             # Default agent-scope bootstrap = tmux (the persistent-session default).
             m_launch_mount_stubs["_effective_bootstrap"].return_value = "tmux"
             m_launch_mount_stubs["_resolve_bootstrap_program"].return_value = "tmux"
@@ -649,7 +655,7 @@ def start_mocks():
                 pending_create_entry=m_launch_mount_stubs["_pending_create_entry"],
                 register_new_box=m_launch_mount_stubs["_register_new_box"],
                 write_create_entry=m_launch_mount_stubs["_write_create_entry"],
-                read_default_agent=m_launch_mount_stubs["read_default_agent"],
+                read_system_agent=m_launch_mount_stubs["read_system_agent"],
                 effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
                 resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
                 virtiofs_check=m_virtiofs_check,

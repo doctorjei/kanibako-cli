@@ -317,12 +317,19 @@ def _resolve_watch_context(box: str | None):
         log.info("box %s has no agent stamp; nothing to write back", container_name)
         return None
     target = resolve_target(harness_of(agent), proj.project_path)
+    # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
+    # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
+    # credential SOURCE collapses to the workset auth ROOT — the watcher would sync
+    # a different directory than the launch delivered from, and in a multi-agent
+    # workset two agents would share one dir. The ``KANIBAKO_AGENT`` stamp IS the
+    # resolved selection for a running box.
     auth_src = _resolve_box_auth_source(
         std=std,
         proj=proj,
         agent_name=agent,
         system_settings_path=std.settings,
         agent_cfg_path=agent_settings_path(std.agents, agent),
+        selection_level={"system.agent": agent},
     )
     return runtime, proj, container_name, target, auth_src
 

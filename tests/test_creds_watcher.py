@@ -279,3 +279,39 @@ def test_single_instance_lock_is_exclusive(tmp_path):
     third = cw._single_instance_lock(lock_path)
     assert third is not None
     third.close()
+
+
+# ---------------------------------------------------------------------------
+# A NO-AGENT box (D-M6) has no stamp — the watcher must not resolve auth for it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("stamp", [None, ""])
+def test_no_watch_context_without_an_agent_stamp(monkeypatch, stamp):
+    """⚑ The writeback-side half of the P7 credential-path fix.
+
+    ``_resolve_watch_context`` feeds the auth resolve ``{"system.agent": <stamp>}``,
+    so an EMPTY stamp would rebuild the COLLAPSED ``<auth>/`` source that MUST-1
+    exists to prevent. A box with ``pref.system.agent: null`` (D-M6) carries no
+    stamp at all, so the guard must return BEFORE the auth resolve — pinned here
+    for both falsy shapes ``inspect_env`` can yield.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from kanibako.creds_watcher import _resolve_watch_context
+
+    runtime = MagicMock()
+    runtime.inspect_env.return_value = stamp
+    # The resolver imports its collaborators INSIDE the function, so patch them at
+    # their DEFINING modules (patching ``creds_watcher.X`` would not intercept).
+    with (
+        patch("kanibako.container.ContainerRuntime", return_value=runtime),
+        patch("kanibako.config.load_config"),
+        patch("kanibako.paths.load_std_paths"),
+        patch("kanibako.paths.resolve_box_target", return_value=MagicMock()),
+        patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
+        patch("kanibako.targets.resolve_target") as m_target,
+    ):
+        assert _resolve_watch_context(box=None) is None
+        m_auth.assert_not_called()
+        m_target.assert_not_called()

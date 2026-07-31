@@ -35,7 +35,7 @@ from kanibako.config import (
     config_file_path,
     load_config,
     load_merged_config,
-    read_default_agent,
+    read_system_agent,
 )
 from kanibako import core_defaults
 from kanibako.container import (
@@ -518,9 +518,10 @@ def run_start(args: argparse.Namespace) -> int:
     # ``project_dir`` + ``explicit_agent`` were resolved above (the persistence-mode
     # heuristic needs them for the agent-scope ``bootstrap`` lookup).  Agent
     # resolution proper happens UP FRONT inside _run_container via the unified
-    # resolve_agent cascade (explicit > box > workset > system default → the
-    # installed-count rule); a Gate-2a/2b there surfaces verbatim with a non-zero
-    # exit — NEVER a silent drop to shell.  `kanibako shell` (run_shell) bypasses it.
+    # agent_select.select_agent seam (--agent > box pref > workset pref >
+    # system.agent → the installed-count rule); a Gate-2a/2b there surfaces verbatim
+    # with a non-zero exit — NEVER a silent drop to shell.  `kanibako shell`
+    # (run_shell) bypasses it.
     agent_args = getattr(args, "agent_args", [])
 
     # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
@@ -782,22 +783,22 @@ def _resolve_bootstrap_program(
             std, config, project_dir,
             initialize=False, register=False, warn=False,
         )
-        _box_path, _ws_path = box_workset_settings_paths(proj)
-        merged = load_merged_config(
-            config_file, _box_path, workset_path=_ws_path,
-        )
-        from kanibako.config import resolve_agent
+        from kanibako.agent_select import select_agent
 
-        agent_name = resolve_agent(
-            explicit_agent=explicit_agent,
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=system_settings_path,
-            project_path=proj.project_path,
+        _sel = select_agent(
+            std=std, proj=proj, explicit_agent=explicit_agent,
         )
-        # NODE-name (persona identity); the harness keys the target/plugin.
-        target = resolve_target(harness_of(agent_name), proj.project_path)
-        agent_id = with_harness(agent_name, target.name)
+        agent_name = _sel.node
+        # NODE-name (persona identity); the harness keys the target/plugin. The
+        # translator is REQUIRED here too (see the seam note in _run_container): a
+        # SUPPRESSED box has no node, and handing "" to resolve_target would
+        # auto-detect an agent and read ITS bootstrap for a plain-shell box.
+        target = (
+            resolve_target(harness_of(agent_name), proj.project_path)
+            if _sel.has_agent
+            else None
+        )
+        agent_id = with_harness(agent_name, target.name) if target else "general"
         return _effective_bootstrap(
             proj, system_settings_path, agent_id,
             agent_path=agent_settings_path(std.agents, agent_id),
@@ -1685,20 +1686,20 @@ def _run_container(
     # leaves NO box dir behind (no rmtree).
     #
     # A brand-new box derives its agent ONLY from the two box-INDEPENDENT sources —
-    # explicit ``--agent`` OR the system default (``read_default_agent``); the
-    # box-scoped ``box_agent_name`` can only shadow an ALREADY-existing box (never a
-    # brand-new one), so those two are exactly the sources that could otherwise
+    # explicit ``--agent`` OR the stored system default (``read_system_agent``); a
+    # box-scoped ``pref.system.agent`` can only shadow an ALREADY-existing box (never
+    # a brand-new one), so those two are exactly the sources that could otherwise
     # leave an empty unregistered box dir for a system-default persona (Director
     # RESIDUAL ruling).  A bare / non-persona launch materialises immediately,
     # exactly as before (single resolve, byte-identical).
     _defer_box = False
-    _box_indep_ref = explicit_agent or read_default_agent(system_settings_path)
+    _box_indep_ref = explicit_agent or read_system_agent(system_settings_path)
     if _box_indep_ref:
         try:
             _node, _harness = parse_agent_ref(_box_indep_ref)
             _defer_box = _node != _harness
         except ConfigError:
-            _defer_box = False  # malformed ref: surfaced by resolve_agent below.
+            _defer_box = False  # malformed ref: surfaced by select_agent below.
 
     # EXPLICIT-CREATE gate (Jei 2026-07-11g, v1.7.0 BREAKING): a launch NEVER
     # materialises a NEW box.  Creating a box is a deliberate act — it must go
@@ -1806,7 +1807,7 @@ def _run_container(
     # Reattach fast-source: for a PERSISTENT box that is ALREADY RUNNING, the
     # box's identity is its container name (agent-independent) and `kanibako
     # start` should simply reattach.  The reattach path needs an agent only for
-    # the per-agent credential refresh below.  W1's resolve_agent would Gate-2a
+    # the per-agent credential refresh below.  W1's agent selection would Gate-2a
     # ("pick an agent") when 2+ agents exist with no default — even though the
     # box is happily running with a known agent.  So source that agent from the
     # container's KANIBAKO_AGENT stamp (set at launch) and feed it into the
@@ -1843,38 +1844,58 @@ def _run_container(
     is_agent_mode = entrypoint is None and not box_shell_mode
     target = None
     install = None
+    agent_selection = None
     if is_agent_mode:
-        from kanibako.config import resolve_agent
-        # Resolve the agent via the full cascade (explicit > box > workset >
-        # system default), then the installed-count rule.  workset_agent=None:
-        # merged.box_agent_name already folds the workset tier (load_merged_config
-        # overlays workset then box).  system.default_agent is a SETTING read
-        # from the system settings file.  resolve_agent raises typed
-        # AgentResolutionError subclasses (Gate-2a/2b / adapter-missing) which
-        # the top-level cli.py handler surfaces verbatim with a non-zero exit.
-        agent_name = resolve_agent(
-            explicit_agent=explicit_agent,
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=system_settings_path,
-            project_path=proj.project_path,
+        from kanibako.agent_select import select_agent
+        # Resolve the agent through the ONE seam (spec §1A / §2h): the stored
+        # ``system.agent`` < the workset's ``pref.system.agent`` < the box's <
+        # ``--agent``, then the installed-count rule.  ``select_agent`` raises the
+        # typed AgentResolutionError subclasses (Gate-2a/2b / adapter-missing),
+        # which the top-level cli.py handler surfaces verbatim with a non-zero
+        # exit, and REFUSES by name a box still carrying the retired
+        # ``box.agent_name`` (migration M-4) rather than silently launching a
+        # different agent.
+        agent_selection = select_agent(
+            std=std, proj=proj, explicit_agent=explicit_agent,
         )
-        # ``agent_name`` is the NODE-name (persona identity); the TARGET/plugin is
-        # keyed by the HARNESS (right of ``℘``; the whole name when bare).
-        target = resolve_target(harness_of(agent_name), proj.project_path)
-        logger.debug("Resolved target: %s", target.display_name)
-        # First detect: early-out / "is the agent present on the host". The
-        # "Using host ...:" line is deferred until after prepare_host() (the
-        # update gate) so it names the real, post-update version — see the
-        # re-detect below.
-        install = target.detect()
-        if not install and target.has_binary:
-            print(
-                f"Warning: {target.display_name} binary not found on host. "
-                f"Launching without agent.",
-                file=sys.stderr,
+        agent_name = agent_selection.node
+        # ⚑⚑ THE TWO-VOCABULARY SEAM — the D-M6 guard (bifrost E-NULL, 2026-07-31).
+        # ``agent_name`` is the NODE-name (persona identity) and the TARGET/plugin is
+        # keyed by the HARNESS — BUT a SUPPRESSED box (``pref.system.agent: null``)
+        # has NO node, and ``""`` means opposite things on the two sides of this
+        # line: "no agent" to selection, "no name given → AUTO-DETECT" to
+        # ``resolve_target``. Passing it straight through LAUNDERED the suppression
+        # into auto-detection — measured on bifrost: the no-agent box launched
+        # claude, with claude's binary, commons and CREDENTIALS. ``resolve_selected_target``
+        # is the ONE translator between the two vocabularies and returns ``None``
+        # here, which is the shipped plain-shell shape (identical to ``kanibako
+        # shell``): every downstream gate keys on ``target is None``, so no agent
+        # binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp, and
+        # ``agent_id`` = ``"general"``.
+        target = (
+            resolve_target(harness_of(agent_name), proj.project_path)
+            if agent_selection.has_agent
+            else None
+        )
+        if target is None:
+            logger.debug(
+                "No agent for this box (selection source=%s) — plain shell.",
+                agent_selection.source,
             )
-            logger.debug("target.detect() returned None for %s", target.name)
+        else:
+            logger.debug("Resolved target: %s", target.display_name)
+            # First detect: early-out / "is the agent present on the host". The
+            # "Using host ...:" line is deferred until after prepare_host() (the
+            # update gate) so it names the real, post-update version — see the
+            # re-detect below.
+            install = target.detect()
+            if not install and target.has_binary:
+                print(
+                    f"Warning: {target.display_name} binary not found on host. "
+                    f"Launching without agent.",
+                    file=sys.stderr,
+                )
+                logger.debug("target.detect() returned None for %s", target.name)
 
     # ``agent_id`` is the NODE-name (persona identity), NOT the bare harness: it keys
     # the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*`` keyspace slot, and
@@ -2036,6 +2057,9 @@ def _run_container(
         agent_cfg=agent_cfg,
         system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
+        selection_level=(
+            agent_selection.selection_level if agent_selection is not None else None
+        ),
     )
 
     # PERSONA LOAD-OR-ERROR (A + B3): a persona (node != harness) that cannot
@@ -2438,6 +2462,11 @@ def _run_container(
             target=target,
             agent_cfg=agent_cfg,
             deliver_creds=auth_src.creds_shared,
+            selection_level=(
+                agent_selection.selection_level
+                if agent_selection is not None
+                else None
+            ),
         )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d L557,
@@ -4452,6 +4481,7 @@ def _resolve_box_auth_source(
     agent_name: str,
     system_settings_path,
     agent_cfg_path,
+    selection_level: "Mapping[str, object] | None",
 ):
     """Resolve the box's credential-SHARING SOURCE through the auth 3-tier chain.
 
@@ -4474,6 +4504,15 @@ def _resolve_box_auth_source(
     A scope settings FILE that overrides a settable chain key
     (``box.auth.global_enabled`` / ``workset.auth.share_allowed`` / …) wins by name
     through the cascade; the floor is the backstop.
+
+    ⚑ *selection_level* is a REQUIRED keyword — deliberately NOT defaulted (P7).
+    ``meta.box.auth.workset_path`` resolves ``@workset.auth.path/@system.agent``
+    (spec §2c L792), so a caller that omits it silently collapses the per-agent
+    credential dir to the workset auth ROOT: the launch would deliver from
+    ``<auth>/<agent>`` while stop/watch/reauth read and WRITE ``<auth>/``, and two
+    agents in one workset would share a directory. Pass ``None`` ONLY for a
+    genuinely agent-less box; for a running box the ``KANIBAKO_AGENT`` stamp IS the
+    resolved selection.
     """
     from kanibako import settings_launch
 
@@ -4503,6 +4542,12 @@ def _resolve_box_auth_source(
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
+        # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
+        # ``@workset.auth.path/@system.agent`` (spec §2c L792), so this snapshot
+        # must carry the RESOLVED selection or the per-agent credential source
+        # would degenerate to the workset auth ROOT for any launch whose agent
+        # came from ``--agent`` or the installed-count rule.
+        selection_level=selection_level,
     )
     return settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
 
@@ -4516,6 +4561,7 @@ def _resolve_box_launch_decisions(
     agent_cfg,
     system_settings_path,
     agent_cfg_path,
+    selection_level: "Mapping[str, object] | None",
 ) -> "tuple[AuthSource, str | None, str | None]":
     """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint + persona
     model) off ONE snapshot — the single-source consolidation of the auth resolve and
@@ -4596,6 +4642,12 @@ def _resolve_box_launch_decisions(
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
+        # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
+        # ``@workset.auth.path/@system.agent`` (spec §2c L792), so this snapshot
+        # must carry the RESOLVED selection or the per-agent credential source
+        # would degenerate to the workset auth ROOT for any launch whose agent
+        # came from ``--agent`` or the installed-count rule.
+        selection_level=selection_level,
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
     endpoint: str | None = None
@@ -4648,35 +4700,15 @@ def _launch_snapshot_inputs(
     a real box tier (absent by default) over the ROOT file that plays the workset
     tier; primary/named unchanged.
     """
-    workset_name = (
-        proj.group.name
-        if (proj.group is not None and not proj.group.is_default)
-        else None
-    )
     from kanibako import settings_launch as settings_launch_module
-    from kanibako.paths import ProjectError, host_xdg_map
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.agent_select import launch_resolve_ctx
+    from kanibako.paths import ProjectError
 
-    # Resolver SPLIT (spec §1A / JC-2): the Layer-1 ``config.*`` foundation goes
-    # into ``ctx.config`` (so ``@config.*`` category refs route THERE, not the
-    # snapshot); the Layer-2 ``system.*`` path settings stay folded into the
-    # snapshot floor (``resolved_sys``) so ``@system.*`` resolves from it.
-    # The xdg map is the canonical FULL host map (a data-home-only partial map
-    # raised on stored ``$XDG_CACHE_HOME/...`` values), anchored on the resolved
-    # ``std.data_home``.
-    ctx = ResolveCtx(
-        agent_name=agent_name,
-        workset_name=workset_name,
-        host_home=str(Path.home()),
-        xdg=host_xdg_map(std.data_home),
-        config={
-            "config.data": str(std.data),
-            "config.agents": str(std.agents),
-            "config.registry": str(std.registry),
-            "config.primary_workset": str(std.primary_workset),
-            "config.settings": str(std.settings),
-        },
-    )
+    # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
+    # host-side namespace, so the two passes cannot disagree about what
+    # ``@config.*`` / ``$XDG_*`` / ``~`` mean. See ``agent_select.launch_resolve_ctx``
+    # for the resolver-SPLIT rationale this call carries.
+    ctx = launch_resolve_ctx(std, proj, agent_name)
 
     # The Layer-2 system.* path tier the category @-refs resolve against.  These
     # are present IN the snapshot (folded into the floor as ``system.<leaf>``
@@ -4857,6 +4889,7 @@ def _resolve_launch_snapshot(
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
+    selection_level: "Mapping[str, object] | None" = None,
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
 
@@ -4894,7 +4927,10 @@ def _resolve_launch_snapshot(
     ``_build_helper_hub_mounts`` resolve (which injected only that one table).
     """
     from kanibako import settings_launch
-    from kanibako.agent_representation import agent_default_partial
+    from kanibako.agent_representation import (
+        agent_common_for_node,
+        agent_default_partial,
+    )
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings_categories import (
         derive_binding_keys,
@@ -4924,7 +4960,16 @@ def _resolve_launch_snapshot(
         default_categories.update(core_defaults.rom_default_categories())
         default_categories.update(_channel_default_categories(std, proj))
         if target is not None:
-            default_categories.update(target.default_common())
+            # ⚑ Re-keyed to the ACTIVE NODE (P7): a plugin declares its commons
+            # against its own HARNESS name, but the §2d pick reads
+            # ``agent.<node>`` — so a PERSONA saw none of them (no
+            # ``~/.claude/plugins``, no cache) while the symlink shim maintained
+            # links nothing consumed. Identity for a bare agent.
+            default_categories.update(agent_common_for_node(
+                target.default_common(),
+                node_name=agent_name,
+                harness=target.name,
+            ))
             default_categories.update(target.default_seeds())
             # PLUGIN-declared @-ref-sourced agent binds (spec §2d L608): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the
@@ -4992,8 +5037,10 @@ def _resolve_launch_snapshot(
     # up to five times per ``kanibako start``, so collecting inside each build
     # would re-read the same two files five times over; more importantly, ONE
     # list means the five resolves cannot disagree about what was requested.
-    # (P7's agent selection collects the same way, BEFORE the agent is known, and
-    # passes its list here — see settings_prefs.collect_prefs.)
+    # (P7's agent selection collects the same way, BEFORE the agent is known — a
+    # SEPARATE read, since there is no launch-side list to share at that point. The
+    # two cannot disagree: the file pair is a runtime treewalk and nothing writes
+    # between them. See settings_prefs.collect_prefs.)
     prefs = collect_prefs(cascade_workset_path, cascade_box_path)
 
     snapshot = settings_launch.build_launch_snapshot(
@@ -5011,6 +5058,7 @@ def _resolve_launch_snapshot(
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
         prefs=prefs,
+        selection_level=selection_level,
     )
     try:
         entries = settings_launch.snapshot_category_entries(
@@ -5273,21 +5321,18 @@ def persona_create_verdict(
     """
     logger = get_logger("start")
     system_settings_path = std.settings
-    project_toml, workset_path = box_workset_settings_paths(proj)
-    merged = load_merged_config(
-        config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
-        project_toml, workset_path=workset_path,
-    )
+    selection = None
     try:
-        from kanibako.config import resolve_agent
-        agent_name = resolve_agent(
-            explicit_agent=explicit_agent,
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=system_settings_path,
-            project_path=proj.project_path,
+        from kanibako.agent_select import select_agent
+        selection = select_agent(
+            std=std, proj=proj, explicit_agent=explicit_agent,
         )
-        target = resolve_target(harness_of(agent_name), proj.project_path)
+        agent_name = selection.node
+        target = (
+            resolve_target(harness_of(agent_name), proj.project_path)
+            if agent_name
+            else None
+        )
     except Exception:  # no-agent / unresolved → nothing persona to gate.
         return None
     if target is None:
@@ -5305,6 +5350,7 @@ def persona_create_verdict(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=probe_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
+        selection_level=selection.selection_level if selection else None,
     )
     _ep, error, _adopted, _provider = _preflight_persona_load(
         agent_id, probe_cfg, endpoint, logger, target=target, keyspace_model=model,
@@ -5328,27 +5374,24 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     """
     logger = get_logger("start")
     system_settings_path = std.settings
-    project_toml, workset_path = box_workset_settings_paths(proj)
-    merged = load_merged_config(
-        config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
-        project_toml,
-        workset_path=workset_path,
-    )
 
     # Resolve the active agent → target/descriptor (config/settings only; no
     # image work).  A box with no resolvable agent seeds template-only.
     target = None
     desc = None
+    agent_name = ""
+    selection = None
     try:
-        from kanibako.config import resolve_agent
-        agent_name = resolve_agent(
-            explicit_agent=explicit_agent,
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=system_settings_path,
-            project_path=proj.project_path,
+        from kanibako.agent_select import select_agent
+        selection = select_agent(
+            std=std, proj=proj, explicit_agent=explicit_agent,
         )
-        target = resolve_target(harness_of(agent_name), proj.project_path)
+        agent_name = selection.node
+        target = (
+            resolve_target(harness_of(agent_name), proj.project_path)
+            if agent_name
+            else None
+        )
     except Exception:  # pragma: no cover - no-agent / unresolved → template-only
         logger.debug("seed_new_box: no agent resolved; template-only seed", exc_info=True)
         target = None
@@ -5380,6 +5423,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
+        selection_level=selection.selection_level if selection else None,
     )
 
     # PERSONA LOAD-OR-ERROR (A + B3) — the SAME gate the launch path runs, before

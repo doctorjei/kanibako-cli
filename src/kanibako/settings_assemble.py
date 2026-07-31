@@ -67,7 +67,7 @@ EXEMPT for SCOPE keys (the system-scope floor). ``@``-refs still view UP
 read-only. A top-level ``meta:`` table is ALWAYS dropped from EVERY file
 (``base`` included) — ``meta.*`` is a TOP-LEVEL protected namespace set by the
 construct-time/bootstrap layer and stays RO everywhere (spec §0 / clause 4). The
-sole sanctioned meta source is the runtime/identity FLOOR (``_floor_partial``),
+sole sanctioned meta source is the runtime/identity FLOOR (``dotted_partial``),
 which is never dropped, and a NESTED ``<scope>.meta`` bootstrap table (e.g.
 ``workset.meta`` from ``workset.py``) is UNTOUCHED — only the top-level ``meta:``
 key is stripped (see :func:`_drop_upward_scopes`).
@@ -99,7 +99,7 @@ from typing import Any
 from kanibako.config import settings_base_path
 from kanibako.config_io import load_doc
 from kanibako.settings_prefs import refuse_pref_table
-from kanibako.settings_resolve import unpack_bind
+from kanibako.settings_resolve import SettingsError, unpack_bind
 from kanibako.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
 
 _log = logging.getLogger(__name__)
@@ -116,6 +116,121 @@ _BIND_CATEGORIES: frozenset[str] = frozenset(
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
 _AGENT_DEFAULT_SUB = "default"
+
+
+# ---------------------------------------------------------------------------
+# RETIRED agent-selection spellings — refuse by name (P7, spec §0 / §2b / §2g)
+# ---------------------------------------------------------------------------
+#
+# ⚑ WHY THIS EXISTS AT ALL, given that migration is DOCUMENTATION-ONLY for this
+# arc (IMPL-PLAN standing ruling 1). This is NOT migration machinery: it reads
+# nothing, relocates nothing and writes nothing. It is §0's CLOSED-KEYSPACE rule
+# — *an undeclared key is an ERROR that NAMES it* — applied to the two spellings
+# P7 retired. The documentation-only ruling was made against failure modes of the
+# "empty dir beside a populated one" shape; a box that SILENTLY RUNS A DIFFERENT
+# AGENT (and seeds that agent's CREDENTIALS into itself) is categorically worse,
+# and Jei's own M-7 ruling — hard error with a migration-grade message — is the
+# precedent for loud in exactly this arc. Scope is deliberately TIGHT: these two
+# keys, nothing else. This is NOT general resolve enforcement; that follow-on
+# stays deferred (it is gated on ``settings_keyspace.RETIRING_KEYS`` emptying).
+#
+# Each entry maps the NESTED file path of the retired leaf to the retired KEY name.
+# The CURE is LEVEL-DEPENDENT (see :func:`_retired_key_cure`) — a pref is legal only
+# in a workset or box file (spec §2h L1252-1254), so telling a SYSTEM-file reader to
+# "box set pref…" would prescribe a write that cannot fix their file.
+# Migration record: M-4.
+RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
+    ("box", "agent_name"): "box.agent_name",
+    ("agent", "default", "default_agent"): "system.default_agent",
+}
+
+#: The levels where a ``pref`` REQUEST may be WRITTEN (spec §2h L1252-1254) — the
+#: single fact that decides which cure a retired ``box.agent_name`` gets.
+_PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
+
+
+def _retired_key_cure(key: str, *, level: str, value: str) -> str:
+    """The LEVEL-APPROPRIATE fix for a retired key (M-4)."""
+    if key == "system.default_agent":
+        # Always the same cure: the replacement is a SYSTEM-scope key wherever the
+        # stale leaf was found.
+        return f"kanibako system config set system.agent={value}"
+    # box.agent_name → the §2h request, but ONLY where a request may be written.
+    if level in _PREF_LEGAL_LEVELS:
+        return (
+            f"kanibako box set pref.system.agent={value}   "
+            f"(or `kanibako box set --null pref.system.agent` for a no-agent box)"
+        )
+    # M-4: *"A box.agent_name found in a system or agent file has no legal pref
+    # equivalent — flag it rather than silently relocating it."*
+    return (
+        f"REMOVE it — a request may be written ONLY in a workset or box settings "
+        f"file (spec §2h), so this key has NO equivalent at {level} scope. If you "
+        f"meant the host-wide default, set it: kanibako system config set "
+        f"system.agent={value}. If you meant one box, set the request in THAT "
+        f"box's settings file: kanibako box set pref.system.agent={value}"
+    )
+
+
+#: The "no such leaf" sentinel for :func:`_nested_present`. ⚑ NOT ``None``: a
+#: ``box: {agent_name:}`` leaf is PRESENT with the value ``None``, and it is still
+#: the retired key — conflating present-null with absent is the same 3-state
+#: mistake §2h warns about for prefs, and it would let the exact config the
+#: refusal exists to catch slip through silently.
+_NO_LEAF: Any = object()
+
+
+def _nested_present(raw: Any, parts: "tuple[str, ...]") -> Any:
+    """Read *raw* at the nested *parts* path, or :data:`_NO_LEAF` when ABSENT.
+
+    Distinguishes ABSENT from PRESENT-``None`` (see :data:`_NO_LEAF`).
+    """
+    node: Any = raw
+    for part in parts:
+        if not isinstance(node, dict) or part not in node:
+            return _NO_LEAF
+        node = node[part]
+    return node
+
+
+def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
+    """RAISE when *raw* still carries a RETIRED agent-selection key (P7).
+
+    The two keys are :data:`RETIRED_FILE_KEYS`. The message names the KEY, the
+    FILE, the fact that THE RULE CHANGED, and the one-line cure — it must never
+    read as "your config is wrong" (the M-7 precedent). Never a warning and never
+    a silent drop: a dropped ``box.agent_name`` would leave the box launching the
+    system default with that agent's credentials, which is the exact failure this
+    refusal exists to prevent.
+
+    Called at the SELECTION seam (:mod:`kanibako.agent_select`), not inside
+    :func:`assemble_levels` — a raise there would also break ``config set``,
+    i.e. the very command the message prescribes as the cure.
+    """
+    if not isinstance(raw, dict):
+        return
+    for parts, key in RETIRED_FILE_KEYS.items():
+        found = _nested_present(raw, parts)
+        if found is _NO_LEAF:
+            continue
+        # The cure carries the value the user ACTUALLY has, so it is
+        # copy-pasteable rather than a shape to fill in. A present-``None`` (an
+        # empty ``agent_name:`` leaf) has no value to quote → the shape.
+        value = "" if found is None else str(found).strip()
+        cure = _retired_key_cure(key, level=level, value=value or "<name>")
+        raise SettingsError(
+            f"'{key}' is RETIRED and is still set in the {level} settings file "
+            f"{path if path is not None else '<settings>'} "
+            f"(as `{': '.join(parts)}:`).\n"
+            f"The RULE CHANGED in kanibako 1.8.0: a box no longer names its agent "
+            f"with a key of its own — it REQUESTS one at the key that resolves "
+            f"earlier (`pref.system.agent`, spec §2h), and the system default is "
+            f"now `system.agent` (§2g). Refusing rather than running: kanibako "
+            f"cannot tell which agent you meant, and guessing would launch a "
+            f"DIFFERENT agent and seed that agent's credentials into this box.\n"
+            f"  Fix: {cure}\n"
+            f"  then delete the `{': '.join(parts)}` entry from {path}."
+        )
 
 
 def _containing_scopes(file_scope: str) -> frozenset[str]:
@@ -154,7 +269,7 @@ def _drop_upward_scopes(
     bootstrap table (e.g. ``workset.meta`` written by ``workset.py`` and read by
     ``read_workset_meta``) rides under its scope table and is UNTOUCHED — this
     function iterates only top-level keys of *raw* and never descends. The sole
-    sanctioned meta source is the FLOOR (``_floor_partial``), inserted separately
+    sanctioned meta source is the FLOOR (``dotted_partial``), inserted separately
     and never routed through this drop.
 
     ``base`` is EXEMPT for SCOPE keys (its containing set is empty — it is the
@@ -303,8 +418,8 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
     return store
 
 
-def _floor_partial(floor: dict[str, object] | None) -> KeyStore:
-    """Build the declared-default floor partial (folded into the ``base`` level).
+def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
+    """Build a merge LEVEL from a flat ``{dotted key: value}`` mapping.
 
     *floor* is the target's declared ``{key: default}`` behavior defaults plus
     default-categories (mirrors what ``start.py`` gathers today). Its keys are the
@@ -442,7 +557,7 @@ def assemble_levels(
     # content: a base-FILE set-value beats the floor at the same key (the floor is
     # the ultimate fallback). The floor is inserted first, then the file leaves
     # overlay, so a base-file entry wins WITHIN this single level.
-    base_partial = _floor_partial(floor)
+    base_partial = dotted_partial(floor)
     _overlay(base_partial, _file_partial(raw_base))
 
     # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token

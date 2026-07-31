@@ -63,7 +63,7 @@ The `kanibako` meta-package installs the CLI **plus all three agent plugins**
 ## First-time setup
 
 Run the setup wizard once. It detects your container runtime and installed
-agents, and lets you pick a default agent (stored as `system.default_agent`):
+agents, and lets you pick a default agent (stored as `system.agent`):
 
 ```bash
 kanibako setup

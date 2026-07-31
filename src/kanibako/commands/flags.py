@@ -22,7 +22,7 @@ flag to an UNRELATED command is a hard error (not a silent no-op), surfaced by
 Relevance is keyed by the command's dotted path (e.g. ``"start"``,
 ``"agent reauth"``, ``"box convert"``).  ``setup`` is intentionally EXCLUDED
 from the blanket ``--agent`` injection: it owns its own ``--agent`` flag with
-PERSISTENT (writes ``default_agent``) semantics, distinct from the blanket
+PERSISTENT (writes ``system.agent``) semantics, distinct from the blanket
 flag's ephemeral override — so the two never collide (see Phase B / Phase D
 reconcile).
 """
