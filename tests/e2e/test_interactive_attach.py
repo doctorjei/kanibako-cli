@@ -81,7 +81,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
       - ``dead.py`` is dropped into
         ``<XDG_DATA_HOME>/kanibako/plugins/dead.py`` (the user directory-plugin
         tier) so the plugin is discovered, and
-      - system settings pin ``agent.default.default_agent: dead`` so
+      - system settings pin ``system.agent: dead`` so
         ``resolve_agent`` selects it unambiguously.
 
     CONTAINERS_CONF is intentionally NOT set: the test env injects netns=host
@@ -132,12 +132,12 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
         packaged_templates_digest(sorted(discover_targets().keys())),
     )
 
-    # System settings: default agent = dead, so resolve_agent picks DeadTarget
-    # (mirrors e2e_env's claude pin; the configured-default tier wins in the
-    # resolve_agent cascade before the installed-count rule).
+    # System settings: system.agent = dead, so selection picks DeadTarget
+    # (mirrors e2e_env's claude pin; the stored key wins before the
+    # installed-count rule).
     system_settings = data_home / "kanibako" / "global" / "settings.yaml"
     system_settings.parent.mkdir(parents=True, exist_ok=True)
-    system_settings.write_text("agent:\n  default:\n    default_agent: dead\n")
+    system_settings.write_text("system:\n  agent: dead\n")
 
     env = os.environ.copy()
     env.update({
@@ -267,7 +267,7 @@ def live_env(tmp_path, host_storage_conf) -> dict:
       - ``live.py`` is dropped into
         ``<XDG_DATA_HOME>/kanibako/plugins/live.py`` (the user directory-plugin
         tier) so the plugin is discovered, and
-      - system settings pin ``agent.default.default_agent: live`` so
+      - system settings pin ``system.agent: live`` so
         ``resolve_agent`` selects it unambiguously.
 
     CONTAINERS_CONF is intentionally NOT set: the test env injects netns=host
@@ -318,12 +318,12 @@ def live_env(tmp_path, host_storage_conf) -> dict:
         packaged_templates_digest(sorted(discover_targets().keys())),
     )
 
-    # System settings: default agent = live, so resolve_agent picks LiveTarget
-    # (mirrors dead_env's dead pin; the configured-default tier wins in the
-    # resolve_agent cascade before the installed-count rule).
+    # System settings: system.agent = live, so selection picks LiveTarget
+    # (mirrors dead_env's dead pin; the stored key wins before the
+    # installed-count rule).
     system_settings = data_home / "kanibako" / "global" / "settings.yaml"
     system_settings.parent.mkdir(parents=True, exist_ok=True)
-    system_settings.write_text("agent:\n  default:\n    default_agent: live\n")
+    system_settings.write_text("system:\n  agent: live\n")
 
     env = os.environ.copy()
     env.update({

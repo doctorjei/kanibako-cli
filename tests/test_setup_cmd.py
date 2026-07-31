@@ -9,7 +9,7 @@ from kanibako.commands import setup_cmd
 from kanibako.config import (
     config_file_path,
     load_config,
-    read_default_agent,
+    read_system_agent,
     read_setup_completed,
 )
 from kanibako.paths import load_std_paths, xdg
@@ -60,7 +60,7 @@ def test_agent_flag_valid_writes_default(tmp_home, config_file, monkeypatch):
     selected = setup_cmd._run_agent_selection(_ns(agent="claude"))
     assert selected == "claude"
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) == "claude"
+    assert read_system_agent(ssp) == "claude"
 
 
 def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch):
@@ -75,7 +75,7 @@ def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch):
         setup_cmd._run_agent_selection(_ns(agent="bogus"))
     assert "Unknown agent 'bogus'" in str(exc_info.value)
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) is None
+    assert read_system_agent(ssp) is None
 
 
 def test_full_setup_bogus_agent_nonzero_no_marker_no_default(
@@ -99,7 +99,7 @@ def test_full_setup_bogus_agent_nonzero_no_marker_no_default(
         setup_cmd.run_setup(_ns(agent="bogus"))
     cf, ssp = _config_paths(tmp_home)
     assert read_setup_completed(cf) is None
-    assert read_default_agent(ssp) is None
+    assert read_system_agent(ssp) is None
 
 
 # --- _run_agent_selection: interactive menu -------------------------------
@@ -116,7 +116,7 @@ def test_interactive_pick_writes_default(tmp_home, config_file, monkeypatch):
     selected = setup_cmd._run_agent_selection(_ns())
     assert selected == "goose"
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) == "goose"
+    assert read_system_agent(ssp) == "goose"
 
 
 def test_interactive_single_agent_skip_silent(tmp_home, config_file, monkeypatch):
@@ -127,7 +127,7 @@ def test_interactive_single_agent_skip_silent(tmp_home, config_file, monkeypatch
     selected = setup_cmd._run_agent_selection(_ns())
     assert selected is None
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) is None
+    assert read_system_agent(ssp) is None
 
 
 def test_interactive_skip_two_agents_reprompts_then_confirms(
@@ -144,7 +144,7 @@ def test_interactive_skip_two_agents_reprompts_then_confirms(
     selected = setup_cmd._run_agent_selection(_ns())
     assert selected is None
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) is None
+    assert read_system_agent(ssp) is None
 
 
 def test_interactive_skip_two_agents_unconfirmed_reprompts_to_pick(
@@ -163,7 +163,7 @@ def test_interactive_skip_two_agents_unconfirmed_reprompts_to_pick(
     out = capsys.readouterr().out
     assert "will FAIL" in out  # the gating warning was shown
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) == "claude"
+    assert read_system_agent(ssp) == "claude"
 
 
 # --- _run_agent_selection: non-TTY ----------------------------------------
@@ -185,7 +185,7 @@ def test_non_tty_no_flag_no_input_graceful(tmp_home, config_file, monkeypatch, c
     out = capsys.readouterr().out
     assert "non-interactive" in out
     _, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) is None
+    assert read_system_agent(ssp) is None
 
 
 # --- marker write ---------------------------------------------------------
@@ -210,7 +210,7 @@ def test_full_setup_flag_writes_marker_and_default(
     rc = setup_cmd.run_setup(_ns(agent="claude"))
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) == "claude"
+    assert read_system_agent(ssp) == "claude"
     assert read_setup_completed(cf) == __version__
 
 
@@ -228,7 +228,7 @@ def test_full_setup_non_tty_writes_marker_no_default(
     rc = setup_cmd.run_setup(_ns())
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
-    assert read_default_agent(ssp) is None
+    assert read_system_agent(ssp) is None
     assert read_setup_completed(cf) == __version__
 
 

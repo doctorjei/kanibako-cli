@@ -464,15 +464,17 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     # falls through to the installed-count rule, which raises NoAgentSelectedError
     # ("No agent selected") when 2+ real agents are installed, so `kanibako start`
     # exits rc=1 and no container is ever created.  The system settings tier
-    # (@system.settings = $XDG_DATA_HOME/kanibako/global/settings.yaml) holds the
-    # default_agent SETTING in the reserved any-agent agent.default table, which
-    # read_default_agent reads back; the explicit/default tier wins in
-    # resolve_agent's cascade BEFORE the installed-count rule, so this is faithful
-    # to real usage (a configured default agent) and fixes the ambiguity in one
-    # place rather than threading --agent through every test call.
+    # (@config.settings = $XDG_DATA_HOME/kanibako/global/settings.yaml) holds the
+    # ``system.agent`` SETTING in its ``system:`` table, which the SYSTEM tier of
+    # the settings cascade reads; it wins BEFORE the installed-count rule, so this
+    # is faithful to real usage (a configured default agent) and fixes the
+    # ambiguity in one place rather than threading --agent through every call.
+    # ⮕ P7: this file used to carry ``agent.default.default_agent`` — the RETIRED
+    # spelling, which the launch now REFUSES BY NAME (migration M-4). Writing the
+    # new location here is also the in-repo proof of the new store shape.
     system_settings = names_dir / "global" / "settings.yaml"
     system_settings.parent.mkdir(parents=True, exist_ok=True)
-    system_settings.write_text("agent:\n  default:\n    default_agent: claude\n")
+    system_settings.write_text("system:\n  agent: claude\n")
 
     # Environment with isolated paths and stub on PATH
     env = os.environ.copy()

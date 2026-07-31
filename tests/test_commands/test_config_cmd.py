@@ -125,9 +125,7 @@ class TestBoxConfigShow:
         # System settings tier: select claude, and set a behavior key the
         # per-agent file does NOT set (endpoint) so the system-tier value is
         # the effective one at launch — the display must show the same.
-        _write_nested_toml_key(
-            std.settings, ("agent", "default"), "default_agent", "claude",
-        )
+        _write_nested_toml_key(std.settings, ("system",), "agent", "claude")
         _write_nested_toml_key(
             std.settings, ("agent", "default"), "endpoint", "https://ssp.example",
         )
@@ -240,9 +238,11 @@ class TestBoxConfigSet:
         assert "Set EDITOR=vim" in captured.out
 
     def test_set_model(self, config_file, tmp_home, credentials_dir, capsys):
-        """Agent behavior keys are set at box scope via the ``box.agent.<key>``
-        mirror; the BARE form is refused with a teach message (a bare agent key
-        targets ``agent.default``, which a box cannot write)."""
+        """Agent behavior keys are set at box scope via the §2h REQUEST
+        ``pref.agent.<agent>.<key>``; the BARE form is refused with a teach
+        message (a bare agent key targets ``agent.default``, which a box cannot
+        write). ⮕ P7: the cure USED to be the ``box.agent.<key>`` mirror, retired
+        by spec §2b."""
         from kanibako.commands.box._parser import run_set
 
         config = load_config(config_file)
@@ -251,23 +251,23 @@ class TestBoxConfigSet:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Bare agent key at box scope → refused, teaching the mirror form.
+        # Bare agent key at box scope → refused, teaching the request form.
         args = argparse.Namespace(
             args=[project_dir, "model=sonnet"], force=False,
         )
         rc = run_set(args)
         assert rc == 1
         captured = capsys.readouterr()
-        assert "set box.agent.model" in captured.err
+        assert "set pref.agent.<agent>.model" in captured.err
 
-        # The mirror form is the settable one.
+        # The request form is the settable one.
         args = argparse.Namespace(
-            args=[project_dir, "box.agent.model=sonnet"], force=False,
+            args=[project_dir, "pref.agent.claude.model=sonnet"], force=False,
         )
         rc = run_set(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Set box.agent.model=sonnet" in captured.out
+        assert "pref.agent.claude.model" in captured.out
 
     def test_set_core_bind_repoint_end_to_end(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -473,14 +473,16 @@ class TestWriteProjectConfigKey:
         assert "box:" in text
         assert 'image: myimg:v1' in text
 
-    def test_write_agent_key(self, tmp_path):
+    def test_write_shell_key(self, tmp_path):
+        # (⮕ P7: was ``box_agent_name``, retired with spec §2b — the SHAPE under
+        # test is the nested box-table write, not that key.)
         p = tmp_path / "settings.yaml"
-        write_project_config_key(p, "box_agent_name", "my-target")
+        write_project_config_key(p, "box_shell", "bash")
         loaded = load_config(p)
-        assert loaded.box_agent_name == "my-target"
+        assert loaded.box_shell == "bash"
         text = p.read_text()
         assert "box:" in text
-        assert 'agent_name: my-target' in text
+        assert 'shell: bash' in text
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
@@ -571,9 +573,9 @@ class TestSplitConfigKey:
         from kanibako.config import _split_config_key
         assert _split_config_key("paths_project_toml") == ("paths", "project_toml")
 
-    def test_box_agent_key(self):
+    def test_box_shell_key(self):
         from kanibako.config import _split_config_key
-        assert _split_config_key("box_agent_name") == ("box", "agent_name")
+        assert _split_config_key("box_shell") == ("box", "shell")
 
     def test_unprefixed_key_is_top_level_field(self):
         """A key with no section prefix is a TOP-LEVEL scalar field.

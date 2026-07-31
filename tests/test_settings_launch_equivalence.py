@@ -437,23 +437,22 @@ def test_behavior_floor_and_per_agent_state(agent, tmp_path):
 
 
 def test_behavior_box_override_beats_agent_file(tmp_path):
-    # A box's downward agent tweak (the box.agent.<key> mirror, §2b) beats the
-    # per-agent file's model — the box overrides its active agent's behavior. (The
-    # box sets box.agent.model, NOT agent.claude.model directly — the latter is an
-    # upward write dropped at RESOLVE, spec §0; the box.agent.* mirror is the
-    # spec-legal same-scope box write that carries the tweak.)
+    # A box's downward agent tweak beats the per-agent file's model — the box
+    # overrides its active agent's behavior. (The box sets the §2h REQUEST, NOT
+    # agent.claude.model directly — the latter is an upward write dropped at
+    # RESOLVE, spec §0. ⮕ P7: was the ``box.agent.model`` mirror, retired by §2b.)
     agent = "claude"
     floor = {"model": None}
     state = {"model": "opus"}
     box = _write_yaml(
-        tmp_path / "box.yaml", {"box": {"agent": {"model": "haiku"}}},
+        tmp_path / "box.yaml", {"pref": {"agent": {"claude": {"model": "haiku"}}}},
     )
 
     snap = _behavior_snapshot(
         agent, floor=floor, agent_state=state, box_path=box, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
-    assert eff.get("model") == "haiku"  # box.agent.model (the §2b tweak) wins.
+    assert eff.get("model") == "haiku"  # the box's §2h request wins.
 
 
 def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):

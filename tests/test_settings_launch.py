@@ -602,6 +602,12 @@ def _auth_snapshot(
         system_path=_to_path(system_file), agent_path=None,
         workset_path=_to_path(workset_file), box_path=_to_path(box_file),
         auth_chain=chain, meta_runtime=mr, meta_identity=meta_id,
+        # ⚑ P7: ``meta.box.auth.workset_path`` is now the spec's
+        # ``@workset.auth.path/@system.agent`` (§2c L792) rather than a
+        # Python-interpolated name, so the §1A SELECTION LEVEL must carry the
+        # resolved agent — exactly as the launch does. A blank agent_name is the
+        # NO-AGENT box and installs nothing (the embedded ref then coerces to "").
+        selection_level=({"system.agent": agent_name} if agent_name else None),
     )
 
 
@@ -725,7 +731,12 @@ def test_auth_clean_break_no_group_auth_keys():
     # box.auth node keeps ONLY the two enable knobs (no workset_path leaks back).
     assert "box.auth.workset_path" not in chain
     assert "meta.box.auth.workset_path" in chain
-    assert chain["meta.box.auth.workset_path"] == "@workset.auth.path/claude"
+    # ⮕ P7: SPELLED as the spec writes it (§2c L792) rather than interpolated; the
+    # per-box variation now arrives through @system.agent (the pref layer + the §1A
+    # selection level), which resolves strictly EARLIER than this L4.1 anchor.
+    # INVERT: interpolate the name again and the F2 incoherence returns (a --agent
+    # launch would resolve the WRONG per-agent credential dir).
+    assert chain["meta.box.auth.workset_path"] == "@workset.auth.path/@system.agent"
 
 
 def test_auth_capability_mirror_is_ref_to_agent_slot():
@@ -1522,9 +1533,13 @@ def _yaml(path: Path, data: dict) -> Path:
     return path
 
 
-def test_box_agent_mirror_defaults_to_resolved_active_agent():
-    # (a) box.agent.<key> with NO box override DEFAULTS to the resolved
-    # agent.<active>.<key> (agent.default fallback included).
+def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
+    """(a) ``meta.box.agent.<key>`` READS BACK the resolved active-agent subtree.
+
+    ⮕ P7: the mirror moved from the SETTABLE ``box.agent.*`` to the RO
+    ``meta.box.agent.*`` (spec §2b L709). Values are still readable; they are no
+    longer settable.
+    """
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
@@ -1534,18 +1549,24 @@ def test_box_agent_mirror_defaults_to_resolved_active_agent():
             "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
         },
     )
-    # The resolved active-agent values (agent.default backstop for behavior; the
-    # active slot for the re-rooted share default) are mirrored under box.agent.*.
-    assert snap.box.agent.model == snap.agent.default.model == "opus"
-    assert snap.box.agent.auto_approve == "true"
+    assert snap.meta.box.agent.model == snap.agent.default.model == "opus"
+    assert snap.meta.box.agent.auto_approve == "true"
     # The whole subtree mirrors — including category subtrees (a Bind leaf).
-    mirrored = snap.box.agent.common.plugins
+    mirrored = snap.meta.box.agent.common.plugins
     assert isinstance(mirrored, Bind)
     assert mirrored == snap.agent.claude.common.plugins
+    # …and the RETIRED settable location is NOT materialized.
+    assert "box" not in snap or "agent" not in snap.box
 
 
-def test_box_agent_mirror_box_file_override_wins(tmp_path: Path):
-    # (b) a box-file box.agent.<key> WINS over the mirrored default.
+def test_a_box_file_box_agent_table_is_inert(tmp_path: Path):
+    """⮕ P7 FLIP: the settable ``box.agent.*`` mirror is RETIRED (spec §2b).
+
+    A box file that still carries the old table contributes NOTHING — not to the
+    agent tier, not to the RO read-back, not to effective behavior. INVERT: restore
+    the pre-merge fold / the ``box.agent`` overlay in ``effective_behavior`` and
+    this reddens.
+    """
     box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
     snap = build_launch_snapshot(
         agent_name="claude",
@@ -1553,30 +1574,34 @@ def test_box_agent_mirror_box_file_override_wins(tmp_path: Path):
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         behavior_floor={"model": "opus", "auto_approve": "true"},
     )
-    # The box override stands; the un-overridden sibling still mirrors the default.
-    assert snap.box.agent.model == "sonnet"
-    assert snap.box.agent.auto_approve == "true"
+    assert snap.meta.box.agent.model == "opus"        # the read-back, not the file.
+    assert snap.agent.default.model == "opus"         # the agent tier is untouched.
+    assert effective_behavior(snap, active_agent="claude")["model"] == "opus"
 
 
-def test_box_agent_mirror_override_does_not_leak_to_shared_agent(tmp_path: Path):
-    # (c) NO leak — a box.agent.<key> override does NOT mutate agent.<active>.<key>
-    # / agent.default.<key> (the shared subtree).
-    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
+def test_meta_box_agent_mirror_keeps_the_auth_capability_floor_key():
+    """The auth floor materializes ``meta.box.agent.auth.share_support`` BEFORE the
+    mirror copies; the copy must not clobber it (it gap-fills, per name)."""
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus"},
+        auth_chain=auth_chain_floor(mode="primary", agent_name="claude"),
+        meta_identity=_mid_floor(
+            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+            share_workset=None, agent_name="claude", agent_real_name="claude",
+            agent_auth_share_support=True,
+        ),
+        selection_level={"system.agent": "claude"},
     )
-    assert snap.box.agent.model == "sonnet"  # box override
-    # The shared agent subtree is UNTOUCHED — the mirror is a COPY, not a ref.
-    assert snap.agent.default.model == "opus"
-    assert "claude" not in snap.agent or "model" not in snap.agent.claude
+    assert snap.meta.box.agent.auth.share_support is True
+    assert snap.meta.box.agent.model == "opus"
 
 
-def test_box_agent_mirror_copy_is_not_an_alias():
-    # (c) the materialized box.agent subtree is a FRESH deep copy — mutating a
-    # nested box.agent node never reaches the shared agent subtree (no alias).
+def test_meta_box_agent_mirror_copy_is_not_an_alias():
+    # (c) the materialized meta.box.agent subtree is a FRESH deep copy — mutating a
+    # nested node never reaches the shared agent subtree (no alias).
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
@@ -1585,18 +1610,15 @@ def test_box_agent_mirror_copy_is_not_an_alias():
             "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
         },
     )
-    # The nested category subtree is copied, not aliased.
-    assert snap.box.agent.common is not snap.agent.claude.common
-    # A nested Bind leaf is equal (immutable) but the holding KeyStore is fresh.
-    snap.box.agent.common["plugins"] = Bind("/tweaked", "~/.claude/plugins")
+    assert snap.meta.box.agent.common is not snap.agent.claude.common
+    snap.meta.box.agent.common["plugins"] = Bind("/tweaked", "~/.claude/plugins")
     assert snap.agent.claude.common.plugins.host == "/store/plugins"
 
 
-def test_box_agent_mirror_repoints_on_agent_name_change():
-    # Re-materialized when box.agent_name changes: agent_name IS the launch-resolved
-    # active agent, so a different agent_name mirrors a different subtree.
-    # Each agent's default table is DISCRIMINATED at source (the declaring plugin
-    # builds ``agent.<agent>.*``), so each snapshot carries its own table.
+def test_meta_box_agent_mirror_repoints_on_agent_change():
+    # Re-materialized when the SELECTED agent changes: agent_name IS the resolved
+    # active agent (``@system.agent`` — stored key, pref, --agent or autopick), so a
+    # different agent_name mirrors a different subtree.
     common = dict(
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
@@ -1616,41 +1638,73 @@ def test_box_agent_mirror_repoints_on_agent_name_change():
         },
         **common,
     )
-    # Both mirror their OWN active agent's ``common`` default.
-    assert snap_claude.box.agent.common.plugins.host == "/claude/plugins"
-    assert snap_goose.box.agent.common.plugins.host == "/goose/plugins"
-    # And the mirror tracks the active slot each names (the goose snapshot's mirror
-    # comes from agent.goose, the claude snapshot's from agent.claude).
-    assert snap_claude.box.agent.common.plugins == snap_claude.agent.claude.common.plugins
-    assert snap_goose.box.agent.common.plugins == snap_goose.agent.goose.common.plugins
+    assert snap_claude.meta.box.agent.common.plugins.host == "/claude/plugins"
+    assert snap_goose.meta.box.agent.common.plugins.host == "/goose/plugins"
+    assert (
+        snap_claude.meta.box.agent.common.plugins
+        == snap_claude.agent.claude.common.plugins
+    )
+    assert (
+        snap_goose.meta.box.agent.common.plugins
+        == snap_goose.agent.goose.common.plugins
+    )
 
 
-def test_no_agent_box_has_no_box_agent_mirror():
-    # NO-AGENT box (box.agent_name <None> → empty agent_name): box.agent.* is
-    # empty/absent (no active agent subtree to mirror).
+def test_a_blank_active_agent_has_no_meta_box_agent_mirror():
+    # A BLANK active agent → no subtree to mirror → meta.box.agent.* absent.
     snap = build_launch_snapshot(
         agent_name="",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus"},
     )
-    box = snap.box if "box" in snap else KeyStore()
+    meta = snap.meta if "meta" in snap else KeyStore()
+    box = meta.box if "box" in meta else KeyStore()
     assert "agent" not in box
 
 
-def test_box_agent_category_tweak_merges_into_active_agent_slot(tmp_path: Path):
-    # A box.agent.* CATEGORY tweak MERGES INTO the active agent slot at box
-    # precedence (the pre-merge fold, _box_agent_category_fold — spec §2b L411: the
-    # box's ORDINARY same-scope write of its agent's subtree rides the ONE cascade
-    # merge). This is the SEAM-1 design: the snapshot is the launch-local, per-box
-    # EFFECTIVE view, and merge-time None suppression structurally requires the box
-    # tweak to join the agent NAME in the one merge (the old "pristine agent subtree"
-    # assert pinned the retired post-expand-overlay design, not spec text). A box
-    # override of ONE deep leaf still coexists with the sibling default (per-name
-    # merge).
+def test_the_no_agent_LAUNCH_shape_mirrors_the_default_backstop():
+    """⚑ THE MEASURED LAUNCH SHAPE, not the docstring's.
+
+    A no-agent/shell launch passes ``agent_name="general"`` (start.py:
+    ``agent_id = with_harness(...) if target else "general"``), NOT a blank — so the
+    blank short-circuit above does NOT fire and the mirror holds the
+    ``agent.default`` backstop. This is the shape a reader of ``meta.box.agent`` on
+    a real shell box will find; pinning it stops the module note from drifting back
+    to the (false) "empty for a no-agent box" claim.
+
+    The auth capability key is materialized by the FLOOR (pre-expand) and must
+    survive the copy either way.
+    """
+    snap = build_launch_snapshot(
+        agent_name="general",
+        ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"model": "opus", "auto_approve": "true"},
+        auth_chain=auth_chain_floor(mode="primary", agent_name=""),
+    )
+    mirror = snap.meta.box.agent
+    assert sorted(dict.keys(mirror)) == ["auth", "auto_approve", "model"]
+    assert mirror.model == "opus"          # the agent.default backstop
+    # NOTHING consumes these leaves: the only runtime reader under
+    # meta.box.agent is auth.share_support, which the FLOOR supplies.
+    assert "share_support" in snap.meta.box.agent.auth
+
+
+# --------------------------------------------------------------------------- #
+# The BOX→AGENT tweak is now the §2h REQUEST pref.agent.<agent>.<key> (P7)     #
+# --------------------------------------------------------------------------- #
+
+
+def test_box_pref_category_merges_into_active_agent_slot(tmp_path: Path):
+    # A box ``pref.agent.<a>.<category>`` tweak merges into the active agent slot as
+    # an ORDINARY cascade level (§2h), so a box override of ONE deep leaf coexists
+    # with the sibling default (per-name merge) and shows in the RO read-back.
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"common": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
+        {"pref": {"agent": {"claude": {"common": {
+            "plugins": ["/box/plugins", "~/.claude/plugins"],
+        }}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude",
@@ -1661,24 +1715,20 @@ def test_box_agent_category_tweak_merges_into_active_agent_slot(tmp_path: Path):
             "agent.claude.common.cache": ("/store/cache", "~/.claude/cache"),
         },
     )
-    # The box-overridden leaf wins in the box.agent mirror; the sibling default leaf
-    # still mirrors (per-name gap-fill).
-    assert snap.box.agent.common.plugins.host == "/box/plugins"
-    assert snap.box.agent.common.cache.host == "/store/cache"
-    # SEAM-1 invariant: the box CATEGORY tweak IS in the merged active agent slot
-    # (the fold at box precedence); the un-tweaked sibling keeps its default.
+    assert snap.meta.box.agent.common.plugins.host == "/box/plugins"
+    assert snap.meta.box.agent.common.cache.host == "/store/cache"
     assert snap.agent.claude.common.plugins.host == "/box/plugins"
     assert snap.agent.claude.common.cache.host == "/store/cache"
 
 
-def test_box_agent_category_present_none_suppresses_through_adapter(tmp_path: Path):
-    # A box.agent CATEGORY present-None (``null``) SUPPRESSES the inherited default
-    # bind AT MERGE (the fold at box precedence + the §3 type-split), so it never
-    # reaches the category adapter — no ``seeded`` entry emitted, and NO
-    # ``SettingsError`` raise (the F8 latent present-None collector crash, fixed).
+def test_box_pref_category_present_none_suppresses_through_adapter(tmp_path: Path):
+    # A box pref CATEGORY present-None (``null``) SUPPRESSES the inherited default
+    # bind AT MERGE (the §3 type-split), so it never reaches the category adapter.
+    # ⚑ §2h: present-None installs VERBATIM — ``if value is None: continue`` in the
+    # pref loop would silently delete this capability.
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"seeded": {"x": None}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"x": None}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude",
@@ -1686,22 +1736,22 @@ def test_box_agent_category_present_none_suppresses_through_adapter(tmp_path: Pa
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
     )
-    # Merge-time OMIT: suppressed name absent from BOTH the agent slot and the mirror.
-    assert "x" not in snap.agent.claude.seeded
-    assert "agent" not in snap.box or "seeded" not in snap.box.agent \
-        or "x" not in snap.box.agent.seeded
-    # The adapter runs cleanly (no raise) and emits NO seeded entry for x.
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    assert not [e for e in entries if e.category == "seeded" and e.name == "x"]
+    names = {
+        e.name
+        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+        if e.category == "seeded"
+    }
+    assert "x" not in names
+    agent_node = snap.agent.claude if "claude" in snap.agent else KeyStore()
+    seeded = agent_node.seeded if "seeded" in agent_node else KeyStore()
+    assert "x" not in seeded
 
 
-def test_box_agent_category_positive_tweak_delivers_through_adapter(tmp_path: Path):
-    # A POSITIVE box.agent category entry for the active agent DELIVERS: the fold
-    # carries it into agent.<active> at box precedence, so the adapter emits it as an
-    # agent-scope entry (the box's downward tweak takes EFFECT in delivery).
+def test_box_pref_category_positive_tweak_delivers_through_adapter(tmp_path: Path):
+    # A POSITIVE box pref category entry DELIVERS as an agent-scope entry.
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"seeded": {"bx": ["/box/src", "~/bx"]}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"bx": ["/box/src", "~/bx"]}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude",
@@ -1711,21 +1761,18 @@ def test_box_agent_category_positive_tweak_delivers_through_adapter(tmp_path: Pa
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     seeded = {e.name: e for e in entries if e.category == "seeded"}
-    assert seeded["bx"].scope == "agent"  # box tweak delivers as an AGENT entry.
+    assert seeded["bx"].scope == "agent"
     assert seeded["bx"].host_src == "/box/src"
-    assert seeded["x"].host_src == "/store/x"  # the default sibling still delivers.
+    assert seeded["x"].host_src == "/store/x"
 
 
-def test_box_agent_category_from_workset_file_delivers_and_suppresses(tmp_path: Path):
-    # DEFAULTS-DOWN (spec §0): a CONTAINING (workset) file may set box.agent.* as a
-    # default for the box. The fold sources EVERY file-backed level's box.agent (box,
-    # workset, system, base), not just the box FILE — so a workset-sourced box.agent
-    # category entry DELIVERS and a workset-sourced null SUPPRESSES (the old overlay
-    # read the merged box.agent, which included container-sourced leaves; the fold
-    # must match that or a spec-legal config regresses delivered→dropped).
+def test_workset_pref_delivers_and_suppresses(tmp_path: Path):
+    # A WORKSET file's pref applies to its boxes (§2h: prefs are legal in the
+    # workset and box files only), delivering a positive entry and suppressing with
+    # a present-None.
     ws_pos = _yaml(
         tmp_path / "ws_pos.yaml",
-        {"box": {"agent": {"seeded": {"wy": ["/ws/src", "~/wy"]}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"wy": ["/ws/src", "~/wy"]}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
@@ -1737,11 +1784,11 @@ def test_box_agent_category_from_workset_file_delivers_and_suppresses(tmp_path: 
         for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert seeded == {"wy": "/ws/src", "x": "/store/x"}  # workset tweak DELIVERS.
+    assert seeded == {"wy": "/ws/src", "x": "/store/x"}
 
     ws_null = _yaml(
         tmp_path / "ws_null.yaml",
-        {"box": {"agent": {"seeded": {"x": None}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"x": None}}}}},
     )
     snap2 = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
@@ -1753,20 +1800,20 @@ def test_box_agent_category_from_workset_file_delivers_and_suppresses(tmp_path: 
         for e in snapshot_category_entries(snap2, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert "x" not in names  # workset-sourced null SUPPRESSES the default seed.
+    assert "x" not in names
 
 
-def test_box_agent_category_box_file_beats_workset_default(tmp_path: Path):
-    # The fold preserves cascade precedence AMONG box.agent sources: a box-FILE
-    # box.agent tweak beats a workset-FILE box.agent default at the same name (box is
-    # more specific — the winner applies at box precedence).
+def test_box_pref_beats_workset_pref_for_a_category(tmp_path: Path):
+    # §1A L364-367: box beats workset by ASSIGNMENT ORDER, for a CATEGORY as well
+    # as a scalar. ⮕ P7 FLIP: while the retired ``box.agent.<category>`` fold
+    # existed it out-ranked a box pref (P6's transitional pin); the fold is gone.
     ws = _yaml(
         tmp_path / "ws.yaml",
-        {"box": {"agent": {"seeded": {"k": ["/ws/k", "~/k"]}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"k": ["/ws/k", "~/k"]}}}}},
     )
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"seeded": {"k": ["/box/k", "~/k"]}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"k": ["/box/k", "~/k"]}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
@@ -1778,31 +1825,33 @@ def test_box_agent_category_box_file_beats_workset_default(tmp_path: Path):
         for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert seeded == {"k": "/box/k"}  # box file wins the box.agent cascade.
+    assert seeded == {"k": "/box/k"}
 
 
 # --------------------------------------------------------------------------- #
-# box.agent.* mirror — EFFECT-LEVEL (the override must change RESOLUTION output) #
+# EFFECT-LEVEL (the box's tweak must change RESOLUTION output)                 #
 # --------------------------------------------------------------------------- #
 
 
-def test_box_agent_override_changes_effective_behavior(tmp_path: Path):
-    # A box.agent.model override must change effective_behavior OUTPUT (not just the
-    # subtree) — the box's downward tweak takes EFFECT (§0 L38-40 / §2b L380).
-    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
+def test_box_pref_changes_effective_behavior(tmp_path: Path):
+    # A box ``pref.agent.claude.model`` must change effective_behavior OUTPUT.
+    box = _yaml(
+        tmp_path / "box.yaml",
+        {"pref": {"agent": {"claude": {"model": "sonnet"}}}},
+    )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         behavior_floor={"model": "opus", "auto_approve": "true"},
     )
     eff = effective_behavior(snap, active_agent="claude")
-    assert eff["model"] == "sonnet"  # box override WON the §2d pick.
-    assert eff["auto_approve"] == "true"  # un-overridden sibling = mirrored default.
+    assert eff["model"] == "sonnet"
+    assert eff["auto_approve"] == "true"
 
 
 def test_box_agent_no_override_effective_behavior_identical_to_baseline():
-    # EQUIVALENCE GUARD: with NO box.agent override the effective behavior is
-    # byte-identical to the agent.default ⊕ agent.<active> pick (overlay is a no-op).
+    # EQUIVALENCE GUARD: with NO box tweak the effective behavior is byte-identical
+    # to the agent.default ⊕ agent.<active> pick.
     common = dict(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
@@ -1810,16 +1859,17 @@ def test_box_agent_no_override_effective_behavior_identical_to_baseline():
     )
     snap = build_launch_snapshot(**common)
     eff = effective_behavior(snap, active_agent="claude")
-    # The pick (agent.default backstop here) — box.agent mirrors it exactly.
     assert eff == {"model": "opus", "auto_approve": "true"}
 
 
-def test_box_agent_bindings_override_changes_category_entries(tmp_path: Path):
-    # A box.agent.bindings.* override must produce a category entry under the box's
-    # effective agent (the override feeds category resolution).
+def test_box_pref_bindings_override_changes_category_entries(tmp_path: Path):
+    # A box pref on a category must produce a category entry under the box's
+    # effective agent (the request feeds category resolution).
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"common": {"plugins": ["/box/plugins", "~/.claude/plugins"]}}}},
+        {"pref": {"agent": {"claude": {"common": {
+            "plugins": ["/box/plugins", "~/.claude/plugins"],
+        }}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
@@ -1831,16 +1881,15 @@ def test_box_agent_bindings_override_changes_category_entries(tmp_path: Path):
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     plug = [e for e in entries if e.category == "common" and e.name == "plugins"]
     assert len(plug) == 1, entries
-    # The box.agent override host_src WON over the agent-tier default.
     assert plug[0].host_src == "/box/plugins"
-    assert plug[0].scope == "agent"  # emitted under the (bare) agent scope token.
+    assert plug[0].scope == "agent"
 
 
-def test_box_agent_env_override_changes_category_entries(tmp_path: Path):
-    # A box.agent.env.* override appears as an agent-scope env entry.
+def test_box_pref_env_override_changes_category_entries(tmp_path: Path):
+    # A box pref on env.* appears as an agent-scope env entry.
     box = _yaml(
         tmp_path / "box.yaml",
-        {"box": {"agent": {"env": {"MY_VAR": "box_val"}}}},
+        {"pref": {"agent": {"claude": {"env": {"MY_VAR": "box_val"}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
@@ -1850,12 +1899,12 @@ def test_box_agent_env_override_changes_category_entries(tmp_path: Path):
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     envs = [e for e in entries if e.category == "env" and e.name == "MY_VAR"]
     assert len(envs) == 1, entries
-    assert envs[0].options == "box_val"  # box override WON.
+    assert envs[0].options == "box_val"
 
 
 def test_box_agent_no_override_category_entries_identical_to_baseline():
-    # EQUIVALENCE GUARD (category side): NO box.agent override → the category entry
-    # set is byte-identical to the baseline (overlay is a no-op).
+    # EQUIVALENCE GUARD (category side): NO box tweak → the category entry set is
+    # byte-identical to the baseline.
     common = dict(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
@@ -1870,10 +1919,6 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
         (e.category, e.name, e.host_src, e.options)
         for e in entries if e.scope == "agent"
     )
-    # Exactly the agent-tier defaults — the box.agent mirror reproduced them, so the
-    # overlay added/changed nothing.
-    # sorted(): ``common`` now precedes ``env`` (it did not when the category was
-    # named ``shared``).
     assert agent_entries == [
         ("common", "plugins", "/store/plugins", "Z,U"),
         ("env", "MY_VAR", None, "agent_val"),
@@ -2464,15 +2509,19 @@ class TestPrefLevelPrecedence:
         )
         assert snap.agent.claude.model == "opus"
 
-    def test_the_box_agent_CATEGORY_fold_still_beats_a_box_pref(self, tmp_path):
-        """⚑ TRANSITIONAL, and P7 DELETES THIS CONTEST.
+    def test_a_box_pref_wins_now_that_the_box_agent_fold_is_gone(self, tmp_path):
+        """⮕ **THE P6 PIN, FLIPPED BY P7 — deliberately.**
 
-        ``_box_agent_category_fold`` splices the retiring ``box.agent.<category>``
-        tweak ABOVE ``box``, while a pref sits BELOW its own level's partial (§2h
-        expands prefs before the level resolves). So for a CATEGORY the legacy
-        mirror wins today. P7 retires settable ``box.agent.*``, which removes the
-        contender — when this test changes in P7 that is the expected flip, not a
-        regression.
+        P6 recorded a TRANSITIONAL contest: ``_box_agent_category_fold`` spliced
+        the retiring ``box.agent.<category>`` tweak ABOVE ``box``, while a pref
+        sits BELOW its own level's partial (§2h expands prefs before the level
+        resolves), so for a CATEGORY the legacy mirror won. P7 RETIRES settable
+        ``box.agent.*`` (spec §2b) and deletes the fold, which removes the
+        contender — the pref now wins a CATEGORY exactly as it already won a
+        SCALAR (the test below, unchanged and still green, is the discriminator
+        proving only the category half of the contest was ever real).
+
+        INVERT: restore the fold and this reddens.
         """
         snap = _pref_snap(
             tmp_path,
@@ -2480,12 +2529,15 @@ class TestPrefLevelPrecedence:
                 "pref": {"agent": {"claude": {"common": {
                     "plugins": ["/from/pref", "~/.claude/plugins"],
                 }}}},
+                # The RETIRED table, left here on purpose: it must be INERT.
                 "box": {"agent": {"common": {
                     "plugins": ["/from/mirror", "~/.claude/plugins"],
                 }}},
             },
         )
-        assert snap.agent.claude.common.plugins.host == "/from/mirror"
+        assert snap.agent.claude.common.plugins.host == "/from/pref"
+        # …and the retired table contributes nothing anywhere else either.
+        assert snap.meta.box.agent.common.plugins.host == "/from/pref"
 
     def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
         """⚑ MEASURED, and it corrects the brief's prediction.

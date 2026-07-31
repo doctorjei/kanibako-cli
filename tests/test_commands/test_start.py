@@ -18,6 +18,19 @@ from kanibako.commands.start import (
 from kanibako.paths import BoxMode
 from kanibako.settings_launch import AuthSource
 
+
+def _sel(node: str, source: str = "settings"):
+    """The P7 ``select_agent`` return shape (was a bare node-name string).
+
+    ``AgentSelection`` carries the node AND where it came from, so the launch can
+    install the resolved selection at ``system.agent`` (the §1A level) — which is
+    what keeps the snapshot equal to the agent that actually runs.
+    """
+    from kanibako.agent_select import AgentSelection
+
+    return AgentSelection(node=node, source=source)
+
+
 # Auth-level redesign: the boolean ``effective_group_auth`` was replaced by an
 # ``AuthSource`` (``kanibako.settings_launch``).  These two module-level
 # constants stand in for the two ends the old bool covered:
@@ -388,9 +401,10 @@ class TestEffectiveBootstrapResolution:
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "none"}}})
         assert _effective_bootstrap(proj, sys_file, "claude") == "none"
 
-    def test_box_agent_mirror_override(self, tmp_path):
-        """A box-level tweak via the ``box.agent.bootstrap`` mirror (spec §2b B5)
-        WINS the §2d pick — the box's downward override takes effect."""
+    def test_box_pref_override(self, tmp_path):
+        """A box-level tweak via the §2h REQUEST ``pref.agent.<a>.bootstrap`` WINS
+        the §2d pick — the box's override takes effect. (⮕ P7: was the
+        ``box.agent.bootstrap`` mirror, retired by spec §2b.)"""
         from kanibako.commands.start import _effective_bootstrap
         from kanibako.config_io import dump_doc
         proj = self._proj(tmp_path)
@@ -398,27 +412,27 @@ class TestEffectiveBootstrapResolution:
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
         dump_doc(
             proj.metadata_path / "settings.yaml",
-            {"box": {"agent": {"bootstrap": "none"}}},
+            {"pref": {"agent": {"claude": {"bootstrap": "none"}}}},
         )
         assert _effective_bootstrap(proj, sys_file, "claude") == "none"
 
-    def test_box_agent_mirror_is_sole_agent_scope_setting(self, tmp_path):
-        """REGRESSION (F1): ``box.agent.bootstrap`` as the SOLE agent-scope setting —
-        NO system ``agent.default.bootstrap``, NO agent-file behavior — must still be
+    def test_box_pref_is_sole_agent_scope_setting(self, tmp_path):
+        """REGRESSION (F1): the box's REQUEST as the SOLE agent-scope setting — NO
+        system ``agent.default.bootstrap``, NO agent-file behavior — must still be
         honored (the retired ``box.bootstrap_program=none`` worked here).
 
         Mutation-proof: this only passes because ``_effective_bootstrap`` seeds
         ``behavior_floor={"bootstrap": tmux}`` so the snapshot's ``agent`` node exists
-        and ``effective_behavior`` reaches the box.agent mirror.  Drop that floor and
-        the snapshot has no ``agent`` node → ``effective_behavior`` early-returns
+        and ``effective_behavior`` reaches the pref-installed value.  Drop that floor
+        and the snapshot has no ``agent`` node → ``effective_behavior`` early-returns
         ``{}`` → this returns ``'tmux'`` and the box wrongly launches persistent."""
         from kanibako.commands.start import _effective_bootstrap
         from kanibako.config_io import dump_doc
         proj = self._proj(tmp_path)
-        # ONLY the box.agent mirror is set — no system file at all.
+        # ONLY the box's §2h request is set — no system file at all.
         dump_doc(
             proj.metadata_path / "settings.yaml",
-            {"box": {"agent": {"bootstrap": "none"}}},
+            {"pref": {"agent": {"claude": {"bootstrap": "none"}}}},
         )
         assert _effective_bootstrap(proj, None, "claude") == "none"
 
@@ -2729,15 +2743,13 @@ class TestApplyInitSeeds:
         default seed (the KeyStore merge suppression idiom, §3/§6e — present-None
         OMITs the inherited bind; the old terminal-``""`` idiom is retired).
 
-        Director ruling (F8, 2026-07-02): the capability is spec-implied — the
-        §2b ``box.agent.*`` mirror is THE sanctioned route for a box tweaking its
-        agent (a box file may NOT set ``agent.<name>.*`` directly: an upward
-        write, dropped at RESOLVE per spec §0 clause 4). Routed to the legal
-        ``box.agent.seeded.x: null`` route: the box.agent.* CATEGORY tweaks fold
-        into ``agent.<active>`` at box precedence PRE-merge
-        (``_box_agent_category_fold``), so the present-None OMITs the target seed
-        AT MERGE (the §3 type-split) — one route, no post-expand overlay, no
-        collector raise.
+        Director ruling (F8, 2026-07-02): the capability is spec-implied — a box
+        may not set ``agent.<name>.*`` directly (an upward write, dropped at
+        RESOLVE per spec §0 clause 4). ⮕ P7: the sanctioned route is now the §2h
+        REQUEST ``pref.agent.<a>.seeded.x: null`` (the ``box.agent.*`` mirror it
+        used to be is RETIRED, spec §2b). The pref installs present-None VERBATIM
+        as an ordinary cascade level, so it OMITs the target seed AT MERGE (the §3
+        type-split) — one route, no post-expand overlay, no collector raise.
         """
         from types import SimpleNamespace
         shell = self._shell(tmp_path)
@@ -2750,10 +2762,11 @@ class TestApplyInitSeeds:
         )
         # The default seed ``agent.claude.seeded.x`` is DISCRIMINATED at source
         # ``agent.claude.seeded.x`` (the discriminated §2d shape); the box
-        # suppresses it through its §2b box.agent.* mirror — the spec-legal
-        # same-scope box→agent tweak.
+        # suppresses it through its §2h REQUEST — the spec-legal box→agent tweak.
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text('box:\n  agent:\n    seeded:\n      x: null\n')
+        ptoml.write_text(
+            "pref:\n  agent:\n    claude:\n      seeded:\n        x: null\n"
+        )
         self._call(
             tmp_path, proj=self._proj(shell), target=target,
         )
@@ -5317,7 +5330,7 @@ class TestCodexPersonaLaunchWiring:
         prov = self._provider()
         with start_mocks() as m:
             # resolve_agent yields the CANONICAL node (℘), the persona identity.
-            m.resolve_agent.return_value = "navigator℘codex"
+            m.resolve_agent.return_value = _sel("navigator℘codex")
             m.target.name = "codex"
             m.target.descriptor = CodexTarget().descriptor
             with patch(
@@ -5346,7 +5359,7 @@ class TestCodexPersonaLaunchWiring:
     def test_bare_codex_launch_passes_no_provider(self, start_mocks):
         from kanibako.plugins.codex.target import CodexTarget
         with start_mocks() as m:
-            m.resolve_agent.return_value = "codex"
+            m.resolve_agent.return_value = _sel("codex")
             m.target.name = "codex"
             m.target.descriptor = CodexTarget().descriptor
             rc = _run_container(
@@ -5451,7 +5464,7 @@ class TestPersonaLoadOrErrorIntegration:
         """Resolve the active agent as the persona node ``navigator℘claude``."""
         from kanibako.agent_config import AgentConfig
         from kanibako.plugins.claude.target import ClaudeTarget, _CLAUDE_DESCRIPTOR
-        m.resolve_agent.return_value = self._NODE
+        m.resolve_agent.return_value = _sel(self._NODE)
         m.target.name = "claude"
         m.target.descriptor = _CLAUDE_DESCRIPTOR
         # Real descriptors so the launch-snapshot stub builds the endpoint floor
@@ -5659,7 +5672,7 @@ class TestPersonaLoadOrErrorIntegration:
         absent_cfg = tmp_path / "agents" / "navigator℘claude" / "settings.yaml"
         with start_mocks() as m:
             self._drive_persona(m)
-            m.read_default_agent.return_value = "navigator+claude"  # system default
+            m.read_system_agent.return_value = "navigator+claude"  # system default
             with (
                 patch(
                     "kanibako.commands.start.agent_settings_path",
@@ -6189,3 +6202,109 @@ class TestReconcilePersonaStore:
         )
         assert out is cfg
         assert synced is False
+
+
+# ---------------------------------------------------------------------------
+# D-M6 — a SUPPRESSED box takes the PLAIN-SHELL path (bifrost E-NULL regression)
+# ---------------------------------------------------------------------------
+
+
+class TestSuppressedBoxLaunchesNoAgent:
+    """⚑⚑ THE BIFROST E-NULL REGRESSION — a defect the UNIT seam could not catch.
+
+    ``select_agent`` was already correct (``node='' source='suppressed'``); the bug
+    was one line LATER, where the selection vocabulary meets the target vocabulary:
+    ``resolve_target(harness_of("")) `` sees an EMPTY NAME, and empty means
+    *auto-detect* to it (its documented contract for other callers). So a box that
+    asked for NO agent launched claude on the real path — binary, commons, KICKOFF
+    and CREDENTIALS delivered — while ``selection_level`` was (correctly) ``None``,
+    which ALSO collapsed ``meta.box.auth.workset_path`` to the workset auth ROOT.
+
+    These drive the LAUNCH-side wiring, which is the level the escape happened at:
+    the unit tests for ``select_agent`` were green throughout.
+    """
+
+    def _suppressed(self):
+        from kanibako.agent_select import AgentSelection
+
+        return AgentSelection(node="", source="suppressed")
+
+    def _run(self, m):
+        m.resolve_agent.return_value = self._suppressed()
+
+        def _forbid_empty(name=None, project_path=None):
+            # ⚑ THE DEFECT, precisely: an EMPTY name makes ``resolve_target``
+            # AUTO-DETECT (its documented contract for other callers), so a
+            # suppressed box gets whatever agent is installed. A resolve for a
+            # NAMED target is fine — ``_launch_snapshot_inputs`` legitimately asks
+            # about ``"general"`` — so guard on the EMPTINESS, not on the call.
+            if not name:
+                raise AssertionError(
+                    "resolve_target called with an EMPTY name for a SUPPRESSED "
+                    "box — it will AUTO-DETECT an agent (bifrost E-NULL defect)",
+                )
+            raise KeyError(name)
+
+        m.resolve_target.side_effect = _forbid_empty
+        with patch("kanibako.targets.resolve_target", side_effect=_forbid_empty):
+            return _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+
+    def test_a_suppressed_box_launches_without_resolving_any_agent(self, start_mocks):
+        with start_mocks() as m:
+            assert self._run(m) == 0
+            m.runtime.run.assert_called_once()
+
+    def test_a_suppressed_box_carries_no_agent_stamp(self, start_mocks):
+        """No ``KANIBAKO_AGENT``: the stamp is what stop / creds-watch read back to
+        run a credential writeback, so a bogus one would restart the whole agent
+        lifecycle on a box that has no agent (and re-open the MUST-1 collapse on
+        the writeback side)."""
+        with start_mocks() as m:
+            assert self._run(m) == 0
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert "KANIBAKO_AGENT" not in env
+
+    def test_a_suppressed_box_delivers_no_agent_binary_mounts(self, start_mocks):
+        """The plain-shell shape: no target ⇒ no descriptor, no install, so the
+        launch never asks the target for binaries or a config."""
+        with start_mocks() as m:
+            assert self._run(m) == 0
+            m.target.detect.assert_not_called()
+            m.target.binary_mounts.assert_not_called()
+            m.target.generate_agent_config.assert_not_called()
+
+    def test_a_suppressed_box_resolves_the_snapshot_as_general_with_no_level(
+        self, start_mocks,
+    ):
+        """``agent_id`` falls to the ``general`` template slot and NOTHING is
+        installed at ``system.agent`` — pinning that the suppression survives all
+        the way into the snapshot inputs."""
+        with start_mocks() as m:
+            assert self._run(m) == 0
+            kwargs = m.resolve_launch_snapshot.call_args.kwargs
+            assert kwargs["agent_name"] == "general"
+            assert kwargs["selection_level"] is None
+            assert kwargs["target"] is None
+
+    def test_an_UNSUPPRESSED_box_still_resolves_its_target(self, start_mocks):
+        """The DISCRIMINATOR: the guard must key on the SUPPRESSION, not fire for
+        every launch. A normal selection still goes through ``resolve_target``."""
+        from kanibako.agent_select import AgentSelection
+
+        with start_mocks() as m:
+            m.resolve_agent.return_value = AgentSelection(
+                node="claude", source="settings",
+            )
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            m.target.detect.assert_called()
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert env["KANIBAKO_AGENT"] == "claude"

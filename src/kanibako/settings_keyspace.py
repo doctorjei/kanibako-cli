@@ -72,8 +72,9 @@ DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset({
 # ---------------------------------------------------------------------------
 
 #: ``system.<leaf>`` (spec §2g L1173-1188). ⚑ ``system.agent`` is the SPEC name
-#: (D-M2 superseded 2026-07-29); the stored ``system.default_agent`` is a
-#: RETIRING spelling, see :data:`RETIRING_KEYS`.
+#: (D-M2 superseded 2026-07-29) and, since P7, the ONLY spelling: the stored
+#: ``system.default_agent`` is RETIRED and REFUSED by name at assembly
+#: (``settings_assemble.RETIRED_FILE_KEYS``).
 DECLARED_SYSTEM_LEAVES: Final[frozenset[str]] = frozenset({
     "channelroot", "template", "canon", "backup", "cache", "runtime",
     "agent", "setup_completed",
@@ -214,16 +215,15 @@ _VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: Spellings still present in ``config_interface.KNOWN_CONFIG_KEYS`` that the
 #: SPEC has already retired or renamed. Each names the phase that deletes it.
 #: ``tests/test_settings_keyspace.py`` exempts exactly these and nothing else —
-#: **a FOURTH entry means the spec and the settable surface disagree somewhere
+#: **a SECOND entry means the spec and the settable surface disagree somewhere
 #: this arc has not accounted for, and that is a STOP-and-report condition, not
-#: an exemption to add.**
+#: an exemption to add.**  (It held THREE until P7 retired ``box.agent_name`` and
+#: ``system.default_agent``; the cap shrinks with the set, deliberately.)
 #:
 #: The "closed-keyspace resolve enforcement" follow-on is gated on this set
 #: being EMPTY (plus: the conformance test green with no exemptions, and a
 #: real-store sweep per migration-issues M-1/M-2).
 RETIRING_KEYS: Final[frozenset[str]] = frozenset({
-    "box.agent_name",         # §2b L698 RETIRED → pref.system.agent (P7 / M-4)
-    "system.default_agent",   # §2g L1187 renamed → system.agent (P7 / M-4)
     "system.base_template",   # §2g L1181 renamed → system.template (C-CANON / M-11)
 })
 

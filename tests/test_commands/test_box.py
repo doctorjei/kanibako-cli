@@ -2350,14 +2350,17 @@ class TestImportPersonaStoreForCreate:
 
 
 class TestCreatePersistsAgentSelection:
-    """`create --agent <ref>` persists `box.agent_name` (Jei 2026-07-15).
+    """`create --agent <ref>` persists the §2h REQUEST ``pref.system.agent``.
 
     Real-path ``run_create`` runs: the selection lands in the box settings file
     through the sanctioned settings write, so a PLAIN ``start`` resolves the
-    selected agent via the normal cascade (explicit > box > workset > system
-    default) instead of falling through to the system default.  ``start
-    --agent <other>`` stays an ephemeral override (never persisted — covered by
-    the cascade precedence assert below).
+    selected agent (system.agent < workset pref < box pref < --agent) instead of
+    falling through to the system default.  ``start --agent <other>`` stays an
+    ephemeral override (never persisted).
+
+    ⮕ **P7:** the persisted key was ``box.agent_name``, RETIRED by spec §2b — a
+    box no longer names its agent with a key of its own; it REQUESTS one at the
+    key that resolves earlier.
     """
 
     def _create(self, tmp_home, *, agent=None):
@@ -2382,7 +2385,7 @@ class TestCreatePersistsAgentSelection:
         assert proj is not None
         return proj.metadata_path / BOX_META_FILE
 
-    def test_create_with_agent_persists_box_agent_name(
+    def test_create_with_agent_persists_the_pref_request(
         self, config_file, tmp_home, credentials_dir,
     ):
         from kanibako.config_io import load_doc
@@ -2390,9 +2393,13 @@ class TestCreatePersistsAgentSelection:
         assert self._create(tmp_home, agent="claude") == 0
         settings = self._box_settings(config_file, tmp_home)
         data = load_doc(settings)
-        assert data["box"]["agent_name"] == "claude"
+        # The NESTED pref table (never a dotted literal — P6 rejects that
+        # spelling, because a bind-shaped request would not be bind-parsed).
+        assert data["pref"]["system"]["agent"] == "claude"
+        # …and NOT the retired key.
+        assert "agent_name" not in data.get("box", {})
 
-    def test_plain_create_writes_no_agent_name(
+    def test_plain_create_writes_no_agent_selection(
         self, config_file, tmp_home, credentials_dir,
     ):
         from kanibako.config_io import load_doc
@@ -2400,33 +2407,54 @@ class TestCreatePersistsAgentSelection:
         assert self._create(tmp_home) == 0
         settings = self._box_settings(config_file, tmp_home)
         data = load_doc(settings)
+        assert "agent" not in data.get("pref", {}).get("system", {})
         assert "agent_name" not in data.get("box", {})
 
     def test_persisted_selection_drives_plain_start_resolution(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """The read side: a plain start (explicit_agent=None) resolves the
-        persisted box.agent_name; an explicit --agent still wins ephemerally."""
-        from kanibako.config import load_merged_config, resolve_agent
+        """⚑ THE CREATE→START ROUND TRIP — the single most important regression
+        test of this phase: what ``create --agent`` writes must be what a plain
+        ``start`` resolves. INVERT: write the retired ``box.agent_name`` at create
+        (or read it at start) and the box silently launches a different agent."""
+        from kanibako.config import load_config, resolve_agent
+        from kanibako.paths import load_std_paths
+        from kanibako.settings_launch import resolve_selected_agent
+        from kanibako.agent_select import launch_resolve_ctx
+        from kanibako.commands.start import _resolve_existing_box
 
         assert self._create(tmp_home, agent="claude") == 0
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+        assert proj is not None
         settings = self._box_settings(config_file, tmp_home)
-        merged = load_merged_config(config_file, settings)
-        assert merged.box_agent_name == "claude"
-        resolved = resolve_agent(
-            explicit_agent=None,
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=None,
-            project_path=tmp_home / "project",
+        # ⚑ THE WHOLE SEAM, not a re-implementation of it: ``select_agent`` is what
+        # the launch calls, so this drives the create write, the refusal loop, the
+        # narrow selection resolve AND the arbiter in one step. (A test that only
+        # called ``resolve_selected_agent`` would leave the seam itself unpinned —
+        # deleting the refusal loop, or the ``select_agent`` call in start.py, would
+        # redden nothing.)
+        from kanibako.agent_select import select_agent
+
+        sel = select_agent(std=std, proj=proj, explicit_agent=None)
+        assert (sel.node, sel.source) == ("claude", "settings")
+        # …and the value the launch installs at the §1A level is that same node.
+        assert sel.selection_level == {"system.agent": "claude"}
+        # The narrow resolve underneath reads the REQUEST from the box file.
+        requested = resolve_selected_agent(
+            ctx=launch_resolve_ctx(std, proj, None),
+            system_path=std.settings, workset_path=None, box_path=settings,
+            valid_agents=frozenset({"claude", "goose"}),
         )
-        assert resolved == "claude"
+        assert requested == "claude"
+        assert resolve_agent(
+            explicit_agent=None, requested=str(requested),
+            project_path=tmp_home / "project",
+        ) == "claude"
         # Ephemeral override on top: explicit wins, nothing re-persisted.
         assert resolve_agent(
-            explicit_agent="goose",
-            box_agent_name=merged.box_agent_name,
-            workset_agent=None,
-            system_default_path=None,
+            explicit_agent="goose", requested=str(requested),
             project_path=tmp_home / "project",
         ) == "goose"
 
@@ -2455,7 +2483,7 @@ class TestCreatePersistsAgentSelection:
 
         assert self._create(tmp_home, agent="navigator+codex") == 0
         settings = self._box_settings(config_file, tmp_home)
-        assert load_doc(settings)["box"]["agent_name"] == "navigator+codex"
+        assert load_doc(settings)["pref"]["system"]["agent"] == "navigator+codex"
         # The store import registered the agent node as part of the create.
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths
@@ -2464,11 +2492,11 @@ class TestCreatePersistsAgentSelection:
         node_settings = load_doc(std.agents / "navigator℘codex" / "settings.yaml")
         assert node_settings["self"]["endpoint"] == "https://api.navigator.example/v1"
 
-    def test_failing_verdict_leaves_no_box_and_no_agent_name(
+    def test_failing_verdict_leaves_no_box_and_no_agent_selection(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
-        leave NO box (no meta, no ``box.agent_name`` anywhere).  The verdict
+        leave NO box (no meta, no ``pref.system.agent`` anywhere).  The verdict
         runs BEFORE box materialisation and before the agent-selection write —
         pin that ordering.  The agents/<node>/settings.yaml written by the
         store import is the ONE documented exception (STORE-OWNED, reconciled
@@ -2499,7 +2527,7 @@ class TestCreatePersistsAgentSelection:
         config = load_config(config_file)
         std = load_std_paths(config)
         # No box was materialised: nothing resolves, no settings file exists,
-        # so box.agent_name cannot have been written anywhere.
+        # so pref.system.agent cannot have been written anywhere.
         assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
         # The documented store-import exception: the agent node registration
         # remains (by design; idempotently re-reconciled at every start).

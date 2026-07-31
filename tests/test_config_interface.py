@@ -85,7 +85,12 @@ class TestIsKnownKey:
         assert is_known_key("vault.enabled") is False
         assert is_known_key("config.data") is True
         assert is_known_key("config.agents") is True
-        assert is_known_key("system.default_agent") is True
+        # ⮕ P7: renamed (spec §2g); the retired spelling is NOT a key.
+        assert is_known_key("system.agent") is True
+        assert is_known_key("system.default_agent") is False
+        # ⮕ P7: ``box.agent_name`` is RETIRED (spec §2b) — the agent SELECTION is
+        # the §2h request ``pref.system.agent``.
+        assert is_known_key("box.agent_name") is False
         # P3: the per-workset registry key is a known settable key.
         assert is_known_key("workset.registry") is True
         # P6a: the workset LAYOUT anchors are now known settable keys.
@@ -1198,95 +1203,84 @@ class TestH2BoolCoercion:
         assert "boolean" in msg
 
 
-def _seed_default_agent(path, name):
-    """Programmatically write system.default_agent (the path setup uses).
+def _seed_system_agent(path, name):
+    """Programmatically write ``system.agent`` (the path ``setup`` uses).
 
-    Writes the agent.default table — exactly what config.read_default_agent
-    reads back and where the CLI ``set`` now also writes (F3).
+    ⮕ P7: writes the ``system:`` table's ``agent`` leaf — where
+    ``config.read_system_agent`` reads back, where the CLI ``set`` writes, AND
+    where ``assemble_levels`` reads the SYSTEM tier. (Was the ``agent.default``
+    table's ``default_agent`` leaf, spec §2g renamed + relocated it.)
     """
     from kanibako.config_interface import _write_nested_toml_key
 
-    _write_nested_toml_key(path, ("agent", "default"), "default_agent", name)
+    _write_nested_toml_key(path, ("system",), "agent", name)
 
 
-class TestSystemDefaultAgent:
-    """system.default_agent: a SETTINGS key (F3 — the old ALL-system.*
-    FILE-ONLY pin is deliberately flipped).
+class TestSystemAgent:
+    """``system.agent``: an ordinary system-scope SETTINGS key (spec §2g L1187).
 
-    set/reset route to the settings tier's ``agent.default`` table — the exact
-    location ``config.read_default_agent`` (the launch reader) and ``setup``
-    already use — so set → get → launch agree on one storage location.
+    ⮕ P7 renamed it from ``system.default_agent`` and RELOCATED it out of the
+    reserved ``agent.default`` table into the ``system:`` table, which deleted the
+    four-site special case: set/get/reset now route through ``_KEY_ROUTES`` like
+    every other scope-prefixed settings key, and the launch reads it as the
+    ordinary SYSTEM tier of the cascade.
     """
 
     def test_set_writes_the_settings_tier(self, tmp_path):
-        from kanibako.config import read_default_agent
+        from kanibako.config import read_system_agent
 
         f = tmp_path / "settings.yaml"
-        msg = set_config_value("system.default_agent", "claude", config_path=f)
+        msg = set_config_value("system.agent", "claude", config_path=f)
         assert not msg.startswith("Error:"), msg
-        # Stored exactly where the shipped reader reads.
-        assert load_doc(f)["agent"]["default"]["default_agent"] == "claude"
-        assert read_default_agent(f) == "claude"
+        # Stored exactly where the shipped reader AND the cascade's system tier read.
+        assert load_doc(f)["system"]["agent"] == "claude"
+        assert read_system_agent(f) == "claude"
 
     def test_reset_removes_the_setting(self, tmp_path):
-        from kanibako.config import read_default_agent
+        from kanibako.config import read_system_agent
 
         f = tmp_path / "settings.yaml"
-        _seed_default_agent(f, "claude")
-        msg = reset_config_value("system.default_agent", config_path=f)
+        _seed_system_agent(f, "claude")
+        msg = reset_config_value("system.agent", config_path=f)
         assert not msg.startswith("Error:"), msg
-        assert read_default_agent(f) is None
+        assert read_system_agent(f) is None
 
     def test_get_reads_programmatic_write(self, tmp_path):
-        from kanibako.config import read_default_agent
+        from kanibako.config import read_system_agent
 
-        # Residuals item 2: default_agent lives in the system SETTINGS file
-        # (@config.settings, where read_default_agent + set/reset all agree), so
-        # a system-scope get reads it via ``system_settings_path`` — NOT the
-        # kanibako_config.yaml CONFIG file. The old test seeded/read it through
-        # ``global_config_path``, the exact clause-5 leak this item closes: no
-        # real caller stores default_agent in the config file.
+        # Residuals item 2: the key lives in the system SETTINGS file
+        # (@config.settings, where read_system_agent + set/reset all agree), so a
+        # system-scope get reads it via ``system_settings_path`` — NOT the
+        # kanibako_config.yaml CONFIG file.
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        _seed_default_agent(ssp, "goose")
+        _seed_system_agent(ssp, "goose")
         # The interface getter and the launch-time reader agree on the settings file.
         assert get_config_value(
-            "system.default_agent", global_config_path=cf, system_settings_path=ssp,
+            "system.agent", global_config_path=cf, system_settings_path=ssp,
         ) == "goose"
-        assert read_default_agent(ssp) == "goose"
+        assert read_system_agent(ssp) == "goose"
 
     def test_get_unset_returns_none(self, tmp_path):
         cf = tmp_path / "kanibako_config.yaml"
         cf.touch()
-        assert get_config_value("system.default_agent", global_config_path=cf) is None
+        assert get_config_value("system.agent", global_config_path=cf) is None
 
-    def test_box_get_does_not_leak_global_default_agent(self, tmp_path):
+    def test_box_get_does_not_leak_the_global_system_agent(self, tmp_path):
         # Residuals item 2 (spec §2a Read verbs, clause 5): a plain get at a
-        # box/workset noun must NOT surface the GLOBAL default_agent — that is
-        # another (containing) tier's value, reserved for --effective. Baseline-RED
-        # at 6340dad: the (project_toml, global_config_path) fallback returned the
-        # global value; GREEN here → "(not set)" (None) since the box file is empty.
+        # box/workset noun must NOT surface the GLOBAL value — that is another
+        # (containing) tier's value, reserved for --effective.
         cf = tmp_path / "kanibako_config.yaml"
-        _seed_default_agent(cf, "claude")  # a global default exists
+        _seed_system_agent(cf, "claude")  # a global default exists
         box_file = tmp_path / "box-settings.yaml"
         box_file.touch()  # the box noun stores nothing
         assert (
             get_config_value(
-                "system.default_agent",
+                "system.agent",
                 global_config_path=cf,
                 project_toml=box_file,
             )
             is None
-        )
-        # But when the box file DOES store it, plain get returns the box value.
-        _seed_default_agent(box_file, "goose")
-        assert (
-            get_config_value(
-                "system.default_agent",
-                global_config_path=cf,
-                project_toml=box_file,
-            )
-            == "goose"
         )
 
 
@@ -1410,36 +1404,37 @@ class TestSystemSettingsTierSplit:
     ``global_config_path`` (which remain the CONFIG file for ``system.*``).
     """
 
-    def test_default_agent_set_routes_to_settings_file(self, tmp_path):
+    def test_system_agent_set_routes_to_settings_file(self, tmp_path):
         """F3 flip: the set SUCCEEDS and lands in the system SETTINGS file's
-        agent.default table — never the kanibako_config.yaml CONFIG file."""
+        ``system:`` table — never the kanibako_config.yaml CONFIG file.
+        (⮕ P7: the table moved from ``agent.default`` to ``system``, §2g.)"""
         cf = tmp_path / "kanibako_config.yaml"        # CONFIG file
         ssp = tmp_path / "global" / "settings.yaml"  # SETTINGS file
         ssp.parent.mkdir(parents=True, exist_ok=True)
         msg = set_config_value(
-            "system.default_agent", "claude",
+            "system.agent", "claude",
             config_path=cf, system_settings_path=ssp,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ssp)["agent"]["default"]["default_agent"] == "claude"
+        assert load_doc(ssp)["system"]["agent"] == "claude"
         assert not cf.exists()
 
-    def test_default_agent_reads_from_settings_file(self, tmp_path):
-        from kanibako.config import read_default_agent
+    def test_system_agent_reads_from_settings_file(self, tmp_path):
+        from kanibako.config import read_system_agent
         from kanibako.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         # setup writes it programmatically into the settings file's table.
-        _write_nested_toml_key(ssp, ("agent", "default"), "default_agent", "goose")
+        _write_nested_toml_key(ssp, ("system",), "agent", "goose")
         # Read back via interface getter (system scope) + launch-time reader.
         assert get_config_value(
-            "system.default_agent", global_config_path=cf, system_settings_path=ssp,
+            "system.agent", global_config_path=cf, system_settings_path=ssp,
         ) == "goose"
         # The launch-time reader points at the SETTINGS file, not kanibako_config.yaml.
-        assert read_default_agent(ssp) == "goose"
-        # A stale value in kanibako_config.yaml's agent table does NOT feed the tier.
-        assert read_default_agent(cf) is None
+        assert read_system_agent(ssp) == "goose"
+        # A stale value in kanibako_config.yaml does NOT feed the tier.
+        assert read_system_agent(cf) is None
 
     def test_agent_setting_routes_to_settings_file(self, tmp_path):
         cf = tmp_path / "kanibako_config.yaml"
@@ -1469,24 +1464,27 @@ class TestSystemSettingsTierSplit:
         # The settings file was never touched by a CONFIG read.
         assert not ssp.exists()
 
-    def test_reset_default_agent_removes_from_settings_file(self, tmp_path):
+    def test_reset_system_agent_removes_from_settings_file(self, tmp_path):
         """F3 flip: reset removes the setting from the SETTINGS file (where the
         launch reader looks), leaving the CONFIG file untouched."""
-        from kanibako.config import read_default_agent
+        from kanibako.config import read_system_agent
         from kanibako.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        _write_nested_toml_key(ssp, ("agent", "default"), "default_agent", "claude")
+        _write_nested_toml_key(ssp, ("system",), "agent", "claude")
         msg = reset_config_value(
-            "system.default_agent", config_path=cf, system_settings_path=ssp,
+            "system.agent", config_path=cf, system_settings_path=ssp,
         )
-        # Honest cleared-form (F7), consistent with every other reset branch.
+        # Honest cleared-form (F7). ⮕ P7: the message now names the key in the
+        # GENERIC branch's flat spelling (``system_agent``), because the key lost
+        # its four-site special case and routes like every other scope-prefixed
+        # settings key — one branch, one message style.
         assert msg == (
-            "Cleared system.default_agent set on this scope; it now falls back "
+            "Cleared system_agent set on this scope; it now falls back "
             "through the cascade."
         ), msg
-        assert read_default_agent(ssp) is None
+        assert read_system_agent(ssp) is None
         assert not cf.exists()
 
     def test_reset_all_clears_settings_and_config_separately(self, tmp_path):
@@ -1496,7 +1494,7 @@ class TestSystemSettingsTierSplit:
         ssp = tmp_path / "global" / "settings.yaml"
         # A SETTING (settings file) + a config override (config file).
         set_config_value(
-            "system.default_agent", "claude",
+            "model", "opus",
             config_path=cf, system_settings_path=ssp,
         )
         _write_nested_toml_key(cf, ("box",), "image", "ghcr.io/x:1")
@@ -1506,13 +1504,13 @@ class TestSystemSettingsTierSplit:
 
     def test_absent_settings_file_is_graceful(self, tmp_path):
         """Missing global/settings.yaml → empty system tier, no error."""
-        from kanibako.config import read_default_agent
+        from kanibako.config import read_system_agent
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"  # never created
-        assert read_default_agent(ssp) is None
+        assert read_system_agent(ssp) is None
         assert get_config_value(
-            "system.default_agent", global_config_path=cf, system_settings_path=ssp,
+            "system.agent", global_config_path=cf, system_settings_path=ssp,
         ) is None
 
 
@@ -2163,21 +2161,29 @@ class TestScopeDirectionGuard:
         assert not msg.startswith("Error:"), msg
         assert load_doc(f)["box"]["image"] == "img:1"
 
-    def test_box_scope_allows_box_agent_key(self, tmp_path):
-        """``box.agent.<key>`` (the §2b B5 downward-tweak mirror) is the BOX
-        namespace — the guard keys on the TOP-LEVEL ``box`` token, so it passes
-        as a same-scope box write AND (B5 now implemented) actually lands in the
-        box settings file at the nested ``box.agent.<key>`` location."""
+    def test_box_scope_refuses_the_retired_box_agent_key(self, tmp_path):
+        """⮕ P7: ``box.agent.<key>`` is RETIRED (spec §2b) — the settable mirror
+        is gone and the cure is the §2h request. The refusal must come from the
+        RETIREMENT (naming the replacement), NOT from the scope-direction guard
+        (which would send the user looking for the wrong problem), and NOTHING
+        may be written."""
         f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
             "box.agent.model", "opus",
             config_path=f, command_scope=ConfigLevel.box,
+            cascade_agent_name="claude",
         )
-        # The scope-direction guard MUST NOT be the thing that refuses it.
         assert "cannot be set from the box scope" not in msg
-        # B5: it is now a settable box-scope key — the write lands nested.
-        assert not msg.startswith("Error:"), msg
-        assert load_doc(f)["box"]["agent"]["model"] == "opus"
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg
+        assert "pref.agent.claude.model" in msg
+        # ⚑ The pointer names what --effective ACTUALLY renders (the pref block:
+        # request + result). It must NOT promise ``meta.box.agent.model``, which no
+        # renderer emits — a cure pointing at output the user cannot find is worse
+        # than no pointer.
+        assert "meta.box.agent" not in msg
+        assert "--effective" in msg
+        assert not f.exists()
 
     def test_workset_scope_allows_workset_key(self, tmp_path):
         f = tmp_path / "ws-settings.yaml"
@@ -2396,72 +2402,79 @@ class TestBoxAgentMirrorConfigSet:
     file at the nested ``box.agent.<key>`` location, and the B4 guard permits it
     as a same-scope box write (covered above + here)."""
 
-    def test_box_agent_key_is_known(self):
-        assert is_known_key("box.agent.model") is True
-        assert is_known_key("box.agent.auto_approve") is True
-        assert is_known_key("box.agent.bindings.ro.share") is True
+    def test_box_agent_key_is_recognised_so_it_can_be_refused(self):
+        """The retired spelling must still be RECOGNISED — a user with it in
+        muscle memory gets the cure, not "unknown config key"."""
+        from kanibako.config_interface import _is_box_agent_key
+        assert _is_box_agent_key("box.agent.model") is True
+        assert _is_box_agent_key("box.agent.bindings.ro.share") is True
+        # It is no longer a SETTABLE key.
+        assert is_known_key("box.agent.model") is True  # recognised…
+        # …but every WRITE verb refuses it (below).
 
-    def test_box_agent_name_scalar_not_a_mirror_key(self):
-        # ``box.agent_name`` (the flat scalar) must NOT be mistaken for the mirror
-        # (it has no dotted tail) — it stays its own known scalar key.
+    def test_the_retired_box_agent_name_scalar_is_not_a_key(self):
+        # ``box.agent_name`` (the flat scalar) is RETIRED (spec §2b) and is not the
+        # mirror either (it has no dotted tail).
         from kanibako.config_interface import _is_box_agent_key
         assert _is_box_agent_key("box.agent_name") is False
-        assert _is_box_agent_key("box.agent.model") is True
-        assert is_known_key("box.agent_name") is True  # still its own known key
+        assert is_known_key("box.agent_name") is False
 
-    def test_set_box_agent_scalar_lands_nested(self, tmp_path):
+    def test_set_box_agent_scalar_is_refused_with_the_pref_cure(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.agent.model", "sonnet",
+            config_path=f, command_scope=ConfigLevel.box,
+            cascade_agent_name="claude",
+        )
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg
+        assert "pref.agent.claude.model" in msg
+        # NOTHING written — a silent write to a key nothing reads is the failure
+        # this refusal exists to prevent.
+        assert not f.exists()
+
+    def test_set_box_agent_deep_category_key_is_refused(self, tmp_path):
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "box.agent.bindings.ro.share", "/user/share",
+            config_path=f, command_scope=ConfigLevel.box,
+            cascade_agent_name="claude",
+        )
+        assert msg.startswith("Error:"), msg
+        assert "pref.agent.claude.bindings.ro.share" in msg
+        assert not f.exists()
+
+    def test_set_box_agent_names_a_placeholder_when_no_agent_resolves(self, tmp_path):
+        # With no resolvable agent the cure still teaches the SHAPE.
         f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
             "box.agent.model", "sonnet",
             config_path=f, command_scope=ConfigLevel.box,
         )
-        assert not msg.startswith("Error:"), msg
-        assert load_doc(f)["box"]["agent"]["model"] == "sonnet"
+        assert "pref.agent.<agent>.model" in msg, msg
 
-    def test_set_box_agent_deep_category_key_lands_nested(self, tmp_path):
-        f = tmp_path / "box-settings.yaml"
-        msg = set_config_value(
-            "box.agent.bindings.ro.share", "/user/share",
-            config_path=f, command_scope=ConfigLevel.box,
-        )
-        assert not msg.startswith("Error:"), msg
-        doc = load_doc(f)
-        assert doc["box"]["agent"]["bindings"]["ro"]["share"] == "/user/share"
-
-    def test_reset_box_agent_key_removes_override(self, tmp_path):
+    def test_reset_box_agent_key_is_refused_and_clears_nothing(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
         dump_doc(f, {"box": {"agent": {"model": "sonnet"}}})
         msg = reset_config_value(
             "box.agent.model", config_path=f, command_scope=ConfigLevel.box,
         )
-        # Residuals item 5: the box.agent reset uses the standard HONEST
-        # cleared-message form (consistency), not the old plain "Reset <key>".
-        # Mutation guard: the old prefix must be GONE; the honest phrase PRESENT.
-        assert not msg.startswith("Reset "), msg
-        assert "cleared" in msg.lower(), msg
-        assert "box.agent.model" in msg, msg
-        # The override is gone (and the now-empty box.agent table pruned).
-        doc = load_doc(f)
-        assert "agent" not in doc.get("box", {})
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg
+        # Symmetric with set: refuse rather than silently clear a key that no
+        # longer does anything — the file is untouched.
+        assert load_doc(f)["box"]["agent"]["model"] == "sonnet"
 
-    def test_reset_box_agent_key_absent_reports_no_override(self, tmp_path):
+    def test_get_box_agent_key_reports_not_set(self, tmp_path):
+        # A hand-written legacy leaf is NOT reported as a value: it has no effect
+        # on the launch, so surfacing it would be worse than "(not set)". The
+        # effective value is readable at meta.box.agent.<key> via --effective.
         f = tmp_path / "box-settings.yaml"
-        dump_doc(f, {"box": {"image": "img:1"}})
-        msg = reset_config_value("box.agent.model", config_path=f)
-        assert "No override" in msg, msg
-        # The unrelated box.image key is untouched.
-        assert load_doc(f)["box"]["image"] == "img:1"
-
-    def test_box_agent_set_does_not_touch_agent_namespace(self, tmp_path):
-        # The mirror override lands under box.agent, NEVER under a top-level
-        # agent.* table (no leak into the shared agent settings tier).
-        f = tmp_path / "box-settings.yaml"
-        set_config_value(
-            "box.agent.model", "sonnet",
-            config_path=f, command_scope=ConfigLevel.box,
-        )
-        doc = load_doc(f)
-        assert "agent" not in doc  # no top-level agent.* table
+        dump_doc(f, {"box": {"agent": {"model": "sonnet"}}})
+        assert get_config_value(
+            "box.agent.model", global_config_path=tmp_path / "cfg.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
+        ) is None
 
 
 class TestBareAgentKeyAtBoxScope:
@@ -2472,31 +2485,34 @@ class TestBareAgentKeyAtBoxScope:
 
     The OLD code wrote ``agent.default.<key>`` into the box settings file, which
     ``settings_assemble._drop_upward_scopes`` then DROPPED at launch — a silent
-    no-op the CLI still reported as "Set". SET now REFUSES (teaching the
-    ``box.agent.<key>`` mirror); GET REDIRECTS the read to that mirror and the box
-    handler NAMES the value ``box.agent.<key>``. Uniform over the whole
-    ``_is_agent_setting`` family (NOT a per-key list). The legitimate forms
-    (``box.agent.<key>``, a bare key at SYSTEM scope, a per-agent
-    ``agent.<name>.<key>``) are UNAFFECTED.
+    no-op the CLI still reported as "Set". SET now REFUSES; GET REDIRECTS the read.
+    ⮕ **P7 RETARGETED the redirect** from the retired ``box.agent.<key>`` mirror to
+    the §2h request ``pref.agent.<active>.<key>`` — a redirect that named a spelling
+    the write verbs now refuse would be a cure that does not work.
     """
 
     def test_redirect_helper_fires_only_for_bare_key_at_box_scope(self):
         from kanibako.config_interface import box_agent_redirect_key
-        # Bare agent keys at box scope → the box.agent.* mirror.
+        # Bare agent keys at box scope → the box's §2h REQUEST.
         assert box_agent_redirect_key(
-            "bootstrap", ConfigLevel.box) == "box.agent.bootstrap"
+            "bootstrap", ConfigLevel.box, "claude") == "pref.agent.claude.bootstrap"
         assert box_agent_redirect_key(
-            "model", ConfigLevel.box) == "box.agent.model"
+            "model", ConfigLevel.box, "claude") == "pref.agent.claude.model"
         assert box_agent_redirect_key(
-            "auto_approve", ConfigLevel.box) == "box.agent.auto_approve"
+            "auto_approve", ConfigLevel.box, "nav℘claude",
+        ) == "pref.agent.nav℘claude.auto_approve"
+        # No resolvable agent → NO redirect (the request targets a DISCRIMINATED
+        # agent slot; there is no bare ``agent.<key>``, §0 L21).
+        assert box_agent_redirect_key("bootstrap", ConfigLevel.box) is None
         # Non-box scopes: NO redirect (a bare key is a legit downward write there).
-        assert box_agent_redirect_key("bootstrap", ConfigLevel.system) is None
-        assert box_agent_redirect_key("bootstrap", ConfigLevel.workset) is None
-        assert box_agent_redirect_key("bootstrap", None) is None
-        # Already-qualified mirror / per-agent forms are NOT bare agent keys.
-        assert box_agent_redirect_key("box.agent.bootstrap", ConfigLevel.box) is None
+        assert box_agent_redirect_key("bootstrap", ConfigLevel.system, "claude") is None
+        assert box_agent_redirect_key("bootstrap", ConfigLevel.workset, "claude") is None
+        assert box_agent_redirect_key("bootstrap", None, "claude") is None
+        # Already-qualified / per-agent forms are NOT bare agent keys.
         assert box_agent_redirect_key(
-            "agent.claude.bootstrap", ConfigLevel.box) is None
+            "box.agent.bootstrap", ConfigLevel.box, "claude") is None
+        assert box_agent_redirect_key(
+            "agent.claude.bootstrap", ConfigLevel.box, "claude") is None
 
     def test_set_bare_bootstrap_at_box_scope_refused_nothing_written(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
@@ -2505,7 +2521,8 @@ class TestBareAgentKeyAtBoxScope:
         )
         assert msg.startswith("Error:"), msg
         assert "can't be set bare" in msg, msg
-        assert "box.agent.bootstrap" in msg, msg  # names the correct mirror form
+        # names the correct REQUEST form (P7 — was the retired mirror).
+        assert "pref.agent.<agent>.bootstrap" in msg, msg
         # NOTHING written — the refused set never creates the box file (no dropped
         # agent.default.bootstrap). This is the mutation guard vs the old no-op write.
         assert not f.exists(), "the refused set must not write the box file"
@@ -2521,45 +2538,53 @@ class TestBareAgentKeyAtBoxScope:
             )
             assert msg.startswith("Error:"), (key, msg)
             assert "can't be set bare" in msg, (key, msg)
-            assert f"box.agent.{key}" in msg, (key, msg)
+            assert f"pref.agent.<agent>.{key}" in msg, (key, msg)
             assert not f.exists(), (key, "refused set must not write")
 
-    def test_box_agent_mirror_form_still_works(self, tmp_path):
-        # The legitimate box.agent.<key> mirror is UNAFFECTED — it still writes.
+    def test_the_pref_request_form_works(self, tmp_path):
+        # The cure the refusal teaches must actually WORK (P7): the §2h request
+        # writes to the box file at the nested pref path.
         f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
-            "box.agent.bootstrap", "none",
+            "pref.agent.claude.bootstrap", "none",
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(f)["box"]["agent"]["bootstrap"] == "none"
+        assert load_doc(f)["pref"]["agent"]["claude"]["bootstrap"] == "none"
 
-    def test_get_bare_bootstrap_at_box_scope_redirects_to_mirror(self, tmp_path):
-        # The box file carries the mirror value (box.agent.bootstrap); a bare
-        # `get bootstrap` at box scope REDIRECTS the read to that mirror.
+    def test_get_bare_bootstrap_at_box_scope_redirects_to_the_request(self, tmp_path):
+        # The box file carries the REQUEST (pref.agent.claude.bootstrap); a bare
+        # `get bootstrap` at box scope REDIRECTS the read to it (P7).
         f = tmp_path / "box-settings.yaml"
-        dump_doc(f, {"box": {"agent": {"bootstrap": "screen"}}})
+        dump_doc(f, {"pref": {"agent": {"claude": {"bootstrap": "screen"}}}})
         assert get_config_value(
             "bootstrap", global_config_path=tmp_path / "cfg.yaml",
-            project_toml=f, command_scope=ConfigLevel.box,
+            project_toml=f, command_scope=ConfigLevel.box, active_agent="claude",
         ) == "screen"
         # Mutation guard: WITHOUT box scope the bare read hits agent.default
         # (absent here) → None — proving the redirect is what surfaced the value.
         assert get_config_value(
             "bootstrap", global_config_path=tmp_path / "cfg.yaml",
-            project_toml=f, command_scope=None,
+            project_toml=f, command_scope=None, active_agent="claude",
+        ) is None
+        # And without a resolvable agent there is no redirect either.
+        assert get_config_value(
+            "bootstrap", global_config_path=tmp_path / "cfg.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
         ) is None
 
     def test_get_bare_model_and_auto_approve_redirect(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
-        dump_doc(f, {"box": {"agent": {"model": "sonnet", "auto_approve": True}}})
+        dump_doc(f, {"pref": {"agent": {"claude": {
+            "model": "sonnet", "auto_approve": True,
+        }}}})
         assert get_config_value(
             "model", global_config_path=tmp_path / "cfg.yaml",
-            project_toml=f, command_scope=ConfigLevel.box,
+            project_toml=f, command_scope=ConfigLevel.box, active_agent="claude",
         ) == "sonnet"
         assert get_config_value(
             "auto_approve", global_config_path=tmp_path / "cfg.yaml",
-            project_toml=f, command_scope=ConfigLevel.box,
+            project_toml=f, command_scope=ConfigLevel.box, active_agent="claude",
         ) == "true"
 
     def test_bare_agent_key_at_system_scope_unaffected(self, tmp_path):
@@ -2585,40 +2610,42 @@ class TestBareAgentKeyAtBoxScope:
         # agent.default.bootstrap and reported "No override" while the real value
         # at box.agent.bootstrap stayed STUCK. Prove the mirror value SURVIVES.
         f = tmp_path / "box-settings.yaml"
-        dump_doc(f, {"box": {"agent": {"bootstrap": "screen"}}})
+        dump_doc(f, {"pref": {"agent": {"claude": {"bootstrap": "screen"}}}})
         msg = reset_config_value(
             "bootstrap", config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:"), msg
         assert "can't be reset bare" in msg, msg
-        assert "reset box.agent.bootstrap" in msg, msg  # teaches the mirror form
-        # The stuck-value mutation guard: box.agent.bootstrap is NOT removed.
-        assert load_doc(f)["box"]["agent"]["bootstrap"] == "screen"
+        # teaches the REQUEST form (P7 — was the retired mirror).
+        assert "reset pref.agent.<agent>.bootstrap" in msg, msg
+        # The stuck-value mutation guard: the stored value is NOT removed.
+        assert load_doc(f)["pref"]["agent"]["claude"]["bootstrap"] == "screen"
 
     def test_reset_bare_model_and_auto_approve_at_box_scope_refused(self, tmp_path):
         # Uniformity: the SAME reset refusal for other agent behavior keys.
         for key in ("model", "auto_approve"):
             f = tmp_path / f"box-{key}.yaml"
-            dump_doc(f, {"box": {"agent": {key: "x"}}})
+            dump_doc(f, {"pref": {"agent": {"claude": {key: "x"}}}})
             msg = reset_config_value(
                 key, config_path=f, command_scope=ConfigLevel.box,
             )
             assert msg.startswith("Error:"), (key, msg)
             assert "can't be reset bare" in msg, (key, msg)
-            assert f"reset box.agent.{key}" in msg, (key, msg)
-            assert load_doc(f)["box"]["agent"][key] == "x", (key, "must survive")
+            assert f"reset pref.agent.<agent>.{key}" in msg, (key, msg)
+            assert load_doc(f)["pref"]["agent"]["claude"][key] == "x", (
+                key, "must survive",
+            )
 
-    def test_reset_box_agent_mirror_form_still_clears(self, tmp_path):
-        # The legitimate qualified reset box.agent.<key> is UNAFFECTED — it clears.
+    def test_reset_the_pref_request_form_clears(self, tmp_path):
+        # The qualified reset of the REQUEST is UNAFFECTED — it clears (P7).
         f = tmp_path / "box-settings.yaml"
-        dump_doc(f, {"box": {"agent": {"bootstrap": "screen"}}})
+        dump_doc(f, {"pref": {"agent": {"claude": {"bootstrap": "screen"}}}})
         msg = reset_config_value(
-            "box.agent.bootstrap", config_path=f, command_scope=ConfigLevel.box,
+            "pref.agent.claude.bootstrap",
+            config_path=f, command_scope=ConfigLevel.box,
         )
         assert not msg.startswith("Error:"), msg
         assert "cleared" in msg.lower(), msg
-        # The override (and the now-empty box.agent table) is gone.
-        assert "agent" not in load_doc(f).get("box", {})
 
     def test_reset_bare_bootstrap_at_system_scope_unaffected(self, tmp_path):
         # A bare reset at SYSTEM scope is a legit DOWNWARD reset — still clears
@@ -2652,8 +2679,9 @@ class TestBareAgentKeyAtWorksetScope:
     agent ⊃ workset). UNLIKE box, a workset spans MULTIPLE boxes/agents, so there is
     deliberately NO ``workset.agent.*`` mirror (no single "the agent"). The
     conformant fix is therefore to REFUSE — uniformly for set / get / reset — with a
-    message pointing at system scope (all agents) or the per-box ``box.agent.<key>``
-    mirror. Uniform over the whole ``_is_agent_setting`` family (NOT a per-key list).
+    message pointing at system scope (all agents) or the per-box §2h request
+    ``pref.agent.<agent>.<key>`` (P7 — was the retired ``box.agent.*`` mirror).
+    Uniform over the whole ``_is_agent_setting`` family (NOT a per-key list).
     """
 
     def test_scope_error_helper_workset_refuses_no_mirror(self):
@@ -2667,7 +2695,8 @@ class TestBareAgentKeyAtWorksetScope:
             assert "system scope" in msg, (verb, msg)
             # No workset.agent.* mirror is invented — it points per-box instead.
             assert "workset.agent" not in msg, (verb, msg)
-            assert "box.agent.bootstrap" in msg, (verb, msg)
+            # P7: the per-box cure is the §2h REQUEST, not the retired mirror.
+            assert "pref.agent.<agent>.bootstrap" in msg, (verb, msg)
         # A per-agent / already-qualified form is NOT a bare agent key.
         assert bare_agent_key_scope_error(
             "agent.claude.bootstrap", ConfigLevel.workset, verb="set") is None
@@ -2721,37 +2750,44 @@ class TestBareAgentKeyAtWorksetScope:
 # ---------------------------------------------------------------------------
 
 class TestF5BoxAgentGet:
-    """F5 — ``box get box.agent.<key>`` must read back what ``box set
-    box.agent.<key>`` wrote.  ``get_config_value`` lacked the
-    ``_is_box_agent_key`` branch that set/reset have (SET was test-pinned; GET
-    untested), so it returned "(not set)" for a value that IS stored."""
+    """⮕ **P7 INVERTED THIS CLASS, deliberately.**
 
-    def test_box_agent_scalar_set_then_get_roundtrips(self, tmp_path):
+    F5 pinned ``box get box.agent.<key>`` reading back what ``box set
+    box.agent.<key>`` wrote. Spec §2b RETIRED that settable mirror: the write
+    verbs now refuse with the ``pref.agent.<agent>.<key>`` cure, so there is
+    nothing to read back and a plain get reports "(not set)" — reporting a
+    hand-written legacy leaf would name a value that has NO effect on the launch,
+    which is strictly worse. The effective value lives at ``meta.box.agent.<key>``
+    (RO) and is read through ``--effective``.
+    """
+
+    def test_box_agent_scalar_set_is_refused_so_get_is_not_set(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
-        set_config_value(
+        msg = set_config_value(
             "box.agent.model", "opus",
             config_path=f, command_scope=ConfigLevel.box,
         )
-        # RED at baseline: get has no box.agent.* branch → returns None.
+        assert msg.startswith("Error:"), msg
         val = get_config_value(
             "box.agent.model",
             global_config_path=tmp_path / "kanibako_config.yaml",
             project_toml=f,
         )
-        assert val == "opus"
+        assert val is None
 
-    def test_box_agent_deep_key_set_then_get_roundtrips(self, tmp_path):
+    def test_box_agent_deep_key_set_is_refused_so_get_is_not_set(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
-        set_config_value(
+        msg = set_config_value(
             "box.agent.bindings.ro.share", "/user/share",
             config_path=f, command_scope=ConfigLevel.box,
         )
+        assert msg.startswith("Error:"), msg
         val = get_config_value(
             "box.agent.bindings.ro.share",
             global_config_path=tmp_path / "kanibako_config.yaml",
             project_toml=f,
         )
-        assert val == "/user/share"
+        assert val is None
 
     def test_box_agent_get_unset_is_not_set(self, tmp_path):
         # An UNSET box.agent.<key> is "(not set)" at the box noun — the branch

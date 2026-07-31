@@ -512,15 +512,11 @@ def _show_agent_config(
 
 def run_reauth(args: argparse.Namespace) -> int:
     """Check authentication and login if needed."""
-    from kanibako.config import (
-        config_file_path,
-        load_config,
-        load_merged_config,
-        resolve_agent,
-    )
     from kanibako.agent_ref import harness_of
-    from kanibako.paths import box_workset_settings_paths, xdg, load_std_paths
+    from kanibako.agent_select import select_agent
+    from kanibako.config import config_file_path, load_config
     from kanibako.targets import resolve_target
+    from kanibako.paths import xdg, load_std_paths
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -536,29 +532,36 @@ def run_reauth(args: argparse.Namespace) -> int:
     )
     proj = resolve_box_target(std, config, subject)
 
-    # Resolve the agent UP FRONT via the unified cascade (explicit > box >
-    # workset > system default → installed-count rule).  reauth is an
+    # Resolve the agent UP FRONT through the ONE selection seam (--agent > box
+    # pref > workset pref > system.agent → installed-count rule).  reauth is an
     # agent-requiring command, so a resolution failure raises a typed
     # AgentResolutionError that the top-level cli.py handler surfaces verbatim
     # (Gate-2a/2b) with a non-zero exit — never a silent fall-through.
-    # The box/workset tier pair from the ONE source (M-8) — so `crab reauth` resolves
-    # the agent from the SAME box-tier file `box set box.agent_name=…` writes.
-    project_toml, workset_path = box_workset_settings_paths(proj)
-    merged = load_merged_config(
-        config_file,
-        project_toml if project_toml.exists() else None,
-        workset_path=workset_path,
-    )
-    agent_name = resolve_agent(
+    selection = select_agent(
+        std=std, proj=proj,
         explicit_agent=getattr(args, "agent", None),  # Phase D seam (--agent)
-        box_agent_name=merged.box_agent_name,
-        workset_agent=None,  # merged.box_agent_name already folds the workset tier
-        system_default_path=std.settings,
-        project_path=proj.project_path,
     )
+    agent_name = selection.node
     # ``agent_name`` is the NODE-name (persona identity); the target/plugin is keyed
-    # by the HARNESS. ``agent_settings_path`` above keeps the node (keyspace slot).
-    target = resolve_target(harness_of(agent_name), proj.project_path)
+    # by the HARNESS. ⚑ Routed through the ONE translator: a SUPPRESSED box
+    # (``pref.system.agent: null``) has no node, and handing ``""`` to
+    # ``resolve_target`` would AUTO-DETECT an agent and reauth it — credentials for
+    # an agent this box deliberately does not run (the same two-vocabulary
+    # collision the launch seam guards; bifrost E-NULL).
+    target = (
+        resolve_target(harness_of(selection.node), proj.project_path)
+        if selection.has_agent
+        else None
+    )
+    if target is None:
+        print(
+            "This box runs no agent (pref.system.agent is null), so there are no "
+            "credentials to refresh. Give it an agent with "
+            "'kanibako box set pref.system.agent=<name>', or pass '--agent <name>' "
+            "to reauth one explicitly.",
+            file=sys.stderr,
+        )
+        return 1
 
     if not target.has_binary:
         print("No agent target configured.", file=sys.stderr)
@@ -584,6 +587,10 @@ def run_reauth(args: argparse.Namespace) -> int:
         agent_cfg=reauth_agent_cfg,
         system_settings_path=std.settings,
         agent_cfg_path=agent_cfg_path,
+        # ⚑ REQUIRED (P7): reauth must resolve the SAME per-agent credential dir the
+        # launch delivers from (``@workset.auth.path/@system.agent``); without the
+        # §1A selection level it would collapse to the workset auth ROOT.
+        selection_level=selection.selection_level,
     )
     suppress_oauth = active_endpoint is not None
 

@@ -1661,17 +1661,18 @@ class TestCheckLaunchBaselineUnit:
 
 class TestReattachAgentSourcing:
     """A persistent box that is ALREADY RUNNING reattaches by sourcing its
-    agent from the container's KANIBAKO_AGENT stamp, bypassing resolve_agent's
-    Gate-2a (which would otherwise fire with 2+ agents and no default)."""
+    agent from the container's KANIBAKO_AGENT stamp, bypassing the selection
+    seam's Gate-2a (which would otherwise fire with 2+ agents and no default)."""
 
     def _gate2a_unless_explicit(self):
-        """resolve_agent stand-in: raises Gate-2a unless an explicit agent is
+        """``select_agent`` stand-in: raises Gate-2a unless an explicit agent is
         supplied — i.e. only the container-sourced injection can satisfy it."""
+        from kanibako.agent_select import AgentSelection
         from kanibako.errors import NoAgentSelectedError
 
         def _fn(*, explicit_agent, **kw):
             if explicit_agent:
-                return explicit_agent
+                return AgentSelection(node=explicit_agent, source="cli")
             raise NoAgentSelectedError("pick an agent")
         return _fn
 

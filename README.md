@@ -416,8 +416,13 @@ Which agent a command uses is resolved by a single cascade (highest precedence
 first):
 
 ```
---agent  >  box.agent  >  workset default  >  system.default_agent
+--agent  >  box pref  >  workset pref  >  system.agent
 ```
+
+A box or workset REQUESTS an agent with `pref.system.agent` (a request to set a key
+that resolves earlier than the file making it); `system.agent` is the host-global
+default and `--agent` is the ephemeral per-launch override. `kanibako create --agent
+<name>` persists the request into the new box, so a plain `kanibako start` runs it.
 
 If a name resolves, it is used (and an error is raised if that agent's plugin
 isn't installed). If **nothing** resolves, the **installed-agent count** decides --
@@ -442,7 +447,7 @@ when no agent is configured.
 
 ### Choosing a default agent
 
-`kanibako setup` is where you pick the host-global default (`system.default_agent`).
+`kanibako setup` is where you pick the host-global default (`system.agent`).
 On a TTY it shows a numbered menu of detected agents (the only interactive prompt in
 the CLI); `setup --agent <name>` sets it non-interactively. A "skip" option is
 offered -- with 2+ agents it warns that a bare launch will then fail and asks you to
@@ -913,10 +918,11 @@ kanibako system set model=opus
 kanibako system reset --all             # reset all global settings
 ```
 
-`kanibako system set` sets **non-`system.`** settings only. `system.*`-prefixed
-keys (layout paths AND `system.default_agent`) are **file-only**: the CLI shows them
-but refuses to set/reset them, pointing you at the config file. Set the default agent
-with `kanibako setup`; edit structural paths in `~/.config/kanibako.yaml` directly.
+`system.*` LAYOUT-PATH keys are **file-only**: the CLI shows them but refuses to
+set/reset them, pointing you at the config file. `system.agent` is NOT one of those —
+it is an ordinary system-scope setting, so `kanibako system config set
+system.agent=<name>` works (as does `kanibako setup`). Edit structural paths in
+`~/.config/kanibako_config.yaml` directly.
 
 ### Files
 

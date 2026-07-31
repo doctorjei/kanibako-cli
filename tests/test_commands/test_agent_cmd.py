@@ -635,8 +635,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
         ):
             target = MagicMock()
@@ -670,8 +674,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
             # The box's SHARING decision is resolved through the launch capability
             # chain (auth 3-tier redesign), which needs a real ``proj.mode``; stub
@@ -714,8 +722,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
@@ -744,6 +756,17 @@ class TestRunReauth:
         assert passed == {
             "std", "proj", "target", "agent_name", "agent_cfg",
             "system_settings_path", "agent_cfg_path",
+            # ⚑ P7: REQUIRED, not optional. reauth resolves the SAME per-agent
+            # credential dir the launch delivers from
+            # (``@workset.auth.path/@system.agent``); omitting the level collapses
+            # it to the workset auth ROOT, so reauth would refresh a different
+            # directory than the box reads. The resolver takes it as a REQUIRED
+            # keyword precisely so this cannot be dropped silently again.
+            "selection_level",
+        }
+        # …and it carries the RESOLVED selection, not a placeholder.
+        assert mock_resolve.call_args.kwargs["selection_level"] == {
+            "system.agent": "claude",
         }
         # The two params P6c removed must NOT be passed.
         assert "project_toml" not in passed
@@ -760,8 +783,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch(
                 "kanibako.targets.credsync.refresh_box_credentials"
@@ -810,8 +837,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch(
                 "kanibako.targets.credsync.refresh_box_credentials"
@@ -849,8 +880,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
             # Distinct auth = PRIVATE box (tier ``box``, ``.creds_shared`` False); stub a
             # private AuthSource so the distinct-auth branch is taken.
@@ -925,8 +960,12 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
+        from kanibako.agent_select import AgentSelection
         with (
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch(
+                "kanibako.agent_select.select_agent",
+                return_value=AgentSelection(node="claude", source="settings"),
+            ),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch(
                 "kanibako.commands.start._run_container",

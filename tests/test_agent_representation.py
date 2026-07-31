@@ -509,3 +509,118 @@ class TestAgentDefaultBindKeys:
         reg = agent_default_bind_keys("claude")
         assert "agent.claude.bindings.ro.launcher" in reg
         assert "agent.claude.bindings.ro.share" in reg
+
+
+# ---------------------------------------------------------------------------
+# P7 — agent-scope COMMONS re-keyed to the ACTIVE NODE (the persona fix)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCommonForNode:
+    """A plugin declares its commons against its HARNESS name; the §2d read pick
+    reads them under the ACTIVE NODE. For a PERSONA those never matched, so the
+    box mounted NEITHER ``~/.claude/plugins`` NOR ``~/.claude/cache`` while
+    ``ensure_persona_share_symlinks`` maintained links nothing consumed.
+
+    This is the ONE deliberate behaviour change in P7 beyond key renames, and the
+    delta below is the phase's enumerated gate: identity for a bare agent, exactly
+    two mounts gained for a claude persona, nothing for goose/codex (their
+    ``default_common()`` is empty).
+    """
+
+    TABLE = {
+        "agent.claude.common.plugins": (
+            "@meta.agent.claude.path/common/plugins", "~/.claude/plugins",
+        ),
+        "agent.claude.common.cache": (
+            "@meta.agent.claude.path/common/cache", "~/.claude/cache",
+        ),
+    }
+
+    def test_a_bare_agent_gets_the_identity(self):
+        """BYTE-IDENTICAL for every non-persona launch. INVERT: re-key
+        unconditionally -> a bare agent's keys change and the equivalence gate
+        for the whole phase breaks."""
+        from kanibako.agent_representation import agent_common_for_node
+
+        assert agent_common_for_node(
+            self.TABLE, node_name="claude", harness="claude",
+        ) == self.TABLE
+
+    def test_a_persona_is_rekeyed_AND_rerooted_to_the_node(self):
+        """BOTH halves move. INVERT: re-key without re-rooting -> the persona
+        binds the HARNESS dir directly, which makes the shim's "a persona that
+        legitimately has its own dir wins" branch unreachable."""
+        from kanibako.agent_representation import agent_common_for_node
+
+        out = agent_common_for_node(
+            self.TABLE, node_name="nav℘claude", harness="claude",
+        )
+        assert set(out) == {
+            "agent.nav℘claude.common.plugins", "agent.nav℘claude.common.cache",
+        }
+        assert out["agent.nav℘claude.common.plugins"] == (
+            "@meta.agent.nav℘claude.path/common/plugins", "~/.claude/plugins",
+        )
+
+    def test_a_self_resolving_source_is_carried_verbatim(self):
+        """The re-root rule is NARROW: only the harness's own declaration root
+        moves. An absolute / ``~`` / ``$var`` / unrelated ``@``-ref source is the
+        plugin's deliberate choice (spec §2a L518-525), not "my store dir"."""
+        from kanibako.agent_representation import agent_common_for_node
+
+        table = {"agent.claude.common.fixed": ("/opt/fixed", "~/x")}
+        out = agent_common_for_node(
+            table, node_name="nav℘claude", harness="claude",
+        )
+        assert out["agent.nav℘claude.common.fixed"] == ("/opt/fixed", "~/x")
+
+    def test_an_empty_table_stays_empty(self):
+        """goose / codex declare no commons — no delta for their personas."""
+        from kanibako.agent_representation import agent_common_for_node
+
+        assert agent_common_for_node({}, node_name="nav℘goose", harness="goose") == {}
+
+    def test_the_persona_gains_exactly_two_mounts_end_to_end(self):
+        """⚑ THE ENUMERATED DELTA, measured through the real adapter: 0 -> 2.
+
+        INVERT: revert the call site in ``start.py`` to ``target.default_common()``
+        and the persona is back to ZERO agent-scope commons.
+        """
+        from kanibako.agent_representation import agent_common_for_node
+        from kanibako.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+        from kanibako.settings_resolve import ResolveCtx
+
+        node = "nav℘claude"
+        ctx = ResolveCtx(
+            agent_name=node, workset_name=None, host_home="/home/h",
+            xdg={"XDG_DATA_HOME": "/data"},
+        )
+        floor = {
+            "meta.agent.claude.path": "/store/agents/claude",
+            f"meta.agent.{node}.path": f"/store/agents/{node}",
+        }
+
+        def _mounts(table):
+            snap = build_launch_snapshot(
+                agent_name=node, ctx=ctx,
+                system_path=None, agent_path=None, workset_path=None, box_path=None,
+                default_categories={**table, **floor},
+            )
+            return [
+                e for e in snapshot_category_entries(
+                    snap, active_agent=node, box_ctx=ctx,
+                )
+                if e.category == "common"
+            ]
+
+        assert _mounts(self.TABLE) == []          # the BUG (harness-keyed)
+        fixed = _mounts(agent_common_for_node(
+            self.TABLE, node_name=node, harness="claude",
+        ))
+        assert sorted(e.name for e in fixed) == ["cache", "plugins"]
+        # Sourced through the NODE path — the symlink the shim maintains.
+        assert all(e.host_src.startswith(f"/store/agents/{node}/common/") for e in fixed)

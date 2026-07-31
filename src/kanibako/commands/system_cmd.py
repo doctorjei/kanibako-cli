@@ -235,7 +235,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     The SYSTEM scope keeps STRUCTURAL CONFIG (the ``system.*`` path-tier
     family) in the ``~/.config/kanibako_config.yaml`` CONFIG file (``cf``) and
-    routes SETTINGS (``system.default_agent``, the ``system.auth.*`` chain,
+    routes SETTINGS (``system.agent``, the ``system.auth.*`` chain,
     agent settings, downward scope defaults) to ``@config.settings`` =
     ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
     the same file the launch cascade's system tier reads (F2/F3).

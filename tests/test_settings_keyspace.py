@@ -229,11 +229,15 @@ def test_known_config_keys_are_valid_under_the_validator():
     )
 
 
-def test_retiring_keys_are_exactly_the_three_known_renames():
-    """Pins the exemption set so growing it is a deliberate, reviewed act."""
-    assert RETIRING_KEYS == frozenset({
-        "box.agent_name", "system.default_agent", "system.base_template",
-    })
+def test_retiring_keys_are_exactly_the_one_known_rename():
+    """Pins the exemption set so growing it is a deliberate, reviewed act.
+
+    ⮕ P7 removed ``box.agent_name`` (RETIRED → ``pref.system.agent``, §2b) and
+    ``system.default_agent`` (RENAMED → ``system.agent``, §2g); only the
+    ``system.base_template`` → ``system.template`` rename (C-CANON / M-11) is
+    still in flight.
+    """
+    assert RETIRING_KEYS == frozenset({"system.base_template"})
 
 
 def test_retiring_keys_are_all_invalid_today():

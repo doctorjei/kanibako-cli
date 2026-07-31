@@ -151,12 +151,12 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     pair (the keyspace rework rejects the legacy ``<host_src>:<guest_dest>`` string).
 
     This MERGES into any existing settings document rather than overwriting it:
-    the ``e2e_env`` fixture writes ``agent.default.default_agent: claude`` into
+    the ``e2e_env`` fixture writes ``system.agent: claude`` into
     this SAME file (so the claude-only tests resolve an agent even when other
     plugins are installed), and a blind overwrite here would wipe that key and
     re-introduce the dual-agent "No agent selected" ambiguity that prevents the
     box from launching.  We load the existing doc, add ``system.seeded.playbook``,
-    and write it back, preserving the ``agent`` content.
+    and write it back, preserving the ``system`` content.
     """
     from kanibako.config import config_file_path, load_config
     from kanibako.config_io import dump_doc, load_doc
@@ -170,7 +170,7 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
 
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     # Merge into the existing settings doc (preserving e2e_env's
-    # agent.default.default_agent) rather than clobbering it.  The value is a
+    # system.agent) rather than clobbering it.  The value is a
     # structured [host_src, box_dest] pair (the keyspace rework rejects the
     # legacy "host:dest" colon-string form).
     doc = load_doc(settings_file)
