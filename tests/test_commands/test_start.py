@@ -2565,7 +2565,7 @@ class TestApplyInitSeeds:
             channels_share=tmp_path / "channels" / "share",
             # B2b: the system channel type-roots folded into resolved_sys so the
             # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
-            channels_commons=tmp_path / "channels" / "commons",
+            channels_common=tmp_path / "channels" / "common",
             channels_chat=tmp_path / "channels" / "chat",
             # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
             # workset.logs anchor the helper-log bind routes through).
@@ -2834,7 +2834,7 @@ class TestApplySyncedCopies:
             channels_share=tmp_path / "channels" / "share",
             # B2b: the system channel type-roots folded into resolved_sys so the
             # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
-            channels_commons=tmp_path / "channels" / "commons",
+            channels_common=tmp_path / "channels" / "common",
             channels_chat=tmp_path / "channels" / "chat",
             # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
             # workset.logs anchor the helper-log bind routes through).

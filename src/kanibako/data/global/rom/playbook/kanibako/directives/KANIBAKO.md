@@ -87,11 +87,11 @@ receive, read one.** No special command is required.
 | **Inbox** | `~/channels/inbox/` | **Your own** mailbox (alias for your entry under `mailboxes/`). Read your messages here. |
 | **Mailbox** | `~/channels/mailboxes/<workset>/<box>/` | Direct messages/artifacts to a specific box (write into *its* mailbox). |
 | **Share** | `~/channels/share/` | Publish artifacts for others to read (others read-only). |
-| **Commons** | `~/channels/commons/` | Shared read-write scratch for the whole scope. |
+| **Common** | `~/channels/common/` | Shared read-write scratch for the whole scope. |
 | **Chat** | `~/channels/chat/*.md` | Append-style logs. `general.md` is the default; `broadcast.md` reaches everyone in scope. |
 
 If your box belongs to a **workset** (a named group of projects), you also get a workset-local tree
-at `~/channels/workset/` with its own `commons/`, `chat/`, and `share/` (and `chat/broadcast.md`).
+at `~/channels/workset/` with its own `common/`, `chat/`, and `share/` (and `chat/broadcast.md`).
 Standalone boxes use the system channels only.
 
 ---

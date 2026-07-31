@@ -28,6 +28,7 @@ from kanibako.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.commands.start import (
     _channel_default_categories,
     _emit_category_mounts,
+    _launch_snapshot_inputs,
     _resolve_launch_snapshot,
     _seed_channel_files,
 )
@@ -101,14 +102,14 @@ def _build(std, proj):
 
 # The five system-scope guest dests + own inbox (every mode).
 _SYSTEM_DESTS = {
-    "/home/agent/channels/commons",
+    "/home/agent/channels/common",
     "/home/agent/channels/chat",
     "/home/agent/channels/share",
     "/home/agent/channels/mailboxes",
     "/home/agent/channels/inbox",
 }
 _WORKSET_DESTS = {
-    "/home/agent/channels/workset/commons",
+    "/home/agent/channels/workset/common",
     "/home/agent/channels/workset/chat",
     "/home/agent/channels/workset/share",
 }
@@ -120,7 +121,7 @@ class TestPrimaryChannelMounts:
         # System + workset-local (primary gets both).
         assert set(by_dest) == _SYSTEM_DESTS | _WORKSET_DESTS
         # System sources resolve to the channels skeleton.
-        assert by_dest["/home/agent/channels/commons"][0] == str(std.channels_commons)
+        assert by_dest["/home/agent/channels/common"][0] == str(std.channels_common)
         assert by_dest["/home/agent/channels/chat"][0] == str(std.channels_chat)
         assert by_dest["/home/agent/channels/share"][0] == str(std.channels_share)
         assert (
@@ -130,7 +131,7 @@ class TestPrimaryChannelMounts:
         # Workset-local sources hang off @meta.workset.path/channels.
         wch = _ch.workset_channel_paths(primary_proj, std)
         assert wch is not None
-        assert by_dest["/home/agent/channels/workset/commons"][0] == str(wch.commons)
+        assert by_dest["/home/agent/channels/workset/common"][0] == str(wch.common)
         assert by_dest["/home/agent/channels/workset/chat"][0] == str(wch.chat)
         assert by_dest["/home/agent/channels/workset/share"][0] == str(wch.share)
         # Every channel bind is rw (Z,U) under option (A).
@@ -174,8 +175,8 @@ class TestNamedChannelMounts:
         # Workset-local sources root at the NAMED workset root.
         assert named_proj.group is not None
         wroot = named_proj.group.root / "channels"
-        assert by_dest["/home/agent/channels/workset/commons"][0] == str(
-            wroot / "commons"
+        assert by_dest["/home/agent/channels/workset/common"][0] == str(
+            wroot / "common"
         )
 
     def test_inbox_partitioned_by_named_ws(self, named_proj, std):
@@ -214,12 +215,12 @@ class TestChannelDefaultCategories:
     def test_primary_keys(self, primary_proj, std):
         cats = _channel_default_categories(std, primary_proj)
         assert set(cats) == {
-            "box.bindings.rw.global_commons",
+            "box.bindings.rw.global_common",
             "box.bindings.rw.global_chat",
             "box.bindings.rw.global_share",
             "box.bindings.rw.mailboxes",
             "box.bindings.rw.inbox",
-            "box.bindings.rw.workset_commons",
+            "box.bindings.rw.workset_common",
             "box.bindings.rw.workset_chat",
             "box.bindings.rw.workset_share",
         }
@@ -227,9 +228,71 @@ class TestChannelDefaultCategories:
     def test_standalone_keys_omit_workset(self, standalone_proj, std):
         cats = _channel_default_categories(std, standalone_proj)
         assert set(cats) == {
-            "box.bindings.rw.global_commons",
+            "box.bindings.rw.global_common",
             "box.bindings.rw.global_chat",
             "box.bindings.rw.global_share",
             "box.bindings.rw.mailboxes",
             "box.bindings.rw.inbox",
         }
+
+
+def _workset_anchor(std, proj):
+    """The ``workset_anchor`` floor fragment the LIVE launch path produces."""
+    return _launch_snapshot_inputs(std=std, proj=proj, agent_name="general")[5]
+
+
+class TestWorksetChannelFloorLeaf:
+    """⚑ Pins the PRODUCTION site of the derived ``workset.channels.<leaf>`` key.
+
+    The key is never written literally: ``start.py`` builds a dict whose LEAF
+    names the channel, and ``settings_launch.workset_anchor_floor`` f-strings that
+    leaf into ``workset.channels.{leaf}``.  A rename of the channel type root that
+    updates only the literal spellings leaves the floor installing the OLD key
+    while ``core-defaults.yaml`` asks for the NEW ``@workset.channels.common`` —
+    the @-ref does not resolve and the workset common bind SILENTLY VANISHES (no
+    error, no warning).
+
+    Tests that pass their own ``workset_channels=`` dict into
+    ``workset_anchor_floor`` (e.g. ``test_categories_live``) CANNOT catch this —
+    they assert what the f-string does with a leaf they supplied themselves.  This
+    drives ``_launch_snapshot_inputs``, so the leaf comes from the real
+    ``workset_channel_paths`` production site.
+    """
+
+    def test_primary_floor_installs_common_leaf(self, primary_proj, std):
+        floor = _workset_anchor(std, primary_proj)
+        wch = _ch.workset_channel_paths(primary_proj, std)
+        assert wch is not None
+        assert floor["workset.channels.common"] == str(wch.common)
+        # The pre-rename spelling must be GONE from the produced floor.
+        assert "workset.channels.commons" not in floor
+
+    def test_named_floor_installs_common_leaf(self, named_proj, std):
+        floor = _workset_anchor(std, named_proj)
+        wch = _ch.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        assert floor["workset.channels.common"] == str(wch.common)
+        assert "workset.channels.commons" not in floor
+
+    def test_floor_leaves_match_the_bind_refs(self, primary_proj, std):
+        """The floor's leaf set == the ``@workset.channels.*`` refs the binds use.
+
+        The two halves of the seam are declared in different files; this asserts
+        they agree, so neither side can be renamed alone.
+        """
+        floor = _workset_anchor(std, primary_proj)
+        installed = {k for k in floor if k.startswith("workset.channels.")}
+        cats = _channel_default_categories(std, primary_proj)
+        referenced = {
+            src.lstrip("@")
+            for src, _dest in cats.values()
+            if str(src).startswith("@workset.channels.")
+        }
+        assert referenced, "expected @workset.channels.* routed binds"
+        assert referenced <= installed, (
+            f"bind @-refs with no floor key: {sorted(referenced - installed)}"
+        )
+
+    def test_standalone_has_no_workset_channel_keys(self, standalone_proj, std):
+        floor = _workset_anchor(std, standalone_proj)
+        assert not [k for k in floor if k.startswith("workset.channels.")]

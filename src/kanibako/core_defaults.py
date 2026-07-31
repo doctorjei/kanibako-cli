@@ -104,7 +104,7 @@ def channel_default_categories(
     the pair directly.
 
     ALL MODES (system scope): the five system channel type roots
-    (commons/chat/share/mailboxes) plus this box's own inbox double-bind (the SAME
+    (common/chat/share/mailboxes) plus this box's own inbox double-bind (the SAME
     host source bound at both ``~/channels/inbox`` and
     ``~/channels/mailboxes/<ws>/<self>`` — A2).  PRIMARY + NAMED additionally get
     the three workset-local type roots under ``~/channels/workset/``; STANDALONE
@@ -120,14 +120,14 @@ def channel_default_categories(
     # has workset-local channels (PRIMARY/NAMED) — the entries that reference
     # them are dropped for standalone boxes.
     sources: dict[str, str] = {
-        "channels_commons": str(std.channels_commons),
+        "channels_common": str(std.channels_common),
         "channels_chat": str(std.channels_chat),
         "channels_share": str(std.channels_share),
         "channels_mailboxes": str(std.channels_mailboxes),
         "inbox": str(addr.inbox),
     }
     if wch is not None:
-        sources["workset_commons"] = str(wch.commons)
+        sources["workset_common"] = str(wch.common)
         sources["workset_chat"] = str(wch.chat)
         sources["workset_share"] = str(wch.share)
 

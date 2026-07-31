@@ -619,7 +619,7 @@ def workset_anchor_floor(
     auth.*}`` and never it), so under §0's closed keyspace it was not a key at all.
     Do not reintroduce it — one bind, one spelling.
 
-    *workset_channels* (PRIMARY/NAMED only) maps ``commons``/``chat``/``share`` to
+    *workset_channels* (PRIMARY/NAMED only) maps ``common``/``chat``/``share`` to
     the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
     materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c
     L452-454) route through them. ``None`` for STANDALONE (no workset channels).

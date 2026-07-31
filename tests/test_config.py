@@ -63,7 +63,7 @@ class TestLoadConfig:
         std = load_std_paths(load_config(cf))
         # channelroot leaf -> the channels root dir; children hang off it.
         assert std.channels == std.data_path / "channels"
-        assert std.channels_commons == std.channels / "commons"
+        assert std.channels_common == std.channels / "common"
         assert std.channels_broadcast == std.channels / "chat" / "broadcast.md"
 
     def test_null_value_resolves_to_default(self, tmp_path):

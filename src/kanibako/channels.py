@@ -9,13 +9,13 @@ file-seeding live in sub-step 6b.
 
 Two channel scopes (TARGET §1, §2c, §2f):
 
-* **system scope** — five type roots under ``@system.channelroot`` (commons, chat,
+* **system scope** — five type roots under ``@system.channelroot`` (common, chat,
   broadcast, mailboxes, share).  The instance-owned types (mailboxes, share) are
   *partitioned* by the workset-name token: ``mailboxes/<ws>`` and ``share/<ws>``
   where ``<ws>`` is ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``.  These
   partition roots apply to EVERY mode (standalone included).
 * **workset scope** — three type roots under ``@meta.workset.path/channels``
-  (commons, chat, share).  These exist for the PRIMARY and NAMED modes ONLY;
+  (common, chat, share).  These exist for the PRIMARY and NAMED modes ONLY;
   standalone has no workset-local channels (its ``workset.channelroot`` is
   ``<None>`` per the TARGET).
 
@@ -68,13 +68,13 @@ class SystemPartition:
 class WorksetChannels:
     """The workset-local channel roots (PRIMARY/NAMED only).
 
-    ``@workset.channelroot = @meta.workset.path/channels`` with ``commons``,
+    ``@workset.channelroot = @meta.workset.path/channels`` with ``common``,
     ``chat`` (+ the reserved ``broadcast.md`` / default ``general.md`` files
     inside it), and ``share`` (per-box subdirs are ``meta.box.share_workset``).
     """
 
     root: Path
-    commons: Path
+    common: Path
     chat: Path
     chat_general: Path
     chat_broadcast: Path
@@ -223,7 +223,7 @@ def workset_channel_paths(
     chat = root / "chat"
     return WorksetChannels(
         root=root,
-        commons=root / "commons",
+        common=root / "common",
         chat=chat,
         chat_general=chat / "general.md",
         chat_broadcast=chat / "broadcast.md",

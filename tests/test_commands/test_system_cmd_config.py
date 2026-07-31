@@ -343,7 +343,7 @@ class TestSystemStructuralFileOnly:
         """Residuals item 4: `system get system.setup_completed` /
         `system.channels.*` said "unknown config key" while `set` gave the
         truthful structural refusal. Make get's message MATCH set's truth."""
-        for key in ("system.setup_completed", "system.channels.commons"):
+        for key in ("system.setup_completed", "system.channels.common"):
             capsys.readouterr()  # drain
             rc = _get(key)
             assert rc == 1, key

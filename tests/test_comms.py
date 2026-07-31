@@ -46,7 +46,7 @@ class TestChannelsSetup:
         data_home = tmp_home / "data"
         channels = data_home / "kanibako" / "channels"
         # The channel type-root skeleton is NOT pre-created at setup anymore.
-        assert not (channels / "commons").exists()
+        assert not (channels / "common").exists()
         assert not (channels / "chat" / "general.md").exists()
 
 

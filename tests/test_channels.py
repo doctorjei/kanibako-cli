@@ -177,7 +177,7 @@ class TestWorksetChannelPaths:
         assert wch is not None
         root = std.primary_workset / "channels"
         assert wch.root == root
-        assert wch.commons == root / "commons"
+        assert wch.common == root / "common"
         assert wch.chat == root / "chat"
         assert wch.chat_general == root / "chat" / "general.md"
         assert wch.chat_broadcast == root / "chat" / "broadcast.md"
@@ -189,7 +189,7 @@ class TestWorksetChannelPaths:
         assert named_proj.group is not None
         root = named_proj.group.root / "channels"
         assert wch.root == root
-        assert wch.commons == root / "commons"
+        assert wch.common == root / "common"
         assert wch.share == root / "share"
 
     def test_standalone_has_no_workset_channels(self, standalone_proj, std):
@@ -257,5 +257,5 @@ class TestPurity:
         # None of the derived channel dirs are created by the helpers.
         assert not addr.inbox.exists()
         assert not addr.share_global.exists()
-        assert not wch.commons.exists()
+        assert not wch.common.exists()
         assert not wch.chat.exists()
