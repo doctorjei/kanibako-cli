@@ -262,6 +262,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.config_interface import (
         ConfigAction,
         ConfigLevel,
+        _AGENT_DEFAULT_SUB,
         _parse_agent_node_bind_key,
         get_config_value,
         is_known_key,
@@ -394,11 +395,23 @@ def _run_system_config(args: argparse.Namespace) -> int:
         bind_parse = _parse_agent_node_bind_key(key)
         if bind_parse is not None:
             node_raw, _cat, _name = bind_parse
+            # A MALFORMED ref is REFUSED here, naming the ref. Swallowing the parse
+            # error and leaving ``set_config_path = cf`` (the old behavior) aimed the
+            # write at the kanibako_config.yaml CONFIG file — where a malformed node's
+            # table actually landed — and reported the cascade's "key must already
+            # exist" complaint about a key that could never exist, sending the user off
+            # to seed a bind instead of fixing the node.
             try:
                 node = canonicalize_agent_ref(node_raw)
-            except ConfigError:
-                node = None
-            if node is not None:
+            except ConfigError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            # The RESERVED any-agent tier is not a node: do NOT route it, and in
+            # particular do not mkdir an ``agents/default/`` the launch never reads.
+            # The refusal itself belongs to the engine's node guard
+            # (``_set_category_value``), which owns that message for every caller —
+            # duplicating the text here would be a second copy to drift.
+            if node != _AGENT_DEFAULT_SUB:
                 node_file = agent_settings_path(std.agents, node)
                 node_file.parent.mkdir(parents=True, exist_ok=True)
                 set_config_path = node_file
@@ -407,15 +420,16 @@ def _run_system_config(args: argparse.Namespace) -> int:
                 set_cascade_agent_name = node
 
         # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
-        # 2026-06-29): the system is the command scope. A system-scope category set
-        # writes to the CONFIG file (cf — see set_config_value's category branch),
-        # so cf goes in the system slot for sibling @-refs; the resolved system.*
-        # config tier is folded in as the FLOOR regardless.
+        # 2026-06-29): the system is the command scope, whose settings file is ssp —
+        # the SAME file the launch cascade's system tier reads (start.py) and the same
+        # file this command's RESET handler threads. It passed cf (the CONFIG file)
+        # here while a system category set wrote to cf, so the must-exist probe agreed
+        # with neither the launch nor reset; both halves now name ssp.
         msg = set_config_value(
             key, value, config_path=set_config_path, env_path=env_sys,
             is_system=True,
             system_settings_path=ssp,
-            cascade_system_path=cf,
+            cascade_system_path=ssp,
             cascade_agent_path=set_cascade_agent_path,
             cascade_agent_name=set_cascade_agent_name,
             command_scope=ConfigLevel.system,

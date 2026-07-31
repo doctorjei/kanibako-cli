@@ -4362,3 +4362,254 @@ def test_a_reserved_leaf_on_the_DIRECT_category_route_returns_an_error(tmp_path)
     )
     assert msg.startswith("Error:")
     assert "reserved" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# SYSTEM-scope file routing — get / set / reset must all name ONE file, and that
+# file must be the one the LAUNCH cascade reads (@config.settings), never the
+# kanibako_config.yaml CONFIG file.  Three branches were holdouts (F1/F2/F3).
+# ---------------------------------------------------------------------------
+
+def _system_scope_files(tmp_path):
+    """The two SYSTEM-scope files, kept DISTINCT so a routing slip is visible:
+    the bootstrap CONFIG file and the system SETTINGS file."""
+    cf = tmp_path / "kanibako_config.yaml"
+    ssp = tmp_path / "global" / "settings.yaml"
+    ssp.parent.mkdir(parents=True, exist_ok=True)
+    return cf, ssp
+
+
+class TestSystemScopeSecretPathSymmetry:
+    """F1 — ``<scope>.secret_path.<VAR>`` at the SYSTEM scope.
+
+    ``set`` wrote (and ``reset`` removed) the system SETTINGS file, but ``get``
+    read ``project_toml`` — which the system handler never threads — so every
+    system-scope read of a secret pointer said "(not set)" no matter what had
+    been set.  All three verbs now read/write the NOUN's settings file.
+    """
+
+    def _get(self, cf, ssp):
+        return get_config_value(
+            "system.secret_path.FOO", global_config_path=cf,
+            system_settings_path=ssp, command_scope=ConfigLevel.system,
+        )
+
+    def test_set_get_reset_name_one_file(self, tmp_path):
+        cf, ssp = _system_scope_files(tmp_path)
+        msg = set_config_value(
+            "system.secret_path.FOO", "/t/tok",
+            config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
+        # SET → the settings file; the CONFIG file is never created.
+        assert load_doc(ssp)["system"]["secret_path"]["FOO"] == "/t/tok"
+        assert not cf.exists()
+        # GET → the same file (blind before the fix).
+        assert self._get(cf, ssp) == "/t/tok"
+        # RESET → clears it, and GET agrees.
+        msg = reset_config_value(
+            "system.secret_path.FOO", config_path=cf,
+            system_settings_path=ssp, command_scope=ConfigLevel.system,
+        )
+        assert msg.startswith("Cleared"), msg
+        assert self._get(cf, ssp) is None
+
+    def test_a_stale_config_file_value_is_not_the_noun_store(self, tmp_path):
+        """The CONFIG file is not where a secret pointer lives, so a hand-placed
+        value there must NOT be reported — the launch would never read it."""
+        cf, ssp = _system_scope_files(tmp_path)
+        dump_doc(cf, {"system": {"secret_path": {"FOO": "/stale"}}})
+        assert self._get(cf, ssp) is None
+
+    def test_box_scope_secret_get_is_unchanged(self, tmp_path):
+        """The fix reads ``noun_file``, which falls back to ``project_toml`` when
+        no system settings file is threaded — box/workset behavior is identical."""
+        f = tmp_path / "settings.yaml"
+        set_config_value(
+            "box.secret_path.TOKEN", "/t/box",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert get_config_value(
+            "box.secret_path.TOKEN", global_config_path=tmp_path / "g.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
+        ) == "/t/box"
+
+
+class TestSystemScopeCategoryFileRouting:
+    """F2 — a SYSTEM-scope category key's set/reset destination.
+
+    ``set`` repointed the tuple in the kanibako_config.yaml CONFIG file while
+    ``get`` read the system SETTINGS file, so a successful set read back as
+    "(not set)"; and because ``reset --all`` sweeps the SETTINGS file's scope
+    tables, the config-file write SURVIVED ``--all``.  Both verbs now name the
+    settings file — the same file the launch cascade's system tier reads.
+    """
+
+    KEY = "system.bindings.ro.helper"
+    SEEDED = ["/old/src", "/home/agent/helper", "ro"]
+
+    def _seed(self, path):
+        dump_doc(path, {"system": {"bindings": {"ro": {"helper": list(self.SEEDED)}}}})
+
+    def _set(self, cf, ssp, value):
+        return set_config_value(
+            self.KEY, value, config_path=cf, system_settings_path=ssp,
+            is_system=True, command_scope=ConfigLevel.system,
+            cascade_system_path=ssp,
+        )
+
+    def _get(self, cf, ssp):
+        return get_config_value(
+            self.KEY, global_config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+
+    def test_set_lands_in_the_settings_file_and_get_reads_it_back(self, tmp_path):
+        cf, ssp = _system_scope_files(tmp_path)
+        self._seed(ssp)
+        new_src = tmp_path / "newsrc"
+        new_src.mkdir()
+        msg = self._set(cf, ssp, str(new_src))
+        assert not msg.startswith("Error:"), msg
+        assert "Warning" not in msg
+        # host_src swapped IN THE SETTINGS FILE; box_dest + options preserved RAW.
+        assert load_doc(ssp)["system"]["bindings"]["ro"]["helper"] == [
+            str(new_src), "/home/agent/helper", "ro",
+        ]
+        # The CONFIG file was never touched (it holds STRUCTURAL config only).
+        assert not cf.exists()
+        # get/set symmetry: the read finds exactly what the write stored.
+        assert str(new_src) in (self._get(cf, ssp) or "")
+
+    def test_single_reset_clears_what_set_wrote(self, tmp_path):
+        cf, ssp = _system_scope_files(tmp_path)
+        self._seed(ssp)
+        new_src = tmp_path / "newsrc"
+        new_src.mkdir()
+        assert not self._set(cf, ssp, str(new_src)).startswith("Error:")
+        msg = reset_config_value(
+            self.KEY, config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, cascade_system_path=ssp,
+        )
+        assert msg.startswith("Cleared"), msg
+        assert self._get(cf, ssp) is None
+        # A second reset has nothing left to remove (it cleared the real store).
+        assert reset_config_value(
+            self.KEY, config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        ).startswith("No override")
+
+    def test_reset_all_clears_a_category_set(self, tmp_path):
+        """The survives-``--all`` repro, INVERTED.  ``reset_all`` clears nested
+        scope tables from the SETTINGS file only, so a category write parked in
+        the CONFIG file was unreachable by ``--all`` — an override the user
+        could not remove with the verb whose whole job is removing overrides."""
+        cf, ssp = _system_scope_files(tmp_path)
+        self._seed(ssp)
+        new_src = tmp_path / "newsrc"
+        new_src.mkdir()
+        assert not self._set(cf, ssp, str(new_src)).startswith("Error:")
+        reset_all(
+            config_path=cf, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert "system" not in load_doc(ssp)
+        assert self._get(cf, ssp) is None
+        # ...and the set parked NOTHING in the CONFIG file, which ``--all``'s
+        # scope-table sweep does not reach — that residue was the whole bug.
+        assert not cf.exists()
+
+    def test_a_bind_only_in_the_config_file_is_not_the_cascade(self, tmp_path):
+        """The must-exist probe must agree with the LAUNCH, whose system tier is
+        the settings file.  A bind that exists only in kanibako_config.yaml is
+        nowhere in that cascade, so repointing it is refused — and neither file
+        is written."""
+        cf, ssp = _system_scope_files(tmp_path)
+        self._seed(cf)
+        msg = self._set(cf, ssp, str(tmp_path))
+        assert msg.startswith("Error:")
+        assert "must already exist" in msg
+        assert load_doc(cf)["system"]["bindings"]["ro"]["helper"] == self.SEEDED
+        assert not ssp.exists()
+
+    def test_box_scope_category_routing_is_unchanged(self, tmp_path):
+        """``settings_dest`` IS ``config_path`` when no system settings file is
+        threaded, so box/workset set + reset are byte-identical to before."""
+        f = tmp_path / "settings.yaml"
+        dump_doc(f, {"box": {"caches": {"x": ["/old", "/home/agent/.cache/x"]}}})
+        assert not set_config_value(
+            "box.caches.x", str(tmp_path), config_path=f,
+            command_scope=ConfigLevel.box,
+        ).startswith("Error:")
+        assert load_doc(f)["box"]["caches"]["x"][0] == str(tmp_path)
+        assert reset_config_value(
+            "box.caches.x", config_path=f, command_scope=ConfigLevel.box,
+        ).startswith("Cleared")
+        assert "caches" not in load_doc(f).get("box", {})
+
+
+class TestCategorySetAgentNodeGuards:
+    """F3 — the inline agent-node route inside ``_set_category_value`` enforces
+    the SAME two node guards its three siblings do (``_persona_agent_target`` /
+    ``_node_bind_target`` / ``_node_secret_target``): the reserved any-agent tier
+    is not a persona node, and a malformed ref is not a node at all.
+
+    Without them SET wrote keys that GET and RESET then refused — a value the
+    CLI could neither read back nor remove.
+    """
+
+    def _agents(self, tmp_path):
+        return tmp_path / "agents"
+
+    def _set(self, tmp_path, key):
+        """Set *key* with the key PRESENT in the set-time cascade (a floor entry),
+        so the must-exist gate cannot be what refuses — isolating the node guard
+        as the only thing left that can.  Without the key in the cascade both
+        refusals look identical from the outside, and pre-guard the write went
+        through whenever the key WAS there."""
+        return set_config_value(
+            key, "/x", config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.system, agents_root=self._agents(tmp_path),
+            default_categories={key: ["/floor/src", "/box/dest", "ro"]},
+        )
+
+    def test_reserved_default_node_refused_and_writes_nothing(self, tmp_path):
+        msg = self._set(tmp_path, "agent.default.bindings.ro.share")
+        assert msg.startswith("Error:")
+        assert "reserved" in msg
+        assert not (tmp_path / "settings.yaml").exists()
+
+    def test_malformed_node_refused_and_writes_nothing(self, tmp_path):
+        msg = self._set(tmp_path, "agent.a+b+c.bindings.ro.share")
+        assert msg.startswith("Error:")
+        assert not (tmp_path / "settings.yaml").exists()
+
+    @pytest.mark.parametrize(
+        "key",
+        ["agent.default.bindings.ro.share", "agent.a+b+c.bindings.ro.share"],
+    )
+    def test_get_and_reset_refuse_the_same_two_nodes(self, tmp_path, key):
+        """The other half of the asymmetry, pinned so the three verbs stay in
+        agreement about which nodes exist."""
+        f = tmp_path / "settings.yaml"
+        assert get_config_value(
+            key, global_config_path=f, system_settings_path=f,
+            agents_root=self._agents(tmp_path),
+        ) is None
+        assert reset_config_value(
+            key, config_path=f, command_scope=ConfigLevel.system,
+            agents_root=self._agents(tmp_path),
+        ).startswith("Error:")
+
+    def test_a_well_formed_node_is_not_over_refused(self, tmp_path):
+        """The guard rejects the NODE, never the value: a well-formed node falls
+        through to the ordinary cascade check (a different, value-level error)."""
+        msg = set_config_value(
+            "agent.navigator+claude.bindings.ro.nonexistent", "/x",
+            config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.system, agents_root=self._agents(tmp_path),
+        )
+        assert msg.startswith("Error:")
+        assert "reserved" not in msg
+        assert "must already exist" in msg
