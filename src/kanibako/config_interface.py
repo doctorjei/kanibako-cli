@@ -1757,6 +1757,32 @@ def _set_category_value(
         validate_config_set,
     )
 
+    # NODE GUARDS for the per-node agent bind route (``agent.<node>.bindings.*``) —
+    # the SAME two refusals its three siblings enforce (``_persona_agent_target``,
+    # ``_node_bind_target``, ``_node_secret_target``): the RESERVED any-agent tier is
+    # not a persona node, and a MALFORMED ref is not a node at all. This route
+    # (``dest_parts`` below) computed the file route inline and skipped both, so SET
+    # wrote values ``get``/``reset`` then refused to read or remove — a write the CLI
+    # cannot undo, and (for the reserved name) an ``agents/default/`` dir the launch
+    # never reads as a node. Checked FIRST, before the cascade/value validation:
+    # whether the KEY exists precedes whether its VALUE is good, so the refusal is
+    # deterministic instead of racing a must-exist error.
+    if _is_agent_node_bind_key(canonical):
+        _parsed_node = _parse_agent_node_bind_key(canonical)
+        if _parsed_node is not None:
+            _node = _parsed_node[0]
+            if _node == _AGENT_DEFAULT_SUB:
+                return (
+                    f"Error: 'default' is the reserved any-agent tier, not a persona "
+                    f"node; a per-node descriptor bind must name a real agent node "
+                    f"(e.g. 'agent.<persona>+<harness>.{_parsed_node[1]}."
+                    f"{_parsed_node[2]}')."
+                )
+            try:
+                parse_agent_ref(_node)  # validate only (raises on a malformed ref)
+            except ConfigError as exc:
+                return f"Error: {exc}"
+
     def _host_exists(raw: str) -> bool:
         # A plain literal host path; ``~`` is home-relative. (A token-bearing
         # value is not path-checked — validate_config_set only calls this for a
@@ -1958,12 +1984,17 @@ def get_config_value(
 
     # <scope>.secret_path.<VAR> (system/workset/box) — read the stored PATH from the
     # NOUN's settings file (stored-at-noun; the --effective cascade view is the show
-    # path). project_toml is the command scope's settings file here.
+    # path). ``noun_file`` is the SAME per-noun selection set/reset use
+    # (``settings_dest``): the system settings file at SYSTEM, else the command's own
+    # ``project_toml``. It read ``project_toml`` unconditionally before, which the
+    # SYSTEM handler never threads — so a ``system set system.secret_path.X`` (written
+    # to the system settings file) read back "(not set)" forever while ``reset``
+    # cleared it. Box/workset are unaffected: there ``noun_file`` IS ``project_toml``.
     if _is_scope_secret_key(canonical):
-        if project_toml and project_toml.exists():
+        if noun_file and noun_file.exists():
             parts = canonical.split(".")
             return _read_stored_leaf(
-                project_toml, (parts[0], "secret_path"), parts[2],
+                noun_file, (parts[0], "secret_path"), parts[2],
             )
         return None
 
@@ -2009,7 +2040,18 @@ def get_config_value(
     # ``seeded`` / ``shared`` / ``synced``) — the get/set/reset symmetry twin of the
     # category SET branch (F10, spec §2a). Read the RAW tuple STORED at the nested
     # dotted path in the NOUN's settings file (== the box file at box scope, the
-    # system settings file at SYSTEM), exactly where ``repoint_host_src`` wrote it.
+    # system settings file at SYSTEM) — for a FILE-scope key (``system``/``workset``/
+    # ``box``) that is exactly where ``repoint_host_src`` wrote it, TRUE since the
+    # set/reset branches were routed through ``settings_dest`` (they wrote/removed a
+    # SYSTEM-scope tuple in the kanibako_config.yaml CONFIG file before, which this
+    # branch never read — a set that read back "(not set)"). The claim is NOT yet
+    # true for a non-bind AGENT-scope category (``agent.<node>.common.*`` /
+    # ``caches`` / ``seeded`` / ``synced``): set AND reset both use the caller's
+    # ``config_path`` (at the system handler, kanibako_config.yaml) while this read
+    # uses ``noun_file`` — and kanibako_config.yaml is in NO cascade level, so that
+    # set is a SILENT NO-OP WRITE (the agent tier reads the ``self:`` table of
+    # ``agents/<node>/settings.yaml``). The per-node BIND form is routed EARLIER
+    # (``_is_agent_node_bind_key``, the node file) and is symmetric.
     # Checked BEFORE the ``system.*`` file-only branch because a SYSTEM-scope
     # category key (``system.bindings.*``) only LOOKS like a ``system.*`` config
     # key — categories are settable/gettable at every scope (mirrors the set/reset
@@ -2558,8 +2600,30 @@ def set_config_value(
     if _is_path_category_key(canonical):
         # Narrowed by the --null route guard above (a repoint has no null form).
         assert value is not None
+        # A FILE-scope category (``system``/``workset``/``box``) writes the COMMAND
+        # scope's SETTINGS file (``settings_dest``) — the same destination the
+        # scope-prefixed SCALAR keys below use, and the file the launch cascade reads
+        # for that tier (at SYSTEM, ``@config.settings``). This branch passed
+        # ``config_path`` before: identical at box/workset (``settings_dest`` IS
+        # ``config_path`` there), but at SYSTEM ``config_path`` is the
+        # kanibako_config.yaml CONFIG file — so a system category set wrote where GET
+        # never looks, where the launch never reads, and where ``reset --all`` (which
+        # sweeps the settings file's scope tables) could not clear it.
+        #
+        # The AGENT scope keeps ``config_path`` — UNCHANGED, not endorsed. Its store
+        # is a PER-NODE file (``agents/<node>/settings.yaml``, the ``self:`` table the
+        # agent tier reads), and only the per-node BIND route reaches it (the branch
+        # above, via system_cmd's node-file threading). A non-bind agent category
+        # (``agent.<node>.common.*`` / ``caches`` / ``seeded`` / ``synced``) is routed
+        # by NO handler and lands in the command's own file, which is in no cascade
+        # level — so today that set is a SILENT NO-OP WRITE. ``settings_dest`` would
+        # not fix it either (it is not the node file), so this behavior-only fix
+        # leaves the broken case exactly as it found it rather than moving it to a
+        # second wrong file. Fixing it is its own change: route it to the node file.
+        _cat_scope = canonical.split(".", 1)[0]
         return _set_category_value(
-            canonical, value, config_path=config_path,
+            canonical, value,
+            config_path=config_path if _cat_scope == "agent" else settings_dest,
             system_path=cascade_system_path,
             agent_path=cascade_agent_path,
             workset_path=cascade_workset_path,
@@ -2798,9 +2862,9 @@ def reset_config_value(
 
     # Path-TUPLE category keys — reset symmetry with the category SET branch
     # (F10, spec §2a): remove the COMMAND-scope override tuple from the SAME file
-    # the set wrote (config_path), pruning emptied tables, so the cascade's own
-    # tuple (a higher scope's or the launch floor's) resurfaces at the next
-    # assemble. Before this branch a category key fell through to the routing
+    # the set wrote (see the dest rule below), pruning emptied tables, so the
+    # cascade's own tuple (a higher scope's or the launch floor's) resurfaces at
+    # the next assemble. Before this branch a category key fell through to the routing
     # table and mis-reported "unknown config key".
     #
     # The honest cleared-message (Bug 2) names the reverted-to FLOOR value when the
@@ -2813,7 +2877,14 @@ def reset_config_value(
     # information as the old plain "Reset" but via the honest formatter.
     if _is_path_category_key(canonical):
         tail = canonical.split(".")
-        if _remove_nested_toml_key(config_path, tuple(tail[:-1]), tail[-1]):
+        # Removed from the file the category SET branch WRITES — the SAME
+        # scope-token rule (``settings_dest`` for a file scope; ``config_path`` for
+        # the per-node AGENT scope), so set and reset can never name different files.
+        # It removed from ``config_path`` unconditionally before, which at SYSTEM is
+        # the kanibako_config.yaml CONFIG file: neither where set wrote nor where get
+        # reads.
+        _cat_dest = config_path if tail[0] == "agent" else settings_dest
+        if _remove_nested_toml_key(_cat_dest, tuple(tail[:-1]), tail[-1]):
             floor = _floor_bind_display(canonical, default_categories)
             return _honest_reset_message(canonical, command_scope, floor)
         return f"No override for {canonical}"

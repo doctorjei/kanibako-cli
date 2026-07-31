@@ -623,3 +623,135 @@ class TestRelativeCategorySourceRefusedEndToEnd:
         assert load_doc(config_file)["agent"]["claude"]["common"]["plugins"] == [
             "/seed/src", "/home/agent/.claude/plugins",
         ]
+
+
+class TestSystemSecretPathVerbSymmetry:
+    """F1 — ``system set/get/reset <scope>.secret_path.<VAR>`` through the real
+    verbs.  ``set`` wrote (and ``reset`` removed) the system SETTINGS file while
+    ``get`` read ``project_toml`` — a path this handler never threads — so a
+    secret pointer set at the system scope read back "(not set)" forever."""
+
+    KEY = "system.secret_path.ANTHROPIC_AUTH_TOKEN"
+
+    def test_set_then_get_then_reset(self, config_file, tmp_home, capsys):
+        assert _set(f"{self.KEY}=/t/tok") == 0
+        std = _std(config_file)
+        assert load_doc(std.settings)["system"]["secret_path"][
+            "ANTHROPIC_AUTH_TOKEN"
+        ] == "/t/tok"
+        capsys.readouterr()
+
+        assert _get(self.KEY) == 0
+        out = capsys.readouterr().out
+        assert "(not set)" not in out
+        assert "/t/tok" in out
+
+        assert _reset(self.KEY) == 0
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert "(not set)" in capsys.readouterr().out
+
+
+class TestSystemCategoryFileRouting:
+    """F2 — a SYSTEM-scope category key must live in ONE file: the system
+    SETTINGS file, which is what the launch cascade's system tier reads.  ``set``
+    and single-key ``reset`` used the kanibako_config.yaml CONFIG file while
+    ``get`` (and ``reset --all``'s scope-table sweep) used the settings file."""
+
+    KEY = "system.bindings.ro.helper"
+
+    def _seed(self, path):
+        _write_nested_toml_key(
+            path, ("system", "bindings", "ro"), "helper",
+            ["/old/src", "/home/agent/helper", "ro"],
+        )
+
+    def test_set_get_reset_all_name_the_settings_file(
+        self, config_file, tmp_home, capsys,
+    ):
+        std = _std(config_file)
+        self._seed(std.settings)
+        new_src = str(tmp_home)
+        assert _set(f"{self.KEY}={new_src}") == 0, capsys.readouterr().err
+
+        # SET → the settings file, box_dest + options preserved RAW.
+        assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
+            new_src, "/home/agent/helper", "ro",
+        ]
+        # ...and NOT the CONFIG file (which holds structural config only).
+        assert "bindings" not in load_doc(config_file).get("system", {})
+
+        # GET → reads back what SET wrote (was "(not set)").
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert new_src in capsys.readouterr().out
+
+        # RESET → clears the same store.
+        assert _reset(self.KEY) == 0
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert "(not set)" in capsys.readouterr().out
+
+    def test_reset_all_clears_a_category_set(self, config_file, tmp_home, capsys):
+        """``reset --all`` sweeps the SETTINGS file's scope tables only, so a
+        category write parked in the CONFIG file SURVIVED it — an override the
+        remove-everything verb could not remove."""
+        std = _std(config_file)
+        self._seed(std.settings)
+        assert _set(f"{self.KEY}={tmp_home}") == 0
+        assert _reset(all_keys=True) == 0
+        assert "system" not in load_doc(std.settings)
+        assert "bindings" not in load_doc(config_file).get("system", {})
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert "(not set)" in capsys.readouterr().out
+
+    def test_a_bind_only_in_the_config_file_is_not_the_cascade(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The set-time must-exist probe must agree with the LAUNCH, whose system
+        tier is the settings file — so a bind that exists ONLY in
+        kanibako_config.yaml is nowhere in the cascade and cannot be repointed.
+        (It was accepted before, because set and its probe both pointed at the
+        config file: the CLI agreed with itself and with nothing else.)"""
+        std = _std(config_file)
+        self._seed(config_file)
+        rc = _set(f"{self.KEY}={tmp_home}")
+        assert rc == 1
+        assert "must already exist" in capsys.readouterr().err
+        # Neither store was written.
+        assert load_doc(config_file)["system"]["bindings"]["ro"]["helper"] == [
+            "/old/src", "/home/agent/helper", "ro",
+        ]
+        assert "bindings" not in load_doc(std.settings).get("system", {})
+
+
+class TestSystemAgentNodeBindSeamRefuses:
+    """F3 — the ``system set`` seam refuses a bad node instead of falling back.
+
+    It swallowed ``canonicalize_agent_ref``'s ``ConfigError`` and left the write
+    pointed at the kanibako_config.yaml CONFIG file, and it let the RESERVED
+    ``default`` node through as far as ``mkdir`` — creating an ``agents/default/``
+    dir for a key the launch never reads as a node."""
+
+    def test_reserved_default_node_refused(self, config_file, tmp_home, capsys):
+        rc = _set("agent.default.bindings.ro.share=/x")
+        assert rc == 1
+        assert "reserved" in capsys.readouterr().err
+        std = _std(config_file)
+        assert not (std.agents / "default").exists()
+        assert "agent" not in load_doc(config_file)
+
+    def test_malformed_node_refused(self, config_file, tmp_home, capsys):
+        rc = _set("agent.a+b+c.bindings.ro.share=/x")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error:")
+        # The refusal NAMES the real defect — the ref.  Swallowing the parse error
+        # and falling back to the config file left the user with the cascade's
+        # "key must already exist" complaint about a key that could never exist,
+        # which sends them off to seed a bind instead of fixing the node.
+        assert "agent ref" in err
+        # The malformed node's table did NOT land in the CONFIG file.
+        assert "agent" not in load_doc(config_file)
+        assert list(_std(config_file).agents.glob("*")) == []
