@@ -25,8 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.containerfiles import get_containerfile
-from kanibako.templates_image import (
+from kanibako.runtime.containerfiles import get_containerfile
+from kanibako.runtime.templates_image import (
     list_bundled_templates,
     rig_image_name,
     template_image_name,
@@ -34,9 +34,9 @@ from kanibako.templates_image import (
 
 if TYPE_CHECKING:
     from kanibako.config import KanibakoConfig
-    from kanibako.container import ContainerRuntime
+    from kanibako.runtime.container import ContainerRuntime
     from kanibako.paths import StandardPaths
-    from kanibako.rig_registry import RigRecord
+    from kanibako.runtime.rig_registry import RigRecord
 
 
 @dataclass(frozen=True)

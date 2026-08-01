@@ -7,7 +7,7 @@ import shutil
 import sys
 
 from kanibako.config import BOX_META_FILE, load_config
-from kanibako.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree
 from kanibako.errors import UserCancelled
 from kanibako.paths import (
     _STANDALONE_META_DIR,

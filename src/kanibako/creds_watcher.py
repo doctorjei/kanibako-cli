@@ -299,7 +299,7 @@ def _resolve_watch_context(box: str | None):
     from kanibako.agent_ref import harness_of
     from kanibako.commands.start import _resolve_box_auth_source
     from kanibako.config import config_file_path, load_config
-    from kanibako.container import ContainerRuntime
+    from kanibako.runtime.container import ContainerRuntime
     from kanibako.paths import load_std_paths, resolve_box_target, xdg
     from kanibako.targets import resolve_target
     from kanibako.utils import container_name_for

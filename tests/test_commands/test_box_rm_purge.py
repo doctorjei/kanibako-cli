@@ -25,7 +25,7 @@ class TestPurgeDir:
         d = tmp_path / "box"
         d.mkdir()
         with patch("shutil.rmtree", side_effect=PermissionError("denied")), \
-             patch("kanibako.container.ContainerRuntime") as mock_rt:
+             patch("kanibako.runtime.container.ContainerRuntime") as mock_rt:
             mock_rt.return_value.unshare_rm.return_value = True
             assert _purge_dir(d) is True
             mock_rt.return_value.unshare_rm.assert_called_once_with(d)
@@ -34,16 +34,16 @@ class TestPurgeDir:
         d = tmp_path / "box"
         d.mkdir()
         with patch("shutil.rmtree", side_effect=PermissionError("denied")), \
-             patch("kanibako.container.ContainerRuntime") as mock_rt:
+             patch("kanibako.runtime.container.ContainerRuntime") as mock_rt:
             mock_rt.return_value.unshare_rm.return_value = False
             assert _purge_dir(d) is False  # dir still present
             assert d.exists()
 
     def test_returns_false_when_no_runtime(self, tmp_path):
-        from kanibako.container import ContainerError
+        from kanibako.runtime.container import ContainerError
         d = tmp_path / "box"
         d.mkdir()
         with patch("shutil.rmtree", side_effect=PermissionError("denied")), \
-             patch("kanibako.container.ContainerRuntime",
+             patch("kanibako.runtime.container.ContainerRuntime",
                    side_effect=ContainerError("no podman")):
             assert _purge_dir(d) is False

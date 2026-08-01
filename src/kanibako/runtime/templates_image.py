@@ -184,7 +184,7 @@ def list_bundled_templates(
     If *override_dir* is a directory, it is scanned the same way for
     user-dropped templates (source ``"user"``). A user template with the same
     ``<name>`` as a bundled one *overrides* it -- mirroring
-    :func:`kanibako.containerfiles.get_containerfile`'s override-first
+    :func:`kanibako.runtime.containerfiles.get_containerfile`'s override-first
     precedence -- so the result carries the user file's description and
     ``source="user"``.
 

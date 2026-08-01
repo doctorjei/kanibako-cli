@@ -551,7 +551,7 @@ class TestRigPrep:
         """A bare template name whose image is absent → runtime.rebuild()."""
         from pathlib import Path
 
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         cf = Path("/bundled/containers/Containerfile.template-jvm")
         res = RigResolution(
@@ -592,7 +592,7 @@ class TestRigPrep:
         """A non-zero rebuild exit code aborts start with code 1."""
         from pathlib import Path
 
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         res = RigResolution(
             name="jvm",
@@ -623,7 +623,7 @@ class TestRigPrep:
 
     def test_prefab_uses_ensure_image_not_rebuild(self, start_mocks):
         """A prefab → runtime.ensure_image with the resolved ref; no rebuild."""
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         res = RigResolution(
             name="oci",
@@ -653,7 +653,7 @@ class TestRigPrep:
 
     def test_already_local_template_uses_ensure_image(self, start_mocks):
         """An already-prepped template (containerfile UNSET) → ensure_image, no rebuild."""
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         res = RigResolution(
             name="jvm",
@@ -5859,7 +5859,7 @@ class TestPersonaLoadOrErrorUnmasked:
             patch("kanibako.commands.start.resolve_rig", return_value=rig),
             patch("kanibako.commands.start.load_registry", return_value={}),
             patch("kanibako.shells.capture_image_shell"),
-            patch("kanibako.freshness.check_image_freshness"),
+            patch("kanibako.runtime.freshness.check_image_freshness"),
         ):
             yield runtime
 

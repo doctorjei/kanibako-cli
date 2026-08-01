@@ -1,11 +1,11 @@
-"""Tests for kanibako.rig_meta (in-image extended-rig metadata)."""
+"""Tests for kanibako.runtime.rig_meta (in-image extended-rig metadata)."""
 
 from __future__ import annotations
 
 import pytest
 import yaml
 
-from kanibako.rig_meta import (
+from kanibako.runtime.rig_meta import (
     RigMeta,
     dump_rig_meta,
     load_rig_meta,

@@ -380,7 +380,7 @@ class TestSelfHeal:
     def test_readopt_drops_stale_primary_entry_when_metadata_gone(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
 
         config, std = _std(config_file)
         proj_dir = tmp_home / "proj"

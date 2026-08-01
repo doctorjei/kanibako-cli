@@ -305,7 +305,7 @@ def test_no_watch_context_without_an_agent_stamp(monkeypatch, stamp):
     # The resolver imports its collaborators INSIDE the function, so patch them at
     # their DEFINING modules (patching ``creds_watcher.X`` would not intercept).
     with (
-        patch("kanibako.container.ContainerRuntime", return_value=runtime),
+        patch("kanibako.runtime.container.ContainerRuntime", return_value=runtime),
         patch("kanibako.config.load_config"),
         patch("kanibako.paths.load_std_paths"),
         patch("kanibako.paths.resolve_box_target", return_value=MagicMock()),

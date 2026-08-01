@@ -679,7 +679,7 @@ class TestLaunchWiring:
         by_dest = self._launch_mounts(std, proj, _WiringTarget(bare))
         assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
 
-        with patch("kanibako.container.ContainerRuntime"):
+        with patch("kanibako.runtime.container.ContainerRuntime"):
             core_defaults.materialize_canon_skeleton(proj.shell_path)
         chapter_dir = proj.shell_path / "canon" / "bible" / "agent"
         assert chapter_dir.is_dir(), "the mountpoint must exist even with no bind"
@@ -708,7 +708,7 @@ class TestLaunchWiring:
 def fake_runtime():
     """Patch ``ContainerRuntime`` at its definition module (the import inside
     ``_protect_canon_skeleton`` is deferred, so this is the attribute it reads)."""
-    with patch("kanibako.container.ContainerRuntime") as rt:
+    with patch("kanibako.runtime.container.ContainerRuntime") as rt:
         rt.return_value.unshare_chown.return_value = True
         rt.return_value.unshare_chmod.return_value = True
         yield rt
@@ -902,11 +902,11 @@ class TestCanonSkeleton:
         creating a box works today with no runtime installed — and the skeleton is
         what makes the binds land, so the box is fully usable, just not litter-proof.
         """
-        from kanibako.container import ContainerError
+        from kanibako.runtime.container import ContainerError
 
         home = tmp_path / "home"
         home.mkdir()
-        with patch("kanibako.container.ContainerRuntime",
+        with patch("kanibako.runtime.container.ContainerRuntime",
                    side_effect=ContainerError("no podman")), \
                 caplog.at_level(logging.WARNING):
             core_defaults.materialize_canon_skeleton(home)
@@ -925,7 +925,7 @@ class TestCanonSkeleton:
         rt.unshare_chown.return_value = True
         rt.unshare_chmod.return_value = True
         getattr(rt, failing).return_value = False
-        with patch("kanibako.container.ContainerRuntime", return_value=rt), \
+        with patch("kanibako.runtime.container.ContainerRuntime", return_value=rt), \
                 caplog.at_level(logging.WARNING):
             core_defaults.materialize_canon_skeleton(home)
 

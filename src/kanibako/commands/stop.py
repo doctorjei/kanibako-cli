@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from kanibako.config import config_file_path, load_config
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.paths import (
     xdg,

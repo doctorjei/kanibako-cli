@@ -1,10 +1,10 @@
-"""Tests for kanibako.templates_image."""
+"""Tests for kanibako.runtime.templates_image."""
 
 from __future__ import annotations
 
 import pytest
 
-from kanibako.templates_image import (
+from kanibako.runtime.templates_image import (
     BundledTemplate,
     _bundled_containers_dir,
     list_bundled_templates,

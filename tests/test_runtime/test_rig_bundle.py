@@ -1,4 +1,4 @@
-"""Tests for kanibako.rig_bundle (.rig.tgz export bundle)."""
+"""Tests for kanibako.runtime.rig_bundle (.rig.tgz export bundle)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import tarfile
 
 import pytest
 
-from kanibako.rig_bundle import (
+from kanibako.runtime.rig_bundle import (
     BUNDLE_SUFFIX,
     pack_bundle,
     read_bundle_meta,
     unpack_bundle,
 )
-from kanibako.rig_meta import RigMeta, write_rig_meta
+from kanibako.runtime.rig_meta import RigMeta, write_rig_meta
 
 
 def _make_meta_file(tmp_path, name="myhack"):

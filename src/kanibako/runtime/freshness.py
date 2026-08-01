@@ -26,8 +26,8 @@ from pathlib import Path
 from packaging.version import InvalidVersion, Version
 from packaging.version import parse as parse_version
 
-from kanibako.container import ContainerRuntime
-from kanibako.registry import (
+from kanibako.runtime.container import ContainerRuntime
+from kanibako.runtime.registry import (
     get_remote_created,
     get_remote_digests,
     get_remote_tag_digest,

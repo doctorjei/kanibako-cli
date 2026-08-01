@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree
 
 
 def protected_box_home(box_dir: Path) -> Path:
@@ -119,7 +119,7 @@ class TestVerbsRouteThroughIt:
         Driven through the REAL ``create_workset``/``add_project``/``remove_project``
         chain, so a change to what ``remove_project`` deletes shows up here.
         """
-        import kanibako.container as container_mod
+        import kanibako.runtime.container as container_mod
         from kanibako.workset import add_project, create_workset, remove_project
 
         seen: list[Path] = []
@@ -154,7 +154,7 @@ class TestVerbsRouteThroughIt:
         entries are already gone, leaving a half-deleted workset that no longer
         resolves. Driven through the real ``delete_workset``.
         """
-        import kanibako.container as container_mod
+        import kanibako.runtime.container as container_mod
         from kanibako.workset import add_project, create_workset, delete_workset
 
         seen: list[Path] = []

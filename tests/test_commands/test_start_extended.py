@@ -1486,7 +1486,7 @@ class TestCheckLaunchBaselineUnit:
         self, tmp_path, monkeypatch, capsys
     ):
         from kanibako.commands import start as start_mod
-        from kanibako import baseline as baseline_mod
+        from kanibako.runtime import baseline as baseline_mod
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         runtime = MagicMock()
@@ -1519,7 +1519,7 @@ class TestCheckLaunchBaselineUnit:
 
     def test_tier2_clean_clears_stale_state(self, tmp_path, monkeypatch):
         from kanibako.commands import start as start_mod
-        from kanibako import baseline as baseline_mod
+        from kanibako.runtime import baseline as baseline_mod
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         runtime = MagicMock()
@@ -1588,7 +1588,7 @@ class TestCheckLaunchBaselineUnit:
     ):
         """Only ONE ephemeral probe runs, checking bootstrap + all baseline."""
         from kanibako.commands import start as start_mod
-        from kanibako import baseline as baseline_mod
+        from kanibako.runtime import baseline as baseline_mod
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         runtime = MagicMock()
@@ -1616,7 +1616,7 @@ class TestCheckLaunchBaselineUnit:
         """`none` opt-out: the bootstrap exe is NOT probed and tier-1 cannot
         hard-stop, but tier-2 (baseline) still runs and reports missing exes."""
         from kanibako.commands import start as start_mod
-        from kanibako import baseline as baseline_mod
+        from kanibako.runtime import baseline as baseline_mod
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         runtime = MagicMock()
@@ -1645,7 +1645,7 @@ class TestCheckLaunchBaselineUnit:
         """Under `none`, the tier-1 hard-stop path is unreachable even if the
         probe reports 'none' missing — no _BOOTSTRAP_MISSING, no error print."""
         from kanibako.commands import start as start_mod
-        from kanibako import baseline as baseline_mod
+        from kanibako.runtime import baseline as baseline_mod
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         runtime = MagicMock()

@@ -26,7 +26,7 @@ proves nothing about this class — the same lesson memory
 rmtree → e2e ``/tmp`` creep → this).
 
 ⚑ ONE ESCALATION, ONE PLACE.  Everything here delegates to
-:func:`kanibako.container.remove_box_tree`, the SAME deleter the product's own
+:func:`kanibako.runtime.container.remove_box_tree`, the SAME deleter the product's own
 lifecycle verbs use — it tries ``shutil.rmtree`` first and falls back to
 ``podman unshare rm -rf``.  A second hand-rolled escalation in the test tree would
 be free to drift from the one that ships.
@@ -55,7 +55,7 @@ def reap_tree(path: Path | str | None) -> bool:
     if not target.exists():
         return True
     try:
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
 
         return remove_box_tree(target)
     except Exception:  # noqa: BLE001 - cleanup must never fail a test

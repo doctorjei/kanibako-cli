@@ -77,7 +77,7 @@ def _check_runtime() -> tuple[str, str]:
     try:
         import subprocess
 
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         runtime = ContainerRuntime()
         result = subprocess.run(
@@ -96,7 +96,7 @@ def _check_runtime() -> tuple[str, str]:
 def _check_image(config: object) -> tuple[str, str]:
     """Check if the configured container image exists locally."""
     try:
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         runtime = ContainerRuntime()
         image_name: str = getattr(config, "box_image", "")
@@ -472,7 +472,7 @@ def run_system_diagnose(args: object) -> int:
     if merged is not None:
         image = getattr(merged, "box_image", None)
         try:
-            from kanibako.container import ContainerRuntime
+            from kanibako.runtime.container import ContainerRuntime
 
             runtime = ContainerRuntime()
         except Exception:
@@ -627,7 +627,7 @@ def run_rig_diagnose(args: object) -> int:
 
     # List local images
     try:
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         runtime = ContainerRuntime()
         images = runtime.list_local_images()
@@ -656,9 +656,9 @@ def _diagnose_baseline(args: object) -> None:
     :func:`probe_missing_executables` so a single ephemeral container checks all
     baseline executables per image.
     """
-    from kanibako import baseline as baseline_mod
+    from kanibako.runtime import baseline as baseline_mod
     from kanibako.config import config_file_path, load_merged_config
-    from kanibako.container import ContainerRuntime
+    from kanibako.runtime.container import ContainerRuntime
     from kanibako.paths import xdg
 
     only = getattr(args, "only", None)

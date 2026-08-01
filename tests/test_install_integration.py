@@ -57,7 +57,7 @@ class TestContainerfileDiscovery:
 
     def test_discovers_containers_in_cwd(self, integration_home):
         """Finds Containerfile.base in a user-override directory."""
-        from kanibako.containerfiles import get_containerfile
+        from kanibako.runtime.containerfiles import get_containerfile
 
         override_dir = integration_home / "containers"
         override_dir.mkdir()
@@ -70,7 +70,7 @@ class TestContainerfileDiscovery:
 
     def test_returns_none_when_no_containerfiles(self, integration_home):
         """Returns None when no Containerfiles are present."""
-        from kanibako.containerfiles import get_containerfile
+        from kanibako.runtime.containerfiles import get_containerfile
 
         empty_dir = integration_home / "empty_containers"
         empty_dir.mkdir()
@@ -83,7 +83,7 @@ class TestContainerfileDiscovery:
     ):
         """User-override Containerfile takes precedence over bundled."""
         from kanibako.config import load_config
-        from kanibako.containerfiles import get_containerfile
+        from kanibako.runtime.containerfiles import get_containerfile
         from kanibako.paths import load_std_paths
 
         config = load_config(integration_config)

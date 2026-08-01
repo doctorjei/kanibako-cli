@@ -3,7 +3,7 @@
 The STATIC, non-agent-specific launch-path defaults (the ``box.masks`` default,
 now empty, and the per-mode channel bind table) live as declarative data in
 :mod:`kanibako.data` (``core-defaults.yaml``), mirroring how the image baseline
-ships (:mod:`kanibako.baseline`) and how containerfiles/templates ship via
+ships (:mod:`kanibako.runtime.baseline`) and how containerfiles/templates ship via
 :mod:`importlib.resources`.  This module reads that file and emits the entries
 through the existing category seam so the box-launch path injects them as the
 AGENT-level ``default_categories`` exactly as the old in-code emitters did.
@@ -937,7 +937,7 @@ HANDBOOK_DIRECTIVES_DIRNAME = "directives"
 # like.  ``podman unshare`` enters the rootless INTERMEDIATE user namespace, whose
 # mapping is ``ns-uid 0 -> the real host user`` and ``ns-uid 1.. -> the host user's
 # subuid range``.  kanibako runs every box with
-# ``--userns=keep-id:uid=1000,gid=1000`` (:data:`kanibako.container.KEEP_ID_USERNS`),
+# ``--userns=keep-id:uid=1000,gid=1000`` (:data:`kanibako.runtime.container.KEEP_ID_USERNS`),
 # under which the real host user appears IN-BOX as uid 1000 — the agent.  So
 # ``chown 0:0`` inside unshare produces an AGENT-OWNED skeleton, the exact opposite
 # of J-7's stated effect ("in-box: root-owned, unwritable").  Container uid 0 under
@@ -1116,7 +1116,7 @@ def _protect_canon_skeleton(
     skeleton is a closed, enumerated set, so an explicit list is both safer and no
     harder.
     """
-    from kanibako.container import ContainerError, ContainerRuntime
+    from kanibako.runtime.container import ContainerError, ContainerRuntime
 
     everything = dirs + files
     try:
@@ -1257,7 +1257,7 @@ def image_default_categories(
     Maps ``box.bindings.ro.<key>`` → a STRUCTURED 3-TUPLE
     ``(host_src, box_dest, options)`` for the host image graph root + the GENERATED
     ``storage.conf`` — TODAY's hardwired Mounts from
-    :func:`kanibako.image_sharing.build_image_sharing_mounts` routed through the
+    :func:`kanibako.runtime.image_sharing.build_image_sharing_mounts` routed through the
     category resolver.  The box-side destinations + options come from the
     declarative file (``images:`` list); the host SOURCES (the runtime-probed
     *graph_root* and the already-GENERATED *storage_conf_path*) are injected here.

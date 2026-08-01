@@ -58,7 +58,7 @@ class TestSystemInfo:
         from kanibako.commands.system_cmd import run_info
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=Exception("no runtime"),
         ):
             args = argparse.Namespace()

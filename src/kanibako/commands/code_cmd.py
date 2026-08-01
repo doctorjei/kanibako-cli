@@ -19,7 +19,7 @@ from pathlib import Path
 
 from kanibako.box_lifecycle import is_vscode_server_path_part
 from kanibako.config import config_file_path, load_config
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.paths import (

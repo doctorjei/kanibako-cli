@@ -38,15 +38,15 @@ from kanibako.config import (
     read_system_agent,
 )
 from kanibako import core_defaults
-from kanibako.container import (
+from kanibako.runtime.container import (
     ContainerRuntime,
     _guest_dest_to_host,
     detect_shadowed_mounts,
 )
 from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError
 from kanibako.log import get_logger
-from kanibako.rig_registry import load_registry, registry_path
-from kanibako.rig_resolve import resolve_rig
+from kanibako.runtime.rig_registry import load_registry, registry_path
+from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
 from kanibako.settings_cli_level import build_cli_level
 from kanibako.paths import (
@@ -965,7 +965,7 @@ def _check_launch_baseline(runtime, image, bootstrap_program, container_name, st
       box's launch-issues state file and surfaced after the session closes.
       Tier 2 runs regardless of the ``none`` sentinel.
     """
-    from kanibako import baseline as baseline_mod
+    from kanibako.runtime import baseline as baseline_mod
 
     pairs = baseline_mod.executables()  # [(pkg, exe), ...]
     baseline_exes = [exe for _pkg, exe in pairs]
@@ -1352,7 +1352,7 @@ def _assemble_image_sharing_mounts(
     ``extra_mounts`` list in place exactly as the inline block did.
     """
     if share_images or merged.box_share_images:
-        from kanibako.image_sharing import prepare_image_sharing_sources
+        from kanibako.runtime.image_sharing import prepare_image_sharing_sources
         staging = proj.metadata_path / ".image-sharing"
         img_sources = prepare_image_sharing_sources(runtime.cmd, staging)
         if img_sources is not None:
@@ -1990,7 +1990,7 @@ def _run_container(
         from kanibako.shells import resolve_box_shell
         entrypoint, _src = resolve_box_shell(merged, std, runtime=runtime, image=image)
 
-    from kanibako.freshness import check_image_freshness
+    from kanibako.runtime.freshness import check_image_freshness
     check_image_freshness(runtime, image, std.cache_path)
 
     # Two-tier launch verification (one ephemeral probe covers both tiers).
@@ -3187,7 +3187,7 @@ def _run_container(
         # fires when the runtime is rootless podman AND the graph root is
         # virtiofs; it stays silent (and never blocks a normal launch) under a
         # rootful shim, on docker, or whenever the state can't be determined.
-        from kanibako.image_sharing import virtiofs_graphroot_message
+        from kanibako.runtime.image_sharing import virtiofs_graphroot_message
         virtiofs_msg = virtiofs_graphroot_message(runtime.cmd)
         if virtiofs_msg is not None:
             print(virtiofs_msg, file=sys.stderr)

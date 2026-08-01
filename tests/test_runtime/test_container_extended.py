@@ -1,4 +1,4 @@
-"""Extended tests for kanibako.container: ensure_image chain, run args, list_local_images."""
+"""Extended tests for kanibako.runtime.container: ensure_image chain, run args, list_local_images."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.targets.base import Mount
 
@@ -95,7 +95,7 @@ class TestRunCommandAssembly:
         """
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -136,7 +136,7 @@ class TestRunCommandAssembly:
                 options="Z,U",
             ),
         ]
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", extra_mounts=core_mounts, **kwargs)
             cmd = m_run.call_args[0][0]
@@ -159,7 +159,7 @@ class TestRunCommandAssembly:
         """
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path, vault_dirs=False)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd_str = " ".join(m_run.call_args[0][0])
@@ -169,7 +169,7 @@ class TestRunCommandAssembly:
     def test_entrypoint_override(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", entrypoint="/bin/bash", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -179,7 +179,7 @@ class TestRunCommandAssembly:
     def test_no_entrypoint(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -188,7 +188,7 @@ class TestRunCommandAssembly:
     def test_cli_args_appended(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", cli_args=["--continue", "--verbose"], **kwargs)
             cmd = m_run.call_args[0][0]
@@ -209,7 +209,7 @@ class TestRunCommandAssembly:
                 options="ro",
             ),
         ]
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", extra_mounts=mounts, **kwargs)
             cmd = m_run.call_args[0][0]
@@ -219,7 +219,7 @@ class TestRunCommandAssembly:
     def test_no_extra_mounts(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", extra_mounts=None, **kwargs)
             cmd = m_run.call_args[0][0]
@@ -229,7 +229,7 @@ class TestRunCommandAssembly:
     def test_cli_args_none(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", cli_args=None, **kwargs)
             cmd = m_run.call_args[0][0]
@@ -239,7 +239,7 @@ class TestRunCommandAssembly:
     def test_container_name(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", name="kanibako-test", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -251,7 +251,7 @@ class TestRunCommandAssembly:
         hardcoded ``vault_tmpfs=True``."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run(
                 "img:latest",
@@ -266,7 +266,7 @@ class TestRunCommandAssembly:
         """Multiple masks each emit a ``--mount type=tmpfs,...,ro`` pair."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run(
                 "img:latest",
@@ -284,7 +284,7 @@ class TestRunCommandAssembly:
     def test_tmpfs_mask_empty(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", tmpfs_masks=None, **kwargs)
             cmd = m_run.call_args[0][0]
@@ -294,7 +294,7 @@ class TestRunCommandAssembly:
         """Verify old-style settings_path/dot_path/cfg_file mounts are gone."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -307,7 +307,7 @@ class TestRunCommandAssembly:
     def test_returns_exit_code(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=42)
             rc = rt.run("img:latest", **kwargs)
             assert rc == 42
@@ -315,7 +315,7 @@ class TestRunCommandAssembly:
     def test_working_directory(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -325,7 +325,7 @@ class TestRunCommandAssembly:
     def test_base_flags(self, tmp_path):
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run("img:latest", **kwargs)
             cmd = m_run.call_args[0][0]
@@ -355,7 +355,7 @@ class TestListLocalImages:
             "docker.io/library/ubuntu:latest\t100MB\n"
             "ghcr.io/owner/kanibako-lxc:latest\t800MB\n"
         )
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0, stdout=output)
             images = rt.list_local_images()
             assert len(images) == 2
@@ -364,7 +364,7 @@ class TestListLocalImages:
 
     def test_empty_output(self):
         rt = ContainerRuntime(command="echo")
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0, stdout="")
             images = rt.list_local_images()
             assert images == []
@@ -372,7 +372,7 @@ class TestListLocalImages:
     def test_tab_parsing(self):
         rt = ContainerRuntime(command="echo")
         output = "ghcr.io/x/kanibako:latest\t1.2GB\n"
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0, stdout=output)
             images = rt.list_local_images()
             assert len(images) == 1
@@ -396,7 +396,7 @@ class TestVaultDisabledRun:
         vault_rw = tmp_path / "vault-rw"
         vault_ro.mkdir()
         vault_rw.mkdir()
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run(
                 "img:latest",
@@ -423,7 +423,7 @@ class TestVaultDisabledRun:
         vault_rw = tmp_path / "vault-rw"
         vault_ro.mkdir()
         vault_rw.mkdir()
-        with patch("kanibako.container.subprocess.run") as m_run:
+        with patch("kanibako.runtime.container.subprocess.run") as m_run:
             m_run.return_value = MagicMock(returncode=0)
             rt.run(
                 "img:latest",

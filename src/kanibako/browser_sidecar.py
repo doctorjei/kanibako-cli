@@ -17,7 +17,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 
 logger = get_logger("browser_sidecar")

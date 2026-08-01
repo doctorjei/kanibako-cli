@@ -22,7 +22,7 @@ Containers "attach to running container" reach a REMOTE box:
   :func:`read_context_entry`) the generated wrapper reads (grep only, NEVER
   sourced — no code execution from data);
 * :class:`RemoteEngine`, a duck-typed subset of
-  :class:`~kanibako.container.ContainerRuntime` the attach seed path needs,
+  :class:`~kanibako.runtime.container.ContainerRuntime` the attach seed path needs,
   built on ``podman --remote --url unix://<local.sock>`` (it does NOT modify
   ContainerRuntime);
 * :func:`ensure_docker_context_meta`, writing the docker-CLI-convention
@@ -396,7 +396,7 @@ def read_context_entry(name: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 class RemoteEngine:
-    """The subset of :class:`~kanibako.container.ContainerRuntime` the attach
+    """The subset of :class:`~kanibako.runtime.container.ContainerRuntime` the attach
     seed path needs, driven by ``podman --remote --url unix://<local.sock>``.
 
     Built on the podman remote argv prefix dialing the LOCAL end of the ssh

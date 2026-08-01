@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets.base import Mount

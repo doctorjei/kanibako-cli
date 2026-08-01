@@ -220,7 +220,7 @@ def derive_name(source: str, kind: str) -> str | None:
     - Anything underivable -> None.
 
     Note: derived image names may legitimately contain ``/`` and ``:`` and are
-    *not* run through :func:`kanibako.templates_image.validate_template_name`.
+    *not* run through :func:`kanibako.runtime.templates_image.validate_template_name`.
     """
     # A basename-based Containerfile name wins regardless of kind: ``rig add``
     # of a template URL/path should name itself after the file.
