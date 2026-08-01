@@ -6324,12 +6324,19 @@ class TestSuppressedBoxLaunchesNoAgent:
     ):
         """``agent_id`` falls to the ``general`` template slot and NOTHING is
         installed at ``system.agent`` — pinning that the suppression survives all
-        the way into the snapshot inputs."""
+        the way into the snapshot inputs.
+
+        ⚑ P8: the whole §1A CLI LEVEL must be ``None`` here, not merely its
+        selection half. A suppressed box has no agent slot to spell flag keys
+        against, so ``build_cli_level`` is given ``active_agent=None`` and drops
+        them — the alternative (``agent.general.*``) would fabricate a key the
+        closed keyspace does not declare.
+        """
         with start_mocks() as m:
             assert self._run(m) == 0
             kwargs = m.resolve_launch_snapshot.call_args.kwargs
             assert kwargs["agent_name"] == "general"
-            assert kwargs["selection_level"] is None
+            assert kwargs["cli_level"] is None
             assert kwargs["target"] is None
 
     def test_an_UNSUPPRESSED_box_still_resolves_its_target(self, start_mocks):

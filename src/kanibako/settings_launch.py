@@ -81,6 +81,7 @@ from kanibako.settings_categories import (
     CategoryEntry,
     _bind_options,
 )
+from kanibako.settings_cli_level import guard_cli_level
 from kanibako.settings_expand import expand
 from kanibako.settings_merge import merge
 from kanibako.settings_prefs import PrefRequest, apply_prefs, collect_prefs
@@ -981,7 +982,7 @@ def build_launch_snapshot(
     workset_anchor: Mapping[str, object] | None = None,
     prefs: "Sequence[PrefRequest] | None" = None,
     valid_agents: "Collection[str] | None" = None,
-    selection_level: Mapping[str, object] | None = None,
+    cli_level: Mapping[str, object] | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -1026,15 +1027,20 @@ def build_launch_snapshot(
     here regardless. *valid_agents* injects the agent-validity set (defaults to
     plugin discovery); tests supply their own.
 
-    *selection_level* is the §1A **top-most input level** — above every settings
-    file AND every pref (*"The COMMAND LINE is its OWN LEVEL — the highest… a
-    GENERAL rule, not a carve-out"*). P7 uses it for exactly one key,
-    ``system.agent``, carrying the RESOLVED selection
+    *cli_level* is the §1A **top-most input level** — above every settings file AND
+    every pref (*"The COMMAND LINE is its OWN LEVEL — the highest… a GENERAL rule,
+    not a carve-out"*). Built by
+    :func:`kanibako.settings_cli_level.build_cli_level`, which owns the flag→key
+    table; :func:`~kanibako.settings_cli_level.guard_cli_level` is applied HERE,
+    before the splice, so no call site can bypass it (P8).
+
+    It always carries the RESOLVED agent selection
     (:func:`kanibako.agent_select.select_agent`) whichever of its three sources
-    won — ``--agent``, the cascade, or the installed-count rule. Installing it
+    won — ``--agent``, the cascade, or the installed-count rule. Installing that
     ALWAYS (not only for ``--agent``) is what keeps ``@system.agent`` equal to the
     node that actually runs, which the two re-pointed §2c anchors depend on. P8
-    generalises this level to every key-shadowing flag.
+    added the ephemeral flag values (``-M`` → ``agent.<active>.model``,
+    ``-N``/``-C``/``-R`` → ``agent.<active>.continue_mode``) beside it.
 
     ⚑ WHO MUST PASS IT, precisely — "the narrow resolves can skip it" is NOT the
     rule, and reading it that way is what cost the credential path once already:
@@ -1048,6 +1054,15 @@ def build_launch_snapshot(
         carry no auth chain and no shipped declaration references ``@system.agent``.
       * ``None`` for a NO-AGENT box — ``system.agent`` must stay absent/``None``
         there, not be pinned to the ``"general"`` template slot.
+
+    ⚑ WHICH RESOLVES SEE THE EPHEMERAL FLAGS (P8, spec §1A *"EPHEMERAL, always … a
+    flag NEVER mutates a stored value"*): **the SELECTION rides every resolve that
+    needs it (see the list above); the FLAGS ride only the resolve that decides
+    THIS launch's runtime.** No resolve
+    whose output is WRITTEN TO DISK may see a flag — so the persona
+    endpoint/model resolve (``_resolve_box_launch_decisions``, whose model feeds the
+    codex ``config.toml`` write), the create-time seed, and the ``--effective``
+    display all take a selection-ONLY level.
 
     Returns the expanded ``snapshot``.
     """
@@ -1179,8 +1194,9 @@ def build_launch_snapshot(
     #                      lower file may also set. Left unpinned on purpose: a
     #                      test asserting an unobservable ordering would be
     #                      asserting the implementation, not the behaviour.
-    #   selection_level  — the §1A CLI-class level: ABOVE EVERYTHING (index 0).
-    #                      P7 puts the RESOLVED ``system.agent`` there.
+    #   cli_level        — the §1A CLI LEVEL: ABOVE EVERYTHING (index 0). Carries
+    #                      the RESOLVED ``system.agent`` (P7) plus the ephemeral
+    #                      key-shadowing flag values (P8). GUARDED just below.
     state_partial = _agent_state_partial(agent_name, agent_state)
     # box.agent.* CATEGORY fold (spec §2b L411 / §0 L32-42): the box's same-scope
     # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7). It existed to give a box's
@@ -1215,9 +1231,21 @@ def build_launch_snapshot(
     ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
 
     levels: list[KeyStore] = []
-    if selection_level:
-        # §1A: the CLI-class level, ABOVE EVERYTHING (settings files AND prefs).
-        levels.append(dotted_partial(dict(selection_level)))
+    if cli_level:
+        # §1A: the CLI LEVEL, ABOVE EVERYTHING (settings files AND prefs).
+        #
+        # GUARDED HERE, not at the call site: §1A L335-338 says the §2h forbidden
+        # tiers do NOT cover the CLI, so a flag that could set a LOCATOR-class value
+        # needs its own guard — and a guard a caller can forget to run is not a
+        # guard. ``valid_agents`` is passed through so a caller that already has the
+        # discovered set does not pay for a second discovery; when it is ``None``
+        # the guard uses ``{agent_name}`` (every agent-scope key in the level is
+        # spelled against the ALREADY-RESOLVED active agent, so discovery would be
+        # pure cost on a flag-free launch).
+        guard_cli_level(
+            cli_level, active_agent=agent_name, valid_agents=valid_agents,
+        )
+        levels.append(dotted_partial(dict(cli_level)))
     levels.append(base_levels[0])                       # box
     if box_prefs:
         levels.append(box_prefs)                        # box pref REQUESTS

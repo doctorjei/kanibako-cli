@@ -48,6 +48,7 @@ from kanibako.log import get_logger
 from kanibako.rig_registry import load_registry, registry_path
 from kanibako.rig_resolve import resolve_rig
 from kanibako.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
+from kanibako.settings_cli_level import build_cli_level
 from kanibako.paths import (
     _upgrade_shell,
     box_state_home,
@@ -2456,6 +2457,31 @@ def _run_container(
         # the per-agent file's flat behavior state (wrapped under agent.<active>),
         # the always-available category default tables, 7a's descriptor delivery
         # partial, and the resolved system.* tier.
+        #
+        # The §1A CLI LEVEL (P8): the resolved agent selection PLUS this launch's
+        # ephemeral key-shadowing flags, built ONCE by the single flag→key table and
+        # guarded inside ``build_launch_snapshot``. It replaces the post-resolve
+        # ``effective_state["model"] = …`` patch and the ``resolve_new_session``
+        # fold that used to re-apply the flags at each consumer.
+        #
+        # ⚑ ``active_agent`` is the agent slot the flag values are spelled against,
+        # so it is given ONLY for a real agent launch. A ``kanibako shell`` /
+        # ``--entrypoint`` box resolves under the ``"general"`` template slot, which
+        # is NOT an agent — spelling ``agent.general.model`` there would fabricate a
+        # key the closed keyspace does not declare, and the guard would (rightly)
+        # refuse it. Neither parser exposes these flags for such a launch anyway.
+        _cli_level = build_cli_level(
+            selection=(
+                agent_selection.selection_level
+                if agent_selection is not None
+                else None
+            ),
+            active_agent=agent_id if target is not None else None,
+            model=model_override,
+            new_session=new_session,
+            continue_session=continue_override,
+            resume=resume_mode,
+        )
         _snapshot, reconciled = _resolve_launch_snapshot(
             std=std,
             proj=proj,
@@ -2467,11 +2493,7 @@ def _run_container(
             target=target,
             agent_cfg=agent_cfg,
             deliver_creds=auth_src.creds_shared,
-            selection_level=(
-                agent_selection.selection_level
-                if agent_selection is not None
-                else None
-            ),
+            cli_level=_cli_level,
         )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d L557,
@@ -2508,9 +2530,13 @@ def _run_container(
             effective_state = settings_launch.effective_behavior(
                 _snapshot, active_agent=agent_id,
             )
-            # Apply model override from -M/--model flag
-            if model_override:
-                effective_state["model"] = model_override
+            # ⚑ NO post-resolve ``-M`` patch here any more (P8). ``-M/--model`` is a
+            # key-shadowing flag, so it rides the §1A CLI LEVEL spliced above every
+            # settings file and pref (``agent.<active>.model``, built by
+            # ``build_cli_level``) and arrives through this read like any other
+            # value. Patching the dict AFTER the cascade was the ad-hoc form of
+            # exactly one level, and it could not be seen by anything that read the
+            # snapshot rather than this dict.
             # PERSONA provider auto-pin: when this launch resolved an active persona
             # endpoint (active_endpoint is not None), FORCE the harness-declared
             # provider setting(s) so the endpoint's required provider can't be
@@ -2558,23 +2584,27 @@ def _run_container(
                 # ``agent.default.continue_mode | true``): resolve it off the SAME
                 # launch snapshot via the §2d active-over-default pick, coerced to
                 # bool and DEFAULTING True (continue) when unset — byte-identical to
-                # the ``auto_approve`` read above.  It is the PERSISTED FALLBACK for
-                # the continue-vs-fresh decision; the per-launch ``-N``/``-C``/``-R``
-                # flags OVERRIDE it (ephemeral wins, mirroring how ``-M`` overrides
-                # ``model`` and ``-A``/``-S`` override ``auto_approve``).  Realized by
-                # feeding an EFFECTIVE new_session into resolve_mode: when
-                # continue_mode is false AND no mode flag was given, force a fresh
-                # (skip_continue) start; an explicit ``-N`` (new_session) still forces
-                # fresh, and an explicit ``-C`` (continue_override) / ``-R``
-                # (resume_mode) still forces continue/resume regardless of the key.
+                # the ``auto_approve`` read above.
+                #
+                # ⚑ P8: the per-launch ``-N``/``-C``/``-R`` flags are ALREADY folded
+                # in — they rode the §1A CLI LEVEL as ``agent.<active>.continue_mode``
+                # (``-N`` ⇒ False, ``-C``/``-R`` ⇒ True) and therefore beat every
+                # settings file and pref through the ordinary cascade. So the
+                # continue-vs-fresh decision is now exactly "did continue_mode
+                # resolve false?", and ``assembly.resolve_new_session`` — whose whole
+                # body was the per-launch-flags-over-the-key fold — is GONE. Keeping
+                # it would apply the same fold twice, in two places, from two
+                # different inputs.
+                #
+                # ``resume_mode`` is still passed to ``resolve_mode`` below: ``-R``
+                # selects the resume MODE, which is a launch grammar choice, not a
+                # key. (That is also why ``-R`` installs continue_mode=True: a
+                # descriptor with no ``resume`` mode falls through to the
+                # skip_continue test, where a stored ``continue_mode: false`` would
+                # otherwise turn ``-R`` into a fresh start.)
                 _cm = coerce_bool(effective_state.get("continue_mode"))
                 continue_default = True if _cm is None else _cm
-                effective_new_session = assembly.resolve_new_session(
-                    new_session=new_session,
-                    continue_override=continue_override,
-                    resume_mode=resume_mode,
-                    continue_mode=continue_default,
-                )
+                effective_new_session = not continue_default
                 mode_key = assembly.resolve_mode(
                     resume_mode=resume_mode,
                     new_session=effective_new_session,
@@ -4549,6 +4579,12 @@ def _resolve_box_auth_source(
     agents in one workset would share a directory. Pass ``None`` ONLY for a
     genuinely agent-less box; for a running box the ``KANIBAKO_AGENT`` stamp IS the
     resolved selection.
+
+    ⚑ It is the SELECTION only — deliberately NOT the full §1A CLI level (P8). This
+    resolve feeds the CREDENTIAL lifecycle, which creates and syncs directories on
+    disk, and an ephemeral flag may never reach a resolve whose output is WRITTEN
+    (spec §1A *"EPHEMERAL, always … NEVER mutates a stored value"*). The parameter
+    keeps the narrow name so the seam says what may travel through it.
     """
     from kanibako import settings_launch
 
@@ -4583,7 +4619,7 @@ def _resolve_box_auth_source(
         # must carry the RESOLVED selection or the per-agent credential source
         # would degenerate to the workset auth ROOT for any launch whose agent
         # came from ``--agent`` or the installed-count rule.
-        selection_level=selection_level,
+        cli_level=selection_level,
     )
     return settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
 
@@ -4629,6 +4665,14 @@ def _resolve_box_launch_decisions(
     FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
     yields the endpoint for the NODE (persona identity). A target with no declared
     settings contributes no floor → endpoint ``None`` (bare).
+
+    ⚑ *selection_level* is the SELECTION only — deliberately NOT the full §1A CLI
+    level (P8). The *model* this returns is threaded into ``_preflight_persona_load``
+    and lands in the codex ``config.toml`` ``[model_providers.<id>]`` block, i.e. it
+    is WRITTEN TO DISK; letting ``-M`` reach it would make an ephemeral flag mutate a
+    stored value, which spec §1A forbids (*"EPHEMERAL, always"*). ``-M`` therefore
+    rides the LAUNCH snapshot only (``_resolve_launch_snapshot``), where it reaches
+    argv and the container env and nothing else.
     """
     from kanibako import settings_launch
 
@@ -4683,7 +4727,7 @@ def _resolve_box_launch_decisions(
         # must carry the RESOLVED selection or the per-agent credential source
         # would degenerate to the workset auth ROOT for any launch whose agent
         # came from ``--agent`` or the installed-count rule.
-        selection_level=selection_level,
+        cli_level=selection_level,
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
     endpoint: str | None = None
@@ -4935,7 +4979,7 @@ def _resolve_launch_snapshot(
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
-    selection_level: "Mapping[str, object] | None" = None,
+    cli_level: "Mapping[str, object] | None" = None,
     host_dest_keys: "frozenset[str]" = frozenset(),
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
@@ -4979,6 +5023,14 @@ def _resolve_launch_snapshot(
     the only one that APPLIES their copies; every other resolve leaves it empty and
     is byte-identical. See ``settings_categories.CategoryEntry.dest_space`` for why
     the space must be carried rather than inferred from the path.
+
+    *cli_level* is the §1A CLI LEVEL (P8), built by
+    :func:`kanibako.settings_cli_level.build_cli_level` and validated inside
+    ``build_launch_snapshot``. This is the ONE resolve that may carry the EPHEMERAL
+    flag values (``-M`` / ``-N``-``-C``-``-R``) as well as the resolved selection,
+    because its output is this launch's argv / env / mounts and nothing here is
+    written back to a settings file. The seed, persona-endpoint and ``--effective``
+    resolves take a selection-ONLY level.
     """
     from kanibako import settings_launch
     from kanibako.agent_representation import (
@@ -5145,7 +5197,7 @@ def _resolve_launch_snapshot(
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
         prefs=prefs,
-        selection_level=selection_level,
+        cli_level=cli_level,
     )
     try:
         entries = settings_launch.snapshot_category_entries(

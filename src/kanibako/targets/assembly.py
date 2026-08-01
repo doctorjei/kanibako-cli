@@ -129,34 +129,19 @@ def effective_safe_mode_off(
     return auto_approve
 
 
-def resolve_new_session(
-    *,
-    new_session: bool,
-    continue_override: bool,
-    resume_mode: bool,
-    continue_mode: bool = True,
-) -> bool:
-    """Return the EFFECTIVE ``new_session`` input to :func:`resolve_mode`, folding the
-    persisted ``continue_mode`` agent-scope key UNDER the per-launch mode flags.
-
-    ``continue_mode`` (spec §2d L578 ``agent.default.continue_mode | true``) is the
-    PERSISTED FALLBACK for the continue-vs-fresh decision — the default only when NO
-    per-launch mode flag is passed.  The per-launch flags are EPHEMERAL and OVERRIDE
-    it, mirroring how ``-A``/``-S`` override ``auto_approve`` in
-    :func:`effective_safe_mode_off`:
-
-    * *new_session* (``-N``) -> ``True`` (fresh) — the explicit new-session flag wins.
-    * *continue_override* (``-C``) / *resume_mode* (``-R``) -> the persisted key is
-      IGNORED (an explicit continue/resume was requested): return ``False`` here so
-      :func:`resolve_mode` picks ``continue``/``resume``.
-    * else the persisted *continue_mode*: ``True`` -> ``False`` (continue-last, the
-      historical default), ``False`` -> ``True`` (skip_continue → start fresh).
-    """
-    if new_session:
-        return True
-    if continue_override or resume_mode:
-        return False
-    return not continue_mode
+# ⚑ ``resolve_new_session`` was DELETED in P8 (v1.8.0). Its whole body was the fold
+# *"the per-launch -N/-C/-R flags over the persisted ``continue_mode`` key"* — i.e.
+# one hand-rolled precedence chain for one flag family. Spec §1A makes the COMMAND
+# LINE its own LEVEL, the highest, so that fold now happens ONCE, declaratively, in
+# :func:`kanibako.settings_cli_level.build_cli_level` (``-N`` ⇒ ``continue_mode``
+# False, ``-C``/``-R`` ⇒ True), and the launch simply reads the resolved key:
+# ``effective_new_session = not continue_default``.
+#
+# Do NOT reintroduce it. Two places folding the same flags from two different inputs
+# is the "two forms that mean the same thing" failure — and the second one would be
+# the one nobody tested. ``resolve_mode`` still takes the raw ``resume_mode``,
+# because ``-R`` selects a launch GRAMMAR (the resume mode fragment), which is not a
+# key.
 
 
 def assemble_argv(

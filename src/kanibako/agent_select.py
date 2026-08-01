@@ -28,7 +28,7 @@ system settings file.
 **The selection LEVEL, and why the resolved answer is installed unconditionally.**
 Whatever wins, :func:`select_agent` reports it and the launch installs it at
 ``system.agent`` as the §1A top-most level (``build_launch_snapshot(
-selection_level=…)``). That is not tidiness — three separate readers now
+cli_level=…)``). That is not tidiness — three separate readers now
 dereference ``@system.agent`` (both re-pointed §2c anchors today, the handbook's
 agent chapter tomorrow), so the snapshot MUST agree with the process that runs.
 Without the install there are three ways to disagree:
@@ -44,8 +44,18 @@ Without the install there are three ways to disagree:
 Suppressing the pref when ``--agent`` is given (the alternative considered) fixes
 none of these: it only changes WHICH wrong value the snapshot reports. One rule —
 *the resolved selection is installed at the top* — covers all three, is a no-op
-when the cascade already said it, and is exactly the mechanism P8 generalises to
+when the cascade already said it, and is exactly the mechanism P8 generalised to
 every key-shadowing flag.
+
+⮕ **P8 (v1.8.0) landed that generalisation.** The level is now built by
+:func:`kanibako.settings_cli_level.build_cli_level`, which owns the flag→key table
+and carries this selection alongside the launch's ephemeral flag values, and it is
+validated by :func:`~kanibako.settings_cli_level.guard_cli_level` inside
+``build_launch_snapshot``. :attr:`AgentSelection.selection_level` keeps its name
+because it really is only the selection — it is this module's INPUT to that
+builder. Which resolves see the flags is a separate rule stated at
+``build_launch_snapshot``: the selection rides EVERY resolve, the flags ride only
+the launch resolve, and no resolve whose output is written to disk sees a flag.
 
 ⚑ ``system.agent`` DOES select a cascade-input file (``meta.agent.<agent>.settings``),
 which normally puts a key in §2h's LOCATOR CLOSURE. It is deliberately excluded
