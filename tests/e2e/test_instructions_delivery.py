@@ -10,6 +10,11 @@ mount/env outcome end-to-end and that podman auto-creates the (absent)
 mount-parent dir.  The unit-level bind wiring is in
 ``tests/test_instructions_bind.py``.
 
+⚑ C-CANON R2 adds the PLUGIN's bible chapter to what each test asserts: every
+first-party plugin now ships ``data/rom/directives/ROM_AGENT.md``, so core emits the
+sixth canon bind (``canon_bible_agent``) onto the skeleton's ``~/canon/bible/agent``
+mountpoint and the chapter is readable in-box.
+
 The box-start FLATTEN of the SEED into each agent's native instruction slot (the
 FINAL file) is a LATER increment and is NOT asserted here.
 
@@ -125,6 +130,15 @@ CANON_CORE_DESTS = (
 )
 CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/bible")
 
+# The SIXTH canon bind — the resolved plugin's own bible chapter (``canon_bible_agent``).
+# ⚑ C-CANON R2: every first-party plugin now ships ``data/rom/directives/ROM_AGENT.md``,
+# so this bind is EMITTED on a real agent box and the bible's
+# ``@agent/directives/ROM_AGENT.md`` import resolves instead of dangling — one fewer
+# ``unresolved import`` line on stderr per launch (the remaining ones are the
+# not-yet-seeded ``@notebook/MY_CONTENTS.md`` and the kickoff's pre-canon transition
+# import, both expected until their own phases land).
+CANON_AGENT_DEST = f"{GUEST_HOME}/canon/bible/agent"
+
 
 def assert_canon_binds_ro(cfg: dict) -> None:
     """The packaged canon is mounted READ-ONLY at all five declared guest slots.
@@ -143,6 +157,30 @@ def assert_canon_binds_ro(cfg: dict) -> None:
             "pre-created mountpoints (J-7), and ~/canon must stay traversable to the "
             "seeded notebook/workbook books"
         )
+
+
+def assert_agent_chapter_bound_ro(cfg: dict, box: str) -> None:
+    """The PLUGIN's bible chapter is mounted RO at ~/canon/bible/agent (C-CANON R2).
+
+    Host-side tests prove core emits the bind from the resolved target; only a real
+    container proves the whole-directory bind lands on the skeleton's pre-created
+    (root-owned, EMPTY) mountpoint and that the chapter is actually readable in-box —
+    which is what makes the bible's ``@agent/directives/ROM_AGENT.md`` import resolve
+    instead of dangling.
+    """
+    m = find_mount(cfg, CANON_AGENT_DEST)
+    assert m is not None, f"plugin bible chapter not bound at {CANON_AGENT_DEST}"
+    assert m.get("RW") is False, "the plugin bible chapter must be read-only"
+    assert Path(m["Source"], "directives/ROM_AGENT.md").is_file(), (
+        f"the bound chapter source {m['Source']} carries no ROM_AGENT.md"
+    )
+    in_box = podman_exec(
+        container_name(box),
+        ["cat", f"{CANON_AGENT_DEST}/directives/ROM_AGENT.md"],
+    ).stdout
+    assert "Core Tome" in in_box, (
+        f"the agent chapter is not readable in-box, got {in_box!r}"
+    )
 
 
 def assert_canon_locked_down(box: str) -> None:
@@ -210,6 +248,7 @@ def test_claude_kickoff_loader_delivery(e2e_env):
         assert DIRECTIVE_IMPORT in kickoff
         assert LEGACY_DIRECTIVE_IMPORT in kickoff
         assert_canon_binds_ro(cfg)
+        assert_agent_chapter_bound_ro(cfg, box)
         assert_canon_locked_down(box)
     finally:
         rm(container_name(box))
@@ -246,6 +285,7 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
         assert DIRECTIVE_IMPORT in kickoff
         assert LEGACY_DIRECTIVE_IMPORT in kickoff
         assert_canon_binds_ro(cfg)
+        assert_agent_chapter_bound_ro(cfg, box)
         assert_canon_locked_down(box)
         assert "AGENTS.md" in json.loads(
             env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")

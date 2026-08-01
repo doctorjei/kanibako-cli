@@ -38,6 +38,7 @@ from kanibako.core_defaults import (
     CANON_SKELETON_DIR_MODE,
     CANON_SKELETON_FILE_MODE,
     HANDBOOK_CHAPTERS,
+    PLUGIN_CHAPTER_MARKER_REL,
     ROM_BIBLE_CHAPTERS,
     ROM_BIBLE_REL,
     ROM_COLLECTION_REL,
@@ -443,15 +444,62 @@ class TestPluginChapterBind:
         assert root.name == "rom" and root.parent.name == "data"
 
     @pytest.mark.parametrize("agent", _AGENTS)
-    def test_gate_is_negative_today_so_no_bind_is_emitted(self, agent: str):
-        """No plugin ships ``directives/ROM_AGENT.md`` yet. Emitting nothing is
-        CORRECT: with no packaged placeholder left to shadow, an ungated bare
-        ``data/rom/`` would bind an EMPTY dir over the mountpoint — visibly the same
-        as emitting nothing, but paid for with a per-launch missing-source warning.
-        Gate-false is J-7's accepted honest signal (empty root-owned mountpoint + one
-        dangling ``@agent/`` import warning from the flattener)."""
+    def test_every_first_party_harness_ships_a_chapter_so_the_gate_is_positive(
+        self, agent: str,
+    ):
+        """⚑ THE R2 FLIP. Each plugin now ships ``data/rom/directives/ROM_AGENT.md``,
+        so the gate is TRUE for all three and the bible's agent chapter is a REAL bind
+        on every first-party box — which is what makes ``@agent/directives/ROM_AGENT.md``
+        in the bible's ``ROM_CONTENTS.md`` resolve instead of dangling.
+
+        Gate-FALSE is not left uncovered: it is exercised by the two temp-plugin tests
+        below (bare ``data/rom`` with no marker, and no ``rom_root`` at all), which is
+        where it belongs now that no shipped plugin can demonstrate it."""
         target = resolve_target(agent, None)
-        assert core_defaults.rom_agent_default_categories(target) == {}
+        root = target.rom_root()
+        assert root is not None
+        assert (root / PLUGIN_CHAPTER_MARKER_REL).is_file(), (
+            f"{agent}: the plugin must ship its bible chapter at "
+            f"data/rom/{PLUGIN_CHAPTER_MARKER_REL}"
+        )
+
+        cats = core_defaults.rom_agent_default_categories(target)
+        assert set(cats) == {_BIBLE_AGENT_KEY}, cats
+        src, dest, opts = cats[_BIBLE_AGENT_KEY]
+        assert Path(src) == root, "the plugin's data/rom IS the chapter root (D3)"
+        assert dest == _BIBLE_AGENT_DEST
+        assert opts == "ro"
+
+    def test_the_three_shipped_chapters_are_byte_identical(self):
+        """One authored chapter, delivered per HARNESS. Per-harness customization is a
+        later, deliberate edit — until then a drifting copy is a mistake, not a
+        variant, and this is where it surfaces."""
+        digests = {
+            agent: (
+                resolve_target(agent, None).rom_root() / PLUGIN_CHAPTER_MARKER_REL
+            ).read_bytes()
+            for agent in _AGENTS
+        }
+        assert len(set(digests.values())) == 1, {
+            a: len(b) for a, b in digests.items()
+        }
+
+    @pytest.mark.parametrize("agent", _AGENTS)
+    def test_no_bytecode_or_python_under_a_packaged_plugin_chapter(self, agent: str):
+        """R1's N3 handoff — the CORE-side twin of
+        ``TestPackagedCanonTree::test_no_bytecode_or_python_under_the_packaged_bible``.
+
+        The plugin's ``data/rom`` is now a REAL whole-directory bind source, and a
+        whole-dir bind exposes whatever is physically in the packaged dir: the
+        per-file walk's ``_is_shipped_content`` filter no longer stands between a dev
+        checkout's ``__pycache__`` and the box. A plugin chapter is TEXT only."""
+        root = resolve_target(agent, None).rom_root()
+        assert root is not None
+        junk = [
+            str(p.relative_to(root)) for p in root.rglob("*")
+            if "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo", ".py")
+        ]
+        assert not junk, f"{agent}: packaged plugin chapter carries non-content: {junk}"
 
     def test_emits_one_bind_when_the_plugin_ships_a_chapter(self, tmp_path):
         chapter = tmp_path / "data" / "rom"

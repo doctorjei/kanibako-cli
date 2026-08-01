@@ -242,6 +242,35 @@ kani:
   # ⚑ The flattener (``import-directives.py``) is MACHINERY, not canon: it ships in
   # the package and reaches the box through the ``kani_pkg`` bind above, at
   # ``/opt/kanibako/kanibako/scripts/import-directives.py``.
+  # NOTE: the KICKOFF loader (spec §2c ``box.bindings.ro.kickoff``) is declared in its
+  # own ``kickoff:`` block below rather than as a fourth entry here — it is the one
+  # core bind with a TRANSITION GATE, and ``kani_default_categories`` must stay the
+  # unconditional trio.
+
+# The KICKOFF LOADER (spec §2c ``box.bindings.ro.kickoff``; P-5, C-CANON R2) — the
+# directive-chain ENTRY SLOT.  A tiny core-shipped static file whose whole content is
+# the canon entry import ``@~/canon/COLLECTION.md``; the box-start flattener follows
+# that chain and writes the flattened result to each harness's native instruction slot
+# (``KANIBAKO_DIRECTIVE_FINAL``).  INTERNAL like ``kani_pkg``: not a user key, in no
+# set-time floor, not repointable.
+#
+# ⚑ SAME SHAPE AS EVERY OTHER FAMILY BLOCK (a LIST of entries whose ``source`` is a
+# SYMBOLIC name the loader resolves to a probed/packaged host path) — it just happens
+# to hold exactly ONE entry, which the loader enforces.  It is its own family rather
+# than a fourth ``kani:`` entry because it is the one core bind with a TRANSITION GATE:
+# see ``core_defaults.kickoff_default_categories`` for the gate (core YIELDS to a plugin
+# that still ships its own kickoff delivery) and the condition for removing it.
+#
+# The box_dest here is the SINGLE SOURCE OF TRUTH for the kickoff slot: the
+# ``KANIBAKO_DIRECTIVE_SEED`` container env var and the gate's dest comparison both
+# read it back through ``core_defaults.kickoff_box_dest()``.
+kickoff:
+  # Packaged loader (``data/global/KICKOFF.md``) → ~/.config/kanibako/kickoff.md (ro).
+  - key: kickoff
+    category: bindings.ro
+    source: kickoff
+    box_dest: "~/.config/kanibako/kickoff.md"
+    options: "ro"
 
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
 # message LOG, routed through the category resolver instead of the hardwired

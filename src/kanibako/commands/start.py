@@ -1456,16 +1456,17 @@ def _assemble_launch_env(
         container_env["KANIBAKO_NAME"] = proj.name
 
     # Instruction-delivery SEED (increment 2b): the box-absolute path to the
-    # per-agent kickoff SEED, RO-bound at ~/.config/kanibako/kickoff.md.  The
+    # kickoff SEED, RO-bound at ~/.config/kanibako/kickoff.md.  The
     # SessionStart hooks (claude/codex) and the goose launch-flatten shim
     # reference this to flatten the ``@import`` directive chain into the
     # agent's native slot.  ABSOLUTE (not ``~``) so it resolves identically in
     # a hook shell and at exec time.  Global (agent-independent): the per-agent
     # FINAL-slot path arrives via each descriptor's KANIBAKO_DIRECTIVE_FINAL.
-    from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME
-    container_env["KANIBAKO_DIRECTIVE_SEED"] = (
-        f"{_GUEST_HOME}/.config/kanibako/kickoff.md"
-    )
+    # ⚑ READ BACK from the ONE declaration of the slot (``core-defaults.yaml``
+    # ``kickoff.box_dest``, the source of core's own bind) rather than spelled a
+    # second time here: the env var and the bind MUST name the same file, and the
+    # kickoff is core-owned as of C-CANON R2 (P-5), so core has one spelling of it.
+    container_env["KANIBAKO_DIRECTIVE_SEED"] = core_defaults.kickoff_guest_dest()
 
     # Stamp the resolved agent ON THE CONTAINER (NOT durable config — keeps
     # `--agent` ephemeral).  On a later `kanibako start` against this running
@@ -4964,6 +4965,20 @@ def _resolve_launch_snapshot(
             std, proj, guarantee_create=guarantee_create,
         ))
         default_categories.update(core_defaults.kani_default_categories())
+        # The KICKOFF LOADER (spec §2c ``box.bindings.ro.kickoff``, P-5): the
+        # directive-chain ENTRY SLOT, core-owned since C-CANON R2 and delivered
+        # beside the kani binds it is INTERNAL company to.
+        # ⚑ The gate descriptor is ``desc`` when this resolve represents one, and
+        # otherwise the RESOLVED TARGET's own.  Both, in that order, on purpose:
+        # ``desc`` is what ``agent_default_partial`` (below) turns into agent-level
+        # binds, so gating on it is gating on what this very snapshot will carry —
+        # but ``box config show --effective`` resolves the launch with ``desc=None``
+        # and a real ``target``, and a display that shows a kickoff bind the launch
+        # would not emit is exactly the drift that call site's own comment forbids.
+        default_categories.update(core_defaults.kickoff_default_categories(
+            desc if desc is not None
+            else (target.descriptor if target is not None else None)
+        ))
         # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
         # COLLECTION.md index and the bible's ROM_CONTENTS.md as FILE binds, plus one
         # whole-directory bind per packaged chapter (general/workset/box).  Each

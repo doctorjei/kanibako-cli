@@ -24,9 +24,10 @@ include = ["kanibako.plugins.goose*"]
     "py.typed",
     # Declarative agent defaults (P6c) — read at import time via importlib.resources.
     "goose-defaults.yaml",
-    # Static goose-specific data delivered by descriptor binds — the KICKOFF.md
-    # SEED (data/KICKOFF.md), the future-use rom/ placeholder, and the per-agent
-    # seeded template (data/template/, incl. the nested dot-dir .config/goose/) —
+    # Static goose-specific data — the KICKOFF.md SEED (data/KICKOFF.md, a
+    # descriptor bind), the plugin's BIBLE CHAPTER (data/rom/directives/ROM_AGENT.md,
+    # the whole-dir source of core's ``canon_bible_agent`` bind — C-CANON R2), and
+    # the per-agent seeded template (data/template/, incl. the nested dot-dir .config/goose/) —
     # read via importlib.resources.  Nested dot-dir content needs the recursive
     # dot-dir patterns (a plain data/* / data/**/* would miss it).
     "data/*", "data/**/*", "data/**/.*",
