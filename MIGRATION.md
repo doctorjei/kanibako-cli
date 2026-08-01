@@ -600,22 +600,42 @@ unaffected.
 
 Four core modules that the first-party plugins import *did* move. Because the plugins depend
 on `kanibako-cli` with no upper bound, an already-published plugin can land beside the new
-base — so each old path keeps a **re-export shim** for one release:
+base. **The retirement is therefore two-stage** (ruling, 2026-08-01):
 
-| Legacy path (shim) | New path | Imported by |
+| Legacy path | New path | Imported by |
 |---|---|---|
 | `kanibako.vscode_config` | `kanibako.vscode.vscode_config` | claude, codex, goose |
 | `kanibako.settings_resolve` | `kanibako.settings.settings_resolve` | claude, codex (`GUEST_HOME`) |
 | `kanibako.agent_defaults` | `kanibako.settings.agent_defaults` | claude, codex, goose |
 | `kanibako.agent_config` | `kanibako.settings.agent_config` | claude, codex, goose |
 
-**Plugin authors: switch to the new paths now.** The shims re-export the full public surface
-of each moved module, so the change is a one-line edit per import site.
+**Stage 1 — v1.8.0 (this release): the aliases WORK, and they say so.** Each old path keeps a
+re-export shim covering the full public surface of the moved module, so an already-published
+plugin keeps running unchanged. Importing one emits a `FutureWarning` naming the old path,
+the new path, and what to do:
 
-⚑ **REMOVAL GATE — the same shape as item 3 above.** The four shim files are deleted only
-once `kanibako-agent-claude`, `-codex` AND `-goose` have all **published** releases importing
-the new paths. Until then a shim deletion silently breaks agent detection for anyone on an
-older plugin. `tests/test_plugin_import_compat.py` pins the contract.
+> `kanibako.agent_defaults moved to kanibako.settings.agent_defaults; this compatibility alias
+> exists for plugins built against kanibako-cli < 1.8.0 and will be REMOVED in the next
+> release — upgrade your kanibako-agent-* packages.`
+
+`FutureWarning`, not `DeprecationWarning`, because the latter is hidden by default outside
+`__main__` — a silent notice would be no notice. It fires only on the OLD path; correctly
+updated code never sees it.
+
+**Stage 2 — the release AFTER v1.8.0: the aliases are GONE.** The four shim files are deleted
+and replaced by a named refuse-and-exit at plugin discovery: a plugin still importing an old
+path is refused *by name*, with the upgrade instruction, instead of failing as a bare
+`ModuleNotFoundError` from inside an entry-point load.
+
+**Plugin authors: switch to the new paths now** — a one-line edit per import site — and in the
+same release pin `kanibako-cli >= 1.8.0`, exactly as item 3 requires for the KICKOFF deletion.
+
+⚑ **REMOVAL GATE — the same shape as item 3 above.** Stage 2 happens only once
+`kanibako-agent-claude`, `-codex` AND `-goose` have all **published** releases importing the
+new paths *and* carrying the `kanibako-cli >= 1.8.0` floor pin. Until then, deleting a shim
+silently breaks agent detection for anyone on an older plugin.
+`tests/test_plugin_import_compat.py` pins stage 1 (the aliases resolve, re-export the same
+objects, and warn; the new paths stay silent).
 
 **Version numbers.** This release ships as `kanibako-cli` **1.8.0**, `kanibako` (meta)
 **1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.3.0** and

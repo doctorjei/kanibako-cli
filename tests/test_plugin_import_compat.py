@@ -28,6 +28,7 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.util
+import warnings
 from pathlib import Path
 
 import pytest
@@ -138,6 +139,48 @@ def test_shim_covers_the_whole_public_surface(
     assert public, f"{new} exposes no public names — the filter is wrong, not the shim"
     missing = sorted(n for n in public if not hasattr(legacy_mod, n))
     assert not missing, f"{legacy} does not re-export {missing} from {new}"
+
+
+@pytest.mark.parametrize("legacy,new,names", _SHIMS, ids=_IDS)
+def test_legacy_path_warns(legacy: str, new: str, names: tuple[str, ...]) -> None:
+    """Importing the OLD path emits a user-visible ``FutureWarning``.
+
+    Stage 1 of the two-stage retirement (Jei, 2026-08-01): v1.8.0 keeps the
+    aliases but says so; the next release deletes them and makes plugin
+    discovery refuse an old plugin by name.
+
+    ``FutureWarning``, not ``DeprecationWarning``: the latter is hidden by
+    default outside ``__main__``, which would make the notice invisible to
+    exactly the people it is for.
+
+    ``importlib.reload`` re-executes the module body -- the module is already in
+    ``sys.modules`` from the tests above, so a plain import would emit nothing.
+    Reload keeps the same module object, so the identity assertions elsewhere in
+    this file are unaffected.
+    """
+    mod = importlib.import_module(legacy)
+    with pytest.warns(FutureWarning) as record:
+        importlib.reload(mod)
+    messages = [str(w.message) for w in record]
+    assert any(legacy in m for m in messages), messages
+    assert any(new in m for m in messages), messages
+    # The notice has to be ACTIONABLE, not merely present.
+    assert any("REMOVED in the next release" in m for m in messages), messages
+    assert any("kanibako-agent-" in m for m in messages), messages
+
+
+@pytest.mark.parametrize("legacy,new,names", _SHIMS, ids=_IDS)
+def test_new_path_does_not_warn(legacy: str, new: str, names: tuple[str, ...]) -> None:
+    """The REAL module is silent.
+
+    The warning belongs to the shim alone.  If it leaked into the new module,
+    every in-repo caller and every correctly-updated plugin would be nagged for
+    doing the right thing -- and the notice would stop meaning anything.
+    """
+    mod = importlib.import_module(new)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        importlib.reload(mod)  # raises if the new module emits a FutureWarning
 
 
 def _defined_public_names(module: str) -> set[str]:
