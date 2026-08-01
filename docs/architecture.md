@@ -14,7 +14,11 @@ cross-cutting entry points and utilities stay at the package root.
 | `cli.py` | Argparse tree, main() entry, `-v` flag |
 | `log.py` | Logging setup (`-v` enables debug output) |
 | `settings/config.py` | YAML config loading, defaults, merge logic (`system.*` config tier); agent resolution (`resolve_agent` cascade + installed-count rule, `resolve_and_load_settings` two-pass), setup-marker reader |
-| `settings/config_interface.py` | Unified config/settings engine (get/set/reset/show across box, workset, agent, system); `system.*` keys are file-only (refused at set/reset) with a programmatic `write_system_value` for `setup` |
+| `settings/config_interface.py` | The config/settings VERBS (get/set/reset/show across box, workset, agent, system) plus the set-time cascade probe; `system.*` keys are file-only (refused at set/reset) with a programmatic `write_system_value` for `setup` |
+| `settings/config_keys.py` | The CLI-facing key TAXONOMY: family recognizers/parsers, per-family displays and refusals, the scope tables and the routing table. ⚑ Not the closed-keyspace validator — that is `settings_keyspace`, which this layer calls into |
+| `settings/config_dest.py` | The ONE destination rule (`DestRoute`/`_write_dest`): which file and nested slot a key's value occupies, for every verb; plus the per-node agent file route |
+| `settings/config_display.py` | The `show` / `--effective` renderers: each `pref` request beside its result, each declaration above the binding it derives |
+| `settings/config_io.py` | Centralized YAML load/dump for every kanibako config document, plus the document mutators the verbs write through |
 | `errors.py` | Kanibako exception hierarchy (incl. `AgentResolutionError` / `NoAgentSelectedError` / `NoAgentInstalledError` / `AgentNotInstalledError`, surfaced verbatim by the top-level handler) |
 | `install_method.py` | Detect kanibako's own install method (pipx/uv/pip) to tailor the "install a plugin" command in agent-resolution errors |
 | `settings/paths.py` | XDG resolution, mode detection (primary/named/standalone), box/workset init |
