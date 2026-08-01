@@ -1211,9 +1211,9 @@ def _seed_system_agent(path, name):
     where ``assemble_levels`` reads the SYSTEM tier. (Was the ``agent.default``
     table's ``default_agent`` leaf, spec §2g renamed + relocated it.)
     """
-    from kanibako.settings.config_interface import _write_nested_toml_key
+    from kanibako.settings.config_io import write_nested_key
 
-    _write_nested_toml_key(path, ("system",), "agent", name)
+    write_nested_key(path, ("system",), "agent", name)
 
 
 class TestSystemAgent:
@@ -1363,10 +1363,10 @@ class TestSystemConfigFileOnly:
 
     def test_get_system_config_key_still_reads(self, tmp_path):
         """Reads/shows are unaffected — only writes are refused."""
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
-        _write_nested_toml_key(cf, ("system",), "cache", "/custom/cache")
+        write_nested_key(cf, ("system",), "cache", "/custom/cache")
         assert (
             get_config_value("system.cache", global_config_path=cf)
             == "/custom/cache"
@@ -1384,10 +1384,11 @@ class TestSystemConfigFileOnly:
         """The programmatic helper bypasses the guard and round-trips, while
         preserving other keys (what setup relies on)."""
         from kanibako.settings.config import read_setup_completed
-        from kanibako.settings.config_interface import _write_nested_toml_key, write_system_value
+        from kanibako.settings.config_interface import write_system_value
+        from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
-        _write_nested_toml_key(cf, ("system",), "data", "/keep/me")
+        write_nested_key(cf, ("system",), "data", "/keep/me")
         write_system_value(cf, "setup_completed", "1.6.0")
 
         data = load_doc(cf)
@@ -1423,12 +1424,12 @@ class TestSystemSettingsTierSplit:
 
     def test_system_agent_reads_from_settings_file(self, tmp_path):
         from kanibako.settings.config import read_system_agent
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
         # setup writes it programmatically into the settings file's table.
-        _write_nested_toml_key(ssp, ("system",), "agent", "goose")
+        write_nested_key(ssp, ("system",), "agent", "goose")
         # Read back via interface getter (system scope) + launch-time reader.
         assert get_config_value(
             "system.agent", global_config_path=cf, system_settings_path=ssp,
@@ -1455,11 +1456,11 @@ class TestSystemSettingsTierSplit:
         """STRUCTURAL system.* CONFIG read uses global_config_path
         (kanibako_config.yaml), even when a settings file is supplied —
         config/settings stay separate."""
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        _write_nested_toml_key(cf, ("system",), "cache", "/custom/cache")
+        write_nested_key(cf, ("system",), "cache", "/custom/cache")
         assert get_config_value(
             "system.cache", global_config_path=cf, system_settings_path=ssp,
         ) == "/custom/cache"
@@ -1470,11 +1471,11 @@ class TestSystemSettingsTierSplit:
         """F3 flip: reset removes the setting from the SETTINGS file (where the
         launch reader looks), leaving the CONFIG file untouched."""
         from kanibako.settings.config import read_system_agent
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        _write_nested_toml_key(ssp, ("system",), "agent", "claude")
+        write_nested_key(ssp, ("system",), "agent", "claude")
         msg = reset_config_value(
             "system.agent", config_path=cf, system_settings_path=ssp,
         )
@@ -1490,7 +1491,7 @@ class TestSystemSettingsTierSplit:
         assert not cf.exists()
 
     def test_reset_all_clears_settings_and_config_separately(self, tmp_path):
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
@@ -1499,7 +1500,7 @@ class TestSystemSettingsTierSplit:
             "model", "opus",
             config_path=cf, system_settings_path=ssp,
         )
-        _write_nested_toml_key(cf, ("box",), "image", "ghcr.io/x:1")
+        write_nested_key(cf, ("box",), "image", "ghcr.io/x:1")
         reset_all(config_path=cf, force=True, system_settings_path=ssp)
         # The SETTING is gone from the settings file.
         assert not load_doc(ssp).get("agent")

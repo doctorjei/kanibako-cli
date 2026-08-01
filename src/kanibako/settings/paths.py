@@ -2579,9 +2579,9 @@ def establish_standalone(
     # The kuid IS the name's prefix (``box_identity.standalone_kuid``); storing it
     # makes it the STABLE cross-move handle (the launch re-composes the name as
     # ``<stored kuid>_<live leaf>`` so a moved box keeps its identity).
-    from kanibako.settings.config_interface import _write_nested_toml_key
+    from kanibako.settings.config_io import write_nested_key
 
-    _write_nested_toml_key(
+    write_nested_key(
         settings_file, ("workset",), "kuid",
         box_identity.standalone_kuid(box_name),
     )

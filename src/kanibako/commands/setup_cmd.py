@@ -93,11 +93,11 @@ def _write_system_agent(name: str) -> None:
     ``default_agent`` leaf — a location that made the stored default an undeclared
     key riding the AGENT tier. Migration M-4 (documentation only).
     """
-    from kanibako.settings.config_interface import _write_nested_toml_key
+    from kanibako.settings.config_io import write_nested_key
 
     _, ssp = _settings_paths()
     ssp.parent.mkdir(parents=True, exist_ok=True)
-    _write_nested_toml_key(ssp, ("system",), "agent", name)
+    write_nested_key(ssp, ("system",), "agent", name)
 
 
 def _write_setup_marker() -> None:

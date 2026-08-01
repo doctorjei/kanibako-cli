@@ -293,10 +293,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         load_agent_config,
     )
     from kanibako.settings.config import coerce_bool
-    from kanibako.settings.config_interface import (
-        _is_auto_approve_key,
-        _remove_nested_toml_key,
-        _write_nested_toml_key,
+    from kanibako.settings.config_interface import _is_auto_approve_key
+    from kanibako.settings.config_io import (
+        remove_nested_key,
+        write_nested_key,
     )
 
     try:
@@ -380,7 +380,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
         key = reset_key.strip()
         sections, leaf = _agent_key_route(key, agent_id)
-        changed = _remove_nested_toml_key(path, sections, leaf)
+        changed = remove_nested_key(path, sections, leaf)
         if changed:
             # Honest cleared-form (F7), same contract as every other noun's
             # reset. This engine edits the sparse settings file directly, NOT
@@ -464,7 +464,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # run_args is stored as a LIST (space-split); everything else is the
         # raw string. Sparse write — only the touched key is materialized.
         stored: object = value.split() if key == "run_args" else value
-        _write_nested_toml_key(path, sections, leaf, stored)
+        write_nested_key(path, sections, leaf, stored)
         print(f"Set {key}={value}")
         return 0
 

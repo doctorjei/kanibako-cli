@@ -870,9 +870,9 @@ class TestDefaultStateFromMeta:
         # Disable vault via the box-scope key so we can prove enable_vault is
         # sourced from ``box.enable_vault`` (not a project-identity field).
         from kanibako.commands.box._lifecycle import _default_state_from_meta
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
 
-        _write_nested_toml_key(
+        write_nested_key(
             std.boxes / "gonebox" / "settings.yaml",
             ("box",), "enable_vault", False,
         )
