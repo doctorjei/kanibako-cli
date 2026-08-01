@@ -260,9 +260,9 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import canonicalize_agent_ref
     from kanibako.settings.agent_representation import agent_default_bind_keys
+    from kanibako.settings.config_keys import ConfigLevel
     from kanibako.settings.config_interface import (
         ConfigAction,
-        ConfigLevel,
         _AGENT_DEFAULT_SUB,
         _parse_agent_node_bind_key,
         get_config_value,

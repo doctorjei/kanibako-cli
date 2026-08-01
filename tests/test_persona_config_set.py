@@ -20,8 +20,8 @@ import logging
 import pytest
 
 from kanibako.settings.agent_config import load_agent_config
+from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.config_interface import (
-    ConfigLevel,
     _resolve_key,
     get_config_value,
     is_known_key,

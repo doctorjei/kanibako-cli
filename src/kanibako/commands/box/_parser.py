@@ -842,7 +842,8 @@ def run_create(args: argparse.Namespace) -> int:
         # OAuth token into the seed.  Additive/non-destructive: no scrub, only two
         # boolean overrides.
         if getattr(args, "private", False):
-            from kanibako.settings.config_interface import ConfigLevel, set_config_value
+            from kanibako.settings.config_interface import set_config_value
+            from kanibako.settings.config_keys import ConfigLevel
             from kanibako.errors import KanibakoError
             for _auth_key in (
                 "box.auth.global_enabled",
@@ -882,7 +883,8 @@ def run_create(args: argparse.Namespace) -> int:
         # with the image/--private writes above).
         _agent_sel = getattr(args, "agent", None)
         if isinstance(_agent_sel, str) and _agent_sel.strip():
-            from kanibako.settings.config_interface import ConfigLevel, set_config_value
+            from kanibako.settings.config_interface import set_config_value
+            from kanibako.settings.config_keys import ConfigLevel
             _msg = set_config_value(
                 "pref.system.agent", _agent_sel.strip(),
                 config_path=project_toml,
@@ -2145,9 +2147,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
     Handles get, set, show, reset operations via the config_interface engine.
     Uses the known-key heuristic to disambiguate project names from config keys.
     """
+    from kanibako.settings.config_keys import ConfigLevel
     from kanibako.settings.config_interface import (
         ConfigAction,
-        ConfigLevel,
         get_config_value,
         is_known_key,
         parse_config_arg,

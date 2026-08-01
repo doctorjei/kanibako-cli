@@ -32,8 +32,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.config_interface import (
-    ConfigLevel,
     get_config_value,
     reset_all,
     reset_config_value,

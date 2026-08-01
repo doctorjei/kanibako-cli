@@ -11,7 +11,7 @@ THIS — this module does NOT touch ``cli.py`` or the live setter):
    the resolver's OWN ``match_var`` / ``match_ref`` token parsers, called rather
    than re-derived, inside the same escape-aware scan as
    :func:`kanibako.settings.settings_resolve.expand_expr`) and the
-   :mod:`kanibako.settings.config_interface` key registry (``KEY_TYPES`` / ``_coerce_value``)
+   :mod:`kanibako.settings.config_keys` key registry (``KEY_TYPES`` / ``_coerce_value``)
    — it does NOT invent a second validator (S25). Q9 (spec §2a, ruling 2026-06-29):
    the dangling/unknown/cycle judgement is now FULL RESOLUTION via the injected E3
    ``resolves`` probe (does the edited value resolve cleanly post-edit?), NOT the
@@ -77,7 +77,7 @@ from pathlib import Path
 from typing import Callable, Sequence, Union
 
 from kanibako.settings.agent_config import is_self_resolving
-from kanibako.settings.config_interface import KEY_TYPES, _coerce_value
+from kanibako.settings.config_keys import KEY_TYPES, _coerce_value
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.settings_resolve import (
     SettingsError,

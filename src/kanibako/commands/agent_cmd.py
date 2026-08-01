@@ -387,10 +387,8 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # the assemble/merge cascade, so it has no resolved cascade inputs
             # to thread — the cleared-only fallback (effective=None) is the
             # correct honest form here (no new plumbing for this micro-block).
-            from kanibako.settings.config_interface import (
-                ConfigLevel,
-                _honest_reset_message,
-            )
+            from kanibako.settings.config_keys import ConfigLevel
+            from kanibako.settings.config_interface import _honest_reset_message
 
             print(_honest_reset_message(key, ConfigLevel.agent))
         else:

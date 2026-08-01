@@ -6,9 +6,9 @@ import pytest
 import yaml
 
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.config_interface import (
     ConfigAction,
-    ConfigLevel,
     is_known_key,
     get_config_value,
     parse_config_arg,
@@ -3671,10 +3671,10 @@ def test_meta_box_path_is_read_only_from_every_scope():
     path. The FILE half (a top-level ``meta:`` table being dropped at assembly) is
     pinned in ``tests/test_settings_launch.py``.
     """
-    from kanibako.settings.config_interface import (
+    from kanibako.settings.config_interface import is_known_key
+    from kanibako.settings.config_keys import (
         ConfigLevel,
         _scope_direction_error,
-        is_known_key,
     )
 
     for scope in (*ConfigLevel, None):
