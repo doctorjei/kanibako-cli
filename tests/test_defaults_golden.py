@@ -53,6 +53,7 @@ from kanibako.targets.base import (
     BindScope,
     HostSrcOrigin,
 )
+from tests.support.repo import REPO_ROOT
 
 # --------------------------------------------------------------------------- #
 # Surface under guard
@@ -71,8 +72,9 @@ _AGENT_DEFAULTS = (
 # where every pair is a 2-/3-element list/tuple — NEVER a colon-joined string.
 _PAIR_CATEGORIES = ("bindings", "caches", "seeded", "common", "synced")
 
-# The repo root (this file lives in <repo>/tests/).
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+# The repo root — resolved once, in one place, so this file may live at any depth
+# under ``tests/`` (see ``tests/support/repo.py``).
+_REPO_ROOT = REPO_ROOT
 
 _HOME_LITERAL = "/home/agent"
 

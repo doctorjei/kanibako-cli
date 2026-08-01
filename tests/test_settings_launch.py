@@ -2312,9 +2312,8 @@ class TestNoImplicitRootPrepend:
 
     @staticmethod
     def _shipped_sources():
-        from pathlib import Path as _Path
+        from tests.support.repo import REPO_ROOT as root
 
-        root = _Path(__file__).resolve().parent.parent
         files = list((root / "src" / "kanibako").rglob("*.py"))
         for pkg in sorted((root / "packages").glob("*")):
             src = pkg / "src"

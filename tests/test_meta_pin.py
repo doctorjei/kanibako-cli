@@ -19,9 +19,10 @@ unpinned meta.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
+
+from tests.support.repo import REPO_ROOT
 
 # The EXACT anchor the release workflow's `sed -i -E` uses, translated to a
 # Python regex:
@@ -29,9 +30,7 @@ import pytest
 # POSIX ERE `[[:space:]]` on a line-leading indent is `[ \t]*` here.
 _WORKFLOW_ANCHOR = re.compile(r'^([ \t]*)"kanibako-cli[^"]*"', re.MULTILINE)
 
-_META_PYPROJECT = (
-    Path(__file__).resolve().parents[1] / "packages" / "meta" / "pyproject.toml"
-)
+_META_PYPROJECT = REPO_ROOT / "packages" / "meta" / "pyproject.toml"
 
 
 @pytest.fixture
