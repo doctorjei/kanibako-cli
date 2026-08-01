@@ -1,4 +1,16 @@
-"""Blanket ``--agent`` / ``--box`` flags + per-command relevance (W1 Phase D).
+"""Cross-cutting CLI flag plumbing: the blanket flags, the shared ``--null``
+suppression flag, and option-anywhere parsing.
+
+Three things live here, all of them argparse plumbing that no single command
+owns:
+
+1. the blanket ``--agent`` / ``--box`` flags + their per-command relevance
+   (W1 Phase D), described below;
+2. :data:`NULL_FLAG_HELP` / :func:`add_null_flag` — the ONE spelling of the
+   ``--null`` suppression flag every scope's ``set`` verb wires (B-6);
+3. :class:`OptionsAnywhereParser` / :func:`hoist_optionals` — the parser class
+   that lets a flag be written in ANY position, including between two
+   positionals (B-5).
 
 Two cross-cutting CLI flags are added to (nearly) every subcommand via a
 post-construction walk of the argparse tree:
@@ -116,6 +128,195 @@ def _add_box_flag(parser: argparse.ArgumentParser) -> None:
             "the current directory."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# The shared ``--null`` suppression flag (B-6).
+# ---------------------------------------------------------------------------
+
+# ONE help string for every scope's ``set`` verb (box / workset / system /
+# agent).  It has to TEACH the feature, because suppression has no verb of its
+# own: Jei rejected a dedicated ``suppress`` command as "unnecessary and
+# redundant" (2026-07-31), which makes this help text the whole discoverability
+# surface.  So it says both halves — what ``--null`` DOES (suppresses the
+# inherited value) and how to UNDO it (the sibling ``reset`` verb).
+#
+# ⚑ ``reset``, not ``--reset``: there is no ``--reset`` FLAG on any parser.
+# ``reset`` is a sibling SUBCOMMAND (``box reset <key>``, ``system reset <key>``
+# …); ``args.reset`` is only the internal namespace attribute the shared engine
+# reads.  Naming a flag the user cannot type is the failure this text avoids.
+#
+# ⚑ The undo example is PER-VERB, not shared: each scope's ``reset`` takes a
+# different positional shape (``workset reset <workset> <key>`` needs its noun,
+# ``system reset <key>`` takes none).  One literal example would be untypeable
+# for three of the four verbs, and an example the user cannot type teaches the
+# opposite of what it is for.
+NULL_FLAG_HELP_TEMPLATE = (
+    "SUPPRESS the value this key would otherwise inherit: writes an explicit "
+    "null (present-None) at this scope, so the scopes above it stop supplying "
+    "the key and the consumer sees it as dropped (spec section 2h). This WRITES "
+    "an override rather than removing one - to undo it and get the inherited "
+    "value back, use the sibling 'reset' verb ('{undo}')."
+)
+
+
+def add_null_flag(parser: argparse.ArgumentParser, *, undo: str) -> None:
+    """Wire the shared ``--null`` flag onto a scope's ``set`` parser.
+
+    Single source for the sentence, so the four ``set`` verbs cannot drift apart
+    (they were four copies of one string before).  *undo* is the verb's OWN
+    ``reset`` spelling — keyword-only and required, so a new scope's ``set``
+    cannot inherit another scope's untypeable example by accident.
+    """
+    parser.add_argument(
+        "--null", action="store_true",
+        help=NULL_FLAG_HELP_TEMPLATE.format(undo=undo),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Option-anywhere parsing (B-5).
+# ---------------------------------------------------------------------------
+
+# Sentinel for "an option whose arity this rewriter will not reason about".
+_BAIL = -1
+
+
+def _take_for(nargs: object) -> int:
+    """Extra argv tokens an option with *nargs* consumes (or :data:`_BAIL`)."""
+    if nargs == 0:
+        return 0
+    if nargs is None or nargs == 1:
+        return 1
+    return _BAIL
+
+
+def _option_take(
+    option_nargs: dict[str, object], parser: argparse.ArgumentParser, token: str,
+) -> int | None:
+    """How many EXTRA argv tokens *token* consumes, or ``None`` if positional.
+
+    ``0`` is a toggle (``store_true`` and friends) or the self-contained
+    ``--opt=value`` form; ``1`` is a single-value option (``--box NAME``);
+    :data:`_BAIL` is any other arity, which makes the caller leave argv alone.
+    """
+    if token in option_nargs:
+        return _take_for(option_nargs[token])
+    head = token.split("=", 1)[0]
+    if head != token and head in option_nargs:
+        return 0  # ``--opt=value`` carries its own value
+    # An unambiguous long-option ABBREVIATION (argparse's own allow_abbrev
+    # behaviour).  Without this, ``--nul`` would parse before the positionals
+    # and not after them — one flag with two behaviours, which is worse than
+    # either.
+    prefix = parser.prefix_chars
+    if (
+        getattr(parser, "allow_abbrev", True)
+        and len(token) > 2
+        and token[0] in prefix
+        and token[1] in prefix
+    ):
+        matches = [opt for opt in option_nargs if opt.startswith(token)]
+        if len(matches) == 1:
+            return _take_for(option_nargs[matches[0]])
+    return None
+
+
+def hoist_optionals(
+    parser: argparse.ArgumentParser, argv: list[str],
+) -> list[str]:
+    """Reorder *argv* so optionals may be written in ANY position (B-5).
+
+    argparse matches positionals in GROUPS split by the optionals between them.
+    A VARIADIC positional (``nargs="*"``) swallows its whole group, so a flag
+    written BETWEEN two positionals strands everything after it::
+
+        box set mybox --null pref.system.agent
+        → error: unrecognized arguments: pref.system.agent
+
+    This moves the optionals (each with its value) to the FRONT, preserving
+    their relative order, and leaves the positionals in theirs.  Nothing is
+    dropped and nothing changes meaning — argparse binds an optional by NAME,
+    never by position — so the only observable difference is that the
+    previously-fatal orderings now parse.
+
+    The rewrite is INERT unless the parser actually has the shape that breaks:
+
+    * no variadic positional → argparse already interleaves correctly, so argv
+      is returned untouched (today that is every command but the four ``box``
+      config verbs);
+    * a ``REMAINDER`` or subparsers positional → returned untouched, because
+      those deliberately capture raw argv and reordering would corrupt it.
+
+    A ``--`` ends the rewrite: everything from it on is passed through verbatim,
+    which is how a user writes a positional that looks like a flag.
+    """
+    positionals = [a for a in parser._actions if not a.option_strings]
+    if not any(a.nargs in ("*", "+") for a in positionals):
+        return argv
+    if any(
+        isinstance(a, argparse._SubParsersAction) or a.nargs == argparse.REMAINDER
+        for a in positionals
+    ):
+        return argv
+
+    option_nargs: dict[str, object] = {}
+    for action in parser._actions:
+        for opt in action.option_strings:
+            option_nargs[opt] = action.nargs
+
+    hoisted: list[str] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--":
+            rest.extend(argv[i:])
+            break
+        take = _option_take(option_nargs, parser, token)
+        if take is None:
+            rest.append(token)
+            i += 1
+            continue
+        if take == _BAIL:
+            return argv
+        values = argv[i + 1: i + 1 + take]
+        # A value-taking option with nothing to take — it sits at the END of
+        # argv, or its value slot holds ``--``.  Hoisting the bare flag would
+        # move it in front of the positionals, where the FIRST positional
+        # becomes adjacent to it and is silently bound as its value
+        # (``box show mybox --box`` → ``--box mybox``, exit 0, wrong subject).
+        # Bail so argparse raises the error it owns: "expected one argument".
+        if take > 0 and (len(values) < take or "--" in values):
+            return argv
+        hoisted.append(token)
+        hoisted.extend(values)
+        i += 1 + take
+    return hoisted + rest
+
+
+class OptionsAnywhereParser(argparse.ArgumentParser):
+    """An ``ArgumentParser`` whose optionals parse in any position (B-5).
+
+    Installed as the ``parser_class`` of the TOP-LEVEL subparsers action, so
+    every subcommand inherits it — and every NESTED subcommand too, since
+    ``add_subparsers`` defaults ``parser_class`` to the type of the parser it is
+    called on.  One rule for the whole CLI ("a flag may go anywhere") beats
+    per-verb patching, and :func:`hoist_optionals` is inert for the parsers that
+    never had the problem.
+
+    The hook is ``parse_known_args`` rather than ``parse_args`` because that is
+    the entry point ``_SubParsersAction.__call__`` uses for a subcommand.
+    """
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: "list[str] | None" = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> "tuple[argparse.Namespace, list[str]]":
+        if args is not None:
+            args = hoist_optionals(self, list(args))
+        return super().parse_known_args(args, namespace)
 
 
 def _has_option(parser: argparse.ArgumentParser, option: str) -> bool:

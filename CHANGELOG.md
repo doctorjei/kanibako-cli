@@ -58,6 +58,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A flag now works wherever you type it.** `kanibako box set <box> --null <key>`
+  failed with `unrecognized arguments: <key>` — a flag written *between* two
+  positionals stranded everything after it, so `--null` (and `--force`, `--box`,
+  `--agent`) only worked before them. Every subcommand now accepts its flags in
+  any position. The four `box` config verbs (`set`/`reset`/`get`/`show`) were the
+  affected ones; a `--` still ends flag parsing, so an argument that looks like a
+  flag can be passed as data.
+
+- **`kanibako agent set --null <key>` performed a silent read.** The flag was
+  advertised on the parser but never consulted, so the command fell through to
+  its get path: it printed the current value and exited 0 without writing
+  anything. It is now an explicit refusal naming both cures — `agent reset
+  <agent> <key>` to clear the agent's own value, or `--null
+  pref.agent.<agent>.<key>` from a box or workset to suppress what the agent
+  declares. (Suppression at agent scope is not supported: the per-agent settings
+  file is read back with every value coerced to a string, so a null there would
+  return as the text `None`.)
+
+- **`--null` help and messages now teach suppression.** The flag's help says that
+  it SUPPRESSES an inherited value and that the sibling `reset` verb undoes it,
+  and the messages that report or offer a suppression name that cure. Messages
+  that pointed at a non-existent `--reset` *flag* now name the `reset` verb.
+
 - **Persona boxes get their agent's shared directories.** A persona
   (`navigator+claude`) mounted NEITHER `~/.claude/plugins` NOR `~/.claude/cache`: the
   plugin declares those against its harness name while the resolver reads them under

@@ -1059,3 +1059,81 @@ class TestAgentParser:
         assert args.follow is True
         assert args.from_helper == 1
         assert args.last == 5
+
+
+class TestAgentSetNull:
+    """B-5: ``agent set`` ADVERTISES ``--null`` but never read it.
+
+    The flag parsed (it is on the parser) and the bare key then fell through to
+    the GET fallback, so ``kanibako agent set claude --null model`` PRINTED the
+    current model and exited 0 — an accepted, silently-ignored write.
+
+    It is REFUSED rather than wired, because this file's reader coerces what it
+    loads (``load_agent_config`` builds ``cfg.state``/``cfg.env`` with
+    ``str(v)``): a YAML null here would read back as the TEXT ``"None"``, and
+    for ``auto_approve`` that ``coerce_bool``s to None and launches PERMISSIVE —
+    a suppression flag turning ``--dangerously-skip-permissions`` on.  Agent-file
+    null semantics need the reader to change with them.
+    """
+
+    def _stored(self, agent_env):
+        from kanibako.config_io import load_doc
+
+        return load_doc(agent_settings_path(agents_dir(agent_env), "claude"))
+
+    def test_null_is_refused_and_names_both_cures(self, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="model", null=True,
+        ))
+        assert rc == 1
+        cap = capsys.readouterr()
+        # INVERT: with the refusal removed this is the GET fallback — rc 0 and
+        # the stored value on stdout, which is the silent-read bug itself.
+        assert "opus" not in cap.out
+        assert "not supported at agent scope" in cap.err
+        assert "'agent reset claude model'" in cap.err
+        assert "'--null pref.agent.claude.model'" in cap.err
+
+    def test_refusal_writes_nothing(self, agent_env, capsys):
+        """The whole point of refusing: the file is untouched, so nothing reads
+        back as the string 'None' later."""
+        from kanibako.commands.agent_cmd import run_set
+
+        before = self._stored(agent_env)
+        assert run_set(argparse.Namespace(
+            agent_id="claude", key_value="model", null=True,
+        )) == 1
+        assert run_set(argparse.Namespace(
+            agent_id="claude", key_value="env.EDITOR", null=True,
+        )) == 1
+        assert run_set(argparse.Namespace(
+            agent_id="claude", key_value="auto_approve", null=True,
+        )) == 1
+        assert self._stored(agent_env) == before
+
+    def test_null_with_a_value_names_the_key_alone_in_the_cure(
+        self, agent_env, capsys,
+    ):
+        """``--null key=value`` supplies two values; the refusal still has to
+        name the KEY, not echo the whole token into an untypeable command."""
+        from kanibako.commands.agent_cmd import run_set
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="model=sonnet", null=True,
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "'agent reset claude model'" in err
+        assert "model=sonnet" not in err
+        assert self._stored(agent_env)["self"]["model"] == "opus"  # untouched
+
+    def test_null_without_a_key_is_refused(self, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value=None, null=True,
+        ))
+        assert rc == 1
+        assert "requires a key" in capsys.readouterr().err
