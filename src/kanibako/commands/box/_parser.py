@@ -2420,9 +2420,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # own: get_config_value redirected the READ to the box's §2h request
         # ``pref.agent.<active>.<key>``. Name the value with that canonical form so
         # the read teaches the request (mirrors the refuse-message ``set`` prints).
-        from kanibako.settings.config_interface import _resolve_key, box_agent_redirect_key
+        from kanibako.settings.config_interface import resolve_key, box_agent_redirect_key
         redirect = box_agent_redirect_key(
-            _resolve_key(key), ConfigLevel.box, _get_agent_name or None,
+            resolve_key(key), ConfigLevel.box, _get_agent_name or None,
         )
         if val is not None:
             print(f"{redirect}={val}" if redirect is not None else val)
