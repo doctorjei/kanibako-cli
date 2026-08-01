@@ -30,7 +30,7 @@ from pathlib import Path
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
 from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import load_doc
-from kanibako.settings.config_interface import _write_nested_toml_key
+from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import load_std_paths
 from kanibako.shellenv import read_env_file
 
@@ -63,7 +63,7 @@ def _seed_system_agent(config_file, name):
     """
     std = _std(config_file)
     std.settings.parent.mkdir(parents=True, exist_ok=True)
-    _write_nested_toml_key(std.settings, ("system",), "agent", name)
+    write_nested_key(std.settings, ("system",), "agent", name)
     return std
 
 
@@ -321,7 +321,7 @@ class TestSystemStructuralFileOnly:
         """The refusal advice must not lie: a hand-edit of the config file's
         [system] table is honored by the path resolver AND readable via get."""
         custom = str(tmp_home / "custom-cache")
-        _write_nested_toml_key(config_file, ("system",), "cache", custom)
+        write_nested_key(config_file, ("system",), "cache", custom)
         std = _std(config_file)
         assert std.cache == Path(custom)
         capsys.readouterr()
@@ -360,7 +360,7 @@ class TestSystemStructuralFileOnly:
         """config.data (Layer-1 CONFIG) is read from kanibako_config.yaml — get
         still works (the key moved system.data -> config.data in block #3a)."""
         custom = str(tmp_home / "custom-data")
-        _write_nested_toml_key(config_file, ("config",), "data", custom)
+        write_nested_key(config_file, ("config",), "data", custom)
         capsys.readouterr()
         rc = _get("config.data")
         assert rc == 0
@@ -382,10 +382,10 @@ class TestSystemStructuralFileOnly:
         — those are file-only, not overrides."""
         std = _std(config_file)
         # A structural path value hand-written into the config file's [system].
-        _write_nested_toml_key(config_file, ("system",), "cache", "/custom/cache")
+        write_nested_key(config_file, ("system",), "cache", "/custom/cache")
         # A settings-tier system.auth override in the SETTINGS file (ssp).
         std.settings.parent.mkdir(parents=True, exist_ok=True)
-        _write_nested_toml_key(
+        write_nested_key(
             std.settings, ("system", "auth"), "share_allowed", False,
         )
         rc = _reset(all_keys=True)
@@ -592,7 +592,7 @@ class TestRelativeCategorySourceRefusedEndToEnd:
         ``dangling @-reference '@meta.agent.claude.path'`` → RED. That dead end is
         what this pins.)
         """
-        _write_nested_toml_key(
+        write_nested_key(
             config_file, ("agent", "claude", "common"), "plugins",
             ["/seed/src", "/home/agent/.claude/plugins"],
         )
@@ -611,7 +611,7 @@ class TestRelativeCategorySourceRefusedEndToEnd:
     ):
         """Control: the refusal is about the VALUE, not about the must-exist gate —
         it still fires on a key that is present in the cascade."""
-        _write_nested_toml_key(
+        write_nested_key(
             config_file, ("agent", "claude", "common"), "plugins",
             ["/seed/src", "/home/agent/.claude/plugins"],
         )
@@ -661,7 +661,7 @@ class TestSystemCategoryFileRouting:
     KEY = "system.bindings.ro.helper"
 
     def _seed(self, path):
-        _write_nested_toml_key(
+        write_nested_key(
             path, ("system", "bindings", "ro"), "helper",
             ["/old/src", "/home/agent/helper", "ro"],
         )

@@ -114,7 +114,7 @@ class TestBoxConfigShow:
         launch derivation — NEVER the kanibako_config.yaml CONFIG file (which
         the launch cascade does not read for settings)."""
         from kanibako.commands.box._parser import run_show
-        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_io import write_nested_key
         from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
@@ -125,8 +125,8 @@ class TestBoxConfigShow:
         # System settings tier: select claude, and set a behavior key the
         # per-agent file does NOT set (endpoint) so the system-tier value is
         # the effective one at launch — the display must show the same.
-        _write_nested_toml_key(std.settings, ("system",), "agent", "claude")
-        _write_nested_toml_key(
+        write_nested_key(std.settings, ("system",), "agent", "claude")
+        write_nested_key(
             std.settings, ("agent", "default"), "endpoint", "https://ssp.example",
         )
 

@@ -38,7 +38,17 @@ from kanibako.agent_ref import (
     display_agent_ref,
     parse_agent_ref,
 )
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import (
+    dump_doc,
+    load_doc,
+    read_stored_leaf,
+    read_stored_pref,
+    remove_nested_key,
+    remove_root_key,
+    render_stored_scalar,
+    write_nested_key,
+    write_root_key,
+)
 from kanibako.errors import ConfigError, UserCancelled
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.settings_store import SCOPE_CONTAINMENT, ReservedKeyError
@@ -848,7 +858,7 @@ def _floor_bind_display(
         parts = parts[1:]  # drop the set-time sentinel — it is not a launch value
     if not parts:
         return None
-    rendered = _render_stored_scalar(parts)
+    rendered = render_stored_scalar(parts)
     if rendered is None:
         return None
     return (rendered, "descriptor floor; host re-resolved at launch")
@@ -1985,7 +1995,7 @@ def get_config_value(
     # get = stored-at-noun). The RESOLVED result is the --effective view.
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
-        return _read_stored_pref(noun_file, sections, leaf)
+        return read_stored_pref(noun_file, sections, leaf)
 
     # env.* keys — read from env files
     if _is_env_key(canonical):
@@ -2008,7 +2018,7 @@ def get_config_value(
         if bind_target is None:
             return None
         path, sections, leaf = bind_target
-        return _read_stored_leaf(path, sections, leaf)
+        return read_stored_leaf(path, sections, leaf)
 
     # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a): read
     # the stored PATH (never the secret VALUE) at the DISCRIMINATED
@@ -2020,7 +2030,7 @@ def get_config_value(
         if secret_target is None:
             return None
         path, sections, leaf = secret_target
-        return _read_stored_leaf(path, sections, leaf)
+        return read_stored_leaf(path, sections, leaf)
 
     # <scope>.secret_path.<VAR> (system/workset/box) — read the stored PATH from the
     # NOUN's settings file (stored-at-noun; the --effective cascade view is the show
@@ -2033,7 +2043,7 @@ def get_config_value(
     if _is_scope_secret_key(canonical):
         if noun_file and noun_file.exists():
             parts = canonical.split(".")
-            return _read_stored_leaf(
+            return read_stored_leaf(
                 noun_file, (parts[0], "secret_path"), parts[2],
             )
         return None
@@ -2048,7 +2058,7 @@ def get_config_value(
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, tuple):
             path, sections, leaf = target
-            return _read_stored_leaf(path, sections, leaf)
+            return read_stored_leaf(path, sections, leaf)
         return None
 
     # target settings (model, continue_mode, auto_approve, allow_helpers)
@@ -2099,7 +2109,7 @@ def get_config_value(
     # ``show --effective`` cascade view. Absent → ``None`` ("(not set)").
     if _is_path_category_key(canonical):
         tail = canonical.split(".")
-        return _read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
+        return read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
 
     # config.* / system.* path keys — read the raw set-value from the bootstrap
     # config file's [config]/[system] tables (file-only tier; not a merged-config
@@ -2138,72 +2148,7 @@ def get_config_value(
         read_file = (
             global_config_path if system_settings_path is not None else project_toml
         )
-    return _read_stored_leaf(read_file, sections, leaf)
-
-
-def _read_stored_leaf(
-    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-) -> str | None:
-    """Return the value STORED at ``sections/leaf`` in *noun_file* (the get
-    model's stored-at-noun read), or ``None`` when absent / no file.
-
-    A root-level scalar (empty *sections*, e.g. ``allow_helpers``) reads the
-    document root. Bools render lowercase "true"/"false" (matching ``set``'s
-    coercion + ``show``'s rendering); a stored empty string reads as ``None``
-    ("(not set)"), preserving the prior "empty ⇒ unset" convention.
-    """
-    if noun_file is None or not noun_file.exists():
-        return None
-    node: object = load_doc(noun_file)
-    for sec in sections:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(sec)
-    if not isinstance(node, dict) or leaf not in node:
-        return None
-    return _render_stored_scalar(node[leaf])
-
-
-def _read_stored_pref(
-    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-) -> str | None:
-    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart.
-
-    ⚑ The general :func:`_read_stored_leaf` renders a stored ``""`` as ``None``
-    ("(not set)") — the "empty ⇒ unset" convention. That convention is WRONG for
-    a pref: §2h designates ``get`` as the verb that *"returns the REQUEST"*, and
-    the three idioms it must forward untouched (present-``None``, terminal ``""``,
-    and absence) are three DIFFERENT requests. Collapsing two of them into one
-    display makes the suppression request — the only channel a box has to drop
-    something its agent declares — indistinguishable from having asked nothing.
-
-    absent → ``None`` ("(not set)") · present-``None`` → ``"null"`` ·
-    ``""`` → ``'""'`` · else the value.
-    """
-    if noun_file is None or not noun_file.exists():
-        return None
-    node: object = load_doc(noun_file)
-    for sec in sections:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(sec)
-    if not isinstance(node, dict) or leaf not in node:
-        return None
-    v = node[leaf]
-    if v is None:
-        return "null"
-    if v == "":
-        return '""'
-    if isinstance(v, bool):
-        return str(v).lower()
-    return str(v)
-
-
-def _render_stored_scalar(v: object) -> str | None:
-    """Render a stored scalar for ``get`` output: bools lowercase, empty → None."""
-    if isinstance(v, bool):
-        return str(v).lower()
-    return str(v) if v != "" else None
+    return read_stored_leaf(read_file, sections, leaf)
 
 
 def _has_dedicated_route(canonical: str) -> bool:
@@ -2500,7 +2445,7 @@ def set_config_value(
         if value_err is not None:
             return value_err
         sections, leaf = _pref_sections_leaf(canonical)
-        _write_nested_toml_key(settings_dest, sections, leaf, value)
+        write_nested_key(settings_dest, sections, leaf, value)
         return f"Set {canonical}={'null' if value is None else value}"
 
     # env.* keys
@@ -2522,7 +2467,7 @@ def set_config_value(
     # (state leaf under ``agent:``; ``env.<VAR>`` under ``env:``).  The SECRET
     # pointer ``secret_path.<VAR>`` is handled EARLIER (discriminated node storage,
     # ``_is_agent_node_secret_key``), not here.  The node was ``℘``-canonicalized by
-    # ``_resolve_key``. Sparse by construction: ``_write_nested_toml_key`` is
+    # ``_resolve_key``. Sparse by construction: ``write_nested_key`` is
     # read-modify-write, so only the key the user set is materialised — a
     # default-only persona file stays empty of everything else.  The value is
     # written VERBATIM (like every other agent-setting write) — the persona-critical
@@ -2572,7 +2517,7 @@ def set_config_value(
                 f"settable at the system scope."
             )
         path, sections, leaf = secret_target
-        _write_nested_toml_key(path, sections, leaf, value)
+        write_nested_key(path, sections, leaf, value)
         return f"Set {_node_secret_display_key(canonical)}={value}"
 
     # <scope>.secret_path.<VAR> (system/workset/box) — the SECRET category at a
@@ -2583,7 +2528,7 @@ def set_config_value(
     # workset; the system settings file at SYSTEM — never the Layer-1 config file).
     if _is_scope_secret_key(canonical):
         parts = canonical.split(".")  # [<scope>, "secret_path", <VAR>]
-        _write_nested_toml_key(
+        write_nested_key(
             settings_dest, (parts[0], "secret_path"), parts[2], value,
         )
         return f"Set {canonical}={value}"
@@ -2598,14 +2543,14 @@ def set_config_value(
                 f"settable at the system scope."
             )
         path, sections, leaf = target
-        _write_nested_toml_key(path, sections, leaf, value)
+        write_nested_key(path, sections, leaf, value)
         return f"Set {_persona_display_key(canonical)}={value}"
 
     # target settings — the agent-agnostic CLI writes the any-agent
     # ``agent.default`` tier (per-agent overrides live under ``agent.<name>``).
     # SYSTEM scope routes to the system settings file (settings_dest).
     if _is_agent_setting(canonical):
-        _write_nested_toml_key(settings_dest, ("agent", "default"), canonical, value)
+        write_nested_key(settings_dest, ("agent", "default"), canonical, value)
         return f"Set {canonical}={value}"
 
     # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380). An
@@ -2710,9 +2655,9 @@ def set_config_value(
         else config_path
     )
     if sections:
-        _write_nested_toml_key(dest, sections, leaf, typed)
+        write_nested_key(dest, sections, leaf, typed)
     else:
-        _write_toml_key_root(dest, leaf, typed)
+        write_root_key(dest, leaf, typed)
     return f"Set {_dot_to_flat(routed)}={'null' if value is None else value}"
 
 
@@ -2806,7 +2751,7 @@ def reset_config_value(
     # (symmetric with the set/get branches: reset clears exactly where set wrote).
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
-        if _remove_nested_toml_key(settings_dest, sections, leaf):
+        if remove_nested_key(settings_dest, sections, leaf):
             return f"Cleared {canonical}"
         return f"No override for {canonical}"
 
@@ -2836,7 +2781,7 @@ def reset_config_value(
                 f"resettable at the system scope."
             )
         path, sections, leaf = bind_target
-        if _remove_nested_toml_key(path, sections, leaf):
+        if remove_nested_key(path, sections, leaf):
             floor = _floor_bind_display(canonical, default_categories)
             return _honest_reset_message(canonical, command_scope, floor)
         return f"No override for {canonical}"
@@ -2854,7 +2799,7 @@ def reset_config_value(
             )
         path, sections, leaf = secret_target
         display = _node_secret_display_key(canonical)
-        if _remove_nested_toml_key(path, sections, leaf):
+        if remove_nested_key(path, sections, leaf):
             return _honest_reset_message(display, command_scope)
         return f"No override for {display}"
 
@@ -2862,13 +2807,13 @@ def reset_config_value(
     # from the command scope's settings file (symmetric with set/get).
     if _is_scope_secret_key(canonical):
         parts = canonical.split(".")
-        if _remove_nested_toml_key(settings_dest, (parts[0], "secret_path"), parts[2]):
+        if remove_nested_key(settings_dest, (parts[0], "secret_path"), parts[2]):
             return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): remove the stored
     # override from the agent's OWN settings file ``agents/<node>/settings.yaml``
-    # (symmetric with set/get; ``_remove_nested_toml_key`` prunes now-empty
+    # (symmetric with set/get; ``remove_nested_key`` prunes now-empty
     # ``agent:``/``env:`` tables, keeping the file sparse).
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
@@ -2881,14 +2826,14 @@ def reset_config_value(
             )
         path, sections, leaf = target
         display = _persona_display_key(canonical)
-        if _remove_nested_toml_key(path, sections, leaf):
+        if remove_nested_key(path, sections, leaf):
             return _honest_reset_message(display, command_scope)
         return f"No override for {display}"
 
     # target settings — reset the any-agent ``agent.default`` tier (SYSTEM scope
     # routes to the system settings file).
     if _is_agent_setting(canonical):
-        if _remove_nested_toml_key(settings_dest, ("agent", "default"), canonical):
+        if remove_nested_key(settings_dest, ("agent", "default"), canonical):
             return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
@@ -2925,7 +2870,7 @@ def reset_config_value(
         # the kanibako_config.yaml CONFIG file: neither where set wrote nor where get
         # reads.
         _cat_dest = config_path if tail[0] == "agent" else settings_dest
-        if _remove_nested_toml_key(_cat_dest, tuple(tail[:-1]), tail[-1]):
+        if remove_nested_key(_cat_dest, tuple(tail[:-1]), tail[-1]):
             floor = _floor_bind_display(canonical, default_categories)
             return _honest_reset_message(canonical, command_scope, floor)
         return f"No override for {canonical}"
@@ -2952,9 +2897,9 @@ def reset_config_value(
         else config_path
     )
     removed = (
-        _remove_nested_toml_key(dest, sections, leaf)
+        remove_nested_key(dest, sections, leaf)
         if sections
-        else _remove_toml_key_root(dest, leaf)
+        else remove_root_key(dest, leaf)
     )
     flat = _dot_to_flat(routed)
     if removed:
@@ -3129,8 +3074,8 @@ def _effective_after_reset(
         return None
     # A stored/resolved empty string has no value to name (Editor NIT-a): render
     # to None → the caller keeps the cleared-only form, never "effective is now
-    # <blank>". (``_render_stored_scalar`` already maps "" → None.)
-    rendered = _render_stored_scalar(eff)
+    # <blank>". (``render_stored_scalar`` already maps "" → None.)
+    rendered = render_stored_scalar(eff)
     if rendered is None:
         return None
     return (rendered, source_tier)
@@ -3154,9 +3099,9 @@ def write_system_value(config_path: Path, leaf: str, value: object) -> None:
 
     *leaf* is the bare key name under the ``[system]`` table (NOT prefixed with
     ``system.``).  Writes preserve all other config content (read-modify-write
-    via :func:`_write_nested_toml_key`).
+    via :func:`write_nested_key`).
     """
-    _write_nested_toml_key(config_path, ("system",), leaf, value)
+    write_nested_key(config_path, ("system",), leaf, value)
 
 
 def _count_leaves(node: object) -> int:
@@ -3276,7 +3221,7 @@ def reset_all(
             for agent, sec in list(agent_tbl.items()):
                 if isinstance(sec, dict):
                     for k in list(sec):
-                        _remove_nested_toml_key(settings_dest, ("agent", agent), k)
+                        remove_nested_key(settings_dest, ("agent", agent), k)
                         count += 1
 
     # Clear the nested SCOPE tables the command scope is permitted to write
@@ -3725,112 +3670,3 @@ def show_config(
             print("  (no overrides)", file=out)
 
     return 0
-
-
-# ---------------------------------------------------------------------------
-# Config section helpers (load → mutate → dump as YAML)
-# ---------------------------------------------------------------------------
-
-def _write_toml_key(path: Path, section: str, key: str, value: object) -> None:
-    """Write a key to a specific config section, preserving other content."""
-    data = load_doc(path)
-    sec = data.get(section)
-    if not isinstance(sec, dict):
-        sec = {}
-        data[section] = sec
-    sec[key] = value
-    dump_doc(path, data)
-
-
-def _write_toml_key_root(path: Path, key: str, value: object) -> None:
-    """Write a TOP-LEVEL scalar key, preserving other content.
-
-    Used for flat KanibakoConfig fields (e.g. ``allow_helpers``) that live at
-    the document root, not under a section.
-    """
-    data = load_doc(path)
-    data[key] = value
-    dump_doc(path, data)
-
-
-def _remove_toml_key_root(path: Path, key: str) -> bool:
-    """Remove a TOP-LEVEL scalar key.  Returns True if it was present."""
-    if not path.exists():
-        return False
-    data = load_doc(path)
-    if key not in data:
-        return False
-    del data[key]
-    dump_doc(path, data)
-    return True
-
-
-def _remove_toml_key(path: Path, section: str, key: str) -> bool:
-    """Remove a key from a specific config section.  Returns True if found."""
-    if not path.exists():
-        return False
-
-    data = load_doc(path)
-    sec = data.get(section, {})
-    if not isinstance(sec, dict) or key not in sec:
-        return False
-
-    del sec[key]
-    if not sec:
-        del data[section]
-    dump_doc(path, data)
-    return True
-
-
-def _write_nested_toml_key(
-    path: Path, sections: tuple[str, ...], key: str, value: object,
-) -> None:
-    """Write *key* into a nested table (e.g. ``("system", "path")``).
-
-    Preserves other content; creates intermediate tables as needed.
-    """
-    data = load_doc(path)
-    node = data
-    for sec in sections:
-        child = node.get(sec)
-        if not isinstance(child, dict):
-            child = {}
-            node[sec] = child
-        node = child
-    node[key] = value
-    dump_doc(path, data)
-
-
-def _remove_nested_toml_key(
-    path: Path, sections: tuple[str, ...], key: str,
-) -> bool:
-    """Remove *key* from a nested table.  Returns True if found.
-
-    Prunes now-empty intermediate tables.
-    """
-    if not path.exists():
-        return False
-
-    data = load_doc(path)
-
-    # Walk to the innermost table, recording the chain for pruning.
-    chain: list[dict] = [data]
-    node = data
-    for sec in sections:
-        if sec not in node or not isinstance(node[sec], dict):
-            return False
-        node = node[sec]
-        chain.append(node)
-
-    if key not in node:
-        return False
-    del node[key]
-
-    # Prune empty tables bottom-up.
-    for i in range(len(sections) - 1, -1, -1):
-        if not chain[i + 1]:
-            del chain[i][sections[i]]
-        else:
-            break
-    dump_doc(path, data)
-    return True
