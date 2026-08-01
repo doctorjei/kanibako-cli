@@ -667,7 +667,7 @@ class TestShowConfig:
         # ``resource_overrides`` table in a pre-1.7.x system file; it must NOT
         # render in the show/effective view (display-only legacy filter) while a
         # real nested scope table still does.
-        from kanibako.settings.config_interface import _nested_settings_overrides
+        from kanibako.settings.config_display import _nested_settings_overrides
         sys_file = tmp_path / "system-settings.yaml"
         dump_doc(sys_file, {
             "resource_overrides": {"plugins": "/legacy"},   # dead legacy table

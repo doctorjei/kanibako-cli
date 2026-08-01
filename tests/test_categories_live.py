@@ -863,7 +863,7 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
     def test_the_block_renders_the_pair_for_a_real_declaration(self):
         import io
 
-        from kanibako.settings.config_interface import _print_category_block
+        from kanibako.settings.config_display import _print_category_block
 
         snap, entries = self._snapshot()
         buf = io.StringIO()
