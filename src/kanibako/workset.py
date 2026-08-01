@@ -41,6 +41,12 @@ from kanibako.paths import StandardPaths
 # design — both are the "settings.yaml at the entity's root" convention.
 WORKSET_META_FILE = "settings.yaml"
 
+# The BOX-tree leaf under a workset root.  Named because two places need it and only
+# one of them has a ``Workset`` instance to ask: ``Workset.projects_dir`` (below) and
+# ``remove_workset``, which holds a bare root Path from the registry and must clear
+# each member box tree through the unshare-aware deleter before the plain rmtree.
+BOXES_DIR_NAME = "boxes"
+
 
 # ---------------------------------------------------------------------------
 # Failure-consistency: a tiny LIFO unwind stack for multi-step mutations.
@@ -165,7 +171,7 @@ class Workset:
 
     @property
     def projects_dir(self) -> Path:
-        return self.root / "boxes"
+        return self.root / BOXES_DIR_NAME
 
     @property
     def workspaces_dir(self) -> Path:
@@ -497,6 +503,20 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     # Irreversible step LAST: only after both registry halves are clean.
     if remove_files and root.is_dir():
         import shutil
+
+        # ⚑ BOX TREES FIRST (J-7).  The workset root contains ``boxes/<name>/home/
+        # canon``, a root-owned 555 skeleton per member box; a whole-root
+        # ``shutil.rmtree`` raises PermissionError as soon as it reaches one, leaving
+        # the workset half-deleted AFTER its registry entries are already gone.
+        # Clearing each box tree through the unshare-aware deleter first leaves only
+        # ordinary user content for the plain rmtree.
+        from kanibako.container import remove_box_tree
+
+        boxes_dir = root / BOXES_DIR_NAME
+        if boxes_dir.is_dir():
+            for box_tree in sorted(boxes_dir.iterdir()):
+                if box_tree.is_dir() and not box_tree.is_symlink():
+                    remove_box_tree(box_tree)
         shutil.rmtree(root)
 
     return root
@@ -818,11 +838,24 @@ def remove_project(
             ws.vault_dir / "ro" / name,
             ws.vault_dir / "rw" / name,
         )
+        # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7).  ``projects_dir/<name>``
+        # holds the box HOME, and every R1b box home carries the canon skeleton:
+        # root-owned and 555.  ``shutil.rmtree`` raises PermissionError on a tree
+        # containing 555 directories EVEN WHEN THE CALLER OWNS THEM, so this breaks
+        # in BOTH the protected and the degraded state.  The workspace and vault
+        # dirs are ordinary user content and stay on the plain path — the escalation
+        # is scoped to what actually needs it.
+        from kanibako.container import remove_box_tree
+
+        box_tree = ws.projects_dir / name
         for proj_dir in targets:
             if proj_dir.is_symlink():
                 # Defensive: only the link is removed, never its target.
                 proj_dir.unlink()
             elif proj_dir.is_dir():
-                shutil.rmtree(proj_dir)
+                if proj_dir == box_tree:
+                    remove_box_tree(proj_dir)
+                else:
+                    shutil.rmtree(proj_dir)
 
     return target

@@ -226,13 +226,19 @@ kani:
     box_dest: "/etc/profile.d/kanibako-secrets.sh"
     options: "ro"
   # NOTE: the read-only packaged CANON is not a hand-declared entry here either.
-  # ``core_defaults.rom_default_categories`` emits TWO binds from the packaged rom
-  # root (``global/rom``) — ``canon_collection`` (the COLLECTION.md index, a FILE
-  # bind so ``~/canon`` itself stays writable for the SEEDED notebook/workbook) and
-  # ``canon_bible`` (the whole ``canon/bible`` directory) — and
+  # ``core_defaults.rom_default_categories`` emits FIVE SIBLING binds from the
+  # packaged rom root (``global/rom``, which is FLAT — no ``canon/`` wrapper):
+  # ``canon_collection`` + ``canon_bible_contents`` as FILE binds (file-onto-file
+  # over the 0-byte mountpoints box create materialises), and one whole-directory
+  # bind per packaged bible chapter — ``canon_bible_{general,workset,box}``.
   # ``rom_agent_default_categories`` adds the resolved plugin's own chapter at
-  # ``~/canon/bible/agent`` when it ships one.  All three are INTERNAL/generated
+  # ``~/canon/bible/agent`` when it ships one.  All six are INTERNAL/generated
   # (spec §2c): not user keys, in no set-time floor, not repointable.
+  # ⚑ SIBLINGS, NOT A WHOLE-DIR BOOK (J-7, 2026-07-31).  Neither ``~/canon`` nor
+  # ``~/canon/bible`` is ever bound: every bind lands on a mountpoint that already
+  # exists in the box home (``core_defaults.materialize_canon_skeleton``, run at box
+  # create and made root-owned), so nothing nests and no mountpoint has to live
+  # inside a bind SOURCE.  R1's whole-dir ``canon_bible`` key is RETIRED.
   # ⚑ The flattener (``import-directives.py``) is MACHINERY, not canon: it ships in
   # the package and reaches the box through the ``kani_pkg`` bind above, at
   # ``/opt/kanibako/kanibako/scripts/import-directives.py``.

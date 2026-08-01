@@ -9,11 +9,15 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
 from kanibako.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
+
 
 logger = get_logger("container")
 
@@ -29,6 +33,25 @@ logger = get_logger("container")
 # (the ``uid=``/``gid=`` options, 2022-10).  ``keep-id`` is podman-only;
 # Docker support is future backlog work with its own userns handling.
 KEEP_ID_USERNS = f"--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}"
+
+
+# Post-start hook plumbing (see ``ContainerRuntime.run``).  Bounded so a container
+# that never comes up cannot leave a thread spinning for the process's lifetime.
+_POST_START_TIMEOUT_S = 30.0
+_POST_START_POLL_S = 0.25
+
+
+def _run_post_start(hook: "Callable[[], None]") -> None:
+    """Invoke a post-start *hook*, swallowing anything it raises.
+
+    The hook is a repair step, not a precondition: a box whose canon re-protect
+    failed is degraded (litter-able) but perfectly usable, and taking the launch
+    down over it would trade a cosmetic problem for a total one.
+    """
+    try:
+        hook()
+    except Exception as exc:  # noqa: BLE001 - a hook must never break a launch
+        logger.debug("post-start hook failed: %s", exc)
 
 
 class ContainerRuntime:
@@ -111,6 +134,44 @@ class ContainerRuntime:
             return False
         result = subprocess.run(
             [self.cmd, "unshare", "rm", "-rf", str(path)],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+
+    def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool:
+        """``chown uid:gid`` *paths* from within the rootless user namespace.
+
+        The write-side counterpart of :meth:`unshare_rm`, and the mechanism behind
+        the canon skeleton's root-owned book roots (J-7): a host user cannot hand a
+        file to one of their own subuids directly, but inside ``podman unshare``
+        those subuids are ordinary namespace uids.
+
+        ⚑ NO ``-R``.  Callers pass an EXPLICIT, enumerated path list — a recursive
+        sweep of ``~/canon`` would take the seeded, agent-owned ``notebook/`` and
+        ``workbook/`` books with it.
+
+        Only podman supports ``unshare``; returns False for docker, for an empty
+        *paths*, or on any failure.
+        """
+        return self._unshare_apply(["chown", f"{uid}:{gid}"], paths)
+
+    def unshare_chmod(self, paths: list[Path], mode: str) -> bool:
+        """``chmod mode`` *paths* from within the rootless user namespace.
+
+        Runs inside the namespace because the paths are (by then) owned by a subuid
+        the host user cannot chmod directly.  Same no-``-R`` rule as
+        :meth:`unshare_chown`.
+        """
+        return self._unshare_apply(["chmod", mode], paths)
+
+    def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
+        if not paths:
+            return False
+        if "podman" not in Path(self.cmd).name:
+            return False
+        result = subprocess.run(
+            [self.cmd, "unshare", *argv, *(str(p) for p in paths)],
             capture_output=True,
             text=True,
         )
@@ -268,11 +329,36 @@ class ContainerRuntime:
         entrypoint: str | None = None,
         cli_args: list[str] | None = None,
         detach: bool = False,
+        post_start: "Callable[[], None] | None" = None,
     ) -> int:
         """Run a container and return the exit code.
 
         When *detach* is True the container runs in the background (``-d``
         instead of ``-it``, no ``--rm``).  Returns 0 on success.
+
+        ⚑ *post_start* runs after podman has set the box's mounts up.  On the
+        DETACHED path that is once, inline, the moment ``podman run -d`` returns.  On
+        the FOREGROUND path it runs when the session ends (and, opportunistically,
+        from a watcher as soon as the container is seen running) — see below.
+        It is the seam for work that must happen AFTER podman has set the box's
+        mounts up — specifically the canon re-protect, because the home bind's
+        ``:U`` option makes podman RECURSIVELY RE-CHOWN the home bind SOURCE to the
+        container user's mapping at container creation, which resets the box-create
+        canon skeleton from container-root back to the agent (bifrost, 2026-07-31:
+        host ``165536 165536 555`` post-create → ``1000 1000 555`` post-start).
+
+        The hook is wired HERE, rather than as a separate step after each
+        ``runtime.run(...)``, so that the ORDERING (and the detach/foreground split
+        below) exists in one place instead of being re-derived at every call site.
+
+        ⚑ IT IS NOT "COVERED BY CONSTRUCTION" — the parameter is OPT-IN, so a call
+        site that does not pass *post_start* gets nothing.  What IS true by
+        construction is narrower and worth stating exactly: ``run()`` is the only
+        container-CREATION seam (stopped containers are ``rm``'d and recreated, never
+        ``podman start``ed), so there is no OTHER place a ``:U`` chown can happen.
+        Every call site that binds a box home must pass the hook itself; that
+        obligation is enforced by a test
+        (``test_container.TestPostStartCallSites``), not by this signature.
         """
         masks = tmpfs_masks or []
         # Pre-create mount destination stubs so crun doesn't need to mkdir
@@ -341,12 +427,66 @@ class ContainerRuntime:
                 logger.debug(
                     "Detached container started: %s", (result.stdout or "").strip()
                 )
+                # The container is up the instant ``podman run -d`` returns, so the
+                # hook runs INLINE here — no polling, no thread.
+                if post_start is not None:
+                    _run_post_start(post_start)
             return result.returncode
 
         # Interactive foreground path: inherit the terminal so the agent /
         # shell (and tmux attach) get the real stdio/tty.
-        fg_result = subprocess.run(cmd)
+        #
+        # ⚑ This call BLOCKS for the whole session, so there is no "after start"
+        # moment in this thread — the hook has to run from a watcher that waits for
+        # the container to come up alongside it.  Without this the ephemeral/shell
+        # modes would run their entire session with an agent-owned canon (the
+        # detached path would be protected and the foreground path silently not).
+        watcher = None
+        if post_start is not None and name:
+            watcher = self._watch_for_start(name, post_start)
+        try:
+            fg_result = subprocess.run(cmd)
+        finally:
+            if watcher is not None:
+                watcher.set()
+            # ⚑ THE GUARANTEE LIVES HERE, NOT IN THE WATCHER.  A container that
+            # lives less than one poll interval is never observed running (measured:
+            # up at 20ms, gone at 50ms — the first probe fires before the subprocess
+            # even starts and the second lands after this cancel), so the watcher
+            # alone would leave short-lived ephemeral boxes NEVER repaired, silently
+            # and invisibly to any e2e using a long-running stub.  Re-asserting once
+            # the container is gone costs one idempotent pass and makes the on-disk
+            # state ALWAYS end protected.  The watcher is now only an optimisation:
+            # it shortens the window DURING a long session.
+            if post_start is not None:
+                _run_post_start(post_start)
         return fg_result.returncode
+
+    def _watch_for_start(
+        self, name: str, post_start: "Callable[[], None]",
+    ) -> "threading.Event":
+        """Fire *post_start* once *name* is running; return a cancel Event.
+
+        A short-lived DAEMON thread: it cannot keep the process alive, it polls a
+        bounded number of times, and every exception is swallowed and debug-logged.
+        A launch must never fail because a post-start hook did.
+        """
+        cancelled = threading.Event()
+
+        def _wait() -> None:
+            deadline = time.monotonic() + _POST_START_TIMEOUT_S
+            while not cancelled.is_set() and time.monotonic() < deadline:
+                try:
+                    if self.is_running(name):
+                        _run_post_start(post_start)
+                        return
+                except Exception as exc:  # noqa: BLE001 - never break a launch
+                    logger.debug("post-start watcher probe failed: %s", exc)
+                cancelled.wait(_POST_START_POLL_S)
+            logger.debug("post-start watcher gave up waiting for %s", name)
+
+        threading.Thread(target=_wait, daemon=True, name=f"kanibako-poststart-{name}").start()
+        return cancelled
 
     def exec(
         self,
@@ -665,6 +805,105 @@ class ContainerRuntime:
         return images
 
 
+def remove_box_tree(target: Path) -> bool:
+    """Remove *target*, tolerating files a rootless container created.
+
+    THE box-tree deleter.  A box's home can contain files owned by mapped subuids —
+    files a ``--userns=keep-id`` container wrote as root, and (since J-7) the
+    root-owned canon skeleton kanibako itself creates at box create — which the host
+    user cannot unlink.  A plain :func:`shutil.rmtree` then fails with EACCES, so
+    this falls back to ``podman unshare rm -rf``, which deletes from within the user
+    namespace.  Returns True if *target* is gone afterwards, False otherwise (callers
+    warn rather than crash).
+
+    ⚑ EVERY verb that deletes a box home or box metadata tree must come through
+    here — ``rm --purge``, ``extract``, ``move``/``convert``, ``duplicate``'s
+    ``--force``/rollback arms and ``purge``.  A bare ``rmtree`` on any of those paths
+    is a bug: it fails on the canon skeleton and leaves a half-deleted box behind.
+
+    THREE ESCALATING ATTEMPTS, because there are three distinct failure shapes:
+
+    1. plain ``rmtree`` — ordinary content;
+    2. ``rmtree`` after re-opening the directory modes we OWN.  ⚑ ``rmtree`` raises
+       ``PermissionError`` on a tree containing 555 directories EVEN WHEN THE CALLER
+       OWNS THEM (unlinking a child needs write on its parent), and an owned-but-555
+       canon skeleton is genuinely reachable: ``shutil.copytree`` reproduces the
+       skeleton's modes without its ownership, so every box-home copy passes through
+       that state, as does a create whose ``chown`` failed after the ``chmod``. This
+       step needs no container runtime at all, which matters because the machines
+       that most often lack podman are exactly the ones running these verbs;
+    3. ``podman unshare rm -rf`` — the SUBUID case, where the files are not ours and
+       no amount of chmod helps.
+
+    ⚑ DEGRADED END-STATE, stated because it is not obvious: if step 2 re-opened some
+    modes and steps 2 AND 3 then both failed, the tree is left BEHIND with those dir
+    modes re-opened — i.e. LESS protected than before the attempt.  That is the right
+    trade (the caller is trying to delete the tree, and a half-deletable box is worse
+    than a briefly-writable one) but a caller that reports the False return must not
+    imply the tree is untouched.
+    """
+    try:
+        shutil.rmtree(target)
+        return True
+    except OSError:
+        pass
+
+    # (2) Re-open the modes on directories WE own, then retry.  Bounded to *target*'s
+    # own subtree, best-effort per entry, and it never touches a dir owned by someone
+    # else (the chmod simply fails and is skipped — that is case 3's job).
+    reopened = False
+    for root, dirs, _files in os.walk(target, topdown=True):
+        for d in (root, *(os.path.join(root, x) for x in dirs)):
+            try:
+                # ⚑ NEVER chmod THROUGH a symlink.  ``os.chmod`` follows links, so a
+                # symlinked dir inside the box home would have its TARGET re-opened —
+                # possibly somewhere outside the tree we are deleting.  On Linux this
+                # is safe today only by accident (a symlink's own lstat mode is 0777,
+                # so the ``not S_IWUSR`` test skips it); make the safety DELIBERATE
+                # rather than a property of one platform's mode bits.  ``os.walk``
+                # does not follow directory symlinks either, so skipping here loses
+                # nothing: rmtree unlinks the link itself, which needs only the
+                # parent's write bit.
+                if os.path.islink(d):
+                    continue
+                mode = stat.S_IMODE(os.lstat(d).st_mode)
+                if not mode & stat.S_IWUSR:
+                    os.chmod(d, mode | stat.S_IRWXU)
+                    reopened = True
+            except OSError:
+                continue
+    if reopened:
+        try:
+            shutil.rmtree(target)
+            return True
+        except OSError:
+            pass
+
+    try:
+        if ContainerRuntime().unshare_rm(target):
+            return True
+    except ContainerError:
+        pass
+    return not target.exists()
+
+
+# The MANAGED CANON region inside a box (J-7).  Every bind dest at or under it lands
+# on a mountpoint the box-create skeleton already materialised, root-owned and 555.
+_CANON_GUEST_PREFIX = f"{GUEST_HOME}/canon"
+
+
+def _is_managed_canon_dest(dest: str) -> bool:
+    """True for a bind dest the CANON SKELETON owns, which must not be stubbed.
+
+    ⚑ PATH-SHAPED, not key-shaped, and deliberately so: EVERY bind under ``~/canon``
+    is by construction one of the canon book binds, whose mountpoint
+    :func:`kanibako.core_defaults.materialize_canon_skeleton` pre-created at box
+    create.  One uniform rule beats six per-key special cases.  The seeded
+    ``canon/notebook`` + ``canon/workbook`` are never binds, so they never reach here.
+    """
+    return dest == _CANON_GUEST_PREFIX or dest.startswith(f"{_CANON_GUEST_PREFIX}/")
+
+
 def _guest_dest_to_host(
     dest: str,
     shell_path: Path,
@@ -947,6 +1186,32 @@ def _precreate_mount_stubs(
         dest = mount.destination
         src = mount.source
         host_path = _guest_dest_to_host(dest, shell_path, project_path)
+        # ⚑ THE CANON SKELETON OWNS ITS OWN MOUNTPOINTS (J-7) — BUT ONLY WHERE IT
+        # EXISTS.  On a box created by R1b the mountpoint is already there,
+        # root-owned and unwritable, so stubbing it is pointless and wrong-headed.
+        #
+        # ⚑ THE SKIP IS EXISTENCE-AWARE, NOT PATH-AWARE, and that distinction is
+        # load-bearing.  Boxes with NO skeleton exist and will keep arriving: every
+        # R1-era and pre-canon box, plus any box whose create hit the degraded path.
+        # An unconditional skip leaves their five-or-six canon binds with no
+        # mountpoints at all, and in LXC crun cannot mkdir inside a bind-mounted
+        # overlay — that is a launch failure (exit 126), not a degradation. Falling
+        # through to the tolerant stub helpers instead pre-creates the mountpoints
+        # for exactly those boxes, which also makes this a free self-healing
+        # migration: an old box gains its canon mountpoints on its next launch.
+        #
+        # Where the skeleton DOES exist the fall-through would be a no-op anyway
+        # (``_ensure_dir``/``_ensure_file`` are create-if-absent, and
+        # ``_loosen_parents`` finds 555 already carrying the 0o011 search bits), so
+        # the skip buys clarity rather than behaviour — it says out loud that these
+        # mountpoints are not the launch path's to manage.
+        if host_path is not None and _is_managed_canon_dest(dest):
+            if host_path.exists():
+                logger.debug("stub skip (canon skeleton owns it): %s → %s", src, dest)
+                continue
+            logger.debug(
+                "canon mountpoint absent (pre-R1b box?) — stubbing: %s → %s", src, dest,
+            )
         if host_path is None:
             logger.debug("stub skip (not under home): %s → %s", src, dest)
             continue

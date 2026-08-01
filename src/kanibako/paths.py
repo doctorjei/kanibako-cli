@@ -2233,6 +2233,7 @@ def resolve_any_project(
     *,
     initialize: bool = False,
     register: bool = True,
+    name_override: str | None = None,
 ) -> ProjectPaths:
     """Auto-detect project mode and resolve paths accordingly.
 
@@ -2244,6 +2245,12 @@ def resolve_any_project(
     ``start`` auto-create path can defer registration until after the home seed
     (the NAMED branch never writes the name registry on create, so the flag is a
     no-op there).  Defaults True.
+
+    *name_override* is forwarded to the PRIMARY resolver only, which is the sole
+    mode whose box name is not derivable from the tree itself: a STANDALONE box
+    carries its identity in its own root ``settings.yaml``, and a NAMED box takes
+    its name from its workspace directory.  ``box extract --name`` is the caller
+    that needs it (re-materializing an archived box under a chosen name).
     """
     raw = project_dir or os.getcwd()
     # CLI front-door: a bare token (no path separator) that doesn't exist in
@@ -2324,6 +2331,7 @@ def resolve_any_project(
         )
     return resolve_project(
         std, config, project_dir=root_str, initialize=initialize, register=register,
+        name_override=name_override,
     )
 
 

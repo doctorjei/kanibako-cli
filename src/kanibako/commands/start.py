@@ -2328,6 +2328,10 @@ def _run_container(
                 auth_src=auth_src, logger=logger,
                 suppress_oauth=suppress_oauth,
             )
+            # The canon skeleton (J-7), in the SAME position as ``run_create``'s:
+            # after the seed, inside the journal window.  See that call site for why
+            # both are load-bearing.
+            core_defaults.materialize_canon_skeleton(proj.shell_path, logger=logger)
             _register_new_box(std, proj)
             _clear_create_entry(std, proj)
 
@@ -3181,6 +3185,7 @@ def _run_container(
                 entrypoint=entrypoint,
                 cli_args=cli_args or None,
                 detach=persistent,
+                post_start=_canon_reprotect_hook(proj, logger),
             )
         finally:
             # Stop helper hub after director exits
@@ -4959,11 +4964,11 @@ def _resolve_launch_snapshot(
             std, proj, guarantee_create=guarantee_create,
         ))
         default_categories.update(core_defaults.kani_default_categories())
-        # The packaged CANON: two READ-ONLY binds (spec §2c) — the COLLECTION.md
-        # index (a FILE bind, so ~/canon itself stays writable for the SEEDED
-        # notebook/workbook) and the whole BIBLE directory.  Replaces the retired
-        # per-leaf-file rom enumeration, which existed only because rom used to
-        # land inside the writable ~/playbook.
+        # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
+        # COLLECTION.md index and the bible's ROM_CONTENTS.md as FILE binds, plus one
+        # whole-directory bind per packaged chapter (general/workset/box).  Each
+        # lands on a mountpoint the box-create skeleton already made, so nothing
+        # nests and no mountpoint has to live inside a bind source.
         default_categories.update(core_defaults.rom_default_categories())
         default_categories.update(_channel_default_categories(std, proj))
         if target is not None:
@@ -4978,14 +4983,13 @@ def _resolve_launch_snapshot(
                 harness=target.name,
             ))
             # The plugin's BIBLE CHAPTER (spec §2c ``canon_bible_agent``), emitted
-            # by CORE from the RESOLVED target beside the two core canon binds —
-            # gated on the plugin actually shipping one.  Its dest NESTS inside
-            # ~/canon/bible BY DESIGN: the ascending mount depth-sort lands it last
-            # so the plugin's chapter SHADOWS core's placeholder (whole-directory
-            # shadowing, never a merge).  A box-scoped INTERNAL bind, not an agent
-            # key — so the bible's agent chapter stays as unrepointable as the rest
-            # of the book, and the bind follows the resolved target however the
-            # agent was selected.
+            # by CORE from the RESOLVED target beside the five core canon binds —
+            # gated on the plugin actually shipping one.  A SIBLING of them (J-7),
+            # not nested: it lands on ~/canon/bible/agent, a mountpoint the skeleton
+            # always pre-creates whether or not this bind is emitted.  A box-scoped
+            # INTERNAL bind, not an agent key — so the bible's agent chapter stays as
+            # unrepointable as the rest of the book, and the bind follows the
+            # resolved target however the agent was selected.
             default_categories.update(
                 core_defaults.rom_agent_default_categories(target)
             )
@@ -5930,6 +5934,52 @@ def _core_default_categories(
     )
 
 
+def _canon_reprotect_hook(proj, logger):
+    """Return the POST-START canon re-protect callable for *proj*.
+
+    ⚑⚑ WHY POST-START, NOT AT CREATE ONLY (bifrost, 2026-07-31).  The box home is
+    bound with podman's ``:U`` option (``core-defaults.yaml`` key ``home``), which
+    RECURSIVELY RE-CHOWNS the bind SOURCE to the container user's mapping every time
+    a container is created.  So the ownership ``box create`` established is undone by
+    the very next launch: measured host-side on one box as ``165536 165536 555``
+    after create → ``1000 1000 555`` after start.  Modes survive; ownership does not
+    — and 555 the agent OWNS is no protection at all, because the owner can simply
+    ``chmod u+w``.  A gate agent proved exactly that: ``mkdir ~/canon/scratch``
+    succeeded inside a started box.
+
+    ``:U`` is NOT the thing to fix: it is the load-bearing keep-id correction for
+    hosts whose user is not uid 1000 (the ``1549e39`` class).  Re-asserting after the
+    chown is the cheap, correct answer — the same idempotent ``podman unshare``
+    chown+chmod pass, a handful of calls.
+
+    ⚑ ACCEPTED WINDOW — be precise about its size, it is NOT instantaneous.  On the
+    DETACHED path the hook runs inline the moment ``podman run -d`` returns, so the
+    gap is a single podman round-trip.  On the FOREGROUND path the box is left
+    agent-owned for up to ONE WATCHER POLL INTERVAL (0.25s) into the session, and a
+    container shorter-lived than that is only repaired when the session ENDS — the
+    on-disk state always ends protected, but a very short ephemeral run is
+    unprotected for its whole life.  Tolerable because this mechanism is
+    ANTI-POLLUTION (keep an agent from littering ~/canon), not a security boundary —
+    an agent that wanted to write there could already do so by other means.
+
+    Returns None when there is nothing to protect.
+    """
+    shell_path = getattr(proj, "shell_path", None)
+    if shell_path is None:
+        return None
+
+    def _reprotect() -> None:
+        # quiet=True: this runs as the terminal is handed to the agent, and on a
+        # docker/unshare-less host the degraded report would fire on EVERY launch,
+        # painting into the live TUI/tmux session.  Box create already said it once,
+        # loudly; the per-launch re-assert logs at DEBUG.
+        core_defaults.materialize_canon_skeleton(
+            shell_path, logger=logger, quiet=True,
+        )
+
+    return _reprotect
+
+
 def _kanibako_mounts():
     """Build bind mounts for the kanibako CLI inside containers.
 
@@ -6005,6 +6055,7 @@ def _run_setup_command(
         entrypoint=setup_entrypoint,
         cli_args=setup_args or None,
         detach=False,
+        post_start=_canon_reprotect_hook(proj, None),
     )
     # Remove the setup container so the relaunch recreates it fresh.
     if runtime.container_exists(container_name):

@@ -194,6 +194,345 @@ class TestUnshareRm:
             m.assert_not_called()
 
 
+class TestUnshareChownChmod:
+    """``unshare_chown`` / ``unshare_chmod`` — the WRITE-side counterparts of
+    ``unshare_rm``, and the mechanism behind J-7's root-owned canon skeleton.
+
+    ⚑ THE ARGV IS THE CONTRACT. Two things are load-bearing and both are silent when
+    wrong: the uid (0 inside ``podman unshare`` is the REAL HOST USER, whom
+    ``keep-id:uid=1000`` maps to the in-box AGENT — so ``chown 0:0`` would leave the
+    books writable by the very agent they are meant to be protected from), and the
+    absence of ``-R`` (a recursive sweep of ``~/canon`` would take the SEEDED,
+    agent-owned ``notebook/`` and ``workbook/`` with it).
+    """
+
+    _PATHS = [Path("/boxes/p/home/canon"), Path("/boxes/p/home/canon/bible")]
+
+    def test_chown_invokes_podman_unshare_with_every_path(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.unshare_chown(self._PATHS, 1, 1) is True
+        assert m.call_args[0][0] == [
+            "/usr/bin/podman", "unshare", "chown", "1:1",
+            "/boxes/p/home/canon", "/boxes/p/home/canon/bible",
+        ]
+
+    def test_chmod_invokes_podman_unshare_with_every_path(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.unshare_chmod(self._PATHS, "555") is True
+        assert m.call_args[0][0] == [
+            "/usr/bin/podman", "unshare", "chmod", "555",
+            "/boxes/p/home/canon", "/boxes/p/home/canon/bible",
+        ]
+
+    def test_never_emits_a_recursive_flag(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.unshare_chown(self._PATHS, 1, 1)
+            rt.unshare_chmod(self._PATHS, "555")
+            for call in m.call_args_list:
+                assert "-R" not in call[0][0]
+                assert "--recursive" not in call[0][0]
+
+    def test_returns_false_on_nonzero(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.unshare_chown(self._PATHS, 1, 1) is False
+            assert rt.unshare_chmod(self._PATHS, "555") is False
+
+    def test_docker_has_no_unshare(self):
+        rt = ContainerRuntime(command="/usr/bin/docker")
+        with patch("kanibako.container.subprocess.run") as m:
+            assert rt.unshare_chown(self._PATHS, 1, 1) is False
+            assert rt.unshare_chmod(self._PATHS, "555") is False
+            m.assert_not_called()
+
+    def test_empty_path_list_is_a_no_op(self):
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            assert rt.unshare_chown([], 1, 1) is False
+            assert rt.unshare_chmod([], "555") is False
+            m.assert_not_called()
+
+
+class TestPostStartHook:
+    """``ContainerRuntime.run(post_start=...)`` — the seam that repairs the canon
+    ownership podman's ``:U`` resets at container creation.
+
+    ⚑ WHY THE HOOK LIVES IN ``run()`` AND NOT AT THE CALL SITES. ``run()`` is the
+    ONE container-creation seam in the codebase (stopped containers are ``rm``'d and
+    recreated, never ``podman start``ed), so wiring it here covers every present and
+    future caller by construction. A re-protect a new call site could forget is a
+    re-protect that will eventually be forgotten.
+    """
+
+    _KW = dict(
+        shell_path=Path("/s"), project_path=Path("/p"),
+        vault_ro_path=Path("/vro"), vault_rw_path=Path("/vrw"),
+    )
+
+    def test_detached_run_invokes_the_hook_after_the_container_starts(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        calls: list[str] = []
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="deadbeef", stderr="")
+            rt.run("img", name="b", detach=True,
+                   post_start=lambda: calls.append("protect"), **self._KW)
+        assert calls == ["protect"]
+
+    def test_a_failed_detached_launch_does_not_invoke_the_hook(self):
+        """Nothing was created, so there is nothing to re-protect — and running the
+        hook would log a spurious warning about a box that does not exist."""
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        calls: list[str] = []
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=125, stdout="", stderr="boom")
+            rt.run("img", name="b", detach=True,
+                   post_start=lambda: calls.append("protect"), **self._KW)
+        assert calls == []
+
+    def test_a_raising_hook_never_breaks_the_launch(self):
+        """The hook is a REPAIR step, not a precondition: a box whose re-protect
+        failed is litter-able but perfectly usable, and taking the launch down over
+        it would trade a cosmetic problem for a total one."""
+        from unittest.mock import MagicMock
+
+        def _boom() -> None:
+            raise RuntimeError("no podman")
+
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="id", stderr="")
+            assert rt.run("img", name="b", detach=True, post_start=_boom,
+                          **self._KW) == 0
+
+    def test_foreground_run_fires_the_hook_from_a_watcher(self):
+        """⚑ THE EPHEMERAL/SHELL PATH. A foreground ``podman run`` BLOCKS for the
+        whole session, so there is no "after start" moment in this thread. Without
+        the watcher the detached path would be protected and the foreground path
+        silently not — the worst kind of split, because the mode that skips the
+        protection is invisible from the outside.
+        """
+        import threading
+
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        fired = threading.Event()
+        running = threading.Event()
+
+        def _fg(cmd, *a, **kw):
+            from unittest.mock import MagicMock
+            running.set()               # the container is now "up"
+            assert fired.wait(timeout=5), "watcher never fired the hook"
+            return MagicMock(returncode=0)
+
+        with patch("kanibako.container.subprocess.run", side_effect=_fg), \
+                patch.object(ContainerRuntime, "is_running",
+                             side_effect=lambda n: running.is_set()):
+            rc = rt.run("img", name="b", detach=False,
+                        post_start=fired.set, **self._KW)
+        assert rc == 0
+        assert fired.is_set()
+
+    def test_short_lived_container_still_gets_the_hook_from_the_finally(self):
+        """⚑ THE WATCHER IS NOT THE GUARANTEE. A container that lives less than one
+        poll interval is NEVER observed running (measured: up at 20ms, gone at 50ms —
+        the first probe fires before the subprocess starts and the second lands after
+        the cancel), so a watcher-only design leaves short ephemeral boxes silently
+        unrepaired — and no e2e can see it, because e2e stubs are long-running.
+
+        The ``finally`` fire is what makes the on-disk state ALWAYS end protected.
+        RED if it is removed: ``is_running`` never returns True here.
+        """
+        from unittest.mock import MagicMock
+
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        calls: list[str] = []
+        with patch("kanibako.container.subprocess.run",
+                   return_value=MagicMock(returncode=0)), \
+                patch.object(ContainerRuntime, "is_running", return_value=False):
+            rc = rt.run("img", name="b", detach=False,
+                        post_start=lambda: calls.append("protect"), **self._KW)
+        assert rc == 0
+        assert calls == ["protect"], "the finally must re-assert even if the watcher never saw the container"
+
+    def test_hook_is_not_fired_twice_when_the_watcher_also_saw_it(self):
+        """The watcher and the ``finally`` can both fire; the pass is idempotent, so
+        this pins the COUNT only to keep the cost bounded and the logs honest."""
+        import threading
+        from unittest.mock import MagicMock
+
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        calls: list[str] = []
+        seen = threading.Event()
+
+        def _fg(cmd, *a, **kw):
+            assert seen.wait(timeout=5)
+            return MagicMock(returncode=0)
+
+        def _hook() -> None:
+            calls.append("protect")
+            seen.set()
+
+        with patch("kanibako.container.subprocess.run", side_effect=_fg), \
+                patch.object(ContainerRuntime, "is_running", return_value=True):
+            rt.run("img", name="b", detach=False, post_start=_hook, **self._KW)
+        assert len(calls) <= 2, calls
+        assert calls, "the hook must fire at least once"
+
+    def test_no_watcher_thread_leaks_when_the_container_never_starts(self):
+        """The watcher is a daemon on a bounded poll AND is cancelled in a
+        ``finally``, so a container that never comes up cannot leave it spinning."""
+        import threading
+        from unittest.mock import MagicMock
+
+        before = threading.active_count()
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.container.subprocess.run",
+                   return_value=MagicMock(returncode=1)), \
+                patch.object(ContainerRuntime, "is_running", return_value=False):
+            rt.run("img", name="b", detach=False, post_start=lambda: None, **self._KW)
+        for t in threading.enumerate():
+            if t.name.startswith("kanibako-poststart-"):
+                t.join(timeout=5)
+        assert threading.active_count() <= before
+
+
+class TestPostStartCallSites:
+    """⚑ THE OBLIGATION THAT THE SIGNATURE CANNOT ENFORCE.
+
+    ``post_start`` is OPT-IN, so ``ContainerRuntime.run`` covers NOBODY by itself —
+    a call site that omits it silently launches a box whose canon podman's ``:U``
+    just re-chowned to the agent. What IS true by construction is only that ``run()``
+    is the sole container-CREATION seam, so there is no other place the chown can
+    happen. Whether each seam actually passes the hook is checked here.
+
+    EXEMPT (verified individually — none binds a box home, so none has a canon
+    skeleton to re-protect): the image probe/pull paths, ``run_interactive``, and the
+    throwaway inspect/diff containers. Only the seams below mount a real box home:
+
+      * ``commands/start.py`` main launch — the box itself;
+      * ``commands/start.py`` ``_run_setup_command`` — a one-time setup container
+        over the SAME box home, so its ``:U`` resets the same skeleton;
+      * ``helper_listener.py`` — a helper box (no skeleton today, so its hook is a
+        guarded no-op, but the seam must still pass one or it becomes the single
+        unprotected launch path the day helper homes gain canon).
+    """
+
+    def test_every_box_home_run_site_passes_post_start(self):
+        """Source-level sweep: a ``runtime.run(``/``ctx.runtime.run(`` call in the
+        box-home modules must carry ``post_start=``. Adding a fourth box-launching
+        seam without the hook fails HERE rather than in a user's box."""
+        import inspect
+        import re
+
+        from kanibako import helper_listener
+        from kanibako.commands import start as start_mod
+
+        offenders: list[str] = []
+        for mod in (start_mod, helper_listener):
+            src = inspect.getsource(mod)
+            for m in re.finditer(r"\w*runtime\.run\(", src):
+                line_start = src.rfind("\n", 0, m.start()) + 1
+                before = src[line_start:m.start()]
+                # PROSE, not a call. Both modules DISCUSS ``runtime.run(...)`` in
+                # comments and docstrings, and a sweep that flags prose is a sweep
+                # people learn to ignore.
+                if "#" in before or "``" in before:
+                    continue
+                # Slice the call's argument text: from the open paren to the
+                # matching close, cheaply bounded by the next ``)`` at call indent.
+                tail = src[m.end():m.end() + 1200]
+                call = tail.split("\n        )")[0].split("\n    )")[0]
+                if "post_start" not in call:
+                    lineno = src[:m.start()].count("\n") + 1
+                    offenders.append(f"{mod.__name__}:{lineno}")
+        assert not offenders, (
+            "these runtime.run() call sites bind a box home but pass no post_start "
+            f"hook, so podman's :U leaves their canon agent-owned: {offenders}"
+        )
+
+    def test_helper_seam_reasserts_but_never_creates_a_skeleton(self, tmp_path):
+        """A helper home is not a box home. Re-asserting what is there is always
+        right; CREATING canon mountpoints from a launch would be a silent layout
+        change made by the wrong seam."""
+        from unittest.mock import patch as _p
+
+        from kanibako.core_defaults import materialize_canon_skeleton_if_present
+
+        bare = tmp_path / "helper-home"
+        bare.mkdir()
+        with _p("kanibako.core_defaults.materialize_canon_skeleton") as m:
+            materialize_canon_skeleton_if_present(bare)
+        m.assert_not_called()
+        assert not (bare / "canon").exists()
+
+        with_canon = tmp_path / "box-home"
+        (with_canon / "canon").mkdir(parents=True)
+        with _p("kanibako.core_defaults.materialize_canon_skeleton") as m:
+            materialize_canon_skeleton_if_present(with_canon)
+        m.assert_called_once()
+
+
+class TestRemoveBoxTree:
+    """``container.remove_box_tree`` — THE box-tree deleter (the body formerly inline
+    in ``commands.box._parser._purge_dir``, moved so every verb can reuse it).
+
+    Since J-7 every box home carries the root-owned canon skeleton, so this is no
+    longer a rare has-a-root-owned-file case: a bare ``rmtree`` of ANY box home fails.
+    """
+
+    def test_removes_a_normal_tree(self, tmp_path):
+        from kanibako.container import remove_box_tree
+        d = tmp_path / "box"
+        (d / "home").mkdir(parents=True)
+        (d / "settings.yaml").write_text("x")
+        assert remove_box_tree(d) is True
+        assert not d.exists()
+
+    def test_falls_back_to_unshare_on_permission_error(self, tmp_path):
+        from unittest.mock import patch as _p
+        from kanibako.container import remove_box_tree
+        d = tmp_path / "box"
+        d.mkdir()
+        with _p("shutil.rmtree", side_effect=PermissionError("denied")), \
+                _p("kanibako.container.ContainerRuntime") as mock_rt:
+            mock_rt.return_value.unshare_rm.return_value = True
+            assert remove_box_tree(d) is True
+            mock_rt.return_value.unshare_rm.assert_called_once_with(d)
+
+    def test_false_when_unshare_fails_and_tree_remains(self, tmp_path):
+        from unittest.mock import patch as _p
+        from kanibako.container import remove_box_tree
+        d = tmp_path / "box"
+        d.mkdir()
+        with _p("shutil.rmtree", side_effect=PermissionError("denied")), \
+                _p("kanibako.container.ContainerRuntime") as mock_rt:
+            mock_rt.return_value.unshare_rm.return_value = False
+            assert remove_box_tree(d) is False
+            assert d.exists()
+
+    def test_purge_dir_still_delegates_here(self, tmp_path):
+        """``_purge_dir`` is kept as a name (rm's call sites + tests read against it);
+        the behaviour must be the moved body, not a second implementation."""
+        from unittest.mock import patch as _p
+
+        from kanibako.commands.box._parser import _purge_dir
+        with _p("kanibako.container.remove_box_tree", return_value=True) as m:
+            assert _purge_dir(tmp_path / "box") is True
+            m.assert_called_once_with(tmp_path / "box")
+
+
 class TestRunEnvFlags:
     """Test that run() emits -e flags from the env parameter."""
 
@@ -819,6 +1158,104 @@ class TestPrecreateMountStubs:
         )
         assert (shell / "vault" / "ro").is_dir()
         assert (shell / "vault" / "rw").is_dir()
+
+    @staticmethod
+    def _canon_mounts(tmp_path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeMount:
+            source: Path
+            destination: str
+            options: str = ""
+
+        src_dir = tmp_path / "chapter"
+        src_dir.mkdir(exist_ok=True)
+        src_file = tmp_path / "index.md"
+        src_file.touch()
+        other = tmp_path / "other"
+        other.mkdir(exist_ok=True)
+        return [
+            FakeMount(source=src_dir, destination="/home/agent/canon/bible/general"),
+            FakeMount(source=src_file, destination="/home/agent/canon/COLLECTION.md"),
+            FakeMount(source=src_dir, destination="/home/agent/canon/handbook/box"),
+            # A NON-canon dest in the same call must still be stubbed — the skip is
+            # narrow, not a general opt-out of stub pre-creation.
+            FakeMount(source=other, destination="/home/agent/comms"),
+        ]
+
+    def test_existing_canon_mountpoints_are_left_alone(self, tmp_path):
+        """⚑ J-7 MACHINERY EXCLUSION. Where the box-create skeleton HAS run, the canon
+        mountpoints are root-owned and unwritable, so the launch path cannot manage
+        them and must not try. Nothing under ``~/canon`` may be created or modified.
+        """
+        from kanibako.container import _precreate_mount_stubs
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+
+        # Pre-create the skeleton mountpoints the four mounts land on, as create does.
+        for rel in ("canon/bible/general", "canon/handbook/box"):
+            (shell / rel).mkdir(parents=True)
+        (shell / "canon" / "COLLECTION.md").touch()
+        before = sorted(p.relative_to(shell) for p in (shell / "canon").rglob("*"))
+
+        _precreate_mount_stubs(
+            shell, project, self._canon_mounts(tmp_path),
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        after = sorted(p.relative_to(shell) for p in (shell / "canon").rglob("*"))
+        assert after == before, "the launch path must not touch an existing skeleton"
+        assert (shell / "comms").is_dir(), "non-canon stubs are unaffected"
+
+    def test_absent_canon_mountpoints_ARE_stubbed(self, tmp_path):
+        """⚑⚑ THE SKIP IS EXISTENCE-AWARE, NOT PATH-AWARE — and that is load-bearing.
+
+        Skeleton-less boxes exist and keep arriving: every R1-era and pre-canon box,
+        plus any box whose create hit the degraded path. An UNCONDITIONAL skip leaves
+        their five-or-six canon binds with no mountpoints at all, and in LXC crun
+        cannot mkdir inside a bind-mounted overlay — a launch failure (exit 126), not a
+        degradation. Falling through to the tolerant stub helpers pre-creates exactly
+        those mountpoints, which makes this a free self-healing migration.
+
+        RED if the skip is made unconditional again.
+        """
+        from kanibako.container import _precreate_mount_stubs
+
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        assert not (shell / "canon").exists(), "a pre-R1b box home has no skeleton"
+
+        _precreate_mount_stubs(
+            shell, project, self._canon_mounts(tmp_path),
+            enable_vault=False,
+            vault_ro_path=tmp_path / "x",
+            vault_rw_path=tmp_path / "y",
+            tmpfs_masks=[],
+        )
+        assert (shell / "canon" / "bible" / "general").is_dir()
+        assert (shell / "canon" / "handbook" / "box").is_dir()
+        assert (shell / "canon" / "COLLECTION.md").is_file()
+        assert (shell / "comms").is_dir()
+
+    def test_canon_dest_predicate_is_prefix_aware(self):
+        """``~/canon-of-mine`` is NOT under ``~/canon``: a naive ``startswith``
+        without the separator would wrongly skip a real bind's stub."""
+        from kanibako.container import _is_managed_canon_dest
+
+        assert _is_managed_canon_dest("/home/agent/canon")
+        assert _is_managed_canon_dest("/home/agent/canon/bible/general")
+        assert _is_managed_canon_dest("/home/agent/canon/COLLECTION.md")
+        assert not _is_managed_canon_dest("/home/agent/canon-of-mine")
+        assert not _is_managed_canon_dest("/home/agent/canonical")
+        assert not _is_managed_canon_dest("/home/agent/workspace")
 
     def test_extra_dir_mount_under_home(self, tmp_path):
         from dataclasses import dataclass

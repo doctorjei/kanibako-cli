@@ -25,6 +25,7 @@ Split (documented in the YAML header too):
 from __future__ import annotations
 
 import importlib.resources
+import logging
 from collections.abc import Iterable
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -322,37 +323,86 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
 # writable-seed root): rom is the RO-bind DUAL of that writable template seed.
 ROM_ROOT_PARTS = ("global", "rom")
 
-# The rom-ROOT-relative posix paths of the two CANON bind SOURCES (spec §2c).  The
-# packaged tree MIRRORS the guest layout, so each rel path is also its ``~/``-dest.
-ROM_COLLECTION_REL = "canon/COLLECTION.md"
-ROM_BIBLE_REL = "canon/bible"
+# ⚑ The packaged rom tree is FLAT — ``rom/{COLLECTION.md, bible/**}``, with NO
+# ``canon/`` wrapper level (J-7, 2026-07-31).  It therefore NO LONGER mirrors the
+# guest layout, so a rom-relative path is NOT its own ``~/``-dest: every guest dest
+# is built by :func:`_canon_dest`, which prefixes the guest canon root.
+CANON_GUEST_ROOT = "canon"
+
+# The rom-ROOT-relative posix paths of the packaged CANON bind SOURCES (spec §2c).
+ROM_COLLECTION_REL = "COLLECTION.md"
+ROM_BIBLE_REL = "bible"
+ROM_CONTENTS_REL = f"{ROM_BIBLE_REL}/ROM_CONTENTS.md"
+
+# The handbook BOOK root, guest-only (nothing packages a handbook).  Declared here
+# beside ``ROM_BIBLE_REL`` for symmetry and because the managed-region deny list
+# below needs both book roots.
+HANDBOOK_REL = "handbook"
 
 # The load-bearing box guide (the bible's GENERAL chapter), rom-root-relative.  It
 # MUST ship whenever the rom root is populated (fail-closed guard) — a box launched
 # without the guide is a silent degradation of EVERY box.
-ROM_GUIDE_REL = "canon/bible/general/directives/ROM_GENERAL.md"
+ROM_GUIDE_REL = "bible/general/directives/ROM_GENERAL.md"
 
-# ⚑ The plugin chapter's MOUNTPOINT, which core's packaged rom must ship as a REAL
-# directory.  A nested bind's mountpoint has to exist inside its PARENT's SOURCE —
-# and when it does not, podman does NOT error: it silently ``mkdir``s the missing
-# mountpoint INTO the parent bind's host source, which here is the packaged tree in
-# site-packages (bifrost experiment, podman 5.4.2/crun 1.21, 2026-07-31).  The
-# 0-byte ``agent/directives/ROM_AGENT.md`` placeholder is what makes this directory
-# exist in git AND in the wheel; it is load-bearing, not decoration.
-ROM_AGENT_CHAPTER_REL = "canon/bible/agent"
+# The bible chapters core PACKAGES, one whole-directory sibling bind each.  ⚑ There
+# is deliberately no ``agent`` here: J-7 retired the packaged placeholder chapter
+# along with the nested-bind model that needed it (a wheel cannot ship an empty
+# directory, and a mountpoint must never live inside a bind SOURCE).
+ROM_BIBLE_CHAPTERS = ("general", "workset", "box")
+
+# The bible's PLUGIN chapter.  Guest-only: it is a mountpoint the box-create
+# skeleton materialises in the box home, never a packaged directory.
+BIBLE_AGENT_CHAPTER = "agent"
 
 # The plugin-rom EMISSION GATE marker, relative to a plugin's ``data/rom`` chapter
 # root: a plugin gets a bible chapter bind ONLY if it actually ships one.
 PLUGIN_CHAPTER_MARKER_REL = "directives/ROM_AGENT.md"
 
+# ⚑ The MANAGED CANON REGION that no template seed may write into (spec §2c: *"a
+# template MUST NOT seed into canon/COLLECTION.md, canon/bible/… or
+# canon/handbook/…; seeds target canon/{notebook,workbook} ONLY"*), as ``~``-relative
+# prefixes.
+#
+# ⚑ WHY PREFIXES AND NOT THE LITERAL BIND DESTS.  Under J-7's SIBLING binds
+# ``canon/bible`` is no longer itself a bind dest — only its chapters are — so
+# passing the literal dests would silently stop rejecting a seed at
+# ``canon/bible/agent/x.md``.  That seed is still forbidden, and under J-7 doubly
+# so: the whole region is root-owned, so the copy would fail with EACCES at create
+# rather than merely be shadowed at launch.  The deny list therefore names the
+# managed REGION, which is what §2c actually states.
+#
+# ⚑ ``canon/handbook`` IS ALREADY IN THE LIST, even though nothing BINDS it until the
+# seeds half lands.  The trigger is not "is it bound?" but "does the box-create
+# SKELETON own it?" — and it does: ``materialize_canon_skeleton`` creates
+# ``canon/handbook/`` + its four chapter mountpoints + ``SYS_CONTENTS.md`` and makes
+# them root-owned TODAY.  A template seeding there would fail with EACCES right now,
+# so deferring the deny entry to R2 would leave a real hole open in between.
+CANON_SEED_DENY_PREFIXES = (
+    f"{CANON_GUEST_ROOT}/COLLECTION.md",
+    f"{CANON_GUEST_ROOT}/{ROM_BIBLE_REL}",
+    f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}",
+)
+
+
+def _canon_dest(rel: str) -> str:
+    """Return the ``~``-relative guest dest for a canon path *rel*.
+
+    *rel* is spelled relative to the BOOK ROOT (``COLLECTION.md``, ``bible/general``,
+    …), which is the rom-root-relative spelling for packaged sources and the
+    home-relative-under-``canon`` spelling for everything else.
+    """
+    return f"~/{CANON_GUEST_ROOT}/{rel}"
+
 
 def assert_canon_bind_seed_disjoint(
     bind_dests: Iterable[str], seed_rels: Iterable[str],
 ) -> None:
-    """RAISE if any template SEED lands at or under a ``~/canon`` BIND dest.
+    """RAISE if any template SEED lands at or under a MANAGED ``~/canon`` path.
 
     Both arguments are ``~``-RELATIVE posix paths (``canon/bible``,
-    ``playbook/CONTENTS.md``, …): *bind_dests* are the canon binds' guest dests,
+    ``playbook/CONTENTS.md``, …): *bind_dests* are the managed canon prefixes
+    (:data:`CANON_SEED_DENY_PREFIXES` — the BOOK ROOTS, which under J-7's sibling
+    binds are a superset of the literal bind dests; see that constant for why),
     *seed_rels* the files a seed layer would copy to the box home.
 
     ⚑ SCOPE OF WHAT IS ACTUALLY CHECKED TODAY. The only caller
@@ -376,17 +426,20 @@ def assert_canon_bind_seed_disjoint(
     a guard rather than a runtime resolution.
 
     THE SHARED ENTRY POINT between the two C-CANON halves (brief §4): the ROM half
-    supplies ``{canon/COLLECTION.md, canon/bible}``; the SEEDS/handbook half extends
-    it, with no edit to the rom emitter.  Spec §2c states the rule this enforces:
-    *"a template MUST NOT seed into ``canon/COLLECTION.md``, ``canon/bible/…`` or
-    ``canon/handbook/…``; seeds target ``canon/{notebook,workbook}`` ONLY."*
+    supplies :data:`CANON_SEED_DENY_PREFIXES`; the SEEDS/handbook half appends
+    ``canon/handbook`` to it, with no edit to the rom emitter.  Spec §2c states the
+    rule this enforces: *"a template MUST NOT seed into ``canon/COLLECTION.md``,
+    ``canon/bible/…`` or ``canon/handbook/…``; seeds target
+    ``canon/{notebook,workbook}`` ONLY."*
     """
     dests = sorted(set(bind_dests))
     violations: list[str] = []
     for rel in sorted(set(seed_rels)):
         for dest in dests:
             if rel == dest or rel.startswith(f"{dest}/"):
-                violations.append(f"{rel!r} is at/under the canon bind dest {dest!r}")
+                violations.append(
+                    f"{rel!r} is at/under the managed canon path {dest!r}"
+                )
     if violations:
         raise RuntimeError(
             "template seed collides with a canon RO bind (the mount SHADOWS the "
@@ -398,36 +451,54 @@ def assert_canon_bind_seed_disjoint(
 
 
 def rom_default_categories() -> dict[str, tuple[str, str, str]]:
-    """Build the TWO read-only CANON binds as ``default_categories`` (spec §2c).
+    """Build the FIVE read-only packaged-CANON binds as ``default_categories``.
 
     ::
 
-        box.bindings.ro.canon_collection = (<rom>/canon/COLLECTION.md, ~/canon/COLLECTION.md, ro)
-        box.bindings.ro.canon_bible      = (<rom>/canon/bible,         ~/canon/bible,         ro)
+        canon_collection     = (<rom>/COLLECTION.md,         ~/canon/COLLECTION.md,         ro)
+        canon_bible_contents = (<rom>/bible/ROM_CONTENTS.md, ~/canon/bible/ROM_CONTENTS.md, ro)
+        canon_bible_general  = (<rom>/bible/general,         ~/canon/bible/general,         ro)
+        canon_bible_workset  = (<rom>/bible/workset,         ~/canon/bible/workset,         ro)
+        canon_bible_box      = (<rom>/bible/box,             ~/canon/bible/box,             ro)
 
-    Both are INTERNAL/generated binds, not user keys: they are absent from every
-    set-time floor registry (:func:`core_default_bind_keys` covers home/workspace/
-    vault only), so ``config set`` refuses them exactly as it does ``kani_pkg`` and
+    (all under ``box.bindings.ro.``; the sixth canon bind, ``canon_bible_agent``, is
+    the plugin's chapter — see :func:`rom_agent_default_categories`.)
+
+    All INTERNAL/generated binds, not user keys: they are absent from every set-time
+    floor registry (:func:`core_default_bind_keys` covers home/workspace/vault only),
+    so ``config set`` refuses them exactly as it does ``kani_pkg`` and
     ``images_conf``.  Spec §0's test — *"could a user reasonably want to override
-    it?"* — answers itself here: the one book a user cannot edit is also the one
-    they cannot repoint, and ``COLLECTION.md`` is the INDEX that defines the canon's
-    shape and load order, so a repointable index would mean no guaranteed structure.
+    it?"* — answers itself here: the one book a user cannot edit is also the one they
+    cannot repoint, and ``COLLECTION.md`` is the INDEX that defines the canon's shape
+    and load order, so a repointable index would mean no guaranteed structure.
 
-    ⚑ WHOLE-DIR, replacing the retired per-LEAF-FILE enumeration (and its
-    ``rom_<slug>_<hash>`` keys).  That enumeration existed for ONE reason — rom used
-    to land inside the template-seeded WRITABLE ``~/playbook``, where a directory
-    bind would have turned the user's own tree read-only.  ``~/canon/bible`` is a
-    dedicated root with no writable co-tenant, so the constraint is gone.
-    ``COLLECTION.md`` stays a FILE bind because ``~/canon`` ITSELF must remain
-    writable for the SEEDED ``notebook/`` + ``workbook/`` books.
+    ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK (J-7, 2026-07-31 — REPLACES R1's single
+    ``canon_bible`` directory bind, which shipped only in the unreleased ``93b9a9d``).
+    Every entry is its own bind onto a mountpoint that ALREADY EXISTS in the box home,
+    materialised by :func:`materialize_canon_skeleton` at box create.  Nothing nests
+    inside anything, so no mountpoint ever has to live inside a bind SOURCE — which is
+    what killed the whole-dir model: the plugin chapter's mountpoint would have had to
+    exist inside site-packages (where a wheel cannot ship an empty directory and no
+    runtime may write), and the handbook chapters' inside the user's own stores.
+    The nested-mount physics PASSED on real podman; the model was retired anyway
+    because of where it forced the mountpoints to live.
 
-    FAIL-CLOSED guards (a mis-pathed or half-shipped canon must RAISE, never
-    silently launch a box with no directives):
+    ``COLLECTION.md`` and ``ROM_CONTENTS.md`` are FILE binds (file-onto-file, over the
+    0-byte mountpoints the skeleton creates).  They stay BINDS rather than seeded
+    copies because they are rom TRUTH: a copy would freeze at create and drift from
+    the installed package.
+
+    FAIL-CLOSED guards (a mis-pathed or half-shipped canon must RAISE, never silently
+    launch a box with no directives):
 
     * the guide is physically on disk but absent from the shipped-file walk → the
       over-broad-filter / empty-glob / broken-walk class;
-    * the rom root is POPULATED but any of ``COLLECTION.md`` / the guide /
-      ``bible/`` / the ``bible/agent/`` mountpoint placeholder is missing.
+    * the rom root is POPULATED but any EMITTED BIND'S SOURCE is missing.  Now that
+      every source is its own bind, "the required members" and "the emitted sources"
+      are the same list — so the guard is generated from it rather than restated.
+
+    ⚑ ``bible/agent/`` is deliberately NOT required (and must NOT ship): J-7 retired
+    the packaged placeholder chapter together with the nesting that needed it.
 
     An absent or genuinely EMPTY rom root yields an empty dict — a no-rom install,
     which is fine.
@@ -467,55 +538,62 @@ def rom_default_categories() -> dict[str, tuple[str, str, str]]:
     if not rom_files:
         return {}
 
-    # FAIL-CLOSED (b): the rom root is POPULATED, so the WHOLE canon payload must be
-    # there.  Under a whole-dir bind an empty/half-shipped ``bible/`` no longer
-    # raises anything by itself (there is no per-file enumeration left to come up
-    # short), so each required member is checked explicitly.
-    required: list[tuple[str, bool]] = [
-        (ROM_COLLECTION_REL, (rom_root / ROM_COLLECTION_REL).is_file()),
-        (ROM_GUIDE_REL, guide_shipped),
-        (ROM_BIBLE_REL, (rom_root / ROM_BIBLE_REL).is_dir()),
-        (ROM_AGENT_CHAPTER_REL, (rom_root / ROM_AGENT_CHAPTER_REL).is_dir()),
+    # The SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.  ⚑ ONE
+    # declaration drives BOTH the fail-closed completeness guard and the emission, so
+    # the guard cannot drift away from what is actually bound.
+    binds: list[tuple[str, str, bool]] = [
+        ("canon_collection", ROM_COLLECTION_REL, False),
+        ("canon_bible_contents", ROM_CONTENTS_REL, False),
+        *(
+            (f"canon_bible_{chapter}", f"{ROM_BIBLE_REL}/{chapter}", True)
+            for chapter in ROM_BIBLE_CHAPTERS
+        ),
     ]
-    missing = [rel for rel, present in required if not present]
+
+    # FAIL-CLOSED (b): the rom root is POPULATED, so the WHOLE canon payload must be
+    # there — every emitted bind's SOURCE, plus the guide (which has no bind of its
+    # own: it rides the ``general`` chapter's).  A half-shipped canon is a PACKAGING
+    # defect, and a bind with a missing source would otherwise be silently DROPPED by
+    # ``_emit_category_mounts`` with only a per-launch warning.
+    present: list[tuple[str, bool]] = [
+        (rel, (rom_root / rel).is_dir() if is_dir else (rom_root / rel).is_file())
+        for _key, rel, is_dir in binds
+    ]
+    present.append((ROM_BIBLE_REL, (rom_root / ROM_BIBLE_REL).is_dir()))
+    present.append((ROM_GUIDE_REL, guide_shipped))
+    missing = [rel for rel, ok in present if not ok]
     if missing:
         raise RuntimeError(
             f"the packaged canon under rom root {rom_root} is incomplete — missing "
-            f"{missing}. The rom root is populated, so this is a PACKAGING defect, "
-            "not a no-rom install; refusing to launch a box with a partial canon. "
-            f"(NOTE {ROM_AGENT_CHAPTER_REL!r} must exist as a real DIRECTORY: it is "
-            "the plugin chapter's nested mountpoint, and podman silently mkdirs a "
-            "missing one into this packaged tree.)"
+            f"{sorted(set(missing))}. The rom root is populated, so this is a "
+            "PACKAGING defect, not a no-rom install; refusing to launch a box with a "
+            "partial canon."
         )
 
-    # DISJOINTNESS: no template seed may land at or under a canon bind dest.
+    # DISJOINTNESS: no template seed may land at or under the MANAGED canon region.
     template_root = templates._packaged_base_template()
     if template_root is not None:
         assert_canon_bind_seed_disjoint(
-            (ROM_COLLECTION_REL, ROM_BIBLE_REL),
+            CANON_SEED_DENY_PREFIXES,
             (rel for rel, _ in templates.walk_shipped_files(template_root)),
         )
 
     return {
-        "box.bindings.ro.canon_collection": (
-            str(rom_root / ROM_COLLECTION_REL), f"~/{ROM_COLLECTION_REL}", "ro",
-        ),
-        "box.bindings.ro.canon_bible": (
-            str(rom_root / ROM_BIBLE_REL), f"~/{ROM_BIBLE_REL}", "ro",
-        ),
+        f"box.bindings.ro.{key}": (str(rom_root / rel), _canon_dest(rel), "ro")
+        for key, rel, _is_dir in binds
     }
 
 
 def rom_agent_default_categories(
     target: "Target",
 ) -> dict[str, tuple[str, str, str]]:
-    """Build the PLUGIN's bible chapter bind — the SEVENTH canon bind (spec §2c).
+    """Build the PLUGIN's bible chapter bind — the SIXTH canon bind (spec §2c).
 
     ::
 
         box.bindings.ro.canon_bible_agent = (<plugin pkg>/data/rom, ~/canon/bible/agent, ro)
 
-    Emitted by CORE from the RESOLVED *target*, beside the two core canon binds —
+    Emitted by CORE from the RESOLVED *target*, beside the five core canon binds —
     NOT by the plugin, and NOT through the agent-scope descriptor route.  That
     choice is the whole design: an ``agent.<node>.bindings.ro.rom`` key would ride
     ``agent_default_bind_keys`` into the set-time floor and make the bible's agent
@@ -529,20 +607,20 @@ def rom_agent_default_categories(
     has no package, so it has no bible chapter; what it can have is a handbook
     chapter.  Two books, two cardinalities, no overlap.
 
-    NESTING is by DESIGN, not a collision: this dest sits INSIDE ``canon_bible``'s,
-    so the plugin's chapter SHADOWS core's placeholder one (whole-directory
-    shadowing, never a merge — spec §2c).  The existing ASCENDING mount depth-sort
-    in :func:`~kanibako.settings_categories.reconcile_categories` already lands the
-    deeper dest last, and the collision table explicitly blesses nested-but-
-    different dests.
+    ⚑ A SIBLING, not a nested bind (J-7, 2026-07-31 — REPLACES R1's shadow model).
+    Its dest no longer sits inside another bind's: ``~/canon/bible`` is not bound at
+    all, only its chapters are, and this one lands on a mountpoint the box-create
+    skeleton already made.  Nothing shadows anything, so the ascending mount
+    depth-sort is not load-bearing here any more.
 
     GATE — emit ONLY when the plugin actually ships a chapter (``rom_root`` exists
-    AND contains ``directives/ROM_AGENT.md``).  A plugin shipping a bare/empty
-    ``data/rom/`` would otherwise SHADOW core's placeholder chapter with nothing,
-    turning ``ROM_CONTENTS.md``'s ``@agent/directives/ROM_AGENT.md`` into a dangling
-    import.  (Belt: ``_emit_category_mounts`` drops a ro bind with a missing source
-    anyway — but with a per-launch WARNING, which is the wrong signal for the
-    perfectly ordinary "this plugin has no chapter".)
+    AND contains ``directives/ROM_AGENT.md``).  With no packaged placeholder chapter
+    left to shadow, an ungated bare ``data/rom/`` would bind an EMPTY directory over
+    the mountpoint: visibly identical to emitting nothing, but paid for with a
+    per-launch missing-source WARNING from ``_emit_category_mounts`` — the wrong
+    signal for the perfectly ordinary "this plugin has no chapter".  Gate-false is
+    the honest shape: an empty root-owned mountpoint plus ONE dangling-import warning
+    from the flattener, which is exactly what J-7 accepts.
     """
     rom_root = target.rom_root()
     if rom_root is None:
@@ -551,9 +629,265 @@ def rom_agent_default_categories(
         return {}
     return {
         "box.bindings.ro.canon_bible_agent": (
-            str(rom_root), f"~/{ROM_AGENT_CHAPTER_REL}", "ro",
+            str(rom_root),
+            _canon_dest(f"{ROM_BIBLE_REL}/{BIBLE_AGENT_CHAPTER}"),
+            "ro",
         ),
     }
+
+
+# ===========================================================================
+# The box-create CANON SKELETON (J-7).
+# ===========================================================================
+
+# The handbook's chapters.  Their BINDS are the seeds/handbook half's (they need
+# ``<scope>.canon`` resolution, which does not exist yet), but their MOUNTPOINTS are
+# part of this one closed skeleton: J-7 specifies the skeleton as a single set, an
+# absent chapter is REQUIRED to show as an empty root-owned dir, and creating them
+# later would mean mkdir-ing into an already-555 tree.
+HANDBOOK_CHAPTERS = ("general", "agent", "workset", "box")
+HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
+
+# ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0.
+#
+# J-7's prose says ``podman unshare chown 0:0``, but 0 does not do what it reads
+# like.  ``podman unshare`` enters the rootless INTERMEDIATE user namespace, whose
+# mapping is ``ns-uid 0 -> the real host user`` and ``ns-uid 1.. -> the host user's
+# subuid range``.  kanibako runs every box with
+# ``--userns=keep-id:uid=1000,gid=1000`` (:data:`kanibako.container.KEEP_ID_USERNS`),
+# under which the real host user appears IN-BOX as uid 1000 — the agent.  So
+# ``chown 0:0`` inside unshare produces an AGENT-OWNED skeleton, the exact opposite
+# of J-7's stated effect ("in-box: root-owned, unwritable").  Container uid 0 under
+# keep-id is the host user's FIRST SUBUID, which inside ``podman unshare`` is ns-uid
+# 1 — hence 1.
+#
+# The property J-7 actually needs is *owner != the host user*, which holds for ANY
+# subuid; 0 is the one value that provably breaks it.  Named constants so a bifrost
+# measurement corrects this in one place.
+#
+# ⚑ CAVEAT: in a DEGENERATE configuration — a host ``/etc/subuid`` range shorter than
+# GUEST_UID (so keep-id cannot fill container 0..999 from subuids at all) — ns-uid 1
+# may not render as container-root in-box.  The SAFETY property is unaffected: the
+# owner is still a subuid and still not the host user, so the books stay unwritable
+# by the agent; only the cosmetic "shows as uid 0" would differ.
+UNSHARE_BOX_ROOT_UID = 1
+UNSHARE_BOX_ROOT_GID = 1
+
+# ⚑ TWO MODES, NOT ONE (spec J-7 banner, amended 2026-07-31).
+#
+# DIRS ``r-xr-xr-x``: unwritable by everyone, but the SEARCH bit stays set so crun's
+# openat2 destination resolution can still traverse ``~/canon`` and ``~/canon/bible``
+# to reach the chapter mountpoints — a 444 directory would break every canon bind.
+#
+# FILE mountpoints ``r--r--r--``: the search bit is meaningless on a file, and 555
+# would mark a 0-byte ``.md`` executable for no reason.  Applied as a SEPARATE chmod
+# call precisely because the two sets need different modes.
+CANON_SKELETON_DIR_MODE = "555"
+CANON_SKELETON_FILE_MODE = "444"
+
+
+def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
+    """The canon skeleton as ``(home-relative posix path, is_dir)`` pairs (J-7).
+
+    ⚑ DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated: the
+    skeleton IS the mirror image of the canon binds, so one edit to
+    :data:`ROM_BIBLE_CHAPTERS` / :data:`HANDBOOK_CHAPTERS` moves both sides at once.
+    A hand-kept second list is exactly the duplicated-shared-data class the design
+    principles forbid — and a skeleton that drifts from the binds is a mountpoint
+    podman then creates itself, which is the whole failure J-7 exists to remove.
+
+    Ordered PARENTS-FIRST so a caller can create them in sequence.
+
+    ``canon/notebook`` and ``canon/workbook`` are ABSENT by design: they are SEEDED,
+    agent-owned and writable, and become undeletable only because their parent is
+    555 — which is intended, not a side effect.
+    """
+    root = CANON_GUEST_ROOT
+    rels: list[tuple[str, bool]] = [
+        (root, True),
+        (f"{root}/{ROM_COLLECTION_REL}", False),
+        (f"{root}/{ROM_BIBLE_REL}", True),
+        (f"{root}/{ROM_CONTENTS_REL}", False),
+    ]
+    rels += [
+        (f"{root}/{ROM_BIBLE_REL}/{chapter}", True)
+        # ⚑ ``agent`` is ALWAYS pre-created, emission gate or not (J-7): a gate-false
+        # launch must show an EMPTY root-owned mountpoint, not a missing directory.
+        for chapter in (*ROM_BIBLE_CHAPTERS, BIBLE_AGENT_CHAPTER)
+    ]
+    rels += [
+        (f"{root}/{HANDBOOK_REL}", True),
+        (f"{root}/{HANDBOOK_CONTENTS_REL}", False),
+    ]
+    rels += [
+        (f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS
+    ]
+    return tuple(rels)
+
+
+def materialize_canon_skeleton(
+    shell_path: Path,
+    *,
+    logger: "logging.Logger | None" = None,
+    quiet: bool = False,
+) -> None:
+    """Create the canon SKELETON in a box home and make it root-owned + unwritable.
+
+    The J-7 assembly model in one function.  Called at box CREATE (after the seed,
+    before the create-journal entry is cleared) and again after any box-home COPY;
+    the LAUNCH path never touches it.
+
+    ⚑ ORDER IS LOAD-BEARING: seed FIRST, protect SECOND.  The seeds/handbook half
+    will seed ``canon/notebook`` + ``canon/workbook``, which live UNDER ``canon/``;
+    if the 555 landed first those copies would fail with EACCES.
+
+    ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED.  Re-running over an
+    already-materialised skeleton is a no-op (every ``mkdir``/``touch`` is
+    create-if-absent) and the ownership pass is a plain re-assert, so calling this
+    after a box-home COPY restores what the copy could not carry.  It does NOT,
+    however, let a FUTURE release add a new mountpoint to
+    :func:`canon_skeleton_rels` and have existing boxes pick it up: creating a new
+    entry inside an already-root-owned parent fails with EACCES, and this function
+    swallows that (per-path ``OSError`` is debug-logged and skipped, because one
+    unmakeable mountpoint must not cost a box the other thirteen — podman's own
+    error at launch is the honest signal).  ⇒ **Growing the skeleton is a MIGRATION,
+    not a redeploy.**  That is why the handbook mountpoints are created NOW, ahead of
+    the binds that will use them in the seeds half.
+
+    ⚑ WHY OWNERSHIP AND NOT MODE ALONE.  A 555 directory the agent OWNS is not
+    protection — the owner can ``chmod +w`` it back.  Only an owner the in-box agent
+    is not can make ``~/canon`` un-litterable.
+
+    DEGRADED PATH (no container runtime, docker, or a failing ``unshare``): the
+    skeleton is left agent-owned and writable and ONE warning is logged.  Box create
+    must not hard-fail on a missing runtime — creating a box works today with no
+    podman installed — and the skeleton is what makes the binds land, so a box in
+    this state is fully functional, just not litter-proof.
+    """
+    log = logger or _skeleton_logger()
+    dirs: list[Path] = []
+    files: list[Path] = []
+    for rel, is_dir in canon_skeleton_rels():
+        p = shell_path / rel
+        try:
+            if is_dir:
+                p.mkdir(parents=True, exist_ok=True)
+            else:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                if not p.exists():
+                    p.touch()
+        except OSError as exc:
+            log.debug("canon skeleton: could not create %s (%s)", p, exc)
+            continue
+        (dirs if is_dir else files).append(p)
+
+    if not dirs and not files:
+        return
+    _protect_canon_skeleton(dirs, files, log, quiet=quiet)
+
+
+def materialize_canon_skeleton_if_present(
+    shell_path: Path, *, logger: "logging.Logger | None" = None,
+) -> None:
+    """Re-assert an EXISTING canon skeleton; do nothing if the home has none.
+
+    The post-start re-protect for homes that are not box homes — helper boxes today.
+    ``materialize_canon_skeleton`` would CREATE the skeleton, which is wrong here: a
+    helper home is not a box and gaining canon mountpoints from a launch would be a
+    silent layout change made by the wrong seam.  Re-asserting what is already there
+    is always right, because ``:U`` re-chowns whatever the bind source holds.
+    """
+    if not (shell_path / CANON_GUEST_ROOT).is_dir():
+        return
+    materialize_canon_skeleton(shell_path, logger=logger, quiet=True)
+
+
+def _skeleton_logger() -> "logging.Logger":
+    return logging.getLogger(__name__)
+
+
+def _protect_canon_skeleton(
+    dirs: list[Path], files: list[Path], log: "logging.Logger", *, quiet: bool = False,
+) -> None:
+    """Make the skeleton root-owned + unwritable from inside the user namespace.
+
+    THREE ``podman unshare`` calls: one ``chown`` over everything, then a ``chmod``
+    per mode class — dirs ``555`` (the search bit is what lets crun traverse
+    ``~/canon`` to reach the chapter mountpoints) and file mountpoints ``444``.
+
+    ⚑ NEVER ``-R``: a recursive sweep of ``canon/`` would take the SEEDED,
+    agent-owned ``notebook/`` + ``workbook/`` with it, which must stay writable.  The
+    skeleton is a closed, enumerated set, so an explicit list is both safer and no
+    harder.
+    """
+    from kanibako.container import ContainerError, ContainerRuntime
+
+    everything = dirs + files
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError:
+        _warn_unprotected(
+            everything[0], log, "no container runtime is available", True, quiet,
+        )
+        return
+
+    if not runtime.unshare_chown(
+        everything, UNSHARE_BOX_ROOT_UID, UNSHARE_BOX_ROOT_GID,
+    ):
+        _warn_unprotected(
+            everything[0], log, "podman unshare chown did not succeed", True, quiet,
+        )
+        return
+    for group, mode in ((dirs, CANON_SKELETON_DIR_MODE),
+                        (files, CANON_SKELETON_FILE_MODE)):
+        if group and not runtime.unshare_chmod(group, mode):
+            _warn_unprotected(
+                everything[0], log,
+                f"podman unshare chmod {mode} did not succeed",
+                False, quiet,
+            )
+            return
+    log.debug(
+        "canon skeleton protected (%d dirs + %d files under %s)",
+        len(dirs), len(files), everything[0],
+    )
+
+
+def _warn_unprotected(
+    root: Path, log: "logging.Logger", reason: str, agent_owned: bool,
+    quiet: bool = False,
+) -> None:
+    """Report a skeleton that did not get its full lockdown.
+
+    ⚑ *quiet* demotes the report to DEBUG.  The POST-START caller sets it: that hook
+    runs while the user's terminal is being handed to the agent (tmux, a TUI), and on
+    a docker host — or anywhere ``unshare`` cannot work — this fires on EVERY launch,
+    so at WARNING it would paint over the session, forever, for a condition the user
+    already learned about at box create.  Create reports it loudly; the per-launch
+    re-assert does not repeat it.
+
+    ⚑ The two arms are genuinely different and must not share wording.  If the CHOWN
+    did not happen (*agent_owned*), the tree is the agent's and fully writable in-box.
+    If the chown SUCCEEDED and only a chmod failed, the tree is root-owned at its
+    default mode (0755/0644) — the agent CANNOT write it, but the world-traversal and
+    file modes are not the declared ones, and a later chmod re-assert is still owed.
+    """
+    emit = log.debug if quiet else log.warning
+    if agent_owned:
+        emit(
+            "canon books at %s are left writable from inside the box (%s). The box "
+            "works normally — every canon bind still lands on its mountpoint — but "
+            "the agent can create stray files under ~/canon instead of only under "
+            "~/canon/{notebook,workbook}.",
+            root, reason,
+        )
+    else:
+        emit(
+            "canon books at %s are root-owned but keep their default modes (%s). The "
+            "agent still cannot write them, and the box works normally; only the "
+            "declared 555/444 modes were not applied.",
+            root, reason,
+        )
 
 
 def helper_default_categories(
