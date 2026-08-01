@@ -58,6 +58,17 @@ from typing import Collection, Final
 from kanibako.settings.settings_store import _RESERVED_KEY_NAMES as _STORE_RESERVED
 
 # ---------------------------------------------------------------------------
+# The keyspace version stamp
+# ---------------------------------------------------------------------------
+
+#: The declared keyspace VERSION — one leg of the three-way stamp (the spec
+#: header · the manifest's ``registry.keyspace`` field · this constant),
+#: flipped to ``"1.8.0"`` in-tree before the prod promote per
+#: Part-4-as-amended. Imported by nothing yet — C2's CI stamp assertion is
+#: its first consumer.
+KEYSPACE_VERSION: Final[str] = "1.8.0rc"
+
+# ---------------------------------------------------------------------------
 # Layer 1 — config.* (spec §1)
 # ---------------------------------------------------------------------------
 
