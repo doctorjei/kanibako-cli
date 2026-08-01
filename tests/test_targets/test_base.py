@@ -18,6 +18,7 @@ from kanibako.targets.base import (
     HostSrcOrigin,
     Mount,
     Operation,
+    PersonaSpec,
     PluginDescriptor,
     SafeBypass,
     SettingArg,
@@ -444,6 +445,24 @@ class TestPluginDescriptorDataclasses:
         assert cf.cadence is Cadence.SYNC
         assert cf.mtime_gate is True
         assert cf.filtered is False
+
+    def test_persona_spec_defaults(self):
+        """A DECLARED-NOTHING persona spec does NOT adopt from claude's host dir.
+
+        The ``host_dir_adopt`` FIELD default is False: only a harness that DECLARES
+        the claude-shaped B3 host-dir adoption (``~/.config/claude/<persona>/``) gets
+        it — claude declares it in its own defaults file.  (Mutation: default back to
+        True → RED.)
+        """
+        p = PersonaSpec()
+        assert p.host_dir_adopt is False
+        # the other defaults are unchanged by that flip
+        assert p.token_var == ""
+        assert p.endpoint_delivery == "env"
+        assert p.wire_api == "responses"
+        assert p.provider_pin == ()
+        assert p.model_required is False
+        assert PersonaSpec(host_dir_adopt=True).host_dir_adopt is True
 
     def test_plugin_descriptor_minimal_defaults(self):
         d = PluginDescriptor(

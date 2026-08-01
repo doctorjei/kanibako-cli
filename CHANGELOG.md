@@ -56,6 +56,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the replacement spelling, and a bare `box set model=…` now points at
   `pref.agent.<agent>.model`.
 
+- **BREAKING (plugin authors): a persona's claude-shaped host-dir adoption is now
+  DECLARED, not inherited.** In a plugin that DECLARES a `persona:` block, the
+  `persona.host_dir_adopt` field now defaults to `false` (was `true`): omitting it
+  no longer opts the harness in. A persona launch there resolves its endpoint from
+  the keyspace only, instead of auto-adopting a config from claude's
+  `~/.config/claude/<persona>/` — a directory only claude's class-setup script ever
+  writes.
+
+  ```yaml
+  # <agent>-defaults.yaml — opt IN if your harness reads claude's host dir
+  descriptor:
+    persona:
+      endpoint_delivery: env
+      host_dir_adopt: true
+  ```
+
+  - **A plugin with NO `persona:` block at all is UNCHANGED**: it still falls back
+    to the full legacy claude shape (env endpoint delivery, `ANTHROPIC_AUTH_TOKEN`,
+    host-dir adoption). Only a block that declares *some* persona fields and omits
+    this one resolves differently than before.
+  - **No behaviour change for the shipped agents.** claude now declares
+    `endpoint_delivery: env`, `token_var: ANTHROPIC_AUTH_TOKEN` and
+    `host_dir_adopt: true` in its own defaults file (same resolved wiring as
+    before, now explicit); codex and goose already declared `false`.
+  - **Why:** adoption is a claude capability, so every other harness was
+    inheriting claude's semantics — and a wrong-shaped adoption reports a
+    claude-worded error against a directory that plays no part in that harness's
+    resolution. Declare-your-own-shape is the pattern codex/goose already follow.
+  - Clean break — no alias, no deprecation window (v1.8.0 window).
+
 ### Fixed
 
 - **A flag now works wherever you type it.** `kanibako box set <box> --null <key>`

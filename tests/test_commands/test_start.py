@@ -4928,20 +4928,44 @@ class TestPersonaWiring:
     """``_persona_wiring`` — the harness-declared persona endpoint/token delivery."""
 
     def test_no_target_is_claude_default(self):
-        # No target (pre-seam / legacy caller) → ENV delivery + ANTHROPIC_AUTH_TOKEN.
+        # No target (pre-seam / legacy caller) → ENV delivery + ANTHROPIC_AUTH_TOKEN
+        # + B3 host-dir adopt: the LEGACY fallback shape, spelled out explicitly
+        # (the field default for adoption is False).
         from kanibako.commands.start import _PERSONA_TOKEN_VAR, _persona_wiring
         w = _persona_wiring(None)
         assert w.endpoint_delivery == "env"
         assert w.token_var == _PERSONA_TOKEN_VAR == "ANTHROPIC_AUTH_TOKEN"
+        assert w.host_dir_adopt is True
 
-    def test_claude_target_declares_no_persona_block_env_default(self):
-        # The real claude descriptor declares NO persona block → env/ANTHROPIC.
+    def test_claude_target_declares_host_dir_adopt(self):
+        # The real claude descriptor DECLARES its persona shape (T3.2): env delivery
+        # + host_dir_adopt True.  claude is the only harness whose class-setup script
+        # writes ~/.config/claude/<persona>/, so it is the only one that declares it.
         from kanibako.commands.start import _PERSONA_TOKEN_VAR, _persona_wiring
         from kanibako.plugins.claude.target import ClaudeTarget
-        assert ClaudeTarget().descriptor.persona is None
+        spec = ClaudeTarget().descriptor.persona
+        assert spec is not None
+        assert spec.endpoint_delivery == "env"
+        assert spec.host_dir_adopt is True
+        # token_var is DECLARED too, so the resolved wiring does not depend on the
+        # ENV-delivery per-field fallback (which now covers only out-of-tree /
+        # version-skew plugins).  Same value the fallback supplied: unchanged wiring.
+        assert spec.token_var == _PERSONA_TOKEN_VAR == "ANTHROPIC_AUTH_TOKEN"
         w = _persona_wiring(ClaudeTarget())
         assert w.endpoint_delivery == "env"
         assert w.token_var == _PERSONA_TOKEN_VAR
+        assert w.host_dir_adopt is True
+
+    def test_claude_wiring_matches_the_legacy_fallback(self):
+        """Claude's DECLARED wiring == the no-target fallback, field for field.
+
+        The declaration is the whole point of the flip (declare-your-own-shape), so
+        it must not change what claude resolves to.  (Mutation: drop the claude
+        `persona:` block's host_dir_adopt → RED.)
+        """
+        from kanibako.commands.start import _persona_wiring
+        from kanibako.plugins.claude.target import ClaudeTarget
+        assert _persona_wiring(ClaudeTarget()) == _persona_wiring(None)
 
     def test_codex_target_declares_config_file_dynamic_var(self):
         from kanibako.commands.start import _persona_wiring

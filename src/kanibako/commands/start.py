@@ -4056,9 +4056,18 @@ def _persona_wiring(target) -> "PersonaSpec":
 
     Consults the resolved :class:`~kanibako.targets.base.Target`'s descriptor for a
     declared :class:`~kanibako.targets.base.PersonaSpec`; a target with no descriptor
-    or no ``persona:`` block falls back to the claude-style default (ENV endpoint
-    delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var) so any pre-seam / no-
-    target caller resolves BYTE-IDENTICALLY to before this seam existed.
+    or no ``persona:`` block falls back to the claude-style shape (ENV endpoint
+    delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var + B3 host-dir adopt) so
+    any pre-seam / no-target caller resolves BYTE-IDENTICALLY to before this seam
+    existed.  That shape is spelled out EXPLICITLY at the fallback below: it is a
+    legacy compatibility shape, NOT the field defaults (``host_dir_adopt`` defaults
+    to ``False`` — an undeclared harness never inherits claude's adoption).
+
+    ⚑ NEUTRALIZING this fallback (the planned T3.1 "a plugin that declares no
+    ``persona:`` block gets NO persona wiring") NEEDS A VERSION FLOOR on the agent
+    plugins: the plugin packages are unpinned deps, so a base upgraded WITHOUT its
+    agent-claude package would fall through to a neutral spec and silently strip B3
+    host-dir adoption from claude personas that resolve through it today.
     """
     from kanibako.targets.base import PersonaSpec
 
@@ -4067,13 +4076,21 @@ def _persona_wiring(target) -> "PersonaSpec":
     if isinstance(spec, PersonaSpec):
         # An empty token_var means DYNAMIC (config-file harness): the configured
         # secret_path key is the token var.  An empty ENV-delivery token_var still
-        # means the claude default (defensive — no shipped ENV harness leaves it
-        # empty).
+        # means the claude default — every SHIPPED env harness declares its own
+        # (claude ANTHROPIC_AUTH_TOKEN, goose OPENAI_API_KEY), so this per-field
+        # fallback now covers only OUT-OF-TREE plugins and VERSION SKEW (a plugin
+        # built against an older base that declared nothing).
         if spec.endpoint_delivery == "env" and not spec.token_var:
             from dataclasses import replace
             return replace(spec, token_var=_PERSONA_TOKEN_VAR)
         return spec
-    return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
+    # LEGACY fallback shape (no descriptor / no ``persona:`` block): claude as it
+    # resolved before this seam.  ``host_dir_adopt`` is passed EXPLICITLY because the
+    # field default is False — this site keeps the pre-seam behaviour byte-identical
+    # and is what a later neutralization of the fallback would remove.
+    return PersonaSpec(
+        token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env", host_dir_adopt=True,
+    )
 
 
 def _resolve_codex_persona_env_key(agent_cfg, wiring) -> "str | None":

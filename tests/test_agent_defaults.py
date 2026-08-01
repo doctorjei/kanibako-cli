@@ -268,3 +268,48 @@ class TestLayoutSingleSource:
         # opens with an unexpanded token ($VAR/@ref) that resolves elsewhere.
         expected = expanded.startswith("/") or src[:1] in ("$", "@")
         assert is_self_resolving(src) is expected
+
+
+class TestPersonaHostDirAdopt:
+    """The ``host_dir_adopt`` LOADER default (T3.2): declared-or-nothing.
+
+    The claude-shaped B3 host-dir adoption (``~/.config/claude/<persona>/``) is a
+    CLAUDE capability — claude's class-setup script is the only thing that writes
+    that dir.  A plugin gets it only by DECLARING it; the loader default is False,
+    so no plugin silently inherits claude's adoption semantics.
+    """
+
+    def _persona(self, declfile, block: str):
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  persona:\n" + block
+        )
+        return agent_defaults.load_descriptor(package, filename).persona
+
+    def test_block_without_the_field_does_not_adopt(self, declfile):
+        """A ``persona:`` block that omits ``host_dir_adopt`` gets False.
+
+        (Mutation: loader default back to True → RED.)"""
+        p = self._persona(declfile, "    endpoint_delivery: env\n    token_var: PROBE\n")
+        assert p is not None
+        assert p.host_dir_adopt is False
+        assert p.token_var == "PROBE"
+
+    def test_declared_true_adopts(self, declfile):
+        """The claude shape: adoption is available, but only when DECLARED."""
+        p = self._persona(declfile, "    endpoint_delivery: env\n    host_dir_adopt: true\n")
+        assert p is not None
+        assert p.host_dir_adopt is True
+
+    def test_declared_false_does_not_adopt(self, declfile):
+        """The codex/goose shape (explicit refusal) reads the same as omission."""
+        p = self._persona(declfile, "    endpoint_delivery: env\n    host_dir_adopt: false\n")
+        assert p is not None
+        assert p.host_dir_adopt is False
+
+    def test_no_persona_block_is_none(self, declfile):
+        """No block at all → no spec (the legacy claude-shaped fallback territory,
+        spelled out explicitly by ``start.py``'s ``_persona_wiring``)."""
+        package, filename = declfile("descriptor:\n  command: [\"probe\"]\n")
+        assert agent_defaults.load_descriptor(package, filename).persona is None
