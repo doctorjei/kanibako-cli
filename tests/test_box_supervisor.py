@@ -12,6 +12,7 @@ from __future__ import annotations
 import os as _os
 import signal
 import subprocess
+import time as _time
 from pathlib import Path as _Path
 
 import pytest
@@ -1925,17 +1926,50 @@ def test_box_supervisor_import_chain_is_stdlib_only():
 # test either way).
 
 
+#: Deadline (seconds) for the zombie-test polls below.  Generous on purpose:
+#: under FULL-SUITE CPU load a freshly forked child can take many milliseconds
+#: to be scheduled at all, and these tests must hold under that load.
+_ZOMBIE_DEADLINE = 5.0
+
+
+def _poll_until(cond, *, deadline: float = _ZOMBIE_DEADLINE, interval: float = 0.01) -> bool:
+    """Poll *cond* until truthy or *deadline* seconds elapse; True iff it held.
+
+    The sanctioned wait shape for the zombie tests: condition-first (no sleep
+    when the condition already holds), then short interval sleeps up to a hard
+    deadline — never a bare sleep, never an unbounded spin.
+    """
+    end = _time.monotonic() + deadline
+    while True:
+        if cond():
+            return True
+        if _time.monotonic() >= end:
+            return False
+        _time.sleep(interval)
+
+
 def _fork_zombie() -> int:
-    """Fork a child that exits immediately; return its PID WITHOUT reaping it."""
+    """Fork a child that exits immediately; return its PID WITHOUT reaping it.
+
+    GUARANTEES the child is genuinely in state Z before returning (or fails the
+    test loudly).  ⚑ Deadline-poll, NOT a sleepless iteration spin: the old
+    ``for _ in range(200)`` stat-read spin burned out in microseconds, before a
+    loaded scheduler ever ran the child's ``_exit`` — then silently returned a
+    STILL-LIVE pid.  That was the root of both observed full-suite flakes: a
+    reap pass legitimately saw fewer zombies than forked (``assert 2 >= 3``),
+    and ``_default_pid_alive`` read the not-yet-exited child as alive.
+    """
     pid = _os.fork()
     if pid == 0:  # child
         _os._exit(0)
-    # Parent: wait until the kernel shows the child as a zombie (state Z) —
-    # bounded spin; the transition is normally immediate.
-    for _ in range(200):
+    # Parent: wait until the kernel actually shows the child as a zombie.
+    if not _poll_until(lambda: bs._proc_stat_state(pid) == "Z"):
         state = bs._proc_stat_state(pid)
-        if state == "Z":
-            break
+        _reap_quietly(pid)  # do not leak the child past the failure
+        pytest.fail(
+            f"_fork_zombie: child {pid} did not reach state Z within "
+            f"{_ZOMBIE_DEADLINE}s (last observed state: {state!r})"
+        )
     return pid
 
 
@@ -2004,7 +2038,21 @@ class TestReapZombieChildren:
     def test_drains_multiple_zombies(self):
         pids = [_fork_zombie() for _ in range(3)]
         try:
-            assert bs.reap_zombie_children() >= 3
+            # ACCUMULATE across passes rather than a single-shot assert: the
+            # product reap is BOUNDED and non-blocking BY DESIGN ("the next
+            # tick continues the drain"), so one pass under scheduler load may
+            # see fewer zombies than forked.  Poll until all three are drained.
+            total = 0
+
+            def _all_drained() -> bool:
+                nonlocal total
+                total += bs.reap_zombie_children()
+                return total >= 3
+
+            assert _poll_until(_all_drained), (
+                f"reap_zombie_children drained only {total} of 3 zombies "
+                f"within {_ZOMBIE_DEADLINE}s"
+            )
             # all three are really gone: an explicit waitpid finds no child.
             for pid in pids:
                 with pytest.raises(ChildProcessError):
@@ -2042,8 +2090,22 @@ class TestReapZombieChildren:
         even BEFORE the reap, and after the reap the PID is gone entirely."""
         pid = _fork_zombie()
         try:
+            # _fork_zombie guarantees state Z, so the probe verdict is
+            # deterministic here (kill-0 sees it; stat reads Z → dead).
             assert bs._default_pid_alive(pid) is False  # probe end
-            assert bs.reap_zombie_children() >= 1       # reap end
+            # Reap end: accumulate-and-poll like test_drains_multiple_zombies
+            # (the product reap is bounded/non-blocking by design).
+            total = 0
+
+            def _reaped_one() -> bool:
+                nonlocal total
+                total += bs.reap_zombie_children()
+                return total >= 1
+
+            assert _poll_until(_reaped_one), (
+                f"reap_zombie_children reaped nothing within {_ZOMBIE_DEADLINE}s "
+                f"(zombie child {pid} outstanding)"
+            )
             with pytest.raises(ChildProcessError):
                 _os.waitpid(pid, _os.WNOHANG)
         finally:
