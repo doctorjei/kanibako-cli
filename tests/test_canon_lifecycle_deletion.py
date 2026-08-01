@@ -192,6 +192,33 @@ class TestVerbsRouteThroughIt:
         mod = importlib.import_module(module)
         assert hasattr(mod, func), f"{module} lost its {func} import"
 
+    def test_a_created_box_is_not_removable_by_a_bare_rmtree(self, tmp_path):
+        """⚑ THE REGRESSION CI CAUGHT, pinned as a unit.
+
+        `box create` leaves a canon skeleton. Where ``podman unshare`` WORKS that
+        skeleton ends up subuid-owned and 555, and a bare ``shutil.rmtree`` of the
+        box home then raises ``PermissionError`` partway through — which is what
+        reddened ``test_box_register.py`` in CI while every local run stayed green
+        (on a host whose ``podman unshare`` fails, the protect pass short-circuits
+        before the chmod and leaves a plain 755 tree).
+
+        ⚑ THE ASYMMETRY IS THE POINT: a bare rmtree of a created box home is
+        CONDITIONALLY broken — it works on exactly the machines where the protection
+        does not. So "it passed locally" proves nothing here, and the only safe rule
+        is that NO caller (test bodies included) bare-rmtrees a box home.
+        """
+        box = tmp_path / "created-box"
+        box.mkdir()
+        protected_box_home(box)
+
+        with pytest.raises(PermissionError):
+            shutil.rmtree(box)
+        assert box.exists(), "the tree survives, half-deleted"
+
+        # The sanctioned deleter handles it — this is what test bodies must use.
+        assert remove_box_tree(box) is True
+        assert not box.exists()
+
     def test_no_bare_rmtree_on_a_box_home_remains(self):
         """⚑ THE SWEEP. Source-level guard over the verbs that own box trees: a
         ``shutil.rmtree`` whose argument names a box home / box metadata path is the

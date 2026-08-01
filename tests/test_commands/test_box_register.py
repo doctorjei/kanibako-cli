@@ -380,7 +380,7 @@ class TestSelfHeal:
     def test_readopt_drops_stale_primary_entry_when_metadata_gone(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        import shutil
+        from kanibako.container import remove_box_tree
 
         config, std = _std(config_file)
         proj_dir = tmp_home / "proj"
@@ -388,7 +388,15 @@ class TestSelfHeal:
         assert run_create(_create_args(proj_dir, name="mybox")) == 0
         assert run_rm(_rm_args("mybox")) == 0
         # Delete the retained box metadata out-of-band.
-        shutil.rmtree(std.boxes / "mybox")
+        #
+        # ⚑ NOT a bare ``shutil.rmtree``. Since J-7 a created box home carries the
+        # canon skeleton, and on a host where ``podman unshare`` works that skeleton
+        # is subuid-owned and 555 — so ``rmtree`` raises ``PermissionError`` partway
+        # through and this test fails. It passed everywhere ``podman unshare`` does
+        # NOT work (the protect pass short-circuits before the chmod, leaving a plain
+        # 755 tree), which is why it went red only in CI. ``remove_box_tree`` is the
+        # sanctioned deleter and is exactly what the real ``rm --purge`` path uses.
+        assert remove_box_tree(std.boxes / "mybox")
         capsys.readouterr()
 
         rc = run_register(_register_args("mybox"))
