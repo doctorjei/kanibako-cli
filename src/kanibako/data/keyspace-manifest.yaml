@@ -1,0 +1,931 @@
+## kanibako keyspace registry — RATIFIED 2026-08-01
+## (ratification record: plans/manifest-ratification-RULINGS.md)
+##
+## AUTHORITY is specs/settings-keyspace-1.8.0.md. This file is its
+## MACHINE-READABLE projection: the single table from which the Key
+## set, Scope enums, defaults and directional rules are GENERATED, and against which
+## a conformance test asserts code == registry.
+##
+## CONVENTION: every entry carries `spec:` = the section it is traced from.
+
+registry:                       # about this DOCUMENT (inert; never read by resolution)
+  schema: 1                     # format version of this file
+  keyspace: "1.8.0rc"           # flipped to "1.8.0" in-tree before the promoted rc (Part-4-as-amended)
+  authority: "specs/settings-keyspace-1.8.0.md"
+  authority_read: "2026-08-01 (1300 lines, full)"
+  status: ratified              # ratification record: plans/manifest-ratification-RULINGS.md
+
+## ---------------------------------------------------------------------------
+## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
+## No knob without a clause.
+## ---------------------------------------------------------------------------
+policy:
+
+  # Override PRECEDENCE. Box wins. NOT the same axis as containment below.
+  # AUTHORITY TIERS — the actual sources of a value, in precedence order:
+  cascade: [base, system, agent, workset, box]
+  cascade_spec: "§2 (FULL bracket), as clarified by Jei 2026-07-27"
+
+  # `agent.default` is NOT an authority tier. It is the agent tier's INTRA-TIER
+  # FALLBACK: the values automatically part of EVERY agent unless overridden.
+  #   agent tier value = agent.<active>.<key> if provided, else agent.default.<key>
+  # [Jei 2026-07-27: "It's not really its own level; rather, those are the values
+  #  until and unless the plugin provides a different value."]
+  agent_tier_fallback: "agent.<agent>.<key> -> agent.default.<key>"
+  agent_tier_fallback_spec: "§2d; clarified Jei 2026-07-27"
+
+  # PARAMETRIC EXPANSION — makes the closed set closed WITHOUT enumerating it.
+  # The keyspace is closed but NOT flat: these rules generate the legal key set.
+  parametric_expansion:
+    - "every agent.default.<key> ALSO exists as agent.<agent>.<key> (same type,
+       same default, resolved via agent_tier_fallback)"
+    - "every category in `categories` exists at every scope in categories.scopes"
+    - "box.agent.<key> mirrors the ACTIVE agent's whole subtree (§2b)"
+  parametric_expansion_spec: "§2a / §2b / §2d"
+
+  # ⚑ SPEC RECONCILIATION NEEDED (not resolved unilaterally — see DISCREPANCIES).
+  #   §2's ratified bracket writes this fallback as an explicit linear LEVEL
+  #   (base < system < agent.default < agent.<active> < workset < box) and notes both
+  #   layers "reuse the same linear _MISSING precedence (no nested mini-cascade)".
+  #   That is an IMPLEMENTATION statement, and it is EQUIVALENT to the fallback
+  #   semantics for scalars AND for per-name category merges (_MISSING tested per
+  #   name) — so the CODE need not change. What needs fixing is the DOC framing:
+  #   the header's "explicit 7th level" vs §2's six-tier bracket. Proposed: keep the
+  #   linear implementation, describe agent.default as the agent tier's fallback.
+
+  # The baked-in code defaults are NOT a tier either — they are each key's `default:`
+  # field below, which IS the defaults source §2a's assemble step reads.
+
+  # CONTAINMENT. Governs WHERE a key may be WRITTEN and which way an @-ref points.
+  # Orthogonal to cascade (§0: "Distinct from the cascade").
+  containment: [system, agent, workset, box]      # system ⊃ agent ⊃ workset ⊃ box
+  containment_spec: "§0 (directional view/set)"
+
+  write_rule: command_scope_ge_key_scope    # may write own scope + scopes it CONTAINS
+  write_rule_spec: "§2a (scope-direction guard); R2 2026-06-29 + Jei 2026-07-02"
+
+  ref_direction: up_only          # @-refs view UP (read-only); never point DOWN
+  ref_direction_spec: "§0"
+
+  enforce_at: resolve             # containing-scope key in a lower file is DROPPED + warned
+  enforce_at_spec: "§0 (clause 4 bless, Jei 2026-07-02)"
+
+  read_verbs:                     # clause 5
+    get: stored_at_scope          # what THIS scope's file says; else "(not set)"; never fabricate
+    get_effective: cascade        # what will actually apply
+  read_verbs_spec: "§2a (clause 5 bless, Jei 2026-07-02)"
+
+  # Files store entries UNRESOLVED — no code path writes a resolved value back.
+  files_store_unresolved: true
+  files_store_unresolved_spec: "§0"
+
+  # Category precedence when two categories target the SAME box_dest (later WINS).
+  category_precedence: [seeded, caches, bindings, shared, synced, masks]
+  category_reconcile:
+    nested_paths: deepest_wins        # depth-ordered, matches podman mount depth-sort
+    copies: [seeded, synced]          # file COPIES, not mounts
+    synced_vs_binding_same_dest: error   # a copy can't override a live mount
+  category_precedence_spec: "§0 (D-B1)"
+
+  # Collision-safety floor on the resolved data structure.
+  reserved_leaf_names: [get, keys, values, items, pop, popitem, setdefault,
+                        update, clear, copy, fromkeys]
+  reserved_dunder: true             # a leaf key may not match __x__
+  key_match: case_sensitive
+  reserved_spec: "§0 (Reserved key names) / §2a"
+
+  # XDG: use the env var iff set AND absolute, else the spec default. ONE canonical
+  # map builder supplies $XDG_* to EVERY host-side resolution context.
+  xdg:
+    canonical_builder_required: true
+    defaults:
+      XDG_DATA_HOME: "~/.local/share"
+      XDG_CONFIG_HOME: "~/.config"
+      XDG_STATE_HOME: "~/.local/state"
+      XDG_CACHE_HOME: "~/.cache"
+      XDG_RUNTIME_DIR: null           # NO spec default — fall back + WARN, never silent
+    box_side_deferred: true           # host pass MUST NOT expand a box-side $XDG/~
+    escapes:                          # deferred residue escape contract
+      carried_verbatim: ['\$', '\~', '\\']
+      unescaped_by_host: ['\@']
+  xdg_spec: "§1 (clause 3′ bless, Jei 2026-07-02)"
+
+  # Per-launch CLI flags are EPHEMERAL: override for that launch, never mutate stored.
+  cli_flags_ephemeral: true
+  cli_flags_spec: "§1A (Jei ratified 2026-07-08)"
+
+  # Set-time validation: full resolution in error-collecting/lenient mode.
+  set_validation:
+    mode: full_resolution_lenient
+    error: [malformed_syntax, colon_src_dest_notation, type_mismatch,
+            edited_value_upstream_unresolvable]
+    allow: [unrelated_defect, downstream_defect, defect_the_edit_resolves]
+    warn: [host_source_path_missing]
+    rule: "allow iff the edited value resolves cleanly post-edit"
+  set_validation_spec: "§2a (ruling 2026-06-29, E3)"
+
+  # ANTI-FABRICATION GATE — the reason this file exists.
+  # A key not in this table cannot be read, set, or resolved; an unrecognized
+  # `policy:` field is likewise refused (keeps this block from becoming a junk drawer).
+  unknown_key: error
+  unknown_policy_field: error
+  unknown_spec: "\u00a70 \"The keyspace is CLOSED — an undeclared key is NOT a key\" (folded into the
+                 spec 2026-07-28). Rulings: 2026-06-27 walkthrough + Jei 2026-07-27."
+
+## ---------------------------------------------------------------------------
+## CATEGORIES — the unified primitive (§2a). Available at EVERY scope, so they are
+## declared ONCE here rather than enumerated scope×category (would be 4×9 entries).
+## Each expands to `<scope>.<category>.<name>`.
+## ---------------------------------------------------------------------------
+categories:
+  scopes: [system, agent.default, agent.active, workset, box]
+  scopes_spec: "§2a"
+
+  masks:
+    value: "dict[box_dest -> bool|None]"
+    tri_state: {present: mask, "null": unmask, absent: inherit}
+    cli_set: false              # YAML only — list/dict mutation via set is awkward
+    default: {}
+    spec: "§2a (KeyStore fold-in 2026-06-27)"
+  bindings.ro:
+    value: bind                 # [host_src, box_dest] | [host_src, box_dest, options]
+    mount_options: "ro"
+    cli_set: source_only
+    spec: "§2a"
+  bindings.rw:
+    value: bind
+    mount_options: "Z,U"
+    cli_set: source_only
+    spec: "§2a"
+  caches:
+    value: bind
+    mount_options: "Z,U"
+    cli_set: source_only
+    note: "GLOBAL at system, per-agent at agent.<agent>; absorbed the old scalar `transform`"
+    spec: "§2a / §2d"
+  seeded:
+    value: bind
+    kind: copy                  # one-time copy at init, NOT a mount
+    cli_set: source_only
+    spec: "§2a"
+  shared:
+    value: bind
+    mount_options: "Z,U"
+    cli_set: source_only
+    spec: "§2a"
+  synced:
+    value: bind
+    kind: copy                  # two-way synced by the agent plugin; mtime-gated
+    cli_set: source_only
+    suppressed_when: "box shares no credentials (auth tier private)"
+    spec: "§2a (D-M4; auth-level redesign 2026-07-01)"
+  env:
+    value: scalar               # env.<VAR>
+    parametric: [VAR]
+    cli_set: true
+    reserved_names_apply: true
+    spec: "§2a"
+  secret_path:
+    value: path                 # secret_path.<VAR> — a PATH to secret material
+    parametric: [VAR]
+    cli_set: true               # scalar ⇒ full set/create (unlike source-only binds)
+    never_read_by_kanibako: true    # value NEVER enters snapshot/keystore/argv/logs
+    fail_soft: true                 # missing/unreadable/empty ⇒ WARN + VAR unset
+    agent_independent: true
+    spec: "§2a (2026-07-06, Jei)"
+
+# The bind VALUE shape is load-bearing (§2a REPRESENTATION): a YAML list / Python
+# tuple, NEVER a colon-joined "host:box" string. 2 elements = (host_src, box_dest);
+# 3 elements = (host_src, box_dest, options) overriding the category default.
+bind_shape:
+  form: list
+  min_elements: 2
+  max_elements: 3
+  colon_string: forbidden
+  spec: "§2a (REPRESENTATION — do NOT re-derive)"
+
+## ---------------------------------------------------------------------------
+## KEYS
+##
+## `set:` — cli+file (normal) · file (human-edited only) · never (derived/RO)
+##   Design property (§0, 2026-07-04): set == never IFF the key is `meta.*`.
+##   The conformance test should ASSERT that property rather than trust each entry.
+## `scope:` — the key's OWN scope, for the directional write rule.
+## `default:` — a mapping keyed by mode when the default is mode-dependent.
+## ---------------------------------------------------------------------------
+keys:
+
+  ## ---- LAYER 1: config keys (§1) -----------------------------------------
+  ## Bootstrap paths, resolved by the FLAT foundation (not the KeyStore pipeline).
+  ## Live ONLY in kanibako_config.yaml / /etc/kanibako/config_base.yaml.
+  ## NOT CLI-settable from ANY command scope — refused BEFORE the scope guard.
+  config.data:
+    layer: 1
+    type: path
+    set: file
+    default: "$XDG_DATA_HOME/kanibako"
+    why: "root of the persistent data tree; @-referenced across the keyspace"
+    spec: "§1"
+  config.settings:
+    layer: 1
+    type: path
+    set: file
+    default: "@config.data/global/settings.yaml"
+    why: "THE system settings FILE — the cascade `system` level input"
+    spec: "§1"
+  config.agents:
+    layer: 1
+    type: path
+    set: file
+    default: "@config.data/agents"
+    why: "per-agent store; agent cascade files at <agent>/settings.yaml"
+    spec: "§1"
+  config.primary_workset:
+    layer: 1
+    type: path
+    set: file
+    default: "@config.data/primary_workset"
+    why: "PRIMARY workset root"
+    spec: "§1"
+  config.registry:
+    layer: 1
+    type: path
+    set: file
+    default: "@config.data/global/registry.yaml"
+    why: "name→path resolution; needed before loading named workset/box files"
+    spec: "§1"
+  config.journal:
+    layer: 1
+    type: path
+    set: file
+    default: "@config.data/global/journal.yaml"
+    why: "lifecycle journal (crash-recovery write-ahead log); normally EMPTY"
+    spec: "§1 (added 2026-06-30b)"
+    # ⚑ DRIFT RESOLVED (Jei 2026-07-27): §1 prose claimed the Layer-1 set was
+    #   'finalized at FIVE config keys' while the table listed SIX. Ruling: strike
+    #   the count — it is a moving target. Spec edited; snapshot at
+    #   reference/settings-keyspace-1.6.0-target.md.bak-2026-07-27-pre-five-strike
+
+  ## ---- LAYER 2: system.* settings keys (§2g) ------------------------------
+  system.channelroot:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@config.data/channels"
+    spec: "§2g"
+  system.channels.commons:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@system.channelroot/commons"
+    spec: "§2g"
+  system.channels.chat:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@system.channelroot/chat"
+    spec: "§2g"
+  system.channels.broadcast:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@system.channels.chat/broadcast.md"
+    spec: "§2g"
+  system.channels.mailboxes:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@system.channelroot/mailboxes"
+    spec: "§2g"
+  system.channels.share:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@system.channelroot/share"
+    spec: "§2g"
+  system.base_template:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@config.data/global/base_template"
+    spec: "§2g"
+  system.backup:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@config.data/backup"
+    spec: "§2g"
+  system.cache:
+    scope: system
+    type: path
+    set: cli+file
+    default: "$XDG_CACHE_HOME/kanibako"
+    spec: "§2g"
+  system.runtime:
+    scope: system
+    type: path
+    set: cli+file
+    default: "$XDG_RUNTIME_DIR/kanibako"
+    note: "helper sockets; XDG_RUNTIME_DIR has NO spec default — fall back + WARN"
+    spec: "§2g / §1"
+  system.default_agent:
+    scope: system
+    type: str
+    set: cli+file
+    default: null                 # (unset)
+    note: "box.agent_name falls back to this (renamed from system.agent, D-M2)"
+    spec: "§2g"
+  system.setup_completed:
+    scope: system
+    type: bool
+    set: cli+file
+    default: false
+    note: "PERSISTS, user-resettable"
+    spec: "§2g"
+  system.auth.share_allowed:
+    scope: system
+    type: bool
+    set: cli+file
+    default: true
+    note: "the single host-wide GLOBAL-share gate; top of the auth 3-tier chain"
+    spec: "§1 / §2b (auth-level 2026-07-01)"
+
+  ## ---- LAYER 2: workset.* settings keys (§2c/§2e) -------------------------
+  ## Mode-dependent: PRIMARY + NAMED share the ALL WORKSETS definitions;
+  ## STANDALONE is a degenerate workset with most sub-keys <None>.
+  workset.workspaces:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: null, named: "@meta.workset.path/workspaces", standalone: null}
+    spec: "§2c"
+  workset.boxes:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/boxes", named: "@meta.workset.path/boxes",
+              standalone: null}
+    spec: "§2c"
+  workset.vault_ro:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/vault/ro", named: "@meta.workset.path/vault/ro",
+              standalone: null}
+    spec: "§2c"
+  workset.vault_rw:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/vault/rw", named: "@meta.workset.path/vault/rw",
+              standalone: null}
+    spec: "§2c"
+  workset.logs:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/logs", named: "@meta.workset.path/logs",
+              standalone: null}
+    spec: "§2c"
+  workset.registry:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/registry.yaml",
+              named: "@meta.workset.path/registry.yaml", standalone: null}
+    note: "PER-WORKSET box registry; a NORMAL key, NOT a config-locate key.
+           Its entry KEYS yield the RO meta.box.name anchors."
+    spec: "§2c (2026-07-04)"
+  workset.template:
+    scope: workset
+    type: path
+    set: cli+file
+    default: "@meta.workset.path/template"
+    note: "seed layer 3; the layer is SKIPPED when the source dir is absent
+           (ruled 2026-07-09, was <None>)"
+    spec: "§2c / §2a"
+  workset.kuid:
+    scope: workset
+    type: str
+    set: cli+file
+    format: "Crockford-base32 25-bit = 24 data + 1 parity → 5 chars, lowercased"
+    default: {primary: "00000", named: "00000", standalone: "<generated at creation>"}
+    spec: "§2c (2026-07-04)"
+  workset.skip_kuid_check:
+    scope: workset
+    type: bool
+    set: cli+file
+    default: true
+    note: "default true = the advisory 'invalid KUID' warning is opt-in strictness"
+    spec: "§2c"
+  workset.auth.share_allowed:
+    scope: workset
+    type: bool
+    set: cli+file
+    default: {primary: "@system.auth.share_allowed", named: "@system.auth.share_allowed",
+              standalone: false}
+    note: "standalone: a lone box has no workset group → WORKSET-share unavailable"
+    spec: "§2c (auth-level 2026-07-01)"
+  workset.auth.global_sync:
+    scope: workset
+    type: bool
+    set: cli+file
+    default: {primary: "@system.auth.share_allowed", named: "@system.auth.share_allowed",
+              standalone: false}
+    spec: "§2c"
+  workset.auth.path:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/auth", named: "@meta.workset.path/auth",
+              standalone: null}
+    note: "the SETTABLE source for meta.box.auth.workset_path"
+    spec: "§2c"
+  workset.channelroot:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@meta.workset.path/channels", named: "@meta.workset.path/channels",
+              standalone: null}
+    spec: "§2c"
+  workset.channels.commons:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@workset.channelroot/commons", named: "@workset.channelroot/commons",
+              standalone: null}
+    spec: "§2c"
+  workset.channels.chat:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@workset.channelroot/chat", named: "@workset.channelroot/chat",
+              standalone: null}
+    spec: "§2c"
+  workset.channels.broadcast:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@workset.channels.chat/broadcast.md",
+              named: "@workset.channels.chat/broadcast.md", standalone: null}
+    spec: "§2c"
+  workset.channels.share:
+    scope: workset
+    type: path
+    set: cli+file
+    default: {primary: "@workset.channelroot/share", named: "@workset.channelroot/share",
+              standalone: null}
+    spec: "§2c"
+  workset.channels.mailboxes:
+    scope: workset
+    type: path
+    set: cli+file
+    default: "@system.channels.mailboxes/@meta.workset.name"
+    note: "ALL PROJECTS — mailboxes aggregate at SYSTEM, partitioned by workset name"
+    spec: "§2c (ALL PROJECTS)"
+  workset.channels.share_global:
+    scope: workset
+    type: path
+    set: cli+file
+    default: "@system.channels.share/@meta.workset.name"
+    spec: "§2c (ALL PROJECTS)"
+
+  ## ---- LAYER 2: box.* settings keys (§2b) ---------------------------------
+  box.agent_name:
+    scope: box
+    type: str
+    set: cli+file
+    default: null
+    fallback: "@system.default_agent"
+    note: "<None> AND no fallback ⇒ NO-AGENT plain-shell box (skips all agent
+           binds/creds/template layer 2). Was box.crab, then box.agent (D-M6)."
+    spec: "§2b"
+  box.agent.<key>:
+    scope: box
+    parametric: [key]
+    set: cli+file
+    mirror_of: "agent.<box.agent_name>.*"
+    note: "the box's box-scoped MIRROR of its active agent's WHOLE settings subtree.
+           Overriding one is an ORDINARY same-scope write — this is precisely why the
+           directional rule needs no exception. Re-materialized when agent_name changes."
+    spec: "§2b"
+  box.image:
+    scope: box
+    type: str
+    set: cli+file
+    default: "ghcr.io/doctorjei/kanibako-oci:latest"
+    spec: "§2b"
+  box.share_images:
+    scope: box
+    type: bool
+    set: cli+file
+    default: false
+    spec: "§2b (CONFIRMED false, Jei 2026-06-19b)"
+  box.images_store:
+    scope: box
+    type: path
+    set: cli+file
+    default: "<runtime-probed podman graphroot>"
+    note: "consulted ONLY when share_images is true; cascade-able to system for a
+           machine-wide repoint. The GENERATED storage.conf (images_conf) is an
+           INTERNAL bind, NOT a key."
+    spec: "§2b (D-M8)"
+  box.shell:
+    scope: box
+    type: str
+    set: cli+file
+    default: null                 # auto-detect
+    note: "means ONLY the login shell (the template-variant axis was DROPPED)"
+    spec: "§2b / §3"
+  box.auth.global_enabled:
+    scope: box
+    type: bool
+    set: cli+file
+    default: true
+    effective: "meta.box.agent.auth.share_support AND system.auth.share_allowed AND this"
+    spec: "§2b (auth-level 2026-07-01)"
+  box.auth.workset_enabled:
+    scope: box
+    type: bool
+    set: cli+file
+    default: true
+    effective: "meta.box.agent.auth.share_support AND workset.auth.share_allowed AND this"
+    spec: "§2b"
+  box.enable_vault:
+    scope: box
+    type: bool
+    set: cli+file
+    default: true
+    note: "sparse — only a non-default false is ever written. Read-compat maps the
+           legacy project.enable_vault → this key."
+    spec: "§2b (renamed 2026-07-04)"
+
+  ## ---- LAYER 2: agent.* settings keys (§2d) -------------------------------
+  ## agent.default.* is the all-agents FALLBACK layer; agent.<agent>.<key> falls
+  ## back to agent.default.<key>. Both are cascade levels (§2).
+  agent.default.auto_approve:
+    scope: agent
+    type: bool
+    set: cli+file
+    default: true
+    note: "PERMISSIVE — the box is the isolation boundary; -S overrides per launch"
+    spec: "§2d"
+  agent.default.allow_helpers:
+    scope: agent
+    type: bool
+    set: cli+file
+    default: true
+    spec: "§2d"
+  agent.default.continue_mode:
+    scope: agent
+    type: bool
+    set: cli+file
+    default: true
+    note: "continue vs fresh; resume removed. -N/-C/-R override per launch."
+    spec: "§2d"
+  agent.default.bootstrap:
+    scope: agent
+    type: str
+    set: cli+file
+    default: "tmux"
+    note: "multiplexer; `none` ⇒ ephemeral / no reattach"
+    spec: "§2d"
+  agent.default.model:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null                 # "use the harness's built-in default"
+    note: "-M overrides per launch"
+    spec: "§2d"
+  agent.default.run_args:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null
+    note: "raw-argv passthrough escape hatch"
+    spec: "§2d"
+  agent.default.bindings:
+    scope: agent
+    type: dict
+    set: cli+file
+    default: {}
+    spec: "§2d"
+  agent.default.transform_settings:
+    scope: agent
+    type: dict
+    set: cli+file
+    default: {}
+    note: "binary-transform SETTINGS consumed by the plugin's transform pipeline
+           (the INPUT; agent.<agent>.caches.transform is the OUTPUT cache)"
+    spec: "§2d (added 2026-07-14)"
+  agent.<agent>.<key>:
+    scope: agent
+    parametric: [agent, key]
+    set: cli+file
+    fallback: "agent.default.<key>"
+    note: "the generic per-agent contract SHAPE. Core owns the shape ONLY; every
+           agent-SPECIFIC value is PLUGIN-declared (§0 universal-vs-specific) and
+           therefore NOT enumerated in this core registry — see plugin_contributed."
+    spec: "§2d"
+  agent.<agent>.template:
+    scope: agent
+    parametric: [agent]
+    type: path
+    set: cli+file
+    default: "@meta.agent.<agent>.path/template"
+    note: "per-agent template SOURCE; seed layer 2"
+    spec: "§2d"
+
+  ## ---- meta.* — TOP-LEVEL protected RO namespace (§0) ---------------------
+  ## Materialized ONLY by construct-time / plugin / runtime derivation.
+  ## Design property: set == never IFF meta.*.
+  meta.runtime.ws_root:
+    namespace: meta
+    set: never
+    origin: runtime_treewalk
+    value: "standalone=<runtime project dir> · primary=@config.primary_workset ·
+            named=<detected workset root>"
+    spec: "§1A (L0.2)"
+  meta.runtime.ws_settings:
+    namespace: meta
+    set: never
+    origin: runtime_treewalk
+    value: "@meta.runtime.ws_root/settings.yaml (UNIFORM across all modes)"
+    spec: "§1A"
+  meta.runtime.ws_name:
+    namespace: meta
+    set: never
+    origin: runtime_treewalk
+    value: "standalone=__STANDALONE__ · primary=__PRIMARY__ · named=<detected name>"
+    note: "the workset PARTITION token; reserved names may not be user-chosen"
+    spec: "§1A / §3 (D-B3)"
+  meta.runtime.project_type:
+    namespace: meta
+    set: never
+    origin: runtime_treewalk
+    type: enum
+    choices: [standalone, primary, named]
+    spec: "§1A"
+  meta.workset.path:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    value: "@meta.runtime.ws_root"
+    spec: "§2c / §1A"
+  meta.workset.name:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    value: "@meta.runtime.ws_name"
+    spec: "§2c / §1A"
+  meta.workset.settings:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    value: "@meta.runtime.ws_settings"
+    spec: "§2c / §1A"
+  meta.box.name:
+    namespace: meta
+    set: never
+    origin: construct_time
+    value: {primary: "<construct-time>", named: "<construct-time>",
+            standalone: "<@workset.kuid>_%leaf(@meta.workset.path)%"}
+    note: "AUTHORITATIVE source = the workset registry's entry KEYS; no literal
+           meta.box.name field is stored. Standalone: regen the KUID on WHOLE-NAME
+           collision; SANITIZE + LENGTH-CAP the leaf (D-M12/13)."
+    spec: "§2c"
+  meta.box.path:
+    namespace: meta
+    set: never
+    origin: construct_time
+    value: {primary: "@workset.boxes/@meta.box.name",
+            named: "@workset.boxes/@meta.box.name",
+            standalone: "@workset.boxes"}
+    note: "the RO per-mode BOX ROOT — the declaration root every rooted box key
+           spells itself against (§2a table). STANDALONE is the EMPTY LEAF:
+           workset.boxes IS the box root, so the value is a BARE whole-value ref
+           (no join, no trailing separator). The per-mode variation lives HERE and
+           nowhere downstream, which is what lets box.bindings.rw.home be a single
+           declaration for every mode. NOT settable: relocate box data one level up
+           via the settable workset.boxes."
+    spec: "§2c / §2a"
+  meta.box.workspace:
+    namespace: meta
+    set: never
+    origin: construct_time
+    value: {primary: "<the user's real project dir>",
+            named: "@workset.workspaces/@meta.box.name",
+            standalone: "@meta.workset.path/workspace"}
+    spec: "§2c"
+  meta.box.settings:
+    namespace: meta
+    set: never
+    origin: construct_time
+    value: {primary: "@workset.boxes/@meta.box.name/settings.yaml",
+            named: "@workset.boxes/@meta.box.name/settings.yaml",
+            standalone: null}
+    note: "standalone: SUBSUMED — box tier empty; box values resolve from the
+           workset tier as R2 downward-defaults (2026-07-04)"
+    spec: "§2c"
+  meta.box.mode:
+    namespace: meta
+    set: never
+    origin: runtime_treewalk
+    value: "@meta.runtime.project_type"
+    note: "mode is IDENTITY, not behavior — was the settable box.mode"
+    spec: "§2c"
+  meta.box.inbox:
+    namespace: meta
+    set: never
+    origin: derived
+    value: "@workset.channels.mailboxes/@meta.box.name"
+    spec: "§2c (ALL PROJECTS)"
+  meta.box.share_global:
+    namespace: meta
+    set: never
+    origin: derived
+    value: "@workset.channels.share_global/@meta.box.name"
+    spec: "§2c (ALL PROJECTS)"
+  meta.box.share_workset:
+    namespace: meta
+    set: never
+    origin: derived
+    value: "@workset.channels.share/@meta.box.name"    # <None> for standalone
+    spec: "§2c"
+  meta.box.auth.workset_path:
+    namespace: meta
+    set: never
+    origin: derived
+    value: "@workset.auth.path/@box.agent_name"        # <None> for standalone
+    note: "reclassified from the old SETTABLE box.auth.workset_path (2026-07-04):
+           being meta means it can't be set to a dangling @-ref"
+    spec: "§2c"
+  meta.box.agent.auth.share_support:
+    namespace: meta
+    set: never
+    origin: plugin
+    value: "@meta.agent.<@box.agent_name>.auth.share_support"
+    note: "box-immutable capability MIRROR — the hard RO floor a box cannot fake"
+    spec: "§2c / §2d"
+  meta.box.helper_num:
+    namespace: meta
+    set: never
+    origin: spawn
+    type: int
+    note: "UNSET for a top-level box; travels as a STRUCTURED field in helper
+           messages — never recovered by string-splitting the container name"
+    spec: "§2c"
+  meta.box.container_name:
+    namespace: meta
+    set: never
+    origin: derived
+    value: "kanibako-@meta.box.name%if @meta.box.helper_num: -helper-@meta.box.helper_num%"
+    note: "a RENDERING of the identity pair, NEVER a source to parse back from"
+    spec: "§2c (F5)"
+  meta.agent.default.name:
+    namespace: meta
+    set: never
+    origin: plugin
+    value: "default"
+    spec: "§2d"
+  meta.agent.<agent>.name:
+    namespace: meta
+    parametric: [agent]
+    set: never
+    origin: plugin
+    required: true
+    note: "REQUIRED whenever an agent exists; identifies the store dir + cascade key"
+    spec: "§2d"
+  meta.agent.<agent>.path:
+    namespace: meta
+    parametric: [agent]
+    set: never
+    origin: plugin
+    value: "@config.agents/@meta.agent.<agent>.name"
+    note: "META so agent/workset/box cascade CANNOT override it (D-2026-06-22)"
+    spec: "§2d"
+  meta.agent.<agent>.settings:
+    namespace: meta
+    parametric: [agent]
+    set: never
+    origin: plugin
+    value: "@meta.agent.<agent>.path/settings.yaml"
+    spec: "§2d"
+  meta.agent.<agent>.mode:
+    namespace: meta
+    parametric: [agent]
+    set: never
+    origin: plugin
+    type: dict            # {mode_key -> argv fragment}
+    note: "the harness's INTERACTIVE launch grammar; a NON-EDITABLE key — plugin
+           invocation syntax, not a user preference. RENAMED from agent.<agent>.mode
+           (Jei 2026-07-28, D-4)."
+    spec: "§2d"
+  meta.agent.<agent>.exec:
+    namespace: meta
+    parametric: [agent]
+    set: never
+    origin: plugin
+    type: str             # argv fragment; carried in the descriptor's `operations` dict
+    note: "the STANDALONE (one-shot/headless) invocation; MUTUALLY EXCLUSIVE with mode at
+           the same argv slot. RENAMED from agent.<agent>.exec (Jei 2026-07-28, D-4)."
+    spec: "§2d"
+  meta.agent.<agent>.auth.share_support:
+    namespace: meta
+    parametric: [agent]
+    set: never
+    origin: plugin
+    type: bool
+    note: "PluginDescriptor field auth_share_support — a CAPABILITY, not a setting"
+    spec: "§2d (auth-level 2026-07-01)"
+
+## ---------------------------------------------------------------------------
+## NOT KEYS / RETIRED NAMES — recorded so nobody re-adds or fabricates them.
+## ⚑ A fabricated key is very often a RETIRED name. This block is the defence:
+##   `unknown_key: error` refuses it, and this table says WHAT TO USE INSTEAD.
+## Names sourced from §2c/§2d/§3 rulings + the AS-IS audit
+## (reference/keyspace-phase2/SUMMARY-key-lists.md, 2026-06-26f). ⚑ That audit is a
+## MONTH old and many of its FINDINGS are since resolved — only its NAMES are
+## imported here, each re-checked against the CURRENT spec.
+## ---------------------------------------------------------------------------
+not_keys:
+
+  never_a_key:                    # plugin/descriptor variables or CLI-only surfaces
+    "critical":     "PluginDescriptor field, passed function-to-function (2026-06-27)"
+    "init_dirs":    "PluginDescriptor field (2026-06-27)"
+    "agent.<agent>.critical":  "same — the namespaced form is equally NOT a key"
+    "agent.<agent>.init_dirs": "same — the namespaced form is equally NOT a key"
+    "images_conf":  "GENERATED storage.conf; INTERNAL bind, fixed location (D-M8)"
+    "browser":      "CLI-only flag + BROWSER_WS_ENDPOINT; out-of-keyspace (D-M5)"
+
+  renamed:                        # was a key; the NEW name is authoritative
+    "box.crab":                "-> box.agent_name (D-M6)"
+    "box.agent":               "-> box.agent_name (D-M6)"
+    "system.agent":            "-> system.default_agent (D-M2)"
+    "box.vault_enabled":       "-> box.enable_vault (2026-07-04)"
+    "box.mode":                "-> meta.box.mode (RO identity anchor; mode is identity)"
+    "env_file":                "-> secret_path.<VAR>, promoted to a §2a category (2026-07-06)"
+    "box.group_auth":          "-> box.auth.{global,workset}_enabled (2026-07-01)"
+    "group_auth_on":           "-> box.auth.{global,workset}_enabled (2026-07-01)"
+    "box.bootstrap_program":   "-> agent.default.bootstrap (multiplexer is agent-tier)"
+    "agent.<agent>.transform": "-> agent.<agent>.caches.transform (FOLDED, 2026-06-27)"
+    "agent.<agent>.mode":      "-> meta.agent.<agent>.mode (non-editable key, Jei 2026-07-28)"
+    "agent.<agent>.exec":      "-> meta.agent.<agent>.exec (non-editable key, Jei 2026-07-28)"
+    "workset.meta.*":          "-> meta.workset.* (top-level meta namespace, 2026-06-29f)"
+    "box.meta.*":              "-> meta.box.* (2026-06-29f)"
+    "agent.<agent>.meta.*":    "-> meta.agent.<agent>.* (2026-06-29f)"
+
+  deleted:                        # was a key; SUBSUMED, no same-named replacement
+    "system.boxes":       "-> @workset.boxes (primary roots at @config.primary_workset)"
+    "system.logs":        "-> @workset.logs"
+    "system.vault_ro":    "-> @workset.vault_ro"
+    "system.vault_rw":    "-> @workset.vault_rw"
+    "system.instructions": "RETIRED 2026-07-28 (spec conformed to code) — the box guide ships
+                            INSIDE the package under rom/ and is RO bind-mounted per-file at
+                            ~/playbook/kanibako/directives/KANIBAKO.md; no key, no repoint"
+    "config.global":      "ELIMINATED 2026-06-29f; children inline @config.data/global/..."
+    "resource.<path>":    "DEAD; subsumed by the category keys (D-M7)"
+    "resource_overrides": "DEAD (0 callers)"
+    "start_mode":         "fully covered by continue_mode + auto_approve (§3)"
+    "autonomous":         "DEAD; autonomy is the -A/-S launch flags"
+    "agent.<agent>.start_mode":  "DEAD (stored, no launch reader) — see start_mode"
+    "agent.<agent>.autonomous":  "DEAD — see autonomous"
+    "agent.default.start_mode":  "DEAD — see start_mode"
+    "agent.default.autonomous":  "DEAD — see autonomous"
+    "required":           "the non-overridable ceiling TIER was CUT (Jei 2026-06-29f)"
+    ".env":               "global/workset/project .env FILES were DROPPED (2026-06-27) — a
+                           duplicate shared channel for env; use <scope>.env.<VAR> instead"
+    "agent.<agent>.<anyleaf>": "free-form leaf passthrough — the keyspace is CLOSED (spec \u00a70)"
+
+  code_residue:                   # appeared in CODE only, never spec-sanctioned
+    "system._boxes":            "surrogate for the DELETED system.boxes"
+    "system._primary_vault_ro": "residue surrogate"
+    "system._primary_vault_rw": "residue surrogate"
+    "system._primary_logs":     "residue surrogate"
+    "agent.<agent>.binding.<key>": "singular host-source-ONLY override; the spec has
+                                    ONLY the plural name-bearing bindings.<ro|rw>.<name>"
+    "agent.<agent>.access":     "code-only name for the universal auto_approve
+                                 (live as agent.claude.access; different name+vocab)"
+    "agent.default.access":     "code-only — see agent.<agent>.access"
+    "agent.<agent>.name":       "flat identity form -> meta.agent.<agent>.name"
+    "agent.default.default_agent": "code-side on-disk form that system.default_agent
+                                    routes to; NOT a spec key (verify at the code sweep)"
+    "agent.default.provider":   "NOT a standard key — see agent.<agent>.provider"
+    "agent.default.binding.<key>": "singular residue — see agent.<agent>.binding.<key>"
+    "agent.<agent>.provider":   "NOT a standard key — provider/model are goose's OWN
+                                 config; a user MAY inject env.<VAR> ad hoc (2026-06-27)"
+    "paths_project_toml":       "residue field"
+    "project.*":                "the [project] table is a pre-box-rename artifact
+                                 (read-compat ONLY: project.enable_vault -> box.enable_vault)"
+    "resolved.*":               "core-derived [resolved] table, not keys"
+
+## Agent-SPECIFIC keys (agent.claude.* / agent.codex.* / agent.goose.*) are
+## deliberately ABSENT from this core registry: §0 "Agent specifics are
+## PLUGIN-declared … never hardcoded in core". They should be contributed by each
+## plugin descriptor and merged into the resolved keyspace at load, then validated
+## against the SAME rules as core keys.
+plugin_contributed:
+  namespace: "agent.<agent>.*  and  meta.agent.<agent>.*"
+  source: PluginDescriptor
+  validated_against: policy
+  spec: "§0 (universal vs agent-specific) / §2d"
