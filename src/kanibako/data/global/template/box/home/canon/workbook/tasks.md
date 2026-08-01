@@ -1,49 +1,49 @@
 # Task Board
 
-<!-- Choose the format that fits your project: kanban buckets, numbered
+<!--[STOCK] Choose the format that fits your project: kanban buckets, numbered
      list, or simple categories. The format below is a suggestion. -->
 
 ---
 
 ## Immediate
 
-<!-- Do now -->
+<!--[STOCK] Do now -->
 
 ---
 
 ## High Priority
 
-<!-- Important, do soon -->
+<!--[STOCK] Important, do soon -->
 
 ---
 
 ## Do Soon
 
-<!-- Near-term backlog -->
+<!--[STOCK] Near-term backlog -->
 
 ---
 
 ## Do Eventually
 
-<!-- Long-term backlog -->
+<!--[STOCK] Long-term backlog -->
 
 ---
 
 ## In Progress
 
-<!-- Currently being worked on -->
+<!--[STOCK] Currently being worked on -->
 
 ---
 
 ## Done
 
-<!-- Completed items — move to archive when the list gets long -->
+<!--[STOCK] Completed items — move to archive when the list gets long -->
 
 ---
 
 ## Discarded
 
-<!-- Rejected or abandoned ideas — kept so they don't resurface -->
+<!--[STOCK] Rejected or abandoned ideas — kept so they don't resurface -->
 
 ---
 
