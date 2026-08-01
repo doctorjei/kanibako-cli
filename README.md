@@ -64,8 +64,8 @@ See the [Quick Start](#quick-start) Guide for get started right away; below are 
 ### Install from Source
 
 ```bash
-git clone https://github.com/doctorjei/kanibako.git
-cd kanibako
+git clone https://github.com/doctorjei/kanibako-cli.git
+cd kanibako-cli
 pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-codex/ -e packages/agent-goose/
 ```
 
