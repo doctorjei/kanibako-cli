@@ -18,6 +18,20 @@ human half):
 * the specific names the PUBLISHED plugin wheels import are present by name, so
   narrowing a shim's surface fails here rather than at a user's launch.
 
+* importing a legacy path emits an actionable ``FutureWarning``, and importing
+  the REAL module emits nothing (stage 1 of the two-stage retirement).
+
+⚑ **HOUSE RULE, learned the hard way: never ``importlib.reload()`` a real module
+in-process — use a fresh subprocess.** Reload rebinds a module's attributes to
+NEW objects while every module that already did ``from X import Y`` keeps the
+OLD ones, so ``is`` comparisons start failing ACROSS FILES. An earlier version of
+this file reloaded ``kanibako.settings.settings_resolve`` to observe its import
+warning; that rebound ``UNSET`` (an identity-compared sentinel) and
+``SettingsError`` (module-scope-imported by ~8 modules) and broke **49 tests in
+``tests/test_settings/``** in a single-process run. The per-file capped runner is
+blind to this by construction; CI's one-process ``pytest tests/`` is not. See the
+block above ``_import_in_subprocess`` for the detector command.
+
 ⚑ When the removal gate in ``MIGRATION.md`` §3.1 fires (all three plugins
 published against the new paths), delete the shim AND its row here — do not
 weaken this file to keep it passing.
@@ -28,10 +42,14 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.util
-import warnings
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+from tests.support.repo import REPO_ROOT
 
 # (legacy module, new module, names the PUBLISHED plugin wheels import from it)
 #
@@ -141,32 +159,87 @@ def test_shim_covers_the_whole_public_surface(
     assert not missing, f"{legacy} does not re-export {missing} from {new}"
 
 
+# --------------------------------------------------------------------------- #
+# Import-time WARNING behaviour — measured in FRESH SUBPROCESSES
+# --------------------------------------------------------------------------- #
+#
+# ⚑ NEVER `importlib.reload()` A REAL MODULE IN-PROCESS.  A warning only fires
+# on the FIRST import, so testing it needs a virgin interpreter state — and
+# `reload` is the wrong way to get one.  Reload re-executes the module body and
+# REBINDS its module-level attributes to NEW objects, while every other module
+# that already did `from X import Y` keeps holding the OLD ones.  The two then
+# fail `is` comparisons.  That is not hypothetical and it is not confined to
+# this file: reloading `kanibako.settings.settings_resolve` rebinds `UNSET` (a
+# sentinel compared with `is`) and `SettingsError` (a class imported at module
+# scope by ~8 modules), which poisoned 49 tests across `tests/test_settings/`
+# in a single-process run.
+#
+# ⚑ AND THE PER-FILE CAPPED RUNNER CANNOT SEE IT.  It runs one pytest per file,
+# so cross-file contamination is invisible BY CONSTRUCTION — a green run of the
+# standard gate says nothing about this class of bug.  CI runs `pytest tests/`
+# in ONE process, which is where it surfaced.  The detector is a bounded
+# single-process run:
+#
+#     ~/.venv/bin/pytest tests/test_plugin_import_compat.py tests/test_settings/ -q
+#
+# The rule this file now follows: **import-time behaviour is measured in a fresh
+# subprocess; nothing here mutates the parent interpreter's module state.**
+
+
+def _import_in_subprocess(module: str, warning_flag: str) -> subprocess.CompletedProcess:
+    """Import *module* in a virgin interpreter under ``-W`` *warning_flag*.
+
+    A subprocess is the only honest way to observe a FIRST import: the parent
+    process has already imported most of the tree, and every in-process trick
+    for undoing that (reload, `sys.modules` surgery) corrupts state other tests
+    depend on.
+    """
+    return subprocess.run(
+        [sys.executable, "-W", warning_flag, "-c", f"import {module}"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")},
+        timeout=60,
+    )
+
+
 @pytest.mark.parametrize("legacy,new,names", _SHIMS, ids=_IDS)
 def test_legacy_path_warns(legacy: str, new: str, names: tuple[str, ...]) -> None:
-    """Importing the OLD path emits a user-visible ``FutureWarning``.
+    """Importing the OLD path emits a user-visible, ACTIONABLE ``FutureWarning``.
 
-    Stage 1 of the two-stage retirement (Jei, 2026-08-01): v1.8.0 keeps the
-    aliases but says so; the next release deletes them and makes plugin
-    discovery refuse an old plugin by name.
+    Stage 1 of the two-stage retirement (2026-08-01): v1.8.0 keeps the aliases
+    but says so; the next release deletes them and makes plugin discovery refuse
+    an old plugin by name.
 
     ``FutureWarning``, not ``DeprecationWarning``: the latter is hidden by
     default outside ``__main__``, which would make the notice invisible to
     exactly the people it is for.
-
-    ``importlib.reload`` re-executes the module body -- the module is already in
-    ``sys.modules`` from the tests above, so a plain import would emit nothing.
-    Reload keeps the same module object, so the identity assertions elsewhere in
-    this file are unaffected.
     """
-    mod = importlib.import_module(legacy)
-    with pytest.warns(FutureWarning) as record:
-        importlib.reload(mod)
-    messages = [str(w.message) for w in record]
-    assert any(legacy in m for m in messages), messages
-    assert any(new in m for m in messages), messages
+    proc = _import_in_subprocess(legacy, "always::FutureWarning")
+    assert proc.returncode == 0, proc.stderr
+    err = proc.stderr
+    assert "FutureWarning" in err, err
+    assert legacy in err, err
+    assert new in err, err
     # The notice has to be ACTIONABLE, not merely present.
-    assert any("REMOVED in the next release" in m for m in messages), messages
-    assert any("kanibako-agent-" in m for m in messages), messages
+    assert "REMOVED in the next release" in err, err
+    assert "kanibako-agent-" in err, err
+
+
+@pytest.mark.parametrize("legacy,new,names", _SHIMS, ids=_IDS)
+def test_legacy_path_warning_is_a_FutureWarning(
+    legacy: str, new: str, names: tuple[str, ...]
+) -> None:
+    """The category is really ``FutureWarning`` — proven by making it fatal.
+
+    Asserting the string ``"FutureWarning"`` appears in stderr would also pass
+    if the message merely mentioned the word.  Under ``-W error::FutureWarning``
+    the import must actually FAIL, which only a real ``FutureWarning`` does.
+    """
+    proc = _import_in_subprocess(legacy, "error::FutureWarning")
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert "FutureWarning" in proc.stderr, proc.stderr
 
 
 @pytest.mark.parametrize("legacy,new,names", _SHIMS, ids=_IDS)
@@ -176,11 +249,14 @@ def test_new_path_does_not_warn(legacy: str, new: str, names: tuple[str, ...]) -
     The warning belongs to the shim alone.  If it leaked into the new module,
     every in-repo caller and every correctly-updated plugin would be nagged for
     doing the right thing -- and the notice would stop meaning anything.
+
+    ``-W error::FutureWarning`` makes any such leak a nonzero exit.
     """
-    mod = importlib.import_module(new)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", FutureWarning)
-        importlib.reload(mod)  # raises if the new module emits a FutureWarning
+    proc = _import_in_subprocess(new, "error::FutureWarning")
+    assert proc.returncode == 0, (
+        f"importing {new} raised under -W error::FutureWarning — the shim's "
+        f"warning has leaked into the real module:\n{proc.stderr}"
+    )
 
 
 def _defined_public_names(module: str) -> set[str]:
