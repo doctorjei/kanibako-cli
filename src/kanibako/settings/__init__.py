@@ -52,7 +52,13 @@ the Layer-2 ``system.path.*`` tier) and imports ``settings_resolve`` at module
 scope; and ``config_interface`` — the module whose NAME says config — is a
 Layer-2 CLI engine.  A ``config/`` directory holding ``paths`` but not
 ``config_interface`` would be exactly the two-forms-for-one-thing trap.
-Re-decide after the KeyKind phase decomposes ``config_interface``.
+Re-decide after the KeyKind phase.  ⮕ PARTLY MOVED: the de-bulk pass split
+the CLI engine into ``config_keys`` (taxonomy), ``config_dest`` (destination
+rule) and ``config_display`` (renderers), leaving ``config_interface`` the
+verbs and the cascade machinery.  The Layer-1 residue is still not separable
+-- ``paths`` still straddles and ``config_io`` still serves both layers -- so
+the answer is unchanged; what changed is that the question is now about four
+modules instead of one.
 
 ⚑ ``settings_launch`` is the launch-time settings SNAPSHOT — a settings
 artifact the launcher consumes.  It is NOT part of ``kanibako.launch``, which is

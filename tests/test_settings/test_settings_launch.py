@@ -2125,7 +2125,7 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
     the file half of that contract for the box root specifically: the anchor is a
     mount SOURCE, so a file that could forge it could redirect the box home to any
     host directory. (The CLI half — ``config set`` refusing every ``meta.*`` key —
-    is pinned in ``tests/test_config_interface.py``.)
+    is pinned in ``tests/test_settings/test_config_interface.py``.)
     """
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_launch import workset_anchor_floor

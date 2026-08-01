@@ -3094,7 +3094,10 @@ class TestSetTimeCtxUsesHostXdgMap:
 
         sentinel = {"XDG_DATA_HOME": "/SENTINEL"}
         monkeypatch.setattr(
-            ci, "_host_xdg_map", lambda *a, **k: dict(sentinel), raising=False,
+            # ⚑ NO raising=False: with it, a _host_xdg_map that moved out of
+            # this module would make the patch a silent no-op and leave the
+            # test "passing" while proving nothing.
+            ci, "_host_xdg_map", lambda *a, **k: dict(sentinel),
         )
         ctx = ci._set_time_ctx()
         assert ctx.xdg == sentinel
