@@ -459,12 +459,16 @@ concern.
 
 ## 10. Known gaps
 
-- **`template-verify.yml` builds its base from
+- **(fixed 2026-08-01)** `template-verify.yml` used to build its base from
   `src/kanibako/containers/Containerfile.kanibako`, which no longer exists in
-  this repo** (only the `Containerfile.template-*` files remain; the base
-  Containerfile moved to `kanibako-images`). The workflow's "Build kanibako-oci
-  base" step cannot succeed as written until it is re-pointed at a published
-  base image or the file is restored.
+  this repo (only the `Containerfile.template-*` files remain; the base
+  Containerfile moved to `kanibako-images` at the 2026-06-12 split), so the
+  workflow was broken — and masked, because its path triggers pointed at the
+  moved file. It now builds each template directly FROM the published
+  `ghcr.io/doctorjei/kanibako-oci:latest` (the same ref the `e2e` job in
+  `test.yml` consumes), and its triggers watch only the template Containerfiles
+  that still live here. Verification is no longer hermetic against a
+  locally-built base; it depends on the published image, like the e2e job.
 - **The bundled template Containerfiles still ship inside the cli package**
   (`pyproject.toml` package-data `"kanibako.containers" = ["Containerfile.*",
   ...]`) even though image building moved to `kanibako-images`. Nothing in the
