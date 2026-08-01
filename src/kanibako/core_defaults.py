@@ -35,7 +35,7 @@ import yaml
 
 if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
-    from kanibako.targets.base import Target
+    from kanibako.targets.base import PluginDescriptor, Target
 
 
 def packaged_data_dir(*parts: str) -> Traversable:
@@ -315,6 +315,143 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
             str(entry["options"]),
         )
     return binds
+
+
+# ===========================================================================
+# The KICKOFF LOADER — the directive-chain ENTRY SLOT (spec §2c, P-5).
+# ===========================================================================
+
+# The packaged kickoff loader, relative to the ``kanibako.data`` root.  It sits
+# FLAT under ``global/`` beside the two other shipped content trees (``global/rom``,
+# the RO canon; ``global/template``, the writable seed) because it is neither of
+# them: it is not canon TEXT (it never lands under ~/canon and the box never reads it
+# as a directive — the flattener CONSUMES it) and it is not seeded (it is bound RO so
+# it version-follows the package instead of freezing at create).
+KICKOFF_PACKAGED_PARTS = ("global", "KICKOFF.md")
+
+
+def _kickoff_entry() -> dict[str, Any]:
+    """The one declarative ``kickoff:`` entry, or RAISE if the shipped file lost it.
+
+    The block is a LIST like every other family in the file (``kani``/``helpers``/
+    ``images``) and carries EXACTLY ONE entry: there is one directive-chain entry
+    slot, and two would mean two files racing for one dest.  Enforced rather than
+    assumed — a second entry would otherwise be silently ignored here while the
+    ``KANIBAKO_DIRECTIVE_SEED`` env var kept naming the first.
+    """
+    entries = _load_doc().get("kickoff") or []
+    if not isinstance(entries, list) or len(entries) != 1:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} must declare EXACTLY ONE 'kickoff:' entry "
+            f"(got {entries!r}) — the directive-chain entry slot (spec §2c "
+            "box.bindings.ro.kickoff) is declared there and read back by both the "
+            "bind emitter and the KANIBAKO_DIRECTIVE_SEED env var."
+        )
+    return entries[0]
+
+
+def kickoff_box_dest() -> str:
+    """The ``~``-spelled box-side kickoff slot (``~/.config/kanibako/kickoff.md``).
+
+    SINGLE SOURCE OF TRUTH, read from the declarative file: the bind's dest, the
+    ``KANIBAKO_DIRECTIVE_SEED`` container env var and the transition gate's dest
+    comparison are all the SAME path, and a second literal spelling of it anywhere
+    is a drift waiting to happen.
+    """
+    return str(_kickoff_entry()["box_dest"])
+
+
+def kickoff_guest_dest() -> str:
+    """:func:`kickoff_box_dest` as an ABSOLUTE guest path.
+
+    Two consumers need the expanded form rather than the ``~`` spelling: the
+    ``KANIBAKO_DIRECTIVE_SEED`` env var (it is read by a hook shell and at exec
+    time, where ``~`` would resolve against whoever's HOME) and the transition
+    gate (descriptor box_dests are ``$GUEST_HOME``-expanded by the defaults
+    loader, so a ``~``-spelled dest would never match one).
+    """
+    from kanibako.settings_resolve import GUEST_HOME
+
+    dest = kickoff_box_dest()
+    return GUEST_HOME + dest[1:] if dest.startswith("~") else dest
+
+
+def kickoff_default_categories(
+    descriptor: "PluginDescriptor | None" = None,
+) -> dict[str, tuple[str, str, str]]:
+    """Build the core KICKOFF bind as ``default_categories`` (spec §2c, P-5).
+
+    ::
+
+        box.bindings.ro.kickoff = (<packaged global/KICKOFF.md>, ~/.config/kanibako/kickoff.md, ro)
+
+    The directive-chain ENTRY SLOT: the flattener reads this file at box start,
+    follows its ``@~/canon/COLLECTION.md`` import to full depth, and writes the flat
+    result into the harness's native instruction slot.  INTERNAL, like ``kani_pkg``
+    and ``images_conf``: absent from every set-time floor registry, so ``config set``
+    refuses it; not repointable (spec §0's test — a user has nothing to configure
+    here, the file is generated content at a fixed location, and repointing it would
+    redirect the entire directive chain).
+
+    ⚑⚑ THE TRANSITION GATE — core YIELDS to a plugin that still ships a kickoff.
+
+    P-5 moved the kickoff CONTENT from the three agent plugins into core.  The
+    plugins publish INDEPENDENTLY of the base and pin no base version, so a NEW base
+    beside an OLD plugin is not just reachable, it is the ordinary
+    ``pip install -U kanibako-cli`` outcome — and both would deliver a file to the
+    SAME dest: core's bind here plus the plugin's descriptor binding (``managed_pointer``
+    in all three first-party plugins).  Two CONCRETE bindings at one box_dest is a
+    row-1 collision in spec §0's identical-dest table, i.e. a HARD LAUNCH ERROR
+    (``CategoryCollisionError``).  Refusing to launch a box because its base got newer
+    is not an acceptable upgrade experience, so core defers: with a plugin-supplied
+    kickoff present, this emitter yields NOTHING and the plugin's file is delivered
+    exactly as before.
+
+    ⚑ REMOVAL CONDITION — delete the gate (and this paragraph) once every published
+    agent plugin has dropped its own kickoff delivery: ``data/KICKOFF.md`` +
+    the ``managed_pointer`` descriptor binding gone from ``kanibako-agent-claude``,
+    ``-codex`` and ``-goose``, with those releases PUBLISHED (not merely merged).
+    After that the gate can only ever be false, and an ungated unconditional bind is
+    the honest shape.  Until then the gate is what keeps the base and the plugins
+    independently upgradable.  Recorded in migration M-12.
+
+    *descriptor* is the descriptor whose bindings the SAME resolve represents in the
+    launch snapshot (see :func:`kanibako.agent_representation.agent_default_partial`).
+    Passing ``None`` (a no-agent box, or a narrow resolve that carries no agent
+    bindings) means nothing else can be delivering a kickoff, so the bind is emitted.
+
+    FAIL-CLOSED: the packaged loader must exist.  A box whose kickoff is missing has
+    NO directive chain at all — the flattener finds no source, the launch shim's
+    ``|| true`` swallows it, and every session runs with an empty instruction set.
+    That is precisely the silent degradation the canon work exists to end, so a
+    missing packaged file RAISES here rather than emitting a bind whose source
+    ``_emit_category_mounts`` would drop with a one-line warning.
+    """
+    from kanibako.targets.assembly import declares_box_dest
+
+    if declares_box_dest(descriptor, kickoff_guest_dest()):
+        return {}
+
+    entry = _kickoff_entry()
+    # The host SOURCE, resolved from the entry's SYMBOLIC name exactly as
+    # ``kani_default_categories`` resolves its own (the file names sources
+    # symbolically; the loader supplies the resolved path).
+    sources = {"kickoff": Path(str(packaged_data_dir(*KICKOFF_PACKAGED_PARTS)))}
+    src = sources[str(entry["source"])]
+    if not src.is_file():
+        raise RuntimeError(
+            f"the packaged kickoff loader is missing at {src} — it is the entry "
+            "point of the whole directive chain (spec §2c box.bindings.ro.kickoff), "
+            "so a box launched without it would run with NO directives at all. This "
+            "is a PACKAGING defect; refusing to launch."
+        )
+    return {
+        f"box.{entry['category']}.{entry['key']}": (
+            str(src),
+            str(entry["box_dest"]),
+            str(entry["options"]),
+        ),
+    }
 
 
 # The packaged rom root — the READ-ONLY built-in CANON content (the BIBLE, plus the

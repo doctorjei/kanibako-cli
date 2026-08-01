@@ -1,4 +1,16 @@
-"""Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.
+"""Instruction delivery — the KICKOFF LOADER, from BOTH sides of the P-5 move.
+
+⚑ TWO DELIVERY ROUTES COEXIST IN THIS RELEASE, deliberately, and this module covers
+each with its own class:
+
+* ``box.bindings.ro.kickoff`` — CORE's bind (spec §2c, P-5 / C-CANON R2).  The
+  kickoff CONTENT now ships in the base (``data/global/KICKOFF.md``) and is emitted
+  by ``core_defaults.kickoff_default_categories``.  See ``TestCoreKickoffBind``.
+* ``managed_pointer`` — each PLUGIN's descriptor binding, still shipped (the
+  deletion is DEFERRED one release; see ``TestCoreKickoffBind`` for why and for the
+  transition gate that keeps the two from colliding).
+
+Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.
 
 Each agent plugin ships a KICKOFF-LOADER (the flattener SEED): a tiny static file
 whose whole content is the canon entry import ``@~/canon/COLLECTION.md`` plus, for
@@ -25,18 +37,24 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from kanibako import core_defaults
+from kanibako.paths import resolve_project
 from kanibako.settings_resolve import GUEST_HOME
 from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
 from kanibako.targets.base import (
     AgentInstall,
+    BindKind,
+    Binding,
     BindScope,
     HostSrcOrigin,
     PluginDescriptor,
 )
+from kanibako.targets.no_agent import NoAgentTarget
 
 _AGENTS = ["claude", "codex", "goose"]
 
@@ -194,3 +212,294 @@ def test_route_a_instructions_bind_retired(agent: str):
         isinstance(v, tuple) and v and v[0] == "@system.instructions"
         for v in binds.values()
     ), f"{agent}: a category bind still references @system.instructions: {binds!r}"
+
+
+# ===========================================================================
+# P-5 — the CORE-owned kickoff bind (``box.bindings.ro.kickoff``, spec §2c).
+# ===========================================================================
+
+
+class _KickoffTarget(NoAgentTarget):
+    """A REAL ``Target`` (the built-in fallback) carrying a supplied descriptor.
+
+    Subclassing the ABC's own fallback rather than duck-typing means every other
+    hook the launch seam reads comes from the real class, so a wiring test cannot
+    pass by accident when that seam grows a new call.
+    """
+
+    def __init__(self, descriptor: PluginDescriptor | None = None) -> None:
+        self._descriptor = descriptor
+
+    @property
+    def descriptor(self) -> PluginDescriptor | None:
+        return self._descriptor
+
+
+def _kickoff_descriptor() -> PluginDescriptor:
+    """A minimal descriptor that delivers SOMETHING to the kickoff slot."""
+    return PluginDescriptor(
+        command=("fake",),
+        bindings=(
+            Binding(
+                key="managed_pointer",
+                origin=HostSrcOrigin.LITERAL,
+                box_dest=_KICKOFF_DEST,
+                kind=BindKind.FILE,
+                scope=BindScope.AGENT,
+                ro=True,
+                literal_src=Path("/nonexistent/kickoff.md"),
+            ),
+        ),
+        mode={"start": ()},
+    )
+
+
+class TestCoreKickoffBind:
+    """The kickoff CONTENT is core's as of P-5 — and core YIELDS while plugins ship it.
+
+    ⚑ WHY THE PLUGIN FILES ARE STILL HERE (C-CANON R2 decision, recorded in migration
+    M-12).  Deleting ``data/KICKOFF.md`` + ``managed_pointer`` in the same release
+    that adds this bind leaves NO safe publish order: the plugins pin no base version
+    and publish independently, so "plugins first" yields a new plugin (no kickoff)
+    against an old base (no core bind) = a box with NO directive chain at all, and
+    "base first" yields a new base against an OLD published plugin whose kickoff
+    carries only the legacy pre-canon import = the same silent loss.  Shipping core's
+    bind now and deleting the plugin copies in a FOLLOW-UP release keeps every
+    combination working.  These tests pin the gate that makes the overlap safe.
+    """
+
+    def test_packaged_source_and_declared_slot(self):
+        """The emitter delivers the packaged loader RO at the declared slot."""
+        cats = core_defaults.kickoff_default_categories(None)
+        assert set(cats) == {"box.bindings.ro.kickoff"}
+        src, dest, opts = cats["box.bindings.ro.kickoff"]
+        assert Path(src).is_file(), "the packaged kickoff loader must ship"
+        assert Path(src).name == "KICKOFF.md"
+        assert dest == core_defaults.kickoff_box_dest() == "~/.config/kanibako/kickoff.md"
+        assert opts == "ro"
+
+    def test_the_slot_has_exactly_one_spelling(self):
+        """The bind dest, the ``KANIBAKO_DIRECTIVE_SEED`` env var and the gate all
+        read the SAME declaration — two spellings of this path is how the env var
+        and the bind end up naming different files."""
+        assert core_defaults.kickoff_guest_dest() == _KICKOFF_DEST
+
+    def test_core_content_is_the_canon_entry_and_nothing_else(self):
+        """⚑ ONE import, deliberately NOT the plugins' two.
+
+        The legacy ``@~/playbook/...`` line exists so a PLUGIN release also works
+        against an older base.  A base-shipped kickoff ships in the same wheel as the
+        canon binds it imports, so that line could never resolve — it would buy a
+        permanent per-launch ``unresolved import`` warning and nothing else.
+        """
+        src = Path(core_defaults.kickoff_default_categories(None)[
+            "box.bindings.ro.kickoff"
+        ][0])
+        import_lines = [
+            ln.strip()
+            for ln in src.read_text().splitlines()
+            if ln.strip() and not ln.strip().startswith("<!--")
+        ]
+        assert import_lines == [_DIRECTIVE_IMPORT]
+        assert _LEGACY_DIRECTIVE_IMPORT not in src.read_text()
+
+    def test_gate_yields_to_a_descriptor_that_delivers_the_slot(self):
+        """GATE, positive arm: a plugin-supplied kickoff means core emits NOTHING."""
+        assert core_defaults.kickoff_default_categories(_kickoff_descriptor()) == {}
+
+    @pytest.mark.parametrize("agent", _AGENTS)
+    def test_gate_yields_for_every_first_party_plugin_today(self, agent: str):
+        """All three still ship ``managed_pointer``, so core yields on every real
+        agent box this release.  ⚑ When the follow-up deletes those bindings this
+        test flips to asserting the OPPOSITE — that is the signal the gate itself can
+        be deleted (see ``kickoff_default_categories``' removal condition)."""
+        desc = resolve_target(agent, None).descriptor
+        assert desc is not None
+        assert core_defaults.kickoff_default_categories(desc) == {}
+
+    def test_gate_keys_on_the_DEST_not_the_key_name(self):
+        """A third-party plugin that names its kickoff binding something else still
+        collides at the DEST, so the gate must key on the dest.  (Same descriptor as
+        the positive arm, one field renamed.)"""
+        desc = _kickoff_descriptor()
+        renamed = replace(desc, bindings=(
+            replace(desc.bindings[0], key="my_own_loader"),
+        ))
+        assert core_defaults.kickoff_default_categories(renamed) == {}
+
+    def test_a_descriptor_that_delivers_elsewhere_does_not_gate(self):
+        """GATE, negative arm: an unrelated binding must not suppress the kickoff."""
+        desc = _kickoff_descriptor()
+        elsewhere = replace(desc, bindings=(
+            replace(desc.bindings[0], box_dest=f"{GUEST_HOME}/.config/kanibako/other.md"),
+        ))
+        assert set(core_defaults.kickoff_default_categories(elsewhere)) == {
+            "box.bindings.ro.kickoff"
+        }
+
+    def test_missing_packaged_loader_raises_rather_than_launching_empty(self, tmp_path):
+        """FAIL-CLOSED: a box with no kickoff has no directive chain AT ALL (the
+        flattener finds no source and the launch shim's ``|| true`` hides it), so a
+        packaging defect must RAISE, not emit a bind whose source gets dropped with a
+        one-line warning."""
+        real = core_defaults.packaged_data_dir
+
+        def _fake(*parts: str):
+            if tuple(parts) == core_defaults.KICKOFF_PACKAGED_PARTS:
+                return tmp_path / "gone" / "KICKOFF.md"
+            return real(*parts)
+
+        with patch.object(core_defaults, "packaged_data_dir", _fake):
+            with pytest.raises(RuntimeError, match="packaged kickoff loader is missing"):
+                core_defaults.kickoff_default_categories(None)
+
+
+class TestKickoffLaunchWiring:
+    """⚑ THE CALL SITE ITSELF — the emitter is actually CALLED by the real launch
+    path, and the gate is applied there with the descriptor the launch really has.
+
+    Everything above enters at the emitter, which proves it CORRECT but not that
+    anything invokes it: deleting the ``default_categories.update(...)`` line from
+    ``start._resolve_launch_snapshot`` would leave those tests green.
+    """
+
+    def _launch_mounts(self, std, proj, *, target, desc=None, install=None) -> dict:
+        """Every Mount a launch would pass to podman, by destination.
+
+        ⚑ BOTH emitters, exactly as ``_run_container`` calls them: box-scope winners
+        through ``_emit_category_mounts`` and the agent-scope delivery binds through
+        ``agent_delivery_mounts`` (they are split because the AGENT_CRITICAL
+        must-exist safe-fail differs from L7's drop-with-warning). Emitting only one
+        of the two would make "no kickoff mount" indistinguishable from "the OTHER
+        route emitted it" — which is precisely the question these tests ask.
+        """
+        from kanibako.commands.start import (
+            _emit_category_mounts,
+            _resolve_launch_snapshot,
+        )
+        from kanibako.settings_launch import agent_delivery_mounts
+        from kanibako.targets.base import BindScope as _BindScope
+
+        _snapshot, reconciled = _resolve_launch_snapshot(
+            std=std,
+            proj=proj,
+            agent_name="claude",
+            system_settings_path=None,
+            agent_cfg_path=None,
+            desc=desc,
+            install=install,
+            target=target,
+            agent_cfg=None,
+            deliver_creds=True,
+        )
+        mounts = list(_emit_category_mounts(reconciled, label="kickoff-wiring"))
+        if target is not None and install is not None and desc is not None:
+            mounts += agent_delivery_mounts(
+                reconciled.mounts,
+                critical_keys=frozenset(
+                    b.key for b in desc.bindings
+                    if b.scope is _BindScope.AGENT_CRITICAL
+                ),
+            )
+        return {m.destination: m for m in mounts}
+
+    def test_core_kickoff_reaches_a_real_launch_when_no_plugin_supplies_one(
+        self, std, config, project_dir,
+    ):
+        """A no-agent box has no descriptor at all — so core's kickoff is delivered,
+        and a plain-shell box gets the canon entry point for the first time."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        by_dest = self._launch_mounts(std, proj, target=_KickoffTarget())
+
+        assert _KICKOFF_DEST in by_dest, sorted(by_dest)
+        m = by_dest[_KICKOFF_DEST]
+        assert m.options == "ro"
+        assert Path(m.source).name == "KICKOFF.md"
+        assert _DIRECTIVE_IMPORT in Path(m.source).read_text()
+
+    def test_gate_applies_at_the_launch_seam_through_the_targets_descriptor(
+        self, std, config, project_dir,
+    ):
+        """⚑ THE ``desc=None`` + real-``target`` PATH: ``box config show --effective``
+        resolves the launch that way, so the gate must fall back to the target's own
+        descriptor — otherwise the display advertises a bind the launch never emits."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        by_dest = self._launch_mounts(
+            std, proj, target=_KickoffTarget(_kickoff_descriptor()),
+        )
+        assert _KICKOFF_DEST not in by_dest, "core must yield to the plugin's kickoff"
+
+    def test_a_real_claude_launch_delivers_exactly_one_kickoff_from_the_plugin(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """⚑ THE COMBINATION THE GATE EXISTS FOR, driven through the real seam with
+        the real claude descriptor: ONE mount at the slot, sourced from the PLUGIN,
+        and no collision error.  Without the gate this raises ``CategoryCollisionError``
+        (proved by ``test_without_the_gate_the_two_binds_are_a_hard_error`` below)."""
+        target = resolve_target("claude", None)
+        desc = target.descriptor
+        assert desc is not None
+        # The AGENT_CRITICAL share/launcher binds must-exist (their whole point), so
+        # this install has to point at real paths for the delivery emit to run.
+        share = tmp_path / "claude-install"
+        share.mkdir()
+        launcher = tmp_path / "claude"
+        launcher.write_text("#!/bin/sh\n")
+        install = AgentInstall(
+            name="claude", binary=launcher, install_dir=share, launcher=launcher,
+        )
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        by_dest = self._launch_mounts(
+            std, proj, target=target, desc=desc, install=install,
+        )
+
+        assert _KICKOFF_DEST in by_dest
+        source = Path(by_dest[_KICKOFF_DEST].source)
+        assert source.is_file()
+        assert "plugins/claude" in source.as_posix(), (
+            f"expected the PLUGIN's kickoff during the transition, got {source}"
+        )
+
+    def test_without_the_gate_the_two_binds_are_a_hard_error(self):
+        """GUARD THE GUARD: prove the collision the gate prevents is REAL.
+
+        Core's box-scope bind and the plugin's agent-scope binding are both CONCRETE
+        declarations at one box_dest — spec §0's row-1 collision, which RAISES.  If
+        this ever stops raising, the gate is no longer load-bearing and the whole
+        transition dance can go; until then, it is the difference between a working
+        upgrade and a box that refuses to launch.
+        """
+        from kanibako.agent_representation import agent_default_partial
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+        from kanibako.settings_categories import reconcile_categories
+        from kanibako.settings_resolve import ResolveCtx
+
+        desc = resolve_target("claude", None).descriptor
+        assert desc is not None
+        p = Path("/nonexistent")
+        install = AgentInstall(name="claude", binary=p, install_dir=p, launcher=p)
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None, host_home="/home/host",
+            xdg={"XDG_DATA_HOME": "/data"},
+        )
+
+        snap = build_launch_snapshot(
+            agent_name="claude",
+            ctx=ctx,
+            system_path=None,
+            agent_path=None,
+            workset_path=None,
+            box_path=None,
+            # UNGATED core kickoff (what the launch would inject without the gate)…
+            default_categories=dict(core_defaults.kickoff_default_categories(None)),
+            # …beside the plugin's own descriptor delivery binds.
+            agent_partial=agent_default_partial(desc, install, node_name="claude"),
+        )
+        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        with pytest.raises(CategoryCollisionError):
+            reconcile_categories(entries)

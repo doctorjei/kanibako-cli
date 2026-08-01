@@ -43,10 +43,15 @@ THE TWO DELIVERY LAYERS
      through ``reconcile_categories``; plus
    * the PLUGIN's bible chapter (``canon_bible_agent``) at ``~/canon/bible/agent``,
      emitted by core from the RESOLVED target and GATED on that plugin shipping
-     ``data/rom/directives/ROM_AGENT.md``; and
-   * the per-harness KICKOFF-loader SEED → ``~/.config/kanibako/kickoff.md``, a
-     descriptor ``managed_pointer`` delivery bind resolved through
-     ``descriptor_mounts``.
+     ``data/rom/directives/ROM_AGENT.md`` — which, since C-CANON R2, all three
+     first-party plugins DO, so this manifest requires it of each; and
+   * the KICKOFF loader → ``~/.config/kanibako/kickoff.md``. ⚑ TWO SOURCES COEXIST
+     this release: core's packaged ``data/global/KICKOFF.md``
+     (``box.bindings.ro.kickoff``, spec §2c / P-5) and each plugin's
+     ``data/KICKOFF.md`` descriptor ``managed_pointer`` bind, whose deletion is
+     deferred one release. Core YIELDS while a plugin supplies one, so exactly one
+     file reaches the slot; the manifest checks BOTH sources ship and that the
+     yield holds.
 
    NOTE on the box guide: the former per-agent ``@system.instructions`` →
    native-slot bind is RETIRED (see ``test_instructions_bind.py``), AND the per-file
@@ -368,44 +373,71 @@ class TestRomBindManifest:
         # No separate mount for the guide: it arrives with its chapter.
         assert f"{GUEST_HOME}/canon/{_GUIDE_REL_IN_ROM}" not in by_dest
 
-    def test_plugin_bible_chapter_declared_and_gate_negative_today(self):
-        """The SIXTH canon bind (``canon_bible_agent``): R1 lands the emitter and
-        the ``Target.rom_root`` interface; R2 fans the CONTENT out to the three
-        plugin packages. Until a plugin ships its chapter marker the emitter yields
-        NOTHING — correct, because an ungated empty plugin rom would bind an EMPTY
-        directory over the mountpoint, buying a per-launch missing-source warning for
-        no visible difference (J-7 retired core's placeholder chapter entirely).
+    def test_plugin_bible_chapter_ships_and_binds_for_every_harness(self):
+        """The SIXTH canon bind (``canon_bible_agent``): R1 landed the emitter and the
+        ``Target.rom_root`` interface; **R2 shipped the CONTENT** in all three plugin
+        packages, so this is now a MANIFEST row like any other — every first-party
+        harness MUST ship ``data/rom/directives/ROM_AGENT.md`` and MUST bind it at
+        ``~/canon/bible/agent``.
 
-        ⚑ WHEN R2 LANDS this test does not need editing: it asserts the CONTRACT on
-        both sides of the gate, so a harness that starts shipping a chapter is
-        checked for the right bind and one that does not is checked for none.
+        A missing chapter is what this catches: it is not a neutral no-op but a
+        dangling ``@agent/directives/ROM_AGENT.md`` import in the bible's
+        ``ROM_CONTENTS.md`` on every box that harness runs. (The emitter's GATE — no
+        marker, no bind — stays covered by the temp-plugin tests in
+        ``test_canon_delivery.py``, which is where a gate-false plugin can still be
+        constructed.)
         """
+        missing: list[str] = []
         for agent in _BIND_AGENTS:
             target = resolve_target(agent, None)
             root = target.rom_root()
             assert root is not None and root.is_dir(), f"{agent}: no rom_root"
+            if not (root / _CHAPTER_MARKER).is_file():
+                missing.append(f"{agent}: {root / _CHAPTER_MARKER}")
+                continue
 
             cats = core_defaults.rom_agent_default_categories(target)
-            if (root / _CHAPTER_MARKER).is_file():
-                assert set(cats) == {"box.bindings.ro.canon_bible_agent"}, agent
-                src, dest, opts = cats["box.bindings.ro.canon_bible_agent"]
-                assert Path(src) == root
-                assert dest == _BIBLE_AGENT_BOX_DEST.replace(GUEST_HOME, "~", 1)
-                assert opts == "ro"
-                assert _BIBLE_AGENT_BOX_DEST == f"{GUEST_HOME}/canon/bible/agent"
-            else:
-                assert cats == {}, f"{agent}: chapter emitted without a marker"
+            assert set(cats) == {"box.bindings.ro.canon_bible_agent"}, agent
+            src, dest, opts = cats["box.bindings.ro.canon_bible_agent"]
+            assert Path(src) == root
+            assert dest == _BIBLE_AGENT_BOX_DEST.replace(GUEST_HOME, "~", 1)
+            assert opts == "ro"
+            assert _BIBLE_AGENT_BOX_DEST == f"{GUEST_HOME}/canon/bible/agent"
+        assert not missing, f"packaged plugin bible chapter missing for: {missing}"
 
 
 class TestKickoffLoaderManifest:
-    """The per-harness KICKOFF-loader SEED delivers RO to the uniform kickoff slot.
+    """The KICKOFF loader reaches the uniform kickoff slot — from BOTH sources.
 
     Modeled on ``test_instructions_bind.py::test_kickoff_delivered_ro_at_kickoff_slot``:
     the plugin's ``managed_pointer`` (LITERAL-origin, best-effort) binding, driven
     through ``descriptor_mounts``, resolves its shipped ``data/KICKOFF.md`` source
     and mounts RO at ``~/.config/kanibako/kickoff.md``. Parametrized over every
     first-party harness (their KICKOFF.md sources + shared kickoff slot).
+
+    ⚑ Plus the CORE row (P-5 / C-CANON R2): the base now ships the kickoff CONTENT
+    at ``data/global/KICKOFF.md`` and emits ``box.bindings.ro.kickoff``, YIELDING
+    while a plugin still supplies one. Both sources are manifest rows for as long as
+    both exist — a delivery manifest that tracked only the live one would go silent
+    exactly when the follow-up release flips which one that is.
     """
+
+    def test_core_kickoff_source_ships_and_declares_the_slot(self):
+        """(a) the packaged core loader exists, (b) it declares the same slot."""
+        cats = core_defaults.kickoff_default_categories(None)
+        assert set(cats) == {"box.bindings.ro.kickoff"}
+        src, dest, opts = cats["box.bindings.ro.kickoff"]
+        assert Path(src).is_file(), f"packaged core kickoff SOURCE missing: {src}"
+        assert dest == _KICKOFF_BOX_DEST.replace(GUEST_HOME, "~", 1)
+        assert opts == "ro"
+
+    @pytest.mark.parametrize("agent", _BIND_AGENTS)
+    def test_core_yields_so_exactly_one_file_reaches_the_slot(self, agent: str):
+        """Two deliveries at one dest is a §0 row-1 collision (a hard launch error),
+        so while the plugins still ship theirs the core bind must not be emitted."""
+        desc = resolve_target(agent, None).descriptor
+        assert desc is not None
+        assert core_defaults.kickoff_default_categories(desc) == {}
 
     @staticmethod
     def _kickoff_binding(agent: str):

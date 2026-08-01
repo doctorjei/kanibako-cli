@@ -299,6 +299,37 @@ def resolve_binding_source(
     return None
 
 
+def declares_box_dest(
+    descriptor: "PluginDescriptor | None", box_dest: str,
+) -> bool:
+    """True when *descriptor* declares a delivery binding at *box_dest*.
+
+    The DECLARATION-level question: "does this plugin deliver something to that
+    box-side path?"  Asked of the box_dest and not of a key NAME on purpose —
+    the thing that collides in a box is the DESTINATION (spec §0's identical-dest
+    table, which errors on two concrete bindings at one dest), and a plugin is
+    free to name its key whatever it likes.  A key-name test would pass a
+    third-party plugin's identically-destined binding straight into that error.
+
+    Declaration-level, not resolution-level: it does not touch the filesystem and
+    does not care whether the source resolves.  That matches
+    :func:`~kanibako.agent_representation.agent_default_partial`, which represents
+    a binding in the launch snapshot with no existence check — so a caller gating
+    on this predicate sees exactly what the snapshot will carry.
+
+    *descriptor* may be ``None`` (the no-agent target has none), which answers
+    False.  *box_dest* must be the ABSOLUTE guest path: descriptor box_dests are
+    ``$GUEST_HOME``-expanded by the defaults loader, so a ``~``-spelled dest never
+    matches and callers must expand first.
+
+    Sole caller today: :func:`kanibako.core_defaults.kickoff_default_categories`
+    (the P-5 transition gate).
+    """
+    if descriptor is None:
+        return False
+    return any(b.box_dest == box_dest for b in descriptor.bindings)
+
+
 def descriptor_mounts(
     descriptor: PluginDescriptor,
     install: AgentInstall,
