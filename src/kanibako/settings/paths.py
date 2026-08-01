@@ -32,7 +32,7 @@ from kanibako.settings.settings_resolve import (
     expand_expr,
     resolve_value,
 )
-from kanibako.names import (
+from kanibako.project.names import (
     resolve_name,
     resolve_qualified_name,
 )
@@ -163,7 +163,7 @@ class _WorksetRooted(Protocol):
     """Structural type for "anything rooted at ``@meta.workset.path``".
 
     Satisfied by both :class:`ProjectGroup` (the launch-side view) and
-    ``kanibako.workset.Workset`` (the workset-command view), so the workset
+    ``kanibako.project.workset.Workset`` (the workset-command view), so the workset
     file derivations below serve every caller through ONE expression.
     """
 
@@ -364,7 +364,7 @@ def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
 class _WorksetLike(Protocol):
     """Structural type for the attributes :meth:`WorksetSpec.from_workset` reads.
 
-    Avoids importing the concrete :class:`kanibako.workset.Workset` into
+    Avoids importing the concrete :class:`kanibako.project.workset.Workset` into
     ``paths.py`` (which ``workset.py`` imports from, creating a cycle).
     """
 
@@ -400,7 +400,7 @@ class _WorksetProjectLike(Protocol):
 
 @dataclass(frozen=True)
 class WorksetSpec:
-    """Primitive view of a workset, decoupled from :class:`kanibako.workset.Workset`.
+    """Primitive view of a workset, decoupled from :class:`kanibako.project.workset.Workset`.
 
     Carries only the values the path resolver and project listings need, so
     ``paths.py`` does not import the ``workset`` module (which depends on
@@ -1491,7 +1491,7 @@ def detect_project_mode(
        or an unregistered NAMED workset root (a ``settings.yaml`` carrying a
        ``workset.meta`` identity).  Both are drop-in *imported* on discovery
        (registered + an alert to stderr; a name collision REFUSES — see
-       :mod:`kanibako.import_reconcile`).
+       :mod:`kanibako.project.import_reconcile`).
     6. Default — ``primary`` mode at the original *project_dir*.
     """
     resolved = project_dir.resolve()
@@ -1532,7 +1532,7 @@ def detect_project_mode(
     # nested standalone (with NO connection record) is authoritative on disk →
     # import (register) on discovery, exactly as the step-5 walk does.
     if _is_standalone_meta_dir(resolved):
-        from kanibako import import_reconcile
+        from kanibako.project import import_reconcile
         import_reconcile.import_standalone(
             std.registry, resolved, journal=std.journal,
         )
@@ -1555,8 +1555,8 @@ def detect_project_mode(
     # check runs first at each level: a workset root may itself contain a
     # box_data/ dir, but its settings.yaml workset.meta marker is the more
     # specific identity.
-    from kanibako import import_reconcile
-    from kanibako.workset import WORKSET_META_FILE, read_workset_meta
+    from kanibako.project import import_reconcile
+    from kanibako.project.workset import WORKSET_META_FILE, read_workset_meta
 
     current = resolved
     while True:
@@ -1604,7 +1604,7 @@ def _check_workset(
     Checks ``workspaces/`` first (specific project), then the workset root
     itself (inside workset but not necessarily a project workspace).
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
 
     worksets_section = registry_store.load_section(
         std.registry, "worksets"
@@ -1640,7 +1640,7 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
     ``boxes:`` registry — the one ``list``/``box_resolve`` read — closing the drift
     where a global-name miss let Guard 1 fire mid-create.
     """
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
@@ -1661,7 +1661,7 @@ def _register_workset_box_membership(
     (``ws_root`` = the workset root) and the PRIMARY workset (``ws_root`` =
     ``std.primary_workset`` — NON-EXCEPTIONAL per D0/D1).
     """
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
@@ -1680,7 +1680,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
     unwind a connect register and to drop a disconnected external box's D10
     connection record.
     """
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
@@ -1695,7 +1695,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
 # The SOLE store of default-mode (PRIMARY) box names since the global
 # ``projects:`` section retired (clean split, 2026-07-08).  Membership is name →
 # EXTERNAL-workspace path in ``@config.primary_workset/registry.yaml`` (spec
-# L514, via :mod:`kanibako.workset_registry`).  These helpers mirror the retired
+# L514, via :mod:`kanibako.project.workset_registry`).  These helpers mirror the retired
 # ``names.py`` project-name API (``pick``/``assign``/``register``/``unregister``/
 # reverse-lookup) but on the primary membership, so callers re-route store-for-
 # store.  The name-collision DOMAIN is primary membership names ∪ global workset
@@ -1712,7 +1712,7 @@ def load_primary_boxes(primary_workset: Path) -> dict[str, str]:
     per-workset ``boxes:`` membership is the sole store now.  *primary_workset*
     is ``std.primary_workset``.
     """
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
@@ -1740,7 +1740,7 @@ def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]:
     membership.  *registry* is ``std.registry`` (for the global ``worksets:``
     names); *primary_workset* is ``std.primary_workset``.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
 
     primary = set(load_primary_boxes(primary_workset))
     worksets = set(registry_store.load_section(registry, "worksets"))
@@ -1769,7 +1769,7 @@ def check_primary_box_name_free(
       box and a workset resolves deterministically to the box (shadowing the
       workset in bare-name lookups), so this refuses UNLESS *force*.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
 
     if Path(workspace).resolve() == Path.home().resolve():
         from kanibako.errors import ProjectError
@@ -1856,7 +1856,7 @@ def register_primary_box_name_if_absent(
     collision).  Mirrors :func:`names.register_name_if_absent`.  *force* is
     forwarded (bypasses only the CROSS-KIND workset-name refusal).
     """
-    from kanibako.workset_registry import _same_workspace
+    from kanibako.project.workset_registry import _same_workspace
 
     existing = load_primary_boxes(primary_workset).get(name)
     if existing is not None and _same_workspace(existing, str(workspace)):
@@ -2067,7 +2067,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     # from the registry has no workspace → ``None``.  (These are PRIMARY boxes:
     # ``std.boxes`` == ``@config.primary_workset/boxes``, so the PRIMARY registry
     # is the home.)
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     primary_registry = workset_registry.resolve_workset_registry_path(
@@ -2091,14 +2091,14 @@ def iter_workset_projects(
     """Return workset project info for all registered worksets.
 
     Each entry is ``(workset_name, workset, [(project_name, status), ...])``.
-    The workset object is a concrete ``kanibako.workset.Workset`` typed
+    The workset object is a concrete ``kanibako.project.workset.Workset`` typed
     structurally as :class:`_WorksetLike` (so ``paths.py`` need not import
     ``workset``).  Status is ``"ok"``, ``"missing"`` (no workspace), or
     ``"no-data"`` (no project dir).
     """
     import sys
 
-    from kanibako.workset import list_worksets, load_workset
+    from kanibako.project.workset import list_worksets, load_workset
 
     registry = list_worksets(std)
     results: list[tuple[str, _WorksetLike, list[tuple[str, str]]]] = []
@@ -2140,7 +2140,7 @@ def iter_workset_projects(
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]:
     """Return ``(workset, project_name)`` for a path inside a workset.
 
-    The returned object is a concrete ``kanibako.workset.Workset`` (typed
+    The returned object is a concrete ``kanibako.project.workset.Workset`` (typed
     structurally as :class:`_WorksetLike` to avoid importing ``workset`` into
     ``paths.py``); callers that need a :class:`WorksetSpec` for
     :func:`resolve_workset_project` wrap it via ``WorksetSpec.from_workset``.
@@ -2154,7 +2154,7 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
     Raises ``WorksetError`` if *project_dir* does not belong to any
     registered workset.
     """
-    from kanibako.workset import list_worksets, load_workset
+    from kanibako.project.workset import list_worksets, load_workset
 
     registry = list_worksets(std)
     resolved = project_dir.resolve()
@@ -2206,7 +2206,7 @@ def _resolve_workset_or_connected(
         # per-workset registries).  Lazy import avoids a paths <-> box_resolve
         # import cycle.
         from kanibako.launch import box_resolve
-        from kanibako.workset import load_workset
+        from kanibako.project.workset import load_workset
         owned = box_resolve.find_connected_external_box(
             project_dir.resolve(), std,
         )
@@ -2398,7 +2398,7 @@ def resolve_box_target(
     # projects/worksets registry + paths, but NOT the standalone-name domain, so
     # check it here before falling through.
     if "/" not in value:
-        from kanibako import registry_store
+        from kanibako.project import registry_store
 
         standalone = registry_store.load_standalone(std.registry)
         # Box names are lowercase (R2); fold the query for the lookup.
@@ -2554,7 +2554,7 @@ def establish_standalone(
     an UNregistered box that recovery resolves by its on-disk root.  Defaults True
     (the convert/duplicate lifecycle callers register inline, unchanged).
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.launch import box_identity
 
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
@@ -2685,7 +2685,7 @@ def resolve_standalone_project(
         # rather than leaving an orphaned half-created box_data/ + vault/ tree
         # (BUG-A).  establish_standalone re-resolves the name authoritatively;
         # this only surfaces the refusable collision early.
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.launch import box_identity
         box_identity.validate_standalone_name(
             requested_name,

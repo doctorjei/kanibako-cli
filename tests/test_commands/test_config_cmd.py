@@ -76,7 +76,7 @@ class TestBoxConfigShow:
         """
         from kanibako.commands.box._parser import run_show
         from kanibako.settings.paths import load_std_paths
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)

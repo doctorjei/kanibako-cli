@@ -5737,7 +5737,7 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
     from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.standalone:
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         # STANDALONE root == metadata_path (resolve_standalone sets it to root).
         registry_store.register_standalone(
             std.registry, proj.name, Path(proj.metadata_path),

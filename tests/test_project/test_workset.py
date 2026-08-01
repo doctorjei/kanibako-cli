@@ -1,4 +1,4 @@
-"""Tests for kanibako.workset -- working set data model and persistence."""
+"""Tests for kanibako.project.workset -- working set data model and persistence."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 
 from kanibako.errors import WorksetError
 from kanibako.settings.paths import BoxMode
-from kanibako.workset import (
+from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
     add_project,
@@ -449,7 +449,7 @@ class TestAddProjectConnectGuard:
         # With force=True the deliberate absorb MOVES the registration: the box
         # leaves the global standalone: index and becomes SOLELY a workset box
         # (exactly-one-registry — no dual registration).
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.launch import box_resolve
 
         ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
@@ -477,7 +477,7 @@ class TestAddProjectConnectGuard:
         # --force connect (standalone: dropped, boxes: added) → disconnect (boxes:
         # removed) → a resolve re-imports the box back to standalone: (clean
         # round-trip; the box_data/ marker is untouched throughout).
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.settings.paths import BoxMode, detect_project_mode
 
         ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
@@ -519,12 +519,12 @@ class TestUnifiedProjectRecord:
     """
 
     def test_record_has_no_seeded_field(self, std, tmp_home):
-        from kanibako.workset import WorksetProject
+        from kanibako.project.workset import WorksetProject
 
         assert not hasattr(WorksetProject("p", Path("/p")), "seeded")
 
     def test_set_project_seeded_removed(self):
-        import kanibako.workset as ws_mod
+        import kanibako.project.workset as ws_mod
 
         assert not hasattr(ws_mod, "set_project_seeded")
 
@@ -623,7 +623,7 @@ class TestRemoveProject:
 
 def _workset_boxes(ws):
     """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
@@ -729,7 +729,7 @@ class TestWorksetSettingsFile:
         dump_doc(settings, data)
 
         # Re-writing the workset identity must preserve the cascade key.
-        from kanibako.workset import _write_workset_toml
+        from kanibako.project.workset import _write_workset_toml
         _write_workset_toml(ws)
 
         # Both survive: the binding key is intact on disk, identity reload works.
@@ -745,7 +745,7 @@ class TestWorksetSettingsFile:
         a box-style settings.yaml (box.meta only) is not."""
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.paths import detect_project_mode
-        from kanibako.workset import read_workset_meta
+        from kanibako.project.workset import read_workset_meta
 
         root = tmp_home / "worksets" / "marker"
         create_workset("marker", root, std)
@@ -777,7 +777,7 @@ class _Boom(Exception):
 
 class TestCreateWorksetFailConsistent:
     def test_name_index_write_failure_unwinds(self, std, tmp_home, monkeypatch):
-        import kanibako.workset as ws_mod
+        import kanibako.project.workset as ws_mod
 
         root = tmp_home / "worksets" / "my-set"
 
@@ -794,13 +794,13 @@ class TestCreateWorksetFailConsistent:
 
         assert not root.exists(), "orphan dirs left behind"
         assert "my-set" not in list_worksets(std), "stale worksets entry"
-        from kanibako.names import read_names
+        from kanibako.project.names import read_names
         assert "my-set" not in read_names(std.registry).get("worksets", {})
 
 
 class TestDeleteWorksetSelfHealing:
     def test_irreversible_rmtree_after_registries_clean(self, std, tmp_home, monkeypatch):
-        import kanibako.workset as ws_mod
+        import kanibako.project.workset as ws_mod
 
         root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", root, std)
@@ -819,7 +819,7 @@ class TestDeleteWorksetSelfHealing:
 
 class TestAddProjectFailConsistent:
     def test_internal_workset_write_failure_unwinds(self, std, tmp_home, monkeypatch):
-        import kanibako.workset as ws_mod
+        import kanibako.project.workset as ws_mod
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
@@ -845,7 +845,7 @@ class TestAddProjectFailConsistent:
     def test_external_workset_write_failure_unwinds_redirect(
         self, std, tmp_home, monkeypatch
     ):
-        import kanibako.workset as ws_mod
+        import kanibako.project.workset as ws_mod
 
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()
@@ -903,8 +903,8 @@ class TestRemoveProjectFailConsistent:
         # If the final workset.yaml write fails during removal, the project must
         # remain registered (re-runnable) rather than being dropped from the
         # registry while leaving a dangling per-workset connection record.
-        import kanibako.workset as ws_mod
-        from kanibako.workset import remove_project
+        import kanibako.project.workset as ws_mod
+        from kanibako.project.workset import remove_project
 
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()

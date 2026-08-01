@@ -5,10 +5,10 @@ mapping human-readable workset names to their root paths.  Default-mode
 (PRIMARY) box names are NOT here anymore — the former ``projects`` section was
 retired (2026-07-08, clean split): a primary box's identity now lives SOLELY in
 the primary workset's per-workset ``boxes:`` membership (spec L514, via
-:mod:`kanibako.workset_registry`; the primary-membership name API is in
+:mod:`kanibako.project.workset_registry`; the primary-membership name API is in
 :mod:`kanibako.settings.paths`).  Standalone boxes are likewise excluded — their identity
 lives in the registry's ``standalone`` section, owned by
-:mod:`kanibako.registry_store`.
+:mod:`kanibako.project.registry_store`.
 
 The registry section this module owns::
 
@@ -17,7 +17,7 @@ The registry section this module owns::
 
 This module reads/writes ONLY the ``worksets`` section; the
 ``standalone``/``rigs``/``image_shells`` sections are owned by their respective
-callers and preserved across writes by :mod:`kanibako.registry_store`.
+callers and preserved across writes by :mod:`kanibako.project.registry_store`.
 :func:`resolve_name` additionally consults the PRIMARY per-workset membership
 (when a *primary_workset* is supplied) so a bare primary-box name still resolves
 at the same precedence the retired ``projects`` section held.
@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.errors import ProjectError
 from kanibako.log import get_logger
 
@@ -170,7 +170,7 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     Reads each NAMED workset's per-workset registry ``boxes:`` membership — the
     SAME index the box resolver (``box_resolve``) consumes and ``list`` reflects
     (design principle #2: one source of truth; this adds no new registry-reading
-    logic, only reuses :mod:`kanibako.workset_registry`).  One entry per workset
+    logic, only reuses :mod:`kanibako.project.workset_registry`).  One entry per workset
     whose ``boxes:`` section lists *name*; the caller disambiguates any
     cross-workset collision.  A workset with no such member contributes nothing.
 
@@ -179,7 +179,7 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     default-mode members live in the PRIMARY per-workset ``boxes:`` membership,
     which :func:`resolve_name` matches directly (step 2) via *primary_workset*.
     """
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     paths: list[str] = []
@@ -237,7 +237,7 @@ def resolve_name(
     #    precedence position).  Only consulted when the caller passes the primary
     #    workset root (a lookup with no *primary_workset* skips this step).
     if primary_workset is not None:
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
         primary_reg = workset_registry.resolve_workset_registry_path(

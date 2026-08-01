@@ -1,4 +1,4 @@
-"""Tests for drop-in import-on-discovery (kanibako.import_reconcile + wiring).
+"""Tests for drop-in import-on-discovery (kanibako.project.import_reconcile + wiring).
 
 On-disk metadata is authoritative; the registry is a derived index.  When
 detection/resolution finds an on-disk box/workset/project that is NOT in the
@@ -13,15 +13,15 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako import import_reconcile, registry_store
-from kanibako.import_reconcile import ImportConflictError
+from kanibako.project import import_reconcile, registry_store
+from kanibako.project.import_reconcile import ImportConflictError
 from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
     resolve_project,
     resolve_standalone_project,
 )
-from kanibako.workset import create_workset
+from kanibako.project.workset import create_workset
 
 
 # ---------------------------------------------------------------------------

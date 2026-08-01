@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 
 # ---------------------------------------------------------------------------
 # Image-shell store: the ``image_shells`` section of system.registry

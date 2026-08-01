@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import import_reconcile, registry_store
+from kanibako.project import import_reconcile, registry_store
 from kanibako.launch import journal
 from kanibako.settings.paths import (
     BoxMode,
@@ -29,7 +29,7 @@ from kanibako.settings.paths import (
     resolve_project,
     resolve_standalone_project,
 )
-from kanibako.workset import add_project, create_workset
+from kanibako.project.workset import add_project, create_workset
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +346,7 @@ class TestConnectJournal:
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.workset import load_workset
+        from kanibako.project.workset import load_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -368,7 +368,7 @@ class TestConnectJournal:
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako import workset as workset_mod
+        from kanibako.project import workset as workset_mod
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -403,7 +403,7 @@ class TestConnectJournal:
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako import workset as workset_mod
+        from kanibako.project import workset as workset_mod
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -439,7 +439,7 @@ class TestConnectSelfHealOnResolve:
             resolve_workset_project,
         )
         from kanibako.settings.paths import WorksetSpec
-        from kanibako.workset import load_workset
+        from kanibako.project.workset import load_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -486,7 +486,7 @@ class TestConnectSelfHealOnResolve:
             resolve_workset_project,
         )
         from kanibako.settings.paths import WorksetSpec
-        from kanibako.workset import load_workset
+        from kanibako.project.workset import load_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -522,7 +522,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
         journal entry, even though std (with a journal) is passed."""
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.workset import load_workset
+        from kanibako.project.workset import load_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -545,7 +545,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
         from kanibako.commands.box._lifecycle import copy_into_workset
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import BoxMode, load_std_paths
-        from kanibako.workset import load_workset
+        from kanibako.project.workset import load_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -591,7 +591,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
 
 class TestNoSeedInImportConnectModules:
     @pytest.mark.parametrize(
-        "module", ["kanibako.import_reconcile", "kanibako.workset"],
+        "module", ["kanibako.project.import_reconcile", "kanibako.project.workset"],
     )
     def test_no_seed_calls(self, module: str) -> None:
         import importlib

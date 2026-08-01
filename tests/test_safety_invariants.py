@@ -288,7 +288,7 @@ class TestStaleNameSafety:
 
         # Register a stale PRIMARY-membership entry pointing at $HOME (direct
         # write, bypassing the $HOME guard, to simulate a stale/legacy entry).
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, None,
         )

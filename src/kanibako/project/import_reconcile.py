@@ -43,7 +43,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.settings.config import BOX_META_FILE
 from kanibako.errors import KanibakoError
 
@@ -253,7 +253,7 @@ def import_named_workset(
     Reads the workset name from *root*'s ``settings.yaml`` ``workset.meta`` table
     and reconciles it against ``registry.worksets`` (the name → root index that
     backs both name lookups AND workset discovery, written by
-    :mod:`kanibako.workset`):
+    :mod:`kanibako.project.workset`):
 
     * The name is already registered to *root* → silent idempotent no-op.
     * The name is registered to a DIFFERENT root → :class:`ImportConflictError`.
@@ -268,7 +268,7 @@ def import_named_workset(
     root = root.resolve()
     root_str = str(root)
 
-    from kanibako.workset import WORKSET_META_FILE, read_workset_meta
+    from kanibako.project.workset import WORKSET_META_FILE, read_workset_meta
 
     meta = read_workset_meta(root / WORKSET_META_FILE)
     if meta is None:

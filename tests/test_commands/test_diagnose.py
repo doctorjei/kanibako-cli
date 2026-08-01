@@ -617,7 +617,7 @@ class TestRunBoxDiagnose:
         """`box diagnose <worksetname>` errors clearly (a workset isn't a box)."""
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -650,7 +650,7 @@ class TestRunBoxDiagnose:
             load_std_paths,
             resolve_workset_project,
         )
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -692,7 +692,7 @@ class TestRunBoxDiagnose:
         """`box diagnose ws/missing` errors -- never a silent wrong path."""
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -766,7 +766,7 @@ class TestRunBoxDiagnose:
         ``read_project_meta(...) is not None`` (the old file-present signal) →
         the still-on-disk box wrongly reports REGISTERED and this goes RED.
         """
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config import load_config
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import load_std_paths

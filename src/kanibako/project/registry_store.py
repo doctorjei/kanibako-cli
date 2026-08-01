@@ -40,7 +40,7 @@ The file has these top-level sections::
 The former ``projects`` section (default-mode box name → external-workspace) has
 been RETIRED (clean split, 2026-07-08): a PRIMARY box's identity now lives SOLELY
 in the primary workset's per-workset ``boxes:`` membership
-(``@config.primary_workset/registry.yaml`` via :mod:`kanibako.workset_registry`),
+(``@config.primary_workset/registry.yaml`` via :mod:`kanibako.project.workset_registry`),
 the AUTHORITATIVE source of box names (spec L514).  This section is no longer
 loaded or written; a stale ``projects`` block left by an older install is simply
 dropped on the next ``save_registry`` (no migration, no legacy read).

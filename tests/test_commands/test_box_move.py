@@ -92,7 +92,7 @@ class TestBoxMove:
 
     def test_move_with_workset_target(self, config_file, tmp_home, credentials_dir):
         """move + --workset relocates AND changes ownership."""
-        from kanibako.workset import create_workset, load_workset
+        from kanibako.project.workset import create_workset, load_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)

@@ -120,7 +120,7 @@ class TestVerbsRouteThroughIt:
         chain, so a change to what ``remove_project`` deletes shows up here.
         """
         import kanibako.runtime.container as container_mod
-        from kanibako.workset import add_project, create_workset, remove_project
+        from kanibako.project.workset import add_project, create_workset, remove_project
 
         seen: list[Path] = []
         real = remove_box_tree
@@ -155,7 +155,7 @@ class TestVerbsRouteThroughIt:
         resolves. Driven through the real ``delete_workset``.
         """
         import kanibako.runtime.container as container_mod
-        from kanibako.workset import add_project, create_workset, delete_workset
+        from kanibako.project.workset import add_project, create_workset, delete_workset
 
         seen: list[Path] = []
         real = remove_box_tree
@@ -231,7 +231,7 @@ class TestVerbsRouteThroughIt:
         """
         import inspect
 
-        from kanibako import workset
+        from kanibako.project import workset
         from kanibako.commands import clean, restore
         from kanibako.commands.box import _duplicate, _lifecycle
 

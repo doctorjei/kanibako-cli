@@ -27,7 +27,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from kanibako import registry_store, workset_registry
+from kanibako.project import registry_store, workset_registry
 from kanibako.settings.config import BOX_META_FILE, KanibakoConfig
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import (

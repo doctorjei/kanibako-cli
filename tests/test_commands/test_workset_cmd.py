@@ -7,7 +7,7 @@ import argparse
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths
-from kanibako.workset import (
+from kanibako.project.workset import (
     add_project,
     create_workset,
 )
@@ -15,7 +15,7 @@ from kanibako.workset import (
 
 def _workset_boxes(ws):
     """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
@@ -1272,7 +1272,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
 
         from kanibako.commands import workset_cmd
         from kanibako.launch.templates import install_packaged_templates
-        from kanibako.workset import list_worksets
+        from kanibako.project.workset import list_worksets
 
         install_packaged_templates(std, [])
         self._plant(std, "registry.yaml")
@@ -1293,7 +1293,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
 
         from kanibako.commands import workset_cmd
         from kanibako.launch.templates import install_packaged_templates
-        from kanibako.workset import list_worksets
+        from kanibako.project.workset import list_worksets
 
         install_packaged_templates(std, [])
         root = tmp_path / "ws-ok"

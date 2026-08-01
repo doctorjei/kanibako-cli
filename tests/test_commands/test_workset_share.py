@@ -11,7 +11,7 @@ from kanibako.commands.workset_cmd import (
     run_share_list,
     run_share_remove,
 )
-from kanibako.workset import create_workset
+from kanibako.project.workset import create_workset
 
 
 def read_bindings(path):

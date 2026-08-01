@@ -18,9 +18,9 @@ import argparse
 import hashlib
 from pathlib import Path
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.commands.box._parser import run_create, run_register, run_rm
-from kanibako.names import resolve_name, register_name
+from kanibako.project.names import resolve_name, register_name
 
 
 # ---------------------------------------------------------------------------

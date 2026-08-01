@@ -13,9 +13,9 @@ Everything that talks to podman/docker or to an image registry:
 * ``baseline``        — the image-baseline manifest (the in-box tool contract).
 
 ⚑ The "registry" name collision this package dissolves: ``kanibako.runtime.registry``
-is the OCI client and is now unmistakable beside ``kanibako.registry_store`` (the
+is the OCI client and is now unmistakable beside ``kanibako.project.registry_store`` (the
 global name registry), ``kanibako.runtime.rig_registry`` (host-side rigs) and
-``kanibako.workset_registry`` (per-workset box membership).  Four different things
+``kanibako.project.workset_registry`` (per-workset box membership).  Four different things
 that were four bare ``registry`` spellings.
 
 PUBLIC SURFACE: the submodules named in ``__all__``.  Consumers outside this

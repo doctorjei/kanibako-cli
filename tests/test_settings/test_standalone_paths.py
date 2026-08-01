@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.errors import ProjectError
 from kanibako.settings.paths import (
     BoxMode,

@@ -28,7 +28,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
 )
 from kanibako.utils import project_hash
-from kanibako.workset import add_project, create_workset, load_workset
+from kanibako.project.workset import add_project, create_workset, load_workset
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def _connected_index(std):
     """
     from pathlib import Path
 
-    from kanibako import registry_store, workset_registry
+    from kanibako.project import registry_store, workset_registry
     from kanibako.settings.config_io import load_doc
 
     out = {}
@@ -240,7 +240,7 @@ class TestConvert:
         # P8b/Option A: Drift I marker settings.yaml at the ROOT (materialized by
         # the sparse kuid write), but no on-disk ``project:`` identity — the
         # standalone box is registered in registry.standalone.
-        from kanibako.registry_store import load_standalone
+        from kanibako.project.registry_store import load_standalone
         assert "project" not in load_doc(pdir / "settings.yaml")
         assert (pdir / "settings.yaml").is_file()
         assert (pdir / "box_data").is_dir()
@@ -268,7 +268,7 @@ class TestConvert:
         assert any(p.name == "proj" for p in ws2.projects)
         # P8b/Option A: the external workspace is recorded in the workset's
         # per-workset ``boxes:`` registry, not an on-disk ``resolved.workspace``.
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
         reg = workset_registry.load_workset_boxes(
             workset_registry.resolve_workset_registry_path(
@@ -430,7 +430,7 @@ class TestConvertMoveCrossKindName:
         # still standalone (nothing copied/registered on refusal).
         assert "common" not in load_primary_boxes(std.primary_workset)
         assert not (std.boxes / "common").exists()
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         assert "common" in registry_store.load_section(std.registry, "worksets")
         assert (pdir / "box_data").is_dir()
 
@@ -447,7 +447,7 @@ class TestConvertMoveCrossKindName:
         assert rc == 0
         # Box registered under the shadowed name; workset still registered.
         assert "common" in load_primary_boxes(std.primary_workset)
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         assert "common" in registry_store.load_section(std.registry, "worksets")
         # Bare resolution is deterministic — the primary box wins (shadow).
         from pathlib import Path

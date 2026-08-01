@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
-from kanibako.workset import add_project, create_workset, load_workset
+from kanibako.project.workset import add_project, create_workset, load_workset
 
 
 class TestBoxList:
@@ -111,7 +111,7 @@ class TestBoxList:
 
     def _park_deregistered(self, std, tmp_home, name="gonebox"):
         """Create a deregistered box with a retained home dir under std.boxes."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
 
         meta = std.boxes / name
         meta.mkdir(parents=True)
@@ -250,7 +250,7 @@ class TestBoxList:
         """
         from kanibako.commands.box import run_list
         from kanibako.settings.paths import iter_workset_projects
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -601,7 +601,7 @@ class TestBoxDuplicate:
         DEREGISTERED box (same I4 data-loss class as create).  Refuse with
         register/purge guidance; the retained home is untouched; no active
         membership is stranded for the refused name."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
@@ -676,7 +676,7 @@ class TestBoxDuplicate:
         # A deregistered box exists but under a DIFFERENT name, so the minted
         # 'fresh_dst' home is free.
         (std.boxes / "someoldbox").mkdir(parents=True)
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         registry_store.register_deregistered(
             std.registry, "someoldbox", kind="primary",
             workspace=str(tmp_home / "someoldbox"),
@@ -1257,7 +1257,7 @@ class TestBoxDuplicateCrossMode:
         from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import BoxMode, detect_project_mode
-        from kanibako.registry_store import load_standalone
+        from kanibako.project.registry_store import load_standalone
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1338,7 +1338,7 @@ def _connected_index(std):
     """
     from pathlib import Path
 
-    from kanibako import registry_store, workset_registry
+    from kanibako.project import registry_store, workset_registry
     from kanibako.settings.config_io import load_doc
 
     out: dict[str, dict] = {}
@@ -1642,7 +1642,7 @@ class TestBoxDuplicateExternal:
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
         from kanibako.settings.paths import BoxMode
-        from kanibako.workset import list_worksets
+        from kanibako.project.workset import list_worksets
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2008,7 +2008,7 @@ class TestBoxDuplicateNoToMode:
         self, config_file, tmp_home, credentials_dir,
     ):
         """A standalone source resolves without --to and lands a fresh standalone."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -2042,7 +2042,7 @@ class TestBoxDuplicateNoToMode:
     ):
         """A workset (named) source resolves without --to into a default box."""
         from kanibako.commands.box import run_duplicate
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2077,7 +2077,7 @@ class TestBoxRmStandalone:
         return root, proj.name
 
     def test_rm_by_name_unregisters(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box import run_rm
 
         config = load_config(config_file)
@@ -2091,7 +2091,7 @@ class TestBoxRmStandalone:
         assert (root / "box_data").is_dir()
 
     def test_rm_by_path_unregisters(self, config_file, tmp_home, credentials_dir):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box import run_rm
 
         config = load_config(config_file)
@@ -2103,7 +2103,7 @@ class TestBoxRmStandalone:
         assert box_name not in registry_store.load_standalone(std.registry)
 
     def test_rm_purge_removes_metadata(self, config_file, tmp_home, credentials_dir):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box import run_rm
 
         config = load_config(config_file)

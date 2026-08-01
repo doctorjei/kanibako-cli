@@ -1,4 +1,4 @@
-"""Tests for kanibako.workset_registry (the per-workset box-membership store).
+"""Tests for kanibako.project.workset_registry (the per-workset box-membership store).
 
 Every membership function takes the resolved per-workset registry FILE path
 (``workset.registry`` == ``<workset_root>/registry.yaml`` at default). These
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import workset_registry
+from kanibako.project import workset_registry
 from kanibako.settings.config_io import dump_doc, load_doc
 
 

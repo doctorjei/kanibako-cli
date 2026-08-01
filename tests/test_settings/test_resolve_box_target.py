@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.errors import ProjectError
 from kanibako.settings.paths import (
     BoxMode,
@@ -134,7 +134,7 @@ class TestWorksetMemberFromOutside:
         resolves the bare member name from a cwd OUTSIDE the workset.
         """
         from kanibako.settings.paths import WorksetSpec, resolve_workset_project
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
 
         ws_root = tmp_home / "worksets" / "cluster"
         ws = create_workset("cluster", ws_root, std)

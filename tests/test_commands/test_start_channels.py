@@ -38,7 +38,7 @@ from kanibako.settings.paths import (
     resolve_standalone_project,
     resolve_workset_project,
 )
-from kanibako.workset import add_project, create_workset
+from kanibako.project.workset import add_project, create_workset
 
 
 # ---------------------------------------------------------------------------

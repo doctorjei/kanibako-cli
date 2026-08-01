@@ -58,7 +58,7 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
 )
 from kanibako.utils import write_project_gitignore
-from kanibako.workset import (
+from kanibako.project.workset import (
     Workset,
     add_project,
     list_worksets,
@@ -289,7 +289,7 @@ def resolve_lifecycle_target(
     # relative path that happens not to exist is left untouched (falls through
     # to the path-ify below, failing exactly as before).
     if raw and "/" in raw and not Path(raw).exists():
-        from kanibako.names import resolve_qualified_name
+        from kanibako.project.names import resolve_qualified_name
         try:
             project_workspace, _ws_name = resolve_qualified_name(
                 std.registry, raw,
@@ -444,7 +444,7 @@ def copy_into_workset(
     duplicate of an already-connected source is refused up front in
     ``run_duplicate``.
 
-    *std* is threaded to :func:`kanibako.workset.add_project` so its up-front
+    *std* is threaded to :func:`kanibako.project.workset.add_project` so its up-front
     guards run (and to keep a single std-aware registration path); because the
     registration target is the in-tree workspace dir, ``add_project`` always
     creates a real directory and writes no external markers — which also avoids
@@ -1037,7 +1037,7 @@ def _remove_old_metadata(
         # Standalone boxes are registered in registry.standalone (Phase 5d), so
         # a standalone source's entry must be dropped too — otherwise a
         # standalone→standalone move strands the old name → root mapping.
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         if state.name:
             try:
                 registry_store.unregister_standalone(std.registry, state.name)
@@ -1335,7 +1335,7 @@ def _to_standalone(
     state.name``), in which case it is NOT treated as a user assertion — a fresh
     canonical id is generated instead.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.settings.config import BOX_META_FILE
     from kanibako.settings.paths import establish_standalone
 
@@ -1533,7 +1533,7 @@ def _to_workset(
         # that ``add_project`` just wrote (P8b — the D10 connection record is the
         # authoritative external-workspace source, not the box's settings.yaml
         # identity, which stops self-describing under sparse create).
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
         registry_path = workset_registry.resolve_workset_registry_path(
