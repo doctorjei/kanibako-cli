@@ -878,8 +878,16 @@ def get_config_value(
     # order). A plain get is stored-at-noun; the resolved-with-floor bind is the
     # ``show --effective`` cascade view. Absent → ``None`` ("(not set)").
     if _is_path_category_key(canonical):
-        tail = canonical.split(".")
-        return read_stored_leaf(noun_file, tuple(tail[:-1]), tail[-1])
+        # Through the SAME rule site the write side uses — which is what makes
+        # ``_read_dest``'s one documented divergence from ``_write_dest`` (this
+        # family, at agent scope) a fact about running code rather than a claim
+        # in a docstring nothing exercised.
+        dest = _read_dest(
+            canonical, command_scope=command_scope,
+            config_path=own_config, settings_path=system_settings_path,
+        )
+        assert dest is not None  # a category key always has a slot
+        return read_stored_leaf(dest.path, dest.sections, dest.leaf)
 
     # config.* / system.* path keys — read the raw set-value from the bootstrap
     # config file's [config]/[system] tables (file-only tier; not a merged-config
@@ -1233,20 +1241,17 @@ def set_config_value(
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={value}"
 
-    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380). An
-    # ORDINARY same-scope (box) write of the box's agent-tweak override; the B4
-    # directional guard (above) already PERMITTED it (the box namespace). Write the
-    # value VERBATIM into the box settings file at the nested ``box.agent.<key>``
-    # path — exactly the box-scope override ``_file_partial`` reads back and the
-    # settings_launch materializer keeps (it gap-fills only the names the box did
-    # NOT set, so this write WINS). Checked BEFORE the path-category branch so a
-    # ``box.agent.bindings.ro.X`` lands as a box-scope override (it has no
-    # pre-existing box-file tuple to source-only repoint). The nested sections are
-    # the dotted tail under ``box.agent`` (``box.agent.model`` →
-    # ``[box][agent]model``; ``box.agent.bindings.ro.share`` → ``[box][agent][
-    # bindings][ro]share``). Bind-shaped values are written as the user's RAW string
-    # (no tuple parse here — full structured binds belong in the YAML, like every
-    # category; this convenience write matches a hand-edit of the box file).
+    # box.agent.<key> — RETIRED (P7, spec §2b). There is NO settable box-scoped
+    # mirror of the agent's settings any more: §2b replaced it with the RO
+    # read-back ``meta.box.agent.<key>``, and a box tweaks its agent through the
+    # §2h request ``pref.agent.<active>.<key>``, which targets the agent tier
+    # properly instead of smuggling a box-scope key into it. So this branch
+    # REFUSES and names the cure; nothing is written.
+    #
+    # It is still checked BEFORE the path-category branch, because
+    # ``box.agent.bindings.ro.X`` matches the category regex too and would
+    # otherwise be accepted as an ordinary box-scope category write — the refusal
+    # must claim the whole retired spelling, not just its scalar half.
     if _is_box_agent_key(canonical):
         return box_agent_retired_error(
             canonical, verb="set", active_agent=cascade_agent_name or None,
@@ -1602,10 +1607,12 @@ def reset_config_value(
                 workset_path=cascade_workset_path,
                 box_path=cascade_box_path,
             )
+            # ⚑ The token test stays HERE rather than moving to the rule site:
+            # it asks whether the key READS through the cascade, not where it is
+            # stored. Those are different questions that happen to share a test.
             if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
             else None
-        )  # noqa: E501 — the token test stays here: it asks whether the key READS
-        # through the cascade, not where it is stored (see the comment above).
+        )
         return _honest_reset_message(flat, command_scope, effective)
     return f"No override for {flat}"
 

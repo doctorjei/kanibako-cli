@@ -176,9 +176,14 @@ class Bench:
 
     def get(self, scope: ConfigLevel, key: str, **extra):
         if scope is ConfigLevel.system:
-            # ⚑ VERBATIM the system handler (``system_cmd.py``): it does NOT
-            # thread ``command_scope``.  That asymmetry is load-bearing for the
-            # H2 refactor, so it is reproduced here rather than tidied.
+            # ⚑ THE PRE-LOCKSTEP SCOPE-LESS ARM, KEPT DELIBERATELY.  The system
+            # handler now DOES thread ``command_scope`` (the H2 lockstep), so this
+            # is no longer a copy of it — it is the call shape that existed before,
+            # retained because the rule site still has to answer identically
+            # without a scope: every direct caller in the suite omits it, and
+            # ``TestSystemGetCommandScopeIsInert`` below pins the two against each
+            # other.  Reading this as "what system_cmd does" would be wrong; it is
+            # "what the engine must still tolerate".
             return get_config_value(
                 key, global_config_path=self.cf, env_global=self.env_sys,
                 system_settings_path=self.ssp, agents_root=self.agents, **extra,
@@ -414,6 +419,37 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
         msg = bench.reset(ConfigLevel.system, "agent.claude.caches.pip")
         assert msg.startswith("Cleared"), msg
         assert set(bench.changed(before)) == {"cf"}
+
+    def test_get_reads_the_OTHER_file_which_is_the_whole_defect(self, bench):
+        """The read arm — the half that makes the write arm a silent no-op.
+
+        ``set`` and ``reset`` aim at the config file (above); ``get`` reads the
+        NOUN'S SETTINGS FILE.  So the two verbs do not merely write somewhere
+        useless, they disagree with each other, and a user who sets this key then
+        reads it back is told "(not set)" while a value sits in a third file.
+
+        Seeding BOTH candidates with different values is what makes the assertion
+        name a file rather than a value: only the settings-file value can come
+        back.  This is the arm the write/reset cases could not pin, and it is the
+        one that has to keep behaving identically through the consolidation.
+        """
+        bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", "FROM_CF")
+        bench.seed(bench.ssp, ("agent", "claude", "caches"), "pip", "FROM_SSP")
+        assert bench.get(ConfigLevel.system, "agent.claude.caches.pip") == "FROM_SSP"
+
+    def test_set_then_get_does_not_round_trip(self, bench):
+        """The user-visible shape of the defect, stated once so it cannot be lost.
+
+        If a future change makes this test fail, the destination was FIXED — which
+        is a welcome change and an intended one, but it must be made deliberately,
+        with its own rationale, and this class rewritten to match.  It must never
+        start passing as a side effect of a refactor.
+        """
+        bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", list(_TUPLE))
+        assert not bench.set(
+            ConfigLevel.system, "agent.claude.caches.pip", str(bench.tmp),
+        ).startswith("Error:")
+        assert bench.get(ConfigLevel.system, "agent.claude.caches.pip") is None
 
 
 # ---------------------------------------------------------------------------

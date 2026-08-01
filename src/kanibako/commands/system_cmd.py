@@ -357,7 +357,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # gives the truthful structural refusal (naming the config file). Make
             # get's message MATCH set's truth for these keys instead of pretending
             # they do not exist.
-            from kanibako.settings.config_interface import (
+            from kanibako.settings.config_keys import (
                 is_system_path_key,
                 system_key_refusal,
             )

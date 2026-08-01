@@ -13,10 +13,17 @@ re-deriving what a key is.
 Two different questions look alike here and must stay apart:
 
 * *"Is this a DECLARED key?"* — spec §0's CLOSED KEYSPACE. That question has one
-  authority, :mod:`kanibako.settings.settings_keyspace`, and one answer. Code
-  here CALLS INTO it; it never re-implements the test, never keeps a second copy
-  of the key set for the purpose, and never answers "not a key" on its own
-  authority.
+  authority, :mod:`kanibako.settings.settings_keyspace`, and one answer. The
+  CONSTRAINT on this module is that it must reach that authority rather than
+  grow its own answer: no second copy of the key set for the purpose, no
+  "not a key" decided here.
+  ⚑ Stated honestly: today this module does not import the validator at all.
+  It reaches it INDIRECTLY — ``_pref_target_error`` calls
+  ``settings_prefs.validate_pref``, which is where ``key_validity`` /
+  ``is_valid_agent_segment`` are applied — and every other recognizer here is a
+  SHAPE test that deliberately decides nothing about declaredness. So the rule
+  above is a constraint to hold, not a description of an existing call; the
+  KeyKind rewrite is where descriptors take the direct dependency.
 * *"Which CLI-surface FAMILY is this spelling, and which file and nested slot
   does it map to?"* — this module.
 

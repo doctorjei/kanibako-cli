@@ -10,7 +10,7 @@ predicate over it, :func:`key_validity`.
 What this module answers, and what it does NOT
 ----------------------------------------------
 This module answers **"is this a key at all?"**
-``config_interface._KEY_ROUTES`` / ``KNOWN_CONFIG_KEYS`` answer a DIFFERENT
+``config_keys._KEY_ROUTES`` / ``KNOWN_CONFIG_KEYS`` answer a DIFFERENT
 question — **"where does a ``config set`` of this key land, and is it reachable
 from the CLI?"**. The two lists are therefore NOT duplicates and must not be
 collapsed: the settable surface is a SUBSET of the keyspace (``run_args`` and
@@ -212,7 +212,7 @@ _VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Keys the ARC is mid-retiring (the conformance-test exemptions)
 # ---------------------------------------------------------------------------
 
-#: Spellings still present in ``config_interface.KNOWN_CONFIG_KEYS`` that the
+#: Spellings still present in ``config_keys.KNOWN_CONFIG_KEYS`` that the
 #: SPEC has already retired or renamed. Each names the phase that deletes it.
 #: ``tests/test_settings_keyspace.py`` exempts exactly these and nothing else —
 #: **a SECOND entry means the spec and the settable surface disagree somewhere

@@ -34,7 +34,8 @@ The config engine and the layout tier:
   slot a key's value occupies, for every verb.
 * ``config_keys``     — the CLI-facing key TAXONOMY: which family a key
   spelling belongs to, and the scope/routing tables.  ⚑ NOT the closed-keyspace
-  validator — that is ``settings_keyspace``, which this module calls into.
+  validator — that is ``settings_keyspace``, which this module is CONSTRAINED
+  to defer to (today reached indirectly, via ``settings_prefs``).
 * ``config_interface`` — the unified get/set/reset/show engine behind the
   ``config`` verbs at every scope.
 * ``core_defaults``   — the declarative core category defaults.

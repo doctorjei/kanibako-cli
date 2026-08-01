@@ -3248,7 +3248,7 @@ class TestAgentNodeBindRouting:
     agent tier is DISCRIMINATED, spec §2d / §0 L21.)"""
 
     def test_predicate_matches_node_bind_only(self):
-        from kanibako.settings.config_interface import (
+        from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
             _is_box_agent_key,
             _is_path_category_key,
@@ -3268,7 +3268,7 @@ class TestAgentNodeBindRouting:
         # COLLISION: a bind literally NAMED ``model`` — the ``bindings.ro`` segment
         # disambiguates it from the persona state leaf ``agent.claude.model``. Both
         # predicates fire, but the node-bind is checked FIRST in the dispatch.
-        from kanibako.settings.config_interface import (
+        from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
             _is_persona_agent_key,
         )
@@ -3282,7 +3282,7 @@ class TestAgentNodeBindRouting:
         assert not _is_agent_node_bind_key("agent.claude.endpoint")
 
     def test_box_agent_bind_is_not_a_node_bind(self):
-        from kanibako.settings.config_interface import (
+        from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
             _is_box_agent_key,
         )
@@ -3294,7 +3294,7 @@ class TestAgentNodeBindRouting:
         # CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0 L21), so
         # BOTH the node-bind regex and the ordinary category regex REFUSE it. A
         # discriminated key takes the ordinary category path.
-        from kanibako.settings.config_interface import (
+        from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
             _is_path_category_key,
         )
