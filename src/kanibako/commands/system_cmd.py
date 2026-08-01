@@ -260,11 +260,14 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import canonicalize_agent_ref
     from kanibako.settings.agent_representation import agent_default_bind_keys
-    from kanibako.settings.config_keys import ConfigLevel, is_known_key
+    from kanibako.settings.config_keys import (
+        AGENT_DEFAULT_SUB,
+        ConfigLevel,
+        is_known_key,
+        parse_agent_node_bind_key,
+    )
     from kanibako.settings.config_interface import (
         ConfigAction,
-        AGENT_DEFAULT_SUB,
-        parse_agent_node_bind_key,
         get_config_value,
         parse_config_arg,
         reset_all,
@@ -367,6 +370,15 @@ def _run_system_config(args: argparse.Namespace) -> int:
             key, global_config_path=cf, env_global=env_sys,
             system_settings_path=ssp,
             agents_root=std.agents,
+            # ⚑ The scope is threaded even though every other handler threads it
+            # for a REASON this one does not have: ``get`` consumes command_scope
+            # only for the box-scope redirect, so at the system scope it changes
+            # nothing today (pinned per key family in
+            # tests/test_settings/test_config_dest_parity.py). It is passed because
+            # the destination rule now takes the scope explicitly, and a handler
+            # that withholds it leaves the rule inferring the scope from a path
+            # being non-None -- which is exactly how get and set drifted apart.
+            command_scope=ConfigLevel.system,
         )
         if val is None:
             print(f"{key}: (not set)")
