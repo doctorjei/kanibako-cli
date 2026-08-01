@@ -293,7 +293,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         load_agent_config,
     )
     from kanibako.settings.config import coerce_bool
-    from kanibako.settings.config_interface import is_auto_approve_key
+    from kanibako.settings.config_keys import is_auto_approve_key
     from kanibako.settings.config_io import (
         remove_nested_key,
         write_nested_key,

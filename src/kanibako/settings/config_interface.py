@@ -19,7 +19,6 @@ command modules set before calling in here.
 
 from __future__ import annotations
 
-import re
 import sys
 from dataclasses import fields
 from enum import Enum
@@ -36,9 +35,7 @@ from kanibako.settings.config import (
 from kanibako.agent_ref import parse_agent_ref
 from kanibako.settings.config_keys import (
     AGENT_DEFAULT_SUB,
-    DYNAMIC_PREFIXES,
     KEY_TYPES,
-    KNOWN_CONFIG_KEYS,
     _KEY_ROUTES,
     _SCOPE_WRITE_ALLOWED,
     _SETTINGS_SCOPE_TOKENS,
@@ -51,10 +48,18 @@ from kanibako.settings.config_keys import (
     _is_agent_setting,
     _is_box_agent_key,
     _is_env_key,
+    _is_path_category_key,
     _is_persona_agent_key,
+    _is_pref_key,
+    _is_scope_secret_key,
+    _config_key_refusal,
     _node_secret_display_key,
     _parse_agent_node_secret_key,
     _parse_persona_agent_key,
+    _pref_sections_leaf,
+    _pref_target_error,
+    _pref_write_site_error,
+    _probes_at_set_time,
     _persona_display_key,
     _route_key,
     _scope_direction_error,
@@ -62,7 +67,9 @@ from kanibako.settings.config_keys import (
     box_agent_redirect_key,
     box_agent_retired_error,
     is_auto_approve_key,
+    is_system_path_key,
     parse_agent_node_bind_key,
+    system_key_refusal,
     resolve_key,
     ConfigLevel,
 )
@@ -88,47 +95,6 @@ from kanibako.shellenv import (
     write_env_file,
 )
 from kanibako.utils import confirm_prompt
-
-
-def is_known_key(arg: str) -> bool:
-    """Return True if *arg* looks like a config key (not a project name)."""
-    if arg in KNOWN_CONFIG_KEYS:
-        return True
-    if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
-        return True
-    # pref.<target-key> — the §2h REQUEST family. SHAPE-only here: this is the
-    # positional-vs-key disambiguator, and no project is named ``pref.…``. The
-    # three filters run in the set / get / reset branches.
-    if _is_pref_key(arg):
-        return True
-    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind key
-    # (item-0): a settable key (recognised on the +form too, before canonicalization)
-    # so get/show + the project-name heuristic treat it as a KEY. Checked BEFORE the
-    # persona form so a bind named after a state leaf is recognised as the bind.
-    if _is_agent_node_bind_key(arg):
-        return True
-    # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a): a
-    # settable key (recognised on the +form too, before canonicalization). Checked
-    # here so get/show + the project-name heuristic treat it as a KEY. Also the
-    # NON-agent ``<scope>.secret_path.<VAR>`` scope form.
-    if _is_agent_node_secret_key(arg) or _is_scope_secret_key(arg):
-        return True
-    # agent.<node>.<key> — the per-persona agent key (block B1): a settable key
-    # (recognised on the +form too, before canonicalization) so get/show + the
-    # project-name heuristic treat it as a KEY, never a project name.
-    if _is_persona_agent_key(arg):
-        return True
-    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380): a
-    # settable box-scope key (so the get/show paths + the project-name heuristic
-    # treat it as a KEY, never a project name).
-    if _is_box_agent_key(arg):
-        return True
-    # Category keys (``<scope>.bindings.{ro,rw}.<name>`` / ``caches`` / ``seeded``
-    # / ``shared`` / ``synced``) are settable via ``config set`` (the source-only
-    # RAW repoint). Recognize them here too so the get/show paths + the
-    # project-name heuristic treat a category key as a KEY, never a project name
-    # — the same get-validated/set-unguarded symmetry the H1 fix established.
-    return _is_path_category_key(arg)
 
 
 # ---------------------------------------------------------------------------
@@ -316,221 +282,6 @@ def _node_secret_target(
 # inside the AGENT tier of the real cascade.
 
 
-def _is_system_path_key(key: str) -> bool:
-    """Keys that belong in the bootstrap config file's PATH tables (file-only).
-
-    Covers BOTH the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1)
-    and the STRUCTURAL Layer-2 ``system.*`` path-tier family — the exact
-    :data:`~kanibako.settings.paths.SYSTEM_PATH_DEFAULTS` set that
-    ``resolve_system_paths`` materializes from ``kanibako_config.yaml``'s
-    ``[system]`` table — both live in ``kanibako_config.yaml`` and are
-    structural (file-only).
-
-    The F2/F3 fix: this is a PRECISE family membership check, NOT a
-    ``system.*``-wide catch-all.  A ``system.*`` SETTINGS key (the auth chain
-    ``system.auth.share_allowed``, ``system.agent``, categories, env)
-    is NOT this family — ``resolve_system_paths`` drops unknown ``[system]``
-    entries, so routing such a key to the config file was a write-only no-op;
-    the launch reads them from the system SETTINGS file (``@config.settings``).
-    Those keys now fall through to their settings-tier routing.
-
-    ``system.setup_completed`` IS kept in this family: its shipped reader
-    (``config.read_setup_completed``) reads the ``[system]`` table of
-    ``kanibako_config.yaml`` (where ``setup`` writes it), so the config-file
-    routing/advice is TRUE for it.  (Spec §2g lists it as a settings key —
-    flagged as a spec-vs-code divergence; relocating the reader is out of
-    scope here.)
-    """
-    if key.startswith("config."):
-        # Still consulted on the READ/show path. The set/reset paths now
-        # short-circuit config.* earlier with the ruled refusal (block B2), so this
-        # branch no longer reaches _system_key_refusal for a config.* set/reset.
-        return True
-    if not key.startswith("system."):
-        return False
-    if key == "system.setup_completed":
-        return True
-    # Lazy import (config_interface ↔ paths would cycle at module load).
-    from kanibako.settings.paths import SYSTEM_PATH_DEFAULTS
-
-    return key in SYSTEM_PATH_DEFAULTS
-
-
-def _user_config_file_str() -> "Path | str":
-    """The RESOLVED user bootstrap config file, for refusal messages.
-
-    Rendered (JC-B2-1) so a non-default ``$XDG_CONFIG_HOME`` shows the user's
-    real file.  This is an ERROR path — it must never itself raise: if
-    XDG/``$HOME`` resolution fails (``xdg`` falls back to ``Path.home()``, which
-    raises when ``$HOME`` is unset), fall back to the documented literal default
-    rather than turning a clean refusal into a traceback.
-    """
-    from kanibako.settings.config import config_file_path
-    from kanibako.settings.paths import xdg
-
-    try:
-        return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    except Exception:
-        return "~/.config/kanibako_config.yaml"
-
-
-def _system_key_refusal(key: str) -> str:
-    """Error string refusing a CLI write to a FILE-ONLY ``system.*`` config key.
-
-    STRUCTURAL ``system.*`` path-tier keys (the ``SYSTEM_PATH_DEFAULTS`` family,
-    see :func:`_is_system_path_key`) are layout config, not behavior settings,
-    so they are file-only: editable in the config file (or via ``kanibako
-    setup``) but never via ``config set``/``config reset``.  Points the user at the
-    REAL resolved config file — the ``kanibako_config.yaml`` ``[system]`` table
-    that ``resolve_system_paths`` actually reads — never the command scope's
-    settings file (which would be wrong-file advice: the F2 lesson)."""
-    return (
-        f"Error: '{key}' is a structural config key and is not settable from "
-        f"the CLI. Edit the config file directly:\n  {_user_config_file_str()}\n"
-        f"(or re-run 'kanibako setup')."
-    )
-
-
-def _config_key_refusal(canonical: str, *, action: str) -> str:
-    """Error string refusing a CLI set/reset of a ``config.*`` foundation key.
-
-    RATIONALE (Jei, load-bearing): ``config.*`` keys LOCATE the files everything
-    else is stored in (``config.settings`` IS where the settings file lives;
-    ``config.registry`` IS the registry).  A key cannot live IN the file it
-    locates → they live in the bootstrap config file, resolved BEFORE anything
-    loads.  So the CLI is a *settings* manager: it READS ``config.*`` (to find
-    where to write settings) but NEVER WRITES them — there is no coherent file to
-    write them to.  The bootstrap config file is a HUMAN/ADMIN hand-edited
-    surface.  The message deliberately does NOT mention ``setup`` (naming it would
-    wrongly imply it is how you set a ``config.*`` value).
-
-    *action* is ``"set"`` or ``"reset"`` — selects the verb (a ``set`` can only be
-    done by editing the file; a ``reset`` is a change, so it says "changed") while
-    pointing at the SAME resolved config file.
-
-    The path is RENDERED via :func:`_user_config_file_str` (JC-B2-1: the user's
-    real resolved file, with a raise-proof fallback — see that helper).
-    """
-    config_file = _user_config_file_str()
-    verb = "changed" if action == "reset" else "set"
-    return (
-        f"Error: config.* keys can only be {verb} by editing the configuration "
-        f"file ({config_file})."
-    )
-
-
-# ``<scope>.secret_path.<VAR>`` for the NON-agent scopes (system/workset/box). The
-# AGENT scope form ``agent.<node>.secret_path.<VAR>`` is DISCRIMINATED and routed by
-# ``_is_agent_node_secret_key`` (the node file); this covers the other three, which
-# write a scalar to the COMMAND scope's OWN settings file at ``<scope>.secret_path.<VAR>``
-# (the shape ``_file_partial`` reads into the cascade).
-_SCOPE_SECRET_RE = re.compile(
-    r"^(?P<scope>system|workset|box)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
-)
-
-
-def _is_scope_secret_key(key: str) -> bool:
-    """True iff *key* is a NON-agent ``<scope>.secret_path.<VAR>`` SECRET-category
-    key (system/workset/box) — settable to the command scope's own settings file."""
-    return _SCOPE_SECRET_RE.match(key) is not None
-
-
-def _is_pref_key(key: str) -> bool:
-    """True iff *key* is a ``pref.<target-key>`` REQUEST key (spec §2h).
-
-    SHAPE ONLY — deliberately not a validity test. Its job on the
-    :func:`is_known_key` path is the positional-vs-key DISAMBIGUATOR (is this
-    argument a config key or a project name?), and for that the prefix is both
-    sufficient and correct: no project is named ``pref.something``. The real
-    validation runs in the set / get / reset branches, where a bad request can
-    be reported with a reason instead of silently reinterpreted as a project.
-    """
-    return key.startswith(f"{PREF_ROOT}.")
-
-
-def _pref_level(command_scope: "ConfigLevel | None") -> str | None:
-    """The pref LEVEL name for a command scope, or ``None`` where a pref is
-    illegal (spec §2h L1252-1254 — workset and box ONLY)."""
-    if command_scope is ConfigLevel.box:
-        return "box"
-    if command_scope is ConfigLevel.workset:
-        return "workset"
-    return None
-
-
-def _pref_write_site_error(
-    canonical: str, command_scope: "ConfigLevel | None", *, verb: str = "set",
-) -> str | None:
-    """Refuse a ``pref.*`` WRITE outside the workset / box scopes (spec §2h).
-
-    ⚑ *"Where a pref may be written. Workset (L3.2) and box (L4.2) levels ONLY —
-    never base, system or agent. **This is what BOUNDS the recursion**, so it is
-    a hard rule, not a convenience.* ``config set pref.<key> <value>`` at
-    base/system/agent scope must RAISE, not silently write a dead entry."*
-
-    Checked BEFORE the three TARGET filters: a user at the system scope must be
-    told the FILE is wrong regardless of the target's quality — fixing the target
-    first would only surface this error afterwards.
-
-    Returns an ``Error: …`` string when refused, else ``None``.
-    """
-    if not _is_pref_key(canonical):
-        return None
-    if _pref_level(command_scope) is not None:
-        return None
-    if command_scope is None:
-        return None  # no command-scope context — the guard is skipped, as elsewhere.
-    target = canonical[len(PREF_ROOT) + 1:]
-    scope = target.split(".", 1)[0]
-    hint = (
-        f" Set '{target}' directly at the {scope} scope instead."
-        if scope in ("system", "agent", "workset", "box") else ""
-    )
-    return (
-        f"Error: '{canonical}' cannot be {verb} from the {command_scope.value} "
-        f"scope. A pref is a REQUEST written in a workset or box settings file "
-        f"only (spec §2h) — that restriction is what bounds the resolution "
-        f"recursion.{hint}"
-    )
-
-
-def _pref_target_error(
-    canonical: str, command_scope: "ConfigLevel | None",
-) -> str | None:
-    """Run the three §2h filters on the ``pref.*`` TARGET KEY at SET time.
-
-    Same predicate the launch path applies TO THE KEY. ⚑ The KEY is only half of
-    a request: the VALUE is checked separately by :func:`_pref_value_error`,
-    against the TARGET's shape and resolution. An earlier version of this
-    docstring claimed set-time and launch-time validation were equivalent —
-    they were not, and the gap was real: a scalar at a bind-shaped target, and an
-    unresolvable ``@``-ref, were both accepted here and failed at LAUNCH.
-    """
-    from kanibako.settings.settings_prefs import (
-        PrefRequest,
-        default_valid_agents,
-        validate_pref,
-    )
-
-    level = _pref_level(command_scope)
-    if level is None:
-        return None  # the write-site guard already refused (or there is no scope).
-    target = canonical[len(PREF_ROOT) + 1:]
-    why = validate_pref(
-        PrefRequest(target=target, value=None, level=level),
-        valid_agents=default_valid_agents(),
-    )
-    if why is None:
-        return None
-    return f"Error: '{canonical}' was refused: {why}."
-
-
-def _pref_sections_leaf(canonical: str) -> "tuple[tuple[str, ...], str]":
-    """The nested write location for a pref: ``(("pref", *head), leaf)``."""
-    parts = canonical.split(".")
-    return tuple(parts[:-1]), parts[-1]
-
-
 def _pref_value_error(
     canonical: str,
     value: "str | None",
@@ -627,20 +378,6 @@ def _yaml_skeleton(target: str) -> list[str]:
         lines.append("  " * (i + 1) + f"{seg}:" if i < len(parts) - 1
                      else "  " * (i + 1) + f"{seg}: [<host_src>, <box_dest>]")
     return lines
-
-
-def _is_path_category_key(key: str) -> bool:
-    """True iff *key* is a PATH-TUPLE category key settable via ``config set``.
-
-    The source-only RAW repoint (spec §2a / design §6d / S24) applies to the
-    bind-shaped categories ONLY — ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
-    ``common`` / ``synced`` (a 2-/3-element ``[host_src, box_dest[, options]]``
-    tuple). ``env`` (scalar) is routed by the earlier ``_is_env_key`` branch;
-    ``masks`` (a keyed list) is YAML-only (spec §2a L216) and is NOT matched here.
-    """
-    from kanibako.settings.settings_categories import BIND_KEY_RE
-
-    return BIND_KEY_RE.match(key) is not None
 
 
 def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
@@ -1255,7 +992,7 @@ def get_config_value(
     # config.* / system.* path keys — read the raw set-value from the bootstrap
     # config file's [config]/[system] tables (file-only tier; not a merged-config
     # field).
-    if _is_system_path_key(canonical):
+    if is_system_path_key(canonical):
         cfg = load_merged_config(global_config_path, project_toml)
         return cfg.config_paths.get(canonical)
 
@@ -1290,94 +1027,6 @@ def get_config_value(
             global_config_path if system_settings_path is not None else project_toml
         )
     return read_stored_leaf(read_file, sections, leaf)
-
-
-def _has_dedicated_route(canonical: str) -> bool:
-    """Does SOME ``set_config_value`` branch claim *canonical*?
-
-    ⚑ MIRRORS THE DISPATCH CHAIN in :func:`set_config_value`, in the same order.
-    A branch added there without a term here would make this say "no route" for a
-    key that in fact has one — so the two must be edited together, and
-    ``TestSetDispatchCoverage`` fails if they drift.
-
-    Its ONE job is to keep :func:`_probes_at_set_time` off keys nothing handles,
-    so an unknown key still reaches the routing table at the bottom of the
-    dispatch and is reported as ``unknown config key: <key>`` — the error §0
-    requires, which NAMES the key, rather than a resolution complaint about a
-    value on a key that does not exist.
-    """
-    return (
-        _is_pref_key(canonical)
-        or _is_env_key(canonical)
-        or _is_agent_node_bind_key(canonical)
-        or _is_agent_node_secret_key(canonical)
-        or _is_scope_secret_key(canonical)
-        or _is_persona_agent_key(canonical)
-        or _is_agent_setting(canonical)
-        or _is_box_agent_key(canonical)
-        or _is_path_category_key(canonical)
-        or _is_system_path_key(canonical)
-        or _route_key(canonical) in _KEY_ROUTES
-    )
-
-
-def _probes_at_set_time(canonical: str) -> bool:
-    """Does a ``config set`` of *canonical* run the E3 RESOLUTION probe?
-
-    The test is **"does this value reach the expander"**, NOT "is it a scalar".
-    A value the expander never sees carries no ``@``/``$`` SYNTAX — those
-    characters are DATA in it — so probing would refuse legitimate input with no
-    correct spelling available.
-
-    Excluded, and why:
-
-    * **The docker ``.env`` family (bare ``env.<VAR>``).** It is written VERBATIM
-      by ``shellenv.set_env_var`` and read verbatim into the container env; it
-      never enters the settings snapshot. So ``env.EMAIL=jei@example.com`` and
-      ``env.MY_PATH=$HOME/bin`` are ordinary values — the second deliberately
-      names a GUEST-side variable, which is the whole point of deferral. ⚑ The
-      escape hatch does not help here and must not be suggested: ``\\@`` passes
-      the probe but lands in the file WITH the backslash, because the write is
-      verbatim while only the probe unescapes. There is no CLI spelling that
-      would produce the right value, which is what makes this an exclusion rather
-      than a documented sharp edge.
-    * **The two CATEGORY paths.** They run their own probe with
-      ``is_category=True``, which additionally enforces the source-only and
-      self-resolving rules; probing twice would only duplicate the diagnosis.
-    * **Keys nothing claims.** They must reach the routing table and be reported
-      as an unknown KEY (see :func:`_has_dedicated_route`).
-
-    ⚑ RULED, not incidental — the exclusion is the DOCKER family and nothing
-    more. Every other scalar whose value the expander DOES see stays LOUD:
-    ``box.shell``, ``workset.boxes``, ``<scope>.secret_path.<VAR>`` and the rest
-    all probe, because for them a dangling ref really does resolve to ``""``
-    silently at launch.
-
-    ⚑ The KEYSPACE env arm ``<scope>.env.<VAR>`` (``box.env.FOO``) is a DIFFERENT
-    key from the bare ``env.FOO`` above and is deliberately NOT excluded here — it
-    IS host-expanded at launch (``settings_launch._emit_scope_node`` reads it off
-    the EXPANDED snapshot). It is nonetheless unreachable from ``config set``
-    today for an unrelated reason: no dispatch branch claims it, so it is reported
-    as an unknown key. When a route for it is added it will probe by default,
-    which is the intended direction — do not "fix" that by widening
-    :func:`_is_env_key`, which would silence the arm that needs the check.
-    """
-    if _is_env_key(canonical):
-        return False
-    if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
-        return False
-    if _is_pref_key(canonical):
-        # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and must not run
-        # there: ``expand`` carries the ``pref`` subtree through unexpanded (spec
-        # §2h L1263), so nothing in it is ever resolved and no defect can be
-        # recorded. Worse, applying the candidate at the pref path WRITES the
-        # target's leaf names into a KeyStore, so a target whose leaf is a
-        # RESERVED name (``…common.get``) raised ReservedKeyError straight out of
-        # this function — breaking ``set_config_value``'s "returns an error
-        # string, never raises" contract. The pref route runs the REAL probe at
-        # the TARGET path instead (:func:`_pref_value_error`).
-        return False
-    return _has_dedicated_route(canonical)
 
 
 def set_config_value(
@@ -1435,8 +1084,8 @@ def set_config_value(
     # live in the bootstrap config file, hand-edited by a human/admin. Refused
     # EXPLICITLY here, BEFORE the scope guard, so every command scope gets the same
     # ruled message (not the cross-scope guard message, and not the older generic
-    # _system_key_refusal that mentions `setup`). The READ/show path still consults
-    # _is_system_path_key's config. branch — only set/reset short-circuit here.
+    # system_key_refusal that mentions `setup`). The READ/show path still consults
+    # is_system_path_key's config. branch — only set/reset short-circuit here.
     if canonical.startswith("config."):
         return _config_key_refusal(canonical, action="set")
 
@@ -1766,8 +1415,8 @@ def set_config_value(
     # This is a precise family check (F2): a system.* SETTINGS key (auth chain /
     # system.agent / categories / env) was routed above or falls through to the
     # routing table below — it is never refused here.
-    if _is_system_path_key(canonical):
-        return _system_key_refusal(canonical)
+    if is_system_path_key(canonical):
+        return system_key_refusal(canonical)
 
     # Regular config keys — route via the single known-key table (the H1 fix:
     # an unknown key returns an error string and NEVER raises).  Accept either
@@ -2019,8 +1668,8 @@ def reset_config_value(
     # STRUCTURAL system.* path-tier keys — FILE-ONLY (see set_config_value).
     # The CLI refuses to RESET them too (for symmetry); edit the config file
     # directly or re-run ``kanibako setup``.
-    if _is_system_path_key(canonical):
-        return _system_key_refusal(canonical)
+    if is_system_path_key(canonical):
+        return system_key_refusal(canonical)
 
     # Regular config keys — route via the same known-key table as set/get
     # (no get-validated/set-unguarded asymmetry).

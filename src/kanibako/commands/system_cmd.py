@@ -260,13 +260,12 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import canonicalize_agent_ref
     from kanibako.settings.agent_representation import agent_default_bind_keys
-    from kanibako.settings.config_keys import ConfigLevel
+    from kanibako.settings.config_keys import ConfigLevel, is_known_key
     from kanibako.settings.config_interface import (
         ConfigAction,
         AGENT_DEFAULT_SUB,
         parse_agent_node_bind_key,
         get_config_value,
-        is_known_key,
         parse_config_arg,
         reset_all,
         reset_config_value,
@@ -356,11 +355,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # get's message MATCH set's truth for these keys instead of pretending
             # they do not exist.
             from kanibako.settings.config_interface import (
-                _is_system_path_key,
-                _system_key_refusal,
+                is_system_path_key,
+                system_key_refusal,
             )
-            if _is_system_path_key(key):
-                print(_system_key_refusal(key), file=sys.stderr)
+            if is_system_path_key(key):
+                print(system_key_refusal(key), file=sys.stderr)
                 return 1
             print(f"Error: unknown config key: {key}", file=sys.stderr)
             return 1
