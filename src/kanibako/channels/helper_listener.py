@@ -570,7 +570,7 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     3. CIRCULAR DEPENDENCY.  The seam (``_resolve_launch_categories`` /
        ``_emit_reconciled_mounts`` / ``_category_resolution_inputs``) lives in
        ``commands.start``, which already imports this module
-       (``from kanibako.helper_listener import HelperContext, HelperHub``).  This
+       (``from kanibako.channels.helper_listener import HelperContext, HelperHub``).  This
        module is a lean socket server depending only on container/log/
        settings_resolve/targets.base; importing the seam back the other way would
        introduce a ``commands.start`` ↔ ``helper_listener`` import cycle.

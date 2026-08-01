@@ -1,4 +1,4 @@
-"""Tests for kanibako.helper_client."""
+"""Tests for kanibako.channels.helper_client."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from kanibako.helper_client import HelperConnection, send_request
+from kanibako.channels.helper_client import HelperConnection, send_request
 
 
 @pytest.fixture

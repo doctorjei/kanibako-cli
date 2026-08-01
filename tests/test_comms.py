@@ -92,7 +92,7 @@ class TestLogRotation:
 
     def test_message_log_rotation(self, tmp_path):
         """MessageLog rotates when file exceeds threshold."""
-        from kanibako.helper_listener import MessageLog, _LOG_MAX_BYTES
+        from kanibako.channels.helper_listener import MessageLog, _LOG_MAX_BYTES
 
         log_path = tmp_path / "messages.jsonl"
         # Pre-fill with data just under the threshold.
@@ -110,7 +110,7 @@ class TestLogRotation:
 
     def test_message_log_no_rotation_under_threshold(self, tmp_path):
         """MessageLog does not rotate small files."""
-        from kanibako.helper_listener import MessageLog
+        from kanibako.channels.helper_listener import MessageLog
 
         log_path = tmp_path / "messages.jsonl"
         log = MessageLog(log_path)

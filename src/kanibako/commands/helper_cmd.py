@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from kanibako.config import config_file_path
-from kanibako.helpers import (
+from kanibako.channels.helpers import (
     SpawnBudget,
     check_spawn_allowed,
     child_budget,
@@ -285,7 +285,7 @@ def run_spawn(args: argparse.Namespace) -> int:
     # Launch container via socket if helpers are enabled
     container_name = None
     if _check_helpers_enabled():
-        from kanibako.helper_client import send_request
+        from kanibako.channels.helper_client import send_request
         try:
             resp = send_request(_socket_path(), {
                 "action": "spawn",
@@ -365,7 +365,7 @@ def run_stop(args: argparse.Namespace) -> int:
     # Stop container via socket if running
     container_name = state.get("container_name")
     if container_name and _check_helpers_enabled():
-        from kanibako.helper_client import send_request
+        from kanibako.channels.helper_client import send_request
         try:
             send_request(_socket_path(), {
                 "action": "stop",
@@ -395,7 +395,7 @@ def run_cleanup(args: argparse.Namespace) -> int:
     state = _read_state(helpers_dir, helper_num)
     container_name = state.get("container_name")
     if container_name and _check_helpers_enabled():
-        from kanibako.helper_client import send_request
+        from kanibako.channels.helper_client import send_request
         try:
             send_request(_socket_path(), {
                 "action": "stop",
@@ -460,7 +460,7 @@ def run_respawn(args: argparse.Namespace) -> int:
 
     # Relaunch container via socket if helpers are enabled
     if _check_helpers_enabled():
-        from kanibako.helper_client import send_request
+        from kanibako.channels.helper_client import send_request
         try:
             resp = send_request(_socket_path(), {
                 "action": "spawn",
@@ -494,7 +494,7 @@ def run_send(args: argparse.Namespace) -> int:
         print("Helpers not enabled (no socket found).", file=sys.stderr)
         return 1
 
-    from kanibako.helper_client import send_request
+    from kanibako.channels.helper_client import send_request
     try:
         resp = send_request(_socket_path(), {
             "action": "send",
@@ -518,7 +518,7 @@ def run_broadcast(args: argparse.Namespace) -> int:
         print("Helpers not enabled (no socket found).", file=sys.stderr)
         return 1
 
-    from kanibako.helper_client import send_request
+    from kanibako.channels.helper_client import send_request
     try:
         resp = send_request(_socket_path(), {
             "action": "broadcast",
@@ -540,7 +540,7 @@ def run_register(args: argparse.Namespace) -> int:
     if not _check_helpers_enabled():
         return 1
 
-    from kanibako.helper_client import send_request
+    from kanibako.channels.helper_client import send_request
     try:
         resp = send_request(_socket_path(), {
             "action": "register",

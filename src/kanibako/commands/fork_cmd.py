@@ -36,7 +36,7 @@ def run_fork(args: argparse.Namespace) -> int:
         )
         return 1
 
-    from kanibako.helper_client import send_request
+    from kanibako.channels.helper_client import send_request
 
     try:
         resp = send_request(socket_path, {"action": "fork", "name": args.name})

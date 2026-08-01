@@ -1,4 +1,4 @@
-"""Tests for kanibako.helper_listener."""
+"""Tests for kanibako.channels.helper_listener."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kanibako.helper_listener import (
+from kanibako.channels.helper_listener import (
     HelperContext,
     HelperHub,
     MessageLog,

@@ -1521,7 +1521,7 @@ def _start_helper_hub(
     ``_run_container``.  Extends ``extra_mounts`` in place exactly as the inline
     block did and returns the started ``HelperHub``.
     """
-    from kanibako.helper_listener import HelperContext, HelperHub, MessageLog
+    from kanibako.channels.helper_listener import HelperContext, HelperHub, MessageLog
     from kanibako.targets.base import Mount as _HMount
 
     # Socket must live in a short path to stay under the AF_UNIX
@@ -1535,7 +1535,7 @@ def _start_helper_hub(
     # project name reused across worksets gets a distinct socket.  The
     # combined identity is bounded so a long name can't overflow
     # ``sun_path``; reattach recomputes the same deterministic name.
-    from kanibako.channels import workset_name_token
+    from kanibako.channels.channels import workset_name_token
     _box_name = proj.name if proj.name else short_hash(proj.project_hash)
     _ws_token = workset_name_token(proj)
     socket_path = _run_dir / bounded_socket_name(
@@ -4870,7 +4870,7 @@ def _launch_snapshot_inputs(
     # meta_runtime_floor so the snapshot's meta.runtime.ws_name holds it and
     # meta.workset.name anchors into it (§2c); the SAME token drives the channel
     # partition (channels.box_channel_addresses below), so the two cannot drift.
-    from kanibako import channels as _channels
+    from kanibako.channels import channels as _channels
 
     ws_token = _channels.workset_name_token(proj)
     meta_runtime = settings_launch_module.meta_runtime_floor(
@@ -6116,7 +6116,7 @@ def _seed_channel_files(std, proj) -> None:
     Keeps ``_rotate_file`` on each ``broadcast.md`` (A5 — parity with the legacy
     ``broadcast.log`` rotation).
     """
-    from kanibako import channels as _ch
+    from kanibako.channels import channels as _ch
 
     chat_dirs = [std.channels_chat]
     wch = _ch.workset_channel_paths(proj, std)

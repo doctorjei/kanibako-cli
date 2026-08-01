@@ -1578,10 +1578,10 @@ def _state_ws_token(state: ProjectState) -> str:
 
     ``__PRIMARY__`` for primary mode, the named workset's name for named mode,
     ``__STANDALONE__`` for standalone.  Mirrors
-    :func:`kanibako.channels.workset_name_token` but reads off the lifecycle
+    :func:`kanibako.channels.channels.workset_name_token` but reads off the lifecycle
     :class:`ProjectState` (mode + loaded ``ws``) rather than a ``ProjectPaths``.
     """
-    from kanibako.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
+    from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 
     if state.mode == BoxMode.standalone:
         return WS_TOKEN_STANDALONE
@@ -1617,7 +1617,7 @@ def _relocate_channel_partition(
     """
     import sys
 
-    from kanibako.channels import own_partition_dirs
+    from kanibako.channels.channels import own_partition_dirs
 
     try:
         old_token = _state_ws_token(old)
