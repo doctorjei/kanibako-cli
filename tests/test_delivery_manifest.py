@@ -89,7 +89,7 @@ from kanibako.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
 from kanibako.targets.base import AgentInstall, PluginDescriptor
-from kanibako.templates import (
+from kanibako.launch.templates import (
     _packaged_agent_store,
     _packaged_base_template,
     _packaged_shared_bundle,

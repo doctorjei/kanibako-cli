@@ -1,4 +1,4 @@
-"""Tests for kanibako.box_identity (standalone box name generation)."""
+"""Tests for kanibako.launch.box_identity (standalone box name generation)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import box_identity, kuid
+from kanibako import kuid
+from kanibako.launch import box_identity
 
 # A fixed VALID kuid prefix (odd parity) and a fixed INVALID one (even parity,
 # in-alphabet, non-sentinel) used across the canonical/verbatim tests. See

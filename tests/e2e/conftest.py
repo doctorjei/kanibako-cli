@@ -476,7 +476,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     # the subprocess, so host + subprocess digests match.
     from kanibako.config_interface import write_system_value
     from kanibako.targets import discover_targets
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
     write_system_value(
         kanibako_config,
         "templates_stamp",
@@ -637,7 +637,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     # template_staleness_gate hard-errors every `kanibako start` (see e2e_env).
     from kanibako.config_interface import write_system_value
     from kanibako.targets import discover_targets
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
     write_system_value(
         kanibako_config,
         "templates_stamp",

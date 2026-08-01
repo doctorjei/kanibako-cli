@@ -115,7 +115,8 @@ class TestStandaloneImport:
     ):
         # A standalone tree carrying a stored workset.kuid: import composes the
         # LIVE name as <kuid>_<dir leaf> (P8b kuid-first), NOT project.name.
-        from kanibako import box_identity, kuid
+        from kanibako import kuid
+        from kanibako.launch import box_identity
         from kanibako.config_io import dump_doc
 
         box_data = project_dir / "box_data"

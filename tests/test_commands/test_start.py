@@ -121,7 +121,7 @@ class TestCheckBoxComponents:
         RESOLUTION layer: a standalone root is only recognised as a box when its
         settings.yaml is present, so a missing marker → 'not a box' there (never
         double-checked at launch)."""
-        from kanibako import box_resolve
+        from kanibako.launch import box_resolve
 
         root = tmp_path / "sbox"
         (root / "box_data").mkdir(parents=True)
@@ -3098,7 +3098,7 @@ class TestBoxShellLaunch:
         with start_mocks() as m:
             m.target.default_entrypoint = None  # NoAgentTarget
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ) as m_resolve:
                 _run_container(
@@ -3125,7 +3125,7 @@ class TestBoxShellLaunch:
         with start_mocks() as m:
             m.target.default_entrypoint = None
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ):
                 _run_container(
@@ -3146,7 +3146,7 @@ class TestBoxShellLaunch:
         with start_mocks() as m:
             m.target.default_entrypoint = None
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ):
                 _run_container(
@@ -3166,7 +3166,7 @@ class TestBoxShellLaunch:
         with start_mocks() as m:
             m.target.default_entrypoint = None
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("sh", "sh"),
             ) as m_resolve:
                 _run_container(
@@ -3192,7 +3192,7 @@ class TestBoxShellLaunch:
         with start_mocks() as m:
             # Default fixture target has default_entrypoint == "claude".
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 _run_container(
@@ -3226,7 +3226,7 @@ class TestBoxShellLaunch:
         """A real agent ephemeral launch passes the agent entrypoint, not box.shell."""
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 _run_container(
@@ -3267,7 +3267,7 @@ class TestDetachKeepAlive:
         with the resolved SHELL as the forward-compat fallback keep-alive."""
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ) as m_resolve:
                 rc = _run_container(
@@ -3302,7 +3302,7 @@ class TestDetachKeepAlive:
         """Detach returns WITHOUT an interactive attach (no ``runtime.exec``)."""
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ):
                 rc = _run_container(
@@ -3325,7 +3325,7 @@ class TestDetachKeepAlive:
         """Detach never tears the box down (it must stay Up for later use)."""
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ):
                 _run_container(
@@ -3565,7 +3565,7 @@ class TestDetachKeepAlive:
         passes persistent=False (defensive guard)."""
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ):
                 rc = _run_container(
@@ -3654,7 +3654,7 @@ class TestStartDetachedHelper:
         from kanibako.commands.start import start_detached
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ):
                 rc = start_detached(None)
@@ -3807,7 +3807,7 @@ class TestRunShellBoxShell:
         from kanibako.commands.start import run_shell
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args())
@@ -3820,7 +3820,7 @@ class TestRunShellBoxShell:
         from kanibako.commands.start import run_shell
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args(entrypoint="/usr/bin/fish"))
@@ -3832,7 +3832,7 @@ class TestRunShellBoxShell:
         from kanibako.commands.start import run_shell
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args(shell_args=["echo", "hi"]))
@@ -3846,7 +3846,7 @@ class TestRunShellBoxShell:
         from kanibako.commands.start import run_shell
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ) as m_resolve:
                 run_shell(self._args())
@@ -3871,7 +3871,7 @@ class TestRunShellBoxShell:
                 "agent must not be resolved in box_shell_mode"
             )
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args())
@@ -3890,7 +3890,7 @@ class TestRunShellBoxShell:
                 "shell must not resolve an agent"
             )
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ):
                 rc = run_shell(self._args())
@@ -3903,7 +3903,7 @@ class TestRunShellBoxShell:
         from kanibako.commands.start import run_shell
         with start_mocks() as m:
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args(persistent=True))
@@ -3919,7 +3919,7 @@ class TestRunShellBoxShell:
         with start_mocks() as m:
             m.runtime.is_running.return_value = True
             with patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args())
@@ -5858,7 +5858,7 @@ class TestPersonaLoadOrErrorUnmasked:
             patch("kanibako.commands.start.ContainerRuntime", return_value=runtime),
             patch("kanibako.commands.start.resolve_rig", return_value=rig),
             patch("kanibako.commands.start.load_registry", return_value={}),
-            patch("kanibako.shells.capture_image_shell"),
+            patch("kanibako.launch.shells.capture_image_shell"),
             patch("kanibako.runtime.freshness.check_image_freshness"),
         ):
             yield runtime

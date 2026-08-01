@@ -7,7 +7,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.box_identity import validate_box_name
+from kanibako.launch.box_identity import validate_box_name
 from kanibako.commands.flags import add_null_flag
 from kanibako.config import (
     BOX_META_FILE,
@@ -528,7 +528,8 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
     :class:`ProjectError` on a conflict; returns ``None`` when the home is free —
     the common case, leaving a normal create byte-identical.
     """
-    from kanibako import journal, registry_store
+    from kanibako import registry_store
+    from kanibako.launch import journal
 
     box_dir = std.boxes / name
 
@@ -1738,7 +1739,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
     readopt never clobbers a live box.
     """
     from kanibako import registry_store
-    from kanibako.box_resolve import standalone_settings_present
+    from kanibako.launch.box_resolve import standalone_settings_present
 
     kind = entry.get("kind")
     workspace = entry.get("workspace")
@@ -1826,7 +1827,7 @@ def run_register(args: argparse.Namespace) -> int:
     (they keep their own lifecycle).
     """
     from kanibako import registry_store
-    from kanibako.box_resolve import standalone_settings_present
+    from kanibako.launch.box_resolve import standalone_settings_present
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)

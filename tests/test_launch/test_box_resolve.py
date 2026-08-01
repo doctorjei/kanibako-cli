@@ -1,4 +1,4 @@
-"""Tests for the new-model box identity derivation (``kanibako.box_resolve``).
+"""Tests for the new-model box identity derivation (``kanibako.launch.box_resolve``).
 
 These build boxes DIRECTLY in the NEW-format registries (per-workset
 ``workset_registry`` ``boxes:`` membership + the global ``standalone:`` index) —
@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako import box_resolve, registry_store, workset_registry
+from kanibako import registry_store, workset_registry
+from kanibako.launch import box_resolve
 from kanibako.config import BOX_META_FILE
 from kanibako.paths import BoxMode, _STANDALONE_META_DIR
 

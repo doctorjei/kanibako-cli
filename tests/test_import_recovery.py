@@ -21,7 +21,8 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import import_reconcile, journal, registry_store
+from kanibako import import_reconcile, registry_store
+from kanibako.launch import journal
 from kanibako.paths import (
     BoxMode,
     detect_project_mode,

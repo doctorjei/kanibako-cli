@@ -52,7 +52,7 @@ class CategoryCollisionError(ConfigError):
 class TemplateScopeError(ConfigError):
     """A template/seed copy tried to write OUTSIDE its scope's allowed surface.
 
-    Raised by the one shared copier (:func:`kanibako.templates.copy_tree`) on any of
+    Raised by the one shared copier (:func:`kanibako.launch.templates.copy_tree`) on any of
     the four enforcement points spec §2a requires of it:
 
     * an entry whose first path component is not in the SCOPE'S WHITELIST

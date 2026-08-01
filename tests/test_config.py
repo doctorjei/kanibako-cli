@@ -179,7 +179,7 @@ class TestTemplateStalenessGate:
 
     def _current_digest(self):
         from kanibako.targets import discover_targets
-        from kanibako.templates import packaged_templates_digest
+        from kanibako.launch.templates import packaged_templates_digest
 
         return packaged_templates_digest(sorted(discover_targets()))
 

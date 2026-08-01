@@ -268,7 +268,7 @@ def _read_stamp(tmp_home):
 
 def _current_digest():
     from kanibako.targets import discover_targets
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
 
     return packaged_templates_digest(sorted(discover_targets()))
 
@@ -306,7 +306,7 @@ def test_template_step_forced_flag_applies_and_stamps(tmp_home, config_file):
 
 def test_template_step_nothing_to_do_stamps_silently(tmp_home, config_file, capsys):
     """Already current → stamp silently (clears the gate), no prompt."""
-    from kanibako.templates import install_packaged_templates
+    from kanibako.launch.templates import install_packaged_templates
 
     std = _resolve_std()
     install_packaged_templates(std, setup_cmd._known_target_names())

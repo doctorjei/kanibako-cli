@@ -117,7 +117,7 @@ def _write_templates_stamp(names: list[str]) -> None:
     after a refresh is applied, when nothing is stale, or on an informed decline.
     """
     from kanibako.config_interface import write_system_value
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
 
     cf, _ = _settings_paths()
     cf.parent.mkdir(parents=True, exist_ok=True)
@@ -150,7 +150,7 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
     """
     from kanibako.config import load_config
     from kanibako.paths import load_std_paths
-    from kanibako.templates import install_packaged_templates, plan_template_refresh
+    from kanibako.launch.templates import install_packaged_templates, plan_template_refresh
 
     cf, _ = _settings_paths()
     std = load_std_paths(load_config(cf))

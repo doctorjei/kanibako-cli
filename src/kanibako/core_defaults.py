@@ -46,7 +46,7 @@ def packaged_data_dir(*parts: str) -> Traversable:
     ``files("kanibako.data").joinpath(*parts)`` expression produced (callers wrap
     it in ``Path(str(...))`` as before).  Notably it centralizes the rom-root
     subpath literal :data:`ROM_ROOT_PARTS` (``("global", "rom")``) that is
-    resolved in both this module and :mod:`kanibako.templates`.
+    resolved in both this module and :mod:`kanibako.launch.templates`.
     """
     return importlib.resources.files("kanibako.data").joinpath(*parts)
 
@@ -545,7 +545,7 @@ def assert_canon_bind_seed_disjoint(
     ⚑ SCOPE OF WHAT IS ACTUALLY CHECKED TODAY. The only caller
     (:func:`rom_default_categories`) passes the PACKAGED BOX-HOME template walk
     (``template/box/home``) — i.e. layer 1 of the three in
-    :func:`kanibako.templates.template_seed_defaults`. The AGENT and WORKSET layers
+    :func:`kanibako.launch.templates.template_seed_defaults`. The AGENT and WORKSET layers
     (``@agent.<a>.template`` / ``@workset.template``, both user-repointable and both
     resolved at seed time, not here) are NOT covered, and neither are a plugin's
     ``default_seeds()``. This function does not decide that scope, it only enforces
@@ -558,7 +558,7 @@ def assert_canon_bind_seed_disjoint(
     packaged template ROOT happened to BE the home-relative root, so passing its walk
     worked by coincidence; it no longer is (``box/home/...``), and passing the root
     walk today would make every comparison a guaranteed miss — a guard that runs,
-    passes, and checks nothing. Hence :func:`kanibako.templates.
+    passes, and checks nothing. Hence :func:`kanibako.launch.templates.
     packaged_box_home_template`, which names the level that IS home-relative.
 
     PREFIX CONTAINMENT, not set intersection.  A whole-directory bind shadows a
@@ -651,7 +651,7 @@ def rom_default_categories() -> dict[str, tuple[str, str, str]]:
     containment against the template seed tree) — the shared entry point the
     seeds/handbook sub-phase extends.
     """
-    from kanibako import templates
+    from kanibako.launch import templates
 
     rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
     if not rom_root.is_dir():
@@ -822,7 +822,7 @@ def canon_default_categories(
 
     Returns a MIXED table — the five ``box.bindings.ro.canon_hb_*`` bind tuples PLUS
     the agent-scope SCALAR keys their ``@``-refs resolve against.  Mixing the two is
-    the established shape (:func:`kanibako.templates.template_seed_defaults` does the
+    the established shape (:func:`kanibako.launch.templates.template_seed_defaults` does the
     same for the seed layers and their source keys): both land in the SAME snapshot
     floor, the scalar resolves the ref, and a user override of the scalar wins by
     cascade precedence and reroutes the bind.
