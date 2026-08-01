@@ -1281,9 +1281,10 @@ class TestPackagingGlobs:
 
     def _patterns(self) -> list[str]:
         import tomllib
-        from pathlib import Path as _P
 
-        root = _P(__file__).resolve().parents[1] / "pyproject.toml"
+        from tests.support.repo import REPO_ROOT
+
+        root = REPO_ROOT / "pyproject.toml"
         data = tomllib.loads(root.read_text())
         return data["tool"]["setuptools"]["package-data"]["kanibako.data"]
 

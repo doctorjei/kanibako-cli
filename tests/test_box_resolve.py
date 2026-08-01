@@ -275,7 +275,9 @@ def test_box_resolve_is_wired_into_the_resolvers():
     nothing" additive guard."""
     import subprocess
 
-    src = Path(__file__).resolve().parents[1] / "src"
+    from tests.support.repo import REPO_ROOT
+
+    src = REPO_ROOT / "src"
     out = subprocess.run(
         ["grep", "-rln", "--include=*.py", "box_resolve", str(src)],
         capture_output=True, text=True,
