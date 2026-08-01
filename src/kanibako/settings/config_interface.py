@@ -32,9 +32,17 @@ from kanibako.settings.config import (
     read_agent_settings,
     unset_project_config_key,
 )
-from kanibako.agent_ref import parse_agent_ref
+from kanibako.settings.config_dest import (
+    DestRoute,
+    _write_dest,
+    _read_dest,
+    noun_settings_file,
+    check_agent_node,
+    _node_bind_target,
+    _node_secret_target,
+    _persona_agent_target,
+)
 from kanibako.settings.config_keys import (
-    AGENT_DEFAULT_SUB,
     KEY_TYPES,
     _KEY_ROUTES,
     _SCOPE_WRITE_ALLOWED,
@@ -54,8 +62,6 @@ from kanibako.settings.config_keys import (
     _is_scope_secret_key,
     _config_key_refusal,
     _node_secret_display_key,
-    _parse_agent_node_secret_key,
-    _parse_persona_agent_key,
     _pref_sections_leaf,
     _pref_target_error,
     _pref_write_site_error,
@@ -84,7 +90,7 @@ from kanibako.settings.config_io import (
     write_nested_key,
     write_root_key,
 )
-from kanibako.errors import ConfigError, UserCancelled
+from kanibako.errors import UserCancelled
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.settings_store import ReservedKeyError
 from kanibako.shellenv import (
@@ -146,140 +152,6 @@ def parse_config_arg(
         key, _, value = arg.partition("=")
         return (ConfigAction.set, key.strip(), value.strip())
     return (ConfigAction.get, arg.strip(), "")
-
-
-def _persona_agent_target(
-    canonical: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | str | None":
-    """Resolve a canonical persona key to its FILE write/read location.
-
-    Returns one of:
-
-    * ``(path, sections, leaf)`` — the route into ``agents/<node>/settings.yaml``
-      (``path``), the nested file table (``("self",)`` for a flat state leaf,
-      ``("self", "env")`` for an env pointer), and the leaf name;
-    * an ``"Error: ..."`` string — a MALFORMED node ref (validated, never routed);
-    * ``None`` — not a persona key, OR *agents_root* was not supplied (the per-
-      persona store is global under ``config.agents`` and is only reachable when
-      the caller threads its root — the system scope).
-
-    The node is taken VERBATIM from *canonical* (already ``℘``-canonicalized by
-    :func:`resolve_key`) and used AS-IS for the dir — it is only VALIDATED here
-    (via :func:`parse_agent_ref`), never re-swapped.  So breaking the
-    :func:`resolve_key` swap routes a ``+`` key to a ``agents/<node-with-+>/``
-    dir the resolver never reads (the canonicalization mutation the gate proves).
-    """
-    parsed = _parse_persona_agent_key(canonical)
-    if parsed is None or agents_root is None:
-        return None
-    node, tail = parsed
-    # ``default`` is the RESERVED any-agent tier name (read_agent_settings: "no
-    # real agent may be named default") — the launch NEVER reads an
-    # ``agents/default/`` dir as a node, so writing one would breach the
-    # keystore-maps-to-a-real-key rule + foot-gun a user who wants the any-agent
-    # default (that is the BARE key, e.g. ``system set model=…``). Refuse it.
-    if node == AGENT_DEFAULT_SUB:
-        return (
-            f"Error: 'default' is the reserved any-agent tier, not a persona "
-            f"node; set the any-agent default with the bare key "
-            f"(e.g. '{tail}') instead."
-        )
-    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
-
-    try:
-        parse_agent_ref(node)  # validate only (raises on a malformed ref)
-    except ConfigError as exc:
-        return f"Error: {exc}"
-    path = agent_settings_path(agents_root, node)
-    sections, leaf = agent_file_route(tail, node)
-    return path, sections, leaf
-
-
-def _node_bind_target(
-    canonical: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | None":
-    """Resolve a canonical per-node DESCRIPTOR bind key
-    ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0) to its FILE read/reset
-    location — the get/reset symmetry twin of the set path (which routes through
-    ``_set_category_value`` → ``repoint_host_src``).
-
-    Returns ``(path, sections, leaf)`` via the file-shape SoT
-    :func:`agent_config.agent_file_route`: the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (*path*), and the nested table the bind write
-    targets — ``self.<node>.bindings.<ro|rw>.<name>`` split into ``(sections, leaf)``
-    (the SAME route the set path passes to ``repoint_host_src`` as ``dest_parts``),
-    so get/reset read/remove precisely where set wrote (the shape ``_agent_partial``
-    reads back at launch). The node appears BOTH in the dir path AND in the nested
-    key — that is the launch read shape, not a bug.
-
-    Returns ``None`` when *canonical* is not a node bind, *agents_root* was not
-    threaded (the per-node store is global under ``config.agents`` — only reachable
-    at the SYSTEM scope, mirroring ``_persona_agent_target``), the node is the
-    reserved any-agent tier, or the node ref is MALFORMED (validate-only via
-    :func:`parse_agent_ref`, never re-swapped).
-    """
-    parsed = parse_agent_node_bind_key(canonical)
-    if parsed is None or agents_root is None:
-        return None
-    node, _cat, _name = parsed
-    if node == AGENT_DEFAULT_SUB:
-        return None
-    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
-
-    try:
-        parse_agent_ref(node)  # validate only (raises on a malformed ref)
-    except ConfigError:
-        return None
-    path = agent_settings_path(agents_root, node)
-    # ``_cat`` is the FULL ``bindings.ro`` / ``bindings.rw`` segment (not the bare
-    # ``ro``/``rw``), so the tail is ``{cat}.{name}`` — no extra ``bindings.`` prefix.
-    sections, leaf = agent_file_route(f"{_cat}.{_name}", node)
-    return path, sections, leaf
-
-
-def _node_secret_target(
-    canonical: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | None":
-    """Resolve a canonical ``agent.<node>.secret_path.<VAR>`` key (SECRET category)
-    to its FILE write/read/reset location — the get/set/reset symmetry twin.
-
-    Returns ``(path, sections, leaf)`` via the file-shape SoT
-    :func:`agent_config.agent_file_route`: the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (*path*) and the DISCRIMINATED nested table
-    ``self.<node>.secret_path`` (*sections*) with *leaf* = the VAR — EXACTLY the shape
-    ``_agent_partial`` reads into the launch cascade and ``load_agent_config`` reads
-    back into ``AgentConfig.secret_path``. The node appears BOTH in the dir path AND
-    the nested key — that is the launch read shape, not a bug (same as
-    ``_node_bind_target``).
-
-    Returns ``None`` when *canonical* is not a node secret key, *agents_root* was not
-    threaded (the per-node store is global under ``config.agents`` — only reachable at
-    the SYSTEM scope, mirroring ``_node_bind_target``), the node is the reserved
-    any-agent tier, or the node ref is MALFORMED (validate-only; never re-swapped).
-    """
-    parsed = _parse_agent_node_secret_key(canonical)
-    if parsed is None or agents_root is None:
-        return None
-    node, _var = parsed
-    if node == AGENT_DEFAULT_SUB:
-        return None
-    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
-
-    try:
-        parse_agent_ref(node)  # validate only (raises on a malformed ref)
-    except ConfigError:
-        return None
-    path = agent_settings_path(agents_root, node)
-    sections, leaf = agent_file_route(f"secret_path.{_var}", node)
-    return path, sections, leaf
-
-
-# ⚑ ``system.default_agent``'s four-site SPECIAL CASE is GONE (P7). The key is
-# now ``system.agent`` (spec §2g) and routes like any other scope-prefixed
-# settings key, through ``_KEY_ROUTES`` → the ``system:`` table of the settings
-# file. The special case existed only because the old spelling was stored in the
-# reserved ``agent.default`` table, a location that made it an undeclared key
-# inside the AGENT tier of the real cascade.
 
 
 def _pref_value_error(
@@ -430,6 +302,41 @@ def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     )
 
 
+def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
+    """The path tier as ``(config_foundation, floor)``, RAISING on failure.
+
+    The Layer-1 ``config.*`` foundation goes to the resolve context (so an
+    ``@config.*`` host_src routes there — JC-2) and the Layer-2 ``system.*``
+    paths become the cascade FLOOR (so an ``@system.*`` host_src resolves from
+    the snapshot).
+
+    ⚑ THE FAILURE ARM IS THE CALLER'S, DELIBERATELY.  Its two callers disagree
+    about what a resolution failure means and they are BOTH right: a ``config
+    set`` must still work with an empty floor, because refusing to write when the
+    path tier is unreadable would make the tool useless for repairing exactly
+    that; while a post-reset "effective value" computed on an empty floor would
+    NAME A VALUE THAT IS NOT THE ONE the cascade resolves, and the honest answer
+    there is to say nothing. So this function raises and each caller catches what
+    it means. Collapsing the two arms into one would be a behavior change on one
+    of them, and which one is correct is a spec question, not a refactor's call.
+    """
+    from kanibako.settings.config import config_file_path
+    from kanibako.settings.paths import load_system_config, xdg
+
+    floor: dict[str, object] = {}
+    config_foundation: dict[str, str] = {}
+    user_config = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    data_home = xdg("XDG_DATA_HOME", ".local/share")
+    for dotted, path in load_system_config(
+        user_config, data_home=data_home, home=Path.home(),
+    ).items():
+        if dotted.startswith("config."):
+            config_foundation[dotted] = str(path)
+        elif dotted.startswith("system."):
+            floor[dotted] = str(path)
+    return config_foundation, floor
+
+
 def _category_set_lookups(
     config_path: Path,
     *,
@@ -485,33 +392,16 @@ def _category_set_lookups(
     Resolution NEVER touches the stored file — it writes RAW (§0); the snapshot is
     in-memory and for the CHECK only.
     """
-    from kanibako.settings.config import config_file_path
-    from kanibako.settings.paths import load_system_config, xdg
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge
 
-    # The path tier as the resolution context: the Layer-1 ``config.*`` foundation
-    # goes into ``ctx.config`` (so an ``@config.*`` host_src routes there — JC-2),
-    # and the Layer-2 ``system.*`` paths into the cascade FLOOR (so an
-    # ``@system.*`` host_src resolves from the snapshot). A resolution failure here
-    # must NOT crash a config set — fall back to empty (sibling refs still
-    # resolve).
-    floor: dict[str, object] = {}
-    config_foundation: dict[str, str] = {}
+    # The path tier as the resolution context. A resolution failure here must NOT
+    # crash a config set — fall back to empty (sibling refs still resolve).
     try:
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        user_config = config_file_path(config_home)
-        data_home = xdg("XDG_DATA_HOME", ".local/share")
-        for dotted, path in load_system_config(
-            user_config, data_home=data_home, home=Path.home(),
-        ).items():
-            if dotted.startswith("config."):
-                config_foundation[dotted] = str(path)
-            elif dotted.startswith("system."):
-                floor[dotted] = str(path)
+        config_foundation, floor = _path_tier_split()
     except Exception:
-        pass
+        config_foundation, floor = {}, {}
 
     # The agent STORE-ROOT anchors (spec §2d L515), from the SAME builder the launch
     # floor uses. Load-bearing for the bare-relative refusal: that error tells the
@@ -716,21 +606,18 @@ def _set_category_value(
     # never reads as a node. Checked FIRST, before the cascade/value validation:
     # whether the KEY exists precedes whether its VALUE is good, so the refusal is
     # deterministic instead of racing a must-exist error.
-    if _is_agent_node_bind_key(canonical):
-        _parsed_node = parse_agent_node_bind_key(canonical)
-        if _parsed_node is not None:
-            _node = _parsed_node[0]
-            if _node == AGENT_DEFAULT_SUB:
+    _node_parse = parse_agent_node_bind_key(canonical)
+    if _node_parse is not None:
+        _refusal = check_agent_node(_node_parse[0])
+        if _refusal is not None:
+            if _refusal.reason == "reserved":
                 return (
                     f"Error: 'default' is the reserved any-agent tier, not a persona "
                     f"node; a per-node descriptor bind must name a real agent node "
-                    f"(e.g. 'agent.<persona>+<harness>.{_parsed_node[1]}."
-                    f"{_parsed_node[2]}')."
+                    f"(e.g. 'agent.<persona>+<harness>.{_node_parse[1]}."
+                    f"{_node_parse[2]}')."
                 )
-            try:
-                parse_agent_ref(_node)  # validate only (raises on a malformed ref)
-            except ConfigError as exc:
-                return f"Error: {exc}"
+            return f"Error: {_refusal.detail}"
 
     def _host_exists(raw: str) -> bool:
         # A plain literal host path; ``~`` is home-relative. (A token-bearing
@@ -777,14 +664,12 @@ def _set_category_value(
     # lands exactly where ``_agent_partial`` / ``_node_bind_target`` read it. Every
     # other scope bind (box/workset/system) writes at its canonical split (dest=None).
     dest_parts: "tuple[str, ...] | None" = None
-    if _is_agent_node_bind_key(canonical):
-        parsed = parse_agent_node_bind_key(canonical)
-        if parsed is not None:
-            node, _cat, _name = parsed  # _cat = full "bindings.ro"/"bindings.rw"
-            from kanibako.settings.agent_config import agent_file_route
+    if _node_parse is not None:
+        node, _cat, _name = _node_parse  # _cat = full "bindings.ro"/"bindings.rw"
+        from kanibako.settings.agent_config import agent_file_route
 
-            secs, leaf = agent_file_route(f"{_cat}.{_name}", node)
-            dest_parts = (*secs, leaf)
+        secs, leaf = agent_file_route(f"{_cat}.{_name}", node)
+        dest_parts = (*secs, leaf)
 
     try:
         repoint_host_src(
@@ -860,12 +745,15 @@ def get_config_value(
     if _box_agent_redirect is not None:
         canonical = _box_agent_redirect
 
-    # The NOUN's settings file — the SAME per-noun selection ``set``/``reset``
-    # use (``settings_dest``): the system settings file at SYSTEM scope, else the
-    # command's own settings file (box/workset ``project_toml``).  A plain get
-    # reads ONLY this file for settings keys.
-    noun_file = (
-        system_settings_path if system_settings_path is not None else project_toml
+    # The NOUN's settings file and the noun's own CONFIG file — the two inputs the
+    # destination rule composes.  ⚑ ``get`` is the only verb carrying BOTH files as
+    # separate parameters (``global_config_path`` + ``project_toml``) where the
+    # write verbs carry one ``config_path``, so the mapping onto the shared rule
+    # happens here, once.  Collapsing the two parameters is a signature change and
+    # belongs to the verb rewrite, not to a move.
+    noun_file = noun_settings_file(project_toml, system_settings_path)
+    own_config = (
+        global_config_path if system_settings_path is not None else project_toml
     )
 
     # pref.<target-key> — return the REQUEST stored at this noun (spec §2h
@@ -946,9 +834,7 @@ def get_config_value(
         # and are resolved by the launch-time effective-state cascade.  For the
         # SYSTEM scope these are SETTINGS that live in the system settings file
         # (system_settings_path), not the kanibako_config.yaml CONFIG file.
-        setting_src = (
-            system_settings_path if system_settings_path is not None else project_toml
-        )
+        setting_src = noun_file
         if setting_src and setting_src.exists():
             settings = read_agent_settings(setting_src, "default")
             if canonical in settings:
@@ -999,34 +885,25 @@ def get_config_value(
     # Regular config keys — route via the SAME known-key table that set/reset
     # use (no get-validated/set-unguarded asymmetry).  An unknown key returns
     # None (rendered "not set").
-    routed = _route_key(canonical)
-    route = _KEY_ROUTES.get(routed)
-    if route is None:
-        return None
-
     # Read the value STORED AT THIS NOUN (F6 + the F2/F3-class sibling). The OLD
     # path returned ``getattr(load_merged_config(...), flat)`` — the merged
     # dataclass, which fabricates the built-in DEFAULT when the noun stored
     # nothing (the F6 lie: ``box get box.image`` printing the default image) and
     # folds in the GLOBAL config file (returning another tier's value). Under the
     # get model a plain get reads ONLY the file ``set`` wrote to, at the routed
-    # ``(sections, leaf)`` slot. Mirror ``set``/``reset``'s ``dest`` selection
-    # EXACTLY: a scope-prefixed SETTINGS key ({system,agent,workset,box}.*,
-    # including a downward key) lands in — and is read from — the NOUN's settings
-    # file (``settings_dest``); a SCOPELESS key (vault.*, allow_helpers) lands in
-    # the command's own config file (``project_toml`` at box/workset,
-    # ``global_config_path`` at SYSTEM). (F2/F3 sibling: a downward ``box.image``
-    # set at the system noun lands in the system settings file and is read back
-    # HERE.) Absent → ``None`` ("(not set)"); the resolved-with-defaults value is
-    # the ``--effective`` cascade (``show``).
-    sections, leaf = route
-    if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS:
-        read_file = noun_file
-    else:
-        read_file = (
-            global_config_path if system_settings_path is not None else project_toml
-        )
-    return read_stored_leaf(read_file, sections, leaf)
+    # ``(sections, leaf)`` slot — and it reads through the SAME rule site
+    # ``set``/``reset`` write through, so "get reads where set wrote" is now
+    # structural rather than a claim two copies had to keep agreeing on.
+    # An unknown key (no family claims it) reads ``None`` ("(not set)"), exactly
+    # as the routing-table miss did before. Absent → ``None``; the
+    # resolved-with-defaults value is the ``--effective`` cascade (``show``).
+    dest = _read_dest(
+        canonical, command_scope=command_scope,
+        config_path=own_config, settings_path=system_settings_path,
+    )
+    if dest is None:
+        return None
+    return read_stored_leaf(dest.path, dest.sections, dest.leaf)
 
 
 def set_config_value(
@@ -1207,10 +1084,6 @@ def set_config_value(
         if isinstance(scalar_verdict, _SetError):
             return f"Error: {scalar_verdict.message}"
 
-    settings_dest = (
-        system_settings_path if system_settings_path is not None else config_path
-    )
-
     # pref.<target-key> — the §2h REQUEST. Validated with the SAME three filters
     # the launch applies (so a stored request cannot fail every future launch),
     # then written to the COMMAND scope's settings file at the NESTED
@@ -1234,8 +1107,12 @@ def set_config_value(
         )
         if value_err is not None:
             return value_err
-        sections, leaf = _pref_sections_leaf(canonical)
-        write_nested_key(settings_dest, sections, leaf, value)
+        dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
+        )
+        assert dest is not None  # the pref family always has a slot
+        write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={'null' if value is None else value}"
 
     # env.* keys
@@ -1317,10 +1194,12 @@ def set_config_value(
     # scope). settings_dest = the command scope's settings file (config_path at box/
     # workset; the system settings file at SYSTEM — never the Layer-1 config file).
     if _is_scope_secret_key(canonical):
-        parts = canonical.split(".")  # [<scope>, "secret_path", <VAR>]
-        write_nested_key(
-            settings_dest, (parts[0], "secret_path"), parts[2], value,
+        dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
         )
+        assert dest is not None  # the scope-secret family always has a slot
+        write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={value}"
 
     if _is_persona_agent_key(canonical):
@@ -1340,7 +1219,12 @@ def set_config_value(
     # ``agent.default`` tier (per-agent overrides live under ``agent.<name>``).
     # SYSTEM scope routes to the system settings file (settings_dest).
     if _is_agent_setting(canonical):
-        write_nested_key(settings_dest, ("agent", "default"), canonical, value)
+        dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
+        )
+        assert dest is not None  # the bare-agent family always has a slot
+        write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={value}"
 
     # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380). An
@@ -1396,10 +1280,17 @@ def set_config_value(
         # not fix it either (it is not the node file), so this behavior-only fix
         # leaves the broken case exactly as it found it rather than moving it to a
         # second wrong file. Fixing it is its own change: route it to the node file.
-        _cat_scope = canonical.split(".", 1)[0]
+        # ⚑ Both arms now come from ``_write_dest``, which reproduces this exact
+        # split and says so at the rule site — the broken arm is preserved, not
+        # inherited by accident.
+        _cat_dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
+        )
+        assert _cat_dest is not None  # a category key always has a slot
         return _set_category_value(
             canonical, value,
-            config_path=config_path if _cat_scope == "agent" else settings_dest,
+            config_path=_cat_dest.file,
             system_path=cascade_system_path,
             agent_path=cascade_agent_path,
             workset_path=cascade_workset_path,
@@ -1425,7 +1316,6 @@ def set_config_value(
     route = _KEY_ROUTES.get(routed)
     if route is None:
         return f"Error: unknown config key: {key}"
-    sections, leaf = route
     typed = _coerce_value(routed, value)  # the H2 fix (real bool/etc.)
     if isinstance(typed, str) and KEY_TYPES.get(routed):
         # _coerce_value signalled a parse error (it only returns a str for a
@@ -1439,15 +1329,15 @@ def set_config_value(
     # settings file (``@config.settings``) — settings keys never land in the
     # Layer-1 kanibako_config.yaml (spec §1). Non-scope keys (allow_helpers) and
     # system.* regular keys keep their historical config_path slot.
-    dest = (
-        settings_dest
-        if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
-        else config_path
+    dest = _write_dest(
+        canonical, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
     )
-    if sections:
-        write_nested_key(dest, sections, leaf, typed)
+    assert dest is not None  # ``route`` above proved the routing table claims it
+    if dest.sections:
+        write_nested_key(dest.file, dest.sections, dest.leaf, typed)
     else:
-        write_root_key(dest, leaf, typed)
+        write_root_key(dest.file, dest.leaf, typed)
     return f"Set {_dot_to_flat(routed)}={'null' if value is None else value}"
 
 
@@ -1533,15 +1423,11 @@ def reset_config_value(
     if bare_err is not None:
         return bare_err
 
-    settings_dest = (
-        system_settings_path if system_settings_path is not None else config_path
-    )
-
     # pref.<target-key> — remove the REQUEST from this noun's settings file
     # (symmetric with the set/get branches: reset clears exactly where set wrote).
     if _is_pref_key(canonical):
-        sections, leaf = _pref_sections_leaf(canonical)
-        if remove_nested_key(settings_dest, sections, leaf):
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return f"Cleared {canonical}"
         return f"No override for {canonical}"
 
@@ -1596,8 +1482,8 @@ def reset_config_value(
     # <scope>.secret_path.<VAR> (system/workset/box) — remove the stored pointer
     # from the command scope's settings file (symmetric with set/get).
     if _is_scope_secret_key(canonical):
-        parts = canonical.split(".")
-        if remove_nested_key(settings_dest, (parts[0], "secret_path"), parts[2]):
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
@@ -1623,7 +1509,8 @@ def reset_config_value(
     # target settings — reset the any-agent ``agent.default`` tier (SYSTEM scope
     # routes to the system settings file).
     if _is_agent_setting(canonical):
-        if remove_nested_key(settings_dest, ("agent", "default"), canonical):
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
@@ -1652,15 +1539,13 @@ def reset_config_value(
     # a caller that omits the registry) → ``None`` → the cleared-only form, same
     # information as the old plain "Reset" but via the honest formatter.
     if _is_path_category_key(canonical):
-        tail = canonical.split(".")
-        # Removed from the file the category SET branch WRITES — the SAME
-        # scope-token rule (``settings_dest`` for a file scope; ``config_path`` for
-        # the per-node AGENT scope), so set and reset can never name different files.
-        # It removed from ``config_path`` unconditionally before, which at SYSTEM is
-        # the kanibako_config.yaml CONFIG file: neither where set wrote nor where get
-        # reads.
-        _cat_dest = config_path if tail[0] == "agent" else settings_dest
-        if remove_nested_key(_cat_dest, tuple(tail[:-1]), tail[-1]):
+        # Removed from the file the category SET branch WRITES — literally the
+        # same call, so set and reset can no longer name different files even in
+        # principle. It removed from ``config_path`` unconditionally before, which
+        # at SYSTEM is the kanibako_config.yaml CONFIG file: neither where set
+        # wrote nor where get reads.
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
             floor = _floor_bind_display(canonical, default_categories)
             return _honest_reset_message(canonical, command_scope, floor)
         return f"No override for {canonical}"
@@ -1677,19 +1562,14 @@ def reset_config_value(
     route = _KEY_ROUTES.get(routed)
     if route is None:
         return f"Error: unknown config key: {key}"
-    sections, leaf = route
-    # Symmetric with set_config_value: a scope-prefixed SETTINGS key is removed
-    # from the COMMAND scope's settings file (== config_path at box/workset;
-    # the system settings file at SYSTEM).
-    dest = (
-        settings_dest
-        if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
-        else config_path
-    )
+    # Symmetric with set_config_value BY CONSTRUCTION: the same rule site picks
+    # the file, so a scope-prefixed SETTINGS key is removed from exactly the file
+    # the set wrote it to.
+    dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
     removed = (
-        remove_nested_key(dest, sections, leaf)
-        if sections
-        else remove_root_key(dest, leaf)
+        remove_nested_key(dest.file, dest.sections, dest.leaf)
+        if dest.sections
+        else remove_root_key(dest.file, dest.leaf)
     )
     flat = _dot_to_flat(routed)
     if removed:
@@ -1709,7 +1589,7 @@ def reset_config_value(
         # test that picks ``dest`` above (the write path and the read path agree).
         effective = (
             _effective_after_reset(
-                routed, sections, leaf,
+                routed, dest.sections, dest.leaf,
                 agent_name=cascade_agent_name,
                 system_path=cascade_system_path,
                 agent_path=cascade_agent_path,
@@ -1718,9 +1598,32 @@ def reset_config_value(
             )
             if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
             else None
-        )
+        )  # noqa: E501 — the token test stays here: it asks whether the key READS
+        # through the cascade, not where it is stored (see the comment above).
         return _honest_reset_message(flat, command_scope, effective)
     return f"No override for {flat}"
+
+
+def _reset_dest(
+    canonical: str,
+    command_scope: "ConfigLevel | None",
+    config_path: Path,
+    system_settings_path: "Path | None",
+) -> DestRoute:
+    """``reset``'s destination — the SAME route ``set`` wrote through.
+
+    A thin adapter over :func:`config_dest._write_dest` so each reset branch reads
+    as one line. It asserts the route exists because every branch that calls it
+    has already established its family, and a family with no slot would mean the
+    dispatch and the rule site disagree — which is a bug to surface, not to route
+    around.
+    """
+    dest = _write_dest(
+        canonical, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
+    )
+    assert dest is not None
+    return dest
 
 
 def _honest_reset_message(
@@ -1788,28 +1691,16 @@ def _effective_after_reset(
         p is None for p in (system_path, agent_path, workset_path, box_path)
     ):
         return None
-    from kanibako.settings.config import config_file_path
-    from kanibako.settings.paths import load_system_config, xdg
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge
     from kanibako.settings.settings_store import Bind, KeyStore
 
-    # The path tier (Layer-1 config.* foundation into ctx.config, Layer-2 system.*
-    # into the base FLOOR) — identical to _category_set_lookups; a resolution
-    # failure must not break a reset (fall back to empty → keep cleared-only form).
-    floor: dict[str, object] = {}
-    config_foundation: dict[str, str] = {}
+    # The path tier — identical inputs to the set-time probe; a resolution failure
+    # must not break a reset, and an "effective" computed without the floor would
+    # name a value the cascade does not resolve, so we keep the cleared-only form.
     try:
-        user_config = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        data_home = xdg("XDG_DATA_HOME", ".local/share")
-        for dotted, path in load_system_config(
-            user_config, data_home=data_home, home=Path.home(),
-        ).items():
-            if dotted.startswith("config."):
-                config_foundation[dotted] = str(path)
-            elif dotted.startswith("system."):
-                floor[dotted] = str(path)
+        config_foundation, floor = _path_tier_split()
     except Exception:
         return None
 
@@ -1999,10 +1890,8 @@ def reset_all(
 
     # Clear target settings.  SYSTEM scope keeps these in
     # the system settings file (settings_dest); box/workset use config_path.
-    settings_dest = (
-        system_settings_path if system_settings_path is not None else config_path
-    )
-    if settings_dest.exists():
+    settings_dest = noun_settings_file(config_path, system_settings_path)
+    if settings_dest is not None and settings_dest.exists():
         data = load_doc(settings_dest)
         agent_tbl = data.get("agent")
         if isinstance(agent_tbl, dict):
@@ -2353,9 +2242,7 @@ def show_config(
     out = file or sys.stdout
     # The file agent SETTINGS are read from for display: system settings file for
     # the SYSTEM scope, else the level's own config_path (box/workset).
-    settings_src = (
-        system_settings_path if system_settings_path is not None else config_path
-    )
+    settings_src = noun_settings_file(config_path, system_settings_path)
 
     if effective:
         # Show all resolved values

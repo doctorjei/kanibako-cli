@@ -29,6 +29,8 @@ The config engine and the layout tier:
 * ``config_io``       — centralized YAML load/dump for every kanibako config
   document (both layers), plus the document mutators the config verbs write
   through.
+* ``config_dest``     — the ONE destination rule: which file and which nested
+  slot a key's value occupies, for every verb.
 * ``config_keys``     — the CLI-facing key TAXONOMY: which family a key
   spelling belongs to, and the scope/routing tables.  ⚑ NOT the closed-keyspace
   validator — that is ``settings_keyspace``, which this module calls into.
@@ -83,6 +85,7 @@ __all__ = [
     "agent_select",
     "config",
     "config_interface",
+    "config_dest",
     "config_io",
     "config_keys",
     "core_defaults",
