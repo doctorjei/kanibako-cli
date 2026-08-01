@@ -449,7 +449,7 @@ class TestDescriptor:
         assert sb.flag == ()
         assert sb.secure_flag == ()
         # goose persists auto_approve uniformly: the persisted default is redeemed
-        # via setting_key="auto_approve" (spec §2d L655).
+        # via setting_key="auto_approve" (spec §2d).
         assert sb.setting_key == "auto_approve"
 
     def test_settings_model_provider_and_endpoint_env(self):

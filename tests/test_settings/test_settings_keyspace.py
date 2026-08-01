@@ -64,7 +64,7 @@ def test_authoritative_agent_surface_is_valid(key):
 
 
 def test_new_name_in_a_parametric_family_is_legal():
-    """§2h L1225-1228 — VALIDITY, not EXISTENCE.
+    """§2h — VALIDITY, not EXISTENCE.
 
     A NEW name inside a parametric family is exactly what a user may want to
     add via a pref. An EXISTENCE test would permit only modifying keys that
@@ -82,7 +82,7 @@ def test_fabrication_is_still_rejected():
 
 
 def test_bare_agent_key_is_not_a_key():
-    """§0 L21 / §2d — the agent tier is DISCRIMINATED; a bare
+    """§0 / §2d — the agent tier is DISCRIMINATED; a bare
     ``agent.<category>.<name>`` must be REFUSED, not quietly widened."""
     assert not valid("agent.bindings.rw.x")
     assert not valid("agent.common.plugins")
@@ -90,14 +90,14 @@ def test_bare_agent_key_is_not_a_key():
 
 
 def test_arm_less_binding_is_not_a_key():
-    """spec §2d L960-964 — bindings are declared per ARM."""
+    """spec §2d — bindings are declared per ARM."""
     r = reason("agent.claude.bindings.thing")
     assert "per ARM" in r
     assert not valid("box.bindings.thing")
 
 
 def test_reserved_leaf_names_rejected():
-    """spec §0 L168-173 — a leaf may not be named after a public dict method."""
+    """spec §0 — a leaf may not be named after a public dict method."""
     assert "RESERVED" in reason("box.env.get")
     assert "RESERVED" in reason("agent.claude.common.items")
     assert "dunder" in reason("box.env.__init__")
@@ -110,7 +110,7 @@ def test_is_valid_agent_segment_accepts_default_and_members():
 
 
 def test_non_active_agent_is_valid():
-    """§2h L1221 — the test is 'is it a VALID agent', NOT 'is it the ACTIVE
+    """§2h — the test is 'is it a VALID agent', NOT 'is it the ACTIVE
     agent': pre-configuring an agent you may switch to is allowed."""
     assert valid("agent.goose.model")
     assert valid("agent.codex.auto_approve")
@@ -163,7 +163,7 @@ def test_meta_families_are_valid(key):
 
 
 def test_meta_derived_rejects_an_invalid_declaration_key():
-    """spec §0 L94-100 — meta.derived.<declaration-key>; the declaration must
+    """spec §0 — meta.derived.<declaration-key>; the declaration must
     itself be a key, else the derived name means nothing."""
     assert "declaration key is invalid" in reason("meta.derived.zippity.wibble")
 
@@ -173,7 +173,7 @@ def test_unknown_namespace_rejected():
 
 
 def test_workset_has_no_mailboxes_channel():
-    """§2f L1139 — mailboxes aggregate at SYSTEM only."""
+    """§2f — mailboxes aggregate at SYSTEM only."""
     assert valid("system.channels.mailboxes")
     assert not valid("workset.channels.mailboxes")
 
@@ -265,7 +265,7 @@ def test_retiring_keys_are_all_invalid_today():
 
 
 def test_declared_agent_leaves_cover_the_spec_2d_default_tier():
-    """Spot-check against spec §2d L957-1013 so a silent deletion is caught."""
+    """Spot-check against spec §2d so a silent deletion is caught."""
     assert {
         "auto_approve", "allow_helpers", "continue_mode", "bootstrap", "model",
         "run_args", "transform_settings", "endpoint", "template", "canon",

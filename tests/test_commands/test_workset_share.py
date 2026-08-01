@@ -91,7 +91,7 @@ class TestShareAdd:
         self, config_file, tmp_home, workset, capsys
     ):
         """T6 — a bare-relative host source is resolved against the working set
-        root AT WRITE TIME and STORED absolute (spec §2a L474-486).
+        root AT WRITE TIME and STORED absolute (spec §2a).
 
         The documented convenience is preserved (same input, same mount — see
         ``test_list_effective_relative_joins_root``); what changes is the ARTIFACT.
@@ -118,7 +118,7 @@ class TestShareAdd:
         self, config_file, tmp_home, workset, src
     ):
         """A source that already resolves on its own is stored UNTOUCHED — the
-        root is a default for RELATIVE sources, not a universal law (§2a L518-525).
+        root is a default for RELATIVE sources, not a universal law (§2a).
         """
         rc = run_share_add(_add_args(bind=f"{src}:/home/agent/data"))
         assert rc == 0

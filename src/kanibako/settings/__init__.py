@@ -2,7 +2,7 @@
 
 The single route by which anything is bound, copied, shared or synced into a
 box, and the single surface by which a user configures it.  Spec:
-``specs/settings-keyspace-1.6.0-target.md``.
+``specs/settings-keyspace-1.8.0.md``.
 
 The resolver chain, in build order:
 

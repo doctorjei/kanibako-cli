@@ -53,7 +53,7 @@ class BoxMode(Enum):
 
 
 # The STANDALONE box-store dir name.  It is ``@meta.box.path`` for a standalone box
-# (the empty leaf of ``@workset.boxes``, spec §2c L759) and half of the §5 detection
+# (the empty leaf of ``@workset.boxes``, spec §2c) and half of the §5 detection
 # marker (``box_data/`` dir + the ROOT ``settings.yaml``).  Defined here, at the top,
 # because ``_box_settings_files`` below needs it and it is a LAYOUT constant, not a
 # detail of the detection helper that used to own it.
@@ -313,7 +313,7 @@ def _box_settings_files(
     """THE ``(box_tier, workset_tier)`` settings-file derivation (spec §2c).
 
     ONE expression, spelled ONCE.  ``meta.box.settings`` is the UNIFORM
-    ``@meta.box.path/settings.yaml`` in EVERY mode (spec §2c ALL PROJECTS L817), so
+    ``@meta.box.path/settings.yaml`` in EVERY mode (spec §2c ALL PROJECTS), so
     the box tier is ALWAYS a real path — never ``None``:
 
     * **primary / named** — box tier = the box's own ``<metadata_path>/settings.yaml``
@@ -321,7 +321,7 @@ def _box_settings_files(
       ``workset_settings_path(group)`` (the workset root's ``settings.yaml``).
     * **standalone** — ``@meta.box.path`` is the ``box_data/`` marker dir (the empty
       leaf of ``@workset.boxes``), so the box tier is
-      ``<root>/box_data/settings.yaml`` — **ABSENT BY DEFAULT** (spec §5 L1407): an
+      ``<root>/box_data/settings.yaml`` — **ABSENT BY DEFAULT** (spec §5): an
       absent file is an empty tier, and ``config_io.load_doc`` yields ``{}`` for it,
       so a standalone box with no box file resolves byte-identically to one with no
       box tier at all.  The workset tier is the ROOT ``<root>/settings.yaml`` — the
@@ -2535,7 +2535,7 @@ def establish_standalone(
        NON-default box-scope ``box.enable_vault`` into the BOX tier
        ``<root>/box_data/settings.yaml`` — the SAME file ``config set box.*`` writes,
        so create and set can never disagree.  A default-vault box therefore writes NO
-       box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§5 L1407).  NO
+       box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§5).  NO
        ``project:``/``resolved:`` identity is written — the name/mode/workspace derive
        from ``registry.standalone`` + the live kuid;
     3. registers the box in ``registry.standalone`` (``box_name`` → *root*).

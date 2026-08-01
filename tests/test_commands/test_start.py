@@ -332,7 +332,7 @@ class TestResolveBeforeImage:
 
 class TestBootstrapNoneInRunContainer:
     """`none` opt-out at the _run_container consumer: the AGENT-scope ``bootstrap``
-    value resolves to ``none`` (spec §2d L579) and forces a clean error under
+    value resolves to ``none`` (spec §2d) and forces a clean error under
     persistent mode, so no caller can reach the bootstrap-wrap with `none`."""
 
     def _kwargs(self, **over):
@@ -391,7 +391,7 @@ class TestBootstrapNoneInRunContainer:
 
 class TestEffectiveBootstrapResolution:
     """`_effective_bootstrap` resolves the AGENT-scope ``bootstrap`` behavior key
-    (spec §2d L579) off the settings snapshot, with the ``tmux`` consumer default —
+    (spec §2d) off the settings snapshot, with the ``tmux`` consumer default —
     the relocation of the retired box-scope ``box.bootstrap_program``.  It resolves
     exactly like ``model`` / ``auto_approve``: the ``agent.default`` tier lives in the
     SYSTEM settings file (a box/workset file's ``agent.*`` is an upward write, dropped

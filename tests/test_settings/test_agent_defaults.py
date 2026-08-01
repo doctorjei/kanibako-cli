@@ -1,5 +1,5 @@
 """Tests for :mod:`kanibako.settings.agent_defaults` — the ABSTRACT-category DECLARATION
-ROOTING (spec §2a L474-525).
+ROOTING (spec §2a).
 
 The rule under test: an author writes a bare LEAF in a plugin's defaults file, and
 the LOADER stores the full self-resolving ``@meta.agent.<a>.path/<category>/<leaf>``.
@@ -100,7 +100,7 @@ class TestLoadCommonRooting:
         ["/abs/dir", "~/tdir", "$XDG_CACHE_HOME/x", "@system.cache/tweakcc"],
     )
     def test_self_resolving_source_is_stored_verbatim(self, declfile, src):
-        """An ALREADY self-resolving source is NOT root-joined (spec §2a L518-525
+        """An ALREADY self-resolving source is NOT root-joined (spec §2a
         — the root is a default for RELATIVE sources, not a universal law).
 
         (Mutation: drop the prefix test in ``root_relative_source`` → each of

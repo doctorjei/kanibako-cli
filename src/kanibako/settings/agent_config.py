@@ -76,7 +76,7 @@ def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# The per-agent HOST LAYOUT of the ABSTRACT categories (spec §2a L487-525)      #
+# The per-agent HOST LAYOUT of the ABSTRACT categories (spec §2a)      #
 # --------------------------------------------------------------------------- #
 #
 # THE single source of the agent-store category layout. Both consumers read it
@@ -86,7 +86,7 @@ def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
 # no duplicated shared data).
 
 #: category -> the FIXED sub-dirname under the per-agent store root.
-#: "The root dirname is FIXED MACHINERY, not a key" (spec §2a L512-517): it is not
+#: "The root dirname is FIXED MACHINERY, not a key" (spec §2a): it is not
 #: user-settable, because every reasonable want is served better by an absolute
 #: ``bindings`` entry or by moving the scope root (``config.agents``), both of
 #: which ARE keys.
@@ -130,23 +130,23 @@ def agent_category_root_ref(agent: str, category: str) -> str:
     """The self-resolving ``@``-ref an abstract *category*'s sources root at.
 
     ``@meta.agent.<agent>.path/<dirname>`` — the AGENT row of the spec's
-    DECLARATION-ROOT table (§2a L487-517), read from the single copy of that table
+    DECLARATION-ROOT table (§2a), read from the single copy of that table
     in :data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`. This is what a
     loader STORES, so the stored value resolves on its own with no layer prepending
-    anything later (§2a L474-486).
+    anything later (§2a).
     """
     root = DECLARATION_ROOT_REF["agent"].format(agent=agent)
     return f"{root}/{agent_category_dirname(category)}"
 
 
 #: The TOKEN prefixes that make a ``host_src`` resolve on its own when UNESCAPED
-#: (spec §2a L474-486: ``~``, ``$var`` or an ``@``-ref). A leading ``/`` is handled
+#: (spec §2a: ``~``, ``$var`` or an ``@``-ref). A leading ``/`` is handled
 #: separately — see :func:`is_self_resolving`.
 _SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ("~", "$", "@")
 
 
 def is_self_resolving(src: str) -> bool:
-    r"""Whether *src* resolves on its own (spec §2a L474-486).
+    r"""Whether *src* resolves on its own (spec §2a).
 
     True iff *src* is ABSOLUTE, or begins with an UNESCAPED ``~`` / ``$`` / ``@``.
     Anything else is a BARE RELATIVE leaf: meaningful only under a root, and a
@@ -177,13 +177,13 @@ def is_self_resolving(src: str) -> bool:
 def root_relative_source(src: str, root_ref: str) -> str:
     """Root a BARE RELATIVE *src* under *root_ref*; return it unchanged otherwise.
 
-    THE declaration-time rooting, implemented ONCE (spec §2a L474-525): a
+    THE declaration-time rooting, implemented ONCE (spec §2a): a
     self-resolving source (:func:`is_self_resolving`) is emitted VERBATIM; a bare
     relative leaf becomes ``<root_ref>/<src>``.
 
     ⚑ An ABSOLUTE (or ``~`` / ``$var`` / ``@``-ref) source in an abstract category
     is LEGAL and is NOT root-joined — the root is a DEFAULT FOR RELATIVE SOURCES,
-    not a universal law (spec §2a L518-525; the spec's own ``caches.transform``
+    not a universal law (spec §2a; the spec's own ``caches.transform``
     worked example is an ``@system.cache``-rooted identity mount).
 
     Applied ONLY by the ABSTRACT-category declaration loaders.

@@ -116,7 +116,7 @@ def effective_safe_mode_off(
 
     * *secure* (``-S``) -> ``False`` (safe mode ON, bypass OFF) — wins over everything.
     * *autonomous* (``-A``) -> ``True`` (bypass ON) — the per-launch override.
-    * else the persisted *auto_approve* key (spec §2d L556
+    * else the persisted *auto_approve* key (spec §2d
       ``agent.default.auto_approve | true``, resolved off the launch snapshot and
       DEFAULTING True when unset): ``True`` -> bypass ON (permissive), ``False`` ->
       safe.  This is the redeemed persisted default; the per-launch ``-S``/``-A``

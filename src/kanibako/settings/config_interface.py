@@ -185,7 +185,7 @@ def _pref_value_error(
       set time; the pref route must too, or it is a hole in the same wall.
     * **The E3 resolution probe must run at the TARGET.** Probing at
       ``pref.<target>`` is a NO-OP by construction: ``expand`` carries the
-      ``pref`` subtree through unexpanded (spec §2h L1263), so no ``@``-ref in it
+      ``pref`` subtree through unexpanded (spec §2h), so no ``@``-ref in it
       is ever resolved and no defect can be recorded. ``pref.agent.claude.template
       @typo`` was therefore accepted and then silently DROPPED the target at
       launch. Applying the candidate at the target path is what makes the probe
@@ -206,7 +206,7 @@ def _pref_value_error(
     # checked against the installed agents. §2h validates the TARGET KEY, and
     # its own agent rule is about the DISCRIMINATOR in ``agent.*.**`` — *"the
     # agent test is 'is it a VALID agent', NOT 'is it the ACTIVE agent' — so
-    # pre-configuring an agent you may switch to is allowed"* (§2h L1221-1222).
+    # pre-configuring an agent you may switch to is allowed"* (§2h).
     # An unknown NAME here surfaces at agent RESOLUTION (P7), with the error that
     # subsystem already owns, rather than being pre-judged by the config writer.
 
@@ -409,7 +409,7 @@ def _category_set_lookups(
     except Exception:
         config_foundation, floor = {}, {}
 
-    # The agent STORE-ROOT anchors (spec §2d L515), from the SAME builder the launch
+    # The agent STORE-ROOT anchors (spec §2d), from the SAME builder the launch
     # floor uses. Load-bearing for the bare-relative refusal: that error tells the
     # user to spell an abstract-category source as
     # ``@meta.agent.<a>.path/<category>/<name>``, and without this the very value the
@@ -980,7 +980,7 @@ def set_config_value(
     if canonical.startswith("config."):
         return _config_key_refusal(canonical, action="set")
 
-    # ``pref.*`` WRITE-SITE guard (spec §2h L1252-1254) — BEFORE the three TARGET
+    # ``pref.*`` WRITE-SITE guard (spec §2h) — BEFORE the three TARGET
     # filters and before the scope guard. A pref is legal only in a workset or box
     # settings file, and that restriction is what BOUNDS the resolution recursion,
     # so it is a hard rule rather than a convenience. Checked ahead of the target
@@ -1267,7 +1267,7 @@ def set_config_value(
     # existing tuple at the COMMAND-scope file (``repoint_host_src``), preserving
     # ``box_dest`` + options RAW. Source-only: it REPOINTS an existing bind, never
     # creates one. ``env`` (scalar) was handled above; ``masks`` is YAML-only
-    # (spec §2a L216) — not a tuple, so a repoint is refused as non-category.
+    # (spec §2a) — not a tuple, so a repoint is refused as non-category.
     if _is_path_category_key(canonical):
         # Narrowed by the --null route guard above (a repoint has no null form).
         assert value is not None

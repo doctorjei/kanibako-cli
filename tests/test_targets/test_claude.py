@@ -488,7 +488,7 @@ class TestDefaultShares:
     The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
     in the box home bind, fresh per box); plugins + cache are now category
     ``agent.claude.common.*`` defaults ROOTED AT DECLARATION under the agent store
-    root ``@meta.agent.claude.path`` (spec §2a L487-517).
+    root ``@meta.agent.claude.path`` (spec §2a).
     """
 
     def test_declares_plugins_and_cache(self):
@@ -496,7 +496,7 @@ class TestDefaultShares:
         common_binds = t.default_common()
         # STRUCTURED form (spec §2a): each value is a (host_src, box_dest) tuple,
         # NOT a colon-joined string.  The host_src is the STORED, fully
-        # self-resolving @-ref — no layer prepends a root later (§2a L474-486).
+        # self-resolving @-ref — no layer prepends a root later (§2a).
         assert common_binds == {
             "agent.claude.common.plugins": (
                 "@meta.agent.claude.path/common/plugins",
@@ -509,7 +509,7 @@ class TestDefaultShares:
         }
 
     def test_share_values_are_self_resolving_host_src(self):
-        """host_src RESOLVES ON ITS OWN (spec §2a L474-486).
+        """host_src RESOLVES ON ITS OWN (spec §2a).
 
         ⚑ The pre-P3 form of this test asserted ``not host_src.startswith("/")``,
         which an ``@``-ref also satisfies — it would have passed VACUOUSLY over the

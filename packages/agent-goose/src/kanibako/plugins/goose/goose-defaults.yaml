@@ -1,5 +1,5 @@
 # goose AGENT defaults — the declarative source of truth for the goose plugin's
-# default-set (P6c coalesce; settings-keyspace-1.6.0-target.md §2d agent.goose.*).
+# default-set (P6c coalesce; settings-keyspace-1.8.0.md §2d agent.goose.*).
 #
 # This file holds goose's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery bind, launch grammar, settings routing, container env, cred-file
@@ -61,7 +61,7 @@ descriptor:
   # safe-bypass is the SYMMETRIC ENV channel GOOSE_MODE (no --approve-all flag in
   # 1.37.0): safe-OFF -> auto; safe-ON -> approve.  The secure value is MANDATORY
   # because goose's unset GOOSE_MODE default is itself `auto`.  Persisted default
-  # via the "auto_approve" agent-scope key (spec §2d L655, default true/PERMISSIVE).
+  # via the "auto_approve" agent-scope key (spec §2d, default true/PERMISSIVE).
   safe_bypass:
     channel: env
     env_var: GOOSE_MODE

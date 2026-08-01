@@ -6,7 +6,7 @@ ro vs rw placement by ``binding.ro``; ``box_dest`` carried VERBATIM (with the
 descriptor-loader's ``$GUEST_HOME`` handling — already expanded at load); a
 LITERAL-origin raw expr stays raw (§6a); the ``agent.<name>`` key path under the
 descriptor's OWN agent name (the §2d ``agent.<agent>.*`` form — NOT a bare
-``agent`` token, §0 L21; S27); the None-origin OMIT rule (S27); descriptor order
+``agent`` token, §0; S27); the None-origin OMIT rule (S27); descriptor order
 preserved; PURITY (a fixture install whose paths do NOT exist still represents
 them — no ``Path.exists()`` / no I/O).
 
@@ -101,11 +101,11 @@ def test_key_path_is_agent_name_not_bare_agent() -> None:
     )
     partial = agent_default_partial(d, INSTALL)
     # The bind lands at agent.claude.bindings.ro.launcher (§2d) — NOT bare
-    # agent.bindings.* (a §0 L21 violation).
+    # agent.bindings.* (a §0 violation).
     assert (
         _get(partial, "agent", "claude", "bindings", "ro", "launcher") is not _MISSING
     )
-    # The bare agent.bindings.* form does NOT exist (it would be a §0 L21 violation).
+    # The bare agent.bindings.* form does NOT exist (it would be a §0 violation).
     assert _get(partial, "agent", "bindings") is _MISSING
 
 
@@ -566,7 +566,7 @@ class TestAgentCommonForNode:
     def test_a_self_resolving_source_is_carried_verbatim(self):
         """The re-root rule is NARROW: only the harness's own declaration root
         moves. An absolute / ``~`` / ``$var`` / unrelated ``@``-ref source is the
-        plugin's deliberate choice (spec §2a L518-525), not "my store dir"."""
+        plugin's deliberate choice (spec §2a), not "my store dir"."""
         from kanibako.settings.agent_representation import agent_common_for_node
 
         table = {"agent.claude.common.fixed": ("/opt/fixed", "~/x")}

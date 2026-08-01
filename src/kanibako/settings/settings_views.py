@@ -61,7 +61,7 @@ NOT modify ``settings_store`` / ``settings_merge`` / ``settings_expand`` /
 
 Authority: ``~/vault/rw/keystore-design.md`` §5 (typed access — PRIMARY, incl.
 the load-bearing ``Bind``-not-``Bind|None`` coupling), §6f (resolved ``masks`` =
-``set``); spec ``settings-keyspace-1.6.0-target.md`` §2a (categories + value
+``set``); spec ``settings-keyspace-1.8.0.md`` §2a (categories + value
 types).
 """
 
@@ -393,7 +393,7 @@ def as_opt_path(value: Any) -> Path | None:
     The optional-path variant of :func:`as_path` for a finite-view field whose
     spec value is a path OR ``<None>`` (a whole-value ``@``-ref None terminal that
     survived as a real ``None`` leaf — e.g. ``meta.box.share_workset`` for
-    STANDALONE, spec §2c L469).  A present ``None`` is honest and returned as-is; a
+    STANDALONE, spec §2c).  A present ``None`` is honest and returned as-is; a
     non-str / non-None leaf is rejected (never laundered).
     """
     if value is None:
@@ -497,7 +497,7 @@ class MetaView(FiniteView):
 
 
 class MetaRuntimeView(FiniteView):
-    """Typed finite view over the ``meta.runtime`` NODE (block B1, spec §1A L230-241).
+    """Typed finite view over the ``meta.runtime`` NODE (block B1, spec §1A).
 
     Surfaces the runtime-resolved identity anchors at their EXACT types: the
     workset root (``ws_root`` — a resolved ``Path``) and the resolved mode token
@@ -506,7 +506,7 @@ class MetaRuntimeView(FiniteView):
     consumer reads it yet (B1).
 
     ⚑ There is NO ``ws_settings`` field: ``meta.runtime.ws_settings`` is CUT from the
-    keyspace (spec §1A L367-368). The workset-tier settings FILE is
+    keyspace (spec §1A). The workset-tier settings FILE is
     ``MetaWorksetView.settings``, which now spells itself directly off ``ws_root``.
     """
 
@@ -520,19 +520,19 @@ class MetaBoxView(FiniteView):
     Exposes the RO identity anchors materialized for the box (spec §2c; §0 meta-RO):
 
     * ``mode`` (B1) — the resolved mode token surfaced from
-      ``@meta.runtime.project_type`` (spec §2b L486 — was the settable ``box.mode``).
+      ``@meta.runtime.project_type`` (spec §2b — was the settable ``box.mode``).
     * ``name`` (B2) — the box name (``proj.name``; the @meta.box.* binds key off it).
     * ``workspace`` (B2) — the resolved in-box workspace SOURCE
       (= ``str(proj.project_path)``); ``box.bindings.rw.workspace`` routes through
-      ``@meta.box.workspace`` (spec §2c L476).
-    * ``inbox`` (B2) — this box's own mailbox dir (spec §2c L467);
-      ``box.bindings.rw.inbox`` routes through ``@meta.box.inbox`` (L475).
-    * ``share_global`` (B2) — this box's system-scope share dir (spec §2c L468).
+      ``@meta.box.workspace`` (spec §2c).
+    * ``inbox`` (B2) — this box's own mailbox dir (spec §2c);
+      ``box.bindings.rw.inbox`` routes through ``@meta.box.inbox``.
+    * ``share_global`` (B2) — this box's system-scope share dir (spec §2c).
     * ``share_workset`` (B2) — this box's workset-local share dir, ``None`` for
-      STANDALONE (spec §2c L469).
+      STANDALONE (spec §2c).
     * ``settings`` — the RO box-TIER settings-file path, UNIFORM in every mode (spec
-      §2c ALL PROJECTS L817). Standalone's is ``<root>/box_data/settings.yaml``, a
-      real path that is merely ABSENT BY DEFAULT (§5 L1407) — NOT a ``None`` terminal.
+      §2c ALL PROJECTS). Standalone's is ``<root>/box_data/settings.yaml``, a
+      real path that is merely ABSENT BY DEFAULT (§5) — NOT a ``None`` terminal.
       (Typed ``Path | None`` because a narrow/partial resolve may materialize no box
       tier; the launch always supplies one.)
 
@@ -556,7 +556,7 @@ class MetaWorksetView(FiniteView):
     resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_root/settings.yaml``, a
     ``Path`` for ALL modes incl. standalone, whose ROOT file plays the workset tier —
     spelled directly off ``ws_root`` now that the ``meta.runtime.ws_settings`` hop is
-    CUT, spec §1A L367-368), plus the
+    CUT, spec §1A), plus the
     ``name`` partition token (``__PRIMARY__`` / ``<named>`` / ``__STANDALONE__``) —
     now the ``@meta.runtime.ws_name`` anchor (block B1, single source, spec §1A/§2c
     2026-07-04; was a direct B2 literal). Read-only; wraps ``store.meta.workset``.
@@ -570,12 +570,12 @@ class MetaWorksetView(FiniteView):
 class MetaAgentView(FiniteView):
     """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2, spec §2d).
 
-    Exposes the plugin-set ``name`` (spec §2d L514 — REQUIRED when an agent
+    Exposes the plugin-set ``name`` (spec §2d — REQUIRED when an agent
     exists; identifies the store dir & cascade key) and the agent STORE ROOT
-    ``path`` (§2d L515 = ``@config.agents/<agent>``), which is also §2a's agent
+    ``path`` (§2d = ``@config.agents/<agent>``), which is also §2a's agent
     DECLARATION ROOT: an abstract-category source stores
     ``@meta.agent.<agent>.path/<category>/<leaf>``, so the key resolves for real.
-    Read-only; wraps ``store.meta.agent.<agent>``. (``settings`` — §2d L516 — is
+    Read-only; wraps ``store.meta.agent.<agent>``. (``settings`` — §2d — is
     still unmaterialized; its consumers have not moved onto @meta.* yet.)
     """
 

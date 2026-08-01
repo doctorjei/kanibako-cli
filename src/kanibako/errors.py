@@ -27,7 +27,7 @@ class CategoryCollisionError(ConfigError):
         binding onto a destination an explicit binding already occupies. The
         base survives; the EXTENSION is refused.
     ``"synced_vs_binding"``
-        The pre-existing copy-vs-mount rule (spec §0 L119-124), unchanged by the
+        The pre-existing copy-vs-mount rule (spec §0), unchanged by the
         collision table — a ``synced`` COPY cannot override a live MOUNT.
 
     *box_dest* is the collision key. *entries* is the ordered tuple of

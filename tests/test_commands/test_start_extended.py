@@ -1822,7 +1822,7 @@ class TestAgentStamp:
 
 class TestAllowHelpersGate:
     """The helper-hub gate now reads the AGENT-scope ``allow_helpers`` key (spec
-    §2d L557) resolved off the launch snapshot, then ANDs in the ephemeral
+    §2d) resolved off the launch snapshot, then ANDs in the ephemeral
     ``--no-helpers`` flag: ``helpers_enabled = not no_helpers and helpers_allowed``.
 
     The start_mocks fixture seeds the ``agent.default`` FLOOR with

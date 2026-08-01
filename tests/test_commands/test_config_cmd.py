@@ -613,7 +613,7 @@ class TestStandaloneBoxTierRoundTrip:
 
     @staticmethod
     def _files(root):
-        """``(root_file, box_file)`` at their LITERAL spec positions (§5 L1403/L1407).
+        """``(root_file, box_file)`` at their LITERAL spec positions (§5).
 
         ⚑ Deliberately NOT sourced from ``box_workset_settings_paths``: a test that
         gets both positions from the code under test is self-consistent and therefore
@@ -631,7 +631,7 @@ class TestStandaloneBoxTierRoundTrip:
 
         root = self._standalone(config_file, tmp_home)
         root_file, box_file = self._files(root)
-        assert not box_file.exists()          # ABSENT BY DEFAULT (spec §5 L1407)
+        assert not box_file.exists()          # ABSENT BY DEFAULT (spec §5)
         root_before = root_file.read_text()
 
         rc = run_set(argparse.Namespace(

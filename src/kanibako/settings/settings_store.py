@@ -11,7 +11,7 @@ settings stack and is (for now) imported by nothing.
 Authority: ``~/vault/rw/keystore-design.md`` §2 (storage model — primary), §3
 (``None`` semantics — type-space consequence only), §6f (``masks`` is a keyed
 ``dict[box_dest -> bool|None]``, NOT a list); spec
-``settings-keyspace-1.6.0-target.md`` §0 (files store UNRESOLVED) + §2a (the
+``settings-keyspace-1.8.0.md`` §0 (files store UNRESOLVED) + §2a (the
 category list + value types).
 
 Storage model (design §2)

@@ -1362,7 +1362,7 @@ def _to_standalone(
     # @meta.box.path for standalone IS box_data/).  It used to be deleted here as an
     # "orphan" on the theory that the box meta lived only at the ROOT — that theory
     # is the retired model, and deleting the file now discards the box's settings.
-    # Detection is unaffected either way: it reads the ROOT file (§5 L1425-1427),
+    # Detection is unaffected either way: it reads the ROOT file (§5),
     # which ``establish_standalone`` writes below.
     _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
 

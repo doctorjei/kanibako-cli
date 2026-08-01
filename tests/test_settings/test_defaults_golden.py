@@ -18,7 +18,7 @@ This module is the standing GUARDRAIL over that surface.  It does TWO things:
 1. **Specced-shape assertion** (catches a future re-flattening AT THE SOURCE):
    loads the system defaults file + each per-agent defaults file and asserts
    every value matches the SPECCED STRUCTURED shape from
-   ``settings-keyspace-1.6.0-target.md`` §2a:
+   ``settings-keyspace-1.8.0.md`` §2a:
    ``bindings/caches/seeded/shared/synced`` = 2-/3-element lists/tuples,
    ``masks`` = a real list, and NO colon/comma-string value anywhere in a binding
    pair (the colon-string form is the divergence the flip reversed).
@@ -290,7 +290,7 @@ class TestAgentDefaultsShape:
         explicit shape check this "golden" guard would silently stop guarding
         ``host_src`` across P3's declaration-rooting flip.  The YAML level pins the
         AUTHORED form (a bare leaf is what an author may write); the LOADED level
-        pins the STORED form (self-resolving, spec §2a L474-486).
+        pins the STORED form (self-resolving, spec §2a).
         """
         from kanibako.settings.agent_config import agent_category_root_ref, is_self_resolving
 
@@ -327,7 +327,7 @@ class TestAgentDefaultsShape:
                 )
                 # The STORED source must resolve on its own — a bare relative leaf
                 # here would need a layer to prepend a root, which is exactly what
-                # spec §2a L474-486 forbids.
+                # spec §2a forbids.
                 assert is_self_resolving(pair[0]), (
                     f"{filename}: loaded common {key} host_src {pair[0]!r} does not "
                     "resolve on its own (spec §2a L474-486)"

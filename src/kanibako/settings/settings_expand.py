@@ -67,7 +67,7 @@ Authority
 * ``~/vault/rw/keystore-design.md`` §6h (transitive expansion + cycle — PRIMARY),
   §6a (CONFIG-vs-ENV split; box-side ``$XDG``/``~`` deferred), §6b (whole-value vs
   embedded ``@``-ref shapes), §3 (3-state).
-* Spec ``settings-keyspace-1.6.0-target.md`` §0, §1 (box-side XDG line ~94), §2c.
+* Spec ``settings-keyspace-1.8.0.md`` §0, §1 (box-side XDG line ~94), §2c.
 
 Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 -------------------------------------------------------
@@ -120,7 +120,7 @@ _ABSENT: _Absent = _Absent()
 
 #: The top-level table holding ``pref.*`` REQUESTS (spec §2h). Its subtree is
 #: carried through UNEXPANDED and may not be ``@``-referenced — prefs "never
-#: participate in resolution as derivable keys" (§2h L1263). One fixed token,
+#: participate in resolution as derivable keys" (§2h). One fixed token,
 #: spelled here rather than imported, to keep this module free of a
 #: ``settings_prefs`` import (which would cycle through the settings stack).
 _PREF_ROOT = "pref"
@@ -283,7 +283,7 @@ class _Expander:
             value = dict.__getitem__(node, key)
             if not path and key == _PREF_ROOT and isinstance(value, KeyStore):
                 # ⚑ The ``pref`` subtree is CARRIED THROUGH VERBATIM, unexpanded
-                # (spec §2h L1263: "pref.* keys never participate in resolution
+                # (spec §2h: "pref.* keys never participate in resolution
                 # as derivable keys — resolve_key_set ignores them").
                 #
                 # This is what keeps the RAW REQUEST readable after resolution:
@@ -496,7 +496,7 @@ class _Expander:
         segment's value is returned verbatim (a present-``None`` leaf → ``None``).
         """
         if dotted == _PREF_ROOT or dotted.startswith(f"{_PREF_ROOT}."):
-            # ⚑ A ``@pref.…`` reference is REFUSED, not resolved (spec §2h L1263
+            # ⚑ A ``@pref.…`` reference is REFUSED, not resolved (spec §2h
             # — prefs "never participate in resolution as derivable keys").
             # RAISED rather than answered ``_ABSENT``: absent would silently
             # DROP the referring key (§6b whole-value propagation), which is the

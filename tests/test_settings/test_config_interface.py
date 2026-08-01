@@ -126,7 +126,7 @@ class TestIsKnownKey:
         assert is_known_key("box.shell") is True
 
     def test_bootstrap_is_known(self):
-        """bootstrap is an agent-scope behavior key — a known GET key (spec §2d L579).
+        """bootstrap is an agent-scope behavior key — a known GET key (spec §2d).
 
         The old box-scope ``box.bootstrap_program`` is RETIRED (relocated to the
         agent scope, 1.7.0-rc clean break — no alias)."""
@@ -239,7 +239,7 @@ class TestRegularConfigKeys:
     def test_get_bootstrap_unset_is_not_set(self, tmp_path):
         """An UNSET agent-scope ``bootstrap`` is "(not set)" — a plain get never
         fabricates the consumer default ("tmux").  The built-in still applies at
-        LAUNCH + ``--effective`` (spec §2d L579 agent.default.bootstrap=tmux)."""
+        LAUNCH + ``--effective`` (spec §2d agent.default.bootstrap=tmux)."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
         project_toml = tmp_path / "settings.yaml"
@@ -289,10 +289,10 @@ class TestRegularConfigKeys:
 
 
 class TestContinueMode:
-    """``continue_mode`` — an agent-scope BOOL behavior key (spec §2d L578
+    """``continue_mode`` — an agent-scope BOOL behavior key (spec §2d
     ``agent.default.continue_mode | true``; "continue vs fresh; resume removed").
     Wired EXACTLY like ``auto_approve``/``bootstrap``; REPLACES the dead
-    ``start_mode`` leaf (spec §3 L769, 1.7.0-rc clean break — no alias)."""
+    ``start_mode`` leaf (spec §3, 1.7.0-rc clean break — no alias)."""
 
     def test_continue_mode_is_known(self):
         assert is_known_key("continue_mode") is True
@@ -301,7 +301,7 @@ class TestContinueMode:
 
     def test_start_mode_is_retired(self):
         """The dead ``start_mode`` leaf is GONE — not a known key (no reader at
-        launch; fully covered by continue_mode + auto_approve, spec §3 L769)."""
+        launch; fully covered by continue_mode + auto_approve, spec §3)."""
         assert is_known_key("start_mode") is False
         assert is_known_key("agent.claude.start_mode") is False
 
@@ -823,7 +823,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert data["box"]["auth"]["workset_enabled"] is False
 
     def test_set_allow_helpers_lands_in_agent_default_tier(self, tmp_path):
-        """allow_helpers moved to the AGENT keyspace (spec §2d L557): the bare
+        """allow_helpers moved to the AGENT keyspace (spec §2d): the bare
         key is the any-agent ``agent.default`` tier (mirrors ``model``), NOT a
         flat top-level scalar. Clean break — nothing lands at the old scopeless
         ``allow_helpers`` key."""
@@ -837,7 +837,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert "allow_helpers" not in data
 
     def test_set_auto_approve_lands_in_agent_default_tier(self, tmp_path):
-        """auto_approve is an AGENT-scope bool key (spec §2d L556): the bare key is
+        """auto_approve is an AGENT-scope bool key (spec §2d): the bare key is
         the any-agent ``agent.default`` tier (mirrors ``model``/``allow_helpers``),
         written VERBATIM (no KEY_TYPES coercion — read-coerced at launch)."""
         project_toml = tmp_path / "settings.yaml"
@@ -1040,7 +1040,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert load_doc(f)["workset"]["boxes"] == "/srv/boxes"
 
     def test_set_mode_rejected_not_settable(self, tmp_path):
-        """``mode`` is no longer settable via config set (block B1, spec §2b L486 /
+        """``mode`` is no longer settable via config set (block B1, spec §2b /
         §0): the project mode is the RO identity anchor ``meta.box.mode``, set by
         the bootstrap layer at box creation, NOT overridable. ``config set mode``
         is now an unknown-key error; nothing is written.
@@ -1216,7 +1216,7 @@ def _seed_system_agent(path, name):
 
 
 class TestSystemAgent:
-    """``system.agent``: an ordinary system-scope SETTINGS key (spec §2g L1187).
+    """``system.agent``: an ordinary system-scope SETTINGS key (spec §2g).
 
     ⮕ P7 renamed it from ``system.default_agent`` and RELOCATED it out of the
     reserved ``agent.default`` table into the ``system:`` table, which deleted the
@@ -2395,7 +2395,7 @@ class TestWorksetDefaultsBoxCascade:
 
 
 # ---------------------------------------------------------------------------
-# box.agent.* mirror config-set (block B5 — spec §2b L380, JC-B5-2)
+# box.agent.* mirror config-set (block B5 — spec §2b, JC-B5-2)
 # ---------------------------------------------------------------------------
 
 class TestBoxAgentMirrorConfigSet:
@@ -2504,7 +2504,7 @@ class TestBareAgentKeyAtBoxScope:
             "auto_approve", ConfigLevel.box, "nav℘claude",
         ) == "pref.agent.nav℘claude.auto_approve"
         # No resolvable agent → NO redirect (the request targets a DISCRIMINATED
-        # agent slot; there is no bare ``agent.<key>``, §0 L21).
+        # agent slot; there is no bare ``agent.<key>``, §0).
         assert box_agent_redirect_key("bootstrap", ConfigLevel.box) is None
         # Non-box scopes: NO redirect (a bare key is a legit downward write there).
         assert box_agent_redirect_key("bootstrap", ConfigLevel.system, "claude") is None
@@ -3245,7 +3245,7 @@ class TestAgentNodeBindRouting:
     """The ``agent.<node>.bindings.{ro,rw}.<name>`` predicate + its routing order:
     it is a per-node DESCRIPTOR bind (item-0), NOT a persona scalar, NOT a box.agent
     mirror. (There is no bare ``agent.bindings.*`` form to distinguish it from — the
-    agent tier is DISCRIMINATED, spec §2d / §0 L21.)"""
+    agent tier is DISCRIMINATED, spec §2d / §0.)"""
 
     def test_predicate_matches_node_bind_only(self):
         from kanibako.settings.config_keys import (
@@ -3291,7 +3291,7 @@ class TestAgentNodeBindRouting:
 
     def test_bare_agent_category_is_not_a_node_bind(self):
         # The BARE ``agent.bindings.*`` (no node) is NOT A KEY: the keyspace is
-        # CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0 L21), so
+        # CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0), so
         # BOTH the node-bind regex and the ordinary category regex REFUSE it. A
         # discriminated key takes the ordinary category path.
         from kanibako.settings.config_keys import (
@@ -3972,7 +3972,7 @@ class TestEffectiveCategoryBlock:
         assert "box.bindings.rw.home = /boxes/mybox/home -> /home/agent" in text
 
     def test_the_bare_agent_form_is_never_printed(self, tmp_path):
-        """``agent.<category>`` is not a key (spec §0 L21), so a display that
+        """``agent.<category>`` is not a key (spec §0), so a display that
         spelled it would teach a shape the keyspace forbids."""
         text = self._render(tmp_path)
         assert "agent.common" not in text
@@ -4004,7 +4004,7 @@ class TestEffectiveCategoryBlock:
 # ---------------------------------------------------------------------------
 
 class TestPrefWriteSite:
-    """§2h L1252-1254 — a pref may be WRITTEN at workset and box scope ONLY.
+    """§2h — a pref may be WRITTEN at workset and box scope ONLY.
     *"This is what BOUNDS the recursion, so it is a hard rule."*"""
 
     @pytest.mark.parametrize("scope", [ConfigLevel.system, ConfigLevel.agent])
@@ -4284,7 +4284,7 @@ class TestPrefValueValidation:
     def test_pref_system_agent_value_is_NOT_checked_against_installed_agents(
         self, tmp_path,
     ):
-        """⚑ DELIBERATE (§2h L1221-1222): the agent test is 'is it a VALID
+        """⚑ DELIBERATE (§2h): the agent test is 'is it a VALID
         agent' about the KEY's discriminator, not about this VALUE. An unknown
         name surfaces at agent RESOLUTION (P7), not here."""
         f = tmp_path / "settings.yaml"

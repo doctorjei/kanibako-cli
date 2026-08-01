@@ -31,7 +31,7 @@ Authority
   rides the SAME generic dict-merge). **§4** (cascade order; the cascade ends at
   ``box`` — the former ``required`` cap is CUT, 2026-06-29f). **§6g** (merge keys
   by NAME, distinct from reconcile which keys by ``box_dest``).
-* Spec ``settings-keyspace-1.6.0-target.md`` §2 (cascade — ends at ``box``)
+* Spec ``settings-keyspace-1.8.0.md`` §2 (cascade — ends at ``box``)
   / §2a (the category list + per-name coexistence) / §2c.
 
 Seams realized here (``plans/keystore-blocks/SEAMS.md``)

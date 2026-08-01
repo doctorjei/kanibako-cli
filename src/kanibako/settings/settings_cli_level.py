@@ -1,6 +1,6 @@
 """The §1A **CLI LEVEL** — the one builder and the one guard (P8).
 
-Spec §1A L320-338: *"The COMMAND LINE is its OWN LEVEL — the highest, above
+Spec §1A: *"The COMMAND LINE is its OWN LEVEL — the highest, above
 everything … It is NOT a cascade scope and NOT a ``pref`` (§2h): it is a separate
 input level that outranks every settings file AND every pref. **This is a GENERAL
 rule, not a carve-out for particular flags** — ANY flag that shadows a key
@@ -24,7 +24,7 @@ What the level IS, and is not
   directional (own-scope) enforcement, which governs what a settings FILE may
   contribute.
 
-Why the guard exists (spec §1A L335-338)
+Why the guard exists (spec §1A)
 ----------------------------------------
 *"Because the CLI is not a pref, the §2h forbidden tiers do NOT automatically
 cover it, so a flag that could set a LOCATOR-class value (one that relocates a
@@ -62,11 +62,11 @@ from kanibako.settings.settings_keyspace import key_validity
 from kanibako.settings.settings_prefs import LOCATOR_CLOSURE
 from kanibako.settings.settings_resolve import SettingsError
 
-#: The key naming the agent a box runs (spec §2g L1187) — re-exported from the
+#: The key naming the agent a box runs (spec §2g) — re-exported from the
 #: selection seam's spelling so the level and the selection cannot drift.
 SELECTION_KEY: Final[str] = "system.agent"
 
-#: The DECLARED flag→key table (spec §1A L323-326). **WIRED ENTRIES ONLY.**
+#: The DECLARED flag→key table (spec §1A). **WIRED ENTRIES ONLY.**
 #:
 #: ⚑ The spec's enumeration also names ``--image`` (``box.image``), ``-S``/``-A``
 #: (``auto_approve``) and ``--share-images`` (``box.share_images``). Those are NOT
@@ -130,13 +130,13 @@ def build_cli_level(
     than fabricating ``agent.general.*``.
 
     ⚑ **The agent-scope spelling is ``agent.<active>.<leaf>``, never
-    ``agent.default.<leaf>``.** ``effective_behavior`` performs the §2d L368
+    ``agent.default.<leaf>``.** ``effective_behavior`` performs the §2d
     active-over-default pick AFTER the cascade merge, so a value at
     ``agent.default.<leaf>`` loses to any file's ``agent.<active>.<leaf>`` even from
     level index 0 — which would contradict "the highest, above everything". The
     spec writes these keys bare (``model``, ``continue_mode``); the discriminated
     active spelling is the only reading under which the CLI actually outranks the
-    files (spec §0 L21: there is no bare ``agent.<key>``).
+    files (spec §0: there is no bare ``agent.<key>``).
 
     *model* (``-M``/``--model``): a non-empty string installs
     ``agent.<active>.model``. ``None`` or ``""`` installs NOTHING — absent ≠ ``""``,
@@ -178,7 +178,7 @@ def guard_cli_level(
     valid_agents: "Collection[str] | None" = None,
     agent_leaves: "Collection[str] | None" = None,
 ) -> None:
-    """Refuse an illegal CLI-level key, NAMING it (spec §1A L335-338, §0 L160-162).
+    """Refuse an illegal CLI-level key, NAMING it (spec §1A, §0).
 
     Called from INSIDE :func:`kanibako.settings.settings_launch.build_launch_snapshot`, before
     the splice, so no call site can bypass it. A no-op for ``None`` / an empty level.

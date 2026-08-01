@@ -1,6 +1,6 @@
 """P8 — the §1A CLI LEVEL: the builder, the guard, and the fold equivalence.
 
-Spec §1A L320-338. Three groups:
+Spec §1A. Three groups:
 
 * **builder** — what :func:`kanibako.settings.settings_cli_level.build_cli_level` installs,
   and (as importantly) what it does NOT;

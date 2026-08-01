@@ -279,7 +279,7 @@ def _iter_agent_tiers(scope: str, scope_node: Any):
 
     Only the agent scope has tiers (``agent.default`` / ``agent.<agent>``); every
     other scope is itself.  Keeps the display from printing the bare
-    ``agent.bindings.*`` form, which is not a key (spec §0 L21).
+    ``agent.bindings.*`` form, which is not a key (spec §0).
     """
     from kanibako.settings.settings_store import KeyStore
 

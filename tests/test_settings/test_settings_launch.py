@@ -48,7 +48,7 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
         box_path=None,
         behavior_floor={"model": "opus", "auto_approve": "true"},
     )
-    # OS1: bare floor → agent.default.<key> (the all-agents backstop, §2d/§0 L21 —
+    # OS1: bare floor → agent.default.<key> (the all-agents backstop, §2d/§0 —
     # NO bare agent.<key>).
     assert snap.agent.default.model == "opus"
     assert snap.agent.default.auto_approve == "true"
@@ -93,7 +93,7 @@ def test_empty_string_default_suppression_dropped():
 
 def test_agent_partial_inserted():
     # 7a partial supplies the default delivery bind under the active agent's
-    # DISCRIMINATED slot (agent.<name>.bindings.*; §2d/§0 L21 — NO bare agent).
+    # DISCRIMINATED slot (agent.<name>.bindings.*; §2d/§0 — NO bare agent).
     agent_partial = KeyStore(
         {"agent": {"claude": {"bindings": {
             "ro": {"share": Bind("/orig", "/box/share", "ro")}}}}}
@@ -260,10 +260,10 @@ def test_adapter_emits_bind_entry_with_box_side_resolution():
 
 
 def test_adapter_emits_the_stored_host_src_verbatim():
-    """The adapter passes ``host_src`` through UNTOUCHED (spec §2a L474-486).
+    """The adapter passes ``host_src`` through UNTOUCHED (spec §2a).
 
     Replaces the retired ``test_adapter_root_joins_relative_host_src``: the
-    assembly-time prepend it asserted is the shape §2a L487-517 calls FORBIDDEN,
+    assembly-time prepend it asserted is the shape §2a calls FORBIDDEN,
     and the mechanism is gone. Sources are rooted at DECLARATION now, so the
     adapter's whole contract on this axis is "do not touch it".
 
@@ -302,7 +302,7 @@ def test_adapter_does_not_root_a_relative_host_src():
     Such a value should never reach here (the declaration loaders root it, and
     both write surfaces refuse or absolutise it), but if one does, the adapter must
     not invent a root: an invented root is exactly the silent-wrong-path failure
-    §2a L474-486 exists to prevent. Pinning the pass-through is what makes a
+    §2a exists to prevent. Pinning the pass-through is what makes a
     re-introduced prepend RED.
     """
     snap = KeyStore(
@@ -315,7 +315,7 @@ def test_adapter_does_not_root_a_relative_host_src():
 
 
 def test_adapter_active_over_default_pick():
-    # §2d L368: the active slot wins a name; agent.default fills the gaps. Both an
+    # §2d: the active slot wins a name; agent.default fills the gaps. Both an
     # active-only and a default-only common bind survive (no sibling clobber).
     snap = KeyStore({"agent": {
         "default": {"common": {
@@ -376,7 +376,7 @@ def test_adapter_feeds_reconcile_unchanged():
 
 
 def test_effective_behavior_reads_agent_default_backstop():
-    # No active-slot override → the agent.default backstop value is read (§2d L368).
+    # No active-slot override → the agent.default backstop value is read (§2d).
     snap = KeyStore({"agent": {"default": {"model": "opus", "auto_approve": True}}})
     eff = effective_behavior(
         snap, active_agent="claude", keys=["model", "auto_approve", "missing"],
@@ -385,7 +385,7 @@ def test_effective_behavior_reads_agent_default_backstop():
 
 
 def test_effective_behavior_active_over_default():
-    # §2d L368: the active slot wins; agent.default fills a gap.
+    # §2d: the active slot wins; agent.default fills a gap.
     snap = KeyStore({"agent": {
         "default": {"model": "sonnet", "auto_approve": True},
         "claude": {"model": "opus"},
@@ -397,7 +397,7 @@ def test_effective_behavior_active_over_default():
 
 
 def test_effective_behavior_resolves_allow_helpers_default_tier():
-    # allow_helpers moved to the AGENT keyspace (spec §2d L557): with only the
+    # allow_helpers moved to the AGENT keyspace (spec §2d): with only the
     # agent.default backstop set, that value resolves (the launch gate reads it).
     snap = KeyStore({"agent": {"default": {"allow_helpers": "false"}}})
     eff = effective_behavior(snap, active_agent="claude", keys=["allow_helpers"])
@@ -405,7 +405,7 @@ def test_effective_behavior_resolves_allow_helpers_default_tier():
 
 
 def test_effective_behavior_allow_helpers_per_agent_override_wins():
-    # §2d L368: a per-agent allow_helpers overrides the agent.default backstop.
+    # §2d: a per-agent allow_helpers overrides the agent.default backstop.
     snap = KeyStore({"agent": {
         "default": {"allow_helpers": "false"},
         "claude": {"allow_helpers": "true"},
@@ -603,7 +603,7 @@ def _auth_snapshot(
         workset_path=_to_path(workset_file), box_path=_to_path(box_file),
         auth_chain=chain, meta_runtime=mr, meta_identity=meta_id,
         # ⚑ P7: ``meta.box.auth.workset_path`` is now the spec's
-        # ``@workset.auth.path/@system.agent`` (§2c L792) rather than a
+        # ``@workset.auth.path/@system.agent`` (§2c) rather than a
         # Python-interpolated name, so the §1A SELECTION LEVEL must carry the
         # resolved agent — exactly as the launch does. A blank agent_name is the
         # NO-AGENT box and installs nothing (the embedded ref then coerces to "").
@@ -731,7 +731,7 @@ def test_auth_clean_break_no_group_auth_keys():
     # box.auth node keeps ONLY the two enable knobs (no workset_path leaks back).
     assert "box.auth.workset_path" not in chain
     assert "meta.box.auth.workset_path" in chain
-    # ⮕ P7: SPELLED as the spec writes it (§2c L792) rather than interpolated; the
+    # ⮕ P7: SPELLED as the spec writes it (§2c) rather than interpolated; the
     # per-box variation now arrives through @system.agent (the pref layer + the §1A
     # selection level), which resolves strictly EARLIER than this L4.1 anchor.
     # INVERT: interpolate the name again and the F2 incoherence returns (a --agent
@@ -863,7 +863,7 @@ def test_p6d2_standalone_scrub_no_agent_garbage(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# meta.runtime.* materialization (block B1 — spec §1A L230-241)                #
+# meta.runtime.* materialization (block B1 — spec §1A)                #
 # --------------------------------------------------------------------------- #
 
 from kanibako.settings.settings_launch import meta_runtime_floor  # noqa: E402
@@ -924,7 +924,7 @@ def _meta_node(snap, *path):
 
 def test_meta_runtime_primary_ws_root_resolves_via_config_foundation():
     """PRIMARY: meta.runtime.ws_root = @config.primary_workset → the foundation
-    literal (spec §1A L233); meta.workset.path single-sources from it."""
+    literal (spec §1A); meta.workset.path single-sources from it."""
     snap = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
     runtime = _meta_node(snap, "meta", "runtime")
     assert dict.get(runtime, "ws_root") == "/data/primary_workset"
@@ -933,7 +933,7 @@ def test_meta_runtime_primary_ws_root_resolves_via_config_foundation():
 
 def test_meta_runtime_named_ws_root_is_detected_root_literal():
     """NAMED: meta.runtime.ws_root = the detected workset root literal (spec §1A
-    L233); meta.workset.settings derives under it."""
+    ); meta.workset.settings derives under it."""
     snap = _meta_snapshot("named", ws_root_literal="/code/kento")
     runtime = _meta_node(snap, "meta", "runtime")
     assert dict.get(runtime, "ws_root") == "/code/kento"
@@ -950,7 +950,7 @@ def test_meta_runtime_standalone_ws_root_is_the_project_dir():
 
 
 def test_meta_runtime_has_no_ws_settings_key_in_any_mode():
-    """⚑ ``meta.runtime.ws_settings`` is CUT from the keyspace (spec §1A L367-368,
+    """⚑ ``meta.runtime.ws_settings`` is CUT from the keyspace (spec §1A,
     "no longer needed (unified path)").  Under §0's CLOSED KEYSPACE an undeclared key
     is NOT a key, so it must be ABSENT — not present-with-a-value, not an alias.
     (Mutation: re-adding the floor line → RED.)"""
@@ -964,7 +964,7 @@ def test_meta_runtime_has_no_ws_settings_key_in_any_mode():
 
 
 def test_meta_workset_path_single_sources_from_ws_root_all_modes():
-    """meta.workset.path == meta.runtime.ws_root (UNIFORM all modes, spec §1A L239)."""
+    """meta.workset.path == meta.runtime.ws_root (UNIFORM all modes, spec §1A)."""
     # primary
     snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/pw"))
     assert dict.get(_meta_node(snap_p, "meta", "workset"), "path") == "/data/pw"
@@ -1026,7 +1026,7 @@ def test_meta_runtime_ws_name_per_mode():
 
 def test_meta_workset_name_single_sources_from_ws_name_all_modes():
     """meta.workset.name resolves VIA the @meta.runtime.ws_name anchor (spec §2c
-    L442/449/457, 2026-07-04) — the SAME token per mode B2 formerly set directly.
+    , 2026-07-04) — the SAME token per mode B2 formerly set directly.
     Proving it is the ANCHOR: the resolved meta.workset.name EQUALS the resolved
     meta.runtime.ws_name for every mode (would go RED if the anchor were absent /
     the key reverted to a direct literal that could drift)."""
@@ -1059,7 +1059,7 @@ def test_meta_workset_name_view_typed():
 
 def test_meta_box_mode_equals_project_type_all_modes():
     """meta.box.mode == meta.runtime.project_type (the RO identity anchor, spec
-    §2b L486)."""
+    §2b)."""
     for mode, lit, ctx in (
         ("primary", None, _ctx_with_config()),
         ("named", "/code/kento", None),
@@ -1153,7 +1153,7 @@ def test_meta_views_read_runtime_typed():
     rt = views.MetaRuntimeView(_meta_node(snap, "meta", "runtime"))
     assert rt.ws_root == _Path("/code/kento")
     assert rt.project_type == "named"
-    # The view carries NO ws_settings field — the key is CUT (spec §1A L367-368);
+    # The view carries NO ws_settings field — the key is CUT (spec §1A);
     # the workset-tier FILE is MetaWorksetView.settings, below.
     assert not hasattr(views.MetaRuntimeView, "ws_settings")
     bx = views.MetaBoxView(_meta_node(snap, "meta", "box"))
@@ -1268,14 +1268,14 @@ def test_meta_identity_box_keys_materialized():
 
 def test_meta_identity_agent_name_under_discriminated_slot():
     """meta.agent.<a>.name is materialized under the agent's discriminated slot
-    (spec §2d L514)."""
+    (spec §2d)."""
     snap = _identity_snapshot(agent_name="claude")
     ma = _meta_node(snap, "meta", "agent", "claude")
     assert dict.get(ma, "name") == "claude"
 
 
 class TestMetaAgentPath:
-    """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d L515) that is also
+    """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d) that is also
     §2a's agent DECLARATION ROOT: an abstract-category source stores
     ``@meta.agent.<a>.path/<category>/<leaf>``, so this key MUST resolve or every
     such source dangles."""
@@ -1339,7 +1339,7 @@ def test_meta_identity_no_agent_omits_agent_key():
 
 def test_meta_identity_standalone_share_workset_none_terminal():
     """STANDALONE: share_workset is a whole-value None terminal — PRESENT with
-    value None (spec §2c L469), not dropped.  It is now the ONLY standalone None
+    value None (spec §2c), not dropped.  It is now the ONLY standalone None
     terminal in this floor: a lone box genuinely has no workset-LOCAL channel dir,
     whereas it DOES have a box settings tier (cf. meta.box.settings below)."""
     snap = _identity_snapshot(
@@ -1353,7 +1353,7 @@ def test_meta_identity_standalone_share_workset_none_terminal():
 def test_meta_box_settings_anchor_primary_named_and_standalone():
     """meta.box.settings is the RO box-TIER file anchor, materialized VERBATIM from
     the box-tier path the cascade uses — and it is a real path in EVERY mode now
-    (spec §2c ALL PROJECTS L817), standalone's being <root>/box_data/settings.yaml.
+    (spec §2c ALL PROJECTS), standalone's being <root>/box_data/settings.yaml.
     Mutation-guard: dropping the floor dict entry → the path asserts → RED."""
     # primary/named: the box's own settings.yaml path is materialized verbatim.
     floor_pn = meta_identity_floor(
@@ -1396,7 +1396,7 @@ def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
 
     root = tmp_path / "myproj"
     (root / _STANDALONE_META_DIR).mkdir(parents=True)
-    # LITERAL positions (spec §5 L1403/L1407), independent of the code under test.
+    # LITERAL positions (spec §5), independent of the code under test.
     literal_ws = root / "settings.yaml"
     literal_box = root / _STANDALONE_META_DIR / "settings.yaml"
     dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
@@ -1523,7 +1523,7 @@ def test_routed_bind_equivalence_vs_literal_injection():
 
 
 # --------------------------------------------------------------------------- #
-# box.agent.* mirror (block B5 — spec §2b L380, §0 directional)               #
+# box.agent.* mirror (block B5 — spec §2b, §0 directional)               #
 # --------------------------------------------------------------------------- #
 import yaml  # noqa: E402
 
@@ -1537,7 +1537,7 @@ def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
     """(a) ``meta.box.agent.<key>`` READS BACK the resolved active-agent subtree.
 
     ⮕ P7: the mirror moved from the SETTABLE ``box.agent.*`` to the RO
-    ``meta.box.agent.*`` (spec §2b L709). Values are still readable; they are no
+    ``meta.box.agent.*`` (spec §2b). Values are still readable; they are no
     longer settable.
     """
     snap = build_launch_snapshot(
@@ -1804,7 +1804,7 @@ def test_workset_pref_delivers_and_suppresses(tmp_path: Path):
 
 
 def test_box_pref_beats_workset_pref_for_a_category(tmp_path: Path):
-    # §1A L364-367: box beats workset by ASSIGNMENT ORDER, for a CATEGORY as well
+    # §1A: box beats workset by ASSIGNMENT ORDER, for a CATEGORY as well
     # as a scalar. ⮕ P7 FLIP: while the retired ``box.agent.<category>`` fold
     # existed it out-ranked a box pref (P6's transitional pin); the fold is gone.
     ws = _yaml(
@@ -1927,7 +1927,7 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
 
 # --------------------------------------------------------------------------- #
 # P1: workset_anchor_floor — the layout anchors + the RO BOX ROOT              #
-# (spec §2c L740/L770 per-mode; §2a "Declaration roots" L505)                  #
+# (spec §2c per-mode; §2a "Declaration roots")                  #
 # --------------------------------------------------------------------------- #
 
 
@@ -2152,7 +2152,7 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# CATEGORY-ROOT refusal — a value where a namespace belongs (spec §2d L906-910) #
+# CATEGORY-ROOT refusal — a value where a namespace belongs (spec §2d) #
 # --------------------------------------------------------------------------- #
 
 
@@ -2189,7 +2189,7 @@ class TestCategoryRootRefusal:
         """⚑ The message must name ``agent.<tier>.bindings``, NEVER the bare
         ``agent.bindings``.
 
-        The bare form is not a key (spec §0 L21: the agent tier is DISCRIMINATED
+        The bare form is not a key (spec §0: the agent tier is DISCRIMINATED
         everywhere). An error naming it would be telling the reader to go look at —
         or worse, write — a shape the keyspace forbids, which is exactly the
         confusion the closed-keyspace rule exists to prevent. It also has to say
@@ -2302,7 +2302,7 @@ class TestNoImplicitRootPrepend:
     included (the prose truth pass is part of the change — a comment describing a
     mechanism that no longer exists is worse than no comment).
 
-    Spec §2a L474-486 does not merely prefer this; it names ``scope_roots`` and
+    Spec §2a does not merely prefer this; it names ``scope_roots`` and
     says it MUST BE DELETED. Re-adding an inert, defaulted parameter would already
     be the invitation to re-populate it — which is why this scan is not limited to
     live call sites.
@@ -2393,7 +2393,7 @@ def _pref_snap(tmp_path, *, box=None, workset=None, floor=None, **kw):
 
 
 class TestPrefRecomputeNotDelta:
-    """spec §2h L1260-1261 — 'RECOMPUTE, not delta.'"""
+    """spec §2h — 'RECOMPUTE, not delta.'"""
 
     def test_a_key_derived_from_a_prefd_value_updates(self, tmp_path):
         """⚑ THE discriminator for the delta implementation.
@@ -2432,7 +2432,7 @@ class TestPrefRecomputeNotDelta:
         assert snap.box.bindings.rw.probe.host == "/src/goose"
 
     def test_a_pref_need_not_be_a_literal(self, tmp_path):
-        """§2h L1258-1259 — the value is installed as an ordinary (possibly
+        """§2h — the value is installed as an ordinary (possibly
         UNRESOLVED) value and resolution handles it like any other key."""
         snap = _pref_snap(
             tmp_path,
@@ -2443,7 +2443,7 @@ class TestPrefRecomputeNotDelta:
 
 
 class TestPrefNullSuppression:
-    """spec §2h L1265-1272 — values install VERBATIM, including ``None``."""
+    """spec §2h — values install VERBATIM, including ``None``."""
 
     def test_a_null_pref_suppresses_an_inherited_agent_bind(self, tmp_path):
         """⚑ The named silent hazard. ``if value is None: continue`` in the
@@ -2469,7 +2469,7 @@ class TestPrefNullSuppression:
         assert dict.__getitem__(node, "plugins") is None
 
     def test_a_null_pref_on_a_SCALAR_leaf_is_kept_as_none(self, tmp_path):
-        """§2b L703-708 — ``pref.system.agent: null`` is how the NO-AGENT
+        """§2b — ``pref.system.agent: null`` is how the NO-AGENT
         plain-shell box is expressed, and it is a capability GAIN. Present-None
         on a SCALAR leaf is KEPT."""
         snap = _pref_snap(
@@ -2483,7 +2483,7 @@ class TestPrefNullSuppression:
 
 class TestPrefLevelPrecedence:
     def test_box_pref_beats_workset_pref(self, tmp_path):
-        """§1A L364-367 — box beats workset by ASSIGNMENT ORDER.
+        """§1A — box beats workset by ASSIGNMENT ORDER.
         INVERT: swap the two overlays' splice positions -> this reddens."""
         snap = _pref_snap(
             tmp_path,
@@ -2561,7 +2561,7 @@ class TestPrefLevelPrecedence:
 
 class TestPrefRejectionAtLaunch:
     def test_a_bad_pref_fails_the_launch(self, tmp_path):
-        """§2h L1280-1283 — the launch FAILS rather than proceeding with a
+        """§2h — the launch FAILS rather than proceeding with a
         partially-applied request. INVERT: warn-and-continue -> reddens."""
         box_p = _write_yaml(
             tmp_path / "box.yaml",
@@ -2634,7 +2634,7 @@ class TestPrefFreeByteIdentity:
 
 
 class TestCliLevelPrecedence:
-    """spec §1A L320-326 — *"its OWN LEVEL — the highest, above everything"*.
+    """spec §1A — *"its OWN LEVEL — the highest, above everything"*.
 
     The unit-level shape of the level lives in ``test_settings_cli_level.py``;
     these pin what it BEATS once spliced, which is the only thing that makes it a
@@ -2687,7 +2687,7 @@ class TestCliLevelPrecedence:
 
     def test_the_cli_level_beats_a_pref_on_the_selection_key(self, tmp_path):
         """The P7 case, restated at the generalised seam: ``--agent`` over
-        ``pref.system.agent`` (spec §2h L1335 precedence chain)."""
+        ``pref.system.agent`` (spec §2h precedence chain)."""
         snap = _pref_snap(
             tmp_path,
             box={"pref": {"system": {"agent": "goose"}}},
@@ -2711,7 +2711,7 @@ class TestCliLevelPrecedence:
 
 
 class TestCliLevelGuardIsNotBypassable:
-    """spec §1A L335-338 — the guard lives INSIDE ``build_launch_snapshot``.
+    """spec §1A — the guard lives INSIDE ``build_launch_snapshot``.
 
     A guard a caller can forget to run is not a guard, so it is asserted at the
     production seam and not only against ``guard_cli_level`` directly.

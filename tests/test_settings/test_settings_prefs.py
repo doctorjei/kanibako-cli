@@ -47,7 +47,7 @@ def write(path, doc):
 
 
 # ---------------------------------------------------------------------------
-# §0 GLOB convention (spec §0 L156-159)
+# §0 GLOB convention (spec §0)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("pattern,key,expected", [
@@ -72,7 +72,7 @@ def test_glob_convention(pattern, key, expected):
 
 def test_filter1_accepts_a_new_name_in_a_parametric_family():
     """INVERT: make filter 1 test EXISTENCE -> this reddens.
-    spec §2h L1225-1228."""
+    spec §2h."""
     assert key_reason("agent.claude.bindings.rw.boooooo", valid_agents=AGENTS) is None
 
 
@@ -102,7 +102,7 @@ def test_filter2_rejects_everything_else():
 
 
 def test_filter2_rejects_an_unknown_agent_but_accepts_a_non_active_one():
-    """§2h L1221 — the test is 'is it a VALID agent', NOT 'is it the ACTIVE one'."""
+    """§2h — the test is 'is it a VALID agent', NOT 'is it the ACTIVE one'."""
     r = allowlist_reason("agent.zippity.model", valid_agents=AGENTS)
     assert r is not None and "not a valid agent" in r
     assert allowlist_reason("agent.goose.model", valid_agents=AGENTS) is None
@@ -144,20 +144,20 @@ def test_filter3_structural():
     ("pref.system.agent", "termination argument"),
 ])
 def test_filter3_categorical(target, fragment):
-    """INVERT: drop the categorical arm -> reddens. spec §2h L1232-1236."""
+    """INVERT: drop the categorical arm -> reddens. spec §2h."""
     r = forbidden_tier_reason(target, level="box")
     assert r is not None and "categorical tier" in r and fragment in r
 
 
 def test_filter3_categorical_does_not_bar_meta_values_from_CHANGING():
-    """§2h L1235: only DIRECT targeting is barred — meta VALUES still change
+    """§2h: only DIRECT targeting is barred — meta VALUES still change
     because the key they derive from changed, which is the entire point."""
     assert forbidden_tier_reason("system.agent", level="box") is None
 
 
 @pytest.mark.parametrize("target", sorted(LOCATOR_CLOSURE))
 def test_filter3_locator_closure(target):
-    """INVERT: drop the closure -> reddens. spec §2h L1237-1250."""
+    """INVERT: drop the closure -> reddens. spec §2h."""
     r = forbidden_tier_reason(target, level="box")
     assert r is not None and "locator closure" in r
 
@@ -200,7 +200,7 @@ def test_all_failing_filters_are_reported():
 
 
 def test_reason_is_a_string_not_a_bool():
-    """spec §2h L1283 — 'the forbidden-tier check must return a REASON, not a
+    """spec §2h — 'the forbidden-tier check must return a REASON, not a
     boolean', so the error can name the cause."""
     r = forbidden_tier_reason("meta.box.path", level="box")
     assert isinstance(r, str)
@@ -211,7 +211,7 @@ def test_reason_is_a_string_not_a_bool():
 # ---------------------------------------------------------------------------
 
 def test_values_are_installed_verbatim_including_none():
-    """⚑ THE named hazard (spec §2h L1270-1272): `if value is None: continue` is
+    """⚑ THE named hazard (spec §2h): `if value is None: continue` is
     the natural guard and silently implements the REJECTED reading, deleting a
     box's ONLY suppression channel with no error and no diff.
     INVERT: add that guard -> this reddens."""
@@ -227,7 +227,7 @@ def test_values_are_installed_verbatim_including_none():
 
 @pytest.mark.parametrize("value", [None, "", "empty", 0, False, ["a"]])
 def test_the_pref_layer_interprets_no_emptiness_idiom(value):
-    """spec §2h L1273-1275 — present-None (tri-state omit), terminal "" (!= unset)
+    """spec §2h — present-None (tri-state omit), terminal "" (!= unset)
     and the COPY-disable sentinel "empty" all forward UNTOUCHED; otherwise the
     pref becomes a FOURTH place deciding what 'empty' means.
     INVERT: any interpretation here -> reddens."""
@@ -257,7 +257,7 @@ def test_apply_splits_by_level_in_order():
 
 
 def test_a_failed_pref_raises_naming_key_level_file_and_reason(tmp_path):
-    """spec §2h L1280-1283 — 'We don't want to just moving on with bad
+    """spec §2h — 'We don't want to just moving on with bad
     settings.' INVERT: warn-and-continue -> reddens."""
     src = tmp_path / "settings.yaml"
     with pytest.raises(SettingsError) as exc:
@@ -501,7 +501,7 @@ class TestSuppressionEndToEnd:
 # ---------------------------------------------------------------------------
 
 class TestPluginDeclaredAgentLeaves:
-    """SHOULD-1 — §0 L132-138: agent specifics are PLUGIN-declared."""
+    """SHOULD-1 — §0: agent specifics are PLUGIN-declared."""
 
     def test_a_plugin_declared_key_validates(self):
         """goose declares `provider` via setting_descriptors(); before the union

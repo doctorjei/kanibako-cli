@@ -339,7 +339,7 @@ def start_mocks():
                 # persona override its return. (P7: renamed from
                 # ``read_default_agent``.)
                 read_system_agent=DEFAULT,
-                # AGENT-scope ``bootstrap`` resolution (spec §2d L579): the
+                # AGENT-scope ``bootstrap`` resolution (spec §2d): the
                 # authoritative per-launch value _run_container reads off the
                 # settings snapshot.  With a MagicMock ``std``/``proj`` the real
                 # resolver would feed MagicMock paths to build_launch_snapshot, so

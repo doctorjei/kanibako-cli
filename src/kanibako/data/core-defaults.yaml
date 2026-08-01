@@ -39,7 +39,7 @@ masks: []
 # ~/channels/inbox.
 channels:
   # System channel type roots (every mode).
-  # B2b: routed through @system.channels.* (spec §2c ALL PROJECTS L471-474) — the
+  # B2b: routed through @system.channels.* (spec §2c ALL PROJECTS) — the
   # host_src is the @system.* REF (not the runtime-probed literal), which `expand`
   # resolves to the SAME resolved system channel root (`std.channels_* ==
   # resolved["system.channels.*"]`; the same flat foundation, byte-identical). The
@@ -69,7 +69,7 @@ channels:
   # (C)-stable path ~/channels/inbox.  The depth-sort lands this deeper dest
   # after ~/channels/mailboxes — both binds are kept.
   #
-  # B2: routed through @meta.box.inbox (spec §2c L475) — the host_src is the @meta.*
+  # B2: routed through @meta.box.inbox (spec §2c) — the host_src is the @meta.*
   # REF (not the runtime-probed literal), which `expand` resolves to the SAME
   # materialized inbox address (byte-identical, JC-B2-4). `source: inbox` is kept
   # for the standalone-omit gate (a standalone box still has an inbox, so it is NOT
@@ -81,7 +81,7 @@ channels:
     scope: system
   # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
   # seam by the presence of the workset channel paths).  B2b: routed through
-  # @workset.channels.* (spec §2c ALL WORKSETS L452-454) — the loader folds the
+  # @workset.channels.* (spec §2c ALL WORKSETS) — the loader folds the
   # resolved workset channel literal into the floor under that key and emits the
   # @-ref as the host_src (byte-identical to the runtime-probed `wch.*`).  The
   # `source` gate still drops these entries for a standalone box (no workset paths).
@@ -145,7 +145,7 @@ core:
     options: "Z,U"
     scope: system
   # Project workspace — bound rw at ~/workspace.  B2: routed through
-  # @meta.box.workspace (spec §2c L476) — the host_src is the @meta.* REF, which
+  # @meta.box.workspace (spec §2c) — the host_src is the @meta.* REF, which
   # `expand` resolves to the SAME materialized workspace source (= str(proj.
   # project_path); byte-identical, JC-B2-4).  `source: project_path` is kept as the
   # documentary symbolic name; the loader emits `meta_ref` as the host_src.
