@@ -1,5 +1,5 @@
 # BRIEF_WORKSET.md - Workset Directives (editable)
-<!--
+<!--[STOCK]
 ***NOTE TO EDITING AGENTS OR NATURAL PERSONS***: *Only directives that apply to ALL and ONLY
 projects in the workset should go in these files! Anything that is global, specific to agents, or
 specific to a project/box should go in the `general`, `agents`, or `box` sections respectively.*
@@ -14,7 +14,7 @@ a starting point or entirely replaced.
 Shared directives across related projects in this workset are found here.
 
 ---
-<!--
+<!--[STOCK]
 
 ## Workset Overview
 

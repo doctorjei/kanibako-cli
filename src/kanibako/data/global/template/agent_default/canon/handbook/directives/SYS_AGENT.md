@@ -1,5 +1,5 @@
 # Agent System Directives
-<!--
+<!--[STOCK]
 ***NOTE TO EDITING AGENTS OR NATURAL PERSONS***: *Only directives that apply SPECIFICALLY to agents
 should go in these files! Anything that is global or specific to project worksets or a particular
 box/project should go in the `general`, `workset`, or `box` sections respectively.*

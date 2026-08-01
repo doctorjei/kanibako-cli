@@ -20,7 +20,7 @@ Project-specific rules, architecture, and development reference.
 
 ---
 
-<!-- TO EDITING AGENTS AND/OR NATURAL PERSONS:
+<!--[STOCK] TO EDITING AGENTS AND/OR NATURAL PERSONS:
 
 Here in comments you will find an example section breakdown as a starting point.
 
