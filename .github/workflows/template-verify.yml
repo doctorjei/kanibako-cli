@@ -1,19 +1,18 @@
 name: Verify Templates
 
-# Build the bundled template Containerfiles against a locally-built kanibako-oci
-# base and run each template's declared smoke checks. Nothing here publishes an
-# image: it is build + smoke only.
+# Build the bundled template Containerfiles against the published kanibako-oci
+# base image and run each template's declared smoke checks. Nothing here
+# publishes an image: it is build + smoke only. The base image itself is built
+# and released by the kanibako-images repo (split 2026-06-12).
 
 on:
   push:
     branches: [main]
     paths:
       - 'src/kanibako/containers/Containerfile.template-*'
-      - 'src/kanibako/containers/Containerfile.kanibako'
   pull_request:
     paths:
       - 'src/kanibako/containers/Containerfile.template-*'
-      - 'src/kanibako/containers/Containerfile.kanibako'
   workflow_dispatch:
 
 env:
@@ -52,7 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Log in to GHCR so we can pull the PRIVATE droste base image.
+      # Log in to GHCR so the base pull keeps working even if the package is
+      # (or becomes) private. The base is currently public.
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -62,24 +62,16 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      # Build the oci base LOCALLY so the verify is hermetic (does not depend on
-      # a published :latest). A matrix job cannot reuse a base built in another
-      # job's runner, so each matrix job builds the base before its template.
-      - name: Build kanibako-oci base
-        run: |
-          set -euo pipefail
-          docker build \
-            --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0 \
-            --build-arg VARIANT=oci \
-            -t kanibako-oci:ci \
-            -f src/kanibako/containers/Containerfile.kanibako \
-            src/kanibako/containers/
-
+      # Build each template directly FROM the published base. The base
+      # Containerfile moved to the kanibako-images repo at the 2026-06-12 split,
+      # so it can no longer be built locally here; the published ref below is
+      # the same one the e2e job in test.yml consumes, and matches the
+      # templates' own ARG BASE_IMAGE default.
       - name: Build template ${{ matrix.template }}
         run: |
           set -euo pipefail
           docker build \
-            --build-arg BASE_IMAGE=kanibako-oci:ci \
+            --build-arg BASE_IMAGE=ghcr.io/doctorjei/kanibako-oci:latest \
             -t kanibako-template-${{ matrix.template }}:ci \
             -f src/kanibako/containers/Containerfile.template-${{ matrix.template }} \
             src/kanibako/containers/
