@@ -20,6 +20,8 @@ Same gate class as the M-12 items; the full shim table + gate is
 contract.
 """
 
+import warnings
+
 from kanibako.settings.agent_config import (
     AGENT_CATEGORY_DIRNAME as AGENT_CATEGORY_DIRNAME,
 )
@@ -61,4 +63,20 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.agent_config import (
     write_agent_config as write_agent_config,
+)
+
+# ⚑ Stage 1 of the two-stage retirement (Jei, 2026-08-01): v1.8.0 KEEPS this
+# alias but SAYS SO; the next release deletes it and plugin discovery refuses an
+# old plugin by name with upgrade instructions.  FutureWarning deliberately —
+# DeprecationWarning is hidden by default outside __main__, which would make this
+# silent for exactly the audience it exists for.  Best-effort courtesy: it fires
+# on import of the OLD path only (a consumer of the new module never executes
+# this file), and a launch path that swallows stderr will swallow it — the next
+# release's hard error is the backstop, not this.
+warnings.warn(
+    "kanibako.agent_config moved to kanibako.settings.agent_config; this compatibility alias "
+    "exists for plugins built against kanibako-cli < 1.8.0 and will be REMOVED in the next "
+    "release — upgrade your kanibako-agent-* packages.",
+    FutureWarning,
+    stacklevel=2,
 )
