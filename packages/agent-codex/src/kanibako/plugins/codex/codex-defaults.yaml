@@ -1,5 +1,5 @@
 # codex AGENT defaults — the declarative source of truth for the codex plugin's
-# default-set (P6c coalesce; settings-keyspace-1.6.0-target.md §2d agent.codex.*).
+# default-set (P6c coalesce; settings-keyspace-1.8.0.md §2d agent.codex.*).
 #
 # This file holds codex's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery bind, launch grammar, settings routing, cred-file lifecycle,
@@ -61,7 +61,7 @@ descriptor:
       fragment: ["exec"]
 
   # safe-bypass is the FLAG --dangerously-bypass-approvals-and-sandbox; persisted
-  # default via the "auto_approve" agent-scope key (spec §2d L630, default
+  # default via the "auto_approve" agent-scope key (spec §2d, default
   # true/PERMISSIVE; codex persists uniformly per the 2026-06-27 collapse ruling).
   # codex is default-safe, so no secure_flag.
   safe_bypass:

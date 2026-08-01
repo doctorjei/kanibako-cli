@@ -850,7 +850,7 @@ def run_share_add(args: argparse.Namespace) -> int:
     no content sync exists).
 
     ⚑ A BARE-RELATIVE host source is ABSOLUTISED AGAINST THE WORKSET ROOT HERE, at
-    WRITE time (spec §2a L474-486: a stored source must fully resolve on its own).
+    WRITE time (spec §2a: a stored source must fully resolve on its own).
     The documented convenience — "a relative host_src is resolved under the working
     set root" — is preserved EXACTLY: the same input yields the same mount, because
     this join is the one the launch used to apply (the retired assembly-time
@@ -1095,7 +1095,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     the workset file — the SAME resolver the launch uses — replacing the retired
     ``resolve_shares``/``read_bindings``/``LevelView`` path.
 
-    Every stored host_src resolves ON ITS OWN (spec §2a L474-486) — ``share add``
+    Every stored host_src resolves ON ITS OWN (spec §2a) — ``share add``
     absolutises a relative source at WRITE time — so there is no root to apply
     here. This display therefore cannot diverge from what a launch mounts, which
     it previously could: the old join lived in TWO places (here and

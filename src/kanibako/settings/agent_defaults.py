@@ -223,14 +223,14 @@ def load_category_binds(
     returns a mapping of the DISCRIMINATED scoped category key
     ``agent.<agent>.<category>.<key>`` → a STRUCTURED bind tuple ``(meta_ref,
     box_dest[, "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).  *agent* is
-    the declaring plugin's own name; the agent tier is DISCRIMINATED (§2d / §0 L21 —
+    the declaring plugin's own name; the agent tier is DISCRIMINATED (§2d / §0 —
     there is NO bare ``agent.<key>``), so the key is built discriminated HERE rather
     than re-rooted downstream.
 
     The value's element 0 is the RAW ``@``-ref STRING (e.g. a ``"@system.*"``
     source key); the launch category cascade folds it into the floor and ``expand``
     resolves it to the referenced path — so a plugin declares a bind to a shared
-    source WITHOUT any per-harness path knowledge in core (spec §2d L608).
+    source WITHOUT any per-harness path knowledge in core (spec §2d).
     ``start.py`` unions this table into ``default_categories`` alongside
     :func:`load_common`.
 
@@ -273,16 +273,16 @@ def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefaul
     (``agent.<agent>.common.<name>``, built here from the file's bare ``key:`` leaf)
     to a STRUCTURED bind pair ``(host_src, box_dest)`` (spec §2a — a tuple, NOT a
     colon-joined string).  *agent* is the declaring plugin's own name; the agent tier
-    is DISCRIMINATED (§2d / §0 L21 — there is NO bare ``agent.<key>``).
+    is DISCRIMINATED (§2d / §0 — there is NO bare ``agent.<key>``).
     ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.  Returns ``{}`` when
     the file declares no ``common`` entries.
 
-    ROOTED AT DECLARATION (spec §2a L487-517).  An author writes a bare leaf
+    ROOTED AT DECLARATION (spec §2a).  An author writes a bare leaf
     (``plugins``); what is STORED is the full self-resolving
     ``@meta.agent.<agent>.path/common/plugins``, so no later layer prepends
-    anything (§2a L474-486 — a source must fully resolve on its own).  A source
+    anything (§2a — a source must fully resolve on its own).  A source
     that is ALREADY self-resolving (absolute / ``~`` / ``$var`` / ``@``-ref) is
-    stored VERBATIM (§2a L518-525); :func:`~kanibako.settings.agent_config.
+    stored VERBATIM (§2a); :func:`~kanibako.settings.agent_config.
     root_relative_source` owns that rule and
     :func:`~kanibako.settings.agent_config.agent_category_root_ref` owns the layout.
 

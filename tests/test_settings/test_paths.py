@@ -1840,7 +1840,7 @@ class TestBoxWorksetSettingsPaths:
 
     def test_standalone_box_tier_is_the_box_data_settings_file(self, tmp_path: Path):
         """STANDALONE gains a real BOX TIER at ``box_data/settings.yaml`` (spec §2c
-        L817 + §5 L1407); the ROOT file keeps playing the WORKSET tier.  (Mutation:
+        + §5); the ROOT file keeps playing the WORKSET tier.  (Mutation:
         reverting the standalone arm to ``None`` → RED.)"""
         from kanibako.settings.paths import BoxMode, box_workset_settings_paths
 
@@ -1932,7 +1932,7 @@ class TestBoxWorksetSettingsPaths:
 
 
 class TestStandaloneDetectionIsRootFileOnly:
-    """§5 L1422-1427: STANDALONE detection = the ``box_data/`` marker DIR + the ROOT
+    """§5: STANDALONE detection = the ``box_data/`` marker DIR + the ROOT
     ``settings.yaml`` (the WORKSET-tier file).  P2 introduces a BOX-tier file at
     ``box_data/settings.yaml``; detection must NOT come to depend on it, or the
     ancestor-walk that finds a standalone project at all would break."""

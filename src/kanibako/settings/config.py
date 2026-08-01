@@ -52,7 +52,7 @@ class KanibakoConfig:
 
     paths_project_toml: str = _DEFAULTS["paths_project_toml"]
     box_image: str = _DEFAULTS["box_image"]
-    # ⚑ ``box_agent_name`` is GONE (P7, spec §2b L698): ``box.agent_name`` is
+    # ⚑ ``box_agent_name`` is GONE (P7, spec §2b): ``box.agent_name`` is
     # RETIRED and a box selects its agent with the REQUEST ``pref.system.agent``
     # (§2h), resolved off the launch snapshot by :mod:`kanibako.settings.agent_select`.
     # There is no flat-scalar agent field any more — the selection is a KEY.
@@ -552,7 +552,7 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
 def read_system_agent(system_path: Path | None) -> str | None:
     """Read the stored ``system.agent`` SETTING from the system settings tier.
 
-    ``system.agent`` (spec §2g L1187) is the CURRENT agent's name — a system-scope
+    ``system.agent`` (spec §2g) is the CURRENT agent's name — a system-scope
     SETTINGS key (behavior, not a config path), so it lives in the ``system:``
     table of the system settings file ``@config.settings`` =
     ``@config.data/global/settings.yaml`` (the ``std.settings`` path), exactly

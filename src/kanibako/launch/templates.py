@@ -141,7 +141,7 @@ def template_seed_defaults(
         for name, value in _layer(f"@agent.{agent_id}.template").items():
             defs[f"agent.{agent_id}.seeded.{name}"] = value
     if has_workset_channels(proj):
-        # SOURCE key (spec §2c L507; Q3 default @meta.workset.path/template): the
+        # SOURCE key (spec §2c; Q3 default @meta.workset.path/template): the
         # workset-local template dir. STANDALONE (no workset channels) omits BOTH
         # the source and the layers (its workset tier is <None>).
         defs["workset.template"] = (

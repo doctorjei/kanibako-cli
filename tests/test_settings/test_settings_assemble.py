@@ -3,7 +3,7 @@
 Covers the brief's checklist: the 6-level count + MOST-SPECIFIC-FIRST order;
 ``agent.default`` vs ``agent.<active>`` land in the RIGHT separate levels (NOT
 pre-merged), each under its TRUE discriminated §2d key (``agent.default.<key>`` /
-``agent.<active-name>.<key>`` — NO bare-``agent`` collapse, spec §0 L21/§2d);
+``agent.<active-name>.<key>`` — NO bare-``agent`` collapse, spec §0/§2d);
 binds become ``Bind`` with raw ``@``-refs / ``$vars``
 / ``~`` preserved (NOT expanded); ``masks`` is the keyed ``dict[box_dest →
 bool|None]`` shape; absent files → empty ``KeyStore`` partials; the floor lands
@@ -383,7 +383,7 @@ def test_top_level_meta_drop_warns_once_per_agent_file(
 
 
 # --------------------------------------------------------------------------- #
-# agent.default vs agent.<active> split — TRUE discriminated keys (§2 L138–142) #
+# agent.default vs agent.<active> split — TRUE discriminated keys (§2) #
 # --------------------------------------------------------------------------- #
 
 
@@ -399,7 +399,7 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
     )
     levels = assemble_levels(agent_name="claude", agent_path=agent)
     # The active level keeps the §2d key agent.claude.*; the default level keeps
-    # agent.default.* — NO bare-`agent` collapse (spec §0 L21/§2d).
+    # agent.default.* — NO bare-`agent` collapse (spec §0/§2d).
     active = levels[AGENT_ACTIVE]["agent"]["claude"]
     default = levels[AGENT_DEFAULT]["agent"]["default"]
     # active carries ONLY what claude set (NOT pre-merged with default).
@@ -410,7 +410,7 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
     # The discriminator is KEPT (the §2d key form), not collapsed to bare `agent`.
     assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", _MISSING) is not _MISSING
     assert dict.get(levels[AGENT_DEFAULT]["agent"], "default", _MISSING) is not _MISSING
-    # No bare `agent.<key>` leaked (would be a §0 L21 violation).
+    # No bare `agent.<key>` leaked (would be a §0 violation).
     assert dict.get(levels[AGENT_ACTIVE]["agent"], "model", _MISSING) is _MISSING
     assert dict.get(levels[AGENT_DEFAULT]["agent"], "model", _MISSING) is _MISSING
 
@@ -452,7 +452,7 @@ def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
 
 
 def test_per_agent_independence_other_agent_under_own_name(tmp_path: Path) -> None:
-    # §0 L21: a settings file may set agent.<name>.* for an agent that is NOT the
+    # §0: a settings file may set agent.<name>.* for an agent that is NOT the
     # active one. With claude active, the file's agent.goose.* must NOT leak into
     # the active level and must keep its own discriminated name (it only takes
     # effect when goose is active next launch).
@@ -758,7 +758,7 @@ def test_agent_active_override_survives_and_wins_by_name(tmp_path: Path) -> None
     assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "cm"
     # agent.default.* survives by its own true name (NOT erased / collapsed).
     assert dict.get(snap["agent"]["default"], "model", _MISSING) == "dm"
-    # No bare agent.model leaked (a §0 L21 violation).
+    # No bare agent.model leaked (a §0 violation).
     assert dict.get(snap["agent"], "model", _MISSING) is _MISSING
 
 
@@ -799,7 +799,7 @@ def _box_enable_vault(snap: KeyStore) -> object:
 
 
 def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> None:
-    # STANDALONE TIER MODEL (P6c, spec §2c L472): a lone box's single settings.yaml
+    # STANDALONE TIER MODEL (P6c, spec §2c): a lone box's single settings.yaml
     # now plays the WORKSET tier (box tier EMPTY). A box.* key set in it still
     # resolves for box scope via R2 downward-defaults (box ⊂ workset — the
     # workset-tier read KEEPS box.*). File carries a box-scope override.
@@ -847,7 +847,7 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h L1252-1254)   #
+# ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h)   #
 # --------------------------------------------------------------------------- #
 
 

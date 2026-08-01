@@ -82,7 +82,7 @@ def _settings_paths() -> tuple[Path, Path]:
 
 
 def _write_system_agent(name: str) -> None:
-    """Programmatically write the ``system.agent`` SETTING (spec §2g L1187).
+    """Programmatically write the ``system.agent`` SETTING (spec §2g).
 
     Writes the ``system:`` table's ``agent`` leaf into the system settings file via
     the same preserving low-level path ``set_config_value`` uses, so it round-trips

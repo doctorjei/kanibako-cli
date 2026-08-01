@@ -27,12 +27,12 @@ scope still overrides by name — precedence-equivalent to the old AGENT-level
 * **OS1** — the bare behavior floor (``{d.key: d.default}``) is mapped to the
   SCOPE-QUALIFIED ``agent.default.<key>`` before folding: the declared behavior
   defaults are the ALL-AGENTS backstop (spec §2d lists them under ``agent.default.*``).
-  There is NO bare ``agent.<key>`` (spec §0 L21); the §2d L368 active-over-default
+  There is NO bare ``agent.<key>`` (spec §0); the §2d active-over-default
   READ layers a per-agent ``agent.<active>.<key>`` over this default.
 * **7a** — :func:`~kanibako.settings.agent_representation.agent_default_partial` is an
   ADDITIONAL agent-level partial (S27): the descriptor delivery binds become
   ``agent.<active>.bindings.{ro,rw}.<key>`` in the cascade (the active agent's
-  DISCRIMINATED slot, ``install.name``; §2d / §0 L21 — NO bare ``agent`` token), so
+  DISCRIMINATED slot, ``install.name``; §2d / §0 — NO bare ``agent`` token), so
   agent binary/launcher/share delivery flows through the ONE category keyspace
   (single-route), NOT a parallel ``descriptor_mounts`` route. A user repoint of a
   descriptor delivery bind's host source is an ordinary settable
@@ -40,7 +40,7 @@ scope still overrides by name — precedence-equivalent to the old AGENT-level
   slot 7a delivers into); it merges over 7a BY NAME through the normal cascade —
   no parallel override route.
 
-The DISCRIMINATED agent read (§2d L368)
+The DISCRIMINATED agent read (§2d)
 ---------------------------------------
 The snapshot keeps the agent tier discriminated — ``agent.default.*`` (the
 all-agents backstop) and ``agent.<active>.*`` (the active slot, where 7a or
@@ -63,7 +63,7 @@ S20 escape contract (backslash-escaped ``$`` / ``~`` / ``\\`` carried literal) i
 honored by the shared ``expand_expr`` scanner.
 
 Authority: ``~/vault/rw/keystore-design.md`` §1/§2/§4/§6g; SEAMS
-S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1; spec ``settings-keyspace-1.6.0-target.md``
+S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1; spec ``settings-keyspace-1.8.0.md``
 §0/§1/§2/§2a/§2c.
 """
 
@@ -199,7 +199,7 @@ def auth_chain_floor(
         _SYSTEM_SHARE_ALLOWED_KEY: True,
         # The box-scoped MIRROR of the active agent's capability (RO / meta).
         #
-        # ⚑ The spec (§2c L936) writes this as
+        # ⚑ The spec (§2c) writes this as
         # ``@meta.agent.<@system.agent>.auth.share_support``. That is NODE-SELECTOR
         # NOTATION, and it is NOT EXPRESSIBLE by the resolver — a reference name is
         # a literal, there is no second pass, and PHASE R's ``@{name}`` DELIMITS a
@@ -246,7 +246,7 @@ def auth_chain_floor(
         # assembly, so a user CANNOT repoint it to a dangling @-ref / garbage — the
         # only settable auth-location surface is ``workset.auth.path``.
         #
-        # ⚑ P7: SPELLED EXACTLY AS THE SPEC (§2c L792) — ``@workset.auth.path/
+        # ⚑ P7: SPELLED EXACTLY AS THE SPEC (§2c) — ``@workset.auth.path/
         # @system.agent`` — instead of interpolating the active agent in Python.
         # It is a CONSTANT now: the per-box variation arrives through
         # ``pref.system.agent`` (§2h) and the §1A selection level, both of which
@@ -294,10 +294,10 @@ def auth_chain_floor(
 
 
 # --------------------------------------------------------------------------- #
-# meta.runtime.* materialization (block B1 — spec §1A L230-241, 2026-06-29h)   #
+# meta.runtime.* materialization (block B1 — spec §1A, 2026-06-29h)   #
 # --------------------------------------------------------------------------- #
 #
-# The spec's RUNTIME-RESOLVED identity anchors (spec §1A L230-241; §0 meta.* is a
+# The spec's RUNTIME-RESOLVED identity anchors (spec §1A; §0 meta.* is a
 # TOP-LEVEL protected RO group). The per-mode treewalk values are ALREADY computed
 # today (``proj.mode`` / ``proj.group.root`` / the resolved project dir); this
 # surfaces them as REAL ``@``-referenceable keys via the SAME floor-injection
@@ -306,20 +306,20 @@ def auth_chain_floor(
 # NO second resolver). They are ``meta.*`` keys (NOT ``config.*``), so they ride
 # the FLOOR alongside ``system.*`` / the group-auth chain.
 #
-# The keys (spec §1A L230-241):
+# The keys (spec §1A):
 #   meta.runtime.ws_root      | primary    = "@config.primary_workset"  (@-ref → #3a foundation)
 #                             | named      = str(proj.group.root)        (resolved literal)
 #                             | standalone = str(proj.metadata_path)     (the project ROOT <root>;
 #                                            B2b fixed this from the B1 <root>/workspace defect)
 #   meta.runtime.project_type | proj.mode.value  ("primary"|"named"|"standalone")
 #
-# (There is NO meta.runtime.ws_settings: spec §1A L367-368 CUT it — "no longer needed
+# (There is NO meta.runtime.ws_settings: spec §1A CUT it — "no longer needed
 #  (unified path)". It was a one-consumer alias for the value string below.)
 #
-# Then the SINGLE-SOURCE re-root (spec §1A L239-241; §2c L397/406/414/432):
+# Then the SINGLE-SOURCE re-root (spec §1A; §2c):
 #   meta.workset.path     = "@meta.runtime.ws_root"                (UNIFORM all modes)
 #   meta.workset.settings = "@meta.workset.path/settings.yaml"     (UNIFORM; spec 2c L804)
-#   meta.box.mode         = "@meta.runtime.project_type"   (RO identity anchor; spec §2b L486)
+#   meta.box.mode         = "@meta.runtime.project_type"   (RO identity anchor; spec §2b)
 #
 # These resolve transitively in the ONE expand pass (e.g. primary:
 # meta.workset.path → @meta.runtime.ws_root → @config.primary_workset → foundation;
@@ -339,7 +339,7 @@ def meta_runtime_floor(
     """Build the ``meta.runtime.*`` + re-rooted ``meta.*`` floor keys (block B1).
 
     Returns the ``{dotted_key: value}`` floor fragment for the spec's runtime
-    identity anchors (spec §1A L230-241; §0 meta-RO). The caller folds it into
+    identity anchors (spec §1A; §0 meta-RO). The caller folds it into
     ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref chain ONCE
     (single-route — NO second resolver). *mode* is the box's
     :class:`~kanibako.settings.paths.BoxMode` value (``"primary"`` / ``"named"`` /
@@ -359,18 +359,18 @@ def meta_runtime_floor(
     file value, so §0's unresolved-FILES rule does not apply). It MUST be given
     for ``named`` / ``standalone`` and is IGNORED for ``primary`` (which uses the
     ``@config.primary_workset`` @-ref so the value live-propagates from the
-    Layer-1 foundation, spec §1A L233).
+    Layer-1 foundation, spec §1A).
 
     The re-rooted keys (``meta.workset.path`` / ``meta.workset.settings`` /
     ``meta.workset.name`` / ``meta.box.mode``) are UNIFORM across modes — each is
-    the SAME @-ref into ``meta.runtime.*`` (the single-source, spec §1A L239-241).
+    the SAME @-ref into ``meta.runtime.*`` (the single-source, spec §1A).
     A scope FILE cannot
     set them (they are construct-set RO per §0 — and ``meta.*`` is not in the
     config-set settable known-key list); the floor is their sole source here.
     """
     floor: dict[str, object] = {}
 
-    # meta.runtime.project_type — the resolved mode token (spec §1A L237).
+    # meta.runtime.project_type — the resolved mode token (spec §1A).
     floor["meta.runtime.project_type"] = mode
 
     # meta.runtime.ws_name — the workset partition TOKEN (spec §1A, 2026-07-04):
@@ -379,7 +379,7 @@ def meta_runtime_floor(
     # same token that keys the channel partition, so the two cannot drift).
     floor["meta.runtime.ws_name"] = ws_name
 
-    # meta.runtime.ws_root (spec §1A L233):
+    # meta.runtime.ws_root (spec §1A):
     #   primary    → the @config.primary_workset @-ref STRING (foundation, #3a);
     #   named      → the detected workset root literal;
     #   standalone → the runtime project dir literal.
@@ -393,27 +393,27 @@ def meta_runtime_floor(
             )
         floor["meta.runtime.ws_root"] = ws_root_literal
 
-    # Single-source re-root (spec §1A L239-241; §2c) — UNIFORM all modes.
+    # Single-source re-root (spec §1A; §2c) — UNIFORM all modes.
     floor["meta.workset.path"] = "@meta.runtime.ws_root"
-    # meta.workset.settings — the SPEC's own spelling, §2c L804:
+    # meta.workset.settings — the SPEC's own spelling, §2c:
     # ``@meta.workset.path/settings.yaml``. That chains through the anchor set two
     # lines up (meta.workset.path = @meta.runtime.ws_root), which the ONE expand pass
     # resolves transitively — the same chained-floor-ref pattern the box-root anchors
     # use. Spelling it off @meta.runtime.ws_root instead would resolve to the
     # byte-identical value but DIVERGE from the spec, and the spec is authority.
     # ⚑ The intermediate ``meta.runtime.ws_settings`` key is CUT from the keyspace
-    # (spec §1A L367-368, "no longer needed (unified path)"): it held exactly this
+    # (spec §1A, "no longer needed (unified path)"): it held exactly this
     # value and had exactly ONE consumer — this key — so substituting its definition
     # removes a hop without changing a single resolved value. Under §0's CLOSED
     # KEYSPACE an undeclared key is not a key, so it does not linger as an alias;
     # ``@meta.workset.settings`` is the only spelling.
     floor["meta.workset.settings"] = "@meta.workset.path/settings.yaml"
-    # meta.workset.name anchors into meta.runtime.ws_name (spec §2c L442/449/457,
+    # meta.workset.name anchors into meta.runtime.ws_name (spec §2c,
     # 2026-07-04) — the SINGLE SOURCE for the partition token; block B2 no longer
     # sets it directly.
     floor["meta.workset.name"] = "@meta.runtime.ws_name"
     # meta.box.mode — the RO identity anchor surfacing the runtime mode (spec §2b
-    # L486; was the settable box.mode config-set key, dropped this block).
+    # ; was the settable box.mode config-set key, dropped this block).
     floor["meta.box.mode"] = "@meta.runtime.project_type"
 
     return floor
@@ -456,9 +456,9 @@ def meta_runtime_floor(
 #  the single source for the partition token, spec §2c 2026-07-04 — NOT a B2 key.)
 #
 # meta.box.settings is the RO box-TIER settings-file anchor, and it is UNIFORM in
-# EVERY mode (spec §2c ALL PROJECTS L817: @meta.box.path/settings.yaml). Standalone is
+# EVERY mode (spec §2c ALL PROJECTS: @meta.box.path/settings.yaml). Standalone is
 # NOT a <None> terminal: its box tier is <root>/box_data/settings.yaml — a real path,
-# merely ABSENT BY DEFAULT (§5 L1407), an absent file being an empty tier. The WRITE
+# merely ABSENT BY DEFAULT (§5), an absent file being an empty tier. The WRITE
 # target moved with the READ in the same change (M-8), so a `config set box.*` lands
 # in exactly the file this anchor names. Note it still cannot simply BE the
 # @meta.box.path/settings.yaml @-ref: a bootstrap anchor may not derive from a key at
@@ -487,7 +487,7 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     a dangling ``@``-reference. A hint that cannot be accepted is worse than none.
 
     Spelled ``@config.agents/<name>`` rather than the spec's
-    ``@config.agents/@meta.agent.<a>.name`` chain (§2d L515): ``<name>`` IS the value
+    ``@config.agents/@meta.agent.<a>.name`` chain (§2d): ``<name>`` IS the value
     of ``meta.agent.<a>.name`` at both seams, and the flat form avoids a floor entry
     that references its own sibling. Both resolve identically (verified).
 
@@ -538,15 +538,15 @@ def meta_identity_floor(
     injection produced (JC-B2-4 equivalence bar).
 
     *share_workset* is ``None`` for STANDALONE (no workset-local channels, spec
-    §2c L469) → materialized as a whole-value ``None`` terminal (the key is PRESENT
+    §2c) → materialized as a whole-value ``None`` terminal (the key is PRESENT
     with value ``None``). It is now the ONLY standalone ``None`` terminal here: a lone
     box genuinely has no workset-LOCAL channel dir, whereas it DOES have a box
     settings tier (see *box_settings*).
 
     *box_settings* is the RO box-TIER settings-file anchor ``meta.box.settings``
-    (spec §2c ALL PROJECTS L817): the box tier's ``settings.yaml`` path STRING, in
+    (spec §2c ALL PROJECTS): the box tier's ``settings.yaml`` path STRING, in
     EVERY mode — the box's own ``<metadata_path>/settings.yaml`` for primary/named and
-    ``<root>/box_data/settings.yaml`` for standalone (ABSENT BY DEFAULT, §5 L1407; an
+    ``<root>/box_data/settings.yaml`` for standalone (ABSENT BY DEFAULT, §5; an
     absent file is an empty tier, and box-scope values then resolve from the workset
     tier ``@meta.workset.settings`` as R2 downward-defaults). It is single-sourced with
     the cascade's box-tier file path (both come from ``box_workset_settings_paths`` in
@@ -555,7 +555,7 @@ def meta_identity_floor(
     the launch always passes a real path.
 
     *agent_name* / *agent_real_name*: when an agent exists, ``meta.agent.<a>.name``
-    is the plugin-set agent name (spec §2d L514, REQUIRED). ``agent_name`` is the
+    is the plugin-set agent name (spec §2d, REQUIRED). ``agent_name`` is the
     cascade discriminator (``install.name``); ``agent_real_name`` is the value
     (the plugin's ``meta.agent.<agent>.name`` — normally the same string). Both
     ``None`` for a NO-AGENT box (skips the agent identity key).
@@ -581,7 +581,7 @@ def meta_identity_floor(
         "meta.box.inbox": inbox,
         "meta.box.share_global": share_global,
         "meta.box.share_workset": share_workset,
-        # The RO box-TIER settings-file anchor (spec §2c ALL PROJECTS L817). UNIFORM:
+        # The RO box-TIER settings-file anchor (spec §2c ALL PROJECTS). UNIFORM:
         # the box tier's settings.yaml in EVERY mode (standalone = box_data/, absent by
         # default). Single-sourced with the cascade box-tier path in
         # _launch_snapshot_inputs, so the anchor names the file the cascade reads and
@@ -591,7 +591,7 @@ def meta_identity_floor(
         # meta.runtime.ws_name (the single source, spec §2c 2026-07-04), set by
         # :func:`meta_runtime_floor`.
     }
-    # The agent identity key (spec §2d L514) — REQUIRED when an agent exists, under
+    # The agent identity key (spec §2d) — REQUIRED when an agent exists, under
     # the agent's discriminated slot. A NO-AGENT box omits it.
     if agent_name is not None:
         floor[f"meta.agent.{agent_name}.name"] = (
@@ -628,7 +628,7 @@ def meta_identity_floor(
 # system._primary_vault_* / system._primary_logs) into StandardPaths; there is no
 # workset.* tier in the snapshot. They are MATERIALIZED here.
 #
-# ⚑ WHERE THE PER-MODE VARIATION LIVES (spec §2c L740). It lives HERE and nowhere
+# ⚑ WHERE THE PER-MODE VARIATION LIVES (spec §2c). It lives HERE and nowhere
 # downstream, so every rooted key + the box home spell themselves ONCE against
 # ``@meta.box.path`` / ``@workset.*``. Each anchor is the spec's own self-resolving
 # @-ref FORMULA (not a proj-attr literal): the formulas were verified equal to the
@@ -656,7 +656,7 @@ def meta_identity_floor(
 #: and is REFUSED rather than silently taking the primary/named arm.
 _BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
 
-#: The DECLARED ``workset.channels.*`` leaves (spec §2c L802-806, L861). The floor
+#: The DECLARED ``workset.channels.*`` leaves (spec §2c). The floor
 #: MANUFACTURES these keys from a caller-supplied mapping, so without this set it
 #: was a free-form passthrough: any leaf the caller invented became a key, which is
 #: precisely what the CLOSED keyspace (spec §0) forbids — an undeclared key is not
@@ -684,23 +684,23 @@ def workset_anchor_floor(
     ``expand`` resolves the @workset.* / @meta.box.path binds ONCE (single-route).
 
     Every anchor is the spec's self-resolving @-ref FORMULA, so the per-mode
-    variation is spelled HERE and nowhere downstream (spec §2c L740, §2a
+    variation is spelled HERE and nowhere downstream (spec §2c, §2a
     "Declaration roots"):
 
     * ``workset.boxes`` — PER-MODE: ``@meta.workset.path/boxes`` (primary/named,
-      §2c L760) · ``@meta.workset.path/box_data`` (standalone, §2c L727).
-    * ``workset.vault_{ro,rw}`` — UNIFORM in every mode (§2c ALL PROJECTS L786-787):
+      §2c) · ``@meta.workset.path/box_data`` (standalone, §2c).
+    * ``workset.vault_{ro,rw}`` — UNIFORM in every mode (§2c ALL PROJECTS):
       ``@meta.workset.path/vault/{ro,rw}``. Only the BOX BIND differs per mode (the
       per-box ``/@meta.box.name`` subdir a lone box does not need).
     * ``workset.logs`` — PER-MODE: ``@meta.workset.path/logs`` (primary/named, §2c
-      L761) · ``@meta.box.path`` (standalone, §2c L728).
+      ) · ``@meta.box.path`` (standalone, §2c).
     * ``workset.canon`` / ``box.canon`` — the per-scope CANON CONTRIBUTION roots,
       UNIFORM in every mode (§2c ALL PROJECTS / §2b). Their ``handbook/`` subtrees
       are the sources of the skip-if-absent ``canon_hb_{workset,box}`` binds AND the
       dests of the §2a handbook seed layers — "the seed writes precisely what the
       bind reads, spelled once", so repointing the key moves both.
     * ``meta.box.path`` — the RO BOX ROOT: ``@workset.boxes/@meta.box.name``
-      (primary/named, §2c L770) · ``@workset.boxes`` (standalone, §2c L740). The
+      (primary/named, §2c) · ``@workset.boxes`` (standalone, §2c). The
       standalone form is the EMPTY LEAF: a BARE whole-value @-ref, so the resolver
       inherits ``@workset.boxes`` verbatim (``_is_whole_value_ref`` decides the shape
       by PARSE) — there is no join, hence no trailing separator and no empty path
@@ -723,7 +723,7 @@ def workset_anchor_floor(
     *workset_channels* (PRIMARY/NAMED only) maps ``common``/``chat``/``share`` to
     the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
     materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c
-    L452-454) route through them. ``None`` for STANDALONE (no workset channels).
+    ) route through them. ``None`` for STANDALONE (no workset channels).
     ⚑ Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an
     undeclared one is REFUSED: this is the one place a floor builds a key from a
     caller-supplied NAME, and a free-form passthrough there would open the closed
@@ -990,7 +990,7 @@ def build_launch_snapshot(
     the declaring plugin) into ONE base-level floor, assembles the 6-level cascade (S8) with
     7a's *agent_partial* inserted as an additional agent-level source (S27), merges
     (S15), and expands (S17/S19) with *ctx*. There is NO bare ``agent.<key>`` in the
-    snapshot (spec §2d / §0 L21) — the agent tier is DISCRIMINATED throughout.
+    snapshot (spec §2d / §0) — the agent tier is DISCRIMINATED throughout.
 
     *behavior_floor* is the BARE behavior-default dict (``{d.key: d.default}``);
     *default_categories* are the already-scope-qualified category default tables
@@ -1007,7 +1007,7 @@ def build_launch_snapshot(
     *meta_runtime* is the runtime identity-anchor floor fragment (block B1) built
     by :func:`meta_runtime_floor` per box mode — the spec's ``meta.runtime.*`` keys
     + the single-source re-root of ``meta.workset.path`` / ``meta.workset.settings``
-    / ``meta.box.mode`` (spec §1A L230-241). Folded into the SAME floor so ``expand``
+    / ``meta.box.mode`` (spec §1A). Folded into the SAME floor so ``expand``
     resolves the @-ref chain ONCE (single-route). ``None`` for a narrow resolve.
 
     *meta_identity* is the construct-time IDENTITY-anchor floor fragment (block B2)
@@ -1068,9 +1068,9 @@ def build_launch_snapshot(
     # OS1: bare behavior keys → scope-qualified agent.default.<key>. The declared
     # behavior defaults are the ALL-AGENTS backstop (spec §2d lists them under
     # ``agent.default.*`` — auto_approve / allow_helpers / model / …). The §2d
-    # L368 active-over-default READ (effective_behavior) then layers a per-agent
+    # active-over-default READ (effective_behavior) then layers a per-agent
     # ``agent.<active>.<key>`` over this default. There is NO bare ``agent.<key>``
-    # (spec §0 L21).
+    # (spec §0).
     if behavior_floor:
         for key, val in behavior_floor.items():
             floor[f"agent.default.{key}"] = val
@@ -1085,7 +1085,7 @@ def build_launch_snapshot(
     # (``default_common()`` → ``agent.<agent>.common.plugins``, ``default_seeds()`` →
     # ``agent.<agent>.seeded.*``) — the declaring plugin builds the discriminated key
     # in :mod:`kanibako.settings.agent_defaults`, because the snapshot agent tier is
-    # DISCRIMINATED (§2d / §0 L21 — NO bare ``agent.<key>``) and the bare form must
+    # DISCRIMINATED (§2d / §0 — NO bare ``agent.<key>``) and the bare form must
     # not exist anywhere. A box/workset/agent file STILL overrides them by name
     # through the merge, and the adapter's active-over-default pick reads them.
     # (``agent.default.*`` from the behavior floor above is the agent tier's
@@ -1118,7 +1118,7 @@ def build_launch_snapshot(
             floor[key] = val
 
     # meta.runtime.* materialization (block B1): the runtime identity anchors +
-    # the single-source re-root (spec §1A L230-241) fold into the SAME floor so
+    # the single-source re-root (spec §1A) fold into the SAME floor so
     # ``expand`` resolves the @-ref chain ONCE (single-route). Built per mode by
     # :func:`meta_runtime_floor`. These are construct-set RO (§0) — NO scope FILE
     # may override them (meta.* is not in the config-set settable known-key list);
@@ -1178,7 +1178,7 @@ def build_launch_snapshot(
     #                      START of that level, BEFORE the level resolves", so the
     #                      level's own keys are applied AFTER and win; and the BOX
     #                      overlay precedes the WORKSET overlay, which IS
-    #                      box-beats-workset by assignment order (§1A L364-367).
+    #                      box-beats-workset by assignment order (§1A).
     #                      Nothing LEGAL contends with either: a box/workset file
     #                      may not set system.agent or agent.<a>.* at all (upward
     #                      writes, dropped by _drop_upward_scopes).
@@ -1196,7 +1196,7 @@ def build_launch_snapshot(
     #                      the RESOLVED ``system.agent`` (P7) plus the ephemeral
     #                      key-shadowing flag values (P8). GUARDED just below.
     state_partial = _agent_state_partial(agent_name, agent_state)
-    # box.agent.* CATEGORY fold (spec §2b L411 / §0 L32-42): the box's same-scope
+    # box.agent.* CATEGORY fold (spec §2b / §0): the box's same-scope
     # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7). It existed to give a box's
     # SETTABLE ``box.agent.<category>`` tweak box-precedence inside the active
     # agent's slot. Spec §2b retires the settable mirror wholesale: ``box.agent.*``
@@ -1232,7 +1232,7 @@ def build_launch_snapshot(
     if cli_level:
         # §1A: the CLI LEVEL, ABOVE EVERYTHING (settings files AND prefs).
         #
-        # GUARDED HERE, not at the call site: §1A L335-338 says the §2h forbidden
+        # GUARDED HERE, not at the call site: §1A says the §2h forbidden
         # tiers do NOT cover the CLI, so a flag that could set a LOCATOR-class value
         # needs its own guard — and a guard a caller can forget to run is not a
         # guard. ``valid_agents`` is passed through so a caller that already has the
@@ -1261,7 +1261,7 @@ def build_launch_snapshot(
 
     snapshot = merge(levels)
     expanded = expand(snapshot, ctx)
-    # meta.box.agent.* RO mirror (block B5, spec §2b L709). Materialize the
+    # meta.box.agent.* RO mirror (block B5, spec §2b). Materialize the
     # box-scoped READ-BACK of the active agent's WHOLE resolved settings subtree as
     # a COPY-on-current-engine step, AFTER expand so the values are resolved
     # terminals.
@@ -1275,7 +1275,7 @@ def build_launch_snapshot(
 # Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7)  #
 # --------------------------------------------------------------------------- #
 
-#: The key that names the agent a box runs (spec §2g L1187).
+#: The key that names the agent a box runs (spec §2g).
 SELECTION_KEY = "system.agent"
 
 
@@ -1296,7 +1296,7 @@ def resolve_selected_agent(
     * ``str``      — a name: the stored ``system.agent``, or a ``pref.system.agent``
       request from the box (beats) or workset file (§2h);
     * ``None``     — PRESENT-``None``: an explicit ``pref.system.agent: null``
-      SUPPRESSION ⇒ the NO-AGENT plain-shell box (spec §2b L703-708, D-M6). A
+      SUPPRESSION ⇒ the NO-AGENT plain-shell box (spec §2b, D-M6). A
       present-``None`` on a SCALAR leaf is KEPT by ``_resolve_present_none``, which
       is exactly what makes this reachable — ``if value is None: continue`` anywhere
       on this path silently deletes the capability;
@@ -1451,10 +1451,10 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# meta.box.agent.* RO mirror materialization (block B5 — spec §2b L709)        #
+# meta.box.agent.* RO mirror materialization (block B5 — spec §2b)        #
 # --------------------------------------------------------------------------- #
 #
-# Spec §2b L709: ``meta.box.agent.<key>`` is the box-scoped READ-BACK of its
+# Spec §2b: ``meta.box.agent.<key>`` is the box-scoped READ-BACK of its
 # active agent's WHOLE resolved settings subtree — ``agent.<@system.agent>.<key>``
 # with the ``agent.default`` fallback. Values are still READABLE here; they are
 # no longer SETTABLE. Being ``meta.*`` it is RO BY CONTRACT (§0: meta ⟺ not
@@ -1481,7 +1481,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 # resolved effective-agent node into ``snapshot["meta"]["box"]["agent"]``:
 #   (a) ``meta.box.agent.<key>`` reads back exactly what
 #       ``agent.<@system.agent>.<key>`` resolved to (the effective node IS
-#       ``agent.default`` overlaid by ``agent.<active>``, §2d L368 pick) — including
+#       ``agent.default`` overlaid by ``agent.<active>``, §2d pick) — including
 #       any ``pref.agent.<agent>.<key>`` the box requested, since a pref is an INPUT
 #       to that resolution rather than a patch on top of it;
 #   (b) NO LEAK — the materialized subtree is a FRESH deep COPY
@@ -1519,8 +1519,8 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
     """Materialize ``meta.box.agent.*`` = the resolved active-agent subtree (B5).
 
     The box-scoped RO read-back of its active agent's WHOLE resolved settings
-    subtree (spec §2b L709): a deep COPY of the resolved effective-agent node
-    (``agent.default`` overlaid by ``agent.<active_agent>`` — the §2d L368 pick) is
+    subtree (spec §2b): a deep COPY of the resolved effective-agent node
+    (``agent.default`` overlaid by ``agent.<active_agent>`` — the §2d pick) is
     written under ``snapshot["meta"]["box"]["agent"]``. Mutates *snapshot* in place
     (it is the launch-local expanded tree, owned by the caller).
 
@@ -1614,7 +1614,7 @@ def _agent_state_partial(
     NOT the discriminated ``agent.<active>.*`` / ``agent.default.*`` sub-tables that
     ``assemble_levels``' ``_agent_partial`` reads (it treats a flat ``[agent]`` table
     as UNSET). So passing the file raw as ``agent_path`` DROPS its behavior. This
-    wraps it into the DISCRIMINATED active slot (the §2d / §0 L21 form) so it merges
+    wraps it into the DISCRIMINATED active slot (the §2d / §0 form) so it merges
     by name; any undeclared agent-scope scalar keys ride through verbatim (forward-compat).
     """
     if not agent_state:
@@ -1646,10 +1646,10 @@ def effective_behavior(
     behavior cascade now flows through the ONE snapshot — each scope file's
     ``agent.default.*`` / ``agent.<active>.*`` tables merge by NAME (block 2b /
     assemble_levels S8), the declared-default floor folds in under ``base`` as
-    ``agent.default.*`` (OS1) — and THIS function does the §2d L368
+    ``agent.default.*`` (OS1) — and THIS function does the §2d
     active-over-default value-pick over that merged result.
 
-    Resolution order (the SPEC model, S8 + §2d L368): cascade FIRST, THEN
+    Resolution order (the SPEC model, S8 + §2d): cascade FIRST, THEN
     active-over-default. The merge already resolved ``agent.<active>.<key>`` and
     ``agent.default.<key>`` across ALL scopes by name (a box-file
     ``agent.<active>.model`` beats the agent-file one — box is more specific); this
@@ -1680,7 +1680,7 @@ def effective_behavior(
     active_node = dict.get(agent_node, active_agent, _MISSING)
     default_node = dict.get(agent_node, "default", _MISSING)
     # ⚑ NO ``box.agent.*`` OVERLAY (P7). The settable box-scoped agent mirror is
-    # RETIRED (spec §2b L709 — it is now the RO read-back ``meta.box.agent.*``), so
+    # RETIRED (spec §2b — it is now the RO read-back ``meta.box.agent.*``), so
     # there is no box-scope behavior source to overlay here: a box tweaks its
     # agent's behavior with ``pref.agent.<agent>.<key>`` (§2h), which is an ordinary
     # cascade level and is therefore ALREADY resolved into the active slot below.
@@ -1701,7 +1701,7 @@ def effective_behavior(
         key_iter = keys
 
     for key in key_iter:
-        # The §2d L368 active-over-default pick. A present value (incl.
+        # The §2d active-over-default pick. A present value (incl.
         # present-None) SETS the key and shadows the default backstop below it.
         val: object = _MISSING
         if isinstance(active_node, KeyStore):
@@ -1786,8 +1786,8 @@ def snapshot_category_entries(
     load-bearing scope identity (§7), NOT the snapshot's agent discriminator.
 
     The AGENT scope is DISCRIMINATED in the snapshot (``agent.default.*`` /
-    ``agent.<active>.*``, spec §2d / §0 L21 — NO bare ``agent.<key>``). This
-    consumer does the §2d L368 active-over-default value-pick PER NAME: it builds an
+    ``agent.<active>.*``, spec §2d / §0 — NO bare ``agent.<key>``). This
+    consumer does the §2d active-over-default value-pick PER NAME: it builds an
     EFFECTIVE agent node = ``agent.default`` overlaid by ``agent.<active_agent>``
     (the active slot wins each name it sets; ``agent.default`` fills the gaps), then
     walks that one effective node as the (bare) ``agent`` scope. The descriptor
@@ -1797,8 +1797,8 @@ def snapshot_category_entries(
 
     host_src is read from the expanded ``Bind`` (already host-resolved at build)
     and used AS-IS: NOTHING is prefixed here, ever. A stored source resolves ON ITS
-    OWN (spec §2a L474-486); the abstract categories are rooted at DECLARATION, and
-    an assembly-time root-prepend is the shape §2a L487-517 calls FORBIDDEN. Do not
+    OWN (spec §2a); the abstract categories are rooted at DECLARATION, and
+    an assembly-time root-prepend is the shape §2a calls FORBIDDEN. Do not
     reintroduce a per-scope root table here — a structural test scans for it. box_dest is
     resolved BOX-side here (this is a ``box_dest`` consumer, B6): ``~`` →
     ``GUEST_HOME`` and ``$XDG`` against *box_ctx* — matching the old
@@ -1842,7 +1842,7 @@ def snapshot_category_entries(
             # so its message can name the DISCRIMINATED key the user actually wrote
             # (``agent.default.bindings`` vs ``agent.<active>.bindings``). Checking
             # the merged node instead would only be able to say ``agent.bindings``
-            # — a bare form that is NOT a key (§0 L21), i.e. an error message
+            # — a bare form that is NOT a key (§0), i.e. an error message
             # instructing the reader toward a shape the keyspace forbids.
             agent_node = dict.get(snapshot, "agent", _MISSING)
             if isinstance(agent_node, KeyStore):
@@ -1890,7 +1890,7 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
     into ONE effective node per NAME before emission, and the emitted
     ``CategoryEntry.scope`` is the BARE ``agent`` precedence token. But an entry's
     declared KEY must be DISCRIMINATED: a bare ``agent.<category>.<name>`` is not
-    a key at all (spec §0 L21), so a message or a ``meta.derived.*`` key spelled
+    a key at all (spec §0), so a message or a ``meta.derived.*`` key spelled
     that way would name a shape the keyspace forbids and point a reader at
     something they cannot write.
 
@@ -1921,7 +1921,7 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
 
 def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     """The PURE active-over-default agent pick = ``agent.default`` overlaid by
-    ``agent.<active_agent>`` (the §2d L368 value-pick), WITHOUT the box.agent.*
+    ``agent.<active_agent>`` (the §2d value-pick), WITHOUT the box.agent.*
     overlay.
 
     Returns a FRESH ``KeyStore`` shaped like a single (bare) agent scope node — its
@@ -1977,13 +1977,13 @@ def _overlay_into(base: KeyStore, top: KeyStore) -> None:
 
 def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     """Refuse every UNDECLARED category shape under ONE scope node (spec §2d
-    L906-910), naming the key with the prefix it is really written under.
+    ), naming the key with the prefix it is really written under.
 
     *key_prefix* is the DISCRIMINATED key prefix — a bare scope token for
     system/workset/box, and ``agent.default`` / ``agent.<active>`` for the agent
     tier. That is the whole reason this runs on the RAW tiers rather than on the
     merged agent node: an error that said ``agent.bindings`` would be naming a
-    shape §0 L21 forbids, and would point the reader at a key they cannot write.
+    shape §0 forbids, and would point the reader at a key they cannot write.
 
     ⚑ COVERAGE IS THE THREE BIND FAMILIES ONLY — ``bindings.{ro,rw}`` and the
     ``caches``/``seeded``/``common``/``synced`` leaf categories. ``env``, ``masks``
@@ -2015,7 +2015,7 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
 
 
 def _require_category_node(key_prefix: str, category: str, node: object) -> None:
-    """Refuse a VALUE sitting at a CATEGORY ROOT (spec §2d L906-910).
+    """Refuse a VALUE sitting at a CATEGORY ROOT (spec §2d).
 
     A category token names a NAMESPACE of per-name entries; it is not itself a
     declared key, so a scalar / :class:`Bind` / list there is an UNDECLARED shape.
@@ -2077,7 +2077,7 @@ def _emit_scope_node(
     ``CategoryEntry.key``. The two coincide everywhere but the agent tier
     (``_agent_decl_scope_fn``), and they are different facts — collapsing them
     would either lose the precedence token or emit a bare ``agent.<category>``
-    key, which is not a key (spec §0 L21).
+    key, which is not a key (spec §0).
 
     EMISSION ONLY. The undeclared-shape refusal ran earlier, in
     :func:`snapshot_category_entries`, against the RAW tiers — so it could name the
@@ -2210,7 +2210,7 @@ def _emit_bind(
     present-None bind (§3/§6e) and the views' S22 contract holds — so a non-Bind
     leaf is a build-invariant breach; raise loudly (never type-launder).
     The host_src is used AS-IS — a stored source resolves on its own (spec §2a
-    L474-486) and NOTHING is prefixed here; *box_dest_fn* resolves box-side.
+    ) and NOTHING is prefixed here; *box_dest_fn* resolves box-side.
 
     *key* is the DISCRIMINATED declaration key the caller built from
     ``decl_scope_fn`` — carried on the entry for the collision messages and the

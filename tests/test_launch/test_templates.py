@@ -244,7 +244,7 @@ class TestTemplateSeedDefaults:
 
     def test_standalone_omits_workset_layer(self, standalone_proj):
         """STANDALONE has no workset tier -> no workset.template source/layer
-        (spec §2c L483 workset.template <None>)."""
+        (spec §2c workset.template <None>)."""
         defs = template_seed_defaults(standalone_proj, "claude")
         assert "workset.template" not in defs
         assert "workset.seeded.template" not in defs

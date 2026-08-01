@@ -51,7 +51,7 @@ Authority
 ---------
 * ``~/vault/rw/keystore-design.md`` §6d (``config set`` write-back + B4 + B5 —
   PRIMARY), §2 / §6a (files store UNRESOLVED — write RAW, never expanded).
-* Spec ``settings-keyspace-1.6.0-target.md`` §2a (config-set block: source-only,
+* Spec ``settings-keyspace-1.8.0.md`` §2a (config-set block: source-only,
   key-must-exist, value types), §0 (files store UNRESOLVED).
 
 Seams realized here (``plans/keystore-blocks/SEAMS.md``)
@@ -243,7 +243,7 @@ def _rooted_form_hint(key: str) -> str:
     rooted form for them would be inventing a root the keyspace does not have.
 
     ⚑ THE ROOT IS PER SCOPE, and reading it off the spec's own table is the point:
-    §2a L487-517 gives ``@config.data`` for system, ``@meta.agent.<a>.path`` for
+    §2a gives ``@config.data`` for system, ``@meta.agent.<a>.path`` for
     agent, ``@meta.workset.path`` for workset and ``@meta.box.path`` for box. A
     single agent-shaped hint would send a user editing ``workset.common.x`` to a
     root that has nothing to do with their key — a confidently wrong instruction,
@@ -340,7 +340,7 @@ def validate_config_set(
         )
 
     # 1b. A category ``host_src`` must FULLY RESOLVE ON ITS OWN (spec §2a
-    #     L474-486): absolute, ``~``, ``$var`` or an ``@``-ref. A bare relative
+    #     ): absolute, ``~``, ``$var`` or an ``@``-ref. A bare relative
     #     source is REFUSED at set time.
     #
     #     ⚑ Why this cannot be left to the resolution probe below: a literal

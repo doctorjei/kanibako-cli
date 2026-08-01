@@ -7,7 +7,7 @@ the retired by-name resolver and its own direct tests. Nothing here may import
 ``flawed_oracle_categories``.
 
 Agent-scope keys are DISCRIMINATED (``agent.<agent>.<category>.<name>``, spec §2d /
-§0 L21). The undiscriminated ``agent.<category>`` form is not a key and appears
+§0). The undiscriminated ``agent.<category>`` form is not a key and appears
 ONLY in the frozen-oracle file.
 """
 
@@ -51,7 +51,7 @@ def _resolve_home_vault(floor, *, mode, config=None):
 
     *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
     ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
-    ``@config.primary_workset`` @-ref for that mode (spec §1A L233).
+    ``@config.primary_workset`` @-ref for that mode (spec §1A).
     """
     from kanibako.settings.settings_launch import (
         build_launch_snapshot,
@@ -279,7 +279,7 @@ class TestB2bWorksetAnchors:
 
 
 # ---------------------------------------------------------------------------
-# P1: meta.box.path — the RO per-mode BOX ROOT (spec §2c L740/L770, §2a L505).
+# P1: meta.box.path — the RO per-mode BOX ROOT (spec §2c, §2a).
 #
 # These drive the REAL shipped defaults (``core_defaults.core_default_categories``
 # reading ``core-defaults.yaml``) through the REAL floor builders and the REAL
@@ -529,7 +529,7 @@ class TestP1BoxRootAnchor:
 
 
 class TestDeclarationRoots:
-    """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a L487-525).
+    """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a).
 
     The rule, driven through the REAL pipeline (build → snapshot → reconcile):
     a bare relative leaf resolves under ``<agent-store>/<category>/``; an already
@@ -571,9 +571,9 @@ class TestDeclarationRoots:
     def test_absolute_and_ref_sources_are_not_rooted(self):
         """T4 — the spec's own ``caches.transform`` worked example.
 
-        ``agent.<a>.caches.transform = (@system.cache/tweakcc, =)`` (§2d L980/L1041)
+        ``agent.<a>.caches.transform = (@system.cache/tweakcc, =)`` (§2d)
         is an IDENTITY mount rooted DELIBERATELY at ``@system.cache``.  A rule that
-        prefixed it would break the spec's own example — which is why §2a L518-525
+        prefixed it would break the spec's own example — which is why §2a
         reversed the "absolute source is a category mismatch" ruling.
 
         ⚑ THIS TEST IS *NOT* THE INSTRUMENT FOR AN UNCONDITIONAL-ROOTING BUG.
@@ -650,7 +650,7 @@ class TestDeclarationRoots:
 
 
 class TestDeclarationKeyIsDiscriminated:
-    """Every entry carries the DISCRIMINATED key it was declared under (§0 L21).
+    """Every entry carries the DISCRIMINATED key it was declared under (§0).
 
     ``CategoryEntry.scope`` is the BARE precedence token (``agent``), but
     ``CategoryEntry.key`` must name a real tier — ``agent.<agent>`` or
@@ -851,7 +851,7 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         assert isinstance(node, KeyStore)
         derived = derived_bindings(node)
         # One derivation per abstract declaration, keyed by the DISCRIMINATED
-        # declaration key — never the bare ``agent.<category>`` form (§0 L21).
+        # declaration key — never the bare ``agent.<category>`` form (§0).
         assert set(derived) == {e.key for e in abstract}
         for key in derived:
             assert key.startswith(("agent.claude.", "agent.default.",

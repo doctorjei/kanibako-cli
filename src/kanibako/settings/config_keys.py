@@ -70,14 +70,14 @@ class ConfigLevel(Enum):
 KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # Agent flags
     "model",
-    # allow_helpers: an agent-scope BEHAVIOR key (spec §2d L557
+    # allow_helpers: an agent-scope BEHAVIOR key (spec §2d
     # ``agent.default.allow_helpers | true``). The bare key is the any-agent
     # ``agent.default`` tier (mirrors ``model``); per-agent overrides are the
     # persona key ``agent.<agent>.allow_helpers``. Gates the helper hub/socket/
     # listener at launch (start.py). Was a flat scopeless top-level scalar
     # (1.7.0-rc clean break — no back-compat for the old bare-config-field form).
     "allow_helpers",
-    # auto_approve: an agent-scope BEHAVIOR key (spec §2d L556
+    # auto_approve: an agent-scope BEHAVIOR key (spec §2d
     # ``agent.default.auto_approve | true``, PERMISSIVE). The bare key is the
     # any-agent ``agent.default`` tier (mirrors ``model``); per-agent overrides are
     # the persona key ``agent.<agent>.auto_approve``. Redeemed by each descriptor's
@@ -88,7 +88,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "auto_approve",
     # endpoint (persona): alternate harness base-URL, a sibling of model (block B).
     "endpoint",
-    # bootstrap: an agent-scope BEHAVIOR key (spec §2d L579
+    # bootstrap: an agent-scope BEHAVIOR key (spec §2d
     # ``agent.default.bootstrap | tmux``; "bootstrap STAYS a key"). The bare key is
     # the any-agent ``agent.default`` tier (mirrors ``model``); per-agent overrides
     # are the persona key ``agent.<agent>.bootstrap``. Names the in-box multiplexer
@@ -98,7 +98,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # unset). RELOCATED from the retired BOX-scope ``box.bootstrap_program`` key
     # (1.7.0-rc clean break — no alias for the old box key).
     "bootstrap",
-    # continue_mode: an agent-scope BEHAVIOR key (spec §2d L578
+    # continue_mode: an agent-scope BEHAVIOR key (spec §2d
     # ``agent.default.continue_mode | true``; "continue vs fresh; resume removed").
     # The bare key is the any-agent ``agent.default`` tier (mirrors ``model``/
     # ``auto_approve``); per-agent overrides are the persona key
@@ -108,7 +108,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # ``resolve_mode`` seam); the per-launch ``-N``/``-C``/``-R`` flags OVERRIDE it
     # (ephemeral wins), mirroring how ``-M`` overrides ``model`` and ``-A``/``-S``
     # override ``auto_approve``. REPLACES the dead ``start_mode`` leaf (never read at
-    # launch; spec §3 L769 "``start_mode`` fully covered by ``continue_mode`` +
+    # launch; spec §3 "``start_mode`` fully covered by ``continue_mode`` +
     # ``auto_approve``" — 1.7.0-rc clean break, no alias).
     "continue_mode",
     # Box.  ⚑ NO ``box.agent_name`` (P7): the agent SELECTION is the §2h request
@@ -122,7 +122,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.auth.global_sync",
     "box.auth.global_enabled",
     "box.auth.workset_enabled",
-    # ``mode`` is NO LONGER a settable config-set key (block B1, spec §2b L486 /
+    # ``mode`` is NO LONGER a settable config-set key (block B1, spec §2b /
     # §0): the project mode is the RO identity anchor ``meta.box.mode`` (surfacing
     # the runtime-resolved ``@meta.runtime.project_type``), set by the construct-
     # time/bootstrap layer ([project].mode at box creation), NOT overridable via
@@ -160,7 +160,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.channels.common",
     "workset.channels.chat",
     "workset.channels.share",
-    # Per-workset template SOURCE (template-trio, spec §2c L507; Q3 2026-07-09).
+    # Per-workset template SOURCE (template-trio, spec §2c; Q3 2026-07-09).
     # A NORMAL settable STRING-path key (default ``@meta.workset.path/template``);
     # the layer-3 seed source ``workset.seeded.template = (@workset.template, ~)``
     # reads it, so repointing this key reroutes the workset template seed. Routed
@@ -205,7 +205,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.canon",
     "system.cache",
     "system.runtime",
-    # system.agent (spec §2g L1187): the CURRENT agent's name — a system-scope
+    # system.agent (spec §2g): the CURRENT agent's name — a system-scope
     # SETTING (behavior, not a config path), so it routes to the ``system:`` table
     # of the SYSTEM SETTINGS file, NOT the [system] config table.  ⮕ P7 RENAMED it
     # from ``system.default_agent`` AND relocated it out of the reserved
@@ -242,7 +242,7 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # ordinary SETTINGS keys: each routes to its nested ``<scope>.auth.<leaf>``
     # slot in the command-scope settings file (the same nested-settings pattern as
     # ``box.image`` etc.), NOT the [project] meta table.
-    # system.agent — the agent SELECTION default (spec §2g L1187). An ORDINARY
+    # system.agent — the agent SELECTION default (spec §2g). An ORDINARY
     # settings-tier route (P7): the ``system:`` table of the system settings file,
     # which is exactly where ``assemble_levels`` reads the system tier and where
     # ``config.read_system_agent`` reads it back.
@@ -260,7 +260,7 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # routed to the ``project:`` section P8 DELETED (reader ``read_project_meta``
     # gone) — a silent dead write. The vault override surface is the repointable
     # core bind ``box.bindings.{ro,rw}.vault`` (spec §2c), not a bare key here.
-    # ``mode`` removed from the settable routing table (block B1, spec §2b L486 /
+    # ``mode`` removed from the settable routing table (block B1, spec §2b /
     # §0 meta-RO): the project mode is the RO identity anchor ``meta.box.mode``,
     # never via ``config set``. The mode is not persisted to disk (P8b sparse
     # create); it derives from ``box_resolve`` at resolve time.
@@ -285,7 +285,7 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "workset.channels.common": (("workset", "channels"), "common"),
     "workset.channels.chat": (("workset", "channels"), "chat"),
     "workset.channels.share": (("workset", "channels"), "share"),
-    # Per-workset template SOURCE (template-trio, spec §2c L507; Q3): the layer-3
+    # Per-workset template SOURCE (template-trio, spec §2c; Q3): the layer-3
     # seed source, routed to the ``workset:`` table slot (same nested-settings
     # pattern as ``workset.registry``). STRING path (no KEY_TYPES / no bool coerce).
     "workset.template": (("workset",), "template"),
@@ -539,13 +539,13 @@ _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
     {
         "endpoint", "model", "continue_mode", "auto_approve", "allow_helpers",
         "bootstrap",
-        # Per-agent template SOURCE (template-trio, spec §2a/§2d L598; Q2 2026-07-09
+        # Per-agent template SOURCE (template-trio, spec §2a/§2d; Q2 2026-07-09
         # "agent = persona + harness"). A settable STRING-path leaf on the agent
         # (persona+harness) node — default @config.agents/<harness>/template — read
         # by the layer-2 seed ``agent.<a>.seeded.template = (@agent.<a>.template, ~)``,
         # so repointing it reroutes the agent template seed.
         "template",
-        # Per-agent CANON CONTRIBUTION root (spec §2d L1000) — the source of the ro
+        # Per-agent CANON CONTRIBUTION root (spec §2d) — the source of the ro
         # ``canon_hb_agent`` bind, i.e. WHERE THIS AGENT'S HANDBOOK CHAPTER LIVES.
         # A settable STRING-path leaf on the agent (persona+harness) node, wired
         # here for the same reason ``template`` is: both are per-agent path SOURCES a
@@ -632,7 +632,7 @@ def is_auto_approve_key(canonical: str) -> bool:
 # name group — is thus ``agent.<node>.bindings.ro.model``, disambiguated from the
 # persona state leaf ``agent.<node>.model`` by the ``bindings.{ro,rw}`` segment).
 # NOTE: the agent tier is DISCRIMINATED — ``agent.<node>`` is the ONLY agent form
-# (§2d / §0 L21); an undiscriminated ``agent.<category>`` is not a key and
+# (§2d / §0); an undiscriminated ``agent.<category>`` is not a key and
 # ``BIND_KEY_RE`` refuses it. ``BIND_KEY_RE`` DOES match this node form (it is a
 # well-formed category key), so both predicates fire — every dispatch checks the
 # node-bind FIRST. This does not match the ``box.agent.bindings.*`` box-mirror form
@@ -759,7 +759,7 @@ def _is_box_agent_key(key: str) -> bool:
     """The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b).
 
     ⮕ **P7 RETIRED THE SETTABLE MIRROR.** ``box.agent.<key>`` was the box's
-    box-scoped override of its active agent's settings subtree. Spec §2b L709
+    box-scoped override of its active agent's settings subtree. Spec §2b
     replaces it with the RO read-back ``meta.box.agent.<key>`` (readable, never
     settable — ``meta.*`` is RO by contract), and a box tweaks its agent with the
     §2h request ``pref.agent.<agent>.<key>``, which targets the AGENT tier properly
@@ -821,7 +821,7 @@ def box_agent_redirect_key(
     mirror, which spec §2b retired; the box-scoped way to set an agent value is now
     the §2h request. *active_agent* is the box's resolved agent NODE — required,
     because the request targets a DISCRIMINATED agent slot (there is no bare
-    ``agent.<key>``, §0 L21). With no resolvable agent there is nothing to redirect
+    ``agent.<key>``, §0). With no resolvable agent there is nothing to redirect
     to, so this returns ``None`` and the caller falls through to the ordinary
     bare-key refusal, which names the shape.
 
@@ -953,7 +953,7 @@ def is_known_key(arg: str) -> bool:
     # project-name heuristic treat it as a KEY, never a project name.
     if _is_persona_agent_key(arg):
         return True
-    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b L380): a
+    # box.agent.<key> — the box-scoped agent mirror (block B5, spec §2b): a
     # settable box-scope key (so the get/show paths + the project-name heuristic
     # treat it as a KEY, never a project name).
     if _is_box_agent_key(arg):
@@ -1097,7 +1097,7 @@ def _is_pref_key(key: str) -> bool:
 
 def _pref_level(command_scope: "ConfigLevel | None") -> str | None:
     """The pref LEVEL name for a command scope, or ``None`` where a pref is
-    illegal (spec §2h L1252-1254 — workset and box ONLY)."""
+    illegal (spec §2h — workset and box ONLY)."""
     if command_scope is ConfigLevel.box:
         return "box"
     if command_scope is ConfigLevel.workset:
@@ -1184,7 +1184,7 @@ def _is_path_category_key(key: str) -> bool:
     bind-shaped categories ONLY — ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
     ``common`` / ``synced`` (a 2-/3-element ``[host_src, box_dest[, options]]``
     tuple). ``env`` (scalar) is routed by the earlier ``_is_env_key`` branch;
-    ``masks`` (a keyed list) is YAML-only (spec §2a L216) and is NOT matched here.
+    ``masks`` (a keyed list) is YAML-only (spec §2a) and is NOT matched here.
     """
     from kanibako.settings.settings_categories import BIND_KEY_RE
 
@@ -1267,7 +1267,7 @@ def _probes_at_set_time(canonical: str) -> bool:
     if _is_pref_key(canonical):
         # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and must not run
         # there: ``expand`` carries the ``pref`` subtree through unexpanded (spec
-        # §2h L1263), so nothing in it is ever resolved and no defect can be
+        # §2h), so nothing in it is ever resolved and no defect can be
         # recorded. Worse, applying the candidate at the pref path WRITES the
         # target's leaf names into a KeyStore, so a target whose leaf is a
         # RESERVED name (``…common.get``) raised ReservedKeyError straight out of

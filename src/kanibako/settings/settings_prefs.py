@@ -3,7 +3,7 @@
 A ``pref.<target-key>`` written in a WORKSET or BOX settings file is a REQUEST to
 install a value at a key that resolves STRICTLY EARLIER than the requesting
 level. It is not a value of its own; it is an instruction consumed during
-resolution (spec §2h L1204-1206).
+resolution (spec §2h).
 
 ```
 pref.system.agent         | <agent name>   SELECTION — "I want to use this agent, by name."
@@ -34,7 +34,7 @@ pref's value is an INPUT to resolution. ``tests/test_settings_prefs.py``
 Each level's overlay sits immediately BELOW that level's own partial, because
 §2h expands prefs *before the level resolves* — so the level's own keys are
 applied after and win. ``BOX_PREFS`` precedes ``WORKSET_PREFS``, which is
-box-beats-workset by assignment order (§1A L364-367). Nothing LEGAL contends
+box-beats-workset by assignment order (§1A). Nothing LEGAL contends
 with either overlay: a box or workset file may not set ``system.agent`` or
 ``agent.<a>.*`` at all (upward writes, dropped by ``_drop_upward_scopes``).
 
@@ -69,26 +69,26 @@ _log = logging.getLogger(__name__)
 #: The top-level table prefs live under, in a settings file.
 PREF_ROOT: Final[str] = "pref"
 
-#: The ONLY levels at which a pref may be WRITTEN (spec §2h L1252-1254).
+#: The ONLY levels at which a pref may be WRITTEN (spec §2h).
 #: ⚑ *"This is what BOUNDS the recursion, so it is a hard rule, not a
 #: convenience."*
 PREF_LEGAL_LEVELS: Final[tuple[str, ...]] = ("workset", "box")
 
-#: The ALLOWLIST (spec §2h L1213-1222) — a list of ENTRIES, each either one key
+#: The ALLOWLIST (spec §2h) — a list of ENTRIES, each either one key
 #: or a KEY SET written with §0's glob convention (``*`` = exactly ONE segment,
 #: ``**`` = the remaining tail at any depth, one-or-more by construction).
 #: Nothing else is requestable today.
 ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 
-#: The LOCATOR CLOSURE (spec §2h L1237-1250) — the forbidden-tier arm that is a
+#: The LOCATOR CLOSURE (spec §2h) — the forbidden-tier arm that is a
 #: **TERMINATION guarantee, not tidiness**: a key here relocates a cascade-input
 #: settings FILE, so requesting it from a lower level could pull in a different
 #: file carrying its own prefs, which could relocate again — unbounded, and able
 #: to oscillate between two files pointing at each other.
 #:
 #: * ``workset.boxes`` → ``meta.box.path`` (``@workset.boxes[/@meta.box.name]``,
-#:   §2c L740/L770) → ``meta.box.settings`` (``@meta.box.path/settings.yaml``,
-#:   §2c ALL PROJECTS L826) → THE BOX SETTINGS FILE, i.e. possibly the very file
+#:   §2c) → ``meta.box.settings`` (``@meta.box.path/settings.yaml``,
+#:   §2c ALL PROJECTS) → THE BOX SETTINGS FILE, i.e. possibly the very file
 #:   the request came from.
 #: * ``workset.kuid`` → ``meta.box.name`` for STANDALONE
 #:   (``<@workset.kuid>_%leaf%``, §2c) → the ``meta.box.path`` LEAF → the same
@@ -101,7 +101,7 @@ ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 #: the chain. The tiers are independent filters; a key covered by both is fine.
 #:
 #: ⚑⚑ ``system.agent`` IS DELIBERATELY EXCLUDED even though
-#: ``meta.agent.<agent>.settings`` derives from it (§2d L978). It is the whole
+#: ``meta.agent.<agent>.settings`` derives from it (§2d). It is the whole
 #: point of the feature, and the termination argument still holds because the
 #: agent file may not carry prefs. **A naive derivation of this closure would
 #: capture ``system.agent`` and break the headline feature** — read this before
@@ -113,7 +113,7 @@ ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 #: ``system.cache`` / ``system.runtime`` (no cascade file under them).
 #:
 #: **TODO (agreed, not now) — DERIVE this set, do not hand-list it** (spec §2h
-#: L1243-1250): take every cascade-input anchor (``meta.workset.settings``,
+#: ): take every cascade-input anchor (``meta.workset.settings``,
 #: ``meta.box.settings``, ``meta.agent.<agent>.settings``, the base/system files)
 #: and forbid the TRANSITIVE CLOSURE of the keys they derive from. A hand-written
 #: list rots the moment someone adds a derivation; a computed closure can be
@@ -127,7 +127,7 @@ LOCATOR_CLOSURE: Final[frozenset[str]] = frozenset({
 })
 
 #: Resolution ORDER of the cascade levels, for the STRUCTURAL forbidden tier
-#: (spec §1A L352-363). A pref may target only a key resolving STRICTLY EARLIER
+#: (spec §1A). A pref may target only a key resolving STRICTLY EARLIER
 #: than the level setting it.
 _LEVEL_ORDER: Final[dict[str, int]] = {
     "config": 0,    # L0.1
@@ -144,7 +144,7 @@ _LEVEL_ORDER: Final[dict[str, int]] = {
 class PrefRequest:
     """ONE ``pref.<target>: <value>`` request, as read from ONE settings file.
 
-    *value* is carried VERBATIM — including ``None`` (spec §2h L1265-1278). This
+    *value* is carried VERBATIM — including ``None`` (spec §2h). This
     layer performs NO emptiness interpretation of any kind: present-``None``,
     terminal ``""`` and the COPY-disable sentinel all forward untouched, so the
     pref does not become a FOURTH place deciding what "empty" means.
@@ -172,7 +172,7 @@ class PrefRequest:
 def glob_match(pattern: str, key: str) -> bool:
     """Match *key* against a §0 glob *pattern*.
 
-    Convention (spec §0 L156-159, ruled by Jei 2026-07-29): ``*`` matches
+    Convention (spec §0, ruled by Jei 2026-07-29): ``*`` matches
     exactly ONE segment; ``**`` matches the remaining tail at ANY depth. ``**``
     is ONE-or-more *by construction*, not by rule — the separator is part of the
     pattern, so a zero-length tail on ``agent.*.**`` would yield the malformed
@@ -283,7 +283,7 @@ def collect_prefs(
 def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any:
     """Drop a top-level ``pref:`` table from a file where a pref is ILLEGAL.
 
-    Prefs are legal in WORKSET and BOX files only (spec §2h L1252-1254). A
+    Prefs are legal in WORKSET and BOX files only (spec §2h). A
     ``pref:`` table in a base / system / agent file is DROPPED with a warning
     naming the file — the SAME treatment ``_drop_upward_scopes`` gives the
     sibling fault (a containing scope's table in a lower file), because two
@@ -308,11 +308,11 @@ def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# The THREE INDEPENDENT FILTERS (spec §2h L1224-1250)
+# The THREE INDEPENDENT FILTERS (spec §2h)
 # ---------------------------------------------------------------------------
 
 def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
-    """FILTER 1 — is the target a VALID key? (spec §2h L1225-1228)
+    """FILTER 1 — is the target a VALID key? (spec §2h)
 
     ⚑ VALIDITY, not EXISTENCE. ``agent.claude.bindings.rw.boooooo`` is legal: a
     new name inside a parametric family is exactly what a user may want to add.
@@ -331,7 +331,7 @@ def allowlist_reason(
     valid_agents: Collection[str],
     allowlist: Sequence[str] = ALLOWLIST,
 ) -> str | None:
-    """FILTER 2 — is the target requestable IN PRINCIPLE? (spec §2h L1213-1229)
+    """FILTER 2 — is the target requestable IN PRINCIPLE? (spec §2h)
 
     Membership alone is NOT sufficient (filter 3 still applies). The agent
     segment of ``agent.*.**`` is INVALID unless it names a valid agent or
@@ -377,7 +377,7 @@ def allowlist_reason(
 
 
 def forbidden_tier_reason(target: str, *, level: str) -> str | None:
-    """FILTER 3 — is the target barred by a forbidden TIER? (spec §2h L1230-1250)
+    """FILTER 3 — is the target barred by a forbidden TIER? (spec §2h)
 
     Returns a REASON string, never a bool: §2h requires the error to say WHY,
     and the design's item-1 ruling makes that explicit — *"the forbidden-tier
@@ -441,7 +441,7 @@ def validate_pref(
     """Run all THREE filters; return ONE joined reason, or ``None`` to accept.
 
     ⚑ ALL failing filters are reported, in filter order — not just the first.
-    The filters are INDEPENDENT (§2h L1224) and the decision is their
+    The filters are INDEPENDENT (§2h) and the decision is their
     conjunction, so reporting every failure is faithful; reporting only the
     first would make message quality hostage to the validator's SUPPORTING-surface
     completeness (a gap there would make ``pref.box.image`` read "not a declared
@@ -472,7 +472,7 @@ def pref_overlay(requests: Iterable[PrefRequest]) -> KeyStore:
     """Build the cascade-level overlay installing *requests* at their targets.
 
     ⚑ VALUES ARE INSTALLED **VERBATIM, INCLUDING ``None``** (spec §2h
-    L1265-1272). ``if value is None: continue`` is the most natural guard to
+    ). ``if value is None: continue`` is the most natural guard to
     write here and it silently implements the REJECTED reading ("no request"),
     deleting a box's ONLY suppression channel with no error and no visible diff.
     There is deliberately no such guard, and
@@ -499,7 +499,7 @@ def apply_prefs(
 
     RAISES :class:`~kanibako.settings.settings_resolve.SettingsError` on the FIRST invalid
     request, naming the key, the LEVEL, the FILE and the REASON (spec §2h
-    L1280-1283: *"We don't want to just moving on with bad settings"* — the
+    : *"We don't want to just moving on with bad settings"* — the
     launch FAILS rather than proceeding with a partially-applied request, and
     never a silent skip).
 
@@ -569,7 +569,7 @@ class AgentNames(Collection[str]):
     yields the finite harness list that an error message should name.
 
     ⚑ Membership is deliberately a VALIDITY test, not an EXISTENCE test: §2h
-    L1221 rules that a pref may pre-configure *"an agent you may switch to"*, so
+    rules that a pref may pre-configure *"an agent you may switch to"*, so
     requiring the persona's store dir to already exist would be the same
     existence error the spec rejects for keys.
     """
@@ -675,7 +675,7 @@ def pref_value(
 
     ⚑ A present-``None`` request is indistinguishable from "no request" through
     this helper's return type. That is deliberate for the ``system.agent`` case —
-    ``pref.system.agent: null`` MEANS the NO-AGENT box (§2b L703-708), which is
+    ``pref.system.agent: null`` MEANS the NO-AGENT box (§2b), which is
     the same outcome as no agent being selected. A caller needing the
     distinction should use :func:`pref_request_for`.
     """

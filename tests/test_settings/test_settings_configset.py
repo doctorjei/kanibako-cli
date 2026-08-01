@@ -736,7 +736,7 @@ def test_validate_then_repoint_roundtrip(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# A bare-relative category host_src → Error (P3 / spec §2a L474-486)          #
+# A bare-relative category host_src → Error (P3 / spec §2a)          #
 # --------------------------------------------------------------------------- #
 
 
@@ -788,7 +788,7 @@ class TestRelativeCategorySourceRefused:
     def test_rooted_hint_is_per_scope(self, key, rooted) -> None:
         """⚑ The hint names the root of the scope the user actually typed.
 
-        Spec §2a L487-517 gives a DIFFERENT root per scope. A single agent-shaped
+        Spec §2a gives a DIFFERENT root per scope. A single agent-shaped
         hint would tell someone editing ``workset.common.x`` to spell an
         ``@meta.agent.*`` root that has nothing to do with their key — a
         confidently wrong instruction, which is worse than saying nothing.

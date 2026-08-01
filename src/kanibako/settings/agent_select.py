@@ -2,7 +2,7 @@
 
 The ONE seam every command uses to answer *"which agent is this box's?"*.
 
-Selection order (spec §2h L1298-1299, least to most specific)::
+Selection order (spec §2h, least to most specific)::
 
     system.agent  <  workset pref  <  box pref  <  --agent (the §1A CLI level)
 
@@ -72,7 +72,7 @@ from pathlib import Path
 
 from kanibako.settings.settings_store import _MISSING
 
-#: The key naming the agent a box runs (spec §2g L1187). Re-exported so callers
+#: The key naming the agent a box runs (spec §2g). Re-exported so callers
 #: spell it once.
 SELECTION_KEY = "system.agent"
 
@@ -83,7 +83,7 @@ class AgentSelection:
 
     *node* is the canonical agent NODE-name (``persona℘harness``; a bare agent is
     byte-identical to its harness), or ``""`` for a **NO-AGENT plain-shell box**
-    (spec §2b L703-708, D-M6).
+    (spec §2b, D-M6).
 
     *source* answers *"why did system.agent resolve to that?"* without reading
     files — ``"cli"`` (``--agent``), ``"settings"`` (the stored key or a pref),

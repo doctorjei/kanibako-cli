@@ -563,8 +563,9 @@ keys:
     spec: "§1 (added 2026-06-30b)"
     # ⚑ DRIFT RESOLVED (Jei 2026-07-27): §1 prose claimed the Layer-1 set was
     #   'finalized at FIVE config keys' while the table listed SIX. Ruling: strike
-    #   the count — it is a moving target. Spec edited; snapshot at
-    #   reference/settings-keyspace-1.6.0-target.md.bak-2026-07-27-pre-five-strike
+    #   the count — it is a moving target. Spec edited; the 1.6.0 spec is archived
+    #   at ~/canon/notebook/archives/specs/settings-keyspace-1.6.0-target.md (the
+    #   pre-strike .bak-2026-07-27-pre-five-strike snapshot sits in archives/reference/).
 
   ## ---- LAYER 2: system.* settings keys (§2g) ------------------------------
   system.channelroot:

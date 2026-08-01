@@ -13,7 +13,7 @@ Covers the brief §4 checklist for the pure ``merge(levels) -> snapshot``:
 * masks 3-state via the GENERIC merge;
 * agent keys keep their §2d DISCRIMINATED form (``agent.default.*`` /
   ``agent.<name>.*``) through the merge — two agents coexist by name, and a
-  higher scope overrides ONE agent by name (§0 L21 per-agent independence; NO bare
+  higher scope overrides ONE agent by name (§0 per-agent independence; NO bare
   ``agent.*``);
 * purity — same input twice → equal output, inputs unmutated; refs stay RAW.
 
@@ -182,8 +182,8 @@ def test_deep_recursion_three_levels() -> None:
     # Deep per-NAME recursion under the §2d discriminated key agent.<name>.*: a
     # higher scope (box) overrides ONE deep leaf while a sibling set only at the
     # lower scope (the agent.<active> level) survives by name. Both carry the TRUE
-    # key agent.claude.bindings.* — NOT a bare `agent.*` (the §0 L21 form this
-    # revision forbids). box overriding agent.claude.* is exactly the §0 L21 "a box
+    # key agent.claude.bindings.* — NOT a bare `agent.*` (the §0 form this
+    # revision forbids). box overriding agent.claude.* is exactly the §0 "a box
     # file MAY set an agent.<agent>.* key" capability.
     box = KeyStore(
         {"agent": {"claude": {"bindings": {"ro": {"bin": Bind("/a/box", "/bin")}}}}}
@@ -213,7 +213,7 @@ def test_deep_recursion_three_levels() -> None:
         _probe(snap, "agent", "claude", "bindings", "ro", "lib")
         == Bind("/a/lib", "/lib")
     )
-    # No bare agent.bindings.* form is ever produced (a §0 L21 violation).
+    # No bare agent.bindings.* form is ever produced (a §0 violation).
     assert _probe(snap, "agent", "bindings") is _MISSING
 
 
@@ -228,7 +228,7 @@ def test_higher_subtree_shadows_lower_nonsubtree() -> None:
 
 # --------------------------------------------------------------------------- #
 # Agent keys: §2d discriminated form survives the merge (the conformance fix)   #
-# — per-agent independence (§0 L21) + active-over-default is by LEVEL, by NAME   #
+# — per-agent independence (§0) + active-over-default is by LEVEL, by NAME   #
 # --------------------------------------------------------------------------- #
 
 
@@ -247,13 +247,13 @@ def test_two_agents_coexist_in_snapshot_by_name() -> None:
     snap = merge([box])
     assert _probe(snap, "agent", "claude", "model") == "cm"
     assert _probe(snap, "agent", "goose", "model") == "gm"
-    # No bare agent.model (a §0 L21 violation) is produced.
+    # No bare agent.model (a §0 violation) is produced.
     assert _probe(snap, "agent", "model") is _MISSING
 
 
 def test_higher_scope_overrides_one_agent_by_name() -> None:
     # The brief §3 mandate (merge level): a higher-scope (box) agent.<name>.* key
-    # overrides the agent-level same key BY NAME (box > agent.<active>), per §0 L21
+    # overrides the agent-level same key BY NAME (box > agent.<active>), per §0
     # "a box file MAY set an agent.<agent>.* key … override a specific agent". The
     # agent.default.* layer and the OTHER agent's key both survive untouched.
     # order: box, workset, agent.<active>, agent.default, ...

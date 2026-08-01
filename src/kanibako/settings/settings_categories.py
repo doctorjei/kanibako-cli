@@ -87,11 +87,11 @@ Within a scope they are ordered ``(category, name)`` ascending for determinism.
 No root-join
 ~~~~~~~~~~~~~~~
 There is NONE, by rule.  Every ``host_src`` reaching this module already resolves
-ON ITS OWN — absolute, ``~``, ``$var`` or an ``@``-ref (spec §2a L474-486) —
+ON ITS OWN — absolute, ``~``, ``$var`` or an ``@``-ref (spec §2a) —
 because the ABSTRACT categories (``common``/``caches``/``seeded``) are rooted at
 DECLARATION: an author writes a bare leaf and the declaring loader stores the full
 ``@<scope-root>/<category>/<leaf>``.  A layer that prefixed a root on the way to a
-mount is the shape §2a L487-517 calls FORBIDDEN: it hides the true source and
+mount is the shape §2a calls FORBIDDEN: it hides the true source and
 resolves differently in any other context.  Nothing here joins anything.
 """
 
@@ -128,7 +128,7 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 _BIND_CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
 
 # The ABSTRACT categories — the three that let an author write a bare LEAF, rooted
-# at DECLARATION under ``<scope-root>/<category>/`` (spec §2a L487-517). The rest
+# at DECLARATION under ``<scope-root>/<category>/`` (spec §2a). The rest
 # (``bindings.{ro,rw}``, ``synced``) are CONCRETE: they take NO root at any scope,
 # so a relative source there is a defect, not a shorthand.
 ABSTRACT_CATEGORIES: Final[tuple[str, ...]] = ("common", "caches", "seeded")
@@ -250,7 +250,7 @@ class CategoryEntry:
     (``agent.claude.common.plugins``, ``box.bindings.rw.home``) — the
     DISCRIMINATED spelling, so its agent segment names a real agent tier
     (``agent.<agent>`` / ``agent.default``) and never the bare ``agent.`` form
-    §0 L21 forbids. It is DISTINCT from *scope*, which is the BARE precedence
+    §0 forbids. It is DISTINCT from *scope*, which is the BARE precedence
     token, and it replaces nothing: three consumers need it and none of them can
     be served by *scope* + *category* + *name*.
 
@@ -436,7 +436,7 @@ def reconcile_categories(
     because ``common`` outranked ``caches`` there and also sorts after it here.
 
     ⚑ **The table governs MOUNT-vs-MOUNT only.**  The COPY layer and the
-    copies-vs-mounts boundary keep their own, UNCHANGED rules (spec §0 L119-124
+    copies-vs-mounts boundary keep their own, UNCHANGED rules (spec §0
     states them independently of the table):
 
     * a PURE-``seeded`` dest keeps EVERY entry — copies OVERLAY, they do not
@@ -535,7 +535,7 @@ def _resolve_dest_group(
     """
     from kanibako.errors import CategoryCollisionError
 
-    # The copy-vs-mount CONFIG ERROR (spec §0 L119-124) — stated independently of
+    # The copy-vs-mount CONFIG ERROR (spec §0) — stated independently of
     # the collision table and UNCHANGED by it, so it is checked first and carries
     # no rule-changed paragraph.
     synced = [e for e in group if e.category == "synced"]

@@ -56,7 +56,7 @@ def _select(tmp_path: Path, *, system=None, workset=None, box=None) -> object:
 
 
 # --------------------------------------------------------------------------- #
-# The selection ORDER (spec §2h L1298-1299)                                    #
+# The selection ORDER (spec §2h)                                    #
 # --------------------------------------------------------------------------- #
 
 
@@ -72,7 +72,7 @@ class TestSelectionOrder:
         ) == "goose"
 
     def test_a_box_pref_beats_a_workset_pref(self, tmp_path):
-        """§1A L364-367 — box beats workset by ASSIGNMENT ORDER.
+        """§1A — box beats workset by ASSIGNMENT ORDER.
         INVERT: swap the two overlays' splice positions -> this reddens."""
         assert _select(
             tmp_path,
@@ -231,7 +231,7 @@ class TestSelectionLevel:
         }
 
     def test_the_workset_auth_anchor_follows_the_selection(self, tmp_path):
-        """The re-pointed §2c L792 anchor resolves through ``@system.agent``, so a
+        """The re-pointed §2c anchor resolves through ``@system.agent``, so a
         ``--agent`` launch must land in THAT agent's credential dir.
 
         INVERT: interpolate the agent name into the anchor again and this passes
@@ -482,7 +482,7 @@ def _box_workset(proj):
 class TestRetiredKeyCureIsLevelAppropriate:
     """SHOULD-4: the cure must be a fix the reader can actually apply.
 
-    A pref may be written ONLY in a workset or box file (spec §2h L1252-1254), so a
+    A pref may be written ONLY in a workset or box file (spec §2h), so a
     ``box.agent_name`` found in a SYSTEM / AGENT / BASE file has no legal pref
     equivalent — M-4 says FLAG it, do not relocate it. Prescribing `box set pref…`
     there would be a cure that cannot work.

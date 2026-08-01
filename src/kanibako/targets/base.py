@@ -138,7 +138,7 @@ class SafeBypass:
 
     Special vs SettingArg: it's driven by the resolved effective safe-mode, not a plain setting value.
     *setting_key* names the persisted default key the launch reader redeems (all
-    three shipped agents = ``"auto_approve"``, spec §2d L556, default True); empty =
+    three shipped agents = ``"auto_approve"``, spec §2d, default True); empty =
     per-launch ``-A``/``-S`` only.
     """
 
@@ -329,7 +329,7 @@ class CredFileSpec:
 class PluginDescriptor:
     """Declarative data a plugin exposes via Target.descriptor. Divergent LOGIC stays in Target hook methods.
 
-    Maps onto the per-agent keyspace (``settings-keyspace-1.6.0-target.md`` §2d),
+    Maps onto the per-agent keyspace (``settings-keyspace-1.8.0.md`` §2d),
     keyed by ``@meta.agent.<agent>.name`` (the plugin's ``name`` property).  A few
     §2d keys are *informational* — they describe where core derives a path, not a
     descriptor field: ``agent.<agent>.path`` (``@config.agents/<name>``, derived in

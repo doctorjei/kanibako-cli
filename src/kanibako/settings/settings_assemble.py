@@ -13,16 +13,16 @@ design §6a / spec §0).
 
 Authority
 ---------
-* Spec ``settings-keyspace-1.6.0-target.md`` §2 L138–142 (cascade — PRIMARY
+* Spec ``settings-keyspace-1.8.0.md`` §2 (cascade — PRIMARY
   authority): the 6-level order ``base < system < agent.default < agent.<active> <
   workset < box``, high→low precedence; ``agent.default`` is an EXPLICIT
   level and both agent layers reuse the same linear ``_MISSING`` precedence (no
-  nested mini-cascade) — the LEVEL ORDER is the precedence. §2d L356–378: the ONLY
+  nested mini-cascade) — the LEVEL ORDER is the precedence. §2d: the ONLY
   two agent key forms are ``agent.default.<key>`` and ``agent.<agent>.<key>`` (a
-  concrete agent name) — §0 L21 forbids a bare ``agent.<key>``. ``keystore-design.md``
+  concrete agent name) — §0 forbids a bare ``agent.<key>``. ``keystore-design.md``
   §2 (storage — partials are ``KeyStore``s, binds are ``Bind``); §6a / spec §0
   (files store UNRESOLVED — refs stay raw).
-* Spec ``settings-keyspace-1.6.0-target.md`` §2 (cascade + scopes) / §2a
+* Spec ``settings-keyspace-1.8.0.md`` §2 (cascade + scopes) / §2a
   (categories + value types) / §0 (namespace ORTHOGONAL to cascade).
 * Keyspace audit 2026-06-27c #2: the ``machine`` (``/etc/kanibako.yaml``) tier is
   CUT — cascade floor is ``base`` (overridable) and the cascade ENDS at ``box``
@@ -73,17 +73,17 @@ which is never dropped, and a NESTED ``<scope>.meta`` bootstrap table (e.g.
 key is stripped (see :func:`_drop_upward_scopes`).
 
 The AGENT tier yields TWO separate cascade levels from the one agent file (spec
-§2 L138–142): the file nests ``agent.default.<key>`` (the all-agents fallback
+§2): the file nests ``agent.default.<key>`` (the all-agents fallback
 layer) and ``agent.<agent>.<key>`` (the per-agent layer). Each becomes a SEPARATE
 cascade LEVEL and the per-agent DISCRIMINATOR is KEPT VERBATIM — the default layer
 under ``agent.default.<key>``, the active layer under ``agent.<active-name>.<key>``
-(the ONLY two agent key forms the spec allows — §2d L356–378; §0 L21 forbids a
+(the ONLY two agent key forms the spec allows — §2d; §0 forbids a
 bare ``agent.<key>``). The two levels merge BY THEIR TRUE NAMES (block 2b); the
 LEVEL ORDER (active above default, S8) is the explicit cascade precedence (§2
-L139–142 "explicit in the cascade … no nested mini-cascade"). The thin
+"explicit in the cascade … no nested mini-cascade"). The thin
 active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
-§2d L368) is an effective-agent READ deferred to the block-7 consumer, NOT a
-name collapse here. Keeping the discriminator preserves §0 L21 per-agent
+§2d) is an effective-agent READ deferred to the block-7 consumer, NOT a
+name collapse here. Keeping the discriminator preserves §0 per-agent
 independence: ``agent.<other>.*`` set within the AGENT scope (or higher) survives
 the merge by its own name — but a box file may NOT set ``agent.<other>.*`` (that
 is an upward write, dropped above; a box tweaks its agent via the ``box.agent.*``
@@ -136,7 +136,7 @@ _AGENT_DEFAULT_SUB = "default"
 #
 # Each entry maps the NESTED file path of the retired leaf to the retired KEY name.
 # The CURE is LEVEL-DEPENDENT (see :func:`_retired_key_cure`) — a pref is legal only
-# in a workset or box file (spec §2h L1252-1254), so telling a SYSTEM-file reader to
+# in a workset or box file (spec §2h), so telling a SYSTEM-file reader to
 # "box set pref…" would prescribe a write that cannot fix their file.
 # Migration record: M-4.
 RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
@@ -144,7 +144,7 @@ RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
     ("agent", "default", "default_agent"): "system.default_agent",
 }
 
-#: The levels where a ``pref`` REQUEST may be WRITTEN (spec §2h L1252-1254) — the
+#: The levels where a ``pref`` REQUEST may be WRITTEN (spec §2h) — the
 #: single fact that decides which cure a retired ``box.agent_name`` gets.
 _PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
 
@@ -368,19 +368,19 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
     The agent settings file is rooted at a top-level ``agent:`` table holding
     per-agent sub-tables (``default:`` for the all-agents layer, ``<name>:`` for
     each agent). *sub_key* selects which sub-table becomes THIS level — the two
-    are kept SEPARATE cascade levels (spec §2 L138–142; today's
+    are kept SEPARATE cascade levels (spec §2; today's
     ``read_agent_settings`` pre-merges them, which 2a deliberately does NOT).
 
     The per-agent DISCRIMINATOR is KEPT VERBATIM — the sub-table is re-rooted under
     its TRUE discriminated name ``agent.<sub_key>`` (``agent.default.<key>`` for the
     default layer, ``agent.<active-name>.<key>`` for the active layer), the ONLY two
-    agent key forms the spec defines (§2d L356–378; §0 L21 forbids a bare
+    agent key forms the spec defines (§2d; §0 forbids a bare
     ``agent.<key>``). The two agent levels then merge BY THEIR TRUE NAMES (block 2b),
     each scope-qualified key overriding the same key at a lower level; the
     active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
-    §2d L368) is a thin effective-agent READ deferred to the block-7 consumer (the
-    cascade's job is precedence by LEVEL ORDER — §2 L139–142 "explicit in the
-    cascade … no nested mini-cascade" — not a name collapse). This preserves §0 L21
+    §2d) is a thin effective-agent READ deferred to the block-7 consumer (the
+    cascade's job is precedence by LEVEL ORDER — §2 "explicit in the
+    cascade … no nested mini-cascade" — not a name collapse). This preserves §0
     per-agent independence: a box/workset that sets ``agent.<other>.*`` (or directly
     sets ``agent.default.*``) keeps its true name and survives the merge intact.
 
@@ -526,7 +526,7 @@ def assemble_levels(
     # anchors. ``file_scope="base"`` yields an empty containing set, so this drops
     # ONLY meta from base — its ``system.*`` scope floor stays exempt. (A nested
     # ``<scope>.meta`` bootstrap table is TOP-LEVEL-untouched — see the drop fn.)
-    # ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h L1252-1254 —
+    # ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h —
     # "this is what BOUNDS the recursion"). A ``pref:`` table in the base /
     # system / agent file is DROPPED with a warning, the SAME treatment the
     # sibling mis-scope above gets: two behaviours for one fault class is the

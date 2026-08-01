@@ -404,7 +404,7 @@ def run_start(args: argparse.Namespace) -> int:
     detach = detach_raw is True
     # Reconcile the positional subject with the blanket --box flag (same → warn,
     # differ → error).  Computed HERE (ahead of the persistence-mode heuristic)
-    # because ``bootstrap`` is now an AGENT-scope key (spec §2d L579): resolving its
+    # because ``bootstrap`` is now an AGENT-scope key (spec §2d): resolving its
     # value needs the box + its resolved agent, so ``_resolve_bootstrap_program``
     # takes the subject + any explicit ``--agent`` (Phase D seam).
     from kanibako.commands.flags import resolve_subject_value
@@ -657,11 +657,11 @@ def start_detached(
 _BOOTSTRAP_NONE = "none"
 
 # The consumer default for the agent-scope ``bootstrap`` behavior key.  The spec
-# lists ``agent.default.bootstrap | tmux`` (§2d L579), but — exactly like the old
+# lists ``agent.default.bootstrap | tmux`` (§2d), but — exactly like the old
 # ``box.bootstrap_program or "tmux"`` coercion this replaced — the ``tmux`` default
 # is applied HERE at the consumer (start.py), NOT baked into a descriptor floor, so
 # an unset value (no scope sets ``bootstrap``) resolves to ``tmux`` and every shipped
-# agent (which declares NO bootstrap override, spec §2d L640/658/683) inherits it.
+# agent (which declares NO bootstrap override, spec §2d) inherits it.
 _BOOTSTRAP_DEFAULT = "tmux"
 
 # E2g / increment 4a — the box-local AGENT LIVENESS MARKERS directory (per-PID).
@@ -693,12 +693,12 @@ def _effective_bootstrap(
 ) -> str:
     """Resolve the effective AGENT-scope ``bootstrap`` behavior value for a box.
 
-    ``bootstrap`` is an agent-scope behavior key (spec §2d L579
+    ``bootstrap`` is an agent-scope behavior key (spec §2d
     ``agent.default.bootstrap | tmux``), resolved off the SAME KeyStore snapshot
     pipeline the launch reads for the other agent behavior scalars (``model`` /
     ``auto_approve`` / ``allow_helpers``): a focused ``build_launch_snapshot`` over
     the scope settings FILES (system / workset / box) + the per-agent file's flat
-    state, then :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d L368
+    state, then :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d
     active-over-default pick.  There is NO derived-on-disk value — the keystore is
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
 
@@ -764,7 +764,7 @@ def _resolve_bootstrap_program(
     persistence heuristic in ``run_start``.
 
     ``bootstrap`` relocated from the retired box-scope ``box.bootstrap_program`` to
-    the agent scope (spec §2d L579), so the persistence-mode default decision now
+    the agent scope (spec §2d), so the persistence-mode default decision now
     needs the box's RESOLVED agent + its agent-scope ``bootstrap`` value.  Resolves
     them here WITHOUT side effects (``resolve_box_target(initialize=False)``) and
     reads the effective value off the settings snapshot via :func:`_effective_bootstrap`.
@@ -1756,7 +1756,7 @@ def _run_container(
 
     image = merged.box_image
     # ``bootstrap`` relocated from the retired box-scope ``box.bootstrap_program``
-    # to the AGENT scope (spec §2d L579), so the authoritative per-launch value is
+    # to the AGENT scope (spec §2d), so the authoritative per-launch value is
     # resolved BELOW — after the agent is resolved (line ~1300) — off the settings
     # snapshot via :func:`_effective_bootstrap`, together with its ``none``-opt-out
     # persistence contradiction guard.  It cannot be read here (pre-agent).
@@ -1911,7 +1911,7 @@ def _run_container(
     agent_id = with_harness(agent_name, target.name) if target else "general"
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
-    # AGENT-scope ``bootstrap`` (spec §2d L579): the AUTHORITATIVE per-launch value,
+    # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
     # resolved off the SAME settings snapshot the launch reads for ``model`` /
     # ``auto_approve`` (single-route, [[settings-must-map-to-keystore-key]]) — via the
     # active agent + its ``agent.default.bootstrap`` / ``agent.<agent>.bootstrap``
@@ -2496,7 +2496,7 @@ def _run_container(
             cli_level=_cli_level,
         )
 
-        # allow_helpers is an AGENT-scope behavior key (spec §2d L557,
+        # allow_helpers is an AGENT-scope behavior key (spec §2d,
         # ``agent.default.allow_helpers | true``): resolve it off the ONE launch
         # snapshot (via ``effective_behavior``, the §2d active-over-default pick),
         # coerced to bool and DEFAULTING True when unset. Resolved here for BOTH the
@@ -2521,7 +2521,7 @@ def _run_container(
         # Build CLI args via target, merging agent run_args and state
         if target:
             # The LIVE behavior read (block 7b — ruling A): off the ONE snapshot via
-            # the §2d L368 active-over-default pick (agent.<active>.<k> | agent.
+            # the §2d active-over-default pick (agent.<active>.<k> | agent.
             # default.<k>), replacing the retired ``_build_effective_state`` LAUNCH
             # use. A target with NO declared settings has no behavior floor — its
             # effective state is just the per-agent file's raw state (preserved from
@@ -2555,7 +2555,7 @@ def _run_container(
                 # targets).
                 #
                 # safe_off redeems the persisted `auto_approve` agent-scope key
-                # (spec §2d L556 ``agent.default.auto_approve | true``; every shipped
+                # (spec §2d ``agent.default.auto_approve | true``; every shipped
                 # descriptor sets safe_bypass.setting_key="auto_approve"), coerced to
                 # bool and DEFAULTING True (PERMISSIVE) when unset.  The per-launch
                 # -A/-S flags still win (safe_mode IS the -S `secure` bool; autonomous
@@ -2580,7 +2580,7 @@ def _run_container(
                     autonomous=autonomous,
                     auto_approve=auto_approve,
                 )
-                # continue_mode is an AGENT-scope behavior key (spec §2d L578
+                # continue_mode is an AGENT-scope behavior key (spec §2d
                 # ``agent.default.continue_mode | true``): resolve it off the SAME
                 # launch snapshot via the §2d active-over-default pick, coerced to
                 # bool and DEFAULTING True (continue) when unset — byte-identical to
@@ -4490,7 +4490,7 @@ def _effective_behavior_for_display(
     (the active slot ``agent.<active>.*``); the box / workset / system settings
     files merge as their discriminated ``agent.default.*`` / ``agent.<name>.*``
     tables through ``assemble_levels`` — then :func:`~kanibako.settings.settings_launch.
-    effective_behavior` does the §2d L368 active-over-default value-pick. So the
+    effective_behavior` does the §2d active-over-default value-pick. So the
     ``config --effective`` view MATCHES the real launch behavior read.
 
     This REPLACES the retired OLD per-file resolver (machine-tier + the
@@ -4590,7 +4590,7 @@ def _resolve_box_auth_source(
 
     ⚑ *selection_level* is a REQUIRED keyword — deliberately NOT defaulted (P7).
     ``meta.box.auth.workset_path`` resolves ``@workset.auth.path/@system.agent``
-    (spec §2c L792), so a caller that omits it silently collapses the per-agent
+    (spec §2c), so a caller that omits it silently collapses the per-agent
     credential dir to the workset auth ROOT: the launch would deliver from
     ``<auth>/<agent>`` while stop/watch/reauth read and WRITE ``<auth>/``, and two
     agents in one workset would share a directory. Pass ``None`` ONLY for a
@@ -4632,7 +4632,7 @@ def _resolve_box_auth_source(
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
         # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
-        # ``@workset.auth.path/@system.agent`` (spec §2c L792), so this snapshot
+        # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
         # must carry the RESOLVED selection or the per-agent credential source
         # would degenerate to the workset auth ROOT for any launch whose agent
         # came from ``--agent`` or the installed-count rule.
@@ -4740,7 +4740,7 @@ def _resolve_box_launch_decisions(
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
         # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
-        # ``@workset.auth.path/@system.agent`` (spec §2c L792), so this snapshot
+        # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
         # must carry the RESOLVED selection or the per-agent credential source
         # would degenerate to the workset auth ROOT for any launch whose agent
         # came from ``--agent`` or the installed-count rule.
@@ -4773,7 +4773,7 @@ def _launch_snapshot_inputs(
     Constructs the host_home / xdg / workset name / resolved ``system.*`` map the
     ONE-resolve snapshot path (block 7b) feeds to ``build_launch_snapshot`` so
     every @-ref resolves. There is NO per-scope source-root table: a stored source
-    resolves on its own (spec §2a L474-486) and the abstract categories are rooted
+    resolves on its own (spec §2a) and the abstract categories are rooted
     at DECLARATION, so nothing is prefixed on the way to a mount. This is
     now the SOLE category-resolution input builder — the old per-family
     ``_category_resolution_inputs`` (a second LevelView-cascade route) was retired
@@ -4781,7 +4781,7 @@ def _launch_snapshot_inputs(
     seed/synced/channel/share resolves.
 
     *meta_runtime* (block B1) is the ``meta.runtime.*`` identity-anchor floor for
-    *proj*'s mode (spec §1A L230-241) — built HERE because the per-mode treewalk
+    *proj*'s mode (spec §1A) — built HERE because the per-mode treewalk
     values (``proj.mode`` / ``proj.group.root`` / the project dir) are known on
     *proj*. PRIMARY uses the ``@config.primary_workset`` @-ref; NAMED uses the
     detected workset root literal (``str(proj.group.root)``); STANDALONE uses the
@@ -4827,7 +4827,7 @@ def _launch_snapshot_inputs(
         "system.canon": str(std.canon),
         # B2b: the resolved system channel type-roots (spec §2g) — folded in so the
         # @system.channels.* ALL-PROJECTS channel binds (global_common/chat/share/
-        # mailboxes, §2c L471-474) resolve from the snapshot.  Each equals the
+        # mailboxes, §2c) resolve from the snapshot.  Each equals the
         # corresponding ``std.channels_*`` (the same flat foundation resolves both),
         # so the @-ref-routed bind is byte-identical to the runtime-probed literal.
         "system.channels.common": str(std.channels_common),
@@ -4836,7 +4836,7 @@ def _launch_snapshot_inputs(
         "system.channels.mailboxes": str(std.channels_mailboxes),
     }
 
-    # meta.runtime.* identity anchors (block B1, spec §1A L230-241). The per-mode
+    # meta.runtime.* identity anchors (block B1, spec §1A). The per-mode
     # treewalk values are known on ``proj``; surface them as the snapshot's RO
     # ``meta.runtime.*`` keys + the single-source re-root of meta.workset.path /
     # meta.workset.settings / meta.box.mode. PRIMARY → the @config.primary_workset
@@ -4852,7 +4852,7 @@ def _launch_snapshot_inputs(
     elif mode == "standalone":
         # B2b FIX (was the B1 defect): standalone meta.runtime.ws_root must be the
         # project ROOT (<root>), NOT proj.project_path (= <root>/workspace, the
-        # workspace SUBDIR).  Spec §2c L414 + the §4 worked example require the
+        # workspace SUBDIR).  Spec §2c + the §4 worked example require the
         # degenerate workset to root at the project dir itself.  ``resolve_standalone
         # _project`` sets ``metadata_path = root`` (the resolved project dir) and
         # ``project_path = root/"workspace"`` — so ``proj.metadata_path`` IS <root>
@@ -4918,7 +4918,7 @@ def _launch_snapshot_inputs(
     # UNIFORM now: primary/named = (the box's own settings.yaml, the workset root's);
     # standalone = (<root>/box_data/settings.yaml, <root>/settings.yaml) — the box
     # tier is a real path in EVERY mode, merely ABSENT BY DEFAULT for standalone
-    # (spec §2c ALL PROJECTS + §5 L1407). The SAME pair feeds BOTH the
+    # (spec §2c ALL PROJECTS + §5). The SAME pair feeds BOTH the
     # meta.box.settings anchor (box tier path, below) AND the cascade box_path/
     # workset_path the snapshot resolvers pass to build_launch_snapshot (returned
     # last) — so the anchor and the cascade cannot drift.
@@ -4936,7 +4936,7 @@ def _launch_snapshot_inputs(
         # reads and `config set` writes (M-8). No per-mode branch: the box tier is
         # non-optional by TYPE (`box_workset_settings_paths` -> tuple[Path, ...]).
         box_settings=str(cascade_box_path),
-        # The agent identity key (spec §2d L514): the cascade discriminator AND the
+        # The agent identity key (spec §2d): the cascade discriminator AND the
         # value are the resolved agent name (install.name). Omitted for a NO-AGENT
         # box (empty name) — it has no agent identity.
         agent_name=agent_name if agent_name else None,
@@ -4949,7 +4949,7 @@ def _launch_snapshot_inputs(
     # home/vault/helper_log/workset-channel binds reference. The anchor VALUES are
     # the spec's own self-resolving @-ref formulas and are built ENTIRELY from
     # *mode* inside ``workset_anchor_floor`` — the per-mode variation lives THERE
-    # and nowhere downstream (spec §2c L740), so this seam no longer derives any
+    # and nowhere downstream (spec §2c), so this seam no longer derives any
     # per-mode root literal off ``proj``. The only proj-derived values still needed
     # are the workset-local channel roots — the helper-log path is no longer among
     # them: its bind is now the spec's own ``@workset.logs/@{meta.box.name}.jsonl``
@@ -5127,7 +5127,7 @@ def _resolve_launch_snapshot(
                 core_defaults.rom_agent_default_categories(target)
             )
             default_categories.update(target.default_seeds())
-            # PLUGIN-declared @-ref-sourced agent binds (spec §2d L608): a generic
+            # PLUGIN-declared @-ref-sourced agent binds (spec §2d): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the
             # plugin builds each key DISCRIMINATED (``agent.<agent>.bindings.*``) and
             # its ``@``-ref source is resolved by ``expand`` from the ``resolved_sys``

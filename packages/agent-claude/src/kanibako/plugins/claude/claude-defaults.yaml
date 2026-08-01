@@ -1,5 +1,5 @@
 # claude AGENT defaults — the declarative source of truth for the claude plugin's
-# default-set (P6c coalesce; settings-keyspace-1.6.0-target.md §2d agent.claude.*).
+# default-set (P6c coalesce; settings-keyspace-1.8.0.md §2d agent.claude.*).
 #
 # This file holds claude's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery binds, launch grammar, settings routing, container env, cred-file
@@ -77,7 +77,7 @@ descriptor:
       fragment: ["-p"]
 
   # safe-bypass is the FLAG --dangerously-skip-permissions; persisted default via
-  # the "auto_approve" agent-scope key (spec §2d L556, default true/PERMISSIVE;
+  # the "auto_approve" agent-scope key (spec §2d, default true/PERMISSIVE;
   # claude is default-safe so no secure_flag needed).
   safe_bypass:
     channel: flag
@@ -143,9 +143,9 @@ descriptor:
 # @meta.agent.claude.path = @config.agents/claude — spec §2a's agent DECLARATION
 # ROOT.  ROOTED AT DECLARATION: the bare `host_src` leaf written here is turned by
 # the loader into the full self-resolving `@meta.agent.claude.path/common/<leaf>`,
-# so the STORED value needs no later prepend (§2a L474-517) and the dirs live at
+# so the STORED value needs no later prepend (§2a) and the dirs live at
 # `agents/claude/common/{plugins,cache}`.  An already-self-resolving host_src
-# (absolute / ~ / $var / @-ref) is stored verbatim instead (§2a L518-525).
+# (absolute / ~ / $var / @-ref) is stored verbatim instead (§2a).
 # box_dest is a $GUEST_HOME expression (kanibako owns the HOST layout only — the
 # guest dest is always spelled out).  `key` is the bare LEAF name — the loader
 # builds the discriminated `agent.<agent>.common.<key>` (there is no bare

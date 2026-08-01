@@ -10,7 +10,7 @@ It is item-0's hard half: each :class:`~kanibako.targets.base.Binding` in a
 :class:`~kanibako.targets.base.PluginDescriptor` becomes an
 ``agent.<name>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf under
 the descriptor's OWN agent name ``<name>`` (``install.name``; S27) — the §2d
-``agent.<agent>.bindings.*`` key form, NOT a bare ``agent`` token (§0 L21) —
+``agent.<agent>.bindings.*`` key form, NOT a bare ``agent`` token (§0) —
 mirroring :func:`~kanibako.targets.assembly.resolve_binding_source`'s
 origin→host_src resolution.
 
@@ -53,7 +53,7 @@ For each :class:`Binding` in ``descriptor.bindings`` (order preserved):
 * **key path** = the descriptor's OWN agent name ``<name>`` (``install.name``;
   S27): ``agent.<name>.bindings.ro.<key>`` or ``agent.<name>.bindings.rw.<key>``
   per ``binding.ro``. The agent NAME is IN the key path (the §2d
-  ``agent.<agent>.*`` form, NOT a bare ``agent`` token, §0 L21), so this partial
+  ``agent.<agent>.*`` form, NOT a bare ``agent`` token, §0), so this partial
   merges BY NAME with 2a's discriminated ``agent.<active-name>.*`` level and any
   higher-scope ``agent.<name>.*`` override (S8 / block 2b).
 
@@ -67,8 +67,8 @@ accessor honest: ``bindings`` exposes ``Mapping[str, Bind]`` (NOT ``Bind | None`
 ONLY because build omits absent/None binds (design §5/§6e) — emitting a
 ``None``-host bind would be a lie a consumer crashes on.
 
-Authority: spec ``settings-keyspace-1.6.0-target.md`` §2d L356–378
-(``agent.<agent>.bindings.{ro,rw}.<key>`` — the ONLY agent key form; §0 L21
+Authority: spec ``settings-keyspace-1.8.0.md`` §2d
+(``agent.<agent>.bindings.{ro,rw}.<key>`` — the ONLY agent key form; §0
 forbids a bare ``agent.<key>``) / §2a (binding REPRESENTATION);
 ``~/vault/rw/keystore-design.md`` §2 (binds are ``Bind``) / §6a (raw refs). SEAMS
 S1/S2/S3/S7/S8/S9 + S26/S27.
@@ -150,7 +150,7 @@ def agent_default_partial(
     # node-name IS the harness (``agent.claude.bindings.*``); for a PERSONA it is the
     # composite node (``agent.navigator℘claude.bindings.*``) the read side actually
     # walks (fix 2a). The agent NAME is part of the KEY PATH (NOT a bare ``agent``
-    # token, §0 L21) — so this partial merges BY NAME with 2a's discriminated
+    # token, §0) — so this partial merges BY NAME with 2a's discriminated
     # ``agent.<active>.*`` level and any higher-scope ``agent.<node>.*`` override
     # (block 2b), including a user-set ``agent.<node>.bindings.*`` repoint on a
     # scope file.
@@ -259,7 +259,7 @@ def agent_common_for_node(
     ⚑ The re-root rule is deliberately NARROW: only a source that is exactly the
     harness's declaration root for this category is moved. An absolute / ``~`` /
     ``$var`` / unrelated ``@``-ref source is carried VERBATIM — those are
-    self-resolving by the plugin's own choice (spec §2a L518-525) and are not the
+    self-resolving by the plugin's own choice (spec §2a) and are not the
     plugin saying "my store dir".
 
     A BARE agent (``node_name == harness``) gets the IDENTITY back — byte-identical

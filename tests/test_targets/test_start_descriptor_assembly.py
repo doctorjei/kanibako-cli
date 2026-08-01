@@ -260,7 +260,7 @@ class TestDescriptorArgv:
 
 
 class TestPersistedAutoApproveSafeBypass:
-    """The persisted ``auto_approve`` bool key (spec §2d L556) is LIVE for claude.
+    """The persisted ``auto_approve`` bool key (spec §2d) is LIVE for claude.
 
     safe_off is resolved by ``effective_safe_mode_off`` from the per-launch
     -S/-A flags plus the redeemed ``auto_approve`` key (coerced to bool, DEFAULT

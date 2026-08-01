@@ -775,7 +775,7 @@ def test_lenient_bind_box_dest_xdg_deferred_not_a_defect() -> None:
 # ---------------------------------------------------------------------------
 
 class TestPrefSubtreeIsNotExpanded:
-    """spec §2h L1263 — 'pref.* keys never participate in resolution as
+    """spec §2h — 'pref.* keys never participate in resolution as
     derivable keys — resolve_key_set ignores them.'"""
 
     def test_the_pref_subtree_is_carried_through_raw(self):
@@ -828,7 +828,7 @@ class TestPrefSubtreeIsNotExpanded:
 
 
 class TestPrefReferencesAreRefused:
-    """A ``@pref.…`` reference is REFUSED, never resolved (spec §2h L1263)."""
+    """A ``@pref.…`` reference is REFUSED, never resolved (spec §2h)."""
 
     def test_strict_mode_raises(self):
         """INVERT: return ``_ABSENT`` instead -> the referring key would be

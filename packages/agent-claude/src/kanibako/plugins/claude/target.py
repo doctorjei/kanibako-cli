@@ -391,7 +391,7 @@ class ClaudeTarget(Target):
         — spec §2a's agent DECLARATION ROOT.  The bare ``host_src`` leaf in the
         YAML is rooted BY THE LOADER, so what is STORED is the self-resolving
         ``@meta.agent.claude.path/common/<leaf>`` and no later layer prepends
-        anything (§2a L474-517).  The resolved host paths are
+        anything (§2a).  The resolved host paths are
         ``<data>/agents/claude/common/{plugins,cache}``, bound rw to
         ``~/.claude/{plugins,cache}``:
 
@@ -591,7 +591,7 @@ class ClaudeTarget(Target):
         - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
 
         ``auto_approve`` is NOT declared here: it is the agent-scope boolean
-        behavior key (spec §2d L556, ``agent.default.auto_approve | true``, default
+        behavior key (spec §2d, ``agent.default.auto_approve | true``, default
         PERMISSIVE) redeemed by ``safe_bypass.setting_key`` and resolved at launch
         (coerced to bool, default True) — routed verbatim like ``allow_helpers``,
         with the per-launch ``-S``/``-A`` flags overriding it.

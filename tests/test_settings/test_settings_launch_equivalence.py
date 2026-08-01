@@ -11,12 +11,12 @@ the recorded (source, dest, options) SET AND depth-order.
 resolver because it was wrong in a number of cases). A mismatch therefore means
 the live path DRIFTED from the recorded baseline — NOT that the live path is
 wrong. On a divergence a HUMAN adjudicates the correct value against the SPEC
-(``reference/settings-keyspace-1.6.0-target.md``); the frozen side may itself be
+(``reference/settings-keyspace-1.8.0.md``); the frozen side may itself be
 the buggy one.
 
 ⚑ SCOPE NARROWED BY P3. The two paths agreed on ROOT-JOINING a relative source,
 and that is precisely where they now differ BY DESIGN: the live path no longer
-joins anything (sources are rooted at DECLARATION, spec §2a L487-517) while the
+joins anything (sources are rooted at DECLARATION, spec §2a) while the
 frozen oracle keeps its own join forever. Re-basing the comparison by feeding the
 oracle pre-rooted values would make it assert a tautology, so instead the fixture
 carries NO bare-relative source and the parametrisation no longer varies a root
@@ -43,7 +43,7 @@ from kanibako.settings.settings_resolve import LevelView, ResolveCtx
 # The FROZEN legacy by-name resolver (retired from the product). It is a DRIFT
 # TRIPWIRE, NOT a correctness authority: a mismatch below means the live snapshot
 # path DRIFTED from this recorded baseline, and a human adjudicates the correct
-# value against the SPEC (reference/settings-keyspace-1.6.0-target.md) — the OLD
+# value against the SPEC (reference/settings-keyspace-1.8.0.md) — the OLD
 # resolver here may itself be the wrong side.
 from tests.test_flawed_oracle import flawed_oracle_categories
 
@@ -120,7 +120,7 @@ def test_snapshot_path_matches_legacy_path(agent, workset):
     # at the reconcile shape ``<scope>.<category>.<name>``, which never carried the
     # agent discriminator. Strip it for the baseline side ONLY — the undiscriminated
     # ``agent.<category>`` form is QUARANTINED to this frozen retired-model baseline
-    # and exists NOWHERE else (spec §0 L21). The new path takes the production
+    # and exists NOWHERE else (spec §0). The new path takes the production
     # (discriminated) table as-is.
     def _undiscriminate(key: str) -> str:
         prefix = f"agent.{agent}."
@@ -456,7 +456,7 @@ def test_behavior_box_override_beats_agent_file(tmp_path):
 
 
 def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
-    # ⚑ The Jei-NOTED spec-CORRECTION edge (§2d L368): an AGENT-file
+    # ⚑ The Jei-NOTED spec-CORRECTION edge (§2d): an AGENT-file
     # agent.<active>.model vs the agent.DEFAULT.model layer. The spec model =
     # cascade THEN active-over-default → the agent file's agent.<active>.model WINS
     # (active beats default regardless of level). The retired OLD reader did
@@ -473,7 +473,7 @@ def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
         agent, floor=floor, agent_state=state, box_path=None, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
-    # agent.<active>.model (opus) wins the §2d L368 active-over-default pick over
+    # agent.<active>.model (opus) wins the §2d active-over-default pick over
     # agent.default.model ("haiku") — the CORRECTION the old per-file-then-cascade
     # reader did NOT do.
     assert eff.get("model") == "opus"
