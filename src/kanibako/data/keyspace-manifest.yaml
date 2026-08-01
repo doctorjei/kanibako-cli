@@ -110,7 +110,9 @@ policy:
       unescaped_by_host: ['\@']
   xdg_spec: "§1 (clause 3′ bless, Jei 2026-07-02)"
 
-  # Per-launch CLI flags are EPHEMERAL: override for that launch, never mutate stored.
+  # Per-launch CLI flags are EPHEMERAL: override for that launch, never mutate an
+  # EXISTING stored value (see cli_level.create_exception below: at box CREATE a
+  # shadowing flag INITIALIZES the stored config — the one exception).
   cli_flags_ephemeral: true
   cli_flags_spec: "§1A (Jei ratified 2026-07-08)"
 
@@ -361,11 +363,15 @@ keys:
     spec: "§2g"
   system.setup_completed:
     scope: system
-    type: bool
+    type: version_marker          # R-34: the VALUE is the version that completed setup
     set: cli+file
-    default: false
-    note: "PERSISTS, user-resettable"
-    spec: "§2g"
+    default: null                 # unset ⇒ setup has never run; the bool `false` spelling is DEAD
+    note: "PERSISTS, user-resettable; drives the 5-band staleness gate against
+           SETUP_BCV/SETUP_FCV. Since R-38 also the packaged-template protection:
+           template CONTENT change ⇒ FCV bump (nudge) · STRUCTURAL change ⇒ BCV
+           bump (hard block); CI compares the packaged-template digest against
+           the previous tag and REQUIRES the bump."
+    spec: "§2g (R-34 + R-38)"
   system.auth.share_allowed:
     scope: system
     type: bool
@@ -587,13 +593,33 @@ keys:
   ## ---- LAYER 2: agent.* settings keys (§2d) -------------------------------
   ## agent.default.* is the all-agents FALLBACK layer; agent.<agent>.<key> falls
   ## back to agent.default.<key>. Both are cascade levels (§2).
-  agent.default.auto_approve:
+  # R-41: `access` supersedes the boolean auto_approve (tombstoned in not_keys.renamed
+  # with its value mapping). The pre-07-06 code-only `access` spelling (retired at
+  # e7b4aea) returns as the successor key — both code_residue entries for it are gone.
+  agent.default.access:
     scope: agent
-    type: bool
+    type: enum
+    choices: [restricted, editing, full]
     set: cli+file
-    default: true
-    note: "PERMISSIVE — the box is the isolation boundary; -S overrides per launch"
-    spec: "§2d"
+    default: full
+    note: "permission TIER (R-41). Default full preserves today's behaviour — the
+           box is the containment boundary. Per-agent realization is DESCRIPTOR-
+           declared (R-37 pattern). Flags -S→restricted / -A→full, ephemeral
+           (projected-surface class, §1A). An UNKNOWN stored value is REJECTED
+           LOUDLY, naming the key and the legal values — never treated as
+           permissive."
+    spec: "§2d (access subsection, R-41)"
+  agent.<agent>.access:
+    scope: agent
+    parametric: [agent]
+    type: enum
+    choices: [restricted, editing, full]
+    set: cli+file
+    fallback: "agent.default.access"
+    note: "per-agent permission tier; the VALUES stay the universal enum — the
+           per-agent piece is the descriptor-declared REALIZATION (how the
+           harness renders each tier), never new values."
+    spec: "§2d (access subsection, R-41)"
   agent.default.allow_helpers:
     scope: agent
     type: bool
@@ -621,6 +647,17 @@ keys:
     default: null                 # "use the harness's built-in default"
     note: "-M overrides per launch"
     spec: "§2d"
+  agent.default.endpoint:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null                 # bare/harness-default — no env emitted
+    note: "UNIVERSAL (R-12; moved from the claude-specific row — no claude entry
+           exists here, agent specifics are plugin-contributed): agent backend
+           endpoint URL, user-settable per-node. All three shipped plugins declare
+           its env realization in their descriptors; set ⇒ SUPPRESS the
+           OAuth/credential sync — enforced in CORE, not per-plugin."
+    spec: "§2d (default tier, R-12)"
   agent.default.run_args:
     scope: agent
     type: str
@@ -907,6 +944,9 @@ not_keys:
     "agent.<agent>.transform": "-> agent.<agent>.caches.transform (FOLDED, 2026-06-27)"
     "agent.<agent>.mode":      "-> meta.agent.<agent>.mode (non-editable key, Jei 2026-07-28)"
     "agent.<agent>.exec":      "-> meta.agent.<agent>.exec (non-editable key, Jei 2026-07-28)"
+    "agent.default.auto_approve": "-> agent.default.access (R-41, 2026-08-01; values map
+                                    true→full, false→restricted)"
+    "agent.<agent>.auto_approve": "-> agent.<agent>.access (R-41; same value mapping)"
     "workset.meta.*":          "-> meta.workset.* (top-level meta namespace, 2026-06-29f)"
     "box.meta.*":              "-> meta.box.* (2026-06-29f)"
     "agent.<agent>.meta.*":    "-> meta.agent.<agent>.* (2026-06-29f)"
@@ -917,12 +957,25 @@ not_keys:
     "system.vault_ro":    "-> @workset.vault_ro"
     "system.vault_rw":    "-> @workset.vault_rw"
     "system.instructions": "RETIRED 2026-07-28 (spec conformed to code) — the box guide ships
-                            INSIDE the package under rom/ and is RO bind-mounted per-file at
-                            ~/playbook/kanibako/directives/KANIBAKO.md; no key, no repoint"
+                            INSIDE the package under rom/ as the bible general chapter and
+                            arrives via the canon_bible_general bind at ~/canon/bible/general/
+                            (§2c; path conformed to the canon-books model, D-8);
+                            no key, no repoint"
+    "system.templates_stamp": "RETIRED (R-38, Jei 2026-08-01) — was a LIVE, UNDECLARED key in
+                               shipped code (a §0 violation: read/written by the setup gate,
+                               never declared). Retired, not declared: delete the
+                               reader/writer/gate (code step B8); a stored leaf is
+                               orphaned-ignored (projects:-section
+                               precedent). Protection folds into R-34's setup_completed
+                               version-marker mechanism (content⇒FCV nudge · structural⇒BCV
+                               hard block · CI digest-vs-previous-tag requires the bump).
+                               ACCEPTED LOSS: same-version dev-build drift detection.
+                               ⚑ load-bearing rider at the code step: SETUP_BCV→1.8.0 in the
+                               SAME change (RULINGS R-38)."
     "config.global":      "ELIMINATED 2026-06-29f; children inline @config.data/global/..."
     "resource.<path>":    "DEAD; subsumed by the category keys (D-M7)"
     "resource_overrides": "DEAD (0 callers)"
-    "start_mode":         "fully covered by continue_mode + auto_approve (§3)"
+    "start_mode":         "fully covered by continue_mode + access (§3)"
     "autonomous":         "DEAD; autonomy is the -A/-S launch flags"
     "agent.<agent>.start_mode":  "DEAD (stored, no launch reader) — see start_mode"
     "agent.<agent>.autonomous":  "DEAD — see autonomous"
@@ -940,9 +993,8 @@ not_keys:
     "system._primary_logs":     "residue surrogate"
     "agent.<agent>.binding.<key>": "singular host-source-ONLY override; the spec has
                                     ONLY the plural name-bearing bindings.<ro|rw>.<name>"
-    "agent.<agent>.access":     "code-only name for the universal auto_approve
-                                 (live as agent.claude.access; different name+vocab)"
-    "agent.default.access":     "code-only — see agent.<agent>.access"
+    # (the two `access` code_residue entries are GONE — R-41 made the name a real
+    #  key; see agent.default.access / agent.<agent>.access above)
     "agent.<agent>.name":       "flat identity form -> meta.agent.<agent>.name"
     "agent.default.default_agent": "code-side on-disk form that system.default_agent
                                     routes to; NOT a spec key (verify at the code sweep)"
