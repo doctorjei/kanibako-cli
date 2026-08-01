@@ -1,4 +1,22 @@
-"""Tests for kanibako.deprecation: registry, decorator, and the CI gate (W7).
+"""SEQUESTERED 2026-08-01 (Phase 0, Jei ruling) — tests for the dormant
+``deprecation`` module.
+
+⚑ **NOT COLLECTED.** This file moved here from ``tests/test_deprecations.py``
+together with its subject (``salvage/deprecation.py``) when the Phase-0 sweep
+found the module had zero production consumers and Jei ruled SEQUESTER rather
+than delete. pytest does not collect it (``testpaths = ["tests"]``), and its
+``from kanibako.deprecation import ...`` imports will NOT resolve while the
+module sits in ``salvage/`` — that is expected, not rot.
+
+**Reactivation:** move ``salvage/deprecation.py`` back to
+``src/kanibako/deprecation.py`` and this file back to ``tests/``; the imports
+below then resolve unchanged and the CI gate is live again.
+
+See ``salvage/README.md``.
+
+---
+
+Tests for kanibako.deprecation: registry, decorator, and the CI gate (W7).
 
 The CI gate (``test_no_overdue_deprecations``) reads the REAL registry +
 ``__version__`` and fails the build once any registered deprecation reaches its

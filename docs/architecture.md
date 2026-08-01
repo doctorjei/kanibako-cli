@@ -26,7 +26,7 @@
 | `templates_image.py` | Image-template helpers: user-template image naming + bundled-template discovery (`Containerfile.template-<name>` convention, `# kanibako-template:` descriptions) |
 | `containerfiles.py` | Resolve bundled/override Containerfiles by suffix (`get_containerfile`, `list_containerfile_suffixes`) |
 | `freshness.py` | Non-blocking image digest comparison |
-| `deprecation.py` | Deprecation-tracking registry + `@deprecated` decorator + `overdue_deprecations` helper, backing the CI gate (`tests/test_deprecations.py`) |
+| ~~`deprecation.py`~~ | **SEQUESTERED** at `salvage/deprecation.py` (2026-08-01) — deprecation-tracking registry + `@deprecated` decorator + `overdue_deprecations` helper + CI gate. Dormant until the post-public era; see "Deprecating something" below |
 | `targets/` | Descriptor-only agent plugin system (Target ABC + `PluginDescriptor` + NoAgentTarget; `assembly.py` builds launch argv/binds, `credsync.py` runs the cred lifecycle; Claude/Goose/Codex in `kanibako-agent-*`) |
 | `plugins/` | Namespace package for bind-mounted plugins (shipped agents propagate into nested boxes) |
 | `auth_parser.py` | Parse OAuth URL and verification code from `claude auth login` output |
@@ -43,39 +43,26 @@
 
 ## Deprecating something (post-public)
 
-Post-public, breaking changes happen only at **major** versions. To deprecate a
-symbol now and remove it cleanly later, record it in `deprecation.py` so the CI
-gate can enforce its removal at the right release.
+**The policy stands; the machinery is currently SEQUESTERED.** Post-public,
+breaking changes happen only at **major** versions, and a deprecation must
+declare when it was announced, the version at/after which it MUST be gone, and
+what replaces it — so that its removal can be enforced rather than remembered.
 
-The convention for every record is `{deprecated_in, remove_at, replacement}`:
+Nothing has been deprecated yet, so the registry has never held a record. The
+Phase-0 sweep (2026-08-01) found the implementation had zero consumers and it
+was moved, unmodified, to **`salvage/deprecation.py`** (with its test at
+`salvage/test_deprecations.py`) — dormant, not deleted. See `salvage/README.md`.
 
-- `deprecated_in` — the version that announces the deprecation.
-- `remove_at` — the version at/after which the symbol MUST be gone; **the next
-  major** (e.g. deprecate in `2.3.0` → `remove_at="3.0.0"`).
-- `replacement` — what to use instead (free text; `""` if none).
+**When the first real deprecation is declared,** reactivate it: move
+`salvage/deprecation.py` back to `src/kanibako/deprecation.py` and
+`salvage/test_deprecations.py` back to `tests/`, then update this section. The
+machinery it restores:
 
-For a **callable** (function/method), decorate it — registers automatically and
-warns at runtime:
-
-```python
-from kanibako.deprecation import deprecated
-
-@deprecated(deprecated_in="2.3.0", remove_at="3.0.0", replacement="new_thing()")
-def old_thing(...):
-    ...
-```
-
-For a **non-callable** (config key, CLI flag, env var, ...), register
-declaratively where it is handled:
-
-```python
-from kanibako.deprecation import register
-
-register("--legacy-flag", deprecated_in="2.3.0", remove_at="3.0.0",
-         replacement="--new-flag", kind="cli-flag")
-```
-
-The gate (`tests/test_deprecations.py::test_no_overdue_deprecations`) fails the
-build once `kanibako.__version__` reaches any record's `remove_at` and the entry
-is still present — your cue to delete the symbol *and* its registry entry. With
-an empty registry the gate passes trivially.
+- a record convention of `{deprecated_in, remove_at, replacement}`, where
+  `remove_at` is **the next major** (deprecate in `2.3.0` → `remove_at="3.0.0"`);
+- a `@deprecated(...)` decorator for callables (registers automatically, warns
+  at runtime) and a declarative `register(...)` for non-callables (config keys,
+  CLI flags, env vars);
+- the gate `test_no_overdue_deprecations`, which fails the build once
+  `kanibako.__version__` reaches any record's `remove_at` while the entry is
+  still present — the cue to delete the symbol *and* its registry entry.

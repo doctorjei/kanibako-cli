@@ -1,7 +1,8 @@
 """Eager build-time EXPANSION — resolve the merged snapshot's tokens to terminals.
 
-Block 3 of the KeyStore implementation. ONE pure function, :func:`expand`, walks
-block 2b's raw merged :class:`~kanibako.settings_store.KeyStore` snapshot
+ONE pure function, :func:`expand`, walks
+:mod:`kanibako.settings_merge`'s raw merged
+:class:`~kanibako.settings_store.KeyStore` snapshot
 (``d33db5c``) and resolves every ``@``-ref (CONFIG, both bind sides) and host-side
 ``$VAR`` / ``~`` (ENVIRONMENT) to terminals — TRANSITIVELY (fixpoint /
 topological), with cycle detection. It is PURE: no file / env / clock access, same
@@ -52,11 +53,14 @@ implement the E3 rule: apply the candidate RAW value into the merged snapshot at
 the edited key, lenient-``expand`` the result, and ALLOW iff the edited key is
 NOT in the error map (its own transitive upstream chain resolved cleanly).
 
-OUT of scope (hard boundaries): NO cascade merge / precedence (block 2b — this
-consumes its output), NO ``reconcile_categories`` / ``box_dest`` collision (§6g
-separate pass), NO typed views (block 4), NO ``config set`` (block 5), NO consumer
-swap (block 7). It does NOT modify ``expand_expr`` / ``resolve_value`` /
-``SettingsResolver`` / ``start.py`` — it wraps + builds ALONGSIDE them.
+OUT of scope (hard boundaries): NO cascade merge / precedence
+(:mod:`kanibako.settings_merge` — this consumes its output), NO
+``reconcile_categories`` / ``box_dest`` collision (§6g separate pass), NO typed
+views (:mod:`kanibako.settings_views`), NO ``config set``
+(:mod:`kanibako.config_interface`). It WRAPS ``expand_expr`` and does not modify
+it: the single-expr engine is shared with the ``config.*`` / ``system.*``
+FOUNDATION path tier, which still resolves through ``resolve_value``
+(``paths.py``) rather than through this pass.
 
 Authority
 ---------

@@ -326,10 +326,8 @@ def auth_chain_floor(
 # standalone: meta.workset.settings → @meta.workset.path/settings.yaml →
 # @meta.runtime.ws_root/settings.yaml → <root>/settings.yaml, the workset tier).
 #
-# This block is ADDITIVE (B1): the keys appear in the snapshot but NO consumer
-# reads them yet (binds move to @meta.* in a later block). The only behavioral
-# change is meta.box.mode (an RO identity anchor replacing the formerly settable
-# ``box.mode`` config-set key — dropped in config_interface this block).
+# ``meta.box.mode`` is an RO identity anchor: it replaced the formerly settable
+# ``box.mode`` config-set key, which config_interface no longer offers.
 
 
 def meta_runtime_floor(

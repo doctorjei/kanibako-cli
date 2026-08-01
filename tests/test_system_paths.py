@@ -230,16 +230,10 @@ class TestLoadStdPathsParity:
         # M-11 retired the ``templates`` alias with the field rename: keeping it
         # would have shipped THREE spellings of one directory.
         assert not hasattr(std, "templates")
-
-    def test_deleted_share_aliases_raise(self, tmp_home, config_file):
-        from kanibako.paths import load_std_paths
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        with pytest.raises(NotImplementedError):
-            _ = std.share_ro
-        with pytest.raises(NotImplementedError):
-            _ = std.share_rw
+        # ``share_ro``/``share_rw`` named dirs deleted in the system.* reorg; use
+        # the workset vault / 'shared' category instead.
+        assert not hasattr(std, "share_ro")
+        assert not hasattr(std, "share_rw")
 
 
 class TestBoxesOverrideConsumers:

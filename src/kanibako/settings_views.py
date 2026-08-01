@@ -1,6 +1,6 @@
 """Typed access — the 3-tier read surface over the expanded snapshot.
 
-Block 4 of the KeyStore implementation. The expanded snapshot (blocks 1-3) is a
+The expanded snapshot (assemble → merge → expand) is a
 recursive :class:`~kanibako.settings_store.KeyStore` whose leaves carry the loose
 :data:`~kanibako.settings_store.StoreValue` union. This module adds the TYPED
 read surface design §5 calls for, confining that loose union to genuinely mixed
@@ -12,8 +12,8 @@ Three tiers (design §5)
 1. **Typed VIEWS over finite subtrees** (system paths, ``meta``) — fixed names,
    exact static types (``Path`` / ``str`` / ``bool``). This module ships the
    MECHANISM (:func:`typed_field` + the :class:`FiniteView` base) and ONE small
-   worked example (:class:`MetaView`); it does NOT port ``StandardPaths`` (that
-   is block 7 consumer wiring).
+   worked example (:class:`MetaView`); it does NOT port ``StandardPaths``, which
+   still resolves through ``resolve_value`` on the FOUNDATION path tier.
 2. **Typed CATEGORY accessors** — each §2a category has DYNAMIC keys but ONE
    known value type, so it is a typed read-only mapping:
    :func:`bind_category` → ``Mapping[str, Bind]`` for ``bindings.{ro,rw}`` /
@@ -34,7 +34,7 @@ pass that is OUT of scope here.
 The load-bearing ``Bind``-not-``Bind|None`` coupling (S22)
 ----------------------------------------------------------
 A category accessor exposes ``Bind`` (NOT ``Bind | None``) ONLY because the
-block-2b merge OMITS every present-``None`` bind / category / masks leaf before
+cascade merge OMITS every present-``None`` bind / category / masks leaf before
 any consumer sees the snapshot (design §3/§6e). This module RELIES on that and
 does NOT re-admit ``None``: if it ever encounters a ``None`` (or otherwise
 ill-typed) leaf under a category node, that is a BUILD-INVARIANT BREACH, so it
@@ -48,15 +48,16 @@ A category key may legitimately be named ``get`` / ``items`` / ``keys``. Every
 container operation over a node therefore goes through the UNBOUND ``dict``
 methods (``dict.get(node, k)`` / ``dict.keys(node)`` / ``dict.__getitem__`` /
 ``dict.__contains__`` / ``dict.__len__``) — NEVER the bound ``node.get(...)`` a
-user key would shadow into a crash (the standing block-1 foot-gun).
+user key would shadow into a crash (the standing :class:`KeyStore` foot-gun).
 
 OUT of scope (hard boundaries)
 ------------------------------
 NO ``reconcile_categories`` / cross-scope ``box_dest`` collision (design §6g);
-NO merge / expansion / cycle detection (blocks 2b/3); NO ``config set`` (block
-5); NO consumer swap / ``StandardPaths`` port (block 7). This module does NOT
-modify ``settings_store`` / ``settings_merge`` / ``settings_expand`` / ``paths``
-/ ``start`` — it builds ALONGSIDE them and only READS the snapshot.
+NO merge / expansion / cycle detection (:mod:`kanibako.settings_merge` /
+:mod:`kanibako.settings_expand`); NO ``config set``
+(:mod:`kanibako.config_interface`); NO ``StandardPaths`` port. This module does
+NOT modify ``settings_store`` / ``settings_merge`` / ``settings_expand`` /
+``paths`` / ``start`` — it only READS the snapshot.
 
 Authority: ``~/vault/rw/keystore-design.md`` §5 (typed access — PRIMARY, incl.
 the load-bearing ``Bind``-not-``Bind|None`` coupling), §6f (resolved ``masks`` =
