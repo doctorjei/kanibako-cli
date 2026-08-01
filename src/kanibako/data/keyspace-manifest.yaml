@@ -114,6 +114,30 @@ policy:
   cli_flags_ephemeral: true
   cli_flags_spec: "§1A (Jei ratified 2026-07-08)"
 
+  # CLI LEVEL (§1A): the command line is its OWN level — the highest, above every
+  # settings file and every pref. ANY flag that shadows a key overrides that key
+  # for the launch (a GENERAL rule, not a carve-out for particular flags).
+  cli_level:
+    # CREATE EXCEPTION (R-11a, Jei 2026-08-01): at box CREATION only, a shadowing
+    # flag's value PERSISTS — it INITIALIZES the box's stored config (e.g.
+    # `create -i` durably writes box.image). Ephemerality governs every other
+    # invocation; ALL shadowing flags act UNIFORMLY; create is the ONLY exception.
+    create_exception: true
+    create_exception_spec: "§1A (CREATE EXCEPTION)"
+    # PROJECTED-SURFACE EXCEPTION stands as a STRUCTURAL CLASS RULE (R-11a
+    # collision RULED (i)) — not counted as a flag exception; where it applies it
+    # WINS over the CLI level (-S/-A; -M barred from the codex projection resolve).
+    # Backlogged fix: per-launch idempotent projections would dissolve it.
+    projected_surface_exception: structural_class_rule
+    projected_surface_exception_spec: "§1A (PROJECTED-SURFACE EXCEPTION)"
+    shadowed_flags: {}    # STUB — filled A4 (R-11): the wired-flag table as data
+
+  # DECLARATION ROOTS (§2a): abstract categories are rooted at DECLARATION-LOAD
+  # time (stored keys fully self-resolve; assembly-time prepend is FORBIDDEN —
+  # R-21; absolute host_src legal, never root-joined; root dirname = fixed
+  # machinery, not a key).
+  declaration_roots: {}   # STUB — filled A4 (R-21): the per-scope root table as data
+
   # Set-time validation: full resolution in error-collecting/lenient mode.
   set_validation:
     mode: full_resolution_lenient
@@ -849,6 +873,18 @@ keys:
 ## imported here, each re-checked against the CURRENT spec.
 ## ---------------------------------------------------------------------------
 not_keys:
+
+  reserved_internal:              # NOT keys and may never BECOME keys — reserved
+                                  # internal node names, protected here so they
+                                  # cannot be re-claimed as keys (R-8 option 2 /
+                                  # plan decision D-4)
+    "binding_derivations": "INTERNAL reserved node inside the per-launch snapshot,
+                            carrying the materialised binding each ABSTRACT
+                            declaration derives. NOT a key, not user-addressable;
+                            the closed head dispatch refuses it. Replaces the CUT
+                            meta.derived.<declaration-key> family (R-8); the
+                            materialisation requirement is unchanged.
+                            spec: §0 (TWO LAYERS — the reservation clause)"
 
   never_a_key:                    # plugin/descriptor variables or CLI-only surfaces
     "critical":     "PluginDescriptor field, passed function-to-function (2026-06-27)"
