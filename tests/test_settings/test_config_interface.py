@@ -6,10 +6,9 @@ import pytest
 import yaml
 
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.config_keys import ConfigLevel
+from kanibako.settings.config_keys import ConfigLevel, is_known_key
 from kanibako.settings.config_interface import (
     ConfigAction,
-    is_known_key,
     get_config_value,
     parse_config_arg,
     reset_config_value,
@@ -1333,7 +1332,7 @@ class TestSystemConfigFileOnly:
     def test_set_config_foundation_key_refused_every_scope(self, tmp_path):
         """Block B2: ``config.*`` keys are refused via ``config set`` at EVERY
         command scope with the ruled bootstrap-file message (NOT the older generic
-        ``_system_key_refusal`` that named ``setup``)."""
+        ``system_key_refusal`` that named ``setup``)."""
         for scope in (None, ConfigLevel.system, ConfigLevel.box, ConfigLevel.workset):
             cf = tmp_path / "kanibako_config.yaml"
             for key in (
@@ -2204,7 +2203,7 @@ class TestScopeDirectionGuard:
         from EVERY scope (including SYSTEM, which the B4 direction guard would
         otherwise own) with the ruled bootstrap-file message, BEFORE the scope
         guard. Not the direction-guard message, not the older generic
-        ``_system_key_refusal`` (which named ``setup``)."""
+        ``system_key_refusal`` (which named ``setup``)."""
         f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "config.data", "/srv/data",
@@ -2408,7 +2407,7 @@ class TestBoxAgentMirrorConfigSet:
     def test_box_agent_key_is_recognised_so_it_can_be_refused(self):
         """The retired spelling must still be RECOGNISED — a user with it in
         muscle memory gets the cure, not "unknown config key"."""
-        from kanibako.settings.config_interface import _is_box_agent_key
+        from kanibako.settings.config_keys import _is_box_agent_key
         assert _is_box_agent_key("box.agent.model") is True
         assert _is_box_agent_key("box.agent.bindings.ro.share") is True
         # It is no longer a SETTABLE key.
@@ -2418,7 +2417,7 @@ class TestBoxAgentMirrorConfigSet:
     def test_the_retired_box_agent_name_scalar_is_not_a_key(self):
         # ``box.agent_name`` (the flat scalar) is RETIRED (spec §2b) and is not the
         # mirror either (it has no dotted tail).
-        from kanibako.settings.config_interface import _is_box_agent_key
+        from kanibako.settings.config_keys import _is_box_agent_key
         assert _is_box_agent_key("box.agent_name") is False
         assert is_known_key("box.agent_name") is False
 
@@ -2495,7 +2494,7 @@ class TestBareAgentKeyAtBoxScope:
     """
 
     def test_redirect_helper_fires_only_for_bare_key_at_box_scope(self):
-        from kanibako.settings.config_interface import box_agent_redirect_key
+        from kanibako.settings.config_keys import box_agent_redirect_key
         # Bare agent keys at box scope → the box's §2h REQUEST.
         assert box_agent_redirect_key(
             "bootstrap", ConfigLevel.box, "claude") == "pref.agent.claude.bootstrap"
@@ -2688,7 +2687,7 @@ class TestBareAgentKeyAtWorksetScope:
     """
 
     def test_scope_error_helper_workset_refuses_no_mirror(self):
-        from kanibako.settings.config_interface import bare_agent_key_scope_error
+        from kanibako.settings.config_keys import bare_agent_key_scope_error
         for verb in ("set", "read", "reset"):
             msg = bare_agent_key_scope_error(
                 "bootstrap", ConfigLevel.workset, verb=verb,
@@ -3275,7 +3274,7 @@ class TestAgentNodeBindRouting:
         assert _is_persona_agent_key(k)  # would mis-capture if checked first
 
     def test_persona_scalar_is_not_a_node_bind(self):
-        from kanibako.settings.config_interface import _is_agent_node_bind_key
+        from kanibako.settings.config_keys import _is_agent_node_bind_key
         assert not _is_agent_node_bind_key("agent.claude.model")
         assert not _is_agent_node_bind_key("agent.claude.endpoint")
 
@@ -3302,7 +3301,7 @@ class TestAgentNodeBindRouting:
         assert _is_path_category_key("agent.default.caches.foo")
 
     def test_resolve_key_canonicalizes_node_plus_form(self):
-        from kanibako.settings.config_interface import resolve_key
+        from kanibako.settings.config_keys import resolve_key
         assert (
             resolve_key("agent.navigator+claude.bindings.rw.plugins")
             == "agent.navigator℘claude.bindings.rw.plugins"
@@ -3671,10 +3670,10 @@ def test_meta_box_path_is_read_only_from_every_scope():
     path. The FILE half (a top-level ``meta:`` table being dropped at assembly) is
     pinned in ``tests/test_settings_launch.py``.
     """
-    from kanibako.settings.config_interface import is_known_key
     from kanibako.settings.config_keys import (
         ConfigLevel,
         _scope_direction_error,
+        is_known_key,
     )
 
     for scope in (*ConfigLevel, None):
@@ -3829,13 +3828,13 @@ class TestSetDispatchCoverage:
     """
 
     def test_every_routing_table_key_has_a_route(self):
-        from kanibako.settings.config_interface import _KEY_ROUTES, _has_dedicated_route
+        from kanibako.settings.config_keys import _KEY_ROUTES, _has_dedicated_route
 
         for key in _KEY_ROUTES:
             assert _has_dedicated_route(key), key
 
     def test_each_special_family_is_claimed(self):
-        from kanibako.settings.config_interface import _has_dedicated_route
+        from kanibako.settings.config_keys import _has_dedicated_route
 
         for key in (
             "env.FOO",                            # docker .env
@@ -3851,13 +3850,13 @@ class TestSetDispatchCoverage:
             assert _has_dedicated_route(key), key
 
     def test_a_fabricated_key_is_claimed_by_nothing(self):
-        from kanibako.settings.config_interface import _has_dedicated_route
+        from kanibako.settings.config_keys import _has_dedicated_route
 
         for key in ("run_args", "box.env.FOO", "nonsense.key"):
             assert not _has_dedicated_route(key), key
 
     def test_the_probe_is_off_for_the_docker_env_and_category_families(self):
-        from kanibako.settings.config_interface import _probes_at_set_time
+        from kanibako.settings.config_keys import _probes_at_set_time
 
         for off in ("env.FOO", "box.common.plugins",
                     "agent.claude.bindings.ro.launcher", "run_args"):

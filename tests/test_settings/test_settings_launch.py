@@ -822,7 +822,7 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
     workset FILE value OVERRIDES the @meta.workset.path/auth floor default, and the
     derived meta.box.auth.workset_path re-resolves against it. Mutation: unregister
     the route / drop the override handling → the custom root is not honored."""
-    from kanibako.settings.config_interface import KNOWN_CONFIG_KEYS, _KEY_ROUTES
+    from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS, _KEY_ROUTES
     # (a) it IS registered settable (P6a) and routes to the workset:auth nested slot.
     assert "workset.auth.path" in KNOWN_CONFIG_KEYS
     assert _KEY_ROUTES["workset.auth.path"] == (("workset", "auth"), "path")
