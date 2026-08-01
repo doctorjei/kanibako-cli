@@ -1,7 +1,7 @@
 """Launch-time settings snapshot — the ONE resolve per launch (block 7b).
 
 This module is the LIVE read-path: ``commands/start.py`` builds ONE resolved
-:class:`~kanibako.settings_store.KeyStore` snapshot per launch here, via the
+:class:`~kanibako.settings.settings_store.KeyStore` snapshot per launch here, via the
 committed KeyStore pipeline (``assemble_levels`` → ``merge`` → ``expand``), and
 BOTH the behavior reads AND the category :func:`reconcile_categories` pass read
 from that SINGLE snapshot (S12 WRITE-ONCE — resolve ONCE, read many). It replaces
@@ -11,7 +11,7 @@ behavior cascade and the per-mount-family category cascade) and the ``machine``
 
 It is the block-7b consumer SWAP: it IMPORTS the pipeline (single-source — never
 re-implements assemble/merge/expand) and the by-dest reconcile pass
-(:func:`~kanibako.settings_categories.reconcile_categories`, §6g — kept the
+(:func:`~kanibako.settings.settings_categories.reconcile_categories`, §6g — kept the
 by-dest consumer, fed from the snapshot's category subtrees).
 
 What lands in the one snapshot
@@ -74,19 +74,19 @@ from pathlib import Path
 from typing import Collection, Literal, Mapping, Sequence
 
 from kanibako.agent_ref import harness_of
-from kanibako.settings_assemble import assemble_levels, dotted_partial
-from kanibako.settings_categories import (
+from kanibako.settings.settings_assemble import assemble_levels, dotted_partial
+from kanibako.settings.settings_categories import (
     _DELIVERY,
     SECRET_MOUNT_DIR,
     CategoryEntry,
     _bind_options,
 )
-from kanibako.settings_cli_level import guard_cli_level
-from kanibako.settings_expand import expand
-from kanibako.settings_merge import merge
-from kanibako.settings_prefs import PrefRequest, apply_prefs, collect_prefs
-from kanibako.settings_resolve import ResolveCtx, SettingsError, expand_expr
-from kanibako.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
+from kanibako.settings.settings_cli_level import guard_cli_level
+from kanibako.settings.settings_expand import expand
+from kanibako.settings.settings_merge import merge
+from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
+from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
+from kanibako.settings.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
 
 
 # The category tokens that hold bind-shaped (``Bind``) leaves in the snapshot's
@@ -860,7 +860,7 @@ def resolve_auth_source(
     An absent ``box`` node means the floor was not injected → fail CLOSED (tier
     ``"box"``, no sharing) rather than launder.
     """
-    from kanibako.settings_views import as_bool
+    from kanibako.settings.settings_views import as_bool
 
     box_node = dict.get(snapshot, "box", _MISSING)
     if not isinstance(box_node, KeyStore):
@@ -1028,8 +1028,8 @@ def build_launch_snapshot(
     *cli_level* is the §1A **top-most input level** — above every settings file AND
     every pref (*"The COMMAND LINE is its OWN LEVEL — the highest… a GENERAL rule,
     not a carve-out"*). Built by
-    :func:`kanibako.settings_cli_level.build_cli_level`, which owns the flag→key
-    table; :func:`~kanibako.settings_cli_level.guard_cli_level` is applied HERE,
+    :func:`kanibako.settings.settings_cli_level.build_cli_level`, which owns the flag→key
+    table; :func:`~kanibako.settings.settings_cli_level.guard_cli_level` is applied HERE,
     before the splice, so no call site can bypass it (P8).
 
     It always carries the RESOLVED agent selection
@@ -1309,7 +1309,7 @@ def resolve_selected_agent(
     INSIDE that cascade. The pass is safe to run first because the pref-legal file
     pair comes from the runtime TREEWALK (``paths._box_settings_files``), which
     consults no settings key — see the termination note in
-    :mod:`kanibako.settings_prefs`.
+    :mod:`kanibako.settings.settings_prefs`.
 
     **Why LENIENT expand.** ``expand`` is whole-tree, and in STRICT mode a defect
     anywhere would abort selection — e.g. a perfectly legitimate ``$AGENT`` in some
@@ -1580,7 +1580,7 @@ def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
     scalar / None / a fresh ``list`` for a leaf) so no box edit aliases the shared
     ``agent.*`` subtree (no-leak, (c)). Unbound ``dict`` protocol (S3).
     """
-    from kanibako.settings_merge import _deep_copy_store
+    from kanibako.settings.settings_merge import _deep_copy_store
 
     for name in dict.keys(agent_node):
         agent_val = dict.__getitem__(agent_node, name)
@@ -1808,7 +1808,7 @@ def snapshot_category_entries(
     (S3).
 
     *optional_keys* / *host_dest_keys* are matched against the FULL DISCRIMINATED
-    ``CategoryEntry.key`` and set :attr:`~kanibako.settings_categories.CategoryEntry.
+    ``CategoryEntry.key`` and set :attr:`~kanibako.settings.settings_categories.CategoryEntry.
     optional` / ``dest_space="host"`` on the matching entries. Both default EMPTY, so
     every caller that does not pass them gets byte-identical output. They are
     DECLARATION facts the snapshot cannot carry (a bind tuple has two path slots and

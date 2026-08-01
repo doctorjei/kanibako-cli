@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Final, Mapping
 
 from kanibako.config_io import dump_doc, load_doc
-from kanibako.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
+from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 
 # Keys that live directly in the [agent] section as agent identity (not state).
 IDENTITY_KEYS = frozenset({"name", "run_args"})
@@ -131,7 +131,7 @@ def agent_category_root_ref(agent: str, category: str) -> str:
 
     ``@meta.agent.<agent>.path/<dirname>`` — the AGENT row of the spec's
     DECLARATION-ROOT table (§2a L487-517), read from the single copy of that table
-    in :data:`~kanibako.settings_categories.DECLARATION_ROOT_REF`. This is what a
+    in :data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`. This is what a
     loader STORES, so the stored value resolves on its own with no layer prepending
     anything later (§2a L474-486).
     """

@@ -1,10 +1,10 @@
 """Cascade MERGE — the depth-sensitive per-name union of the ordered partials.
 
-ONE pure function, :func:`merge`, walks :mod:`kanibako.settings_assemble`'s ordered
+ONE pure function, :func:`merge`, walks :mod:`kanibako.settings.settings_assemble`'s ordered
 ``list[KeyStore]`` partials (MOST-SPECIFIC-FIRST, S8) and produces ONE raw merged
 snapshot. It is PURE: no file / env / clock access, same input → same output, and
 it NEVER mutates its input partials (S15) — it builds a fresh
-:class:`~kanibako.settings_store.KeyStore`.
+:class:`~kanibako.settings.settings_store.KeyStore`.
 
 It is the depth-sensitive successor to ``settings_resolve.resolve_value``'s
 most-specific-first winner-take-all (which used ``""`` as a terminal + a separate
@@ -15,10 +15,10 @@ serves the ``config.*`` / ``system.*`` FOUNDATION path tier (``paths.py``); it i
 the launch/settings cascade that no longer goes through it.
 
 OUT of scope (hard boundaries): NO ``@``-ref / ``$var`` / ``~`` expansion or cycle
-detection (:mod:`kanibako.settings_expand` — refs stay RAW), NO
+detection (:mod:`kanibako.settings.settings_expand` — refs stay RAW), NO
 ``reconcile_categories`` / ``box_dest`` collision logic (the SEPARATE downstream
 pass, §6g — merge keys by NAME only), NO typed views
-(:mod:`kanibako.settings_views`), NO ``config set``
+(:mod:`kanibako.settings.settings_views`), NO ``config set``
 (:mod:`kanibako.config_interface`).
 
 Authority
@@ -47,8 +47,8 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 
 from __future__ import annotations
 
-from kanibako.settings_assemble import _BIND_CATEGORIES
-from kanibako.settings_store import _MISSING, KeyStore, StoreValue
+from kanibako.settings.settings_assemble import _BIND_CATEGORIES
+from kanibako.settings.settings_store import _MISSING, KeyStore, StoreValue
 
 # The scope-category segment whose present-None leaf means UNMASK (not a scalar
 # reset). S16 — reuse 2a's category awareness; ``masks`` is the one keyed

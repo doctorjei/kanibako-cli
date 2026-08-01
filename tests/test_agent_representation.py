@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kanibako.agent_representation import agent_default_partial
-from kanibako.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
 from kanibako.targets.base import (
     AgentInstall,
     BindKind,
@@ -588,11 +588,11 @@ class TestAgentCommonForNode:
         and the persona is back to ZERO agent-scope commons.
         """
         from kanibako.agent_representation import agent_common_for_node
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         node = "nav℘claude"
         ctx = ResolveCtx(

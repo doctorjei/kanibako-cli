@@ -83,9 +83,9 @@ from kanibako.core_defaults import (
     ROM_GUIDE_REL,
 )
 from kanibako.paths import resolve_project
-from kanibako.settings_categories import reconcile_categories
-from kanibako.settings_launch import build_launch_snapshot, snapshot_category_entries
-from kanibako.settings_resolve import GUEST_HOME, ResolveCtx
+from kanibako.settings.settings_categories import reconcile_categories
+from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
+from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
 from kanibako.targets.base import AgentInstall, PluginDescriptor

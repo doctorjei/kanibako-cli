@@ -101,7 +101,7 @@ def channel_default_categories(
 
     Per spec §2a a binding value is a STRUCTURED PAIR (a YAML list / Python
     tuple), NOT a colon-joined string — so no escaping of a literal ``:`` in the
-    host path is needed; :func:`~kanibako.settings_resolve.unpack_bind` consumes
+    host path is needed; :func:`~kanibako.settings.settings_resolve.unpack_bind` consumes
     the pair directly.
 
     ALL MODES (system scope): the five system channel type roots
@@ -167,7 +167,7 @@ def core_default_categories(
 
     Per spec §2a a binding value is a STRUCTURED TUPLE (a YAML list / Python
     tuple), NOT a colon-joined string — the per-entry mount OPTIONS are its
-    OPTIONAL 3rd slot, consumed by :func:`~kanibako.settings_resolve.unpack_bind`
+    OPTIONAL 3rd slot, consumed by :func:`~kanibako.settings.settings_resolve.unpack_bind`
     (a 3-element value OVERRIDES the category default for that entry, so e.g. the
     ``ro`` vault bind keeps ``ro`` and the ``Z,U`` binds keep ``Z,U`` regardless of
     the category's own default).
@@ -370,7 +370,7 @@ def kickoff_guest_dest() -> str:
     gate (descriptor box_dests are ``$GUEST_HOME``-expanded by the defaults
     loader, so a ``~``-spelled dest would never match one).
     """
-    from kanibako.settings_resolve import GUEST_HOME
+    from kanibako.settings.settings_resolve import GUEST_HOME
 
     dest = kickoff_box_dest()
     return GUEST_HOME + dest[1:] if dest.startswith("~") else dest
@@ -801,7 +801,7 @@ CANON_ACTIVE_AGENT_TOKEN = "<active>"
 def canon_optional_bind_keys() -> frozenset[str]:
     """The SKIP-IF-ABSENT canon bind keys, read from the same declarative rows.
 
-    Fed to :func:`kanibako.settings_launch.snapshot_category_entries` as
+    Fed to :func:`kanibako.settings.settings_launch.snapshot_category_entries` as
     ``optional_keys`` at the ONE launch aggregation site, so an absent workset/box
     chapter drops its bind SILENTLY instead of warning on every launch of almost
     every box (spec §2c "SKIP-IF-ABSENT").  Derived from the file rather than
@@ -830,7 +830,7 @@ def canon_default_categories(
     The other three ``<scope>.canon`` keys are floored elsewhere, each beside the
     anchor it is spelled against: ``system.canon`` in the resolved ``system.*`` tier
     (``StandardPaths.canon``), ``workset.canon`` and ``box.canon`` in
-    :func:`kanibako.settings_launch.workset_anchor_floor`.
+    :func:`kanibako.settings.settings_launch.workset_anchor_floor`.
 
     ⚑ THE REPOINT ROUTES DIFFER PER SCOPE, and the difference is inherited, not
     chosen here: ``workset.canon`` / ``box.canon`` are ordinary ``config set`` keys

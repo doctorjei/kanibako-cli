@@ -51,16 +51,16 @@ argument covers the CLI level. It is the whole point of the feature; a guard tha
 refused it would break P7.
 
 PURE: no I/O and no plugin import at module load, like
-:mod:`kanibako.settings_keyspace`. The set of valid agent names is injected.
+:mod:`kanibako.settings.settings_keyspace`. The set of valid agent names is injected.
 """
 
 from __future__ import annotations
 
 from typing import Collection, Final, Mapping
 
-from kanibako.settings_keyspace import key_validity
-from kanibako.settings_prefs import LOCATOR_CLOSURE
-from kanibako.settings_resolve import SettingsError
+from kanibako.settings.settings_keyspace import key_validity
+from kanibako.settings.settings_prefs import LOCATOR_CLOSURE
+from kanibako.settings.settings_resolve import SettingsError
 
 #: The key naming the agent a box runs (spec §2g L1187) — re-exported from the
 #: selection seam's spelling so the level and the selection cannot drift.
@@ -180,17 +180,17 @@ def guard_cli_level(
 ) -> None:
     """Refuse an illegal CLI-level key, NAMING it (spec §1A L335-338, §0 L160-162).
 
-    Called from INSIDE :func:`kanibako.settings_launch.build_launch_snapshot`, before
+    Called from INSIDE :func:`kanibako.settings.settings_launch.build_launch_snapshot`, before
     the splice, so no call site can bypass it. A no-op for ``None`` / an empty level.
 
     Refuses, in this order (each arm reports the key and the section that bars it):
 
-    1. **Closed keyspace** — anything :func:`kanibako.settings_keyspace.key_validity`
+    1. **Closed keyspace** — anything :func:`kanibako.settings.settings_keyspace.key_validity`
        rejects. §0: an undeclared key is an ERROR that names it, never a silent
        accept and never a fabricated default.
     2. **Categorical** — ``meta.*`` / ``config.*`` / ``pref.*``
        (:data:`_FORBIDDEN_HEADS`).
-    3. **Locator closure** — :data:`kanibako.settings_prefs.LOCATOR_CLOSURE`. This
+    3. **Locator closure** — :data:`kanibako.settings.settings_prefs.LOCATOR_CLOSURE`. This
        is the arm §1A explicitly asks for.
 
     *valid_agents* injects the agent-discriminator set for arm 1, and

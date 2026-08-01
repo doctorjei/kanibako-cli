@@ -1845,7 +1845,7 @@ class TestAllowHelpersGate:
         # (so every OTHER unit test keeps helpers off). Simulate a genuinely-unset
         # box by stripping allow_helpers from the live behavior read for THIS test —
         # exactly what a snapshot with no allow_helpers in either agent slot yields.
-        import kanibako.settings_launch as _sl
+        import kanibako.settings.settings_launch as _sl
         _real_eff = _sl.effective_behavior
 
         def _eff_without_allow_helpers(*a, **k):
@@ -1857,7 +1857,7 @@ class TestAllowHelpersGate:
             sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
             with (
                 patch(
-                    "kanibako.settings_launch.effective_behavior",
+                    "kanibako.settings.settings_launch.effective_behavior",
                     side_effect=_eff_without_allow_helpers,
                 ),
                 patch(

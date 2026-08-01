@@ -116,7 +116,7 @@ class TestSecretExportBind:
     def test_snippet_drift_guard_matches_secret_mount_dir(self):
         """The shipped snippet hardcodes SECRET_MOUNT_DIR's value — a change to the
         constant that forgot the snippet would desync silently, so lock it here."""
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
         text = self._snippet_path().read_text()
         assert SECRET_MOUNT_DIR in text
@@ -140,7 +140,7 @@ class TestSecretExportBind:
         var with the file's (newline-stripped) contents."""
         import subprocess
 
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
         secrets = tmp_path / "secrets"
         secrets.mkdir()
@@ -158,7 +158,7 @@ class TestSecretExportBind:
         an empty dir and an absent dir), even under `set -e`."""
         import subprocess
 
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
         empty = tmp_path / "empty"
         empty.mkdir()

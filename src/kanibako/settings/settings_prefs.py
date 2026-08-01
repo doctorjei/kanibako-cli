@@ -60,9 +60,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Collection, Final, Iterable, Sequence
 
-from kanibako.settings_keyspace import is_valid_agent_segment, key_validity
-from kanibako.settings_resolve import SettingsError
-from kanibako.settings_store import KeyStore, StoreValue, insert_dotted
+from kanibako.settings.settings_keyspace import is_valid_agent_segment, key_validity
+from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.settings_store import KeyStore, StoreValue, insert_dotted
 
 _log = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ def _flatten_pref_node(
     spelling: ``settings_assemble._parse_node`` decides bind-shapes by ANCESTOR
     segment, so under the dotted spelling
     ``pref: {"agent.claude.common.plugins": [src, dest]}`` the value would stay a
-    raw ``list`` and never become a :class:`~kanibako.settings_store.Bind` — the
+    raw ``list`` and never become a :class:`~kanibako.settings.settings_store.Bind` — the
     same request behaving differently depending on how it was spelled. One form,
     enforced (§0 convention 0).
     """
@@ -263,12 +263,12 @@ def collect_prefs(
 
     Parses through ``settings_assemble._file_partial`` — the SAME parse the
     cascade uses — so a bind-shaped pref value arrives as a
-    :class:`~kanibako.settings_store.Bind`, exactly as it would at its target
+    :class:`~kanibako.settings.settings_store.Bind`, exactly as it would at its target
     key. (Re-reading the file is deliberate: see the module docstring. It is ONE
     spelling of the parse, called from one collector.)
     """
     from kanibako.config_io import load_doc
-    from kanibako.settings_assemble import _file_partial
+    from kanibako.settings.settings_assemble import _file_partial
 
     out: list[PrefRequest] = []
     for level, path in zip(PREF_LEGAL_LEVELS, (workset_path, box_path)):
@@ -497,7 +497,7 @@ def apply_prefs(
 ) -> tuple[KeyStore, KeyStore]:
     """Validate every request and build ``(workset_overlay, box_overlay)``.
 
-    RAISES :class:`~kanibako.settings_resolve.SettingsError` on the FIRST invalid
+    RAISES :class:`~kanibako.settings.settings_resolve.SettingsError` on the FIRST invalid
     request, naming the key, the LEVEL, the FILE and the REASON (spec §2h
     L1280-1283: *"We don't want to just moving on with bad settings"* — the
     launch FAILS rather than proceeding with a partially-applied request, and

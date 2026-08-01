@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import copy
 
-from kanibako.settings_merge import merge
-from kanibako.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings.settings_merge import merge
+from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
 
 
 # --------------------------------------------------------------------------- #

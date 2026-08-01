@@ -2,7 +2,7 @@
 
 Spec §1A L320-338. Three groups:
 
-* **builder** — what :func:`kanibako.settings_cli_level.build_cli_level` installs,
+* **builder** — what :func:`kanibako.settings.settings_cli_level.build_cli_level` installs,
   and (as importantly) what it does NOT;
 * **guard** — the refusals §1A asks for, each NAMING the offending key (§0);
 * **equivalence** — the flag folds this phase deleted from the call sites must
@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings_cli_level import (
+from kanibako.settings.settings_cli_level import (
     CLI_SHADOWED_KEYS,
     SELECTION_KEY,
     build_cli_level,
     guard_cli_level,
 )
-from kanibako.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import SettingsError
 
 ACTIVE = "claude"
 

@@ -14,7 +14,7 @@ from kanibako.agent_config import (
     agents_dir,
     write_agent_config,
 )
-from kanibako.settings_launch import AuthSource
+from kanibako.settings.settings_launch import AuthSource
 
 # Auth 3-tier SHARING fixtures replacing the old ``effective_group_auth`` bool
 # (2026-07-01 redesign). ``_resolve_box_auth_source`` returns an ``AuthSource``;

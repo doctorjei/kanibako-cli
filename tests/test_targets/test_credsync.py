@@ -5,7 +5,7 @@ The primitives (:func:`seed_cred_files` / :func:`refresh_cred_files` /
 source — host home for GLOBAL, the workset dir for WORKSET, ``None`` for the
 private/BOX tier). The tier ORCHESTRATORS (:func:`seed_box_credentials` /
 :func:`refresh_box_credentials` / :func:`writeback_box_credentials`) dispatch the
-primitives per a resolved :class:`~kanibako.settings_launch.AuthSource`, including
+primitives per a resolved :class:`~kanibako.settings.settings_launch.AuthSource`, including
 the workset↔global ``global_sync`` hop.
 """
 
@@ -15,7 +15,7 @@ import os
 import stat
 from pathlib import Path
 
-from kanibako.settings_launch import AuthSource
+from kanibako.settings.settings_launch import AuthSource
 from kanibako.targets.base import (
     AgentInstall,
     Cadence,
@@ -613,14 +613,14 @@ def _real_auth_source(mode: str, *, agent_name: str = "goose"):
     ``/<agent>`` escape (workset.auth.path=None renders the @-ref as ``""``). This
     exercises the true resolver so the guard is proven against the real value.
     """
-    from kanibako.settings_launch import (
+    from kanibako.settings.settings_launch import (
         auth_chain_floor,
         build_launch_snapshot,
         meta_identity_floor,
         meta_runtime_floor,
         resolve_auth_source,
     )
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     ctx = ResolveCtx(
         agent_name=agent_name, workset_name="__STANDALONE__",

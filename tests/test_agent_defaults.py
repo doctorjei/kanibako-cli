@@ -25,7 +25,7 @@ from kanibako.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
-from kanibako.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import SettingsError
 
 
 @pytest.fixture
@@ -256,7 +256,7 @@ class TestLayoutSingleSource:
         token the expansion would have made absolute), so the two are asserted
         against each other rather than against a hand-written expectation.
         """
-        from kanibako.settings_resolve import ResolveCtx, expand_expr
+        from kanibako.settings.settings_resolve import ResolveCtx, expand_expr
 
         ctx = ResolveCtx(
             agent_name=None, workset_name=None, host_home="/home/u", xdg={},

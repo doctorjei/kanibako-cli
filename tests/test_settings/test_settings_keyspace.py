@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings_keyspace import (
+from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     RESERVED_LEAF_NAMES,
     RETIRING_KEYS,
@@ -279,6 +279,6 @@ def test_reserved_names_match_the_keystore_write_time_set():
     name accepted by the validator and rejected by the store fails deep in the
     write with no reference to the key the user typed.
     """
-    from kanibako.settings_store import _RESERVED_KEY_NAMES
+    from kanibako.settings.settings_store import _RESERVED_KEY_NAMES
 
     assert RESERVED_LEAF_NAMES == _RESERVED_KEY_NAMES

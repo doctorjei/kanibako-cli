@@ -718,12 +718,12 @@ class TestHelperDefaultCategories:
         # with EMPTY mount options (not the rw default Z,U) — the property the live
         # socket depends on.
         from kanibako import core_defaults
-        from kanibako.settings_categories import reconcile_categories
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(

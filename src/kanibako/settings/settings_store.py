@@ -346,10 +346,10 @@ def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
     THE single non-parsing dotted installer. Two callers need exactly this:
     the ``meta.derived.*`` materialisation
     (``kanibako.commands.start._install_derived_bindings``) and the ``pref.*``
-    overlay builder (:func:`kanibako.settings_prefs.pref_overlay`), whose
+    overlay builder (:func:`kanibako.settings.settings_prefs.pref_overlay`), whose
     contract is *"values are installed VERBATIM — including ``None``"* (spec
     §2h). It is DELIBERATELY distinct from
-    ``kanibako.settings_assemble._insert_dotted``, which does a DIFFERENT job:
+    ``kanibako.settings.settings_assemble._insert_dotted``, which does a DIFFERENT job:
     that one PARSES the terminal through ``_parse_node`` so a floor entry under
     a bind-shaped category becomes a :class:`Bind`. Two spellings of one walk
     would be a rule-0 trap; two walks with different jobs are not, provided the

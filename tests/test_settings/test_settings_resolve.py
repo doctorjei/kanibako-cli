@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from kanibako.agent_ref import CANONICAL_SEP
-from kanibako.settings_resolve import (
+from kanibako.settings.settings_resolve import (
     GUEST_HOME,
     MAX_REF_DEPTH,
     UNSET,
@@ -444,8 +444,8 @@ def test_match_var_is_the_one_parser_for_the_dollar_family() -> None:
     so it is asserted structurally rather than left to three copies happening to
     match — the same argument that made ``match_ref`` public.
     """
-    from kanibako.settings_configset import _scan_tokens
-    from kanibako.settings_resolve import _scan_var_span
+    from kanibako.settings.settings_configset import _scan_tokens
+    from kanibako.settings.settings_resolve import _scan_var_span
 
     for expr in ("$AGENT", "${XDG_DATA_HOME}", "$XDG_DATA_HOME/x"):
         name, end = match_var(expr, 0)

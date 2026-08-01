@@ -952,8 +952,8 @@ class TestPrimaryWorksetSpecConvergence:
         ``build_launch_snapshot`` pipeline.
         """
         from kanibako.paths import host_xdg_map, resolve_project
-        from kanibako.settings_launch import build_launch_snapshot
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1146,9 +1146,9 @@ class TestPrimaryWorksetMigration:
             resolve_project,
             workset_settings_path,
         )
-        from kanibako.settings_launch import build_launch_snapshot
-        from kanibako.settings_resolve import ResolveCtx
-        from kanibako.settings_store import KeyStore
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_store import KeyStore
 
         monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
         config = load_config(config_file)

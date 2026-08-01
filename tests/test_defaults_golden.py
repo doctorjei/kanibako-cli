@@ -10,7 +10,7 @@ guest-path literals into a HANDFUL of shipped declarative data files:
 * ``<plugin>/<agent>-defaults.yaml``        — ONE file PER AGENT inside its plugin
   package (claude/goose/codex), read by the thin loader
   :mod:`kanibako.agent_defaults`.
-* :data:`kanibako.settings_resolve.GUEST_HOME` — the single one-line constant the
+* :data:`kanibako.settings.settings_resolve.GUEST_HOME` — the single one-line constant the
   box-side ``/home/agent`` literal derives from (NOT a new file).
 
 This module is the standing GUARDRAIL over that surface.  It does TWO things:
@@ -47,7 +47,7 @@ from pathlib import Path
 import yaml
 
 from kanibako import agent_defaults, core_defaults
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     BindKind,
     BindScope,
@@ -378,7 +378,7 @@ class TestNoHardcodedGuestHome:
             for ln in py.read_text().splitlines():
                 if assign_re.match(ln):
                     sites.append(str(py.relative_to(_REPO_ROOT)))
-        assert sites == ["src/kanibako/settings_resolve.py"], (
+        assert sites == ["src/kanibako/settings/settings_resolve.py"], (
             f"GUEST_HOME must be defined exactly once in settings_resolve.py, "
             f"found assignments in: {sites}"
         )

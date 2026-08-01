@@ -10,7 +10,7 @@ THIS — this module does NOT touch ``cli.py`` or the live setter):
    It REUSES the resolver's parse grammar (``split_bind`` for the ``:`` notation;
    the resolver's OWN ``match_var`` / ``match_ref`` token parsers, called rather
    than re-derived, inside the same escape-aware scan as
-   :func:`kanibako.settings_resolve.expand_expr`) and the
+   :func:`kanibako.settings.settings_resolve.expand_expr`) and the
    :mod:`kanibako.config_interface` key registry (``KEY_TYPES`` / ``_coerce_value``)
    — it does NOT invent a second validator (S25). Q9 (spec §2a, ruling 2026-06-29):
    the dangling/unknown/cycle judgement is now FULL RESOLUTION via the injected E3
@@ -79,7 +79,7 @@ from typing import Callable, Sequence, Union
 from kanibako.agent_config import is_self_resolving
 from kanibako.config_interface import KEY_TYPES, _coerce_value
 from kanibako.config_io import dump_doc, load_doc
-from kanibako.settings_resolve import (
+from kanibako.settings.settings_resolve import (
     SettingsError,
     match_ref,
     match_var,
@@ -181,10 +181,10 @@ def _scan_tokens(value: str) -> tuple[list[str], list[str]]:
     token. Returns ``(ref_names, var_names)`` — WITHOUT resolving anything (design
     §6d: validate references for well-formedness, never expand to a literal).
 
-    This mirrors :func:`kanibako.settings_resolve.expand_expr`'s scanner EXACTLY
+    This mirrors :func:`kanibako.settings.settings_resolve.expand_expr`'s scanner EXACTLY
     (the same escape rule, and BOTH token families via the scanner's own parsers —
-    :func:`~kanibako.settings_resolve.match_var` for ``$VAR`` / ``${VAR}`` and
-    :func:`~kanibako.settings_resolve.match_ref` for ``@ref`` / ``@{ref}``, called
+    :func:`~kanibako.settings.settings_resolve.match_var` for ``$VAR`` / ``${VAR}`` and
+    :func:`~kanibako.settings.settings_resolve.match_ref` for ``@ref`` / ``@{ref}``, called
     rather than re-derived), so "well-formed" here means EXACTLY what the build
     expander will later accept — one grammar, not a second (S25). Both ``@``
     spellings are accepted, bare ``@a.b`` and braced ``@{a.b}``, and a DANGLING
@@ -249,7 +249,7 @@ def _rooted_form_hint(key: str) -> str:
     root that has nothing to do with their key — a confidently wrong instruction,
     which is worse than saying nothing.
     """
-    from kanibako.settings_categories import (
+    from kanibako.settings.settings_categories import (
         ABSTRACT_CATEGORIES,
         BIND_KEY_RE,
         DECLARATION_ROOT_REF,
@@ -358,7 +358,7 @@ def validate_config_set(
     #     nothing to preserve — and no defensible root to invent, since the key may
     #     name any scope and any category. The message shows the rooted form for an
     #     ABSTRACT category, read PER SCOPE off the spec's declaration-root table
-    #     (:data:`~kanibako.settings_categories.DECLARATION_ROOT_REF`) — and the
+    #     (:data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`) — and the
     #     set-time snapshot materializes ``meta.agent.<a>.path``, so the suggested
     #     value is one the very next ``config set`` ACCEPTS.
     if is_category and not is_self_resolving(value):

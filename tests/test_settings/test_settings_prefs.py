@@ -12,7 +12,7 @@ import logging
 import pytest
 import yaml
 
-from kanibako.settings_prefs import (
+from kanibako.settings.settings_prefs import (
     ALLOWLIST,
     LOCATOR_CLOSURE,
     AgentNames,
@@ -30,8 +30,8 @@ from kanibako.settings_prefs import (
     refuse_pref_table,
     validate_pref,
 )
-from kanibako.settings_resolve import SettingsError
-from kanibako.settings_store import Bind, KeyStore
+from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.settings_store import Bind, KeyStore
 
 AGENTS = AgentNames({"claude", "codex", "goose"})
 
@@ -423,11 +423,11 @@ class TestSuppressionEndToEnd:
     """
 
     def _entries(self, tmp_path, box_file):
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         ctx = ResolveCtx(
             agent_name="claude", workset_name=None,
@@ -505,7 +505,7 @@ class TestPluginDeclaredAgentLeaves:
     def test_a_plugin_declared_key_validates(self):
         """goose declares `provider` via setting_descriptors(); before the union
         `agent.goose.provider` was REFUSED as undeclared."""
-        from kanibako.settings_prefs import default_valid_agents
+        from kanibako.settings.settings_prefs import default_valid_agents
 
         agents = default_valid_agents()
         if "provider" not in agents.leaves:      # no goose plugin installed here
@@ -523,7 +523,7 @@ class TestPluginDeclaredAgentLeaves:
 class TestDiscoveryIsLazyCachedAndHonest:
     def test_discovery_is_NOT_reached_without_an_agent_target(self, monkeypatch):
         """SHOULD-3 — the docstring's 'lazy' claim enforced by the call site."""
-        import kanibako.settings_prefs as sp
+        import kanibako.settings.settings_prefs as sp
 
         sp.reset_discovery_cache()
         calls = []
@@ -535,7 +535,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
         assert calls == []
 
     def test_discovery_IS_reached_for_an_agent_target(self, monkeypatch):
-        import kanibako.settings_prefs as sp
+        import kanibako.settings.settings_prefs as sp
 
         sp.reset_discovery_cache()
         calls = []
@@ -547,7 +547,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
         assert calls == [1]
 
     def test_discovery_is_cached_across_calls(self, monkeypatch):
-        import kanibako.settings_prefs as sp
+        import kanibako.settings.settings_prefs as sp
 
         sp.reset_discovery_cache()
         calls = []
@@ -568,7 +568,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
     def test_an_EMPTY_valid_agents_is_honoured_not_re_discovered(self, monkeypatch):
         """SHOULD-4 — `is None`, not falsy. An empty AgentNames is falsy, and a
         truthiness test would silently discard a caller's deliberate empty set."""
-        import kanibako.settings_prefs as sp
+        import kanibako.settings.settings_prefs as sp
 
         sp.reset_discovery_cache()
         calls = []
@@ -586,7 +586,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
 
     def test_a_discovery_FAILURE_gets_its_own_message(self, monkeypatch):
         """SHOULD-5 — never blame the user's spelling for an environment fault."""
-        import kanibako.settings_prefs as sp
+        import kanibako.settings.settings_prefs as sp
 
         sp.reset_discovery_cache()
 

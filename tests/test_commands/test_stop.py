@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.commands.stop import run, _stop_one, _stop_all
-from kanibako.settings_launch import AuthSource
+from kanibako.settings.settings_launch import AuthSource
 
 _SHARED_AUTH = AuthSource(
     tier="global",

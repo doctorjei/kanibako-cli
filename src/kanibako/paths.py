@@ -23,7 +23,7 @@ from kanibako.config import (
     write_box_enable_vault,
 )
 from kanibako.errors import ConfigError, ProjectError, WorksetError
-from kanibako.settings_resolve import (
+from kanibako.settings.settings_resolve import (
     GUEST_HOME,
     LevelView,
     ResolveCtx,
@@ -564,7 +564,7 @@ def xdg(env_var: str, default_suffix: str) -> Path:
 # The container's home directory.  Boxes always run as ``agent`` with this
 # home; used to anchor the box-side XDG default when resolving an in-container
 # path from the HOST (where ``$HOME`` is the operator's, not the box's).
-# Alias of the single source of truth :data:`~kanibako.settings_resolve.GUEST_HOME`.
+# Alias of the single source of truth :data:`~kanibako.settings.settings_resolve.GUEST_HOME`.
 BOX_HOME = GUEST_HOME
 
 
@@ -653,7 +653,7 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     """Build the canonical HOST-side ``$XDG_*`` map for a ``ResolveCtx``.
 
     THE single builder for the ``xdg=`` argument of every host-side
-    :class:`~kanibako.settings_resolve.ResolveCtx` (Jei ruling 2026-07-02: XDG
+    :class:`~kanibako.settings.settings_resolve.ResolveCtx` (Jei ruling 2026-07-02: XDG
     vars must have fallbacks).  Hand-rolled partial maps caused stored values
     like ``$XDG_CACHE_HOME/kanibako`` (the setup-materialized ``system.cache``)
     to raise ``Variable $XDG_CACHE_HOME is not set in this context`` at expand
@@ -688,7 +688,7 @@ def resolve_config_paths(
     *set_values* holds raw user-set ``config.<leaf>`` expressions (from the
     ``kanibako_config.yaml`` set).  Returns ``{config.<key>: resolved_str}`` for
     every key in :data:`CONFIG_PATH_DEFAULTS` — the FOUNDATION mapping injected
-    into :class:`~kanibako.settings_resolve.ResolveCtx.config` so ``@config.*``
+    into :class:`~kanibako.settings.settings_resolve.ResolveCtx.config` so ``@config.*``
     refs resolve there (spec §1A / JC-2).  Flat by design (chicken-and-egg): the
     keyspace pipeline needs these resolved to find its own input files, so they
     resolve OUTSIDE it, with ``@config.*`` refs chained within this set only.

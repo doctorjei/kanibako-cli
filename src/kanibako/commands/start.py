@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
     from kanibako.config import KanibakoConfig
     from kanibako.paths import ProjectPaths, StandardPaths
-    from kanibako.settings_launch import AuthSource
+    from kanibako.settings.settings_launch import AuthSource
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -47,8 +47,8 @@ from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectE
 from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
-from kanibako.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
-from kanibako.settings_cli_level import build_cli_level
+from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
+from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.paths import (
     _upgrade_shell,
     box_state_home,
@@ -85,7 +85,7 @@ def _agent_critical_dests() -> list[tuple[str, str]]:
     agent) must still have claude's stubs reaped.  Returns [] if nothing
     matches, which makes the reaper a no-op.
     """
-    from kanibako.settings_resolve import GUEST_HOME
+    from kanibako.settings.settings_resolve import GUEST_HOME
     from kanibako.targets import discover_targets
     from kanibako.targets.base import BindKind, BindScope
 
@@ -698,7 +698,7 @@ def _effective_bootstrap(
     pipeline the launch reads for the other agent behavior scalars (``model`` /
     ``auto_approve`` / ``allow_helpers``): a focused ``build_launch_snapshot`` over
     the scope settings FILES (system / workset / box) + the per-agent file's flat
-    state, then :func:`~kanibako.settings_launch.effective_behavior`'s §2d L368
+    state, then :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d L368
     active-over-default pick.  There is NO derived-on-disk value — the keystore is
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
 
@@ -712,9 +712,9 @@ def _effective_bootstrap(
     (:data:`_BOOTSTRAP_DEFAULT`) when no scope sets ``bootstrap`` — byte-identical
     to the retired ``box.bootstrap_program or "tmux"`` coercion for the default case.
     """
-    from kanibako import settings_launch
+    from kanibako.settings import settings_launch
     from kanibako.paths import host_xdg_map
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     ctx = ResolveCtx(
         agent_name=agent_id,
@@ -2503,7 +2503,7 @@ def _run_container(
         # agent and the no-agent/shell path (agent_id == "general") so the helper
         # hub gate below sees the effective value regardless of target — an unset
         # box keeps the True floor (helpers ON), matching the old flat default.
-        from kanibako import settings_launch as _settings_launch
+        from kanibako.settings import settings_launch as _settings_launch
         _ah = coerce_bool(
             _settings_launch.effective_behavior(
                 _snapshot, active_agent=agent_id,
@@ -2526,7 +2526,7 @@ def _run_container(
             # use. A target with NO declared settings has no behavior floor — its
             # effective state is just the per-agent file's raw state (preserved from
             # the old early-return), so read from the snapshot all the same.
-            from kanibako import settings_launch
+            from kanibako.settings import settings_launch
             effective_state = settings_launch.effective_behavior(
                 _snapshot, active_agent=agent_id,
             )
@@ -2705,7 +2705,7 @@ def _run_container(
         # same delivery binds).
         binary_mnts: list = []
         if target and install and desc is not None:
-            from kanibako.settings_launch import agent_delivery_mounts
+            from kanibako.settings.settings_launch import agent_delivery_mounts
             from kanibako.targets.base import BindScope
 
             critical_keys = frozenset(
@@ -3070,7 +3070,7 @@ def _run_container(
                 # box only ever touches its OWN home; the trusted HOST watcher does the
                 # privileged store writeback (the load-bearing trust invariant).
                 from kanibako.launch.creds_watcher import CREDS_DIRTY_RELPATH
-                from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME_D
+                from kanibako.settings.settings_resolve import GUEST_HOME as _GUEST_HOME_D
                 supervisor_argv += [
                     "--creds-flag", f"{_GUEST_HOME_D}/{CREDS_DIRTY_RELPATH}",
                 ]
@@ -3526,7 +3526,7 @@ def writeback_session_credentials(
     box funnels through here.
 
     Gated on *auth_src* (the resolved
-    :class:`~kanibako.settings_launch.AuthSource`): a PRIVATE box (tier ``"box"``,
+    :class:`~kanibako.settings.settings_launch.AuthSource`): a PRIVATE box (tier ``"box"``,
     ``auth_src.creds_shared`` False) keeps its credentials project-local and never
     propagates them.  Otherwise the box writes BOTTOM-UP to the selected source
     (host home for GLOBAL, the workset dir for WORKSET, then up to global when
@@ -4489,7 +4489,7 @@ def _effective_behavior_for_display(
     state (``agent_cfg.state``, flat ``[agent]``) is injected as ``agent_state``
     (the active slot ``agent.<active>.*``); the box / workset / system settings
     files merge as their discriminated ``agent.default.*`` / ``agent.<name>.*``
-    tables through ``assemble_levels`` — then :func:`~kanibako.settings_launch.
+    tables through ``assemble_levels`` — then :func:`~kanibako.settings.settings_launch.
     effective_behavior` does the §2d L368 active-over-default value-pick. So the
     ``config --effective`` view MATCHES the real launch behavior read.
 
@@ -4503,9 +4503,9 @@ def _effective_behavior_for_display(
     state is just the per-agent file's raw state (preserved from the old
     early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
     """
-    from kanibako import settings_launch
+    from kanibako.settings import settings_launch
     from kanibako.paths import host_xdg_map
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     descriptors = target.setting_descriptors()
     if not descriptors:
@@ -4573,7 +4573,7 @@ def _resolve_box_auth_source(
     (``settings_launch.auth_chain_floor`` for the box mode) plus the scope settings
     files + the meta identity floor (which carries the agent capability
     ``meta.agent.<agent>.auth.share_support`` the mirror views up), expands it
-    ONCE, and reads the :class:`~kanibako.settings_launch.AuthSource` off it
+    ONCE, and reads the :class:`~kanibako.settings.settings_launch.AuthSource` off it
     (``resolve_auth_source`` — the per-box tier/source resolver, precedence
     workset>global). Same ``build_launch_snapshot`` → ``expand`` pipeline the
     launch uses (single-route).
@@ -4603,7 +4603,7 @@ def _resolve_box_auth_source(
     (spec §1A *"EPHEMERAL, always … NEVER mutates a stored value"*). The parameter
     keeps the narrow name so the seam says what may travel through it.
     """
-    from kanibako import settings_launch
+    from kanibako.settings import settings_launch
 
     (
         ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
@@ -4658,7 +4658,7 @@ def _resolve_box_launch_decisions(
 
     ``build_launch_snapshot`` accepts BOTH the auth 3-tier ``auth_chain`` floor AND
     the behavior ``behavior_floor`` in a single call, so the box's sharing decision
-    (:class:`~kanibako.settings_launch.AuthSource`, ``resolve_auth_source``) and its
+    (:class:`~kanibako.settings.settings_launch.AuthSource`, ``resolve_auth_source``) and its
     active-node ``agent.<node>.endpoint`` (``effective_behavior``) are read off the
     SAME expanded snapshot — no duplicate build. Same pipeline the main launch uses
     (single-route).
@@ -4691,7 +4691,7 @@ def _resolve_box_launch_decisions(
     rides the LAUNCH snapshot only (``_resolve_launch_snapshot``), where it reaches
     argv and the container env and nothing else.
     """
-    from kanibako import settings_launch
+    from kanibako.settings import settings_launch
 
     (
         ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
@@ -4797,7 +4797,7 @@ def _launch_snapshot_inputs(
     a real box tier (absent by default) over the ROOT file that plays the workset
     tier; primary/named unchanged.
     """
-    from kanibako import settings_launch as settings_launch_module
+    from kanibako.settings import settings_launch as settings_launch_module
     from kanibako.agent_select import launch_resolve_ctx
     from kanibako.paths import ProjectError
 
@@ -5007,12 +5007,12 @@ def _resolve_launch_snapshot(
     the resolved ``system.*`` tier so @-refs resolve from the snapshot, represents
     the agent's descriptor delivery binds via 7a's ``agent_default_partial``, and
     runs ``assemble_levels → merge → expand`` ONCE via
-    :func:`kanibako.settings_launch.build_launch_snapshot`.  The expanded snapshot
+    :func:`kanibako.settings.settings_launch.build_launch_snapshot`.  The expanded snapshot
     is then adapted to ``CategoryEntry`` and reconciled ONCE.
 
     Returns ``(snapshot, reconciled)``.  AGENT_CRITICAL delivery binds
     now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree (single-route),
-    emitted by :func:`kanibako.settings_launch.agent_delivery_mounts` at the call
+    emitted by :func:`kanibako.settings.settings_launch.agent_delivery_mounts` at the call
     site — NOT a parallel ``descriptor_mounts`` route.
 
     The image + helper tables are CONDITIONAL: a table is included ONLY when its
@@ -5042,25 +5042,25 @@ def _resolve_launch_snapshot(
     the space must be carried rather than inferred from the path.
 
     *cli_level* is the §1A CLI LEVEL (P8), built by
-    :func:`kanibako.settings_cli_level.build_cli_level` and validated inside
+    :func:`kanibako.settings.settings_cli_level.build_cli_level` and validated inside
     ``build_launch_snapshot``. This is the ONE resolve that may carry the EPHEMERAL
     flag values (``-M`` / ``-N``-``-C``-``-R``) as well as the resolved selection,
     because its output is this launch's argv / env / mounts and nothing here is
     written back to a settings file. The seed, persona-endpoint and ``--effective``
     resolves take a selection-ONLY level.
     """
-    from kanibako import settings_launch
+    from kanibako.settings import settings_launch
     from kanibako.agent_representation import (
         agent_common_for_node,
         agent_default_partial,
     )
     from kanibako.errors import CategoryCollisionError
-    from kanibako.settings_categories import (
+    from kanibako.settings.settings_categories import (
         derive_binding_keys,
         reconcile_categories,
     )
-    from kanibako.settings_prefs import collect_prefs
-    from kanibako.settings_resolve import SettingsError
+    from kanibako.settings.settings_prefs import collect_prefs
+    from kanibako.settings.settings_resolve import SettingsError
 
     (
         ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
@@ -5269,7 +5269,7 @@ def _annotate_pref_origin(exc, prefs):
     ``pref.agent.claude.common.x``.
     """
     from kanibako.errors import CategoryCollisionError
-    from kanibako.settings_prefs import pref_origin
+    from kanibako.settings.settings_prefs import pref_origin
 
     def _line(key, req):
         return (
@@ -5311,7 +5311,7 @@ def _install_derived_bindings(snapshot, derived: "Mapping[str, object]") -> None
     contract, and ``assemble_levels`` drops a top-level ``meta:`` table from every
     settings file, so nothing a user writes can forge or collide with these.
     """
-    from kanibako.settings_store import KeyStore
+    from kanibako.settings.settings_store import KeyStore
 
     for dotted, value in derived.items():
         node = snapshot
@@ -5376,7 +5376,7 @@ def _emit_category_mounts(reconciled, *, label: str) -> list:
     calls: the snapshot reconcile already partitioned + depth-sorted ALL MOUNT
     winners together, so this emits them ONCE.  AGENT delivery binds
     (``scope == "agent"`` / ``bindings.{ro,rw}``) are emitted SEPARATELY by
-    :func:`kanibako.settings_launch.agent_delivery_mounts` (their AGENT_CRITICAL
+    :func:`kanibako.settings.settings_launch.agent_delivery_mounts` (their AGENT_CRITICAL
     must-exist safe-fail differs from L7), and ``masks`` (tmpfs, no host source)
     are split out for ``tmpfs_masks`` — both are skipped here.  Keeps the L7
     guarantee-create / ro-drop logic byte-for-byte from ``_emit_reconciled_mounts``.
@@ -5869,7 +5869,7 @@ def _apply_init_seeds(
     §2a, Q1) flows through THIS route too — no separate on-disk staging pass. The
     template layers all target ``~`` (the create-time home); the seeded-category
     reconcile keeps every same-dest COPY (copies OVERLAY, they do not shadow —
-    :func:`kanibako.settings_categories.reconcile_categories`), so here the
+    :func:`kanibako.settings.settings_categories.reconcile_categories`), so here the
     ``~``-group is a list of layer sources in scope apply order that
     :func:`kanibako.launch.templates.stage_layers` stages PER-FILE LAST-WINS then copies
     into home CREATE-IF-ABSENT (never clobbering user content). A layer whose
@@ -5887,7 +5887,7 @@ def _apply_init_seeds(
     function branches on it.  Translating a host dest would silently write the box's
     handbook chapter somewhere nothing reads, and report success.
     """
-    from kanibako.settings_resolve import GUEST_HOME
+    from kanibako.settings.settings_resolve import GUEST_HOME
     from kanibako.launch.templates import (
         seed_keys_of,
         stage_layers,
@@ -6012,7 +6012,7 @@ def _apply_synced_copies(
     ADDITIVE: with no ``synced.*`` keys configured (and no target default synced
     entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
     """
-    from kanibako.settings_resolve import GUEST_HOME
+    from kanibako.settings.settings_resolve import GUEST_HOME
 
     # Single-route (7c): resolve the synced COPY winners off the ONE committed
     # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via

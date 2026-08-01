@@ -35,7 +35,7 @@ from kanibako.log import get_logger
 from kanibako.targets.base import Cadence
 
 if TYPE_CHECKING:
-    from kanibako.settings_launch import AuthSource
+    from kanibako.settings.settings_launch import AuthSource
     from kanibako.targets.base import PluginDescriptor, Target
 
 logger = get_logger("credsync")
@@ -221,7 +221,7 @@ def writeback_cred_files(
 #
 # The credsync PRIMITIVES above are the ONE uniform op ("sync a cred dir against a
 # source root"). These orchestrators apply that op at the SELECTED tier per the
-# resolved :class:`~kanibako.settings_launch.AuthSource` (precedence workset >
+# resolved :class:`~kanibako.settings.settings_launch.AuthSource` (precedence workset >
 # global > box):
 #
 #   * GLOBAL tier  → source_root = the host home (host_rel). One hop.

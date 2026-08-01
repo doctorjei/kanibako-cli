@@ -30,15 +30,15 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings_categories import (
+from kanibako.settings.settings_categories import (
     ReconciledCategories,
     reconcile_categories,
 )
-from kanibako.settings_launch import (
+from kanibako.settings.settings_launch import (
     build_launch_snapshot,
     snapshot_category_entries,
 )
-from kanibako.settings_resolve import LevelView, ResolveCtx
+from kanibako.settings.settings_resolve import LevelView, ResolveCtx
 
 # The FROZEN legacy by-name resolver (retired from the product). It is a DRIFT
 # TRIPWIRE, NOT a correctness authority: a mismatch below means the live snapshot
@@ -229,7 +229,7 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
     a PERSONA (node ≠ harness) the partial MUST root under the node, else the binds
     orphan at agent.<harness>.* and vanish from the emit."""
     from kanibako.agent_representation import agent_default_partial
-    from kanibako.settings_launch import agent_delivery_mounts
+    from kanibako.settings.settings_launch import agent_delivery_mounts
     from kanibako.targets.base import BindScope
 
     active = node_name if node_name is not None else agent
@@ -384,7 +384,7 @@ def test_depth_order_preserved_across_families():
 # --------------------------------------------------------------------------- #
 
 
-from kanibako.settings_launch import effective_behavior  # noqa: E402
+from kanibako.settings.settings_launch import effective_behavior  # noqa: E402
 
 
 def _behavior_snapshot(agent, *, floor, agent_state, box_path, system_path):

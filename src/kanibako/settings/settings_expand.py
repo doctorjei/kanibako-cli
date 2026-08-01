@@ -1,16 +1,16 @@
 """Eager build-time EXPANSION — resolve the merged snapshot's tokens to terminals.
 
 ONE pure function, :func:`expand`, walks
-:mod:`kanibako.settings_merge`'s raw merged
-:class:`~kanibako.settings_store.KeyStore` snapshot
+:mod:`kanibako.settings.settings_merge`'s raw merged
+:class:`~kanibako.settings.settings_store.KeyStore` snapshot
 (``d33db5c``) and resolves every ``@``-ref (CONFIG, both bind sides) and host-side
 ``$VAR`` / ``~`` (ENVIRONMENT) to terminals — TRANSITIVELY (fixpoint /
 topological), with cycle detection. It is PURE: no file / env / clock access, same
 input → same output, and it NEVER mutates the input snapshot (S19) — it builds a
-fresh :class:`~kanibako.settings_store.KeyStore`.
+fresh :class:`~kanibako.settings.settings_store.KeyStore`.
 
 It REUSES the existing single-expr engine
-:func:`kanibako.settings_resolve.expand_expr` (the scanner: escapes, ``~``,
+:func:`kanibako.settings.settings_resolve.expand_expr` (the scanner: escapes, ``~``,
 ``$VAR``/``${VAR}``, ``@ref``, the ``chain`` cycle-guard, ``MAX_REF_DEPTH``) and
 adds the three things that engine lacks (brief §3):
 
@@ -54,9 +54,9 @@ the edited key, lenient-``expand`` the result, and ALLOW iff the edited key is
 NOT in the error map (its own transitive upstream chain resolved cleanly).
 
 OUT of scope (hard boundaries): NO cascade merge / precedence
-(:mod:`kanibako.settings_merge` — this consumes its output), NO
+(:mod:`kanibako.settings.settings_merge` — this consumes its output), NO
 ``reconcile_categories`` / ``box_dest`` collision (§6g separate pass), NO typed
-views (:mod:`kanibako.settings_views`), NO ``config set``
+views (:mod:`kanibako.settings.settings_views`), NO ``config set``
 (:mod:`kanibako.config_interface`). It WRAPS ``expand_expr`` and does not modify
 it: the single-expr engine is shared with the ``config.*`` / ``system.*``
 FOUNDATION path tier, which still resolves through ``resolve_value``
@@ -83,14 +83,14 @@ from __future__ import annotations
 
 from typing import overload
 
-from kanibako.settings_resolve import (
+from kanibako.settings.settings_resolve import (
     MAX_REF_DEPTH,
     ResolveCtx,
     SettingsError,
     expand_expr,
     match_ref,
 )
-from kanibako.settings_store import Bind, KeyStore, StoreValue
+from kanibako.settings.settings_store import Bind, KeyStore, StoreValue
 
 
 class _Absent:
@@ -100,7 +100,7 @@ class _Absent:
     None, a real terminal). A whole-value ``@``-ref to an absent key propagates
     THIS sentinel up the chain; at the top it drops the host key from the
     snapshot. An EMBEDDED token coerces it to ``""``. Module-private, never
-    stored, never a member of :data:`~kanibako.settings_store.StoreValue`.
+    stored, never a member of :data:`~kanibako.settings.settings_store.StoreValue`.
     """
 
     _instance: "_Absent | None" = None
@@ -147,12 +147,12 @@ def _is_whole_value_ref(value: str) -> str | None:
     """Return the dotted ref name iff *value* IS exactly one whole-value ``@``-ref.
 
     S18 — the shape is decided by PARSE, never guessed: a value is whole-value iff
-    it is ONE ``@``-reference (:func:`~kanibako.settings_resolve.match_ref` — the
+    it is ONE ``@``-reference (:func:`~kanibako.settings.settings_resolve.match_ref` — the
     shared grammar, so BOTH the bare ``@a.b`` and braced ``@{a.b}`` spellings
     qualify) and NOTHING else (no leading/trailing characters, no embedded
     literal). ``"@a.b"`` / ``"@{a.b}"`` → ``"a.b"``; ``"@a-@b"`` / ``"x@a"`` /
     ``"@a/c"`` / ``"@a "`` / ``"@{a.b}x"`` → ``None`` (embedded — handled by
-    :func:`~kanibako.settings_resolve.expand_expr` substitution). A leading ``~``
+    :func:`~kanibako.settings.settings_resolve.expand_expr` substitution). A leading ``~``
     or ``$`` is therefore never whole-value (those are environment tokens, not
     config refs).
 
@@ -295,7 +295,7 @@ class _Expander:
                 #
                 # Guarded on the ROOT path (``not path``) so a category
                 # legitimately NAMED ``pref`` deeper in the tree is unaffected.
-                from kanibako.settings_merge import _deep_copy_store
+                from kanibako.settings.settings_merge import _deep_copy_store
 
                 out[key] = _deep_copy_store(value)
                 continue
@@ -385,7 +385,7 @@ class _Expander:
 
         WHOLE-VALUE ``@``-ref (S18) → resolve the referent's full 3-state and
         INHERIT it (``_ABSENT`` / ``None`` / the terminal). EMBEDDED token (or a
-        plain literal) → :func:`~kanibako.settings_resolve.expand_expr`
+        plain literal) → :func:`~kanibako.settings.settings_resolve.expand_expr`
         substitution (absent/None token → empty string), in the given space.
 
         *space*: ``"host"`` expands ``~``/``$VAR`` host-side (``host_src``,

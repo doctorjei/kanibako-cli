@@ -15,7 +15,7 @@ question — **"where does a ``config set`` of this key land, and is it reachabl
 from the CLI?"**. The two lists are therefore NOT duplicates and must not be
 collapsed: the settable surface is a SUBSET of the keyspace (``run_args`` and
 ``transform_settings`` are real keys with no CLI route; ``meta.*`` keys are real
-keys that are never settable at all). :func:`~kanibako.settings_keyspace`'s set
+keys that are never settable at all). :func:`~kanibako.settings.settings_keyspace`'s set
 is the superset, and ``tests/test_settings_keyspace.py`` asserts that direction
 so the two cannot silently diverge.
 
@@ -55,7 +55,7 @@ from __future__ import annotations
 import re
 from typing import Collection, Final
 
-from kanibako.settings_store import _RESERVED_KEY_NAMES as _STORE_RESERVED
+from kanibako.settings.settings_store import _RESERVED_KEY_NAMES as _STORE_RESERVED
 
 # ---------------------------------------------------------------------------
 # Layer 1 — config.* (spec §1)

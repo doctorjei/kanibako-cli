@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # A STRUCTURED category bind default (spec §2a "REPRESENTATION"): a 2- or
 # 3-element ``(host_src, box_dest[, options])`` tuple — NOT a colon-joined
 # string. Emitted by ``default_common()`` / ``default_seeds()`` and consumed by
-# :func:`kanibako.settings_resolve.unpack_bind` through the category resolver.
+# :func:`kanibako.settings.settings_resolve.unpack_bind` through the category resolver.
 BindDefault = tuple[str, str] | tuple[str, str, str]
 
 
@@ -716,7 +716,7 @@ class Target(ABC):
         see :meth:`deliver_panel_permissions`.  Box-side literals an
         implementation needs (e.g. codex's in-box config path and cwd for its
         trust keys) are derived by the PLUGIN from the core
-        :data:`~kanibako.settings_resolve.GUEST_HOME` constant — deliberately
+        :data:`~kanibako.settings.settings_resolve.GUEST_HOME` constant — deliberately
         NOT seam parameters while they are constants with a single consumer; if
         the in-box workdir ever becomes key-configurable, promote an
         agent-agnostic ``box_workdir`` parameter here instead of letting plugins

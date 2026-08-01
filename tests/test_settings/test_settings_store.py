@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings_store import (
+from kanibako.settings.settings_store import (
     _MISSING,
     _RESERVED_KEY_NAMES,
     Bind,
@@ -330,7 +330,7 @@ def test_missing_sentinel_is_not_none_and_falsy_guard() -> None:
 
 
 def test_missing_sentinel_singleton_and_repr() -> None:
-    from kanibako.settings_store import _Missing
+    from kanibako.settings.settings_store import _Missing
 
     assert _Missing() is _MISSING
     assert repr(_MISSING) == "_MISSING"

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
+from kanibako.settings.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
 
 
 logger = get_logger("container")

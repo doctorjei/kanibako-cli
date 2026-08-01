@@ -365,11 +365,11 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     Mirrors the launch flow: the per-agent FILE state rides ``agent_state`` (→
     ``agent.<active>`` slot) and a box settings file rides ``box_path`` (its
     discriminated ``agent.<name>.*`` table, MORE specific than the agent state)."""
-    from kanibako.settings_launch import (
+    from kanibako.settings.settings_launch import (
         build_launch_snapshot,
         effective_behavior,
     )
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     name = resolve_agent(explicit_agent="claude", requested=None)
     ctx = ResolveCtx(

@@ -709,7 +709,7 @@ class TestDeliverySeams:
 
     def test_directive_hook_writes_hook_trust_never_approval(self, tmp_path):
         import tomllib
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
         assert CodexTarget().deliver_directive_hook(
             config_root=tmp_path, auto_approve=True,
         ) is True
@@ -764,7 +764,7 @@ class TestDeliverySeams:
         managed group, with its own trust entry — and NO remove hook (codex has
         no SessionEnd event; the supervisor's kill-0 scan is the remove side)."""
         import tomllib
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
         from kanibako.vscode.vscode_config import (
             _AGENT_MARKER_WRITE_COMMAND,
             _SESSION_START_COMMAND,

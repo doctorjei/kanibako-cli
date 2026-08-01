@@ -2342,8 +2342,8 @@ class TestWorksetDefaultsBoxCascade:
         """Resolve ``box.image`` through the REAL launch snapshot (assemble →
         merge → expand) over the two settings files, with a floor default
         underneath (so a wrong-file write is distinguishable from fallback)."""
-        from kanibako.settings_launch import build_launch_snapshot
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         ctx = ResolveCtx(
             agent_name="claude", workset_name=None,
@@ -3213,8 +3213,8 @@ class TestF10CoreFloorRepoint:
     def test_written_box_tuple_overrides_floor_at_launch(self, tmp_path):
         # Take-effect (reconcile precedence): a box-scope written tuple sits at the
         # box level and BEATS the base floor when the launch cascade merges.
-        from kanibako.settings_assemble import assemble_levels
-        from kanibako.settings_merge import merge
+        from kanibako.settings.settings_assemble import assemble_levels
+        from kanibako.settings.settings_merge import merge
 
         box = tmp_path / "box.yaml"
         dump_doc(box, {"box": {"bindings": {"rw": {"home": [
@@ -3379,7 +3379,7 @@ class TestAgentNodeBindRepoint:
         # partial) at launch — the agent-file rung out-precedes the descriptor rung.
         from kanibako.agent_representation import agent_default_partial
         from kanibako.config_io import dump_doc
-        from kanibako.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_launch import build_launch_snapshot
         from kanibako.targets.base import (
             AgentInstall, BindKind, BindScope, Binding, HostSrcOrigin,
             PluginDescriptor,
@@ -3411,7 +3411,7 @@ class TestAgentNodeBindRepoint:
 
 
 def _bind_launch_ctx():
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
     return ResolveCtx(
         agent_name="claude", workset_name=None, host_home="/home/host",
         xdg={"XDG_DATA_HOME": "/data"},
@@ -3875,11 +3875,11 @@ class TestEffectiveCategoryBlock:
     @staticmethod
     def _snapshot():
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings_categories import (
+        from kanibako.settings.settings_categories import (
             CategoryEntry,
             derive_binding_keys,
         )
-        from kanibako.settings_store import Bind, KeyStore
+        from kanibako.settings.settings_store import Bind, KeyStore
 
         snapshot = KeyStore()
         agent = KeyStore()
@@ -4180,7 +4180,7 @@ class TestPrefShow:
 
     def test_effective_shows_request_and_result(self, tmp_path, capsys):
         """§2h — '--effective shows BOTH the request and the resulting value'."""
-        from kanibako.settings_store import KeyStore
+        from kanibako.settings.settings_store import KeyStore
 
         snap = KeyStore({
             "pref": {"system": {"agent": "goose"},
@@ -4202,7 +4202,7 @@ class TestPrefShow:
         assert "-> agent.claude.template = /ws/tpl/x" in out
 
     def test_effective_distinguishes_suppressed_from_unset(self, tmp_path, capsys):
-        from kanibako.settings_store import KeyStore
+        from kanibako.settings.settings_store import KeyStore
 
         snap = KeyStore({
             "pref": {"agent": {"claude": {"common": {"plugins": None},
