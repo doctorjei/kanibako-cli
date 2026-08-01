@@ -426,9 +426,14 @@ class TestAgentConfigFirstUse:
             m.target.generate_agent_config.assert_not_called()
 
     def test_template_layers_applied_for_new_box(self, start_mocks):
-        """A new box seeds the ordered template layers once — now through the
-        keystore-routed ``_apply_init_seeds`` (Q1): the ``~``-targeted template
-        trio is staged via ``templates.stage_layers`` into the box home."""
+        """A new box seeds the ordered layers once per DEST — through the
+        keystore-routed ``_apply_init_seeds`` (Q1), which stages each destination's
+        three layers via ``templates.stage_layers``.
+
+        ⚑ TWO destinations now, both HOST paths under the box STORE (spec §2a): the
+        box home, and ``@box.canon/handbook`` — which is a SIBLING of the home, not
+        a path inside it. A handbook layer staged under the home would be shadowed
+        by the RO chapter mount and silently invisible."""
         import kanibako.templates
         with start_mocks() as m:
             # B7 seed-at-create / membership model: the one-time home seed is
@@ -442,13 +447,15 @@ class TestAgentConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The patched stage_layers seeds the layered template trio into the box
-            # home (proj.shell_path): the three seeded.template layers all target
-            # ``~`` and reconcile to one same-dest COPY group applied here.
             mock_fn = kanibako.templates.stage_layers
-            mock_fn.assert_called_once()
-            # First positional arg = the box home (proj.shell_path).
-            assert mock_fn.call_args[0][0] is m.proj.shell_path
+            dests = {call[0][0] for call in mock_fn.call_args_list}
+            box_root = m.proj.shell_path.parent
+            assert dests == {
+                m.proj.shell_path,                      # @meta.box.path/home
+                box_root / "canon" / "handbook",        # @box.canon/handbook
+            }, dests
+            # Each dest gets its THREE ordered layers (system -> agent -> workset).
+            assert all(len(call[0][1]) == 3 for call in mock_fn.call_args_list)
 
     def test_no_agent_target_uses_no_agent_id(self, start_mocks):
         """When auto-detect finds nothing, NoAgentTarget's name is used as agent_id."""
@@ -2522,3 +2529,73 @@ class TestForegroundSupervisor:
             assert "export MY_SECRET=" in script
             assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "sk-bearer-value" not in script
+
+
+class TestExitedBeforeAttachTeardown:
+    """F3: a box that dies BEFORE the attach loop sees it must still be torn down.
+
+    ⚑ THE GAP. The two-state lifecycle tears an EXITED box down so the next start is
+    fresh; that teardown was wired only into the path that got as far as attaching.
+    The "container exited before session could attach" branch returned 1 and left the
+    container behind — its own comment says *"Container never started or exited
+    immediately"*, which IS the exited state, so the omission was never intentional.
+
+    ⚑ WHY IT SURFACED NOW. Reaching that branch is a RACE: the box must die inside
+    the ~3 s poll window. A crashing agent does exactly that, and the window has been
+    widening as the launch path gained pre-attach work (the post-start canon
+    re-protect runs three ``podman unshare`` calls inline on the detached path before
+    the first probe; the seeds half added five more binds for podman to set up). The
+    e2e that caught it went green -> flaky -> deterministic across three gates
+    without its own subject changing once.
+    """
+
+    def test_the_exited_before_attach_branch_calls_the_teardown(self):
+        """⚑ STRUCTURAL, and labelled as such — this pins the WIRING, not behaviour.
+
+        The `start_mocks` harness cannot be steered into this branch (it is reached
+        only when the poll loop exhausts, and the harness's mocked runtime resolves
+        an earlier branch first), so a drive-through test is not available at this
+        seam. What IS worth pinning is the exact thing that was missing: the branch
+        that handles "container exited before session could attach" must tear the
+        exited box down before it returns, like the attached path does. Deleting the
+        call — the regression — fails here.
+
+        The teardown's own behaviour (keep a running box, remove an exited one) is
+        covered by the two direct tests below, so this deliberately asserts only
+        placement.
+        """
+        import inspect
+
+        from kanibako.commands import start as start_mod
+
+        src = inspect.getsource(start_mod._run_container)
+        marker = "Error: Container exited before session could attach."
+        assert marker in src
+        branch = src[src.index("elif persistent:"):src.index(marker)]
+        assert "_teardown_persistent_box(runtime, container_name)" in branch, (
+            "the exited-before-attach branch returns without tearing the box down "
+            "— the two-state lifecycle's exited state, arriving early"
+        )
+
+    def test_teardown_keeps_a_still_running_box(self):
+        """The guard that makes the new call safe: a container that DID come up (a
+        detach, or a slow start) must be kept reattachable."""
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.start import _teardown_persistent_box
+
+        rt = MagicMock()
+        rt.is_running.return_value = True
+        _teardown_persistent_box(rt, "kanibako-x")
+        rt.rm.assert_not_called()
+
+    def test_teardown_removes_an_exited_box(self):
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.start import _teardown_persistent_box
+
+        rt = MagicMock()
+        rt.is_running.return_value = False
+        rt.container_exists.return_value = True
+        _teardown_persistent_box(rt, "kanibako-x")
+        rt.rm.assert_called_once_with("kanibako-x")

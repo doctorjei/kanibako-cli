@@ -54,7 +54,11 @@ from kanibako.settings_launch import build_launch_snapshot, snapshot_category_en
 from kanibako.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
 from kanibako.targets.no_agent import NoAgentTarget
-from kanibako.templates import _packaged_base_template, install_packaged_templates
+from kanibako.templates import (
+    _packaged_base_template,
+    install_packaged_templates,
+    packaged_box_home_template,
+)
 
 _AGENTS = ("claude", "codex", "goose")
 
@@ -136,7 +140,7 @@ def _make_fake_rom(root: Path) -> Path:
 def fake_rom(tmp_path, monkeypatch):
     """A complete fake packaged canon, substituted for the real rom root.
 
-    Only the ROM ROOT lookup is redirected — ``templates._packaged_base_template``
+    Only the ROM ROOT lookup is redirected — ``templates.packaged_box_home_template``
     holds its OWN reference to ``packaged_data_dir``, so the template tree stays
     real (which is what keeps the disjointness check meaningful here).
     """
@@ -345,12 +349,26 @@ class TestDisjointness:
 
     def test_shipped_template_tree_is_disjoint_from_the_canon(self):
         """The REAL packaged trees: the writable seed must not touch ~/canon."""
-        base = _packaged_base_template()
-        assert base is not None
+        home_root = packaged_box_home_template()
+        assert home_root is not None
         core_defaults.assert_canon_bind_seed_disjoint(
             CANON_SEED_DENY_PREFIXES,
-            (rel for rel, _ in templates.walk_shipped_files(base)),
+            (rel for rel, _ in templates.walk_shipped_files(home_root)),
         )
+
+    def test_guard_is_anchored_at_the_home_relative_root(self):
+        """⚑ REGRESSION on the guard itself. Both sides must be HOME-relative or the
+        prefix comparison means nothing. The packaged TEMPLATE ROOT is no longer the
+        home-relative root (it yields ``box/home/...``), so a guard fed the root walk
+        would run, pass, and check NOTHING — this pins the seam that must not slip
+        back one level."""
+        home_root = packaged_box_home_template()
+        base = _packaged_base_template()
+        assert home_root is not None and base is not None
+        assert home_root != base
+        rels = {rel for rel, _ in templates.walk_shipped_files(home_root)}
+        # Home-relative: the notebook the seed deposits at ~/canon/notebook.
+        assert "canon/notebook/MY_CONTENTS.md" in rels, rels
 
     def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
         """Driven through the real emitter: a template seed under ``canon/bible``
@@ -358,7 +376,7 @@ class TestDisjointness:
         real_walk = templates.walk_shipped_files
 
         def _walk(root: Path) -> list[tuple[str, Path]]:
-            if root == _packaged_base_template():
+            if root == packaged_box_home_template():
                 return [("canon/bible/general/directives/ROM_GENERAL.md", root / "x")]
             return real_walk(root)
 
@@ -748,6 +766,64 @@ class TestCanonSkeleton:
         for chapter in HANDBOOK_CHAPTERS:
             assert (home / "canon" / "handbook" / chapter).is_dir(), chapter
 
+    def test_creates_the_import_fallback_entry_files(self, tmp_path, fake_runtime):
+        """⚑⚑ F1: the three 0-byte IMPORT-FALLBACK files INSIDE the chapter dirs.
+
+        ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and
+        skip-if-absent governs the BIND, not the INDEX — so without these, every box
+        with no workset chapter (i.e. every primary box) printed ``unresolved import
+        @workset/directives/SYS_WORKSET.md`` on EVERY launch. With them, an unbound
+        chapter RESOLVES-TO-EMPTY; a bound one has its whole directory replaced by the
+        mount, so the store's real file shadows the fallback.
+        """
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        hb = home / "canon" / "handbook"
+        for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
+            fallback = hb / chapter / "directives" / entry
+            assert fallback.is_file(), fallback
+            assert fallback.read_bytes() == b"", "the fallback must be 0-byte"
+
+    def test_general_gets_no_import_fallback(self, tmp_path, fake_runtime):
+        """⚑ DELIBERATE ASYMMETRY. The system store ALWAYS supplies ``general``, so a
+        fallback there would mask a genuinely missing system handbook — which is
+        precisely what ``canon_hb_general`` being NON-optional exists to surface."""
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+        assert not (home / "canon" / "handbook" / "general" / "directives").exists()
+
+    def test_the_fallback_names_match_what_SYS_CONTENTS_imports(self):
+        """The fallback filenames are only useful if they are the ones the packaged
+        index actually imports — spelled in a different file, so drift is silent."""
+        contents = (
+            templates._packaged_base_template()
+            / "handbook" / "SYS_CONTENTS.md"
+        ).read_text()
+        for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
+            assert f"@{chapter}/directives/{entry}" in contents, (
+                f"SYS_CONTENTS.md does not import @{chapter}/directives/{entry}; "
+                "the skeleton's import-fallback would resolve nothing"
+            )
+
+    def test_fallbacks_are_protected_like_the_rest_of_the_skeleton(
+        self, tmp_path, fake_runtime,
+    ):
+        """They are MACHINERY, not content: root-owned and unwritable like every
+        other skeleton entry, so the agent cannot edit its own 'empty chapter'."""
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
+        covered = {str(p) for p in chown_paths}
+        hb = home / "canon" / "handbook"
+        for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
+            assert str(hb / chapter / "directives" / entry) in covered
+            assert str(hb / chapter / "directives") in covered
+
     def test_does_not_create_the_seeded_books(self, tmp_path, fake_runtime):
         """``notebook``/``workbook`` are SEEDED, agent-owned and writable. They become
         undeletable only because their parent is 555 — intended, per J-7."""
@@ -888,24 +964,33 @@ class TestCanonSkeleton:
 # ===========================================================================
 
 
-class TestBaseTemplateSeedsPlaybook:
-    """The base-template seed source (``data/global/template``) is untouched by the
-    canon cutover: it still carries ``playbook/CONTENTS.md`` and still seeds it at
-    box home create-if-absent. (Its own relayout is M-11's, not this phase's.)"""
+class TestBaseTemplateSeedsTheNotebook:
+    """The box-home seed source (``data/global/template/box/home``) after the canon
+    restructure: it carries the NOTEBOOK + WORKBOOK (the box's own, agent-writable
+    books) and seeds them into the box home create-if-absent. ⚑ The retired
+    ``playbook/`` tree is gone — its content became the canon HANDBOOK, which is
+    BOUND from a host store, never seeded (M-10)."""
 
-    def test_packaged_source_carries_playbook_contents(self):
+    def test_packaged_source_carries_the_notebook(self):
+        home_root = packaged_box_home_template()
+        assert home_root is not None
+        assert (home_root / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home_root / "canon" / "workbook" / "devnotes.md").is_file()
+        # The retired roots are GONE from the package.
         base = _packaged_base_template()
-        assert base is not None
-        assert (base / "playbook" / "CONTENTS.md").is_file()
-        assert not (base / "INSTRUCTIONS.md").exists()
+        assert not (base / "playbook").exists()
+        assert not (base / "notebook").exists()
+        assert not (base / "workbook").exists()
 
-    def test_install_lands_playbook_in_base_template_dir(self, std):
+    def test_install_stages_the_box_mould(self, std):
         install_packaged_templates(std, ["claude"])
-        assert (std.base_template / "playbook" / "CONTENTS.md").is_file()
+        assert (
+            std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
+        ).is_file()
 
-    def test_seed_lands_playbook_contents_at_home(self, std, config, project_dir):
-        """End-to-end: the base layer seeds ``~/playbook/CONTENTS.md`` at box create
-        through the single keystore-routed seed (create-if-absent)."""
+    def test_seed_lands_the_notebook_at_home(self, std, config, project_dir):
+        """End-to-end: the base layer seeds ``~/canon/notebook/MY_CONTENTS.md`` at
+        box create through the single keystore-routed seed (create-if-absent)."""
         from kanibako.commands.start import _apply_init_seeds
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
@@ -920,7 +1005,12 @@ class TestBaseTemplateSeedsPlaybook:
             logger=logging.getLogger("test-canon-seed"),
             deliver_creds=True,
         )
-        assert (proj.shell_path / "playbook" / "CONTENTS.md").is_file()
+        assert (
+            proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+        ).is_file()
+        assert (
+            proj.shell_path / "canon" / "workbook" / "devnotes.md"
+        ).is_file()
 
 
 class _FakeTarget:

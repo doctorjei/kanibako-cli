@@ -281,12 +281,26 @@ def _resolve_std():
     return load_std_paths(load_config(cf))
 
 
+def _staged_marker(std):
+    """One packaged file whose STAGED host path proves the install ran.
+
+    ``@system.template/box/home/canon/notebook/MY_CONTENTS.md`` — the box mould's
+    notebook entry point, chosen because it is in the SYSTEM-OWNED staging (the only
+    tier ``refresh=True`` may rewrite), not in a user-owned store.
+    """
+    return (
+        std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
+    )
+
+
 def test_template_step_forced_flag_applies_and_stamps(tmp_home, config_file):
     """--refresh-templates: apply refresh + stamp non-interactively (no prompt)."""
     setup_cmd._run_template_refresh(_ns(refresh_templates=True))
     std = _resolve_std()
-    assert (std.base_template / "playbook" / "CONTENTS.md").is_file()  # applied
-    assert (std.agents / "claude" / "template" / ".claude.json").is_file()
+    assert _staged_marker(std).is_file()  # applied
+    assert (
+        std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
+    ).is_file()
     assert _read_stamp(tmp_home) == _current_digest()  # gate clears
 
 
@@ -306,7 +320,7 @@ def test_template_step_tty_accept_applies_and_stamps(tmp_home, config_file, monk
     monkeypatch.setattr("builtins.input", lambda *a: "y")
     setup_cmd._run_template_refresh(_ns())
     std = _resolve_std()
-    assert (std.base_template / "playbook" / "CONTENTS.md").is_file()  # applied
+    assert _staged_marker(std).is_file()  # applied
     assert _read_stamp(tmp_home) == _current_digest()
 
 
@@ -319,7 +333,7 @@ def test_template_step_tty_decline_stamps_without_applying(
     setup_cmd._run_template_refresh(_ns())
     std = _resolve_std()
     # Not applied — the shipped files were NOT written.
-    assert not (std.base_template / "playbook" / "CONTENTS.md").exists()
+    assert not _staged_marker(std).exists()
     # Stamp written anyway (informed consent → gate clears).
     assert _read_stamp(tmp_home) == _current_digest()
     assert "unblessed state" in capsys.readouterr().out
@@ -337,7 +351,7 @@ def test_template_step_non_tty_no_flag_skips_without_stamping(
     monkeypatch.setattr("builtins.input", _boom)
     setup_cmd._run_template_refresh(_ns())
     std = _resolve_std()
-    assert not (std.base_template / "playbook" / "CONTENTS.md").exists()  # not applied
+    assert not _staged_marker(std).exists()  # not applied
     assert _read_stamp(tmp_home) is None  # NOT stamped → gate still errors
     assert "cannot be updated non-interactively" in capsys.readouterr().out
 

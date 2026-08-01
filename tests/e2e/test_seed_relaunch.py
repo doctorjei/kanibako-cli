@@ -26,7 +26,7 @@ home afterwards, so none of that path is stubbed.
 Run on the real-runtime (LXC/VM) marked set, e.g.::
 
     KANI_PYTEST_MARK=e2e KANI_PYTEST_INCLUDE_E2E=1 \\
-        ~/playbook/scripts/chunked-pytest.sh tests/e2e/test_seed_relaunch.py
+        ~/canon/notebook/scripts/chunked-pytest.sh tests/e2e/test_seed_relaunch.py
 
 or directly::
 
@@ -53,10 +53,18 @@ from tests.e2e.conftest import (
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
-# The seeded category dest, mirroring the user's real ``agent.<agent>.seeded.playbook``
-# (the file that was clobbered).  ``~/playbook`` expands, in guest space, to
-# ``/home/agent/playbook``; on the host it lands under ``<shell_path>/playbook``.
-SEED_GUEST_DEST = "~/playbook"
+# The seeded category dest.  ⚑ REPOINTED off the retired ``~/playbook`` to the box's
+# own NOTEBOOK — the canon's writable, box-owned book — because that is where a box's
+# durable notes live now, and because it exercises the one part of ``~/canon`` that
+# must stay AGENT-WRITABLE while everything around it is root-owned 555.
+#
+# It stays a USER-DECLARED ``system.seeded.<name>`` key, deliberately: a user-declared
+# seed is GUEST-space (``~/...``, translated by ``_guest_dest_to_host``), so this test
+# also keeps covering the guest arm of the two-namespace split while the packaged
+# layers cover the host arm.  ``~/canon/notebook`` expands, in guest space, to
+# ``/home/agent/canon/notebook``; on the host it lands under
+# ``<shell_path>/canon/notebook``.
+SEED_GUEST_DEST = "~/canon/notebook"
 SEED_FILENAME = "devnotes.md"
 PRISTINE_SEED_CONTENT = "# devnotes (pristine seed)\nseeded at create\n"
 EDITED_CONTENT = "# devnotes (EDITED IN BOX)\nirreplaceable session notes — DO NOT CLOBBER\n"
@@ -70,7 +78,7 @@ EDITED_CONTENT = "# devnotes (EDITED IN BOX)\nirreplaceable session notes — DO
 # env into ``os.environ`` and drive the REAL path/seed/channel code (no
 # hand-rolled path math, so the test stays faithful to what create/launch
 # actually computes).  Under the new model the "is this box seeded?" signal is
-# CONTENT-BASED: the seeded ``~/playbook/<SEED_FILENAME>`` file is present iff
+# CONTENT-BASED: the seeded ``~/canon/notebook/<SEED_FILENAME>`` file is present iff
 # the box home was seeded (which happens at create, never at launch).
 # ---------------------------------------------------------------------------
 
@@ -126,28 +134,28 @@ def _shell_path(env: dict[str, str], project: Path) -> Path:
 
 
 def _seed_file(env: dict[str, str], project: Path) -> Path:
-    """Host path of the seeded ``~/playbook/<SEED_FILENAME>`` file."""
-    return _shell_path(env, project) / "playbook" / SEED_FILENAME
+    """Host path of the seeded ``~/canon/notebook/<SEED_FILENAME>`` file."""
+    return _shell_path(env, project) / "canon" / "notebook" / SEED_FILENAME
 
 
 def _home_is_seeded(env: dict[str, str], project: Path) -> bool:
     """Content-based seed signal: is the seeded home file present on disk?
 
     There is no per-box ``seeded`` flag under the new model — the box home is
-    seeded iff its ``~/playbook/<SEED_FILENAME>`` file exists (written at
+    seeded iff its ``~/canon/notebook/<SEED_FILENAME>`` file exists (written at
     create, never at launch).
     """
     return _seed_file(env, project).exists()
 
 
 def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
-    """Configure ``system.seeded.playbook`` in the system settings file.
+    """Configure ``system.seeded.notebook`` in the system settings file.
 
     The create path reads ``seeded`` category keys from ``@system.settings`` ==
     ``{XDG_DATA_HOME}/kanibako/global/settings.yaml`` (see
-    ``_category_resolution_inputs``).  We point a ``~/playbook``-style seed at
-    *host_seed_dir*, mirroring the user's real ``agent.<agent>.seeded.playbook`` entry
-    that was clobbered.  The value form is a structured ``[host_src, guest_dest]``
+    ``_category_resolution_inputs``).  We point a ``~/canon/notebook``-style seed at
+    *host_seed_dir*, mirroring the user's real per-agent seed entry that was
+    clobbered.  The value form is a structured ``[host_src, guest_dest]``
     pair (the keyspace rework rejects the legacy ``<host_src>:<guest_dest>`` string).
 
     This MERGES into any existing settings document rather than overwriting it:
@@ -155,7 +163,7 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     this SAME file (so the claude-only tests resolve an agent even when other
     plugins are installed), and a blind overwrite here would wipe that key and
     re-introduce the dual-agent "No agent selected" ambiguity that prevents the
-    box from launching.  We load the existing doc, add ``system.seeded.playbook``,
+    box from launching.  We load the existing doc, add ``system.seeded.notebook``,
     and write it back, preserving the ``system`` content.
     """
     from kanibako.config import config_file_path, load_config
@@ -175,14 +183,14 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     # legacy "host:dest" colon-string form).
     doc = load_doc(settings_file)
     doc.setdefault("system", {})["seeded"] = {
-        "playbook": [str(host_seed_dir), SEED_GUEST_DEST]
+        "notebook": [str(host_seed_dir), SEED_GUEST_DEST]
     }
     dump_doc(settings_file, doc)
 
 
 def _make_host_seed(tmp_path: Path) -> Path:
     """Create the host-side seed source dir with one pristine file."""
-    src = tmp_path / "seed_src" / "playbook"
+    src = tmp_path / "seed_src" / "notebook"
     src.mkdir(parents=True)
     (src / SEED_FILENAME).write_text(PRISTINE_SEED_CONTENT)
     return src
@@ -226,7 +234,7 @@ class TestSeedAtCreate:
         # Seed happened AT CREATE — before any launch.
         seed_file = _seed_file(env, project)
         assert _home_is_seeded(env, project), (
-            "create must seed ~/playbook atomically (no launch required)"
+            "create must seed ~/canon/notebook atomically (no launch required)"
         )
         assert seed_file.read_text() == PRISTINE_SEED_CONTENT
 
@@ -252,7 +260,7 @@ class TestSeedAtCreate:
 
         # Create seeded the home with pristine content.
         seed_file = _seed_file(env, project)
-        assert _home_is_seeded(env, project), "create must seed ~/playbook"
+        assert _home_is_seeded(env, project), "create must seed ~/canon/notebook"
         assert seed_file.read_text() == PRISTINE_SEED_CONTENT
 
         # Edit the seeded file in the box home (distinctive content).
@@ -265,7 +273,7 @@ class TestSeedAtCreate:
         wait_for_container(container, timeout=15)
         assert seed_file.exists(), "edited seed file vanished after launch"
         assert seed_file.read_text() == EDITED_CONTENT, (
-            "LAUNCH re-seeded and clobbered the edited ~/playbook file"
+            "LAUNCH re-seeded and clobbered the edited ~/canon/notebook file"
         )
         _stop(env, name)
 
@@ -276,7 +284,7 @@ class TestSeedAtCreate:
         wait_for_container(container, timeout=15)
         assert seed_file.exists(), "edited seed file vanished after relaunch"
         assert seed_file.read_text() == EDITED_CONTENT, (
-            "RELAUNCH CLOBBERED the edited ~/playbook file (the dev30 "
+            "RELAUNCH CLOBBERED the edited ~/canon/notebook file (the dev30 "
             "data-loss regression)"
         )
         _stop(env, name)
@@ -302,7 +310,7 @@ class TestSeedAtCreate:
         assert result.returncode == 0, f"create failed: {result.stderr}"
 
         seed_file = _seed_file(env, project)
-        assert _home_is_seeded(env, project), "create must seed ~/playbook"
+        assert _home_is_seeded(env, project), "create must seed ~/canon/notebook"
 
         # Remove the create-time seed, then launch.
         seed_file.unlink()

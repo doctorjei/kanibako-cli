@@ -85,9 +85,9 @@ def run(args: argparse.Namespace) -> int:
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
 
-    # Curated base + per-agent template content (Phase 9c): copy the packaged
-    # static template files into the runtime template dirs (create-if-absent).
-    # The layered seed-once apply then seeds them into each new box home.
+    # Packaged content -> its ENUMERATED host stores (the box + workset moulds, the
+    # system handbook, and every agent store), create-if-absent.  The layered
+    # seed-once apply then seeds a new box store from them at create.
     from kanibako.paths import load_std_paths
     from kanibako.templates import install_packaged_templates
 

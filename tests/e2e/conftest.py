@@ -383,6 +383,36 @@ def session_cleanup():
             )
 
 
+@pytest.fixture(autouse=True)
+def _reap_subuid_owned_tmp(tmp_path):
+    """Delete each test's tmp dir through the SUBUID-AWARE deleter.
+
+    ⚑ WHY pytest's own cleanup is not enough.  Since J-7 a created box home holds a
+    ROOT-OWNED canon skeleton — chowned to a mapped subuid the host user cannot
+    unlink — so pytest's plain ``rmtree`` of ``/tmp/pytest-of-<user>/...`` fails with
+    ``PermissionError`` on any host with working rootless userns.  The dirs then
+    accumulate across runs (the gate measured the creep on both real-podman legs) and
+    eventually the numbered-dir retention sweep starts failing too.
+
+    ⚑ E2E ONLY, and deliberately.  On a host WITHOUT working ``podman unshare`` (the
+    dev box) nothing is ever protected, so there is nothing to reap and this is a
+    no-op; and the unit suite never creates a protected box.  Wiring it globally
+    would put a podman escalation in the path of every unit test for a problem only
+    real-podman e2e hosts have.
+
+    Best-effort by contract: ``remove_box_tree`` returns False rather than raising,
+    and a failure here must never turn a passing test red.
+    """
+    yield
+    try:
+        from kanibako.container import remove_box_tree
+
+        if tmp_path.exists():
+            remove_box_tree(tmp_path)
+    except Exception as exc:  # noqa: BLE001 - cleanup must never fail a test
+        _diag(f"tmp reap skipped for {tmp_path}: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Function-scoped fixtures
 # ---------------------------------------------------------------------------

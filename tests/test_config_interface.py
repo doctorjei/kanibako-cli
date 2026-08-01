@@ -1298,7 +1298,9 @@ class TestSystemConfigFileOnly:
         cf = tmp_path / "kanibako_config.yaml"
         for key in (
             "system.cache", "system.backup", "system.channelroot",
-            "system.base_template", "system.runtime",
+            # M-11: ``system.base_template`` is RETIRED; ``system.template`` and
+            # the new ``system.canon`` are the structural spellings now.
+            "system.template", "system.canon", "system.runtime",
             "system.channels.common", "system.setup_completed",
         ):
             msg = set_config_value(key, "x", config_path=cf)

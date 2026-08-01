@@ -90,7 +90,7 @@ from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
 from kanibako.targets.base import AgentInstall, PluginDescriptor
 from kanibako.templates import (
-    _packaged_agent_template,
+    _packaged_agent_store,
     _packaged_base_template,
     _packaged_shared_bundle,
     install_packaged_templates,
@@ -104,49 +104,99 @@ from kanibako.templates import (
 
 @dataclass(frozen=True)
 class SeedFile:
-    """One file the create-time home seed must deposit at the box home.
+    """One file the create-time seed must deposit in the box STORE.
 
-    ``rel`` is the path BOTH within the packaged source tree AND (identically)
-    within the box home — the seed copies the layer tree verbatim under ``~``, so
-    for these layers the source-relative path equals the home-relative path.
-    ``layer`` names WHERE the shipped source lives, so a failure points at the
-    exact source tree that dropped/renamed the file.
+    ``rel`` is the path within the packaged SOURCE subtree that a layer copies from;
+    ``dest`` is the box-store-relative path it must land at. ⚑ THE TWO ARE NO LONGER
+    THE SAME. Before the canon restructure the layer roots were home-relative, so a
+    source-relative path WAS the home-relative one; now a layer's box content lives
+    under ``.../box/home`` and ``.../box/canon/handbook`` while the destinations are
+    ``home/...`` and ``canon/handbook/...`` in the box store. Spelling them
+    separately is the point: a relayout that moves one without the other fails here.
+
+    ``layer`` names WHERE the shipped source lives, so a failure points at the exact
+    source tree that dropped/renamed the file.
     """
 
     layer: str  # "base" | "agent:claude"
     rel: str
+    dest: str
 
 
-# --- SEED layer: every file a claude PRIMARY box must have seeded at home. ---
+# --- SEED layer: every file a claude PRIMARY box must have seeded at create. ---
 #
-# base layer  = data/global/template  (the writable user HANDBOOK tree)
-# agent layer = plugins/claude/data/template  (the claude harness template)
+# base layer  = data/global/template/box   (the packaged BOX mould)
+# agent layer = plugins/claude/data/base   (the claude AGENT-STORE payload)
 #
-# The base layer seeds all THREE handbook roots (playbook / notebook / workbook);
-# see playbook/general/directives/rules/HANDBOOK.md for what each one holds.
-# The agent layer ships harness CONFIG only — its directive stub was dropped when
-# the box brief moved to the notebook, so no agent-layer playbook file is seeded.
+# ⚑ TWO DESTINATIONS, both HOST paths under the box store (spec §2a):
+#   home/...            → delivered at ``~`` by the rw home bind (the box's own,
+#                         agent-writable notebook + workbook).
+#   canon/handbook/...  → ``@box.canon/handbook``, a SIBLING of home, bound RO back
+#                         into the box at ``~/canon/handbook/box``. It is NOT under
+#                         the home: a guest-spelled dest would land inside the home
+#                         bind and the RO mount would silently shadow it.
+#
+# ⚑ There is deliberately no ``playbook/`` row any more: that tree became the canon
+# HANDBOOK, which is BOUND from a host store and never seeded (M-10).
 #
 # The workset layer is INTENTIONALLY absent: a primary box's default workset
 # template dir ships no files, so its (skip-if-absent) layer contributes none.
 SEED_MANIFEST: tuple[SeedFile, ...] = (
-    # ---- base: playbook — global / agent / workset directives ----
-    SeedFile("base", "playbook/CONTENTS.md"),
-    SeedFile("base", "playbook/agents/default/directives/BRIEF_AGENTS.md"),
-    SeedFile("base", "playbook/general/directives/BRIEF_GENERAL.md"),
-    SeedFile("base", "playbook/general/directives/rules/DATAPOLICY.md"),
-    SeedFile("base", "playbook/general/directives/rules/HANDBOOK.md"),
-    SeedFile("base", "playbook/general/directives/rules/INTERACTION.md"),
-    SeedFile("base", "playbook/workset/directives/BRIEF_WORKSET.md"),
-    # ---- base: notebook — box-specific directives + history ----
-    SeedFile("base", "notebook/directives/BRIEF_BOX.md"),
-    SeedFile("base", "notebook/directives/CONVENTIONS.md"),
-    # ---- base: workbook — process / progress / state ----
-    SeedFile("base", "workbook/devnotes.md"),
-    SeedFile("base", "workbook/tasks.md"),
-    # ---- claude agent template tree (harness config stubs) ----
-    SeedFile("agent:claude", ".claude.json"),
-    SeedFile("agent:claude", ".claude/settings.json"),
+    # ---- base: the box's own NOTEBOOK (agent-editable directives) ----
+    SeedFile("base", "box/home/canon/notebook/MY_CONTENTS.md",
+             "home/canon/notebook/MY_CONTENTS.md"),
+    SeedFile("base", "box/home/canon/notebook/directives/CONVENTIONS.md",
+             "home/canon/notebook/directives/CONVENTIONS.md"),
+    # ---- base: the box's own WORKBOOK (process / progress / state) ----
+    SeedFile("base", "box/home/canon/workbook/devnotes.md",
+             "home/canon/workbook/devnotes.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks.md",
+             "home/canon/workbook/tasks.md"),
+    # ---- base: the box's HANDBOOK CHAPTER — lands OUTSIDE the home ----
+    SeedFile("base", "box/canon/handbook/directives/SYS_BOX.md",
+             "canon/handbook/directives/SYS_BOX.md"),
+    # ---- claude agent store payload (harness config stubs) ----
+    SeedFile("agent:claude", "template/box/home/.claude.json",
+             "home/.claude.json"),
+    SeedFile("agent:claude", "template/box/home/.claude/settings.json",
+             "home/.claude/settings.json"),
+)
+
+
+# --- The HOST-STORE fills the install performs, beyond the box's own seed. ---
+#
+# ⚑ These are NOT box seeds: they are the (packaged subtree → host store) pairs of
+# the ENUMERATED install (P-S2), and they are what the box's handbook binds READ.
+# Listed here because a delivery manifest that stopped at the box home would miss
+# the whole HANDBOOK book — bound, never seeded.
+STORE_MANIFEST: tuple[tuple[str, str], ...] = (
+    # packaged rel under data/global/template  ->  host path rel to the store root
+    ("handbook/SYS_CONTENTS.md", "canon:handbook/SYS_CONTENTS.md"),
+    ("handbook/general/directives/SYS_GENERAL.md",
+     "canon:handbook/general/directives/SYS_GENERAL.md"),
+    ("handbook/general/directives/rules/CANON.md",
+     "canon:handbook/general/directives/rules/CANON.md"),
+    ("handbook/general/directives/rules/DATAPOLICY.md",
+     "canon:handbook/general/directives/rules/DATAPOLICY.md"),
+    ("handbook/general/directives/rules/INTERACTION.md",
+     "canon:handbook/general/directives/rules/INTERACTION.md"),
+    ("agent_default/canon/handbook/directives/SYS_AGENT.md",
+     "agents:default/canon/handbook/directives/SYS_AGENT.md"),
+    ("box/home/canon/notebook/MY_CONTENTS.md",
+     "template:box/home/canon/notebook/MY_CONTENTS.md"),
+    ("workset/canon/handbook/directives/SYS_WORKSET.md",
+     "template:workset/canon/handbook/directives/SYS_WORKSET.md"),
+)
+
+
+# --- The PLUGIN-sourced half of the agent store (not in STORE_MANIFEST above,
+# which is packaged-CORE-sourced). ⚑ This chapter is the source of the
+# ``canon_hb_agent`` bind, so a plugin that stopped shipping it would silently give
+# every box of that agent an empty handbook/agent mountpoint.
+PLUGIN_STORE_MANIFEST: tuple[tuple[str, str], ...] = (
+    ("claude", "canon/handbook/directives/SYS_AGENT.md"),
+    ("codex", "canon/handbook/directives/SYS_AGENT.md"),
+    ("goose", "canon/handbook/directives/SYS_AGENT.md"),
 )
 
 
@@ -155,8 +205,18 @@ def _seed_source_root(layer: str) -> Path | None:
     if layer == "base":
         return _packaged_base_template()
     if layer.startswith("agent:"):
-        return _packaged_agent_template(layer.split(":", 1)[1])
+        found = _packaged_agent_store(layer.split(":", 1)[1])
+        return None if found is None else found[0]
     raise AssertionError(f"unknown seed layer: {layer!r}")
+
+
+def _store_root(std, token: str) -> Path:
+    """Resolve a ``STORE_MANIFEST`` root token to its host path."""
+    return {
+        "canon": std.canon,
+        "agents": std.agents,
+        "template": std.template,
+    }[token]
 
 
 # --- BIND layer: the per-agent KICKOFF-loader delivery slot (uniform dest). ---
@@ -235,7 +295,11 @@ class TestSeededManifest:
     """
 
     def _seed_primary_claude_box(self, std, config, project_dir) -> Path:
-        """Create + seed a primary claude box; return its box-home path."""
+        """Create + seed a primary claude box; return its box STORE root.
+
+        ⚑ The STORE, not the home: the seed now has TWO destinations and only one of
+        them is under the home.
+        """
         from kanibako.commands.start import _apply_init_seeds
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
@@ -250,7 +314,7 @@ class TestSeededManifest:
             logger=logging.getLogger("test-delivery-manifest"),
             deliver_creds=True,
         )
-        return proj.shell_path
+        return proj.shell_path.parent
 
     def test_every_manifest_source_exists(self):
         """Provenance guard: every seeded file has a real packaged SOURCE.
@@ -266,22 +330,68 @@ class TestSeededManifest:
                 missing.append(f"{entry.layer}:{entry.rel}")
         assert not missing, f"packaged seed SOURCE missing for: {missing}"
 
-    def test_all_seeded_files_present_at_box_home(self, std, config, project_dir):
-        """The FULL manifest lands at the box home after a create-time seed.
+    def test_all_seeded_files_present_in_box_store(self, std, config, project_dir):
+        """The FULL manifest lands in the box store after a create-time seed.
 
         A dropped / misplaced / mis-sourced seed file makes its manifest entry
         fail by name — the holistic delivery guard the piecemeal seed tests
         (which check ONE file each) do not provide.
         """
-        home = self._seed_primary_claude_box(std, config, project_dir)
+        store = self._seed_primary_claude_box(std, config, project_dir)
         missing = [
-            f"{entry.layer}:{entry.rel}"
+            f"{entry.layer}:{entry.rel} -> {entry.dest}"
             for entry in SEED_MANIFEST
-            if not (home / entry.rel).is_file()
+            if not (store / entry.dest).is_file()
         ]
         assert not missing, (
-            f"box home {home} is missing seeded files: {missing}"
+            f"box store {store} is missing seeded files: {missing}"
         )
+
+    def test_the_handbook_chapter_is_not_under_the_home(
+        self, std, config, project_dir,
+    ):
+        """⚑⚑ THE HOST-DEST REGRESSION. ``@box.canon/handbook`` is a SIBLING of the
+        home, so nothing from that layer may appear anywhere under the home — where
+        the guest translator would have put it, silently, reporting success."""
+        store = self._seed_primary_claude_box(std, config, project_dir)
+        home = store / "home"
+        assert (store / "canon" / "handbook" / "directives" / "SYS_BOX.md").is_file()
+        assert not list(home.rglob("SYS_BOX.md")), sorted(home.rglob("SYS_BOX.md"))
+
+    def test_every_store_manifest_file_installs(self, std):
+        """The HOST-STORE half: the handbook book and the agent-default chapter are
+        INSTALLED (never seeded), and they are what the box's handbook binds read."""
+        install_packaged_templates(std, ["claude"])
+        base = _packaged_base_template()
+        missing: list[str] = []
+        for src_rel, dest_spec in STORE_MANIFEST:
+            token, dest_rel = dest_spec.split(":", 1)
+            if base is None or not (base / src_rel).is_file():
+                missing.append(f"SOURCE {src_rel}")
+                continue
+            if not (_store_root(std, token) / dest_rel).is_file():
+                missing.append(f"DEST {dest_spec}")
+        assert not missing, f"host-store install incomplete: {missing}"
+
+    def test_every_plugin_ships_and_installs_its_handbook_chapter(self, std):
+        """The PLUGIN-sourced store half: each agent's own handbook chapter.
+
+        It is the SOURCE of that agent's ``canon_hb_agent`` bind, and the bind is
+        SKIP-IF-ABSENT — so a plugin that stopped shipping the chapter would give
+        every box of that agent an empty ``~/canon/handbook/agent`` with no warning
+        at all. Asserted per plugin, by name.
+        """
+        agents = [name for name, _rel in PLUGIN_STORE_MANIFEST]
+        install_packaged_templates(std, agents)
+        missing: list[str] = []
+        for name, rel in PLUGIN_STORE_MANIFEST:
+            found = _packaged_agent_store(name)
+            if found is None or not (found[0] / rel).is_file():
+                missing.append(f"SOURCE {name}:{rel}")
+                continue
+            if not (std.agents / name / rel).is_file():
+                missing.append(f"DEST agents/{name}/{rel}")
+        assert not missing, f"plugin store install incomplete: {missing}"
 
 
 # ===========================================================================

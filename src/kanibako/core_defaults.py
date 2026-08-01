@@ -537,22 +537,29 @@ def assert_canon_bind_seed_disjoint(
     """RAISE if any template SEED lands at or under a MANAGED ``~/canon`` path.
 
     Both arguments are ``~``-RELATIVE posix paths (``canon/bible``,
-    ``playbook/CONTENTS.md``, …): *bind_dests* are the managed canon prefixes
+    ``canon/notebook/MY_CONTENTS.md``, …): *bind_dests* are the managed canon prefixes
     (:data:`CANON_SEED_DENY_PREFIXES` — the BOOK ROOTS, which under J-7's sibling
     binds are a superset of the literal bind dests; see that constant for why),
     *seed_rels* the files a seed layer would copy to the box home.
 
     ⚑ SCOPE OF WHAT IS ACTUALLY CHECKED TODAY. The only caller
-    (:func:`rom_default_categories`) passes the PACKAGED BASE template layer's walk
-    — i.e. layer 1 of the three in :func:`kanibako.templates.template_seed_defaults`.
-    The AGENT and WORKSET layers (``@agent.<a>.template`` / ``@workset.template``,
-    both user-repointable and both resolved at seed time, not here) are NOT covered,
-    and neither are a plugin's ``default_seeds()``. This function does not decide
-    that scope, it only enforces what it is handed — WIDENING THE INPUTS IS THE
-    CALLER'S JOB, which is exactly why the bind dests and seed rels are parameters
-    rather than computed inside. The seeds/handbook sub-phase extends BOTH sides:
-    it appends ``canon/handbook`` (+ its three chapter dests) to *bind_dests* and,
-    where it can resolve them, the remaining seed layers to *seed_rels*.
+    (:func:`rom_default_categories`) passes the PACKAGED BOX-HOME template walk
+    (``template/box/home``) — i.e. layer 1 of the three in
+    :func:`kanibako.templates.template_seed_defaults`. The AGENT and WORKSET layers
+    (``@agent.<a>.template`` / ``@workset.template``, both user-repointable and both
+    resolved at seed time, not here) are NOT covered, and neither are a plugin's
+    ``default_seeds()``. This function does not decide that scope, it only enforces
+    what it is handed — WIDENING THE INPUTS IS THE CALLER'S JOB, which is exactly why
+    the bind dests and seed rels are parameters rather than computed inside.
+
+    ⚑⚑ BOTH SIDES MUST BE HOME-RELATIVE, and that is easy to break silently. The
+    ``~``-relative bind prefixes (``canon/bible``, ``canon/handbook``) can only be
+    compared against seed rels spelled the same way. Before the canon restructure the
+    packaged template ROOT happened to BE the home-relative root, so passing its walk
+    worked by coincidence; it no longer is (``box/home/...``), and passing the root
+    walk today would make every comparison a guaranteed miss — a guard that runs,
+    passes, and checks nothing. Hence :func:`kanibako.templates.
+    packaged_box_home_template`, which names the level that IS home-relative.
 
     PREFIX CONTAINMENT, not set intersection.  A whole-directory bind shadows a
     whole SUBTREE, so a seed does not have to hit the bind's exact path to be
@@ -708,11 +715,18 @@ def rom_default_categories() -> dict[str, tuple[str, str, str]]:
         )
 
     # DISJOINTNESS: no template seed may land at or under the MANAGED canon region.
-    template_root = templates._packaged_base_template()
-    if template_root is not None:
+    #
+    # ⚑ RE-ANCHORED to the BOX-HOME template root (``template/box/home``), NOT the
+    # template ROOT.  Both sides of this guard must be HOME-RELATIVE for the prefix
+    # comparison to mean anything, and after the canon restructure a root-relative
+    # walk yields ``box/home/...`` / ``workset/...`` / ``handbook/...`` — none of
+    # which can ever match a ``canon/...`` prefix.  Left un-re-anchored the guard
+    # would still run, still pass, and check NOTHING.
+    home_template_root = templates.packaged_box_home_template()
+    if home_template_root is not None:
         assert_canon_bind_seed_disjoint(
             CANON_SEED_DENY_PREFIXES,
-            (rel for rel, _ in templates.walk_shipped_files(template_root)),
+            (rel for rel, _ in templates.walk_shipped_files(home_template_root)),
         )
 
     return {
@@ -774,6 +788,106 @@ def rom_agent_default_categories(
 
 
 # ===========================================================================
+# The HANDBOOK binds + the <scope>.canon keys (spec §2c/§2b/§2d/§2g).
+# ===========================================================================
+
+# The ACTIVE-AGENT placeholder in the declarative ``canon:`` rows.  The bind source
+# for the agent chapter discriminates on the ACTIVE AGENT NODE, which no static file
+# can spell; the loader substitutes it.  A literal that could never occur in a real
+# key (``<``/``>`` are not key characters), so the substitution cannot collide.
+CANON_ACTIVE_AGENT_TOKEN = "<active>"
+
+
+def canon_optional_bind_keys() -> frozenset[str]:
+    """The SKIP-IF-ABSENT canon bind keys, read from the same declarative rows.
+
+    Fed to :func:`kanibako.settings_launch.snapshot_category_entries` as
+    ``optional_keys`` at the ONE launch aggregation site, so an absent workset/box
+    chapter drops its bind SILENTLY instead of warning on every launch of almost
+    every box (spec §2c "SKIP-IF-ABSENT").  Derived from the file rather than
+    restated: a row that gains or loses ``optional: true`` moves both the
+    declaration and this set at once.
+    """
+    return frozenset(
+        f"box.{entry['category']}.{entry['key']}"
+        for entry in _load_doc().get("canon", [])
+        if entry.get("optional")
+    )
+
+
+def canon_default_categories(
+    std: StandardPaths, agent_name: str | None,
+) -> dict[str, object]:
+    """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
+
+    Returns a MIXED table — the five ``box.bindings.ro.canon_hb_*`` bind tuples PLUS
+    the agent-scope SCALAR keys their ``@``-refs resolve against.  Mixing the two is
+    the established shape (:func:`kanibako.templates.template_seed_defaults` does the
+    same for the seed layers and their source keys): both land in the SAME snapshot
+    floor, the scalar resolves the ref, and a user override of the scalar wins by
+    cascade precedence and reroutes the bind.
+
+    The other three ``<scope>.canon`` keys are floored elsewhere, each beside the
+    anchor it is spelled against: ``system.canon`` in the resolved ``system.*`` tier
+    (``StandardPaths.canon``), ``workset.canon`` and ``box.canon`` in
+    :func:`kanibako.settings_launch.workset_anchor_floor`.
+
+    ⚑ THE REPOINT ROUTES DIFFER PER SCOPE, and the difference is inherited, not
+    chosen here: ``workset.canon`` / ``box.canon`` are ordinary ``config set`` keys
+    (wired like ``workset.template``), ``agent.<a>.canon`` is settable at the SYSTEM
+    scope only (the per-persona agent-leaf rule ``agent.<a>.template`` already
+    follows), and ``system.canon`` is CLI-REFUSED as a structural path key — it is a
+    ``SYSTEM_PATH_DEFAULTS`` member, so it lives in the hand-edited ``[system]``
+    table of ``kanibako_config.yaml``, exactly like ``system.template``.
+
+    ⚑⚑ THE AGENT TIER — J-1 option (a) ("the ``agent.default`` tier must be able to
+    win"), implemented against a resolver that has NO agent-tier fallback:
+
+    * ``agent.default.canon`` is ALWAYS floored at ``@config.agents/default/canon``.
+    * the ACTIVE NODE's ``agent.<node>.canon`` is floored too, but its FLOOR VALUE
+      is chosen by whether that node's own store actually PROVIDES a canon dir —
+      ``@config.agents/<node>/canon`` when it does, and the REF
+      ``@agent.default.canon`` when it does not.  So a plugin agent whose install
+      stamped its own chapter binds that chapter, and a PERSONA (no package, no
+      stamped store) falls back to the DEFAULT store — which is precisely the
+      beneficiary case J-1 names.
+    * being a FLOOR entry, any ``agent.<node>.canon`` a plugin or the user sets in
+      the cascade OVERRIDES it.
+
+    A literal reading of option (a) — flooring ONLY ``agent.default.canon`` — is not
+    implementable here: ``settings_expand._lookup_raw`` walks the merged snapshot with
+    no per-tier fallback, and ``@agent.<node>.canon/handbook`` is an EMBEDDED ref, so
+    an undeclared node key coerces to ``""`` (spec §6b) and yields the degenerate host
+    path ``/handbook`` rather than falling back to the default tier.
+
+    A NO-AGENT box (*agent_name* None) emits NEITHER the agent scalar NOR the
+    ``canon_hb_agent`` entry — deliberately not an entry with an empty ref, which
+    would produce exactly that degenerate path.
+    """
+    store_canon = f"@config.agents/{agent_name}/canon" if agent_name else None
+    out: dict[str, object] = {}
+    if agent_name:
+        out["agent.default.canon"] = "@config.agents/default/canon"
+        node_store = std.agents / agent_name / "canon"
+        out[f"agent.{agent_name}.canon"] = (
+            store_canon if node_store.is_dir() else "@agent.default.canon"
+        )
+
+    for entry in _load_doc().get("canon", []):
+        ref = str(entry["meta_ref"])
+        if CANON_ACTIVE_AGENT_TOKEN in ref:
+            if not agent_name:
+                continue  # NO-AGENT box: no agent tier at all, so no chapter bind.
+            ref = ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
+        out[f"box.{entry['category']}.{entry['key']}"] = (
+            ref,
+            str(entry["box_dest"]),
+            str(entry["options"]),
+        )
+    return out
+
+
+# ===========================================================================
 # The box-create CANON SKELETON (J-7).
 # ===========================================================================
 
@@ -784,6 +898,38 @@ def rom_agent_default_categories(
 # later would mean mkdir-ing into an already-555 tree.
 HANDBOOK_CHAPTERS = ("general", "agent", "workset", "box")
 HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
+
+# ⚑⚑ THE IMPORT-FALLBACK FILES (seeds-gate F1, 2026-08-01) — the per-scope chapters
+# whose ENTRY FILE the skeleton pre-creates 0-byte, keyed chapter → entry filename.
+#
+# WHY THEY EXIST, and why skip-if-absent did NOT already cover it: the packaged
+# ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and skip-if-absent
+# governs the BIND, not the INDEX.  So on a box with no workset chapter — i.e. every
+# primary box — the flattener printed ``unresolved import
+# @workset/directives/SYS_WORKSET.md`` on EVERY launch.  That is the warning-noise
+# failure the skip-if-absent work exists to prevent, arriving through the other door.
+#
+# With a 0-byte entry file already inside the mountpoint: an UNBOUND chapter
+# RESOLVES-TO-EMPTY (no warning, no content), and a BOUND one has its whole directory
+# replaced by the mount, so the store's real file SHADOWS the fallback. No branch, no
+# gate, no second mechanism.
+#
+# ⚑ ``general`` is deliberately ABSENT: the system store always supplies it, so a
+# fallback there would mask a genuinely missing system handbook — which is exactly
+# what ``canon_hb_general`` being NON-optional exists to surface.
+#
+# ⚑ MACHINERY, NOT CONTENT. Jei's D2 cut stands: the global handbook STORE still
+# ships ``general`` only. These files live in the BOX's skeleton, are root-owned like
+# the rest of it, and are never installed anywhere.
+HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
+    ("agent", "SYS_AGENT.md"),
+    ("workset", "SYS_WORKSET.md"),
+    ("box", "SYS_BOX.md"),
+)
+
+# The directory each chapter's entry file sits in — the ``@<chapter>/directives/...``
+# spelling ``SYS_CONTENTS.md`` imports.
+HANDBOOK_DIRECTIVES_DIRNAME = "directives"
 
 # ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0.
 #
@@ -838,6 +984,12 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
     ``canon/notebook`` and ``canon/workbook`` are ABSENT by design: they are SEEDED,
     agent-owned and writable, and become undeletable only because their parent is
     555 — which is intended, not a side effect.
+
+    ⚑ THE CHAPTER MOUNTPOINTS ARE NOT EMPTY (F1): three of them carry a 0-byte
+    IMPORT-FALLBACK entry file, so ``SYS_CONTENTS.md``'s unconditional imports
+    resolve-to-empty instead of warning on every launch of every box that has no
+    workset or box chapter. A BOUND chapter replaces the whole directory, fallback
+    included. See :data:`HANDBOOK_FALLBACK_ENTRIES`.
     """
     root = CANON_GUEST_ROOT
     rels: list[tuple[str, bool]] = [
@@ -859,6 +1011,13 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
     rels += [
         (f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS
     ]
+    # The IMPORT-FALLBACK entry files (F1), INSIDE three of those mountpoints.  Their
+    # ``directives/`` parents are part of the skeleton too — root-owned like
+    # everything else here, so nothing in the books is agent-creatable.
+    for chapter, entry in HANDBOOK_FALLBACK_ENTRIES:
+        chapter_dir = f"{root}/{HANDBOOK_REL}/{chapter}"
+        rels.append((f"{chapter_dir}/{HANDBOOK_DIRECTIVES_DIRNAME}", True))
+        rels.append((f"{chapter_dir}/{HANDBOOK_DIRECTIVES_DIRNAME}/{entry}", False))
     return tuple(rels)
 
 

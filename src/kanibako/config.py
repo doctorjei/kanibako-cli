@@ -235,7 +235,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
     # Bootstrap PATH tier, written at the DEFAULT expressions in TWO tables:
     #   * ``[config]`` — the Layer-1 foundation (the 5 ``config.*`` keys; spec §1)
     #   * ``[system]`` — the Layer-2 ``system.*`` path SETTINGS (channelroot/
-    #     base_template/backup/cache/runtime + the channels skeleton; spec §2g)
+    #     template/canon/backup/cache/runtime + the channels skeleton; spec §2g)
     # Kept in lock-step with paths.CONFIG_PATH_DEFAULTS / SYSTEM_PATH_DEFAULTS;
     # the resolver fills in any omitted key, so only the most commonly-tuned
     # roots are emitted (the derived files/dirs resolve from these).
@@ -251,7 +251,14 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
         "system": {
             "backup": "@config.data/backup",
             "channelroot": "@config.data/channels",
-            "base_template": "@config.data/global/base_template",
+            # M-11: ``base_template`` → ``template`` (default re-pointed
+            # ``global/base_template`` → ``global/template``), plus the new
+            # ``canon`` contribution root (spec §2g). ⚑ These literals DUPLICATE
+            # ``paths.SYSTEM_PATH_DEFAULTS`` — a single-source violation the file
+            # header already flags ("kept in lock-step"); every edit here needs the
+            # matching edit there.
+            "template": "@config.data/global/template",
+            "canon": "@config.data/global/canon",
             "cache": "$XDG_CACHE_HOME/kanibako",
             "runtime": "$XDG_RUNTIME_DIR/kanibako",
         },

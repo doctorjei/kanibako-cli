@@ -8,7 +8,7 @@ path settings, split by prefix), ``config.load_config`` populating
 
 Keys are the FULL dotted form: Layer-1 ``config.{data,settings,agents,
 primary_workset,registry}`` (the bootstrap foundation) + Layer-2 ``system.*``
-path settings (channelroot/base_template/backup/cache/runtime + channels.*).
+path settings (channelroot/template/canon/backup/cache/runtime + channels.*).
 ``config.global`` is ELIMINATED.  The OLD per-project box store resolves under
 the transitional pseudo-key ``system._boxes`` (the ``StandardPaths.boxes`` alias).
 
@@ -60,7 +60,8 @@ class TestResolveSystemPathsDefaults:
         # Layer-2 system.* path settings (@-ref a config key).
         assert resolved["system.backup"] == base / "backup"
         assert resolved["system.channelroot"] == base / "channels"
-        assert resolved["system.base_template"] == base / "global" / "base_template"
+        assert resolved["system.template"] == base / "global" / "template"
+        assert resolved["system.canon"] == base / "global" / "canon"
         # The box guide (KANIBAKO.md) is NOT a system path key — it is delivered
         # live via the RO bundle + launch-flatten, not a host runtime install.
         assert "system.instructions" not in resolved
@@ -135,7 +136,7 @@ class TestResolveSystemPathsOverrides:
         assert resolved["system._boxes"] == custom / "primary_workset" / "boxes"
         # A Layer-2 system.* path @-refs config.data → tracks the override too.
         assert resolved["system.channelroot"] == custom / "channels"
-        assert resolved["system.base_template"] == custom / "global" / "base_template"
+        assert resolved["system.template"] == custom / "global" / "template"
 
     def test_absolute_leaf_override_isolated(self, tmp_path):
         """An absolute config.agents override does not perturb the other keys."""
@@ -218,15 +219,17 @@ class TestLoadStdPathsParity:
         assert std.agents == std.data_path / "agents"
         assert std.channels == std.data_path / "channels"
         assert std.primary_workset == std.data_path / "primary_workset"
-        assert std.base_template == std.data_path / "global" / "base_template"
+        assert std.template == std.data_path / "global" / "template"
+        assert std.canon == std.data_path / "global" / "canon"
         assert std.registry == std.data_path / "global" / "registry.yaml"
         # Phase 5: PRIMARY box/vault/logs live under the PRIMARY workset.
         assert std.boxes == std.primary_workset / "boxes"
         assert std.primary_vault_ro == std.primary_workset / "vault" / "ro"
         assert std.primary_vault_rw == std.primary_workset / "vault" / "rw"
         assert std.primary_logs == std.primary_workset / "logs"
-        # Lingering alias (owner = Phase 7; the Phase-6 ``comms`` alias is gone).
-        assert std.templates == std.base_template
+        # M-11 retired the ``templates`` alias with the field rename: keeping it
+        # would have shipped THREE spellings of one directory.
+        assert not hasattr(std, "templates")
 
     def test_deleted_share_aliases_raise(self, tmp_home, config_file):
         from kanibako.paths import load_std_paths
@@ -686,4 +689,4 @@ class TestConfigDataCascade:
         # Layer-2 system paths @-ref config.data → cascade too.
         assert resolved["system.channelroot"] == root / "channels"
         assert resolved["system.backup"] == root / "backup"
-        assert resolved["system.base_template"] == root / "global" / "base_template"
+        assert resolved["system.template"] == root / "global" / "template"

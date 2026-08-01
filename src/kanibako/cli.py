@@ -313,17 +313,25 @@ def _ensure_initialized() -> None:
         if not target_toml.exists():
             write_agent_config(target_toml, cls().generate_agent_config())
 
-    # Curated base + per-agent template content (Phase 9c).  The host
-    # agent-config IMPORT was removed in 1.6.0, so a box gets its base guidance
-    # (~/INSTRUCTIONS.md) and per-agent config (claude .claude.json onboarding
-    # stub + settings.json, goose config.yaml, codex config.toml) from these
-    # CURATED templates instead.  The content ships as static package data and
-    # is COPIED here into the runtime template dirs (@system.base_template +
-    # @config.agents/<agent>/template), create-if-absent so user edits survive
-    # an upgrade.  The layered seed-once apply (the ``seeded.template`` keystore
-    # keys, staged by ``commands.start._apply_init_seeds`` via
-    # ``templates.stage_layers``) then copies them into each new box home at
-    # creation.
+    # Packaged content → the host stores.  The content ships as static package data
+    # and is installed here into its ENUMERATED destinations (@system.template's box
+    # + workset moulds, @system.canon/handbook, and every agent store under
+    # @config.agents), create-if-absent so user edits survive an upgrade.  The
+    # layered seed-once apply (the six ``seeded.{template,handbook}`` keystore keys,
+    # staged by ``commands.start._apply_init_seeds`` via ``templates.stage_layers``)
+    # then copies them into each new box store at creation.
+    #
+    # ⚑ THIS IS THE LAZY BACKSTOP of J-6's agent-store A-action (the "two paths, one
+    # action" pair), and it runs the SAME full per-file mould stamp the deliberate
+    # SETUP trigger does — ``install_packaged_templates`` calls
+    # ``ensure_agent_stores``, which is the one implementation.  The bare per-agent
+    # mkdir this used to be is gone.
+    #
+    # ⚑ It fires on FIRST RUN ONLY (this whole function returns early once the config
+    # file exists).  That is not a gap: a plugin installed later adds its files to
+    # ``packaged_templates_digest``, which trips the HARD template-staleness gate,
+    # which sends the user to ``kanibako setup`` — the deliberate trigger, with
+    # reporting.  Recorded as migration M-18.
     from kanibako.paths import load_std_paths
     from kanibako.templates import (
         install_packaged_templates,

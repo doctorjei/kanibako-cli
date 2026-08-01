@@ -27,7 +27,9 @@ include = ["kanibako.plugins.goose*"]
     # Static goose-specific data — the KICKOFF.md SEED (data/KICKOFF.md, a
     # descriptor bind), the plugin's BIBLE CHAPTER (data/rom/directives/ROM_AGENT.md,
     # the whole-dir source of core's ``canon_bible_agent`` bind — C-CANON R2), and
-    # the per-agent seeded template (data/template/, incl. the nested dot-dir .config/goose/) —
+    # the AGENT-STORE payload (data/base/, RENAMED from data/template/ — D4 — since it is
+    # stamped into the agent STORE root, of which template/ is only one entry; incl. the
+    # nested dot-dir .config/goose/) —
     # read via importlib.resources.  Nested dot-dir content needs the recursive
     # dot-dir patterns (a plain data/* / data/**/* would miss it).
     "data/*", "data/**/*", "data/**/.*",

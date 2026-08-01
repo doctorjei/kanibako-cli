@@ -344,11 +344,32 @@ def run_create(args: argparse.Namespace) -> int:
     path = Path(path).resolve()
     name = args.name or path.name
 
+    # PRE-FLIGHT the workset mould BEFORE anything is registered or created.
+    # ⚑ A whitelist refusal part-way through the stamp would be loud but NOT atomic:
+    # it would leave a REGISTERED workset with a root, its own settings.yaml and a
+    # partial chapter copy, recoverable only by ``workset rm``. Checking first is
+    # also the order ``create_workset`` already uses for its own name guards.
+    from kanibako.errors import TemplateScopeError
+    from kanibako.templates import check_workset_template, install_workset_template
+
+    try:
+        check_workset_template(std, path)
+    except TemplateScopeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
     try:
         ws = create_workset(name, path, std, force=getattr(args, "force", False))
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # J-6 A-action (INSTANTIATION): stamp the new workset store from the host
+    # workset mould (@system.template/workset), under the WORKSET whitelist. This
+    # is what gives a workset its own handbook chapter dir and its own box
+    # template; before this step existed, neither did.  The pre-flight above already
+    # proved the mould passes that whitelist, so this call cannot refuse half-way.
+    install_workset_template(std, ws.root)
 
     # Credential SHARING is now a settable cascade key (workset.auth.share_allowed
     # via config), NOT a create-time flag — the --distinct-auth flag is retired.
@@ -1110,7 +1131,8 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     # explodes them.
     floor: dict[str, object] = {
         "system.channelroot": str(std.channels),
-        "system.base_template": str(std.base_template),
+        "system.template": str(std.template),
+        "system.canon": str(std.canon),
     }
 
     try:

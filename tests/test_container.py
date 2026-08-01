@@ -194,6 +194,7 @@ class TestUnshareRm:
             m.assert_not_called()
 
 
+@pytest.mark.no_unshare_sim
 class TestUnshareChownChmod:
     """``unshare_chown`` / ``unshare_chmod`` — the WRITE-side counterparts of
     ``unshare_rm``, and the mechanism behind J-7's root-owned canon skeleton.

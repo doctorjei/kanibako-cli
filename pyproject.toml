@@ -39,12 +39,22 @@ where = ["src"]
 "kanibako" = ["py.typed"]
 "kanibako.containers" = ["Containerfile.*", "tmux.conf"]
 "kanibako.scripts" = ["*.sh", "kanibako-entry"]
+# ⚑ THE DOT-DIR PATTERNS ARE LOAD-BEARING, even though core ships no dotfile today.
+# setuptools' ``**/*`` does NOT recurse into hidden directories (the three plugin
+# pyprojects document the same trap and carry the same set). ``global/template/box/
+# home/`` is a BOX HOME seed: the moment a ``.claude/``, ``.config/`` or
+# ``.claude.json`` lands there, a wheel built without these patterns ships it EMPTY
+# and the seed delivers nothing — silently, with no build error and no launch
+# warning. Added AHEAD of the first such file precisely because the trap is that the
+# next person to drop one gets no signal.
 "kanibako.data" = [
     "*.yaml",
     "templates/**/*", "templates/**/.*",
     "templates/.*/**/*", "templates/.*/*",
     "templates/**/.*/**/*", "templates/**/.*/*",
-    "global/*", "global/**/*",
+    "global/*", "global/**/*", "global/**/.*",
+    "global/.*/**/*", "global/.*/*",
+    "global/**/.*/**/*", "global/**/.*/*",
 ]
 
 [tool.ruff]
@@ -82,5 +92,9 @@ pythonpath = ["src"]
 markers = [
     "integration: tests requiring a real container runtime (podman/docker)",
     "e2e: end-to-end tests requiring podman + kanibako-oci image",
+    # Opt OUT of the KANI_TEST_SIM_UNSHARE=1 protected-canon simulation. For tests
+    # OF ``unshare_chown``/``unshare_chmod`` themselves: patching the subject with
+    # the stub turns real assertions into false reds.
+    "no_unshare_sim: never apply the protected-canon unshare simulation",
 ]
 addopts = "-m 'not integration and not e2e'"
