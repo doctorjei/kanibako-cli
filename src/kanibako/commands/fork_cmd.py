@@ -24,7 +24,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_fork(args: argparse.Namespace) -> int:
-    from kanibako.paths import xdg
+    from kanibako.settings.paths import xdg
 
     # Box-side socket dest is XDG_STATE_HOME-aware (honor-iff-absolute, else
     # $HOME/.local/state) to match the dest mounted by start.py.

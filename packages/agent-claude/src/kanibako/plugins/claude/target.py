@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.agent_defaults import (
+from kanibako.settings.agent_defaults import (
     load_category_binds,
     load_descriptor,
     load_common,
@@ -36,7 +36,7 @@ from kanibako.plugins.claude.credentials import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.agent_config import AgentConfig
+    from kanibako.settings.agent_config import AgentConfig
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.claude")
@@ -68,7 +68,7 @@ _PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
 #
 # The descriptor's declarative default-set lives in this plugin's shipped
 # ``claude-defaults.yaml`` (P6c coalesce) and is read by the thin
-# :mod:`kanibako.agent_defaults` loader — the file documents each field
+# :mod:`kanibako.settings.agent_defaults` loader — the file documents each field
 # (mode={start,continue} only; both DISABLE_AUTOUPDATER +
 # CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC env vars; the two AGENT_CRITICAL
 # delivery binds; the synced filtered credentials).  The CRITICAL host
@@ -376,7 +376,7 @@ class ClaudeTarget(Target):
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Claude Code crab configuration."""
-        from kanibako.agent_config import AgentConfig as _AgentConfig
+        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(
             name="Claude Code",

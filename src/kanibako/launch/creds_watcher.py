@@ -36,7 +36,7 @@ from enum import Enum
 from pathlib import Path
 
 from kanibako.log import get_logger
-from kanibako.paths import xdg
+from kanibako.settings.paths import xdg
 
 log = get_logger("creds_watcher")
 
@@ -295,12 +295,12 @@ def _resolve_watch_context(box: str | None):
     Returns ``(runtime, proj, container_name, target, auth_src)`` or ``None`` when the
     box cannot be resolved / has no shared-credential agent (nothing to watch).
     """
-    from kanibako.agent_config import agent_settings_path
+    from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import harness_of
     from kanibako.commands.start import _resolve_box_auth_source
-    from kanibako.config import config_file_path, load_config
+    from kanibako.settings.config import config_file_path, load_config
     from kanibako.runtime.container import ContainerRuntime
-    from kanibako.paths import load_std_paths, resolve_box_target, xdg
+    from kanibako.settings.paths import load_std_paths, resolve_box_target, xdg
     from kanibako.targets import resolve_target
     from kanibako.utils import container_name_for
 

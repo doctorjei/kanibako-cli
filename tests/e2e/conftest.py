@@ -214,8 +214,8 @@ def resolve_box_dir(env: dict[str, str], project: Path) -> Path:
     dir that contains ``home/``, i.e. ``proj.shell_path.parent``), so the
     inspected path matches what ``start``/``rm`` actually wrote/removed.
     """
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import load_std_paths, resolve_project
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
     with _active_env(env):
         config_file = config_file_path(Path(env["XDG_CONFIG_HOME"]))
@@ -474,7 +474,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     # templates changed since setup was last run", so no container is ever created.
     # Computed over the SAME sorted(discover_targets()) set the gate recomputes in
     # the subprocess, so host + subprocess digests match.
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
     from kanibako.targets import discover_targets
     from kanibako.launch.templates import packaged_templates_digest
     write_system_value(
@@ -635,7 +635,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     # Record the template stamp the way first-run init does — this fixture
     # pre-seeds the config instead of running init, so without the stamp
     # template_staleness_gate hard-errors every `kanibako start` (see e2e_env).
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
     from kanibako.targets import discover_targets
     from kanibako.launch.templates import packaged_templates_digest
     write_system_value(

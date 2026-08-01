@@ -228,7 +228,7 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
     walks; defaults to *agent* (the harness == install.name for a bare agent). For
     a PERSONA (node ≠ harness) the partial MUST root under the node, else the binds
     orphan at agent.<harness>.* and vanish from the emit."""
-    from kanibako.agent_representation import agent_default_partial
+    from kanibako.settings.agent_representation import agent_default_partial
     from kanibako.settings.settings_launch import agent_delivery_mounts
     from kanibako.targets.base import BindScope
 

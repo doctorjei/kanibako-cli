@@ -7,15 +7,15 @@ import shutil
 import sys
 from pathlib import Path
 
-from kanibako.config import (
+from kanibako.settings.config import (
     carried_box_settings,
     config_file_path,
     load_config,
 )
-from kanibako.config_io import dump_doc
+from kanibako.settings.config_io import dump_doc
 from kanibako.runtime.container import remove_box_tree
-from kanibako.core_defaults import materialize_canon_skeleton
-from kanibako.paths import (
+from kanibako.settings.core_defaults import materialize_canon_skeleton
+from kanibako.settings.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
     WorksetSpec,
@@ -221,9 +221,9 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     name, so standalone detection (``_is_standalone_meta_dir`` requires
     ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
     """
-    from kanibako.config import BOX_META_FILE
+    from kanibako.settings.config import BOX_META_FILE
     from kanibako.errors import ProjectError
-    from kanibako.paths import establish_standalone
+    from kanibako.settings.paths import establish_standalone
     from kanibako.utils import write_project_gitignore
 
     dst_metadata = new_path / _STANDALONE_META_DIR
@@ -262,7 +262,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     # Carry the source's box-scope settings into the destination's BOX TIER (M-8) —
     # box tier first, with a pre-P2 standalone source's root-stored ``box.*`` keys
-    # underlaid (:func:`kanibako.config.carried_box_settings`).  Without that underlay
+    # underlaid (:func:`kanibako.settings.config.carried_box_settings`).  Without that underlay
     # EVERY box created before the box tier existed loses box.image & friends on the
     # first duplicate.  ``establish_standalone`` below then read-modify-writes
     # ``box.enable_vault`` into this SAME file, preserving what was carried, and
@@ -299,7 +299,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
     """Best-effort rollback of a default-mode name registration + partial dir.
 
-    Used when a copy fails after :func:`~kanibako.paths.assign_primary_box_name` has already registered the
+    Used when a copy fails after :func:`~kanibako.settings.paths.assign_primary_box_name` has already registered the
     duplicate's name (and possibly created a partial metadata dir), to avoid
     leaving a "registered but no metadata" orphan.  Each step is independently
     guarded so one failure does not mask the rest.
@@ -345,7 +345,7 @@ def _assert_dup_home_free(std, name: str) -> None:
 
 def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into default-mode layout for new_path."""
-    from kanibako.config import BOX_META_FILE
+    from kanibako.settings.config import BOX_META_FILE
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).

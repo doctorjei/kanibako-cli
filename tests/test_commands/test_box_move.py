@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 
 from kanibako.commands.box._lifecycle import run_move
-from kanibako.config import load_config
-from kanibako.config_io import load_doc
-from kanibako.paths import load_std_paths, resolve_project
+from kanibako.settings.config import load_config
+from kanibako.settings.config_io import load_doc
+from kanibako.settings.paths import load_std_paths, resolve_project
 from kanibako.utils import project_hash
 
 
@@ -42,7 +42,7 @@ class TestBoxMove:
         assert not project_dir.exists()
 
         # PRIMARY membership updated to the new path.
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
         boxes = load_primary_boxes(std.primary_workset)
         assert str(dest) in boxes.values()
         assert str(project_dir) not in boxes.values()

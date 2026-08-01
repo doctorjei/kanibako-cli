@@ -395,7 +395,7 @@ def test_image_resolution_failure_still_launches(mock_runtime):
     with (
         stack[0], stack[1], stack[2], stack[3], stack[4],
         patch(
-            "kanibako.config.load_merged_config",
+            "kanibako.settings.config.load_merged_config",
             side_effect=RuntimeError("no config"),
         ),
         patch(
@@ -437,7 +437,7 @@ def test_stamp_first_wins_over_cascade(mock_runtime, _isolate_seed_path):
         # If the code ever fell through to the cascade, this would blow up →
         # extension None → extensions=[].  Asserting the ext proves stamp-first.
         patch(
-            "kanibako.config.resolve_agent",
+            "kanibako.settings.config.resolve_agent",
             side_effect=AssertionError("cascade must not run when a stamp exists"),
         ),
         patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),

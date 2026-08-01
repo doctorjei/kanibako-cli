@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kanibako.config import KanibakoConfig
+from kanibako.settings.config import KanibakoConfig
 from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
 
 

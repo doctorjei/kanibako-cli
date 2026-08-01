@@ -199,7 +199,7 @@ class TestSpawnConfigIO:
         result = read_spawn_config(path)
         assert result == SpawnBudget(depth=2, breadth=3)
         # Other section preserved
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         data = load_doc(path)
         assert data["other"]["foo"] == 1
 

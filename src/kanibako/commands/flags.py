@@ -22,7 +22,7 @@ post-construction walk of the argparse tree:
   commands.
 * ``--box VALUE`` — the SUBJECT selector: which box/project the command acts on
   (path OR registered box name; name precedence), even when not cwd.  Routed
-  through :func:`kanibako.paths.resolve_box_target`.  Relevant only to commands
+  through :func:`kanibako.settings.paths.resolve_box_target`.  Relevant only to commands
   that act on a subject box/project.
 
 **Parse everywhere, relevance per-command.**  The flags PARSE on every command

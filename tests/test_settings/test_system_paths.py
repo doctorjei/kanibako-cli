@@ -25,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.config import load_config
-from kanibako.paths import (
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import (
     BOX_HOME,
     CONFIG_PATH_DEFAULTS,
     SYSTEM_PATH_DEFAULTS,
@@ -211,7 +211,7 @@ class TestLoadConfigPaths:
 class TestLoadStdPathsParity:
     def test_default_layout_matches_data_path(self, tmp_home, config_file):
         """load_std_paths yields the renamed/re-pointed dirs by default."""
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -246,8 +246,8 @@ class TestBoxesOverrideConsumers:
         """Creating a project under a custom data dir registers its box under
         ``<custom>/boxes/<name>``, and the reverse-lookup helpers find it there.
         """
-        from kanibako.config import load_config
-        from kanibako.paths import (
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
             _find_local_ancestor,
             _resolve_local_dir,
             iter_projects,
@@ -326,7 +326,7 @@ class TestResolveXdg:
 
     def test_runtime_dir_unset_falls_back_and_warns(self, monkeypatch, caplog):
         """No spec default → must fall back to a usable 0700 dir AND warn."""
-        import kanibako.paths as paths_mod
+        import kanibako.settings.paths as paths_mod
 
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
         # Clear the process cache so this test sees a fresh selection+warn.
@@ -345,7 +345,7 @@ class TestResolveXdg:
         )
 
     def test_runtime_dir_relative_falls_back_and_warns(self, monkeypatch, caplog):
-        import kanibako.paths as paths_mod
+        import kanibako.settings.paths as paths_mod
 
         monkeypatch.setenv("XDG_RUNTIME_DIR", "relative/run")
         monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
@@ -359,7 +359,7 @@ class TestResolveXdg:
 
     def test_runtime_dir_fallback_cached_within_process(self, monkeypatch):
         """Repeated resolution returns the SAME fallback dir (no temp leak)."""
-        import kanibako.paths as paths_mod
+        import kanibako.settings.paths as paths_mod
 
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
         monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
@@ -500,10 +500,10 @@ class TestLoadSystemConfig:
     def _redirect(self, monkeypatch, base: Path) -> None:
         """Point the /etc base CONFIG path at a tmp file.
 
-        ``load_system_config`` imports this lazily from ``kanibako.config``, so
+        ``load_system_config`` imports this lazily from ``kanibako.settings.config``, so
         patching the source module catches every call.
         """
-        import kanibako.config as cfg_mod
+        import kanibako.settings.config as cfg_mod
 
         monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
 

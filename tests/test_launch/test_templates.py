@@ -8,7 +8,7 @@ import shutil
 import pytest
 import yaml
 
-from kanibako.paths import (
+from kanibako.settings.paths import (
     WorksetSpec,
     resolve_project,
     resolve_standalone_project,
@@ -24,7 +24,7 @@ from kanibako.launch.templates import (
     stage_layers,
     template_seed_defaults,
 )
-from kanibako.core_defaults import ROM_GUIDE_REL as _GUIDE_REL
+from kanibako.settings.core_defaults import ROM_GUIDE_REL as _GUIDE_REL
 from kanibako.workset import add_project, create_workset
 
 

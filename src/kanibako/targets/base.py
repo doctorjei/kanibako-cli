@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
-    from kanibako.agent_config import AgentConfig
+    from kanibako.settings.agent_config import AgentConfig
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 # A STRUCTURED category bind default (spec §2a "REPRESENTATION"): a 2- or
@@ -515,7 +515,7 @@ class Target(ABC):
 
         The source of the ``box.bindings.ro.canon_bible_agent`` bind (spec §2c),
         which CORE emits from the resolved target — see
-        :func:`kanibako.core_defaults.rom_agent_default_categories`.  The plugin's
+        :func:`kanibako.settings.core_defaults.rom_agent_default_categories`.  The plugin's
         ``data/rom`` IS the chapter root: it ships ``directives/ROM_AGENT.md``, not
         a deep ``canon/bible/agent/...`` mirror, so CONTAINMENT holds by
         construction (a plugin cannot place a file outside its own chapter, so
@@ -556,7 +556,7 @@ class Target(ABC):
         (``agent.<agent>.bindings.ro.<name>``) to
         STRUCTURED bind tuples ``(meta_ref, box_dest[, "ro"])`` (spec §2a) whose
         HOST SOURCE is an ``@``-ref STRING resolved by the launch category cascade —
-        the AGENT-scope mirror of :mod:`kanibako.core_defaults`'s ``meta_ref`` bind
+        the AGENT-scope mirror of :mod:`kanibako.settings.core_defaults`'s ``meta_ref`` bind
         shape.  These are injected as the AGENT level's declared defaults
         (``default_categories``) alongside :meth:`default_common`; a user can
         override or suppress (terminal "") any of them at a more-specific level.
@@ -588,7 +588,7 @@ class Target(ABC):
         Subclasses should override to provide agent-specific defaults
         (template variant, state knobs, shared caches, etc.).
         """
-        from kanibako.agent_config import AgentConfig as _AgentConfig
+        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(name=self.display_name)
 

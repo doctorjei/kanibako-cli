@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from kanibako.errors import KanibakoError, UserCancelled
-from kanibako.paths import ProjectGroup, BoxMode
+from kanibako.settings.paths import ProjectGroup, BoxMode
 
 
 class TestMainExitCodes:
@@ -144,7 +144,7 @@ class TestLazyInit:
     def test_lazy_init_idempotent(self, tmp_path, monkeypatch):
         """Running lazy init twice does not error or overwrite config."""
         from kanibako.cli import _ensure_initialized
-        from kanibako.config import KanibakoConfig, load_config, write_global_config
+        from kanibako.settings.config import KanibakoConfig, load_config, write_global_config
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
@@ -390,7 +390,7 @@ class TestStandaloneLaunch:
             proj.is_new = True  # new project, but standalone
             m.resolve_any_project.return_value = proj
 
-            with patch("kanibako.paths.iter_projects") as m_iter:
+            with patch("kanibako.settings.paths.iter_projects") as m_iter:
                 orphan_path = MagicMock()
                 orphan_path.is_dir.return_value = False
                 m_iter.return_value = [(MagicMock(), orphan_path)]
@@ -586,7 +586,7 @@ class TestWorksetLaunch:
             proj.is_new = True  # new project, but workset
             m.resolve_any_project.return_value = proj
 
-            with patch("kanibako.paths.iter_projects") as m_iter:
+            with patch("kanibako.settings.paths.iter_projects") as m_iter:
                 orphan_path = MagicMock()
                 orphan_path.is_dir.return_value = False
                 m_iter.return_value = [(MagicMock(), orphan_path)]

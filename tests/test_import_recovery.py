@@ -23,7 +23,7 @@ import pytest
 
 from kanibako import import_reconcile, registry_store
 from kanibako.launch import journal
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
     resolve_project,
@@ -89,7 +89,7 @@ class TestImportBehavioralEquivalence:
         """P8b/Option A: a register=True resolve does NOT auto-rediscover an
         unregistered on-disk PRIMARY box (retired live import) — and it touches no
         journal.  The registry is the sole identity authority."""
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             load_primary_boxes,
             unregister_primary_box_name,
         )
@@ -344,8 +344,8 @@ class TestConnectJournal:
         """A normal connect (via run_connect) writes + clears the entry within
         the op → journal empty at rest (behavioral equivalence)."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.workset import load_workset
 
         config = load_config(config_file)
@@ -366,8 +366,8 @@ class TestConnectJournal:
         """Write-ahead: the connect entry exists DURING the workset-membership
         write (inside add_project) and is gone after run_connect returns."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako import workset as workset_mod
 
         config = load_config(config_file)
@@ -401,8 +401,8 @@ class TestConnectJournal:
         the in-process unwind still runs but the journal entry persists for the
         cross-process recovery signal."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako import workset as workset_mod
 
         config = load_config(config_file)
@@ -433,12 +433,12 @@ class TestConnectSelfHealOnResolve:
         self, config_file, tmp_home, credentials_dir, capsys, seed_tripwire,
     ):
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import load_config
-        from kanibako.paths import (
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
             load_std_paths,
             resolve_workset_project,
         )
-        from kanibako.paths import WorksetSpec
+        from kanibako.settings.paths import WorksetSpec
         from kanibako.workset import load_workset
 
         config = load_config(config_file)
@@ -480,12 +480,12 @@ class TestConnectSelfHealOnResolve:
         entries — a J1 ``create`` entry for the same box is LEFT untouched (it is
         the create-recovery path's signal)."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config import load_config
-        from kanibako.paths import (
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
             load_std_paths,
             resolve_workset_project,
         )
-        from kanibako.paths import WorksetSpec
+        from kanibako.settings.paths import WorksetSpec
         from kanibako.workset import load_workset
 
         config = load_config(config_file)
@@ -520,8 +520,8 @@ class TestDeferredPipelinesDoNotJournalConnect:
     ):
         """A direct add_project call (the move/convert/duplicate seam) writes NO
         journal entry, even though std (with a journal) is passed."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.workset import load_workset
 
         config = load_config(config_file)
@@ -543,8 +543,8 @@ class TestDeferredPipelinesDoNotJournalConnect:
         """``copy_into_workset`` (the duplicate-into-workset pipeline helper)
         registers via add_project but writes NO connect journal entry."""
         from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.config import load_config
-        from kanibako.paths import BoxMode, load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import BoxMode, load_std_paths
         from kanibako.workset import load_workset
 
         config = load_config(config_file)

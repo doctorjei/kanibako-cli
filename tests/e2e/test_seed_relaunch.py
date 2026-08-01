@@ -114,8 +114,8 @@ def _resolve_proj(env: dict[str, str], project: Path):
     home is ``proj.shell_path``.  We resolve via the same functions the
     create/launch paths use so the inspected paths match what the CLI wrote.
     """
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import load_std_paths, resolve_project
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
     with _active_env(env):
         config_file = config_file_path(Path(env["XDG_CONFIG_HOME"]))
@@ -166,9 +166,9 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     box from launching.  We load the existing doc, add ``system.seeded.notebook``,
     and write it back, preserving the ``system`` content.
     """
-    from kanibako.config import config_file_path, load_config
-    from kanibako.config_io import dump_doc, load_doc
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.config_io import dump_doc, load_doc
+    from kanibako.settings.paths import load_std_paths
 
     with _active_env(env):
         config_file = config_file_path(Path(env["XDG_CONFIG_HOME"]))

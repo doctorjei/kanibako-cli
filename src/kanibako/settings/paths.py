@@ -12,7 +12,7 @@ from typing import NamedTuple, Protocol, overload
 
 from kanibako.log import get_logger
 
-from kanibako.config import (
+from kanibako.settings.config import (
     BOX_META_FILE,
     KanibakoConfig,
     config_file_path,
@@ -829,7 +829,7 @@ def load_system_config(
     file) gets the base layer empty, so the user file is the sole set-source.
     """
     # Lazy import to avoid a config <-> paths import cycle at module load.
-    from kanibako.config import (
+    from kanibako.settings.config import (
         config_base_path,
         load_config,
     )
@@ -1641,7 +1641,7 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
     where a global-name miss let Guard 1 fire mid-create.
     """
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
         ws_root, load_doc(ws_root / "settings.yaml"),
@@ -1662,7 +1662,7 @@ def _register_workset_box_membership(
     ``std.primary_workset`` — NON-EXCEPTIONAL per D0/D1).
     """
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
         ws_root, load_doc(ws_root / "settings.yaml"),
@@ -1681,7 +1681,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
     connection record.
     """
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
         ws_root, load_doc(ws_root / "settings.yaml"),
@@ -1713,7 +1713,7 @@ def load_primary_boxes(primary_workset: Path) -> dict[str, str]:
     is ``std.primary_workset``.
     """
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
         primary_workset, load_doc(primary_workset / "settings.yaml"),
@@ -2068,7 +2068,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     # ``std.boxes`` == ``@config.primary_workset/boxes``, so the PRIMARY registry
     # is the home.)
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     primary_registry = workset_registry.resolve_workset_registry_path(
         std.primary_workset, load_doc(std.primary_workset / "settings.yaml"),
@@ -2579,7 +2579,7 @@ def establish_standalone(
     # The kuid IS the name's prefix (``box_identity.standalone_kuid``); storing it
     # makes it the STABLE cross-move handle (the launch re-composes the name as
     # ``<stored kuid>_<live leaf>`` so a moved box keeps its identity).
-    from kanibako.config_interface import _write_nested_toml_key
+    from kanibako.settings.config_interface import _write_nested_toml_key
 
     _write_nested_toml_key(
         settings_file, ("workset",), "kuid",

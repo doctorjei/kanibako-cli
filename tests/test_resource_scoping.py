@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from kanibako.agent_config import AgentConfig
+from kanibako.settings.agent_config import AgentConfig
 from kanibako.targets.base import TargetSetting
 
 
@@ -66,7 +66,7 @@ class TestKanibakoMounts:
         the in-helper-container source resolver).  Lock that the two agree
         byte-for-byte so the routing is a pure refactor.
         """
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
         from kanibako.commands.start import _kanibako_mounts
 
         hardwired = _kanibako_mounts()
@@ -102,7 +102,7 @@ class TestSecretExportBind:
         pointing at a REAL regular-file host source, dest `/etc/profile.d/…`, ro."""
         from pathlib import Path
 
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         cats = core_defaults.kani_default_categories()
         assert "box.bindings.ro.secret_export" in cats
@@ -191,7 +191,7 @@ class TestBuildEffectiveState:
 
     def _make_global_config(self, tmp_path, settings=None):
         """Create a minimal global kanibako_config.yaml, optionally with [agent]."""
-        from kanibako.config import write_agent_setting
+        from kanibako.settings.config import write_agent_setting
 
         global_toml = tmp_path / "kanibako_config.yaml"
         global_toml.write_text("")
@@ -210,7 +210,7 @@ class TestBuildEffectiveState:
         RESOLVE, spec §0; workset ⊂ agent. ⮕ P7: was the ``box.agent.*``
         defaults-down mirror, retired by §2b.)
         """
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         ws_toml = tmp_path / "config.yaml"
@@ -228,8 +228,8 @@ class TestBuildEffectiveState:
         directly: that is an upward write dropped at RESOLVE, spec §0.) ⮕ P7: this
         used the ``box.agent.*`` mirror, which spec §2b RETIRED.
         """
-        from kanibako.config import write_project_config
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config import write_project_config
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
         project_toml = tmp_path / "settings.yaml"
@@ -462,7 +462,7 @@ class TestBuildEffectiveState:
         agent.default tables (system ⊃ agent). (A box file may not set agent.*;
         see test_box_override_does_not_bleed_across_agents.)"""
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.config import write_agent_setting
+        from kanibako.settings.config import write_agent_setting
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -512,7 +512,7 @@ class TestXdgFallbackRegression:
         launch) PLUS a declared behavior key with the same token, so the
         expanded value is assertable end-to-end through the display read.
         """
-        from kanibako.config import write_project_config
+        from kanibako.settings.config import write_project_config
 
         target = MagicMock()
         target.setting_descriptors.return_value = [

@@ -41,8 +41,8 @@ from unittest.mock import patch
 
 import pytest
 
-from kanibako import core_defaults
-from kanibako.paths import resolve_project
+from kanibako.settings import core_defaults
+from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
@@ -470,7 +470,7 @@ class TestKickoffLaunchWiring:
         transition dance can go; until then, it is the difference between a working
         upgrade and a box that refuses to launch.
         """
-        from kanibako.agent_representation import agent_default_partial
+        from kanibako.settings.agent_representation import agent_default_partial
         from kanibako.errors import CategoryCollisionError
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,

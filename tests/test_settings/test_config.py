@@ -1,10 +1,10 @@
-"""Tests for kanibako.config."""
+"""Tests for kanibako.settings.config."""
 
 from __future__ import annotations
 
 import pytest
 
-from kanibako.config import (
+from kanibako.settings.config import (
     KanibakoConfig,
     _flatten_toml,
     config_file_path,
@@ -56,7 +56,7 @@ class TestLoadConfig:
     def test_channelroot_round_trips_through_load_std_paths(self, tmp_home):
         """A config written by write_global_config resolves cleanly end-to-end:
         the renamed channelroot leaf AND the channels.* children all resolve."""
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         cf = tmp_home / "config" / "kanibako_config.yaml"
         write_global_config(cf)
@@ -111,7 +111,7 @@ class TestReadSetupCompleted:
     """read_setup_completed: raw [system] setup_completed reader (W1 gate)."""
 
     def test_reads_stored_string(self, tmp_path):
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
@@ -133,7 +133,7 @@ class TestReadSetupCompleted:
 
     def test_init_writes_no_setup_completed_or_default_agent(self, tmp_path):
         """Fresh init leaves both ABSENT — no default_agent, no marker, no 'none'."""
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)
@@ -153,22 +153,22 @@ class TestReadTemplatesStamp:
     """read_templates_stamp: raw [system] templates_stamp reader (template gate)."""
 
     def test_reads_stored_string(self, tmp_path):
-        from kanibako.config import read_templates_stamp
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config import read_templates_stamp
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "templates_stamp", "deadbeef")
         assert read_templates_stamp(cf) == "deadbeef"
 
     def test_absent_key_returns_none(self, tmp_path):
-        from kanibako.config import read_templates_stamp
+        from kanibako.settings.config import read_templates_stamp
 
         cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)  # has [system] but no templates_stamp
         assert read_templates_stamp(cf) is None
 
     def test_missing_file_returns_none(self, tmp_path):
-        from kanibako.config import read_templates_stamp
+        from kanibako.settings.config import read_templates_stamp
 
         assert read_templates_stamp(tmp_path / "nope.yaml") is None
         assert read_templates_stamp(None) is None
@@ -185,7 +185,7 @@ class TestTemplateStalenessGate:
 
     def test_absent_stamp_on_initialized_host_raises(self, tmp_path):
         """Initialized host (config file present) with NO stamp → hard error."""
-        from kanibako.config import template_staleness_gate
+        from kanibako.settings.config import template_staleness_gate
         from kanibako.errors import ConfigError
 
         cf = tmp_path / "kanibako_config.yaml"
@@ -195,16 +195,16 @@ class TestTemplateStalenessGate:
         assert "bundled templates changed" in str(exc.value)
 
     def test_current_stamp_passes(self, tmp_path):
-        from kanibako.config import template_staleness_gate
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config import template_staleness_gate
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "templates_stamp", self._current_digest())
         assert template_staleness_gate(cf) is None
 
     def test_stale_stamp_raises(self, tmp_path):
-        from kanibako.config import template_staleness_gate
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config import template_staleness_gate
+        from kanibako.settings.config_interface import write_system_value
         from kanibako.errors import ConfigError
 
         cf = tmp_path / "kanibako_config.yaml"
@@ -214,7 +214,7 @@ class TestTemplateStalenessGate:
 
     def test_uninitialized_host_not_gated(self, tmp_path):
         """No config file yet → first-run init owns the stamp; never hard-block."""
-        from kanibako.config import template_staleness_gate
+        from kanibako.settings.config import template_staleness_gate
 
         assert template_staleness_gate(tmp_path / "nope.yaml") is None
         assert template_staleness_gate(None) is None
@@ -232,12 +232,12 @@ class TestSetupCompatGate:
 
     # --- helpers -----------------------------------------------------------
     def _gate(self):
-        from kanibako.config import setup_compat_gate
+        from kanibako.settings.config import setup_compat_gate
 
         return setup_compat_gate
 
     def _marker(self, tmp_path, value):
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", value)
@@ -314,7 +314,7 @@ class TestSetupCompatGate:
 
     # --- band: FCV <= ConfigVer < CurrentVer (SILENT BUMP) -----------------
     def test_forward_compatible_silently_bumps(self, tmp_path):
-        from kanibako.config import read_setup_completed
+        from kanibako.settings.config import read_setup_completed
 
         cf = self._marker(tmp_path, "1.6.0")
         # Pretend the build advanced to 1.8.0 with BCV/FCV still 1.6.0.
@@ -331,7 +331,7 @@ class TestSetupCompatGate:
 
     def test_silent_bump_persists_then_no_op(self, tmp_path):
         """After a bump, a second run hits the == band (no further write)."""
-        from kanibako.config import read_setup_completed
+        from kanibako.settings.config import read_setup_completed
 
         cf = self._marker(tmp_path, "1.6.0")
         patches = self._patch_bands(version="1.8.0", bcv="1.6.0", fcv="1.6.0")
@@ -352,7 +352,7 @@ class TestSetupCompatGate:
         """A failed bump WRITE must fall through (return None), never block."""
         from unittest.mock import patch
 
-        from kanibako.config import read_setup_completed
+        from kanibako.settings.config import read_setup_completed
 
         cf = self._marker(tmp_path, "1.6.0")
         patches = self._patch_bands(version="1.8.0", bcv="1.6.0", fcv="1.6.0")
@@ -360,7 +360,7 @@ class TestSetupCompatGate:
             p.start()
         try:
             with patch(
-                "kanibako.config_interface.write_system_value",
+                "kanibako.settings.config_interface.write_system_value",
                 side_effect=OSError("read-only"),
             ):
                 assert self._gate()(cf) is None  # swallowed, no raise
@@ -382,7 +382,7 @@ class TestSetupCompatGate:
                 "kanibako setup is out of date — re-run 'kanibako setup'."
             )
             # NUDGE band does NOT rewrite the marker.
-            from kanibako.config import read_setup_completed
+            from kanibako.settings.config import read_setup_completed
 
             assert read_setup_completed(cf) == "1.6.0"
         finally:
@@ -527,7 +527,7 @@ class TestScalarOverlayPrecedence:
 
     def test_no_machine_config_path_attribute(self):
         """The deleted machine third-file is structurally gone (no attribute)."""
-        import kanibako.config as config_mod
+        import kanibako.settings.config as config_mod
         assert not hasattr(config_mod, "machine_config_path")
 
     def test_user_global_beats_builtin_defaults(self, tmp_path):
@@ -695,7 +695,7 @@ class TestBoxEnableVault:
 
     def test_disabled_writes_box_enable_vault_false(self, tmp_path):
         """(a) enable_vault=False → box:{enable_vault: False} (a real bool)."""
-        from kanibako.config import load_doc
+        from kanibako.settings.config import load_doc
         p = tmp_path / "settings.yaml"
         write_box_enable_vault(p, enable_vault=False)
         data = load_doc(p)
@@ -715,7 +715,7 @@ class TestBoxEnableVault:
 
     def test_default_true_drops_stale_override(self, tmp_path):
         """(c) default True with a stale box.enable_vault present → drops it."""
-        from kanibako.config import load_doc
+        from kanibako.settings.config import load_doc
         p = tmp_path / "settings.yaml"
         p.write_text("box:\n  enable_vault: false\n")
         write_box_enable_vault(p)  # default True
@@ -725,7 +725,7 @@ class TestBoxEnableVault:
 
     def test_disabled_merges_beside_existing_box_image(self, tmp_path):
         """(d) disabled merges beside an existing box.image (preserves it)."""
-        from kanibako.config import load_doc
+        from kanibako.settings.config import load_doc
         p = tmp_path / "settings.yaml"
         p.write_text('box:\n  image: "custom:v1"\n')
         write_box_enable_vault(p, enable_vault=False)
@@ -786,7 +786,7 @@ class TestTargetSettings:
         Pass 1 does NOT migrate; only nested agent.<agent>/agent.default tiers
         are honored, so a hand-edited flat shape reads as empty.
         """
-        from kanibako.config import dump_doc, load_doc
+        from kanibako.settings.config import dump_doc, load_doc
 
         p = tmp_path / "settings.yaml"
         self._write_base_toml(p)

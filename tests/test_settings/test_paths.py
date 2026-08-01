@@ -1,4 +1,4 @@
-"""Tests for kanibako.paths."""
+"""Tests for kanibako.settings.paths."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.config import load_config
+from kanibako.settings.config import load_config
 from kanibako.errors import ConfigError, ProjectError, WorksetError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     DetectionResult,
     BoxMode,
     WorksetSpec,
@@ -202,7 +202,7 @@ class TestResolveProject:
         resolved-path reuse path so a re-create never strands a half-box.)
         """
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         from kanibako.names import read_names
 
         config = load_config(config_file)
@@ -238,7 +238,7 @@ class TestResolveProject:
         raise → this reddens.
         """
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -272,7 +272,7 @@ class TestResolveProject:
         (drop the ``_dir_existed`` gate) and the sentinel is deleted → reddens.
         """
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -312,7 +312,7 @@ class TestResolveProject:
         ``_resolve_local_dir`` and the registration-layer Guard 2 wrap it.  A
         raising ``_workset_box_name_for_workspace`` degrades to the fallback, and
         the create still succeeds."""
-        import kanibako.paths as paths_mod
+        import kanibako.settings.paths as paths_mod
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -337,7 +337,7 @@ class TestProjectMeta:
     def test_init_sparse_no_project_meta(self, config_file, tmp_home, credentials_dir):
         """P8b/Option A: a default-vault PRIMARY create writes NO ``project:``/
         ``resolved:`` identity — identity lives in the registry, not on disk."""
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -363,8 +363,8 @@ class TestProjectMeta:
         """A non-default ``box.enable_vault`` (disabled) is persisted sparsely at
         create — the ONLY thing the sparse create writes — with no ``project:``/
         ``resolved:`` section; default vault writes nothing at all."""
-        from kanibako.config import read_box_enable_vault
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config import read_box_enable_vault
+        from kanibako.settings.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -431,7 +431,7 @@ class TestProjectMeta:
         # Hand-editing a stale ``resolved.shell`` field into settings.yaml (as a
         # legacy/tampered file might carry)...
         custom_shell = tmp_home / "custom_shell"
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
         toml = proj.metadata_path / "settings.yaml"
         doc = load_doc(toml)
         doc["resolved"] = {"shell": str(custom_shell)}
@@ -449,10 +449,10 @@ class TestProjectMeta:
         (the standalone marker) via the sparse ``workset.kuid`` write, but writes
         NO ``project:``/``resolved:`` identity — the name derives from the kuid +
         ``registry.standalone``."""
-        from kanibako.config import read_workset_kuid
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config import read_workset_kuid
+        from kanibako.settings.config_io import load_doc
         from kanibako.kuid import SENTINEL
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -474,8 +474,8 @@ class TestProjectMeta:
         """P8b/Option A: a default-vault NAMED create writes NO ``project:``/
         ``resolved:`` identity — the box's membership lives in the workset's
         per-workset ``boxes:`` registry."""
-        from kanibako.config_io import load_doc
-        from kanibako.paths import WorksetSpec, resolve_workset_project
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -501,11 +501,11 @@ class TestProjectMeta:
     ):
         """A ``box.image`` override coexists with sparse create: it is written to
         the ``box:`` table with NO ``project:``/``resolved:`` section alongside."""
-        from kanibako.config import (
+        from kanibako.settings.config import (
             load_merged_config,
             write_project_config,
         )
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -1457,7 +1457,7 @@ class TestP7ConnectRegistry:
 
     def _boxes(self, ws):
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / "settings.yaml"),
         )
@@ -1491,7 +1491,7 @@ class TestP7ConnectRegistry:
         """Test 2 — the global registry carries NO ``connected:`` section after a
         connect; resolution consults only the per-workset registries."""
         from kanibako import registry_store
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         _config, std, _ws, _external = self._setup(config_file, tmp_home)
         # The section is not part of the registry model at all.
         assert "connected" not in registry_store.load_registry(std.registry)
@@ -1535,7 +1535,7 @@ class TestP7ConnectRegistry:
         this matches the in-tree box → RED."""
         from kanibako import workset_registry
         from kanibako.launch import box_resolve
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
         from kanibako.workset import create_workset
@@ -1578,7 +1578,7 @@ class TestP5aCreateThenResolve:
     @staticmethod
     def _primary_registry(std):
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         return workset_registry.resolve_workset_registry_path(
             std.primary_workset,
             load_doc(std.primary_workset / "settings.yaml"),
@@ -1589,7 +1589,7 @@ class TestP5aCreateThenResolve:
     ):
         from kanibako import workset_registry
         from kanibako.launch import box_resolve
-        from kanibako.paths import resolve_standalone_project  # noqa: F401
+        from kanibako.settings.paths import resolve_standalone_project  # noqa: F401
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -1620,8 +1620,8 @@ class TestP5aCreateThenResolve:
     ):
         from kanibako import workset_registry
         from kanibako.launch import box_resolve
-        from kanibako.config_io import load_doc
-        from kanibako.paths import WorksetSpec, resolve_workset_project
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1658,7 +1658,7 @@ class TestP5aCreateThenResolve:
     ):
         from kanibako import registry_store
         from kanibako.launch import box_resolve
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
         sabox = tmp_home / "sabox"
@@ -1700,7 +1700,7 @@ class TestP5aCreateThenResolve:
         still yields enable_vault=False on resolve — proving the read no longer
         goes through the old project.mode identity gate (it is a plain box-scope
         read via read_box_enable_vault)."""
-        from kanibako.config import BOX_META_FILE, dump_doc
+        from kanibako.settings.config import BOX_META_FILE, dump_doc
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -1725,9 +1725,9 @@ class TestP5aCreateThenResolve:
         (Mutation target: neuter the registry read → this returns the settings
         workspace instead → RED.  Covers the otherwise-vacuous new branch.)"""
         from kanibako import workset_registry
-        from kanibako.config import BOX_META_FILE
-        from kanibako.config_io import dump_doc, load_doc
-        from kanibako.paths import iter_projects
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import iter_projects
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -1762,9 +1762,9 @@ class TestP5aCreateThenResolve:
         breadcrumb fallbacks are DROPPED.  (Mutation target: re-add a
         settings.yaml-workspace fallback → this box would list ``settings_ws``
         instead of ``None`` → RED.)"""
-        from kanibako.config import BOX_META_FILE
-        from kanibako.config_io import dump_doc
-        from kanibako.paths import iter_projects
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import iter_projects
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -1791,8 +1791,8 @@ class TestP5aStandalonePresenceSwitch:
     a stored box.mode == "standalone" field."""
 
     def test_presence_detects_without_mode_field(self, tmp_home):
-        from kanibako.config import BOX_META_FILE, dump_doc
-        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.config import BOX_META_FILE, dump_doc
+        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
         root = tmp_home / "box"
         (root / _STANDALONE_META_DIR).mkdir(parents=True)
         # A settings.yaml with NO project.mode = "standalone" declaration.  The
@@ -1801,15 +1801,15 @@ class TestP5aStandalonePresenceSwitch:
         assert _is_standalone_meta_dir(root) is True
 
     def test_missing_settings_is_not_standalone(self, tmp_home):
-        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
         root = tmp_home / "box"
         (root / _STANDALONE_META_DIR).mkdir(parents=True)
         # box_data/ present but NO settings.yaml → not a standalone marker.
         assert _is_standalone_meta_dir(root) is False
 
     def test_missing_box_data_is_not_standalone(self, tmp_home):
-        from kanibako.config import BOX_META_FILE, dump_doc
-        from kanibako.paths import _is_standalone_meta_dir
+        from kanibako.settings.config import BOX_META_FILE, dump_doc
+        from kanibako.settings.paths import _is_standalone_meta_dir
         root = tmp_home / "box"
         root.mkdir()
         dump_doc(root / BOX_META_FILE, {"box": {"image": "x"}})
@@ -1824,7 +1824,7 @@ class TestBoxWorksetSettingsPaths:
     ``@meta.box.path/settings.yaml`` in EVERY mode (spec §2c ALL PROJECTS)."""
 
     def _proj(self, tmp_path: Path, *, mode: "BoxMode", group):
-        from kanibako.paths import ProjectPaths
+        from kanibako.settings.paths import ProjectPaths
 
         meta = tmp_path / "meta"
         return ProjectPaths(
@@ -1842,7 +1842,7 @@ class TestBoxWorksetSettingsPaths:
         """STANDALONE gains a real BOX TIER at ``box_data/settings.yaml`` (spec §2c
         L817 + §5 L1407); the ROOT file keeps playing the WORKSET tier.  (Mutation:
         reverting the standalone arm to ``None`` → RED.)"""
-        from kanibako.paths import BoxMode, box_workset_settings_paths
+        from kanibako.settings.paths import BoxMode, box_workset_settings_paths
 
         proj = self._proj(tmp_path, mode=BoxMode.standalone, group=None)
         box_tier, ws_tier = box_workset_settings_paths(proj)
@@ -1854,7 +1854,7 @@ class TestBoxWorksetSettingsPaths:
         tier sits inside ``box_data/`` (= ``@meta.box.path``) and the workset tier is
         the ROOT file (= the file §5 DETECTION reads).  (Mutation: swapping the
         returned pair → RED.)"""
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             _STANDALONE_META_DIR,
             BoxMode,
             box_workset_settings_paths,
@@ -1871,7 +1871,7 @@ class TestBoxWorksetSettingsPaths:
         file is an empty tier — it is NOT a ``None`` tier.  (Mutation: any
         re-introduction of a ``None`` box tier → RED, and mypy rejects it too, since
         the return type is ``tuple[Path, Path | None]``.)"""
-        from kanibako.paths import BoxMode, ProjectGroup, box_workset_settings_paths
+        from kanibako.settings.paths import BoxMode, ProjectGroup, box_workset_settings_paths
 
         group = ProjectGroup(
             name="default", root=tmp_path / "pw", is_default=True,
@@ -1891,7 +1891,7 @@ class TestBoxWorksetSettingsPaths:
     def test_primary_named_pair_unchanged_vs_pre_p6c(self, tmp_path: Path):
         # BYTE-IDENTITY (equivalence bar): for primary/named the pair MUST equal the
         # pre-P6c computation (box's own settings.yaml, workset_settings_path(group)).
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             BOX_META_FILE,
             BoxMode,
             ProjectGroup,
@@ -1938,8 +1938,8 @@ class TestStandaloneDetectionIsRootFileOnly:
     ancestor-walk that finds a standalone project at all would break."""
 
     def test_root_file_alone_detects_without_a_box_tier_file(self, tmp_home):
-        from kanibako.config import BOX_META_FILE, dump_doc
-        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.config import BOX_META_FILE, dump_doc
+        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
 
         root = tmp_home / "sa"
         (root / _STANDALONE_META_DIR).mkdir(parents=True)
@@ -1952,8 +1952,8 @@ class TestStandaloneDetectionIsRootFileOnly:
         """⚑ THE mutation guard for "do not unify detection".  A Writer tidying the
         two settings paths into one would point detection at ``box_data/settings.yaml``
         — and this box, which has NO root file, would start being detected → RED."""
-        from kanibako.config import BOX_META_FILE, dump_doc
-        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.config import BOX_META_FILE, dump_doc
+        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
 
         root = tmp_home / "sa"
         (root / _STANDALONE_META_DIR).mkdir(parents=True)
@@ -1964,8 +1964,8 @@ class TestStandaloneDetectionIsRootFileOnly:
     def test_both_files_present_still_detects(self, tmp_home):
         """The new box tier does not DISTURB detection either — presence of both is
         the normal post-``config set`` shape."""
-        from kanibako.config import BOX_META_FILE, dump_doc
-        from kanibako.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.config import BOX_META_FILE, dump_doc
+        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
 
         root = tmp_home / "sa"
         (root / _STANDALONE_META_DIR).mkdir(parents=True)
@@ -1980,8 +1980,8 @@ class TestStandaloneDetectionIsRootFileOnly:
         is what materializes half the detection marker.  A later tidy-up that "moves
         the remaining box-ish keys" into ``box_data/`` would break detection in a way
         that looks unrelated — so pin the read side explicitly."""
-        from kanibako.config import BOX_META_FILE, read_workset_kuid
-        from kanibako.paths import (
+        from kanibako.settings.config import BOX_META_FILE, read_workset_kuid
+        from kanibako.settings.paths import (
             _STANDALONE_META_DIR,
             resolve_standalone_project,
         )
@@ -2005,9 +2005,9 @@ class TestStandaloneEnableVaultTier:
     downward-default that keeps a pre-P2 standalone box working with no migration."""
 
     def _standalone(self, config_file, tmp_home, *, box=None, root_extra=None):
-        from kanibako.config import BOX_META_FILE
-        from kanibako.config_io import dump_doc, load_doc
-        from kanibako.paths import _STANDALONE_META_DIR, resolve_standalone_project
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import _STANDALONE_META_DIR, resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2060,8 +2060,8 @@ class TestStandaloneEnableVaultTier:
         a workset-tier ``box.enable_vault`` stays inert here (a real defect, tracked
         separately).  Pinned so extending the fallback is a DELIBERATE change, not an
         accidental one."""
-        from kanibako.config import BOX_META_FILE
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)

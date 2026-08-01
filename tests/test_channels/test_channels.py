@@ -18,7 +18,7 @@ from kanibako.channels.channels import (
     WS_TOKEN_PRIMARY,
     WS_TOKEN_STANDALONE,
 )
-from kanibako.paths import (
+from kanibako.settings.paths import (
     WorksetSpec,
     resolve_project,
     resolve_standalone_project,

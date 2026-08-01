@@ -453,7 +453,7 @@ class TestSuppressionEndToEnd:
         assert any(e.key == "agent.claude.common.plugins" for e in entries)
 
     def test_set_null_through_the_real_writer_removes_the_mount(self, tmp_path):
-        from kanibako.config_interface import (
+        from kanibako.settings.config_interface import (
             ConfigLevel,
             parse_config_arg,
             set_config_value,
@@ -483,7 +483,7 @@ class TestSuppressionEndToEnd:
         is the honest outcome — the user is told the spelling that works instead
         of getting a config that quietly does nothing.
         """
-        from kanibako.config_interface import ConfigLevel, set_config_value
+        from kanibako.settings.config_interface import ConfigLevel, set_config_value
 
         box = tmp_path / "settings.yaml"
         msg = set_config_value(

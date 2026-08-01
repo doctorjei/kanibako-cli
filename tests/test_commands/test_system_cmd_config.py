@@ -28,10 +28,10 @@ import argparse
 from pathlib import Path
 
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
-from kanibako.config import load_config, read_system_agent
-from kanibako.config_io import load_doc
-from kanibako.config_interface import _write_nested_toml_key
-from kanibako.paths import load_std_paths
+from kanibako.settings.config import load_config, read_system_agent
+from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_interface import _write_nested_toml_key
+from kanibako.settings.paths import load_std_paths
 from kanibako.shellenv import read_env_file
 
 
@@ -71,7 +71,7 @@ def _launch_auth_source(std, *, agent_name="claude", mode="primary"):
     """The LAUNCH's credential-sharing decision, off the REAL system settings
     file — the same ``build_launch_snapshot`` → ``resolve_auth_source`` read
     ``start._resolve_box_auth_source`` performs (system_path=std.settings)."""
-    from kanibako.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_launch import (
         auth_chain_floor,
         build_launch_snapshot,
@@ -467,7 +467,7 @@ class TestSystemAgentNodeBindRepoint:
     def test_repoint_launcher_writes_raw_tuple(self, config_file, tmp_home):
         # The descriptor floor supplies the launcher box_dest/opts; the repoint swaps
         # ONLY the host source (was refused/mis-routed before item-0).
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
 
         rc = _set("agent.claude.bindings.ro.launcher=/newsrc")
         assert rc == 0
@@ -534,7 +534,7 @@ class TestSystemAgentNodeBindRepoint:
         # Step B Phase 3: a repoint RESET removes the override from the node file
         # (was "Error: unknown config key" before) and — item 3 — names the
         # reverted-to descriptor destination without the set-time placeholder.
-        from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+        from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
 
         _set("agent.claude.bindings.ro.launcher=/newsrc")
         capsys.readouterr()

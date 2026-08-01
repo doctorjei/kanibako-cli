@@ -19,8 +19,8 @@ import logging
 
 import pytest
 
-from kanibako.agent_config import load_agent_config
-from kanibako.config_interface import (
+from kanibako.settings.agent_config import load_agent_config
+from kanibako.settings.config_interface import (
     ConfigLevel,
     _resolve_key,
     get_config_value,
@@ -28,7 +28,7 @@ from kanibako.config_interface import (
     reset_config_value,
     set_config_value,
 )
-from kanibako.config_io import load_doc
+from kanibako.settings.config_io import load_doc
 
 _URL = "https://gemma.example/v1"
 _TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"

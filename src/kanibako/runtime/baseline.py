@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from kanibako.paths import xdg
+from kanibako.settings.paths import xdg
 
 # Filename used both for the shipped default (in kanibako.data) and the overlays.
 BASELINE_FILENAME = "image-baseline.yaml"

@@ -4,7 +4,7 @@
 # This file holds the defaults that the box-launch path injects through the
 # category resolver as the AGENT-level declared `default_categories`.  Everything
 # here is non-agent-specific (per-agent defaults live in each plugin package).
-# It is read by the thin loader :mod:`kanibako.core_defaults`, which emits these
+# It is read by the thin loader :mod:`kanibako.settings.core_defaults`, which emits these
 # entries through the existing category seam exactly as the old in-code emitters
 # did — so the resolver still expands `@`-refs / `$vars` and applies the D-B1
 # precedence + depth-sort + L7 guarantee-create.

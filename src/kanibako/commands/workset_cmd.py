@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 
 from kanibako.commands.flags import add_null_flag
-from kanibako.config import config_file_path, load_config
+from kanibako.settings.config import config_file_path, load_config
 from kanibako.errors import WorksetError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     load_std_paths,
     workset_env_path,
     workset_settings_path,
@@ -382,7 +382,7 @@ def run_create(args: argparse.Namespace) -> int:
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)
     if image or standalone or no_vault:
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
         ws_config = _workset_config_path(ws)
         config_data = load_doc(ws_config) if ws_config.is_file() else {}
         if not isinstance(config_data, dict):
@@ -543,7 +543,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
     # is not an independently-registered box still falls back to the raw token
     # (remove_project matches it against the workset's member list by name).
     from kanibako.commands.flags import resolve_subject_value
-    from kanibako.paths import resolve_box_target
+    from kanibako.settings.paths import resolve_box_target
     project_token = resolve_subject_value(
         getattr(args, "project", None), getattr(args, "box", None),
     )
@@ -553,8 +553,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
     member: str = project_token
     if project_token:
         try:
-            from kanibako.config import config_file_path, load_config
-            from kanibako.paths import xdg
+            from kanibako.settings.config import config_file_path, load_config
+            from kanibako.settings.paths import xdg
             config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
             resolved = resolve_box_target(std, config, project_token)
             if resolved.name:
@@ -659,7 +659,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     (``workset.auth.share_allowed``) routed through the engine like any other — no
     special-casing (the old ``group_auth`` workset.meta identity key is retired).
     """
-    from kanibako.config_interface import (
+    from kanibako.settings.config_interface import (
         ConfigAction,
         ConfigLevel,
         get_config_value,
@@ -710,7 +710,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # if the workset file held such a downward default, the honest cleared-
         # message names the reverted-to FLOOR. ``core_default_bind_keys`` is
         # host-free (no proj/std probe).
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
@@ -745,7 +745,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # multiple boxes/agents — no single agent to read, and no workset.agent.*
         # mirror; set/get/reset are all refused symmetrically). The box scope
         # instead redirects the read to its box.agent.* mirror.
-        from kanibako.config_interface import (
+        from kanibako.settings.config_interface import (
             _resolve_key, bare_agent_key_scope_error,
         )
         _bare_err = bare_agent_key_scope_error(
@@ -836,7 +836,7 @@ def _resolve_share_workset(name: str):
 
 def _load_share_doc(ws_config: Path) -> dict:
     """Load the workset settings.yaml as a nested dict (missing → {})."""
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     return load_doc(ws_config)
 
@@ -868,8 +868,8 @@ def run_share_add(args: argparse.Namespace) -> int:
     swap a visible failure for a silent wrong path. Refusing names the mistake at
     the moment it is made.
     """
-    from kanibako.agent_config import is_self_resolving
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.agent_config import is_self_resolving
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_resolve import split_bind
 
     name = args.name
@@ -957,7 +957,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
     With ``--mode`` omitted, removes from whichever mode (ro/rw) contains the
     name; errors if the name exists in both (ambiguous) or in neither (missing).
     """
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     ws, _ = _resolve_share_workset(args.workset)
     if ws is None:
@@ -1101,7 +1101,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     it previously could: the old join lived in TWO places (here and
     ``_launch_snapshot_inputs``) and neither applied to the default workset.
     """
-    from kanibako.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_launch import snapshot_category_entries

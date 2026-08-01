@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from kanibako.errors import UserCancelled
 
 if TYPE_CHECKING:
-    from kanibako.paths import ProjectPaths
+    from kanibako.settings.paths import ProjectPaths
 
 
 def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool:

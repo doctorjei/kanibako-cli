@@ -4,7 +4,7 @@ This module derives a box's identity from the REGISTRIES (the per-workset
 ``workset_registry`` box membership + the global ``registry_store`` standalone
 index) and the on-disk LAYOUT — the replacement for the legacy
 ``read_project_meta`` (``project:``/``resolved:``) derivation.  Every helper is
-PURE: it takes the resolved :class:`~kanibako.paths.StandardPaths`, the
+PURE: it takes the resolved :class:`~kanibako.settings.paths.StandardPaths`, the
 ``KanibakoConfig``, and the target directory EXPLICITLY (no hidden global
 reads), and never writes.
 
@@ -28,9 +28,9 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from kanibako import registry_store, workset_registry
-from kanibako.config import BOX_META_FILE, KanibakoConfig
-from kanibako.config_io import load_doc
-from kanibako.paths import (
+from kanibako.settings.config import BOX_META_FILE, KanibakoConfig
+from kanibako.settings.config_io import load_doc
+from kanibako.settings.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
     DetectionResult,
@@ -53,7 +53,7 @@ def standalone_settings_present(project_dir: Path) -> bool:
         (project_dir/_STANDALONE_META_DIR).is_dir()
             and (project_dir/BOX_META_FILE).is_file()
 
-    Mirrors :func:`kanibako.paths._is_standalone_meta_dir` BUT deliberately does
+    Mirrors :func:`kanibako.settings.paths._is_standalone_meta_dir` BUT deliberately does
     NOT read ``project.mode`` — that field is going away (design D4: the FILE's
     existence is the standalone signal).  This is the highest-precedence
     detection signal (D3-mode #1): a box's own in-place settings file is the
@@ -204,7 +204,7 @@ def detect_box_mode(
     2. Else **enumerate worksets and scan** their per-workset registries for a
        ``boxes:`` entry whose PATH == *project_dir* → that workset's mode
        (``primary``/``named``) (D10).
-    3. Else the existing :func:`kanibako.paths.detect_project_mode` treewalk.
+    3. Else the existing :func:`kanibako.settings.paths.detect_project_mode` treewalk.
        A ``named`` (or ``standalone``) result passes through; a ``primary``
        result is detect_project_mode's NO-MARKER default (its case 4) — in the
        new model PRIMARY membership is authoritative via the registry scan
@@ -241,7 +241,7 @@ def resolve_box_identity(
 
     ``{mode, name, workspace, registered}`` sourced per D1b/D3-auth:
 
-    - ``mode`` — the :class:`~kanibako.paths.BoxMode` from
+    - ``mode`` — the :class:`~kanibako.settings.paths.BoxMode` from
       :func:`detect_box_mode`.
     - ``name`` — the registry entry KEY (D1b: the ``name: path`` KEY *is* the
       box name).  Workset box → the per-workset ``boxes:`` key; STANDALONE →
@@ -279,7 +279,7 @@ def resolve_box_identity(
         # kuid) falls back to the registered ``standalone:`` KEY, else the dir leaf.
         from kanibako import kuid
         from kanibako.launch import box_identity
-        from kanibako.config import read_workset_kuid
+        from kanibako.settings.config import read_workset_kuid
 
         stored_kuid = read_workset_kuid(box_root / BOX_META_FILE)
         if stored_kuid != kuid.SENTINEL:

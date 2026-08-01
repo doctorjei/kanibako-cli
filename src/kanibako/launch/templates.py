@@ -11,10 +11,10 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 from pathlib import Path
 
-from kanibako.core_defaults import ROM_ROOT_PARTS, packaged_data_dir
+from kanibako.settings.core_defaults import ROM_ROOT_PARTS, packaged_data_dir
 
 if TYPE_CHECKING:
-    from kanibako.paths import ProjectPaths, StandardPaths
+    from kanibako.settings.paths import ProjectPaths, StandardPaths
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +514,7 @@ def _packaged_base_template() -> Path | None:
     so a root-relative path was also a home-relative one.  That is no longer true —
     the box-HOME seed source is ``template/box/home``, two levels down — and any code
     treating a root-relative walk as home-relative is now silently wrong (see
-    :func:`kanibako.core_defaults.assert_canon_bind_seed_disjoint`, whose caller had
+    :func:`kanibako.settings.core_defaults.assert_canon_bind_seed_disjoint`, whose caller had
     to be re-anchored for exactly this reason).
     """
     try:
@@ -546,7 +546,7 @@ def _packaged_shared_bundle() -> Path | None:
     ``kanibako.data/global/rom`` — the ``canon/COLLECTION.md`` index + the whole
     ``canon/bible/`` book, which the launch path bind-mounts LIVE (ro) at
     ``~/canon/COLLECTION.md`` and ``~/canon/bible`` (see
-    :func:`kanibako.core_defaults.rom_default_categories`).  It is NOT
+    :func:`kanibako.settings.core_defaults.rom_default_categories`).  It is NOT
     copied/seeded to a host runtime dir, so it has no
     ``install``/``plan_template_refresh`` target; it is enumerated here only for the
     staleness DIGEST so the setup gate still trips when the shipped canon content
@@ -843,7 +843,7 @@ def walk_shipped_files(root: Path) -> list[tuple[str, Path]]:
 
     The ONE traversal shared by the two consumers of a packaged content tree — the
     staleness DIGEST (:func:`_packaged_manifest_entries`) and the canon rom emitter
-    (:func:`kanibako.core_defaults.rom_default_categories`, which no longer binds
+    (:func:`kanibako.settings.core_defaults.rom_default_categories`, which no longer binds
     per file but still walks the rom root for its fail-closed guards).  Walks
     *root* recursively, keeps only real SHIPPED files (:func:`_is_shipped_content`
     drops ``__pycache__``/``.pyc``/``.DS_Store`` build-and-editor junk), and returns

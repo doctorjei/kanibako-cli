@@ -29,7 +29,7 @@ scope still overrides by name — precedence-equivalent to the old AGENT-level
   defaults are the ALL-AGENTS backstop (spec §2d lists them under ``agent.default.*``).
   There is NO bare ``agent.<key>`` (spec §0 L21); the §2d L368 active-over-default
   READ layers a per-agent ``agent.<active>.<key>`` over this default.
-* **7a** — :func:`~kanibako.agent_representation.agent_default_partial` is an
+* **7a** — :func:`~kanibako.settings.agent_representation.agent_default_partial` is an
   ADDITIONAL agent-level partial (S27): the descriptor delivery binds become
   ``agent.<active>.bindings.{ro,rw}.<key>`` in the cascade (the active agent's
   DISCRIMINATED slot, ``install.name``; §2d / §0 L21 — NO bare ``agent`` token), so
@@ -173,7 +173,7 @@ def auth_chain_floor(
     sharing chain (spec §2a/§2b/§2c/§2d; design FINAL KEY MODEL). The caller folds
     it into ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref
     chain ONCE (single-route). *mode* is the box's
-    :class:`~kanibako.paths.BoxMode` value (``"primary"`` / ``"named"`` /
+    :class:`~kanibako.settings.paths.BoxMode` value (``"primary"`` / ``"named"`` /
     ``"standalone"``), passed as a plain string to avoid a paths import.
 
     The ``meta.agent.<agent>.auth.share_support`` CAPABILITY is set by the PLUGIN
@@ -342,7 +342,7 @@ def meta_runtime_floor(
     identity anchors (spec §1A L230-241; §0 meta-RO). The caller folds it into
     ``build_launch_snapshot``'s floor so ``expand`` resolves the @-ref chain ONCE
     (single-route — NO second resolver). *mode* is the box's
-    :class:`~kanibako.paths.BoxMode` value (``"primary"`` / ``"named"`` /
+    :class:`~kanibako.settings.paths.BoxMode` value (``"primary"`` / ``"named"`` /
     ``"standalone"``), passed as a plain string to avoid a paths import.
 
     *ws_name* is the workset partition TOKEN (spec §1A ``meta.runtime.ws_name``,
@@ -1033,7 +1033,7 @@ def build_launch_snapshot(
     before the splice, so no call site can bypass it (P8).
 
     It always carries the RESOLVED agent selection
-    (:func:`kanibako.agent_select.select_agent`) whichever of its three sources
+    (:func:`kanibako.settings.agent_select.select_agent`) whichever of its three sources
     won — ``--agent``, the cascade, or the installed-count rule. Installing that
     ALWAYS (not only for ``--agent``) is what keeps ``@system.agent`` equal to the
     node that actually runs, which the two re-pointed §2c anchors depend on. P8
@@ -1084,7 +1084,7 @@ def build_launch_snapshot(
     # OS1 (agent scope): the agent-scope default tables arrive ALREADY DISCRIMINATED
     # (``default_common()`` → ``agent.<agent>.common.plugins``, ``default_seeds()`` →
     # ``agent.<agent>.seeded.*``) — the declaring plugin builds the discriminated key
-    # in :mod:`kanibako.agent_defaults`, because the snapshot agent tier is
+    # in :mod:`kanibako.settings.agent_defaults`, because the snapshot agent tier is
     # DISCRIMINATED (§2d / §0 L21 — NO bare ``agent.<key>``) and the bare form must
     # not exist anywhere. A box/workset/agent file STILL overrides them by name
     # through the merge, and the adapter's active-over-default pick reads them.
@@ -1291,7 +1291,7 @@ def resolve_selected_agent(
     """Resolve ``system.agent`` as the settings files + their prefs give it.
 
     Returns the resolved value in THREE distinguishable states (the caller MUST
-    keep them apart — see :mod:`kanibako.agent_select`):
+    keep them apart — see :mod:`kanibako.settings.agent_select`):
 
     * ``str``      — a name: the stored ``system.agent``, or a ``pref.system.agent``
       request from the box (beats) or workset file (§2h);
@@ -1492,7 +1492,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 # Re-materialization on an agent change is AUTOMATIC: ``agent_name`` is the
 # launch-resolved active agent (``@system.agent`` — the stored key, a
 # ``pref.system.agent`` request, ``--agent``, or the installed-count rule; see
-# :mod:`kanibako.agent_select`), threaded into every snapshot build.
+# :mod:`kanibako.settings.agent_select`), threaded into every snapshot build.
 #
 # ⚑ NO-AGENT box — WHAT ACTUALLY HAPPENS, measured, because the inherited comment
 # here was WRONG twice over (it claimed a spec requirement that §2b does not state,

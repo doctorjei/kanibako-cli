@@ -8,7 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from kanibako.config import config_file_path
+from kanibako.settings.config import config_file_path
 from kanibako.channels.helpers import (
     SpawnBudget,
     check_spawn_allowed,
@@ -23,7 +23,7 @@ from kanibako.channels.helpers import (
     resolve_spawn_budget,
     write_spawn_config,
 )
-from kanibako.paths import xdg
+from kanibako.settings.paths import xdg
 
 
 def add_helper_subparsers(p: argparse.ArgumentParser) -> None:

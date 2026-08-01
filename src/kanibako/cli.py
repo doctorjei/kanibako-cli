@@ -262,14 +262,14 @@ def _normalize_command(effective: list[str]) -> list[str]:
 
 def _ensure_initialized() -> None:
     """Ensure kanibako is initialized (create config + data dirs on first run)."""
-    from kanibako.config import (
+    from kanibako.settings.config import (
         KanibakoConfig,
         config_file_path,
         write_global_config,
     )
     from pathlib import Path
 
-    from kanibako.paths import resolve_system_paths, xdg
+    from kanibako.settings.paths import resolve_system_paths, xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
@@ -302,7 +302,7 @@ def _ensure_initialized() -> None:
     # Each agent's settings live INSIDE its store dir as
     # agents/<agent>/settings.yaml (the per-agent store dir is created on
     # demand by write_agent_config).
-    from kanibako.agent_config import (
+    from kanibako.settings.agent_config import (
         AgentConfig,
         agent_settings_path,
         write_agent_config,
@@ -341,7 +341,7 @@ def _ensure_initialized() -> None:
     # ``packaged_templates_digest``, which trips the HARD template-staleness gate,
     # which sends the user to ``kanibako setup`` — the deliberate trigger, with
     # reporting.  Recorded as migration M-18.
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.paths import load_std_paths
     from kanibako.launch.templates import (
         install_packaged_templates,
         packaged_templates_digest,
@@ -352,7 +352,7 @@ def _ensure_initialized() -> None:
     # Record the template content stamp so the staleness gate never trips on a
     # freshly-initialized host (install + stamp are one atomic first-run step).
     # ``target_names`` matches the gate's ``sorted(discover_targets())`` set.
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
 
     write_system_value(cf, "templates_stamp", packaged_templates_digest(target_names))
 
@@ -383,7 +383,7 @@ def _setup_nudge(args: argparse.Namespace) -> None:
     resolver.  ``shell`` and ``setup`` itself, plus pure config/list commands,
     are intentionally excluded.
 
-    Delegates the band logic to :func:`~kanibako.config.setup_compat_gate`:
+    Delegates the band logic to :func:`~kanibako.settings.config.setup_compat_gate`:
 
     * NUDGE bands (absent/stale marker) → print the advisory to stderr and RETURN
       (non-blocking — the command then proceeds to normal agent resolution).
@@ -403,12 +403,12 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         return
 
     try:
-        from kanibako.config import (
+        from kanibako.settings.config import (
             config_file_path,
             setup_compat_gate,
             template_staleness_gate,
         )
-        from kanibako.paths import xdg
+        from kanibako.settings.paths import xdg
 
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         message = setup_compat_gate(cf)

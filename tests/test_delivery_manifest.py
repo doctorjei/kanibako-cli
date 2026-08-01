@@ -72,8 +72,8 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import core_defaults
-from kanibako.core_defaults import (
+from kanibako.settings import core_defaults
+from kanibako.settings.core_defaults import (
     BIBLE_AGENT_CHAPTER,
     PLUGIN_CHAPTER_MARKER_REL,
     ROM_BIBLE_CHAPTERS,
@@ -82,7 +82,7 @@ from kanibako.core_defaults import (
     ROM_CONTENTS_REL,
     ROM_GUIDE_REL,
 )
-from kanibako.paths import resolve_project
+from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_categories import reconcile_categories
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx

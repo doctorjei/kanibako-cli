@@ -662,7 +662,7 @@ class TestHelperDefaultCategories:
     def test_socket_options_are_empty_string(self, tmp_path):
         # helper_sock binding value is the structured triple with options "" —
         # NOT Z/U/z (the relabel/chown that would break the live socket).
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
@@ -679,7 +679,7 @@ class TestHelperDefaultCategories:
         assert sock_val[2] == ""  # explicit empty options, not Z/U/z
 
     def test_log_routes_ro(self, tmp_path):
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
@@ -701,7 +701,7 @@ class TestHelperDefaultCategories:
     def test_missing_socket_is_omitted(self, tmp_path):
         # .exists() skip-if-missing gate (parity with the old guarded appends):
         # a missing socket simply omits its key, the log still routes.
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         log = tmp_path / "helpers.jsonl"
         log.touch()
@@ -717,7 +717,7 @@ class TestHelperDefaultCategories:
         # End-to-end through the resolver: the helper_sock entry survives reconcile
         # with EMPTY mount options (not the rw default Z,U) — the property the live
         # socket depends on.
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
         from kanibako.settings.settings_categories import reconcile_categories
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,

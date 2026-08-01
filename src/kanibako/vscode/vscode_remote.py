@@ -52,7 +52,7 @@ from pathlib import Path
 
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
-from kanibako.paths import xdg
+from kanibako.settings.paths import xdg
 
 logger = get_logger("vscode_remote")
 
@@ -75,7 +75,7 @@ def _runtime_dir() -> str:
 
     Per the ratified design: ``$XDG_RUNTIME_DIR`` (honored iff set AND absolute),
     else ``$TMPDIR`` (iff absolute), else ``/tmp``.  Deliberately NOT the
-    :func:`kanibako.paths.resolve_xdg` runtime fallback (which appends
+    :func:`kanibako.settings.paths.resolve_xdg` runtime fallback (which appends
     ``/kanibako`` and warns) — the ControlPath just needs a short, writable,
     per-user dir the mux socket can live under.
     """

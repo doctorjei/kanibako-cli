@@ -298,7 +298,7 @@ def declares_box_dest(
 
     Declaration-level, not resolution-level: it does not touch the filesystem and
     does not care whether the source resolves.  That matches
-    :func:`~kanibako.agent_representation.agent_default_partial`, which represents
+    :func:`~kanibako.settings.agent_representation.agent_default_partial`, which represents
     a binding in the launch snapshot with no existence check — so a caller gating
     on this predicate sees exactly what the snapshot will carry.
 
@@ -307,7 +307,7 @@ def declares_box_dest(
     ``$GUEST_HOME``-expanded by the defaults loader, so a ``~``-spelled dest never
     matches and callers must expand first.
 
-    Sole caller today: :func:`kanibako.core_defaults.kickoff_default_categories`
+    Sole caller today: :func:`kanibako.settings.core_defaults.kickoff_default_categories`
     (the P-5 transition gate).
     """
     if descriptor is None:

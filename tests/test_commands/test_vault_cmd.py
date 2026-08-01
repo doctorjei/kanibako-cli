@@ -11,8 +11,8 @@ from kanibako.commands.vault_cmd import (
     run_restore,
     run_snapshot,
 )
-from kanibako.config import load_config
-from kanibako.paths import load_std_paths, resolve_project
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import load_std_paths, resolve_project
 
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ from kanibako.commands.start import (
     _register_new_box,
     _write_create_entry,
 )
-from kanibako.paths import BoxMode, load_primary_boxes
+from kanibako.settings.paths import BoxMode, load_primary_boxes
 
 
 def _primary_names(std):
@@ -156,8 +156,8 @@ class TestResolverRegisterFalse:
     def test_primary_register_false_leaves_registry_untouched(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -174,8 +174,8 @@ class TestResolverRegisterFalse:
     def test_primary_register_true_is_default(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -188,9 +188,9 @@ class TestResolverRegisterFalse:
     def test_standalone_register_false_not_in_standalone_section(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako import registry_store
-        from kanibako.paths import load_std_paths, resolve_standalone_project
+        from kanibako.settings.paths import load_std_paths, resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -211,8 +211,8 @@ class TestDeferredCreateReservesDir:
         """A first create deferred-registration leaves boxes/<name>/ on disk but
         unregistered; a SECOND create for a different workspace with the same
         leaf must pick a DIFFERENT name (not seed over the half-built box)."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -268,8 +268,8 @@ class TestRunCreatePersonaGate:
         from unittest.mock import MagicMock
 
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.launch import journal
 
         # No persona host dir under XDG_CONFIG_HOME (tmp_home/config) → the
@@ -317,8 +317,8 @@ class TestRunCreateJournalLifecycle:
         registered ==> no pending entry).  The entry is present DURING the seed
         (write-ahead ordering)."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         seen = {}
 
@@ -347,9 +347,9 @@ class TestRunCreateJournalLifecycle:
         (box incomplete) and the error propagates — run_create does NOT swallow
         it or clear the entry."""
         from kanibako.commands.box import _parser
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.errors import ProjectError
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -378,8 +378,8 @@ class TestRunCreateJournalLifecycle:
         errors 'already initialized' (rc=1) — recovery only triggers on an
         actual pending entry, not on every existing box."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         monkeypatch.setattr(
             "kanibako.commands.start.seed_new_box",
@@ -410,9 +410,9 @@ class TestRunCreateCrossKindName:
         self, config_file, tmp_home, credentials_dir, monkeypatch
     ):
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.names import register_name
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -435,9 +435,9 @@ class TestRunCreateCrossKindName:
         self, config_file, tmp_home, credentials_dir, monkeypatch
     ):
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.names import register_name
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -459,8 +459,8 @@ class TestRunCreateCrossKindName:
         """SAME-KIND: a --name already owned by another PRIMARY box refuses even
         with --force (per-kind uniqueness is unconditional)."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, register_primary_box_name
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, register_primary_box_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -530,7 +530,7 @@ def _simulate_interrupted_create(
     points: False = crash before register (unregistered + entry); True = crash
     after register, before clear (registered + stale entry).
     """
-    from kanibako.paths import resolve_project, resolve_standalone_project
+    from kanibako.settings.paths import resolve_project, resolve_standalone_project
 
     if standalone:
         proj = resolve_standalone_project(
@@ -560,8 +560,8 @@ class TestRecoveryPrimary:
         a re-run completes — registered exactly once, entry GONE, USER HOME EDIT
         SURVIVES.  Asserted UNCONDITIONALLY (no rc-gated skip)."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -610,9 +610,9 @@ class TestRecoveryStandalone:
         a re-run completes — registered exactly once, entry GONE, USER HOME EDIT
         SURVIVES.  Asserted UNCONDITIONALLY."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako import registry_store
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -671,8 +671,8 @@ class TestConflictSafeCreate:
         )
 
     def _std(self, config_file):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         return load_std_paths(load_config(config_file))
 
     def test_repro_create_over_deregistered_refused_no_data_loss(
@@ -784,7 +784,7 @@ class TestConflictSafeCreate:
         from kanibako.launch import journal
         from kanibako.commands.box._parser import run_create, run_rm
         from kanibako.commands.start import _write_create_entry
-        from kanibako.paths import BoxMode
+        from kanibako.settings.paths import BoxMode
 
         orig = tmp_home / "orig"
         orig.mkdir()

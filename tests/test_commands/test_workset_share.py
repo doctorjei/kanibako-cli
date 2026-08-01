@@ -19,7 +19,7 @@ def read_bindings(path):
     a ``{dotted_key: raw_value}`` map — verifying what the share add/rm commands
     WROTE. (The product ``config.read_bindings`` reader was retired in block 7c; this
     local reader keeps these write-assertions on the structured on-disk shape.)"""
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     if path is None or not path.exists():
         return {}

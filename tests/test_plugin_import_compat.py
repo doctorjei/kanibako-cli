@@ -59,6 +59,26 @@ _SHIMS: list[tuple[str, str, tuple[str, ...]]] = [
             "GUEST_HOME",
         ),
     ),
+    (
+        # ⚑ The one that matters most: all three published plugins import this
+        # at MODULE SCOPE (claude:13, codex:51, goose:9).  Break it and NO agent
+        # plugin imports at all.
+        "kanibako.agent_defaults",
+        "kanibako.settings.agent_defaults",
+        (
+            "load_category_binds",
+            "load_descriptor",
+            "load_common",
+        ),
+    ),
+    (
+        "kanibako.agent_config",
+        "kanibako.settings.agent_config",
+        (
+            # TYPE_CHECKING import + the generate_agent_config body, all three.
+            "AgentConfig",
+        ),
+    ),
 ]
 
 _IDS = [legacy for legacy, _, _ in _SHIMS]

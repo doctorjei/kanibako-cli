@@ -6,7 +6,7 @@ These tests verify that env vars can be set, get, and unset through the
 
 from __future__ import annotations
 
-from kanibako.config_interface import (
+from kanibako.settings.config_interface import (
     get_config_value,
     reset_config_value,
     set_config_value,

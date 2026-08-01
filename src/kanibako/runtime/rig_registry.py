@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from kanibako import registry_store
 
 if TYPE_CHECKING:
-    from kanibako.paths import StandardPaths
+    from kanibako.settings.paths import StandardPaths
 
 # The section of ``registry.yaml`` this module owns.
 _SECTION = "rigs"

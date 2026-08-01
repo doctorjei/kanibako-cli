@@ -18,11 +18,11 @@ import sys
 from pathlib import Path
 
 from kanibako.box_lifecycle import is_vscode_server_path_part
-from kanibako.config import config_file_path, load_config
+from kanibako.settings.config import config_file_path, load_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
-from kanibako.paths import (
+from kanibako.settings.paths import (
     xdg,
     load_std_paths,
     resolve_box_target,
@@ -306,7 +306,7 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
         # Pre-stamp (older) box: fall back to the create-time selection cascade
         # (agent_select reads the SAME box-tier file ``box set
         # pref.system.agent=…`` writes — the ONE tier pair, M-8).
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         return select_agent(std=std, proj=proj).node or None
     except Exception:
@@ -351,8 +351,8 @@ def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
     if image:
         return image
     try:
-        from kanibako.config import load_merged_config
-        from kanibako.paths import box_workset_settings_paths
+        from kanibako.settings.config import load_merged_config
+        from kanibako.settings.paths import box_workset_settings_paths
 
         # The ONE tier pair (M-8): the configured image comes from the same box-tier
         # file ``box set box.image=…`` writes.

@@ -117,7 +117,7 @@ class LevelView:
     or a legacy colon-string bind), but for the path-delivery CATEGORIES it may
     be a STRUCTURED leaf — a binding pair/tuple ``[host_src, box_dest[, opts]]``
     or a ``masks`` list (spec §2a; preserved at load by
-    :func:`kanibako.config.read_categories`).  Hence ``object``, not ``str``.
+    :func:`kanibako.settings.config.read_categories`).  Hence ``object``, not ``str``.
     The structural unpacking of those leaves lands on the resolve path in a
     later phase; the scalar behavior path is unchanged.
     """
@@ -209,7 +209,7 @@ def unpack_bind(value: object) -> tuple[str, str, str | None]:
     (spec §2a "REPRESENTATION"): a ``bindings.*``/``caches``/``seeded``/``shared``/
     ``synced`` value is a STRUCTURED PAIR — a YAML list / Python ``tuple`` — not a
     colon-joined ``"host:box"`` string.  *value* is therefore the list/tuple leaf
-    that :func:`kanibako.config.read_categories` preserves at load:
+    that :func:`kanibako.settings.config.read_categories` preserves at load:
 
     * **2 elements** ``[host_src, box_dest]`` → ``(host_src, box_dest, None)``;
       the caller falls back to the category-default mount options.

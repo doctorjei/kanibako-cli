@@ -72,8 +72,8 @@ def _settings_paths() -> tuple[Path, Path]:
     ``global/settings.yaml`` (holds the ``system.agent`` SETTING, where
     ``read_system_agent`` reads it back).
     """
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import load_std_paths, xdg
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
@@ -93,7 +93,7 @@ def _write_system_agent(name: str) -> None:
     ``default_agent`` leaf — a location that made the stored default an undeclared
     key riding the AGENT tier. Migration M-4 (documentation only).
     """
-    from kanibako.config_interface import _write_nested_toml_key
+    from kanibako.settings.config_interface import _write_nested_toml_key
 
     _, ssp = _settings_paths()
     ssp.parent.mkdir(parents=True, exist_ok=True)
@@ -103,7 +103,7 @@ def _write_system_agent(name: str) -> None:
 def _write_setup_marker() -> None:
     """Write ``system.setup_completed = __version__`` to the config file."""
     from kanibako import __version__
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
 
     cf, _ = _settings_paths()
     cf.parent.mkdir(parents=True, exist_ok=True)
@@ -116,7 +116,7 @@ def _write_templates_stamp(names: list[str]) -> None:
     Recording the stamp is what CLEARS the hard template-staleness gate — done
     after a refresh is applied, when nothing is stale, or on an informed decline.
     """
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
     from kanibako.launch.templates import packaged_templates_digest
 
     cf, _ = _settings_paths()
@@ -148,8 +148,8 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
     finally gets its store — pip installs run no code, so "at plugin install" means
     "at the next trigger", and the staleness gate is what forces this one.
     """
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
     from kanibako.launch.templates import install_packaged_templates, plan_template_refresh
 
     cf, _ = _settings_paths()
@@ -351,8 +351,8 @@ def run_setup(args: argparse.Namespace) -> int:
     from kanibako.commands.diagnose import _check_image
 
     try:
-        from kanibako.config import config_file_path, load_merged_config
-        from kanibako.paths import xdg
+        from kanibako.settings.config import config_file_path, load_merged_config
+        from kanibako.settings.paths import xdg
 
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)

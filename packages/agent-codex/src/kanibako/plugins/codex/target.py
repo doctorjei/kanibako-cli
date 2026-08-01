@@ -48,7 +48,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.agent_defaults import load_category_binds, load_descriptor
+from kanibako.settings.agent_defaults import load_category_binds, load_descriptor
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
@@ -62,7 +62,7 @@ from kanibako.targets.base import (
 )
 
 if TYPE_CHECKING:
-    from kanibako.agent_config import AgentConfig
+    from kanibako.settings.agent_config import AgentConfig
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.codex")
@@ -77,7 +77,7 @@ _NPM_ROOT_TIMEOUT = 10
 #
 # The descriptor's declarative default-set lives in this plugin's shipped
 # ``codex-defaults.yaml`` (P6c coalesce) and is read by the thin
-# :mod:`kanibako.agent_defaults` loader — the file documents each non-obvious
+# :mod:`kanibako.settings.agent_defaults` loader — the file documents each non-obvious
 # field (codex 0.140.0): the bare ``codex`` / ``codex resume --last`` mode
 # grammar; the ``codex exec`` op; the FLAG
 # ``--dangerously-bypass-approvals-and-sandbox`` per-launch-only safe-bypass; the
@@ -569,7 +569,7 @@ class CodexTarget(Target):
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex crab configuration."""
-        from kanibako.agent_config import AgentConfig as _AgentConfig
+        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(
             name=self.display_name,

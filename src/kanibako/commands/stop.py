@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from kanibako.config import config_file_path, load_config
+from kanibako.settings.config import config_file_path, load_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     xdg,
     load_std_paths,
     resolve_box_target,
@@ -82,7 +82,7 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
             _resolve_box_auth_source,
             writeback_session_credentials,
         )
-        from kanibako.agent_config import agent_settings_path
+        from kanibako.settings.agent_config import agent_settings_path
         from kanibako.agent_ref import harness_of
         from kanibako.targets import resolve_target
         # KANIBAKO_AGENT stamps the NODE-name; the target/plugin is keyed by the

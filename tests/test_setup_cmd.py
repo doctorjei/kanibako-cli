@@ -6,13 +6,13 @@ import argparse
 
 from kanibako import __version__
 from kanibako.commands import setup_cmd
-from kanibako.config import (
+from kanibako.settings.config import (
     config_file_path,
     load_config,
     read_system_agent,
     read_setup_completed,
 )
-from kanibako.paths import load_std_paths, xdg
+from kanibako.settings.paths import load_std_paths, xdg
 
 
 class _FakeTarget:
@@ -260,7 +260,7 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
 
 
 def _read_stamp(tmp_home):
-    from kanibako.config import read_templates_stamp
+    from kanibako.settings.config import read_templates_stamp
 
     cf, _ = _config_paths(tmp_home)
     return read_templates_stamp(cf)
@@ -274,8 +274,8 @@ def _current_digest():
 
 
 def _resolve_std():
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
     cf, _ = setup_cmd._settings_paths()
     return load_std_paths(load_config(cf))
@@ -358,8 +358,8 @@ def test_template_step_non_tty_no_flag_skips_without_stamping(
 
 def test_template_step_decline_clears_the_gate(tmp_home, config_file, monkeypatch):
     """End-to-end: after a TTY decline the template_staleness_gate no longer raises."""
-    from kanibako.config import config_file_path, template_staleness_gate
-    from kanibako.paths import xdg
+    from kanibako.settings.config import config_file_path, template_staleness_gate
+    from kanibako.settings.paths import xdg
 
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *a: "n")

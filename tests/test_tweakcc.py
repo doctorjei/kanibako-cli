@@ -167,7 +167,7 @@ class TestAgentConfigTweakcc:
     """
 
     def test_load_with_tweakcc(self, tmp_path):
-        from kanibako.agent_config import load_agent_config
+        from kanibako.settings.agent_config import load_agent_config
 
         yaml_content = """\
 self:
@@ -188,7 +188,7 @@ self:
         }
 
     def test_load_without_tweakcc(self, tmp_path):
-        from kanibako.agent_config import load_agent_config
+        from kanibako.settings.agent_config import load_agent_config
 
         yaml_content = """\
 self:
@@ -200,7 +200,7 @@ self:
         assert cfg.transform_settings == {}
 
     def test_write_with_tweakcc(self, tmp_path):
-        from kanibako.agent_config import AgentConfig, load_agent_config, write_agent_config
+        from kanibako.settings.agent_config import AgentConfig, load_agent_config, write_agent_config
 
         cfg = AgentConfig(
             name="Test", transform_settings={"enabled": True, "config": "/path"},
@@ -214,7 +214,7 @@ self:
         assert loaded.transform_settings["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
-        from kanibako.agent_config import AgentConfig, load_agent_config, write_agent_config
+        from kanibako.settings.agent_config import AgentConfig, load_agent_config, write_agent_config
 
         cfg = AgentConfig(name="Test")
         path = tmp_path / "agent.yaml"

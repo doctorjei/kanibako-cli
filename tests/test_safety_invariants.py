@@ -20,12 +20,12 @@ from kanibako.commands.start import (
     bounded_socket_name,
     validate_socket_path,
 )
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
     load_std_paths,
 )
-from kanibako.config import load_config
+from kanibako.settings.config import load_config
 from kanibako.targets.base import Mount
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.utils import short_hash

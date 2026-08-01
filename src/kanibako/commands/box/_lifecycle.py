@@ -29,15 +29,15 @@ from typing import Callable
 
 from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
-from kanibako.core_defaults import materialize_canon_skeleton
-from kanibako.config import (
+from kanibako.settings.core_defaults import materialize_canon_skeleton
+from kanibako.settings.config import (
     BOX_META_FILE,
     KanibakoConfig,
     read_box_enable_vault,
     write_box_enable_vault,
 )
 from kanibako.errors import ProjectError, WorksetError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
     ProjectPaths,
@@ -247,8 +247,8 @@ def resolve_lifecycle_target(
     import os
 
     if config is None:
-        from kanibako.config import config_file_path, load_config
-        from kanibako.paths import xdg
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import xdg
         config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
 
     raw = old or os.getcwd()
@@ -259,7 +259,7 @@ def resolve_lifecycle_target(
     raw_name = raw
     named_workset = False
     if raw and "/" not in raw and not Path(raw).exists():
-        from kanibako.paths import resolve_name
+        from kanibako.settings.paths import resolve_name
         try:
             resolved, kind = resolve_name(
                 std.registry, raw, cwd=Path.cwd(),
@@ -775,8 +775,8 @@ def execute_lifecycle(
     import os
 
     if config is None:
-        from kanibako.config import config_file_path, load_config
-        from kanibako.paths import xdg
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import xdg
         config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
 
     cwd = Path(os.getcwd())
@@ -991,14 +991,14 @@ def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> No
     source's box tier and the destination's are BOTH resolved through the single
     derivation, so the settings land where the destination will actually read them
     — and a pre-P2 standalone source's root-stored ``box.*`` keys are underlaid
-    rather than lost (:func:`kanibako.config.carried_box_settings`).
+    rather than lost (:func:`kanibako.settings.config.carried_box_settings`).
 
     A no-op when the source carries nothing, so a box with no settings file still
     produces no destination file (sparse — matching create).
     """
-    from kanibako.config import carried_box_settings
-    from kanibako.config_io import dump_doc
-    from kanibako.paths import _box_settings_files
+    from kanibako.settings.config import carried_box_settings
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import _box_settings_files
 
     # group=None: only the STANDALONE arm consults it, and standalone's workset tier
     # is derived from the root, not from a ProjectGroup (which ProjectState does not
@@ -1336,8 +1336,8 @@ def _to_standalone(
     canonical id is generated instead.
     """
     from kanibako import registry_store
-    from kanibako.config import BOX_META_FILE
-    from kanibako.paths import establish_standalone
+    from kanibako.settings.config import BOX_META_FILE
+    from kanibako.settings.paths import establish_standalone
 
     # *new_workspace* is the standalone ROOT (the project dir).  Drift H+I: the
     # standalone tree roots here with ``settings.yaml`` AT THE ROOT, a
@@ -1534,7 +1534,7 @@ def _to_workset(
         # authoritative external-workspace source, not the box's settings.yaml
         # identity, which stops self-describing under sparse create).
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         registry_path = workset_registry.resolve_workset_registry_path(
             target_ws.root, load_doc(target_ws.root / "settings.yaml"),
@@ -1750,8 +1750,8 @@ def _make_confirm(force: bool, summary: str):
 
 
 def _load_env():
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import load_std_paths, xdg
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, xdg
 
     config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
     std = load_std_paths(config)

@@ -55,7 +55,7 @@ OUT of scope (hard boundaries)
 NO ``reconcile_categories`` / cross-scope ``box_dest`` collision (design §6g);
 NO merge / expansion / cycle detection (:mod:`kanibako.settings.settings_merge` /
 :mod:`kanibako.settings.settings_expand`); NO ``config set``
-(:mod:`kanibako.config_interface`); NO ``StandardPaths`` port. This module does
+(:mod:`kanibako.settings.config_interface`); NO ``StandardPaths`` port. This module does
 NOT modify ``settings_store`` / ``settings_merge`` / ``settings_expand`` /
 ``paths`` / ``start`` — it only READS the snapshot.
 

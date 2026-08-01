@@ -10,8 +10,8 @@ from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.commands.flags import add_null_flag
 
 if TYPE_CHECKING:
-    from kanibako.agent_config import AgentConfig
-    from kanibako.paths import StandardPaths
+    from kanibako.settings.agent_config import AgentConfig
+    from kanibako.settings.paths import StandardPaths
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -134,8 +134,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _load_std() -> StandardPaths:
     """Load config and return the resolved standard paths."""
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import xdg, load_std_paths
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import xdg, load_std_paths
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -144,7 +144,7 @@ def _load_std() -> StandardPaths:
 
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
-    from kanibako.agent_config import load_agent_config
+    from kanibako.settings.agent_config import load_agent_config
 
     try:
         std = _load_std()
@@ -187,7 +187,7 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     """Show agent configuration details."""
-    from kanibako.agent_config import agent_settings_path, load_agent_config
+    from kanibako.settings.agent_config import agent_settings_path, load_agent_config
 
     try:
         std = _load_std()
@@ -288,12 +288,12 @@ def _run_agent_config(args: argparse.Namespace) -> int:
       env.X                   -> [env]
       shell, run_args, name   -> identity keys
     """
-    from kanibako.agent_config import (
+    from kanibako.settings.agent_config import (
         agent_settings_path,
         load_agent_config,
     )
-    from kanibako.config import coerce_bool
-    from kanibako.config_interface import (
+    from kanibako.settings.config import coerce_bool
+    from kanibako.settings.config_interface import (
         _is_auto_approve_key,
         _remove_nested_toml_key,
         _write_nested_toml_key,
@@ -344,7 +344,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # other scopes' ``reset_all`` (config_interface.py) prints. Each secret_path
             # entry under ``agent.<node>.secret_path`` counts individually (parity with
             # the old flat env_file count); each other removed [agent] key counts once.
-            from kanibako.config_io import dump_doc, load_doc
+            from kanibako.settings.config_io import dump_doc, load_doc
 
             data = load_doc(path)
             count = 0
@@ -387,7 +387,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # the assemble/merge cascade, so it has no resolved cascade inputs
             # to thread — the cleared-only fallback (effective=None) is the
             # correct honest form here (no new plumbing for this micro-block).
-            from kanibako.config_interface import (
+            from kanibako.settings.config_interface import (
                 ConfigLevel,
                 _honest_reset_message,
             )
@@ -504,7 +504,7 @@ def _agent_key_route(key: str, node: str) -> tuple[tuple[str, ...], str]:
     (mirrors the read routing in :func:`_get_agent_key`) — ``self`` and the
     flat/nested category split live there, defined once.
     """
-    from kanibako.agent_config import agent_file_route
+    from kanibako.settings.agent_config import agent_file_route
 
     return agent_file_route(key, node)
 
@@ -551,10 +551,10 @@ def _show_agent_config(
 def run_reauth(args: argparse.Namespace) -> int:
     """Check authentication and login if needed."""
     from kanibako.agent_ref import harness_of
-    from kanibako.agent_select import select_agent
-    from kanibako.config import config_file_path, load_config
+    from kanibako.settings.agent_select import select_agent
+    from kanibako.settings.config import config_file_path, load_config
     from kanibako.targets import resolve_target
-    from kanibako.paths import xdg, load_std_paths
+    from kanibako.settings.paths import xdg, load_std_paths
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
@@ -563,7 +563,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     # the blanket --box flag (same → warn / differ → error), then route through
     # the path-or-name resolver.
     from kanibako.commands.flags import resolve_subject_value
-    from kanibako.paths import resolve_box_target
+    from kanibako.settings.paths import resolve_box_target
     std = load_std_paths(config)
     subject = resolve_subject_value(
         getattr(args, "project", None), getattr(args, "box", None),
@@ -611,7 +611,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     # endpoint drives the OAuth-suppress cred fork (block B) so a reauth on a
     # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
-    from kanibako.agent_config import agent_settings_path, load_agent_config
+    from kanibako.settings.agent_config import agent_settings_path, load_agent_config
     from kanibako.commands.start import _resolve_box_launch_decisions
     agent_cfg_path = agent_settings_path(std.agents, agent_name)
     reauth_agent_cfg = (

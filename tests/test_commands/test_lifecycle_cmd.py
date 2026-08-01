@@ -17,10 +17,10 @@ from kanibako.commands.box._lifecycle import (
     run_move,
     run_remap,
 )
-from kanibako.config import load_config
-from kanibako.config_io import dump_doc, load_doc
-from kanibako.paths import load_primary_boxes
-from kanibako.paths import (
+from kanibako.settings.config import load_config
+from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.paths import load_primary_boxes
+from kanibako.settings.paths import (
     BoxMode,
     load_std_paths,
     resolve_project,
@@ -45,7 +45,7 @@ def _connected_index(std):
     from pathlib import Path
 
     from kanibako import registry_store, workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     out = {}
     for name, root_str in registry_store.load_section(
@@ -269,7 +269,7 @@ class TestConvert:
         # P8b/Option A: the external workspace is recorded in the workset's
         # per-workset ``boxes:`` registry, not an on-disk ``resolved.workspace``.
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         reg = workset_registry.load_workset_boxes(
             workset_registry.resolve_workset_registry_path(
                 ws.root, load_doc(ws.root / "settings.yaml"),
@@ -452,7 +452,7 @@ class TestConvertMoveCrossKindName:
         # Bare resolution is deterministic — the primary box wins (shadow).
         from pathlib import Path
 
-        from kanibako.paths import resolve_name
+        from kanibako.settings.paths import resolve_name
         _resolved, kind = resolve_name(
             std.registry, "common", cwd=Path(tmp_home),
             primary_workset=std.primary_workset,
@@ -666,8 +666,8 @@ class TestLifecycleCarriesBoxSettings:
 
     @staticmethod
     def _effective_image(config, box_tier, ws_tier):
-        from kanibako.config import load_merged_config, config_file_path
-        from kanibako.paths import xdg
+        from kanibako.settings.config import load_merged_config, config_file_path
+        from kanibako.settings.paths import xdg
         return load_merged_config(
             config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
             box_tier, workset_path=ws_tier,
@@ -683,7 +683,7 @@ class TestLifecycleCarriesBoxSettings:
         capsys.readouterr()
 
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
-        from kanibako.paths import box_workset_settings_paths
+        from kanibako.settings.paths import box_workset_settings_paths
         box_tier, ws_tier = box_workset_settings_paths(proj)
         assert self._effective_image(config, box_tier, ws_tier) == "carry/img:7"
         # ...and it is the destination's BOX TIER that holds it.
@@ -699,7 +699,7 @@ class TestLifecycleCarriesBoxSettings:
         assert run_convert(_convert_args(pdir, to_workset="ws")) == 0
         capsys.readouterr()
 
-        from kanibako.paths import WorksetSpec, box_workset_settings_paths
+        from kanibako.settings.paths import WorksetSpec, box_workset_settings_paths
         ws = load_workset(tmp_home / "ws_root")
         names = list(ws.project_names) if hasattr(ws, "project_names") else [
             p.name for p in ws.projects
@@ -722,7 +722,7 @@ class TestLifecycleCarriesBoxSettings:
         capsys.readouterr()
 
         proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
-        from kanibako.paths import box_workset_settings_paths
+        from kanibako.settings.paths import box_workset_settings_paths
         box_tier, ws_tier = box_workset_settings_paths(proj)
         assert self._effective_image(config, box_tier, ws_tier) == "carry/img:9"
 
@@ -761,7 +761,7 @@ class TestLifecycleCarriesBoxSettings:
         capsys.readouterr()
 
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
-        from kanibako.paths import box_workset_settings_paths
+        from kanibako.settings.paths import box_workset_settings_paths
         box_tier, ws_tier = box_workset_settings_paths(proj)
         assert self._effective_image(config, box_tier, ws_tier) == "legacy/img:11"
         # ⚑ and the source's workset IDENTITY is NOT inherited.
@@ -787,7 +787,7 @@ class TestLifecycleCarriesBoxSettings:
         assert run_convert(_convert_args(pdir, to_workset="ws")) == 0
         capsys.readouterr()
 
-        from kanibako.paths import WorksetSpec, box_workset_settings_paths
+        from kanibako.settings.paths import WorksetSpec, box_workset_settings_paths
         ws = load_workset(tmp_home / "ws_root")
         names = list(ws.project_names) if hasattr(ws, "project_names") else [
             p.name for p in ws.projects

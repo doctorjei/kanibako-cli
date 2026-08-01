@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 
 
-from kanibako.config import load_config
-from kanibako.paths import load_std_paths
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import load_std_paths
 from kanibako.workset import (
     add_project,
     create_workset,
@@ -16,7 +16,7 @@ from kanibako.workset import (
 def _workset_boxes(ws):
     """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
         ws.root, load_doc(ws.root / "settings.yaml"),
@@ -97,7 +97,7 @@ class TestWorksetCreate:
         name is ALREADY a primary box name refuses (teaching --force), leaving no
         on-disk skeleton."""
         from kanibako.commands.workset_cmd import run_create
-        from kanibako.paths import load_std_paths, register_primary_box_name
+        from kanibako.settings.paths import load_std_paths, register_primary_box_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -122,7 +122,7 @@ class TestWorksetCreate:
     ):
         """--force lets a workset take a primary-box name (deliberate shadow)."""
         from kanibako.commands.workset_cmd import run_create
-        from kanibako.paths import load_std_paths, register_primary_box_name
+        from kanibako.settings.paths import load_std_paths, register_primary_box_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -445,7 +445,7 @@ class TestWorksetConnect:
         dir.  P8b/Option A: the override is NO LONGER written to settings.yaml —
         the per-workset registry is the sole connection record."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -481,7 +481,7 @@ class TestWorksetConnect:
         """connect to a dir INSIDE the workset root → normal behavior: a real
         workspaces/{name} dir, no override, no external connection record."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -951,7 +951,7 @@ class TestPrimaryWorksetSpecConvergence:
         the launch's own workset-tier file derivation, then the committed
         ``build_launch_snapshot`` pipeline.
         """
-        from kanibako.paths import host_xdg_map, resolve_project
+        from kanibako.settings.paths import host_xdg_map, resolve_project
         from kanibako.settings.settings_launch import build_launch_snapshot
         from kanibako.settings.settings_resolve import ResolveCtx
 
@@ -967,7 +967,7 @@ class TestPrimaryWorksetSpecConvergence:
         )
         assert proj.group is not None and proj.group.is_default
         # The launch's workset-tier settings-file derivation (start.py).
-        from kanibako.paths import workset_settings_path
+        from kanibako.settings.paths import workset_settings_path
         workset_path = workset_settings_path(proj.group)
         ctx = ResolveCtx(
             agent_name=None,
@@ -1090,7 +1090,7 @@ class TestWorksetEnv:
         overrides the system tier (precedence system < workset)."""
         from kanibako.commands.start import _build_config_env
         from kanibako.commands.workset_cmd import run_set
-        from kanibako.paths import resolve_project, workset_env_path
+        from kanibako.settings.paths import resolve_project, workset_env_path
         from kanibako.shellenv import write_env_file
 
         config = load_config(config_file)
@@ -1140,8 +1140,8 @@ class TestPrimaryWorksetMigration:
         DROPPED — never read into the cascade, never touched on disk — with a
         one-shot stderr warning while it exists without the spec file.
         """
-        import kanibako.paths as paths_mod
-        from kanibako.paths import (
+        import kanibako.settings.paths as paths_mod
+        from kanibako.settings.paths import (
             host_xdg_map,
             resolve_project,
             workset_settings_path,
@@ -1186,8 +1186,8 @@ class TestPrimaryWorksetMigration:
         self, config_file, tmp_home, capsys, monkeypatch,
     ):
         """The warning falls silent once the spec file exists (migrated)."""
-        import kanibako.paths as paths_mod
-        from kanibako.paths import resolve_project
+        import kanibako.settings.paths as paths_mod
+        from kanibako.settings.paths import resolve_project
 
         monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
         config = load_config(config_file)

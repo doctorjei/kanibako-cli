@@ -11,11 +11,11 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.config import config_file_path, load_config, load_merged_config
+from kanibako.settings.config import config_file_path, load_config, load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.runtime.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
-from kanibako.paths import xdg, load_std_paths
+from kanibako.settings.paths import xdg, load_std_paths
 from kanibako.runtime.rig_bundle import (
     BUNDLE_SUFFIX,
     pack_bundle,

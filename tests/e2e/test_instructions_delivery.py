@@ -93,8 +93,8 @@ def run_install(env: dict) -> None:
     First-init is otherwise skipped because the fixture pre-writes the bootstrap
     config, so the template staging would never happen.
     """
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths
     from kanibako.targets import discover_targets
     from kanibako.launch.templates import install_packaged_templates
 

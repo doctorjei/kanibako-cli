@@ -306,9 +306,9 @@ def test_no_watch_context_without_an_agent_stamp(monkeypatch, stamp):
     # their DEFINING modules (patching ``creds_watcher.X`` would not intercept).
     with (
         patch("kanibako.runtime.container.ContainerRuntime", return_value=runtime),
-        patch("kanibako.config.load_config"),
-        patch("kanibako.paths.load_std_paths"),
-        patch("kanibako.paths.resolve_box_target", return_value=MagicMock()),
+        patch("kanibako.settings.config.load_config"),
+        patch("kanibako.settings.paths.load_std_paths"),
+        patch("kanibako.settings.paths.resolve_box_target", return_value=MagicMock()),
         patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
         patch("kanibako.targets.resolve_target") as m_target,
     ):

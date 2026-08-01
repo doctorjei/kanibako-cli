@@ -325,7 +325,7 @@ class TestFirstBootImagePersistence:
     def test_first_boot_image_persisted(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.config.write_project_config") as m_wpc:
+            with patch("kanibako.settings.config.write_project_config") as m_wpc:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -336,7 +336,7 @@ class TestFirstBootImagePersistence:
     def test_existing_project_image_not_persisted(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = False
-            with patch("kanibako.config.write_project_config") as m_wpc:
+            with patch("kanibako.settings.config.write_project_config") as m_wpc:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -347,7 +347,7 @@ class TestFirstBootImagePersistence:
     def test_first_boot_no_override_not_persisted(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.config.write_project_config") as m_wpc:
+            with patch("kanibako.settings.config.write_project_config") as m_wpc:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -364,7 +364,7 @@ class TestOrphanDetectionHint:
     def test_orphan_hint_on_new_project(self, start_mocks, capsys):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.paths.iter_projects") as m_iter:
+            with patch("kanibako.settings.paths.iter_projects") as m_iter:
                 orphan_path = MagicMock()
                 orphan_path.is_dir.return_value = False
                 m_iter.return_value = [(MagicMock(), orphan_path)]
@@ -379,7 +379,7 @@ class TestOrphanDetectionHint:
     def test_no_orphan_hint_on_existing_project(self, start_mocks, capsys):
         with start_mocks() as m:
             m.proj.is_new = False
-            with patch("kanibako.paths.iter_projects") as m_iter:
+            with patch("kanibako.settings.paths.iter_projects") as m_iter:
                 m_iter.return_value = []
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -401,7 +401,7 @@ class TestAgentConfigFirstUse:
             m.agent_config_path.exists.return_value = False
             # Return a real AgentConfig so the (now YAML) write path can
             # serialize it — a bare MagicMock is not representable.
-            from kanibako.agent_config import AgentConfig
+            from kanibako.settings.agent_config import AgentConfig
             m.target.generate_agent_config.return_value = AgentConfig(name="claude")
             # The derived agent-config path (std.agents / "<id>.yaml") is a
             # MagicMock here; stub the writer so it never coerces that mock to a
@@ -1288,7 +1288,7 @@ class TestVaultTmpfsMode:
     def test_default_mode_has_no_mask(self, start_mocks):
         from pathlib import Path
 
-        from kanibako.paths import ProjectGroup, BoxMode
+        from kanibako.settings.paths import ProjectGroup, BoxMode
 
         with start_mocks() as m:
             m.proj.mode = BoxMode.primary
@@ -1310,7 +1310,7 @@ class TestVaultTmpfsMode:
     def test_workset_mode_has_no_mask(self, start_mocks):
         from pathlib import Path
 
-        from kanibako.paths import ProjectGroup, BoxMode
+        from kanibako.settings.paths import ProjectGroup, BoxMode
 
         with start_mocks() as m:
             m.proj.mode = BoxMode.named
@@ -1330,7 +1330,7 @@ class TestVaultTmpfsMode:
             assert masks is None
 
     def test_standalone_mode_has_no_mask(self, start_mocks):
-        from kanibako.paths import BoxMode
+        from kanibako.settings.paths import BoxMode
 
         with start_mocks() as m:
             m.proj.mode = BoxMode.standalone
@@ -1674,7 +1674,7 @@ class TestReattachAgentSourcing:
     def _gate2a_unless_explicit(self):
         """``select_agent`` stand-in: raises Gate-2a unless an explicit agent is
         supplied — i.e. only the container-sourced injection can satisfy it."""
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         from kanibako.errors import NoAgentSelectedError
 
         def _fn(*, explicit_agent, **kw):

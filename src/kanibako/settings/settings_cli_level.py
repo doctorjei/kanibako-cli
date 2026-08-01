@@ -118,10 +118,10 @@ def build_cli_level(
     """Build the §1A CLI level for one launch, or ``None`` when it is empty.
 
     *selection* is P7's resolved-agent level (``{"system.agent": node}`` from
-    :attr:`kanibako.agent_select.AgentSelection.selection_level`, or ``None`` for a
+    :attr:`kanibako.settings.agent_select.AgentSelection.selection_level`, or ``None`` for a
     NO-AGENT box). It is carried through VERBATIM: it is installed on EVERY resolve,
     whichever of its three sources won, so ``@system.agent`` equals the node that
-    actually runs (see :mod:`kanibako.agent_select` for why that is load-bearing).
+    actually runs (see :mod:`kanibako.settings.agent_select` for why that is load-bearing).
 
     *active_agent* is the discriminator the agent-scope keys are spelled against.
     The agent-scope entries are emitted ONLY when it is truthy — a NO-AGENT /
@@ -195,7 +195,7 @@ def guard_cli_level(
 
     *valid_agents* injects the agent-discriminator set for arm 1, and
     *active_agent* is UNIONED into it — the active agent is valid BY CONSTRUCTION,
-    having just been resolved by :func:`kanibako.agent_select.select_agent`. When
+    having just been resolved by :func:`kanibako.settings.agent_select.select_agent`. When
     *valid_agents* is ``None`` the set is exactly ``{active_agent}``: every
     agent-scope key this module builds is spelled against that same discriminator,
     so plugin discovery would be pure cost — a flag-free launch keeps paying

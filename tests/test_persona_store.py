@@ -305,14 +305,14 @@ class TestImportMapping:
         return tmp_home / "data" / "agents"
 
     def _settings_path(self, tmp_home) -> Path:
-        from kanibako.agent_config import agent_settings_path
+        from kanibako.settings.agent_config import agent_settings_path
 
         return agent_settings_path(self._agents_root(tmp_home), "navigator℘codex")
 
     # --- full-entry round-trip ----------------------------------------------
 
     def test_full_codex_import_round_trip(self, tmp_home):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.codex.target import CodexTarget
 
         entry = self._codex_entry(tmp_home)
@@ -333,7 +333,7 @@ class TestImportMapping:
     def test_full_claude_import_round_trip(self, tmp_home):
         import json
 
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.claude.target import ClaudeTarget
 
         persona_dir = _make_store_entry(tmp_home, harness="claude")
@@ -347,7 +347,7 @@ class TestImportMapping:
 
         result = import_persona_entry(self._agents_root(tmp_home), entry, ClaudeTarget())
         assert result.error is None and result.warning is None
-        from kanibako.agent_config import agent_settings_path
+        from kanibako.settings.agent_config import agent_settings_path
 
         data = load_doc(agent_settings_path(self._agents_root(tmp_home), "navigator℘claude"))
         assert data["self"]["endpoint"] == self._ENDPOINT
@@ -379,7 +379,7 @@ class TestImportMapping:
     # --- partial-store cases --------------------------------------------------
 
     def test_unresolvable_secret_still_imports_endpoint_model(self, tmp_home):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.codex.target import CodexTarget
 
         entry = self._codex_entry(tmp_home, pointer=None)  # no .secret_path
@@ -393,8 +393,8 @@ class TestImportMapping:
         assert "secret_path" not in data["self"]  # sparse: nothing to write
 
     def test_unresolvable_secret_keeps_existing_token(self, tmp_home):
-        from kanibako.agent_config import AgentConfig, write_agent_config
-        from kanibako.config_io import load_doc
+        from kanibako.settings.agent_config import AgentConfig, write_agent_config
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.codex.target import CodexTarget
 
         path = self._settings_path(tmp_home)
@@ -445,8 +445,8 @@ class TestImportMapping:
         assert not self._settings_path(tmp_home).exists()
 
     def test_model_absent_in_store_leaves_existing_model(self, tmp_home):
-        from kanibako.agent_config import AgentConfig, write_agent_config
-        from kanibako.config_io import load_doc
+        from kanibako.settings.agent_config import AgentConfig, write_agent_config
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.codex.target import CodexTarget
 
         path = self._settings_path(tmp_home)
@@ -463,7 +463,7 @@ class TestImportMapping:
     # --- non-destructive read-modify-write ------------------------------------
 
     def test_preserves_values_the_import_does_not_own(self, tmp_home):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.codex.target import CodexTarget
 
         path = self._settings_path(tmp_home)
@@ -519,8 +519,8 @@ class TestImportMapping:
         assert self._settings_path(tmp_home).read_bytes() == first
 
     def test_reimport_replaces_stale_owned_values(self, tmp_home):
-        from kanibako.agent_config import AgentConfig, write_agent_config
-        from kanibako.config_io import load_doc
+        from kanibako.settings.agent_config import AgentConfig, write_agent_config
+        from kanibako.settings.config_io import load_doc
         from kanibako.plugins.codex.target import CodexTarget
 
         path = self._settings_path(tmp_home)

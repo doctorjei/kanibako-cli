@@ -19,7 +19,7 @@ detection (:mod:`kanibako.settings.settings_expand` — refs stay RAW), NO
 ``reconcile_categories`` / ``box_dest`` collision logic (the SEPARATE downstream
 pass, §6g — merge keys by NAME only), NO typed views
 (:mod:`kanibako.settings.settings_views`), NO ``config set``
-(:mod:`kanibako.config_interface`).
+(:mod:`kanibako.settings.config_interface`).
 
 Authority
 ---------

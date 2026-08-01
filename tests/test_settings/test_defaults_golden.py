@@ -6,10 +6,10 @@ guest-path literals into a HANDFUL of shipped declarative data files:
 
 * ``kanibako/data/core-defaults.yaml``      — the ONE system/core file (everything
   NOT agent-specific: the ``box.masks`` vault default + the per-mode channel bind
-  table), read by the thin loader :mod:`kanibako.core_defaults`.
+  table), read by the thin loader :mod:`kanibako.settings.core_defaults`.
 * ``<plugin>/<agent>-defaults.yaml``        — ONE file PER AGENT inside its plugin
   package (claude/goose/codex), read by the thin loader
-  :mod:`kanibako.agent_defaults`.
+  :mod:`kanibako.settings.agent_defaults`.
 * :data:`kanibako.settings.settings_resolve.GUEST_HOME` — the single one-line constant the
   box-side ``/home/agent`` literal derives from (NOT a new file).
 
@@ -46,7 +46,7 @@ from pathlib import Path
 
 import yaml
 
-from kanibako import agent_defaults, core_defaults
+from kanibako.settings import agent_defaults, core_defaults
 from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     BindKind,
@@ -292,7 +292,7 @@ class TestAgentDefaultsShape:
         AUTHORED form (a bare leaf is what an author may write); the LOADED level
         pins the STORED form (self-resolving, spec §2a L474-486).
         """
-        from kanibako.agent_config import agent_category_root_ref, is_self_resolving
+        from kanibako.settings.agent_config import agent_category_root_ref, is_self_resolving
 
         for package, filename in _AGENT_DEFAULTS:
             doc = _load_yaml(package, filename)
@@ -424,9 +424,14 @@ class TestNoHardcodedGuestHome:
         string literals are caught.
         """
         loaders = [
-            _REPO_ROOT / "src" / "kanibako" / "core_defaults.py",
-            _REPO_ROOT / "src" / "kanibako" / "agent_defaults.py",
+            _REPO_ROOT / "src" / "kanibako" / "settings" / "core_defaults.py",
+            _REPO_ROOT / "src" / "kanibako" / "settings" / "agent_defaults.py",
         ]
+        for f in loaders:
+            # The guard is only as good as its target: a path that stopped
+            # existing (a module move) would make the scan below pass over
+            # nothing and report clean.
+            assert f.is_file(), f"defaults loader not found at {f} — fix the path"
         # A /home/agent inside a quoted string literal (single or double quote).
         literal_re = re.compile(r"""['"][^'"]*/home/agent[^'"]*['"]""")
         offenders: list[str] = []

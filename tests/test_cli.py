@@ -1115,7 +1115,7 @@ class TestSetupNudge:
         """Write ``system.templates_stamp`` = the current packaged digest so the
         (separate) template-staleness gate PASSES — isolating the compat-gate
         band under test from the template gate."""
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
         from kanibako.targets import discover_targets
         from kanibako.launch.templates import packaged_templates_digest
 
@@ -1131,8 +1131,8 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"  # does not exist → absent marker
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             result = _setup_nudge(self._ns("start"))
         assert result is None  # non-blocking: no raise, no exit
         err = capsys.readouterr().err
@@ -1150,8 +1150,8 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"  # absent marker
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("start"))
         captured = capsys.readouterr()
         assert "kanibako isn't set up yet" in captured.err
@@ -1167,13 +1167,13 @@ class TestSetupNudge:
 
         import kanibako
         from kanibako.cli import _setup_nudge
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
         self._write_current_stamp(cf)
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path), \
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch.object(kanibako, "__version__", "1.8.0"), \
              patch.object(kanibako, "SETUP_BCV", "1.5.0"), \
              patch.object(kanibako, "SETUP_FCV", "1.7.0"):
@@ -1185,7 +1185,7 @@ class TestSetupNudge:
         from unittest.mock import patch
 
         from kanibako.cli import _setup_nudge
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
 
         from packaging.version import Version
 
@@ -1197,8 +1197,8 @@ class TestSetupNudge:
             cf, "setup_completed", Version(kanibako.__version__).base_version
         )
         self._write_current_stamp(cf)
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("start"))
         assert capsys.readouterr().err == ""
 
@@ -1208,8 +1208,8 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("agent", agent_command="reauth"))
         assert "kanibako isn't set up yet" in capsys.readouterr().err
 
@@ -1220,8 +1220,8 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"  # absent marker
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("shell"))
         assert capsys.readouterr().err == ""
 
@@ -1231,8 +1231,8 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("setup"))
         assert capsys.readouterr().err == ""
 
@@ -1243,8 +1243,8 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("list"))
             _setup_nudge(self._ns("agent", agent_command="list"))
         assert capsys.readouterr().err == ""
@@ -1268,13 +1268,13 @@ class TestSetupNudge:
         from unittest.mock import patch
 
         from kanibako.cli import _setup_nudge
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
         from kanibako.errors import KanibakoError
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", self._below_bcv())  # < BCV
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
                 _setup_nudge(self._ns("start"))
         assert "too old to auto-update" in str(exc.value)
@@ -1287,7 +1287,7 @@ class TestSetupNudge:
 
         import kanibako
         from kanibako.cli import _setup_nudge
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
         from kanibako.errors import KanibakoError
 
         cf = tmp_path / "kanibako_config.yaml"
@@ -1295,8 +1295,8 @@ class TestSetupNudge:
         newer = f"{Version(kanibako.__version__).major + 1}.0.0"
         assert Version(newer) > Version(Version(kanibako.__version__).base_version)
         write_system_value(cf, "setup_completed", newer)  # > build
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
                 _setup_nudge(self._ns("start"))
         assert "newer kanibako" in str(exc.value)
@@ -1308,10 +1308,10 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path), \
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch(
-                 "kanibako.config.setup_compat_gate",
+                 "kanibako.settings.config.setup_compat_gate",
                  side_effect=RuntimeError("boom"),
              ):
             # Must NOT raise — unexpected errors are swallowed.
@@ -1329,13 +1329,13 @@ class TestSetupNudge:
         from unittest.mock import patch
 
         from kanibako.cli import main
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         # < BCV → ERROR band.
         write_system_value(cf, "setup_completed", self._below_bcv())
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path), \
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch("kanibako.cli._ensure_initialized"):
             with pytest.raises(SystemExit) as exc:
                 main(["start"])
@@ -1350,14 +1350,14 @@ class TestSetupNudge:
 
         import kanibako
         from kanibako.cli import _setup_nudge
-        from kanibako.config import read_setup_completed
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config import read_setup_completed
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
         self._write_current_stamp(cf)
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path), \
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch.object(kanibako, "__version__", "1.8.0"), \
              patch.object(kanibako, "SETUP_BCV", "1.6.0"), \
              patch.object(kanibako, "SETUP_FCV", "1.6.0"):
@@ -1385,7 +1385,7 @@ class TestTemplateStalenessNudge:
         from packaging.version import Version
 
         import kanibako
-        from kanibako.config_interface import write_system_value
+        from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(
@@ -1402,8 +1402,8 @@ class TestTemplateStalenessNudge:
         from kanibako.errors import KanibakoError
 
         cf = self._init_cf(tmp_path)  # current marker but NO stamp
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
                 _setup_nudge(self._ns("start"))
         assert "bundled templates changed" in str(exc.value)
@@ -1414,8 +1414,8 @@ class TestTemplateStalenessNudge:
         from kanibako.cli import _setup_nudge
 
         cf = self._init_cf(tmp_path, stamp=self._current_digest())
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             assert _setup_nudge(self._ns("start")) is None
         assert capsys.readouterr().err == ""
 
@@ -1426,8 +1426,8 @@ class TestTemplateStalenessNudge:
         from kanibako.errors import KanibakoError
 
         cf = self._init_cf(tmp_path, stamp="stale-digest")
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError):
                 _setup_nudge(self._ns("start"))
 
@@ -1438,8 +1438,8 @@ class TestTemplateStalenessNudge:
         from kanibako.errors import KanibakoError
 
         cf = self._init_cf(tmp_path, stamp="stale-digest")
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError):
                 _setup_nudge(self._ns("agent", agent_command="reauth"))
 
@@ -1450,8 +1450,8 @@ class TestTemplateStalenessNudge:
         from kanibako.cli import _setup_nudge
 
         cf = self._init_cf(tmp_path, stamp="stale-digest")
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             assert _setup_nudge(self._ns("list")) is None
         assert capsys.readouterr().err == ""
 
@@ -1463,8 +1463,8 @@ class TestTemplateStalenessNudge:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"  # does not exist
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             assert _setup_nudge(self._ns("start")) is None
         assert "isn't set up yet" in capsys.readouterr().err
 
@@ -1474,10 +1474,10 @@ class TestTemplateStalenessNudge:
         from kanibako.cli import _setup_nudge
 
         cf = self._init_cf(tmp_path, stamp=self._current_digest())
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path), \
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch(
-                 "kanibako.config.template_staleness_gate",
+                 "kanibako.settings.config.template_staleness_gate",
                  side_effect=RuntimeError("boom"),
              ):
             # Unexpected (non-KanibakoError) faults are swallowed — never break.
@@ -1488,8 +1488,8 @@ class TestTemplateStalenessNudge:
         """_ensure_initialized installs templates AND writes the stamp, so an
         immediately-following gated command does NOT trip the staleness gate."""
         from kanibako.cli import _ensure_initialized, _setup_nudge
-        from kanibako.config import config_file_path, read_templates_stamp
-        from kanibako.paths import xdg
+        from kanibako.settings.config import config_file_path, read_templates_stamp
+        from kanibako.settings.paths import xdg
 
         _ensure_initialized()
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1575,8 +1575,8 @@ class TestBoxConfigVerbsAcceptBoxFlag:
         import argparse
 
         from kanibako.commands.box._parser import run_set
-        from kanibako.config import load_config, load_project_overrides
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config, load_project_overrides
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1606,8 +1606,8 @@ class TestBoxConfigVerbsAcceptBoxFlag:
         from kanibako.cli import _setup_nudge
 
         cf = tmp_path / "kanibako_config.yaml"  # absent marker
-        with patch("kanibako.config.config_file_path", return_value=cf), \
-             patch("kanibako.paths.xdg", return_value=tmp_path):
+        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
+             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(argparse.Namespace(command="shell"))
         assert capsys.readouterr().err == ""
 
@@ -1622,9 +1622,9 @@ class TestNullFlagEndToEnd:
 
     def _settings_for(self, tmp_home, config_file, name, argv_tail):
         from kanibako.cli import build_parser
-        from kanibako.config import load_config
-        from kanibako.config_io import load_doc
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)

@@ -19,8 +19,8 @@ from pathlib import Path
 
 from kanibako import registry_store, workset_registry
 from kanibako.launch import box_resolve
-from kanibako.config import BOX_META_FILE
-from kanibako.paths import BoxMode, _STANDALONE_META_DIR
+from kanibako.settings.config import BOX_META_FILE
+from kanibako.settings.paths import BoxMode, _STANDALONE_META_DIR
 
 
 # ---------------------------------------------------------------------------

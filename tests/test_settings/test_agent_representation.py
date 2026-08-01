@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako.agent_representation import agent_default_partial
+from kanibako.settings.agent_representation import agent_default_partial
 from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
 from kanibako.targets.base import (
     AgentInstall,
@@ -408,9 +408,9 @@ class TestAgentDefaultBindKeys:
         # The real claude descriptor delivers share + launcher (both ro). The
         # registry emits them keyed under the node with a placeholder host_src and
         # the descriptor's OWN box_dest/opts. NO detect() (resolve_target by harness).
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
         from kanibako.agent_ref import harness_of
-        from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+        from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
         from kanibako.targets import resolve_target
 
         reg = agent_default_bind_keys("claude")
@@ -429,7 +429,7 @@ class TestAgentDefaultBindKeys:
     def test_keyed_under_the_given_node_name(self):
         # A PERSONA node keys the registry under the composite node (the SAME slot
         # the launch floor uses), not the bare harness — so the repoint key matches.
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
 
         reg = agent_default_bind_keys("navigator℘claude")
         assert "agent.navigator℘claude.bindings.ro.launcher" in reg
@@ -439,7 +439,7 @@ class TestAgentDefaultBindKeys:
         # Fork 3: the registry is descriptor-only — it must build even for an
         # UNINSTALLED agent. Guard: patch the claude target's detect() to explode;
         # the registry still builds (proving no detect() call on the resolve path).
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
         from kanibako.targets import resolve_target
         from kanibako.agent_ref import harness_of
 
@@ -452,7 +452,7 @@ class TestAgentDefaultBindKeys:
         assert "agent.claude.bindings.ro.launcher" in reg
 
     def test_unknown_harness_yields_empty(self):
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
 
         assert agent_default_bind_keys("no_such_harness_xyz") == {}
 
@@ -462,7 +462,7 @@ class TestAgentDefaultBindKeys:
         # (no `install` needed). The detect-free registry must omit it too, else
         # `config set` would expose a key launch drops. A resolvable binding survives.
         import kanibako.targets as targets_mod
-        from kanibako.agent_representation import (
+        from kanibako.settings.agent_representation import (
             agent_default_bind_keys,
             agent_default_partial,
         )
@@ -504,7 +504,7 @@ class TestAgentDefaultBindKeys:
         # install.<field> unset) can't be evaluated detect-free and repointing them
         # SUPPLIES the missing source, so they stay emitted. claude's real descriptor
         # is exactly these origins (INSTALL_DIR share + LAUNCHER launcher): unchanged.
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
 
         reg = agent_default_bind_keys("claude")
         assert "agent.claude.bindings.ro.launcher" in reg
@@ -541,7 +541,7 @@ class TestAgentCommonForNode:
         """BYTE-IDENTICAL for every non-persona launch. INVERT: re-key
         unconditionally -> a bare agent's keys change and the equivalence gate
         for the whole phase breaks."""
-        from kanibako.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_common_for_node
 
         assert agent_common_for_node(
             self.TABLE, node_name="claude", harness="claude",
@@ -551,7 +551,7 @@ class TestAgentCommonForNode:
         """BOTH halves move. INVERT: re-key without re-rooting -> the persona
         binds the HARNESS dir directly, which makes the shim's "a persona that
         legitimately has its own dir wins" branch unreachable."""
-        from kanibako.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_common_for_node
 
         out = agent_common_for_node(
             self.TABLE, node_name="nav℘claude", harness="claude",
@@ -567,7 +567,7 @@ class TestAgentCommonForNode:
         """The re-root rule is NARROW: only the harness's own declaration root
         moves. An absolute / ``~`` / ``$var`` / unrelated ``@``-ref source is the
         plugin's deliberate choice (spec §2a L518-525), not "my store dir"."""
-        from kanibako.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_common_for_node
 
         table = {"agent.claude.common.fixed": ("/opt/fixed", "~/x")}
         out = agent_common_for_node(
@@ -577,7 +577,7 @@ class TestAgentCommonForNode:
 
     def test_an_empty_table_stays_empty(self):
         """goose / codex declare no commons — no delta for their personas."""
-        from kanibako.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_common_for_node
 
         assert agent_common_for_node({}, node_name="nav℘goose", harness="goose") == {}
 
@@ -587,7 +587,7 @@ class TestAgentCommonForNode:
         INVERT: revert the call site in ``start.py`` to ``target.default_common()``
         and the persona is back to ZERO agent-scope commons.
         """
-        from kanibako.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_common_for_node
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,

@@ -6,7 +6,7 @@ mapping human-readable workset names to their root paths.  Default-mode
 retired (2026-07-08, clean split): a primary box's identity now lives SOLELY in
 the primary workset's per-workset ``boxes:`` membership (spec L514, via
 :mod:`kanibako.workset_registry`; the primary-membership name API is in
-:mod:`kanibako.paths`).  Standalone boxes are likewise excluded — their identity
+:mod:`kanibako.settings.paths`).  Standalone boxes are likewise excluded — their identity
 lives in the registry's ``standalone`` section, owned by
 :mod:`kanibako.registry_store`.
 
@@ -84,7 +84,7 @@ def register_name(
     Raises ``ProjectError`` if *name* is already registered as a workset, or if
     *path* resolves to ``$HOME``.  (Since the ``projects`` section retired, the
     only global name section is ``worksets``; the primary-box name domain and its
-    registration live in :mod:`kanibako.paths`.)
+    registration live in :mod:`kanibako.settings.paths`.)
     """
     # Guard: never register $HOME as a project path.
     if Path(path).resolve() == Path.home().resolve():
@@ -153,7 +153,7 @@ def lookup_by_path(
     """Find a registered WORKSET name by its path value.
 
     Returns ``(name, "worksets")`` if found, ``None`` otherwise.  (Primary-box
-    reverse-lookup by path lives in :mod:`kanibako.paths` against the primary
+    reverse-lookup by path lives in :mod:`kanibako.settings.paths` against the primary
     per-workset membership.)
     """
     resolved = str(Path(path).resolve())
@@ -180,7 +180,7 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     which :func:`resolve_name` matches directly (step 2) via *primary_workset*.
     """
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     paths: list[str] = []
     for ws_root_str in worksets.values():
@@ -238,7 +238,7 @@ def resolve_name(
     #    workset root (a lookup with no *primary_workset* skips this step).
     if primary_workset is not None:
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         primary_reg = workset_registry.resolve_workset_registry_path(
             primary_workset, load_doc(primary_workset / "settings.yaml"),

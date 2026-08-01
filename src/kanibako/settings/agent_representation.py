@@ -29,7 +29,7 @@ PURE + ALONGSIDE (the block-7a boundaries)
   fixture install whose paths do not exist and it still represents them.
 * **No expansion (§6a / spec §0).** ``@``-refs / ``$XDG`` / ``~`` are left RAW —
   expansion is block 3. ``box_dest`` is carried VERBATIM: the descriptor loader
-  (:func:`kanibako.agent_defaults._build_binding`) has ALREADY expanded the
+  (:func:`kanibako.settings.agent_defaults._build_binding`) has ALREADY expanded the
   ``$GUEST_HOME`` box constant at load, so the :class:`Binding` this function
   receives is post-expansion; re-expanding would be wrong. A LITERAL-origin raw
   ``@``/``$XDG``/``~`` ``box_dest`` therefore stays raw for free (§6a).
@@ -176,7 +176,7 @@ def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
     :func:`agent_default_partial` delivers at launch, keyed under *node_name* (the
     slot the launch floor reads), each with the STATIC ``box_dest`` + ``options``
     straight from the plugin :class:`~kanibako.targets.base.PluginDescriptor`, but
-    with a PLACEHOLDER host_src (:data:`~kanibako.core_defaults.FLOOR_PLACEHOLDER_SRC`)
+    with a PLACEHOLDER host_src (:data:`~kanibako.settings.core_defaults.FLOOR_PLACEHOLDER_SRC`)
     in element 0.
 
     DETECT-FREE (the de-risk, Fork 3): it resolves the target purely by HARNESS
@@ -197,7 +197,7 @@ def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
     target yields ``{}`` (the repoint is then refused as nowhere-in-the-cascade).
     """
     from kanibako.agent_ref import harness_of
-    from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+    from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
     from kanibako.targets import resolve_target
     from kanibako.targets.base import HostSrcOrigin
 
@@ -265,7 +265,7 @@ def agent_common_for_node(
     A BARE agent (``node_name == harness``) gets the IDENTITY back — byte-identical
     to the plugin's table, so nothing about a non-persona launch changes.
     """
-    from kanibako.agent_config import agent_category_root_ref
+    from kanibako.settings.agent_config import agent_category_root_ref
 
     if not node_name or node_name == harness:
         return dict(table)

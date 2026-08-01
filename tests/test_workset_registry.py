@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from kanibako import workset_registry
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 
 
 @pytest.fixture

@@ -26,8 +26,8 @@ class TestRealFcntlLocking:
 
     def test_lock_acquired_and_released(self, integration_home, integration_config):
         """Lock file is unlocked after the pipeline returns."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -54,8 +54,8 @@ class TestRealFcntlLocking:
 
     def test_concurrent_lock_contention(self, integration_home, integration_config):
         """A second caller gets OSError when the lock is already held."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -93,8 +93,8 @@ class TestRealFcntlLocking:
         self, integration_home, integration_config
     ):
         """Lock is released in the finally block even after a container error."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -128,9 +128,9 @@ class TestCredentialFlow:
         self, integration_home, integration_config, integration_credentials
     ):
         """Full credential pipeline: host → project, real files."""
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.plugins.claude.credentials import refresh_host_to_project
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -155,9 +155,9 @@ class TestCredentialFlow:
         self, integration_home, integration_config, integration_credentials
     ):
         """A newer project credential is not overwritten by an older host one."""
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.plugins.claude.credentials import refresh_host_to_project
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)

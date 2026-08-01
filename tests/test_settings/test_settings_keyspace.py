@@ -210,7 +210,7 @@ def test_known_config_keys_are_valid_under_the_validator():
     disagreement this arc has not accounted for — STOP and report it rather than
     widening :data:`RETIRING_KEYS`.
     """
-    from kanibako.config_interface import KNOWN_CONFIG_KEYS
+    from kanibako.settings.config_interface import KNOWN_CONFIG_KEYS
 
     # The bare scalars are the CLI's shorthand for the any-agent
     # ``agent.default.<key>`` tier (config_interface: "the bare key is the
@@ -247,7 +247,7 @@ def test_retiring_keys_is_empty():
 def test_the_retired_base_template_spelling_is_gone():
     """M-11 is a RENAME, not an alias: the old spelling must be neither settable
     nor a declared key, so ``config set system.base_template`` refuses."""
-    from kanibako.config_interface import KNOWN_CONFIG_KEYS
+    from kanibako.settings.config_interface import KNOWN_CONFIG_KEYS
 
     assert "system.base_template" not in KNOWN_CONFIG_KEYS
     assert "system.template" in KNOWN_CONFIG_KEYS

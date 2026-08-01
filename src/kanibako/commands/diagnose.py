@@ -424,7 +424,7 @@ def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]
 
     # 3. dev.containers.dockerPath in the user settings.json.
     if config_home is None:
-        from kanibako.paths import xdg
+        from kanibako.settings.paths import xdg
 
         config_home = xdg("XDG_CONFIG_HOME", ".config")
     settings_path = config_home / "Code" / "User" / "settings.json"
@@ -435,8 +435,8 @@ def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]
 
 def run_system_diagnose(args: object) -> int:
     """Run full system diagnostics."""
-    from kanibako.config import config_file_path, load_config, load_merged_config
-    from kanibako.paths import load_std_paths, xdg
+    from kanibako.settings.config import config_file_path, load_config, load_merged_config
+    from kanibako.settings.paths import load_std_paths, xdg
 
     print("Kanibako System Diagnostics")
     print("=" * 40)
@@ -487,7 +487,7 @@ def run_system_diagnose(args: object) -> int:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)
         config = load_config(cf)
-        from kanibako.paths import resolve_system_paths
+        from kanibako.settings.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         data_path = resolve_system_paths(
             config.config_paths, data_home=data_home, home=Path.home(),
@@ -522,8 +522,8 @@ def run_system_diagnose(args: object) -> int:
 
 def run_box_diagnose(args: object) -> int:
     """Run diagnostics for a specific project box."""
-    from kanibako.config import config_file_path, load_config
-    from kanibako.paths import load_std_paths, resolve_any_project, xdg
+    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.paths import load_std_paths, resolve_any_project, xdg
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
@@ -606,8 +606,8 @@ def run_box_diagnose(args: object) -> int:
 
 def run_rig_diagnose(args: object) -> int:
     """Run diagnostics for rig/image status."""
-    from kanibako.config import config_file_path, load_merged_config
-    from kanibako.paths import xdg
+    from kanibako.settings.config import config_file_path, load_merged_config
+    from kanibako.settings.paths import xdg
 
     print("Rig (Image) Diagnostics")
     print("=" * 40)
@@ -657,9 +657,9 @@ def _diagnose_baseline(args: object) -> None:
     baseline executables per image.
     """
     from kanibako.runtime import baseline as baseline_mod
-    from kanibako.config import config_file_path, load_merged_config
+    from kanibako.settings.config import config_file_path, load_merged_config
     from kanibako.runtime.container import ContainerRuntime
-    from kanibako.paths import xdg
+    from kanibako.settings.paths import xdg
 
     only = getattr(args, "only", None)
     skip = getattr(args, "skip", None)

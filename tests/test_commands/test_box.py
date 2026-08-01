@@ -10,8 +10,8 @@ import shutil
 from unittest.mock import patch
 
 
-from kanibako.config import load_config
-from kanibako.paths import WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset, load_workset
 
 
@@ -249,7 +249,7 @@ class TestBoxList:
         ``seen_rows`` dedup prints the name twice.
         """
         from kanibako.commands.box import run_list
-        from kanibako.paths import iter_workset_projects
+        from kanibako.settings.paths import iter_workset_projects
         from kanibako.workset import add_project, create_workset
 
         config = load_config(config_file)
@@ -603,7 +603,7 @@ class TestBoxDuplicate:
         membership is stranded for the refused name."""
         from kanibako import registry_store
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -722,7 +722,7 @@ class TestBoxDuplicate:
         either fully succeeds or leaves no trace.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -938,7 +938,7 @@ class TestBoxDuplicateCrossMode:
         any partial dest dir.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -978,7 +978,7 @@ class TestBoxDuplicateCrossMode:
         box's registration intact, and mint no stray box dir.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1015,7 +1015,7 @@ class TestBoxDuplicateCrossMode:
         import shutil
 
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1051,7 +1051,7 @@ class TestBoxDuplicateCrossMode:
         left the partial ``new_path`` behind.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1095,7 +1095,7 @@ class TestBoxDuplicateCrossMode:
         copy/prompt.
         """
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1145,7 +1145,7 @@ class TestBoxDuplicateCrossMode:
         from contextlib import redirect_stderr
 
         from kanibako.commands.box import run_duplicate
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1254,9 +1254,9 @@ class TestBoxDuplicateCrossMode:
         ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
         as a standalone, since primary boxes use ``names.yaml``)."""
         from kanibako.commands.box import run_duplicate
-        from kanibako.config import BOX_META_FILE
-        from kanibako.config_io import load_doc
-        from kanibako.paths import BoxMode, detect_project_mode
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import BoxMode, detect_project_mode
         from kanibako.registry_store import load_standalone
 
         config = load_config(config_file)
@@ -1281,7 +1281,7 @@ class TestBoxDuplicateCrossMode:
         # (2) P8b/Option A: no on-disk ``project:`` identity — the marker
         #     settings.yaml lives at the ROOT (drift I) and is materialized by the
         #     sparse kuid write; no ``project:`` section on disk.
-        from kanibako.config import read_workset_kuid
+        from kanibako.settings.config import read_workset_kuid
         from kanibako.kuid import SENTINEL
         assert "project" not in load_doc(dst_dir / BOX_META_FILE)
         assert (dst_dir / BOX_META_FILE).is_file()
@@ -1339,7 +1339,7 @@ def _connected_index(std):
     from pathlib import Path
 
     from kanibako import registry_store, workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     out: dict[str, dict] = {}
     for name, root_str in registry_store.load_section(
@@ -1605,7 +1605,7 @@ class TestBoxDuplicateExternal:
         symlink, and no ``connected.yaml`` entry is written.
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.paths import BoxMode
+        from kanibako.settings.paths import BoxMode
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1641,7 +1641,7 @@ class TestBoxDuplicateExternal:
         — no registered-but-incomplete project is left behind.
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
-        from kanibako.paths import BoxMode
+        from kanibako.settings.paths import BoxMode
         from kanibako.workset import list_worksets
 
         config = load_config(config_file)
@@ -2052,7 +2052,7 @@ class TestBoxDuplicateNoToMode:
         source = tmp_home / "orig"
         source.mkdir()
         add_project(ws, "app", source)
-        from kanibako.paths import WorksetSpec, resolve_workset_project
+        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws), "app", std, config, initialize=True,
         )
@@ -2265,7 +2265,7 @@ class TestImportPersonaStoreForCreate:
         assert not (tmp_home / "data" / "agents").exists()
 
     def test_store_entry_registers_and_imports(self, tmp_home, monkeypatch, capsys):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         persona_dir = self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
@@ -2289,7 +2289,7 @@ class TestImportPersonaStoreForCreate:
         assert err is not None and err.startswith("Error:")
 
     def test_token_pointer_warning_still_imports(self, tmp_home, monkeypatch, capsys):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         self._store(tmp_home, pointer=False)
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
@@ -2376,8 +2376,8 @@ class TestCreatePersistsAgentSelection:
 
     def _box_settings(self, config_file, tmp_home):
         from kanibako.commands.start import _resolve_existing_box
-        from kanibako.config import load_config
-        from kanibako.paths import BOX_META_FILE, load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import BOX_META_FILE, load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2388,7 +2388,7 @@ class TestCreatePersistsAgentSelection:
     def test_create_with_agent_persists_the_pref_request(
         self, config_file, tmp_home, credentials_dir,
     ):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         assert self._create(tmp_home, agent="claude") == 0
         settings = self._box_settings(config_file, tmp_home)
@@ -2402,7 +2402,7 @@ class TestCreatePersistsAgentSelection:
     def test_plain_create_writes_no_agent_selection(
         self, config_file, tmp_home, credentials_dir,
     ):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         assert self._create(tmp_home) == 0
         settings = self._box_settings(config_file, tmp_home)
@@ -2417,10 +2417,10 @@ class TestCreatePersistsAgentSelection:
         test of this phase: what ``create --agent`` writes must be what a plain
         ``start`` resolves. INVERT: write the retired ``box.agent_name`` at create
         (or read it at start) and the box silently launches a different agent."""
-        from kanibako.config import load_config, resolve_agent
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config, resolve_agent
+        from kanibako.settings.paths import load_std_paths
         from kanibako.settings.settings_launch import resolve_selected_agent
-        from kanibako.agent_select import launch_resolve_ctx
+        from kanibako.settings.agent_select import launch_resolve_ctx
         from kanibako.commands.start import _resolve_existing_box
 
         assert self._create(tmp_home, agent="claude") == 0
@@ -2435,7 +2435,7 @@ class TestCreatePersistsAgentSelection:
         # called ``resolve_selected_agent`` would leave the seam itself unpinned —
         # deleting the refusal loop, or the ``select_agent`` call in start.py, would
         # redden nothing.)
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         sel = select_agent(std=std, proj=proj, explicit_agent=None)
         assert (sel.node, sel.source) == ("claude", "settings")
@@ -2464,7 +2464,7 @@ class TestCreatePersistsAgentSelection:
         """A persona selector persists as TYPED (`+` form; the read side
         canonicalizes) — and the persona store import still ran (settings.yaml
         for the node was registered from the store)."""
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         # Lay down a conforming store entry + a real token file so the persona
         # create verdict (codex: usable token + model) passes on the real path.
@@ -2485,8 +2485,8 @@ class TestCreatePersistsAgentSelection:
         settings = self._box_settings(config_file, tmp_home)
         assert load_doc(settings)["pref"]["system"]["agent"] == "navigator+codex"
         # The store import registered the agent node as part of the create.
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         std = load_std_paths(load_config(config_file))
         node_settings = load_doc(std.agents / "navigator℘codex" / "settings.yaml")
@@ -2502,8 +2502,8 @@ class TestCreatePersistsAgentSelection:
         store import is the ONE documented exception (STORE-OWNED, reconciled
         every start — not a create artifact)."""
         from kanibako.commands.start import _resolve_existing_box
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         # Conforming store entry whose token POINTER resolves but whose token
         # FILE does not exist: the import succeeds; the create verdict's

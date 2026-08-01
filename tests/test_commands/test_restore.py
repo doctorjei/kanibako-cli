@@ -8,9 +8,9 @@ import tarfile
 from unittest.mock import patch
 
 
-from kanibako.config import load_config
+from kanibako.settings.config import load_config
 from kanibako.errors import UserCancelled
-from kanibako.paths import (
+from kanibako.settings.paths import (
     load_std_paths,
     resolve_any_project,
     resolve_project,
@@ -122,7 +122,7 @@ class TestExtract:
         """An extracted box that is not REGISTERED is invisible to ``box list``,
         unreachable by name, and resolves straight back to the sentinel on the next
         command. Extract is a re-materialization: it registers like ``create``."""
-        from kanibako.paths import primary_box_name_for_workspace
+        from kanibako.settings.paths import primary_box_name_for_workspace
 
         config = load_config(config_file)
         std = load_std_paths(config)

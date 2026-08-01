@@ -4,7 +4,7 @@
 # This file holds claude's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery binds, launch grammar, settings routing, container env, cred-file
 # lifecycle, host_prep/init_dirs) PLUS its AGENT-scope `common` defaults.  It is
-# read by the thin loader :mod:`kanibako.agent_defaults`, which builds the
+# read by the thin loader :mod:`kanibako.settings.agent_defaults`, which builds the
 # PluginDescriptor / default_common exactly as the old hand-written `target.py`
 # values did — so core start.py still assembles claude's argv / env / delivery
 # mounts / credential lifecycle from the descriptor.

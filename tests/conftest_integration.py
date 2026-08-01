@@ -15,7 +15,7 @@ import sys
 
 import pytest
 
-from kanibako.config import write_global_config
+from kanibako.settings.config import write_global_config
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -130,8 +130,8 @@ def integration_config(integration_home):
 @pytest.fixture
 def integration_credentials(integration_home, integration_config):
     """Set up host credentials for integration tests. Returns the data path."""
-    from kanibako.config import load_config
-    from kanibako.paths import resolve_system_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import resolve_system_paths
 
     config = load_config(integration_config)
     data_home = integration_home / "int_data"

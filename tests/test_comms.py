@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from kanibako.config import load_config
+from kanibako.settings.config import load_config
 
 
 class TestCommsConfig:
     def test_default_comms_path(self, tmp_path):
-        from kanibako.config import KanibakoConfig
-        from kanibako.paths import resolve_system_paths
+        from kanibako.settings.config import KanibakoConfig
+        from kanibako.settings.paths import resolve_system_paths
 
         cfg = KanibakoConfig()
         resolved = resolve_system_paths(
@@ -20,7 +20,7 @@ class TestCommsConfig:
     def test_comms_from_toml(self, tmp_path):
         from pathlib import Path
 
-        from kanibako.paths import resolve_system_paths
+        from kanibako.settings.paths import resolve_system_paths
 
         toml = tmp_path / "kanibako_config.yaml"
         toml.write_text('system:\n  channelroot: "/custom-channels"\n')
@@ -38,8 +38,8 @@ class TestCommsOnStart:
         self, config_file, tmp_home, credentials_dir,
     ):
         """KANIBAKO_NAME is set from proj.name."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)

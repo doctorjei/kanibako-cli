@@ -222,7 +222,7 @@ class TestRunVerify:
                 "kanibako.runtime.container.ContainerRuntime", return_value=runtime
             ),
             patch(
-                "kanibako.config.load_merged_config", return_value=merged
+                "kanibako.settings.config.load_merged_config", return_value=merged
             ),
             patch("subprocess.run", side_effect=fake_run),
         ):

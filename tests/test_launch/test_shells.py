@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from kanibako.config import KanibakoConfig
+from kanibako.settings.config import KanibakoConfig
 from kanibako.launch.shells import (
     capture_image_shell,
     image_store_key,
