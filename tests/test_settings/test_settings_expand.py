@@ -23,9 +23,9 @@ import copy
 
 import pytest
 
-from kanibako.settings_expand import _is_whole_value_ref, expand
-from kanibako.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
-from kanibako.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings.settings_expand import _is_whole_value_ref, expand
+from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
+from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
 
 HOST_HOME = "/home/u"
 
@@ -579,7 +579,7 @@ def test_ref_regex_admits_persona_node_separator() -> None:
     # Block E fix 1a: _REF_NAME_RE must match a persona node-name (persona℘harness)
     # as ONE component. Mutation-check: revert the ℘ addition to the char classes
     # and this fails (the match truncates to "…navigator", end() != len).
-    from kanibako.settings_resolve import _REF_NAME_RE
+    from kanibako.settings.settings_resolve import _REF_NAME_RE
     ref = "meta.agent.navigator℘claude.auth.share_support"
     m = _REF_NAME_RE.match(ref)
     assert m is not None

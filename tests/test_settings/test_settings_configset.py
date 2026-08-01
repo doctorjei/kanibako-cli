@@ -1,6 +1,6 @@
 """Unit tests for ``config set`` validation + RAW write-back (block 5 + Q9).
 
-Covers :mod:`kanibako.settings_configset`:
+Covers :mod:`kanibako.settings.settings_configset`:
 
 Validation (:func:`validate_config_set` — Q9 FULL RESOLUTION + the E3 rule):
 * the forbidden ``:`` ``src:dest`` notation → Error (escaped ``\:`` allowed);
@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.settings_configset import (
+from kanibako.settings.settings_configset import (
     OK,
     ConfigSetError,
     Error,
@@ -39,9 +39,9 @@ from kanibako.settings_configset import (
     repoint_host_src,
     validate_config_set,
 )
-from kanibako.settings_expand import expand
-from kanibako.settings_resolve import ResolveCtx
-from kanibako.settings_store import _MISSING, KeyStore
+from kanibako.settings.settings_expand import expand
+from kanibako.settings.settings_resolve import ResolveCtx
+from kanibako.settings.settings_store import _MISSING, KeyStore
 
 # --------------------------------------------------------------------------- #
 # Test stubs for the injected callbacks                                       #
@@ -259,7 +259,7 @@ def test_braced_ref_scans_as_one_token_not_a_swallowed_suffix() -> None:
     # ``_scan_tokens`` calls the resolver's OWN parser, so the ref name stops at
     # the closing brace and the ``.jsonl`` suffix is a literal — the whole point
     # of the form. (Bare ``@box.meta.name.jsonl`` would yield one dotted name.)
-    from kanibako.settings_configset import _scan_tokens
+    from kanibako.settings.settings_configset import _scan_tokens
 
     assert _scan_tokens("@{box.meta.name}.jsonl") == (["box.meta.name"], [])
     assert _scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
@@ -301,7 +301,7 @@ def test_both_token_families_report_in_the_resolvers_message_style() -> None:
     "two forms for one thing" this codebase treats as a defect, and the kind that
     gets copied. Both arms now re-raise the resolver's own text.
     """
-    from kanibako.settings_configset import _scan_tokens
+    from kanibako.settings.settings_configset import _scan_tokens
 
     for value, expected in (
         ("@", "Malformed @-reference at:"),

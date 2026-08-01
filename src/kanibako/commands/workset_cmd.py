@@ -870,7 +870,7 @@ def run_share_add(args: argparse.Namespace) -> int:
     """
     from kanibako.agent_config import is_self_resolving
     from kanibako.config_io import dump_doc
-    from kanibako.settings_resolve import split_bind
+    from kanibako.settings.settings_resolve import split_bind
 
     name = args.name
     if not _SHARE_NAME_RE.match(name):
@@ -1051,8 +1051,8 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     walks its ``workset.bindings.{ro,rw}`` subtree. The raw value is the structured
     ``Bind`` (``@``-refs / ``$XDG`` / ``~`` UNRESOLVED, per §0). Missing file → {}.
     """
-    from kanibako.settings_assemble import assemble_levels
-    from kanibako.settings_store import Bind, KeyStore, _MISSING
+    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_store import Bind, KeyStore, _MISSING
 
     # assemble_levels returns [box, workset, agent.<active>, agent.default,
     # system, base]; index 1 is the workset partial (the only file we pass).
@@ -1102,11 +1102,11 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     ``_launch_snapshot_inputs``) and neither applied to the default workset.
     """
     from kanibako.paths import host_xdg_map
-    from kanibako.settings_assemble import assemble_levels
-    from kanibako.settings_expand import expand
-    from kanibako.settings_launch import snapshot_category_entries
-    from kanibako.settings_merge import merge
-    from kanibako.settings_resolve import ResolveCtx, SettingsError
+    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_expand import expand
+    from kanibako.settings.settings_launch import snapshot_category_entries
+    from kanibako.settings.settings_merge import merge
+    from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
 
     # Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` → ``ctx.config``
     # foundation; Layer-2 ``system.*`` → the snapshot floor.  The xdg map is the

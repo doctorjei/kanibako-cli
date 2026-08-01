@@ -133,7 +133,7 @@ def effective_safe_mode_off(
 # *"the per-launch -N/-C/-R flags over the persisted ``continue_mode`` key"* — i.e.
 # one hand-rolled precedence chain for one flag family. Spec §1A makes the COMMAND
 # LINE its own LEVEL, the highest, so that fold now happens ONCE, declaratively, in
-# :func:`kanibako.settings_cli_level.build_cli_level` (``-N`` ⇒ ``continue_mode``
+# :func:`kanibako.settings.settings_cli_level.build_cli_level` (``-N`` ⇒ ``continue_mode``
 # False, ``-C``/``-R`` ⇒ True), and the launch simply reads the resolved key:
 # ``effective_new_session = not continue_default``.
 #

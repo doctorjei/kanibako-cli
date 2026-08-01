@@ -16,7 +16,7 @@ from kanibako.commands.start import (
     run_start,
 )
 from kanibako.paths import BoxMode
-from kanibako.settings_launch import AuthSource
+from kanibako.settings.settings_launch import AuthSource
 
 
 def _sel(node: str, source: str = "settings"):
@@ -32,7 +32,7 @@ def _sel(node: str, source: str = "settings"):
 
 
 # Auth-level redesign: the boolean ``effective_group_auth`` was replaced by an
-# ``AuthSource`` (``kanibako.settings_launch``).  These two module-level
+# ``AuthSource`` (``kanibako.settings.settings_launch``).  These two module-level
 # constants stand in for the two ends the old bool covered:
 #   * ``_SHARED_AUTH`` — a sharing box (``.creds_shared`` True; old ``group_auth=True``).
 #     A minimal GLOBAL-tier source (the common shared case).
@@ -1739,7 +1739,7 @@ class TestAgentConfigIntegration:
         """SECRET category (secret_path): the active agent's pointer → a ro MOUNT to
         /run/kanibako/secrets/<VAR> + an in-box export shim. The VALUE is NEVER read
         into the container env nor onto the podman argv (only the mount PATH is)."""
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
         tok = tmp_path / "token"
         tok.write_text("sk-persona-bearer\n")
@@ -1776,7 +1776,7 @@ class TestAgentConfigIntegration:
 
     def test_secret_path_missing_does_not_crash_launch(self, start_mocks, tmp_path):
         """A missing token file fails soft: no mount, no shim, launch proceeds."""
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
         with start_mocks() as m:
             m.agent_cfg.secret_path = {
@@ -1807,7 +1807,7 @@ class TestAgentConfigIntegration:
 
     def test_no_secret_path_is_byte_identical(self, start_mocks):
         """A box with NO secrets: no mount, no shim, bare entrypoint (zero delta)."""
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
 
         with start_mocks() as m:
             # default AgentConfig().secret_path == {}
@@ -4478,7 +4478,7 @@ class TestEmitSecretMounts:
         # Build a reconciled-like object whose .mounts carries secret_path entries
         # exactly as reconcile_categories would (delivery=MOUNT, box_dest fixed).
         from types import SimpleNamespace
-        from kanibako.settings_categories import (
+        from kanibako.settings.settings_categories import (
             SECRET_MOUNT_DIR,
             CategoryEntry,
         )
@@ -4498,7 +4498,7 @@ class TestEmitSecretMounts:
         return _emit_secret_mounts(self._reconciled(pointers), self._logger())
 
     def test_present_file_mounts_ro_path_only(self, tmp_path):
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
         tok = tmp_path / "token"
         tok.write_text("sk-secret-123\n")
         mounts, exports = self._call({"ANTHROPIC_AUTH_TOKEN": str(tok)})
@@ -4517,7 +4517,7 @@ class TestEmitSecretMounts:
         # YAML / a broader settable surface) MUST be rejected fail-soft here — never
         # reaching the shell. A valid VAR alongside it still delivers (per-VAR skip).
         import logging
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
         good = tmp_path / "token"
         good.write_text("sk-secret\n")
         evil = tmp_path / "evil"
@@ -4632,7 +4632,7 @@ class TestSecretExportShim:
 
     def test_shim_wraps_agent_with_exec(self):
         from kanibako.commands.start import _secret_export_shim
-        from kanibako.settings_categories import SECRET_MOUNT_DIR
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
         ep, args = _secret_export_shim("claude", ["--flag"], ["ANTHROPIC_AUTH_TOKEN"])
         assert ep == "sh"
         assert args[0] == "-c"
@@ -5651,7 +5651,7 @@ class TestPersonaLoadOrErrorIntegration:
                     extra_args=[],
                 )
             assert rc == 0
-            from kanibako.settings_categories import SECRET_MOUNT_DIR
+            from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
             kw = m.runtime.run.call_args.kwargs
             env = kw.get("env") or {}
             # endpoint (BASE_URL, descriptor channel) and the model-map (agent env
@@ -5963,7 +5963,7 @@ class TestAgentCriticalDests:
 
     def test_maps_across_plugins_strips_guest_home(self):
         from kanibako.commands.start import _agent_critical_dests
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
         from kanibako.targets.base import (
             Binding,
             BindKind,
@@ -6031,7 +6031,7 @@ class TestAgentCriticalDests:
 
     def test_dedups_identical_pairs(self):
         from kanibako.commands.start import _agent_critical_dests
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
         from kanibako.targets.base import (
             Binding,
             BindKind,

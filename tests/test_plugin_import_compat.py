@@ -25,8 +25,10 @@ weaken this file to keep it passing.
 
 from __future__ import annotations
 
+import ast
 import importlib
-from types import ModuleType
+import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -47,6 +49,14 @@ _SHIMS: list[tuple[str, str, tuple[str, ...]]] = [
             "seed_codex_approval",
             "seed_codex_config",
             "seed_goose_mode",
+        ),
+    ),
+    (
+        "kanibako.settings_resolve",
+        "kanibako.settings.settings_resolve",
+        (
+            # claude/target.py:187 and codex/target.py:331 in the published wheels.
+            "GUEST_HOME",
         ),
     ),
 ]
@@ -103,22 +113,40 @@ def test_shim_covers_the_whole_public_surface(
     plugin may use any of it.  Covering the whole surface makes the shim's
     correctness independent of what anyone happens to import.
     """
-    new_mod = importlib.import_module(new)
     legacy_mod = importlib.import_module(legacy)
-    public = set()
-    for name, value in vars(new_mod).items():
-        if name.startswith("_"):
-            continue
-        # A module bound in the namespace is the module's own `import json` etc.,
-        # not part of its public surface.
-        if isinstance(value, ModuleType):
-            continue
-        # Functions/classes carry __module__; a name defined ELSEWHERE and merely
-        # imported here is not this module's surface either.  Plain constants
-        # (str/Path/int) have no __module__ — those are defined here, so keep them.
-        if getattr(value, "__module__", new) != new:
-            continue
-        public.add(name)
+    public = _defined_public_names(new)
     assert public, f"{new} exposes no public names — the filter is wrong, not the shim"
     missing = sorted(n for n in public if not hasattr(legacy_mod, n))
     assert not missing, f"{legacy} does not re-export {missing} from {new}"
+
+
+def _defined_public_names(module: str) -> set[str]:
+    """Public names the module DEFINES at top level, read from its source.
+
+    Deliberately AST-based rather than ``vars(mod)``.  A module's runtime
+    namespace also holds everything it imported — ``Path``, ``Callable``,
+    ``dataclass``, ``annotations`` — and re-exporting stdlib names through a
+    compatibility shim would be noise, not compatibility.  What a shim owes the
+    old path is the module's OWN surface.
+
+    (Names a module re-imports from a kanibako sibling were also reachable at
+    the old path.  Those are few and are carried EXPLICITLY in the shim, with a
+    comment saying why — see ``CANONICAL_SEP`` in
+    ``src/kanibako/settings_resolve.py``.)
+    """
+    spec = importlib.util.find_spec(module)
+    assert spec is not None and spec.origin, f"cannot locate source for {module}"
+    tree = ast.parse(Path(spec.origin).read_text())
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if not node.name.startswith("_"):
+                names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and not node.target.id.startswith("_"):
+                names.add(node.target.id)
+    return names

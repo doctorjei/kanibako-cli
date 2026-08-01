@@ -12,7 +12,7 @@ from typing import Any
 
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import Mount
 
 logger = get_logger("helper_listener")

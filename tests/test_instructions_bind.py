@@ -43,7 +43,7 @@ import pytest
 
 from kanibako import core_defaults
 from kanibako.paths import resolve_project
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets import resolve_target
 from kanibako.targets.assembly import descriptor_mounts
 from kanibako.targets.base import (
@@ -377,7 +377,7 @@ class TestKickoffLaunchWiring:
             _emit_category_mounts,
             _resolve_launch_snapshot,
         )
-        from kanibako.settings_launch import agent_delivery_mounts
+        from kanibako.settings.settings_launch import agent_delivery_mounts
         from kanibako.targets.base import BindScope as _BindScope
 
         _snapshot, reconciled = _resolve_launch_snapshot(
@@ -472,12 +472,12 @@ class TestKickoffLaunchWiring:
         """
         from kanibako.agent_representation import agent_default_partial
         from kanibako.errors import CategoryCollisionError
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
-        from kanibako.settings_categories import reconcile_categories
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         desc = resolve_target("claude", None).descriptor
         assert desc is not None

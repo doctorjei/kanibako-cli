@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako.settings_categories import reconcile_categories
-from kanibako.settings_resolve import (
+from kanibako.settings.settings_categories import reconcile_categories
+from kanibako.settings.settings_resolve import (
     ResolveCtx,
 )
 
@@ -53,7 +53,7 @@ def _resolve_home_vault(floor, *, mode, config=None):
     ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
     ``@config.primary_workset`` @-ref for that mode (spec §1A L233).
     """
-    from kanibako.settings_launch import (
+    from kanibako.settings.settings_launch import (
         build_launch_snapshot,
         snapshot_category_entries,
     )
@@ -80,7 +80,7 @@ class TestB2bHomeVaultByteIdentity:
         # the SAME literal proj.shell_path / proj.vault_*_path the old injection used.
         # ⚑ The ASSERTED PATHS are unchanged from before the anchor collapse — only
         # the floor SPELLINGS moved.  That is the point of the phase.
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             meta_identity_floor,
             meta_runtime_floor,
             workset_anchor_floor,
@@ -122,7 +122,7 @@ class TestB2bHomeVaultByteIdentity:
         # no per-box vault subdir).  meta.workset.path = the project ROOT, so these
         # resolve to <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
         # proj.vault_{ro,rw}_path — byte-identical to before the anchor collapse.
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             meta_identity_floor,
             meta_runtime_floor,
             workset_anchor_floor,
@@ -155,7 +155,7 @@ class TestB2bHomeVaultByteIdentity:
         # Option A: a box.bindings.rw.home CASCADE override (box scope) WINS over the
         # spec-derived @meta.box.path/home default (the mechanism for a custom home,
         # replacing the dropped meta["shell"] override).
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             meta_identity_floor,
             meta_runtime_floor,
@@ -209,7 +209,7 @@ class TestB2bWorksetAnchors:
     """Layout-anchor materialization: the workset roots + the RO box root."""
 
     def test_primary_named_anchors_present(self):
-        from kanibako.settings_launch import workset_anchor_floor
+        from kanibako.settings.settings_launch import workset_anchor_floor
 
         floor = workset_anchor_floor(
             mode="named",
@@ -250,7 +250,7 @@ class TestB2bWorksetAnchors:
         after. No edit to this file can influence that comparison. See also
         ``TestP1BoxRootAnchor`` below, which asserts the resolved paths directly.
         """
-        from kanibako.settings_launch import workset_anchor_floor
+        from kanibako.settings.settings_launch import workset_anchor_floor
 
         floor = workset_anchor_floor(
             mode="standalone",
@@ -353,7 +353,7 @@ def _probe_cases(tmp_path):
 def _probe_snapshot(mode, proj, ws_root, helper_log):
     """Build the LIVE launch snapshot for *proj* from the REAL shipped defaults."""
     from kanibako import core_defaults
-    from kanibako.settings_launch import (
+    from kanibako.settings.settings_launch import (
         build_launch_snapshot,
         meta_identity_floor,
         meta_runtime_floor,
@@ -392,7 +392,7 @@ def _probe_snapshot(mode, proj, ws_root, helper_log):
 
 
 def _probe_mounts(mode, proj, ws_root, helper_log):
-    from kanibako.settings_launch import snapshot_category_entries
+    from kanibako.settings.settings_launch import snapshot_category_entries
 
     snap, ctx = _probe_snapshot(mode, proj, ws_root, helper_log)
     rec = reconcile_categories(
@@ -540,7 +540,7 @@ class TestDeclarationRoots:
     @staticmethod
     def _resolve(entries: dict[str, object], *, agent: str = "claude"):
         """Resolve a floor of agent-scope category entries into ``{dest: src}``."""
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             meta_identity_floor,
             snapshot_category_entries,
@@ -666,7 +666,7 @@ class TestDeclarationKeyIsDiscriminated:
 
     @staticmethod
     def _entries(floor, *, agent="claude"):
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             meta_identity_floor,
             snapshot_category_entries,
@@ -802,8 +802,8 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
     @staticmethod
     def _snapshot():
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings_categories import derive_binding_keys
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_categories import derive_binding_keys
+        from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             meta_agent_path_floor,
             meta_identity_floor,
@@ -837,8 +837,8 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         return snap, entries
 
     def test_the_plugins_own_declarations_derive_discriminated_keys(self):
-        from kanibako.settings_store import KeyStore
-        from kanibako.settings_views import derived_bindings
+        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.settings_views import derived_bindings
 
         snap, entries = self._snapshot()
         abstract = [

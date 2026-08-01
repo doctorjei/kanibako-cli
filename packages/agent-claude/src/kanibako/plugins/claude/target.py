@@ -184,7 +184,7 @@ class ClaudeTarget(Target):
         "No conversation found" case).  Tolerant: any stat/glob error ⇒ ``False``
         (a fresh start is always safe — the retry net was removed by design).
         """
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
 
         cwd = f"{GUEST_HOME}/workspace"          # /home/agent/workspace
         encoded = cwd.replace("/", "-")          # -home-agent-workspace

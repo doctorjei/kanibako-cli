@@ -1,7 +1,7 @@
 """Cascade level assembly — per-scope settings files → ordered KeyStore partials.
 
 Block 2a of the KeyStore implementation. This module reads each cascade scope's
-settings file(s) into ONE unified nested :class:`~kanibako.settings_store.KeyStore`
+settings file(s) into ONE unified nested :class:`~kanibako.settings.settings_store.KeyStore`
 partial per level and returns the ordered ``list[KeyStore]`` the merge (block 2b)
 consumes. It builds ALONGSIDE the live launch cascades (``commands/start.py``,
 ``config.py:load_settings``) — it modifies none of them; the swap is block 7.
@@ -98,9 +98,9 @@ from typing import Any
 
 from kanibako.config import settings_base_path
 from kanibako.config_io import load_doc
-from kanibako.settings_prefs import refuse_pref_table
-from kanibako.settings_resolve import SettingsError, unpack_bind
-from kanibako.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
+from kanibako.settings.settings_prefs import refuse_pref_table
+from kanibako.settings.settings_resolve import SettingsError, unpack_bind
+from kanibako.settings.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
 
 _log = logging.getLogger(__name__)
 

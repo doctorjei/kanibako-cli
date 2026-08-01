@@ -37,7 +37,7 @@ from kanibako.paths import (
     resolve_system_paths,
     resolve_xdg,
 )
-from kanibako.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import SettingsError
 
 
 class TestResolveSystemPathsDefaults:
@@ -617,7 +617,7 @@ class TestResolverSplitRouting:
     """
 
     def _ctx(self, config):
-        from kanibako.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         return ResolveCtx(
             agent_name=None,
@@ -628,8 +628,8 @@ class TestResolverSplitRouting:
         )
 
     def test_config_ref_resolves_via_foundation_not_snapshot(self):
-        from kanibako.settings_expand import expand
-        from kanibako.settings_store import KeyStore
+        from kanibako.settings.settings_expand import expand
+        from kanibako.settings.settings_store import KeyStore
 
         # The snapshot has NO config.* node — only ctx.config does.
         snap = KeyStore()
@@ -639,8 +639,8 @@ class TestResolverSplitRouting:
         assert out["x"] == "/foundation/data/sub"
 
     def test_dangling_config_ref_drops_whole_value(self):
-        from kanibako.settings_expand import expand
-        from kanibako.settings_store import KeyStore
+        from kanibako.settings.settings_expand import expand
+        from kanibako.settings.settings_store import KeyStore
 
         # A whole-value @config.* ref to a key absent from the foundation is a
         # dangling ref → the holder key is DROPPED (§6b propagation).
@@ -651,8 +651,8 @@ class TestResolverSplitRouting:
         assert "x" not in out
 
     def test_system_ref_resolves_via_snapshot(self):
-        from kanibako.settings_expand import expand
-        from kanibako.settings_store import KeyStore
+        from kanibako.settings.settings_expand import expand
+        from kanibako.settings.settings_store import KeyStore
 
         # @system.* reads the snapshot (NOT ctx.config).
         snap = KeyStore()

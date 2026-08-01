@@ -31,7 +31,7 @@ import logging
 import pytest
 
 from kanibako.errors import CategoryCollisionError, ConfigError
-from kanibako.settings_categories import (
+from kanibako.settings.settings_categories import (
     SECRET_MOUNT_DIR,
     CategoryEntry,
     _bind_options,
@@ -95,7 +95,7 @@ class TestShippedDefaultsAreQuiet:
     def test_every_mode_and_agent_shape_resolves_clean(self, tmp_path):
         from tests.test_categories_live import _probe_cases, _probe_snapshot
 
-        from kanibako.settings_launch import snapshot_category_entries
+        from kanibako.settings.settings_launch import snapshot_category_entries
 
         for mode, proj, ws_root, hl in _probe_cases(tmp_path):
             snap, ctx = _probe_snapshot(mode, proj, ws_root, hl)
@@ -114,7 +114,7 @@ class TestShippedDefaultsAreQuiet:
         """
         from tests.test_categories_live import _probe_cases, _probe_snapshot
 
-        from kanibako.settings_launch import snapshot_category_entries
+        from kanibako.settings.settings_launch import snapshot_category_entries
 
         for mode, proj, ws_root, hl in _probe_cases(tmp_path):
             snap, ctx = _probe_snapshot(mode, proj, ws_root, hl)
@@ -412,7 +412,7 @@ class TestCollisionWarningEmission:
         reset_collision_warnings()
 
     def _collision(self):
-        from kanibako.settings_categories import CategoryCollision
+        from kanibako.settings.settings_categories import CategoryCollision
 
         return CategoryCollision(
             box_dest=DEST, scope="box", winner_key="box.common.b",
@@ -446,7 +446,7 @@ class TestCollisionWarningEmission:
 
     def test_distinct_collisions_are_not_collapsed_into_each_other(self, caplog):
         from kanibako.commands.start import emit_collision_warnings
-        from kanibako.settings_categories import CategoryCollision
+        from kanibako.settings.settings_categories import CategoryCollision
 
         other = CategoryCollision(
             box_dest="/g/y", scope="box", winner_key="box.common.d",
@@ -627,8 +627,8 @@ class TestDeriveBindingKeys:
     def test_the_launch_seam_installs_them_under_meta_derived(self):
         """The keys land where the READ lens finds them, at the one seam."""
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings_store import KeyStore
-        from kanibako.settings_views import derived_bindings
+        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.settings_views import derived_bindings
 
         snapshot = KeyStore()
         _install_derived_bindings(snapshot, derive_binding_keys([
@@ -657,7 +657,7 @@ def test_the_flat_authority_ladder_is_gone():
     structure that reads like the authority is still total: two models of one
     fact, which is how the next reader learns the wrong one.
     """
-    from kanibako import settings_categories
+    from kanibako.settings import settings_categories
 
     assert not hasattr(settings_categories, "_CATEGORY_AUTHORITY")
 
@@ -723,7 +723,7 @@ class TestPrefOriginEnrichment:
 
         from kanibako.commands.start import _annotate_pref_origin
         from kanibako.errors import CategoryCollisionError
-        from kanibako.settings_prefs import PrefRequest
+        from kanibako.settings.settings_prefs import PrefRequest
 
         src = Path(tmp_path) / "box.yaml"
         exc = CategoryCollisionError(
@@ -768,8 +768,8 @@ class TestPrefOriginOnTheAdapterRaise:
         from pathlib import Path
 
         from kanibako.commands.start import _annotate_pref_origin
-        from kanibako.settings_prefs import PrefRequest
-        from kanibako.settings_resolve import SettingsError
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_resolve import SettingsError
 
         src = Path(tmp_path) / "box.yaml"
         exc = SettingsError(
@@ -790,7 +790,7 @@ class TestPrefOriginOnTheAdapterRaise:
 
     def test_an_unrelated_settings_error_is_returned_unchanged(self):
         from kanibako.commands.start import _annotate_pref_origin
-        from kanibako.settings_resolve import SettingsError
+        from kanibako.settings.settings_resolve import SettingsError
 
         exc = SettingsError("something else entirely")
         assert _annotate_pref_origin(exc, []) is exc

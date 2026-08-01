@@ -12,7 +12,7 @@ Because it is frozen, it still speaks the retired UNDISCRIMINATED key shape
 ``agent.<category>.<name>``. **That form is not a key and does not exist anywhere in
 live kanibako** — the keyspace is CLOSED (spec §0) and the agent tier is
 DISCRIMINATED (§2d / §0 L21), so every real agent key is ``agent.<agent>.…`` or
-``agent.default.…``, and the live patterns in ``kanibako.settings_categories``
+``agent.default.…``, and the live patterns in ``kanibako.settings.settings_categories``
 REFUSE the bare form.
 
 So: the ``agent.caches.x`` / ``agent.bindings.rw.x`` strings below are FROZEN LEGACY
@@ -30,14 +30,14 @@ from collections.abc import Callable, Mapping
 import pytest
 
 from kanibako.errors import CategoryCollisionError, ConfigError
-from kanibako.settings_categories import (
+from kanibako.settings.settings_categories import (
     COPY,
     ENV,
     MOUNT,
     CategoryEntry,
     reconcile_categories,
 )
-from kanibako.settings_resolve import (
+from kanibako.settings.settings_resolve import (
     LevelView,
     ResolveCtx,
     SettingsError,
@@ -47,7 +47,7 @@ from kanibako.settings_resolve import (
     unpack_bind,
 )
 
-# ─── FORKED FROM live ``kanibako.settings_categories`` — FROZEN COPIES ─────────
+# ─── FORKED FROM live ``kanibako.settings.settings_categories`` — FROZEN COPIES ─────────
 # These were imported from live code until 2026-07-29. A "frozen baseline" that
 # imports live internals is NOT frozen: a live edit silently rewrites the thing the
 # live code is being checked against, and the tripwire stops tripping. They are
@@ -88,7 +88,7 @@ def _bind_options(category: str) -> str:
 #
 # They live HERE, and only here, because this module is a FROZEN snapshot of the
 # retired by-name resolver, kept as a drift tripwire. Reproducing the old model is
-# its entire job. The live patterns in ``kanibako.settings_categories`` REFUSE this
+# its entire job. The live patterns in ``kanibako.settings.settings_categories`` REFUSE this
 # shape on purpose.
 #
 # If you are reading this because you want an ``agent.<category>`` key to work:
@@ -184,11 +184,11 @@ def flawed_oracle_categories(
     (``"{scope}.<category>"``) to a host-space root expression; absent/empty
     means no root join (bind-shaped categories only).
 
-    Returns entries in apply order (see :mod:`kanibako.settings_categories`
+    Returns entries in apply order (see :mod:`kanibako.settings.settings_categories`
     module docstring).  Does NOT resolve cross-category collisions (sub-step 4b).
     Raises :class:`SettingsError` if a non-suppressed bind value is not a
     structured 2-/3-element pair/tuple
-    (:func:`~kanibako.settings_resolve.unpack_bind`).
+    (:func:`~kanibako.settings.settings_resolve.unpack_bind`).
     """
     entries: list[tuple[tuple[int, str, str], CategoryEntry]] = []
 
@@ -471,7 +471,7 @@ class TestStructuredRepresentation:
         # The optional 3rd element (per-entry mount-options override) is captured
         # by the structural unpacker. P2 captures it (no crash on the 3-element
         # form); P3 threads it into the entry's mount options.
-        from kanibako.settings_resolve import unpack_bind
+        from kanibako.settings.settings_resolve import unpack_bind
 
         assert unpack_bind(["/h/sock", "~/helper.sock", "z"]) == (
             "/h/sock",
@@ -551,7 +551,7 @@ class TestPerEntryOptionsOverride:
         assert e.options == ""
 
     def test_two_tuple_unpack_returns_none_for_options(self):
-        from kanibako.settings_resolve import unpack_bind
+        from kanibako.settings.settings_resolve import unpack_bind
 
         assert unpack_bind(["/h", "/g"]) == ("/h", "/g", None)
 
@@ -564,7 +564,7 @@ class TestPerEntryOptionsOverride:
             _resolve(levels, ctx)
 
     def test_wrong_arity_raises(self):
-        from kanibako.settings_resolve import unpack_bind
+        from kanibako.settings.settings_resolve import unpack_bind
 
         with pytest.raises(SettingsError):
             unpack_bind(["only-one"])
@@ -903,7 +903,7 @@ def _entry(
     collision table the declaration KEY is what the outcome and the message are
     stated in terms of, so two entries must not share one key.
     """
-    from kanibako.settings_categories import _DELIVERY, _bind_options
+    from kanibako.settings.settings_categories import _DELIVERY, _bind_options
 
     delivery = _DELIVERY[category]
     host = None if category in ("masks", "env") else host_src

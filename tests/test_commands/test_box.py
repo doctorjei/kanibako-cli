@@ -2419,7 +2419,7 @@ class TestCreatePersistsAgentSelection:
         (or read it at start) and the box silently launches a different agent."""
         from kanibako.config import load_config, resolve_agent
         from kanibako.paths import load_std_paths
-        from kanibako.settings_launch import resolve_selected_agent
+        from kanibako.settings.settings_launch import resolve_selected_agent
         from kanibako.agent_select import launch_resolve_ctx
         from kanibako.commands.start import _resolve_existing_box
 

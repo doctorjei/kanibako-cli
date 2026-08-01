@@ -40,8 +40,8 @@ from kanibako.agent_ref import (
 )
 from kanibako.config_io import dump_doc, load_doc
 from kanibako.errors import ConfigError, UserCancelled
-from kanibako.settings_prefs import PREF_ROOT
-from kanibako.settings_store import SCOPE_CONTAINMENT, ReservedKeyError
+from kanibako.settings.settings_prefs import PREF_ROOT
+from kanibako.settings.settings_store import SCOPE_CONTAINMENT, ReservedKeyError
 from kanibako.shellenv import (
     merge_env,
     read_env_file,
@@ -1219,7 +1219,7 @@ def _pref_target_error(
     they were not, and the gap was real: a scalar at a bind-shaped target, and an
     unresolvable ``@``-ref, were both accepted here and failed at LAUNCH.
     """
-    from kanibako.settings_prefs import (
+    from kanibako.settings.settings_prefs import (
         PrefRequest,
         default_valid_agents,
         validate_pref,
@@ -1280,7 +1280,7 @@ def _pref_value_error(
     is the §3 terminal every category and scalar leaf accepts, and it is §2h's
     ONLY suppression channel.
     """
-    from kanibako.settings_categories import BIND_KEY_RE, MASK_KEY_RE
+    from kanibako.settings.settings_categories import BIND_KEY_RE, MASK_KEY_RE
 
     target = canonical[len(PREF_ROOT) + 1:]
     if value is None:
@@ -1351,7 +1351,7 @@ def _is_path_category_key(key: str) -> bool:
     tuple). ``env`` (scalar) is routed by the earlier ``_is_env_key`` branch;
     ``masks`` (a keyed list) is YAML-only (spec §2a L216) and is NOT matched here.
     """
-    from kanibako.settings_categories import BIND_KEY_RE
+    from kanibako.settings.settings_categories import BIND_KEY_RE
 
     return BIND_KEY_RE.match(key) is not None
 
@@ -1471,7 +1471,7 @@ def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
 
 
 def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
-    """Build the :class:`~kanibako.settings_resolve.ResolveCtx` for the set-time E3
+    """Build the :class:`~kanibako.settings.settings_resolve.ResolveCtx` for the set-time E3
     resolution probe.
 
     Populates the FULL XDG var set (so ``$XDG_*`` host-source tokens resolve) plus
@@ -1493,7 +1493,7 @@ def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     ``config_interface`` ↔ ``paths`` module-load cycle) so it stays a single
     source.
     """
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     return ResolveCtx(
         agent_name=None,
@@ -1512,7 +1512,7 @@ def _agent_scope_node(key: str) -> str:
     split the one canonical way (a persona node carries no dot, so the first two
     segments are the whole scope).
     """
-    from kanibako.settings_categories import BIND_KEY_RE
+    from kanibako.settings.settings_categories import BIND_KEY_RE
 
     m = BIND_KEY_RE.match(key)
     if m is None:
@@ -1547,7 +1547,7 @@ def _category_set_lookups(
       defect reason (BLOCK) or ``None`` (ALLOW) — the E3 test "does the edited
       value resolve cleanly post-edit?".
     * ``raw_bind(key)`` returns the key's effective RAW pre-expansion
-      :class:`~kanibako.settings_store.Bind` from the merged snapshot — the tuple
+      :class:`~kanibako.settings.settings_store.Bind` from the merged snapshot — the tuple
       the resolver would pick (merge precedence) — or ``None`` when no scope in
       the set-time cascade sets a bind there (absent / suppressed / not
       bind-shaped). NOTE: the set-time cascade covers every scope's settings
@@ -1578,9 +1578,9 @@ def _category_set_lookups(
     """
     from kanibako.config import config_file_path
     from kanibako.paths import load_system_config, xdg
-    from kanibako.settings_assemble import assemble_levels
-    from kanibako.settings_expand import expand
-    from kanibako.settings_merge import merge
+    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_expand import expand
+    from kanibako.settings.settings_merge import merge
 
     # The path tier as the resolution context: the Layer-1 ``config.*`` foundation
     # goes into ``ctx.config`` (so an ``@config.*`` host_src routes there — JC-2),
@@ -1621,7 +1621,7 @@ def _category_set_lookups(
     # With no agent in play at either seam the key stays absent, so an
     # ``@meta.agent.*`` source is correctly a DANGLING ref rather than a
     # silently-empty one.
-    from kanibako.settings_launch import meta_agent_path_floor
+    from kanibako.settings.settings_launch import meta_agent_path_floor
 
     for anchor_agent in (agent_name, _agent_scope_node(canonical)):
         if anchor_agent:
@@ -1717,7 +1717,7 @@ def _category_set_lookups(
         # The key's effective RAW tuple in the SAME merged snapshot (F10): walk
         # the pre-expansion store with unbound dict ops (S3) and yield the leaf
         # iff it is a Bind — the merge already picked the precedence winner.
-        from kanibako.settings_store import Bind, KeyStore
+        from kanibako.settings.settings_store import Bind, KeyStore
 
         node: "Any" = base_snapshot
         for seg in key.split("."):
@@ -1735,7 +1735,7 @@ def _clone_keystore(store: "Any") -> "Any":
     """Deep-clone a :class:`KeyStore` (nested KeyStores rebuilt; leaves shared —
     they are immutable Binds / scalars). Used so the candidate-edit + lenient expand
     never mutate the shared base merged snapshot (S19). Unbound ``dict`` ops (S3)."""
-    from kanibako.settings_store import KeyStore
+    from kanibako.settings.settings_store import KeyStore
 
     out = KeyStore()
     for k in dict.keys(store):
@@ -1748,7 +1748,7 @@ def _set_leaf(store: "Any", parts: list, value: object) -> None:
     """Set *value* at the dotted *parts* path in *store*, creating nested KeyStore
     nodes as needed (unbound ``dict`` ops, S3). Used to apply the candidate edit
     into the cloned snapshot before the E3 lenient-expand check."""
-    from kanibako.settings_store import KeyStore
+    from kanibako.settings.settings_store import KeyStore
 
     node = store
     for seg in parts[:-1]:
@@ -1789,7 +1789,7 @@ def _set_category_value(
     2026-06-29) — a cross-scope ``@``-ref no longer false-blocks — and the F10
     must-exist lookup sees the same full cascade.
     """
-    from kanibako.settings_configset import (
+    from kanibako.settings.settings_configset import (
         ConfigSetError,
         Error,
         Warn,
@@ -2453,8 +2453,8 @@ def set_config_value(
     # stays usable to REPAIR a broken config. ``reset`` is untouched: removing
     # an override cannot introduce a dangling ref in the removed value.
     if value is not None and _probes_at_set_time(canonical):
-        from kanibako.settings_configset import Error as _SetError
-        from kanibako.settings_configset import validate_config_set
+        from kanibako.settings.settings_configset import Error as _SetError
+        from kanibako.settings.settings_configset import validate_config_set
 
         _resolves, _ = _category_set_lookups(
             config_path,
@@ -3055,10 +3055,10 @@ def _effective_after_reset(
         return None
     from kanibako.config import config_file_path
     from kanibako.paths import load_system_config, xdg
-    from kanibako.settings_assemble import assemble_levels
-    from kanibako.settings_expand import expand
-    from kanibako.settings_merge import merge
-    from kanibako.settings_store import Bind, KeyStore
+    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_expand import expand
+    from kanibako.settings.settings_merge import merge
+    from kanibako.settings.settings_store import Bind, KeyStore
 
     # The path tier (Layer-1 config.* foundation into ctx.config, Layer-2 system.*
     # into the base FLOOR) — identical to _category_set_lookups; a resolution
@@ -3386,7 +3386,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     the resolved terminal. Rendering an expanded request beside its result would
     print the same string twice and answer nothing.
     """
-    from kanibako.settings_store import Bind, KeyStore
+    from kanibako.settings.settings_store import Bind, KeyStore
 
     node = snapshot
     for seg in (PREF_ROOT,):
@@ -3465,8 +3465,8 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     Both halves are read off the SAME snapshot: the declaration at its own key,
     the derivation at ``meta.derived.<that key>``.  Nothing is re-derived here.
     """
-    from kanibako.settings_store import Bind, KeyStore
-    from kanibako.settings_views import derived_bindings
+    from kanibako.settings.settings_store import Bind, KeyStore
+    from kanibako.settings.settings_views import derived_bindings
 
     print("", file=out)
     if error is not None:
@@ -3537,7 +3537,7 @@ def _declaration_delivery(decl_key: str) -> str:
     definition, and a display keeping its own copy would drift the moment a
     category moved between COPY and MOUNT.
     """
-    from kanibako.settings_categories import _DELIVERY
+    from kanibako.settings.settings_categories import _DELIVERY
 
     parts = decl_key.split(".")
     idx = 2 if parts[0] == "agent" else 1
@@ -3552,7 +3552,7 @@ def _iter_agent_tiers(scope: str, scope_node: Any):
     other scope is itself.  Keeps the display from printing the bare
     ``agent.bindings.*`` form, which is not a key (spec §0 L21).
     """
-    from kanibako.settings_store import KeyStore
+    from kanibako.settings.settings_store import KeyStore
 
     if scope != "agent":
         yield scope_node, scope
@@ -3565,7 +3565,7 @@ def _iter_agent_tiers(scope: str, scope_node: Any):
 
 def _sub(node: Any, path: "tuple[str, ...]") -> Any:
     """Walk *path* under *node* with unbound ``dict`` ops (S3); ``None`` if absent."""
-    from kanibako.settings_store import KeyStore
+    from kanibako.settings.settings_store import KeyStore
 
     cur: Any = node
     for seg in path:

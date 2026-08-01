@@ -87,7 +87,7 @@ class TestWsNameSingleSourceDriftGuard:
     """
 
     def _guard(self, proj, std):
-        from kanibako.settings_launch import meta_runtime_floor
+        from kanibako.settings.settings_launch import meta_runtime_floor
 
         token = channels.workset_name_token(proj)
         mode = proj.mode.value

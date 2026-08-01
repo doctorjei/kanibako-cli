@@ -20,10 +20,10 @@ import pytest
 import yaml
 
 from kanibako.agent_select import AgentSelection, SELECTION_KEY
-from kanibako.settings_assemble import refuse_retired_keys
-from kanibako.settings_launch import build_launch_snapshot, resolve_selected_agent
-from kanibako.settings_resolve import ResolveCtx, SettingsError
-from kanibako.settings_store import _MISSING
+from kanibako.settings.settings_assemble import refuse_retired_keys
+from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
+from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
+from kanibako.settings.settings_store import _MISSING
 
 AGENTS = frozenset({"claude", "goose", "codex"})
 
@@ -237,7 +237,7 @@ class TestSelectionLevel:
         INVERT: interpolate the agent name into the anchor again and this passes
         for the wrong reason (it would follow ``agent_name``, not the key).
         """
-        from kanibako.settings_launch import auth_chain_floor
+        from kanibako.settings.settings_launch import auth_chain_floor
 
         box = _yaml(
             tmp_path / "box.yaml", {"pref": {"system": {"agent": "goose"}}},
@@ -538,7 +538,7 @@ class TestNoAgentAuthPathIsUnreachable:
         lying about the host, and it is exactly what made an earlier draft of this
         test "prove" a collapse that the real path cannot produce.
         """
-        from kanibako.settings_launch import (
+        from kanibako.settings.settings_launch import (
             auth_chain_floor,
             build_launch_snapshot,
             resolve_auth_source,

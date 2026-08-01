@@ -27,7 +27,7 @@ from kanibako.paths import (
     load_std_paths,
     resolve_box_target,
 )
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.utils import container_name_for
 from kanibako.vscode.vscode_config import (
     attached_container_config_path,

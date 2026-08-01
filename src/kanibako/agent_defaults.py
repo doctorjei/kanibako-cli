@@ -21,7 +21,7 @@ Split (documented in each YAML header too):
   routing, container env, cred-file lifecycle, host_prep/init_dirs, and the
   agent-common box_dests.  Box-side destinations under the guest home are written
   as ``$GUEST_HOME`` EXPRESSIONS (e.g. ``$GUEST_HOME/.local/bin/claude``) that
-  this loader expands from the single :data:`~kanibako.settings_resolve.GUEST_HOME`
+  this loader expands from the single :data:`~kanibako.settings.settings_resolve.GUEST_HOME`
   constant — no ``/home/agent`` literal in the file.
 * CODE-RESOLVED — the CRITICAL/runtime-probed HOST binary paths stay in the
   plugin's ``detect()`` (the contract-path constants + npm/ELF resolution).  The
@@ -44,7 +44,7 @@ from kanibako.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
-from kanibako.settings_resolve import GUEST_HOME, SettingsError
+from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
     BindDefault,
     BindKind,
@@ -67,7 +67,7 @@ def _expand(value: str) -> str:
 
     The defaults files write every in-box destination as a ``$GUEST_HOME``
     expression so the guest-home literal lives in exactly one place (the
-    :data:`~kanibako.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
+    :data:`~kanibako.settings.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
     leading ``$GUEST_HOME`` token is substituted; the rest is left verbatim.
     """
     if value.startswith("$GUEST_HOME"):
@@ -236,7 +236,7 @@ def load_category_binds(
 
     ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression (``$GUEST_HOME`` is
     expanded here; a leading ``~`` is left for the box-side ``box_dest`` resolve in
-    :func:`~kanibako.settings_launch.snapshot_category_entries`).  ``ro: true`` emits
+    :func:`~kanibako.settings.settings_launch.snapshot_category_entries`).  ``ro: true`` emits
     the explicit ``"ro"`` mount option (element 2); otherwise a 2-tuple is emitted
     and reconcile falls back to the category default.  Returns ``{}`` when the file
     declares no category binds.

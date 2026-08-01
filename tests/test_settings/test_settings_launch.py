@@ -13,15 +13,15 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings_categories import CategoryEntry, reconcile_categories
-from kanibako.settings_launch import (
+from kanibako.settings.settings_categories import CategoryEntry, reconcile_categories
+from kanibako.settings.settings_launch import (
     agent_delivery_mounts,
     build_launch_snapshot,
     effective_behavior,
     snapshot_category_entries,
 )
-from kanibako.settings_resolve import GUEST_HOME, ResolveCtx
-from kanibako.settings_store import Bind, KeyStore
+from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
+from kanibako.settings.settings_store import Bind, KeyStore
 
 
 def _ctx() -> ResolveCtx:
@@ -114,7 +114,7 @@ def test_agent_partial_surfaces_flat_secret_path():
     # the token ro-mount + $VAR export), silently breaking persona auth. The active
     # layer must surface the flat secret_path as ``agent.<node>.secret_path``; the
     # all-agents ``default`` layer must NOT (it is the file's own node's secret).
-    from kanibako.settings_assemble import _agent_partial
+    from kanibako.settings.settings_assemble import _agent_partial
 
     raw = {"self": {
         "name": "OpenAI Codex CLI",
@@ -347,7 +347,7 @@ def test_adapter_masks_and_env():
 
 
 def test_adapter_bind_with_none_leaf_raises():
-    from kanibako.settings_resolve import SettingsError
+    from kanibako.settings.settings_resolve import SettingsError
 
     snap = KeyStore({"box": {"bindings": {"rw": {"bad": None}}}})
     with pytest.raises(SettingsError):
@@ -542,7 +542,7 @@ def test_delivery_ignores_non_agent_entries(tmp_path: Path):
 # spec §2a/§2b/§2c/§2d; design FINAL KEY MODEL                                 #
 # --------------------------------------------------------------------------- #
 
-from kanibako.settings_launch import (  # noqa: E402
+from kanibako.settings.settings_launch import (  # noqa: E402
     auth_chain_floor,
     meta_identity_floor as _mid_floor,
     meta_runtime_floor as _mr_floor,
@@ -866,8 +866,8 @@ def test_p6d2_standalone_scrub_no_agent_garbage(tmp_path):
 # meta.runtime.* materialization (block B1 — spec §1A L230-241)                #
 # --------------------------------------------------------------------------- #
 
-from kanibako.settings_launch import meta_runtime_floor  # noqa: E402
-from kanibako.settings_resolve import SettingsError as _SettingsError  # noqa: E402
+from kanibako.settings.settings_launch import meta_runtime_floor  # noqa: E402
+from kanibako.settings.settings_resolve import SettingsError as _SettingsError  # noqa: E402
 
 
 def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveCtx:
@@ -1050,7 +1050,7 @@ def test_meta_workset_name_single_sources_from_ws_name_all_modes():
 def test_meta_workset_name_view_typed():
     """MetaWorksetView.name reads the anchored partition token (str) — the anchor
     surfaces at the view layer for every mode."""
-    import kanibako.settings_views as views
+    import kanibako.settings.settings_views as views
 
     snap = _meta_snapshot("named", ws_root_literal="/code/kento", ws_name="kento")
     ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
@@ -1146,7 +1146,7 @@ def test_meta_views_read_runtime_typed():
     at their EXACT types (Path / Path|None / str)."""
     from pathlib import Path as _Path
 
-    import kanibako.settings_views as views
+    import kanibako.settings.settings_views as views
 
     # named: every field present + typed.
     snap = _meta_snapshot("named", ws_root_literal="/code/kento")
@@ -1212,7 +1212,7 @@ def test_meta_runtime_coexists_with_auth_chain():
 # spec §2c/§2d, §0                                                             #
 # --------------------------------------------------------------------------- #
 
-from kanibako.settings_launch import meta_identity_floor  # noqa: E402
+from kanibako.settings.settings_launch import meta_identity_floor  # noqa: E402
 
 
 def _identity_snapshot(
@@ -1319,7 +1319,7 @@ class TestMetaAgentPath:
     def test_view_exposes_path(self):
         """``MetaAgentView.path`` is materialized now — its docstring no longer
         defers it."""
-        from kanibako import settings_views as views
+        from kanibako.settings import settings_views as views
 
         snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
         ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
@@ -1466,7 +1466,7 @@ def test_inbox_bind_routes_through_meta_box_inbox():
 def test_meta_box_view_reads_b2_fields_typed():
     """MetaBoxView reads the B2 leaves at their EXACT types; MetaAgentView reads
     the agent name."""
-    import kanibako.settings_views as views
+    import kanibako.settings.settings_views as views
 
     snap = _identity_snapshot(
         share_workset="/code/kento/channels/share/droste",
@@ -1485,7 +1485,7 @@ def test_meta_box_view_reads_b2_fields_typed():
 
 def test_meta_box_view_standalone_share_workset_none():
     """MetaBoxView.share_workset is None (typed Path|None) for standalone."""
-    import kanibako.settings_views as views
+    import kanibako.settings.settings_views as views
 
     snap = _identity_snapshot(share_workset=None)
     mb = views.MetaBoxView(_meta_node(snap, "meta", "box"))
@@ -1938,7 +1938,7 @@ def test_workset_anchor_floor_rejects_unknown_mode():
     ``meta.box.path``; a typo'd or new mode taking the wrong arm would relocate the
     box root SILENTLY, so the variant is checked rather than defaulted.
     """
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     with pytest.raises(_SettingsError) as exc:
         workset_anchor_floor(mode="local")
@@ -1956,7 +1956,7 @@ def test_workset_anchor_floor_refuses_an_undeclared_channel_leaf():
     forbids — an undeclared key is not a key and must be REFUSED, not quietly
     accepted. The error names the leaf so the fabrication is visible.
     """
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     with pytest.raises(_SettingsError) as exc:
         workset_anchor_floor(
@@ -1985,7 +1985,7 @@ def test_workset_anchor_floor_allows_every_spec_declared_channel_leaf():
     Pinning it to the live call would refuse a declared key the moment a second
     caller supplied one; the check exists to stop FABRICATION.
     """
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     floor = workset_anchor_floor(
         mode="named",
@@ -2005,7 +2005,7 @@ def test_workset_anchor_floor_meta_box_path_per_mode():
     whole-value ref: ``workset.boxes`` IS the box root), so no separator is emitted
     and nothing downstream needs a per-mode arm.
     """
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     for mode in ("primary", "named"):
         floor = workset_anchor_floor(mode=mode)
@@ -2043,7 +2043,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     was confirmed RED before the guard was added), so it cannot pass vacuously.
     """
     from kanibako.config_io import dump_doc
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     ws_file = tmp_path / "workset-settings.yaml"
     dump_doc(ws_file, {"workset": {"boxes": None}})
@@ -2083,7 +2083,7 @@ def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
     shape distinguishes it (confirmed: pre-fix this produced
     ``/data/ws/boxes//home`` with no error).
     """
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     for name in ("", None):
         floor: dict[str, object] = {
@@ -2128,7 +2128,7 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
     is pinned in ``tests/test_config_interface.py``.)
     """
     from kanibako.config_io import dump_doc
-    from kanibako.settings_launch import workset_anchor_floor
+    from kanibako.settings.settings_launch import workset_anchor_floor
 
     hostile = tmp_path / "hostile.yaml"
     dump_doc(
@@ -2354,8 +2354,8 @@ class TestNoImplicitRootPrepend:
 # ``pref.*`` at the LAUNCH seam (spec §2h) — the behavioural half of P6        #
 # --------------------------------------------------------------------------- #
 
-from kanibako.settings_prefs import AgentNames as _AgentNames  # noqa: E402
-from kanibako.settings_resolve import SettingsError  # noqa: E402
+from kanibako.settings.settings_prefs import AgentNames as _AgentNames  # noqa: E402
+from kanibako.settings.settings_resolve import SettingsError  # noqa: E402
 
 _PREF_AGENTS = _AgentNames({"claude", "goose", "codex"})
 

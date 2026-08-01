@@ -4,7 +4,7 @@ This module GENERALIZES the (now-folded) ``settings_shares`` + ``settings_seeds`
 resolvers into one *category* primitive.  Every path-delivery mechanism the
 settings framework exposes at a scope is a CATEGORY; this module discovers the
 category keys across the precedence levels, resolves each via the engine in
-:mod:`kanibako.settings_resolve`, and emits one ordered ``list[CategoryEntry]``
+:mod:`kanibako.settings.settings_resolve`, and emits one ordered ``list[CategoryEntry]``
 tagged with its *delivery* (COPY vs MOUNT).  It is **pure**: no file I/O, no
 mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
@@ -41,7 +41,7 @@ category         key shape                              host_src      delivery
 ================ ===================================== ============= =========
 
 A "bind" value is a STRUCTURED pair/tuple ``[host_src, box_dest[, options]]``
-unpacked by the engine's :func:`~kanibako.settings_resolve.unpack_bind` (spec
+unpacked by the engine's :func:`~kanibako.settings.settings_resolve.unpack_bind` (spec
 §2a — never a colon-joined string).  ``masks`` carries a list of guest paths to
 tmpfs-hide (no host source); ``env`` carries a scalar value for ``{VAR}`` (no
 host source, no guest *path* — its ``box_dest`` field is the VAR name).
@@ -102,7 +102,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal, Mapping
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from kanibako.settings_store import Bind
+    from kanibako.settings.settings_store import Bind
 
 # Delivery tags.
 Delivery = Literal["COPY", "MOUNT", "ENV"]
@@ -466,7 +466,7 @@ def reconcile_categories(
     The gate is applied BEFORE collision resolution, so a suppressed ``synced``
     cannot win — or error against — a colliding binding. (Callers pass
     ``deliver_creds=auth.creds_shared`` off the resolved
-    :class:`~kanibako.settings_launch.AuthSource`.)
+    :class:`~kanibako.settings.settings_launch.AuthSource`.)
 
     Raises :class:`~kanibako.errors.CategoryCollisionError` (a
     :class:`~kanibako.errors.ConfigError`) on a row-1 / row-3 collision and on a
@@ -821,7 +821,7 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
     ⚑ Distinct by NAME from the READ lens ``settings_views.derived_bindings`` —
     one PRODUCES the keys, the other READS them back off a snapshot.
     """
-    from kanibako.settings_store import Bind
+    from kanibako.settings.settings_store import Bind
 
     out: dict[str, Bind] = {}
     for e in entries:

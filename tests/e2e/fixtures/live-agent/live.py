@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
     AgentInstall,
     BindKind,

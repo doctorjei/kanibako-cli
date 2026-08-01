@@ -9,7 +9,7 @@ Selection order (spec §2h L1298-1299, least to most specific)::
 The first three are settled INSIDE the settings cascade — ``system.agent`` is the
 stored default and a ``pref.system.agent`` request from the workset or box file
 overrides it, box beating workset by assignment order. This module resolves that
-much with a NARROW pre-pass (:func:`kanibako.settings_launch.resolve_selected_agent`),
+much with a NARROW pre-pass (:func:`kanibako.settings.settings_launch.resolve_selected_agent`),
 applies ``--agent`` on top, and hands the winner to
 :func:`kanibako.config.resolve_agent`, which owns everything that is NOT a key:
 name validation against the installed set, persona-ref canonicalisation, and the
@@ -48,9 +48,9 @@ when the cascade already said it, and is exactly the mechanism P8 generalised to
 every key-shadowing flag.
 
 ⮕ **P8 (v1.8.0) landed that generalisation.** The level is now built by
-:func:`kanibako.settings_cli_level.build_cli_level`, which owns the flag→key table
+:func:`kanibako.settings.settings_cli_level.build_cli_level`, which owns the flag→key table
 and carries this selection alongside the launch's ephemeral flag values, and it is
-validated by :func:`~kanibako.settings_cli_level.guard_cli_level` inside
+validated by :func:`~kanibako.settings.settings_cli_level.guard_cli_level` inside
 ``build_launch_snapshot``. :attr:`AgentSelection.selection_level` keeps its name
 because it really is only the selection — it is this module's INPUT to that
 builder. Which resolves see the flags is a separate rule stated at
@@ -70,7 +70,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from kanibako.settings_store import _MISSING
+from kanibako.settings.settings_store import _MISSING
 
 #: The key naming the agent a box runs (spec §2g L1187). Re-exported so callers
 #: spell it once.
@@ -150,7 +150,7 @@ class AgentSelection:
 
 
 def launch_resolve_ctx(std, proj, agent_name: "str | None"):
-    """Build the host-side :class:`~kanibako.settings_resolve.ResolveCtx`.
+    """Build the host-side :class:`~kanibako.settings.settings_resolve.ResolveCtx`.
 
     The ONE ctx builder for every snapshot resolve — ``start.py``'s
     ``_launch_snapshot_inputs`` calls this too, so the selection pre-pass and the
@@ -166,10 +166,10 @@ def launch_resolve_ctx(std, proj, agent_name: "str | None"):
     *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a
     ``$AGENT`` anywhere resolves to a refusal rather than to a silent ``""``. That
     refusal is recorded (never raised) because selection expands LENIENTLY; see
-    :func:`kanibako.settings_launch.resolve_selected_agent`.
+    :func:`kanibako.settings.settings_launch.resolve_selected_agent`.
     """
     from kanibako.paths import host_xdg_map
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     workset_name = (
         proj.group.name
@@ -202,7 +202,7 @@ def select_agent(
 
     Raises the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
     ``config.resolve_agent`` raises (Gate-2a / Gate-2b / not-installed), a
-    :class:`~kanibako.settings_resolve.SettingsError` when the selection key itself
+    :class:`~kanibako.settings.settings_resolve.SettingsError` when the selection key itself
     does not resolve, and the retired-key refusal when a settings file still
     carries ``box.agent_name`` / ``system.default_agent`` (migration M-4).
 
@@ -213,8 +213,8 @@ def select_agent(
     from kanibako.config import resolve_agent, settings_base_path
     from kanibako.config_io import load_doc
     from kanibako.paths import box_workset_settings_paths
-    from kanibako.settings_assemble import refuse_retired_keys
-    from kanibako.settings_launch import resolve_selected_agent
+    from kanibako.settings.settings_assemble import refuse_retired_keys
+    from kanibako.settings.settings_launch import resolve_selected_agent
 
     box_path, workset_path = box_workset_settings_paths(proj)
     system_path = std.settings

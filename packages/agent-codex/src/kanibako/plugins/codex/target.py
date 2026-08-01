@@ -322,13 +322,13 @@ class CodexTarget(Target):
         writers (*auto_approve* is accepted per the seam contract but unused
         here).  The box-side literals codex keys
         its trust entries on (the in-box config path and workdir) are derived
-        here from the core :data:`~kanibako.settings_resolve.GUEST_HOME`
+        here from the core :data:`~kanibako.settings.settings_resolve.GUEST_HOME`
         constant: the workdir is the fixed container WORKDIR
         ``GUEST_HOME/workspace`` (tmux new-session inherits it — see
         ``has_resumable_session``, which pins the same literal); promote a seam
         parameter instead if it ever becomes configurable.
         """
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
         from kanibako.vscode.vscode_config import seed_codex_config
 
         return seed_codex_config(

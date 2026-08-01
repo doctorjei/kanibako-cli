@@ -61,7 +61,7 @@ class TestHasResumableSession:
 
     def test_encoded_dir_name_is_the_constant(self):
         # Pin the constant so a workdir/encoding change is caught here.
-        from kanibako.settings_resolve import GUEST_HOME
+        from kanibako.settings.settings_resolve import GUEST_HOME
         assert f"{GUEST_HOME}/workspace".replace("/", "-") == self.ENCODED
 
     def test_false_when_projects_dir_missing(self, tmp_path: Path):

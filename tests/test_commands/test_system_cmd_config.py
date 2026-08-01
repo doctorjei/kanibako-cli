@@ -72,14 +72,14 @@ def _launch_auth_source(std, *, agent_name="claude", mode="primary"):
     file — the same ``build_launch_snapshot`` → ``resolve_auth_source`` read
     ``start._resolve_box_auth_source`` performs (system_path=std.settings)."""
     from kanibako.paths import host_xdg_map
-    from kanibako.settings_launch import (
+    from kanibako.settings.settings_launch import (
         auth_chain_floor,
         build_launch_snapshot,
         meta_identity_floor,
         meta_runtime_floor,
         resolve_auth_source,
     )
-    from kanibako.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     ctx = ResolveCtx(
         agent_name=agent_name, workset_name=None,
