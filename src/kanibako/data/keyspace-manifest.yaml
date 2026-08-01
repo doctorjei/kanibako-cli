@@ -1276,6 +1276,293 @@ keys:
     spec: "§2d (auth-level 2026-07-01)"
 
 ## ---------------------------------------------------------------------------
+## DECLARED INSTANCES (R-10, R-14; R-16 rode to `keys:`) — the NAMED instances of
+## parametric category families that the SPEC ITSELF names. Enumerated because
+## the `user_key:` property is real, machine-checkable, spec-stated and
+## INEXPRESSIBLE in a bare family pattern — and `config show` needs it (R-10).
+## ONLY spec-named instances appear here; any other name inside a declared
+## family remains legal by the family pattern (§0: closed but NOT flat).
+##
+## `user_key:` semantics (R-10 — "user_key: false where the spec says so"):
+##   true  — an ORDINARY settable declared key instance: it has a settable
+##           default (`default:`), participates in the set-time floor, and is
+##           user-repointable through the ordinary config verbs.
+##   false — INTERNAL / generated (spec: "not a user key, not repointable"):
+##           the bind still routes through the single binding route, but the
+##           name is NOT user-addressable — config set/get REFUSE it; `config
+##           show` displays it as an internal bind (`value:`, not `default:`).
+## Field convention: user_key true ⇒ `default:` (the out-of-box value of a
+## settable key); user_key false ⇒ `value:` (fixed, generated — nothing to set).
+## Tuples are spelled exactly as the spec spells them: (host_src, box_dest);
+## dests are GUEST paths for mounts, HOST paths for copies (§0 / R-20).
+## ---------------------------------------------------------------------------
+declared_instances:
+
+  ## ---- CANON BOOKS + KICKOFF — the 12 named §2c binds (R-10) --------------
+  ## 7 INTERNAL (canon_collection, the five canon_bible_*, kickoff) — the
+  ## package-sourced ones; 5 USER KEYS (the canon_hb_* chapters) — the spec's
+  ## own LOAD-BEARING distinction: the handbook is sourced from the
+  ## `<scope>.canon` keys "or wherever the user redirects it, because it IS a
+  ## settings key" (§2c). Do NOT flatten the two classes into one.
+  box.bindings.ro.canon_collection:
+    user_key: false
+    value: "(<packaged rom COLLECTION.md>, ~/canon/COLLECTION.md)"
+    note: "INTERNAL — the canon index; FILE bind over the pre-created box-skeleton
+           mountpoint. Stays a BIND (rom truth: a seeded copy would freeze at
+           create and drift from the package). Not repointable: the index defines
+           the canon's shape and load order, so a redirect could silently replace
+           the canon wholesale."
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_bible_contents:
+    user_key: false
+    value: "(<packaged rom bible/ROM_CONTENTS.md>, ~/canon/bible/ROM_CONTENTS.md)"
+    note: "INTERNAL, FILE bind (same pre-created-mountpoint rule)"
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_bible_general:
+    user_key: false
+    value: "(<packaged rom bible/general>, ~/canon/bible/general)"
+    note: "INTERNAL, dir ro. Successor delivery of the retired system.instructions
+           box guide: the packaged rom's general chapter (directives/ROM_GENERAL.md
+           — verified against the packaged tree, A3/D-8) arrives here; no
+           host-editable copy, no repoint."
+    spec: "§2c (CANON books; R-10) / §3 (system.instructions row)"
+  box.bindings.ro.canon_bible_workset:
+    user_key: false
+    value: "(<packaged rom bible/workset>, ~/canon/bible/workset)"
+    note: "INTERNAL, dir ro"
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_bible_box:
+    user_key: false
+    value: "(<packaged rom bible/box>, ~/canon/bible/box)"
+    note: "INTERNAL, dir ro"
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_bible_agent:
+    user_key: false
+    value: "(<plugin pkg data/rom>, ~/canon/bible/agent)"
+    note: "INTERNAL, dir ro — the PLUGIN's bible chapter, emitted by CORE from the
+           RESOLVED target (emission gate: rom_root exists AND contains
+           directives/ROM_AGENT.md). bible/agent = per-HARNESS (packaged);
+           handbook/agent = per-AGENT-NODE (host, agent.<agent>.canon) — two
+           books, two cardinalities, no overlap. Not a user key, not repointable,
+           no floor (§0: the one book a user cannot edit is the one they cannot
+           repoint)."
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_hb_contents:
+    user_key: true
+    default: "(@system.canon/handbook/SYS_CONTENTS.md, ~/canon/handbook/SYS_CONTENTS.md)"
+    note: "FILE bind; system store — user-editable on the HOST, ro in-box. NOT
+           skip-if-absent: install/setup materialises the system store, so a
+           missing source is a genuine defect. The blessed repoint ROUTE is the
+           SOURCE key system.canon (the bind spells itself against it)."
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_hb_general:
+    user_key: true
+    default: "(@system.canon/handbook/general, ~/canon/handbook/general)"
+    note: "dir ro; system store — the global handbook IS the general chapter (the
+           system store ships NO agent/workset/box chapter stubs). NOT
+           skip-if-absent (same rule as canon_hb_contents)."
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_hb_agent:
+    user_key: true
+    optional: skip_if_absent
+    default: "(@agent.<active>.canon/handbook, ~/canon/handbook/agent)"
+    note: "source per the §2d fallback (agent.<agent>.canon -> agent.default.canon;
+           exactly ONE is bound — override, not additive); dest carries NO agent
+           segment (the plural/singular split is LOAD-BEARING, R-9/R-13). The
+           <active> discriminator is the ACTIVE AGENT NODE, interpolated at the
+           seam; the whole entry is OMITTED for a NO-AGENT box."
+    spec: "§2c (CANON books; R-10) / §2d (R-9 + R-13)"
+  box.bindings.ro.canon_hb_workset:
+    user_key: true
+    optional: skip_if_absent
+    default: "(@workset.canon/handbook, ~/canon/handbook/workset)"
+    note: "repoint route = workset.canon (R-9)"
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.canon_hb_box:
+    user_key: true
+    optional: skip_if_absent
+    default: "(@box.canon/handbook, ~/canon/handbook/box)"
+    note: "repoint route = box.canon (R-9); also the dest of the §2a handbook seed
+           layers — the seed writes precisely what this bind reads, spelled once"
+    spec: "§2c (CANON books; R-10)"
+  box.bindings.ro.kickoff:
+    user_key: false
+    value: "(<packaged core KICKOFF.md>, ~/.config/kanibako/kickoff.md)"
+    note: "INTERNAL, like kani_pkg — the directive-chain entry slot; kickoff
+           CONTENT lives in CORE, delivered by this unconditional bind. Not a user
+           key, not repointable. TRANSITION: emitted ONLY when the resolved target
+           does not itself deliver a kickoff at the same dest (yield gate; the
+           plugins' own KICKOFF.md deletions land ONE RELEASE LATER, after which
+           'unconditional' becomes literal — the FOLLOW-UP RELEASE plan)."
+    spec: "§2c (kanibako CLI delivery; R-10)"
+
+  ## ---- CORE NAMED BINDS — the ~17 §2c instances (R-10 via packet C5) ------
+  ## The spec's own §2c rows, one entry per (category, name) instance. `vault`
+  ## is TWO instances (ro + rw). Per-mode variation is spelled mode-keyed,
+  ## exactly like the manifest's per-mode `default:` house style.
+  box.bindings.rw.home:
+    user_key: true
+    default: "(@meta.box.path/home, ~/)"
+    note: "the box HOME bind — ONE declaration for every mode: the per-mode
+           variation lives in meta.box.path and nowhere downstream (§2c ALL
+           PROJECTS). ⚑ core-defaults spells the dest `~` (deliberately, 'no
+           trailing slash'); the spec row spells `~/` — flagged, unresolved;
+           spec spelling carried here."
+    spec: "§2c (ALL PROJECTS)"
+  box.bindings.rw.workspace:
+    user_key: true
+    default: "(@meta.box.workspace, ~/workspace)"
+    spec: "§2c"
+  box.bindings.ro.vault:
+    user_key: true
+    default: {primary: "(@workset.vault_ro/@meta.box.name, ~/vault/ro)",
+              named: "(@workset.vault_ro/@meta.box.name, ~/vault/ro)",
+              standalone: "(@workset.vault_ro, ~/vault/ro)"}
+    note: "both arms root at the UNIFORM @workset.vault_ro (§2c ALL PROJECTS);
+           only the per-box /@meta.box.name subdir is per-mode (a lone box does
+           not need it). Gated on box.enable_vault; source created if missing."
+    spec: "§2c (ALL WORKSETS / STANDALONE; R-29)"
+  box.bindings.rw.vault:
+    user_key: true
+    default: {primary: "(@workset.vault_rw/@meta.box.name, ~/vault/rw)",
+              named: "(@workset.vault_rw/@meta.box.name, ~/vault/rw)",
+              standalone: "(@workset.vault_rw, ~/vault/rw)"}
+    note: "see box.bindings.ro.vault — same shape, rw arm"
+    spec: "§2c (ALL WORKSETS / STANDALONE; R-29)"
+  box.bindings.ro.images:
+    user_key: true
+    default: "%if @box.share_images: (@box.images_store, <box_image_dir>) else None%"
+    note: "conditional on @box.share_images (D-M8); the settable INPUTS are
+           box.share_images + box.images_store (the USER KEY host store root).
+           The GENERATED storage.conf companion (images_conf) is an INTERNAL bind
+           and NOT a key (not_keys.never_a_key) — the store mount is INERT
+           without it. ⚑ B3-PENDING PAIR: core-defaults' bind entry is spelled
+           `images_store` today; plan step B3's rider renames it to `images` so
+           the bind and the scalar stop sharing a name — EXPECTED skew until B3;
+           flagged, unresolved — not an error."
+    spec: "§2c (ALL PROJECTS; D-M8) / §2b (box.images_store)"
+  box.bindings.ro.helper_log:
+    user_key: true
+    default: "(@workset.logs/@{meta.box.name}.jsonl, $XDG_STATE_HOME/kanibako/helpers.jsonl)"
+    note: "a SINGLE row for all modes — workset.logs carries the per-mode
+           variation (R-28). ⚑ THE BRACES ARE LOAD-BEARING (policy.reference_forms
+           / R-23): the bare form would greedily parse `meta.box.name.jsonl` and
+           coerce to ''. There is NO meta.box.helper_log key
+           (not_keys.never_a_key)."
+    spec: "§2c (ALL PROJECTS; R-23 / R-28)"
+  box.bindings.rw.helper_sock:
+    user_key: true
+    default: "(@system.runtime/@meta.box.name-@meta.workset.name.sock, $XDG_STATE_HOME/kanibako/helper.sock)"
+    note: "mount options MUST stay empty ('') — a LIVE unix socket; Z/U
+           relabel/chown would break the shared socket topology (core-defaults
+           carries the empty 3rd slot)"
+    spec: "§2c (ALL PROJECTS)"
+  box.bindings.ro.kani_pkg:
+    user_key: false
+    value: "(<host pkg>, /opt/kanibako/kanibako)"
+    note: "kanibako CLI delivery. INTERNAL per the spec's own references — the
+           kickoff row reads 'INTERNAL, like kani_pkg' and the images_conf note
+           reads 'like the kani_pkg binds — not a settable keyspace path' (§2c).
+           ⚑ user_key: false — confirmed: two independent spec statements; the
+           plan lists kani_pkg among the core binds without a class marker."
+    spec: "§2c (kanibako CLI delivery)"
+  box.bindings.ro.kani_bin:
+    user_key: false
+    value: "(<entry script>, ~/.local/bin/kanibako)"
+    note: "kanibako CLI delivery; same class as kani_pkg (same flag applies)"
+    spec: "§2c (kanibako CLI delivery)"
+  box.bindings.rw.global_common:
+    user_key: true
+    default: "(@system.channels.common, ~/channels/common)"
+    note: "system channel guest mount, option (A) — perms aspirational"
+    spec: "§2c (ALL PROJECTS; R-6 name)"
+  box.bindings.rw.global_chat:
+    user_key: true
+    default: "(@system.channels.chat, ~/channels/chat)"
+    spec: "§2c (ALL PROJECTS)"
+  box.bindings.rw.global_share:
+    user_key: true
+    default: "(@system.channels.share, ~/channels/share)"
+    note: "rw* -> ro under future (C)"
+    spec: "§2c (ALL PROJECTS)"
+  box.bindings.rw.mailboxes:
+    user_key: true
+    default: "(@system.channels.mailboxes, ~/channels/mailboxes)"
+    note: "rw* -> ro under future (C)"
+    spec: "§2c (ALL PROJECTS)"
+  box.bindings.rw.inbox:
+    user_key: true
+    default: "(@meta.box.inbox, ~/channels/inbox)"
+    note: "own inbox; the (C)-stable path"
+    spec: "§2c (ALL PROJECTS)"
+  box.bindings.rw.workset_common:
+    user_key: true
+    default: "(@workset.channels.common, ~/channels/workset/common)"
+    note: "workset-LOCAL channel — PRIMARY/NAMED only; a standalone box has no
+           workset channels, so the entry is OMITTED there (gated at the seam)"
+    spec: "§2c (ALL WORKSETS; R-6 name)"
+  box.bindings.rw.workset_chat:
+    user_key: true
+    default: "(@workset.channels.chat, ~/channels/workset/chat)"
+    note: "PRIMARY/NAMED only (see workset_common)"
+    spec: "§2c (ALL WORKSETS)"
+  box.bindings.rw.workset_share:
+    user_key: true
+    default: "(@workset.channels.share, ~/channels/workset/share)"
+    note: "PRIMARY/NAMED only; rw* -> ro under future (C)"
+    spec: "§2c (ALL WORKSETS)"
+  # ⚑ FLAG (unresolved): core-defaults ALSO emits a `secret_export` bind
+  #   (bindings.ro — /etc/profile.d/kanibako-secrets.sh, the universal
+  #   secret-export profile.d snippet) with NO spec §2c row. It is EXCLUDED here
+  #   per the only-spec-named rule: either the name is fine as an ordinary
+  #   family-pattern instance, or it is a spec gap to queue — recorded, not
+  #   resolved.
+
+  ## ---- THE SIX SEED LAYERS — `{system, agent.<agent>, workset}.seeded.
+  ## {template,handbook}` (R-14; same class as R-10) -------------------------
+  ## COPIES, not mounts: dests are HOST paths (§0 / R-20). Ordered layers,
+  ## later-wins per file, SEED-ONCE at create (§2a / §5). The layer numbers
+  ## below are the spec's own (§2a layers 1-6).
+  system.seeded.template:
+    user_key: true
+    default: "(@system.template/box/home, @meta.box.path/home)"
+    note: "layer 1 — base BOX template (global); source = the box/home subtree of
+           the system template ROOT (R-1: system.template, NOT the root itself)"
+    spec: "§2a (seed layer 1; R-14)"
+  agent.<agent>.seeded.template:
+    parametric: [agent]
+    user_key: true
+    default: "(@agent.<agent>.template/box/home, @meta.box.path/home)"
+    note: "layer 2 — per-agent (agent = persona + harness); template holds
+           settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
+    spec: "§2a (seed layer 2; R-14) / §2d"
+  workset.seeded.template:
+    user_key: true
+    optional: skip_if_absent
+    default: "(@workset.template/box/home, @meta.box.path/home)"
+    note: "layer 3 — per-workset; the layer is SKIPPED when the source dir is
+           absent (cf. workset.template)"
+    spec: "§2a (seed layer 3; R-14)"
+  system.seeded.handbook:
+    user_key: true
+    default: "(@system.template/box/canon/handbook, @box.canon/handbook)"
+    note: "layer 4 — seeds the box's CANON CONTRIBUTION (outside home, then bound
+           RO by canon_hb_box); dest is the KEY @box.canon, spelled once"
+    spec: "§2a (seed layer 4; R-14)"
+  agent.<agent>.seeded.handbook:
+    parametric: [agent]
+    user_key: true
+    default: "(@agent.<agent>.template/box/canon/handbook, @box.canon/handbook)"
+    note: "layer 5 — per-agent handbook contribution"
+    spec: "§2a (seed layer 5; R-14)"
+  workset.seeded.handbook:
+    user_key: true
+    optional: skip_if_absent
+    default: "(@workset.template/box/canon/handbook, @box.canon/handbook)"
+    note: "layer 6 — per-workset handbook contribution (skip-if-absent)"
+    spec: "§2a (seed layer 6; R-14)"
+
+## ---------------------------------------------------------------------------
 ## PREF — requests (§2h; R-7 / R-7a / R-7b). NOT a key list: the family is
 ## pref.<target-key>, governed by the entries + filters below. A pref is a
 ## REQUEST consumed during resolution — not a value of its own; it lives in the
@@ -1429,6 +1716,27 @@ not_keys:
                         — the handbook root is the canon key's handbook/ subtree,
                         not a config.* key (fails §1's locate-and-load test)"
 
+  illegal_shapes:               # shapes CODE currently accepts/spells that are
+                                # NOT legal key shapes — recorded so the closed
+                                # keyspace refuses them and the defect cannot be
+                                # copied as precedent (Code Convention 0: an
+                                # undiscriminated variant is NOT a key)
+    "agent.secret_path.<VAR>":
+      status: illegal_shape
+      note: "R-40 (RATIFIED as recommended): settings_categories.SECRET_KEY_RE
+             spells its scope alternation `system|agent|workset|box` — a bare,
+             UNDISCRIMINATED `agent.` scope token — where every sibling category
+             regex uses the discriminated `agent\\.[^.]+` (_AGENT_SCOPE). The
+             legal shapes are the scope-discriminated
+             `agent.default.secret_path.<VAR>` and
+             `agent.<agent>.secret_path.<VAR>` (§2a secret_path category ×
+             categories.scopes); the bare form matches NO declared scope and is
+             NOT a key. The constant is confirmed DEAD (zero consumers in src/,
+             tests/, packages/ — packet C11), so this is record-not-behavior:
+             the CODE FIX lands at the KeyKind rewrite (deferred; this entry
+             is RECORD-ONLY)."
+      spec: "§2a (secret_path; R-40)"
+
   renamed:                        # was a key; the NEW name is authoritative
     "box.crab":                "-> pref.system.agent (§2h) — chain: was renamed to
                                 box.agent_name (D-M6), which R-3 then RETIRED"
@@ -1533,22 +1841,100 @@ not_keys:
     #  key; see agent.default.access / agent.<agent>.access above)
     "agent.<agent>.name":       "flat identity form -> meta.agent.<agent>.name"
     # (agent.default.default_agent MOVED to not_keys.renamed — R-18: the sweep is done)
-    "agent.default.provider":   "NOT a standard key — see agent.<agent>.provider"
+    "agent.default.provider":   "NOT a key at the DEFAULT tier — `provider` is a
+                                 PLUGIN-CONTRIBUTED member (goose's descriptor),
+                                 legal only as agent.<agent>.provider; see
+                                 plugin_contributed (R-37)"
     "agent.default.binding.<key>": "singular residue — see agent.<agent>.binding.<key>"
-    "agent.<agent>.provider":   "NOT a standard key — provider/model are goose's OWN
-                                 config; a user MAY inject env.<VAR> ad hoc (2026-06-27)"
+    # (agent.<agent>.provider MOVED to plugin_contributed — R-37: goose declares it
+    #  via setting_descriptors(), so it IS a legal descriptor-contributed member)
     "paths_project_toml":       "residue field"
     "project.*":                "the [project] table is a pre-box-rename artifact
                                  (read-compat ONLY: project.enable_vault -> box.enable_vault)"
     "resolved.*":               "core-derived [resolved] table, not keys"
 
+## ---------------------------------------------------------------------------
+## PLUGIN-CONTRIBUTED KEYS (R-37, R-15).
 ## Agent-SPECIFIC keys (agent.claude.* / agent.codex.* / agent.goose.*) are
-## deliberately ABSENT from this core registry: §0 "Agent specifics are
-## PLUGIN-declared … never hardcoded in core". They should be contributed by each
-## plugin descriptor and merged into the resolved keyspace at load, then validated
-## against the SAME rules as core keys.
+## deliberately ABSENT from the core registry: §0 "Agent specifics are
+## PLUGIN-declared … never hardcoded in core".
+## ---------------------------------------------------------------------------
 plugin_contributed:
   namespace: "agent.<agent>.*  and  meta.agent.<agent>.*"
   source: PluginDescriptor
   validated_against: policy
-  spec: "§0 (universal vs agent-specific) / §2d"
+
+  # R-37 (RATIFIED): the SHAPE/MEMBER split. The MANIFEST declares the plugin
+  # key SHAPE (the agent.<agent>.<key> contract + the category families at the
+  # agent leaf) and the VALIDATION RULES; the DESCRIPTORS supply the MEMBERS,
+  # unioned into the valid agent-leaf set at load
+  # (settings_keyspace descriptor union) and validated against the SAME rules
+  # as core keys. A descriptor-declared leaf (e.g. agent.goose.provider) is
+  # therefore a LEGAL key — see `member_census` below and the code_residue move.
+  shape: manifest_declares
+  members: descriptors_supply
+  # ⚑ THE CONFORMANCE REQUIREMENT (R-37, stated here because the manifest
+  # generates the conformance test): conformance MUST consult the plugin
+  # DESCRIPTORS when validating plugin keys — a conformance pass that reads
+  # ONLY this file will FALSE-POSITIVE on EVERY plugin key (each
+  # descriptor-declared member would be reported as an undeclared key).
+  conformance_must_consult_descriptors: true
+  shape_spec: "§0 (universal vs agent-specific) / §2d (R-37)"
+
+  # R-15 (RATIFIED, follows R-10): the spec-NAMED plugin `synced` credential
+  # instances live HERE, not in the core declared_instances list — they are
+  # PLUGIN-declared (each is materialised from its plugin's cred_files
+  # descriptor entries). Same entry semantics as declared_instances.
+  declared_instances:
+    agent.claude.synced.credentials:
+      user_key: true
+      default: "(~/.claude/.credentials.json, @meta.box.path/home/.claude/.credentials.json)"
+      note: "SYNC, mtime-gate, FILTERED (transform_cred merges claudeAiOauth).
+             COPY dest = HOST path under the box store (§0 / R-20). Suppressed
+             when the box shares no credentials (auth tier private, D-M4)."
+      spec: "§2d (claude; R-15)"
+    agent.codex.synced.auth:
+      user_key: true
+      default: "(~/.codex/auth.json, @meta.box.path/home/.codex/auth.json)"
+      note: "SYNC, mtime-gate, filtered=False (Q2: allowlist iff install-bound
+             fields)"
+      spec: "§2d (codex; R-15)"
+    agent.goose.synced.secrets:
+      user_key: true
+      default: "(~/.config/goose/secrets.yaml, @meta.box.path/home/.config/goose/secrets.yaml)"
+      note: "SYNC, mtime-gate, chmod 0600"
+      spec: "§2d (goose; R-15)"
+
+  # MEMBER CENSUS — INFORMATIVE ONLY, a point-in-time record (2026-08-01, the
+  # shipped descriptors at manifest HEAD 63ea33c). The AUTHORITATIVE member
+  # list is ALWAYS the installed descriptors (that is R-37's whole point);
+  # this census exists so a reader knows what class of thing descriptors
+  # contribute, and MUST NOT be used as a validation source.
+  member_census:
+    claude: "synced.credentials · common.{plugins,cache} · binary binds
+             {share, launcher} (agent_critical) + managed_pointer (kickoff seed)
+             · settings {model (flag), endpoint (env ANTHROPIC_BASE_URL)}
+             · caches.transform (binary-patch cache)"
+    codex: "synced.auth · binary bind {binary} + managed_pointer · settings
+            {model (flag), endpoint (SettingArg; config-file delivery via the
+            config.toml [model_providers] projection, not env)}"
+    goose: "synced.secrets (+ descriptor-only sync members config.yaml
+            [filtered: GOOSE_MODE preserved] and custom_providers/ — descriptor
+            MEMBERS, not spec-named instances) · binary bind {binary} +
+            managed_pointer · settings {provider (env GOOSE_PROVIDER), model
+            (env GOOSE_MODEL), endpoint (env OPENAI_HOST)} — provider/model
+            default '' (never pinned by kanibako)"
+  member_census_spec: "§2d (claude/codex/goose sections) / plugin *-defaults.yaml"
+
+  # `agent.<agent>.provider` — MOVED OUT of not_keys.code_residue (R-37): goose
+  # declares `provider` through setting_descriptors() and the loader unions
+  # descriptor keys into the valid agent-leaf set, so agent.goose.provider IS a
+  # legal key today — the old residue entry asserted otherwise and was wrong.
+  # Core still declares NO standard provider key (it stays out of `keys:` and
+  # out of the agent.default.* tier); legality flows from the descriptor, which
+  # is exactly the shape/member split above.
+  provider_disposition: "agent.<agent>.provider = descriptor-contributed member
+                         (goose); NOT a core key; agent.default.provider remains
+                         not-a-key (no default-tier declaration — see
+                         code_residue retext)"
+  provider_disposition_spec: "§2d (goose section; R-37)"
