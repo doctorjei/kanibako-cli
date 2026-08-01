@@ -393,8 +393,8 @@ class TestSystemDiagnoseJournal:
         self, config_file, tmp_home, credentials_dir, capsys,
     ) -> None:
         """A pending journal entry shows up in `run_system_diagnose` output."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.launch import journal
         from kanibako.errors import ContainerError
 
@@ -510,8 +510,8 @@ class TestRunBoxDiagnose:
 
     def _register_default_project(self, config_file, tmp_home, credentials_dir):
         """Initialize a registered default project at the cwd; return its paths."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -615,8 +615,8 @@ class TestRunBoxDiagnose:
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
     ) -> None:
         """`box diagnose <worksetname>` errors clearly (a workset isn't a box)."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.workset import add_project, create_workset
 
         config = load_config(config_file)
@@ -643,9 +643,9 @@ class TestRunBoxDiagnose:
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
     ) -> None:
         """`box diagnose ws/proj` resolves to that project box from any cwd."""
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.errors import ContainerError
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             WorksetSpec,
             load_std_paths,
             resolve_workset_project,
@@ -690,8 +690,8 @@ class TestRunBoxDiagnose:
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
     ) -> None:
         """`box diagnose ws/missing` errors -- never a silent wrong path."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.workset import create_workset
 
         config = load_config(config_file)
@@ -767,9 +767,9 @@ class TestRunBoxDiagnose:
         the still-on-disk box wrongly reports REGISTERED and this goes RED.
         """
         from kanibako import workset_registry
-        from kanibako.config import load_config
-        from kanibako.config_io import load_doc
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths
 
         proj = self._register_default_project(
             config_file, tmp_home, credentials_dir
@@ -849,7 +849,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.config.load_merged_config",
+                "kanibako.settings.config.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
             ),
             patch(
@@ -869,7 +869,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.config.load_merged_config",
+                "kanibako.settings.config.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
             ),
             patch(
@@ -890,7 +890,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.config.load_merged_config",
+                "kanibako.settings.config.load_merged_config",
                 return_value=MagicMock(box_image="configured:latest"),
             ),
             patch(
@@ -931,7 +931,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.config.load_merged_config",
+                "kanibako.settings.config.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
             ),
             patch(

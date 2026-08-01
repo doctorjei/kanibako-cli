@@ -155,10 +155,10 @@ def run_verify(args: argparse.Namespace) -> int:
 
     Exit code: 1 if any executable is missing in any probed image, else 0.
     """
-    from kanibako.config import config_file_path, load_merged_config
+    from kanibako.settings.config import config_file_path, load_merged_config
     from kanibako.runtime.container import ContainerRuntime
     from kanibako.errors import ContainerError
-    from kanibako.paths import xdg
+    from kanibako.settings.paths import xdg
 
     try:
         runtime = ContainerRuntime()

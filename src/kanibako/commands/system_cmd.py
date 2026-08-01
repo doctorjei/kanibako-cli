@@ -7,8 +7,8 @@ import sys
 
 from kanibako import __version__
 from kanibako.commands.flags import add_null_flag
-from kanibako.config import config_file_path, load_config
-from kanibako.paths import xdg
+from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.paths import xdg
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -133,7 +133,7 @@ def run_info(args: argparse.Namespace) -> int:
         config = load_config(cf)
         from pathlib import Path
 
-        from kanibako.paths import resolve_system_paths
+        from kanibako.settings.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         data_path = resolve_system_paths(
             config.config_paths, data_home=data_home, home=Path.home(),
@@ -247,7 +247,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     workset < box), threaded into every verb so ``system set env.X`` lands
     where the launch reads it.
     """
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.paths import load_std_paths
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
@@ -257,10 +257,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # The system-tier env file (mirrors the launch's system env source).
     env_sys = std.data_path / "env"
 
-    from kanibako.agent_config import agent_settings_path
+    from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import canonicalize_agent_ref
-    from kanibako.agent_representation import agent_default_bind_keys
-    from kanibako.config_interface import (
+    from kanibako.settings.agent_representation import agent_default_bind_keys
+    from kanibako.settings.config_interface import (
         ConfigAction,
         ConfigLevel,
         _AGENT_DEFAULT_SUB,
@@ -355,7 +355,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # gives the truthful structural refusal (naming the config file). Make
             # get's message MATCH set's truth for these keys instead of pretending
             # they do not exist.
-            from kanibako.config_interface import (
+            from kanibako.settings.config_interface import (
                 _is_system_path_key,
                 _system_key_refusal,
             )

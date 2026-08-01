@@ -29,10 +29,10 @@ from pathlib import Path
 from typing import Callable
 
 from kanibako import registry_store
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import WorksetError
 from kanibako.names import register_name, unregister_name
-from kanibako.paths import StandardPaths
+from kanibako.settings.paths import StandardPaths
 
 # The single per-workset file at the workset root.  It carries the workset
 # IDENTITY (under ``meta.workset.*``) AND the workset's cascade settings (box/
@@ -355,7 +355,7 @@ def create_workset(
     # BEFORE any on-disk side effect below.  (SAME-kind workset uniqueness above
     # stays unconditional — --force never bypasses it.)
     if not force:
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
         if name in load_primary_boxes(std.primary_workset):
             raise WorksetError(
                 f"Workset name '{name}' is already in use by a primary box. "
@@ -449,7 +449,7 @@ def default_workset(std: StandardPaths) -> Workset:
     write; the root settings.yaml carries only cascade keys, never a
     ``workset.meta`` identity).
     """
-    from kanibako.paths import load_primary_boxes, warn_legacy_primary_settings
+    from kanibako.settings.paths import load_primary_boxes, warn_legacy_primary_settings
 
     warn_legacy_primary_settings(std)
     projects_map = load_primary_boxes(std.primary_workset)
@@ -674,7 +674,7 @@ def add_project(
             # ``boxes:`` entry IS the connection record (the reverse index is the
             # collection of per-workset registries); the former global
             # ``connected:`` index is gone.  Idempotent (overwrites a moved box).
-            from kanibako.paths import (
+            from kanibako.settings.paths import (
                 _register_workset_box_membership,
                 _unregister_workset_box_membership,
             )
@@ -802,7 +802,7 @@ def remove_project(
     # only external connects were ever cleaned here).
     if std is not None:
         from kanibako import workset_registry
-        from kanibako.paths import _unregister_workset_box_membership
+        from kanibako.settings.paths import _unregister_workset_box_membership
 
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / WORKSET_META_FILE),

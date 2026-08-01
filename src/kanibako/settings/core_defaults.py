@@ -13,7 +13,7 @@ Split (documented in the YAML header too):
 * STATIC — box-side destinations + the structural shape (which keys exist, their
   per-mode scope).  These are read straight from the file.
 * DYNAMIC — host SOURCES that are runtime-PROBED (the channel host roots come
-  from :class:`~kanibako.paths.StandardPaths` /
+  from :class:`~kanibako.settings.paths.StandardPaths` /
   :func:`kanibako.channels.channels.box_channel_addresses`).  The loader injects each
   probed source into its keyed entry at the seam; the file names the source
   SYMBOLICALLY so the structure stays declarative.
@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 if TYPE_CHECKING:
-    from kanibako.paths import ProjectPaths, StandardPaths
+    from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.targets.base import PluginDescriptor, Target
 
 
@@ -248,8 +248,8 @@ def core_default_bind_keys() -> dict[str, tuple[str, str, str]]:
     + per-entry ``options`` read straight from the same declarative ``core:`` doc,
     but with a PLACEHOLDER host_src (:data:`FLOOR_PLACEHOLDER_SRC`) in element 0.
 
-    HOST-FREE (the F10 de-risk): it takes NO :class:`~kanibako.paths.ProjectPaths`
-    / :class:`~kanibako.paths.StandardPaths` and does NO runtime probe or
+    HOST-FREE (the F10 de-risk): it takes NO :class:`~kanibako.settings.paths.ProjectPaths`
+    / :class:`~kanibako.settings.paths.StandardPaths` and does NO runtime probe or
     create-if-missing — the ONLY thing the set-time must-exist gate needs from the
     floor is ``base[1:]`` (box_dest + options), which are pure declarative literals
     (``settings_configset.repoint_host_src`` discards element 0). So this exposes
@@ -416,7 +416,7 @@ def kickoff_default_categories(
     independently upgradable.  Recorded in migration M-12.
 
     *descriptor* is the descriptor whose bindings the SAME resolve represents in the
-    launch snapshot (see :func:`kanibako.agent_representation.agent_default_partial`).
+    launch snapshot (see :func:`kanibako.settings.agent_representation.agent_default_partial`).
     Passing ``None`` (a no-agent box, or a narrow resolve that carries no agent
     bindings) means nothing else can be delivering a kickoff, so the bind is emitted.
 

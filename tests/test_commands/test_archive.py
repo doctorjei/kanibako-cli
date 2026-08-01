@@ -7,8 +7,8 @@ import tarfile
 from pathlib import Path
 
 
-from kanibako.config import load_config
-from kanibako.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset
 
 
@@ -245,7 +245,7 @@ class TestStubProject:
         """
         from kanibako import workset_registry
         from kanibako.commands.archive import _stub_project
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)

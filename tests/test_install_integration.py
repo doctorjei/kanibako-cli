@@ -20,8 +20,8 @@ class TestInstallFilesystem:
         self, integration_home, integration_config
     ):
         """Install creates config, data, and state directories."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -35,7 +35,7 @@ class TestInstallFilesystem:
         self, integration_home, integration_config
     ):
         """Running install twice is idempotent — existing config untouched."""
-        from kanibako.config import load_config, write_global_config
+        from kanibako.settings.config import load_config, write_global_config
 
         # Write a config with a custom image
         config = load_config(integration_config)
@@ -82,9 +82,9 @@ class TestContainerfileDiscovery:
         self, integration_home, integration_config
     ):
         """User-override Containerfile takes precedence over bundled."""
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.runtime.containerfiles import get_containerfile
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(integration_config)
         std = load_std_paths(config)

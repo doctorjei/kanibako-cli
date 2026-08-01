@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from kanibako.config import config_file_path, load_config
-from kanibako.paths import xdg, load_std_paths, resolve_any_project
+from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.paths import xdg, load_std_paths, resolve_any_project
 from kanibako.snapshots import (
     _DEFAULT_MAX_SNAPSHOTS,
     create_snapshot,

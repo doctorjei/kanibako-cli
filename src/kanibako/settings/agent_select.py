@@ -11,7 +11,7 @@ stored default and a ``pref.system.agent`` request from the workset or box file
 overrides it, box beating workset by assignment order. This module resolves that
 much with a NARROW pre-pass (:func:`kanibako.settings.settings_launch.resolve_selected_agent`),
 applies ``--agent`` on top, and hands the winner to
-:func:`kanibako.config.resolve_agent`, which owns everything that is NOT a key:
+:func:`kanibako.settings.config.resolve_agent`, which owns everything that is NOT a key:
 name validation against the installed set, persona-ref canonicalisation, and the
 installed-count rule.
 
@@ -168,7 +168,7 @@ def launch_resolve_ctx(std, proj, agent_name: "str | None"):
     refusal is recorded (never raised) because selection expands LENIENTLY; see
     :func:`kanibako.settings.settings_launch.resolve_selected_agent`.
     """
-    from kanibako.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_resolve import ResolveCtx
 
     workset_name = (
@@ -210,9 +210,9 @@ def select_agent(
     ``config --effective`` display) keep their existing ``try/except`` — that is
     what makes the launch loud and the read verbs quiet, deliberately.
     """
-    from kanibako.config import resolve_agent, settings_base_path
-    from kanibako.config_io import load_doc
-    from kanibako.paths import box_workset_settings_paths
+    from kanibako.settings.config import resolve_agent, settings_base_path
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import box_workset_settings_paths
     from kanibako.settings.settings_assemble import refuse_retired_keys
     from kanibako.settings.settings_launch import resolve_selected_agent
 

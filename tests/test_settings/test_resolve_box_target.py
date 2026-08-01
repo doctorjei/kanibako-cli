@@ -12,7 +12,7 @@ import pytest
 
 from kanibako import registry_store
 from kanibako.errors import ProjectError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     establish_standalone,
     resolve_box_target,
@@ -133,7 +133,7 @@ class TestWorksetMemberFromOutside:
         (writing the per-workset ``boxes:`` entry the launch path records), then
         resolves the bare member name from a cwd OUTSIDE the workset.
         """
-        from kanibako.paths import WorksetSpec, resolve_workset_project
+        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
 
         ws_root = tmp_home / "worksets" / "cluster"
@@ -206,7 +206,7 @@ class TestNonConformingNameFlagged:
         # path, as a pre-existing box would be).  P8b/Option A: the name comes
         # from the registry key, not on-disk meta — the marker file only needs to
         # exist, and it carries no ``workset.kuid`` so the registry key wins.
-        from kanibako.config import BOX_META_FILE
+        from kanibako.settings.config import BOX_META_FILE
         (root / BOX_META_FILE).write_text("")
         registry_store.register_standalone(std.registry, bad_name, root)
 

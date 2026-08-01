@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import WorksetError
-from kanibako.paths import BoxMode
+from kanibako.settings.paths import BoxMode
 from kanibako.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
@@ -133,7 +133,7 @@ class TestDefaultWorkset:
         assert ws.root == std.primary_workset
 
     def test_mirrors_names_projects(self, std, tmp_home):
-        from kanibako.paths import register_primary_box_name
+        from kanibako.settings.paths import register_primary_box_name
 
         proj_a = tmp_home / "proj_a"
         proj_b = tmp_home / "proj_b"
@@ -185,7 +185,7 @@ class TestResolveWorksetName:
         (a bare-name shadow) is still reachable via the NOUN-scoped workset
         lookup — which returns the WORKSET and never emits the bare-name shadow
         warning (that warning is bare-name resolution only)."""
-        from kanibako.paths import register_primary_box_name
+        from kanibako.settings.paths import register_primary_box_name
 
         proj = tmp_home / "proj"
         proj.mkdir()
@@ -423,8 +423,8 @@ class TestAddProjectConnectGuard:
         """Stamp *dir_path* with the in-place standalone MARKER (box_data/ +
         settings.yaml), matching box_resolve.standalone_settings_present."""
         from kanibako.launch.box_resolve import standalone_settings_present
-        from kanibako.config import BOX_META_FILE
-        from kanibako.paths import _STANDALONE_META_DIR
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.paths import _STANDALONE_META_DIR
 
         dir_path.mkdir(parents=True, exist_ok=True)
         (dir_path / _STANDALONE_META_DIR).mkdir()
@@ -478,7 +478,7 @@ class TestAddProjectConnectGuard:
         # removed) → a resolve re-imports the box back to standalone: (clean
         # round-trip; the box_data/ marker is untouched throughout).
         from kanibako import registry_store
-        from kanibako.paths import BoxMode, detect_project_mode
+        from kanibako.settings.paths import BoxMode, detect_project_mode
 
         ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
         external = (tmp_home / "standalone_box").resolve()
@@ -543,7 +543,7 @@ class TestUnifiedProjectRecord:
 
     def test_persisted_entry_carries_only_identity_and_path(self, std, tmp_home):
         """The on-disk project entry has exactly {name, source_path}; no seeded."""
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
@@ -557,7 +557,7 @@ class TestUnifiedProjectRecord:
 
     def test_legacy_entry_with_seeded_loads_and_drops_it(self, std, tmp_home):
         """A legacy on-disk entry carrying `seeded` loads (ignored) + drops it."""
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
@@ -624,7 +624,7 @@ class TestRemoveProject:
 def _workset_boxes(ws):
     """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
     from kanibako import workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
         ws.root, load_doc(ws.root / "settings.yaml"),
@@ -701,7 +701,7 @@ class TestWorksetProperties:
 class TestWorksetSettingsFile:
     def test_identity_under_workset_meta(self, std, tmp_home):
         """create_workset writes identity into settings.yaml's workset.meta."""
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         root = tmp_home / "worksets" / "mset"
         create_workset("mset", root, std)
@@ -715,7 +715,7 @@ class TestWorksetSettingsFile:
     def test_identity_and_cascade_coexist(self, std, tmp_home):
         """Cascade settings + the workset.meta identity share one file without
         clobbering each other across writes."""
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         root = tmp_home / "worksets" / "coexist"
         ws = create_workset("coexist", root, std)
@@ -743,8 +743,8 @@ class TestWorksetSettingsFile:
     def test_detection_marker_is_workset_meta(self, std, tmp_home, config):
         """A dir with a settings.yaml carrying workset.meta is detected NAMED;
         a box-style settings.yaml (box.meta only) is not."""
-        from kanibako.config_io import dump_doc
-        from kanibako.paths import detect_project_mode
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import detect_project_mode
         from kanibako.workset import read_workset_meta
 
         root = tmp_home / "worksets" / "marker"
@@ -874,7 +874,7 @@ class TestAddProjectFailConsistent:
     def test_external_connected_write_failure_unwinds_symlink(
         self, std, tmp_home, monkeypatch
     ):
-        import kanibako.paths as paths_mod
+        import kanibako.settings.paths as paths_mod
 
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()

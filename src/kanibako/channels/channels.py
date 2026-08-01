@@ -1,8 +1,8 @@
 """Channel path resolution + per-instance partition addressing (PURE helpers).
 
 Phase 6 (sub-step 6a) of the 1.6.0 config/settings revamp.  This module derives
-the host-side channel paths from an already-resolved :class:`~kanibako.paths.
-ProjectPaths` (``proj``) + :class:`~kanibako.paths.StandardPaths` (``std``).  It
+the host-side channel paths from an already-resolved :class:`~kanibako.settings.paths.
+ProjectPaths` (``proj``) + :class:`~kanibako.settings.paths.StandardPaths` (``std``).  It
 is **pure derivation only** — it computes paths, it does NOT create directories,
 touch launch mounts, or change any behavior.  The bind production / mkdir /
 file-seeding live in sub-step 6b.
@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # avoid an import cycle (paths.py would import this later)
-    from kanibako.paths import ProjectPaths, StandardPaths
+    from kanibako.settings.paths import ProjectPaths, StandardPaths
 
 
 # Reserved workset-name tokens for the system-scope partition key.  A named
@@ -146,7 +146,7 @@ def workset_name_token(proj: ProjectPaths) -> str:
     ``proj.group`` (A8) rather than read off a dedicated field.
     """
     # Lazy import keeps this module free of an import cycle with paths.py.
-    from kanibako.paths import BoxMode
+    from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
         return WS_TOKEN_PRIMARY
@@ -169,7 +169,7 @@ def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
     (``proj.metadata_path``, which for standalone IS the root — the workspace is
     a ``workspace/`` subdir under it, so ``project_path`` is not the root).
     """
-    from kanibako.paths import BoxMode
+    from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
         return std.primary_workset
@@ -189,7 +189,7 @@ def has_workset_channels(proj: ProjectPaths) -> bool:
     Standalone omits ``~/channels/workset/*`` (no workset-local channels); its
     system-scope partition (mailboxes/share_global) still applies (A10).
     """
-    from kanibako.paths import BoxMode
+    from kanibako.settings.paths import BoxMode
 
     return proj.mode is not BoxMode.standalone
 

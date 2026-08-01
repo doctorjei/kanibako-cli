@@ -96,8 +96,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from kanibako.config import settings_base_path
-from kanibako.config_io import load_doc
+from kanibako.settings.config import settings_base_path
+from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_prefs import refuse_pref_table
 from kanibako.settings.settings_resolve import SettingsError, unpack_bind
 from kanibako.settings.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
@@ -203,7 +203,7 @@ def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
     system default with that agent's credentials, which is the exact failure this
     refusal exists to prevent.
 
-    Called at the SELECTION seam (:mod:`kanibako.agent_select`), not inside
+    Called at the SELECTION seam (:mod:`kanibako.settings.agent_select`), not inside
     :func:`assemble_levels` — a raise there would also break ``config set``,
     i.e. the very command the message prescribes as the cure.
     """

@@ -41,7 +41,7 @@ The entry KEY is the box host-side path (``str(Path(proj.shell_path).parent)`` â
 the dir CONTAINING ``home/``, uniform across all modes, known at write-ahead
 time).
 
-Atomicity: reads/writes go through :mod:`kanibako.config_io` (``load_doc`` /
+Atomicity: reads/writes go through :mod:`kanibako.settings.config_io` (``load_doc`` /
 ``dump_doc``), whose ``dump_doc`` writes atomically (temp file + ``os.replace``
 via :func:`kanibako._atomic.atomic_write_text`), so a crash mid-journal-write can
 never leave a torn/corrupt journal document on disk.
@@ -53,7 +53,7 @@ import socket
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 
 # The single top-level mapping in the journal document.
 _ENTRIES = "entries"

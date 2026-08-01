@@ -267,7 +267,7 @@ def collect_prefs(
     key. (Re-reading the file is deliberate: see the module docstring. It is ONE
     spelling of the parse, called from one collector.)
     """
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
     from kanibako.settings.settings_assemble import _file_partial
 
     out: list[PrefRequest] = []

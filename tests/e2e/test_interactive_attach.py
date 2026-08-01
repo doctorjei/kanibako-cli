@@ -123,7 +123,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     # packaged templates; the testing-only dead/live directory-plugins ship no
     # packaged template, so they contribute nothing and the host-computed stamp
     # matches what the subprocess gate recomputes with them discovered.
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
     from kanibako.targets import discover_targets
     from kanibako.launch.templates import packaged_templates_digest
     write_system_value(
@@ -309,7 +309,7 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     # packaged templates; the testing-only dead/live directory-plugins ship no
     # packaged template, so they contribute nothing and the host-computed stamp
     # matches what the subprocess gate recomputes with them discovered.
-    from kanibako.config_interface import write_system_value
+    from kanibako.settings.config_interface import write_system_value
     from kanibako.targets import discover_targets
     from kanibako.launch.templates import packaged_templates_digest
     write_system_value(

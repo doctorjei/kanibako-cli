@@ -32,7 +32,7 @@ from kanibako.commands.start import (
     _resolve_launch_snapshot,
     _seed_channel_files,
 )
-from kanibako.paths import (
+from kanibako.settings.paths import (
     WorksetSpec,
     resolve_project,
     resolve_standalone_project,

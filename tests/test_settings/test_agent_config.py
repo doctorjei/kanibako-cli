@@ -1,8 +1,8 @@
-"""Tests for kanibako.agent_config: AgentConfig, load/write agent YAML."""
+"""Tests for kanibako.settings.agent_config: AgentConfig, load/write agent YAML."""
 
 from __future__ import annotations
 
-from kanibako.agent_config import (
+from kanibako.settings.agent_config import (
     AgentConfig,
     agent_config_path,
     agent_settings_path,
@@ -348,7 +348,7 @@ class TestNodeTablesCarryThrough:
         assert "nav℘codex" not in cfg.state
 
     def test_round_trip_preserves_node_sub_table(self, tmp_path):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "settings.yaml"
         path.write_text(self._NODE_YAML)
@@ -377,7 +377,7 @@ class TestNodeTablesCarryThrough:
         assert cfg.node_tables == {}
 
     def test_empty_node_table_not_materialized(self, tmp_path):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "settings.yaml"
         write_agent_config(path, AgentConfig(node_tables={"nav℘codex": {}}))
@@ -400,7 +400,7 @@ class TestNodeTablesCarryThrough:
     def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
         # A hand-built config cannot smuggle a "node table" named after a
         # modelled key over the real category (guarded at BOTH ends).
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "settings.yaml"
         write_agent_config(path, AgentConfig(

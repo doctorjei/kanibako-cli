@@ -130,7 +130,7 @@ class TestHandleFork:
         assert resp["status"] == "ok"
         assert "name" in resp
         # The assigned name should be registered in the PRIMARY membership.
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
         assert resp["name"] in load_primary_boxes(ctx.primary_workset)
 
     def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
@@ -218,7 +218,7 @@ class TestRunFork:
         sock.parent.mkdir(parents=True)
         sock.touch()
         with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.paths.Path.home", return_value=tmp_path):
+             patch("kanibako.settings.paths.Path.home", return_value=tmp_path):
             mock_send.return_value = {
                 "status": "ok",
                 "path": "/home/user/proj.test",
@@ -239,7 +239,7 @@ class TestRunFork:
         sock.parent.mkdir(parents=True)
         sock.touch()
         with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.paths.Path.home", return_value=tmp_path):
+             patch("kanibako.settings.paths.Path.home", return_value=tmp_path):
             mock_send.return_value = {
                 "status": "error",
                 "message": "destination already exists",
@@ -254,7 +254,7 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="nope")
-        with patch("kanibako.paths.Path.home", return_value=tmp_path):
+        with patch("kanibako.settings.paths.Path.home", return_value=tmp_path):
             rc = run_fork(args)
         assert rc == 1
         err = capsys.readouterr().err

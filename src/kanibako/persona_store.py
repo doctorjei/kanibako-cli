@@ -46,14 +46,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from kanibako.agent_config import (
+from kanibako.settings.agent_config import (
     AgentConfig,
     agent_settings_path,
     load_agent_config,
     write_agent_config,
 )
 from kanibako.agent_ref import harness_of, parse_agent_ref, persona_of
-from kanibako.paths import xdg
+from kanibako.settings.paths import xdg
 
 if TYPE_CHECKING:
     from kanibako.targets.base import PersonaSettings, Target
@@ -92,7 +92,7 @@ def persona_store_root() -> Path:
 
     FIXED by design (DESIGN §5a — not configurable); the single builder for
     the store path.  Reuses the spec-backed XDG resolution in
-    :func:`kanibako.paths.xdg` (env var honored iff set AND absolute, else
+    :func:`kanibako.settings.paths.xdg` (env var honored iff set AND absolute, else
     ``$HOME/.config``).
     """
     return xdg("XDG_CONFIG_HOME", ".config") / "personas"
@@ -326,7 +326,7 @@ def persist_candidate(
 ) -> Path:
     """Commit a verified *candidate* to the node's settings file.
 
-    Routes through :func:`~kanibako.agent_config.write_agent_config` — the
+    Routes through :func:`~kanibako.settings.agent_config.write_agent_config` — the
     established persist seam — which stores the persona values as
     ``self.endpoint`` / ``self.model`` and ``self.secret_path.<VAR>`` (the
     FLATTENED shape: ``self`` IS ``agent.<node>``, no second node embedding)

@@ -81,7 +81,7 @@ class TestSetupAgents:
                 "kanibako.commands.diagnose._check_image",
                 return_value=("ok", "test:latest (available locally)"),
             ),
-            patch("kanibako.paths.xdg", return_value=tmp_path),
+            patch("kanibako.settings.paths.xdg", return_value=tmp_path),
         ):
             rc = run_setup(setup_args)
 
@@ -131,7 +131,7 @@ class TestSetupAgents:
                 "kanibako.commands.diagnose._check_image",
                 return_value=("--", "not found"),
             ),
-            patch("kanibako.paths.xdg", return_value=tmp_path),
+            patch("kanibako.settings.paths.xdg", return_value=tmp_path),
         ):
             rc = run_setup(setup_args)
 

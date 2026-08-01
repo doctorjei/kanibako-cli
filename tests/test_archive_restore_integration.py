@@ -28,8 +28,8 @@ class TestArchiveGitIntegration:
     def test_archive_clean_git_repo(self, real_git_repo, integration_config):
         """Archive from a clean git repo succeeds."""
         from kanibako.commands.archive import _archive_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -51,8 +51,8 @@ class TestArchiveGitIntegration:
     def test_archive_detects_uncommitted_changes(self, real_git_repo, integration_config):
         """Real ``git diff-index`` detects uncommitted changes."""
         from kanibako.commands.archive import _archive_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -77,8 +77,8 @@ class TestArchiveGitIntegration:
     def test_archive_detects_unpushed_commits(self, real_git_repo, integration_config):
         """Real ``git rev-list`` detects unpushed commits."""
         from kanibako.commands.archive import _archive_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -133,8 +133,8 @@ class TestArchiveGitIntegration:
     def test_archive_contains_git_metadata(self, real_git_repo, integration_config):
         """Archive info contains branch, commit, and remote fields."""
         from kanibako.commands.archive import _archive_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -176,8 +176,8 @@ class TestArchiveGitIntegration:
     ):
         """Archiving a non-git project includes a warning in metadata."""
         from kanibako.commands.archive import _archive_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -218,8 +218,8 @@ class TestRestoreGitIntegration:
         """Same-commit restore proceeds without prompt."""
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -255,9 +255,9 @@ class TestRestoreGitIntegration:
         """Different HEAD triggers abort via mocked confirm_prompt."""
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.errors import UserCancelled
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -306,9 +306,9 @@ class TestRestoreGitIntegration:
         """Restoring a git-based archive into a non-git workspace warns."""
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         from kanibako.errors import UserCancelled
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -373,8 +373,8 @@ class TestArchiveRestoreRoundTrip:
         """Byte-for-byte preservation of session data through round trip."""
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -421,8 +421,8 @@ class TestArchiveRestoreRoundTrip:
         """Binary data survives the archive / restore cycle."""
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)
@@ -464,8 +464,8 @@ class TestArchiveRestoreRoundTrip:
         """Cross-project restore works when project paths differ."""
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
         std = load_std_paths(config)

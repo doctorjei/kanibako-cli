@@ -897,7 +897,7 @@ def _is_managed_canon_dest(dest: str) -> bool:
 
     ⚑ PATH-SHAPED, not key-shaped, and deliberately so: EVERY bind under ``~/canon``
     is by construction one of the canon book binds, whose mountpoint
-    :func:`kanibako.core_defaults.materialize_canon_skeleton` pre-created at box
+    :func:`kanibako.settings.core_defaults.materialize_canon_skeleton` pre-created at box
     create.  One uniform rule beats six per-key special cases.  The seeded
     ``canon/notebook`` + ``canon/workbook`` are never binds, so they never reach here.
     """

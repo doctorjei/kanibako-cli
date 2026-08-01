@@ -26,7 +26,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
 
-from kanibako.config import (
+from kanibako.settings.config import (
     coerce_bool,
     load_merged_config,
     load_project_overrides,
@@ -38,7 +38,7 @@ from kanibako.agent_ref import (
     display_agent_ref,
     parse_agent_ref,
 )
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import ConfigError, UserCancelled
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.settings_store import SCOPE_CONTAINMENT, ReservedKeyError
@@ -730,7 +730,7 @@ def _persona_agent_target(
             f"node; set the any-agent default with the bare key "
             f"(e.g. '{tail}') instead."
         )
-    from kanibako.agent_config import agent_file_route, agent_settings_path
+    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
 
     try:
         parse_agent_ref(node)  # validate only (raises on a malformed ref)
@@ -770,7 +770,7 @@ def _node_bind_target(
     node, _cat, _name = parsed
     if node == _AGENT_DEFAULT_SUB:
         return None
-    from kanibako.agent_config import agent_file_route, agent_settings_path
+    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
 
     try:
         parse_agent_ref(node)  # validate only (raises on a malformed ref)
@@ -809,7 +809,7 @@ def _node_secret_target(
     node, _var = parsed
     if node == _AGENT_DEFAULT_SUB:
         return None
-    from kanibako.agent_config import agent_file_route, agent_settings_path
+    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
 
     try:
         parse_agent_ref(node)  # validate only (raises on a malformed ref)
@@ -836,7 +836,7 @@ def _floor_bind_display(
     launch-resolved. A non-tuple / absent / placeholder-only entry → ``None`` (keep
     the cleared-only form).
     """
-    from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+    from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
 
     if not default_categories:
         return None
@@ -1034,7 +1034,7 @@ def _is_system_path_key(key: str) -> bool:
 
     Covers BOTH the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1)
     and the STRUCTURAL Layer-2 ``system.*`` path-tier family — the exact
-    :data:`~kanibako.paths.SYSTEM_PATH_DEFAULTS` set that
+    :data:`~kanibako.settings.paths.SYSTEM_PATH_DEFAULTS` set that
     ``resolve_system_paths`` materializes from ``kanibako_config.yaml``'s
     ``[system]`` table — both live in ``kanibako_config.yaml`` and are
     structural (file-only).
@@ -1064,7 +1064,7 @@ def _is_system_path_key(key: str) -> bool:
     if key == "system.setup_completed":
         return True
     # Lazy import (config_interface ↔ paths would cycle at module load).
-    from kanibako.paths import SYSTEM_PATH_DEFAULTS
+    from kanibako.settings.paths import SYSTEM_PATH_DEFAULTS
 
     return key in SYSTEM_PATH_DEFAULTS
 
@@ -1078,8 +1078,8 @@ def _user_config_file_str() -> "Path | str":
     raises when ``$HOME`` is unset), fall back to the documented literal default
     rather than turning a clean refusal into a traceback.
     """
-    from kanibako.config import config_file_path
-    from kanibako.paths import xdg
+    from kanibako.settings.config import config_file_path
+    from kanibako.settings.paths import xdg
 
     try:
         return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1455,7 +1455,7 @@ def _scope_direction_error(
 
 
 def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
-    """Thin module-PRIVATE delegate to :func:`kanibako.paths.host_xdg_map`.
+    """Thin module-PRIVATE delegate to :func:`kanibako.settings.paths.host_xdg_map`.
 
     Exists so the ONE canonical XDG-map builder is reachable as a
     ``config_interface`` attribute (patchable, single-source) WITHOUT a
@@ -1465,7 +1465,7 @@ def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
     this is only the deferred-import hook ``_set_time_ctx`` calls. There is no
     second hand-rolled XDG map (spec §1 XDG clause + L2 §3).
     """
-    from kanibako.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map
 
     return host_xdg_map(data_home)
 
@@ -1487,7 +1487,7 @@ def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
     ``@config.*`` host_src ref routes to the foundation (JC-2), NOT the snapshot.
 
     The ``$XDG_*`` map is built by the ONE canonical builder
-    :func:`kanibako.paths.host_xdg_map` (spec §1 XDG clause + L2 §3 single-source-
+    :func:`kanibako.settings.paths.host_xdg_map` (spec §1 XDG clause + L2 §3 single-source-
     of-truth: a hand-rolled per-context map is a bug), reached through the
     module-private :func:`_host_xdg_map` deferred-import hook (avoids the
     ``config_interface`` ↔ ``paths`` module-load cycle) so it stays a single
@@ -1576,8 +1576,8 @@ def _category_set_lookups(
     Resolution NEVER touches the stored file — it writes RAW (§0); the snapshot is
     in-memory and for the CHECK only.
     """
-    from kanibako.config import config_file_path
-    from kanibako.paths import load_system_config, xdg
+    from kanibako.settings.config import config_file_path
+    from kanibako.settings.paths import load_system_config, xdg
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge
@@ -1872,7 +1872,7 @@ def _set_category_value(
         parsed = _parse_agent_node_bind_key(canonical)
         if parsed is not None:
             node, _cat, _name = parsed  # _cat = full "bindings.ro"/"bindings.rw"
-            from kanibako.agent_config import agent_file_route
+            from kanibako.settings.agent_config import agent_file_route
 
             secs, leaf = agent_file_route(f"{_cat}.{_name}", node)
             dest_parts = (*secs, leaf)
@@ -3053,8 +3053,8 @@ def _effective_after_reset(
         p is None for p in (system_path, agent_path, workset_path, box_path)
     ):
         return None
-    from kanibako.config import config_file_path
-    from kanibako.paths import load_system_config, xdg
+    from kanibako.settings.config import config_file_path
+    from kanibako.settings.paths import load_system_config, xdg
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge

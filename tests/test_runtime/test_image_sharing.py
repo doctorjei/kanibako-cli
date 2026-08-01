@@ -542,13 +542,13 @@ class TestImageSharingConfig:
 
     def test_default_is_false(self):
         """box_share_images defaults to False in KanibakoConfig."""
-        from kanibako.config import KanibakoConfig
+        from kanibako.settings.config import KanibakoConfig
         cfg = KanibakoConfig()
         assert cfg.box_share_images is False
 
     def test_loaded_from_toml(self, tmp_path):
         """share_images can be set in kanibako_config.yaml ([box] section)."""
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         toml_path = tmp_path / "kanibako_config.yaml"
         toml_path.write_text("box:\n  share_images: true\n")
         cfg = load_config(toml_path)
@@ -556,7 +556,7 @@ class TestImageSharingConfig:
 
     def test_false_in_toml(self, tmp_path):
         """share_images = false is loaded correctly."""
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
         toml_path = tmp_path / "kanibako_config.yaml"
         toml_path.write_text("box:\n  share_images: false\n")
         cfg = load_config(toml_path)
@@ -564,7 +564,7 @@ class TestImageSharingConfig:
 
     def test_merged_config_project_override(self, tmp_path):
         """Project-level box.share_images overrides global config."""
-        from kanibako.config import load_merged_config
+        from kanibako.settings.config import load_merged_config
         global_toml = tmp_path / "global.yaml"
         global_toml.write_text("box:\n  share_images: false\n")
         project_toml = tmp_path / "settings.yaml"

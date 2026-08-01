@@ -109,7 +109,7 @@ class TestSystemConfig:
         # The Layer-1 kanibako_config.yaml is NOT touched (spec §1: settings
         # keys never live in the bootstrap config file).
         from kanibako.commands.system_cmd import run_set
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         cf_before = config_file.read_bytes()
         args = argparse.Namespace(key_value="box.image=custom:v2", force=False)

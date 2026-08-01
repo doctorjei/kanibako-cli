@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 
 
-from kanibako.config import load_config
-from kanibako.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
 from kanibako.workset import add_project, create_workset
 
 
@@ -33,7 +33,7 @@ class TestClean:
     def test_purge_unregisters_primary(self, config_file, tmp_home, credentials_dir):
         """M2: purging a primary box drops its PRIMARY-membership entry."""
         from kanibako.commands.clean import run
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             load_primary_boxes,
             primary_box_name_for_workspace,
         )
@@ -65,7 +65,7 @@ class TestClean:
         """
         from kanibako import workset_registry
         from kanibako.commands.clean import run
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -90,7 +90,7 @@ class TestClean:
     def test_purge_all_unregisters_primaries(self, config_file, tmp_home, credentials_dir):
         """M2 mirror: --all purge clears every primary membership entry."""
         from kanibako.commands.clean import run
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
         std = load_std_paths(config)

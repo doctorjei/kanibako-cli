@@ -36,7 +36,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import ProjectError
 
 # The single membership section of a per-workset registry file: box name → path.

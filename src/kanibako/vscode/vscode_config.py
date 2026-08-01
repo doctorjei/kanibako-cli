@@ -47,7 +47,7 @@ from typing import NamedTuple
 
 import yaml
 
-from kanibako.config_io import load_doc
+from kanibako.settings.config_io import load_doc
 
 
 def _strip_jsonc(text: str) -> str:

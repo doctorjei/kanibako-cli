@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from kanibako.targets.base import AgentInstall, Target
 
 if TYPE_CHECKING:
-    from kanibako.agent_config import AgentConfig
+    from kanibako.settings.agent_config import AgentConfig
 
 
 class NoAgentTarget(Target):
@@ -36,6 +36,6 @@ class NoAgentTarget(Target):
         pass
 
     def generate_agent_config(self) -> AgentConfig:
-        from kanibako.agent_config import AgentConfig as _AgentConfig
+        from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(name="Shell")

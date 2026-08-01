@@ -134,8 +134,8 @@ def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
     # ``agent.<name>.binding.<key>`` override bridge. Exercises the FULL emit path
     # (build_launch_snapshot → snapshot_category_entries → reconcile_categories →
     # agent_delivery_mounts), so it proves the repoint reaches the emitted Mount.
-    from kanibako.agent_representation import agent_default_partial
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.agent_representation import agent_default_partial
+    from kanibako.settings.config_io import dump_doc
     from kanibako.targets.base import (
         AgentInstall, BindKind, BindScope, Binding, HostSrcOrigin, PluginDescriptor,
     )
@@ -217,7 +217,7 @@ def test_workset_anchor_user_override_wins_over_floor(tmp_path: Path):
     # MUTATION-PROOF: if the floor were a hard construct-set value that shadowed the
     # override (or the override were ignored), the snapshot would carry the FLOOR
     # value ``/floor/boxes`` and these asserts go RED.
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     ws_file = tmp_path / "workset-settings.yaml"
     dump_doc(
@@ -572,7 +572,7 @@ def _auth_snapshot(
     """
     from itertools import count
 
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     chain = auth_chain_floor(mode=mode, agent_name=agent_name)
     meta_id = _mid_floor(
@@ -822,7 +822,7 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
     workset FILE value OVERRIDES the @meta.workset.path/auth floor default, and the
     derived meta.box.auth.workset_path re-resolves against it. Mutation: unregister
     the route / drop the override handling → the custom root is not honored."""
-    from kanibako.config_interface import KNOWN_CONFIG_KEYS, _KEY_ROUTES
+    from kanibako.settings.config_interface import KNOWN_CONFIG_KEYS, _KEY_ROUTES
     # (a) it IS registered settable (P6a) and routes to the workset:auth nested slot.
     assert "workset.auth.path" in KNOWN_CONFIG_KEYS
     assert _KEY_ROUTES["workset.auth.path"] == (("workset", "auth"), "path")
@@ -1093,7 +1093,7 @@ def test_hostile_box_file_meta_table_cannot_override_snapshot_anchors(
     removed). This pins the anchors against a hostile FILE end-to-end, which the
     assembly-level pins (no snapshot) do not reach.
     """
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     # A box file that tries to forge the identity anchors via a top-level meta:.
     hostile = tmp_path / "hostile.yaml"
@@ -1391,8 +1391,8 @@ def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
     (Mutations: swapping the pair returned by ``_box_settings_files`` → the ROOT
     value wins → RED; reverting the standalone arm to a ``None`` box tier → the box
     value is never read → RED.)"""
-    from kanibako.config_io import dump_doc
-    from kanibako.paths import _STANDALONE_META_DIR, BoxMode, _box_settings_files
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import _STANDALONE_META_DIR, BoxMode, _box_settings_files
 
     root = tmp_path / "myproj"
     (root / _STANDALONE_META_DIR).mkdir(parents=True)
@@ -2042,7 +2042,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     observes a successfully-built snapshot whose home host_src is ``/home`` (that
     was confirmed RED before the guard was added), so it cannot pass vacuously.
     """
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_launch import workset_anchor_floor
 
     ws_file = tmp_path / "workset-settings.yaml"
@@ -2127,7 +2127,7 @@ def test_hostile_box_file_cannot_forge_the_box_root(tmp_path: Path) -> None:
     host directory. (The CLI half — ``config set`` refusing every ``meta.*`` key —
     is pinned in ``tests/test_config_interface.py``.)
     """
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_launch import workset_anchor_floor
 
     hostile = tmp_path / "hostile.yaml"

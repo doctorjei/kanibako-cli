@@ -311,7 +311,7 @@ class HelperHub:
         helper_home = helpers_dir_host / str(helper_num)
 
         def _helper_reprotect() -> None:
-            from kanibako.core_defaults import materialize_canon_skeleton_if_present
+            from kanibako.settings.core_defaults import materialize_canon_skeleton_if_present
 
             materialize_canon_skeleton_if_present(helper_home)
 
@@ -417,7 +417,7 @@ class HelperHub:
         # Resolve source metadata dir via the PRIMARY per-workset ``boxes:``
         # membership reverse lookup (the sole store since the global ``projects:``
         # section retired).
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             assign_primary_box_name,
             primary_box_name_for_workspace,
         )
@@ -602,7 +602,7 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     # is XDG_STATE_HOME-aware: derived from the helper's container env (the same
     # single derivation start.py + helper-init.sh use) so all sides agree.
     if ctx.socket_path.exists():
-        from kanibako.paths import box_state_home
+        from kanibako.settings.paths import box_state_home
 
         box_socket = box_state_home(ctx.env) / "kanibako" / "helper.sock"
         kanibako_dir = helper_root / ".local" / "state" / "kanibako"

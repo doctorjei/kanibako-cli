@@ -147,8 +147,8 @@ class TestRunCreate:
         rather than in-tree. One call site serves both modes — this is what proves it
         is not accidentally on the standalone branch.
         """
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_any_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_any_project
 
         parser = build_parser()
         args = parser.parse_args(["box", "create", str(project_dir), "--name", "prim"])
@@ -328,8 +328,8 @@ class TestRunCreate:
     ):
         """`box create --name X` registers the project under name X,
         not the directory basename."""
-        from kanibako.config import config_file_path, load_config
-        from kanibako.paths import load_primary_boxes, load_std_paths, xdg
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import load_primary_boxes, load_std_paths, xdg
 
         parser = build_parser()
         args = parser.parse_args(
@@ -353,8 +353,8 @@ class TestRunCreate:
     ):
         """After `create --name X`, resolve_project('X') must find the
         registered path (not error as if X were a relative path)."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         parser = build_parser()
         args = parser.parse_args(
@@ -376,8 +376,8 @@ class TestRunCreate:
         """resolve_any_project (the CLI front-door used by `start`) must do
         bare-name lookup BEFORE path resolution, otherwise the name gets
         path-ified into cwd/<name> and resolution misses."""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_any_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_any_project
 
         parser = build_parser()
         args = parser.parse_args(
@@ -450,8 +450,8 @@ def _standalone_tiers(config_file, project_dir):
     (§5 L1403/L1407) before returning them: the blindness is closed here, once, for
     every caller.
     """
-    from kanibako.config import load_config
-    from kanibako.paths import (
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import (
         box_workset_settings_paths,
         load_std_paths,
         resolve_standalone_project,
@@ -475,7 +475,7 @@ class TestCreateImage:
     def test_create_persists_image(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        from kanibako.config import load_merged_config
+        from kanibako.settings.config import load_merged_config
         parser = build_parser()
         args = parser.parse_args([
             "box", "create", "--standalone", str(project_dir),
@@ -487,13 +487,13 @@ class TestCreateImage:
         merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
         assert merged.box_image == "kanibako-template-jvm-oci"
         # And it is the BOX tier that holds it, not the workset/root file.
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         assert load_doc(box_tier)["box"]["image"] == "kanibako-template-jvm-oci"
 
     def test_create_default_image_persisted(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        from kanibako.config import load_merged_config
+        from kanibako.settings.config import load_merged_config
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
@@ -504,7 +504,7 @@ class TestCreateImage:
         # Assert PERSISTENCE, not just the merged default: the create-time write must
         # actually be in the box tier.  (Reading merged alone passes vacuously — the
         # built-in default also contains "kanibako".)
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         assert "kanibako" in load_doc(box_tier)["box"]["image"]
 
 
@@ -528,7 +528,7 @@ class TestCreatePrivate:
         token into the seed.  Sourced from ``box_workset_settings_paths`` so the test
         cannot drift from production (M-8).
         """
-        from kanibako.config import load_doc
+        from kanibako.settings.config import load_doc
         box_tier, _ = _standalone_tiers(config_file, project_dir)
         return (load_doc(box_tier).get("box") or {}).get("auth") or {}
 

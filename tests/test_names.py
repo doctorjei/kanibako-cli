@@ -4,7 +4,7 @@ Since the global ``projects:`` section retired (clean split, 2026-07-08), the
 :mod:`kanibako.names` module owns ONLY the ``worksets`` name section; default-mode
 (PRIMARY) box names live in the primary per-workset ``boxes:`` membership, whose
 name API (``pick``/``assign``/``register``/``unregister``/reverse-lookup) lives in
-:mod:`kanibako.paths` (tested here + in ``test_paths.py``).
+:mod:`kanibako.settings.paths` (tested here + in ``test_paths.py``).
 """
 
 from __future__ import annotations
@@ -320,7 +320,7 @@ class TestResolveQualifiedName:
 
 class TestPrimaryBoxNameApi:
     def test_assign_registers_membership(self, registry: Path, tmp_path: Path) -> None:
-        from kanibako.paths import assign_primary_box_name, load_primary_boxes
+        from kanibako.settings.paths import assign_primary_box_name, load_primary_boxes
 
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "projects" / "myapp"
@@ -329,7 +329,7 @@ class TestPrimaryBoxNameApi:
         assert load_primary_boxes(primary)[name] == str(ws)
 
     def test_collision_numbering(self, registry: Path, tmp_path: Path) -> None:
-        from kanibako.paths import assign_primary_box_name
+        from kanibako.settings.paths import assign_primary_box_name
 
         primary = tmp_path / "primary_workset"
         assert assign_primary_box_name(primary, registry, "/a/myapp") == "myapp"
@@ -339,7 +339,7 @@ class TestPrimaryBoxNameApi:
         self, registry: Path, tmp_path: Path
     ) -> None:
         """A WORKSET name prevents using the same PRIMARY box name (new domain)."""
-        from kanibako.paths import assign_primary_box_name
+        from kanibako.settings.paths import assign_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
@@ -351,7 +351,7 @@ class TestPrimaryBoxNameApi:
         """Cross-kind (per-kind name policy, Jei 2026-07-08): an EXPLICIT primary
         box name that collides with a WORKSET name refuses UNLESS ``force`` — and
         the refusal teaches ``--force``.  With ``force=True`` it registers."""
-        from kanibako.paths import load_primary_boxes, register_primary_box_name
+        from kanibako.settings.paths import load_primary_boxes, register_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
@@ -369,7 +369,7 @@ class TestPrimaryBoxNameApi:
     ) -> None:
         """SAME-kind (two primary boxes, one name) is UNCONDITIONAL — ``force``
         never bypasses it."""
-        from kanibako.paths import register_primary_box_name
+        from kanibako.settings.paths import register_primary_box_name
 
         primary = tmp_path / "primary_workset"
         register_primary_box_name(primary, registry, "myapp", "/a/myapp")
@@ -381,7 +381,7 @@ class TestPrimaryBoxNameApi:
     def test_pick_skips_existing_box_dir(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        from kanibako.paths import pick_primary_box_name
+        from kanibako.settings.paths import pick_primary_box_name
 
         primary = tmp_path / "primary_workset"
         boxes = tmp_path / "boxes"
@@ -392,7 +392,7 @@ class TestPrimaryBoxNameApi:
     def test_if_absent_noop_on_identical(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             register_primary_box_name,
             register_primary_box_name_if_absent,
         )
@@ -405,7 +405,7 @@ class TestPrimaryBoxNameApi:
     def test_if_absent_raises_on_different_path(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             register_primary_box_name,
             register_primary_box_name_if_absent,
         )
@@ -418,7 +418,7 @@ class TestPrimaryBoxNameApi:
             )
 
     def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
-        from kanibako.paths import register_primary_box_name
+        from kanibako.settings.paths import register_primary_box_name
 
         home = tmp_path / "fakehome"
         home.mkdir()
@@ -428,7 +428,7 @@ class TestPrimaryBoxNameApi:
             register_primary_box_name(primary, registry, "bad", str(home))
 
     def test_unregister(self, registry: Path, tmp_path: Path) -> None:
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             load_primary_boxes,
             register_primary_box_name,
             unregister_primary_box_name,
@@ -448,8 +448,8 @@ class TestLocalNameAssignment:
     """Name assignment is wired into default-mode project creation."""
 
     def test_new_project_gets_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -461,9 +461,9 @@ class TestLocalNameAssignment:
     def test_name_stored_in_membership_not_on_disk(self, config_file, tmp_home, credentials_dir):
         """P8b/Option A: the box name lives in the PRIMARY membership, NOT a
         self-describing on-disk ``project:`` section (no ``project:`` on disk)."""
-        from kanibako.config import load_config
-        from kanibako.config_io import load_doc
-        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -475,8 +475,8 @@ class TestLocalNameAssignment:
         assert load_primary_boxes(std.primary_workset).get("project") == project_dir
 
     def test_name_registered_in_membership(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -488,8 +488,8 @@ class TestLocalNameAssignment:
         assert boxes["project"] == project_dir
 
     def test_name_collision_on_second_project(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -509,8 +509,8 @@ class TestLocalNameAssignment:
         assert proj2.name == "mydir2"
 
     def test_existing_project_preserves_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -551,8 +551,8 @@ class TestNameRegistration:
     """Name uniqueness and unregister operations on primary boxes."""
 
     def test_register_and_read_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -563,8 +563,8 @@ class TestNameRegistration:
         assert "project" in load_primary_boxes(std.primary_workset)
 
     def test_unregister_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako.config import load_config
-        from kanibako.paths import (
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
             load_primary_boxes,
             load_std_paths,
             resolve_project,
@@ -586,8 +586,8 @@ class TestBoxListName:
 
     def test_list_shows_name_column(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_list
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -654,8 +654,8 @@ class TestLookupByPath:
 class TestBoxRm:
     def test_rm_by_name(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -674,8 +674,8 @@ class TestBoxRm:
     def test_rm_shows_purge_hint(self, config_file, tmp_home, credentials_dir, capsys):
         """Without --purge, rm deregisters and points at BOTH recovery paths."""
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -695,8 +695,8 @@ class TestBoxRm:
 
     def test_rm_by_path(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_primary_boxes, load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_primary_boxes, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -719,8 +719,8 @@ class TestBoxRm:
 
     def test_rm_purge_deletes_metadata(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -739,8 +739,8 @@ class TestBoxRm:
 
     def test_rm_purge_removes_logs(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -759,8 +759,8 @@ class TestBoxRm:
 
     def test_rm_preserves_workspace(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -778,8 +778,8 @@ class TestBoxRm:
 
     def test_rm_workset(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
         from kanibako.workset import create_workset
 
         config = load_config(config_file)
@@ -805,8 +805,8 @@ class TestBoxDeregisterPurge:
     """
 
     def _make_primary(self, config_file, tmp_home):
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -911,8 +911,8 @@ class TestBoxDeregisterPurge:
         """CONTAINMENT: a crafted deregistered entry escaping std.boxes is REFUSED."""
         from kanibako import registry_store
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -939,8 +939,8 @@ class TestBoxDeregisterPurge:
         """CONTAINMENT: a `..` escape resolves outside std.boxes → REFUSED."""
         from kanibako import registry_store
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -984,8 +984,8 @@ class TestBoxDeregisterPurge:
 class TestStandaloneDeregisterPurge:
     def _make_standalone(self, config_file, tmp_home):
         from kanibako import registry_store
-        from kanibako.config import BOX_META_FILE, load_config
-        from kanibako.paths import _STANDALONE_META_DIR, load_std_paths
+        from kanibako.settings.config import BOX_META_FILE, load_config
+        from kanibako.settings.paths import _STANDALONE_META_DIR, load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1000,8 +1000,8 @@ class TestStandaloneDeregisterPurge:
     def test_standalone_deregister_then_purge_by_name(self, config_file, tmp_home, credentials_dir):
         from kanibako import registry_store
         from kanibako.commands.box._parser import run_rm
-        from kanibako.config import BOX_META_FILE
-        from kanibako.paths import _STANDALONE_META_DIR
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.paths import _STANDALONE_META_DIR
 
         std, root = self._make_standalone(config_file, tmp_home)
 
@@ -1045,8 +1045,8 @@ class TestPurgeStaleDeregisteredGuard:
     ):
         from kanibako import registry_store
         from kanibako.commands.box._parser import _purge_deregistered
-        from kanibako.config import load_config
-        from kanibako.paths import (
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
             load_primary_boxes,
             load_std_paths,
             register_primary_box_name,
@@ -1088,8 +1088,8 @@ class TestPurgeStaleDeregisteredGuard:
     ):
         from kanibako import registry_store
         from kanibako.commands.box._parser import _purge_deregistered
-        from kanibako.config import load_config
-        from kanibako.paths import _STANDALONE_META_DIR, load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import _STANDALONE_META_DIR, load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)

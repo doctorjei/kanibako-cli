@@ -36,8 +36,8 @@ def _create_args(path, **over):
 
 
 def _std(config_file):
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
     config = load_config(config_file)
     return config, load_std_paths(config)
@@ -125,7 +125,7 @@ class TestCreateAndThenLaunch:
 
         (The full stopped→start launch flow is covered by the ``start_mocks``
         suite; here we assert the gate itself does not block an existing box.)"""
-        from kanibako.paths import resolve_box_target
+        from kanibako.settings.paths import resolve_box_target
 
         config, std = _std(config_file)
         # Materialise + register a bare box the way `create` would.
@@ -151,7 +151,7 @@ class TestInterruptedCreateBoundary:
         is what completes it (forward-recovery belongs to create)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.commands.start import _pending_create_entry, _write_create_entry
-        from kanibako.paths import load_primary_boxes, resolve_project
+        from kanibako.settings.paths import load_primary_boxes, resolve_project
 
         config, std = _std(config_file)
         project_dir = str(tmp_home / "project")

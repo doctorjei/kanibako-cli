@@ -44,7 +44,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from kanibako import registry_store
-from kanibako.config import BOX_META_FILE
+from kanibako.settings.config import BOX_META_FILE
 from kanibako.errors import KanibakoError
 
 
@@ -209,7 +209,7 @@ def import_standalone(
     # standalone signal — NOT ``project.mode``).  No marker → nothing to import.
     from kanibako import kuid
     from kanibako.launch import box_identity, box_resolve
-    from kanibako.config import read_workset_kuid
+    from kanibako.settings.config import read_workset_kuid
 
     if not box_resolve.standalone_settings_present(root):
         return None

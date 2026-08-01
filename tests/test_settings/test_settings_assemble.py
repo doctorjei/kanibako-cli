@@ -663,7 +663,7 @@ def test_no_machine_path_consulted() -> None:
     # The old machine third-file (machine_config_path) was DELETED in the
     # two-layer path reshape (block #3a). No-machine-tier is now structurally
     # guaranteed: the function does not exist, so it cannot be consulted (S14).
-    import kanibako.config as cfg
+    import kanibako.settings.config as cfg
 
     assert not hasattr(cfg, "machine_config_path")
     levels = assemble_levels(agent_name="claude")

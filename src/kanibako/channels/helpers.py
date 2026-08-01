@@ -6,7 +6,7 @@ import importlib.resources
 from dataclasses import dataclass
 from pathlib import Path
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 
 # When breadth is unlimited (-1), use 2^16 for numbering purposes.
 # Large enough to never collide; small enough for human-readable numbers.

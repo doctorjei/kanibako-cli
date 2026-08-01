@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ class KanibakoConfig:
     box_image: str = _DEFAULTS["box_image"]
     # ⚑ ``box_agent_name`` is GONE (P7, spec §2b L698): ``box.agent_name`` is
     # RETIRED and a box selects its agent with the REQUEST ``pref.system.agent``
-    # (§2h), resolved off the launch snapshot by :mod:`kanibako.agent_select`.
+    # (§2h), resolved off the launch snapshot by :mod:`kanibako.settings.agent_select`.
     # There is no flat-scalar agent field any more — the selection is a KEY.
     box_shell: str = _DEFAULTS["box_shell"]
     box_share_images: bool = False
@@ -571,7 +571,7 @@ def read_system_agent(system_path: Path | None) -> str | None:
     stored value before a snapshot exists (``start``'s box-independent persona
     pre-flight, and ``setup``'s round-trip).  The LAUNCH does not use it: agent
     selection resolves ``system.agent`` off the snapshot, prefs included
-    (:mod:`kanibako.agent_select`).
+    (:mod:`kanibako.settings.agent_select`).
 
     Returns the configured agent name, or ``None`` when unset/empty (meaning "no
     system default" — callers fall through to the installed-count rule).
@@ -731,7 +731,7 @@ def setup_compat_gate(config_path: Path | None) -> str | None:
         # subsequent runs hit the ``==`` no-op.  The bump must never block — a
         # failed write (read-only config, missing path) falls through silently.
         try:
-            from kanibako.config_interface import write_system_value
+            from kanibako.settings.config_interface import write_system_value
 
             if config_path is not None:
                 write_system_value(config_path, "setup_completed", __version__)
@@ -762,7 +762,7 @@ def resolve_agent(
 
     ⮕ **P7:** the CASCADE moved out.  ``system.agent`` and the ``pref.system.agent``
     requests of the workset/box files are resolved off the launch snapshot by
-    :func:`kanibako.agent_select.select_agent`, which passes the winner here as
+    :func:`kanibako.settings.agent_select.select_agent`, which passes the winner here as
     *requested*.  What stays here is what is NOT a key: name VALIDATION against the
     installed set, persona-ref canonicalisation, and the installed-count rule.
     (Was: ``explicit_agent > box_agent_name > workset_agent > system default``,

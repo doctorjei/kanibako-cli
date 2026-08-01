@@ -16,9 +16,9 @@ from kanibako.commands.box._parser import (
     _format_credential_age,
     run_info,
 )
-from kanibako.config import load_config
+from kanibako.settings.config import load_config
 from kanibako.errors import ContainerError
-from kanibako.paths import load_std_paths, resolve_project
+from kanibako.settings.paths import load_std_paths, resolve_project
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +333,7 @@ class TestRunInfo:
             "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ), patch(
-            "kanibako.config.resolve_agent", return_value="claude",
+            "kanibako.settings.config.resolve_agent", return_value="claude",
         ), patch(
             "kanibako.commands.box._parser.resolve_target",
             return_value=mock_target,
@@ -355,7 +355,7 @@ class TestRunInfo:
             "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-abcdef12)"),
         ), patch(
-            "kanibako.config.resolve_agent", return_value="claude",
+            "kanibako.settings.config.resolve_agent", return_value="claude",
         ), patch(
             "kanibako.commands.box._parser.resolve_target",
             return_value=mock_target,
@@ -369,7 +369,7 @@ class TestRunInfo:
 class TestRunInfoStandalone:
     def test_standalone_project(self, config_file, tmp_home, credentials_dir, capsys):
         """Info for a standalone project."""
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)

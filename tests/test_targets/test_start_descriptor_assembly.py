@@ -47,7 +47,7 @@ def _start_argv(
     ``auto_approve`` bool key redeemed via ``safe_bypass.setting_key`` (coerced to
     bool, DEFAULT True when unset).
     """
-    from kanibako.config import coerce_bool
+    from kanibako.settings.config import coerce_bool
 
     sb = desc.safe_bypass
     _aa = coerce_bool(
@@ -321,7 +321,7 @@ class TestPersistedAutoApproveSafeBypass:
 def _safe_off_for(desc, *, secure, autonomous, persisted):
     """Mirror start.py's launch read: coerce the persisted ``auto_approve``
     (DEFAULT True when unset/non-bool) then resolve the effective safe-off."""
-    from kanibako.config import coerce_bool
+    from kanibako.settings.config import coerce_bool
 
     sb = desc.safe_bypass
     _aa = coerce_bool(persisted if sb is not None and sb.setting_key else None)

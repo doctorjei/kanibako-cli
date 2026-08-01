@@ -15,7 +15,7 @@ from kanibako.commands.start import (
     _run_container,
     run_start,
 )
-from kanibako.paths import BoxMode
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
 
 
@@ -26,7 +26,7 @@ def _sel(node: str, source: str = "settings"):
     install the resolved selection at ``system.agent`` (the §1A level) — which is
     what keeps the snapshot equal to the agent that actually runs.
     """
-    from kanibako.agent_select import AgentSelection
+    from kanibako.settings.agent_select import AgentSelection
 
     return AgentSelection(node=node, source=source)
 
@@ -65,7 +65,7 @@ class TestCheckBoxComponents:
     (covered by resolution/detection); the vault is NON-CRITICAL (warn only)."""
 
     def _proj(self, tmp_path, *, make_workspace=True, make_home=True):
-        from kanibako.paths import BoxMode, ProjectPaths
+        from kanibako.settings.paths import BoxMode, ProjectPaths
         from kanibako.utils import project_hash
 
         root = tmp_path / "box"
@@ -240,7 +240,7 @@ class TestTargetWarnings:
 
             # And it must re-protect THIS box's home, not merely be some callable.
             with _patch(
-                "kanibako.core_defaults.materialize_canon_skeleton"
+                "kanibako.settings.core_defaults.materialize_canon_skeleton"
             ) as m_protect:
                 hook()
             m_protect.assert_called_once()
@@ -400,7 +400,7 @@ class TestEffectiveBootstrapResolution:
 
     def _proj(self, tmp_path):
         from types import SimpleNamespace
-        from kanibako.paths import BoxMode
+        from kanibako.settings.paths import BoxMode
         box_dir = tmp_path / "box"
         box_dir.mkdir()
         # PRIMARY with no group → the tier pair is (box_dir/settings.yaml, None):
@@ -422,7 +422,7 @@ class TestEffectiveBootstrapResolution:
         """A bare ``bootstrap`` set at system scope lands in the system settings
         file's ``agent.default`` tier and is the effective value for any agent."""
         from kanibako.commands.start import _effective_bootstrap
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
@@ -433,7 +433,7 @@ class TestEffectiveBootstrapResolution:
     def test_none_sentinel_preserved(self, tmp_path):
         """The ``none`` opt-out is a real value, NOT coerced to the tmux default."""
         from kanibako.commands.start import _effective_bootstrap
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "none"}}})
@@ -444,7 +444,7 @@ class TestEffectiveBootstrapResolution:
         the §2d pick — the box's override takes effect. (⮕ P7: was the
         ``box.agent.bootstrap`` mirror, retired by spec §2b.)"""
         from kanibako.commands.start import _effective_bootstrap
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
@@ -465,7 +465,7 @@ class TestEffectiveBootstrapResolution:
         and the snapshot has no ``agent`` node → ``effective_behavior`` early-returns
         ``{}`` → this returns ``'tmux'`` and the box wrongly launches persistent."""
         from kanibako.commands.start import _effective_bootstrap
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         # ONLY the box's §2h request is set — no system file at all.
         dump_doc(
@@ -479,7 +479,7 @@ class TestEffectiveBootstrapResolution:
         (flat ``agent:`` state) WINS the §2d active-over-default pick for that
         agent, over the system-scope ``agent.default`` value."""
         from kanibako.commands.start import _effective_bootstrap
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
@@ -1233,7 +1233,7 @@ class TestPluginsAndCacheShares:
     _CACHE_DEST = "/home/agent/.claude/cache"
 
     def _proj(self, std):
-        from kanibako.paths import ProjectGroup
+        from kanibako.settings.paths import ProjectGroup
         proj = MagicMock()
         proj.group = ProjectGroup(
             name="default", root=std.data, is_default=True,
@@ -2008,7 +2008,7 @@ class TestContainerEnvWorksetGating:
             assert m.proj.group.is_default is True
             # Point the workset root at a dir with an env file that must now
             # be read.  group is frozen-ish dataclass; rebuild with a real root.
-            from kanibako.paths import ProjectGroup
+            from kanibako.settings.paths import ProjectGroup
             ws_root = tmp_path / "ws"
             ws_root.mkdir()
             (ws_root / "env").write_text("PRIMARY_WS_VAR=present\n")
@@ -2042,7 +2042,7 @@ class TestContainerEnvWorksetGating:
     def test_named_workset_env_is_read(self, start_mocks, tmp_path):
         """Named (non-default) workset → ws_root/env is injected."""
         with start_mocks() as m:
-            from kanibako.paths import ProjectGroup
+            from kanibako.settings.paths import ProjectGroup
             ws_root = tmp_path / "ws"
             ws_root.mkdir()
             (ws_root / "env").write_text("WS_VAR=present\n")
@@ -2256,7 +2256,7 @@ class TestApplyTweakcc:
 
     def test_disabled_returns_none(self, tmp_path):
         """When tweakcc is not enabled, returns None."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         install = MagicMock()
         agent_cfg = AgentConfig(transform_settings={})
@@ -2265,7 +2265,7 @@ class TestApplyTweakcc:
 
     def test_enabled_but_empty_returns_none(self, tmp_path):
         """Enabled=False explicitly → returns None."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         install = MagicMock()
         agent_cfg = AgentConfig(transform_settings={"enabled": False})
@@ -2274,7 +2274,7 @@ class TestApplyTweakcc:
 
     def test_bun_sea_error_returns_none(self, tmp_path):
         """BunSEAError during hash → returns None (graceful fallback)."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         from kanibako.bun_sea import BunSEAError
 
         install = MagicMock()
@@ -2289,7 +2289,7 @@ class TestApplyTweakcc:
 
     def test_cache_hit(self, tmp_path):
         """Cache hit → returns patched install without calling put."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         install = MagicMock()
         install.name = "claude"
@@ -2319,7 +2319,7 @@ class TestApplyTweakcc:
 
     def test_cache_miss_calls_put(self, tmp_path):
         """Cache miss → calls put with tweakcc command."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         install = MagicMock()
         install.name = "claude"
@@ -2351,7 +2351,7 @@ class TestApplyTweakcc:
 
     def test_returns_cache_object(self, tmp_path):
         """Returned tuple includes the cache object for later release."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         install = MagicMock()
         install.name = "claude"
@@ -4441,7 +4441,7 @@ class TestSeedNewBoxCreateEntry:
         proj.group = None
         with (
             patch("kanibako.commands.start.load_merged_config"),
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.settings.config.resolve_agent", return_value="claude"),
             patch("kanibako.commands.start.resolve_target") as m_rt,
             patch("kanibako.commands.start.agent_settings_path"),
             patch("kanibako.commands.start.write_agent_config"),
@@ -4769,7 +4769,7 @@ class TestPreflightPersonaLoad:
     """Unit tests for ``_preflight_persona_load`` (the load-or-error decision)."""
 
     def _cfg(self):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         return AgentConfig()
 
     def _logger(self):
@@ -4986,7 +4986,7 @@ class TestPreflightClaudeByteIdentical:
     """
 
     def _cfg(self, tok_path):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         cfg = AgentConfig()
         cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok_path)}
         return cfg
@@ -5014,7 +5014,7 @@ class TestPreflightClaudeByteIdentical:
     ):
         # F4 fallback + the ANTHROPIC_AUTH_TOKEN var + secret_path mutation are
         # unchanged when a real claude Target is threaded through.
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.plugins.claude.target import ClaudeTarget
 
@@ -5042,7 +5042,7 @@ class TestPreflightClaudeByteIdentical:
         # token file, provider stays None (ENV harness), adopted True.
         import json
 
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.plugins.claude.target import ClaudeTarget
 
@@ -5085,7 +5085,7 @@ class TestPreflightCodexPersona:
         return CodexTarget()
 
     def _cfg(self, *, secret=None):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         cfg = AgentConfig()
         if secret:
             cfg.secret_path = dict(secret)
@@ -5233,7 +5233,7 @@ class TestPreflightGoosePersona:
         return GooseTarget()
 
     def _cfg(self, *, secret=None):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         cfg = AgentConfig()
         if secret:
             cfg.secret_path = dict(secret)
@@ -5468,7 +5468,7 @@ class TestPersonaCreateVerdict:
     """`persona_create_verdict` — the `box create` guard (runs BEFORE the journal)."""
 
     def _target(self, name="claude"):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         t = MagicMock()
         t.name = name
         t.generate_agent_config.return_value = AgentConfig()
@@ -5486,7 +5486,7 @@ class TestPersonaCreateVerdict:
         std, config, proj = self._ctx(tmp_path, "navigator+claude")
         with (
             patch("kanibako.commands.start.load_merged_config"),
-            patch("kanibako.config.resolve_agent", return_value="navigator℘claude"),
+            patch("kanibako.settings.config.resolve_agent", return_value="navigator℘claude"),
             patch(
                 "kanibako.commands.start.resolve_target",
                 return_value=self._target(),
@@ -5511,7 +5511,7 @@ class TestPersonaCreateVerdict:
         std, config, proj = self._ctx(tmp_path, "claude")
         with (
             patch("kanibako.commands.start.load_merged_config"),
-            patch("kanibako.config.resolve_agent", return_value="claude"),
+            patch("kanibako.settings.config.resolve_agent", return_value="claude"),
             patch(
                 "kanibako.commands.start.resolve_target",
                 return_value=self._target(),
@@ -5528,7 +5528,7 @@ class TestPersonaLoadOrErrorIntegration:
 
     def _drive_persona(self, m):
         """Resolve the active agent as the persona node ``navigator℘claude``."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         from kanibako.plugins.claude.target import ClaudeTarget, _CLAUDE_DESCRIPTOR
         m.resolve_agent.return_value = _sel(self._NODE)
         m.target.name = "claude"
@@ -5805,7 +5805,7 @@ class TestPersonaLoadOrErrorIntegration:
                     return_value=(_SHARED_AUTH, None, None),  # unrecognised keyspace → B3
                 ),
                 patch("kanibako.commands.start.write_agent_config"),
-                patch("kanibako.config.write_project_config") as m_write_toml,
+                patch("kanibako.settings.config.write_project_config") as m_write_toml,
                 patch("kanibako.commands.start.credsync") as m_credsync,
             ):
                 m_credsync.selected_source_root = m.credsync.selected_source_root
@@ -5869,8 +5869,8 @@ class TestPersonaLoadOrErrorUnmasked:
         explicit-create gate and reaches the persona load-or-error gate.  (No agent
         seed is needed — the persona gate runs before the home seed; the launch only
         requires the box dir + home + registry membership to exist.)"""
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths, resolve_box_target
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_box_target
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -5884,8 +5884,8 @@ class TestPersonaLoadOrErrorUnmasked:
         # cwd is tmp_home/project; pre-create a BARE box there (launch no longer
         # auto-creates).  XDG_CONFIG_HOME (tmp_home/config) has NO persona host dir
         # → 'navigator+claude' is unloadable.
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         self._precreate_bare_box(config_file)
 
@@ -5921,8 +5921,8 @@ class TestPersonaLoadOrErrorUnmasked:
         )
         (pdir / "token").write_text("sk-bearer\n")
 
-        from kanibako.config import load_config
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
         self._precreate_bare_box(config_file)
 
@@ -6116,7 +6116,7 @@ class TestReconcilePersonaStore:
 
     def _synced_cfg(self, tmp_home):
         """An AgentConfig already carrying exactly the store's owned values."""
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         token = tmp_home / "config" / "personas" / "navigator" / "token"
         return AgentConfig(
@@ -6125,7 +6125,7 @@ class TestReconcilePersonaStore:
         )
 
     def test_no_store_entry_returns_unchanged(self, tmp_home):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         cfg = AgentConfig(state={"endpoint": "https://old.example"})
         target = self._StoreTarget(verdict=True)
@@ -6135,7 +6135,7 @@ class TestReconcilePersonaStore:
         assert target.verify_calls == []
 
     def test_unusable_store_warns_and_keeps(self, tmp_home, capsys):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home)
         cfg = AgentConfig(state={"endpoint": "https://old.example"})
@@ -6156,7 +6156,7 @@ class TestReconcilePersonaStore:
         assert target.verify_calls == []  # nothing changed -> no probe cost
 
     def test_changed_and_pass_swaps(self, tmp_home):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         persona_dir = self._store(tmp_home)
         cfg = AgentConfig(
@@ -6180,7 +6180,7 @@ class TestReconcilePersonaStore:
         assert cfg.state["endpoint"] == "https://old.example"
 
     def test_changed_and_fail_keeps_last_known_good(self, tmp_home, capsys):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home)
         cfg = AgentConfig(state={"endpoint": "https://old.example"})
@@ -6192,7 +6192,7 @@ class TestReconcilePersonaStore:
         assert "rejected" in err and "last-known-good" in err
 
     def test_changed_and_unreachable_keeps_last_known_good(self, tmp_home, capsys):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home)
         cfg = AgentConfig(state={"endpoint": "https://old.example"})
@@ -6203,7 +6203,7 @@ class TestReconcilePersonaStore:
         assert "last-known-good" in capsys.readouterr().err
 
     def test_first_ever_unverifiable_adopts_with_warning(self, tmp_home, capsys):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home)
         cfg = AgentConfig()  # no prior endpoint -> first-ever
@@ -6216,7 +6216,7 @@ class TestReconcilePersonaStore:
     def test_first_ever_rejected_still_adopts(self, tmp_home, capsys):
         # A positive reject with NOTHING working to protect: refusing would
         # only re-error as "no endpoint configured", masking the cause.
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home)
         cfg = AgentConfig()
@@ -6227,7 +6227,7 @@ class TestReconcilePersonaStore:
         assert "UNVERIFIED" in capsys.readouterr().err
 
     def test_token_unresolved_means_no_probe_and_keeps(self, tmp_home, capsys):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home, pointer=None)  # no .secret_path
         cfg = AgentConfig(state={"endpoint": "https://old.example"})
@@ -6240,7 +6240,7 @@ class TestReconcilePersonaStore:
         assert "token pointer did not resolve" in err
 
     def test_hook_never_persists(self, tmp_home):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
 
         self._store(tmp_home)
         target = self._StoreTarget(verdict=True)
@@ -6253,7 +6253,7 @@ class TestReconcilePersonaStore:
         # Even a mis-gated call with a BARE agent id does zero store access:
         # locate_entry returns before the store root is even built.
         import kanibako.persona_store as ps
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         from kanibako.commands.start import _reconcile_persona_store
         from kanibako.log import get_logger
 
@@ -6291,7 +6291,7 @@ class TestSuppressedBoxLaunchesNoAgent:
     """
 
     def _suppressed(self):
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
 
         return AgentSelection(node="", source="suppressed")
 
@@ -6366,7 +6366,7 @@ class TestSuppressedBoxLaunchesNoAgent:
     def test_an_UNSUPPRESSED_box_still_resolves_its_target(self, start_mocks):
         """The DISCRIMINATOR: the guard must key on the SUPPRESSION, not fire for
         every launch. A normal selection still goes through ``resolve_target``."""
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
 
         with start_mocks() as m:
             m.resolve_agent.return_value = AgentSelection(

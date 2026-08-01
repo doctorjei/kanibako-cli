@@ -311,7 +311,7 @@ def _probe_cases(tmp_path):
     The per-mode layouts come from the REAL path helpers, so a change to the
     on-disk layout shows up here rather than being re-asserted by hand.
     """
-    from kanibako.paths import (
+    from kanibako.settings.paths import (
         _primary_box_paths,
         _standalone_box_paths,
         _workset_box_paths,
@@ -352,7 +352,7 @@ def _probe_cases(tmp_path):
 
 def _probe_snapshot(mode, proj, ws_root, helper_log):
     """Build the LIVE launch snapshot for *proj* from the REAL shipped defaults."""
-    from kanibako import core_defaults
+    from kanibako.settings import core_defaults
     from kanibako.settings.settings_launch import (
         build_launch_snapshot,
         meta_identity_floor,
@@ -432,7 +432,7 @@ class TestP1BoxRootAnchor:
         host_src. Asserting the emitted tuple is EQUAL across modes is what stops a
         future per-mode arm from creeping back in.
         """
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         class _P:
             shell_path = Path("/h/home")
@@ -468,7 +468,7 @@ class TestP1BoxRootAnchor:
         losing both the box name and the extension. That failure is silent at
         every layer, which is why the spelling is pinned and not just the result.
         """
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         log = tmp_path / "b.jsonl"
         log.touch()
@@ -614,7 +614,7 @@ class TestDeclarationRoots:
         the full ref; this pins that the ref a declaration loader BUILDS resolves
         to ``<store>/<category>/<leaf>``.
         """
-        from kanibako.agent_config import agent_category_root_ref, root_relative_source
+        from kanibako.settings.agent_config import agent_category_root_ref, root_relative_source
 
         entries = {
             f"agent.claude.{cat}.probe": (
@@ -749,7 +749,7 @@ class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
             self.vault_rw_path = root / "vault" / "rw"
 
     def test_launch_creates_the_vault_sources(self, tmp_path):
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = self._P(tmp_path)
         core_defaults.core_default_categories(
@@ -759,7 +759,7 @@ class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
         assert proj.vault_rw_path.is_dir()
 
     def test_a_read_only_resolve_creates_nothing(self, tmp_path):
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = self._P(tmp_path)
         core_defaults.core_default_categories(
@@ -772,7 +772,7 @@ class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
     def test_the_emitted_binds_are_identical_either_way(self, tmp_path):
         """The flag gates the SIDE EFFECT, not the result — otherwise the
         display would be showing a different box than the launch mounts."""
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         read = core_defaults.core_default_categories(
             None, self._P(tmp_path / "r"), enable_vault=True,
@@ -863,7 +863,7 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
     def test_the_block_renders_the_pair_for_a_real_declaration(self):
         import io
 
-        from kanibako.config_interface import _print_category_block
+        from kanibako.settings.config_interface import _print_category_block
 
         snap, entries = self._snapshot()
         buf = io.StringIO()

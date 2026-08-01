@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.config import load_config
-from kanibako.paths import load_std_paths
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import load_std_paths
 
 
 class TestImage:
@@ -694,8 +694,8 @@ class TestRigUpdate:
     ):
         """update with no name resolves the configured box.image rig."""
         from kanibako.commands.image import run_update
-        from kanibako.config import load_merged_config, config_file_path
-        from kanibako.paths import xdg
+        from kanibako.settings.config import load_merged_config, config_file_path
+        from kanibako.settings.paths import xdg
 
         config_file_p = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         expected_name = load_merged_config(config_file_p, None).box_image

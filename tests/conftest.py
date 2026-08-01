@@ -12,8 +12,8 @@ from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
-from kanibako.agent_select import AgentSelection as _AgentSelection
-from kanibako.config import KanibakoConfig, load_config, write_global_config
+from kanibako.settings.agent_select import AgentSelection as _AgentSelection
+from kanibako.settings.config import KanibakoConfig, load_config, write_global_config
 
 # The REAL launch-snapshot orchestrator, captured at import time (before any
 # ``start_mocks`` patch replaces the module attribute) so the ``start_mocks``
@@ -117,7 +117,7 @@ def config(config_file):
 @pytest.fixture
 def std(config_file):
     """Load standard paths from the default config."""
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.paths import load_std_paths
     config = load_config(config_file)
     return load_std_paths(config)
 
@@ -131,8 +131,8 @@ def project_dir(tmp_home):
 @pytest.fixture
 def credentials_dir(tmp_home, config_file):
     """Set up host credentials and return the data path."""
-    from kanibako.config import load_config
-    from kanibako.paths import resolve_system_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import resolve_system_paths
     config = load_config(config_file)
     data_home = tmp_home / "data"
     data_path = resolve_system_paths(
@@ -208,8 +208,8 @@ def corrupt_credentials(tmp_home):
 @pytest.fixture
 def project_env(config_file, credentials_dir, tmp_home):
     """Combines config + credentials + resolve_project into a single namespace."""
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths, resolve_project
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths, resolve_project
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -242,8 +242,8 @@ def start_mocks():
         import tempfile
         from pathlib import Path
 
-        from kanibako.agent_config import AgentConfig
-        from kanibako.paths import ProjectGroup, BoxMode
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.paths import ProjectGroup, BoxMode
 
         # ⚑ REAL host roots for the box STORE. The §2a seed layers resolve their
         # destinations to absolute HOST paths under ``@meta.box.path``, and the
@@ -279,9 +279,9 @@ def start_mocks():
             # on the host's installed-agent set (which would otherwise trigger
             # Gate-2a with the meta package's 3 adapters). Tests exercising the
             # no-agent / ambiguous paths re-patch it. (Was
-            # ``kanibako.config.resolve_agent``, whose cascade P7 moved out.)
+            # ``kanibako.settings.config.resolve_agent``, whose cascade P7 moved out.)
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=_AgentSelection(node="claude", source="settings"),
             ) as m_resolve_agent,
             patch("kanibako.commands.start._upgrade_shell"),
@@ -567,7 +567,7 @@ def start_mocks():
                     # (the module-level captured, unpatched orchestrator).
                     return _REAL_RESOLVE_LAUNCH_SNAPSHOT(*a, **kw)
 
-                from kanibako.agent_representation import agent_default_partial
+                from kanibako.settings.agent_representation import agent_default_partial
                 from kanibako.settings.settings_categories import reconcile_categories
                 from kanibako.settings.settings_launch import (
                     build_launch_snapshot,

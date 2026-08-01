@@ -9,7 +9,7 @@ from pathlib import Path
 
 from kanibako.launch.box_identity import validate_box_name
 from kanibako.commands.flags import add_null_flag
-from kanibako.config import (
+from kanibako.settings.config import (
     BOX_META_FILE,
     config_file_path,
     load_config,
@@ -19,7 +19,7 @@ from kanibako.config import (
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, ProjectError
 from kanibako.names import read_names, unregister_name
-from kanibako.paths import (
+from kanibako.settings.paths import (
     xdg,
     BoxMode,
     _box_settings_files,
@@ -725,7 +725,7 @@ def run_create(args: argparse.Namespace) -> int:
         persona_create_verdict,
         seed_new_box,
     )
-    from kanibako.core_defaults import materialize_canon_skeleton
+    from kanibako.settings.core_defaults import materialize_canon_skeleton
 
     # PERSONA LOAD-OR-ERROR — TRUE PRE-FLIGHT (F5, Director ruling 2026-07-03):
     # resolve a NON-materialising PROBE (``initialize=False`` → NO mkdir) and run
@@ -842,7 +842,7 @@ def run_create(args: argparse.Namespace) -> int:
         # OAuth token into the seed.  Additive/non-destructive: no scrub, only two
         # boolean overrides.
         if getattr(args, "private", False):
-            from kanibako.config_interface import ConfigLevel, set_config_value
+            from kanibako.settings.config_interface import ConfigLevel, set_config_value
             from kanibako.errors import KanibakoError
             for _auth_key in (
                 "box.auth.global_enabled",
@@ -882,7 +882,7 @@ def run_create(args: argparse.Namespace) -> int:
         # with the image/--private writes above).
         _agent_sel = getattr(args, "agent", None)
         if isinstance(_agent_sel, str) and _agent_sel.strip():
-            from kanibako.config_interface import ConfigLevel, set_config_value
+            from kanibako.settings.config_interface import ConfigLevel, set_config_value
             _msg = set_config_value(
                 "pref.system.agent", _agent_sel.strip(),
                 config_path=project_toml,
@@ -1344,7 +1344,7 @@ def _teardown_standalone_box(root: Path) -> bool:
     user's workspace files (and *root* itself) are never touched.  Returns True if
     the ``box_data/`` marker was removed.
     """
-    from kanibako.paths import _STANDALONE_META_DIR
+    from kanibako.settings.paths import _STANDALONE_META_DIR
 
     metadata_dir = root / _STANDALONE_META_DIR
     if _purge_dir(metadata_dir):
@@ -1379,7 +1379,7 @@ def _read_box_image(settings_file: Path) -> str | None:
     need it, so any read failure degrades to ``None`` rather than erroring.
     """
     try:
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         data = load_doc(settings_file)
         image = dict(data.get("box", {})).get("image")
@@ -1410,7 +1410,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
     """
     from kanibako import registry_store
     from kanibako.errors import UserCancelled
-    from kanibako.paths import _STANDALONE_META_DIR
+    from kanibako.settings.paths import _STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
 
     kind = entry.get("kind")
@@ -1508,7 +1508,7 @@ def _resolve_standalone_target(
     finds standalone boxes (BUG-C).
     """
     from kanibako import registry_store
-    from kanibako.paths import BoxMode, detect_project_mode
+    from kanibako.settings.paths import BoxMode, detect_project_mode
 
     # 1) Direct standalone-name lookup.
     entries = registry_store.load_standalone(std.registry)
@@ -1543,7 +1543,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
     from kanibako import registry_store
     from kanibako.errors import UserCancelled
-    from kanibako.paths import _STANDALONE_META_DIR
+    from kanibako.settings.paths import _STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
 
     print(f"Removing standalone box: {box_name} ({root})")
@@ -1774,7 +1774,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
         return 0
 
     # PRIMARY (default) box.
-    from kanibako.paths import register_primary_box_name
+    from kanibako.settings.paths import register_primary_box_name
 
     metadata_dir = Path(str(metadata)).resolve() if metadata else None
     # Self-heal: the box dir is gone → nothing to restore, drop entry.
@@ -2006,7 +2006,7 @@ def run_info(args: argparse.Namespace) -> int:
     agent_display = "n/a (unresolved)"
     try:
         from kanibako.agent_ref import display_agent_ref
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
         _sel = select_agent(std=std, proj=proj)
         agent_name = _sel.node
         # ⚑ SHOW WHERE IT CAME FROM (P7). "Which agent does this box run, and WHY?"
@@ -2087,7 +2087,7 @@ def run_set(args: argparse.Namespace) -> int:
 
 def run_reset(args: argparse.Namespace) -> int:
     """``box reset [project] <key>`` / ``box reset [project] --all``."""
-    from kanibako.config_interface import is_known_key
+    from kanibako.settings.config_interface import is_known_key
 
     positional = list(getattr(args, "args", []))
     reset_all = getattr(args, "reset_all", False)
@@ -2145,7 +2145,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
     Handles get, set, show, reset operations via the config_interface engine.
     Uses the known-key heuristic to disambiguate project names from config keys.
     """
-    from kanibako.config_interface import (
+    from kanibako.settings.config_interface import (
         ConfigAction,
         ConfigLevel,
         get_config_value,
@@ -2224,7 +2224,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # empty → the message degrades to the cleared-only form.
         reset_agent_name = ""
         try:
-            from kanibako.agent_select import select_agent
+            from kanibako.settings.agent_select import select_agent
             reset_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             reset_agent_name = ""
@@ -2232,7 +2232,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # one the box SET path folds) so the honest cleared-message can name the
         # reverted-to FLOOR value when a core bind (``box.bindings.{ro,rw}.<key>``)
         # is reset. ``core_default_bind_keys`` does NO proj/std probe.
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
         msg = reset_config_value(
             reset_key,
             config_path=project_toml,
@@ -2276,7 +2276,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_snapshot = None
         category_error = None
         if args.effective:
-            from kanibako.agent_config import (
+            from kanibako.settings.agent_config import (
                 agent_settings_path,
                 load_agent_config,
             )
@@ -2288,7 +2288,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             agent_name = ""
             effective_selection = None
             try:
-                from kanibako.agent_select import select_agent
+                from kanibako.settings.agent_select import select_agent
                 # Informational --effective display: tolerate a resolution
                 # failure (degrade to the "general" no-agent state below)
                 # rather than erroring.  The ONE selection seam (§1A/§2h).
@@ -2401,7 +2401,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # P7). Best-effort: an unresolvable agent just means no redirect.
         _get_agent_name = ""
         try:
-            from kanibako.agent_select import select_agent
+            from kanibako.settings.agent_select import select_agent
             _get_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             _get_agent_name = ""
@@ -2418,7 +2418,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # own: get_config_value redirected the READ to the box's §2h request
         # ``pref.agent.<active>.<key>``. Name the value with that canonical form so
         # the read teaches the request (mirrors the refuse-message ``set`` prints).
-        from kanibako.config_interface import _resolve_key, box_agent_redirect_key
+        from kanibako.settings.config_interface import _resolve_key, box_agent_redirect_key
         redirect = box_agent_redirect_key(
             _resolve_key(key), ConfigLevel.box, _get_agent_name or None,
         )
@@ -2443,7 +2443,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         cascade_workset_path = workset_path
         cascade_agent_name = ""
         try:
-            from kanibako.agent_select import select_agent
+            from kanibako.settings.agent_select import select_agent
             cascade_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             cascade_agent_name = ""
@@ -2455,7 +2455,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # declarative ``core:`` doc + a placeholder host_src the repoint discards
         # (``core_default_bind_keys`` does NO proj/std probe); it is folded into the
         # box-scope set-time floor, NEVER the launch snapshot.
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
         set_default_categories: dict[str, object] = dict(core_default_bind_keys())
 
         msg = set_config_value(

@@ -31,9 +31,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako import core_defaults
+from kanibako.settings import core_defaults
 from kanibako.launch import templates
-from kanibako.core_defaults import (
+from kanibako.settings.core_defaults import (
     BIBLE_AGENT_CHAPTER,
     CANON_SEED_DENY_PREFIXES,
     CANON_SKELETON_DIR_MODE,
@@ -49,7 +49,7 @@ from kanibako.core_defaults import (
     UNSHARE_BOX_ROOT_GID,
     UNSHARE_BOX_ROOT_UID,
 )
-from kanibako.paths import resolve_project
+from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_categories import reconcile_categories
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx

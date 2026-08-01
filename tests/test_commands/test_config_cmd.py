@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from kanibako.config import (
+from kanibako.settings.config import (
     load_config,
     load_project_overrides,
     write_project_config,
@@ -21,7 +21,7 @@ class TestBoxConfigShow:
         from kanibako.commands.box._parser import run_show
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -36,7 +36,7 @@ class TestBoxConfigShow:
         from kanibako.commands.box._parser import run_show
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -51,7 +51,7 @@ class TestBoxConfigShow:
         from kanibako.commands.box._parser import run_show
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -75,7 +75,7 @@ class TestBoxConfigShow:
         the workset tier that ``start`` resolves (previously it skipped it).
         """
         from kanibako.commands.box._parser import run_show
-        from kanibako.paths import load_std_paths
+        from kanibako.settings.paths import load_std_paths
         from kanibako.workset import add_project, create_workset
 
         config = load_config(config_file)
@@ -89,7 +89,7 @@ class TestBoxConfigShow:
         # Set a box.* value ONLY at the workset level.  The workset settings now
         # live in the SAME settings.yaml that carries the workset.meta identity,
         # so merge the cascade key in rather than clobbering the file.
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
         ws_settings = ws.root / "settings.yaml"
         data = load_doc(ws_settings) if ws_settings.is_file() else {}
         data["box"] = {"image": "ws-tier-img:1"}
@@ -114,8 +114,8 @@ class TestBoxConfigShow:
         launch derivation — NEVER the kanibako_config.yaml CONFIG file (which
         the launch cascade does not read for settings)."""
         from kanibako.commands.box._parser import run_show
-        from kanibako.config_interface import _write_nested_toml_key
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.config_interface import _write_nested_toml_key
+        from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -141,7 +141,7 @@ class TestBoxConfigGet:
         from kanibako.commands.box._parser import run_get
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -161,7 +161,7 @@ class TestBoxConfigGet:
         from kanibako.commands.box._parser import run_get
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -185,7 +185,7 @@ class TestBoxConfigGet:
         from kanibako.commands.box._parser import run_get
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -206,7 +206,7 @@ class TestBoxConfigSet:
         from kanibako.commands.box._parser import run_set
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -224,7 +224,7 @@ class TestBoxConfigSet:
         from kanibako.commands.box._parser import run_set
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -246,7 +246,7 @@ class TestBoxConfigSet:
         from kanibako.commands.box._parser import run_set
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -276,10 +276,10 @@ class TestBoxConfigSet:
         # source-only repoint of a launch-only core bind now VALIDATES + writes the
         # RAW tuple (was refused "nowhere in the cascade" before Step B).
         from kanibako.commands.box._parser import run_set
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -304,7 +304,7 @@ class TestBoxConfigReset:
         from kanibako.commands.box._parser import run_reset
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -330,7 +330,7 @@ class TestBoxConfigReset:
         from kanibako.commands.box._parser import run_reset
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -352,7 +352,7 @@ class TestBoxConfigReset:
         from kanibako.commands.box._parser import run_reset
 
         config = load_config(config_file)
-        from kanibako.paths import load_std_paths, resolve_project
+        from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
@@ -512,7 +512,7 @@ class TestWriteProjectConfigKey:
 
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):
-        from kanibako.config import unset_project_config_key
+        from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "remove-me:v1")
         assert unset_project_config_key(p, "box_image") is True
@@ -521,7 +521,7 @@ class TestUnsetProjectConfigKey:
         assert loaded.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_unset_nonexistent_key(self, tmp_path):
-        from kanibako.config import unset_project_config_key
+        from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "keep:v1")
         assert unset_project_config_key(p, "paths_project_toml") is False
@@ -530,12 +530,12 @@ class TestUnsetProjectConfigKey:
         assert loaded.box_image == "keep:v1"
 
     def test_unset_no_file(self, tmp_path):
-        from kanibako.config import unset_project_config_key
+        from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "nonexistent.yaml"
         assert unset_project_config_key(p, "box_image") is False
 
     def test_unset_preserves_other_keys(self, tmp_path):
-        from kanibako.config import unset_project_config_key
+        from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "settings.yaml"
         write_project_config_key(p, "box_image", "img:v1")
         write_project_config_key(p, "paths_project_toml", "my.yaml")
@@ -562,19 +562,19 @@ class TestLoadProjectOverrides:
 
 class TestSplitConfigKey:
     def test_box_image_key(self):
-        from kanibako.config import _split_config_key
+        from kanibako.settings.config import _split_config_key
         assert _split_config_key("box_image") == ("box", "image")
 
     def test_paths_key(self):
-        from kanibako.config import _split_config_key
+        from kanibako.settings.config import _split_config_key
         assert _split_config_key("paths_project_toml") == ("paths", "project_toml")
 
     def test_paths_key_with_underscores(self):
-        from kanibako.config import _split_config_key
+        from kanibako.settings.config import _split_config_key
         assert _split_config_key("paths_project_toml") == ("paths", "project_toml")
 
     def test_box_shell_key(self):
-        from kanibako.config import _split_config_key
+        from kanibako.settings.config import _split_config_key
         assert _split_config_key("box_shell") == ("box", "shell")
 
     def test_unprefixed_key_is_top_level_field(self):
@@ -585,7 +585,7 @@ class TestSplitConfigKey:
         the routed set/get/reset path; this helper must never crash on an
         advertised key).
         """
-        from kanibako.config import _split_config_key
+        from kanibako.settings.config import _split_config_key
         assert _split_config_key("allow_helpers") == ("", "allow_helpers")
         assert _split_config_key("unknown_prefix_key") == ("", "unknown_prefix_key")
 
@@ -602,7 +602,7 @@ class TestStandaloneBoxTierRoundTrip:
     changed" failure, with no error anywhere."""
 
     def _standalone(self, config_file, tmp_home):
-        from kanibako.paths import load_std_paths, resolve_standalone_project
+        from kanibako.settings.paths import load_std_paths, resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -619,7 +619,7 @@ class TestStandaloneBoxTierRoundTrip:
         gets both positions from the code under test is self-consistent and therefore
         BLIND to a swapped pair.  These literals are what make the swap mutation
         redden here."""
-        from kanibako.paths import _STANDALONE_META_DIR, BOX_META_FILE
+        from kanibako.settings.paths import _STANDALONE_META_DIR, BOX_META_FILE
 
         return root / BOX_META_FILE, root / _STANDALONE_META_DIR / BOX_META_FILE
 
@@ -627,7 +627,7 @@ class TestStandaloneBoxTierRoundTrip:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         from kanibako.commands.box._parser import run_set
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         root = self._standalone(config_file, tmp_home)
         root_file, box_file = self._files(root)
@@ -705,7 +705,7 @@ class TestStandaloneBoxTierRoundTrip:
         as not stored AT THE BOX; ``show --effective`` still resolves it via the R2
         downward-default.  Nothing is lost; the read got truthful."""
         from kanibako.commands.box._parser import run_get, run_show
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         root = self._standalone(config_file, tmp_home)
         root_file, box_file = self._files(root)
@@ -732,8 +732,8 @@ class TestStandaloneBoxTierRoundTrip:
         """Regression pin: PRIMARY still writes and reads its own
         ``<metadata_path>/settings.yaml`` — no ``box_data/`` anywhere."""
         from kanibako.commands.box._parser import run_get, run_set
-        from kanibako.config_io import load_doc
-        from kanibako.paths import BOX_META_FILE, load_std_paths, resolve_project
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import BOX_META_FILE, load_std_paths, resolve_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -763,8 +763,8 @@ class TestStandaloneBoxTierRoundTrip:
         a supposedly-private box would resolve a sharing tier and forward the host
         OAuth token into the seed.  Pin that they are the SAME file."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.config_io import load_doc
-        from kanibako.paths import (
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import (
             box_workset_settings_paths,
             load_std_paths,
             resolve_standalone_project,
@@ -805,8 +805,8 @@ class TestStandaloneBoxTierRoundTrip:
         its source's identity."""
         from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.commands.box._parser import run_set
-        from kanibako.config import read_workset_kuid
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config import read_workset_kuid
+        from kanibako.settings.config_io import load_doc
 
         src = self._standalone(config_file, tmp_home)
         run_set(argparse.Namespace(
@@ -839,8 +839,8 @@ class TestStandaloneBoxTierRoundTrip:
         duplicate — silently, since the duplicate simply comes up with defaults.
         The workset tier's ``box:`` subtree must be underlaid."""
         from kanibako.commands.box._duplicate import run_duplicate
-        from kanibako.config import read_workset_kuid
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config import read_workset_kuid
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         src = self._standalone(config_file, tmp_home)
         src_root, src_box = self._files(src)

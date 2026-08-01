@@ -10,12 +10,12 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from kanibako.config import config_file_path, load_config
+from kanibako.settings.config import config_file_path, load_config
 from kanibako.runtime.container import remove_box_tree
-from kanibako.core_defaults import materialize_canon_skeleton
+from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.errors import ProjectError, UserCancelled, WorksetError
 from kanibako.git import is_git_repo
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     check_primary_box_name_free,
     load_std_paths,

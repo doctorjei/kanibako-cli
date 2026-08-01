@@ -55,8 +55,8 @@ def _rm_args(target, **over):
 
 
 def _std(config_file):
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
     config = load_config(config_file)
     return config, load_std_paths(config)
@@ -86,7 +86,7 @@ class TestReadoptPrimary:
     def test_readopt_restores_membership_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.paths import load_primary_boxes
+        from kanibako.settings.paths import load_primary_boxes
 
         config, std = _std(config_file)
         proj_dir = tmp_home / "proj"
@@ -178,7 +178,7 @@ class TestRegisterNeverReseeds:
     def test_standalone_register_later_leaves_home_byte_identical(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
 
         config, std = _std(config_file)
         root = tmp_home / "sa"
@@ -207,7 +207,7 @@ class TestStandaloneRegisterLater:
     def test_registers_unregistered_standalone_by_path(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
 
         config, std = _std(config_file)
         root = tmp_home / "sa"
@@ -227,7 +227,7 @@ class TestStandaloneRegisterLater:
     def test_already_registered_standalone_by_path_is_gentle_noop(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
 
         config, std = _std(config_file)
         root = tmp_home / "sa"
@@ -242,7 +242,7 @@ class TestStandaloneRegisterLater:
     def test_readopt_standalone_deregistered_by_name(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
 
         config, std = _std(config_file)
         root = tmp_home / "sa"
@@ -272,7 +272,7 @@ class TestConflictSafety:
     def test_readopt_refused_when_active_box_owns_name(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        from kanibako.paths import load_primary_boxes, register_primary_box_name
+        from kanibako.settings.paths import load_primary_boxes, register_primary_box_name
 
         config, std = _std(config_file)
         # Box A named "dup" → deregister it (retained metadata at std.boxes/dup).
@@ -306,7 +306,7 @@ class TestConflictSafety:
     def test_standalone_register_refused_on_name_collision(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
 
         config, std = _std(config_file)
         root = tmp_home / "sa"

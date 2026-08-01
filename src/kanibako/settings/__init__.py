@@ -22,6 +22,31 @@ The resolver chain, in build order:
 * ``settings_cli_level``  — the §1A CLI level: one builder, one guard.
 * ``settings_configset``  — ``config set`` validation + the raw write-back.
 
+The config engine and the layout tier:
+
+* ``config``          — the Layer-1 bootstrap config (spec §1): the flat
+  resolver for the paths needed BEFORE the keyspace pipeline can run.
+* ``config_io``       — centralized YAML load/dump for every kanibako config
+  document (both layers).
+* ``config_interface`` — the unified get/set/reset/show engine behind the
+  ``config`` verbs at every scope.
+* ``core_defaults``   — the declarative core category defaults.
+* ``agent_defaults``  — the per-agent twin: each plugin's shipped defaults file.
+* ``agent_config``    — the ``meta.agent.<agent>.settings`` file route.
+* ``agent_select``    — which agent a box runs (spec §1A/§2g/§2h).
+* ``agent_representation`` — agent descriptor → KeyStore representation.
+* ``paths``           — XDG resolution, project layout, mode detection, and the
+  ``system.path.*`` tier.
+
+⚑ Why no separate ``config/`` package, despite spec §1's two-layer model: that
+model partitions by RESOLUTION ORDER, and the modules do not partition along it.
+``config_io`` serves both layers; ``paths`` straddles (Layer-1 XDG/layout AND
+the Layer-2 ``system.path.*`` tier) and imports ``settings_resolve`` at module
+scope; and ``config_interface`` — the module whose NAME says config — is a
+Layer-2 CLI engine.  A ``config/`` directory holding ``paths`` but not
+``config_interface`` would be exactly the two-forms-for-one-thing trap.
+Re-decide after the KeyKind phase decomposes ``config_interface``.
+
 ⚑ ``settings_launch`` is the launch-time settings SNAPSHOT — a settings
 artifact the launcher consumes.  It is NOT part of ``kanibako.launch``, which is
 the box lifecycle.
@@ -48,6 +73,15 @@ merge``), never relative — §4.4 of that plan.
 """
 
 __all__ = [
+    "agent_config",
+    "agent_defaults",
+    "agent_representation",
+    "agent_select",
+    "config",
+    "config_interface",
+    "config_io",
+    "core_defaults",
+    "paths",
     "settings_assemble",
     "settings_categories",
     "settings_cli_level",

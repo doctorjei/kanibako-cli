@@ -6,10 +6,10 @@ import argparse
 import shutil
 import sys
 
-from kanibako.config import BOX_META_FILE, load_config
+from kanibako.settings.config import BOX_META_FILE, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.errors import UserCancelled
-from kanibako.paths import (
+from kanibako.settings.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
     helper_log_path,
@@ -37,8 +37,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    from kanibako.paths import xdg
-    from kanibako.config import config_file_path
+    from kanibako.settings.paths import xdg
+    from kanibako.settings.config import config_file_path
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -64,7 +64,7 @@ def _unregister_purged(std, proj) -> None:
     name, and remove it. Best-effort: a missing or already-clean entry is a no-op.
     """
     from kanibako import registry_store
-    from kanibako.paths import (
+    from kanibako.settings.paths import (
         primary_box_name_for_workspace,
         unregister_primary_box_name,
     )
@@ -97,7 +97,7 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
     back to the metadata dir name) and drop it from the PRIMARY-workset ``boxes:``
     membership (the sole store since the global ``projects:`` section retired).
     """
-    from kanibako.paths import (
+    from kanibako.settings.paths import (
         primary_box_name_for_workspace,
         unregister_primary_box_name,
     )
@@ -199,7 +199,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
 
 def _purge_all(std, config, *, force: bool) -> int:
     """Purge session data for all known projects."""
-    from kanibako.paths import iter_projects, iter_workset_projects
+    from kanibako.settings.paths import iter_projects, iter_workset_projects
 
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)

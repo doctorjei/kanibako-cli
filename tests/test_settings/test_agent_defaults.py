@@ -1,4 +1,4 @@
-"""Tests for :mod:`kanibako.agent_defaults` — the ABSTRACT-category DECLARATION
+"""Tests for :mod:`kanibako.settings.agent_defaults` — the ABSTRACT-category DECLARATION
 ROOTING (spec §2a L474-525).
 
 The rule under test: an author writes a bare LEAF in a plugin's defaults file, and
@@ -17,8 +17,8 @@ import sys
 
 import pytest
 
-from kanibako import agent_defaults
-from kanibako.agent_config import (
+from kanibako.settings import agent_defaults
+from kanibako.settings.agent_config import (
     agent_category_dirname,
     agent_category_root,
     agent_category_root_ref,

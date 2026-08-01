@@ -8,10 +8,10 @@ import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.config import config_file_path, load_config
+from kanibako.settings.config import config_file_path, load_config
 from kanibako.errors import GitError
 from kanibako.git import check_uncommitted, check_unpushed, get_metadata, is_git_repo
-from kanibako.paths import xdg, load_std_paths, resolve_any_project
+from kanibako.settings.paths import xdg, load_std_paths, resolve_any_project
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -130,7 +130,7 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
 
 def _archive_all(std, config, args) -> int:
     """Archive session data for all known projects."""
-    from kanibako.paths import (
+    from kanibako.settings.paths import (
         WorksetSpec,
         iter_projects,
         iter_workset_projects,
@@ -208,7 +208,7 @@ def _archive_all(std, config, args) -> int:
 def _stub_project(metadata_path, project_path, std, config):
     """Create a minimal ProjectPaths stand-in for projects whose path is gone."""
     from kanibako.launch import box_resolve
-    from kanibako.paths import ProjectPaths, project_hash
+    from kanibako.settings.paths import ProjectPaths, project_hash
 
     # P8a: name from box_resolve's identity (registry KEY / composed standalone
     # name).  A gone-path box that is STILL registered resolves by its (now

@@ -1,4 +1,4 @@
-"""Tests for resolve_standalone_project() in kanibako.paths."""
+"""Tests for resolve_standalone_project() in kanibako.settings.paths."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 
 from kanibako import registry_store
 from kanibako.errors import ProjectError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
     helper_log_path,
@@ -314,7 +314,7 @@ class TestStandaloneIdentity:
 class TestStandaloneKuid:
     def _read_stored_kuid(self, project_dir):
         """Read the sparsely-stored ``workset.kuid`` from the box settings.yaml."""
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         data = load_doc(project_dir.resolve() / "settings.yaml")
         return (data.get("workset") or {}).get("kuid")
 
@@ -371,8 +371,8 @@ class TestStandaloneKuid:
         """#5 — the advisory fires iff (non-sentinel AND invalid AND check ON);
         a valid kuid, the sentinel, or skip_kuid_check=true (default) → SILENT."""
         import logging
-        from kanibako.config_io import dump_doc, load_doc
-        from kanibako.paths import resolve_box_target
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import resolve_box_target
 
         settings = project_dir.resolve() / "settings.yaml"
         # Materialize a real standalone box first (valid kuid, default skip=true).
@@ -420,7 +420,7 @@ class TestMissingVaultAdvisory:
     CONTINUE (resolve returns proj unchanged); ``enable_vault`` OFF → SILENT."""
 
     def _proj(self, tmp_path, *, enable_vault, make_vault):
-        from kanibako.paths import BoxMode, ProjectPaths
+        from kanibako.settings.paths import BoxMode, ProjectPaths
         from kanibako.utils import project_hash
 
         root = tmp_path / "box"
@@ -445,7 +445,7 @@ class TestMissingVaultAdvisory:
     def _warned(self, caplog, proj):
         import logging
 
-        from kanibako.paths import _flag_missing_vault
+        from kanibako.settings.paths import _flag_missing_vault
 
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger="kanibako"):
@@ -476,7 +476,7 @@ class TestMissingVaultAdvisory:
         import logging
         import shutil
 
-        from kanibako.paths import resolve_box_target
+        from kanibako.settings.paths import resolve_box_target
 
         # Materialize a real (vault-enabled) standalone box → vault created.
         proj = resolve_standalone_project(

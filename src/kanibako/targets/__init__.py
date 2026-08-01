@@ -114,7 +114,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     """
     targets: dict[str, type[Target]] = {}
     # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
-    # NB: distinct from the `kanibako.agent_config` module (per-agent tool
+    # NB: distinct from the `kanibako.settings.agent_config` module (per-agent tool
     # config object); the module was named `agent_config` (not `agents`) to
     # avoid clashing with this entry-point registry. Do not "unify".
     eps = entry_points(group="kanibako.agents")
@@ -126,7 +126,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     _scan_plugin_modules(targets)
 
     # User-level file-drop plugins
-    from kanibako.paths import xdg
+    from kanibako.settings.paths import xdg
 
     data_home = xdg("XDG_DATA_HOME", ".local/share")
     _scan_directory_plugins(data_home / "kanibako" / "plugins", targets)

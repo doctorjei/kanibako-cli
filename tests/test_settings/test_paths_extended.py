@@ -1,13 +1,13 @@
-"""Extended tests for kanibako.paths: recovery paths, edge cases."""
+"""Extended tests for kanibako.settings.paths: recovery paths, edge cases."""
 
 from __future__ import annotations
 
 
 import pytest
 
-from kanibako.config import load_config
+from kanibako.settings.config import load_config
 from kanibako.errors import ConfigError
-from kanibako.paths import BoxMode, load_std_paths, resolve_project
+from kanibako.settings.paths import BoxMode, load_std_paths, resolve_project
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ class TestProjectPathsModeDefault:
     def test_mode_field_present_on_dataclass(self):
         """ProjectPaths has a mode field with the expected default."""
         from dataclasses import fields
-        from kanibako.paths import ProjectPaths
+        from kanibako.settings.paths import ProjectPaths
 
         field_names = [f.name for f in fields(ProjectPaths)]
         assert "mode" in field_names
@@ -155,7 +155,7 @@ class TestVaultOptional:
 
         # P2: the flag is stored SPARSELY as the box-scope key box.enable_vault
         # (a real bool), NOT in the [project] section.
-        from kanibako.config import BOX_META_FILE, load_doc
+        from kanibako.settings.config import BOX_META_FILE, load_doc
         on_disk = load_doc(proj.metadata_path / BOX_META_FILE)
         assert on_disk["box"]["enable_vault"] is False
         assert "enable_vault" not in on_disk.get("project", {})
@@ -168,7 +168,7 @@ class TestVaultOptional:
 
     def test_standalone_vault_disabled(self, config_file, tmp_home, credentials_dir):
         """Standalone project with enable_vault=False skips vault dirs."""
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")

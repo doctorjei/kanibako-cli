@@ -18,11 +18,11 @@ from kanibako.commands.box._lifecycle import (
     execute_lifecycle,
     resolve_lifecycle_target,
 )
-from kanibako.config import load_config
-from kanibako.config_io import load_doc
+from kanibako.settings.config import load_config
+from kanibako.settings.config_io import load_doc
 from kanibako.errors import ProjectError, WorksetError
-from kanibako.paths import load_primary_boxes
-from kanibako.paths import (
+from kanibako.settings.paths import load_primary_boxes
+from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
     load_std_paths,
@@ -50,7 +50,7 @@ def _connected_index(std):
     from pathlib import Path
 
     from kanibako import registry_store, workset_registry
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
 
     out = {}
     for name, root_str in registry_store.load_section(
@@ -231,7 +231,7 @@ class TestConvertInPlace:
         # exists (materialized by the sparse kuid write) but carries no
         # ``project:`` section; the standalone identity lives in
         # registry.standalone + new.name.
-        from kanibako.config import read_workset_kuid
+        from kanibako.settings.config import read_workset_kuid
         from kanibako.kuid import SENTINEL
         from kanibako.registry_store import load_standalone
         assert "project" not in load_doc(pdir / "settings.yaml")
@@ -413,7 +413,7 @@ class TestConvertInPlace:
         assert new.mode == BoxMode.named
         assert new.workspace_path == pdir.resolve()
         from kanibako import workset_registry
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
         reg = workset_registry.load_workset_boxes(
             workset_registry.resolve_workset_registry_path(
                 ws.root, load_doc(ws.root / "settings.yaml"),
@@ -870,7 +870,7 @@ class TestDefaultStateFromMeta:
         # Disable vault via the box-scope key so we can prove enable_vault is
         # sourced from ``box.enable_vault`` (not a project-identity field).
         from kanibako.commands.box._lifecycle import _default_state_from_meta
-        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_interface import _write_nested_toml_key
 
         _write_nested_toml_key(
             std.boxes / "gonebox" / "settings.yaml",

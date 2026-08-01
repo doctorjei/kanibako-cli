@@ -1,4 +1,4 @@
-"""Tests for resolve_workset_project() in kanibako.paths."""
+"""Tests for resolve_workset_project() in kanibako.settings.paths."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import pytest
 
 from kanibako.errors import WorksetError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     WorksetSpec,
     resolve_workset_project,
@@ -217,7 +217,7 @@ class TestWorksetProjectCredentialFlow:
 
 class TestIterWorksetProjects:
     def test_iter_workset_projects_normal(self, std, config, tmp_home):
-        from kanibako.paths import iter_workset_projects
+        from kanibako.settings.paths import iter_workset_projects
 
         ws_root = tmp_home / "worksets" / "iter-set"
         ws = create_workset("iter-set", ws_root, std)
@@ -234,7 +234,7 @@ class TestIterWorksetProjects:
 
     def test_iter_workset_projects_missing_workspace(self, std, config, tmp_home):
         import shutil
-        from kanibako.paths import iter_workset_projects
+        from kanibako.settings.paths import iter_workset_projects
 
         ws_root = tmp_home / "worksets" / "miss-set"
         ws = create_workset("miss-set", ws_root, std)
@@ -251,7 +251,7 @@ class TestIterWorksetProjects:
 
     def test_iter_workset_projects_missing_root(self, std, config, tmp_home, capsys):
         import shutil
-        from kanibako.paths import iter_workset_projects
+        from kanibako.settings.paths import iter_workset_projects
 
         ws_root = tmp_home / "worksets" / "gone-set"
         create_workset("gone-set", ws_root, std)

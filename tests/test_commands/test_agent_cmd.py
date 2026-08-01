@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from kanibako.agent_config import (
+from kanibako.settings.agent_config import (
     AgentConfig,
     agent_settings_path,
     agents_dir,
@@ -45,8 +45,8 @@ _PRIVATE_AUTH = AuthSource(
 @pytest.fixture
 def agent_env(config_file, tmp_home):
     """Set up an agent environment with one agent defined."""
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -69,8 +69,8 @@ def agent_env(config_file, tmp_home):
 @pytest.fixture
 def empty_agent_env(config_file, tmp_home):
     """Set up an agent environment with no agents defined."""
-    from kanibako.config import load_config
-    from kanibako.paths import load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -204,7 +204,7 @@ class TestRunConfig:
 
     def test_config_set_state_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="model=sonnet")
         rc = run_set(args)
@@ -223,8 +223,8 @@ class TestRunConfig:
         literals round-trip.
         """
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.config_io import load_doc
-        from kanibako.agent_config import agent_config_path
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.agent_config import agent_config_path
 
         path = agent_config_path(agent_env, "claude")
         for literal in ("false", "true"):
@@ -243,8 +243,8 @@ class TestRunConfig:
         key`` guard lets ``flase`` land verbatim and this reddens.
         """
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.config_io import load_doc
-        from kanibako.agent_config import agent_config_path
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.agent_config import agent_config_path
 
         rc = run_set(argparse.Namespace(
             agent_id="claude", key_value="auto_approve=flase",
@@ -262,7 +262,7 @@ class TestRunConfig:
         ``model`` value still writes fine (only ``auto_approve`` is validated).
         """
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         rc = run_set(argparse.Namespace(
             agent_id="claude", key_value="model=whatever",
@@ -274,7 +274,7 @@ class TestRunConfig:
 
     def test_config_set_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="env.PAGER=less")
         rc = run_set(args)
@@ -289,7 +289,7 @@ class TestRunConfig:
         # secret_path.<VAR>=<path> stores the POINTER (not a secret) DISCRIMINATED
         # under agent.<node>.secret_path (spec §2a; RENAMED from rc-only env_file).
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude",
@@ -318,7 +318,7 @@ class TestRunConfig:
 
     def test_config_reset_secret_path_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set, run_reset
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         run_set(argparse.Namespace(
             agent_id="claude", key_value="secret_path.TOKEN=/secure/token",
@@ -340,7 +340,7 @@ class TestRunConfig:
         # an AgentConfig identity field, so a ``shell=`` set now lands in generic
         # state (not as a dedicated identity knob).
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="shell=bash")
         rc = run_set(args)
@@ -353,7 +353,7 @@ class TestRunConfig:
 
     def test_config_reset_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key="model", all_keys=False, force=False,
@@ -373,7 +373,7 @@ class TestRunConfig:
 
     def test_config_reset_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key="env.EDITOR", all_keys=False, force=False,
@@ -401,7 +401,7 @@ class TestRunConfig:
 
     def test_config_reset_all_forced(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path, load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key=None, all_keys=True, force=True,
@@ -450,8 +450,8 @@ def _write_sparse(data_path: Path, agent: str, doc: dict) -> Path:
     Bypasses the whole-object ``write_agent_config`` so the starting file holds
     ONLY the keys under test (a genuinely sparse file, as B1 leaves them).
     """
-    from kanibako.agent_config import agent_config_path
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.agent_config import agent_config_path
+    from kanibako.settings.config_io import dump_doc
 
     path = agent_config_path(data_path, agent)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -467,7 +467,7 @@ class TestSparseWrites:
         fail — it always emits those default tables.
         """
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = _write_sparse(
             agent_env, "claude", {"self": {"endpoint": "https://x"}},
@@ -487,7 +487,7 @@ class TestSparseWrites:
     def test_set_routing_lands_at_nested_paths(self, agent_env):
         """Each key form lands at its correct nested (sections, leaf) path."""
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = _write_sparse(agent_env, "claude", {"self": {"endpoint": "x"}})
         for kv in (
@@ -514,7 +514,7 @@ class TestSparseWrites:
     def test_set_run_args_stored_as_list(self, agent_env):
         """run_args is space-split into a LIST (not a bare string)."""
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = _write_sparse(agent_env, "claude", {"self": {"endpoint": "x"}})
         rc = run_set(
@@ -528,7 +528,7 @@ class TestSparseWrites:
         """reset removes the one entry, prunes the now-empty table, and leaves
         sibling tables/keys untouched."""
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = _write_sparse(
             agent_env, "claude",
@@ -574,7 +574,7 @@ class TestSparseWrites:
         transform_settings — preserving ONLY name. transform_settings is NOT a
         reset-all exception (it is a normal override once set)."""
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         path = _write_sparse(agent_env, "claude", {
             "self": {
@@ -635,10 +635,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -659,7 +659,7 @@ class TestRunReauth:
 
         args = argparse.Namespace(project=None)
         with patch(
-            "kanibako.config.resolve_agent",
+            "kanibako.settings.config.resolve_agent",
             side_effect=NoAgentSelectedError("no agent selected"),
         ):
             with pytest.raises(NoAgentSelectedError):
@@ -674,10 +674,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -698,7 +698,7 @@ class TestRunReauth:
             target.descriptor = None
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -722,10 +722,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -742,7 +742,7 @@ class TestRunReauth:
             target.descriptor = None
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -783,10 +783,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -809,7 +809,7 @@ class TestRunReauth:
             target.descriptor = desc
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -837,10 +837,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -862,7 +862,7 @@ class TestRunReauth:
             target.descriptor = desc
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -880,10 +880,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -900,7 +900,7 @@ class TestRunReauth:
             target.display_name = "Claude Code"
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 # Distinct auth with credentials present returns 0 before check_auth
                 creds_path = MagicMock()
@@ -923,7 +923,7 @@ class TestRunReauth:
 
         args = argparse.Namespace(project=None)
         with (
-            patch("kanibako.config.resolve_agent", return_value="goose"),
+            patch("kanibako.settings.config.resolve_agent", return_value="goose"),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch(
                 "kanibako.commands.start._run_container", return_value=0,
@@ -943,7 +943,7 @@ class TestRunReauth:
             target.display_name = "Goose"
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -960,10 +960,10 @@ class TestRunReauth:
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
-        from kanibako.agent_select import AgentSelection
+        from kanibako.settings.agent_select import AgentSelection
         with (
             patch(
-                "kanibako.agent_select.select_agent",
+                "kanibako.settings.agent_select.select_agent",
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
@@ -985,7 +985,7 @@ class TestRunReauth:
             target.display_name = "Claude Code"
             mock_target.return_value = target
 
-            with patch("kanibako.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -1077,7 +1077,7 @@ class TestAgentSetNull:
     """
 
     def _stored(self, agent_env):
-        from kanibako.config_io import load_doc
+        from kanibako.settings.config_io import load_doc
 
         return load_doc(agent_settings_path(agents_dir(agent_env), "claude"))
 

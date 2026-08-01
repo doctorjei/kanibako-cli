@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from kanibako import registry_store
-from kanibako.config_io import load_doc
+from kanibako.settings.config_io import load_doc
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def test_projects_section_retired(reg: Path) -> None:
     predates the clean split) is ignored on load and dropped on the next save —
     no migration, no read-compat.
     """
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     dump_doc(
         reg,
@@ -208,7 +208,7 @@ def test_legacy_seeded_section_is_dropped_not_round_tripped(reg: Path) -> None:
     Clean break (pre-release, no read-compat): the section is neither read into
     the loaded shape nor re-persisted on the next save.
     """
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     dump_doc(
         reg,
@@ -253,7 +253,7 @@ def test_default_config_registry_resolves_under_data(tmp_path: Path) -> None:
     This is the equivalence anchor — the path the store targets at default config
     matches the old ``data_path``-relative reconstruction byte-for-byte.
     """
-    from kanibako.paths import resolve_system_paths
+    from kanibako.settings.paths import resolve_system_paths
 
     home = tmp_path / "home"
     data_home = tmp_path / "xdg-data"
@@ -273,7 +273,7 @@ def test_repointed_config_registry_is_honored(tmp_path: Path) -> None:
     honored behavior the block delivers; before, the store reconstructed
     ``data_path/global/registry.yaml`` and silently ignored the repoint.
     """
-    from kanibako.paths import resolve_system_paths
+    from kanibako.settings.paths import resolve_system_paths
 
     home = tmp_path / "home"
     data_home = tmp_path / "xdg-data"

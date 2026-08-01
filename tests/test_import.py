@@ -15,7 +15,7 @@ import pytest
 
 from kanibako import import_reconcile, registry_store
 from kanibako.import_reconcile import ImportConflictError
-from kanibako.paths import (
+from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
     resolve_project,
@@ -90,7 +90,7 @@ class TestStandaloneImport:
         # settings.yaml carrying NO workset.kuid (P8b: import composes kuid-first
         # and, absent a stored kuid — the SENTINEL — falls back to the dir leaf,
         # mirroring box_resolve.resolve_box_identity; it does NOT persist a name).
-        from kanibako.config_io import dump_doc, load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
@@ -117,7 +117,7 @@ class TestStandaloneImport:
         # LIVE name as <kuid>_<dir leaf> (P8b kuid-first), NOT project.name.
         from kanibako import kuid
         from kanibako.launch import box_identity
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.config_io import dump_doc
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
@@ -145,7 +145,7 @@ class TestStandaloneImport:
     ):
         import shutil
 
-        from kanibako.paths import resolve_standalone_project
+        from kanibako.settings.paths import resolve_standalone_project
         # Create a standalone box at the original location.
         orig = tmp_home / "orig"
         orig.mkdir()
@@ -255,7 +255,7 @@ class TestPrimaryBoxImport:
         sole identity authority and a sparse-created box does not self-describe on
         disk, so there is nothing to re-import.  (``system recover`` is the future
         remedy.)"""
-        from kanibako.paths import (
+        from kanibako.settings.paths import (
             load_primary_boxes,
             unregister_primary_box_name,
         )

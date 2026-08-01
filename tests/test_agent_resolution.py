@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.config import (
+from kanibako.settings.config import (
     config_file_path,
     load_config,
     read_system_agent,
@@ -27,7 +27,7 @@ from kanibako.install_method import (
     detect_install_method,
     install_command,
 )
-from kanibako.paths import load_std_paths, xdg
+from kanibako.settings.paths import load_std_paths, xdg
 
 # Exact Gate-2a locked wording (must match resolve_agent verbatim).
 GATE_2A = (
@@ -271,7 +271,7 @@ def test_system_agent_round_trips_through_the_system_table(
     INVERT: write it to the retired ``agent.default.default_agent`` location and
     ``read_system_agent`` returns None -> this reddens.
     """
-    from kanibako.config_interface import ConfigLevel, set_config_value
+    from kanibako.settings.config_interface import ConfigLevel, set_config_value
 
     _patch_targets(monkeypatch, ["claude"])
     cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -284,7 +284,7 @@ def test_system_agent_round_trips_through_the_system_table(
     )
     assert msg.startswith("Set "), msg
     # Stored where the SYSTEM settings tier reads it — not in agent.default.
-    from kanibako.config_io import load_doc
+    from kanibako.settings.config_io import load_doc
     assert load_doc(ssp)["system"]["agent"] == "claude"
     assert read_system_agent(ssp) == "claude"
     # …and it validates through the arbiter exactly like any other name.
@@ -384,7 +384,7 @@ def _two_pass_behavior(*, agent_state, box_path=None):
 
 
 def test_two_pass_box_pref_beats_agent(tmp_home, config_file, monkeypatch):
-    from kanibako.config_io import dump_doc
+    from kanibako.settings.config_io import dump_doc
 
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)

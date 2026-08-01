@@ -516,7 +516,7 @@ class TestDefaultShares:
         new shape while guarding nothing.  Inverted: assert the anchored form
         positively, so a regression to a bare leaf is RED.
         """
-        from kanibako.agent_config import is_self_resolving
+        from kanibako.settings.agent_config import is_self_resolving
 
         t = ClaudeTarget()
         for key, value in t.default_common().items():
@@ -571,7 +571,7 @@ class TestGenerateAgentConfig:
         assert cfg.env == {}
 
     def test_is_crab_config_instance(self):
-        from kanibako.agent_config import AgentConfig
+        from kanibako.settings.agent_config import AgentConfig
         t = ClaudeTarget()
         cfg = t.generate_agent_config()
         assert isinstance(cfg, AgentConfig)

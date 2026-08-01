@@ -4,7 +4,7 @@
 # This file holds codex's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery bind, launch grammar, settings routing, cred-file lifecycle,
 # init_dirs).  codex declares NO container env and NO agent shares.  It is read by
-# the thin loader :mod:`kanibako.agent_defaults`, which builds the PluginDescriptor
+# the thin loader :mod:`kanibako.settings.agent_defaults`, which builds the PluginDescriptor
 # exactly as the old hand-written `target.py` values did.
 #
 # What lives here (DECLARATIVE) vs what stays code-resolved in target.py:

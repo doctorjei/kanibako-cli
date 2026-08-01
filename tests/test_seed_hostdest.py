@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import core_defaults
+from kanibako.settings import core_defaults
 from kanibako.settings.settings_categories import (
     CategoryEntry,
     reconcile_categories,
@@ -117,7 +117,7 @@ class TestSeedRoutesRoundTheGuestTranslator:
         self, std, config, project_dir, monkeypatch,
     ):
         from kanibako.commands.start import _apply_init_seeds
-        from kanibako.paths import resolve_project
+        from kanibako.settings.paths import resolve_project
         from kanibako.launch.templates import install_packaged_templates
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)

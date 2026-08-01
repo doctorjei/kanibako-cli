@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.agent_select import AgentSelection, SELECTION_KEY
+from kanibako.settings.agent_select import AgentSelection, SELECTION_KEY
 from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
@@ -324,7 +324,7 @@ def _proj(tmp_path):
     """
     from types import SimpleNamespace
 
-    from kanibako.paths import BoxMode
+    from kanibako.settings.paths import BoxMode
 
     meta = tmp_path / "box"
     meta.mkdir(parents=True, exist_ok=True)
@@ -363,7 +363,7 @@ class TestSelectAgentSeam:
         claude's credentials. That is the whole reason the refusal exists, and it
         is why this must be pinned at the seam rather than on the helper.
         """
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets",
@@ -383,7 +383,7 @@ class TestSelectAgentSeam:
         assert str(box_file) in msg
 
     def test_retired_system_default_agent_is_refused(self, tmp_path, monkeypatch):
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
@@ -401,7 +401,7 @@ class TestSelectAgentSeam:
         3-state-aware check must not conflate PRESENT-null with ABSENT (the same
         conflation §2h warns about for prefs). MUTATION: probe with ``is None``
         and this reddens."""
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
@@ -416,7 +416,7 @@ class TestSelectAgentSeam:
     def test_a_clean_box_selects_through_the_seam(self, tmp_path, monkeypatch):
         """The seam's happy path: a box REQUEST wins over the stored default and
         comes back as an ``AgentSelection``."""
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets",
@@ -432,7 +432,7 @@ class TestSelectAgentSeam:
         assert sel.selection_level == {"system.agent": "goose"}
 
     def test_explicit_agent_beats_the_request_at_the_seam(self, tmp_path, monkeypatch):
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets",
@@ -447,7 +447,7 @@ class TestSelectAgentSeam:
     def test_a_null_request_gives_a_no_agent_box_at_the_seam(
         self, tmp_path, monkeypatch,
     ):
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
@@ -461,7 +461,7 @@ class TestSelectAgentSeam:
         assert sel.selection_level is None
 
     def test_autopick_reports_its_source(self, tmp_path, monkeypatch):
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
@@ -472,7 +472,7 @@ class TestSelectAgentSeam:
 
 
 def _box_workset(proj):
-    from kanibako.paths import box_workset_settings_paths
+    from kanibako.settings.paths import box_workset_settings_paths
 
     box_file, ws_file = box_workset_settings_paths(proj)
     box_file.parent.mkdir(parents=True, exist_ok=True)

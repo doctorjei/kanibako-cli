@@ -74,7 +74,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 
 # Top-level sections of registry.yaml, in canonical order.  ``projects`` was
 # RETIRED (2026-07-08): default-mode box identity lives in the primary workset's

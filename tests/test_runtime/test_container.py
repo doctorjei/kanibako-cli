@@ -469,18 +469,18 @@ class TestPostStartCallSites:
         change made by the wrong seam."""
         from unittest.mock import patch as _p
 
-        from kanibako.core_defaults import materialize_canon_skeleton_if_present
+        from kanibako.settings.core_defaults import materialize_canon_skeleton_if_present
 
         bare = tmp_path / "helper-home"
         bare.mkdir()
-        with _p("kanibako.core_defaults.materialize_canon_skeleton") as m:
+        with _p("kanibako.settings.core_defaults.materialize_canon_skeleton") as m:
             materialize_canon_skeleton_if_present(bare)
         m.assert_not_called()
         assert not (bare / "canon").exists()
 
         with_canon = tmp_path / "box-home"
         (with_canon / "canon").mkdir(parents=True)
-        with _p("kanibako.core_defaults.materialize_canon_skeleton") as m:
+        with _p("kanibako.settings.core_defaults.materialize_canon_skeleton") as m:
             materialize_canon_skeleton_if_present(with_canon)
         m.assert_called_once()
 

@@ -1168,7 +1168,7 @@ class TestCoreDefaultCategories:
     """core_defaults.core_default_categories emits the structured core binds."""
 
     def test_home_and_workspace_structured_triples(self, tmp_path):
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         binds = core_defaults.core_default_categories(
@@ -1206,7 +1206,7 @@ class TestCoreDefaultCategories:
         the SAME ``@workset.vault_*`` anchor; the standalone arm used to carry a
         SECOND spelling of that root (``@meta.workset.path/vault/*``).
         """
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         binds = core_defaults.core_default_categories(
@@ -1230,7 +1230,7 @@ class TestCoreDefaultCategories:
         )
 
     def test_vault_keys_present_when_enabled_and_dirs_exist(self, tmp_path):
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         binds = core_defaults.core_default_categories(
@@ -1250,7 +1250,7 @@ class TestCoreDefaultCategories:
         )
 
     def test_vault_keys_absent_when_disabled(self, tmp_path):
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         binds = core_defaults.core_default_categories(
@@ -1268,7 +1268,7 @@ class TestCoreDefaultCategories:
 
         The create-if-missing gate keys off the PROBED proj vault source (unchanged
         by B2b); only the emitted host_src is now the @-ref (resolved at launch)."""
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=False)  # vault dirs do NOT exist yet
         assert not proj.vault_ro_path.exists()
@@ -1304,7 +1304,7 @@ class TestCoreDefaultCategories:
         ``ro`` and the rw binds keep ``Z,U``) — proving the options slot flows
         end-to-end to the emitted Mount.
         """
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         defaults = core_defaults.core_default_categories(
@@ -1341,7 +1341,7 @@ class TestCoreDefaultCategories:
 
     def test_home_and_workspace_depth_order_keeps_both(self, tmp_path):
         """reconcile depth-sort keeps BOTH the nested home + workspace binds."""
-        from kanibako import core_defaults
+        from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         defaults = core_defaults.core_default_categories(

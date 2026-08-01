@@ -15,14 +15,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from kanibako.agent_config import AgentConfig
-    from kanibako.config import KanibakoConfig
-    from kanibako.paths import ProjectPaths, StandardPaths
+    from kanibako.settings.agent_config import AgentConfig
+    from kanibako.settings.config import KanibakoConfig
+    from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
 
-from kanibako.agent_config import (
+from kanibako.settings.agent_config import (
     agent_category_root,
     agent_settings_path,
     load_agent_config,
@@ -30,14 +30,14 @@ from kanibako.agent_config import (
 )
 from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
-from kanibako.config import (
+from kanibako.settings.config import (
     coerce_bool,
     config_file_path,
     load_config,
     load_merged_config,
     read_system_agent,
 )
-from kanibako import core_defaults
+from kanibako.settings import core_defaults
 from kanibako.runtime.container import (
     ContainerRuntime,
     _guest_dest_to_host,
@@ -49,7 +49,7 @@ from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
 from kanibako.settings.settings_cli_level import build_cli_level
-from kanibako.paths import (
+from kanibako.settings.paths import (
     _upgrade_shell,
     box_state_home,
     box_workset_settings_paths,
@@ -138,7 +138,7 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     existing-dir, so the harness dir is the real writeback target.
 
     ⚑ THE LEAF COMES FROM THE KEY, NOT THE VALUE, and both sides are built from
-    :func:`~kanibako.agent_config.agent_category_root` — the SAME layout helper the
+    :func:`~kanibako.settings.agent_config.agent_category_root` — the SAME layout helper the
     declaration-time ref builder uses.  The ``host_src`` VALUE is now the fully
     self-resolving ``@meta.agent.<a>.path/common/<leaf>`` (spec §2a), so reading a
     path component off it would produce the literal directory
@@ -713,7 +713,7 @@ def _effective_bootstrap(
     to the retired ``box.bootstrap_program or "tmux"`` coercion for the default case.
     """
     from kanibako.settings import settings_launch
-    from kanibako.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_resolve import ResolveCtx
 
     ctx = ResolveCtx(
@@ -784,7 +784,7 @@ def _resolve_bootstrap_program(
             std, config, project_dir,
             initialize=False, register=False, warn=False,
         )
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
 
         _sel = select_agent(
             std=std, proj=proj, explicit_agent=explicit_agent,
@@ -1547,7 +1547,7 @@ def _start_helper_hub(
     # NAMED → <workset_root>/logs/<box>.jsonl, STANDALONE →
     # box_data/<box>.jsonl), not the old shared @config.data/logs/<id>/
     # location.  Guarantee-create the parent before the ro bind (L7).
-    from kanibako.paths import helper_log_path
+    from kanibako.settings.paths import helper_log_path
     log_path = helper_log_path(std, proj)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1732,7 +1732,7 @@ def _run_container(
     def _orphan_hint() -> None:
         # Hint about orphaned project data when initializing a new project.
         if proj.is_new and proj.group is not None and proj.group.is_default:
-            from kanibako.paths import iter_projects
+            from kanibako.settings.paths import iter_projects
             for _settings, _ppath in iter_projects(std, config):
                 if _ppath is not None and not _ppath.is_dir():
                     print(
@@ -1773,7 +1773,7 @@ def _run_container(
     # Persist image override for new projects so it becomes the default
     def _persist_image_override() -> None:
         if proj.is_new and image_override:
-            from kanibako.config import write_project_config
+            from kanibako.settings.config import write_project_config
             write_project_config(project_toml, image_override)
 
     _persist_image_override()
@@ -1848,7 +1848,7 @@ def _run_container(
     install = None
     agent_selection = None
     if is_agent_mode:
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
         # Resolve the agent through the ONE seam (spec §1A / §2h): the stored
         # ``system.agent`` < the workset's ``pref.system.agent`` < the box's <
         # ``--agent``, then the installed-count rule.  ``select_agent`` raises the
@@ -3924,7 +3924,7 @@ def _name_new_box_probe(std, proj) -> None:
     BEFORE it can verdict (F7 on the launch path, F5 on the create path).  Give the
     probe the name it WILL be materialised under so the gate resolves cleanly:
 
-    * PRIMARY — :func:`~kanibako.paths.pick_primary_box_name` (DETERMINISTIC: the
+    * PRIMARY — :func:`~kanibako.settings.paths.pick_primary_box_name` (DETERMINISTIC: the
       workspace basename plus a collision check against the SAME primary
       membership/boxes state the later ``initialize=True`` resolve reads, so the
       probe name == the name the materialise picks — gate → materialise happen in
@@ -3941,10 +3941,10 @@ def _name_new_box_probe(std, proj) -> None:
     """
     if proj.name:
         return
-    from kanibako.paths import BoxMode
+    from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
-        from kanibako.paths import pick_primary_box_name
+        from kanibako.settings.paths import pick_primary_box_name
         proj.name = pick_primary_box_name(
             std.primary_workset, std.registry,
             str(proj.project_path), boxes_dir=std.boxes,
@@ -4504,7 +4504,7 @@ def _effective_behavior_for_display(
     early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
     """
     from kanibako.settings import settings_launch
-    from kanibako.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_resolve import ResolveCtx
 
     descriptors = target.setting_descriptors()
@@ -4798,8 +4798,8 @@ def _launch_snapshot_inputs(
     tier; primary/named unchanged.
     """
     from kanibako.settings import settings_launch as settings_launch_module
-    from kanibako.agent_select import launch_resolve_ctx
-    from kanibako.paths import ProjectError
+    from kanibako.settings.agent_select import launch_resolve_ctx
+    from kanibako.settings.paths import ProjectError
 
     # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
     # host-side namespace, so the two passes cannot disagree about what
@@ -5050,7 +5050,7 @@ def _resolve_launch_snapshot(
     resolves take a selection-ONLY level.
     """
     from kanibako.settings import settings_launch
-    from kanibako.agent_representation import (
+    from kanibako.settings.agent_representation import (
         agent_common_for_node,
         agent_default_partial,
     )
@@ -5497,7 +5497,7 @@ def persona_create_verdict(
     system_settings_path = std.settings
     selection = None
     try:
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
         selection = select_agent(
             std=std, proj=proj, explicit_agent=explicit_agent,
         )
@@ -5556,7 +5556,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     agent_name = ""
     selection = None
     try:
-        from kanibako.agent_select import select_agent
+        from kanibako.settings.agent_select import select_agent
         selection = select_agent(
             std=std, proj=proj, explicit_agent=explicit_agent,
         )
@@ -5734,7 +5734,7 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
     (the workset membership is written eagerly at resolve), so there is nothing to
     defer or register here.
     """
-    from kanibako.paths import BoxMode
+    from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.standalone:
         from kanibako import registry_store
@@ -5743,7 +5743,7 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
             std.registry, proj.name, Path(proj.metadata_path),
         )
     elif proj.mode is BoxMode.primary:
-        from kanibako.paths import register_primary_box_name_if_absent
+        from kanibako.settings.paths import register_primary_box_name_if_absent
         register_primary_box_name_if_absent(
             std.primary_workset, std.registry,
             proj.name, str(proj.project_path), force=force,
@@ -6088,7 +6088,7 @@ def _apply_synced_copies(
 # Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
 # the default is a LIST (empty) — the resolver iterates it as real entries.  The
 # STATIC value lives in the shipped system/core defaults file (P6b coalesce);
-# this module is a thin reader (:func:`kanibako.core_defaults.vault_mask_default`),
+# this module is a thin reader (:func:`kanibako.settings.core_defaults.vault_mask_default`),
 # which now returns an empty list.
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 
@@ -6096,7 +6096,7 @@ VAULT_MASK_DEST = core_defaults.vault_mask_default()
 def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
     """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f).
 
-    Thin reader over :func:`kanibako.core_defaults.channel_default_categories`:
+    Thin reader over :func:`kanibako.settings.core_defaults.channel_default_categories`:
     the STATIC structure + box-side destinations live in the shipped system/core
     defaults file (P6b coalesce); the loader injects the runtime-probed host
     sources.  Injected through the category resolver (D-B1 precedence + depth-sort
@@ -6143,7 +6143,7 @@ def _core_default_categories(
 ) -> dict[str, tuple[str, str, str]]:
     """Build the core box mounts as ``default_categories`` (step 3).
 
-    Thin reader over :func:`kanibako.core_defaults.core_default_categories`: the
+    Thin reader over :func:`kanibako.settings.core_defaults.core_default_categories`: the
     STATIC structure + box-side destinations + per-entry mount options live in the
     shipped system/core defaults file (``core:`` list); the loader injects the
     runtime-probed host sources off ``ProjectPaths``.  Injected through the category

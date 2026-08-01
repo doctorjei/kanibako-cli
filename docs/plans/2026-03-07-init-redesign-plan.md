@@ -249,7 +249,7 @@ def run_init(args: argparse.Namespace) -> int:
 
     # Persist image setting
     image = args.image or config.container_image
-    from kanibako.config import write_project_config
+    from kanibako.settings.config import write_project_config
     project_toml = proj.metadata_path / "project.toml"
     write_project_config(project_toml, image)
 
@@ -290,7 +290,7 @@ class TestInitImage:
     def test_init_persists_image(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        from kanibako.config import load_merged_config
+        from kanibako.settings.config import load_merged_config
         parser = build_parser()
         args = parser.parse_args([
             "init", "--local", str(project_dir),
@@ -305,7 +305,7 @@ class TestInitImage:
     def test_init_default_image_persisted(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        from kanibako.config import load_merged_config
+        from kanibako.settings.config import load_merged_config
         parser = build_parser()
         args = parser.parse_args(["init", "--local", str(project_dir)])
         run_init(args)

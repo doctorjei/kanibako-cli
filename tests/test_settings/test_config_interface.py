@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from kanibako.config_io import dump_doc, load_doc
-from kanibako.config_interface import (
+from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_interface import (
     ConfigAction,
     ConfigLevel,
     is_known_key,
@@ -392,7 +392,7 @@ class TestWorksetKuidKeys:
         data = load_doc(project_toml)
         assert data["workset"]["kuid"] == "abcde"
         # And the reader sees it.
-        from kanibako.config import read_workset_kuid
+        from kanibako.settings.config import read_workset_kuid
         assert read_workset_kuid(project_toml) == "abcde"
 
     def test_set_skip_kuid_check_coerces_bool(self, tmp_path):
@@ -403,13 +403,13 @@ class TestWorksetKuidKeys:
         data = load_doc(project_toml)
         # KEY_TYPES bool coercion: stored as a real False, not the string "false".
         assert data["workset"]["skip_kuid_check"] is False
-        from kanibako.config import read_workset_skip_kuid_check
+        from kanibako.settings.config import read_workset_skip_kuid_check
         assert read_workset_skip_kuid_check(project_toml) is False
 
     def test_kuid_default_is_sentinel_for_absent_file(self, tmp_path):
         # #3: primary/named (and any unset box) default workset.kuid = "00000".
         from kanibako import kuid
-        from kanibako.config import (
+        from kanibako.settings.config import (
             read_workset_kuid,
             read_workset_skip_kuid_check,
         )
@@ -668,7 +668,7 @@ class TestShowConfig:
         # ``resource_overrides`` table in a pre-1.7.x system file; it must NOT
         # render in the show/effective view (display-only legacy filter) while a
         # real nested scope table still does.
-        from kanibako.config_interface import _nested_settings_overrides
+        from kanibako.settings.config_interface import _nested_settings_overrides
         sys_file = tmp_path / "system-settings.yaml"
         dump_doc(sys_file, {
             "resource_overrides": {"plugins": "/legacy"},   # dead legacy table
@@ -1104,7 +1104,7 @@ class TestH2BoolCoercion:
     """H2: bool keys must store a real bool, not the string ``'false'``."""
 
     def test_set_box_share_images_false_loads_as_real_bool(self, tmp_path):
-        from kanibako.config import load_config
+        from kanibako.settings.config import load_config
 
         project_toml = tmp_path / "settings.yaml"
         set_config_value("box.share_images", "false", config_path=project_toml)
@@ -1211,7 +1211,7 @@ def _seed_system_agent(path, name):
     where ``assemble_levels`` reads the SYSTEM tier. (Was the ``agent.default``
     table's ``default_agent`` leaf, spec §2g renamed + relocated it.)
     """
-    from kanibako.config_interface import _write_nested_toml_key
+    from kanibako.settings.config_interface import _write_nested_toml_key
 
     _write_nested_toml_key(path, ("system",), "agent", name)
 
@@ -1227,7 +1227,7 @@ class TestSystemAgent:
     """
 
     def test_set_writes_the_settings_tier(self, tmp_path):
-        from kanibako.config import read_system_agent
+        from kanibako.settings.config import read_system_agent
 
         f = tmp_path / "settings.yaml"
         msg = set_config_value("system.agent", "claude", config_path=f)
@@ -1237,7 +1237,7 @@ class TestSystemAgent:
         assert read_system_agent(f) == "claude"
 
     def test_reset_removes_the_setting(self, tmp_path):
-        from kanibako.config import read_system_agent
+        from kanibako.settings.config import read_system_agent
 
         f = tmp_path / "settings.yaml"
         _seed_system_agent(f, "claude")
@@ -1246,7 +1246,7 @@ class TestSystemAgent:
         assert read_system_agent(f) is None
 
     def test_get_reads_programmatic_write(self, tmp_path):
-        from kanibako.config import read_system_agent
+        from kanibako.settings.config import read_system_agent
 
         # Residuals item 2: the key lives in the system SETTINGS file
         # (@config.settings, where read_system_agent + set/reset all agree), so a
@@ -1363,7 +1363,7 @@ class TestSystemConfigFileOnly:
 
     def test_get_system_config_key_still_reads(self, tmp_path):
         """Reads/shows are unaffected — only writes are refused."""
-        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         _write_nested_toml_key(cf, ("system",), "cache", "/custom/cache")
@@ -1383,8 +1383,8 @@ class TestSystemConfigFileOnly:
     def test_write_system_value_round_trips(self, tmp_path):
         """The programmatic helper bypasses the guard and round-trips, while
         preserving other keys (what setup relies on)."""
-        from kanibako.config import read_setup_completed
-        from kanibako.config_interface import _write_nested_toml_key, write_system_value
+        from kanibako.settings.config import read_setup_completed
+        from kanibako.settings.config_interface import _write_nested_toml_key, write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         _write_nested_toml_key(cf, ("system",), "data", "/keep/me")
@@ -1422,8 +1422,8 @@ class TestSystemSettingsTierSplit:
         assert not cf.exists()
 
     def test_system_agent_reads_from_settings_file(self, tmp_path):
-        from kanibako.config import read_system_agent
-        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.settings.config import read_system_agent
+        from kanibako.settings.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
@@ -1455,7 +1455,7 @@ class TestSystemSettingsTierSplit:
         """STRUCTURAL system.* CONFIG read uses global_config_path
         (kanibako_config.yaml), even when a settings file is supplied —
         config/settings stay separate."""
-        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
@@ -1469,8 +1469,8 @@ class TestSystemSettingsTierSplit:
     def test_reset_system_agent_removes_from_settings_file(self, tmp_path):
         """F3 flip: reset removes the setting from the SETTINGS file (where the
         launch reader looks), leaving the CONFIG file untouched."""
-        from kanibako.config import read_system_agent
-        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.settings.config import read_system_agent
+        from kanibako.settings.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
@@ -1490,7 +1490,7 @@ class TestSystemSettingsTierSplit:
         assert not cf.exists()
 
     def test_reset_all_clears_settings_and_config_separately(self, tmp_path):
-        from kanibako.config_interface import _write_nested_toml_key
+        from kanibako.settings.config_interface import _write_nested_toml_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
@@ -1506,7 +1506,7 @@ class TestSystemSettingsTierSplit:
 
     def test_absent_settings_file_is_graceful(self, tmp_path):
         """Missing global/settings.yaml → empty system tier, no error."""
-        from kanibako.config import read_system_agent
+        from kanibako.settings.config import read_system_agent
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"  # never created
@@ -1897,7 +1897,7 @@ class TestRepointFromCascade:
         """Bug 2 — a CORE bind reset (``box.bindings.rw.home``) with the core-bind
         floor registry threaded NAMES the reverted-to descriptor floor
         (dest [+ opts]); the set-time placeholder host_src is NEVER printed."""
-        from kanibako.core_defaults import (
+        from kanibako.settings.core_defaults import (
             FLOOR_PLACEHOLDER_SRC,
             core_default_bind_keys,
         )
@@ -1934,7 +1934,7 @@ class TestRepointFromCascade:
         """Bug 2 — a NON-core category key reset (registry threaded but the key is
         absent from it) has no floor to name → the cleared-only honest form (the
         same information as the old plain "Reset", never a fabricated value)."""
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
 
         box_f = tmp_path / "box-settings.yaml"
         dump_doc(box_f, {"box": {"caches": {"foo": ["/src", "/dest"]}}})
@@ -2407,7 +2407,7 @@ class TestBoxAgentMirrorConfigSet:
     def test_box_agent_key_is_recognised_so_it_can_be_refused(self):
         """The retired spelling must still be RECOGNISED — a user with it in
         muscle memory gets the cure, not "unknown config key"."""
-        from kanibako.config_interface import _is_box_agent_key
+        from kanibako.settings.config_interface import _is_box_agent_key
         assert _is_box_agent_key("box.agent.model") is True
         assert _is_box_agent_key("box.agent.bindings.ro.share") is True
         # It is no longer a SETTABLE key.
@@ -2417,7 +2417,7 @@ class TestBoxAgentMirrorConfigSet:
     def test_the_retired_box_agent_name_scalar_is_not_a_key(self):
         # ``box.agent_name`` (the flat scalar) is RETIRED (spec §2b) and is not the
         # mirror either (it has no dotted tail).
-        from kanibako.config_interface import _is_box_agent_key
+        from kanibako.settings.config_interface import _is_box_agent_key
         assert _is_box_agent_key("box.agent_name") is False
         assert is_known_key("box.agent_name") is False
 
@@ -2494,7 +2494,7 @@ class TestBareAgentKeyAtBoxScope:
     """
 
     def test_redirect_helper_fires_only_for_bare_key_at_box_scope(self):
-        from kanibako.config_interface import box_agent_redirect_key
+        from kanibako.settings.config_interface import box_agent_redirect_key
         # Bare agent keys at box scope → the box's §2h REQUEST.
         assert box_agent_redirect_key(
             "bootstrap", ConfigLevel.box, "claude") == "pref.agent.claude.bootstrap"
@@ -2687,7 +2687,7 @@ class TestBareAgentKeyAtWorksetScope:
     """
 
     def test_scope_error_helper_workset_refuses_no_mirror(self):
-        from kanibako.config_interface import bare_agent_key_scope_error
+        from kanibako.settings.config_interface import bare_agent_key_scope_error
         for verb in ("set", "read", "reset"):
             msg = bare_agent_key_scope_error(
                 "bootstrap", ConfigLevel.workset, verb=verb,
@@ -3073,14 +3073,14 @@ class TestSiblingDownwardKeyGetAtNoun:
 
 class TestSetTimeCtxUsesHostXdgMap:
     """Dedup — ``_set_time_ctx`` must route its ``$XDG_*`` map through the
-    canonical :func:`kanibako.paths.host_xdg_map` builder (spec §1 XDG clause +
+    canonical :func:`kanibako.settings.paths.host_xdg_map` builder (spec §1 XDG clause +
     L2 §3 single-source-of-truth: ONE builder supplies every host-side context),
     not a hand-rolled 5-var dict.  (The builder's own resolution coverage lives
     in test_system_paths.py ``TestHostXdgMap`` — this only proves the wiring.)"""
 
     def test_set_time_ctx_xdg_equals_host_xdg_map(self):
-        from kanibako.config_interface import _set_time_ctx
-        from kanibako.paths import host_xdg_map
+        from kanibako.settings.config_interface import _set_time_ctx
+        from kanibako.settings.paths import host_xdg_map
 
         ctx = _set_time_ctx()
         assert ctx.xdg == host_xdg_map()
@@ -3090,7 +3090,7 @@ class TestSetTimeCtxUsesHostXdgMap:
         # to a hand-rolled map that happens to produce equal output still fails).
         # RED at baseline: the inline dict never calls host_xdg_map → sentinel
         # is not observed in ctx.xdg.
-        import kanibako.config_interface as ci
+        import kanibako.settings.config_interface as ci
 
         sentinel = {"XDG_DATA_HOME": "/SENTINEL"}
         monkeypatch.setattr(
@@ -3110,7 +3110,7 @@ class TestF10CoreFloorRegistry:
     placeholder host_src, built WITHOUT any proj/std probe."""
 
     def test_emits_the_launch_core_keys_host_free(self):
-        from kanibako.core_defaults import core_default_bind_keys, FLOOR_PLACEHOLDER_SRC
+        from kanibako.settings.core_defaults import core_default_bind_keys, FLOOR_PLACEHOLDER_SRC
 
         reg = core_default_bind_keys()
         # The SAME keys the launch core floor emits — home + workspace + vault ro/rw.
@@ -3129,7 +3129,7 @@ class TestF10CoreFloorRegistry:
     def test_vault_keys_present_regardless_of_enable_vault(self):
         # The gate is about the KEY existing at set-time, not the runtime host value:
         # both vault binds are exposed even though launch may disable vault.
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
 
         reg = core_default_bind_keys()
         assert "box.bindings.ro.vault" in reg
@@ -3142,7 +3142,7 @@ class TestF10CoreFloorRepoint:
     REFUSED as "nowhere in the cascade" before (Step B / F10)."""
 
     def _reg(self):
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
 
         return dict(core_default_bind_keys())
 
@@ -3245,7 +3245,7 @@ class TestAgentNodeBindRouting:
     agent tier is DISCRIMINATED, spec §2d / §0 L21.)"""
 
     def test_predicate_matches_node_bind_only(self):
-        from kanibako.config_interface import (
+        from kanibako.settings.config_interface import (
             _is_agent_node_bind_key,
             _is_box_agent_key,
             _is_path_category_key,
@@ -3265,7 +3265,7 @@ class TestAgentNodeBindRouting:
         # COLLISION: a bind literally NAMED ``model`` — the ``bindings.ro`` segment
         # disambiguates it from the persona state leaf ``agent.claude.model``. Both
         # predicates fire, but the node-bind is checked FIRST in the dispatch.
-        from kanibako.config_interface import (
+        from kanibako.settings.config_interface import (
             _is_agent_node_bind_key,
             _is_persona_agent_key,
         )
@@ -3274,12 +3274,12 @@ class TestAgentNodeBindRouting:
         assert _is_persona_agent_key(k)  # would mis-capture if checked first
 
     def test_persona_scalar_is_not_a_node_bind(self):
-        from kanibako.config_interface import _is_agent_node_bind_key
+        from kanibako.settings.config_interface import _is_agent_node_bind_key
         assert not _is_agent_node_bind_key("agent.claude.model")
         assert not _is_agent_node_bind_key("agent.claude.endpoint")
 
     def test_box_agent_bind_is_not_a_node_bind(self):
-        from kanibako.config_interface import (
+        from kanibako.settings.config_interface import (
             _is_agent_node_bind_key,
             _is_box_agent_key,
         )
@@ -3291,7 +3291,7 @@ class TestAgentNodeBindRouting:
         # CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0 L21), so
         # BOTH the node-bind regex and the ordinary category regex REFUSE it. A
         # discriminated key takes the ordinary category path.
-        from kanibako.config_interface import (
+        from kanibako.settings.config_interface import (
             _is_agent_node_bind_key,
             _is_path_category_key,
         )
@@ -3301,7 +3301,7 @@ class TestAgentNodeBindRouting:
         assert _is_path_category_key("agent.default.caches.foo")
 
     def test_resolve_key_canonicalizes_node_plus_form(self):
-        from kanibako.config_interface import _resolve_key
+        from kanibako.settings.config_interface import _resolve_key
         assert (
             _resolve_key("agent.navigator+claude.bindings.rw.plugins")
             == "agent.navigator℘claude.bindings.rw.plugins"
@@ -3319,7 +3319,7 @@ class TestAgentNodeBindRepoint:
     the node file, sourcing box_dest/opts from the descriptor floor registry."""
 
     def _reg(self):
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
         return agent_default_bind_keys("claude")
 
     def test_repoint_writes_raw_tuple_to_node_file(self, tmp_path):
@@ -3377,8 +3377,8 @@ class TestAgentNodeBindRepoint:
     def test_written_tuple_overrides_descriptor_floor_at_launch(self, tmp_path):
         # (unit) the node-file tuple beats the descriptor default (agent_default_
         # partial) at launch — the agent-file rung out-precedes the descriptor rung.
-        from kanibako.agent_representation import agent_default_partial
-        from kanibako.config_io import dump_doc
+        from kanibako.settings.agent_representation import agent_default_partial
+        from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_launch import build_launch_snapshot
         from kanibako.targets.base import (
             AgentInstall, BindKind, BindScope, Binding, HostSrcOrigin,
@@ -3429,7 +3429,7 @@ class TestAgentNodeBindGetReset:
     ``agents/<node>/settings.yaml`` (the previously-missing read-back half)."""
 
     def _reg(self):
-        from kanibako.agent_representation import agent_default_bind_keys
+        from kanibako.settings.agent_representation import agent_default_bind_keys
         return agent_default_bind_keys("claude")
 
     def _agents_root(self, tmp_path):
@@ -3502,7 +3502,7 @@ class TestAgentNodeBindGetReset:
         # item 3 — with the floor registry threaded, the honest cleared-message
         # names the reverted-to descriptor destination [+ opts], NEVER the set-time
         # placeholder host_src (evidence-honesty).
-        from kanibako.core_defaults import FLOOR_PLACEHOLDER_SRC
+        from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
 
         agents = self._agents_root(tmp_path)
         node_file = agents / "claude" / "settings.yaml"
@@ -3615,7 +3615,7 @@ class TestCoreBindGetReset:
     get/set/reset round-trip at box scope reads/removes the box settings file."""
 
     def test_core_bind_set_get_reset_round_trip(self, tmp_path):
-        from kanibako.core_defaults import core_default_bind_keys
+        from kanibako.settings.core_defaults import core_default_bind_keys
 
         box_f = tmp_path / "box.yaml"
         # Seed an existing tuple so the source-only repoint has a bind to repoint.
@@ -3670,7 +3670,7 @@ def test_meta_box_path_is_read_only_from_every_scope():
     path. The FILE half (a top-level ``meta:`` table being dropped at assembly) is
     pinned in ``tests/test_settings_launch.py``.
     """
-    from kanibako.config_interface import (
+    from kanibako.settings.config_interface import (
         ConfigLevel,
         _scope_direction_error,
         is_known_key,
@@ -3828,13 +3828,13 @@ class TestSetDispatchCoverage:
     """
 
     def test_every_routing_table_key_has_a_route(self):
-        from kanibako.config_interface import _KEY_ROUTES, _has_dedicated_route
+        from kanibako.settings.config_interface import _KEY_ROUTES, _has_dedicated_route
 
         for key in _KEY_ROUTES:
             assert _has_dedicated_route(key), key
 
     def test_each_special_family_is_claimed(self):
-        from kanibako.config_interface import _has_dedicated_route
+        from kanibako.settings.config_interface import _has_dedicated_route
 
         for key in (
             "env.FOO",                            # docker .env
@@ -3850,13 +3850,13 @@ class TestSetDispatchCoverage:
             assert _has_dedicated_route(key), key
 
     def test_a_fabricated_key_is_claimed_by_nothing(self):
-        from kanibako.config_interface import _has_dedicated_route
+        from kanibako.settings.config_interface import _has_dedicated_route
 
         for key in ("run_args", "box.env.FOO", "nonsense.key"):
             assert not _has_dedicated_route(key), key
 
     def test_the_probe_is_off_for_the_docker_env_and_category_families(self):
-        from kanibako.config_interface import _probes_at_set_time
+        from kanibako.settings.config_interface import _probes_at_set_time
 
         for off in ("env.FOO", "box.common.plugins",
                     "agent.claude.bindings.ro.launcher", "run_args"):
