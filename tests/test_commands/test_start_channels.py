@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako import channels as _ch
-from kanibako.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
+from kanibako.channels import channels as _ch
+from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.commands.start import (
     _channel_default_categories,
     _emit_category_mounts,

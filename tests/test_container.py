@@ -437,7 +437,7 @@ class TestPostStartCallSites:
         import inspect
         import re
 
-        from kanibako import helper_listener
+        from kanibako.channels import helper_listener
         from kanibako.commands import start as start_mod
 
         offenders: list[str] = []

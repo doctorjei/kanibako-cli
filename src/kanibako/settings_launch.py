@@ -348,7 +348,7 @@ def meta_runtime_floor(
     *ws_name* is the workset partition TOKEN (spec §1A ``meta.runtime.ws_name``,
     2026-07-04): ``__PRIMARY__`` for primary, ``__STANDALONE__`` for standalone,
     the detected workset name for named. It is SINGLE-SOURCED on
-    :func:`kanibako.channels.workset_name_token` and threaded in by the caller (the
+    :func:`kanibako.channels.channels.workset_name_token` and threaded in by the caller (the
     SAME token that drives the channel partition, so the two cannot drift). It is
     surfaced as ``meta.runtime.ws_name`` and ``meta.workset.name`` anchors into it
     (see below), replacing the direct ``meta.workset.name`` literal block B2 set.
@@ -532,7 +532,7 @@ def meta_identity_floor(
 
     Every value is the RESOLVED LITERAL the launch already computes (the box name
     on ``proj.name``, the workspace source ``str(proj.project_path)``, the channel
-    partition addresses from :func:`kanibako.channels.box_channel_addresses`, the
+    partition addresses from :func:`kanibako.channels.channels.box_channel_addresses`, the
     plugin-set agent name) — so a bind re-pointed to ``@meta.box.workspace`` /
     ``@meta.box.inbox`` expands to the byte-identical host_src the old proj-attr
     injection produced (JC-B2-4 equivalence bar).

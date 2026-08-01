@@ -1,6 +1,6 @@
 """Tests for the pure channel path-resolution + partition-addressing helpers.
 
-Covers ``kanibako.channels`` (Phase 6 sub-step 6a): the workset-name token
+Covers ``kanibako.channels.channels`` (Phase 6 sub-step 6a): the workset-name token
 derivation, the workset-local channel roots (PRIMARY/NAMED only), the SYSTEM
 per-workset partition roots (``mailboxes/<ws>``, ``share/<ws>``) for each of the
 three ws-name tokens, and the per-box partition addresses
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako import channels
-from kanibako.channels import (
+from kanibako.channels import channels
+from kanibako.channels.channels import (
     WS_TOKEN_PRIMARY,
     WS_TOKEN_STANDALONE,
 )

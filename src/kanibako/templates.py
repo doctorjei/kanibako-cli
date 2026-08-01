@@ -116,7 +116,7 @@ def template_seed_defaults(
     bind reads, spelled once".  Repoint ``box.canon`` and both follow.
     """
     from kanibako.agent_ref import harness_of
-    from kanibako.channels import has_workset_channels
+    from kanibako.channels.channels import has_workset_channels
 
     def _layer(source_root: str) -> dict[str, object]:
         return {

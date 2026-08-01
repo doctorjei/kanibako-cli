@@ -24,7 +24,7 @@ from kanibako.commands.helper_cmd import (
     run_spawn,
     run_stop,
 )
-from kanibako.helpers import SpawnBudget, write_spawn_config
+from kanibako.channels.helpers import SpawnBudget, write_spawn_config
 
 
 @pytest.fixture
@@ -153,7 +153,7 @@ class TestRunSpawn:
         args = _make_args(depth=3, breadth=4, model=None)
         run_spawn(args)
 
-        from kanibako.helpers import read_spawn_config
+        from kanibako.channels.helpers import read_spawn_config
         child_config = read_spawn_config(
             helpers_env / "helpers" / "1" / "spawn.yaml"
         )
@@ -407,7 +407,7 @@ class TestRunSend:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok"}
             rc = run_send(_make_args(number=1, message="hello"))
         assert rc == 0
@@ -418,7 +418,7 @@ class TestRunSend:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "error", "message": "no route"}
             rc = run_send(_make_args(number=1, message="hello"))
         assert rc == 1
@@ -436,7 +436,7 @@ class TestRunBroadcast:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok"}
             rc = run_broadcast(_make_args(message="all hands"))
         assert rc == 0
@@ -453,7 +453,7 @@ class TestRunRegister:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok"}
             rc = run_register(_make_args(number=1))
         assert rc == 0
@@ -467,7 +467,7 @@ class TestRunRegister:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "error", "message": "bad"}
             rc = run_register(_make_args(number=1))
         assert rc == 1
@@ -576,7 +576,7 @@ class TestSocketWiring:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok", "container_name": "kanibako-helper-1-abc"}
             args = _make_args(depth=None, breadth=None, model=None)
             rc = run_spawn(args)
@@ -592,7 +592,7 @@ class TestSocketWiring:
         sock.parent.mkdir(parents=True)
         sock.touch()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "error", "message": "image not found"}
             args = _make_args(depth=None, breadth=None, model=None)
             rc = run_spawn(args)
@@ -616,7 +616,7 @@ class TestSocketWiring:
         _write_state(helpers_env / "helpers", 1, state)
         capsys.readouterr()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok"}
             rc = run_stop(_make_args(number=1))
 
@@ -637,7 +637,7 @@ class TestSocketWiring:
         run_stop(_make_args(number=1))
         capsys.readouterr()
 
-        with patch("kanibako.helper_client.send_request") as m:
+        with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok", "container_name": "kanibako-helper-1-new"}
             rc = run_respawn(_make_args(number=1))
 

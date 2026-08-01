@@ -14,7 +14,7 @@ Split (documented in the YAML header too):
   per-mode scope).  These are read straight from the file.
 * DYNAMIC — host SOURCES that are runtime-PROBED (the channel host roots come
   from :class:`~kanibako.paths.StandardPaths` /
-  :func:`kanibako.channels.box_channel_addresses`).  The loader injects each
+  :func:`kanibako.channels.channels.box_channel_addresses`).  The loader injects each
   probed source into its keyed entry at the seam; the file names the source
   SYMBOLICALLY so the structure stays declarative.
 * CONDITIONAL — the workset-local channel binds are emitted only for
@@ -111,7 +111,7 @@ def channel_default_categories(
     the three workset-local type roots under ``~/channels/workset/``; STANDALONE
     OMITS them (A10 — gated by the absence of workset channel paths).
     """
-    from kanibako import channels as _ch
+    from kanibako.channels import channels as _ch
 
     addr = _ch.box_channel_addresses(proj, std)
     wch = _ch.workset_channel_paths(proj, std)

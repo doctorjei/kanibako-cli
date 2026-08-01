@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.helper_listener import HelperContext, HelperHub
+from kanibako.channels.helper_listener import HelperContext, HelperHub
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +217,7 @@ class TestRunFork:
         sock = tmp_path / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
-        with patch("kanibako.helper_client.send_request") as mock_send, \
+        with patch("kanibako.channels.helper_client.send_request") as mock_send, \
              patch("kanibako.paths.Path.home", return_value=tmp_path):
             mock_send.return_value = {
                 "status": "ok",
@@ -238,7 +238,7 @@ class TestRunFork:
         sock = tmp_path / ".local" / "state" / "kanibako" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
-        with patch("kanibako.helper_client.send_request") as mock_send, \
+        with patch("kanibako.channels.helper_client.send_request") as mock_send, \
              patch("kanibako.paths.Path.home", return_value=tmp_path):
             mock_send.return_value = {
                 "status": "error",

@@ -629,7 +629,7 @@ class TestChannelPartitionRelocation:
     """
 
     def _seed_partition(self, std, ws_token, box_name, marker="m"):
-        from kanibako.channels import own_partition_dirs
+        from kanibako.channels.channels import own_partition_dirs
 
         part = own_partition_dirs(std, ws_token, box_name)
         part.mailbox.mkdir(parents=True, exist_ok=True)
@@ -640,7 +640,7 @@ class TestChannelPartitionRelocation:
 
     def test_convert_relocates_own_partition(self, env):
         config, std, tmp_home = env
-        from kanibako.channels import (
+        from kanibako.channels.channels import (
             WS_TOKEN_PRIMARY,
             WS_TOKEN_STANDALONE,
             own_partition_dirs,
@@ -681,7 +681,7 @@ class TestChannelPartitionRelocation:
         """A pre-existing destination is left in place + warned, not clobbered."""
         config, std, tmp_home = env
         from kanibako import box_identity
-        from kanibako.channels import (
+        from kanibako.channels.channels import (
             WS_TOKEN_PRIMARY,
             WS_TOKEN_STANDALONE,
             own_partition_dirs,
@@ -718,7 +718,7 @@ class TestChannelPartitionRelocation:
     def test_workset_local_channels_not_relocated(self, env):
         """Workset-LOCAL channels (common/chat) are scope-owned, not moved."""
         config, std, tmp_home = env
-        from kanibako.channels import WS_TOKEN_PRIMARY
+        from kanibako.channels.channels import WS_TOKEN_PRIMARY
 
         pdir = _make_default(env)
         # Seed a PRIMARY workset-local channels tree (scope-owned).

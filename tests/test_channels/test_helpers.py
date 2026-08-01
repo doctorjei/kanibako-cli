@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.helpers import (
+from kanibako.channels.helpers import (
     DEFAULT_BREADTH,
     DEFAULT_DEPTH,
     UNLIMITED_BREADTH,
