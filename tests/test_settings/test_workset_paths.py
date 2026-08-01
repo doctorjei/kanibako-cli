@@ -13,7 +13,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
 )
 from kanibako.utils import project_hash
-from kanibako.workset import add_project, create_workset, default_workset
+from kanibako.project.workset import add_project, create_workset, default_workset
 
 
 # ---------------------------------------------------------------------------

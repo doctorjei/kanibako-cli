@@ -25,7 +25,7 @@ from kanibako.launch.templates import (
     template_seed_defaults,
 )
 from kanibako.settings.core_defaults import ROM_GUIDE_REL as _GUIDE_REL
-from kanibako.workset import add_project, create_workset
+from kanibako.project.workset import add_project, create_workset
 
 
 class TestStageLayers:

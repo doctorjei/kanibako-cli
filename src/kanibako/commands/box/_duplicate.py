@@ -408,7 +408,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
 def _duplicate_to_workset(args, std, config) -> int:
     """Duplicate a project into a workset (source untouched)."""
     from kanibako.commands.box._lifecycle import copy_into_workset
-    from kanibako.workset import list_worksets, load_workset
+    from kanibako.project.workset import list_worksets, load_workset
 
     ws_name = getattr(args, "workset", None)
     if not ws_name:

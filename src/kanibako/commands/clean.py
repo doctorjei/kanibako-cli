@@ -63,7 +63,7 @@ def _unregister_purged(std, proj) -> None:
     is what the membership stores), falling back to the resolved/ metadata-dir
     name, and remove it. Best-effort: a missing or already-clean entry is a no-op.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.settings.paths import (
         primary_box_name_for_workspace,
         unregister_primary_box_name,

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
-from kanibako.workset import add_project, create_workset
+from kanibako.project.workset import add_project, create_workset
 
 
 class TestArchive:
@@ -243,7 +243,7 @@ class TestStubProject:
         ``metadata_path.name``) → the name becomes the dir leaf 'dirleaf'
         instead of the registry key 'regkey' → RED.
         """
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.commands.archive import _stub_project
         from kanibako.settings.config_io import load_doc
 

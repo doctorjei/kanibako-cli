@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako import registry_store, workset_registry
+from kanibako.project import registry_store, workset_registry
 from kanibako.launch import box_resolve
 from kanibako.settings.config import BOX_META_FILE
 from kanibako.settings.paths import BoxMode, _STANDALONE_META_DIR

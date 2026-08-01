@@ -20,7 +20,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import StandardPaths

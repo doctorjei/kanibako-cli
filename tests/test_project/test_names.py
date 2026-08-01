@@ -1,7 +1,7 @@
-"""Tests for kanibako.names (global name registry I/O + resolution) and name wiring.
+"""Tests for kanibako.project.names (global name registry I/O + resolution) and name wiring.
 
 Since the global ``projects:`` section retired (clean split, 2026-07-08), the
-:mod:`kanibako.names` module owns ONLY the ``worksets`` name section; default-mode
+:mod:`kanibako.project.names` module owns ONLY the ``worksets`` name section; default-mode
 (PRIMARY) box names live in the primary per-workset ``boxes:`` membership, whose
 name API (``pick``/``assign``/``register``/``unregister``/reverse-lookup) lives in
 :mod:`kanibako.settings.paths` (tested here + in ``test_paths.py``).
@@ -15,7 +15,7 @@ import pytest
 from pathlib import Path
 
 from kanibako.errors import ProjectError
-from kanibako.names import (
+from kanibako.project.names import (
     lookup_by_path,
     read_names,
     register_name,
@@ -45,7 +45,7 @@ def _register_primary_box(
     primary_workset: Path, name: str, workspace: Path | str,
 ) -> None:
     """Register a PRIMARY box (name → workspace) in the primary membership."""
-    from kanibako import workset_registry
+    from kanibako.project import workset_registry
 
     reg = workset_registry.resolve_workset_registry_path(primary_workset, None)
     workset_registry.register_workset_box(reg, name, Path(workspace))
@@ -236,7 +236,7 @@ class TestResolveName:
 
         Returns the box's workspace path.
         """
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
 
         ws_root = tmp_path / ws_name
         box_ws = ws_root / "workspaces" / box_name
@@ -527,7 +527,7 @@ class TestWorksetNameRegistration:
     """Workset creation registers the name in the registry worksets section."""
 
     def test_create_workset_registers_name(self, std, tmp_home):
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
 
         root = tmp_home / "ws_root"
         create_workset("myworkset", root, std)
@@ -537,7 +537,7 @@ class TestWorksetNameRegistration:
         assert names["worksets"]["myworkset"] == str(root.resolve())
 
     def test_delete_workset_unregisters_name(self, std, tmp_home):
-        from kanibako.workset import create_workset, delete_workset
+        from kanibako.project.workset import create_workset, delete_workset
 
         root = tmp_home / "ws_root"
         create_workset("myworkset", root, std)
@@ -780,7 +780,7 @@ class TestBoxRm:
         from kanibako.commands.box._parser import run_rm
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -815,7 +815,7 @@ class TestBoxDeregisterPurge:
         return std, proj
 
     def test_rm_parks_deregistered_entry(self, config_file, tmp_home, credentials_dir):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
 
         std, proj = self._make_primary(config_file, tmp_home)
@@ -833,7 +833,7 @@ class TestBoxDeregisterPurge:
 
     def test_purge_by_name_after_deregister(self, config_file, tmp_home, credentials_dir, capsys):
         """THE REPORTED BUG: rm then `rm <name> --purge` succeeds by name."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
 
         std, proj = self._make_primary(config_file, tmp_home)
@@ -854,7 +854,7 @@ class TestBoxDeregisterPurge:
         """Entry present but dir already gone → drop entry, no error."""
         import shutil
 
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
 
         std, proj = self._make_primary(config_file, tmp_home)
@@ -909,7 +909,7 @@ class TestBoxDeregisterPurge:
 
     def test_purge_refuses_uncontained_metadata_path(self, config_file, tmp_home, credentials_dir, capsys):
         """CONTAINMENT: a crafted deregistered entry escaping std.boxes is REFUSED."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
@@ -937,7 +937,7 @@ class TestBoxDeregisterPurge:
 
     def test_purge_refuses_dotdot_escape(self, config_file, tmp_home, credentials_dir, capsys):
         """CONTAINMENT: a `..` escape resolves outside std.boxes → REFUSED."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
@@ -983,7 +983,7 @@ class TestBoxDeregisterPurge:
 
 class TestStandaloneDeregisterPurge:
     def _make_standalone(self, config_file, tmp_home):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.settings.config import BOX_META_FILE, load_config
         from kanibako.settings.paths import _STANDALONE_META_DIR, load_std_paths
 
@@ -998,7 +998,7 @@ class TestStandaloneDeregisterPurge:
         return std, root
 
     def test_standalone_deregister_then_purge_by_name(self, config_file, tmp_home, credentials_dir):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
         from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.paths import _STANDALONE_META_DIR
@@ -1043,7 +1043,7 @@ class TestPurgeStaleDeregisteredGuard:
     def test_primary_stale_entry_refused_active_home_intact(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import _purge_deregistered
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import (
@@ -1086,7 +1086,7 @@ class TestPurgeStaleDeregisteredGuard:
     def test_standalone_stale_entry_refused_active_root_intact(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import _purge_deregistered
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import _STANDALONE_META_DIR, load_std_paths

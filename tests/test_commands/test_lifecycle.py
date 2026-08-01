@@ -29,7 +29,7 @@ from kanibako.settings.paths import (
     resolve_project,
     resolve_standalone_project,
 )
-from kanibako.workset import (
+from kanibako.project.workset import (
     add_project,
     create_workset,
     load_workset,
@@ -49,7 +49,7 @@ def _connected_index(std):
     """
     from pathlib import Path
 
-    from kanibako import registry_store, workset_registry
+    from kanibako.project import registry_store, workset_registry
     from kanibako.settings.config_io import load_doc
 
     out = {}
@@ -233,7 +233,7 @@ class TestConvertInPlace:
         # registry.standalone + new.name.
         from kanibako.settings.config import read_workset_kuid
         from kanibako.kuid import SENTINEL
-        from kanibako.registry_store import load_standalone
+        from kanibako.project.registry_store import load_standalone
         assert "project" not in load_doc(pdir / "settings.yaml")
         assert read_workset_kuid(pdir / "settings.yaml") != SENTINEL
         assert new.mode == BoxMode.standalone
@@ -263,7 +263,7 @@ class TestConvertInPlace:
         uniformly with create/duplicate — detected as standalone, REGISTERED in
         registry.standalone with a fresh canonical <kuid>_<leaf> identity,
         and the OLD primary names.yaml entry must be gone (no dangle)."""
-        from kanibako.registry_store import load_standalone
+        from kanibako.project.registry_store import load_standalone
 
         config, std, tmp_home = env
         pdir = _make_default(env)
@@ -321,7 +321,7 @@ class TestConvertInPlace:
     def test_convert_standalone_honors_canonical_name(self, env):
         """A free, well-formed canonical --name is honored verbatim (no forced
         rename — the OLD BUG#4 behavior is replaced) (R1/R3 match+free)."""
-        from kanibako.registry_store import load_standalone
+        from kanibako.project.registry_store import load_standalone
 
         config, std, tmp_home = env
         pdir = _make_default(env)
@@ -412,7 +412,7 @@ class TestConvertInPlace:
         # the workset's per-workset ``boxes:`` registry, not an on-disk section.
         assert new.mode == BoxMode.named
         assert new.workspace_path == pdir.resolve()
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
         reg = workset_registry.load_workset_boxes(
             workset_registry.resolve_workset_registry_path(

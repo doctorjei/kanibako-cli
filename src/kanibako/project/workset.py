@@ -28,10 +28,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import WorksetError
-from kanibako.names import register_name, unregister_name
+from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.paths import StandardPaths
 
 # The single per-workset file at the workset root.  It carries the workset
@@ -701,7 +701,7 @@ def add_project(
             if force and _box_resolve.standalone_settings_present(
                 resolved_source
             ):
-                from kanibako import registry_store
+                from kanibako.project import registry_store
 
                 std_name = registry_store.standalone_name_for_root(
                     std.registry, resolved_source
@@ -801,7 +801,7 @@ def remove_project(
     # root); an in-tree box's membership entry is left untouched (as before —
     # only external connects were ever cleaned here).
     if std is not None:
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.paths import _unregister_workset_box_membership
 
         registry_path = workset_registry.resolve_workset_registry_path(

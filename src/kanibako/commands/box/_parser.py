@@ -18,7 +18,7 @@ from kanibako.settings.config import (
 )
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, ProjectError
-from kanibako.names import read_names, unregister_name
+from kanibako.project.names import read_names, unregister_name
 from kanibako.settings.paths import (
     xdg,
     BoxMode,
@@ -528,7 +528,7 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
     :class:`ProjectError` on a conflict; returns ``None`` when the home is free —
     the common case, leaving a normal create byte-identical.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.launch import journal
 
     box_dir = std.boxes / name
@@ -978,7 +978,7 @@ def run_list(args: argparse.Namespace) -> int:
     ws_data = iter_workset_projects(std, config)
     # STANDALONE boxes live only in registry.standalone (box name → root); they
     # are not in names.yaml / iter_projects, so list them explicitly (BUG-E).
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     standalone = registry_store.load_standalone(std.registry)
     # DEREGISTERED boxes (rm without --purge) are never active, so they are only
     # surfaced when NOT filtering to active-only (plain `list` / `list --all`,
@@ -1408,7 +1408,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
     per-kind teardown, then drop the deregistered entry.  IDEMPOTENT: an entry
     whose dir is already gone just gets dropped, no error.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.errors import UserCancelled
     from kanibako.settings.paths import _STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
@@ -1507,7 +1507,7 @@ def _resolve_standalone_target(
     detection, then matched to its registered root).  Mirrors how ``box purge``
     finds standalone boxes (BUG-C).
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, detect_project_mode
 
     # 1) Direct standalone-name lookup.
@@ -1541,7 +1541,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     """
     from datetime import datetime, timezone
 
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.errors import UserCancelled
     from kanibako.settings.paths import _STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
@@ -1598,8 +1598,8 @@ def run_rm(args: argparse.Namespace) -> int:
     """Unregister a project/workset from the registry, optionally purging metadata."""
     from datetime import datetime, timezone
 
-    from kanibako import registry_store
-    from kanibako.names import lookup_by_path
+    from kanibako.project import registry_store
+    from kanibako.project.names import lookup_by_path
     from kanibako.utils import confirm_prompt
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1738,7 +1738,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
     workspace path (``register_workset_box``'s one-box-per-path guard), so a
     readopt never clobbers a live box.
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
 
     kind = entry.get("kind")
@@ -1826,7 +1826,7 @@ def run_register(args: argparse.Namespace) -> int:
     box already occupies the target name or workspace path; worksets are refused
     (they keep their own lifecycle).
     """
-    from kanibako import registry_store
+    from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1880,7 +1880,7 @@ def run_register(args: argparse.Namespace) -> int:
             if already is not None:
                 print(f"'{already}' is already registered (standalone box at {root}).")
                 return 0
-            from kanibako import import_reconcile
+            from kanibako.project import import_reconcile
             try:
                 sa_name = import_reconcile.import_standalone(
                     std.registry, root, journal=std.journal,

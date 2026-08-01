@@ -1,4 +1,4 @@
-"""Tests for kanibako.registry_store (the consolidated system.registry store).
+"""Tests for kanibako.project.registry_store (the consolidated system.registry store).
 
 Every public function takes the resolved ``config.registry`` FILE path
 (``std.registry`` == ``{data_path}/global/registry.yaml`` at default config).
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import registry_store
+from kanibako.project import registry_store
 from kanibako.settings.config_io import load_doc
 
 

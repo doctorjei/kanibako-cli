@@ -21,9 +21,9 @@ cross-cutting entry points and utilities stay at the package root.
 | `runtime/container.py` | Box runtime (detect, pull, build, run, stop, detach) |
 | `shellenv.py` | Environment variable file handling |
 | `snapshots.py` | Vault snapshot engine |
-| `workset.py` | Workset data model and persistence (`<root>/settings.yaml`) |
-| `names.py` | Project/workset name registry (the `projects`/`worksets` sections of `system.registry`) |
-| `registry_store.py` | Consolidated `registry.yaml` index (`projects`/`worksets`/`connected`/`standalone`/`rigs`/`image_shells`) |
+| `project/workset.py` | Workset data model and persistence (`<root>/settings.yaml`) |
+| `project/names.py` | Project/workset name registry (the `projects`/`worksets` sections of `system.registry`) |
+| `project/registry_store.py` | Consolidated `registry.yaml` index (`projects`/`worksets`/`connected`/`standalone`/`rigs`/`image_shells`) |
 | `runtime/registry.py` | OCI Distribution API client for remote image digests (stdlib only) |
 | `settings/agent_config.py` | Per-agent YAML config (`agents/<agent>/settings.yaml`): load, write, resolve |
 | `launch/templates.py` | Layered seed-once template resolution and application (base → agent → workset) |

@@ -201,9 +201,9 @@ class TestResolveProject:
         retired, the membership is the sole store; this test still exercises the
         resolved-path reuse path so a re-create never strands a half-box.)
         """
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
-        from kanibako.names import read_names
+        from kanibako.project.names import read_names
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -237,7 +237,7 @@ class TestResolveProject:
         remove the try/except unwind and the ``forced`` dir survives after the
         raise → this reddens.
         """
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
@@ -271,7 +271,7 @@ class TestResolveProject:
         rolled back.  Mutation guard: make the unwind ``rmtree`` unconditional
         (drop the ``_dir_existed`` gate) and the sentinel is deleted → reddens.
         """
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
         config = load_config(config_file)
@@ -476,7 +476,7 @@ class TestProjectMeta:
         per-workset ``boxes:`` registry."""
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import WorksetSpec, resolve_workset_project
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
         ws_root = tmp_home / "worksets" / "meta-ws"
@@ -603,7 +603,7 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -619,7 +619,7 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -776,7 +776,7 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -788,7 +788,7 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -813,7 +813,7 @@ class TestDetectBoxMode:
         in-place marker is the highest-precedence signal (spec D3-mode #1) and
         must OVERRIDE any workset determination, matching box_resolve.detect_box_mode.
         """
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -840,7 +840,7 @@ class TestDetectBoxMode:
         top-of-function standalone check keys on the box_data/ marker signal only,
         so a marker-less in-tree dir is unaffected.
         """
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
 
@@ -868,8 +868,8 @@ class TestDetectBoxMode:
         fires first, re-registering the box in ``standalone:`` (dual registration)
         and returning ``standalone`` instead of ``named``.
         """
-        from kanibako import registry_store
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project import registry_store
+        from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -977,7 +977,7 @@ class TestResolveProjectHomeGuard:
         self, config_file, tmp_home, credentials_dir,
     ):
         """Pre-created project at $HOME → no error (project_dir_path.is_dir() is True)."""
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1054,7 +1054,7 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
@@ -1071,7 +1071,7 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
@@ -1088,7 +1088,7 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
@@ -1104,7 +1104,7 @@ class TestResolveAnyProject:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -1151,7 +1151,7 @@ class TestFindWorksetForPath:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
@@ -1175,7 +1175,7 @@ class TestFindWorksetForPath:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -1188,7 +1188,7 @@ class TestFindWorksetForPath:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws_root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", ws_root, std)
 
@@ -1208,7 +1208,7 @@ class TestResolveWorksetOrConnected:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "in-set"
         ws = create_workset("in-set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
@@ -1223,7 +1223,7 @@ class TestResolveWorksetOrConnected:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "ext-set"
         ws = create_workset("ext-set", ws_root, std)
         external = tmp_home / "external_repo"
@@ -1390,7 +1390,7 @@ class TestConnectedExternal:
     def _setup(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_root = tmp_home / "worksets" / "ext-set"
         ws = create_workset("ext-set", ws_root, std)
         external = (tmp_home / "external_repo").resolve()
@@ -1448,7 +1448,7 @@ class TestP7ConnectRegistry:
     def _setup(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
@@ -1456,7 +1456,7 @@ class TestP7ConnectRegistry:
         return config, std, ws, external
 
     def _boxes(self, ws):
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / "settings.yaml"),
@@ -1490,7 +1490,7 @@ class TestP7ConnectRegistry:
     ):
         """Test 2 — the global registry carries NO ``connected:`` section after a
         connect; resolution consults only the per-workset registries."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.settings.config_io import load_doc
         _config, std, _ws, _external = self._setup(config_file, tmp_home)
         # The section is not part of the registry model at all.
@@ -1520,7 +1520,7 @@ class TestP7ConnectRegistry:
         """Test 4 — connecting a dir already connected still errors, detected via
         the per-workset scan."""
         _config, std, _ws, external = self._setup(config_file, tmp_home)
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
         with pytest.raises(WorksetError, match="already connected"):
             add_project(ws_b, "dup", external, std)
@@ -1533,12 +1533,12 @@ class TestP7ConnectRegistry:
         never mistaken for an external connection (e.g. duplicate's
         ``_source_is_external``).  Mutation: drop the external-only filter →
         this matches the in-tree box → RED."""
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.launch import box_resolve
         from kanibako.settings.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
-        from kanibako.workset import create_workset
+        from kanibako.project.workset import create_workset
         ws = create_workset("mix", tmp_home / "worksets" / "mix", std)
         internal = ws.workspaces_dir / "inbox"
         internal.mkdir(parents=True)
@@ -1553,7 +1553,7 @@ class TestP7ConnectRegistry:
         workspace (regression guard: the per-workset scan does not hijack it)."""
         config = load_config(config_file)
         std = load_std_paths(config)
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         ws = create_workset("in-set", tmp_home / "worksets" / "in-set", std)
         # Internal source (inside the workset root) → a real workspace dir, never
         # an external connection.
@@ -1577,7 +1577,7 @@ class TestP5aCreateThenResolve:
 
     @staticmethod
     def _primary_registry(std):
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
         return workset_registry.resolve_workset_registry_path(
             std.primary_workset,
@@ -1587,7 +1587,7 @@ class TestP5aCreateThenResolve:
     def test_primary_create_registers_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.launch import box_resolve
         from kanibako.settings.paths import resolve_standalone_project  # noqa: F401
         config = load_config(config_file)
@@ -1618,11 +1618,11 @@ class TestP5aCreateThenResolve:
     def test_named_create_registers_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.launch import box_resolve
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import WorksetSpec, resolve_workset_project
-        from kanibako.workset import add_project, create_workset
+        from kanibako.project.workset import add_project, create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
         ws_root = tmp_home / "worksets" / "ws1"
@@ -1656,7 +1656,7 @@ class TestP5aCreateThenResolve:
     def test_standalone_create_registers_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.launch import box_resolve
         from kanibako.settings.paths import resolve_standalone_project
         config = load_config(config_file)
@@ -1724,7 +1724,7 @@ class TestP5aCreateThenResolve:
         registry FIRST (the new-model source), only falling back to settings.yaml.
         (Mutation target: neuter the registry read → this returns the settings
         workspace instead → RED.  Covers the otherwise-vacuous new branch.)"""
-        from kanibako import workset_registry
+        from kanibako.project import workset_registry
         from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.config_io import dump_doc, load_doc
         from kanibako.settings.paths import iter_projects

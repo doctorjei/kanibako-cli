@@ -17,7 +17,7 @@ from kanibako.settings.paths import (
     xdg,
 )
 from kanibako.utils import confirm_prompt
-from kanibako.workset import (
+from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
     add_project,
@@ -400,7 +400,7 @@ def run_create(args: argparse.Namespace) -> int:
 
 
 def run_list(args: argparse.Namespace) -> int:
-    from kanibako.workset import default_workset
+    from kanibako.project.workset import default_workset
 
     std = _load_std()
     registry = list_worksets(std)
@@ -502,7 +502,7 @@ def run_connect(args: argparse.Namespace) -> int:
     # on the next resolve of the now-member box (self-heal, symmetric with the
     # import path).  If ``add_project`` raises, the entry is LEFT (incomplete) and
     # the error propagates after ``_Unwind`` rolls back the in-process effects.
-    from kanibako.workset import _journal_connect
+    from kanibako.project.workset import _journal_connect
 
     try:
         with _journal_connect(

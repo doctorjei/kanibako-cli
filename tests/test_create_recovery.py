@@ -119,7 +119,7 @@ class TestRegisterNewBox:
 
     def test_standalone_registers_root_idempotent(self, tmp_path: Path) -> None:
         from types import SimpleNamespace
-        from kanibako import registry_store
+        from kanibako.project import registry_store
 
         registry = tmp_path / "registry.yaml"
         std = SimpleNamespace(registry=registry)
@@ -189,7 +189,7 @@ class TestResolverRegisterFalse:
         self, config_file, tmp_home, credentials_dir
     ):
         from kanibako.settings.config import load_config
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.settings.paths import load_std_paths, resolve_standalone_project
 
         config = load_config(config_file)
@@ -411,7 +411,7 @@ class TestRunCreateCrossKindName:
     ):
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
-        from kanibako.names import register_name
+        from kanibako.project.names import register_name
         from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
@@ -436,7 +436,7 @@ class TestRunCreateCrossKindName:
     ):
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
-        from kanibako.names import register_name
+        from kanibako.project.names import register_name
         from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
@@ -492,7 +492,7 @@ class TestImportConnectNoCreateEntry:
         "module",
         [
             "kanibako.commands.box._lifecycle",
-            "kanibako.import_reconcile",
+            "kanibako.project.import_reconcile",
             "kanibako.commands.workset_cmd",
         ],
     )
@@ -611,7 +611,7 @@ class TestRecoveryStandalone:
         SURVIVES.  Asserted UNCONDITIONALLY."""
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.settings.paths import load_std_paths
 
         config = load_config(config_file)
@@ -680,7 +680,7 @@ class TestConflictSafeCreate:
     ):
         """⚑ THE HAZARD REPRO: rm dup (deregister) -> create --name dup <NEW path>
         is REFUSED; the deregistered box's home + secrets are intact (no merge)."""
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_create, run_rm
 
         orig = tmp_home / "orig"
@@ -780,7 +780,7 @@ class TestConflictSafeCreate:
         with a lingering journal crumb."""
         from types import SimpleNamespace
 
-        from kanibako import registry_store
+        from kanibako.project import registry_store
         from kanibako.launch import journal
         from kanibako.commands.box._parser import run_create, run_rm
         from kanibako.commands.start import _write_create_entry
