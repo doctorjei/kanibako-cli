@@ -10,12 +10,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-01
+
+This release completes the **settings-keyspace rework** and lands the **canon books**.
+The keyspace is now genuinely closed and single-routed: a box can *request* values at
+keys that resolve before it (`pref.*`), the agent that runs is itself a key selected
+before the cascade resolves, category sources resolve at their declaration instead of
+being prefixed at assembly time, and a contested mount destination is decided by an
+explicit collision table rather than a silent rank order. The canon replaces the in-box
+`~/playbook` tree with four books under one root —
+`~/canon/{bible,handbook,notebook,workbook}` — delivered as read-only sibling binds over
+a protected skeleton.
+
+v1.8.0 is a deliberate **clean break: no aliases, no deprecation window, and no
+migration code.** Four released config surfaces are removed outright
+(`box.agent_name`, `system.default_agent`, the `shared` mount category and
+`system.base_template`), and directory layouts move both on the host and inside boxes.
+
+> ⚑ **Read [MIGRATION.md](MIGRATION.md) before upgrading.** The short version: your
+> first `start` / `create` / `reauth` after upgrading hard-errors until you run
+> `kanibako setup`; every box that ever chose an agent refuses to launch until its
+> agent key is replaced; the agent plugins must be upgraded **with** the base (install
+> the `kanibako` meta-package) or every box's directive chain is silently lost; and two
+> host directory moves — `agents/claude/{plugins,cache}` and the `commons` channel dir
+> — lose visible content *silently* if skipped.
+
+### Added
+
+- **`pref.*` — a box or workset can request a value at a key that resolves before it.**
+  A `pref:` table in a box or workset settings file installs values at strictly
+  earlier-resolving keys (`pref.system.agent`, `pref.agent.<agent>.<key>`). Requests are
+  collected and validated *before* the cascade assembles, so every key derived from a
+  requested value sees the requested value. Three independent filters check each request
+  (is the target a key at all, is it on the allowlist, does it sit in a forbidden tier)
+  and a rejection names key, level and rule. Writing a `pref` is bounded to workset and
+  box files, and the written value is validated against its target when it is typed — a
+  request that would fail every future launch is refused at `config set` time.
+- **`--null` writes a suppression.** `kanibako <scope> set --null <key>` stores a real
+  YAML `null` wherever the store is a nested document — the one channel a box has to
+  remove an entry it inherits. The sibling `reset` verb *removes* the entry instead.
+  Where a store cannot represent a suppression the flag is refused with the reason and
+  the cure (see *Fixed*).
+- **A box can opt out of an agent entirely.** `kanibako box set --null pref.system.agent`
+  gives a plain-shell box *even when a host-wide default is set*: no agent binds, no
+  credentials delivered, no agent template layer, no `KANIBAKO_AGENT` stamp — and `stop`
+  writes nothing back for it. Previously the default always re-supplied an agent, so
+  this state was unreachable.
+- **The canon books — one root for everything a box reads.** The in-box instruction tree
+  is now four books under `~/canon/`, entered at `~/canon/COLLECTION.md`:
+  - `bible/` — packaged core guidance as per-scope chapters (`general/`, `workset/`,
+    `box/`) plus a per-agent chapter shipped by the agent plugin. Read-only, from the
+    installed packages.
+  - `handbook/` — host-side guidance, assembled from each scope's own contribution:
+    `general` from the system store, and `agent` / `workset` / `box` chapters from the
+    agent store, the workset, and the box store's `canon/handbook`. Read-only in-box;
+    edit it host-side. Per-scope chapters are skip-if-absent.
+  - `notebook/` and `workbook/` — box-owned and writable: box directives/procedures, and
+    box working state (devnotes, tasks, plans). Seeded once at `create`.
+
+  `box create` materialises a root-owned, mode-555 skeleton of book roots, chapter
+  mountpoints and file mountpoints, and launch mounts each chapter as an individual
+  read-only **sibling** — no mountpoint ever lives inside a bind source, and neither
+  `~/canon` nor `~/canon/bible` is ever bound whole. Protection is re-asserted after
+  every container start (the home bind's `:U` re-chowns the source), and the lifecycle
+  verbs escalate to delete or copy a protected tree. If a host cannot root-own the
+  skeleton, `create` says so loudly and the box works normally, unprotected.
+  **New boxes only** — an existing box keeps launching and gains the new bible, but its
+  own `~/playbook` directives stop being loaded (MIGRATION.md §2.4 has the recipe).
+- **`<scope>.canon` keys** — `system.canon`, `agent.<agent>.canon`, `workset.canon` and
+  `box.canon` name each scope's handbook-contribution root; repointing a scope's
+  contribution goes through its key. `workset.canon` / `box.canon` are CLI-settable,
+  `agent.<agent>.canon` at system scope only, and `system.canon` is a structural path
+  key in `kanibako_config.yaml` (like `system.template`).
+- **The base package ships the kickoff.** `~/.config/kanibako/kickoff.md` — the file that
+  boots a box's instruction chain — is now core-owned and delivered by an internal
+  `box.bindings.ro.kickoff` bind pointing at the canon. Because every published plugin
+  still ships its own kickoff at the same destination, the core bind **yields** to a
+  plugin-supplied one for this release (keyed on the destination, so the two can never
+  collide into a launch error). The plugin-side deletion lands one release later,
+  together with a base-version floor.
+- **`meta.derived.<declaration-key>`** — the abstract categories (`common`, `caches`,
+  `seeded`) now materialise their derived bindings as read-only entries labelled *mount*
+  or *copy*, so `--effective` shows both the declaration and what it produced and a user
+  can see why a mount exists.
+- **`meta.box.path`** — a read-only per-mode anchor for the box root. The per-mode
+  variation now lives in the anchor rather than in three downstream spellings, so
+  `box.bindings.rw.home` is one declaration for every mode. The anchor and its settable
+  source are both shape-validated (a `workset.boxes: null` used to yield a `/home`
+  host source that was then created and mounted over the box home, silently).
+- **Braced references — `@{a.b.c}suffix`.** A reference may now carry a literal suffix,
+  which the greedy dot-segment name pattern previously ate (`@meta.box.name.jsonl`
+  parsed as a reference *named* `…name.jsonl`, resolved to nothing, and coerced to the
+  empty string — a path silently lost its filename). Bare `@a.b.c` is unchanged and
+  stays the normal spelling; nesting is refused loudly.
+- **Standalone boxes get a real box-scope settings file** at `<root>/box_data/settings.yaml`
+  (absent until first written); the project-root `settings.yaml` keeps playing the
+  workset tier. Values stored at a legacy standalone root still resolve as downward
+  defaults, so no box needs migrating — but two read surfaces get truthful (see
+  *Changed*).
+- **The dev extra pins the gate tooling** (`ruff`, `mypy`, `pytest`). CI installed them
+  floating, so an upstream release could change the verdict on source nobody had
+  touched; a local green now predicts CI again, and adopting a new tool version is a
+  deliberate commit of its own.
+
 ### Changed
 
-- **BREAKING: a box no longer names its agent with a key of its own — it REQUESTS
-  one.** `box.agent_name` is RETIRED; the replacement is `pref.system.agent`, a
-  request written in the box (or workset) settings file to set a key that resolves
-  *earlier* than the file making it. Clean break — no alias, no deprecation window.
+- **BREAKING: a box no longer names its agent with a key of its own — it REQUESTS one.**
+  `box.agent_name` is retired; the replacement is `pref.system.agent`, a request written
+  in the box (or workset) settings file to set a key that resolves *earlier* than the
+  file making it.
 
   ```yaml
   # box settings.yaml
@@ -24,45 +127,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       agent: goose        # was:  box: {agent_name: goose}
   ```
 
-  - `kanibako box set pref.system.agent=<name>` writes it; `kanibako box set --null
-    pref.system.agent` writes a suppression (see the no-agent box below).
-  - `kanibako create --agent <name>` persists the request, so a plain `kanibako
-    start` runs that agent — unchanged behaviour, new storage.
-  - **Why:** the old key made two read-only anchors (`meta.box.auth.workset_path`,
-    `meta.box.agent.auth.share_support`) derive from a *settable* key at their own
-    level, which the bootstrap order forbids.
-  - **A box that still carries `box.agent_name` REFUSES TO LAUNCH**, naming the key,
-    the file, and the one-line fix. It is not migrated automatically and it is not
-    ignored: guessing would launch a different agent and seed *that* agent's
-    credentials into the box.
+  - `kanibako box set pref.system.agent=<name>` writes it; `kanibako create --agent
+    <name>` persists the request, so a plain `kanibako start` runs that agent —
+    unchanged behaviour, new storage.
+  - Selection now runs once, early, through one seam: a narrow lenient pre-pass resolves
+    `system.agent` with prefs applied, and the resolved selection is installed at the top
+    precedence level *whatever chose it* (a pref, `--agent`, or the single-installed
+    autopick), so the snapshot's `system.agent` equals the agent that actually runs and
+    everything derived from it derives from the truth. Previously a flag overriding a
+    pref left the snapshot asserting the pref had won.
+  - **A box that still carries `box.agent_name` REFUSES TO LAUNCH**, naming the key, the
+    file and the one-line fix. It is not migrated automatically and it is not ignored:
+    guessing would launch a *different* agent and seed that agent's credentials into the
+    box.
+- **BREAKING: `system.default_agent` → `system.agent`**, and it moves out of the reserved
+  `agent.default` table into the `system:` table of the same settings file
+  (`<data>/global/settings.yaml`). `kanibako setup` writes the new location; `kanibako
+  system config set system.agent=<name>` now works as an ordinary setting (it was
+  previously special-cased). A stale `agent.default.default_agent` is refused by name,
+  like the key above.
+- **BREAKING: the settable `box.agent.*` mirror is retired.** A box tweaks its agent's
+  settings with `pref.agent.<agent>.<key>` (including `null` to suppress an inherited
+  bind); the effective values are readable at the read-only `meta.box.agent.<key>` via
+  `--effective`. `box set` / `reset box.agent.<key>` refuse with the replacement
+  spelling, and a bare `box set model=…` now points at `pref.agent.<agent>.model`.
+- **BREAKING: the `shared` mount category is renamed `common`, and agent keys must be
+  discriminated.** `<scope>.shared.<name>` becomes `<scope>.common.<name>`, with no
+  alias. Separately, the plugin-defaults readers emitted bare `agent.<category>.<name>`
+  keys that a launch-time re-root patched onto the active slot — the bare form is not a
+  key at all under the closed keyspace. Readers now build the discriminated
+  `agent.<agent>.<category>.<name>` key directly, and the bind/mask/env key patterns
+  refuse an undiscriminated agent scope, so `config set` rejects it instead of quietly
+  accepting a non-key.
+- **BREAKING: the `commons` channel type-root is renamed `common`** — one word now names
+  both the mount category and the channel, discriminated by the `channels.` segment.
+  This moves the host directories (`<channelroot>/commons` and each workset's
+  `channels/commons`), the settings keys (`system.channels.commons`,
+  `workset.channels.commons`) and the in-box paths (`~/channels/commons` and
+  `~/channels/workset/commons`) at once. Move the directories before your first launch:
+  an empty `common/` is otherwise guarantee-created beside your populated `commons/`,
+  silently.
+- **BREAKING: contested mount destinations are resolved by an explicit collision table,
+  and a working configuration can start failing.** Reconciliation used to resolve a
+  contested destination by a fixed rank (seed < cache < binding < common < synced <
+  masks), which was wrong in both directions at once: a `common` entry silently beat a
+  user's real binding while a `caches` entry silently lost to one. Now:
+  - two concrete bindings at one destination **refuse the launch**, with a message that
+    says the rule changed and prints the exact suppress-then-add YAML;
+  - an abstraction (`common`/`caches`/`seeded`) extending onto a destination an explicit
+    binding already occupies is an **error**; across scopes the nearer scope still wins
+    silently; within the winning scope an ambiguity **warns on every launch**;
+  - a mask overrides, but contradictions are judged *before* the mask override;
+  - `secret_path` is carved out (same variable at one destination is the documented
+    per-variable cascade), and mount vs copy destinations are judged separately.
 
-- **BREAKING: `system.default_agent` → `system.agent`**, and it moves out of the
-  reserved `agent.default` table into the `system:` table of the same settings file
-  (`~/.local/share/kanibako/global/settings.yaml`). `kanibako setup` writes the new
-  location; `kanibako system config set system.agent=<name>` now works as an ordinary
-  setting (it was previously special-cased). A stale `agent.default.default_agent`
-  is refused by name, like the key above.
-
-- **A box can now opt OUT of an agent entirely, even when a system default is set.**
-  `kanibako box set --null pref.system.agent` gives a plain-shell box: no agent
-  binds, no credentials, no agent template layer, and no `KANIBAKO_AGENT` stamp —
-  so `stop` / the credential watcher write nothing back for it either. Previously a
-  host-wide default always re-supplied an agent, so this was unreachable.
-
-- **BREAKING: the settable `box.agent.*` mirror is retired.** A box tweaks its
-  agent's settings with `pref.agent.<agent>.<key>` (including `null` to suppress an
-  inherited bind); the effective values are readable at the read-only
-  `meta.box.agent.<key>` via `--effective`. `box set`/`reset box.agent.<key>` refuse
-  with the replacement spelling, and a bare `box set model=…` now points at
-  `pref.agent.<agent>.model`.
-
+  Default installs cannot hit this — all twelve shipped configurations are verified
+  collision-free with standing tests. `kanibako box show --effective` reports collisions
+  without launching.
+- **BREAKING: category sources are rooted at their declaration, not at assembly.** A bare
+  relative `host_src` used to become a real path only because the launch built a table of
+  scope roots and prefixed the stored value at assembly time — so the stored key never
+  resolved on its own and what a user read in their file was not what mounted. That
+  mechanism is deleted:
+  - the agent `common` loader now emits self-resolving
+    `@meta.agent.<agent>.path/common/<leaf>` sources;
+  - **claude's commons move into the agent store's `common/` subdir** —
+    `<data>/agents/claude/{plugins,cache}` → `<data>/agents/claude/common/{plugins,cache}`.
+    Move them before your first launch or the box binds an empty `common/plugins` over
+    `~/.claude/plugins` and every installed plugin appears gone, with no message;
+  - `workset share add` absolutises a relative source against the workset root **at write
+    time** and stores the result (on the default workset, whose bindings never had a root
+    to join, it refuses with the reason); `config set` on a bind category refuses a bare
+    relative source outright and prints the correctly rooted form. **Already-stored
+    relative sources are not rewritten** — they now resolve against the process CWD;
+  - a value sitting at a category root, at a `bindings` arm, or under an arm no binding
+    declares is refused with the discriminated tier named, instead of being silently
+    dropped.
+- **BREAKING: `system.base_template` → `system.template`, and it names a template ROOT.**
+  The packaged template tree takes its canon shape — per-scope moulds under
+  `data/global/template/{box,workset,agent,agent_default}` plus the system handbook —
+  replacing the flat `playbook/notebook/workbook` layout, and the box-home seed now lives
+  at `global/template/box/home/`. Agent-level and workset-level template dirs restructure
+  the same way (`<data>/agents/<agent>/template/box/home/`,
+  `<workset>/template/box/home/`). Host stores materialise through **one** copier with
+  one discipline: per-scope whitelists that deny by default, symlink and traversal
+  refusal on every path component, containment checked before anything is created, and
+  per-file create-if-absent wherever user content lives. `kanibako setup` self-heals the
+  store *layout*; content you placed at the old flat paths needs a hand-move.
+- **BREAKING: a symlink anywhere in a template directory now fails loudly.** The
+  template/seed copier refuses, rather than follows, a symlink on either side of a copy —
+  a symlinked source could otherwise reach outside its subtree. If your template dirs
+  symlink config files into a dotfiles repo, `box create` / `kanibako setup` now fail
+  naming the offending path; replace the symlink with a real file, or deliver the content
+  through a `bindings.ro` / `bindings.rw` key.
+- **BREAKING: system-scope config writes now go to the file the cascade reads.** At
+  system scope, `set` and `reset` for the `secret_path` and mount-category families wrote
+  `kanibako_config.yaml` while `get` and the launch read the system settings file — a
+  `get` could not see what `set` wrote, and a category write survived `system reset
+  --all` untouched. All three verbs, reset-all and the launch now agree on
+  `<data>/global/settings.yaml`. A hand-placed system binding that exists only in the
+  config file now gets a must-exist refusal; the cure is to move the sub-table.
 - **BREAKING (plugin authors): a persona's claude-shaped host-dir adoption is now
-  DECLARED, not inherited.** In a plugin that DECLARES a `persona:` block, the
-  `persona.host_dir_adopt` field now defaults to `false` (was `true`): omitting it
-  no longer opts the harness in. A persona launch there resolves its endpoint from
-  the keyspace only, instead of auto-adopting a config from claude's
-  `~/.config/claude/<persona>/` — a directory only claude's class-setup script ever
-  writes.
+  DECLARED, not inherited.** In a plugin that DECLARES a `persona:` block,
+  `persona.host_dir_adopt` now defaults to `false` (was `true`): omitting it no longer
+  opts the harness in, and the persona resolves its endpoint from the keyspace only
+  instead of auto-adopting a config from claude's `~/.config/claude/<persona>/`.
 
   ```yaml
   # <agent>-defaults.yaml — opt IN if your harness reads claude's host dir
@@ -72,79 +241,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       host_dir_adopt: true
   ```
 
-  - **A plugin with NO `persona:` block at all is UNCHANGED**: it still falls back
-    to the full legacy claude shape (env endpoint delivery, `ANTHROPIC_AUTH_TOKEN`,
-    host-dir adoption). Only a block that declares *some* persona fields and omits
-    this one resolves differently than before.
-  - **No behaviour change for the shipped agents.** claude now declares
-    `endpoint_delivery: env`, `token_var: ANTHROPIC_AUTH_TOKEN` and
-    `host_dir_adopt: true` in its own defaults file (same resolved wiring as
-    before, now explicit); codex and goose already declared `false`.
-  - **Why:** adoption is a claude capability, so every other harness was
-    inheriting claude's semantics — and a wrong-shaped adoption reports a
-    claude-worded error against a directory that plays no part in that harness's
-    resolution. Declare-your-own-shape is the pattern codex/goose already follow.
-  - Clean break — no alias, no deprecation window (v1.8.0 window).
+  A plugin with **no** `persona:` block at all is unchanged (it still gets the full
+  legacy claude shape through the fallback, which stays load-bearing for version-skewed
+  installs). No behaviour change for the shipped agents: claude now declares
+  `endpoint_delivery`, `token_var` and `host_dir_adopt: true` explicitly; codex and goose
+  already declared `false`.
+- **The command line is its own cascade level.** Ephemeral launch flags are no longer
+  post-resolve patches: a declared flag-to-key table spells them as level entries — `-M`
+  as the active agent's `model` key (the only spelling under which a flag outranks a
+  stored per-agent value), and `-N`/`-C`/`-R` as its `continue_mode` — with one guard
+  ahead of the snapshot splice refusing undeclared keys, the `meta`/`config`/`pref` heads
+  and the locator closure. No resolve whose output is written to disk sees a flag.
+- **The instruction flattener moved and got louder.** It now ships at
+  `kanibako/scripts/import-directives.py` (reached in-box through the existing package
+  bind), strips HTML comments from the flattened artifact — comments are authoring
+  guidance for whoever edits the source, and an example `@path` inside one used to
+  resolve as a **live import** whenever the target happened to exist — and warns on any
+  unresolved import (previously silent) and on a file ending inside an open HTML comment.
+  Comments inside fenced code blocks survive.
+- **Standalone box reads got truthful.** On a standalone box whose `box.*` values sit in
+  the project-root file (every one created before v1.8.0), `kanibako box get box.<key>`
+  now prints `(not set)` where it used to print the value — a plain `get` reports what is
+  stored *at box scope* — and `box show --effective` drops the `(override)` marker on
+  such values. The value still resolves and the launch still uses it. Also:
+  previously-inert `workset.{boxes,vault_ro,vault_rw,logs}` entries in a standalone root
+  file become **live**.
+- **Reading effective config no longer creates vault directories** — the guarantee-create
+  is gated to launch. Set-time validation likewise probes only values that actually reach
+  the expander, so an `@` or `$` in the verbatim docker `env` family is data (an email
+  address is not a dangling reference), and an unknown key is named as such before any
+  probe judges its value.
 
 ### Fixed
 
-- **A flag now works wherever you type it.** `kanibako box set <box> --null <key>`
-  failed with `unrecognized arguments: <key>` — a flag written *between* two
-  positionals stranded everything after it, so `--null` (and `--force`, `--box`,
-  `--agent`) only worked before them. Every subcommand now accepts its flags in
-  any position. The four `box` config verbs (`set`/`reset`/`get`/`show`) were the
-  affected ones; a `--` still ends flag parsing, so an argument that looks like a
-  flag can be passed as data.
+- **A flag now works wherever you type it.** `kanibako box set <box> --null <key>` failed
+  with `unrecognized arguments: <key>` — argparse groups positionals around the optionals
+  between them, so a flag written *between* two positionals stranded everything after it
+  and `--null` (and `--force`, `--box`, `--agent`) only worked before them. A pre-parse
+  hoist now moves optionals (with their values, read from the parser's own action table)
+  to the front on every subcommand whose positionals could be split; a `--` still ends
+  flag parsing, and no previously-working invocation changed meaning across a
+  thirty-thousand-case differential fuzz.
+- **`kanibako agent set --null <key>` performed a silent read.** The flag was advertised
+  on the parser but never consulted, so the command fell through to its get path: it
+  printed the current value and exited 0 without writing anything. It is now an explicit
+  refusal naming both cures — `agent reset <agent> <key>` to clear the agent's own value,
+  or `--null pref.agent.<agent>.<key>` from a box or workset to suppress what the agent
+  declares. (Suppression at agent scope is not supported: the per-agent file is read back
+  with every value coerced to a string, so a null there would return as the text `None`.)
+- **`--null` help and messages now teach suppression.** The flag's help says that it
+  SUPPRESSES an inherited value and that the sibling `reset` verb undoes it, with a
+  per-verb example; messages that pointed at a non-existent `--reset` *flag* now name the
+  `reset` verb, and suppressed-value messages point at `reset` at the scope that set the
+  pref.
+- **Persona boxes get their agent's shared directories.** A persona (`navigator+claude`)
+  mounted NEITHER `~/.claude/plugins` NOR `~/.claude/cache`: the plugin declares those
+  against its harness name while the resolver read them under the persona's node name, so
+  nothing matched and the symlink shim pointing `agents/<persona>/common/…` at
+  `agents/<harness>/common/…` had no consumer. They are now emitted under the active
+  node. Bare (non-persona) agents are unaffected.
+- **A no-agent box no longer launches claude.** A suppressed selection produced an empty
+  node that `resolve_target` read as *no name given, please auto-detect* — so the
+  no-agent box came up running claude, credentials and all. The selection now carries an
+  explicit `has_agent`, honoured at every seam that turns a selection into a target
+  (launch, bootstrap, reauth).
+- **Per-agent credential paths no longer collapse into the workset auth root.** Three
+  call sites quietly defaulted the per-agent credential path to none, which collapsed the
+  per-agent credential directory into the workset auth root on exactly the commonest host
+  shape; the path is now threaded as a required argument.
+- **A standalone box could set a value and then not find it.** The pair of paths naming a
+  box's settings file and its workset tier was one expression hand-spelled at seventeen
+  sites, so `config set` wrote the project root while half the readers looked elsewhere.
+  The derivation is now one function — and the lifecycle verbs that each held their own
+  copy each lost data for it: `convert` and `move` out of standalone copied the project
+  root as if it were box metadata (a box setting landed in a file the destination never
+  reads), and `duplicate` of a legacy standalone read only the new box tier and dropped
+  values still stored at the root. Both now carry the box subtree through the one
+  derivation.
+- **`box extract` restored into a placeholder directory.** It used the
+  `__unregistered__` placeholder as a literal destination; it now restores into the
+  box's real metadata directory and registers it, with a true pre-flight name check
+  (extract deletes its destination before copying, so a late collision was
+  destroy-then-fail) that permits restoring a box into its own workspace.
+- **A launch that exited before attach left the box up.** The exited-before-attach branch
+  now tears the box down — a pre-existing gap this release's widened pre-attach window
+  made deterministic.
+- **A slow podman no longer aborts the whole test run.** Both module-scope podman probes
+  in the e2e conftest documented a "not available" return on failure, but a subprocess
+  *timeout* escaped instead — and since that module is collected by the plain unit run
+  too, a merely slow podman took the entire job down before a single unit test ran.
 
-- **`kanibako agent set --null <key>` performed a silent read.** The flag was
-  advertised on the parser but never consulted, so the command fell through to
-  its get path: it printed the current value and exited 0 without writing
-  anything. It is now an explicit refusal naming both cures — `agent reset
-  <agent> <key>` to clear the agent's own value, or `--null
-  pref.agent.<agent>.<key>` from a box or workset to suppress what the agent
-  declares. (Suppression at agent scope is not supported: the per-agent settings
-  file is read back with every value coerced to a string, so a null there would
-  return as the text `None`.)
+### Removed
 
-- **`--null` help and messages now teach suppression.** The flag's help says that
-  it SUPPRESSES an inherited value and that the sibling `reset` verb undoes it,
-  and the messages that report or offer a suppression name that cure. Messages
-  that pointed at a non-existent `--reset` *flag* now name the `reset` verb.
-
-- **Persona boxes get their agent's shared directories.** A persona
-  (`navigator+claude`) mounted NEITHER `~/.claude/plugins` NOR `~/.claude/cache`: the
-  plugin declares those against its harness name while the resolver reads them under
-  the persona's node name, so nothing matched and the symlink shim that points
-  `agents/<persona>/common/…` at `agents/<harness>/common/…` had no consumer. They
-  are now emitted under the active node, which is what makes that sharing real.
-  Bare (non-persona) agents are unaffected.
-
-- **Box directive templates reorganised into a three-part "handbook".** The seeded
-  home tree now ships three roots instead of one: `~/playbook/` (global, agent and
-  workset directives + resources), `~/notebook/` (box-specific directives, archives
-  and resources), and `~/workbook/` (box process, progress and state — `devnotes.md`,
-  `tasks.md`). Keeping these out of `~/workspace` leaves the workspace dedicated to
-  project source. The layout is documented in the seeded
-  `playbook/general/directives/rules/HANDBOOK.md`.
-  - The box brief moved from `playbook/box/directives/BOX.md` to
-    `notebook/directives/BRIEF_BOX.md`, and a `notebook/directives/CONVENTIONS.md`
-    stub was added for project-specific conventions.
-  - Scope briefs are now named `BRIEF_<SCOPE>.md`; `rules/WORKPOLICY.md` became
-    `rules/DATAPOLICY.md`.
-  - Agent plugins no longer ship a directive stub — they seed harness config only
-    (the box brief now lives in the notebook). This removes an unused file that
-    nothing loaded.
-  - **New boxes only.** The home seed runs once at box creation, so existing boxes
-    keep their current tree and are not migrated.
-
-- **The directive flattener strips HTML comments.** Comments in directive sources
-  are authoring guidance for whoever edits the template; they are now removed from
-  the flattened artifact delivered to each agent. Sources keep their comments —
-  only the generated file is stripped. Comments inside fenced code blocks survive,
-  so a comment shown *as* example markdown is preserved.
-  - This also fixes a latent bug: an example `@path` written inside a comment was
-    resolved as a **live import**, silently pulling the target into every session
-    whenever that file happened to exist.
+- **BREAKING: `box.agent_name` and `system.default_agent`** — replaced by
+  `pref.system.agent` and `system.agent`; both are refused by name at launch (above).
+- **BREAKING: the `shared` mount category** — renamed `common`, no alias. A leftover
+  `shared` entry is silently inert, so the bind it declared simply stops appearing.
+- **BREAKING: `system.base_template`** — replaced by `system.template`, which names a
+  template *root* (above).
+- **BREAKING: the settable `box.agent.*` mirror** — replaced by
+  `pref.agent.<agent>.<key>` for writes and read-only `meta.box.agent.*` for reads.
+- **`meta.runtime.ws_settings`** — cut from the keyspace; `meta.workset.settings` now
+  spells `@meta.workset.path/settings.yaml` directly, one hop instead of two. Replace the
+  reference in any settings file of your own (the resolved value is identical).
+- **`meta.box.helper_log`** — never a declared key, only a way around the reference parse
+  limit that braced references now remove. The helper-log bind spells its source
+  `@workset.logs/@{meta.box.name}.jsonl`. One consequence: the old key was a whole-value
+  reference, so an absent referent *dropped* the bind; the spelled form is embedded, so
+  an absent or null `workset.logs` yields a degenerate path — and a read-only mount whose
+  source is missing is dropped with a warning naming it, which is more visible than the
+  silent drop it replaces.
+- **The per-file rom keys (`rom_<slug>_<hash>`)** — replaced by the canon binds. A rom
+  root with leftover files but no `canon/COLLECTION.md` now refuses to launch
+  (fail-closed) where it previously emitted per-file binds. The dead rom `clear.py` /
+  `start.py` wiring is deleted with them.
+- **`<data>/agents/<agent>/share/`** — the join root died with assembly-time rooting. It
+  was verified empty on inspection; if yours has content it belongs to a hand-set
+  relative agent binding, which needs absolutising rather than deleting.
 
 ## [1.7.2] - 2026-07-16
 
@@ -1320,7 +1533,11 @@ There is **no migration code** — convert existing installs in a single pass:
   the distinction as data (a `ProjectGroup` descriptor) rather than control flow.
   Behavior-preserving; no user-visible change.
 
-[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/doctorjei/kanibako/compare/v1.7.2...v1.8.0
+[1.7.2]: https://github.com/doctorjei/kanibako/compare/v1.7.1...v1.7.2
+[1.7.1]: https://github.com/doctorjei/kanibako/compare/v1.7.0...v1.7.1
+[1.7.0]: https://github.com/doctorjei/kanibako/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/doctorjei/kanibako/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/doctorjei/kanibako/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/doctorjei/kanibako/compare/v1.4.0...v1.5.0
