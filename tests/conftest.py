@@ -251,6 +251,18 @@ def start_mocks():
         # MagicMock ``primary_workset`` would make every seed dest a MagicMock-repr
         # string and silently skip the seed. These two are the minimum realism the
         # seed path needs; everything else on ``std``/``proj`` stays mocked.
+        #
+        # ⚑⚑ AND THE REALISM HAS A COST THAT ONLY APPEARS ON CI. This fixture patches
+        # ``kanibako.commands.start.ContainerRuntime``, but ``_protect_canon_skeleton``
+        # imports ``ContainerRuntime`` from ``kanibako.container`` INSIDE the function
+        # — so the REAL runtime runs, and on a host with working user namespaces the
+        # box home's canon skeleton is genuinely chowned to a foreign SUBUID. The
+        # ``TemporaryDirectory`` finalizer then dies in ``_resetperms``
+        # (``os.chmod(path, 0o700)``) with ``PermissionError``. It is invisible on the
+        # dev box (broken ``newuidmap`` ⇒ nothing is ever protected) and the
+        # ``KANI_TEST_SIM_UNSHARE`` sim cannot reproduce it (it chmods as the OWNER;
+        # the real defeat is foreign OWNERSHIP). Hence the reap in the ``finally``
+        # below — see ``tests/support/protected_trees``.
         _store_tmp = tempfile.TemporaryDirectory(prefix="kanibako-start-mocks-")
 
         with (
@@ -624,6 +636,11 @@ def start_mocks():
                     behavior_floor=_floor, default_categories=_default_cats,
                     agent_partial=partial,
                     agent_state=_state,
+                    # P8: the §1A CLI LEVEL must be FORWARDED, not dropped. The
+                    # per-launch flags (-M / -N/-C/-R) now reach the launch ONLY
+                    # through this level, so a stub that swallows it would make
+                    # every flag silently inert — and the flag tests in
+                    # test_start.py would be asserting the harness, not the code.
                 )
                 entries = snapshot_category_entries(
                     snap, active_agent=_node, box_ctx=ctx,
@@ -682,6 +699,14 @@ def start_mocks():
                     virtiofs_check=m_virtiofs_check,
                 )
             finally:
+                # ⚑ ORDER IS THE WHOLE FIX: the protected box stores must be gone
+                # BEFORE ``TemporaryDirectory``'s finalizer touches the tree, because
+                # that finalizer chmods on its way in and cannot survive a
+                # foreign-owned directory. Routed through the SAME escalating deleter
+                # the product's lifecycle verbs use.
+                from tests.support.protected_trees import reap_box_stores
+
+                reap_box_stores(_store_tmp.name)
                 _store_tmp.cleanup()
 
     return _make
@@ -742,6 +767,43 @@ def protected_canon(monkeypatch):
     monkeypatch.setattr(ContainerRuntime, "unshare_chown", _chown, raising=True)
     monkeypatch.setattr(ContainerRuntime, "unshare_chmod", _chmod, raising=True)
     return True
+
+
+@pytest.fixture(autouse=True)
+def _reap_protected_box_stores(tmp_path):
+    """Reap any PROTECTED box store a test left under its ``tmp_path``.
+
+    ⚑ THE SWEEP FINDING. Fifteen unit files drive the real create/skeleton path
+    (``run_create`` / ``seed_new_box`` / ``_run_container`` / the lifecycle verbs)
+    into ``tmp_path`` WITHOUT patching ``kanibako.container.ContainerRuntime`` — the
+    import site ``_protect_canon_skeleton`` actually uses — so on a host with working
+    user namespaces every one of them leaves foreign-owned directories behind.
+
+    They are absent from the CI failure list, and the reason matters: pytest's
+    ``tmp_path`` cleanup is DEFERRED (it keeps the last three numbered dirs and
+    removes older ones at the START of a LATER session), and CI runners are fresh
+    every run, so the sweep that would fail never runs there. On a PERSISTENT runner
+    it does — that is the ``/tmp/pytest-of-*`` creep the e2e gate measured. Same
+    class, later fuse.
+
+    ⚑⚑ OFF BY DEFAULT — set ``KANI_TEST_REAP_TMP=1``, and set it on a persistent
+    runner. Gated because the cost is real and the benefit here is not: finding a
+    store means walking each test's whole ``tmp_path``, and those trees are not small
+    (``test_commands/test_box.py`` alone: **7.9 s -> 94 s**, measured — a 12x
+    regression on one file). Paying that on every gate to pre-empt a failure that
+    provably does not occur where we gate is the wrong trade. The ONE site that
+    genuinely fails (``start_mocks``'s ``TemporaryDirectory``, whose finalizer chmods
+    and cannot be deferred) is reaped surgically and UNCONDITIONALLY at its known
+    root, for free.
+    """
+    yield
+    import os
+
+    if os.environ.get("KANI_TEST_REAP_TMP") != "1":
+        return
+    from tests.support.protected_trees import reap_box_stores
+
+    reap_box_stores(tmp_path)
 
 
 @pytest.fixture(autouse=True)

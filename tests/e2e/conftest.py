@@ -400,17 +400,19 @@ def _reap_subuid_owned_tmp(tmp_path):
     would put a podman escalation in the path of every unit test for a problem only
     real-podman e2e hosts have.
 
-    Best-effort by contract: ``remove_box_tree`` returns False rather than raising,
-    and a failure here must never turn a passing test red.
+    ⚑ ONE HELPER, not two escalations: this and the unit tier's ``start_mocks`` reap
+    both go through ``tests/support/protected_trees``, which delegates to the
+    product's own ``container.remove_box_tree``.  The rationale for the whole class
+    lives in that module's docstring.
+
+    Best-effort by contract: the helper returns False rather than raising, and a
+    failure here must never turn a passing test red.
     """
     yield
-    try:
-        from kanibako.container import remove_box_tree
+    from tests.support.protected_trees import reap_tree
 
-        if tmp_path.exists():
-            remove_box_tree(tmp_path)
-    except Exception as exc:  # noqa: BLE001 - cleanup must never fail a test
-        _diag(f"tmp reap skipped for {tmp_path}: {exc}")
+    if not reap_tree(tmp_path):
+        _diag(f"tmp reap did not fully clear {tmp_path}")
 
 
 # ---------------------------------------------------------------------------
