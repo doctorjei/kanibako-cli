@@ -1,6 +1,6 @@
 """kanibako: Run AI coding agents in rootless containers with per-project isolation."""
 
-__version__ = "1.7.2"
+__version__ = "1.8.0"
 
 # Two-tier setup/config compatibility constants for the 5-band setup-completion
 # gate (design: ``plans/2026-06-23-setup-version-tiers-NEXT.md``).  Both are
@@ -22,4 +22,4 @@ __version__ = "1.7.2"
 # releases change setup in no way → bump NEITHER → existing configs land
 # ``>= FCV`` → silent.
 SETUP_BCV = "1.6.0"
-SETUP_FCV = "1.7.0"
+SETUP_FCV = "1.8.0"
