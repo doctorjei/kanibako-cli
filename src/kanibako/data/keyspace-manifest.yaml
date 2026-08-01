@@ -24,7 +24,15 @@ policy:
   # Override PRECEDENCE. Box wins. NOT the same axis as containment below.
   # AUTHORITY TIERS — the actual sources of a value, in precedence order:
   cascade: [base, system, agent, workset, box]
-  cascade_spec: "§2 (FULL bracket), as clarified by Jei 2026-07-27"
+  cascade_spec: "§2 (authority tiers), as clarified by Jei 2026-07-27"
+
+  # R-17: the manifest carries BOTH forms — one alone generates the wrong
+  # resolver. The IMPLEMENTATION BRACKET writes the agent tier's intra-tier
+  # fallback as an explicit linear level; §2 rules this EQUIVALENT for scalars
+  # AND for per-name category merges (`_MISSING` is tested per name — no nested
+  # mini-cascade). Do NOT count agent.default as a separate authority level.
+  cascade_bracket: [base, system, agent.default, agent.active, workset, box]
+  cascade_bracket_spec: "§2 (FULL bracket; R-17)"
 
   # `agent.default` is NOT an authority tier. It is the agent tier's INTRA-TIER
   # FALLBACK: the values automatically part of EVERY agent unless overridden.
@@ -32,7 +40,10 @@ policy:
   # [Jei 2026-07-27: "It's not really its own level; rather, those are the values
   #  until and unless the plugin provides a different value."]
   agent_tier_fallback: "agent.<agent>.<key> -> agent.default.<key>"
-  agent_tier_fallback_spec: "§2d; clarified Jei 2026-07-27"
+  agent_tier_fallback_spec: "§2d; clarified Jei 2026-07-27; R-17 ratified the framing"
+
+  # (R-17 also RESOLVES the draft's "SPEC RECONCILIATION NEEDED" flag that stood
+  #  here: the spec ruled the fallback framing 2026-07-27 and the flag is DELETED.)
 
   # PARAMETRIC EXPANSION — makes the closed set closed WITHOUT enumerating it.
   # The keyspace is closed but NOT flat: these rules generate the legal key set.
@@ -43,18 +54,20 @@ policy:
     - "box.agent.<key> mirrors the ACTIVE agent's whole subtree (§2b)"
   parametric_expansion_spec: "§2a / §2b / §2d"
 
-  # ⚑ SPEC RECONCILIATION NEEDED (not resolved unilaterally — see DISCREPANCIES).
-  #   §2's ratified bracket writes this fallback as an explicit linear LEVEL
-  #   (base < system < agent.default < agent.<active> < workset < box) and notes both
-  #   layers "reuse the same linear _MISSING precedence (no nested mini-cascade)".
-  #   That is an IMPLEMENTATION statement, and it is EQUIVALENT to the fallback
-  #   semantics for scalars AND for per-name category merges (_MISSING tested per
-  #   name) — so the CODE need not change. What needs fixing is the DOC framing:
-  #   the header's "explicit 7th level" vs §2's six-tier bracket. Proposed: keep the
-  #   linear implementation, describe agent.default as the agent tier's fallback.
-
   # The baked-in code defaults are NOT a tier either — they are each key's `default:`
   # field below, which IS the defaults source §2a's assemble step reads.
+
+  # GLOB CONVENTION (R-22) — the notation a key FAMILY/pattern is written in
+  # (the §2h pref allowlist is written in it, so it cannot be generated without
+  # this convention being data here).
+  glob:
+    "*": one_segment          # matches exactly ONE segment
+    "**": remaining_tail      # matches the remaining tail at any depth.
+                              # ONE-or-more by construction, not by rule: the
+                              # separator is part of the pattern, so a
+                              # zero-length tail on `agent.*.**` would yield the
+                              # malformed `agent.foo.` (trailing dot).
+  glob_spec: "§0 (GLOB CONVENTION; R-22)"
 
   # CONTAINMENT. Governs WHERE a key may be WRITTEN and which way an @-ref points.
   # Orthogonal to cascade (§0: "Distinct from the cascade").
@@ -66,6 +79,26 @@ policy:
 
   ref_direction: up_only          # @-refs view UP (read-only); never point DOWN
   ref_direction_spec: "§0"
+
+  # REFERENCE FORMS (R-23) — how an @-ref is SPELLED. The bare form is the
+  # normal spelling; braces exist because the bare reference-name pattern is
+  # GREEDY over dot-separated segments (a bare `@meta.box.name.jsonl` parses the
+  # ref name as `meta.box.name.jsonl`, swallowing the extension, resolving
+  # ABSENT, and coercing to "" — silently yielding a path with no filename).
+  reference_forms:
+    bare: "@a.b.c"              # UNCHANGED, the normal spelling
+    braced: "@{a.b.c}x"         # delimits the ref name explicitly so a LITERAL
+                                # SUFFIX may follow: resolves ref a.b.c, appends x.
+                                # Needed only where the character after the ref
+                                # would otherwise be eaten by the name (`.`, and
+                                # any other segment-legal character).
+    equivalence: "both forms resolve identically where both are expressible"
+    positions: "WHOLE-VALUE and EMBEDDED alike; set-time validation treats a
+                dangling braced ref exactly as a dangling bare one"
+    motivating_row: "box.bindings.ro.helper_log — (@workset.logs/@{meta.box.name}.jsonl, …);
+                     the retired workaround SPELLING meta.box.helper_log was never
+                     a key (not_keys at A5, R-23/R-36)"
+  reference_forms_spec: "§2c (BRACE FORM `@{name}`; R-23, ruled 2026-07-30b)"
 
   enforce_at: resolve             # containing-scope key in a lower file is DROPPED + warned
   enforce_at_spec: "§0 (clause 4 bless, Jei 2026-07-02)"
@@ -79,20 +112,113 @@ policy:
   files_store_unresolved: true
   files_store_unresolved_spec: "§0"
 
-  # Category precedence when two categories target the SAME box_dest (later WINS).
-  category_precedence: [seeded, caches, bindings, shared, synced, masks]
+  # TUPLE DIRECTION (R-20) — every pair is (source, destination), left→right.
+  # Destination SPACE differs by delivery kind: a mount's dest is a GUEST path
+  # (that is what a mount is for — a bind always carries an explicit in-box
+  # location); a COPY's dest is a HOST path under the box's storage, because a
+  # copy runs BEFORE any guest exists (the box seed happens at `create`), so it
+  # can only ever write host-side.
+  tuple_direction: source_then_destination
+  tuple_dest_space:
+    mounts: guest               # bindings.ro · bindings.rw · caches · common
+                                # (common: A4→A5 window — `categories:` spells it
+                                #  `shared` until A5's rename)
+                                # (masks is dest-KEYED, not a tuple — its dests
+                                #  are guest paths all the same)
+    copies: host                # seeded · synced
+  tuple_direction_spec: "§0 (Tuple direction; R-20, ruled 2026-07-30)"
+
+  # -------------------------------------------------------------------------
+  # TWO LAYERS (R-19) — the categories are NOT peers; `bindings` is the SOURCE
+  # OF TRUTH and the rest EXTEND it. This classification + the collision table
+  # below REPLACE the retired flat D-B1 authority order (`category_precedence`)
+  # — superseded 2026-07-29; the runtime already implements this model
+  # (M-7, _RULE_CHANGE_RELEASE = "1.8.0"), so R-19 changes no behavior.
+  # -------------------------------------------------------------------------
+  category_layers:
+    bindings.ro: concrete       # a mount is emitted from NOTHING ELSE —
+    bindings.rw: concrete       #   this is what makes bindings the source of truth
+    masks: concrete_separate    # a COUSIN of bindings.{ro,rw}, not a sibling:
+                                #   bindings.* says PUT THIS HERE, masks says
+                                #   NOTHING MAY BE HERE. Different shape (dest-
+                                #   keyed 3-state), different conflict rule.
+    # A4→A5 window: `common` is the ratified name; `categories:` below still
+    # spells it `shared` until A5's rename.
+    common: abstract            # ROOTED declarations (declaration_roots below)
+    caches: abstract            #   that EXTEND bindings.rw. Still real, declared,
+    seeded: abstract            #   settable keys; seeded derives a COPY, not a mount.
+    synced: derived             # derives a binding PLUS extra lifecycle (file
+                                #   COPY, credential-delivery gate, inode-swap
+                                #   writeback); takes NO root — both sides fully spelled.
+  abstract_extends: bindings.rw
+  # The derived binding is MATERIALISED beside the declaration (--effective shows
+  # BOTH, so a user can see WHY a mount exists) — but the derivation is NOT a
+  # key: it rides in the launch snapshot as the reserved internal node
+  # `binding_derivations` (see not_keys.reserved_internal; R-8).
+  category_layers_spec: "§0 (TWO LAYERS; R-19)"
+
+  # CATEGORY COLLISIONS (R-19) — keyed on the resolved `box_dest`, NEVER on the
+  # name: different names at one dest collide; one name at two dests does not.
+  category_collisions:
+    keyed_on: resolved_box_dest
+    table:
+      - case: "bindings.{ro,rw} vs bindings.{ro,rw} at one dest"
+        outcome: error
+        qualifier: "always — any scope, any mode. ro/rw is the serious case: two
+                    bindings at one dest disagreeing on MODE is a semantic
+                    disagreement, not just a source disagreement — silently
+                    picking one hands the user a read-only mount where they
+                    expected writable, invisibly."
+      - case: "masks at a dest a binding occupies"
+        outcome: override
+        qualifier: "by design — hiding a bound path is the whole job"
+      - case: "an abstraction EXTENDING onto a dest the base already occupies"
+        outcome: error
+        qualifier: "refuse the EXTENSION. The explicit bindings.* are the BASE
+                    and abstractions apply AFTER, so the explicit binding
+                    survives and the colliding extension is what is refused —
+                    'I wrote it down literally' wins. The error names the
+                    extending entry, the occupant, and the dest."
+      - case: "abstraction vs abstraction, DIFFERENT scopes"
+        outcome: scope_precedence
+        qualifier: "silent"
+      - case: "abstraction vs abstraction, SAME scope (same or different category)"
+        outcome: proceed_and_warn
+        qualifier: "proceed on the existing ordering + WARN, EVERY LAUNCH (not
+                    deduplicated, not once-ever — a same-scope collision is a
+                    real ambiguity and stays visible until fixed)"
+        winning_scope_qualifier: "The warn applies to the WINNING scope's own
+                    ambiguity: a LOSING scope's internal tie is wholly masked by
+                    the cross-scope rule above — its 'winner' changed nothing —
+                    and warning about a decision with no consequence trains the
+                    user to ignore the warning that matters. (Qualified 2026-07-31.)"
+    # With conflicts strict, present-None-ing the inherited entry and then
+    # declaring the new one is the ONLY way to change what occupies a dest.
+    # That is the non-obvious part — so the refusal must teach it.
+    error_text_must_point_at: suppress_then_add
+  category_collisions_spec: "§0 (Category collisions; R-19, qualified 2026-07-31)"
+
+  # The assembler's two reconciliations — the halves of D-B1 that STAND (its
+  # flat authority ORDER is what R-19 retired).
   category_reconcile:
     nested_paths: deepest_wins        # depth-ordered, matches podman mount depth-sort
-    copies: [seeded, synced]          # file COPIES, not mounts
-    synced_vs_binding_same_dest: error   # a copy can't override a live mount
-  category_precedence_spec: "§0 (D-B1)"
+    copies: [seeded, synced]          # file COPIES, not mounts; mounts physically
+                                      #   shadow a copied file at the same path
+                                      #   regardless of order
+    synced_vs_binding_same_dest: error   # a copy can't override a live mount —
+                                         #   the assembler flags a config error,
+                                         #   not a silent no-op
+  category_reconcile_spec: "§0 (Two reconciliations for the assembler)"
 
   # Collision-safety floor on the resolved data structure.
+  # R-25 (RECORD, acknowledged 2026-08-01): checked at ratification — this
+  # entry, spec §0 and code AGREE; code pins the agreement at import time
+  # (settings_keyspace asserts equality with settings_store._RESERVED_KEY_NAMES).
   reserved_leaf_names: [get, keys, values, items, pop, popitem, setdefault,
                         update, clear, copy, fromkeys]
   reserved_dunder: true             # a leaf key may not match __x__
   key_match: case_sensitive
-  reserved_spec: "§0 (Reserved key names) / §2a"
+  reserved_spec: "§0 (Reserved key names) / §2a (R-25: recorded as checked)"
 
   # XDG: use the env var iff set AND absolute, else the spec default. ONE canonical
   # map builder supplies $XDG_* to EVERY host-side resolution context.
@@ -110,16 +236,23 @@ policy:
       unescaped_by_host: ['\@']
   xdg_spec: "§1 (clause 3′ bless, Jei 2026-07-02)"
 
-  # Per-launch CLI flags are EPHEMERAL: override for that launch, never mutate an
-  # EXISTING stored value (see cli_level.create_exception below: at box CREATE a
-  # shadowing flag INITIALIZES the stored config — the one exception).
-  cli_flags_ephemeral: true
-  cli_flags_spec: "§1A (Jei ratified 2026-07-08)"
-
-  # CLI LEVEL (§1A): the command line is its OWN level — the highest, above every
-  # settings file and every pref. ANY flag that shadows a key overrides that key
-  # for the launch (a GENERAL rule, not a carve-out for particular flags).
+  # CLI LEVEL (§1A; R-11): the command line is its OWN level — the highest, above
+  # every settings file and every pref. ANY flag that shadows a key overrides that
+  # key for the launch (a GENERAL rule, not a carve-out for particular flags).
   cli_level:
+    level: own_highest              # NOT a cascade scope and NOT a pref: a separate
+                                    #   input level outranking every settings file
+                                    #   AND every pref
+    level_spec: "§1A (R-11)"
+    generality: any_shadowing_flag  # the flag table below ENUMERATES the declared
+                                    #   instances; it does not LIMIT the rule
+    generality_spec: "§1A (R-11)"
+    # Per-launch CLI flags are EPHEMERAL: override for that launch, never mutate
+    # an EXISTING stored value (create_exception below is the ONE exception).
+    # Absorbed from the former top-level `cli_flags_ephemeral` field — one
+    # spelling of one policy.
+    flags_ephemeral: true
+    flags_ephemeral_spec: "§1A (Jei ratified 2026-07-08)"
     # CREATE EXCEPTION (R-11a, Jei 2026-08-01): at box CREATION only, a shadowing
     # flag's value PERSISTS — it INITIALIZES the box's stored config (e.g.
     # `create -i` durably writes box.image). Ephemerality governs every other
@@ -132,13 +265,159 @@ policy:
     # Backlogged fix: per-launch idempotent projections would dissolve it.
     projected_surface_exception: structural_class_rule
     projected_surface_exception_spec: "§1A (PROJECTED-SURFACE EXCEPTION)"
-    shadowed_flags: {}    # STUB — filled A4 (R-11): the wired-flag table as data
+    # THE WIRED-FLAG TABLE AS DATA (R-11). `status:` is the A4-time truth:
+    #   wired                      — installed at its canonical key name, level-
+    #                                tagged, inside the resolve (settings_cli_level)
+    #   pending_wire               — RULED a CODE GAP (R-11a(a)): the spec's general
+    #                                rule stands; wiring is implementation work on
+    #                                this version's plate (plan step B6). Listing an
+    #                                unwired entry as `wired` would assert a contract
+    #                                the code does not honour — hence the marker.
+    #   projected_surface_excluded — folded at its EPHEMERAL consumer (the launch
+    #                                argv); never enters the CLI level, because the
+    #                                projection outlives the launch (the structural
+    #                                class rule above).
+    shadowed_flags:
+      "--agent":
+        key: system.agent           # A4→A5 window: the keys section still spells
+                                    #   system.default_agent until A5's rename
+        status: wired
+      "-M/--model":
+        key: "agent.<agent>.model"
+        status: wired
+        note: "spelled against the ACTIVE agent. Barred from the codex
+               config-projection RESOLVE (that consumer reads the cascade, not
+               the CLI level — projected-surface class, §1A)."
+      "-N/-C/-R":
+        key: "agent.<agent>.continue_mode"
+        status: wired
+      "--image":
+        key: box.image
+        status: pending_wire        # B6 (R-11a(a))
+      "--share-images":
+        key: box.share_images
+        status: pending_wire        # B6 (R-11a(a))
+      "-S/-A":
+        key: "agent.<agent>.access"
+        status: projected_surface_excluded
+        note: "R-41 successor spelling (supersedes auto_approve). The access
+               projection is written onto the box's persisted agent-config
+               surfaces; a level entry would make an ephemeral flag mutate
+               persisted state."
+    shadowed_flags_spec: "§1A (flag enumeration; R-11 + R-11a)"
 
-  # DECLARATION ROOTS (§2a): abstract categories are rooted at DECLARATION-LOAD
-  # time (stored keys fully self-resolve; assembly-time prepend is FORBIDDEN —
-  # R-21; absolute host_src legal, never root-joined; root dirname = fixed
-  # machinery, not a key).
-  declaration_roots: {}   # STUB — filled A4 (R-21): the per-scope root table as data
+  # DECLARATION ROOTS (R-21) — the ABSTRACT categories (common/caches/seeded)
+  # let an author write a bare LEAF; the root is supplied at DECLARATION-LOAD
+  # time, so what is STORED is the full self-resolving @-ref (author writes
+  # `plugins`; the loader stores `@meta.<scope>.path/common/plugins`).
+  # Assembly-time prepend is FORBIDDEN — a stored bare relative that only works
+  # because a layer prepends a root is the retired `scope_roots` defect (code
+  # deleted; absence pinned by tests). Author ergonomics are identical; only
+  # the ARTIFACT differs — which is the whole of the difference.
+  declaration_roots:
+    applies_to: [common, caches, seeded]   # synced takes NO root; bindings take NO root
+                                           # (common: A4→A5 window — `categories:`
+                                           #  spells it `shared` until A5's rename)
+    rooted_at: declaration_load            # REQUIRED
+    assembly_prepend: forbidden            # `scope_roots` — no longer exists
+    subdir_pattern: "<scope-root>/<category>/<name>"
+    roots:
+      system: "@config.data"
+      agent: "@meta.agent.<agent>.path"    # = @config.agents/<agent>
+      workset: "@meta.workset.path"
+      box: "@meta.box.path"                # per mode (§2c) — so standalone roots too
+    # An ABSOLUTE host_src in an abstract category is LEGAL — it is simply NOT
+    # root-joined. The root is a DEFAULT FOR RELATIVE SOURCES, not a universal law.
+    absolute_host_src: legal_not_root_joined
+    # HOST root ONLY — the guest dest is ALWAYS spelled out (kanibako owns the
+    # host layout, never the guest layout). The root dirname is FIXED MACHINERY,
+    # not a key: every "override it" want is served better by a concrete
+    # bindings.rw entry (one entry elsewhere) or by moving the SCOPE ROOT, which
+    # is already a key (config.agents, workset.boxes).
+    guest_root: none
+    root_dirname_is_a_key: false
+  declaration_roots_spec: "§2a (DECLARATION ROOTS; R-21, ruled 2026-08-01)"
+
+  # SEED WHITELISTS (R-24) — per-scope, DENY BY DEFAULT: anything not listed is
+  # refused. The enumeration IS an allowlist — a correctness property, not a
+  # style choice (a wholesale template copy could plant settings.yaml — the LAST
+  # cascade level — or a templated registry.yaml corrupting box membership).
+  # Severity is recorded ONLY where the spec states it: correctness = silently
+  # override the cascade / corrupt box membership; user_data_and_secrets = the
+  # user's credentials/code. STANDALONE is where this matters most: the workset
+  # root IS the user's project directory.
+  seed_whitelists:
+    default: deny
+    box:
+      root: "<box_dir>"                    # @meta.box.path
+      allow: ["home/", "canon/handbook/"]
+      deny:
+        "settings.yaml": "correctness — = meta.box.settings, the LAST cascade level"
+        "<box_name>.jsonl": "standalone helper log"
+    agent:
+      root: "agents/<agent>"               # @meta.agent.<agent>.path
+      allow: ["template/", "canon/handbook/", "common/"]
+      # A4→A5 window: `common/` above is the ratified category name; `categories:`
+      # spells it `shared` until A5's rename.
+      deny:
+        "settings.yaml": "correctness — = meta.agent.<agent>.settings"
+        "caches/": "machinery output, never seeded"
+    workset:
+      root: "<workset_path>"               # @meta.workset.path
+      allow: ["template/", "canon/handbook/"]
+      deny:
+        "settings.yaml": "correctness — = meta.workset.settings"
+        "registry.yaml": "correctness — = workset.registry, the AUTHORITATIVE
+                          store of box membership + names"
+        "auth/": "user_data_and_secrets — CREDENTIALS"
+        "vault/": "user_data_and_secrets"
+        "workspaces/": "user_data_and_secrets — THE USER'S CODE"
+        "boxes/": "denied by default"
+        "logs/": "denied by default"
+        "channels/": "denied by default"
+    # ONLY canon/handbook/ is seedable, never canon/ wholesale: no other canon
+    # subtree has a justified seed today, and deny-by-default means any future
+    # one needs an explicit decision rather than inheriting permission.
+    # The whitelists are NOT one uniform rule — common/ is allowed at agent
+    # scope (there are use cases) and behaves differently from its siblings:
+    # canon/ is delivered RO and template/ is inert until a box is created,
+    # whereas common/ is bound RW, SHARED by every box running that agent, and
+    # box-writable — seeded starter content there is live data, not a template
+    # (create-if-absent still applies, so it cannot clobber).
+    # ENFORCEMENT: dests are fixed by keys, so a template cannot CHOOSE where it
+    # writes. The residual escape is traversal in template CONTENT — the copier
+    # MUST reject `..` components and MUST NOT follow symlinks out of the
+    # destination subtree. Those TRAVERSAL DEFENCES are an algorithm, not a
+    # table: they stay in CODE (R-24's explicit split).
+    traversal_defences: code
+  seed_whitelists_spec: "§2a (seed whitelists, ruled Jei 2026-07-30; R-24 — data
+                         into the manifest, defences stay code)"
+
+  # SEEDED-SEEDS (R-24) — the HOST STORE is itself seeded from the PACKAGES:
+  # the step before the box seed, filling the store the box layers copy from.
+  # ONE mechanism (the same layered create-if-absent copy), fired at FOUR
+  # lifecycle moments:
+  # (A4→A5 window: `global/template` below is the ratified spelling; the keys
+  #  section still defaults system.base_template → global/base_template until
+  #  A5's rename.)
+  seeded_seeds_moments:
+    - moment: "install / setup"
+      from: "core package"
+      into: ["global/template/*", "agents/default", "global/canon/handbook"]
+    - moment: "agent install"
+      from: "plugin package + global/template/agent (the PLUGIN wins)"
+      into: ["agents/<agent>"]
+    - moment: "workset create"
+      from: "global/template/workset"
+      into: ["<workset_path>"]
+    - moment: "box create"
+      from: "the three */template/box/* layers"
+      into: ["<box_dir>/home", "<box_dir>/canon/handbook"]
+  # Create-if-absent per FILE, never overwrite — once a file exists it belongs
+  # to whoever owns that store; a package upgrade must not silently revert their
+  # edits. Report a skip ONLY where the packaged file DIFFERS from the one on
+  # disk. The whitelists and the (code-side) traversal defences apply here too.
+  seeded_seeds_moments_spec: "§2a (SEEDED-SEEDS, four lifecycle moments; R-24)"
 
   # Set-time validation: full resolution in error-collecting/lenient mode.
   set_validation:
@@ -155,7 +434,7 @@ policy:
   # `policy:` field is likewise refused (keeps this block from becoming a junk drawer).
   unknown_key: error
   unknown_policy_field: error
-  unknown_spec: "\u00a70 \"The keyspace is CLOSED — an undeclared key is NOT a key\" (folded into the
+  unknown_spec: "§0 \"The keyspace is CLOSED — an undeclared key is NOT a key\" (folded into the
                  spec 2026-07-28). Rulings: 2026-06-27 walkthrough + Jei 2026-07-27."
 
 ## ---------------------------------------------------------------------------
