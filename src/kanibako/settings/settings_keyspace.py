@@ -123,11 +123,21 @@ DECLARED_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
     "share_allowed", "global_sync", "path",
 })
 
-#: ``workset.channels.<leaf>`` (spec §2c). NOTE the set differs from
-#: the system one: a workset has no ``mailboxes`` (they aggregate at system only,
-#: §2f).
+#: ``workset.channels.<leaf>`` (spec §2c). TWO sub-families make up the set:
+#: the workset-LOCAL type roots (``common``/``chat``/``broadcast``/``share`` —
+#: primary+named only, rooted at ``@workset.channelroot``) and the ALL-PROJECTS
+#: per-workset ADDRESSES into the SYSTEM stores (``mailboxes``/``share_global``
+#: — ``@system.channels.{mailboxes,share}/@meta.workset.name``, present in
+#: EVERY mode, keyed ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``).
+#: Mailboxes still AGGREGATE at system only (§2f) — the workset leaf is the
+#: workset's declared ADDRESS into that aggregate, not a second aggregate,
+#: which is why the earlier "a workset has no mailboxes" exclusion here was a
+#: mis-read (R-35, RATIFIED: fix the CODE): ``meta.box.inbox`` /
+#: ``meta.box.share_global`` derive through these keys in the spec's formulas.
+#: This set must EQUAL ``settings_launch._WORKSET_CHANNEL_LEAVES`` (the launch
+#: floor's allowlist) — a test pins the agreement.
 DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
-    "common", "chat", "broadcast", "share",
+    "common", "chat", "broadcast", "share", "mailboxes", "share_global",
 })
 
 #: ``agent.<agent>.<leaf>`` — the generic per-agent contract (spec §2d).
