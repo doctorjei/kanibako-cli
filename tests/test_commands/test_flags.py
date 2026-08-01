@@ -340,6 +340,101 @@ class TestMissingOptionValueStillErrors:
         assert hoist_optionals(p, argv) == argv
 
 
+class TestSplittableParsersThatWereNeverBroken:
+    """The guard is deliberately WIDER than the set of broken shapes.
+
+    ⚑ These two parsers were always fine, on both versions: their positionals
+    are all REQUIRED single-token, so no zero-width match can land in the first
+    group and 3.11 defers the tail correctly by itself.  They are rewritten now
+    only because :func:`_splits_positionals` asks the simple, version-independent
+    question "could an optional split these?" rather than trying to predict
+    which shapes which CPython mishandles.  That makes them the regression test
+    FOR THE WIDENING — the rewrite must leave already-correct parsers alone.
+    """
+
+    def test_box_move_with_a_flag_between_its_two_positionals(self, parser):
+        args = _parse(parser, ["box", "move", "old", "--force", "new"])
+        assert args.force is True
+        assert (args.old, args.new) == ("old", "new")
+
+    def test_workset_disconnect_with_a_flag_between(self, parser):
+        args = _parse(parser, ["workset", "disconnect", "myws", "--force", "proj"])
+        assert args.force is True
+        assert (args.workset, args.project) == ("myws", "proj")
+
+
+@pytest.fixture
+def argparse_311_matching(monkeypatch):
+    """Force Python 3.11's ``_match_arguments_partial`` semantics.
+
+    CPython 3.13 strips a ZERO-WIDTH trailing positional out of the first group
+    when the next pattern token is an optional; 3.11 does not.  That one
+    difference is why three of these orderings passed locally on 3.13 and failed
+    in CI on 3.11.  Restoring the OLD behaviour here exercises the declared
+    support floor (``requires-python = ">=3.11"``) on whatever interpreter
+    happens to run the suite, so the gap cannot reopen unnoticed.
+    """
+    import re
+
+    def _match_arguments_partial_311(self, actions, arg_strings_pattern):
+        result = []
+        for i in range(len(actions), 0, -1):
+            actions_slice = actions[:i]
+            pattern = "".join(
+                self._get_nargs_pattern(action) for action in actions_slice
+            )
+            match = re.match(pattern, arg_strings_pattern)
+            if match is not None:
+                result.extend([len(string) for string in match.groups()])
+                break
+        return result
+
+    monkeypatch.setattr(
+        argparse.ArgumentParser,
+        "_match_arguments_partial",
+        _match_arguments_partial_311,
+    )
+
+
+class TestSupportFloorIsPython311:
+    """Pin the FLOOR, not the dev box.  ``requires-python = ">=3.11"`` and CI
+    pins 3.11; 3.13 repaired this in argparse itself, so a green 3.13 run proves
+    nothing about the version we actually ship against."""
+
+    def test_the_simulation_is_faithful(self, argparse_311_matching):
+        """A BARE argparse parser with ``workset set``'s exact shape FAILS under
+        floor semantics.  This is the defect itself — and it proves the fixture
+        bites rather than silently agreeing with 3.13."""
+        bare = argparse.ArgumentParser(prog="bare")
+        bare.add_argument("workset")
+        bare.add_argument("key_value", nargs="?")
+        bare.add_argument("--null", action="store_true")
+        with pytest.raises(SystemExit) as exc:
+            bare.parse_args(["myws", "--null", "model"])
+        assert exc.value.code == 2
+
+    @pytest.mark.parametrize("verb,payload,expected", _SET_VERBS)
+    def test_null_in_every_position_on_the_floor(
+        self, parser, argparse_311_matching, verb, payload, expected,
+    ):
+        """The three CI failures, pinned: workset-set and agent-set are the rows
+        that reddened on 3.11."""
+        for argv in _orderings(payload, "--null"):
+            args = _parse(parser, verb + argv)
+            assert args.null is True, argv
+            for attr, value in expected.items():
+                assert getattr(args, attr) == value, argv
+
+    def test_an_all_required_shape_is_correct_on_the_floor_too(
+        self, parser, argparse_311_matching,
+    ):
+        """``box move`` never had the defect (no zero-width positional to strand)
+        — asserted here so the floor row records which shapes were and were not
+        affected, rather than implying every split parser was broken."""
+        args = _parse(parser, ["box", "move", "old", "--force", "new"])
+        assert (args.old, args.new) == ("old", "new")
+
+
 class TestHoistOptionalsIsInertWhereItShouldBe:
     def test_no_variadic_positional_returns_argv_untouched(self):
         import argparse

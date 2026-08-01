@@ -222,42 +222,81 @@ def _option_take(
     return None
 
 
+def _splits_positionals(positionals: "list[argparse.Action]") -> bool:
+    """True if an interleaved optional could SPLIT this parser's positionals.
+
+    argparse matches positionals in GROUPS divided by the optionals between
+    them, so a group boundary can only fall BETWEEN two positional slots — which
+    needs either two or more positional actions, or a single action that
+    consumes more than one token (``nargs`` ``"*"`` / ``"+"`` / an int > 1).
+
+    A parser with one ``None`` / ``"?"`` / ``1`` positional can never be split
+    and is left strictly alone.
+    """
+    if len(positionals) >= 2:
+        return True
+    if len(positionals) == 1:
+        nargs = positionals[0].nargs
+        return nargs in ("*", "+") or (isinstance(nargs, int) and nargs > 1)
+    return False
+
+
 def hoist_optionals(
     parser: argparse.ArgumentParser, argv: list[str],
 ) -> list[str]:
     """Reorder *argv* so optionals may be written in ANY position (B-5).
 
-    argparse matches positionals in GROUPS split by the optionals between them.
-    A VARIADIC positional (``nargs="*"``) swallows its whole group, so a flag
-    written BETWEEN two positionals strands everything after it::
+    argparse matches positionals in GROUPS split by the optionals between them,
+    and a flag written BETWEEN two positionals strands what follows it.  There
+    are TWO ways that bites, and the second is version-dependent:
 
-        box set mybox --null pref.system.agent
-        → error: unrecognized arguments: pref.system.agent
+    1. a VARIADIC positional (``nargs="*"``) swallows its whole group, leaving
+       nothing for the tail — every Python version::
+
+           box set mybox --null pref.system.agent
+           → error: unrecognized arguments: pref.system.agent
+
+    2. ⚑ **Python < 3.13 only.** ``_match_arguments_partial`` matched a
+       ZERO-WIDTH trailing positional into the FIRST group and then dropped it
+       from the pending list, so the tail had no positional left to bind::
+
+           workset set myws --null model        # 3.11: unrecognized: model
+
+       For ``[workset (nargs=None), key_value (nargs="?")]`` against the pattern
+       ``'AOA'``, 3.11 returns ``[1, 0]`` (both actions consumed, ``key_value``
+       matched empty) where 3.13 returns ``[1]``.  CPython 3.13 added the
+       trailing-zero strip — *"if the next pattern char is an optional, defer the
+       empty positionals"* — which is exactly this repair, upstream.  We support
+       ``>=3.11`` (``requires-python``; CI pins 3.11), so the rewrite must not
+       lean on it: 3.13 masked the defect locally while CI reddened.
 
     This moves the optionals (each with its value) to the FRONT, preserving
     their relative order, and leaves the positionals in theirs.  Nothing is
     dropped and nothing changes meaning — argparse binds an optional by NAME,
     never by position — so the only observable difference is that the
-    previously-fatal orderings now parse.
+    previously-fatal orderings now parse, identically on every supported
+    version.
 
     The rewrite is INERT unless the parser actually has the shape that breaks:
 
-    * no variadic positional → argparse already interleaves correctly, so argv
-      is returned untouched (today that is every command but the four ``box``
-      config verbs);
-    * a ``REMAINDER`` or subparsers positional → returned untouched, because
-      those deliberately capture raw argv and reordering would corrupt it.
+    * a ``REMAINDER`` or subparsers positional → argv returned untouched,
+      because those deliberately capture it verbatim and reordering would
+      corrupt the very thing they exist to preserve;
+    * positionals that cannot be split (:func:`_splits_positionals`) → argv
+      returned untouched, since no group boundary can fall between them.
 
     A ``--`` ends the rewrite: everything from it on is passed through verbatim,
     which is how a user writes a positional that looks like a flag.
     """
     positionals = [a for a in parser._actions if not a.option_strings]
-    if not any(a.nargs in ("*", "+") for a in positionals):
-        return argv
+    # Checked FIRST: a raw-argv positional vetoes the rewrite outright, whatever
+    # else the parser's shape looks like.
     if any(
         isinstance(a, argparse._SubParsersAction) or a.nargs == argparse.REMAINDER
         for a in positionals
     ):
+        return argv
+    if not _splits_positionals(positionals):
         return argv
 
     option_nargs: dict[str, object] = {}
