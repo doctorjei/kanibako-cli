@@ -607,7 +607,7 @@ CONFIG_PATH_DEFAULTS: dict[str, str] = {
     "config.registry": "@config.data/global/registry.yaml",
     # The LIFECYCLE JOURNAL (write-ahead log of in-flight box-lifecycle ops),
     # beside the registry.  The registry is the steady-state truth; the journal
-    # is the transient truth (normally empty).  See ``kanibako.journal``.
+    # is the transient truth (normally empty).  See ``kanibako.launch.journal``.
     "config.journal": "@config.data/global/journal.yaml",
 }
 
@@ -993,7 +993,7 @@ def resolve_project(
     # resolved name re-associates the on-disk dir directly (the registry is still
     # empty, so _resolve_local_dir would miss again).
     if not project_name and not register:
-        from kanibako import journal as journal_mod
+        from kanibako.launch import journal as journal_mod
 
         entry = journal_mod.pending_create_for_workspace(
             std.journal, project_path,
@@ -1459,7 +1459,7 @@ def _is_standalone_meta_dir(root: Path) -> bool:
     Delegates to :func:`box_resolve.standalone_settings_present` (the single
     definition of the presence check).
     """
-    from kanibako import box_resolve
+    from kanibako.launch import box_resolve
     return box_resolve.standalone_settings_present(root)
 
 
@@ -1511,7 +1511,7 @@ def detect_project_mode(
     # the box in standalone:, re-creating the very dual registration that --force
     # removed.  D10: the per-workset registries collectively form the reverse
     # index, scanned by box_resolve (replaces the deleted global connected: index).
-    from kanibako import box_resolve
+    from kanibako.launch import box_resolve
     if box_resolve.find_connected_external_box(resolved, std) is not None:
         return DetectionResult(BoxMode.named, resolved)
 
@@ -1929,7 +1929,7 @@ def resolve_workset_project(
     # ``workspaces/<name>`` symlink for a connect) resolves through the symlink,
     # so it path-matches the registered external entry.
     project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
-    from kanibako import box_resolve
+    from kanibako.launch import box_resolve
     identity = box_resolve.resolve_box_identity(project_path, std, config)
     if identity is not None:
         project_path = Path(identity["workspace"])
@@ -1991,7 +1991,7 @@ def resolve_workset_project(
     # entry are untouched.
     journal_path = getattr(std, "journal", None)
     if journal_path is not None:
-        from kanibako import journal as _journal
+        from kanibako.launch import journal as _journal
         box_key = Path(shell_path).parent
         if _journal.pending_import(journal_path, box_key) is not None:
             _journal.clear_entry(journal_path, box_key)
@@ -2205,7 +2205,7 @@ def _resolve_workset_or_connected(
         # try the connected-external boxes (D10 enumerate-and-scan over the
         # per-workset registries).  Lazy import avoids a paths <-> box_resolve
         # import cycle.
-        from kanibako import box_resolve
+        from kanibako.launch import box_resolve
         from kanibako.workset import load_workset
         owned = box_resolve.find_connected_external_box(
             project_dir.resolve(), std,
@@ -2363,7 +2363,7 @@ def resolve_box_target(
 
     A pre-existing box whose name does not satisfy the §Design 8 blocklist still
     resolves (the matcher is structural, not policy-gated); FLAGGING that is the
-    caller's job via :func:`kanibako.box_identity.is_valid_box_name` — this
+    caller's job via :func:`kanibako.launch.box_identity.is_valid_box_name` — this
     resolver does not reject on name shape.
 
     ``None`` / empty *value* resolves the cwd box (delegates to
@@ -2428,7 +2428,7 @@ def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths:
     gated); but a non-conforming name is FLAGGED on use so the drift is visible.
     Returns *proj* unchanged.
     """
-    from kanibako.box_identity import box_name_reason
+    from kanibako.launch.box_identity import box_name_reason
 
     if proj.name:
         reason = box_name_reason(proj.name)
@@ -2554,7 +2554,8 @@ def establish_standalone(
     an UNregistered box that recovery resolves by its on-disk root.  Defaults True
     (the convert/duplicate lifecycle callers register inline, unchanged).
     """
-    from kanibako import box_identity, registry_store
+    from kanibako import registry_store
+    from kanibako.launch import box_identity
 
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
 
@@ -2668,7 +2669,7 @@ def resolve_standalone_project(
     # ``project.name`` read.
     box_name = ""
     if box_data.is_dir() and project_toml.is_file():
-        from kanibako import box_resolve
+        from kanibako.launch import box_resolve
         identity = box_resolve.resolve_box_identity(root, std, config)
         box_name = identity["name"] if identity is not None else ""
     # The user's explicit --name (only meaningful when establishing a new box;
@@ -2684,7 +2685,8 @@ def resolve_standalone_project(
         # rather than leaving an orphaned half-created box_data/ + vault/ tree
         # (BUG-A).  establish_standalone re-resolves the name authoritatively;
         # this only surfaces the refusable collision early.
-        from kanibako import box_identity, registry_store
+        from kanibako import registry_store
+        from kanibako.launch import box_identity
         box_identity.validate_standalone_name(
             requested_name,
             registry_store.standalone_box_names(std.registry),

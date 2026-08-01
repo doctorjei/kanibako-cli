@@ -1117,7 +1117,7 @@ class TestSetupNudge:
         band under test from the template gate."""
         from kanibako.config_interface import write_system_value
         from kanibako.targets import discover_targets
-        from kanibako.templates import packaged_templates_digest
+        from kanibako.launch.templates import packaged_templates_digest
 
         write_system_value(
             cf, "templates_stamp",
@@ -1376,7 +1376,7 @@ class TestTemplateStalenessNudge:
 
     def _current_digest(self):
         from kanibako.targets import discover_targets
-        from kanibako.templates import packaged_templates_digest
+        from kanibako.launch.templates import packaged_templates_digest
 
         return packaged_templates_digest(sorted(discover_targets()))
 

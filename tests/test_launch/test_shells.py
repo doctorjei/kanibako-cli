@@ -1,4 +1,4 @@
-"""Tests for kanibako.shells (image-shell store, getent probe, resolver)."""
+"""Tests for kanibako.launch.shells (image-shell store, getent probe, resolver)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import subprocess
 import pytest
 
 from kanibako.config import KanibakoConfig
-from kanibako.shells import (
+from kanibako.launch.shells import (
     capture_image_shell,
     image_store_key,
     load_image_shells,

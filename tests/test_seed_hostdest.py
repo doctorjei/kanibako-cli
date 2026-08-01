@@ -118,7 +118,7 @@ class TestSeedRoutesRoundTheGuestTranslator:
     ):
         from kanibako.commands.start import _apply_init_seeds
         from kanibako.paths import resolve_project
-        from kanibako.templates import install_packaged_templates
+        from kanibako.launch.templates import install_packaged_templates
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         install_packaged_templates(std, ["claude"])
@@ -340,7 +340,7 @@ def test_every_scope_whitelist_denies_settings_yaml(scope, tmp_path):
     """The one DENY that is a CORRECTNESS property at EVERY scope: ``settings.yaml``
     is that scope's own cascade level."""
     from kanibako.errors import TemplateScopeError
-    from kanibako.templates import copy_tree
+    from kanibako.launch.templates import copy_tree
 
     src = tmp_path / "src"
     src.mkdir()

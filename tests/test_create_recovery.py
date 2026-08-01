@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import journal
+from kanibako.launch import journal
 from kanibako.commands.start import (
     _box_journal_key,
     _clear_create_entry,
@@ -270,7 +270,7 @@ class TestRunCreatePersonaGate:
         from kanibako.commands.box._parser import run_create
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths
-        from kanibako import journal
+        from kanibako.launch import journal
 
         # No persona host dir under XDG_CONFIG_HOME (tmp_home/config) → the
         # explicit persona 'navigator+claude' is unrecognised AND unadoptable, so
@@ -780,7 +780,8 @@ class TestConflictSafeCreate:
         with a lingering journal crumb."""
         from types import SimpleNamespace
 
-        from kanibako import journal, registry_store
+        from kanibako import registry_store
+        from kanibako.launch import journal
         from kanibako.commands.box._parser import run_create, run_rm
         from kanibako.commands.start import _write_create_entry
         from kanibako.paths import BoxMode

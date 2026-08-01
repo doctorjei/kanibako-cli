@@ -291,7 +291,7 @@ def start_mocks():
             # MagicMock std/proj cannot mkdir/copy MagicMock-named paths; the real
             # layered-seed behavior is covered by tests/test_templates.py with a
             # REAL std/proj.
-            patch("kanibako.templates.stage_layers"),
+            patch("kanibako.launch.templates.stage_layers"),
             # Block 7b: the launch-time CATEGORY resolution now runs through ONE
             # snapshot + ONE reconcile (``_resolve_launch_snapshot``) for the
             # always-available families (core / kani / channel / common / seeded),

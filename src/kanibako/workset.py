@@ -108,7 +108,7 @@ def _journal_connect(
     if journal is None:
         yield
         return
-    from kanibako import journal as journal_mod
+    from kanibako.launch import journal as journal_mod
 
     journal_mod.write_entry(
         journal, box_path, op="connect", name=name, mode="named",
@@ -586,7 +586,7 @@ def add_project(
                 "workset, or connect it to that workset instead."
             )
 
-        from kanibako import box_resolve
+        from kanibako.launch import box_resolve
 
         # D3-mode #1: an in-place standalone MARKER (box_data/ + settings.yaml)
         # is the box's authoritative self-declaration of standalone identity.
@@ -696,7 +696,7 @@ def add_project(
             # standalone — a clean round-trip.  ``standalone_name_for_root``
             # returns None when the box was never registered as standalone yet
             # (nothing to drop — still no dual-reg), so this is a no-op then.
-            from kanibako import box_resolve as _box_resolve
+            from kanibako.launch import box_resolve as _box_resolve
 
             if force and _box_resolve.standalone_settings_present(
                 resolved_source

@@ -1979,7 +1979,7 @@ def _run_container(
 
     # Capture the image's login shell (idempotent, never fatal) so the
     # box-shell resolver reads a stored value instead of probing in the hot path.
-    from kanibako.shells import capture_image_shell
+    from kanibako.launch.shells import capture_image_shell
     capture_image_shell(runtime, image, std)
 
     # `kanibako shell` (interactive, no agent): resolve the box.shell now, with
@@ -1987,7 +1987,7 @@ def _run_container(
     # makes entrypoint concrete *before* the agent-vs-shell decision (line ~672)
     # and the exec-into-running check (line ~737), so neither regresses.
     if box_shell_mode and entrypoint is None:
-        from kanibako.shells import resolve_box_shell
+        from kanibako.launch.shells import resolve_box_shell
         entrypoint, _src = resolve_box_shell(merged, std, runtime=runtime, image=image)
 
     from kanibako.runtime.freshness import check_image_freshness
@@ -2289,7 +2289,7 @@ def _run_container(
         # ~/.local/bin/<agent> decoy + empty ~/.local/share/<agent> a prior
         # AGENT launch leaves behind and a no-agent shell launch never overlays
         # — see _agent_critical_dests / hygiene._reap_stale_agent_mountpoints).
-        from kanibako.hygiene import cleanup_shell_dir
+        from kanibako.launch.hygiene import cleanup_shell_dir
         hygiene_actions = cleanup_shell_dir(
             proj.shell_path,
             agent_critical_dests=_agent_critical_dests(),
@@ -2821,7 +2821,7 @@ def _run_container(
             and target.default_entrypoint is not None
         )
         if no_agent_launch or helpers_enabled or detach or supervised_agent_launch:
-            from kanibako.shells import resolve_box_shell
+            from kanibako.launch.shells import resolve_box_shell
             box_shell, _box_shell_source = resolve_box_shell(
                 merged, std, runtime=runtime, image=image,
             )
@@ -3066,10 +3066,10 @@ def _run_container(
                 # so the supervisor edge-triggers it on EVERY detach (all modes).  The
                 # in-box path is GUEST_HOME/<relpath> — the SAME file the host reads at
                 # proj.shell_path/<relpath> via the box-home bind mount (one relpath
-                # constant, :data:`kanibako.creds_watcher.CREDS_DIRTY_RELPATH`).  The
+                # constant, :data:`kanibako.launch.creds_watcher.CREDS_DIRTY_RELPATH`).  The
                 # box only ever touches its OWN home; the trusted HOST watcher does the
                 # privileged store writeback (the load-bearing trust invariant).
-                from kanibako.creds_watcher import CREDS_DIRTY_RELPATH
+                from kanibako.launch.creds_watcher import CREDS_DIRTY_RELPATH
                 from kanibako.settings_resolve import GUEST_HOME as _GUEST_HOME_D
                 supervisor_argv += [
                     "--creds-flag", f"{_GUEST_HOME_D}/{CREDS_DIRTY_RELPATH}",
@@ -3490,7 +3490,7 @@ def _spawn_creds_watcher(proj) -> None:
     On a DETACHED launch (``kanibako code`` warm-up / ``kanibako start --detach``) the
     ``kanibako`` command RETURNS, so no foreground host process lingers to run the
     post-detach credential writeback the box's supervisor signals.  This spawns the
-    trusted :mod:`kanibako.creds_watcher` daemon to do it: it watches the box's
+    trusted :mod:`kanibako.launch.creds_watcher` daemon to do it: it watches the box's
     creds-dirty flag and does the privileged store writeback promptly.
 
     DETACHED via ``start_new_session=True`` (its own session / no controlling tty) +
@@ -3504,7 +3504,7 @@ def _spawn_creds_watcher(proj) -> None:
     """
     try:
         subprocess.Popen(
-            [sys.executable, "-m", "kanibako.creds_watcher",
+            [sys.executable, "-m", "kanibako.launch.creds_watcher",
              "--box", str(proj.project_path)],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -3544,7 +3544,7 @@ def writeback_session_credentials(
         return
     desc = target.descriptor
     host_home = Path.home()
-    from kanibako.creds_watcher import clear_creds_dirty, creds_store_lock
+    from kanibako.launch.creds_watcher import clear_creds_dirty, creds_store_lock
     try:
         # Serialize the store write against a concurrent host op / the D watcher
         # (the shared STORE-write lock lives in creds_watcher so the daemon and every
@@ -5641,7 +5641,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
 # ---------------------------------------------------------------------------
 # Interrupted-create recovery via the LIFECYCLE JOURNAL (J1, Jei 2026-06-30b).
 #
-# A write-ahead journal entry (``kanibako.journal``) records an in-flight create
+# A write-ahead journal entry (``kanibako.launch.journal``) records an in-flight create
 # so an interrupted `create`/auto-create-at-launch (a crash between seed-start
 # and registry write) is forward-recoverable.  Sequence per create:
 #   write-entry -> seed -> register -> clear-entry.
@@ -5682,7 +5682,7 @@ def _box_journal_key(proj) -> str:
 
 def _write_create_entry(std, proj) -> None:
     """Write the write-ahead ``create`` journal entry for *proj* (intent)."""
-    from kanibako import journal
+    from kanibako.launch import journal
 
     workset = proj.group.name if getattr(proj, "group", None) is not None else None
     journal.write_entry(
@@ -5694,7 +5694,7 @@ def _write_create_entry(std, proj) -> None:
 
 def _clear_create_entry(std, proj) -> None:
     """Clear the ``create`` journal entry for *proj* (no-op if already absent)."""
-    from kanibako import journal
+    from kanibako.launch import journal
 
     journal.clear_entry(std.journal, _box_journal_key(proj))
 
@@ -5705,7 +5705,7 @@ def _pending_create_entry(std, proj) -> dict | None:
     The recovery signal: a non-``None`` result means a create was started for
     this box but never completed (crash before the entry was cleared).
     """
-    from kanibako import journal
+    from kanibako.launch import journal
 
     return journal.pending_create(std.journal, _box_journal_key(proj))
 
@@ -5786,12 +5786,12 @@ def _apply_shell_copy(
       warning (label ``"seed"`` / ``"synced"``) then return.
     * *skip_if* (the synced mtime gate) -> return before copying when it reports
       the dest is already up to date.
-    * Directory source -> :func:`~kanibako.templates.copy_resource_tree_if_absent`
+    * Directory source -> :func:`~kanibako.launch.templates.copy_resource_tree_if_absent`
       (create-if-absent) when *if_absent* else ``copytree(dirs_exist_ok=True)``
       (overwrite).
     * File source -> ``copy2`` (skipped for an existing dest when *if_absent*).
     """
-    from kanibako.templates import copy_resource_tree_if_absent
+    from kanibako.launch.templates import copy_resource_tree_if_absent
 
     if not src.exists():
         logger.warning(
@@ -5871,7 +5871,7 @@ def _apply_init_seeds(
     reconcile keeps every same-dest COPY (copies OVERLAY, they do not shadow —
     :func:`kanibako.settings_categories.reconcile_categories`), so here the
     ``~``-group is a list of layer sources in scope apply order that
-    :func:`kanibako.templates.stage_layers` stages PER-FILE LAST-WINS then copies
+    :func:`kanibako.launch.templates.stage_layers` stages PER-FILE LAST-WINS then copies
     into home CREATE-IF-ABSENT (never clobbering user content). A layer whose
     source dir is absent (e.g. an unpopulated ``@workset.template``) is skipped.
 
@@ -5888,7 +5888,7 @@ def _apply_init_seeds(
     handbook chapter somewhere nothing reads, and report success.
     """
     from kanibako.settings_resolve import GUEST_HOME
-    from kanibako.templates import (
+    from kanibako.launch.templates import (
         seed_keys_of,
         stage_layers,
         template_seed_defaults,

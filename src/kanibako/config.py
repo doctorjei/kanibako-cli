@@ -638,7 +638,7 @@ def template_staleness_gate(config_path: Path | None) -> None:
     """HARD template-staleness gate: raise :class:`ConfigError` when stale.
 
     STALE ⟺ the recorded ``system.templates_stamp`` differs from the CURRENT
-    packaged-template digest (:func:`kanibako.templates.packaged_templates_digest`
+    packaged-template digest (:func:`kanibako.launch.templates.packaged_templates_digest`
     over the INSTALLED agent plugins, ``sorted(discover_targets())`` — matching
     first-run ``target_names``).  A host that predates the stamp reads ``None``,
     which is likewise ``!= digest`` → stale.  Returns ``None`` when current.
@@ -656,7 +656,7 @@ def template_staleness_gate(config_path: Path | None) -> None:
         return
 
     from kanibako.targets import discover_targets
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
 
     agent_names = sorted(discover_targets().keys())
     current = packaged_templates_digest(agent_names)

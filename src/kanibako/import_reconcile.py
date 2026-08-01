@@ -134,7 +134,7 @@ def _journal_register(
     if journal is None:
         yield
         return
-    from kanibako import journal as journal_mod
+    from kanibako.launch import journal as journal_mod
 
     journal_mod.write_entry(
         journal, box_path, op=op, name=name, mode=mode, workset=workset,
@@ -161,7 +161,7 @@ def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
     """
     if journal is None:
         return
-    from kanibako import journal as journal_mod
+    from kanibako.launch import journal as journal_mod
 
     if journal_mod.pending_import(journal, box_path) is not None:
         journal_mod.clear_entry(journal, box_path)
@@ -184,7 +184,7 @@ def import_standalone(
       self-describes its ``project.name`` on disk): the stored ``workset.kuid``
       (sparse-persisted at create) prefixes the LIVE dir leaf
       (``<kuid>_<leaf>``, mirroring
-      :func:`kanibako.box_resolve.resolve_box_identity`); a pre-kuid box
+      :func:`kanibako.launch.box_resolve.resolve_box_identity`); a pre-kuid box
       (SENTINEL) falls back to the dir leaf.  The composed name is registered to
       *root* + alerted, UNLESS it already maps to a DIFFERENT root →
       :class:`ImportConflictError` (refuse, no mutation).
@@ -207,7 +207,8 @@ def import_standalone(
 
     # Gate on the standalone MARKER (design D4: the box's own settings FILE is the
     # standalone signal — NOT ``project.mode``).  No marker → nothing to import.
-    from kanibako import box_identity, box_resolve, kuid
+    from kanibako import kuid
+    from kanibako.launch import box_identity, box_resolve
     from kanibako.config import read_workset_kuid
 
     if not box_resolve.standalone_settings_present(root):

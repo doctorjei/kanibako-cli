@@ -1533,7 +1533,8 @@ class TestP7ConnectRegistry:
         never mistaken for an external connection (e.g. duplicate's
         ``_source_is_external``).  Mutation: drop the external-only filter →
         this matches the in-tree box → RED."""
-        from kanibako import box_resolve, workset_registry
+        from kanibako import workset_registry
+        from kanibako.launch import box_resolve
         from kanibako.config_io import load_doc
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1586,7 +1587,8 @@ class TestP5aCreateThenResolve:
     def test_primary_create_registers_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako import box_resolve, workset_registry
+        from kanibako import workset_registry
+        from kanibako.launch import box_resolve
         from kanibako.paths import resolve_standalone_project  # noqa: F401
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1616,7 +1618,8 @@ class TestP5aCreateThenResolve:
     def test_named_create_registers_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako import box_resolve, workset_registry
+        from kanibako import workset_registry
+        from kanibako.launch import box_resolve
         from kanibako.config_io import load_doc
         from kanibako.paths import WorksetSpec, resolve_workset_project
         from kanibako.workset import add_project, create_workset
@@ -1653,7 +1656,8 @@ class TestP5aCreateThenResolve:
     def test_standalone_create_registers_and_resolves(
         self, config_file, tmp_home, credentials_dir
     ):
-        from kanibako import box_resolve, registry_store
+        from kanibako import registry_store
+        from kanibako.launch import box_resolve
         from kanibako.paths import resolve_standalone_project
         config = load_config(config_file)
         std = load_std_paths(config)

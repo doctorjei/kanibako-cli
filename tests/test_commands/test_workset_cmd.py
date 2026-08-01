@@ -1271,7 +1271,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
         import argparse
 
         from kanibako.commands import workset_cmd
-        from kanibako.templates import install_packaged_templates
+        from kanibako.launch.templates import install_packaged_templates
         from kanibako.workset import list_worksets
 
         install_packaged_templates(std, [])
@@ -1292,7 +1292,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
         import argparse
 
         from kanibako.commands import workset_cmd
-        from kanibako.templates import install_packaged_templates
+        from kanibako.launch.templates import install_packaged_templates
         from kanibako.workset import list_worksets
 
         install_packaged_templates(std, [])

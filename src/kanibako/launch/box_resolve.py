@@ -277,7 +277,8 @@ def resolve_box_identity(
         # leaf tracks the new dir. Read the kuid from the box's own settings.yaml
         # (the workset tier for a standalone). A pre-kuid box (SENTINEL — no stored
         # kuid) falls back to the registered ``standalone:`` KEY, else the dir leaf.
-        from kanibako import box_identity, kuid
+        from kanibako import kuid
+        from kanibako.launch import box_identity
         from kanibako.config import read_workset_kuid
 
         stored_kuid = read_workset_kuid(box_root / BOX_META_FILE)

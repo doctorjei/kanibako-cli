@@ -1,4 +1,4 @@
-"""Tests for kanibako.creds_watcher — the per-box host credential-writeback watcher (D).
+"""Tests for kanibako.launch.creds_watcher — the per-box host credential-writeback watcher (D).
 
 The PURE decision (:func:`decide_watch`) is exercised exhaustively; the watcher LOOP
 is driven through injected callables (box-liveness probe, flag reader/clearer,
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.creds_watcher import (
+from kanibako.launch.creds_watcher import (
     CREDS_DIRTY_RELPATH,
     CredsWatcher,
     WatchAction,
@@ -210,7 +210,7 @@ class _FakeProj:
 
 
 def test_main_skips_a_private_box(monkeypatch, tmp_path):
-    import kanibako.creds_watcher as cw
+    import kanibako.launch.creds_watcher as cw
 
     proj = _FakeProj(tmp_path)
     monkeypatch.setattr(
@@ -225,7 +225,7 @@ def test_main_skips_a_private_box(monkeypatch, tmp_path):
 
 
 def test_main_exits_when_another_watcher_holds_the_lock(monkeypatch, tmp_path):
-    import kanibako.creds_watcher as cw
+    import kanibako.launch.creds_watcher as cw
 
     proj = _FakeProj(tmp_path)
     monkeypatch.setattr(
@@ -240,7 +240,7 @@ def test_main_exits_when_another_watcher_holds_the_lock(monkeypatch, tmp_path):
 
 
 def test_main_no_context_returns_zero(monkeypatch):
-    import kanibako.creds_watcher as cw
+    import kanibako.launch.creds_watcher as cw
 
     monkeypatch.setattr(cw, "_resolve_watch_context", lambda box: None)
     assert cw.main(["--box", "gone"]) == 0
@@ -267,7 +267,7 @@ def test_creds_store_lock_tolerates_a_bad_lock_path(tmp_path, monkeypatch):
 
 
 def test_single_instance_lock_is_exclusive(tmp_path):
-    import kanibako.creds_watcher as cw
+    import kanibako.launch.creds_watcher as cw
 
     lock_path = tmp_path / ".kanibako-creds-watcher.lock"
     first = cw._single_instance_lock(lock_path)
@@ -298,7 +298,7 @@ def test_no_watch_context_without_an_agent_stamp(monkeypatch, stamp):
     """
     from unittest.mock import MagicMock, patch
 
-    from kanibako.creds_watcher import _resolve_watch_context
+    from kanibako.launch.creds_watcher import _resolve_watch_context
 
     runtime = MagicMock()
     runtime.inspect_env.return_value = stamp

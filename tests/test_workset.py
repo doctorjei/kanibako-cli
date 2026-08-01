@@ -422,7 +422,7 @@ class TestAddProjectConnectGuard:
     def _make_standalone(dir_path: Path) -> None:
         """Stamp *dir_path* with the in-place standalone MARKER (box_data/ +
         settings.yaml), matching box_resolve.standalone_settings_present."""
-        from kanibako.box_resolve import standalone_settings_present
+        from kanibako.launch.box_resolve import standalone_settings_present
         from kanibako.config import BOX_META_FILE
         from kanibako.paths import _STANDALONE_META_DIR
 
@@ -449,7 +449,8 @@ class TestAddProjectConnectGuard:
         # With force=True the deliberate absorb MOVES the registration: the box
         # leaves the global standalone: index and becomes SOLELY a workset box
         # (exactly-one-registry — no dual registration).
-        from kanibako import box_resolve, registry_store
+        from kanibako import registry_store
+        from kanibako.launch import box_resolve
 
         ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
         external = (tmp_home / "standalone_box").resolve()

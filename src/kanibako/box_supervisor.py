@@ -379,7 +379,7 @@ class SupervisorConfig:
     * *creds_flag* — box-local ABSOLUTE path to the credential-writeback SIGNAL flag
       (increment D).  On EVERY detach transition (all modes) :meth:`_on_detach`
       writes this flag into the supervisor's OWN box-home (already host-visible via
-      the box-home bind mount), so a TRUSTED HOST watcher (:mod:`kanibako.creds_watcher`)
+      the box-home bind mount), so a TRUSTED HOST watcher (:mod:`kanibako.launch.creds_watcher`)
       can do the privileged box-home → store credential writeback.  The box NEVER
       touches the host credential store itself (the load-bearing trust invariant).
       ``None`` (the default) leaves :meth:`_on_detach` a no-op — an old host launcher
@@ -1225,7 +1225,7 @@ class BoxSupervisor:
         not process-scoped → the untrusted agent would inherit any store-write
         handle).  So the supervisor only SIGNALS: it edge-triggers a flag in its OWN
         box-home (``config.creds_flag``, already host-visible via the box-home bind
-        mount), and a TRUSTED HOST watcher (:mod:`kanibako.creds_watcher`) does the
+        mount), and a TRUSTED HOST watcher (:mod:`kanibako.launch.creds_watcher`) does the
         privileged box-home → store copy via the existing host writeback.
 
         Universal across supervisor modes (foreground teardown, detached self-heal,

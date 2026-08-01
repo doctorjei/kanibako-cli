@@ -31,7 +31,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako import core_defaults, templates
+from kanibako import core_defaults
+from kanibako.launch import templates
 from kanibako.core_defaults import (
     BIBLE_AGENT_CHAPTER,
     CANON_SEED_DENY_PREFIXES,
@@ -54,7 +55,7 @@ from kanibako.settings_launch import build_launch_snapshot, snapshot_category_en
 from kanibako.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
 from kanibako.targets.no_agent import NoAgentTarget
-from kanibako.templates import (
+from kanibako.launch.templates import (
     _packaged_base_template,
     install_packaged_templates,
     packaged_box_home_template,

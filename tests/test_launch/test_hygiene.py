@@ -1,4 +1,4 @@
-"""Tests for kanibako.hygiene: shell directory cleanup and compression."""
+"""Tests for kanibako.launch.hygiene: shell directory cleanup and compression."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import gzip
 import os
 import time
 
-from kanibako.hygiene import (
+from kanibako.launch.hygiene import (
     _CACHE_WASTE_DIRS,
     _COMPRESS_AGE_DAYS,
     _WASTE_DIRS,

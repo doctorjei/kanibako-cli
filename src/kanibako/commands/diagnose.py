@@ -112,7 +112,7 @@ def _check_image(config: object) -> tuple[str, str]:
 
 
 # Friendly labels for the box.shell resolver's source token (see
-# kanibako.shells.resolve_box_shell), used in the no-agent "Shell" detail line.
+# kanibako.launch.shells.resolve_box_shell), used in the no-agent "Shell" detail line.
 _SHELL_SOURCE_LABELS = {
     "box.shell": "box.shell",
     "$KANIBAKO_SHELL": "$KANIBAKO_SHELL",
@@ -130,7 +130,7 @@ def _resolved_shell_detail(config, std, runtime, image) -> str:
     if config is None or std is None:
         return "sh (fallback)"
     try:
-        from kanibako.shells import resolve_box_shell
+        from kanibako.launch.shells import resolve_box_shell
 
         shell, source = resolve_box_shell(config, std, runtime=runtime, image=image)
         label = _SHELL_SOURCE_LABELS.get(source, source)
@@ -146,7 +146,7 @@ def _check_agents(
 
     Returns list of (status, label, detail).  *config*/*std* (and optionally
     *runtime*/*image*) are used only to resolve the no-agent "Shell" target's
-    launch shell via :func:`kanibako.shells.resolve_box_shell`.
+    launch shell via :func:`kanibako.launch.shells.resolve_box_shell`.
     """
     from kanibako.targets import discover_targets
 
@@ -220,7 +220,7 @@ def _check_journal(std, box_key: str | None = None) -> list[tuple[str, str]]:
     ("cannot check") line rather than crashing diagnose.
     """
     try:
-        from kanibako import journal
+        from kanibako.launch import journal
 
         entries = journal.read_journal(std.journal)
     except Exception:
@@ -550,7 +550,7 @@ def run_box_diagnose(args: object) -> int:
     # `[ok] Project directory` followed by a false `[!!] Shell directory:
     # missing` for moved/copied/plain directories.  (P8a: replaces the
     # transitional `read_project_meta(...) is not None` registration signal.)
-    from kanibako import box_resolve
+    from kanibako.launch import box_resolve
     is_registered = (
         proj.project_path is not None
         and box_resolve.resolve_box_identity(proj.project_path, std, config)

@@ -125,7 +125,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     # matches what the subprocess gate recomputes with them discovered.
     from kanibako.config_interface import write_system_value
     from kanibako.targets import discover_targets
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
     write_system_value(
         kanibako_config,
         "templates_stamp",
@@ -311,7 +311,7 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     # matches what the subprocess gate recomputes with them discovered.
     from kanibako.config_interface import write_system_value
     from kanibako.targets import discover_targets
-    from kanibako.templates import packaged_templates_digest
+    from kanibako.launch.templates import packaged_templates_digest
     write_system_value(
         kanibako_config,
         "templates_stamp",

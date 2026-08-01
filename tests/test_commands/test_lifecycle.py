@@ -680,7 +680,7 @@ class TestChannelPartitionRelocation:
     def test_relocation_best_effort_dest_exists(self, env, capsys, monkeypatch):
         """A pre-existing destination is left in place + warned, not clobbered."""
         config, std, tmp_home = env
-        from kanibako import box_identity
+        from kanibako.launch import box_identity
         from kanibako.channels.channels import (
             WS_TOKEN_PRIMARY,
             WS_TOKEN_STANDALONE,

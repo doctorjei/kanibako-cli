@@ -351,7 +351,7 @@ def run_create(args: argparse.Namespace) -> int:
     # partial chapter copy, recoverable only by ``workset rm``. Checking first is
     # also the order ``create_workset`` already uses for its own name guards.
     from kanibako.errors import TemplateScopeError
-    from kanibako.templates import check_workset_template, install_workset_template
+    from kanibako.launch.templates import check_workset_template, install_workset_template
 
     try:
         check_workset_template(std, path)

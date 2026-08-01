@@ -1,4 +1,4 @@
-"""Unit tests for the lifecycle journal module (``kanibako.journal``, J1).
+"""Unit tests for the lifecycle journal module (``kanibako.launch.journal``, J1).
 
 The journal is a write-ahead log of in-flight box-lifecycle ops keyed by box
 host-side path.  At rest it is normally empty; an entry is the rare in-flight /
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kanibako import journal
+from kanibako.launch import journal
 
 
 class TestReadJournal:

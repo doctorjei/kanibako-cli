@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from kanibako.box_identity import validate_box_name
+from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
 from kanibako.core_defaults import materialize_canon_skeleton
 from kanibako.config import (
@@ -375,7 +375,7 @@ def _resolve_workset_state(
     except WorksetError:
         ws, proj_name = None, None
     if ws is None or proj_name is None:
-        from kanibako import box_resolve
+        from kanibako.launch import box_resolve
         owned = box_resolve.find_connected_external_box(raw_path, std)
         if owned is not None:
             ws, proj_name = load_workset(owned.workset_root), owned.box_name

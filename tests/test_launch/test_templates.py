@@ -1,4 +1,4 @@
-"""Tests for kanibako.templates (the layered home-seed / template trio)."""
+"""Tests for kanibako.launch.templates (the layered home-seed / template trio)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from kanibako.paths import (
     resolve_standalone_project,
     resolve_workset_project,
 )
-from kanibako.templates import (
+from kanibako.launch.templates import (
     _packaged_base_template,
     _packaged_manifest_entries,
     copy_resource_tree_if_absent,
@@ -256,7 +256,7 @@ class TestTemplateSeedDefaults:
     def test_seed_keys_of_selects_exactly_the_seeded_keys(self, primary_proj):
         """The HOST-space key set is DERIVED from the table, never restated — a
         seventh layer cannot be added in one place and forgotten in the other."""
-        from kanibako.templates import seed_keys_of
+        from kanibako.launch.templates import seed_keys_of
 
         defs = template_seed_defaults(primary_proj, "claude")
         assert seed_keys_of(defs) == {
@@ -590,7 +590,7 @@ class TestEnsureAgentStores:
     """J-6's A-action: ONE stamp implementation behind two triggers."""
 
     def test_idempotent_and_self_healing(self, std):
-        from kanibako.templates import ensure_agent_stores
+        from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
         chapter = (
@@ -602,7 +602,7 @@ class TestEnsureAgentStores:
         assert chapter.is_file(), "a partial store must complete at the next trigger"
 
     def test_user_edit_survives_a_restamp(self, std):
-        from kanibako.templates import ensure_agent_stores
+        from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
         chapter = (
@@ -616,7 +616,7 @@ class TestEnsureAgentStores:
     def test_host_mould_reaches_every_store(self, std):
         """The mould is read AS IT STANDS at action time, so a user's customisation
         reaches FUTURE stores (and this one, on its next self-heal)."""
-        from kanibako.templates import ensure_agent_stores
+        from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
         mould_file = std.template / "agent" / "common" / "MOULD.md"
@@ -631,7 +631,7 @@ class TestEnsureAgentStores:
         """Deny-by-default at AGENT scope: a mould that would plant
         ``settings.yaml`` (= ``meta.agent.<a>.settings``) is REFUSED."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import ensure_agent_stores
+        from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
         (std.template / "agent" / "settings.yaml").write_text("agent: {}\n")
@@ -643,7 +643,7 @@ class TestEnsureAgentStores:
 
 class TestInstallWorksetTemplate:
     def test_stamps_the_workset_mould(self, std, tmp_path):
-        from kanibako.templates import install_workset_template
+        from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
         ws = tmp_path / "ws"
@@ -659,7 +659,7 @@ class TestInstallWorksetTemplate:
         AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And for a
         STANDALONE project ``<workset_path>`` IS the user's own project dir."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import install_workset_template
+        from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
         (std.template / "workset" / "registry.yaml").write_text("boxes: {}\n")
@@ -687,7 +687,7 @@ class TestLegacyPluginPayloadArm:
         prefix) puts the payload at ``agents/<name>/box/home/**``, which nothing
         reads — the arm runs, reports nothing, and the box still has no agent config.
         """
-        from kanibako.templates import PLUGIN_LEGACY_PAYLOAD_DEST_REL
+        from kanibako.launch.templates import PLUGIN_LEGACY_PAYLOAD_DEST_REL
 
         defs = template_seed_defaults(primary_proj, "claude")
         # Layer 2's SOURCE, with its @-ref head resolved the way the cascade does:
@@ -706,7 +706,7 @@ class TestLegacyPluginPayloadArm:
         """END TO END on the real seed path: an OLD-shaped plugin (``data/template``
         with box-home files at its root) still reaches the box home."""
         from kanibako.commands.start import _apply_init_seeds
-        from kanibako import templates as _t
+        from kanibako.launch import templates as _t
 
         legacy = tmp_path / "plugin" / "data" / "template"
         (legacy / ".claude").mkdir(parents=True)
@@ -744,7 +744,7 @@ class TestLegacyPluginPayloadArm:
         (``template/…``, allowed), so a legacy payload is checked like everything
         else — and content that would escape the store is still refused."""
         from kanibako.errors import TemplateScopeError
-        from kanibako import templates as _t
+        from kanibako.launch import templates as _t
 
         legacy = tmp_path / "plugin" / "data" / "template"
         legacy.mkdir(parents=True)
@@ -772,7 +772,7 @@ class TestCopierEnforcement:
         the LEAF. With ``overwrite`` a live symlink is followed and a file OUTSIDE
         the subtree is replaced wholesale."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         outside = tmp_path / "outside.txt"
         outside.write_text("PRECIOUS")
@@ -790,7 +790,7 @@ class TestCopierEnforcement:
         """The create-if-absent arm's version of the same hole: a dangling symlink
         reads as ABSENT to ``exists()``, so ``copy2`` writes THROUGH it."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         outside = tmp_path / "not-yet.txt"
         src = tmp_path / "src"
@@ -807,7 +807,7 @@ class TestCopierEnforcement:
         """The containment check runs BEFORE the ``mkdir``: refusing a copy must not
         litter directories outside the destination subtree on the way to saying no."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         outside = tmp_path / "outside"
         outside.mkdir()
@@ -823,7 +823,7 @@ class TestCopierEnforcement:
 
     def test_source_symlink_is_refused(self, tmp_path):
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         secret = tmp_path / "id_ed25519"
         secret.write_text("PRIVATE KEY")
@@ -855,7 +855,7 @@ class TestCopierEnforcement:
 
     def test_dest_symlink_cannot_escape_the_subtree(self, tmp_path):
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         outside = tmp_path / "outside"
         outside.mkdir()
@@ -874,7 +874,7 @@ class TestCopierEnforcement:
         cascade level — template content would become the box's top-priority
         settings, carrying any key it liked."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         src = tmp_path / "src"
         src.mkdir()
@@ -887,7 +887,7 @@ class TestCopierEnforcement:
         assert not (dest / "settings.yaml").exists()
 
     def test_box_whitelist_allows_the_two_declared_entries(self, tmp_path):
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         src = tmp_path / "src"
         (src / "home").mkdir(parents=True)
@@ -903,7 +903,7 @@ class TestCopierEnforcement:
     def test_canon_is_not_seedable_wholesale(self, tmp_path):
         """ONLY ``canon/handbook`` is seedable, never ``canon/`` wholesale."""
         from kanibako.errors import TemplateScopeError
-        from kanibako.templates import copy_tree
+        from kanibako.launch.templates import copy_tree
 
         src = tmp_path / "src"
         (src / "canon" / "bible").mkdir(parents=True)
@@ -937,13 +937,13 @@ class TestPackagedTemplatesDigest:
         claude_dir.mkdir()
         (claude_dir / ".claude.json").write_text(claude)
         monkeypatch.setattr(
-            "kanibako.templates._packaged_base_template", lambda: base_dir
+            "kanibako.launch.templates._packaged_base_template", lambda: base_dir
         )
         monkeypatch.setattr(
-            "kanibako.templates._packaged_shared_bundle", lambda: bundle_dir
+            "kanibako.launch.templates._packaged_shared_bundle", lambda: bundle_dir
         )
         monkeypatch.setattr(
-            "kanibako.templates._packaged_agent_store",
+            "kanibako.launch.templates._packaged_agent_store",
             lambda name: (claude_dir, False) if name == "claude" else None,
         )
         return base_dir, bundle_dir, claude_dir
@@ -1152,7 +1152,7 @@ class TestRefreshEquivalenceTiers:
         assert target in overwritten
 
     def test_yaml_reordering_is_equivalent(self, tmp_path):
-        from kanibako.templates import _equivalent
+        from kanibako.launch.templates import _equivalent
 
         src = tmp_path / "a.yaml"
         dst = tmp_path / "b.yaml"
@@ -1161,7 +1161,7 @@ class TestRefreshEquivalenceTiers:
         assert _equivalent(src, dst)
 
     def test_unparseable_yaml_is_different(self, tmp_path):
-        from kanibako.templates import _equivalent
+        from kanibako.launch.templates import _equivalent
 
         src = tmp_path / "a.yaml"
         dst = tmp_path / "b.yaml"
@@ -1171,7 +1171,7 @@ class TestRefreshEquivalenceTiers:
 
     def test_fenced_code_whitespace_is_significant(self, tmp_path):
         """CONSERVATIVE normalisation: inside a fence, whitespace is CONTENT."""
-        from kanibako.templates import _equivalent
+        from kanibako.launch.templates import _equivalent
 
         src = tmp_path / "a.md"
         dst = tmp_path / "b.md"
@@ -1180,7 +1180,7 @@ class TestRefreshEquivalenceTiers:
         assert not _equivalent(src, dst)
 
     def test_trailing_hard_break_is_preserved(self, tmp_path):
-        from kanibako.templates import _normalise_markdown
+        from kanibako.launch.templates import _normalise_markdown
 
         assert _normalise_markdown("one  \ntwo\n") == "one  \ntwo"
 
@@ -1195,7 +1195,7 @@ class TestStagingIsScoped:
     """
 
     def _fake_packaged(self, monkeypatch, tmp_path, scope_dir, plant):
-        from kanibako import templates as _t
+        from kanibako.launch import templates as _t
 
         root = tmp_path / "packaged"
         real = _t._packaged_base_template()

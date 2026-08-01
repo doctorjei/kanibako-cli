@@ -96,7 +96,7 @@ def run_install(env: dict) -> None:
     from kanibako.config import config_file_path, load_config
     from kanibako.paths import load_std_paths
     from kanibako.targets import discover_targets
-    from kanibako.templates import install_packaged_templates
+    from kanibako.launch.templates import install_packaged_templates
 
     with _active_env(env):
         config = load_config(config_file_path(Path(env["XDG_CONFIG_HOME"])))

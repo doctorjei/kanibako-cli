@@ -251,7 +251,7 @@ class CredsWatcher:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python3 -m kanibako.creds_watcher",
+        prog="python3 -m kanibako.launch.creds_watcher",
         description="Per-box host-side credential-writeback watcher (increment D).",
     )
     parser.add_argument(
@@ -337,7 +337,7 @@ def _resolve_watch_context(box: str | None):
 def main(argv: list[str] | None = None) -> int:
     """CLI: resolve the box, take the single-instance lock, run the watch loop.
 
-    ``python3 -m kanibako.creds_watcher --box <subject> [--poll SEC]``
+    ``python3 -m kanibako.launch.creds_watcher --box <subject> [--poll SEC]``
 
     A PRIVATE box (``auth_src.creds_shared`` False) never propagates credentials, so the
     watcher no-ops and exits immediately (the host spawner also skips spawning one).

@@ -33,7 +33,7 @@ from kanibako.runtime.rig_registry import (
 )
 from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
 from kanibako.runtime.rig_source import derive_name, detect_source_kind, fetch_to_temp
-from kanibako.shells import capture_image_shell
+from kanibako.launch.shells import capture_image_shell
 from kanibako.runtime.templates_image import (
     list_bundled_templates,
     read_template_checks,

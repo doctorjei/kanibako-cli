@@ -45,7 +45,7 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
     owning workset (a per-workset ``boxes:`` entry whose path is EXTERNAL, D10).
     Used to refuse a bare duplicate of such a source (the connection is 1:1).
     """
-    from kanibako import box_resolve
+    from kanibako.launch import box_resolve
 
     raw = getattr(args, "source_path", None)
     if not raw:

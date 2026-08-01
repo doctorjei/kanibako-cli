@@ -247,7 +247,7 @@ class TestCheckAgents:
                 return_value={"no_agent": mock_cls},
             ),
             patch(
-                "kanibako.shells.resolve_box_shell",
+                "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
             ),
         ):
@@ -279,7 +279,7 @@ class TestCheckAgents:
                     return_value={"no_agent": mock_cls},
                 ),
                 patch(
-                    "kanibako.shells.resolve_box_shell",
+                    "kanibako.launch.shells.resolve_box_shell",
                     return_value=(shell, source),
                 ),
             ):
@@ -332,7 +332,7 @@ class TestCheckJournal:
 
     def test_pending_entry_reported_as_warning(self, tmp_path: Path) -> None:
         """A pending entry → a `!!` finding carrying op + box + started_at."""
-        from kanibako import journal
+        from kanibako.launch import journal
 
         std = self._std(tmp_path)
         box = tmp_path / "boxes" / "myapp"
@@ -349,7 +349,7 @@ class TestCheckJournal:
     def test_box_key_filters_to_that_box(self, tmp_path: Path) -> None:
         """With box_key, only THAT box's entry is surfaced (a clean ok for an
         unrelated box even when other entries exist)."""
-        from kanibako import journal
+        from kanibako.launch import journal
 
         std = self._std(tmp_path)
         mine = tmp_path / "boxes" / "mine"
@@ -368,7 +368,7 @@ class TestCheckJournal:
         assert "mine" in lines[0][1]
 
     def test_multiple_entries_each_reported(self, tmp_path: Path) -> None:
-        from kanibako import journal
+        from kanibako.launch import journal
 
         std = self._std(tmp_path)
         journal.write_entry(std.journal, tmp_path / "a", op="import", name="a", mode="primary")
@@ -395,7 +395,7 @@ class TestSystemDiagnoseJournal:
         """A pending journal entry shows up in `run_system_diagnose` output."""
         from kanibako.config import load_config
         from kanibako.paths import load_std_paths
-        from kanibako import journal
+        from kanibako.launch import journal
         from kanibako.errors import ContainerError
 
         config = load_config(config_file)

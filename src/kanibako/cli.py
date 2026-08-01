@@ -342,7 +342,7 @@ def _ensure_initialized() -> None:
     # which sends the user to ``kanibako setup`` — the deliberate trigger, with
     # reporting.  Recorded as migration M-18.
     from kanibako.paths import load_std_paths
-    from kanibako.templates import (
+    from kanibako.launch.templates import (
         install_packaged_templates,
         packaged_templates_digest,
     )

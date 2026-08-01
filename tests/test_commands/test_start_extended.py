@@ -434,7 +434,7 @@ class TestAgentConfigFirstUse:
         box home, and ``@box.canon/handbook`` — which is a SIBLING of the home, not
         a path inside it. A handbook layer staged under the home would be shadowed
         by the RO chapter mount and silently invisible."""
-        import kanibako.templates
+        import kanibako.launch.templates
         with start_mocks() as m:
             # B7 seed-at-create / membership model: the one-time home seed is
             # gated SOLELY on ``proj.is_new`` (a box that already exists in the
@@ -447,7 +447,7 @@ class TestAgentConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            mock_fn = kanibako.templates.stage_layers
+            mock_fn = kanibako.launch.templates.stage_layers
             dests = {call[0][0] for call in mock_fn.call_args_list}
             box_root = m.proj.shell_path.parent
             assert dests == {
@@ -868,7 +868,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
     def test_writeback_clears_creds_dirty_flag(self, tmp_path, monkeypatch):
         """D Part 3: a successful host writeback clears the box's creds-dirty flag."""
         from kanibako.commands.start import writeback_session_credentials
-        from kanibako.creds_watcher import creds_dirty_flag_path
+        from kanibako.launch.creds_watcher import creds_dirty_flag_path
         from tests.test_commands.test_start import _SHARED_AUTH
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -891,7 +891,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
     def test_writeback_private_box_leaves_flag_untouched(self, tmp_path, monkeypatch):
         """A PRIVATE box writeback is a no-op (early return) — the flag is not cleared."""
         from kanibako.commands.start import writeback_session_credentials
-        from kanibako.creds_watcher import creds_dirty_flag_path
+        from kanibako.launch.creds_watcher import creds_dirty_flag_path
         from tests.test_commands.test_start import _PRIVATE_AUTH
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -920,7 +920,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
 
         popen.assert_called_once()
         argv = popen.call_args.args[0]
-        assert argv[1:4] == ["-m", "kanibako.creds_watcher", "--box"]
+        assert argv[1:4] == ["-m", "kanibako.launch.creds_watcher", "--box"]
         assert argv[4] == str(proj.project_path)
         # Detached: own session + no inherited std streams.
         assert popen.call_args.kwargs["start_new_session"] is True
@@ -1861,7 +1861,7 @@ class TestAllowHelpersGate:
                     side_effect=_eff_without_allow_helpers,
                 ),
                 patch(
-                    "kanibako.shells.resolve_box_shell", side_effect=sentinel,
+                    "kanibako.launch.shells.resolve_box_shell", side_effect=sentinel,
                 ) as m_shell,
             ):
                 with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
@@ -1879,7 +1879,7 @@ class TestAllowHelpersGate:
             m.agent_cfg.state["allow_helpers"] = "true"
             sentinel = RuntimeError("HELPERS_ENABLED_REACHED")
             with patch(
-                "kanibako.shells.resolve_box_shell", side_effect=sentinel,
+                "kanibako.launch.shells.resolve_box_shell", side_effect=sentinel,
             ) as m_shell:
                 with pytest.raises(RuntimeError, match="HELPERS_ENABLED_REACHED"):
                     _run_container(
@@ -1894,7 +1894,7 @@ class TestAllowHelpersGate:
         # False → a real-agent launch never reaches resolve_box_shell.
         with start_mocks() as m:
             m.agent_cfg.state["allow_helpers"] = "true"
-            with patch("kanibako.shells.resolve_box_shell") as m_shell:
+            with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -1906,7 +1906,7 @@ class TestAllowHelpersGate:
         # No per-agent override → the agent.default floor (false) resolves →
         # helpers OFF → a real-agent launch never reaches resolve_box_shell.
         with start_mocks():
-            with patch("kanibako.shells.resolve_box_shell") as m_shell:
+            with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
