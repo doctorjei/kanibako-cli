@@ -266,12 +266,20 @@ def noun_settings_file(
 
 #: Which FILE rule a family follows.  ``NOUN`` = always the noun's settings file;
 #: ``SCOPED`` = the key's own scope token picks between the settings file and the
-#: command's config file.  This is a per-FAMILY fact, not a per-caller option: the
+#: command's config file; ``CATEGORY`` = ``SCOPED`` plus the one arm below that is
+#: deliberately broken.  This is a per-FAMILY fact, not a per-caller option: the
 #: pref request, the non-agent secret pointer and the bare agent key are settings
 #: by construction and have no config-file form, while a category or routed key
 #: can land in either.  It reads as a field here and becomes a field on the
 #: KeyKind descriptor later — the same fact, declared once.
-_NOUN, _SCOPED = "noun", "scoped"
+#:
+#: ⚑ CATEGORY is distinguished from SCOPED for exactly one reason: the broken
+#: agent-scope destination belongs to the CATEGORY family alone.  Keying that arm
+#: on the scope token by itself would silently extend it to any future routed
+#: ``agent.*`` key (there are none today, so this is inert — which is precisely
+#: what would make it a quiet surprise later).  The rule that is known-wrong is
+#: the last one that should catch more than it names.
+_NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
 
 
 def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
@@ -302,7 +310,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         return ("agent", "default"), canonical, _NOUN
     if _is_path_category_key(canonical):
         tail = canonical.split(".")
-        return tuple(tail[:-1]), tail[-1], _SCOPED
+        return tuple(tail[:-1]), tail[-1], _CATEGORY
     route = _KEY_ROUTES.get(_route_key(canonical))
     if route is None:
         return None
@@ -333,7 +341,7 @@ def _dest(
     if rule == _NOUN:
         return DestRoute(noun_settings_file(config_path, settings_path), sections, leaf)
     key_scope = canonical.split(".", 1)[0]
-    if agent_scope_to_config and key_scope == "agent":
+    if agent_scope_to_config and rule == _CATEGORY and key_scope == "agent":
         return DestRoute(config_path, sections, leaf)
     from kanibako.settings.config_keys import _SETTINGS_SCOPE_TOKENS
 

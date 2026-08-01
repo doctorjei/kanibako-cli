@@ -745,7 +745,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # multiple boxes/agents — no single agent to read, and no workset.agent.*
         # mirror; set/get/reset are all refused symmetrically). The box scope
         # instead redirects the read to its box.agent.* mirror.
-        from kanibako.settings.config_interface import (
+        from kanibako.settings.config_keys import (
             resolve_key, bare_agent_key_scope_error,
         )
         _bare_err = bare_agent_key_scope_error(
