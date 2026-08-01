@@ -27,7 +27,11 @@ The config engine and the layout tier:
 * ``config``          — the Layer-1 bootstrap config (spec §1): the flat
   resolver for the paths needed BEFORE the keyspace pipeline can run.
 * ``config_io``       — centralized YAML load/dump for every kanibako config
-  document (both layers).
+  document (both layers), plus the document mutators the config verbs write
+  through.
+* ``config_keys``     — the CLI-facing key TAXONOMY: which family a key
+  spelling belongs to, and the scope/routing tables.  ⚑ NOT the closed-keyspace
+  validator — that is ``settings_keyspace``, which this module calls into.
 * ``config_interface`` — the unified get/set/reset/show engine behind the
   ``config`` verbs at every scope.
 * ``core_defaults``   — the declarative core category defaults.
@@ -80,6 +84,7 @@ __all__ = [
     "config",
     "config_interface",
     "config_io",
+    "config_keys",
     "core_defaults",
     "paths",
     "settings_assemble",

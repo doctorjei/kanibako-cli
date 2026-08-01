@@ -168,7 +168,7 @@ StoreValue = Union["KeyStore", Bind, str, int, float, bool, list[str], None]
 #: The scope CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT
 #: levels"): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST first. THE single
 #: source for every directional derivation: the ``config set`` write-allow sets
-#: (``config_interface._SCOPE_WRITE_ALLOWED``) and the RESOLVE-time drop of
+#: (``config_keys._SCOPE_WRITE_ALLOWED``) and the RESOLVE-time drop of
 #: containing-scope keys from a lower settings file (``settings_assemble``, spec
 #: §0 "Directional enforcement at RESOLVE"). It lives HERE — in the settings-stack
 #: leaf that imports nothing from the stack — so both consumers import it without

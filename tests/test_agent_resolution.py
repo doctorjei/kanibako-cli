@@ -271,7 +271,8 @@ def test_system_agent_round_trips_through_the_system_table(
     INVERT: write it to the retired ``agent.default.default_agent`` location and
     ``read_system_agent`` returns None -> this reddens.
     """
-    from kanibako.settings.config_interface import ConfigLevel, set_config_value
+    from kanibako.settings.config_interface import set_config_value
+    from kanibako.settings.config_keys import ConfigLevel
 
     _patch_targets(monkeypatch, ["claude"])
     cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))

@@ -659,9 +659,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     (``workset.auth.share_allowed``) routed through the engine like any other — no
     special-casing (the old ``group_auth`` workset.meta identity key is retired).
     """
+    from kanibako.settings.config_keys import ConfigLevel
     from kanibako.settings.config_interface import (
         ConfigAction,
-        ConfigLevel,
         get_config_value,
         parse_config_arg,
         reset_all,
