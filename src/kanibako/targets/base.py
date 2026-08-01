@@ -177,12 +177,14 @@ class PersonaSpec:
     * *host_dir_adopt* — whether an ENV-delivery persona with an UNSET keyspace
       endpoint may auto-adopt a config from the CLAUDE-shaped host dir
       ``~/.config/claude/<persona>/`` (the B3 gate in ``start.py``).  Claude is the
-      ONLY harness whose class-setup script writes that dir, so claude keeps the
-      default ``True``; any OTHER env-delivery harness (goose) sets ``False`` so it
-      resolves from the KEYSPACE only and errors with a HARNESS-appropriate
-      keyspace-config message instead of consulting/erroring against claude's dir.
-      A config-file harness (codex) is unaffected either way — B3's ENV gate already
-      excludes it — but it declares ``False`` too for correctness/clarity.
+      ONLY harness whose class-setup script writes that dir, so CLAUDE DECLARES
+      ``True`` in its own defaults file; the FIELD default is ``False`` — a harness
+      that does not declare adoption does not get claude's adoption semantics.  An
+      env-delivery harness that declines it (goose) resolves from the KEYSPACE only
+      and errors with a HARNESS-appropriate keyspace-config message instead of
+      consulting/erroring against claude's dir.  A config-file harness (codex) is
+      unaffected either way — B3's ENV gate already excludes it — but it declares
+      ``False`` too for correctness/clarity.
     * *provider_pin* — ``(setting_key, value)`` pairs FORCE-applied to the launch's
       effective setting state WHENEVER this persona resolves an active endpoint (so a
       harness whose endpoint requires a specific provider can't be misconfigured).
@@ -197,15 +199,18 @@ class PersonaSpec:
       endpoint has no meaningful default model).
 
     A target with NO :class:`PersonaSpec` (``descriptor.persona is None``) resolves
-    exactly as claude did before this seam existed: ENV endpoint delivery +
-    ``ANTHROPIC_AUTH_TOKEN`` token var, B3 host-dir adopt, no provider pin, no model
-    gate (byte-identical fallback).
+    through the legacy fallback in ``start.py``'s ``_persona_wiring``, which spells
+    out the claude shape EXPLICITLY (ENV endpoint delivery + ``ANTHROPIC_AUTH_TOKEN``
+    token var + ``host_dir_adopt=True``, no provider pin, no model gate) — byte-
+    identical to before this seam existed.  That explicit spelling is what keeps the
+    fallback claude-shaped: the FIELD defaults below are the DECLARED-NOTHING
+    defaults, and ``host_dir_adopt`` among them is ``False``.
     """
 
     token_var: str = ""
     endpoint_delivery: str = "env"   # "env" | "config_file"
     wire_api: str = "responses"      # config-file harness wire; codex dropped "chat" (openai/codex#7782)
-    host_dir_adopt: bool = True      # env-delivery B3 host-dir auto-adopt (claude only)
+    host_dir_adopt: bool = False     # env-delivery B3 host-dir auto-adopt; claude DECLARES True (only harness that writes that dir)
     provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
     model_required: bool = False     # error if endpoint set but no model (goose parity)
 

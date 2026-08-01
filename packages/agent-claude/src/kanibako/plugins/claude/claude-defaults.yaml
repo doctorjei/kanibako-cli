@@ -97,6 +97,19 @@ descriptor:
       channel: env
       env_var: "ANTHROPIC_BASE_URL"
 
+  # PERSONA endpoint/token delivery (claude).  env = the endpoint rides the
+  # `endpoint` -> ANTHROPIC_BASE_URL SettingArg above; the bearer token rides the
+  # FIXED ANTHROPIC_AUTH_TOKEN secret_path key (declared here rather than left to
+  # the preflight's per-field fallback, which now covers only out-of-tree plugins
+  # and version skew).  host_dir_adopt=true is the declaration claude cannot omit:
+  # claude is the only harness whose class-setup script writes the B3 host dir
+  # ~/.config/claude/<persona>/, and the field default is false (an undeclared
+  # harness never inherits claude's adoption semantics).
+  persona:
+    endpoint_delivery: env
+    token_var: ANTHROPIC_AUTH_TOKEN
+    host_dir_adopt: true
+
   # BOTH claude env vars: DISABLE_AUTOUPDATER (also set by apply_state) AND
   # CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC.
   container_env:
