@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from kanibako.targets.base import _validate_agent_binary
-from kanibako.vscode_config import load_jsonc as _load_jsonc
+from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
 
 
 def _format_check(status: str, label: str, detail: str) -> str:
@@ -320,7 +320,7 @@ def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
             '"dev.containers.dockerPath": "podman" '
             "(local only; 'kanibako code --remote' needs the kanibako wrapper)",
         )
-    from kanibako.vscode_remote import dispatch_wrapper_path
+    from kanibako.vscode.vscode_remote import dispatch_wrapper_path
 
     if value is not None and value == str(dispatch_wrapper_path()):
         return (

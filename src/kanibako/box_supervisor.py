@@ -257,7 +257,7 @@ def _default_list_marker_pids(markers_dir: str) -> list[int]:
     """Real ``_MarkersLister``: the PIDs named by the marker FILES in *markers_dir*.
 
     Each live agent session's start hook writes a per-PID marker FILE named for its
-    ``$PPID`` (``<dir>/<pid>``; :data:`kanibako.vscode_config.AGENT_MARKERS_DIR`), so
+    ``$PPID`` (``<dir>/<pid>``; :data:`kanibako.vscode.vscode_config.AGENT_MARKERS_DIR`), so
     the FILENAMES enumerate the agent PIDs — no file READ is needed.  Parses each
     entry name as an ``int``, skipping any non-integer name.  Tolerant (PID-1 must
     never die on a missing/racing dir): an absent dir or any ``OSError`` resolves to

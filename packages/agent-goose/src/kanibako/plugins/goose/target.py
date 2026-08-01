@@ -203,11 +203,11 @@ class GooseTarget(Target):
         ASYMMETRIC vs claude: OFF writes the secure ``approve`` EXPLICITLY (an
         unset ``GOOSE_MODE`` defaults to permissive ``auto`` — clearing would
         silently restore permissive).  Merge-preserving + idempotent (see
-        :func:`kanibako.vscode_config.seed_goose_mode`).  goose declares NO
+        :func:`kanibako.vscode.vscode_config.seed_goose_mode`).  goose declares NO
         directive-hook surface, so ``deliver_directive_hook`` stays the
         inherited no-op.
         """
-        from kanibako.vscode_config import seed_goose_mode
+        from kanibako.vscode.vscode_config import seed_goose_mode
 
         return seed_goose_mode(
             config_root / ".config" / "goose" / "config.yaml",

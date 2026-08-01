@@ -63,7 +63,7 @@ from kanibako.targets.base import (
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
-    from kanibako.vscode_config import CodexModelProvider
+    from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.codex")
 
@@ -298,9 +298,9 @@ class CodexTarget(Target):
         is a BOX INVARIANT forced to ``"danger-full-access"`` ALWAYS (the
         container is the sandbox, so the panel's app-server must not attempt a
         nested one) — independent of *auto_approve*.  See
-        :func:`kanibako.vscode_config.seed_codex_approval`.
+        :func:`kanibako.vscode.vscode_config.seed_codex_approval`.
         """
-        from kanibako.vscode_config import seed_codex_approval
+        from kanibako.vscode.vscode_config import seed_codex_approval
 
         return seed_codex_approval(
             config_root / ".codex" / "config.toml", auto_approve=auto_approve,
@@ -329,7 +329,7 @@ class CodexTarget(Target):
         parameter instead if it ever becomes configurable.
         """
         from kanibako.settings_resolve import GUEST_HOME
-        from kanibako.vscode_config import seed_codex_config
+        from kanibako.vscode.vscode_config import seed_codex_config
 
         return seed_codex_config(
             config_root / ".codex" / "config.toml",

@@ -1,4 +1,4 @@
-"""Unit tests for kanibako.vscode_remote (FF-1 remote-VS-Code plumbing).
+"""Unit tests for kanibako.vscode.vscode_remote (FF-1 remote-VS-Code plumbing).
 
 No real ssh / network anywhere: the ssh legs are asserted at the argv level, and
 the RemoteEngine subprocess calls are mocked.
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako import vscode_remote as vr
+from kanibako.vscode import vscode_remote as vr
 from kanibako.errors import KanibakoError
 
 
@@ -83,7 +83,7 @@ def test_remote_run_kanibako_injects_path_preamble():
     # per-user pipx/uv install (~/.local/bin) is found even though a
     # non-interactive ssh command does not source ~/.profile.
     completed = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         vr.remote_run_kanibako("me@host", ["start", "--detach", "mybox"])
     argv = m.call_args[0][0]
     assert argv[0] == "ssh"
@@ -107,7 +107,7 @@ def test_remote_run_kanibako_hostile_box_name_cannot_escape_quoting():
     # neither expand nor break out into a new command.
     completed = MagicMock(returncode=0, stdout="", stderr="")
     hostile = "mybox; rm -rf ~ $(touch /pwned)"
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         vr.remote_run_kanibako("me@host", ["start", hostile])
     argv = m.call_args[0][0]
     dashdash = argv.index("--")
@@ -151,7 +151,7 @@ def test_ensure_tunnel_fast_path_when_socket_accepts(tmp_path):
     listener.bind(str(sock_path))
     listener.listen(1)
     try:
-        with patch("kanibako.vscode_remote.subprocess.run") as m:
+        with patch("kanibako.vscode.vscode_remote.subprocess.run") as m:
             vr.ensure_tunnel("me@host", 1000, sock_path)
         m.assert_not_called()
     finally:
@@ -161,7 +161,7 @@ def test_ensure_tunnel_fast_path_when_socket_accepts(tmp_path):
 def test_ensure_tunnel_missing_socket_builds_ssh_forward(tmp_path):
     sock_path = tmp_path / "gone.sock"  # nonexistent → establish
     completed = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         vr.ensure_tunnel("me@host", 1000, sock_path)
     argv = m.call_args[0][0]
     assert argv[0] == "ssh"
@@ -189,7 +189,7 @@ def test_ensure_tunnel_stale_socket_file_reestablishes(tmp_path):
     s.bind(str(sock_path))
     s.close()  # bound file remains, but nothing is listening
     completed = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         vr.ensure_tunnel("me@host", 1000, sock_path)
     m.assert_called_once()
 
@@ -197,7 +197,7 @@ def test_ensure_tunnel_stale_socket_file_reestablishes(tmp_path):
 def test_ensure_tunnel_failure_carries_stderr(tmp_path):
     sock_path = tmp_path / "gone.sock"
     completed = MagicMock(returncode=255, stdout="", stderr="ssh: connect refused")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.ensure_tunnel("me@host", 1000, sock_path)
     msg = str(exc.value)
@@ -310,7 +310,7 @@ def test_remote_engine_is_running_parses_true():
     url = "unix:///run/user/1000/x.sock"
     eng = vr.RemoteEngine(url, podman="/usr/bin/podman")
     completed = MagicMock(returncode=0, stdout="true\n")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         assert eng.is_running("kanibako-foo") is True
         argv = m.call_args[0][0]
         assert argv[:4] == eng.argv_prefix
@@ -322,11 +322,11 @@ def test_remote_engine_inspect_env_and_image():
     env_completed = MagicMock(
         returncode=0, stdout='["FOO=bar","KANIBAKO_AGENT=claude"]',
     )
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=env_completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=env_completed):
         assert eng.inspect_env("box", "KANIBAKO_AGENT") == "claude"
         assert eng.inspect_env("box", "MISSING") is None
     img_completed = MagicMock(returncode=0, stdout="ghcr.io/x/y:latest\n")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=img_completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=img_completed):
         assert eng.container_image("box") == "ghcr.io/x/y:latest"
 
 
@@ -335,7 +335,7 @@ def test_remote_engine_running_with_stderr_surfaces_inspect_error():
     completed = MagicMock(
         returncode=125, stdout="", stderr='Error: no such container "kanibako-x"',
     )
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
         running, err = eng.running_with_stderr("kanibako-x")
     assert running is False
     assert "no such container" in err
@@ -349,7 +349,7 @@ def _preflight_engine():
 
 def test_preflight_engine_ok():
     completed = MagicMock(returncode=0, stdout="Client: ...", stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         assert vr.preflight_engine(_preflight_engine()) is None
         # It pre-flights with `version` on the podman remote argv prefix.
         assert m.call_args[0][0][-1] == "version"
@@ -360,7 +360,7 @@ def test_preflight_engine_failure_carries_stderr_and_tunnel_hint():
         returncode=125, stdout="",
         stderr="Cannot connect to Podman: dial unix ...: connection refused",
     )
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.preflight_engine(_preflight_engine())
     msg = str(exc.value)
@@ -370,7 +370,7 @@ def test_preflight_engine_failure_carries_stderr_and_tunnel_hint():
 
 def test_preflight_engine_no_output_still_raises():
     completed = MagicMock(returncode=1, stdout="", stderr="")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.preflight_engine(_preflight_engine())
     assert "podman produced no error output" in str(exc.value)
@@ -382,7 +382,7 @@ def test_probe_remote_returns_uid_when_socket_present():
     completed = MagicMock(
         returncode=0, stdout="KANIBAKO_UID=1000\nKANIBAKO_SOCK=ok\n", stderr="",
     )
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed) as m:
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed) as m:
         assert vr.probe_remote("me@host") == 1000
         # The probe rides the mux ssh leg.
         argv = m.call_args[0][0]
@@ -394,7 +394,7 @@ def test_probe_remote_missing_socket_raises_with_remediation():
     completed = MagicMock(
         returncode=0, stdout="KANIBAKO_UID=1000\nKANIBAKO_SOCK=missing\n", stderr="",
     )
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.probe_remote("me@host")
     msg = str(exc.value)
@@ -404,7 +404,7 @@ def test_probe_remote_missing_socket_raises_with_remediation():
 
 def test_probe_remote_ssh_failure_raises():
     completed = MagicMock(returncode=255, stdout="", stderr="ssh: connect refused")
-    with patch("kanibako.vscode_remote.subprocess.run", return_value=completed):
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
         with pytest.raises(KanibakoError) as exc:
             vr.probe_remote("me@host")
     assert "me@host" in str(exc.value)

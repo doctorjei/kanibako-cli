@@ -29,7 +29,7 @@ from kanibako.paths import (
 )
 from kanibako.settings_resolve import GUEST_HOME
 from kanibako.utils import container_name_for
-from kanibako.vscode_config import (
+from kanibako.vscode.vscode_config import (
     attached_container_config_path,
     load_jsonc,
     seed_attached_container_config,
@@ -545,9 +545,9 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
 
     A' topology: local VS Code drives the remote rootless podman socket over an
     ssh mux; kanibako lifecycle runs on the remote host over plain ssh.  See
-    :mod:`kanibako.vscode_remote`.
+    :mod:`kanibako.vscode.vscode_remote`.
     """
-    from kanibako import vscode_remote as vr
+    from kanibako.vscode import vscode_remote as vr
 
     # --remote REQUIRES an explicit box (no remote cwd resolution): accept the
     # positional or the blanket --box flag; error if neither is given.
