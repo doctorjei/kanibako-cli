@@ -1,6 +1,6 @@
 # kanibako-agent-claude
 
-Claude Code target plugin for [kanibako](https://github.com/doctorjei/kanibako).
+Claude Code target plugin for [kanibako](https://github.com/doctorjei/kanibako-cli).
 
 This plugin provides `ClaudeTarget`, which enables kanibako to detect, mount,
 and manage Claude Code sessions inside containers.

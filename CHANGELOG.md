@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 > Releases before v1.3.0 are not yet backfilled here. For their notes and full
-> changelogs, see the [GitHub releases](https://github.com/doctorjei/kanibako/releases).
+> changelogs, see the [GitHub releases](https://github.com/doctorjei/kanibako-cli/releases).
 
 ## [Unreleased]
 
@@ -1533,15 +1533,15 @@ There is **no migration code** — convert existing installs in a single pass:
   the distinction as data (a `ProjectGroup` descriptor) rather than control flow.
   Behavior-preserving; no user-visible change.
 
-[Unreleased]: https://github.com/doctorjei/kanibako/compare/v1.8.0...HEAD
-[1.8.0]: https://github.com/doctorjei/kanibako/compare/v1.7.2...v1.8.0
-[1.7.2]: https://github.com/doctorjei/kanibako/compare/v1.7.1...v1.7.2
-[1.7.1]: https://github.com/doctorjei/kanibako/compare/v1.7.0...v1.7.1
-[1.7.0]: https://github.com/doctorjei/kanibako/compare/v1.6.0...v1.7.0
-[1.6.0]: https://github.com/doctorjei/kanibako/compare/v1.5.1...v1.6.0
-[1.5.1]: https://github.com/doctorjei/kanibako/compare/v1.5.0...v1.5.1
-[1.5.0]: https://github.com/doctorjei/kanibako/compare/v1.4.0...v1.5.0
-[1.4.0]: https://github.com/doctorjei/kanibako/compare/v1.3.2...v1.4.0
-[1.3.2]: https://github.com/doctorjei/kanibako/compare/v1.3.1...v1.3.2
-[1.3.1]: https://github.com/doctorjei/kanibako/compare/v1.3.0...v1.3.1
-[1.3.0]: https://github.com/doctorjei/kanibako/releases/tag/v1.3.0
+[Unreleased]: https://github.com/doctorjei/kanibako-cli/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/doctorjei/kanibako-cli/compare/v1.7.2...v1.8.0
+[1.7.2]: https://github.com/doctorjei/kanibako-cli/compare/v1.7.1...v1.7.2
+[1.7.1]: https://github.com/doctorjei/kanibako-cli/compare/v1.7.0...v1.7.1
+[1.7.0]: https://github.com/doctorjei/kanibako-cli/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/doctorjei/kanibako-cli/compare/v1.5.1...v1.6.0
+[1.5.1]: https://github.com/doctorjei/kanibako-cli/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/doctorjei/kanibako-cli/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.2...v1.4.0
+[1.3.2]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/doctorjei/kanibako-cli/releases/tag/v1.3.0
