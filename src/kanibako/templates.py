@@ -182,7 +182,7 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
        layer's file at the same relative path wins (per-file last-wins).
 
     2. **Seed.** Copy the merged staged tree into *dest* with
-       :func:`_copy_resource_tree_if_absent` — a pre-existing *dest* file survives
+       :func:`copy_resource_tree_if_absent` — a pre-existing *dest* file survives
        untouched.  This is the load-bearing failsafe against re-seed DATA LOSS.
 
     SKIP-IF-ABSENT: a *layers* entry that is not an existing directory is silently
@@ -247,10 +247,10 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 #   @system.canon/handbook                 USER-owned — create-if-absent ALWAYS
 #   @config.agents/{default,<agent>}       USER-owned — create-if-absent ALWAYS
 #
-# Fired at first-run init (``cli._ensure_initialized``), at ``kanibako setup``, and
-# at ``kanibako install``.  Every copy is CREATE-IF-ABSENT per file except the
-# staging rows under an explicit refresh: it adds files the user does not yet have
-# and never clobbers their edits (J-3 item 1).
+# Fired at first-run init (``cli._ensure_initialized``) and at ``kanibako setup``.
+# Every copy is CREATE-IF-ABSENT per file except the staging rows under an explicit
+# refresh: it adds files the user does not yet have and never clobbers their edits
+# (J-3 item 1).
 # ---------------------------------------------------------------------------
 
 
@@ -462,10 +462,9 @@ def copy_tree(
         shutil.copy2(str(entry), str(target))
 
 
-# Backwards-compatible names.  ``copy_resource_tree_if_absent`` is the public alias
-# other modules (e.g. the seed-once apply in commands.start) reuse; the private
-# spelling is kept because the test suite and several call sites name it.
-_copy_resource_tree_if_absent = copy_tree
+# ``copy_resource_tree_if_absent`` is the create-if-absent spelling other modules
+# (e.g. the seed-once apply in commands.start) reuse; it names ``copy_tree``, whose
+# skip-if-present behaviour is what the longer name is asserting.
 copy_resource_tree_if_absent = copy_tree
 
 
@@ -643,12 +642,6 @@ def ensure_agent_stores(
     setup`` (which reports) and the lazy backstop in ``cli._ensure_initialized``
     (silent, first run only).  Both must run the SAME full per-file stamp; the bare
     ``mkdir`` the lazy path used to do is what this replaces.
-
-    ⚑ There is a THIRD call site, ``commands/install.run``, which J-6's two-trigger
-    prose does not count and should not: that whole function is DEAD (no
-    ``set_defaults(func=run)`` wiring — see its own note). Reached through this one
-    implementation it would behave identically; it is named here only so a reader who
-    greps for callers does not conclude the prose is wrong.
 
     Per name, in order:
 

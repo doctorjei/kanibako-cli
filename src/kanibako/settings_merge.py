@@ -1,23 +1,25 @@
 """Cascade MERGE — the depth-sensitive per-name union of the ordered partials.
 
-Block 2b of the KeyStore implementation. ONE pure function,
-:func:`merge`, walks block 2a's ordered ``list[KeyStore]`` partials
-(MOST-SPECIFIC-FIRST, S8) and produces ONE raw merged snapshot. It is PURE: no
-file / env / clock access, same input → same output, and it NEVER mutates its
-input partials (S15) — it builds a fresh
+ONE pure function, :func:`merge`, walks :mod:`kanibako.settings_assemble`'s ordered
+``list[KeyStore]`` partials (MOST-SPECIFIC-FIRST, S8) and produces ONE raw merged
+snapshot. It is PURE: no file / env / clock access, same input → same output, and
+it NEVER mutates its input partials (S15) — it builds a fresh
 :class:`~kanibako.settings_store.KeyStore`.
 
 It is the depth-sensitive successor to ``settings_resolve.resolve_value``'s
 most-specific-first winner-take-all (which used ``""`` as a terminal + a separate
 ``defaults`` pass): here the 3-state ``_MISSING`` / present-``None`` model
-replaces both (2a already folded the floor INTO the ``base`` level, so there is no
-separate defaults dict). This module does NOT touch ``resolve_value`` /
-``SettingsResolver`` / ``start.py`` — it builds ALONGSIDE them (the swap is block 7).
+replaces both (assembly already folded the floor INTO the ``base`` level, so there
+is no separate defaults dict). ``resolve_value`` itself is NOT retired — it still
+serves the ``config.*`` / ``system.*`` FOUNDATION path tier (``paths.py``); it is
+the launch/settings cascade that no longer goes through it.
 
 OUT of scope (hard boundaries): NO ``@``-ref / ``$var`` / ``~`` expansion or cycle
-detection (block 3 — refs stay RAW), NO ``reconcile_categories`` / ``box_dest``
-collision logic (the SEPARATE downstream pass, §6g — 2b keys by NAME only), NO
-typed views (block 4), NO ``config set`` (block 5), NO consumer swap (block 7).
+detection (:mod:`kanibako.settings_expand` — refs stay RAW), NO
+``reconcile_categories`` / ``box_dest`` collision logic (the SEPARATE downstream
+pass, §6g — merge keys by NAME only), NO typed views
+(:mod:`kanibako.settings_views`), NO ``config set``
+(:mod:`kanibako.config_interface`).
 
 Authority
 ---------

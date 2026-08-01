@@ -31,25 +31,6 @@ class TestCommsConfig:
         assert resolved["system.channelroot"] == Path("/custom-channels")
 
 
-class TestChannelsSetup:
-    def test_setup_does_not_precreate_channel_skeleton(self, config_file, tmp_home):
-        """Block #3a / JC-3: ``channelroot`` moved to Layer 2 and the launch path
-        creates the full channel skeleton (L7 guarantee-create + seed), so setup
-        NO LONGER pre-creates it (the pre-creation was redundant and is dropped).
-        """
-        from kanibako.commands.install import run
-
-        import argparse
-        args = argparse.Namespace()
-        run(args)
-
-        data_home = tmp_home / "data"
-        channels = data_home / "kanibako" / "channels"
-        # The channel type-root skeleton is NOT pre-created at setup anymore.
-        assert not (channels / "common").exists()
-        assert not (channels / "chat" / "general.md").exists()
-
-
 class TestCommsOnStart:
     """KANIBAKO_NAME wiring during project start (channels covered elsewhere)."""
 

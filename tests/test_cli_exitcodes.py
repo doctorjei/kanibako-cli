@@ -131,6 +131,15 @@ class TestLazyInit:
         # Data directories should also be created
         assert (tmp_path / "data" / "kanibako" / "containers").is_dir()
         assert (tmp_path / "data" / "kanibako" / "agents").is_dir()
+        # NEGATIVE SPACE (cli.py NOTE block #3a / JC-3): the channel type-root
+        # skeleton is NOT pre-created host-side.  The launch path owns it (the L7
+        # guarantee-create for the bind sources + ``_seed_channel_files``), and no
+        # host-side pre-launch consumer exists.  Asserted on the LIVE init path
+        # after the dead ``commands/install.run`` test that used to cover it was
+        # deleted (Phase 0).
+        channels = tmp_path / "data" / "kanibako" / "channels"
+        assert not (channels / "common").exists()
+        assert not (channels / "chat" / "general.md").exists()
 
     def test_lazy_init_idempotent(self, tmp_path, monkeypatch):
         """Running lazy init twice does not error or overwrite config."""

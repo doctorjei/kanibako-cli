@@ -238,7 +238,7 @@ kani:
   # ``~/canon/bible`` is ever bound: every bind lands on a mountpoint that already
   # exists in the box home (``core_defaults.materialize_canon_skeleton``, run at box
   # create and made root-owned), so nothing nests and no mountpoint has to live
-  # inside a bind SOURCE.  R1's whole-dir ``canon_bible`` key is RETIRED.
+  # inside a bind SOURCE.
   # ⚑ The flattener (``import-directives.py``) is MACHINERY, not canon: it ships in
   # the package and reaches the box through the ``kani_pkg`` bind above, at
   # ``/opt/kanibako/kanibako/scripts/import-directives.py``.
@@ -375,8 +375,6 @@ helpers:
   # embedded rule — silently yielding a host_src that has lost both the box name and
   # the extension.  `@{...}` delimits the name explicitly so the suffix stays a
   # literal (resolver: settings_resolve.match_ref; ruled by Jei 2026-07-30b, PHASE R).
-  # This row was ASPIRATIONAL until that landed; the code used an equivalent single
-  # key `@meta.box.helper_log`, now retired.
   - key: helper_log
     category: bindings.ro
     source: helper_log

@@ -136,34 +136,6 @@ class StandardPaths:
     primary_vault_rw: Path
     primary_logs: Path
 
-    # ------------------------------------------------------------------
-    # Transitional aliases.
-    #
-    # ``share_ro``/``share_rw`` raise (the dirs were deleted in the system.* reorg).
-    # The ``comms`` alias was retired in Phase 6 (the legacy comms mount is gone; all
-    # readers use ``channels``), and the ``templates`` alias was retired with M-11:
-    # it aliased the field now called ``template``, so keeping it would have shipped
-    # THREE spellings of one directory. Do NOT add new uses.
-    # ------------------------------------------------------------------
-
-    @property
-    def share_ro(self) -> Path:
-        """OLD ``std.share_ro`` — DELETED (subsumed by ``@workset.vault_ro`` /
-        the ``shared`` category).  No replacement dir exists → raise."""
-        raise NotImplementedError(
-            "system.path.share_ro was deleted in the system.* reorg; use the "
-            "workset vault / 'shared' category instead."
-        )
-
-    @property
-    def share_rw(self) -> Path:
-        """OLD ``std.share_rw`` — DELETED (subsumed by ``@workset.vault_rw`` /
-        the ``shared`` category)."""
-        raise NotImplementedError(
-            "system.path.share_rw was deleted in the system.* reorg; use the "
-            "workset vault / 'shared' category instead."
-        )
-
 
 @dataclass(frozen=True)
 class ProjectGroup:

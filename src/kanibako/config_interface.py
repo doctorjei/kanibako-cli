@@ -911,10 +911,11 @@ def box_agent_retired_error(
 # box (agent ⊃ box) and workset (agent ⊃ workset) CONTAIN — so a bare write from
 # either is UPWARD and is DROPPED at launch by
 # ``settings_assemble._drop_upward_scopes`` (a silent no-op the CLI reported as
-# "Set"). The two differ in the CURE: a BOX has a single active agent, so it gets
-# the ``box.agent.<key>`` mirror (redirect/teach); a WORKSET spans many boxes/
-# agents, so there is deliberately NO ``workset.agent.*`` mirror — it simply
-# refuses (configure at system scope for all agents, or per-box via the mirror).
+# "Set"). The two differ in the CURE: a BOX has a single active agent, so it is
+# redirected to the spec §2h request ``pref.agent.<active>.<key>``
+# (``box_agent_redirect_key``); a WORKSET spans many boxes/agents, so there is no
+# single agent to redirect TO — it simply refuses (configure at system scope for
+# all agents, or per-box via the §2h request).
 _NO_BARE_AGENT_KEY_SCOPES: "frozenset[ConfigLevel]" = frozenset(
     {ConfigLevel.box, ConfigLevel.workset}
 )
