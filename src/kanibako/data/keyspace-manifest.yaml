@@ -31,6 +31,7 @@ policy:
   # fallback as an explicit linear level; §2 rules this EQUIVALENT for scalars
   # AND for per-name category merges (`_MISSING` is tested per name — no nested
   # mini-cascade). Do NOT count agent.default as a separate authority level.
+  # Token mapping: the spec (§2) spells the active-agent level `agent.<active>`; this file spells it `agent.active`.
   cascade_bracket: [base, system, agent.default, agent.active, workset, box]
   cascade_bracket_spec: "§2 (FULL bracket; R-17)"
 
@@ -51,7 +52,9 @@ policy:
     - "every agent.default.<key> ALSO exists as agent.<agent>.<key> (same type,
        same default, resolved via agent_tier_fallback)"
     - "every category in `categories` exists at every scope in categories.scopes"
-    - "box.agent.<key> mirrors the ACTIVE agent's whole subtree (§2b)"
+    - "meta.box.agent.<key> MIRRORS (RO) the ACTIVE agent's whole subtree (§2b;
+       R-4 — the settable box.agent.<key> form is RETIRED; a box tweaks its
+       agent via pref.agent.<agent>.<key>, §2h)"
   parametric_expansion_spec: "§2a / §2b / §2d"
 
   # The baked-in code defaults are NOT a tier either — they are each key's `default:`
@@ -97,7 +100,7 @@ policy:
                 dangling braced ref exactly as a dangling bare one"
     motivating_row: "box.bindings.ro.helper_log — (@workset.logs/@{meta.box.name}.jsonl, …);
                      the retired workaround SPELLING meta.box.helper_log was never
-                     a key (not_keys at A5, R-23/R-36)"
+                     a key (not_keys.never_a_key; R-23/R-36)"
   reference_forms_spec: "§2c (BRACE FORM `@{name}`; R-23, ruled 2026-07-30b)"
 
   enforce_at: resolve             # containing-scope key in a lower file is DROPPED + warned
@@ -121,8 +124,6 @@ policy:
   tuple_direction: source_then_destination
   tuple_dest_space:
     mounts: guest               # bindings.ro · bindings.rw · caches · common
-                                # (common: A4→A5 window — `categories:` spells it
-                                #  `shared` until A5's rename)
                                 # (masks is dest-KEYED, not a tuple — its dests
                                 #  are guest paths all the same)
     copies: host                # seeded · synced
@@ -142,8 +143,6 @@ policy:
                                 #   bindings.* says PUT THIS HERE, masks says
                                 #   NOTHING MAY BE HERE. Different shape (dest-
                                 #   keyed 3-state), different conflict rule.
-    # A4→A5 window: `common` is the ratified name; `categories:` below still
-    # spells it `shared` until A5's rename.
     common: abstract            # ROOTED declarations (declaration_roots below)
     caches: abstract            #   that EXTEND bindings.rw. Still real, declared,
     seeded: abstract            #   settable keys; seeded derives a COPY, not a mount.
@@ -279,8 +278,7 @@ policy:
     #                                class rule above).
     shadowed_flags:
       "--agent":
-        key: system.agent           # A4→A5 window: the keys section still spells
-                                    #   system.default_agent until A5's rename
+        key: system.agent
         status: wired
       "-M/--model":
         key: "agent.<agent>.model"
@@ -316,8 +314,6 @@ policy:
   # the ARTIFACT differs — which is the whole of the difference.
   declaration_roots:
     applies_to: [common, caches, seeded]   # synced takes NO root; bindings take NO root
-                                           # (common: A4→A5 window — `categories:`
-                                           #  spells it `shared` until A5's rename)
     rooted_at: declaration_load            # REQUIRED
     assembly_prepend: forbidden            # `scope_roots` — no longer exists
     subdir_pattern: "<scope-root>/<category>/<name>"
@@ -357,11 +353,9 @@ policy:
     agent:
       root: "agents/<agent>"               # @meta.agent.<agent>.path
       allow: ["template/", "canon/handbook/", "common/"]
-      # A4→A5 window: `common/` above is the ratified category name; `categories:`
-      # spells it `shared` until A5's rename.
       deny:
         "settings.yaml": "correctness — = meta.agent.<agent>.settings"
-        "caches/": "machinery output, never seeded"
+        "caches/": "denied by default"
     workset:
       root: "<workset_path>"               # @meta.workset.path
       allow: ["template/", "canon/handbook/"]
@@ -397,9 +391,6 @@ policy:
   # the step before the box seed, filling the store the box layers copy from.
   # ONE mechanism (the same layered create-if-absent copy), fired at FOUR
   # lifecycle moments:
-  # (A4→A5 window: `global/template` below is the ratified spelling; the keys
-  #  section still defaults system.base_template → global/base_template until
-  #  A5's rename.)
   seeded_seeds_moments:
     - moment: "install / setup"
       from: "core package"
@@ -473,11 +464,15 @@ categories:
     kind: copy                  # one-time copy at init, NOT a mount
     cli_set: source_only
     spec: "§2a"
-  shared:
+  common:
     value: bind
     mount_options: "Z,U"
     cli_set: source_only
-    spec: "§2a"
+    note: "RENAMED from `shared` (2026-07-29; R-5). Category `common` vs channel
+           type-root `common` is unambiguous — the `channels.` segment is the
+           discriminator. Host dirs move to agents/<agent>/common/<name>:
+           migration M-3."
+    spec: "§2a (R-5; migration M-3)"
   synced:
     value: bind
     kind: copy                  # two-way synced by the agent plugin; mtime-gated
@@ -578,12 +573,15 @@ keys:
     set: cli+file
     default: "@config.data/channels"
     spec: "§2g"
-  system.channels.commons:
+  system.channels.common:
     scope: system
     type: path
     set: cli+file
-    default: "@system.channelroot/commons"
-    spec: "§2g"
+    default: "@system.channelroot/common"
+    note: "shared-scratch type-root. RENAMED from system.channels.commons (R-6)
+           — a GUEST path in every box and named in the packaged agent guide:
+           migration M-9 (the first guest-path migration in this set)."
+    spec: "§2g (R-6; migration M-9)"
   system.channels.chat:
     scope: system
     type: path
@@ -608,12 +606,34 @@ keys:
     set: cli+file
     default: "@system.channelroot/share"
     spec: "§2g"
-  system.base_template:
+  system.template:
     scope: system
     type: path
     set: cli+file
-    default: "@config.data/global/base_template"
-    spec: "§2g"
+    default: "@config.data/global/template"
+    note: "the system TEMPLATE ROOT. RENAMED from system.base_template (R-1;
+           default global/base_template → global/template; migration M-11).
+           Holding the ROOT leaves room for further template subtrees without
+           new keys — same indirection as <scope>.canon. ⮕ The box-home seed is
+           box/home (@system.template/box/home, §2a layer 1), NOT the root and
+           NOT box/ — box/ is the box TEMPLATE root, holding home/ beside
+           canon/handbook/ (§2a layers 4-6)."
+    spec: "§2g (R-1)"
+  system.canon:
+    scope: system
+    type: path
+    set: cli+file
+    default: "@config.data/global/canon"
+    note: "the SYSTEM-level CANON CONTRIBUTION ROOT — the user's own directives;
+           its handbook/ subtree is bound in-box at ~/canon/handbook/. Names a
+           per-scope CONTRIBUTION root, NOT a copy of the assembled canon:
+           ~/canon (guest) is the assembled tree, @<scope>.canon (host) is what
+           this scope contributes to it. Root-not-leaf leaves room for further
+           canon subtrees without new keys. Supplies SYS_CONTENTS.md + the
+           general chapter; MAY supply the agent/workset/box chapters too (a
+           scope key SHADOWS it where present — §0 depth-sort). A Layer-2
+           SETTINGS key, NOT config.* — it fails §1's locate-and-load test."
+    spec: "§2g (R-9)"
   system.backup:
     scope: system
     type: path
@@ -633,13 +653,19 @@ keys:
     default: "$XDG_RUNTIME_DIR/kanibako"
     note: "helper sockets; XDG_RUNTIME_DIR has NO spec default — fall back + WARN"
     spec: "§2g / §1"
-  system.default_agent:
+  system.agent:
     scope: system
     type: str
     set: cli+file
     default: null                 # (unset)
-    note: "box.agent_name falls back to this (renamed from system.agent, D-M2)"
-    spec: "§2g"
+    note: "the CURRENT agent's NAME — starts as, and holds, the default
+           until/unless changed. Behavior, not a path. RENAMED from
+           system.default_agent (R-2 — D-M2 SUPERSEDED 2026-07-29: the one-char
+           clash expired when the agent store dir became config.agents). A box
+           or workset requests a different one with pref.system.agent (§2h);
+           the CLI --agent beats both (§1A). Unset/<None> ⇒ NO-AGENT
+           plain-shell box (D-M6)."
+    spec: "§2g (R-2)"
   system.setup_completed:
     scope: system
     type: version_marker          # R-34: the VALUE is the version that completed setup
@@ -660,42 +686,70 @@ keys:
     spec: "§1 / §2b (auth-level 2026-07-01)"
 
   ## ---- LAYER 2: workset.* settings keys (§2c/§2e) -------------------------
-  ## Mode-dependent: PRIMARY + NAMED share the ALL WORKSETS definitions;
-  ## STANDALONE is a degenerate workset with most sub-keys <None>.
+  ## Mode-dependent: PRIMARY + NAMED share the ALL WORKSETS definitions.
+
+  # Per-mode defaults CORRECTED as ONE BLOCK (R-26..R-30; R-30's entry lives in
+  # the meta.* block below): NOT all standalone sub-keys are <None> — the
+  # blanket claim was false (spec §2e, corrected 2026-07-29). THE SPEC'S REASON
+  # rides here: the per-mode variation lives in meta.box.path AND NOWHERE
+  # DOWNSTREAM, which is what lets box.bindings.rw.home (and every rooted box
+  # key) be a SINGLE declaration for every mode. Standalone's SET values are
+  # what give a lone box a real @meta.box.path to root against.
   workset.workspaces:
     scope: workset
     type: path
     set: cli+file
-    default: {primary: null, named: "@meta.workset.path/workspaces", standalone: null}
-    spec: "§2c"
+    default: {primary: null, named: "@meta.workset.path/workspaces",
+              standalone: "@meta.workset.path/workspace"}
+    note: "standalone: just the one box; changeable from workset level (R-26)"
+    spec: "§2c / §2e (R-26)"
   workset.boxes:
     scope: workset
     type: path
     set: cli+file
     default: {primary: "@meta.workset.path/boxes", named: "@meta.workset.path/boxes",
-              standalone: null}
-    spec: "§2c"
-  workset.vault_ro:
-    scope: workset
-    type: path
-    set: cli+file
-    default: {primary: "@meta.workset.path/vault/ro", named: "@meta.workset.path/vault/ro",
-              standalone: null}
-    spec: "§2c"
-  workset.vault_rw:
-    scope: workset
-    type: path
-    set: cli+file
-    default: {primary: "@meta.workset.path/vault/rw", named: "@meta.workset.path/vault/rw",
-              standalone: null}
-    spec: "§2c"
+              standalone: "@meta.workset.path/box_data"}
+    note: "standalone: just the one box; changeable from workset level (R-27)"
+    spec: "§2c / §2e (R-27)"
   workset.logs:
     scope: workset
     type: path
     set: cli+file
     default: {primary: "@meta.workset.path/logs", named: "@meta.workset.path/logs",
-              standalone: null}
-    spec: "§2c"
+              standalone: "@meta.box.path"}
+    note: "standalone: the box root IS the log home (R-28); helper_log stays a
+           SINGLE row for all modes because this key carries the variation"
+    spec: "§2c / §2e (R-28)"
+  workset.vault_ro:
+    scope: workset
+    type: path
+    set: cli+file
+    default: "@meta.workset.path/vault/ro"
+    note: "ALL PROJECTS — defined ONCE for EVERY mode (R-29); only the box BIND
+           differs per mode (the per-box /@meta.box.name subdir a lone box does
+           not need)"
+    spec: "§2c (ALL PROJECTS; R-29)"
+  workset.vault_rw:
+    scope: workset
+    type: path
+    set: cli+file
+    default: "@meta.workset.path/vault/rw"
+    note: "ALL PROJECTS — defined ONCE for EVERY mode (R-29); see vault_ro"
+    spec: "§2c (ALL PROJECTS; R-29)"
+  workset.canon:
+    scope: workset
+    type: path
+    set: cli+file
+    default: "@meta.workset.path/canon"
+    note: "the WORKSET's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies
+           the handbook's WORKSET chapter, bound at ~/canon/handbook/workset/.
+           UNIFORM IN EVERY MODE (ALL PROJECTS) — deliberately NOT per-mode:
+           chapter binds are SKIP-IF-ABSENT (§2c), which is what lets
+           workset.canon/box.canon avoid per-mode <None> carve-outs entirely.
+           The workset.template <None> carve-out does NOT transfer (a template
+           seeds FUTURE boxes; a handbook is directives for the box that exists
+           now — same shape, different reason)."
+    spec: "§2c (ALL PROJECTS; R-9)"
   workset.registry:
     scope: workset
     type: path
@@ -757,13 +811,15 @@ keys:
     default: {primary: "@meta.workset.path/channels", named: "@meta.workset.path/channels",
               standalone: null}
     spec: "§2c"
-  workset.channels.commons:
+  workset.channels.common:
     scope: workset
     type: path
     set: cli+file
-    default: {primary: "@workset.channelroot/commons", named: "@workset.channelroot/commons",
+    default: {primary: "@workset.channelroot/common", named: "@workset.channelroot/common",
               standalone: null}
-    spec: "§2c"
+    note: "RENAMED from workset.channels.commons (R-6); guest path in every box
+           — migration M-9"
+    spec: "§2c (R-6; migration M-9)"
   workset.channels.chat:
     scope: workset
     type: path
@@ -800,24 +856,6 @@ keys:
     spec: "§2c (ALL PROJECTS)"
 
   ## ---- LAYER 2: box.* settings keys (§2b) ---------------------------------
-  box.agent_name:
-    scope: box
-    type: str
-    set: cli+file
-    default: null
-    fallback: "@system.default_agent"
-    note: "<None> AND no fallback ⇒ NO-AGENT plain-shell box (skips all agent
-           binds/creds/template layer 2). Was box.crab, then box.agent (D-M6)."
-    spec: "§2b"
-  box.agent.<key>:
-    scope: box
-    parametric: [key]
-    set: cli+file
-    mirror_of: "agent.<box.agent_name>.*"
-    note: "the box's box-scoped MIRROR of its active agent's WHOLE settings subtree.
-           Overriding one is an ORDINARY same-scope write — this is precisely why the
-           directional rule needs no exception. Re-materialized when agent_name changes."
-    spec: "§2b"
   box.image:
     scope: box
     type: str
@@ -839,6 +877,17 @@ keys:
            machine-wide repoint. The GENERATED storage.conf (images_conf) is an
            INTERNAL bind, NOT a key."
     spec: "§2b (D-M8)"
+  box.canon:
+    scope: box
+    type: path
+    set: cli+file
+    default: "@meta.box.path/canon"
+    note: "the BOX's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies the
+           handbook's BOX chapter, bound at ~/canon/handbook/box/. Resolves in
+           EVERY mode now that meta.box.path is uniform (§2c), standalone
+           included. Also the dest of the §2a handbook seed layers (the seed
+           writes precisely what the canon_hb_box bind reads, spelled once)."
+    spec: "§2b (R-9)"
   box.shell:
     scope: box
     type: str
@@ -868,6 +917,14 @@ keys:
     note: "sparse — only a non-default false is ever written. Read-compat maps the
            legacy project.enable_vault → this key."
     spec: "§2b (renamed 2026-07-04)"
+  box.masks:
+    scope: box
+    type: dict
+    set: file                     # YAML only — matches the category (cli_set: false)
+    default: {}
+    note: "dict[box_dest -> bool|None], tri-state present=mask / null=unmask /
+           absent=inherit (§2a masks category)"
+    spec: "§2c (ALL PROJECTS) / §2a (R-16)"
 
   ## ---- LAYER 2: agent.* settings keys (§2d) -------------------------------
   ## agent.default.* is the all-agents FALLBACK layer; agent.<agent>.<key> falls
@@ -944,12 +1001,6 @@ keys:
     default: null
     note: "raw-argv passthrough escape hatch"
     spec: "§2d"
-  agent.default.bindings:
-    scope: agent
-    type: dict
-    set: cli+file
-    default: {}
-    spec: "§2d"
   agent.default.transform_settings:
     scope: agent
     type: dict
@@ -958,6 +1009,16 @@ keys:
     note: "binary-transform SETTINGS consumed by the plugin's transform pipeline
            (the INPUT; agent.<agent>.caches.transform is the OUTPUT cache)"
     spec: "§2d (added 2026-07-14)"
+  agent.default.canon:
+    scope: agent
+    type: path
+    set: cli+file
+    default: "@config.agents/default/canon"
+    note: "the all-agents fallback CANON CONTRIBUTION ROOT (= the parametric
+           default with meta.agent.default.name = \"default\") — a plain dir in
+           the agents store, CORE-owned: there is NO default plugin package
+           (§0 'the base system owns agent.default.*')."
+    spec: "§2d (R-13)"
   agent.<agent>.<key>:
     scope: agent
     parametric: [agent, key]
@@ -975,6 +1036,25 @@ keys:
     default: "@meta.agent.<agent>.path/template"
     note: "per-agent template SOURCE; seed layer 2"
     spec: "§2d"
+  agent.<agent>.canon:
+    scope: agent
+    parametric: [agent]
+    type: path
+    set: cli+file
+    default: "@meta.agent.<agent>.path/canon"
+    fallback: "agent.default.canon"
+    note: "the AGENT's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies
+           the handbook's AGENT chapter, bound at ~/canon/handbook/agent/.
+           PLUGIN-provided or the default — the ordinary §2d fallback picks
+           exactly ONE to bind (OVERRIDE, not additive: no per-file merge).
+           ⚑ The plural/singular split is LOAD-BEARING and must not be
+           'normalised' (R-9/R-13): STORAGE IS VARIED, BINDING IS NOT — the
+           HOST stores N per-agent variants (agents/<agent>/…, plural, each
+           settable incl. for an agent this box is not running, §2h); the BOX
+           gets ONE chapter at a FIXED dest with NO agent segment (agent/…,
+           singular). The discriminator lives on the HOST side of the bind
+           tuple, never the guest side."
+    spec: "§2d (R-9 + R-13)"
 
   ## ---- meta.* — TOP-LEVEL protected RO namespace (§0) ---------------------
   ## Materialized ONLY by construct-time / plugin / runtime derivation.
@@ -986,12 +1066,6 @@ keys:
     value: "standalone=<runtime project dir> · primary=@config.primary_workset ·
             named=<detected workset root>"
     spec: "§1A (L0.2)"
-  meta.runtime.ws_settings:
-    namespace: meta
-    set: never
-    origin: runtime_treewalk
-    value: "@meta.runtime.ws_root/settings.yaml (UNIFORM across all modes)"
-    spec: "§1A"
   meta.runtime.ws_name:
     namespace: meta
     set: never
@@ -1022,7 +1096,9 @@ keys:
     namespace: meta
     set: never
     origin: bootstrap
-    value: "@meta.runtime.ws_settings"
+    value: "@meta.workset.path/settings.yaml"
+    note: "the §1A SINGLE-SOURCE canonical spelling; the former
+           @meta.runtime.ws_settings anchor is CUT (unified path; R-36)"
     spec: "§2c / §1A"
   meta.box.name:
     namespace: meta
@@ -1055,18 +1131,22 @@ keys:
     origin: construct_time
     value: {primary: "<the user's real project dir>",
             named: "@workset.workspaces/@meta.box.name",
-            standalone: "@meta.workset.path/workspace"}
+            standalone: "@workset.workspaces"}
+    note: "standalone: the whole-value ref (no /@meta.box.name join — one box);
+           spelled against the KEY so a repointed workset.workspaces carries it
+           (a literal here would be the copy-that-drifts §0 forbids). R-26 rider."
     spec: "§2c"
   meta.box.settings:
     namespace: meta
     set: never
     origin: construct_time
-    value: {primary: "@workset.boxes/@meta.box.name/settings.yaml",
-            named: "@workset.boxes/@meta.box.name/settings.yaml",
-            standalone: null}
-    note: "standalone: SUBSUMED — box tier empty; box values resolve from the
-           workset tier as R2 downward-defaults (2026-07-04)"
-    spec: "§2c"
+    value: "@meta.box.path/settings.yaml"
+    note: "UNIFORM — ALL PROJECTS, every mode (R-30): standalone HAS a box tier
+           whose file is merely ABSENT by default; box values then resolve from
+           the workset tier @meta.workset.settings as R2 downward defaults
+           (2026-07-04). The old 'standalone: null — SUBSUMED, box tier empty'
+           reading is the RETIRED model."
+    spec: "§2c (ALL PROJECTS; R-30)"
   meta.box.mode:
     namespace: meta
     set: never
@@ -1096,17 +1176,33 @@ keys:
     namespace: meta
     set: never
     origin: derived
-    value: "@workset.auth.path/@box.agent_name"        # <None> for standalone
+    value: "@workset.auth.path/@system.agent"          # <None> for standalone
     note: "reclassified from the old SETTABLE box.auth.workset_path (2026-07-04):
-           being meta means it can't be set to a dangling @-ref"
-    spec: "§2c"
+           being meta means it can't be set to a dangling @-ref. Respelled from
+           @box.agent_name (R-31, with R-3)."
+    spec: "§2c (R-31)"
+  meta.box.agent.<key>:
+    namespace: meta
+    parametric: [key]
+    set: never
+    origin: derived
+    mirror_of: "agent.<@system.agent>.<key>"
+    note: "READ-BACK RO MIRROR of the effective agent subtree for this box
+           (R-4; was the SETTABLE box.agent.<key> — that entry's 'ordinary
+           same-scope write' argument INVERTED under R-3's retirement). Values
+           are READABLE here, never SETTABLE; a box tweaks its agent with
+           pref.agent.<agent>.<key> (§2h) instead. Re-materialized whenever the
+           effective agent changes. Impl: COPY (pure) or shared REF (equivalent
+           — one box per process). Restores 'set == never IFF meta.*'."
+    spec: "§2b (R-4)"
   meta.box.agent.auth.share_support:
     namespace: meta
     set: never
     origin: plugin
-    value: "@meta.agent.<@box.agent_name>.auth.share_support"
-    note: "box-immutable capability MIRROR — the hard RO floor a box cannot fake"
-    spec: "§2c / §2d"
+    value: "@meta.agent.<@system.agent>.auth.share_support"
+    note: "box-immutable capability MIRROR — the hard RO floor a box cannot
+           fake. Respelled from <@box.agent_name> (R-32, with R-3)."
+    spec: "§2c / §2d (R-32)"
   meta.box.helper_num:
     namespace: meta
     set: never
@@ -1180,6 +1276,122 @@ keys:
     spec: "§2d (auth-level 2026-07-01)"
 
 ## ---------------------------------------------------------------------------
+## PREF — requests (§2h; R-7 / R-7a / R-7b). NOT a key list: the family is
+## pref.<target-key>, governed by the entries + filters below. A pref is a
+## REQUEST consumed during resolution — not a value of its own; it lives in the
+## file where it was written, NEVER mutates another settings file, and is
+## re-applied on every resolution (concurrent boxes cannot fight).
+## ---------------------------------------------------------------------------
+pref:
+
+  # THE ALLOWLIST — exactly two ENTRIES (§0's closed keyspace applies).
+  # Membership alone is NOT sufficient: the three filters below still apply.
+  allowlist:
+    "system.agent":
+      kind: single_key
+      role: "SELECTION — 'I want to use this agent, by name.' The first thing a
+             box on a non-default agent sets."
+    "agent.*.**":
+      kind: key_set               # written in R-22's glob notation (policy.glob):
+                                  #   `*` = exactly ONE segment · `**` = the
+                                  #   remaining tail, any depth
+      role: "CONFIGURATION — values for that agent, targeting AGENT scope (a
+             bare agent.<agent>.<key> in a box file would be an upward write;
+             the pref is the mediator)"
+      segment_validation: "the `*` segment is an AGENT NAME — INVALID unless a
+                           VALID agent or `default`"
+
+  # R-7b — stated here EXPLICITLY because the manifest GENERATES the validator:
+  # the agent test is "is it a VALID agent", NOT "is it the ACTIVE agent".
+  # `pref.agent.goose.x` while claude is active is LEGAL — pre-configuring an
+  # agent you may switch to is allowed.
+  agent_test: valid_agent_not_active_agent
+  agent_test_spec: "§2h (R-7b)"
+
+  # THREE INDEPENDENT FILTERS — ALL must pass.
+  # Checker order: valid_key ∧ allowlist ∧ forbidden_tiers.
+  filters:
+    - valid_key                   # target matches a declared key or a declared
+                                  #   PARAMETRIC FAMILY (§0: closed but not flat).
+                                  #   VALIDITY, not EXISTENCE: a NEW name inside
+                                  #   a family is legal
+                                  #   (pref.agent.claude.bindings.rw.boooooo);
+                                  #   fabrication still errors
+                                  #   (pref.agent.zippity.wibble matches no
+                                  #   family → §0 error).
+    - allowlist                   # requestable in principle (the table above)
+    - forbidden_tiers             # and not barred by any of:
+                                  #   STRUCTURAL — the target must resolve
+                                  #     STRICTLY EARLIER than the requesting
+                                  #     level (a later-resolving key needs no
+                                  #     pref: set it directly);
+                                  #   CATEGORICAL — never meta.* / config.* /
+                                  #     pref.* itself (meta is RO by contract —
+                                  #     a pref targeting it would be a backdoor;
+                                  #     config is the foundation;
+                                  #     request-of-request has no termination
+                                  #     argument. Meta VALUES still change
+                                  #     downstream — only DIRECT targeting is
+                                  #     barred);
+                                  #   LOCATOR CLOSURE — below.
+                                  #   The check returns a REASON, never a bare
+                                  #   boolean.
+
+  # LEGAL WRITE LEVELS — workset (L3.2) + box (L4.2) ONLY; never base, system
+  # or agent. This is what BOUNDS the pref recursion, so it is a HARD rule, not
+  # a convenience: `config set pref.<key> <value>` at any other scope RAISES —
+  # never a silently-dead entry.
+  levels: [workset, box]
+
+  # LOCATOR CLOSURE (R-7a) — the TERMINATION guarantee, not tidiness: prefs are
+  # applied once each, so the pass terminates PROVIDED no pref changes WHICH
+  # FILES feed the cascade. The barred set is the transitive closure of the
+  # cascade-input anchors' inputs — RATIFIED as TODAY'S HAND LIST; the
+  # derivation is a POST-RATIFICATION item.
+  locator_closure:
+    - config.data
+    - config.primary_workset
+    - meta.workset.path
+    - workset.boxes
+    - meta.box.path
+    - meta.box.name
+    - workset.kuid
+  # ⚑ R-7a's RECORDED WARNING (carried so the derivation item inherits it):
+  #   "a naive derivation of this closure would capture system.agent and break
+  #   the headline feature." The hand list and code's shorter literal list
+  #   ({workset.boxes, workset.kuid}) are NOT in conflict — the other five are
+  #   already barred by the CATEGORICAL tier (config.* / meta.*); the filters
+  #   are independent.
+  # Accepted consequence: workset.boxes stays SETTABLE in a workset FILE —
+  #   only REQUESTING it from a lower level is barred.
+
+  # VALUES ARE INSTALLED VERBATIM — INCLUDING present-None. A None pref lands
+  # on the target key and is classified by the ORDINARY present-None rule:
+  # OMIT for a bind / category / masks leaf (no mount / unmask), KEPT None for
+  # a scalar leaf (consumer default) — so pref.system.agent: null requests the
+  # NO-AGENT plain-shell box, and pref.agent.<agent>.<category>.<name>: null is
+  # the box's ONLY channel to drop something its agent declares. The pref layer
+  # MUST NOT interpret emptiness AT ALL: present-None, terminal "", and the
+  # COPY-disable sentinel all forward untouched (it must not become a FOURTH
+  # place deciding what "empty" means).
+  values_verbatim: true
+
+  # A FAILED PREF IS AN ERROR — the launch FAILS rather than proceeding with a
+  # partially-applied request; the error NAMES which key, at which level, and
+  # WHY (forbidden target / not settable at this level / invalid value /
+  # undeclared). Never a silent skip.
+  failed_pref: error
+
+  # Expansion order (for the generated resolver): each level's prefs expand at
+  # the START of that level — L3.2 then L4.2, each expansion RECOMPUTING the
+  # preceding levels — so BOX BEATS WORKSET on the same pref by assignment
+  # order. RECOMPUTE, not delta; each level's prefs expand ONCE; pref.* keys
+  # never participate in resolution as derivable keys.
+  expansion: recompute_box_beats_workset
+
+  spec: "§2h (R-7 / R-7a / R-7b)"
+
+## ---------------------------------------------------------------------------
 ## NOT KEYS / RETIRED NAMES — recorded so nobody re-adds or fabricates them.
 ## ⚑ A fabricated key is very often a RETIRED name. This block is the defence:
 ##   `unknown_key: error` refuses it, and this table says WHAT TO USE INSTEAD.
@@ -1209,14 +1421,40 @@ not_keys:
     "agent.<agent>.init_dirs": "same — the namespaced form is equally NOT a key"
     "images_conf":  "GENERATED storage.conf; INTERNAL bind, fixed location (D-M8)"
     "browser":      "CLI-only flag + BROWSER_WS_ENDPOINT; out-of-keyspace (D-M5)"
+    "meta.box.helper_log": "workaround SPELLING that was NEVER a key (R-23/R-36) —
+                            the key is box.bindings.ro.helper_log; the brace form
+                            @{meta.box.name} exists precisely so this spelling is
+                            not needed (§2c; policy.reference_forms)"
+    "config.handbook": "draft name REJECTED in favour of system.canon (R-36; §2g)
+                        — the handbook root is the canon key's handbook/ subtree,
+                        not a config.* key (fails §1's locate-and-load test)"
 
   renamed:                        # was a key; the NEW name is authoritative
-    "box.crab":                "-> box.agent_name (D-M6)"
-    "box.agent":               "-> box.agent_name (D-M6)"
-    "system.agent":            "-> system.default_agent (D-M2)"
+    "box.crab":                "-> pref.system.agent (§2h) — chain: was renamed to
+                                box.agent_name (D-M6), which R-3 then RETIRED"
+    "box.agent":               "-> pref.system.agent (§2h) — same chain (D-M6, R-3)"
+    "box.agent_name":          "-> pref.system.agent (§2h) (R-3, migration M-4) —
+                                RETIRED outright; removes the last settable key at
+                                the level a meta anchor derives from. R-31/R-32
+                                respell the two derived values it anchored."
+    "box.agent.<key>":         "-> meta.box.agent.<key> (RO read-back, R-4); a box
+                                tweaks its agent via pref.agent.<agent>.<key> (§2h)"
+    "system.default_agent":    "-> system.agent (R-2 — D-M2 SUPERSEDED 2026-07-29;
+                                this line FLIPS the draft's inverted entry, which
+                                refused the correct name)"
+    "system.base_template":    "-> system.template (R-1; default moves
+                                global/base_template -> global/template;
+                                migration M-11)"
+    "system.channels.commons": "-> system.channels.common (R-6; guest-path
+                                migration M-9)"
+    "workset.channels.commons": "-> workset.channels.common (R-6; migration M-9)"
+    "<scope>.shared.<name>":   "-> <scope>.common.<name> (R-5, category renamed
+                                2026-07-29; host dirs migration M-3)"
     "box.vault_enabled":       "-> box.enable_vault (2026-07-04)"
     "box.mode":                "-> meta.box.mode (RO identity anchor; mode is identity)"
     "env_file":                "-> secret_path.<VAR>, promoted to a §2a category (2026-07-06)"
+    "agent.<agent>.env_file.<VAR>": "-> agent.<agent>.secret_path.<VAR> (R-36; the
+                                     namespaced twin of the bare env_file row)"
     "box.group_auth":          "-> box.auth.{global,workset}_enabled (2026-07-01)"
     "group_auth_on":           "-> box.auth.{global,workset}_enabled (2026-07-01)"
     "box.bootstrap_program":   "-> agent.default.bootstrap (multiplexer is agent-tier)"
@@ -1226,6 +1464,10 @@ not_keys:
     "agent.default.auto_approve": "-> agent.default.access (R-41, 2026-08-01; values map
                                     true→full, false→restricted)"
     "agent.<agent>.auto_approve": "-> agent.<agent>.access (R-41; same value mapping)"
+    "agent.default.default_agent": "-> system.agent (R-18 — MOVED from code_residue:
+                                    the deferred code sweep is DONE; it is a
+                                    RETIRED_FILE_KEY that hard-refuses with a cure
+                                    naming system.agent)"
     "workset.meta.*":          "-> meta.workset.* (top-level meta namespace, 2026-06-29f)"
     "box.meta.*":              "-> meta.box.* (2026-06-29f)"
     "agent.<agent>.meta.*":    "-> meta.agent.<agent>.* (2026-06-29f)"
@@ -1251,6 +1493,21 @@ not_keys:
                                ACCEPTED LOSS: same-version dev-build drift detection.
                                ⚑ load-bearing rider at the code step: SETUP_BCV→1.8.0 in the
                                SAME change (RULINGS R-38)."
+    "meta.runtime.ws_settings": "CUT (R-36) — 'no longer needed (unified path)': §1A's
+                                 meta.runtime block is ws_root/ws_name/project_type ONLY;
+                                 meta.workset.settings spells @meta.workset.path/settings.yaml
+                                 directly (the SINGLE-SOURCE list). The draft's live key
+                                 entry was a clause-4 violation and is deleted."
+    "meta.box.project_dir": "RETIRED (R-36) — there is no project-dir key: the project dir
+                             is @meta.workset.path (standalone) or meta.box.workspace
+                             (primary) (§2c)"
+    "box.bindings.ro.canon_bible": "RETIRED 2026-07-31 (R-36) — the whole-dir bible bind;
+                                    undeclared from that edit forward. The bible ships as
+                                    per-chapter INTERNAL binds (canon_bible_*, §2c)."
+    "box.bindings.ro.canon_handbook": "RETIRED 2026-07-31 (R-36) — the whole-dir
+                                       handbook-base bind; the handbook is per-chapter
+                                       binds (canon_hb_*, §2c) sourced from the
+                                       <scope>.canon keys (R-9)."
     "config.global":      "ELIMINATED 2026-06-29f; children inline @config.data/global/..."
     "resource.<path>":    "DEAD; subsumed by the category keys (D-M7)"
     "resource_overrides": "DEAD (0 callers)"
@@ -1263,7 +1520,7 @@ not_keys:
     "required":           "the non-overridable ceiling TIER was CUT (Jei 2026-06-29f)"
     ".env":               "global/workset/project .env FILES were DROPPED (2026-06-27) — a
                            duplicate shared channel for env; use <scope>.env.<VAR> instead"
-    "agent.<agent>.<anyleaf>": "free-form leaf passthrough — the keyspace is CLOSED (spec \u00a70)"
+    "agent.<agent>.<anyleaf>": "free-form leaf passthrough — the keyspace is CLOSED (spec §0)"
 
   code_residue:                   # appeared in CODE only, never spec-sanctioned
     "system._boxes":            "surrogate for the DELETED system.boxes"
@@ -1275,8 +1532,7 @@ not_keys:
     # (the two `access` code_residue entries are GONE — R-41 made the name a real
     #  key; see agent.default.access / agent.<agent>.access above)
     "agent.<agent>.name":       "flat identity form -> meta.agent.<agent>.name"
-    "agent.default.default_agent": "code-side on-disk form that system.default_agent
-                                    routes to; NOT a spec key (verify at the code sweep)"
+    # (agent.default.default_agent MOVED to not_keys.renamed — R-18: the sweep is done)
     "agent.default.provider":   "NOT a standard key — see agent.<agent>.provider"
     "agent.default.binding.<key>": "singular residue — see agent.<agent>.binding.<key>"
     "agent.<agent>.provider":   "NOT a standard key — provider/model are goose's OWN
