@@ -695,6 +695,11 @@ def workset_anchor_floor(
       per-box ``/@meta.box.name`` subdir a lone box does not need).
     * ``workset.logs`` — PER-MODE: ``@meta.workset.path/logs`` (primary/named, §2c
       L761) · ``@meta.box.path`` (standalone, §2c L728).
+    * ``workset.canon`` / ``box.canon`` — the per-scope CANON CONTRIBUTION roots,
+      UNIFORM in every mode (§2c ALL PROJECTS / §2b). Their ``handbook/`` subtrees
+      are the sources of the skip-if-absent ``canon_hb_{workset,box}`` binds AND the
+      dests of the §2a handbook seed layers — "the seed writes precisely what the
+      bind reads, spelled once", so repointing the key moves both.
     * ``meta.box.path`` — the RO BOX ROOT: ``@workset.boxes/@meta.box.name``
       (primary/named, §2c L770) · ``@workset.boxes`` (standalone, §2c L740). The
       standalone form is the EMPTY LEAF: a BARE whole-value @-ref, so the resolver
@@ -745,6 +750,27 @@ def workset_anchor_floor(
         "meta.box.path": (
             "@workset.boxes" if standalone else "@workset.boxes/@meta.box.name"
         ),
+        # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b). UNIFORM in every
+        # mode — no per-mode arm and no ``<None>`` carve-out — which is only safe
+        # because the chapter binds they feed are SKIP-IF-ABSENT (spec §2c says so
+        # explicitly): the keys always resolve, and nothing is created on disk until
+        # someone actually writes a chapter.
+        #
+        # ⚑ ``box.canon`` is a BOX-scope key living in a builder named for the
+        # workset anchors, and that is deliberate rather than sloppy: it is spelled
+        # against ``meta.box.path``, which this builder OWNS (it is the only place the
+        # per-mode box root exists), so splitting it out would mean a second builder
+        # whose sole input is this one's output. The name is the honest cost —
+        # see the function's own summary line, which says workset roots AND the box
+        # root.
+        #
+        # ⚑⚑ ``@box.canon`` IS NOT ``~/canon``. It is the box's CONTRIBUTION root on
+        # the HOST (``<box_dir>/canon``), whose ``handbook/`` is ONE CHAPTER bound RO
+        # into the assembled ``~/canon/handbook/box``. The box's assembled guest view
+        # lives at ``<box_dir>/home/canon`` and arrives through the home bind. Same
+        # word, adjacent paths, opposite directions of travel.
+        "workset.canon": "@meta.workset.path/canon",
+        "box.canon": "@meta.box.path/canon",
     }
     if workset_channels is not None:
         for leaf, path in workset_channels.items():
@@ -1720,6 +1746,8 @@ def snapshot_category_entries(
     *,
     active_agent: str,
     box_ctx: ResolveCtx,
+    optional_keys: frozenset[str] = frozenset(),
+    host_dest_keys: frozenset[str] = frozenset(),
 ) -> list[CategoryEntry]:
     """Walk the snapshot's category subtrees → the ``list[CategoryEntry]``
     :func:`reconcile_categories` consumes (the SAME shape the retired by-name
@@ -1752,6 +1780,18 @@ def snapshot_category_entries(
     carries its VAR name in ``box_dest`` and its value in ``options``; ``masks`` is
     value-less (one entry per masked dest). Reads via the UNBOUND ``dict`` protocol
     (S3).
+
+    *optional_keys* / *host_dest_keys* are matched against the FULL DISCRIMINATED
+    ``CategoryEntry.key`` and set :attr:`~kanibako.settings_categories.CategoryEntry.
+    optional` / ``dest_space="host"`` on the matching entries. Both default EMPTY, so
+    every caller that does not pass them gets byte-identical output. They are
+    DECLARATION facts the snapshot cannot carry (a bind tuple has two path slots and
+    no room for a third meaning), and they are supplied by the ONE launch aggregation
+    site: ``canon_optional_bind_keys()`` for the skip-if-absent handbook chapters,
+    the ``*.seeded.{template,handbook}`` key names for the §2a seed layers whose
+    dests are HOST paths. ⚑ Neither is a heuristic on the VALUE — see
+    ``CategoryEntry.dest_space`` for why a prefix test on the dest string cannot be
+    made correct.
     """
     collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
     scope_order = {"system": 0, "agent": 1, "workset": 2, "box": 3}
@@ -1797,6 +1837,7 @@ def snapshot_category_entries(
         _emit_scope_node(
             collected, scope_node, order=order, scope=scope,
             box_dest_fn=_box_dest, decl_scope_fn=decl_scope_fn,
+            optional_keys=optional_keys, host_dest_keys=host_dest_keys,
         )
 
     collected.sort(key=lambda pair: pair[0])
@@ -1995,6 +2036,8 @@ def _emit_scope_node(
     scope: str,
     box_dest_fn,
     decl_scope_fn,
+    optional_keys: frozenset[str] = frozenset(),
+    host_dest_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Emit every category entry under ONE (bare) scope NODE.
 
@@ -2029,6 +2072,7 @@ def _emit_scope_node(
                 _emit_bind(
                     collected, order, scope, category, name, bind, box_dest_fn,
                     key=f"{decl_scope_fn(category, name)}.{category}.{name}",
+                    optional_keys=optional_keys, host_dest_keys=host_dest_keys,
                 )
 
     # caches / seeded / common / synced
@@ -2041,6 +2085,7 @@ def _emit_scope_node(
             _emit_bind(
                 collected, order, scope, category, name, bind, box_dest_fn,
                 key=f"{decl_scope_fn(category, name)}.{category}.{name}",
+                optional_keys=optional_keys, host_dest_keys=host_dest_keys,
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped
@@ -2129,6 +2174,8 @@ def _emit_bind(
     box_dest_fn,
     *,
     key: str,
+    optional_keys: frozenset[str] = frozenset(),
+    host_dest_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY) for *bind*.
 
@@ -2143,6 +2190,20 @@ def _emit_bind(
     ``decl_scope_fn`` — carried on the entry for the collision messages and the
     ``meta.derived.*`` materialisation, and used here so even the malformed-leaf
     raise names the key the user actually wrote.
+
+    *optional_keys* / *host_dest_keys* are matched on that same *key*. A HOST-space
+    dest is taken VERBATIM — it is already an absolute host path (``_expand_bind``
+    resolved its ``@``-refs host-side) and running it through the GUEST expansion
+    would be a category error: a ``~`` in a host dest means the HOST home, and the
+    guest pass would rewrite it to ``/home/agent``.
+
+    ⚑ There is deliberately NO absoluteness assertion here. The one way a host dest
+    can arrive degenerate is an embedded ref coerced to ``""`` by §6b, and the
+    CONTAINMENT check at the applier (``commands.start._host_copy_dest``) already
+    refuses anything that does not land inside the box store — which covers the
+    degenerate case AND the ``..`` escape §2a actually names, in the one place that
+    knows the box store root. A second, weaker check here would be a hard launch
+    error where the applier gives a skip plus a message naming the key.
     """
     if not isinstance(bind, Bind):
         raise SettingsError(
@@ -2151,7 +2212,8 @@ def _emit_bind(
         )
     delivery = _DELIVERY[category]
     host_src = bind.host
-    box_dest = box_dest_fn(bind.box)
+    dest_space = "host" if key in host_dest_keys else "guest"
+    box_dest = bind.box if dest_space == "host" else box_dest_fn(bind.box)
     if delivery == "MOUNT":
         # opts: the per-entry override (bind.opts) wins; else the category default.
         # For an agent DELIVERY bind this matches OLD descriptor_mounts EXACTLY for
@@ -2174,6 +2236,8 @@ def _emit_bind(
             options=options,
             name=name,
             key=key,
+            optional=key in optional_keys,
+            dest_space=dest_space,
         ),
     ))
 

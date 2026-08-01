@@ -755,39 +755,56 @@ kanibako agent get claude model        # show the agent's model
 kanibako agent set claude model=sonnet # set agent-level default
 ```
 
-## Home Templates
+## Box Templates
 
-Home templates provide **layered seed-once** initialization for a new box.
-Three layers are copied into the box home `~/` in order (later overlays
-earlier; absent layers are skipped), **once** -- edits you make inside a box
-afterward are never overwritten:
+Box templates provide **layered seed-once** initialization for a new box.
+Three layers are copied into the box STORE in order (later overlays earlier;
+absent layers are skipped), **once** -- edits you make inside a box afterward
+are never overwritten.
+
+Each layer has a `box/` subtree with the same two entries, and each entry has
+its own destination:
 
 ```
-1. base    @system.base_template     → ~/   (always; the flat base skeleton)
-2. agent   @agent.<agent>.template    → ~/   (= agents/<agent>/template; if box.agent set)
-3. workset @workset.template          → ~/   (= <wsroot>/template; optional, primary/named)
+                                            ->  <box_dir>/home       (delivered at ~/)
+1. system   @system.template/box/...        ->  <box_dir>/canon/handbook
+2. agent    @agent.<agent>.template/box/... (= agents/<agent>/template/box; if an agent is set)
+3. workset  @workset.template/box/...       (= <wsroot>/template/box; optional, primary/named)
 ```
 
-Per-file rule: plain ordered copy, **last layer wins**, seed-once.  There is no
-per-file merge of any file -- `CLAUDE.md` is an ordinary template file, and the
-base layer's guidance lives in a separate non-colliding `INSTRUCTIONS.md` so it
-never clobbers an agent template's `CLAUDE.md`.
+- `box/home/**` seeds the box HOME -- what you see at `~/` inside the box,
+  including `~/canon/notebook` and `~/canon/workbook`, the two books the box
+  owns and can write.
+- `box/canon/handbook/**` seeds the box's HANDBOOK CHAPTER at `@box.canon`,
+  which is a **sibling** of the home, not inside it. It is bound back into the
+  box read-only at `~/canon/handbook/box`.
+
+⚑ `@box.canon` is not `~/canon`: the first is the box's contribution to the
+canon (on the host), the second is the assembled canon (in the box).
+
+Per-file rule: plain ordered copy, **last layer wins**, seed-once. There is no
+per-file merge of any file.
 
 The old shell-variant selector (`crab.shell` / `template_name`) is gone -- there
 is one fixed `template/` dir per agent, with no variant subdirectory.  `box.shell`
 now means only the login shell (see [Configuration](#configuration)).
 
-**Example agent template layout** (for agent `claude`):
+**Example agent store layout** (for agent `claude`):
 
 ```
-agents/claude/template/
-|- .claude/
-|   '- settings.json
-'- CLAUDE.md
+agents/claude/
+|- template/box/home/
+|   |- .claude/
+|   |   '- settings.json
+|   '- .claude.json
+'- canon/handbook/
+    '- directives/
+        '- SYS_AGENT.md      # this agent's handbook chapter
 ```
 
-To ship custom per-agent config into boxes, put it in that agent's `template/`
-dir; it seeds via layer 2.
+To ship custom per-agent config into boxes, put it under that agent's
+`template/box/home/`; it seeds via layer 2. To give the agent its own standing
+directives, put them under `canon/handbook/`.
 
 ## Vault
 
@@ -933,7 +950,10 @@ All kanibako config/settings files are YAML.
 - **Workset settings**: `<workset_root>/settings.yaml`
 - **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/settings.yaml`
 - **Per-box settings**: `boxes/{name}/settings.yaml` (standalone: `<root>/settings.yaml`)
-- **Base template**: `$XDG_DATA_HOME/kanibako/global/base_template/`
+- **Template root**: `$XDG_DATA_HOME/kanibako/global/template/` (the `box`,
+  `workset` and `agent` moulds new stores are stamped from)
+- **System handbook**: `$XDG_DATA_HOME/kanibako/global/canon/handbook/` -- your
+  own system-wide directives, delivered read-only into every box
 
 ### Common settings keys
 

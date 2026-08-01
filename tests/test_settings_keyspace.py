@@ -229,15 +229,32 @@ def test_known_config_keys_are_valid_under_the_validator():
     )
 
 
-def test_retiring_keys_are_exactly_the_one_known_rename():
-    """Pins the exemption set so growing it is a deliberate, reviewed act.
+def test_retiring_keys_is_empty():
+    """Pins the exemption set EMPTY so re-growing it is a deliberate, reviewed act.
 
     ⮕ P7 removed ``box.agent_name`` (RETIRED → ``pref.system.agent``, §2b) and
-    ``system.default_agent`` (RENAMED → ``system.agent``, §2g); only the
-    ``system.base_template`` → ``system.template`` rename (C-CANON / M-11) is
-    still in flight.
+    ``system.default_agent`` (RENAMED → ``system.agent``, §2g); the C-CANON seeds
+    half landed M-11 (``system.base_template`` → ``system.template``), which was the
+    last one. The "closed-keyspace resolve enforcement" follow-on is GATED on this
+    set being empty, so it is now unblocked from this side.
+
+    ⚑ A new entry here means the spec and the settable surface have diverged
+    somewhere unaccounted for — STOP and report, do not widen the set.
     """
-    assert RETIRING_KEYS == frozenset({"system.base_template"})
+    assert RETIRING_KEYS == frozenset()
+
+
+def test_the_retired_base_template_spelling_is_gone():
+    """M-11 is a RENAME, not an alias: the old spelling must be neither settable
+    nor a declared key, so ``config set system.base_template`` refuses."""
+    from kanibako.config_interface import KNOWN_CONFIG_KEYS
+
+    assert "system.base_template" not in KNOWN_CONFIG_KEYS
+    assert "system.template" in KNOWN_CONFIG_KEYS
+    assert "system.canon" in KNOWN_CONFIG_KEYS
+    assert key_validity("system.base_template", valid_agents=AGENTS) is not None
+    assert key_validity("system.template", valid_agents=AGENTS) is None
+    assert key_validity("system.canon", valid_agents=AGENTS) is None
 
 
 def test_retiring_keys_are_all_invalid_today():

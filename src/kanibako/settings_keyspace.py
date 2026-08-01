@@ -223,9 +223,12 @@ _VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: The "closed-keyspace resolve enforcement" follow-on is gated on this set
 #: being EMPTY (plus: the conformance test green with no exemptions, and a
 #: real-store sweep per migration-issues M-1/M-2).
-RETIRING_KEYS: Final[frozenset[str]] = frozenset({
-    "system.base_template",   # §2g L1181 renamed → system.template (C-CANON / M-11)
-})
+#: ⚑ NOW **EMPTY** (C-CANON seeds half, 2026-08-01): M-11 renamed
+#: ``system.base_template`` → ``system.template`` and dropped the old spelling from
+#: ``KNOWN_CONFIG_KEYS``, so the spec and the settable surface agree with no
+#: exemptions. An entry appearing here again means a NEW divergence, which is a
+#: STOP-and-report condition, not a line to add.
+RETIRING_KEYS: Final[frozenset[str]] = frozenset()
 
 
 # ---------------------------------------------------------------------------

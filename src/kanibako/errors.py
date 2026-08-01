@@ -49,6 +49,30 @@ class CategoryCollisionError(ConfigError):
         self.entries = entries
 
 
+class TemplateScopeError(ConfigError):
+    """A template/seed copy tried to write OUTSIDE its scope's allowed surface.
+
+    Raised by the one shared copier (:func:`kanibako.templates.copy_tree`) on any of
+    the four enforcement points spec §2a requires of it:
+
+    * an entry whose first path component is not in the SCOPE'S WHITELIST
+      (deny-by-default — an unlisted entry is an ERROR, never a silent skip);
+    * a resolved DESTINATION outside the scope store root (the ``..`` escape);
+    * a SOURCE entry that is a symlink (``x -> ~/.ssh/id_ed25519`` would otherwise
+      have its TARGET's bytes copied into a box home — the exfiltration §2a's "USER
+      DATA AND SECRETS" note is about);
+    * a DESTINATION whose real path escapes the destination subtree through a
+      symlinked intermediate directory.
+
+    It is a hard refusal rather than a skip because the whitelist is a CORRECTNESS
+    property, not a style rule: a template that could plant ``settings.yaml`` at a
+    scope root would be planting ``meta.<scope>.settings``, the cascade's own last
+    word, and at workset scope the same escape reaches ``registry.yaml`` (the
+    AUTHORITATIVE box membership), ``auth/``, ``vault/`` and ``workspaces/`` — the
+    user's credentials and code.
+    """
+
+
 class ProjectError(KanibakoError):
     """Project path does not exist or cannot be resolved."""
 

@@ -3266,6 +3266,30 @@ def _run_container(
                 # configured/authenticated, the in-box setup did NOT take.  This is
                 # BOUNDED — setup already ran once this invocation, so we only ERROR
                 # here, never loop back into setup.
+                # ⚑⚑ TEAR THE EXITED BOX DOWN — this branch is the two-state
+                # lifecycle's "exited" state arriving EARLY, and it was the one
+                # arrival that did not honour it.
+                #
+                # The attached path below tears an exited box down (it is what makes
+                # the next start fresh); this path returned 1 and left the container
+                # behind. The difference was never intentional — the branch's own
+                # comment says "Container never started or exited immediately", which
+                # IS the exited state — it is simply that the teardown was only ever
+                # wired into the path that got as far as attaching.
+                #
+                # It went unnoticed because reaching here at all is a RACE: the box
+                # has to die inside the ~3 s poll window above. A crashing agent does
+                # exactly that, and the window has been widening as the launch path
+                # gained pre-attach work (the post-start canon re-protect runs three
+                # ``podman unshare`` calls inline on the detached path before the
+                # first probe; this phase added five more binds for podman to set
+                # up). The e2e that caught it went green → flaky → deterministic
+                # across three gates without its own subject changing once.
+                #
+                # Best-effort and never running: ``_teardown_persistent_box`` returns
+                # immediately if the container came back up, and the logs above were
+                # already printed, so nothing diagnosable is thrown away.
+                _teardown_persistent_box(runtime, container_name)
                 if target and logs and target.should_run_setup(logs):
                     _print_setup_did_not_take(target)
                     return 1
@@ -4725,11 +4749,21 @@ def _launch_snapshot_inputs(
     # The Layer-2 system.* path tier the category @-refs resolve against.  These
     # are present IN the snapshot (folded into the floor as ``system.<leaf>``
     # keys) so ``expand`` resolves them — replicating the old ``_lookup``'s
-    # ``resolved_sys`` map.  channelroot/base_template @-ref a config key, already
-    # resolved into ``std`` by the flat foundation.
+    # ``resolved_sys`` map.  channelroot/template/canon each @-ref a config key,
+    # already resolved into ``std`` by the flat foundation.
+    # ⚑ ``commands/workset_cmd._print_effective_shares`` builds a SECOND map of the
+    # same tier for ``workset config show --effective``.  Both must carry the same
+    # keys or the display diverges from what a launch mounts; pinned by
+    # ``tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor``.
     resolved_sys = {
         "system.channelroot": str(std.channels),
-        "system.base_template": str(std.base_template),
+        "system.template": str(std.template),
+        # The SYSTEM-level CANON CONTRIBUTION root (spec §2g) — the source of the
+        # handbook's SYS_CONTENTS.md + general chapter binds, and the install dest of
+        # the packaged handbook. ⚑ It names a per-scope CONTRIBUTION root, NOT a copy
+        # of the assembled canon: ``~/canon`` (guest) is the assembled tree,
+        # ``@<scope>.canon`` (host) is what that scope contributes to it.
+        "system.canon": str(std.canon),
         # B2b: the resolved system channel type-roots (spec §2g) — folded in so the
         # @system.channels.* ALL-PROJECTS channel binds (global_common/chat/share/
         # mailboxes, §2c L471-474) resolve from the snapshot.  Each equals the
@@ -4902,6 +4936,7 @@ def _resolve_launch_snapshot(
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
     selection_level: "Mapping[str, object] | None" = None,
+    host_dest_keys: "frozenset[str]" = frozenset(),
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
 
@@ -4937,6 +4972,13 @@ def _resolve_launch_snapshot(
     so the image/helper reconcile carries ONLY their own table + any config-file
     keys — byte-for-byte the old per-family ``_build_image_mounts`` /
     ``_build_helper_hub_mounts`` resolve (which injected only that one table).
+
+    *host_dest_keys* names the category keys whose ``box_dest`` is an absolute HOST
+    path rather than a guest one (the §2a seed layers). Passed by
+    :func:`_apply_init_seeds`, which is the only caller that injects those keys and
+    the only one that APPLIES their copies; every other resolve leaves it empty and
+    is byte-identical. See ``settings_categories.CategoryEntry.dest_space`` for why
+    the space must be carried rather than inferred from the path.
     """
     from kanibako import settings_launch
     from kanibako.agent_representation import (
@@ -4985,6 +5027,13 @@ def _resolve_launch_snapshot(
         # lands on a mountpoint the box-create skeleton already made, so nothing
         # nests and no mountpoint has to live inside a bind source.
         default_categories.update(core_defaults.rom_default_categories())
+        # The HANDBOOK: five READ-ONLY SIBLING binds (spec §2c) sourced from the four
+        # ``<scope>.canon`` KEYS, plus the agent-scope ``canon`` floor those refs
+        # resolve against. Unlike the rom, these are HOST content the user owns and
+        # may repoint — through the keys, which is the spelling §2c blesses.
+        default_categories.update(
+            core_defaults.canon_default_categories(std, agent_name or None)
+        )
         default_categories.update(_channel_default_categories(std, proj))
         if target is not None:
             # ⚑ Re-keyed to the ACTIVE NODE (P7): a plugin declares its commons
@@ -5101,6 +5150,12 @@ def _resolve_launch_snapshot(
     try:
         entries = settings_launch.snapshot_category_entries(
             snapshot, active_agent=agent_name, box_ctx=ctx,
+            # SKIP-IF-ABSENT declarations, read from the SAME ``canon:`` rows that
+            # declare the binds — applied unconditionally at this ONE site so a
+            # display resolve and a launch resolve cannot disagree about which binds
+            # may legitimately be missing.
+            optional_keys=core_defaults.canon_optional_bind_keys(),
+            host_dest_keys=host_dest_keys,
         )
     except SettingsError as exc:
         # A malformed CATEGORY shape raises here naming the DECLARATION key
@@ -5279,9 +5334,21 @@ def _emit_category_mounts(reconciled, *, label: str) -> list:
             except OSError:
                 pass  # best-effort; podman will surface a genuinely bad source
         elif not src.exists():
+            import logging
+            if e.optional:
+                # SKIP-IF-ABSENT (spec §2c): a declared-optional bind whose source is
+                # absent is the NORMAL case, not a defect — the handbook's per-scope
+                # chapters are the live users, and a workset or box that has written
+                # no chapter is almost every box. Dropped SILENTLY (debug only); the
+                # WARNING below stays for every other ro bind, where it is the safety
+                # net for a mis-pathed source and must not be softened globally.
+                logging.getLogger(__name__).debug(
+                    "%s %s: optional source %s absent; bind omitted",
+                    label, e.name, e.host_src,
+                )
+                continue
             # ro bind with a missing source: DROP with a warning (L7) instead of
             # letting rootless podman abort the launch on a dangling bind source.
-            import logging
             logging.getLogger(__name__).warning(
                 "%s %s: read-only source %s does not exist; dropping mount",
                 label, e.name, e.host_src,
@@ -5676,6 +5743,40 @@ def _apply_shell_copy(
         shutil.copy2(str(src), str(dest))
 
 
+def _host_copy_dest(
+    box_dest: str, box_root: Path, *, label: str, name: str, logger,
+) -> Path | None:
+    """Validate a HOST-space COPY destination and return it, or None to skip.
+
+    The host arm of the two-namespace split (see
+    ``settings_categories.CategoryEntry.dest_space``).  A host dest is already an
+    absolute host path, so there is nothing to translate — what there IS to do is
+    §2a's enforcement point 2: **assert the dest lands inside the BOX STORE ROOT**
+    before anything is written.  Seed dests are fixed by KEYS, so a template cannot
+    choose where it writes; the residual escape is a settings-declared dest such as
+    ``@box.canon/../../../etc``, and this is where that is refused.
+
+    *box_root* is ``@meta.box.path`` — obtained as ``shell_path.parent``, which
+    equals it in EVERY mode by construction (the shell dir is ``<box_dir>/home``:
+    ``boxes/<name>/home`` for primary, ``<project>/box_data/home`` for standalone).
+
+    Returns ``None`` (with a warning) rather than raising: a mis-declared seed must
+    not cost the user the box's other seeds, and the warning names the key's dest.
+    """
+    dest = Path(box_dest)
+    try:
+        contained = dest.resolve().is_relative_to(box_root.resolve())
+    except OSError:  # pragma: no cover - defensive (unresolvable path)
+        contained = False
+    if not contained:
+        logger.warning(
+            "%s %s: host destination %r is outside the box store %s; skipping",
+            label, name, box_dest, box_root,
+        )
+        return None
+    return dest
+
+
 def _apply_init_seeds(
     *,
     std,
@@ -5707,9 +5808,19 @@ def _apply_init_seeds(
 
     The credential gate (D-M4) is applied during reconcile: a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
+
+    ⚑⚑ TWO DESTINATION NAMESPACES.  The six §2a seed keys resolve to absolute HOST
+    paths under the box store (``@meta.box.path/home``, ``@box.canon/handbook``); a
+    user-declared ``<scope>.seeded.<name>`` stays GUEST-space and is translated by
+    ``container._guest_dest_to_host`` exactly as before.  The two are textually
+    indistinguishable — on a host whose user home is ``/home/agent`` a host store
+    path STARTS WITH the guest home prefix — so the entry carries its space and this
+    function branches on it.  Translating a host dest would silently write the box's
+    handbook chapter somewhere nothing reads, and report success.
     """
     from kanibako.settings_resolve import GUEST_HOME
     from kanibako.templates import (
+        seed_keys_of,
         stage_layers,
         template_seed_defaults,
     )
@@ -5743,33 +5854,47 @@ def _apply_init_seeds(
         include_base_families=False,
         extra_default_categories={**default_seeds, **template_seeds},
         deliver_creds=deliver_creds,
+        host_dest_keys=seed_keys_of(template_seeds),
     )
 
-    # Group the seeded COPY winners by resolved guest dest, PRESERVING the reconcile
-    # apply order (system -> agent -> workset -> box) within each dest — so a dest
-    # targeted by multiple layers (the template trio at ``~``) is staged in that
-    # order, later overlaying earlier.
-    by_dest: dict[str, list] = {}
+    # Group the seeded COPY winners by (dest_space, resolved dest), PRESERVING the
+    # reconcile apply order (system -> agent -> workset -> box) within each dest — so
+    # a dest targeted by multiple layers (the template trio at the box home, the
+    # handbook trio at @box.canon/handbook) is staged in that order, later overlaying
+    # earlier.  ⚑ The SPACE is part of the key for the same reason it is in
+    # ``reconcile_categories``: the two namespaces can produce the same STRING.
+    by_dest: dict[tuple[str, str], list] = {}
     for seed in reconciled.copies:
         if seed.category != "seeded":
             continue  # synced copies are applied by _apply_synced_copies.
-        by_dest.setdefault(seed.box_dest, []).append(seed)
+        by_dest.setdefault((seed.dest_space, seed.box_dest), []).append(seed)
 
-    for box_dest, group in by_dest.items():
-        dest = _guest_dest_to_host(
-            box_dest, proj.shell_path, proj.project_path, map_home_root=True,
-        )
-        if dest is None:
-            logger.warning(
-                "seed %s: guest_dest %r is outside %s; skipping",
-                group[0].name, box_dest, GUEST_HOME,
+    box_root = Path(proj.shell_path).parent
+    for (dest_space, box_dest), group in by_dest.items():
+        if dest_space == "host":
+            # HOST-space (the §2a seed keys): the dest IS an absolute host path
+            # already — use it DIRECTLY, after the §2a containment check. Feeding it
+            # to the guest translator is the silent bug this branch exists to close.
+            dest = _host_copy_dest(
+                box_dest, box_root, label="seed", name=group[0].name, logger=logger,
             )
+        else:
+            dest = _guest_dest_to_host(
+                box_dest, proj.shell_path, proj.project_path, map_home_root=True,
+            )
+            if dest is None:
+                logger.warning(
+                    "seed %s: guest_dest %r is outside %s; skipping",
+                    group[0].name, box_dest, GUEST_HOME,
+                )
+        if dest is None:
             continue
         if len(group) > 1:
-            # A LAYERED dest (the ``seeded.template`` trio at ``~``): stage the
-            # layer sources IN ORDER (per-file last-wins) then seed into home
-            # create-if-absent. ``stage_layers`` skips any absent-dir source
-            # (skip-if-absent — e.g. an unpopulated @workset.template).
+            # A LAYERED dest (the ``seeded.template`` trio at the box home, the
+            # ``seeded.handbook`` trio at @box.canon/handbook): stage the layer
+            # sources IN ORDER (per-file last-wins) then seed create-if-absent.
+            # ``stage_layers`` skips any absent-dir source (skip-if-absent — e.g. an
+            # unpopulated @workset.template).
             for e in group:
                 assert e.host_src is not None  # seeds always have a source.
             dest.mkdir(parents=True, exist_ok=True)
@@ -5844,21 +5969,36 @@ def _apply_synced_copies(
         deliver_creds=deliver_creds,
     )
 
+    box_root = Path(proj.shell_path).parent
     for sync in reconciled.copies:
         if sync.category != "synced":
             continue  # seeded copies are applied by _apply_init_seeds.
         assert sync.host_src is not None  # synced entries always have a source.
-        # Shared translator (audit P3): a ``~/workspace/...`` dest now maps under
-        # proj.project_path (the workspace bind) rather than the shadowed
-        # shell_path/workspace stub the former inline branch computed.
-        dest = _guest_dest_to_host(
-            sync.box_dest, proj.shell_path, proj.project_path, map_home_root=True,
-        )
-        if dest is None:
-            logger.warning(
-                "synced %s: guest_dest %r is outside %s; skipping",
-                sync.name, sync.box_dest, GUEST_HOME,
+        if sync.dest_space == "host":
+            # HOST-space arm — built HERE, ahead of its first user, deliberately:
+            # spec §2d's ``synced`` dests are moving host-side with the plugin
+            # packages (``@meta.box.path/home/.claude/.credentials.json`` and
+            # friends), and that phase must NOT have to re-derive this branch. Today
+            # no shipped declaration sets it, so this is inert; the moment one does,
+            # it is already correct rather than silently mapped into the box home.
+            dest = _host_copy_dest(
+                sync.box_dest, box_root,
+                label="synced", name=sync.name, logger=logger,
             )
+        else:
+            # Shared translator (audit P3): a ``~/workspace/...`` dest now maps under
+            # proj.project_path (the workspace bind) rather than the shadowed
+            # shell_path/workspace stub the former inline branch computed.
+            dest = _guest_dest_to_host(
+                sync.box_dest, proj.shell_path, proj.project_path,
+                map_home_root=True,
+            )
+            if dest is None:
+                logger.warning(
+                    "synced %s: guest_dest %r is outside %s; skipping",
+                    sync.name, sync.box_dest, GUEST_HOME,
+                )
+        if dest is None:
             continue
         # if_absent=False -> overwrite (reapplied every launch), mtime-gated so an
         # unchanged source is a no-op.

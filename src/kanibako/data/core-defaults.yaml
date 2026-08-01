@@ -272,6 +272,81 @@ kickoff:
     box_dest: "~/.config/kanibako/kickoff.md"
     options: "ro"
 
+# CANON — the HANDBOOK book's five SIBLING binds (spec §2c, J-7).  Sources are the
+# four `<scope>.canon` KEYS (host-side, and user-repointable THROUGH those keys —
+# `config set system.canon /path` is the blessed route); the guest dests carry NO
+# agent segment ("storage is varied, binding is not", §2d).
+#
+# ⚑⚑ SIBLINGS, NOT NESTED (J-7).  Every entry lands on a mountpoint the box-create
+# skeleton (`core_defaults.materialize_canon_skeleton`) already made in the box home,
+# so nothing nests inside another bind and no mountpoint ever lives inside a bind
+# SOURCE.  Consequence, and it is DELIBERATE: there is NO system-supplied fallback
+# for the agent/workset/box chapters — the system store ships only `general/` +
+# `SYS_CONTENTS.md` (the D2 cut), so an absent scope chapter shows an EMPTY
+# root-owned mountpoint, not the system's copy.
+#
+# ⚑ `optional: true` = SKIP-IF-ABSENT (spec §2c): the bind is DROPPED SILENTLY when
+# its source dir does not exist.  A workset or box that has written no chapter is
+# the NORMAL case; without this, almost every box would print two ro-drop WARNINGS
+# on every launch, which is exactly the noise that teaches users to ignore warnings.
+# `canon_hb_contents` + `canon_hb_general` are NOT optional: the system store is
+# materialised by install/setup, so a missing one means something is genuinely wrong.
+#
+# ⚑⚑ THE NAMING TRAP, stated here because this is where both spellings meet: a box
+# store holds TWO different `canon` dirs.  `<box_dir>/home/canon` is the ASSEMBLED
+# GUEST VIEW (`~/canon`, delivered by the home bind).  `<box_dir>/canon` (= the key
+# `@box.canon`, this file's `canon_hb_box` source) is the box's CONTRIBUTION root.
+# **`@box.canon` is NOT `~/canon`.**  Same word, adjacent paths, opposite directions.
+#
+# `@agent.<active>.canon` is NOT spellable statically — the discriminator is the
+# ACTIVE AGENT NODE, known only at the seam — so the loader interpolates it (and
+# omits the whole entry for a NO-AGENT box).  These keys are deliberately ABSENT
+# from `core_default_bind_keys()`, i.e. not `config set`-repointable, exactly like
+# the channel / helper / kani_pkg / images_conf binds: the user's repoint route is
+# the `<scope>.canon` KEY, and shipping two spellings for one repoint is the shape
+# convention 0 forbids.
+#
+# ⚑ THE REPOINT ROUTES ARE NOT UNIFORM, and saying "just `config set <scope>.canon`"
+# would be a half-truth.  `workset.canon` and `box.canon` ARE CLI-settable (wired
+# exactly like `workset.template`); `agent.<a>.canon` is settable at the SYSTEM scope
+# only (the per-persona agent-leaf rule, same as `agent.<a>.template`); and
+# `system.canon` is CLI-REFUSED as a structural path key — it lives in the `[system]`
+# table of `kanibako_config.yaml`, hand-edited, exactly like `system.template` and
+# every other `SYSTEM_PATH_DEFAULTS` member.  That split is pre-existing convention,
+# not something this section chose.
+canon:
+  # The handbook's table of contents — a FILE bind over the 0-byte mountpoint.
+  - key: canon_hb_contents
+    category: bindings.ro
+    meta_ref: "@system.canon/handbook/SYS_CONTENTS.md"
+    box_dest: "~/canon/handbook/SYS_CONTENTS.md"
+    options: "ro"
+  # The GENERAL chapter — the global handbook IS the general chapter.
+  - key: canon_hb_general
+    category: bindings.ro
+    meta_ref: "@system.canon/handbook/general"
+    box_dest: "~/canon/handbook/general"
+    options: "ro"
+  # The three per-scope chapters (skip-if-absent).  `<active>` is interpolated.
+  - key: canon_hb_agent
+    category: bindings.ro
+    meta_ref: "@agent.<active>.canon/handbook"
+    box_dest: "~/canon/handbook/agent"
+    options: "ro"
+    optional: true
+  - key: canon_hb_workset
+    category: bindings.ro
+    meta_ref: "@workset.canon/handbook"
+    box_dest: "~/canon/handbook/workset"
+    options: "ro"
+    optional: true
+  - key: canon_hb_box
+    category: bindings.ro
+    meta_ref: "@box.canon/handbook"
+    box_dest: "~/canon/handbook/box"
+    options: "ro"
+    optional: true
+
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
 # message LOG, routed through the category resolver instead of the hardwired
 # `_HMount` appends inside the `helpers_enabled` block.  Both box-side

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import importlib.resources
+import re
 import shutil
 import tempfile
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 from pathlib import Path
 
@@ -16,88 +18,155 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Layered home-seed (spec §2a "Template seed (LAYERED, ordered)").
+# Layered box seed (spec §2a "Template seed (LAYERED, ordered)").
 #
-# The 1.6.0 home-seed model layers three ordered ``seeded.template`` sources into
-# the box home at creation (base -> agent -> workset; later overlays earlier).
-# The layer SOURCES are NO LONGER derived on disk here — they are ORDINARY
-# keystore ``seeded`` category keys resolved through the launch snapshot (spec
-# §2a; ruled 2026-07-09 Q1: everything goes through the keystore + seeding, no
-# bespoke template route). :func:`template_seed_defaults` declares those keys as
-# default-category entries; the seed seam (``commands.start._apply_init_seeds``)
-# resolves them off the committed snapshot, then applies each ``~``-targeted
-# layer, IN ORDER, via :func:`stage_layers` (the per-file last-wins + create-if-
-# absent staging that used to be ``stage_and_seed_templates``).
+# The seed model layers three ordered sources into EACH of the box store's two
+# seeded destinations at creation (base -> agent -> workset; later overlays
+# earlier) — SIX keys in total:
 #
-#   layer 1  system.seeded.template  | (@system.base_template, ~)   base (global)
-#   layer 2  agent.<a>.seeded.template| (@agent.<a>.template, ~)     per-agent (persona+harness)
-#   layer 3  workset.seeded.template  | (@workset.template, ~)       per-workset (primary/named)
+#   1 system.seeded.template   | (@system.template/box/home,                  @meta.box.path/home)
+#   2 agent.<a>.seeded.template| (@agent.<a>.template/box/home,               @meta.box.path/home)
+#   3 workset.seeded.template  | (@workset.template/box/home,                 @meta.box.path/home)
+#   4 system.seeded.handbook   | (@system.template/box/canon/handbook,        @box.canon/handbook)
+#   5 agent.<a>.seeded.handbook| (@agent.<a>.template/box/canon/handbook,     @box.canon/handbook)
+#   6 workset.seeded.handbook  | (@workset.template/box/canon/handbook,       @box.canon/handbook)
 #
-# Sources: @system.base_template (system.* settings tier) · @agent.<a>.template =
+# The layer SOURCES are NOT derived on disk here — they are ORDINARY keystore
+# ``seeded`` category keys resolved through the launch snapshot (ruled 2026-07-09
+# Q1: everything goes through the keystore + seeding, no bespoke template route).
+# :func:`template_seed_defaults` declares them as default-category entries; the
+# seed seam (``commands.start._apply_init_seeds``) resolves them off the committed
+# snapshot and applies each dest's layers IN ORDER via :func:`stage_layers`.
+#
+# ⚑⚑ EVERY DEST IS A **HOST** PATH (spec §2a, ruled: the tuple direction is
+# ``(source, HOST destination)`` for COPY categories).  ``@meta.box.path/home`` is
+# the box store's home dir — the very directory the ``box.bindings.rw.home`` mount
+# then delivers at ``~`` — and ``@box.canon/handbook`` is the box's CONTRIBUTION
+# root, which lives OUTSIDE the home and is bound RO back into the box at
+# ``~/canon/handbook/box``.  Spelling the handbook dest guest-side would be a real
+# bug, not a style choice: ``~/canon/handbook/box`` sits inside the RW home bind, so
+# the copy would land in ``<box_dir>/home/...`` and the RO mount would SHADOW it —
+# two copies, the visible one read-only and a hidden writable one beneath.
+#
+# ⚑ ``@box.canon`` IS NOT ``~/canon``.  See ``settings_categories.CategoryEntry``.
+#
+# Sources: @system.template (system.* settings tier) · @agent.<a>.template =
 # @config.agents/<harness>/template · @workset.template = @meta.workset.path/template
 # (skip-if-absent — the seeded category drops a layer whose source dir is absent).
 # ---------------------------------------------------------------------------
+
+#: The box store's HOST-side seed destinations, as ``@``-ref formulas (spec §2a).
+#: ⚑ ``@meta.box.path/home`` and ``@box.canon/handbook`` are the ONLY two — "SEED
+#: DESTINATIONS ARE ENUMERATED, NEVER A WHOLE-DIRECTORY COPY", because a wholesale
+#: ``template/box/* -> <box_dir>/*`` copy could plant ``<box_dir>/settings.yaml``,
+#: which IS ``meta.box.settings``, the LAST cascade level.
+_SEED_DEST_HOME = "@meta.box.path/home"
+_SEED_DEST_HANDBOOK = "@box.canon/handbook"
+
+#: The per-layer SOURCE subpaths under each layer's ``template`` root.  The two-level
+#: ``box/`` is the declared WHITELIST BOUNDARY (J-2): everything under it is box
+#: ENDPOINT content and gets the box whitelist; ``home`` and ``canon/handbook`` are
+#: the box store's two allowed top-level entries, not decoration.
+_SEED_SRC_HOME = "box/home"
+_SEED_SRC_HANDBOOK = "box/canon/handbook"
+
+#: The ``template`` entry of a SCOPE STORE — the subtree the per-agent and
+#: per-workset layer SOURCES (``@agent.<a>.template`` / ``@workset.template``) point
+#: at by default.  Named because three things must agree on it and one of them is a
+#: transition arm whose failure is silent: the layer-2/3 source key defaults, the
+#: legacy-payload landing path, and the whitelist entry that permits it.
+AGENT_TEMPLATE_STORE_REL = "template"
 
 
 def template_seed_defaults(
     proj: ProjectPaths, agent_id: str | None
 ) -> dict[str, object]:
-    """Return the layered ``seeded.template`` DEFAULT-category table (spec §2a).
+    """Return the layered box-seed DEFAULT-category table (spec §2a — SIX keys).
 
-    The three template layers as ORDINARY keystore keys, ready to fold into the
-    seed-time snapshot's ``default_categories`` (``commands.start._apply_init_seeds``)
-    so they resolve + apply through the SAME single seeded-category route as every
-    other seed — no bespoke template plumbing (Q1). Each is a ``seeded`` COPY into
-    ``~`` (create-time home), sourced from an ``@``-ref SETTINGS key so the source
-    stays user-repointable through the cascade (setting ``workset.template`` /
-    ``agent.<a>.template`` reroutes the seed):
+    Three ordered layers × two enumerated destinations, as ORDINARY keystore keys,
+    ready to fold into the seed-time snapshot's ``default_categories``
+    (``commands.start._apply_init_seeds``) so they resolve + apply through the SAME
+    single seeded-category route as every other seed — no bespoke template plumbing
+    (Q1).  Each is a ``seeded`` COPY into a HOST path under the box store, sourced
+    from an ``@``-ref SETTINGS key so the source stays user-repointable through the
+    cascade (setting ``workset.template`` / ``agent.<a>.template`` reroutes both of
+    that layer's seeds at once):
 
-    * ``system.seeded.template``   = ``(@system.base_template, ~)`` — ALWAYS (Q4:
-      no carve-out; the base template rides the seed system like every layer, so
-      every file in it is seeded).
-    * ``agent.<a>.seeded.template`` = ``(@agent.<a>.template, ~)`` — only when an
-      agent is bound; the source key ``agent.<a>.template`` defaults to
-      ``@config.agents/<harness>/template`` (spec §2a/§2d; ``<a>`` = the persona+
-      harness node, Q2). Absent for a NO-AGENT box.
-    * ``workset.seeded.template`` = ``(@workset.template, ~)`` — only for a
-      PRIMARY/NAMED box (a workset tier exists); the source key
-      ``workset.template`` defaults to ``@meta.workset.path/template`` (Q3, was
-      ``<None>``). STANDALONE has no workset tier, so the layer is OMITTED (spec
-      §2c L483 ``workset.template <None>``). The layer is SKIPPED when the source
-      dir is absent — the seeded category's ordinary missing-source semantics.
+    * ``system.seeded.{template,handbook}`` — ALWAYS (Q4: no carve-out).
+    * ``agent.<a>.seeded.{template,handbook}`` — only when an agent is bound; the
+      source key ``agent.<a>.template`` defaults to ``@config.agents/<harness>/
+      template`` (spec §2a/§2d; ``<a>`` = the persona+harness node, Q2). Absent for a
+      NO-AGENT box.
+    * ``workset.seeded.{template,handbook}`` — only for a PRIMARY/NAMED box (a
+      workset tier exists); the source key ``workset.template`` defaults to
+      ``@meta.workset.path/template`` (Q3, was ``<None>``). STANDALONE has no workset
+      tier, so both layers are OMITTED. Each layer is SKIPPED when its source dir is
+      absent — the seeded category's ordinary missing-source semantics.
 
     The returned dict mixes the SEED tuple keys with their SOURCE scalar keys
     (``workset.template`` / ``agent.<a>.template``) so both land in the snapshot
     floor: the scalar resolves the ``@``-ref, and a user override of the scalar
     (config set / settings file) wins by cascade precedence and reroutes the seed.
-    ``system.base_template`` is already floor-materialized (it is a ``system.*``
-    settings-tier path), so it is NOT re-declared here.
+    ``system.template`` is already floor-materialized (it is a ``system.*``
+    settings-tier path), as are ``@meta.box.path`` and ``@box.canon``
+    (``settings_launch.workset_anchor_floor``), so none is re-declared here.
+
+    ⚑ The handbook seed's DEST is the KEY ``@box.canon/handbook``, which is EXACTLY
+    the SOURCE of the RO ``canon_hb_box`` bind — "the seed writes precisely what the
+    bind reads, spelled once".  Repoint ``box.canon`` and both follow.
     """
     from kanibako.agent_ref import harness_of
     from kanibako.channels import has_workset_channels
 
-    # box_dest ``~`` (NOT ``~/``) so it expands to exactly ``/home/agent`` (GUEST_HOME,
-    # no trailing slash) — the create-time home the seed seam maps to proj.shell_path,
-    # matching the core ``box.bindings.rw.home`` dest.
+    def _layer(source_root: str) -> dict[str, object]:
+        return {
+            "template": (f"{source_root}/{_SEED_SRC_HOME}", _SEED_DEST_HOME),
+            "handbook": (
+                f"{source_root}/{_SEED_SRC_HANDBOOK}", _SEED_DEST_HANDBOOK,
+            ),
+        }
+
     defs: dict[str, object] = {
-        "system.seeded.template": ("@system.base_template", "~"),
+        f"system.seeded.{name}": value
+        for name, value in _layer("@system.template").items()
     }
     if agent_id:
         harness = harness_of(agent_id)
         # SOURCE key (spec §2a/§2d): the per-agent template dir under the agent's
         # (harness) store — the same @config.agents/<harness>/template the retired
         # on-disk deriver produced, now a resolvable/settable keystore key.
-        defs[f"agent.{agent_id}.template"] = f"@config.agents/{harness}/template"
-        defs[f"agent.{agent_id}.seeded.template"] = (
-            f"@agent.{agent_id}.template", "~",
+        defs[f"agent.{agent_id}.template"] = (
+            f"@config.agents/{harness}/{AGENT_TEMPLATE_STORE_REL}"
         )
+        for name, value in _layer(f"@agent.{agent_id}.template").items():
+            defs[f"agent.{agent_id}.seeded.{name}"] = value
     if has_workset_channels(proj):
         # SOURCE key (spec §2c L507; Q3 default @meta.workset.path/template): the
         # workset-local template dir. STANDALONE (no workset channels) omits BOTH
-        # the source and the layer (its workset tier is <None>).
-        defs["workset.template"] = "@meta.workset.path/template"
-        defs["workset.seeded.template"] = ("@workset.template", "~")
+        # the source and the layers (its workset tier is <None>).
+        defs["workset.template"] = (
+            f"@meta.workset.path/{AGENT_TEMPLATE_STORE_REL}"
+        )
+        for name, value in _layer("@workset.template").items():
+            defs[f"workset.seeded.{name}"] = value
     return defs
+
+
+def seed_keys_of(defs: "dict[str, object]") -> frozenset[str]:
+    """The ``seeded`` KEY names inside a :func:`template_seed_defaults` table.
+
+    The single source of the HOST-space key set the launch resolve needs
+    (``settings_launch.snapshot_category_entries(host_dest_keys=…)``): every key this
+    module declares in the ``seeded`` category targets one of the two ENUMERATED
+    HOST destinations above, and nothing else in the table does.  Derived from the
+    table rather than restated so a seventh layer cannot be added in one place and
+    forgotten in the other — which would silently route its copy through the GUEST
+    translator and land it inside the box home (see ``CategoryEntry.dest_space``).
+
+    A USER-declared ``<scope>.seeded.<name>`` is NOT in here and stays GUEST-space,
+    exactly as today.
+    """
+    return frozenset(key for key in defs if ".seeded." in key)
 
 
 def stage_layers(dest: Path, layers: list[Path]) -> None:
@@ -127,6 +196,8 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
     the keystore by the caller (``commands.start._apply_init_seeds``), NOT derived
     on disk here — the "sole intermediary is the keystore" invariant (Q1/Q3/Q4).
     """
+    from kanibako.errors import TemplateScopeError
+
     present = [layer for layer in layers if layer.is_dir()]
     if not present:
         return
@@ -134,6 +205,19 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
         staged = Path(staging)
         for layer in present:
             for entry in sorted(layer.rglob("*")):
+                # SOURCE SYMLINK refusal (spec §2a enforcement point 3), checked
+                # HERE as well as in ``copy_tree``: staging is where layer content is
+                # first read, and ``is_file()`` below would FOLLOW a symlink-to-file
+                # so the exfiltrated bytes would already be in the staging dir by the
+                # time the shared copier saw them (as a plain file).
+                if entry.is_symlink():
+                    raise TemplateScopeError(
+                        f"template layer {str(layer)!r} contains the SYMLINK "
+                        f"{str(entry)!r}. Layer content is copied by VALUE, so "
+                        f"following it would stage the bytes of "
+                        f"{str(entry.resolve())!r} into the box — the secret-"
+                        f"exfiltration escape spec §2a closes. Seed refused."
+                    )
                 if not entry.is_file():
                     continue
                 rel = entry.relative_to(layer)
@@ -141,87 +225,319 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 # Overwrite within staging is intended (per-file last-wins).
                 shutil.copy2(str(entry), str(dest_file))
-        _copy_resource_tree_if_absent(staged, dest)
+        copy_tree(staged, dest)
 
 
 # ---------------------------------------------------------------------------
-# Packaged curated-template install (Phase 9c).
+# Packaged content install — the ENUMERATED (packaged subtree -> host store) set.
 #
-# The base + per-agent template content ships as STATIC files inside the
-# installed packages (mirroring how ``image-baseline.yaml`` ships under
-# ``kanibako.data``):
+# The content ships as STATIC files inside the installed packages (mirroring how
+# ``image-baseline.yaml`` ships under ``kanibako.data``):
 #
-#   base   -> ``kanibako.data`` resource ``templates/base/``
-#   agent  -> ``kanibako.plugins.<agent>`` resource ``data/template/``
+#   core   -> ``kanibako.data`` resource ``global/template/``, whose FOUR subtrees
+#             (``box``, ``workset``, ``agent_default``, ``handbook``) each have their
+#             OWN destination — the root is never copied wholesale (P-S2)
+#   plugin -> ``kanibako.plugins.<agent>`` resource ``data/base/`` (RENAMED from
+#             ``data/template`` — D4), the agent STORE payload
 #
-# On first-run init (``cli._ensure_initialized`` / ``install.run``) these are
-# COPIED into the runtime template dirs (``@system.base_template`` and
-# ``@config.agents/<agent>/template``) where the layered seed-once apply above
-# reads them at box creation.  The copy is CREATE-IF-ABSENT per file: it adds
-# files the user does not yet have but never clobbers a user-edited template
-# (an explicit "refresh from package" is out of scope for 1.6.0).
+# Destinations, and their OWNERS, because the copy rule follows the owner:
+#
+#   @system.template/{box,workset,agent}   SYSTEM-owned STAGING — ``refresh=True``
+#                                          may rewrite shipped files here
+#   @system.canon/handbook                 USER-owned — create-if-absent ALWAYS
+#   @config.agents/{default,<agent>}       USER-owned — create-if-absent ALWAYS
+#
+# Fired at first-run init (``cli._ensure_initialized``), at ``kanibako setup``, and
+# at ``kanibako install``.  Every copy is CREATE-IF-ABSENT per file except the
+# staging rows under an explicit refresh: it adds files the user does not yet have
+# and never clobbers their edits (J-3 item 1).
 # ---------------------------------------------------------------------------
 
 
-def _copy_resource_tree_if_absent(
-    src: Path, dest: Path, *, overwrite: bool = False,
+# ---------------------------------------------------------------------------
+# THE ONE COPIER — every template/seed/store fill goes through here (P-S4).
+# ---------------------------------------------------------------------------
+
+#: Per-SCOPE store-root WHITELISTS (spec §2a, ruled by Jei 2026-07-30).  The KEY
+#: INSIGHT that makes them one predicate instead of a list of special cases: each
+#: packaged per-scope template subtree MIRRORS THAT SCOPE'S STORE ROOT, so the
+#: whitelist is exactly the set of top-level entries that subtree may contain.
+#:
+#: ⚑ DENY-BY-DEFAULT.  Anything not listed is an ERROR.  The DENIED entries are not
+#: hypothetical and their severities differ:
+#:   BOX      ``settings.yaml`` = ``meta.box.settings``, the LAST cascade level, so
+#:            template content would become the box's TOP-PRIORITY settings, carrying
+#:            any key it liked (CORRECTNESS).  Create-if-absent is no defence: on a
+#:            fresh box there is nothing there to lose the race.
+#:   AGENT    ``settings.yaml`` = ``meta.agent.<a>.settings`` (CORRECTNESS); ``caches/``.
+#:   WORKSET  ``settings.yaml``; ``registry.yaml`` = ``workset.registry``, the
+#:            AUTHORITATIVE box membership + names, so a templated one could ORPHAN or
+#:            COLLIDE boxes (CORRECTNESS); ``auth/`` (CREDENTIALS), ``vault/``,
+#:            ``workspaces/`` (THE USER'S CODE); ``boxes/``, ``logs/``, ``channels/``.
+#:
+#: ⚑ STANDALONE is where this bites hardest: ``<workset_path>`` IS the user's own
+#: project directory, so the workset whitelist guards the tree they actually work in.
+#:
+#: ⚑ The sets are NOT one uniform rule.  ``common/`` is allowed at AGENT scope only
+#: (Jei: there are use cases) and behaves differently from its siblings — ``canon/``
+#: is delivered RO and ``template/`` is inert until a box is created, whereas
+#: ``common/`` is bound RW and SHARED by every box running that agent, so starter
+#: content there is live data, not a template.  ONLY ``canon/handbook`` is seedable,
+#: never ``canon/`` wholesale: no other canon subtree has a justified seed today, and
+#: deny-by-default means a future one needs an explicit decision.
+SCOPE_WHITELISTS: dict[str, tuple[str, ...]] = {
+    "box": ("home", "canon/handbook"),
+    "agent": ("template", "canon/handbook", "common"),
+    "workset": ("template", "canon/handbook"),
+}
+
+
+def _check_whitelist(store_rel: Path, scope: str) -> None:
+    """RAISE unless *store_rel*'s leading components are inside *scope*'s allow-list.
+
+    ⚑ *store_rel* is relative to the SCOPE STORE ROOT (``copy_tree``'s *dest_root*),
+    NOT to the copy's source.  The two coincide for a whole-store copy, but they
+    DIVERGE the moment a copy targets a subdirectory of a store — the legacy
+    plugin-payload arm lands ``data/template/**`` at ``<store>/template/box/home``,
+    where the source-relative path (``.claude.json``) says nothing about which
+    top-level store entry is being written and the store-relative path
+    (``template/box/home/.claude.json``) says exactly that.  Checking the wrong one
+    would either refuse a legal copy or wave through an illegal one.
+    """
+    from kanibako.errors import TemplateScopeError
+
+    allowed = SCOPE_WHITELISTS[scope]
+    posix = store_rel.as_posix()
+    if any(posix == a or posix.startswith(f"{a}/") for a in allowed):
+        return
+    raise TemplateScopeError(
+        f"template content for the {scope.upper()} scope may not contain "
+        f"{store_rel.parts[0]!r} (offending entry: {posix!r}). The {scope} store's "
+        f"allowed top-level entries are: {', '.join(allowed)} — anything else is "
+        f"DENIED by default (spec §2a). Move the file under an allowed entry, or "
+        f"remove it from the template."
+    )
+
+
+def _assert_contained(target: Path, root: Path, *, what: str) -> None:
+    """RAISE unless *target*'s REAL path stays inside *root*'s real path.
+
+    Catches BOTH residual escapes §2a names: a ``..`` component in a declared dest,
+    and a symlinked intermediate DIRECTORY in the destination tree that ``mkdir`` +
+    ``copy2`` would happily write THROUGH.  ``resolve()`` on both sides is what makes
+    the second one visible — a plain string comparison would not see it.
+    """
+    from kanibako.errors import TemplateScopeError
+
+    real_root = root.resolve()
+    real_target = target.resolve()
+    if real_target != real_root and real_root not in real_target.parents:
+        raise TemplateScopeError(
+            f"{what} {str(target)!r} resolves to {str(real_target)!r}, which is "
+            f"OUTSIDE the destination subtree {str(real_root)!r}. Copy refused "
+            f"(spec §2a: the copier must reject '..' components and must not follow "
+            f"symlinks out of the destination subtree)."
+        )
+
+
+def copy_tree(
+    src: Path,
+    dest: Path,
+    *,
+    overwrite: bool = False,
+    scope: str | None = None,
+    dest_root: Path | None = None,
+    check_only: bool = False,
 ) -> None:
     """Copy every file under *src* into *dest*, skipping files that exist.
 
-    Mirrors the relative tree of *src* into *dest*.  Existing destination files
-    are left untouched (create-if-absent) so user edits to a seeded template
-    survive a later kanibako upgrade.  Directories are created as needed.
+    **The ONE copier.**  Every template stage, box seed and host-store fill routes
+    here (P-S4), so the whitelist and the traversal defences below cannot be present
+    on one path and missing on another.
+
+    Mirrors the relative tree of *src* into *dest*.  Existing destination files are
+    left untouched (create-if-absent) so user edits to a seeded template survive a
+    later kanibako upgrade.  Directories are created as needed.
 
     When *overwrite* is True (the TRUE-REFRESH path used by
-    ``install_packaged_templates(..., refresh=True)``) an existing destination
-    file IS replaced with the packaged version.  The default (False) preserves
-    the load-bearing create-if-absent contract — the public alias
-    :data:`copy_resource_tree_if_absent` (reused by the box-SEED apply in
-    ``commands.start``) must NEVER clobber a per-box home file.
+    ``install_packaged_templates(..., refresh=True)``) an existing destination file IS
+    replaced with the packaged version.  ⚑ That flag is confined to the SYSTEM-OWNED
+    packaged STAGING (``@system.template/**``) — user-owned stores
+    (``@system.canon/handbook``, ``@config.agents/**``, worksets, boxes) are
+    create-if-absent on EVERY path, always, and their differences are REPORTED rather
+    than written (J-3 item 1).  The default (False) preserves the load-bearing
+    create-if-absent contract — the alias :data:`copy_resource_tree_if_absent`
+    (reused by the box-SEED apply in ``commands.start``) must NEVER clobber a per-box
+    home file.
+
+    *scope* (``"box"`` / ``"agent"`` / ``"workset"``) turns on the §2a WHITELIST,
+    evaluated on each entry's path RELATIVE TO *dest_root* — so it is correct both for
+    a whole-store copy (*dest* IS the store root) and for a copy into a subdirectory
+    of one (the legacy plugin-payload arm).  It is OMITTED only where the dest is not
+    a scope store at all: the box SEED's two dests are key-fixed at ``home`` and
+    ``canon/handbook``, and the packaged handbook's dest is inside the canon root.
+
+    *dest_root* is BOTH the containment boundary and the whitelist's frame of
+    reference (defaults to *dest*).
+
+    Enforcement points — all four of §2a's, and every one of them BEFORE any write:
+
+    1. WHITELIST on the leading component(s) of the store-relative path;
+    2. CONTAINMENT of the resolved destination parent (the ``..`` escape, and a
+       symlinked intermediate DIRECTORY) — checked ahead of the ``mkdir``, so a
+       refused copy leaves nothing behind;
+    3. SOURCE SYMLINK refusal — ``Path.rglob`` does not recurse into symlinked dirs,
+       but ``entry.is_file()`` FOLLOWS a symlink-to-file and ``copy2`` would then copy
+       the TARGET's bytes, so a template containing ``x -> ~/.ssh/id_ed25519``
+       exfiltrates it into the box home;
+    4. DEST SYMLINK refusal — the LEAF, by ``lstat``.  The parent check cannot see
+       this one: a dangling symlink reads as absent to ``exists()`` and gets written
+       through, and a live one is followed so ``overwrite`` replaces a file outside
+       the subtree entirely.
+
+    *check_only* runs every one of those four and writes NOTHING — the PRE-FLIGHT
+    form.  It exists because "refuse loudly" is not the same as "refuse cleanly": a
+    refusal part-way through a walk leaves the files copied before the offender, and
+    where the caller has already REGISTERED something (``workset create``) the user
+    is left with a half-built store to clean up by hand.  ⚑ It is the SAME function,
+    deliberately — a separate validator would be a second copy of the rules, free to
+    drift from the one that actually writes.  Pair it with the real call; do not use
+    it as a substitute for one (nothing here is atomic against a concurrent writer).
     """
+    from kanibako.errors import TemplateScopeError
+
     if not src.is_dir():
         return
-    for entry in src.rglob("*"):
+    root = dest_root if dest_root is not None else dest
+    _assert_contained(dest, root, what="copy destination")
+    for entry in sorted(src.rglob("*")):
+        # (3) SOURCE SYMLINK — checked BEFORE is_file(), which would follow it.
+        if entry.is_symlink():
+            raise TemplateScopeError(
+                f"template source {str(entry)!r} is a SYMLINK. Template content is "
+                f"copied by VALUE, so following it would copy the bytes of "
+                f"{str(entry.resolve())!r} into the destination — the secret-"
+                f"exfiltration escape spec §2a closes. Copy refused; replace the "
+                f"symlink with a real file or remove it."
+            )
         if not entry.is_file():
             continue
         rel = entry.relative_to(src)
         target = dest / rel
+        if scope is not None:
+            # (1) WHITELIST — on the STORE-relative path (see _check_whitelist).
+            _check_whitelist(target.relative_to(root), scope)
+        # (2)+(4) BEFORE ANY WRITE, INCLUDING THE mkdir. A refused copy must leave
+        # NOTHING behind: creating the parent first would litter directories outside
+        # the destination subtree on the very path we are about to refuse.
+        # ``resolve()`` sees through a symlinked intermediate dir that already
+        # exists, which is the attack; a not-yet-existing parent resolves to its
+        # would-be path and passes.
+        _assert_contained(target.parent, root, what="copy destination directory")
+        # (4b) A SYMLINKED FINAL TARGET, checked with lstat BEFORE the two branches
+        # below — both of which follow it.  ``target.exists()`` follows a symlink, so
+        # a DANGLING one reads as absent and ``copy2`` then writes THROUGH it; and
+        # with *overwrite* a live one is followed and a file OUTSIDE the subtree is
+        # replaced.  Neither is caught by the parent check above, because the escape
+        # is the leaf itself.
+        if target.is_symlink():
+            raise TemplateScopeError(
+                f"copy destination {str(target)!r} is a SYMLINK (to "
+                f"{str(target.resolve())!r}). Writing through it would put template "
+                f"content outside the destination subtree {str(root)!r} — the escape "
+                f"spec §2a closes. Copy refused; remove the symlink."
+            )
+        if check_only:
+            continue  # PRE-FLIGHT: every guard above ran; nothing is written.
         if target.exists() and not overwrite:
+            continue
+        if overwrite and target.exists() and _equivalent(entry, target):
+            # PREVIEW AND ACTION MUST TELL ONE TRUTH. ``plan_template_refresh``
+            # classifies an EQUIVALENT file as "current" and does not report it, so a
+            # refresh that rewrote its bytes anyway would silently revert a user's
+            # whitespace/comment edit in the staging the preview just called
+            # unchanged. Same classifier, same verdict, both sides.
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(entry), str(target))
 
 
-# Public alias so other modules (e.g. the seed-once apply in commands.start)
-# can reuse the create-if-absent tree copy without reaching for a private name.
-copy_resource_tree_if_absent = _copy_resource_tree_if_absent
+# Backwards-compatible names.  ``copy_resource_tree_if_absent`` is the public alias
+# other modules (e.g. the seed-once apply in commands.start) reuse; the private
+# spelling is kept because the test suite and several call sites name it.
+_copy_resource_tree_if_absent = copy_tree
+copy_resource_tree_if_absent = copy_tree
+
+
+#: Subtrees of the packaged template root, by their role.  ⚑ The install is an
+#: ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy
+#: (P-S2): copying the root wholesale would leave a SECOND, never-read copy of the
+#: handbook at ``@system.template/handbook``, which is the duplicated-shared-data
+#: defect design principle 2 forbids — and §2a states the same rule ("SEED
+#: DESTINATIONS ARE ENUMERATED … AND THIS HOLDS AT EVERY LEVEL") for every level.
+PACKAGED_BOX_TEMPLATE = "box"
+PACKAGED_WORKSET_TEMPLATE = "workset"
+PACKAGED_AGENT_DEFAULT = "agent_default"
+PACKAGED_HANDBOOK = "handbook"
+
+#: The AGENT MOULD's dir name under ``@system.template`` — the host copy every agent
+#: install stamps from (J-5).  ⚑ There is deliberately NO packaged ``template/agent``
+#: directory: the mould ships EMPTY (D5), and a wheel cannot ship an empty dir, so the
+#: host dir is GUARANTEE-CREATED by the install action (D7).  Shipping structure only
+#: is also what keeps it OVERLAP-FREE with ``agent_default``: both are stamped
+#: create-if-absent into the same store, so an overlapping mould file would win over
+#: the default agent's own content.
+AGENT_MOULD_DIRNAME = "agent"
+
+#: The box-template SKELETON a scope store gets guarantee-created (D7) so the shape
+#: is discoverable: a user who wants a per-workset or per-agent box template can see
+#: where the files go instead of having to know the layout.  ⚑ Spelled to the SPEC
+#: shape — ``home/canon/{notebook,workbook}``, NOT the samples' ``home/{notebook,
+#: workbook}`` (D6 records that as an oversight in the sample tree).
+_BOX_TEMPLATE_SKELETON = (
+    "template/box/home/canon/notebook",
+    "template/box/home/canon/workbook",
+    "template/box/canon/handbook",
+)
 
 
 def _packaged_base_template() -> Path | None:
-    """Locate the packaged base-template SEED content.
+    """Locate the packaged TEMPLATE ROOT (``kanibako.data/global/template``).
 
-    Repointed (instruction-delivery redesign) from the retired
-    ``kanibako.data/templates/base`` (which shipped only ``INSTRUCTIONS.md``) to
-    ``kanibako.data/global/template`` — the SEEDED, writable user tree.  It holds
-    the THREE handbook roots (see ``playbook/general/directives/rules/HANDBOOK.md``):
+    One of the two packaged content roots (``global/rom`` is BOUND, ``global/
+    template`` is INSTALLED — the same bound-vs-seeded split §2c draws for the canon
+    books themselves).  Its four subtrees are enumerated above and each has its OWN
+    host destination; this function returns the ROOT, which is what the staleness
+    DIGEST walks and what :func:`install_packaged_templates` indexes into.
 
-      * ``playbook/``  global / agent / workset directives + resources
-      * ``notebook/``  box-specific directives, archives, resources
-      * ``workbook/``  box-specific process, progress, state
-
-    Because that dir contains those roots verbatim, installing it into
-    ``@system.base_template`` and seeding the layer at box home ``~`` deposits
-    ``~/playbook/...``, ``~/notebook/...`` and ``~/workbook/...`` (create-if-absent).
-    It cannot collide with the RO built-in canon, which binds under ``~/canon``
-    exclusively — an invariant ASSERTED, not assumed, by
-    :func:`kanibako.core_defaults.assert_canon_bind_seed_disjoint` (prefix
-    containment of this tree's rel paths against the canon bind dests).
+    ⚑ It is NOT itself an install dest.  Before the canon restructure this root WAS
+    copied wholesale into ``@system.base_template`` and seeded at the box home ``~``,
+    so a root-relative path was also a home-relative one.  That is no longer true —
+    the box-HOME seed source is ``template/box/home``, two levels down — and any code
+    treating a root-relative walk as home-relative is now silently wrong (see
+    :func:`kanibako.core_defaults.assert_canon_bind_seed_disjoint`, whose caller had
+    to be re-anchored for exactly this reason).
     """
     try:
         ref = packaged_data_dir("global", "template")
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))
+    return path if path.is_dir() else None
+
+
+def packaged_box_home_template() -> Path | None:
+    """The packaged BOX-HOME seed source (``template/box/home``), or None.
+
+    The HOME-RELATIVE root: every path under it is spelled exactly as it lands in a
+    box home.  Named because two consumers need precisely this level and would be
+    wrong one level up — the disjointness guard (whose seed rels must be comparable
+    with the ``canon/...`` bind dests) and any future home-layout check.
+    """
+    base = _packaged_base_template()
+    if base is None:
+        return None
+    path = base / PACKAGED_BOX_TEMPLATE / "home"
     return path if path.is_dir() else None
 
 
@@ -249,57 +565,261 @@ def _packaged_shared_bundle() -> Path | None:
     return path if path.is_dir() else None
 
 
-def _packaged_agent_template(agent_name: str) -> Path | None:
-    """Locate a plugin's packaged template content (``kanibako.plugins.<agent>/data/template``).
+#: A plugin's packaged AGENT-STORE PAYLOAD dir.  ⚑ RENAMED ``data/template`` →
+#: ``data/base`` (D4): the dir is stamped into the agent STORE ROOT
+#: (``@config.agents/<agent>``), of which ``template/`` is only one entry — it also
+#: carries ``canon/handbook/`` and may carry ``common/`` — so calling the whole thing
+#: "template" named it after one of its children.
+PLUGIN_STORE_PAYLOAD_DIRNAME = "base"
 
-    Returns ``None`` if the plugin is not installed or ships no ``data/template/``
-    (e.g. ``no_agent`` / a third-party target without curated content).
+#: The pre-D4 payload dir a PUBLISHED-BUT-NOT-YET-UPDATED plugin still ships.
+PLUGIN_LEGACY_PAYLOAD_DIRNAME = "template"
+
+#: Where a LEGACY payload's content belongs in the new store layout: the old
+#: ``data/template/`` held box-HOME files (``.claude.json``, ``.codex/config.toml``,
+#: …) that the old seed copied straight to ``~``.
+#:
+#: ⚑⚑ IT MUST EQUAL LAYER 2's SOURCE, RESOLVED — i.e. what
+#: ``@agent.<a>.template/box/home`` becomes once ``agent.<a>.template`` expands to
+#: ``@config.agents/<harness>/template``.  That is ``<store>/template/box/home``, and
+#: the ``template/`` prefix is the half that is easy to drop: a value of just
+#: ``box/home`` lands the payload at ``agents/<name>/box/home/**``, which NOTHING
+#: reads — so the transition arm would run, report nothing, and still leave the box
+#: with no agent config.  Derived from the SAME constants the seed key is built from
+#: (:data:`_SEED_SRC_HOME`, plus the ``template`` element of the layer-2 source key),
+#: and pinned by a test that asserts the two are equal.
+PLUGIN_LEGACY_PAYLOAD_DEST_REL = f"{AGENT_TEMPLATE_STORE_REL}/{_SEED_SRC_HOME}"
+
+
+def _packaged_agent_store(agent_name: str) -> tuple[Path, bool] | None:
+    """Locate a plugin's packaged AGENT-STORE payload → ``(path, is_legacy)``.
+
+    Returns ``None`` if the plugin is not installed or ships neither payload dir
+    (``no_agent`` / a third-party target without curated content).
+
+    ⚑⚑ THE TRANSITION ARM, and why it is here rather than in a migration note.  The
+    plugins publish INDEPENDENTLY of the base and pin no base version, so a NEW base
+    beside an OLD plugin is not merely reachable — it is the ordinary
+    ``pip install -U kanibako-cli`` outcome.  A new base looks for ``data/base``; an
+    old plugin ships ``data/template``.  With no arm here that plugin contributes
+    NOTHING, and the failure is silent and total: the box comes up with no agent
+    config at all (no ``.claude.json``, no ``config.toml``, no ``config.yaml``).
+    Same failure class, same reasoning and same remedy as the kickoff yield gate
+    C-CANON R2 shipped.
+
+    A legacy payload is installed to ``<store>/template/box/home``, which is exactly
+    the dest that reproduces the old delivery byte-for-byte: the pre-restructure seed
+    copied ``data/template/**`` to ``~``, and the new layer-2 source
+    ``@agent.<a>.template/box/home`` resolves to that same subtree.
+
+    ⚑ REMOVAL CONDITION — delete this arm (and ``PLUGIN_LEGACY_PAYLOAD_*``) once
+    ``kanibako-agent-claude``, ``-codex`` and ``-goose`` have all PUBLISHED (not
+    merely merged) releases carrying ``data/base``.  Recorded in migration M-12.
     """
-    try:
-        ref = importlib.resources.files(
-            f"kanibako.plugins.{agent_name}"
-        ).joinpath("data", "template")
-    except (ModuleNotFoundError, FileNotFoundError):
-        return None
-    path = Path(str(ref))
-    return path if path.is_dir() else None
+    for dirname, legacy in (
+        (PLUGIN_STORE_PAYLOAD_DIRNAME, False),
+        (PLUGIN_LEGACY_PAYLOAD_DIRNAME, True),
+    ):
+        try:
+            ref = importlib.resources.files(
+                f"kanibako.plugins.{agent_name}"
+            ).joinpath("data", dirname)
+        except (ModuleNotFoundError, FileNotFoundError):
+            return None
+        path = Path(str(ref))
+        if path.is_dir():
+            return path, legacy
+    return None
+
+
+def ensure_agent_stores(
+    std: StandardPaths, agent_names: "Iterable[str]",
+) -> list[str]:
+    """Materialise each agent's STORE — the J-6 **A-action**, one implementation.
+
+    An A-action is INSTANTIATION: stamp a new store from the current host mould at
+    the moment of the action, then the store is the user's.  J-6's "two paths, one
+    action" pair share this one implementation — the deliberate trigger at ``kanibako
+    setup`` (which reports) and the lazy backstop in ``cli._ensure_initialized``
+    (silent, first run only).  Both must run the SAME full per-file stamp; the bare
+    ``mkdir`` the lazy path used to do is what this replaces.
+
+    ⚑ There is a THIRD call site, ``commands/install.run``, which J-6's two-trigger
+    prose does not count and should not: that whole function is DEAD (no
+    ``set_defaults(func=run)`` wiring — see its own note). Reached through this one
+    implementation it would behave identically; it is named here only so a reader who
+    greps for callers does not conclude the prose is wrong.
+
+    Per name, in order:
+
+    1. the MOULD — ``@system.template/agent`` → ``agents/<name>``.  Uniform for every
+       agent, ``default`` included (J-5), and read AS IT STANDS so a user's mould
+       customisation reaches FUTURE stores only.
+    2. the SPECIFIC payload — ``agents/default`` gets the packaged
+       ``template/agent_default`` DIRECTLY from the package (no host staging: with
+       exactly one default agent, a staged copy would be read once and never again —
+       the principle-2 dead-copy class); every other name gets its plugin's
+       ``data/base``.
+    3. the box-template SKELETON, guarantee-created (D7).
+
+    ⚑ MOULD FIRST IS SAFE ONLY BECAUSE THE MOULD IS OVERLAP-FREE.  Every stamp is
+    create-if-absent, so on an overlapping path the EARLIER copy wins — the mould
+    would beat the specific content.  The mould therefore ships STRUCTURE ONLY (D5);
+    if it ever gains content, this order must flip to specific-first.
+
+    Create-if-absent per file makes the whole thing IDEMPOTENT and SELF-HEALING: a
+    partially-written store completes at the next trigger, and a user's edits are
+    never touched.  Fill-out happens AT ACTION TIME — the launch path CONSUMES
+    stores and never creates template content.
+
+    Returns the names whose store was touched, for the caller's report.
+    """
+    mould = std.template / AGENT_MOULD_DIRNAME
+    base = _packaged_base_template()
+    touched: list[str] = []
+    for name in agent_names:
+        store = std.agents / name
+        store.mkdir(parents=True, exist_ok=True)
+        # (1) the host mould — user-customizable, read at EVERY agent install.
+        copy_tree(mould, store, scope="agent")
+        # (2) the specific payload.
+        if name == "default":
+            if base is not None:
+                copy_tree(base / PACKAGED_AGENT_DEFAULT, store, scope="agent")
+        else:
+            found = _packaged_agent_store(name)
+            if found is not None:
+                src, legacy = found
+                if legacy:
+                    # ⚑ ``dest_root=store`` is what makes ``scope="agent"`` correct
+                    # here: the whitelist reads the STORE-relative path
+                    # (``template/box/home/.claude.json`` → leading ``template/``,
+                    # which the agent allow-list carries), not the source-relative
+                    # one. With the dest_root omitted it would read ``.claude.json``
+                    # and refuse a perfectly legal legacy payload.
+                    copy_tree(
+                        src, store / PLUGIN_LEGACY_PAYLOAD_DEST_REL,
+                        dest_root=store, scope="agent",
+                    )
+                else:
+                    copy_tree(src, store, scope="agent")
+        # (3) the discoverable box-template skeleton (D7).
+        for rel in _BOX_TEMPLATE_SKELETON:
+            (store / rel).mkdir(parents=True, exist_ok=True)
+        touched.append(name)
+    return touched
+
+
+def check_workset_template(std: StandardPaths, workset_path: Path) -> None:
+    """PRE-FLIGHT the workset mould against the workset whitelist; write nothing.
+
+    ``workset create`` must be ATOMIC in the way that matters to a user: either the
+    workset exists and is well-formed, or nothing happened.  Refusing part-way
+    through :func:`install_workset_template` satisfied "loud and leak-free" but left
+    a REGISTERED workset with a root, its own ``settings.yaml`` and a PARTIAL chapter
+    copy — recoverable only by ``workset rm``.
+
+    So the check runs FIRST, before anything is registered or created — the same
+    order ``workset.create_workset`` already uses for its name guards ("BEFORE any
+    on-disk side effect below"), which is why this is a pre-flight rather than an
+    unwind: it matches how this command already handles the class.
+    """
+    copy_tree(
+        std.template / PACKAGED_WORKSET_TEMPLATE, workset_path,
+        scope="workset", check_only=True,
+    )
+
+
+def install_workset_template(std: StandardPaths, workset_path: Path) -> None:
+    """Stamp a NEW workset store from the host workset mould — the J-6 A-action.
+
+    ``@system.template/workset`` → ``<workset_path>``, under the WORKSET whitelist
+    (``template/`` + ``canon/handbook/`` only).  Called from ``workset create``; there
+    was no template step there before, which is why the workset's handbook chapter
+    and its own box template never existed.
+
+    ⚑ The whitelist matters MOST here.  For a STANDALONE project ``<workset_path>``
+    IS the user's own project directory — it holds their ``workspace/``, their
+    ``vault/``, their ``auth/`` and the AUTHORITATIVE ``registry.yaml`` — so the
+    deny-by-default predicate is guarding the tree they actually work in, not a
+    kanibako-managed store.
+
+    Create-if-absent, so re-running over an existing workset adds only what is
+    missing.
+    """
+    src = std.template / PACKAGED_WORKSET_TEMPLATE
+    copy_tree(src, workset_path, scope="workset")
+    for rel in _BOX_TEMPLATE_SKELETON:
+        (workset_path / rel).mkdir(parents=True, exist_ok=True)
+    (workset_path / "canon" / "handbook").mkdir(parents=True, exist_ok=True)
 
 
 def install_packaged_templates(
     std: StandardPaths, agent_names: list[str], refresh: bool = False,
 ) -> None:
-    """Copy packaged curated-template content into the runtime template dirs.
+    """Install the packaged content into its host stores — an ENUMERATED set (P-S2).
 
-    Populates ``@system.base_template`` from the packaged base content and each
-    ``@config.agents/<agent>/template`` from the agent plugin's packaged
-    ``template/``.  Called from first-run init; safe to re-run (idempotent for
-    unchanged trees).
+    Four destination pairs, each named because each has a different OWNER and
+    therefore a different copy rule:
+
+    ====================================== ======================================
+    packaged subtree                        host destination
+    ====================================== ======================================
+    ``template/box``                        ``@system.template/box``   (STAGING)
+    ``template/workset``                    ``@system.template/workset`` (STAGING)
+    *(none — ships empty, D5)*              ``@system.template/agent``  (STAGING)
+    ``template/handbook``                   ``@system.canon/handbook``  (USER-OWNED)
+    ``template/agent_default`` + plugins    ``@config.agents/<name>``   (USER-OWNED)
+    ====================================== ======================================
+
+    ⚑⚑ ``refresh=True`` (the ``kanibako setup`` TRUE-REFRESH) reaches the STAGING
+    rows ONLY.  The user-owned rows are create-if-absent on EVERY path — J-3 item 1:
+    *"user-owned canon stores are NEVER overwritten by any implicit path"*, and §2a's
+    *"a package upgrade must not silently revert their edits"*.  Their differences
+    are REPORTED instead (:func:`plan_template_refresh`'s ``kept`` list), and an
+    explicit opt-in update verb is the future mechanism for actually applying them.
+    That split is the whole point of J-6's action taxonomy: a B-action (template
+    update) changes what FUTURE instantiations get and never touches an existing
+    store; only a C-action (instance update), which does not exist yet and will never
+    be implicit, may rewrite one.
 
     The agent-agnostic box guide (the bible's ``ROM_GENERAL.md``) is NOT installed
     here — it is delivered LIVE from the read-only packaged canon (bound at
-    ``~/canon/bible`` + flattened into each agent's native instruction slot at
+    ``~/canon/bible/general`` + flattened into each agent's native instruction slot at
     launch), so it has no host runtime-install target.
-
-    Default (``refresh=False``) is CREATE-IF-ABSENT (never clobbers user edits) —
-    the first-run behaviour.  ``refresh=True`` is the TRUE-REFRESH path (``kanibako
-    setup``): shipped files (base tree, each agent tree) are OVERWRITTEN to their
-    current packaged versions.  User-only files are never in the packaged src
-    loop, so they stay untouched either way.
     """
     base_src = _packaged_base_template()
     if base_src is not None:
-        _copy_resource_tree_if_absent(base_src, std.base_template, overwrite=refresh)
-
-    for agent_name in agent_names:
-        agent_src = _packaged_agent_template(agent_name)
-        if agent_src is None:
-            continue
-        # Runtime per-agent template store dir (@config.agents/<agent>/template) —
-        # the install DEST for the packaged content the layered seed later reads via
-        # the ``@agent.<agent>.template`` key (this is a packaged->runtime install,
-        # not the seed-SOURCE resolution the keystore owns).
-        dest = std.agents / agent_name / "template"
-        _copy_resource_tree_if_absent(agent_src, dest, overwrite=refresh)
+        # STAGING (system-owned): the box + workset moulds, refreshable.
+        #
+        # ⚑ SCOPED, and this is where J-2's box whitelist actually BITES. The mould
+        # MIRRORS the store it stamps, so it is subject to that store's whitelist at
+        # the moment it is staged — which is the earliest point a planted
+        # ``settings.yaml`` (= ``meta.box.settings``, the LAST cascade level) can be
+        # REFUSED rather than carried forward. Unscoped, the deny-list would only be
+        # dead prose: nothing downstream re-checks it, because the box seed copies
+        # from ``box/home`` and ``box/canon/handbook`` directly.
+        copy_tree(
+            base_src / PACKAGED_BOX_TEMPLATE,
+            std.template / PACKAGED_BOX_TEMPLATE,
+            overwrite=refresh, scope="box",
+        )
+        copy_tree(
+            base_src / PACKAGED_WORKSET_TEMPLATE,
+            std.template / PACKAGED_WORKSET_TEMPLATE,
+            overwrite=refresh, scope="workset",
+        )
+        # USER-OWNED: the system handbook — create-if-absent ALWAYS (J-3 item 1).
+        # ⚑ UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope store
+        # root, so there is no store whitelist to apply (the equivalent guarantee is
+        # that the dest is key-fixed).
+        copy_tree(
+            base_src / PACKAGED_HANDBOOK, std.canon / "handbook",
+        )
+    # The agent MOULD dir exists even though nothing packages it (D5/D7).
+    (std.template / AGENT_MOULD_DIRNAME).mkdir(parents=True, exist_ok=True)
+    # USER-OWNED: the agent stores — the A-action, default included.
+    ensure_agent_stores(std, ["default", *agent_names])
 
 
 def _is_shipped_content(entry: Path) -> bool:
@@ -350,8 +870,8 @@ def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]
     """Return the SORTED ``(namespaced-path, file-bytes)`` content manifest.
 
     Enumerates every packaged file the setup gate must watch — the base seed tree
-    (``_packaged_base_template``), each installed agent's ``template/``
-    (``_packaged_agent_template``), AND the RO packaged canon
+    (``_packaged_base_template``), each installed agent's store payload
+    (``_packaged_agent_store``), AND the RO packaged canon
     (``_packaged_shared_bundle``, which is bind-mounted rather than installed but
     still needs drift detection; it carries the box guide at
     ``canon/bible/general/directives/ROM_GENERAL.md``).  Each file contributes ONE
@@ -380,9 +900,10 @@ def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]
             entries.append((f"shared/{rel}", entry.read_bytes()))
 
     for agent_name in sorted(agent_names):
-        agent_src = _packaged_agent_template(agent_name)
-        if agent_src is None:
+        found = _packaged_agent_store(agent_name)
+        if found is None:
             continue
+        agent_src, _legacy = found
         for rel, entry in walk_shipped_files(agent_src):
             entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
 
@@ -407,44 +928,170 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
     return digest.hexdigest()
 
 
+# ---------------------------------------------------------------------------
+# The J-3 REPORTING classifier — three tiers, keyed by suffix.
+#
+# ⚑ REPORTING ONLY. It never decides whether to copy: create-if-absent (or the
+# staging refresh) already decided that. Its whole job is to keep the setup report
+# HONEST — spec §2a: *"report a skip ONLY where the packaged file DIFFERS"*, because
+# reporting every skip trains the user to ignore the output, which costs exactly the
+# signal the report exists to carry.
+#
+# ⚑ ACCEPTED CONSEQUENCE (J-3 item 5): a comment-only upstream change compares
+# EQUIVALENT and goes unreported today. The ``[STOCK]`` comment convention is what
+# makes comment-aware handling possible later, in the explicit opt-in update verb.
+# ---------------------------------------------------------------------------
+
+#: HTML comments, non-greedy, across lines — stripped by the MD normaliser because
+#: both equivalence tiers ignore comments (J-3 item 5).
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+#: A fenced code block (``` or ~~~), captured whole so the normaliser can leave its
+#: interior ALONE: whitespace is SEMANTIC inside a fence.
+_FENCE_RE = re.compile(r"(^|\n)(```|~~~)[^\n]*\n.*?(\n\2[^\n]*(?=\n|$))", re.DOTALL)
+
+
+def _normalise_markdown(text: str) -> str:
+    """Normalise *text* for the MD equivalence tier — CONSERVATIVELY.
+
+    Strips HTML comments, then collapses insignificant whitespace: CRLF → LF,
+    trailing whitespace per line, runs of blank lines, and the final newline.
+
+    ⚑ TWO THINGS ARE DELIBERATELY LEFT ALONE, because in markdown they are not
+    whitespace but SYNTAX:
+
+    * the interior of a FENCED CODE BLOCK — indentation and blank lines there are
+      content;
+    * a TRAILING TWO-SPACE hard line break — stripping it would merge two lines.
+
+    Anything this misses only costs a spurious "different" report, never a wrong
+    copy; anything it over-normalises would HIDE a real change, which is why the
+    bias is conservative.
+    """
+    fences: list[str] = []
+
+    def _stash(match: re.Match[str]) -> str:
+        fences.append(match.group(0))
+        return f"\x00FENCE{len(fences) - 1}\x00"
+
+    text = text.replace("\r\n", "\n")
+    text = _HTML_COMMENT_RE.sub("", text)
+    text = _FENCE_RE.sub(_stash, text)
+    lines = [
+        line if line.endswith("  ") and line.strip() else line.rstrip()
+        for line in text.split("\n")
+    ]
+    out: list[str] = []
+    for line in lines:
+        if not line and out and not out[-1]:
+            continue  # collapse blank-line runs
+        out.append(line)
+    text = "\n".join(out).strip("\n")
+    for i, fence in enumerate(fences):
+        text = text.replace(f"\x00FENCE{i}\x00", fence)
+    return text
+
+
+def _equivalent(src_file: Path, target: Path) -> bool:
+    """True when *target* is byte-equal to, or EQUIVALENT to, *src_file*.
+
+    ONE strategy table keyed by suffix (J-3 item 2):
+
+    * ``.yaml`` / ``.yml`` — ``safe_load`` both sides and deep-compare. A parse
+      failure on EITHER side ⇒ "different" (never equivalent: an unparseable file is
+      exactly the case a report should surface).
+    * ``.md`` — :func:`_normalise_markdown` both sides and compare.
+    * anything else — bytes only.
+    """
+    try:
+        src_bytes = src_file.read_bytes()
+        target_bytes = target.read_bytes()
+    except OSError:
+        return False
+    if src_bytes == target_bytes:
+        return True
+    suffix = src_file.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        import yaml
+
+        try:
+            return yaml.safe_load(src_bytes.decode()) == yaml.safe_load(
+                target_bytes.decode()
+            )
+        except (yaml.YAMLError, UnicodeDecodeError):
+            return False
+    if suffix == ".md":
+        try:
+            return _normalise_markdown(src_bytes.decode()) == _normalise_markdown(
+                target_bytes.decode()
+            )
+        except UnicodeDecodeError:
+            return False
+    return False
+
+
 def plan_template_refresh(
     std: StandardPaths, agent_names: list[str],
-) -> tuple[list[Path], list[Path]]:
-    """Classify every packaged src file by its host target for the prompt preview.
+) -> tuple[list[Path], list[Path], list[Path]]:
+    """Classify every packaged src file by its host target for the setup preview.
 
-    Returns ``(added, overwritten)`` lists of HOST target paths:
+    Returns ``(added, overwritten, kept)`` lists of HOST target paths:
 
     * ADDED — the packaged file has no host counterpart yet (create).
-    * OVERWRITTEN — a host file exists but its bytes DIFFER from the packaged
-      version (a true-refresh replaces it).
-    * unchanged (host bytes == packaged bytes) — skipped, in neither list.
+    * OVERWRITTEN — a STAGING file (``@system.template/**``, system-owned) exists and
+      DIFFERS from the packaged version, so a true-refresh replaces it.
+    * KEPT — a USER-OWNED file (``@system.canon/handbook/**``, ``@config.agents/**``)
+      exists and DIFFERS. It is NEVER overwritten (J-3 item 1); it is reported so the
+      user knows an upstream version moved on and their copy stayed.
+    * current — byte-equal OR :func:`_equivalent`; in NO list, deliberately
+      unreported (an identical file is not a "skip", and neither is one that differs
+      only in comments or insignificant whitespace).
 
-    User-only files never appear (they are not in the packaged src loop).  This
-    is a pure classification (no writes) driving the ``kanibako setup`` preview.
+    User-only files never appear (they are not in the packaged src loop). This is a
+    pure classification (no writes) driving the ``kanibako setup`` preview.
     """
     added: list[Path] = []
     overwritten: list[Path] = []
+    kept: list[Path] = []
 
-    def _classify(src_file: Path, target: Path) -> None:
+    def _classify(src_file: Path, target: Path, *, user_owned: bool) -> None:
         if not target.exists():
             added.append(target)
-        elif target.read_bytes() != src_file.read_bytes():
-            overwritten.append(target)
-        # else: byte-identical -> unchanged, skipped.
+        elif not _equivalent(src_file, target):
+            (kept if user_owned else overwritten).append(target)
+        # else: current (byte-equal or equivalent) -> unreported.
+
+    def _walk(src: Path | None, dest: Path, *, user_owned: bool) -> None:
+        if src is None or not src.is_dir():
+            return
+        for entry in sorted(src.rglob("*")):
+            if entry.is_file() and not entry.is_symlink():
+                _classify(entry, dest / entry.relative_to(src), user_owned=user_owned)
 
     base_src = _packaged_base_template()
     if base_src is not None:
-        for entry in base_src.rglob("*"):
-            if entry.is_file():
-                _classify(entry, std.base_template / entry.relative_to(base_src))
+        # STAGING (refreshable).
+        _walk(
+            base_src / PACKAGED_BOX_TEMPLATE,
+            std.template / PACKAGED_BOX_TEMPLATE, user_owned=False,
+        )
+        _walk(
+            base_src / PACKAGED_WORKSET_TEMPLATE,
+            std.template / PACKAGED_WORKSET_TEMPLATE, user_owned=False,
+        )
+        # USER-OWNED (create-if-absent; differences reported, never written).
+        _walk(base_src / PACKAGED_HANDBOOK, std.canon / "handbook", user_owned=True)
+        _walk(
+            base_src / PACKAGED_AGENT_DEFAULT, std.agents / "default", user_owned=True,
+        )
 
     for agent_name in agent_names:
-        agent_src = _packaged_agent_template(agent_name)
-        if agent_src is None:
+        found = _packaged_agent_store(agent_name)
+        if found is None:
             continue
-        dest = std.agents / agent_name / "template"
-        for entry in agent_src.rglob("*"):
-            if entry.is_file():
-                _classify(entry, dest / entry.relative_to(agent_src))
+        agent_src, legacy = found
+        store = std.agents / agent_name
+        dest = store / PLUGIN_LEGACY_PAYLOAD_DEST_REL if legacy else store
+        _walk(agent_src, dest, user_owned=True)
 
-    return added, overwritten
+    return added, overwritten, kept

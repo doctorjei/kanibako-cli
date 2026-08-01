@@ -87,13 +87,26 @@ class StandardPaths:
     # System-level derived directories.  The path roots split into the Layer-1
     # CONFIG-key foundation (``config.*``: data/settings/agents/primary_workset/
     # registry) and the Layer-2 ``system.*`` path settings (channelroot/
-    # base_template/backup/cache/runtime).  ``global`` is ELIMINATED (children
+    # template/canon/backup/cache/runtime).  ``global`` is ELIMINATED (children
     # inline ``@config.data/global/...``).
     data: Path
     backup: Path
     agents: Path
     channels: Path
-    base_template: Path
+    # ``system.template`` — the system TEMPLATE ROOT (M-11 rename of the former
+    # ``system.base_template``; the default moved ``global/base_template`` →
+    # ``global/template`` at the same time).  Holding the ROOT rather than the
+    # box-seed dir directly is what leaves room for further template subtrees
+    # without new keys.  ⚑ The box-HOME seed is ``template/box/home``, NOT the root
+    # and NOT ``box/``: ``box/`` is the box TEMPLATE root, holding ``home/`` beside
+    # ``canon/handbook/`` (spec §2a layers 1-6).
+    template: Path
+    # ``system.canon`` — the SYSTEM-level CANON CONTRIBUTION root (spec §2g).  Its
+    # ``handbook/`` subtree supplies ``SYS_CONTENTS.md`` + the ``general`` chapter,
+    # bound RO into every box.  ⚑ It names what this SCOPE CONTRIBUTES to the canon,
+    # NOT a copy of the assembled tree: ``~/canon`` (guest) is the assembly,
+    # ``@<scope>.canon`` (host) is one scope's contribution to it.
+    canon: Path
     settings: Path
     primary_workset: Path
     registry: Path
@@ -124,19 +137,14 @@ class StandardPaths:
     primary_logs: Path
 
     # ------------------------------------------------------------------
-    # Transitional aliases (owner = Phase 7; not retired here).
+    # Transitional aliases.
     #
-    # ``templates`` still aliases the renamed ``base_template`` dir for the
-    # templates (Phase 7) call sites; ``share_ro``/``share_rw`` raise (the dirs
-    # were deleted in the system.* reorg).  The ``comms`` alias was retired in
-    # Phase 6 (the legacy comms mount is gone; all readers use ``channels``).
-    # Do NOT add new uses.
+    # ``share_ro``/``share_rw`` raise (the dirs were deleted in the system.* reorg).
+    # The ``comms`` alias was retired in Phase 6 (the legacy comms mount is gone; all
+    # readers use ``channels``), and the ``templates`` alias was retired with M-11:
+    # it aliased the field now called ``template``, so keeping it would have shipped
+    # THREE spellings of one directory. Do NOT add new uses.
     # ------------------------------------------------------------------
-
-    @property
-    def templates(self) -> Path:
-        """OLD ``std.templates`` → the renamed/re-pointed ``base_template`` dir."""
-        return self.base_template
 
     @property
     def share_ro(self) -> Path:
@@ -647,7 +655,17 @@ CONFIG_PATH_DEFAULTS: dict[str, str] = {
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
     "system.backup": "@config.data/backup",
     "system.channelroot": "@config.data/channels",
-    "system.base_template": "@config.data/global/base_template",
+    # M-11 (2026-07-30): ``system.base_template`` → ``system.template``, and the
+    # default moved ``global/base_template`` → ``global/template`` at the same time.
+    # ⚑ The on-disk dir MOVES with it: an existing install's populated (possibly
+    # user-edited) ``global/base_template/`` is ORPHANED by the rename — setup
+    # re-installs packaged content at the new root and the old dir is left behind.
+    # Documentation-only, deliberately: no code auto-migrates a user's store.
+    "system.template": "@config.data/global/template",
+    # The SYSTEM canon CONTRIBUTION root (spec §2g). Same indirection as
+    # ``system.template``: holding the ROOT leaves room for further canon subtrees
+    # without new keys, and its ``handbook/`` is what binds into a box.
+    "system.canon": "@config.data/global/canon",
     "system.cache": "$XDG_CACHE_HOME/kanibako",
     "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
     # Channels skeleton (the type-roots derive from system.channelroot).
@@ -906,7 +924,8 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
         backup=resolved["system.backup"],
         agents=resolved["config.agents"],
         channels=resolved["system.channelroot"],
-        base_template=resolved["system.base_template"],
+        template=resolved["system.template"],
+        canon=resolved["system.canon"],
         settings=resolved["config.settings"],
         primary_workset=resolved["config.primary_workset"],
         registry=resolved["config.registry"],

@@ -265,6 +265,44 @@ class CategoryEntry:
     False), exactly as ``synced`` (always credential-bearing) is.  Core never sets
     it; the agent
     plugin marks its cred seeds (Phase 8).  Defaults to False.
+
+    *optional* marks a MOUNT whose SOURCE is legitimately allowed not to exist, so
+    the emitter DROPS it SILENTLY instead of warning (spec §2c "SKIP-IF-ABSENT").
+    The handbook's per-scope chapter binds are the live users: a workset or box that
+    has written no chapter is the NORMAL case, and warning about it on every launch
+    of almost every box is the noise that trains users to ignore warnings.  The
+    ro-drop WARNING stays for every non-optional bind — it is the safety net for a
+    mis-pathed one and must not be softened globally.  Set by KEY NAME at the
+    emitter (``settings_launch.snapshot_category_entries(optional_keys=…)``), never
+    by a resolve-time ``exists()`` probe: this module is PURE.
+
+    ⚑⚑ *dest_space* says which FILESYSTEM NAMESPACE ``box_dest`` is spelled in, and
+    it exists because the two are TEXTUALLY INDISTINGUISHABLE AND CAN COLLIDE:
+
+    * ``"guest"`` (the default, and every MOUNT) — an in-box path such as
+      ``/home/agent/.claude``, translated to its host counterpart by
+      ``container._guest_dest_to_host``.
+    * ``"host"`` — an ABSOLUTE HOST path a COPY writes to directly, used by the
+      §2a seed layers whose dests are the keys ``@meta.box.path/home`` and
+      ``@box.canon/handbook``.
+
+    On a host whose user home IS ``/home/agent`` (this project's own dev box, and
+    the seadog LXC test envs), a host dest such as
+    ``/home/agent/.local/share/kanibako/…/canon/handbook`` starts with the guest
+    home prefix, so the guest translator would map it BACK under the box home and
+    the copy would land somewhere nothing reads — silently, reporting success.  The
+    fix cannot be a smarter prefix test; the entry has to CARRY ITS SPACE.
+    :func:`reconcile_categories` therefore groups on ``(dest_space, box_dest)``, so
+    a host COPY and a guest MOUNT that happen to share a dest STRING stay two
+    entries and the "every mount beats ``seeded``" rule cannot silently eat the seed.
+
+    ⚑ THE ``canon`` NAMING TRAP, quarantined here because both spellings meet in
+    this dataclass: a box store holds TWO different ``canon`` directories.
+    ``<box_dir>/home/canon`` is the box's ASSEMBLED GUEST VIEW (``~/canon``,
+    delivered by the home bind).  ``<box_dir>/canon`` (= the key ``@box.canon``) is
+    the box's CONTRIBUTION root, whose ``handbook/`` is ONE CHAPTER bound RO at
+    ``~/canon/handbook/box``.  **``@box.canon`` is NOT ``~/canon``** — same word,
+    adjacent paths, opposite directions of travel.
     """
 
     category: str
@@ -276,6 +314,8 @@ class CategoryEntry:
     name: str
     key: str
     is_credential: bool = False
+    optional: bool = False
+    dest_space: str = "guest"
 
 
 def _bind_options(category: str) -> str:
@@ -449,15 +489,21 @@ def reconcile_categories(
     envs = [e for e in gated if e.delivery == ENV]
     path_entries = [e for e in gated if e.delivery != ENV]
 
-    # --- group by resolved box_dest; resolve each group per §0.
+    # --- group by (dest_space, resolved box_dest); resolve each group per §0.
     # Preserve input order — "the existing ordering" the table's row 5 defers to.
-    by_dest: dict[str, list[CategoryEntry]] = {}
+    #
+    # ⚑ THE SPACE IS PART OF THE KEY, not decoration. A ``host``-space COPY dest and
+    # a ``guest``-space MOUNT dest are drawn from two DIFFERENT namespaces that can
+    # produce the same STRING (a host store under a ``/home/agent`` user home — see
+    # ``CategoryEntry.dest_space``). Keyed on the bare dest they would be reconciled
+    # as one destination and the copy-vs-mount rule would silently drop the seed.
+    by_dest: dict[tuple[str, str], list[CategoryEntry]] = {}
     for e in path_entries:
-        by_dest.setdefault(e.box_dest, []).append(e)
+        by_dest.setdefault((e.dest_space, e.box_dest), []).append(e)
 
     winners: list[CategoryEntry] = []
     warnings: list[CategoryCollision] = []
-    for box_dest, group in by_dest.items():
+    for (_space, box_dest), group in by_dest.items():
         kept, group_warnings = _resolve_dest_group(box_dest, group)
         winners.extend(kept)
         warnings.extend(group_warnings)

@@ -137,6 +137,16 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
       clears) but leave files as-is.
     * non-TTY, no flag → SKIP WITHOUT stamping (no informed choice possible → the
       hard gate keeps erroring), point at interactive setup / ``--refresh-templates``.
+
+    ⚑ This step is J-6's **B-action** (TEMPLATE UPDATE) and its A-action trigger in
+    one place. The refresh reaches the system-owned packaged STAGING only, so it
+    changes what FUTURE instantiations get and never rewrites an existing store; the
+    ``kept`` list reports the user-owned files whose packaged version moved on while
+    their copy stayed. It is also the DELIBERATE trigger of the agent-store
+    materialisation (``ensure_agent_stores``, run inside
+    ``install_packaged_templates``), which is where a newly pip-installed plugin
+    finally gets its store — pip installs run no code, so "at plugin install" means
+    "at the next trigger", and the staleness gate is what forces this one.
     """
     from kanibako.config import load_config
     from kanibako.paths import load_std_paths
@@ -146,10 +156,17 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
     std = load_std_paths(load_config(cf))
     names = _known_target_names()
 
-    added, overwritten = plan_template_refresh(std, names)
+    added, overwritten, kept = plan_template_refresh(std, names)
     forced = bool(getattr(args, "refresh_templates", False))
 
     print("Step 5: Templates")
+
+    def _report_kept() -> None:
+        if not kept:
+            return
+        print(f"  Kept YOUR copy ({len(kept)} file(s) differ from the shipped one):")
+        for path in kept:
+            print(f"    = {path}")
 
     if forced:
         install_packaged_templates(std, names, refresh=True)
@@ -158,9 +175,10 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
             f"  [ok] Templates refreshed "
             f"({len(added)} added, {len(overwritten)} updated)."
         )
+        _report_kept()
         return
 
-    if not added and not overwritten:
+    if not added and not overwritten and not kept:
         # Already current: clear the gate silently, no prompt.
         _write_templates_stamp(names)
         print("  [ok] Templates are up to date.")
@@ -176,6 +194,7 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
             print(f"  Files to UPDATE ({len(overwritten)}):")
             for path in overwritten:
                 print(f"    ~ {path}")
+        _report_kept()
         print("  Your OWN template files are untouched.")
         print("  Edits you made to SHIPPED files will be replaced.")
         try:

@@ -163,6 +163,19 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # to the ``workset:`` nested slot (same pattern as ``workset.registry``); a
     # STRING path (no KEY_TYPES). STANDALONE has no workset tier (source <None>).
     "workset.template",
+    # Per-workset CANON CONTRIBUTION root (spec §2c ALL PROJECTS). Same shape and
+    # same reason as ``workset.template`` above: a NORMAL settable STRING-path key
+    # (default ``@meta.workset.path/canon``) that TWO things read — the ro
+    # ``canon_hb_workset`` bind's source AND the ``workset.seeded.handbook`` dest —
+    # so repointing it moves the workset's handbook chapter and the seed that fills
+    # it together. Routed to the ``workset:`` nested slot.
+    "workset.canon",
+    # Per-BOX canon contribution root (spec §2b). ⚑ ``@box.canon`` is NOT ``~/canon``:
+    # it is ``<box_dir>/canon`` on the HOST, whose ``handbook/`` is ONE CHAPTER bound
+    # ro at ``~/canon/handbook/box``. The assembled guest view lives under the box
+    # HOME and arrives through the home bind. Same word, adjacent paths, opposite
+    # directions of travel.
+    "box.canon",
     # Workset kuid + advisory-check toggle (settings-conformance P6d). ``workset.
     # kuid`` is the workset's stable id (Crockford-base32; sentinel ``"00000"``
     # for primary/named unless set — a STANDALONE box GENERATES a real one at
@@ -181,7 +194,11 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # is ELIMINATED (children inline ``@config.data/global/...``).
     "system.backup",
     "system.channelroot",
-    "system.base_template",
+    # M-11: ``system.base_template`` → ``system.template``. The old spelling is
+    # RETIRED, not aliased — it is not a declared key any more (spec §0's closed
+    # keyspace), so ``config set system.base_template`` correctly refuses.
+    "system.template",
+    "system.canon",
     "system.cache",
     "system.runtime",
     # system.agent (spec §2g L1187): the CURRENT agent's name — a system-scope
@@ -310,6 +327,11 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # seed source, routed to the ``workset:`` table slot (same nested-settings
     # pattern as ``workset.registry``). STRING path (no KEY_TYPES / no bool coerce).
     "workset.template": (("workset",), "template"),
+    # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b), routed exactly like
+    # ``workset.template`` / ``box.image`` — the ``workset:`` and ``box:`` table
+    # slots. STRING paths (no KEY_TYPES / no bool coerce).
+    "workset.canon": (("workset",), "canon"),
+    "box.canon": (("box",), "canon"),
     # Workset kuid + advisory-check toggle (P6d): the same nested-settings pattern
     # as ``workset.registry`` — routed to the ``workset:`` table slot. ``workset.
     # kuid`` is a STRING (no KEY_TYPES entry); ``workset.skip_kuid_check`` is a bool
@@ -496,6 +518,16 @@ _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
         # by the layer-2 seed ``agent.<a>.seeded.template = (@agent.<a>.template, ~)``,
         # so repointing it reroutes the agent template seed.
         "template",
+        # Per-agent CANON CONTRIBUTION root (spec §2d L1000) — the source of the ro
+        # ``canon_hb_agent`` bind, i.e. WHERE THIS AGENT'S HANDBOOK CHAPTER LIVES.
+        # A settable STRING-path leaf on the agent (persona+harness) node, wired
+        # here for the same reason ``template`` is: both are per-agent path SOURCES a
+        # user may legitimately relocate, and both default off the agent's store.
+        # ⚑ Its FLOOR default is chosen per J-1: the node's own store when that store
+        # provides a canon, else the ``agent.default`` tier — and a value set HERE
+        # beats the floor either way, which is what makes the tier a fallback rather
+        # than a ceiling.
+        "canon",
     }
 )
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})

@@ -1201,3 +1201,106 @@ class TestPrimaryWorksetMigration:
             std, config, project_dir=str(tmp_home / "migproj2"), initialize=True,
         )
         assert "no longer read" not in capsys.readouterr().err
+
+
+class TestWorksetCmdSystemFloor:
+    """S-4: the SECOND ``resolved_sys`` map must carry the SAME ``system.*`` tier
+    the launch floor does.
+
+    ⚑ MUTATION-PROVEN GAP. Reverting ``workset_cmd``'s floor to the retired
+    ``system.base_template`` spelling turned ZERO tests red — and the brief flagged
+    exactly this divergence risk ("both must gain the key or ``workset config show
+    --effective`` diverges from launch"). The failure is silent by construction: a
+    workset binding whose source ``@``-refs ``@system.template`` or ``@system.canon``
+    would render as an EMPTY-prefixed path in the display while mounting correctly at
+    launch — a display that lies about what a launch does.
+    """
+
+    def _floor_keys(self):
+        import inspect
+
+        from kanibako.commands import workset_cmd
+
+        src = inspect.getsource(workset_cmd._print_effective_shares)
+        return {
+            key for key in
+            ("system.channelroot", "system.template", "system.canon",
+             "system.base_template")
+            if f'"{key}"' in src
+        }
+
+    def test_floor_carries_the_current_system_path_tier(self):
+        keys = self._floor_keys()
+        assert "system.template" in keys, (
+            "workset_cmd's resolved_sys floor lost system.template — a workset "
+            "binding @-refing it would resolve differently here than at launch"
+        )
+        assert "system.canon" in keys
+        assert "system.base_template" not in keys, (
+            "the RETIRED spelling is back in workset_cmd's floor (M-11)"
+        )
+
+    def test_floor_matches_the_launch_floor(self):
+        """The two maps are the divergence risk itself, so compare them directly."""
+        import inspect
+
+        from kanibako.commands import start as start_mod
+
+        launch = inspect.getsource(start_mod._launch_snapshot_inputs)
+        for key in ("system.template", "system.canon", "system.channelroot"):
+            assert f'"{key}"' in launch, key
+
+
+class TestWorksetCreateIsAtomicOnRefusal:
+    """F2: a whitelist refusal must leave NOTHING behind.
+
+    ⚑ "Loud and leak-free" is not the same as "clean". Refusing part-way through the
+    mould stamp satisfied both of those and still left a REGISTERED workset with a
+    root, its own ``settings.yaml`` and a PARTIAL chapter copy — recoverable only by
+    ``workset rm``. The check therefore runs BEFORE anything is registered or
+    created, matching the order ``create_workset`` already uses for its name guards.
+    """
+
+    def _plant(self, std, name):
+        (std.template / "workset").mkdir(parents=True, exist_ok=True)
+        (std.template / "workset" / name).write_text("boxes: {}\n")
+
+    def test_refused_create_leaves_no_registration_and_no_root(
+        self, std, config, tmp_path, capsys,
+    ):
+        import argparse
+
+        from kanibako.commands import workset_cmd
+        from kanibako.templates import install_packaged_templates
+        from kanibako.workset import list_worksets
+
+        install_packaged_templates(std, [])
+        self._plant(std, "registry.yaml")
+
+        root = tmp_path / "ws-refused"
+        rc = workset_cmd.run_create(
+            argparse.Namespace(path=str(root), name="refused", force=False)
+        )
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "WORKSET" in err and "registry.yaml" in err
+        # NOTHING was created, and nothing was registered.
+        assert not root.exists(), sorted(root.rglob("*")) if root.exists() else None
+        assert "refused" not in list_worksets(std)
+
+    def test_a_clean_mould_still_creates_normally(self, std, config, tmp_path):
+        import argparse
+
+        from kanibako.commands import workset_cmd
+        from kanibako.templates import install_packaged_templates
+        from kanibako.workset import list_worksets
+
+        install_packaged_templates(std, [])
+        root = tmp_path / "ws-ok"
+        assert workset_cmd.run_create(
+            argparse.Namespace(path=str(root), name="okset", force=False)
+        ) == 0
+        assert "okset" in list_worksets(std)
+        assert (
+            root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+        ).is_file()

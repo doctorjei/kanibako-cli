@@ -140,12 +140,12 @@ def test_transitive_chain_collapses() -> None:
         "system": {
             "data": "$XDG_DATA_HOME/kanibako",
             "global": "@system.data/global",
-            "base_template": "@system.global/base_template",
+            "template": "@system.global/template",
         },
     })
     out = expand(snap, _ctx())
-    assert out["system"]["base_template"] == (
-        "/home/u/.local/share/kanibako/global/base_template"
+    assert out["system"]["template"] == (
+        "/home/u/.local/share/kanibako/global/template"
     )
 
 

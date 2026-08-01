@@ -239,10 +239,19 @@ def start_mocks():
     """
     @contextmanager
     def _make():
+        import tempfile
         from pathlib import Path
 
         from kanibako.agent_config import AgentConfig
         from kanibako.paths import ProjectGroup, BoxMode
+
+        # ⚑ REAL host roots for the box STORE. The §2a seed layers resolve their
+        # destinations to absolute HOST paths under ``@meta.box.path``, and the
+        # applier refuses a dest that does not land inside the box store — so a
+        # MagicMock ``primary_workset`` would make every seed dest a MagicMock-repr
+        # string and silently skip the seed. These two are the minimum realism the
+        # seed path needs; everything else on ``std``/``proj`` stays mocked.
+        _store_tmp = tempfile.TemporaryDirectory(prefix="kanibako-start-mocks-")
 
         with (
             patch("kanibako.commands.start.load_config") as m_load_config,
@@ -409,8 +418,12 @@ def start_mocks():
             )
             proj.metadata_path = MagicMock()
             proj.metadata_path.__truediv__ = MagicMock(return_value=MagicMock())
-            proj.shell_path = MagicMock()
-            proj.shell_path.__truediv__ = MagicMock(return_value=MagicMock())
+            # A REAL box home: ``<primary_workset>/boxes/<name>/home``, matching what
+            # ``@meta.box.path/home`` resolves to from the std roots below, so the
+            # HOST-space seed dests land inside the box store (see the note above).
+            _pw = Path(_store_tmp.name) / "primary_workset"
+            proj.shell_path = _pw / "boxes" / "testproject" / "home"
+            proj.shell_path.mkdir(parents=True, exist_ok=True)
             proj.name = "testproject"
             m_resolve_any.return_value = proj
 
@@ -449,6 +462,12 @@ def start_mocks():
                 return _original_run.return_value
             runtime.run.side_effect = _run_side_effect
             m_rt_cls.return_value = runtime
+
+            # The std roots the box-store resolution reads (see the note at the
+            # top of this factory): REAL paths, so @meta.box.path resolves to
+            # <primary_workset>/boxes/testproject and the seed dests are contained.
+            m_load_std.return_value.primary_workset = _pw
+            m_load_std.return_value.data = Path(_store_tmp.name) / "data"
 
             # Agent config mock: empty defaults (no run_args, no state, no env)
             agent_cfg = AgentConfig()
@@ -626,39 +645,127 @@ def start_mocks():
                 "_resolve_launch_snapshot"
             ].side_effect = _snapshot_side_effect
 
-            yield SimpleNamespace(
-                load_config=m_load_config,
-                load_std_paths=m_load_std,
-                resolve_any_project=m_resolve_any,
-                load_merged_config=m_merged,
-                runtime_cls=m_rt_cls,
-                runtime=runtime,
-                proj=proj,
-                merged=merged,
-                resolve_target=m_resolve_target,
-                resolve_agent=m_resolve_agent,
-                target=target,
-                agent_cfg=agent_cfg,
-                load_agent_config=m_load_agent_cfg,
-                agent_config_path=mock_agent_path,
-                fcntl=m_fcntl,
-                open=m_open,
-                load_registry=m_load_registry,
-                launch_check=m_launch_check,
-                validate_binary=m_validate_binary,
-                credsync=m_credsync,
-                resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
-                seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
-                # Create-journal stubs (write-ahead recovery flow) — exposed so
-                # explicit-create tests can assert the launch path never resurrects
-                # a half-created box (no seed / register / clear on launch).
-                pending_create_entry=m_launch_mount_stubs["_pending_create_entry"],
-                register_new_box=m_launch_mount_stubs["_register_new_box"],
-                write_create_entry=m_launch_mount_stubs["_write_create_entry"],
-                read_system_agent=m_launch_mount_stubs["read_system_agent"],
-                effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
-                resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
-                virtiofs_check=m_virtiofs_check,
-            )
+            try:
+                yield SimpleNamespace(
+                    store_tmp=_store_tmp,
+                    load_config=m_load_config,
+                    load_std_paths=m_load_std,
+                    resolve_any_project=m_resolve_any,
+                    load_merged_config=m_merged,
+                    runtime_cls=m_rt_cls,
+                    runtime=runtime,
+                    proj=proj,
+                    merged=merged,
+                    resolve_target=m_resolve_target,
+                    resolve_agent=m_resolve_agent,
+                    target=target,
+                    agent_cfg=agent_cfg,
+                    load_agent_config=m_load_agent_cfg,
+                    agent_config_path=mock_agent_path,
+                    fcntl=m_fcntl,
+                    open=m_open,
+                    load_registry=m_load_registry,
+                    launch_check=m_launch_check,
+                    validate_binary=m_validate_binary,
+                    credsync=m_credsync,
+                    resolve_launch_snapshot=m_launch_mount_stubs["_resolve_launch_snapshot"],
+                    seed_channel_files=m_launch_mount_stubs["_seed_channel_files"],
+                    # Create-journal stubs (write-ahead recovery flow) — exposed so
+                    # explicit-create tests can assert the launch path never resurrects
+                    # a half-created box (no seed / register / clear on launch).
+                    pending_create_entry=m_launch_mount_stubs["_pending_create_entry"],
+                    register_new_box=m_launch_mount_stubs["_register_new_box"],
+                    write_create_entry=m_launch_mount_stubs["_write_create_entry"],
+                    read_system_agent=m_launch_mount_stubs["read_system_agent"],
+                    effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
+                    resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
+                    virtiofs_check=m_virtiofs_check,
+                )
+            finally:
+                _store_tmp.cleanup()
 
     return _make
+
+
+# ---------------------------------------------------------------------------
+# The PROTECTED-CANON simulation fixture (ordered after the R1b CI-red postmortem).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def protected_canon(monkeypatch):
+    """Reproduce the PROTECTED canon-skeleton state on a host that cannot make one.
+
+    ⚑⚑ WHY THIS EXISTS.  ``core_defaults._protect_canon_skeleton`` chowns the
+    skeleton to a SUBUID via ``podman unshare`` and only then chmods it.  Where
+    ``podman unshare`` fails — a host with a broken ``newuidmap``, which includes
+    this project's dev box — the chown returns False and the guard RETURNS EARLY, so
+    the skeleton is left agent-owned at plain 0755.  Every local test run therefore
+    exercises ONLY the DEGRADED path, while CI runners and bifrost (working rootless
+    userns) genuinely protect the box.  A test can be green locally and red in CI
+    purely because of that split — which is exactly what happened once, when a
+    test-body ``rmtree`` met 555 directories on CI.
+
+    This fixture makes the protected state reproducible LOCALLY and
+    DETERMINISTICALLY: ``unshare_chown`` reports success (ownership cannot be
+    simulated without the namespace, and the test host owns the tree anyway) and
+    ``unshare_chmod`` applies a REAL ``os.chmod``.  What that buys is the MODE half —
+    the 555 dirs and 444 file mountpoints — which is what most of this class of bug
+    trips over.
+
+    ⚑ IT IS NOT AN ORACLE.  Ownership is NOT simulated, so nothing here can certify
+    "the agent cannot write the books"; only CI and bifrost can.  Use it to REPRODUCE
+    and REGRESS-TEST mode-related failures, never to claim protected-state proof.
+
+    ⚑ AUTOMATIC WHERE REQUESTED, opt-in globally: set ``KANI_TEST_SIM_UNSHARE=1`` to
+    make the simulation the default for the whole run (useful for sweeping the suite
+    the way the R1b postmortem did); otherwise it applies only to tests that request
+    the fixture by name.
+    """
+    import os as _os
+
+    from kanibako.container import ContainerRuntime
+
+    def _chown(self, paths, uid, gid):
+        return bool(paths)
+
+    def _chmod(self, paths, mode):
+        if not paths:
+            return False
+        for p in paths:
+            try:
+                _os.chmod(p, int(mode, 8))
+            except OSError:
+                return False
+        return True
+
+    monkeypatch.setattr(ContainerRuntime, "unshare_chown", _chown, raising=True)
+    monkeypatch.setattr(ContainerRuntime, "unshare_chmod", _chmod, raising=True)
+    return True
+
+
+@pytest.fixture(autouse=True)
+def _sim_unshare_globally(request):
+    """Apply :func:`protected_canon` to EVERY test when ``KANI_TEST_SIM_UNSHARE=1``.
+
+    Zero-impact unless the env var is set: the fixture body returns immediately, so a
+    normal run, CI and the rework gates all pay nothing.
+    """
+    import os
+
+    if os.environ.get("KANI_TEST_SIM_UNSHARE") != "1":
+        return
+    if "protected_canon" in request.fixturenames:
+        return  # already requested explicitly
+    # ⚑ EXEMPT the tests OF the two methods being simulated. Patching
+    # ``unshare_chown``/``unshare_chmod`` inside ``test_container.py``'s own suite for
+    # them replaces the subject with the stub and turns four real assertions into
+    # false reds — in precisely the tool that exists to remove false greens.
+    if request.node.get_closest_marker("no_unshare_sim") is not None:
+        return
+    module = getattr(request.node, "module", None)
+    if getattr(module, "__name__", "").endswith("test_container"):
+        cls = getattr(request.node, "cls", None)
+        if cls is not None and cls.__name__ == "TestUnshareChownChmod":
+            return
+    request.getfixturevalue("protected_canon")
