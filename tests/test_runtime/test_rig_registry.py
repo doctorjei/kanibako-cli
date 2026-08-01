@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako import rig_registry
-from kanibako.rig_registry import (
+from kanibako.runtime import rig_registry
+from kanibako.runtime.rig_registry import (
     RigRecord,
     get,
     load_registry,

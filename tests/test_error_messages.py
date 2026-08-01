@@ -45,7 +45,7 @@ class TestRuntimeNotFoundMessages:
 
     def test_container_error_includes_url(self):
         """ContainerError._detect() message includes podman URL."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         with patch("shutil.which", return_value=None), \
              patch.dict("os.environ", {}, clear=True):
@@ -59,7 +59,7 @@ class TestImagePullFailureMessages:
 
     def test_ensure_image_failure_is_actionable_no_build(self):
         """When the image can't be pulled, the error guides building a custom base."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         real_rt = ContainerRuntime.__new__(ContainerRuntime)
         real_rt.cmd = "podman"
@@ -78,7 +78,7 @@ class TestImagePullFailureMessages:
 
     def test_ensure_image_failure_no_rebuild_guidance(self):
         """The old 'kanibako rig rebuild' build guidance is gone."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         real_rt = ContainerRuntime.__new__(ContainerRuntime)
         real_rt.cmd = "podman"
@@ -190,7 +190,7 @@ class TestFreshnessTerminology:
 
     def test_freshness_uses_rig_update(self, tmp_path, capsys):
         """Freshness warning points at 'kanibako rig update' (W2a: rebuild gone)."""
-        from kanibako.freshness import check_image_freshness
+        from kanibako.runtime.freshness import check_image_freshness
 
         mock_runtime = MagicMock()
         mock_runtime.get_local_digests.return_value = ["sha256:old"]
@@ -201,15 +201,15 @@ class TestFreshnessTerminology:
 
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:new"},
             ),
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.0", "1.6.0", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 side_effect=lambda img, tag, cp: {"1.6.0": "sha256:new"}.get(tag),
             ),
         ):
@@ -237,7 +237,7 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
-            patch("kanibako.container.ContainerRuntime") as m_rt,
+            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
         ):
@@ -259,7 +259,7 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
-            patch("kanibako.container.ContainerRuntime") as m_rt,
+            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch(
                 "kanibako.targets.discover_targets",
@@ -283,7 +283,7 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
-            patch("kanibako.container.ContainerRuntime") as m_rt,
+            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
         ):
@@ -303,7 +303,7 @@ class TestSystemInfoOutput:
         with (
             patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
-            patch("kanibako.container.ContainerRuntime") as m_rt,
+            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
         ):
@@ -324,7 +324,7 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch(
-                "kanibako.container.ContainerRuntime",
+                "kanibako.runtime.container.ContainerRuntime",
                 side_effect=Exception("no runtime"),
             ),
             patch("kanibako.targets.discover_targets", return_value={}),
@@ -344,7 +344,7 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
-            patch("kanibako.container.ContainerRuntime") as m_rt,
+            patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
         ):

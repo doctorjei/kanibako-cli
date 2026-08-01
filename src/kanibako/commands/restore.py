@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config
-from kanibako.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree
 from kanibako.core_defaults import materialize_canon_skeleton
 from kanibako.errors import ProjectError, UserCancelled, WorksetError
 from kanibako.git import is_git_repo

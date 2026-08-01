@@ -510,7 +510,7 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         # the workset half-deleted AFTER its registry entries are already gone.
         # Clearing each box tree through the unshare-aware deleter first leaves only
         # ordinary user content for the plain rmtree.
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
 
         boxes_dir = root / BOXES_DIR_NAME
         if boxes_dir.is_dir():
@@ -845,7 +845,7 @@ def remove_project(
         # in BOTH the protected and the degraded state.  The workspace and vault
         # dirs are ordinary user content and stay on the plain path — the escalation
         # is scoped to what actually needs it.
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
 
         box_tree = ws.projects_dir / name
         for proj_dir in targets:

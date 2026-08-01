@@ -43,7 +43,7 @@ class TestCheckRuntime:
         from kanibako.errors import ContainerError
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("no runtime"),
         ):
             status, detail = _check_runtime()
@@ -56,7 +56,7 @@ class TestCheckRuntime:
         mock_runtime.cmd = "podman"
         with (
             patch(
-                "kanibako.container.ContainerRuntime",
+                "kanibako.runtime.container.ContainerRuntime",
                 return_value=mock_runtime,
             ),
             patch("subprocess.run") as mock_run,
@@ -405,7 +405,7 @@ class TestSystemDiagnoseJournal:
             op="import", name="stuck", mode="primary",
         )
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             rc = run_system_diagnose(argparse.Namespace())
@@ -420,7 +420,7 @@ class TestSystemDiagnoseJournal:
         from kanibako.errors import ContainerError
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             rc = run_system_diagnose(argparse.Namespace())
@@ -439,7 +439,7 @@ class TestCheckImage:
         mock_runtime.image_inspect.return_value = {"Id": "abc123"}
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             return_value=mock_runtime,
         ):
             status, detail = _check_image(mock_config)
@@ -455,7 +455,7 @@ class TestCheckImage:
         mock_runtime.image_inspect.return_value = None
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             return_value=mock_runtime,
         ):
             status, detail = _check_image(mock_config)
@@ -471,7 +471,7 @@ class TestRunSystemDiagnose:
         from kanibako.errors import ContainerError
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             args = argparse.Namespace()
@@ -490,7 +490,7 @@ class TestRunRigDiagnose:
         from kanibako.errors import ContainerError
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             args = argparse.Namespace()
@@ -517,7 +517,7 @@ class TestRunBoxDiagnose:
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=Exception("no runtime"),
         ):
             proj = resolve_project(
@@ -535,7 +535,7 @@ class TestRunBoxDiagnose:
         assert proj.shell_path.is_dir()
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             args = argparse.Namespace(project=None, path=None)
@@ -599,7 +599,7 @@ class TestRunBoxDiagnose:
         monkeypatch.chdir(elsewhere)
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             args = argparse.Namespace(project=name, path=None)
@@ -661,7 +661,7 @@ class TestRunBoxDiagnose:
         # Initialize the box so settings.yaml is persisted (the registration the
         # diagnose guard requires).
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             resolve_workset_project(
@@ -673,7 +673,7 @@ class TestRunBoxDiagnose:
         monkeypatch.chdir(elsewhere)
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             args = argparse.Namespace(project="qdiag/api", path=None)
@@ -739,7 +739,7 @@ class TestRunBoxDiagnose:
         assert not proj.shell_path.is_dir()
 
         with patch(
-            "kanibako.container.ContainerRuntime",
+            "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
         ):
             args = argparse.Namespace(project=None, path=None)
@@ -837,7 +837,7 @@ class TestDiagnoseBaseline:
     def _patch_baseline(self):
         # Three packages with one executable each.
         return patch(
-            "kanibako.baseline.load_baseline",
+            "kanibako.runtime.baseline.load_baseline",
             return_value={"tmux": ["tmux"], "ripgrep": ["rg"], "fd-find": ["fdfind"]},
         )
 
@@ -847,7 +847,7 @@ class TestDiagnoseBaseline:
         args = argparse.Namespace(only=["ripgrep"], skip=None, all_images=False)
         with (
             self._patch_baseline(),
-            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
                 "kanibako.config.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
@@ -867,7 +867,7 @@ class TestDiagnoseBaseline:
         args = argparse.Namespace(only=None, skip=["fd-find"], all_images=False)
         with (
             self._patch_baseline(),
-            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
                 "kanibako.config.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
@@ -888,7 +888,7 @@ class TestDiagnoseBaseline:
         args = argparse.Namespace(only=None, skip=None, all_images=False)
         with (
             self._patch_baseline(),
-            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
                 "kanibako.config.load_merged_config",
                 return_value=MagicMock(box_image="configured:latest"),
@@ -914,7 +914,7 @@ class TestDiagnoseBaseline:
         args = argparse.Namespace(only=None, skip=None, all_images=True)
         with (
             self._patch_baseline(),
-            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
                 "kanibako.commands.diagnose.probe_missing_executables",
                 return_value=[],
@@ -929,7 +929,7 @@ class TestDiagnoseBaseline:
         args = argparse.Namespace(only=None, skip=None, all_images=False)
         with (
             self._patch_baseline(),
-            patch("kanibako.container.ContainerRuntime", return_value=mock_runtime),
+            patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
                 "kanibako.config.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
@@ -1164,7 +1164,7 @@ class TestCheckVscode:
 
         with (
             patch(
-                "kanibako.container.ContainerRuntime",
+                "kanibako.runtime.container.ContainerRuntime",
                 side_effect=ContainerError("none"),
             ),
             patch("shutil.which", return_value=None),

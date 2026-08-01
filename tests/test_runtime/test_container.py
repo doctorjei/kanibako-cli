@@ -1,4 +1,4 @@
-"""Tests for kanibako.container."""
+"""Tests for kanibako.runtime.container."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError
 
 
@@ -37,7 +37,7 @@ class TestGetLocalDigest:
             "RepoDigests": ["ghcr.io/x/kanibako-oci@sha256:abc123"]
         }])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             result = rt.get_local_digest("ghcr.io/x/kanibako-oci:latest")
         assert result == "sha256:abc123"
@@ -45,7 +45,7 @@ class TestGetLocalDigest:
     def test_failure_returns_none(self):
         rt = ContainerRuntime(command="echo")
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             result = rt.get_local_digest("nonexistent:latest")
         assert result is None
@@ -56,7 +56,7 @@ class TestGetLocalDigest:
         rt = ContainerRuntime(command="echo")
         inspect_output = json.dumps([{"RepoDigests": []}])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             result = rt.get_local_digest("local:latest")
         assert result is None
@@ -64,7 +64,7 @@ class TestGetLocalDigest:
     def test_exception_returns_none(self):
         """Any unexpected exception returns None."""
         rt = ContainerRuntime(command="echo")
-        with patch("kanibako.container.subprocess.run", side_effect=OSError("fail")):
+        with patch("kanibako.runtime.container.subprocess.run", side_effect=OSError("fail")):
             result = rt.get_local_digest("img:latest")
         assert result is None
 
@@ -79,7 +79,7 @@ class TestGetLocalDigest:
             ]
         }])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             assert rt.get_local_digest("ghcr.io/x/kanibako-oci:latest") == "sha256:3de8"
 
@@ -96,7 +96,7 @@ class TestGetLocalDigests:
             ]
         }])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             result = rt.get_local_digests("ghcr.io/x/kanibako-oci:latest")
         assert result == ["sha256:3de8", "sha256:4f49"]
@@ -106,20 +106,20 @@ class TestGetLocalDigests:
         rt = ContainerRuntime(command="echo")
         inspect_output = json.dumps([{"RepoDigests": []}])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             assert rt.get_local_digests("local:latest") == []
 
     def test_failure_returns_empty(self):
         rt = ContainerRuntime(command="echo")
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.get_local_digests("nonexistent:latest") == []
 
     def test_exception_returns_empty(self):
         rt = ContainerRuntime(command="echo")
-        with patch("kanibako.container.subprocess.run", side_effect=OSError("fail")):
+        with patch("kanibako.runtime.container.subprocess.run", side_effect=OSError("fail")):
             assert rt.get_local_digests("img:latest") == []
 
 
@@ -129,7 +129,7 @@ class TestGetLocalPlatform:
         rt = ContainerRuntime(command="echo")
         inspect_output = json.dumps([{"Os": "linux", "Architecture": "amd64"}])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             assert rt.get_local_platform("img:latest") == "linux/amd64"
 
@@ -140,7 +140,7 @@ class TestGetLocalPlatform:
             "Os": "linux", "Architecture": "arm", "Variant": "v7",
         }])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             assert rt.get_local_platform("img:latest") == "linux/arm/v7"
 
@@ -149,20 +149,20 @@ class TestGetLocalPlatform:
         rt = ContainerRuntime(command="echo")
         inspect_output = json.dumps([{"Os": "linux"}])
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=inspect_output)
             assert rt.get_local_platform("img:latest") is None
 
     def test_failure_returns_none(self):
         rt = ContainerRuntime(command="echo")
         from unittest.mock import MagicMock
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.get_local_platform("img:latest") is None
 
     def test_exception_returns_none(self):
         rt = ContainerRuntime(command="echo")
-        with patch("kanibako.container.subprocess.run", side_effect=OSError("fail")):
+        with patch("kanibako.runtime.container.subprocess.run", side_effect=OSError("fail")):
             assert rt.get_local_platform("img:latest") is None
 
 
@@ -172,7 +172,7 @@ class TestUnshareRm:
     def test_invokes_podman_unshare_rm(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             ok = rt.unshare_rm(Path("/data/boxes/proj"))
         assert ok is True
@@ -183,13 +183,13 @@ class TestUnshareRm:
     def test_returns_false_on_nonzero(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.unshare_rm(Path("/data/boxes/proj")) is False
 
     def test_docker_has_no_unshare(self):
         rt = ContainerRuntime(command="/usr/bin/docker")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             assert rt.unshare_rm(Path("/data/boxes/proj")) is False
             m.assert_not_called()
 
@@ -212,7 +212,7 @@ class TestUnshareChownChmod:
     def test_chown_invokes_podman_unshare_with_every_path(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.unshare_chown(self._PATHS, 1, 1) is True
         assert m.call_args[0][0] == [
@@ -223,7 +223,7 @@ class TestUnshareChownChmod:
     def test_chmod_invokes_podman_unshare_with_every_path(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.unshare_chmod(self._PATHS, "555") is True
         assert m.call_args[0][0] == [
@@ -234,7 +234,7 @@ class TestUnshareChownChmod:
     def test_never_emits_a_recursive_flag(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.unshare_chown(self._PATHS, 1, 1)
             rt.unshare_chmod(self._PATHS, "555")
@@ -245,21 +245,21 @@ class TestUnshareChownChmod:
     def test_returns_false_on_nonzero(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.unshare_chown(self._PATHS, 1, 1) is False
             assert rt.unshare_chmod(self._PATHS, "555") is False
 
     def test_docker_has_no_unshare(self):
         rt = ContainerRuntime(command="/usr/bin/docker")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             assert rt.unshare_chown(self._PATHS, 1, 1) is False
             assert rt.unshare_chmod(self._PATHS, "555") is False
             m.assert_not_called()
 
     def test_empty_path_list_is_a_no_op(self):
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             assert rt.unshare_chown([], 1, 1) is False
             assert rt.unshare_chmod([], "555") is False
             m.assert_not_called()
@@ -285,7 +285,7 @@ class TestPostStartHook:
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         calls: list[str] = []
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="deadbeef", stderr="")
             rt.run("img", name="b", detach=True,
                    post_start=lambda: calls.append("protect"), **self._KW)
@@ -297,7 +297,7 @@ class TestPostStartHook:
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         calls: list[str] = []
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=125, stdout="", stderr="boom")
             rt.run("img", name="b", detach=True,
                    post_start=lambda: calls.append("protect"), **self._KW)
@@ -313,7 +313,7 @@ class TestPostStartHook:
             raise RuntimeError("no podman")
 
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="id", stderr="")
             assert rt.run("img", name="b", detach=True, post_start=_boom,
                           **self._KW) == 0
@@ -337,7 +337,7 @@ class TestPostStartHook:
             assert fired.wait(timeout=5), "watcher never fired the hook"
             return MagicMock(returncode=0)
 
-        with patch("kanibako.container.subprocess.run", side_effect=_fg), \
+        with patch("kanibako.runtime.container.subprocess.run", side_effect=_fg), \
                 patch.object(ContainerRuntime, "is_running",
                              side_effect=lambda n: running.is_set()):
             rc = rt.run("img", name="b", detach=False,
@@ -359,7 +359,7 @@ class TestPostStartHook:
 
         rt = ContainerRuntime(command="/usr/bin/podman")
         calls: list[str] = []
-        with patch("kanibako.container.subprocess.run",
+        with patch("kanibako.runtime.container.subprocess.run",
                    return_value=MagicMock(returncode=0)), \
                 patch.object(ContainerRuntime, "is_running", return_value=False):
             rc = rt.run("img", name="b", detach=False,
@@ -385,7 +385,7 @@ class TestPostStartHook:
             calls.append("protect")
             seen.set()
 
-        with patch("kanibako.container.subprocess.run", side_effect=_fg), \
+        with patch("kanibako.runtime.container.subprocess.run", side_effect=_fg), \
                 patch.object(ContainerRuntime, "is_running", return_value=True):
             rt.run("img", name="b", detach=False, post_start=_hook, **self._KW)
         assert len(calls) <= 2, calls
@@ -399,7 +399,7 @@ class TestPostStartHook:
 
         before = threading.active_count()
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run",
+        with patch("kanibako.runtime.container.subprocess.run",
                    return_value=MagicMock(returncode=1)), \
                 patch.object(ContainerRuntime, "is_running", return_value=False):
             rt.run("img", name="b", detach=False, post_start=lambda: None, **self._KW)
@@ -494,7 +494,7 @@ class TestRemoveBoxTree:
     """
 
     def test_removes_a_normal_tree(self, tmp_path):
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
         d = tmp_path / "box"
         (d / "home").mkdir(parents=True)
         (d / "settings.yaml").write_text("x")
@@ -503,22 +503,22 @@ class TestRemoveBoxTree:
 
     def test_falls_back_to_unshare_on_permission_error(self, tmp_path):
         from unittest.mock import patch as _p
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
         d = tmp_path / "box"
         d.mkdir()
         with _p("shutil.rmtree", side_effect=PermissionError("denied")), \
-                _p("kanibako.container.ContainerRuntime") as mock_rt:
+                _p("kanibako.runtime.container.ContainerRuntime") as mock_rt:
             mock_rt.return_value.unshare_rm.return_value = True
             assert remove_box_tree(d) is True
             mock_rt.return_value.unshare_rm.assert_called_once_with(d)
 
     def test_false_when_unshare_fails_and_tree_remains(self, tmp_path):
         from unittest.mock import patch as _p
-        from kanibako.container import remove_box_tree
+        from kanibako.runtime.container import remove_box_tree
         d = tmp_path / "box"
         d.mkdir()
         with _p("shutil.rmtree", side_effect=PermissionError("denied")), \
-                _p("kanibako.container.ContainerRuntime") as mock_rt:
+                _p("kanibako.runtime.container.ContainerRuntime") as mock_rt:
             mock_rt.return_value.unshare_rm.return_value = False
             assert remove_box_tree(d) is False
             assert d.exists()
@@ -529,7 +529,7 @@ class TestRemoveBoxTree:
         from unittest.mock import patch as _p
 
         from kanibako.commands.box._parser import _purge_dir
-        with _p("kanibako.container.remove_box_tree", return_value=True) as m:
+        with _p("kanibako.runtime.container.remove_box_tree", return_value=True) as m:
             assert _purge_dir(tmp_path / "box") is True
             m.assert_called_once_with(tmp_path / "box")
 
@@ -540,7 +540,7 @@ class TestRunEnvFlags:
     def test_env_flags_emitted(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.run(
                 "test:latest",
@@ -562,7 +562,7 @@ class TestRunEnvFlags:
     def test_env_none_no_flags(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.run(
                 "test:latest",
@@ -579,7 +579,7 @@ class TestRunEnvFlags:
     def test_env_empty_dict_no_flags(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.run(
                 "test:latest",
@@ -600,7 +600,7 @@ class TestDetachMode:
     def test_detach_uses_dash_dt(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.run(
                 "test:latest",
@@ -624,7 +624,7 @@ class TestDetachMode:
     def test_interactive_uses_it_and_rm(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.run(
                 "test:latest",
@@ -645,7 +645,7 @@ class TestDetachMode:
         """detach=True captures stdout (container id stays off the terminal)."""
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(
                 returncode=0, stdout="57c49acad8fb" * 4, stderr=""
             )
@@ -665,7 +665,7 @@ class TestDetachMode:
         """detach=False stays foreground (no capture) so stdio is inherited."""
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rc = rt.run(
                 "test:latest",
@@ -683,7 +683,7 @@ class TestDetachMode:
         """A failed detached launch still propagates its non-zero return code."""
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(
                 returncode=125, stdout="", stderr="Error: boom\n"
             )
@@ -705,7 +705,7 @@ class TestRmAndIsRunning:
     def test_rm_success(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.rm("mycontainer") is True
             cmd = m.call_args[0][0]
@@ -714,28 +714,28 @@ class TestRmAndIsRunning:
     def test_rm_failure(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.rm("nonexistent") is False
 
     def test_is_running_true(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="true\n")
             assert rt.is_running("mycontainer") is True
 
     def test_is_running_false_stopped(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="false\n")
             assert rt.is_running("mycontainer") is False
 
     def test_is_running_false_not_found(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.is_running("nonexistent") is False
 
@@ -748,7 +748,7 @@ class TestInspectEnv:
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         env = json.dumps(["PATH=/usr/bin", "KANIBAKO_AGENT=claude", "TERM=xterm"])
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=env)
             assert rt.inspect_env("box", "KANIBAKO_AGENT") == "claude"
             cmd = m.call_args[0][0]
@@ -762,21 +762,21 @@ class TestInspectEnv:
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         env = json.dumps(["PATH=/usr/bin", "TERM=xterm"])
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=env)
             assert rt.inspect_env("box", "KANIBAKO_AGENT") is None
 
     def test_returns_none_when_inspect_fails(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.inspect_env("nope", "KANIBAKO_AGENT") is None
 
     def test_returns_none_on_bad_json(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="not json")
             assert rt.inspect_env("box", "KANIBAKO_AGENT") is None
 
@@ -785,7 +785,7 @@ class TestInspectEnv:
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
         env = json.dumps(["FOO=a=b=c"])
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=env)
             assert rt.inspect_env("box", "FOO") == "a=b=c"
 
@@ -796,8 +796,8 @@ class TestExec:
     def test_exec_basic_command(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m, \
-             patch("kanibako.container.sys.stdin.isatty", return_value=True):
+        with patch("kanibako.runtime.container.subprocess.run") as m, \
+             patch("kanibako.runtime.container.sys.stdin.isatty", return_value=True):
             m.return_value = MagicMock(returncode=0)
             rc = rt.exec("mycontainer", ["tmux", "attach", "-t", "kanibako"])
             assert rc == 0
@@ -815,8 +815,8 @@ class TestExec:
         """
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m, \
-             patch("kanibako.container.sys.stdin.isatty", return_value=False):
+        with patch("kanibako.runtime.container.subprocess.run") as m, \
+             patch("kanibako.runtime.container.sys.stdin.isatty", return_value=False):
             m.return_value = MagicMock(returncode=0)
             rt.exec("mycontainer", ["echo", "hi"])
             cmd = m.call_args[0][0]
@@ -825,7 +825,7 @@ class TestExec:
     def test_exec_returns_exit_code(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=42)
             rc = rt.exec("mycontainer", ["false"])
             assert rc == 42
@@ -833,8 +833,8 @@ class TestExec:
     def test_exec_with_env(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m, \
-             patch("kanibako.container.sys.stdin.isatty", return_value=True):
+        with patch("kanibako.runtime.container.subprocess.run") as m, \
+             patch("kanibako.runtime.container.sys.stdin.isatty", return_value=True):
             m.return_value = MagicMock(returncode=0)
             rt.exec("mycontainer", ["bash"], env={"FOO": "bar"})
             cmd = m.call_args[0][0]
@@ -851,7 +851,7 @@ class TestExecReady:
     def test_exec_ready_true_when_rc_zero(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.exec_ready("mycontainer") is True
             cmd = m.call_args[0][0]
@@ -860,7 +860,7 @@ class TestExecReady:
     def test_exec_ready_false_when_rc_nonzero(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.exec_ready("mycontainer") is False
 
@@ -870,7 +870,7 @@ class TestExecReady:
         bug this method closes."""
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.exec_ready("mycontainer")
             assert m.call_args.kwargs.get("capture_output") is True
@@ -882,7 +882,7 @@ class TestContainerExists:
     def test_exists_running(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.container_exists("mycontainer") is True
             cmd = m.call_args[0][0]
@@ -891,7 +891,7 @@ class TestContainerExists:
     def test_not_exists(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.container_exists("nonexistent") is False
 
@@ -902,7 +902,7 @@ class TestRunInteractive:
     def test_basic_command(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rc = rt.run_interactive("img:latest")
             assert rc == 0
@@ -912,7 +912,7 @@ class TestRunInteractive:
     def test_with_container_name(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.run_interactive("img:latest", container_name="test-build")
             cmd = m.call_args[0][0]
@@ -924,7 +924,7 @@ class TestRunInteractive:
     def test_returns_exit_code(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=42)
             assert rt.run_interactive("img:latest") == 42
 
@@ -935,7 +935,7 @@ class TestCommit:
     def test_success(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stderr="")
             rt.commit("mycontainer", "myimage:latest")
             cmd = m.call_args[0][0]
@@ -944,7 +944,7 @@ class TestCommit:
     def test_failure_raises(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stderr="no such container")
             with pytest.raises(ContainerError, match="Failed to commit"):
                 rt.commit("bad", "img")
@@ -956,7 +956,7 @@ class TestCpSaveLoadDiff:
     def test_cp_success(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.cp(Path("/x/y"), "ctr:/etc/") is True
             cmd = m.call_args[0][0]
@@ -965,14 +965,14 @@ class TestCpSaveLoadDiff:
     def test_cp_failure(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.cp(Path("/x/y"), "ctr:/etc/") is False
 
     def test_save_success(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.save("img", Path("/o.tar")) is True
             cmd = m.call_args[0][0]
@@ -981,14 +981,14 @@ class TestCpSaveLoadDiff:
     def test_save_failure(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1)
             assert rt.save("img", Path("/o.tar")) is False
 
     def test_load_success_returns_ref(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(
                 returncode=0, stdout="Loaded image: repo/app:1.0\n",
             )
@@ -999,7 +999,7 @@ class TestCpSaveLoadDiff:
     def test_load_success_image_id_form(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(
                 returncode=0, stdout="Loaded image(s): ghcr.io/x/y:tag\n",
             )
@@ -1008,21 +1008,21 @@ class TestCpSaveLoadDiff:
     def test_load_success_untagged_returns_empty(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="")
             assert rt.load(Path("/a.tar")) == ""
 
     def test_load_failure_returns_none(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.load(Path("/a.tar")) is None
 
     def test_diff_returns_lines(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="C /etc\nA /etc/foo\n")
             result = rt.diff("img")
             assert result == ["C /etc", "A /etc/foo"]
@@ -1032,14 +1032,14 @@ class TestCpSaveLoadDiff:
     def test_diff_empty_stdout(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout="")
             assert rt.diff("img") == []
 
     def test_diff_failure_returns_empty(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=1, stdout="")
             assert rt.diff("img") == []
 
@@ -1050,7 +1050,7 @@ class TestRebuildBuildArgs:
     def test_with_build_args(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.rebuild(
                 "kanibako-oci:latest",
@@ -1066,7 +1066,7 @@ class TestRebuildBuildArgs:
     def test_without_build_args(self):
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="/usr/bin/podman")
-        with patch("kanibako.container.subprocess.run") as m:
+        with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             rt.rebuild(
                 "custom:latest",
@@ -1081,7 +1081,7 @@ class TestPrecreateMountStubs:
     """Test _precreate_mount_stubs creates directory/file stubs for mounts."""
 
     def test_workspace_dir_always_created(self, tmp_path):
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1099,7 +1099,7 @@ class TestPrecreateMountStubs:
         assert not (shell / "vault" / "rw").exists()
 
     def test_vault_dirs_created_when_enabled(self, tmp_path):
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1123,7 +1123,7 @@ class TestPrecreateMountStubs:
 
     def test_mask_stub_under_home(self, tmp_path):
         """A mask box-dest under ~/ (not workspace) maps under shell_path."""
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1145,7 +1145,7 @@ class TestPrecreateMountStubs:
         """Vault is UNIVERSAL unless disabled: the box-side dest stubs are made
         whenever vault is enabled, regardless of whether the host source exists
         (the resolver creates the source if missing)."""
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1190,7 +1190,7 @@ class TestPrecreateMountStubs:
         mountpoints are root-owned and unwritable, so the launch path cannot manage
         them and must not try. Nothing under ``~/canon`` may be created or modified.
         """
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         shell = tmp_path / "shell"
         shell.mkdir()
@@ -1226,7 +1226,7 @@ class TestPrecreateMountStubs:
 
         RED if the skip is made unconditional again.
         """
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         shell = tmp_path / "shell"
         shell.mkdir()
@@ -1249,7 +1249,7 @@ class TestPrecreateMountStubs:
     def test_canon_dest_predicate_is_prefix_aware(self):
         """``~/canon-of-mine`` is NOT under ``~/canon``: a naive ``startswith``
         without the separator would wrongly skip a real bind's stub."""
-        from kanibako.container import _is_managed_canon_dest
+        from kanibako.runtime.container import _is_managed_canon_dest
 
         assert _is_managed_canon_dest("/home/agent/canon")
         assert _is_managed_canon_dest("/home/agent/canon/bible/general")
@@ -1260,7 +1260,7 @@ class TestPrecreateMountStubs:
 
     def test_extra_dir_mount_under_home(self, tmp_path):
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1286,7 +1286,7 @@ class TestPrecreateMountStubs:
 
     def test_extra_file_mount_under_home(self, tmp_path):
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1313,7 +1313,7 @@ class TestPrecreateMountStubs:
 
     def test_extra_mount_under_workspace(self, tmp_path):
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1339,7 +1339,7 @@ class TestPrecreateMountStubs:
 
     def test_mount_outside_home_skipped(self, tmp_path):
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1366,7 +1366,7 @@ class TestPrecreateMountStubs:
 
     def test_existing_file_not_overwritten(self, tmp_path):
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1397,7 +1397,7 @@ class TestPrecreateMountStubs:
 
     def test_oserror_is_swallowed(self, tmp_path):
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1434,7 +1434,7 @@ class TestPrecreateMountStubs:
         mountpoint before the bind.
         """
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1470,7 +1470,7 @@ class TestPrecreateMountStubs:
     def test_symlink_dir_dest_cleared_to_real_mountpoint(self, tmp_path):
         """A baked symlink at a dir dest is cleared to a real directory."""
         from dataclasses import dataclass
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         @dataclass
         class FakeMount:
@@ -1531,7 +1531,7 @@ class TestPrecreateMountStubs:
         cfg.chmod(0o700)
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         _precreate_mount_stubs(
             shell, project,
             [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
@@ -1558,7 +1558,7 @@ class TestPrecreateMountStubs:
         sub.chmod(0o700)
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         _precreate_mount_stubs(
             shell, project,
             [self._mount("/home/agent/.config/kanibako/seed/kickoff.md", src_file)],
@@ -1583,7 +1583,7 @@ class TestPrecreateMountStubs:
         ssh.chmod(0o700)
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         _precreate_mount_stubs(
             shell, project,
             [self._mount("/home/agent/.config/kanibako/kickoff.md", src_file)],
@@ -1608,7 +1608,7 @@ class TestPrecreateMountStubs:
         shell.chmod(0o700)
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         try:
             _precreate_mount_stubs(
                 shell, project,
@@ -1640,7 +1640,7 @@ class TestPrecreateMountStubs:
         link.symlink_to("realtarget")
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         _precreate_mount_stubs(
             shell, project,
             [self._mount("/home/agent/.config/kickoff.md", src_file)],
@@ -1666,7 +1666,7 @@ class TestPrecreateMountStubs:
         cfg.chmod(0o700)
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         with caplog.at_level(logging.INFO, logger="kanibako.container"):
             _precreate_mount_stubs(
                 shell, project,
@@ -1698,7 +1698,7 @@ class TestPrecreateMountStubs:
         cfg.chmod(0o755)  # already traversable (fresh-box mkdir default).
         src_file = tmp_path / "kickoff-src"
         src_file.touch()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         with caplog.at_level(logging.INFO, logger="kanibako.container"):
             _precreate_mount_stubs(
                 shell, project,
@@ -1733,7 +1733,7 @@ class TestPrecreateMountStubs:
         cfg.chmod(0o700)
         src_dir = tmp_path / "seed-dir"
         src_dir.mkdir()
-        from kanibako.container import _precreate_mount_stubs
+        from kanibako.runtime.container import _precreate_mount_stubs
         _precreate_mount_stubs(
             shell, project,
             [self._mount("/home/agent/.config/kanibako/seed", src_dir)],
@@ -1756,7 +1756,7 @@ class TestDetectShadowedMounts:
         return Mount(source=source, destination=destination, options=options)
 
     def test_vault_dir_shadow(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1769,7 +1769,7 @@ class TestDetectShadowedMounts:
         assert "/home/agent/vault/ro" not in result
 
     def test_empty_first_launch(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1778,7 +1778,7 @@ class TestDetectShadowedMounts:
         assert result == []
 
     def test_file_dest_shadow_nonempty_reported(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1793,7 +1793,7 @@ class TestDetectShadowedMounts:
         assert "/home/agent/.local/bin/foo" in result
 
     def test_file_dest_zero_byte_not_reported(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1808,7 +1808,7 @@ class TestDetectShadowedMounts:
         assert result == []
 
     def test_base_roots_excluded(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1826,7 +1826,7 @@ class TestDetectShadowedMounts:
         assert result == []
 
     def test_symlink_skipped(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1845,7 +1845,7 @@ class TestDetectShadowedMounts:
         assert result == []
 
     def test_pure_no_paths_created(self, tmp_path):
-        from kanibako.container import detect_shadowed_mounts
+        from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
@@ -1870,7 +1870,7 @@ class TestLocalImageMetadata:
         import json
         from unittest.mock import MagicMock
         m = MagicMock(returncode=0, stdout=json.dumps([data]))
-        return patch("kanibako.container.subprocess.run", return_value=m)
+        return patch("kanibako.runtime.container.subprocess.run", return_value=m)
 
     def test_get_local_created(self):
         rt = ContainerRuntime(command="echo")
@@ -1891,7 +1891,7 @@ class TestLocalImageMetadata:
         from unittest.mock import MagicMock
         rt = ContainerRuntime(command="echo")
         with patch(
-            "kanibako.container.subprocess.run",
+            "kanibako.runtime.container.subprocess.run",
             return_value=MagicMock(returncode=1, stdout=""),
         ):
             assert rt.get_local_created("img:latest") is None
@@ -1951,7 +1951,7 @@ class TestGuestDestToHost:
         Byte-identical to the former ``_mount_dest_to_host``: the base home bind
         is not a stub to pre-create.
         """
-        from kanibako.container import _guest_dest_to_host
+        from kanibako.runtime.container import _guest_dest_to_host
         shell, project = self._paths()
         assert _guest_dest_to_host("/home/agent", shell, project) is None
         assert _guest_dest_to_host("/home/agent/", shell, project) == shell
@@ -1961,7 +1961,7 @@ class TestGuestDestToHost:
 
         Byte-identical to the former ``_host_dest`` / inline synced branch.
         """
-        from kanibako.container import _guest_dest_to_host
+        from kanibako.runtime.container import _guest_dest_to_host
         shell, project = self._paths()
         assert _guest_dest_to_host(
             "/home/agent", shell, project, map_home_root=True
@@ -1973,7 +1973,7 @@ class TestGuestDestToHost:
     def test_home_subpath_maps_under_shell(self):
         """A ~/x dest maps under shell_path in every mode (all three former sites
         agreed)."""
-        from kanibako.container import _guest_dest_to_host
+        from kanibako.runtime.container import _guest_dest_to_host
         shell, project = self._paths()
         for kw in ({}, {"map_home_root": True}):
             assert _guest_dest_to_host(
@@ -1987,7 +1987,7 @@ class TestGuestDestToHost:
         modes route ~/workspace/x to project_path/x, NOT the shadowed
         shell_path/workspace/x.
         """
-        from kanibako.container import _guest_dest_to_host
+        from kanibako.runtime.container import _guest_dest_to_host
         shell, project = self._paths()
         for kw in ({}, {"map_home_root": True}):
             assert _guest_dest_to_host(
@@ -1996,7 +1996,7 @@ class TestGuestDestToHost:
 
     def test_outside_home_returns_none(self):
         """A dest outside the box home returns None (the skip case)."""
-        from kanibako.container import _guest_dest_to_host
+        from kanibako.runtime.container import _guest_dest_to_host
         shell, project = self._paths()
         assert _guest_dest_to_host("/etc/passwd", shell, project) is None
         assert _guest_dest_to_host(

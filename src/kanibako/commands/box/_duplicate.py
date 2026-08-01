@@ -13,7 +13,7 @@ from kanibako.config import (
     load_config,
 )
 from kanibako.config_io import dump_doc
-from kanibako.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree
 from kanibako.core_defaults import materialize_canon_skeleton
 from kanibako.paths import (
     _STANDALONE_META_DIR,

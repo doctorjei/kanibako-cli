@@ -1,7 +1,7 @@
 """kanibako baseline: inspect, verify, and install the image baseline contract.
 
 The baseline is the universal set of in-box runtime tools kanibako relies on
-(see :mod:`kanibako.baseline`).  ``list`` feeds a Containerfile (``apt-get
+(see :mod:`kanibako.runtime.baseline`).  ``list`` feeds a Containerfile (``apt-get
 install $(kanibako baseline list)``), ``verify`` probes an image for the
 required executables, and ``install`` runs the apt-get install of the package
 names.
@@ -13,7 +13,7 @@ import argparse
 import subprocess
 import sys
 
-from kanibako import baseline as baseline_mod
+from kanibako.runtime import baseline as baseline_mod
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -156,7 +156,7 @@ def run_verify(args: argparse.Namespace) -> int:
     Exit code: 1 if any executable is missing in any probed image, else 0.
     """
     from kanibako.config import config_file_path, load_merged_config
-    from kanibako.container import ContainerRuntime
+    from kanibako.runtime.container import ContainerRuntime
     from kanibako.errors import ContainerError
     from kanibako.paths import xdg
 

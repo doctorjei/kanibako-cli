@@ -16,7 +16,7 @@ from kanibako.config import (
     load_merged_config,
     write_project_config,
 )
-from kanibako.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, ProjectError
 from kanibako.names import read_names, unregister_name
 from kanibako.paths import (
@@ -1260,14 +1260,14 @@ def _list_orphans(
 def _purge_dir(target: Path) -> bool:
     """Remove *target*, tolerating files a rootless container created.
 
-    Thin alias for :func:`kanibako.container.remove_box_tree`, which is where this
+    Thin alias for :func:`kanibako.runtime.container.remove_box_tree`, which is where this
     body now lives so that EVERY box-tree deleter can reuse it — ``extract``,
     ``move``, ``duplicate`` and ``purge`` all need the same ``podman unshare``
     escalation, and since J-7 they need it on every box (the canon skeleton is
     root-owned by construction, not only when an agent happened to write as root).
     Kept as a name because ``rm``'s call sites and tests read against it.
     """
-    from kanibako.container import remove_box_tree
+    from kanibako.runtime.container import remove_box_tree
 
     return remove_box_tree(target)
 

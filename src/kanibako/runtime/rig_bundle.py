@@ -3,7 +3,7 @@
 Extended rigs have no external source to re-pull or rebuild from, so they
 travel as a single self-contained bundle. A bundle is a gzip tar containing:
 
-* ``rig.yaml``      -- the in-image :class:`~kanibako.rig_meta.RigMeta` metadata
+* ``rig.yaml``      -- the in-image :class:`~kanibako.runtime.rig_meta.RigMeta` metadata
 * ``image.tar``     -- a ``podman save`` of the rig image
 * ``Containerfile`` -- optional, informational build recipe
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 import tarfile
 from pathlib import Path
 
-from kanibako.rig_meta import RigMeta, load_rig_meta
+from kanibako.runtime.rig_meta import RigMeta, load_rig_meta
 
 BUNDLE_SUFFIX = ".rig.tgz"
 

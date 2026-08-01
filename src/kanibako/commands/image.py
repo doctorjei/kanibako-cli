@@ -12,18 +12,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.config import config_file_path, load_config, load_merged_config
-from kanibako.container import ContainerRuntime
-from kanibako.containerfiles import get_containerfile
+from kanibako.runtime.container import ContainerRuntime
+from kanibako.runtime.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
 from kanibako.paths import xdg, load_std_paths
-from kanibako.rig_bundle import (
+from kanibako.runtime.rig_bundle import (
     BUNDLE_SUFFIX,
     pack_bundle,
     read_bundle_meta,
     unpack_bundle,
 )
-from kanibako.rig_meta import RigMeta, write_rig_meta
-from kanibako.rig_registry import (
+from kanibako.runtime.rig_meta import RigMeta, write_rig_meta
+from kanibako.runtime.rig_registry import (
     RigRecord,
     get as registry_get,
     load_registry,
@@ -31,10 +31,10 @@ from kanibako.rig_registry import (
     remove as registry_remove,
     upsert,
 )
-from kanibako.rig_resolve import RigResolution, resolve_rig
-from kanibako.rig_source import derive_name, detect_source_kind, fetch_to_temp
+from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
+from kanibako.runtime.rig_source import derive_name, detect_source_kind, fetch_to_temp
 from kanibako.shells import capture_image_shell
-from kanibako.templates_image import (
+from kanibako.runtime.templates_image import (
     list_bundled_templates,
     read_template_checks,
     rig_image_name,

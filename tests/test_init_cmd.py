@@ -119,7 +119,7 @@ class TestRunCreate:
         """
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        with patch("kanibako.container.ContainerRuntime"):
+        with patch("kanibako.runtime.container.ContainerRuntime"):
             rc = run_create(args)
         assert rc == 0
 
@@ -152,7 +152,7 @@ class TestRunCreate:
 
         parser = build_parser()
         args = parser.parse_args(["box", "create", str(project_dir), "--name", "prim"])
-        with patch("kanibako.container.ContainerRuntime"):
+        with patch("kanibako.runtime.container.ContainerRuntime"):
             rc = run_create(args)
         assert rc == 0
 
@@ -180,7 +180,7 @@ class TestRunCreate:
             calls.append("seed")
             return real_seed(*a, **kw)
 
-        rt = patch("kanibako.container.ContainerRuntime")
+        rt = patch("kanibako.runtime.container.ContainerRuntime")
         with rt as m_rt, patch.object(_start, "seed_new_box", _seed):
             m_rt.return_value.unshare_chown.side_effect = (
                 lambda *a, **kw: calls.append("chown") or True
@@ -197,11 +197,11 @@ class TestRunCreate:
         """DEGRADED BUT FUNCTIONAL: creating a box works today with no podman
         installed, and must keep working. The skeleton is still built (so the binds
         land); only the ownership lockdown is skipped, with a warning."""
-        from kanibako.container import ContainerError
+        from kanibako.runtime.container import ContainerError
 
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        with patch("kanibako.container.ContainerRuntime",
+        with patch("kanibako.runtime.container.ContainerRuntime",
                    side_effect=ContainerError("no podman")):
             rc = run_create(args)
 

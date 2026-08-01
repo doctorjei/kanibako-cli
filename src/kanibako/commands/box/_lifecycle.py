@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Callable
 
 from kanibako.box_identity import validate_box_name
-from kanibako.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree
 from kanibako.core_defaults import materialize_canon_skeleton
 from kanibako.config import (
     BOX_META_FILE,

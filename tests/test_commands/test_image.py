@@ -376,7 +376,7 @@ class TestImagePrep:
         return argparse.Namespace(name=name, force=force, all_images=all_images)
 
     def _resolution(self, **kw):
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         return RigResolution(**kw)
 
@@ -543,7 +543,7 @@ class TestRigUpdate:
         return argparse.Namespace(name=name, all_images=all_images)
 
     def _resolution(self, **kw):
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         return RigResolution(**kw)
 
@@ -746,7 +746,7 @@ class TestRigAdd:
     ):
         """rig add of a registry ref records a prefab row, never pulls."""
         from kanibako.commands.image import run_add
-        from kanibako.rig_registry import get, registry_path
+        from kanibako.runtime.rig_registry import get, registry_path
 
         std = self._std(config_file)
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
@@ -770,8 +770,8 @@ class TestRigAdd:
     ):
         """rig add of a Containerfile installs it under containers/, no row."""
         from kanibako.commands.image import run_add
-        from kanibako.containerfiles import get_containerfile
-        from kanibako.rig_registry import load_registry, registry_path
+        from kanibako.runtime.containerfiles import get_containerfile
+        from kanibako.runtime.rig_registry import load_registry, registry_path
 
         cf = tmp_path / "Containerfile.myjvm"
         cf.write_text("FROM ubuntu\nRUN echo hi\n")
@@ -795,7 +795,7 @@ class TestRigAdd:
     ):
         """rig add of an image tar loads it and records a file-sourced row."""
         from kanibako.commands.image import run_add
-        from kanibako.rig_registry import get, registry_path
+        from kanibako.runtime.rig_registry import get, registry_path
 
         tar = tmp_path / "img.tar"
         tar.write_text("fake")
@@ -826,7 +826,7 @@ class TestRigAdd:
     ):
         """An archive with no RepoTag (load() -> '') errors and writes no row."""
         from kanibako.commands.image import run_add
-        from kanibako.rig_registry import load_registry, registry_path
+        from kanibako.runtime.rig_registry import load_registry, registry_path
 
         tar = tmp_path / "img.tar"
         tar.write_text("fake")
@@ -850,7 +850,7 @@ class TestRigAdd:
     ):
         """A failed runtime.load surfaces an error and writes no row."""
         from kanibako.commands.image import run_add
-        from kanibako.rig_registry import load_registry, registry_path
+        from kanibako.runtime.rig_registry import load_registry, registry_path
 
         tar = tmp_path / "img.tar"
         tar.write_text("fake")
@@ -889,7 +889,7 @@ class TestRigAdd:
     ):
         """--force overwrites an existing rig row."""
         from kanibako.commands.image import run_add
-        from kanibako.rig_registry import get, registry_path
+        from kanibako.runtime.rig_registry import get, registry_path
 
         std = self._std(config_file)
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
@@ -940,7 +940,7 @@ class TestRigAdd:
     ):
         """A URL source is fetched, then classified from the downloaded file."""
         from kanibako.commands.image import run_add
-        from kanibako.containerfiles import get_containerfile
+        from kanibako.runtime.containerfiles import get_containerfile
 
         fetched = tmp_path / "Containerfile.fromurl"
         fetched.write_text("FROM ubuntu\n")
@@ -969,7 +969,7 @@ class TestRigRmUnadd:
     ):
         """rig rm of a registered ref removes the row and returns 0."""
         from kanibako.commands.image import run_add, run_rm
-        from kanibako.rig_registry import get, registry_path
+        from kanibako.runtime.rig_registry import get, registry_path
 
         std = self._std(config_file)
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
@@ -992,7 +992,7 @@ class TestRigRmUnadd:
     ):
         """A file-sourced prefab also removes its loaded local image."""
         from kanibako.commands.image import run_rm
-        from kanibako.rig_registry import RigRecord, registry_path, upsert
+        from kanibako.runtime.rig_registry import RigRecord, registry_path, upsert
 
         std = self._std(config_file)
         upsert(
@@ -1233,7 +1233,7 @@ class TestRigExtend:
         """Unprepped template foundation -> auto-build, then interactive+commit;
         a registry row is written for the new extended rig."""
         from kanibako.commands.image import run_extend
-        from kanibako.rig_registry import load_registry, registry_path
+        from kanibako.runtime.rig_registry import load_registry, registry_path
 
         std = self._std(config_file)
         with patch("kanibako.commands.image.ContainerRuntime") as MockRT:
@@ -1294,7 +1294,7 @@ class TestRigExtend:
     ):
         """A registered-but-missing extended foundation can't be re-prepped."""
         from kanibako.commands.image import run_extend
-        from kanibako.rig_registry import RigRecord, registry_path, upsert
+        from kanibako.runtime.rig_registry import RigRecord, registry_path, upsert
 
         std = self._std(config_file)
         upsert(
@@ -1453,9 +1453,9 @@ class TestImageRegistration:
 
 class TestContainerRuntimeImageInspect:
     def test_image_inspect_returns_dict(self):
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
-        with patch("kanibako.container.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.container.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=json.dumps([{"Id": "sha256:abc", "Size": 100}]),
@@ -1465,9 +1465,9 @@ class TestContainerRuntimeImageInspect:
             assert result == {"Id": "sha256:abc", "Size": 100}
 
     def test_image_inspect_not_found(self):
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
-        with patch("kanibako.container.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.container.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="not found")
             rt = ContainerRuntime(command="podman")
             result = rt.image_inspect("nosuch")
@@ -1475,9 +1475,9 @@ class TestContainerRuntimeImageInspect:
 
     def test_image_inspect_dict_response(self):
         """Docker returns a dict, not a list."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
-        with patch("kanibako.container.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.container.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=json.dumps({"Id": "sha256:def", "Size": 200}),
@@ -1512,8 +1512,8 @@ class TestRigExportImport:
         import tarfile
 
         from kanibako.commands.image import run_export
-        from kanibako.rig_bundle import read_bundle_meta
-        from kanibako.rig_registry import RigRecord, registry_path, upsert
+        from kanibako.runtime.rig_bundle import read_bundle_meta
+        from kanibako.runtime.rig_registry import RigRecord, registry_path, upsert
 
         std = self._std(config_file)
         upsert(
@@ -1566,7 +1566,7 @@ class TestRigExportImport:
     ):
         """Registered extended rig whose image is absent errors with rc 1."""
         from kanibako.commands.image import run_export
-        from kanibako.rig_registry import RigRecord, registry_path, upsert
+        from kanibako.runtime.rig_registry import RigRecord, registry_path, upsert
 
         std = self._std(config_file)
         upsert(
@@ -1588,8 +1588,8 @@ class TestRigExportImport:
 
     def _build_bundle(self, tmp_path):
         """Build a real .rig.tgz with rig.yaml + a fake image.tar."""
-        from kanibako.rig_bundle import pack_bundle
-        from kanibako.rig_meta import RigMeta, write_rig_meta
+        from kanibako.runtime.rig_bundle import pack_bundle
+        from kanibako.runtime.rig_meta import RigMeta, write_rig_meta
 
         rig_yaml = tmp_path / "rig.yaml"
         write_rig_meta(
@@ -1610,7 +1610,7 @@ class TestRigExportImport:
     ):
         """Importing a bundle loads the image and records an extended row."""
         from kanibako.commands.image import run_import
-        from kanibako.rig_registry import load_registry, registry_path
+        from kanibako.runtime.rig_registry import load_registry, registry_path
 
         std = self._std(config_file)
         bundle = self._build_bundle(tmp_path)
@@ -1636,7 +1636,7 @@ class TestRigExportImport:
     ):
         """Export an extended rig, then import the produced file -> row present."""
         from kanibako.commands.image import run_export, run_import
-        from kanibako.rig_registry import (
+        from kanibako.runtime.rig_registry import (
             RigRecord,
             load_registry,
             registry_path,
@@ -1712,7 +1712,7 @@ class TestRigExportImport:
     ):
         """When runtime.load returns None, rc 1 and no registry row is written."""
         from kanibako.commands.image import run_import
-        from kanibako.rig_registry import load_registry, registry_path
+        from kanibako.runtime.rig_registry import load_registry, registry_path
 
         std = self._std(config_file)
         bundle = self._build_bundle(tmp_path)
@@ -1733,7 +1733,7 @@ class TestImageShellCapture:
     """Phase 2: a successful pull/prep captures the image's login shell."""
 
     def _resolution(self, **kw):
-        from kanibako.rig_resolve import RigResolution
+        from kanibako.runtime.rig_resolve import RigResolution
 
         return RigResolution(**kw)
 

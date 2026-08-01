@@ -1,10 +1,10 @@
-"""Tests for kanibako.containerfiles: bundled resolution, user overrides, listing."""
+"""Tests for kanibako.runtime.containerfiles: bundled resolution, user overrides, listing."""
 
 from __future__ import annotations
 
 
 
-from kanibako.containerfiles import get_containerfile
+from kanibako.runtime.containerfiles import get_containerfile
 
 
 class TestGetContainerfile:

@@ -48,7 +48,7 @@ class TestReapRoutesThroughTheProductDeleter:
     def test_reap_tree_delegates_to_remove_box_tree(self, tmp_path, monkeypatch):
         seen: list[Path] = []
         monkeypatch.setattr(
-            "kanibako.container.remove_box_tree",
+            "kanibako.runtime.container.remove_box_tree",
             lambda p: seen.append(Path(p)) or True,
         )
         target = tmp_path / "boxdir"
@@ -59,7 +59,7 @@ class TestReapRoutesThroughTheProductDeleter:
     def test_reap_box_stores_delegates_for_every_store(self, tmp_path, monkeypatch):
         seen: list[Path] = []
         monkeypatch.setattr(
-            "kanibako.container.remove_box_tree",
+            "kanibako.runtime.container.remove_box_tree",
             lambda p: seen.append(Path(p)) or True,
         )
         a = _make_box_store(tmp_path, "a")
@@ -95,7 +95,7 @@ class TestReapIsSurgicalAndSafe:
         def _boom(_p):
             raise OSError("nope")
 
-        monkeypatch.setattr("kanibako.container.remove_box_tree", _boom)
+        monkeypatch.setattr("kanibako.runtime.container.remove_box_tree", _boom)
         _make_box_store(tmp_path)
         assert reap_box_stores(tmp_path) == []
         assert reap_tree(tmp_path) is False
@@ -105,7 +105,7 @@ class TestStartMocksReapsItsBoxStores:
     """⚑ THE FIXTURE-LEVEL PIN. ``start_mocks`` creates a REAL box home inside a
     ``TemporaryDirectory`` and drives the REAL protect pass (it patches
     ``commands.start.ContainerRuntime``, but ``_protect_canon_skeleton`` imports from
-    ``kanibako.container`` inside the function, so the real runtime runs). Its
+    ``kanibako.runtime.container`` inside the function, so the real runtime runs). Its
     finalizer must therefore reap before ``TemporaryDirectory`` cleans up.
 
     Drop the reap from the fixture and this reddens.
@@ -116,7 +116,7 @@ class TestStartMocksReapsItsBoxStores:
     ):
         seen: list[Path] = []
         monkeypatch.setattr(
-            "kanibako.container.remove_box_tree",
+            "kanibako.runtime.container.remove_box_tree",
             lambda p: seen.append(Path(p)) or True,
         )
         with start_mocks() as m:

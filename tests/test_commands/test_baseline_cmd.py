@@ -122,7 +122,7 @@ class TestRunVerify:
         runtime.cmd = "podman"
         with (
             patch(
-                "kanibako.container.ContainerRuntime", return_value=runtime
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
             ),
             patch("subprocess.run", return_value=MagicMock(returncode=0)),
         ):
@@ -144,7 +144,7 @@ class TestRunVerify:
 
         with (
             patch(
-                "kanibako.container.ContainerRuntime", return_value=runtime
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
             ),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -167,7 +167,7 @@ class TestRunVerify:
 
         with (
             patch(
-                "kanibako.container.ContainerRuntime", return_value=runtime
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
             ),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -190,7 +190,7 @@ class TestRunVerify:
 
         with (
             patch(
-                "kanibako.container.ContainerRuntime", return_value=runtime
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
             ),
             patch("subprocess.run", side_effect=fake_run),
         ):
@@ -219,7 +219,7 @@ class TestRunVerify:
 
         with (
             patch(
-                "kanibako.container.ContainerRuntime", return_value=runtime
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
             ),
             patch(
                 "kanibako.config.load_merged_config", return_value=merged

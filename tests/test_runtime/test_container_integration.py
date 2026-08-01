@@ -25,7 +25,7 @@ class TestRuntimeDetection:
     @requires_runtime
     def test_detect_finds_podman_or_docker(self):
         """Real ``shutil.which`` finds a container runtime."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
         assert rt.cmd is not None
@@ -33,7 +33,7 @@ class TestRuntimeDetection:
 
     def test_env_override_takes_precedence(self, monkeypatch):
         """``KANIBAKO_DOCKER_CMD`` overrides automatic detection."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         monkeypatch.setenv("KANIBAKO_DOCKER_CMD", "/usr/bin/true")
         rt = ContainerRuntime()
@@ -47,7 +47,7 @@ class TestImageOperations:
     @requires_runtime
     def test_image_exists_returns_true_for_pulled_image(self, pulled_image):
         """``image inspect`` succeeds for a locally-pulled image."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
         assert rt.image_exists(pulled_image) is True
@@ -55,7 +55,7 @@ class TestImageOperations:
     @requires_runtime
     def test_image_exists_returns_false_for_missing(self, container_runtime_cmd):
         """``image inspect`` fails for a bogus image tag."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
         assert rt.image_exists("nonexistent-xyz-image:latest") is False
@@ -63,7 +63,7 @@ class TestImageOperations:
     @requires_runtime
     def test_pull_succeeds_for_real_image(self, container_runtime_cmd):
         """Real registry pull of a lightweight image returns True."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
         assert rt.pull("busybox:latest") is True
@@ -71,7 +71,7 @@ class TestImageOperations:
     @requires_runtime
     def test_pull_fails_for_nonexistent_image(self, container_runtime_cmd):
         """Pull of a bogus image returns False."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
         assert rt.pull("nonexistent-registry.example.com/x:latest") is False
@@ -79,7 +79,7 @@ class TestImageOperations:
     @requires_runtime
     def test_ensure_image_skips_pull_when_exists(self, pulled_image):
         """No-op when image is already present locally."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
         # Should not raise — image already present
@@ -136,7 +136,7 @@ class TestListLocalImages:
     @requires_runtime
     def test_list_includes_pulled_image(self, pulled_image, container_runtime_cmd):
         """Parsed output contains the pulled image when tagged with kanibako prefix."""
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         rt = ContainerRuntime()
 

@@ -1,11 +1,11 @@
-"""Tests for kanibako.image_sharing module."""
+"""Tests for kanibako.runtime.image_sharing module."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from kanibako.image_sharing import (
+from kanibako.runtime.image_sharing import (
     SHARED_STORE_CONTAINER_PATH,
     VIRTIOFS_GRAPHROOT_MESSAGE,
     detect_graph_root,
@@ -28,7 +28,7 @@ class TestDetectGraphRoot:
         graph_dir = tmp_path / "overlay"
         graph_dir.mkdir()
 
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=str(graph_dir) + "\n",
@@ -41,7 +41,7 @@ class TestDetectGraphRoot:
 
     def test_returns_none_on_command_failure(self):
         """Returns None when the command fails."""
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=1,
                 stderr="not found",
@@ -51,7 +51,7 @@ class TestDetectGraphRoot:
 
     def test_returns_none_on_empty_output(self):
         """Returns None when the output is empty."""
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="   \n",
@@ -63,7 +63,7 @@ class TestDetectGraphRoot:
         """Returns None when the graph root path does not exist."""
         missing = tmp_path / "nonexistent"
 
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=str(missing) + "\n",
@@ -75,7 +75,7 @@ class TestDetectGraphRoot:
         """Returns None on subprocess timeout."""
         import subprocess
 
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(
                 cmd="podman info", timeout=10,
             )
@@ -84,7 +84,7 @@ class TestDetectGraphRoot:
 
     def test_returns_none_on_file_not_found(self):
         """Returns None when the binary is not found."""
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("no such file")
             result = detect_graph_root("podman")
             assert result is None
@@ -94,7 +94,7 @@ class TestDetectGraphRoot:
         graph_dir = tmp_path / "overlay"
         graph_dir.mkdir()
 
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=str(graph_dir) + "\n",
@@ -147,7 +147,7 @@ class TestPrepareImageSharingSources:
         graph_dir.mkdir()
         staging = tmp_path / "staging"
 
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
+        with patch("kanibako.runtime.image_sharing.detect_graph_root") as mock_detect:
             mock_detect.return_value = graph_dir
             result = prepare_image_sharing_sources("podman", staging)
 
@@ -163,7 +163,7 @@ class TestPrepareImageSharingSources:
         """Returns None when the host graph root cannot be detected."""
         staging = tmp_path / "staging"
 
-        with patch("kanibako.image_sharing.detect_graph_root") as mock_detect:
+        with patch("kanibako.runtime.image_sharing.detect_graph_root") as mock_detect:
             mock_detect.return_value = None
             assert prepare_image_sharing_sources("podman", staging) is None
 
@@ -193,7 +193,7 @@ class TestImageSharingInRunContainer:
 
         with start_mocks() as m:
             with patch(
-                "kanibako.image_sharing.prepare_image_sharing_sources",
+                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
             ) as mock_prep:
                 mock_prep.return_value = (graph_root, conf)
 
@@ -221,7 +221,7 @@ class TestImageSharingInRunContainer:
 
         with start_mocks():
             with patch(
-                "kanibako.image_sharing.prepare_image_sharing_sources",
+                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
             ) as mock_prep:
                 _run_container(
                     project_dir=None,
@@ -240,7 +240,7 @@ class TestImageSharingInRunContainer:
 
         with start_mocks():
             with patch(
-                "kanibako.image_sharing.prepare_image_sharing_sources",
+                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
             ) as mock_prep:
                 mock_prep.return_value = None  # detection failed
                 rc = _run_container(
@@ -266,7 +266,7 @@ class TestImageSharingInRunContainer:
         with start_mocks() as m:
             m.merged.box_share_images = True
             with patch(
-                "kanibako.image_sharing.prepare_image_sharing_sources",
+                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
             ) as mock_prep:
                 mock_prep.return_value = None
                 _run_container(
@@ -287,7 +287,7 @@ class TestImageSharingInRunContainer:
 
         with start_mocks():
             with patch(
-                "kanibako.image_sharing.prepare_image_sharing_sources",
+                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
             ) as mock_prep:
                 mock_prep.return_value = None
                 _run_container(
@@ -311,7 +311,7 @@ class TestIsRootlessPodman:
     """Tests for is_rootless_podman()."""
 
     def test_true_for_rootless_podman(self):
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="true\n")
             assert is_rootless_podman("podman") is True
             cmd = mock_run.call_args[0][0]
@@ -320,28 +320,28 @@ class TestIsRootlessPodman:
             ]
 
     def test_false_for_rootful_podman(self):
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="false\n")
             assert is_rootless_podman("/usr/bin/podman") is False
 
     def test_false_for_docker_without_query(self):
         """docker is never the rootless-overlay case; no info call is made."""
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             assert is_rootless_podman("/usr/bin/docker") is False
             mock_run.assert_not_called()
 
     def test_none_on_command_failure(self):
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="boom")
             assert is_rootless_podman("podman") is None
 
     def test_none_on_unparseable_output(self):
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="maybe\n")
             assert is_rootless_podman("podman") is None
 
     def test_none_on_oserror(self):
-        with patch("kanibako.image_sharing.subprocess.run") as mock_run:
+        with patch("kanibako.runtime.image_sharing.subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("nope")
             assert is_rootless_podman("podman") is None
 
@@ -359,27 +359,27 @@ class TestPathFstype:
     )
 
     def test_returns_fstype_of_longest_match(self, tmp_path):
-        from kanibako.image_sharing import path_fstype
+        from kanibako.runtime.image_sharing import path_fstype
         from unittest.mock import mock_open
 
-        with patch("kanibako.image_sharing.os.path.realpath",
+        with patch("kanibako.runtime.image_sharing.os.path.realpath",
                    return_value="/mnt/share/overlay"):
             with patch("builtins.open", mock_open(read_data=self._MOUNTINFO)):
                 assert path_fstype(Path("/mnt/share/overlay")) == "virtiofs"
 
     def test_returns_root_fstype_for_unmatched_subpath(self):
-        from kanibako.image_sharing import path_fstype
+        from kanibako.runtime.image_sharing import path_fstype
         from unittest.mock import mock_open
 
-        with patch("kanibako.image_sharing.os.path.realpath",
+        with patch("kanibako.runtime.image_sharing.os.path.realpath",
                    return_value="/home/agent/.local/share"):
             with patch("builtins.open", mock_open(read_data=self._MOUNTINFO)):
                 assert path_fstype(Path("/home/agent/.local/share")) == "ext4"
 
     def test_none_when_mountinfo_unreadable(self):
-        from kanibako.image_sharing import path_fstype
+        from kanibako.runtime.image_sharing import path_fstype
 
-        with patch("kanibako.image_sharing.os.path.realpath",
+        with patch("kanibako.runtime.image_sharing.os.path.realpath",
                    return_value="/x"):
             with patch("builtins.open", side_effect=OSError("no procfs")):
                 assert path_fstype(Path("/x")) is None
@@ -397,15 +397,15 @@ class TestVirtiofsGraphrootMessage:
         return (
             patch.dict("os.environ", env, clear=False),
             patch(
-                "kanibako.image_sharing.is_rootless_podman",
+                "kanibako.runtime.image_sharing.is_rootless_podman",
                 return_value=rootless,
             ),
             patch(
-                "kanibako.image_sharing.detect_graph_root",
+                "kanibako.runtime.image_sharing.detect_graph_root",
                 return_value=graph_root,
             ),
             patch(
-                "kanibako.image_sharing.path_fstype",
+                "kanibako.runtime.image_sharing.path_fstype",
                 return_value=fstype,
             ),
         )

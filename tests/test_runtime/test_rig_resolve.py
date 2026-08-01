@@ -1,4 +1,4 @@
-"""Tests for kanibako.rig_resolve (pure rig-name resolution)."""
+"""Tests for kanibako.runtime.rig_resolve (pure rig-name resolution)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from kanibako.config import KanibakoConfig
-from kanibako.rig_resolve import RigResolution, resolve_rig
+from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
 
 
 def _runtime(has: list[str] | None = None) -> MagicMock:
@@ -146,7 +146,7 @@ class TestRegistryParamAccepted:
 
     def test_registry_without_name_falls_through(self, tmp_path):
         """A registry that doesn't contain the name doesn't change resolution."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         registry = {"other": RigRecord(name="other", kind="prefab")}
         res = resolve_rig(
@@ -161,7 +161,7 @@ class TestRegistryConsultation:
 
     def test_prefab_image_present_is_none(self, tmp_path):
         """A prefab row with an image that exists locally -> prep none."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(name="corp/base", kind="prefab", image="corp/base:1.0")
         rt = _runtime(has=["corp/base:1.0"])
@@ -175,7 +175,7 @@ class TestRegistryConsultation:
 
     def test_prefab_image_absent_pulls(self, tmp_path):
         """A prefab row whose image is absent -> prep pull."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(name="corp/base", kind="prefab", image="corp/base:1.0")
         res = resolve_rig(
@@ -188,7 +188,7 @@ class TestRegistryConsultation:
 
     def test_prefab_no_image_resolves_source_ref(self, tmp_path):
         """A prefab row with only a source ref resolves it via the reference path."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(
             name="mybox", kind="prefab",
@@ -206,7 +206,7 @@ class TestRegistryConsultation:
 
     def test_extended_image_present_is_none(self, tmp_path):
         """An extended row whose image exists -> extended/none."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(name="imported", kind="extended", image="kanibako-rig-imported")
         rt = _runtime(has=["kanibako-rig-imported"])
@@ -220,7 +220,7 @@ class TestRegistryConsultation:
 
     def test_extended_image_absent_is_missing(self, tmp_path):
         """An extended row whose image is absent -> extended/missing."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(name="imported", kind="extended", image="kanibako-rig-imported")
         res = resolve_rig(
@@ -232,7 +232,7 @@ class TestRegistryConsultation:
 
     def test_extended_no_image_derives_default(self, tmp_path):
         """An extended row without an image falls back to kanibako-rig-<name>."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(name="imported", kind="extended")
         rt = _runtime(has=["kanibako-rig-imported"])
@@ -247,7 +247,7 @@ class TestRegistryConsultation:
     def test_extended_no_image_invalid_name_does_not_raise(self, tmp_path):
         """A malformed extended row (no image, name invalid for the default
         kanibako-rig-<name>) must resolve without raising, not crash."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         # 'corp/base:1.0' is a valid registry key but NOT a valid short name,
         # so the default rig_image_name() would raise -- the resolver must
@@ -263,7 +263,7 @@ class TestRegistryConsultation:
 
     def test_local_image_wins_over_registry(self, tmp_path):
         """An already-prepped local template short-circuits before the registry."""
-        from kanibako.rig_registry import RigRecord
+        from kanibako.runtime.rig_registry import RigRecord
 
         rec = RigRecord(name="jvm", kind="prefab", image="corp/base:1.0")
         rt = _runtime(has=["kanibako-template-jvm"])

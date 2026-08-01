@@ -254,7 +254,7 @@ def start_mocks():
         #
         # ⚑⚑ AND THE REALISM HAS A COST THAT ONLY APPEARS ON CI. This fixture patches
         # ``kanibako.commands.start.ContainerRuntime``, but ``_protect_canon_skeleton``
-        # imports ``ContainerRuntime`` from ``kanibako.container`` INSIDE the function
+        # imports ``ContainerRuntime`` from ``kanibako.runtime.container`` INSIDE the function
         # — so the REAL runtime runs, and on a host with working user namespaces the
         # box home's canon skeleton is genuinely chowned to a foreign SUBUID. The
         # ``TemporaryDirectory`` finalizer then dies in ``_resetperms``
@@ -388,7 +388,7 @@ def start_mocks():
             # MagicMock runtime never triggers a real podman info / procfs read.
             # Tests exercising the diagnostic override its return value.
             patch(
-                "kanibako.image_sharing.virtiofs_graphroot_message",
+                "kanibako.runtime.image_sharing.virtiofs_graphroot_message",
                 return_value=None,
             ) as m_virtiofs_check,
         ):
@@ -750,7 +750,7 @@ def protected_canon(monkeypatch):
     """
     import os as _os
 
-    from kanibako.container import ContainerRuntime
+    from kanibako.runtime.container import ContainerRuntime
 
     def _chown(self, paths, uid, gid):
         return bool(paths)
@@ -776,7 +776,7 @@ def _reap_protected_box_stores(tmp_path):
 
     ⚑ THE SWEEP FINDING. Fifteen unit files drive the real create/skeleton path
     (``run_create`` / ``seed_new_box`` / ``_run_container`` / the lifecycle verbs)
-    into ``tmp_path`` WITHOUT patching ``kanibako.container.ContainerRuntime`` — the
+    into ``tmp_path`` WITHOUT patching ``kanibako.runtime.container.ContainerRuntime`` — the
     import site ``_protect_canon_skeleton`` actually uses — so on a host with working
     user namespaces every one of them leaves foreign-owned directories behind.
 

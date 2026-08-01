@@ -148,7 +148,7 @@ def run_info(args: argparse.Namespace) -> int:
     try:
         import subprocess
 
-        from kanibako.container import ContainerRuntime
+        from kanibako.runtime.container import ContainerRuntime
 
         runtime = ContainerRuntime()
         result = subprocess.run(

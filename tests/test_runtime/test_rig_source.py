@@ -1,4 +1,4 @@
-"""Tests for kanibako.rig_source: source detection + name derivation."""
+"""Tests for kanibako.runtime.rig_source: source detection + name derivation."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.rig_source import derive_name, detect_source_kind, fetch_to_temp
+from kanibako.runtime.rig_source import derive_name, detect_source_kind, fetch_to_temp
 
 
 def _write(path: Path, text: str) -> Path:
@@ -200,7 +200,7 @@ def test_fetch_to_temp_monkeypatched(monkeypatch, tmp_path: Path) -> None:
         return filename, object()
 
     monkeypatch.setattr(
-        "kanibako.rig_source.urllib.request.urlretrieve", fake_urlretrieve
+        "kanibako.runtime.rig_source.urllib.request.urlretrieve", fake_urlretrieve
     )
 
     result = fetch_to_temp("https://example.com/Containerfile.web")

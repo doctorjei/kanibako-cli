@@ -1,11 +1,11 @@
-"""Tests for kanibako.baseline (image-baseline manifest loader/accessors)."""
+"""Tests for kanibako.runtime.baseline (image-baseline manifest loader/accessors)."""
 
 from __future__ import annotations
 
 
 import pytest
 
-from kanibako import baseline
+from kanibako.runtime import baseline
 
 
 # Locked universal contract shipped as package data.

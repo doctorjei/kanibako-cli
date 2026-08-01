@@ -1,4 +1,4 @@
-"""Tests for kanibako.freshness: two-prong (version-first, dates) staleness.
+"""Tests for kanibako.runtime.freshness: two-prong (version-first, dates) staleness.
 
 The check warns ONLY when it can prove the remote ``:latest`` is newer than
 local, and stays silent on every uncertainty. All registry/runtime calls are
@@ -11,7 +11,7 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
-from kanibako.freshness import (
+from kanibako.runtime.freshness import (
     _cached_remote_created,
     _cached_remote_digests,
     _cached_remote_tags,
@@ -53,15 +53,15 @@ class TestProngVersion:
         rt = _runtime(label="1.5.3")
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.3", "1.6.0", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 side_effect=lambda img, tag, cp: {
                     "1.6.0": "sha256:latest",
                     "1.5.3": "sha256:old",
@@ -80,15 +80,15 @@ class TestProngVersion:
         rt = _runtime(label="1.6.0.dev25")
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:prodlatest"},
             ),
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.2", "1.5.3", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 side_effect=lambda img, tag, cp: {
                     "1.5.3": "sha256:prodlatest",
                     "1.5.2": "sha256:older",
@@ -103,15 +103,15 @@ class TestProngVersion:
         rt = _runtime(label="1.6.0")
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.6.0", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 side_effect=lambda img, tag, cp: {"1.6.0": "sha256:latest"}.get(tag),
             ),
         ):
@@ -123,15 +123,15 @@ class TestProngVersion:
         rt = _runtime(label=None, tags=["img:latest", "img:1.5.3"])
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.3", "1.6.0", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 side_effect=lambda img, tag, cp: {
                     "1.6.0": "sha256:latest",
                 }.get(tag),
@@ -145,15 +145,15 @@ class TestProngVersion:
         rt = _runtime(local_digests=["sha256:mine"], label=None, tags=["img:latest"])
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.3", "1.6.0", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 side_effect=lambda img, tag, cp: {
                     "1.6.0": "sha256:latest",
                     "1.5.3": "sha256:mine",
@@ -173,8 +173,8 @@ class TestProngVersion:
 class TestProngDates:
     def _no_version(self):
         return (
-            patch("kanibako.freshness._cached_remote_tags", return_value=[]),
-            patch("kanibako.freshness._cached_tag_digest", return_value=None),
+            patch("kanibako.runtime.freshness._cached_remote_tags", return_value=[]),
+            patch("kanibako.runtime.freshness._cached_tag_digest", return_value=None),
         )
 
     def test_remote_date_newer_warns(self, tmp_path, capsys):
@@ -182,13 +182,13 @@ class TestProngDates:
         t1, t2 = self._no_version()
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             t1,
             t2,
             patch(
-                "kanibako.freshness._cached_remote_created",
+                "kanibako.runtime.freshness._cached_remote_created",
                 return_value="2026-06-01T00:00:00Z",
             ),
         ):
@@ -200,13 +200,13 @@ class TestProngDates:
         t1, t2 = self._no_version()
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             t1,
             t2,
             patch(
-                "kanibako.freshness._cached_remote_created",
+                "kanibako.runtime.freshness._cached_remote_created",
                 return_value="2026-01-01T00:00:00Z",
             ),
         ):
@@ -218,13 +218,13 @@ class TestProngDates:
         t1, t2 = self._no_version()
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             t1,
             t2,
             patch(
-                "kanibako.freshness._cached_remote_created",
+                "kanibako.runtime.freshness._cached_remote_created",
                 return_value="2026-06-01T00:00:00Z",
             ),
         ):
@@ -237,13 +237,13 @@ class TestProngDates:
         t1, t2 = self._no_version()
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             t1,
             t2,
             patch(
-                "kanibako.freshness._cached_remote_created",
+                "kanibako.runtime.freshness._cached_remote_created",
                 return_value="2026-06-01T00:00:00Z",
             ),
         ):
@@ -261,12 +261,12 @@ class TestIndeterminateSilent:
         rt = _runtime(label=None, created=None)
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
-            patch("kanibako.freshness._cached_remote_tags", return_value=[]),
-            patch("kanibako.freshness._cached_tag_digest", return_value=None),
-            patch("kanibako.freshness._cached_remote_created", return_value=None),
+            patch("kanibako.runtime.freshness._cached_remote_tags", return_value=[]),
+            patch("kanibako.runtime.freshness._cached_tag_digest", return_value=None),
+            patch("kanibako.runtime.freshness._cached_remote_created", return_value=None),
         ):
             check_image_freshness(rt, "img:latest", tmp_path)
         assert "newer version" not in _err(capsys)
@@ -275,7 +275,7 @@ class TestIndeterminateSilent:
         """Empty remote digest set (can't reach registry) -> silent."""
         rt = _runtime()
         with patch(
-            "kanibako.freshness._cached_remote_digests", return_value=set()
+            "kanibako.runtime.freshness._cached_remote_digests", return_value=set()
         ):
             check_image_freshness(rt, "img:latest", tmp_path)
         assert "newer version" not in _err(capsys)
@@ -285,12 +285,12 @@ class TestIndeterminateSilent:
         rt = _runtime(label=None, tags=["mycustom:dev"], created=None)
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
-            patch("kanibako.freshness._cached_remote_tags", return_value=[]),
-            patch("kanibako.freshness._cached_tag_digest", return_value=None),
-            patch("kanibako.freshness._cached_remote_created", return_value=None),
+            patch("kanibako.runtime.freshness._cached_remote_tags", return_value=[]),
+            patch("kanibako.runtime.freshness._cached_tag_digest", return_value=None),
+            patch("kanibako.runtime.freshness._cached_remote_created", return_value=None),
         ):
             check_image_freshness(rt, "mycustom:dev", tmp_path)
         assert "newer version" not in _err(capsys)
@@ -311,20 +311,20 @@ class TestIndeterminateSilent:
         rt = _runtime(label="1.5.0", created="2026-01-01T00:00:00Z")
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:latest"},
             ),
             # remote :latest digest matches no version tag -> no remote version
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.0", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 return_value="sha256:unrelated",
             ),
             patch(
-                "kanibako.freshness._cached_remote_created",
+                "kanibako.runtime.freshness._cached_remote_created",
                 return_value="2026-06-01T00:00:00Z",
             ),
         ):
@@ -349,21 +349,21 @@ class TestIndeterminateSilent:
         )
         with (
             patch(
-                "kanibako.freshness._cached_remote_digests",
+                "kanibako.runtime.freshness._cached_remote_digests",
                 return_value={"sha256:prodlatest"},
             ),
             # remote :latest digest matches none of the probed version tags
             patch(
-                "kanibako.freshness._cached_remote_tags",
+                "kanibako.runtime.freshness._cached_remote_tags",
                 return_value=["1.5.2", "1.5.3", "latest"],
             ),
             patch(
-                "kanibako.freshness._cached_tag_digest",
+                "kanibako.runtime.freshness._cached_tag_digest",
                 return_value="sha256:unrelated",
             ),
             # remote prod :latest rebuilt more recently than the local build
             patch(
-                "kanibako.freshness._cached_remote_created",
+                "kanibako.runtime.freshness._cached_remote_created",
                 return_value="2026-06-20T00:00:00Z",
             ),
         ):
@@ -398,7 +398,7 @@ class TestParseTs:
 class TestCachedRemoteDigests:
     def test_cache_miss(self, tmp_path):
         with patch(
-            "kanibako.freshness.get_remote_digests",
+            "kanibako.runtime.freshness.get_remote_digests",
             return_value={"sha256:3de8", "sha256:4f49"},
         ) as m:
             result = _cached_remote_digests("img:latest", "linux/amd64", tmp_path)
@@ -415,7 +415,7 @@ class TestCachedRemoteDigests:
             }
         }
         (tmp_path / "digest-cache.json").write_text(json.dumps(cache))
-        with patch("kanibako.freshness.get_remote_digests") as m:
+        with patch("kanibako.runtime.freshness.get_remote_digests") as m:
             result = _cached_remote_digests("img:latest", "linux/amd64", tmp_path)
         assert result == {"sha256:cached"}
         m.assert_not_called()
@@ -428,7 +428,7 @@ class TestCachedRemoteDigests:
         }
         (tmp_path / "digest-cache.json").write_text(json.dumps(cache))
         with patch(
-            "kanibako.freshness.get_remote_digests", return_value={"sha256:arm"},
+            "kanibako.runtime.freshness.get_remote_digests", return_value={"sha256:arm"},
         ) as m:
             result = _cached_remote_digests("img:latest", "linux/arm64", tmp_path)
         assert result == {"sha256:arm"}
@@ -442,7 +442,7 @@ class TestCachedRemoteDigests:
         }
         (tmp_path / "digest-cache.json").write_text(json.dumps(cache))
         with patch(
-            "kanibako.freshness.get_remote_digests", return_value={"sha256:fresh"},
+            "kanibako.runtime.freshness.get_remote_digests", return_value={"sha256:fresh"},
         ) as m:
             result = _cached_remote_digests("img:latest", "linux/amd64", tmp_path)
         assert result == {"sha256:fresh"}
@@ -451,7 +451,7 @@ class TestCachedRemoteDigests:
     def test_corrupt_cache_file(self, tmp_path):
         (tmp_path / "digest-cache.json").write_text("not json!")
         with patch(
-            "kanibako.freshness.get_remote_digests", return_value={"sha256:ok"},
+            "kanibako.runtime.freshness.get_remote_digests", return_value={"sha256:ok"},
         ):
             result = _cached_remote_digests("img:latest", "linux/amd64", tmp_path)
         assert result == {"sha256:ok"}
@@ -464,7 +464,7 @@ class TestCachedRemoteDigests:
         }
         (tmp_path / "digest-cache.json").write_text(json.dumps(cache))
         with patch(
-            "kanibako.freshness.get_remote_digests", return_value={"sha256:new"},
+            "kanibako.runtime.freshness.get_remote_digests", return_value={"sha256:new"},
         ) as m:
             result = _cached_remote_digests("img:latest", "linux/amd64", tmp_path)
         assert result == {"sha256:new"}
@@ -481,7 +481,7 @@ class TestCachedRemoteDigests:
         }
         (tmp_path / "digest-cache.json").write_text(json.dumps(cache))
         with patch(
-            "kanibako.freshness.get_remote_digests", return_value={"sha256:x"},
+            "kanibako.runtime.freshness.get_remote_digests", return_value={"sha256:x"},
         ):
             _cached_remote_digests("img:latest", "linux/amd64", tmp_path)
         written = json.loads((tmp_path / "digest-cache.json").read_text())
@@ -493,7 +493,7 @@ class TestCachedRemoteDigests:
 class TestCachedFieldHelpers:
     def test_tags_miss_then_hit(self, tmp_path):
         with patch(
-            "kanibako.freshness.list_remote_tags", return_value=["1.0", "latest"],
+            "kanibako.runtime.freshness.list_remote_tags", return_value=["1.0", "latest"],
         ) as m:
             assert _cached_remote_tags("img:latest", tmp_path) == ["1.0", "latest"]
             # Second call is served from cache, no refetch.
@@ -503,7 +503,7 @@ class TestCachedFieldHelpers:
     def test_tag_digest_caches_none(self, tmp_path):
         """A None result is cached to avoid hammering a failing endpoint."""
         with patch(
-            "kanibako.freshness.get_remote_tag_digest", return_value=None,
+            "kanibako.runtime.freshness.get_remote_tag_digest", return_value=None,
         ) as m:
             assert _cached_tag_digest("img:latest", "1.0", tmp_path) is None
             assert _cached_tag_digest("img:latest", "1.0", tmp_path) is None
@@ -511,7 +511,7 @@ class TestCachedFieldHelpers:
 
     def test_tag_digest_per_tag_keyed(self, tmp_path):
         with patch(
-            "kanibako.freshness.get_remote_tag_digest",
+            "kanibako.runtime.freshness.get_remote_tag_digest",
             side_effect=lambda img, tag: f"sha256:{tag}",
         ) as m:
             assert _cached_tag_digest("img:latest", "1.0", tmp_path) == "sha256:1.0"
@@ -520,7 +520,7 @@ class TestCachedFieldHelpers:
 
     def test_created_cached(self, tmp_path):
         with patch(
-            "kanibako.freshness.get_remote_created",
+            "kanibako.runtime.freshness.get_remote_created",
             return_value="2026-06-01T00:00:00Z",
         ) as m:
             v = _cached_remote_created("img:latest", "linux/amd64", tmp_path)
@@ -536,7 +536,7 @@ class TestCachedFieldHelpers:
         }
         (tmp_path / "digest-cache.json").write_text(json.dumps(cache))
         with patch(
-            "kanibako.freshness.list_remote_tags", return_value=["new"],
+            "kanibako.runtime.freshness.list_remote_tags", return_value=["new"],
         ) as m:
             assert _cached_remote_tags("img:latest", tmp_path) == ["new"]
         m.assert_called_once()
