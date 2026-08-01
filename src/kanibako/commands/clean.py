@@ -7,6 +7,7 @@ import shutil
 import sys
 
 from kanibako.config import BOX_META_FILE, load_config
+from kanibako.container import remove_box_tree
 from kanibako.errors import UserCancelled
 from kanibako.paths import (
     _STANDALONE_META_DIR,
@@ -115,6 +116,21 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
         pass
 
 
+def _warn_undeleted(path) -> None:
+    """Say so when a box tree survives BOTH rmtree and ``podman unshare rm``.
+
+    These three sites used a bare ``shutil.rmtree`` that RAISED on failure; routing
+    them through ``remove_box_tree`` (which returns a bool) would otherwise turn a
+    loud failure into a silent one — the box would report "done" over a tree that is
+    still on disk.
+    """
+    print(
+        f"\nWarning: could not fully remove {path}.\n"
+        f"Try: podman unshare rm -rf {path}",
+        file=sys.stderr,
+    )
+
+
 def _purge_one(std, config, path: str, *, force: bool) -> int:
     """Purge session data for a single project."""
     proj = resolve_any_project(std, config, project_dir=path, initialize=False)
@@ -154,11 +170,16 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
         # artifacts (box_data/ + root settings.yaml + vault/), never the root.
         root = proj.metadata_path
-        shutil.rmtree(root / _STANDALONE_META_DIR, ignore_errors=True)
+        # box_data/ holds the box home + its root-owned canon skeleton (J-7), so
+        # the deletion needs the podman-unshare escalation, not a bare rmtree.
+        box_data = root / _STANDALONE_META_DIR
+        if box_data.is_dir() and not remove_box_tree(box_data):
+            _warn_undeleted(box_data)
         (root / BOX_META_FILE).unlink(missing_ok=True)
         shutil.rmtree(root / "vault", ignore_errors=True)
     else:
-        shutil.rmtree(proj.metadata_path)
+        if not remove_box_tree(proj.metadata_path):
+            _warn_undeleted(proj.metadata_path)
         # Phase 5: PRIMARY vault lives under @config.primary_workset (not under
         # metadata_path), so remove the per-box ro/rw dirs explicitly.
         if proj.mode is BoxMode.primary:
@@ -218,7 +239,8 @@ def _purge_all(std, config, *, force: bool) -> int:
     for metadata_path, project_path in projects:
         label = str(project_path) if project_path else metadata_path.name
         print(f"Removing {label}... ", end="", flush=True)
-        shutil.rmtree(metadata_path)
+        if not remove_box_tree(metadata_path):
+            _warn_undeleted(metadata_path)
         # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
         # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
         for vault_dir in (
@@ -247,7 +269,8 @@ def _purge_all(std, config, *, force: bool) -> int:
             if project_dir.is_dir():
                 label = f"{ws_name}/{proj_name}"
                 print(f"Removing {label}... ", end="", flush=True)
-                shutil.rmtree(project_dir)
+                if not remove_box_tree(project_dir):
+                    _warn_undeleted(project_dir)
                 # NAMED helper log is a sibling at <root>/logs/<box>.jsonl.
                 (ws.logs_dir / f"{proj_name}.jsonl").unlink(missing_ok=True)
                 print("done.")

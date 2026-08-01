@@ -723,6 +723,7 @@ def run_create(args: argparse.Namespace) -> int:
         persona_create_verdict,
         seed_new_box,
     )
+    from kanibako.core_defaults import materialize_canon_skeleton
 
     # PERSONA LOAD-OR-ERROR — TRUE PRE-FLIGHT (F5, Director ruling 2026-07-03):
     # resolve a NON-materialising PROBE (``initialize=False`` → NO mkdir) and run
@@ -923,6 +924,11 @@ def run_create(args: argparse.Namespace) -> int:
     # recovery replays the seed.
     _write_create_entry(std, proj)
     seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
+    # ⚑ THE CANON SKELETON (J-7) — AFTER the seed, INSIDE the journal window.
+    # After, because the seed writes ``canon/{notebook,workbook}`` UNDER the same
+    # root this step makes 555: protect first and those copies die with EACCES.
+    # Inside, because an interrupted create must replay it like every other step.
+    materialize_canon_skeleton(proj.shell_path)
     _register_new_box(std, proj, force=getattr(args, "force", False))
     _clear_create_entry(std, proj)
 
@@ -1253,27 +1259,16 @@ def _list_orphans(
 def _purge_dir(target: Path) -> bool:
     """Remove *target*, tolerating files a rootless container created.
 
-    A box's shell dir can contain files owned by mapped subuids (root inside a
-    ``--userns=keep-id`` container) that the host user cannot unlink, so a plain
-    ``shutil.rmtree`` fails with EACCES. Fall back to ``podman unshare rm -rf``,
-    which deletes from within the user namespace. Returns True if *target* is
-    gone afterwards, False otherwise (caller warns rather than crashing).
+    Thin alias for :func:`kanibako.container.remove_box_tree`, which is where this
+    body now lives so that EVERY box-tree deleter can reuse it — ``extract``,
+    ``move``, ``duplicate`` and ``purge`` all need the same ``podman unshare``
+    escalation, and since J-7 they need it on every box (the canon skeleton is
+    root-owned by construction, not only when an agent happened to write as root).
+    Kept as a name because ``rm``'s call sites and tests read against it.
     """
-    import shutil
+    from kanibako.container import remove_box_tree
 
-    try:
-        shutil.rmtree(target)
-        return True
-    except OSError:
-        pass
-    try:
-        from kanibako.container import ContainerError, ContainerRuntime
-
-        if ContainerRuntime().unshare_rm(target):
-            return True
-    except ContainerError:
-        pass
-    return not target.exists()
+    return remove_box_tree(target)
 
 
 def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:

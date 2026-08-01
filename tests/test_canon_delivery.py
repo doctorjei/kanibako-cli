@@ -1,37 +1,51 @@
-"""CANON delivery (C-CANON R1) — rom delivers ``~/canon/{COLLECTION.md, bible}``.
+"""CANON delivery (C-CANON R1b) — the SIBLING binds + the box-create SKELETON.
 
 Two delivery mechanisms land kanibako's shipped directive content into a box:
 
-* the RO packaged CANON (``data/global/rom/canon``) is bound by exactly TWO binds
-  (spec §2c) — ``canon_collection`` (the COLLECTION.md index, a FILE bind) and
-  ``canon_bible`` (the whole ``bible/`` book, a DIRECTORY bind) — plus a THIRD,
-  ``canon_bible_agent``, that core emits from the resolved target when that plugin
-  ships a bible chapter; and
+* the RO packaged CANON (``data/global/rom``) is bound by FIVE SIBLING binds (spec
+  §2c, J-7) — ``canon_collection`` and ``canon_bible_contents`` as FILE binds, plus
+  one whole-directory bind per packaged bible chapter
+  (``canon_bible_{general,workset,box}``) — with a SIXTH, ``canon_bible_agent``, that
+  core emits from the resolved target when that plugin ships a bible chapter; and
 * the writable user tree (``data/global/template``) is SEEDED create-if-absent
   through the existing base-template layer at box create.
 
-⚑ This module REPLACES ``test_playbook_delivery.py``, which pinned the retired
-per-LEAF-FILE rom enumeration (one ``rom_<slug>_<hash>`` bind per shipped file, at
-its mirrored ``~`` path). That enumeration existed for ONE reason — rom used to land
-inside the template-seeded WRITABLE ``~/playbook``, where a directory bind would have
-turned the user's own tree read-only. ``~/canon/bible`` is a dedicated root with no
-writable co-tenant, so the constraint died with the layout.
+⚑ J-7 (2026-07-31) REPLACED R1's whole-directory ``canon_bible`` bind (shipped only
+in the unreleased ``93b9a9d``) and the nested ``canon_bible_agent`` that sat inside
+it. The nested-mount physics PASSED on real podman; the model was retired anyway
+because nesting forced MOUNTPOINTS to live inside bind SOURCES — site-packages for
+the bible chapter, the user's own stores for the handbook chapters — where a wheel
+cannot ship an empty directory and no runtime may safely write. Under the sibling
+model every mountpoint lives in the box home, materialised once at box create by
+``core_defaults.materialize_canon_skeleton`` and made root-owned + 555.
+
+⚑ This module REPLACED ``test_playbook_delivery.py`` (the retired per-LEAF-FILE rom
+enumeration) in R1, and is REWRITTEN here for the sibling set.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from kanibako import core_defaults, templates
 from kanibako.core_defaults import (
-    ROM_AGENT_CHAPTER_REL,
+    BIBLE_AGENT_CHAPTER,
+    CANON_SEED_DENY_PREFIXES,
+    CANON_SKELETON_DIR_MODE,
+    CANON_SKELETON_FILE_MODE,
+    HANDBOOK_CHAPTERS,
+    ROM_BIBLE_CHAPTERS,
     ROM_BIBLE_REL,
     ROM_COLLECTION_REL,
+    ROM_CONTENTS_REL,
     ROM_GUIDE_REL,
     ROM_ROOT_PARTS,
+    UNSHARE_BOX_ROOT_GID,
+    UNSHARE_BOX_ROOT_UID,
 )
 from kanibako.paths import resolve_project
 from kanibako.settings_categories import reconcile_categories
@@ -43,17 +57,32 @@ from kanibako.templates import _packaged_base_template, install_packaged_templat
 
 _AGENTS = ("claude", "codex", "goose")
 
-# The COMPLETE set of canon binds core emits, by key and by guest dest.
-_COLLECTION_KEY = "box.bindings.ro.canon_collection"
-_BIBLE_KEY = "box.bindings.ro.canon_bible"
+# The COMPLETE set of canon binds core emits, by key and by guest dest.  ⚑ FIVE from
+# the packaged rom + ONE gated plugin chapter; there is NO ``canon_bible`` whole-dir
+# key any more (RETIRED by J-7 — an undeclared key from the spec edit forward).
+_CORE_KEYS = {
+    "box.bindings.ro.canon_collection": "~/canon/COLLECTION.md",
+    "box.bindings.ro.canon_bible_contents": "~/canon/bible/ROM_CONTENTS.md",
+    "box.bindings.ro.canon_bible_general": "~/canon/bible/general",
+    "box.bindings.ro.canon_bible_workset": "~/canon/bible/workset",
+    "box.bindings.ro.canon_bible_box": "~/canon/bible/box",
+}
+# The two FILE binds (file-onto-file, over the skeleton's 0-byte mountpoints).
+_FILE_KEYS = {
+    "box.bindings.ro.canon_collection",
+    "box.bindings.ro.canon_bible_contents",
+}
 _BIBLE_AGENT_KEY = "box.bindings.ro.canon_bible_agent"
-
-_COLLECTION_DEST = "~/canon/COLLECTION.md"
-_BIBLE_DEST = "~/canon/bible"
 _BIBLE_AGENT_DEST = "~/canon/bible/agent"
 
-# The bible's four chapters — each must exist as a real packaged DIRECTORY.
-_CHAPTERS = ("general", "agent", "workset", "box")
+# Sources, rom-root-relative, in the same order as ``_CORE_KEYS``.
+_CORE_SOURCES = {
+    "box.bindings.ro.canon_collection": ROM_COLLECTION_REL,
+    "box.bindings.ro.canon_bible_contents": ROM_CONTENTS_REL,
+    "box.bindings.ro.canon_bible_general": f"{ROM_BIBLE_REL}/general",
+    "box.bindings.ro.canon_bible_workset": f"{ROM_BIBLE_REL}/workset",
+    "box.bindings.ro.canon_bible_box": f"{ROM_BIBLE_REL}/box",
+}
 
 
 def _ctx() -> ResolveCtx:
@@ -85,15 +114,20 @@ def _reconcile(cats: dict) -> object:
 
 
 def _make_fake_rom(root: Path) -> Path:
-    """Build a COMPLETE, valid packaged-canon tree under *root*; return the rom root."""
+    """Build a COMPLETE, valid packaged-canon tree under *root*; return the rom root.
+
+    ⚑ FLAT: ``rom/{COLLECTION.md, bible/**}`` with no ``canon/`` wrapper, and NO
+    ``bible/agent/`` — matching what the wheel actually ships under J-7.
+    """
     rom = root / "rom"
-    (rom / ROM_BIBLE_REL / "general" / "directives").mkdir(parents=True)
-    (rom / ROM_GUIDE_REL).write_text("# guide\n")
+    (rom / ROM_BIBLE_REL).mkdir(parents=True)
     (rom / ROM_COLLECTION_REL).write_text("# collection\n")
-    for chapter in ("agent", "workset", "box"):
+    (rom / ROM_CONTENTS_REL).write_text("# contents\n")
+    for chapter in ROM_BIBLE_CHAPTERS:
         d = rom / ROM_BIBLE_REL / chapter / "directives"
         d.mkdir(parents=True)
-        (d / f"ROM_{chapter.upper()}.md").write_text("")
+        (d / f"ROM_{chapter.upper()}.md").write_text("x\n")
+    assert (rom / ROM_GUIDE_REL).is_file(), "fixture must satisfy the guide guard"
     return rom
 
 
@@ -130,60 +164,69 @@ class _ChapterTarget:
 
 
 # ===========================================================================
-# The two CORE canon binds.
+# The FIVE core canon binds.
 # ===========================================================================
 
 
 class TestCanonBinds:
-    def test_emits_exactly_two_binds_at_the_declared_dests(self):
-        """Two binds, not N: the COLLECTION.md index and the whole bible."""
+    def test_emits_exactly_the_five_declared_siblings(self):
         cats = core_defaults.rom_default_categories()
-        assert len(cats) == 2, cats
-        dests = {dest for _, dest, _ in cats.values()}
-        assert dests == {_COLLECTION_DEST, _BIBLE_DEST}
+        assert set(cats) == set(_CORE_KEYS), cats
+        assert {dest for _, dest, _ in cats.values()} == set(_CORE_KEYS.values())
         assert all(opt == "ro" for _, _, opt in cats.values())
 
-    def test_keys_are_the_two_declared_names(self):
-        """The keys are the SPEC's stable names — not the retired
-        ``rom_<slug>_<hash>`` family, which was content-derived and thus unstable
-        under any content edit."""
+    def test_keys_are_the_spec_names_and_emission_is_deterministic(self):
+        """Stable SPEC names — not the retired content-derived ``rom_<slug>_<hash>``
+        family, and not R1's retired whole-dir ``canon_bible``."""
         first = core_defaults.rom_default_categories()
-        second = core_defaults.rom_default_categories()
-        assert first == second, "canon bind emission must be deterministic"
-        assert set(first) == {_COLLECTION_KEY, _BIBLE_KEY}
+        assert first == core_defaults.rom_default_categories()
+        assert "box.bindings.ro.canon_bible" not in first, (
+            "canon_bible is RETIRED (J-7) — an undeclared key, not a bind"
+        )
         assert not any("rom_" in k.rsplit(".", 1)[-1] for k in first), first
 
-    def test_bible_is_a_directory_bind_and_canon_root_is_never_bound(self):
-        """INVERTED from the retired ``test_no_dir_level_bind_emitted``.
-
-        ``~/canon/bible`` IS a whole-DIRECTORY bind now (its host source is a real
-        packaged dir). But NOTHING may bind ``~/canon`` itself: that root must stay
-        WRITABLE for the SEEDED ``notebook/`` + ``workbook/`` books, which is the
-        entire reason COLLECTION.md stays a FILE bind.
-        """
+    def test_each_key_lands_at_its_declared_dest(self):
         cats = core_defaults.rom_default_categories()
-        by_dest = {dest: src for src, dest, _ in cats.values()}
-        assert Path(by_dest[_BIBLE_DEST]).is_dir()
-        assert Path(by_dest[_COLLECTION_DEST]).is_file()
-        assert "~/canon" not in by_dest
-        assert "~" not in by_dest
+        for key, dest in _CORE_KEYS.items():
+            assert cats[key][1] == dest, key
+
+    def test_file_binds_are_files_and_chapter_binds_are_directories(self):
+        """The shapes are load-bearing: a file bind mounts file-onto-file over the
+        skeleton's 0-byte mountpoint; a chapter bind replaces a whole directory."""
+        cats = core_defaults.rom_default_categories()
+        for key, (src, _dest, _opt) in cats.items():
+            if key in _FILE_KEYS:
+                assert Path(src).is_file(), key
+            else:
+                assert Path(src).is_dir(), key
+
+    def test_neither_canon_root_nor_bible_root_is_ever_bound(self):
+        """⚑ THE SIBLING CONTRACT. ``~/canon`` must never be bound (it holds the
+        SEEDED notebook/workbook), and neither must ``~/canon/bible`` — re-introducing
+        that whole-dir bind is exactly the R1 model J-7 retired, and it would put the
+        agent chapter's mountpoint back inside a bind source."""
+        dests = {dest for _, dest, _ in core_defaults.rom_default_categories().values()}
+        assert "~/canon" not in dests
+        assert "~/canon/bible" not in dests
+        assert "~" not in dests
 
     def test_sources_are_the_packaged_canon_never_a_copy(self):
         cats = core_defaults.rom_default_categories()
         rom = _packaged_rom_root()
-        by_dest = {dest: src for src, dest, _ in cats.values()}
-        assert Path(by_dest[_COLLECTION_DEST]) == rom / ROM_COLLECTION_REL
-        assert Path(by_dest[_BIBLE_DEST]) == rom / ROM_BIBLE_REL
-        # The guide is delivered INSIDE the whole-dir bible bind (no bind of its own).
-        assert (rom / ROM_GUIDE_REL).is_file()
+        for key, rel in _CORE_SOURCES.items():
+            assert Path(cats[key][0]) == rom / rel, key
+        # The guide has NO bind of its own — it rides the ``general`` chapter's.
+        guide = rom / ROM_GUIDE_REL
+        assert guide.is_file()
+        assert guide.is_relative_to(Path(cats["box.bindings.ro.canon_bible_general"][0]))
 
-    def test_reconciles_to_ro_mounts_at_the_guest_slots(self):
-        """Both binds resolve through the real launch cascade to RO Mounts."""
+    def test_reconciles_to_ro_mounts_at_every_guest_slot(self):
         rec = _reconcile(core_defaults.rom_default_categories())
         by_dest = {m.box_dest: m for m in rec.mounts}
-        for dest in (f"{GUEST_HOME}/canon/COLLECTION.md", f"{GUEST_HOME}/canon/bible"):
-            assert dest in by_dest, f"{dest} not reconciled"
-            m = by_dest[dest]
+        for dest in _CORE_KEYS.values():
+            guest = dest.replace("~", GUEST_HOME, 1)
+            assert guest in by_dest, f"{guest} not reconciled"
+            m = by_dest[guest]
             assert m.scope == "box"
             assert m.category == "bindings.ro"
             assert m.options == "ro"
@@ -199,7 +242,7 @@ class TestFailClosed:
         """A populated rom root whose walk omits the guide RAISES — never a silent
         guide-less box (guards the over-broad-filter / wrong-root class)."""
         def _no_guide(root: Path) -> list[tuple[str, Path]]:
-            return [("canon/other.md", Path("/pkg/rom/canon/other.md"))]
+            return [("other.md", Path("/pkg/rom/other.md"))]
 
         monkeypatch.setattr(templates, "walk_shipped_files", _no_guide)
         with pytest.raises(RuntimeError, match="missing the load-bearing box guide"):
@@ -213,29 +256,29 @@ class TestFailClosed:
             core_defaults.rom_default_categories()
 
     def test_fake_rom_fixture_is_itself_valid(self, fake_rom):
-        """Guard the guard: the complete fake tree must PASS, or the removal cases
+        """Guard the guard: the complete fake tree must PASS, or every removal case
         below would pass vacuously."""
-        cats = core_defaults.rom_default_categories()
-        assert set(cats) == {_COLLECTION_KEY, _BIBLE_KEY}
+        assert set(core_defaults.rom_default_categories()) == set(_CORE_KEYS)
 
-    def test_raises_when_collection_missing(self, fake_rom):
-        """NEW guard: under a whole-dir bible bind, a missing COLLECTION.md raises
-        nothing by itself — there is no per-file enumeration left to come up short."""
-        (fake_rom / ROM_COLLECTION_REL).unlink()
+    @pytest.mark.parametrize("rel", sorted(set(_CORE_SOURCES.values())))
+    def test_raises_when_any_emitted_source_is_missing(self, fake_rom, rel: str):
+        """⚑ EVERY emitted bind's source is a required member. A missing one would
+        otherwise be DROPPED by ``_emit_category_mounts`` with only a per-launch
+        warning — a box quietly short one chapter of its own directives."""
+        import shutil
+
+        target = fake_rom / rel
+        shutil.rmtree(target) if target.is_dir() else target.unlink()
         with pytest.raises(RuntimeError, match="canon .* is incomplete"):
             core_defaults.rom_default_categories()
 
-    def test_raises_when_agent_chapter_mountpoint_missing(self, fake_rom):
-        """⚑ THE MUTATION CONTRACT. ``bible/agent/`` must ship as a real directory:
-        podman does NOT error on a missing nested mountpoint, it silently ``mkdir``s
-        it INTO the parent bind's host source — here, the packaged tree in
-        site-packages (bifrost, podman 5.4.2/crun 1.21, 2026-07-31)."""
-        chapter = fake_rom / ROM_AGENT_CHAPTER_REL
-        for f in sorted(chapter.rglob("*"), reverse=True):
-            f.rmdir() if f.is_dir() else f.unlink()
-        chapter.rmdir()
-        with pytest.raises(RuntimeError, match="canon .* is incomplete"):
-            core_defaults.rom_default_categories()
+    def test_packaged_agent_chapter_is_NOT_required(self, fake_rom):
+        """⚑ THE INVERTED R1 ASSERTION. R1 REQUIRED a packaged ``bible/agent/``
+        directory as the nested bind's mountpoint (podman silently mkdir'd a missing
+        one into site-packages). J-7 removed the nesting, so that placeholder must NOT
+        ship — and its absence must NOT raise. The fixture never creates it."""
+        assert not (fake_rom / ROM_BIBLE_REL / BIBLE_AGENT_CHAPTER).exists()
+        assert set(core_defaults.rom_default_categories()) == set(_CORE_KEYS)
 
     def test_absent_rom_root_is_a_no_rom_install(self, tmp_path, monkeypatch):
         real = core_defaults.packaged_data_dir
@@ -248,31 +291,48 @@ class TestFailClosed:
 
 
 # ===========================================================================
-# DISJOINTNESS — no template seed may land at or under a canon bind dest.
+# DISJOINTNESS — no template seed may land in the managed ~/canon region.
 # ===========================================================================
 
 
 class TestDisjointness:
     def test_prefix_containment_not_set_intersection(self):
-        """A whole-dir bind shadows a SUBTREE: a seed does not have to hit the
-        bind's exact path to be silently swallowed."""
+        """A managed prefix covers a SUBTREE: a seed does not have to hit an exact
+        path to be silently swallowed."""
         with pytest.raises(RuntimeError, match="silently invisible"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 {"canon/bible"}, {"canon/bible/general/directives/ROM_GENERAL.md"},
             )
 
-    def test_exact_dest_collision_raises(self):
-        with pytest.raises(RuntimeError, match="canon bind dest"):
+    def test_exact_collision_raises(self):
+        with pytest.raises(RuntimeError, match="managed canon path"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 {"canon/COLLECTION.md"}, {"canon/COLLECTION.md"},
             )
+
+    def test_seed_into_the_agent_chapter_still_raises(self):
+        """⚑ THE J-7 WIDENING. Under sibling binds ``canon/bible`` is no longer itself
+        a bind dest — only its chapters are — so a guard built from the LITERAL dests
+        would silently start allowing a seed at ``canon/bible/agent/…``. Spec §2c
+        forbids seeding anywhere under ``canon/bible/``, and under J-7 that path is a
+        root-owned 555 mountpoint, so the copy would fail at create rather than merely
+        be shadowed at launch. RED if someone narrows the deny list back to the dests.
+        """
+        with pytest.raises(RuntimeError, match="silently invisible"):
+            core_defaults.assert_canon_bind_seed_disjoint(
+                CANON_SEED_DENY_PREFIXES, {"canon/bible/agent/directives/ROM_AGENT.md"},
+            )
+
+    def test_deny_list_covers_the_whole_bible_not_just_its_chapters(self):
+        assert "canon/bible" in CANON_SEED_DENY_PREFIXES
+        assert "canon/COLLECTION.md" in CANON_SEED_DENY_PREFIXES
 
     def test_sibling_and_prefix_lookalike_seeds_are_allowed(self):
         """``canon/notebook`` and ``canon/bibles-of-mine`` are NOT under
         ``canon/bible`` — a naive ``startswith`` without the separator would
         wrongly reject the second."""
         core_defaults.assert_canon_bind_seed_disjoint(
-            {"canon/bible", "canon/COLLECTION.md"},
+            CANON_SEED_DENY_PREFIXES,
             {
                 "canon/notebook/MY_CONTENTS.md",
                 "canon/workbook/devnotes.md",
@@ -287,7 +347,7 @@ class TestDisjointness:
         base = _packaged_base_template()
         assert base is not None
         core_defaults.assert_canon_bind_seed_disjoint(
-            {ROM_COLLECTION_REL, ROM_BIBLE_REL},
+            CANON_SEED_DENY_PREFIXES,
             (rel for rel, _ in templates.walk_shipped_files(base)),
         )
 
@@ -312,33 +372,43 @@ class TestDisjointness:
 
 
 class TestPackagedCanonTree:
-    def test_ships_all_four_chapter_directories(self):
+    def test_layout_is_flat_with_no_canon_wrapper(self):
+        """J-7 / Jei's samples: the packaged rom is ``rom/{COLLECTION.md, bible/**}``.
+        The old ``rom/canon/**`` level is gone, so a rom-relative path is no longer
+        its own ``~``-dest — every dest goes through ``_canon_dest``."""
+        rom = _packaged_rom_root()
+        assert (rom / "COLLECTION.md").is_file()
+        assert (rom / "bible").is_dir()
+        assert not (rom / "canon").exists()
+
+    def test_ships_every_packaged_chapter_directory(self):
         rom = _packaged_rom_root()
         missing = [
-            c for c in _CHAPTERS if not (rom / ROM_BIBLE_REL / c / "directives").is_dir()
+            c for c in ROM_BIBLE_CHAPTERS
+            if not (rom / ROM_BIBLE_REL / c / "directives").is_dir()
         ]
         assert not missing, f"packaged bible is missing chapter dirs: {missing}"
 
-    def test_agent_chapter_directory_exists_as_the_nested_mountpoint(self):
-        """⚑ Load-bearing THREE ways: it makes the dir exist in git and in the wheel,
-        it is ``canon_bible_agent``'s MOUNTPOINT (a missing one makes podman mkdir
-        into site-packages), and it makes ``ROM_CONTENTS.md``'s ``@agent/...`` import
-        resolve to an empty section instead of an inert backticked mention."""
+    def test_agent_chapter_does_NOT_ship_in_the_package(self):
+        """⚑ J-7 KILLED THE WHEEL MOUNTPOINT. R1 shipped a 0-byte
+        ``bible/agent/directives/ROM_AGENT.md`` purely to make that directory exist in
+        git and in the wheel, because a NESTED bind's mountpoint had to live inside its
+        parent's SOURCE. With siblings the mountpoint lives in the box home instead, so
+        the package must carry nothing here — a stray empty chapter would bind over the
+        plugin's, or be mistaken for content."""
         rom = _packaged_rom_root()
-        assert (rom / ROM_AGENT_CHAPTER_REL).is_dir()
-        assert (rom / ROM_AGENT_CHAPTER_REL / "directives" / "ROM_AGENT.md").is_file()
+        assert not (rom / ROM_BIBLE_REL / BIBLE_AGENT_CHAPTER).exists()
 
     def test_index_and_contents_ship(self):
         rom = _packaged_rom_root()
         assert (rom / ROM_COLLECTION_REL).is_file()
-        assert (rom / ROM_BIBLE_REL / "ROM_CONTENTS.md").is_file()
+        assert (rom / ROM_CONTENTS_REL).is_file()
         assert (rom / ROM_GUIDE_REL).is_file()
 
     def test_no_bytecode_or_python_under_the_packaged_bible(self):
-        """A whole-dir bind exposes whatever is physically in the packaged dir at
+        """A directory bind exposes whatever is physically in the packaged dir at
         runtime — the per-file walk's ``_is_shipped_content`` filter no longer stands
-        between a dev checkout's ``__pycache__`` and the box. The canon carries no
-        ``.py`` at all now (the flattener is machinery and lives in the package)."""
+        between a dev checkout's ``__pycache__`` and the box."""
         rom = _packaged_rom_root()
         junk = [
             str(p.relative_to(rom)) for p in (rom / ROM_BIBLE_REL).rglob("*")
@@ -358,7 +428,7 @@ class TestPackagedCanonTree:
 
 
 # ===========================================================================
-# The PLUGIN chapter — ``canon_bible_agent`` (spec §2c, the seventh canon bind).
+# The PLUGIN chapter — ``canon_bible_agent`` (spec §2c, the sixth canon bind).
 # ===========================================================================
 
 
@@ -374,10 +444,12 @@ class TestPluginChapterBind:
 
     @pytest.mark.parametrize("agent", _AGENTS)
     def test_gate_is_negative_today_so_no_bind_is_emitted(self, agent: str):
-        """R1 lands the emitter + the interface; R2 fans the CONTENT out to the three
-        packages. Until a plugin ships ``directives/ROM_AGENT.md``, emitting nothing
-        is CORRECT: an empty plugin rom would SHADOW core's placeholder chapter with
-        nothing, turning ``@agent/directives/ROM_AGENT.md`` into a dangling import."""
+        """No plugin ships ``directives/ROM_AGENT.md`` yet. Emitting nothing is
+        CORRECT: with no packaged placeholder left to shadow, an ungated bare
+        ``data/rom/`` would bind an EMPTY dir over the mountpoint — visibly the same
+        as emitting nothing, but paid for with a per-launch missing-source warning.
+        Gate-false is J-7's accepted honest signal (empty root-owned mountpoint + one
+        dangling ``@agent/`` import warning from the flattener)."""
         target = resolve_target(agent, None)
         assert core_defaults.rom_agent_default_categories(target) == {}
 
@@ -405,29 +477,40 @@ class TestPluginChapterBind:
         assert core_defaults.rom_agent_default_categories(_ChapterTarget(None)) == {}
 
 
-class TestNestingOrder:
-    def test_bible_mounts_before_its_agent_chapter(self, tmp_path):
-        """⚑ THE SHADOW MECHANISM. The plugin chapter's dest NESTS inside the bible's,
-        and it works only because the MOUNT depth-sort is ASCENDING — the deeper dest
-        must land LAST so the plugin's chapter shadows core's placeholder. A
-        depth-sort regression is otherwise entirely silent.
-        """
+class TestSiblingAssembly:
+    """⚑ REPLACES R1's ``TestNestingOrder``, which pinned the SHADOW mechanism (the
+    plugin chapter mounting INSIDE ``canon_bible`` and the ascending depth-sort that
+    made it land last). J-7 retired nesting outright, so the invariant to pin is the
+    opposite one — and keeping a "nesting works" test after nesting was removed would
+    read as precedent for re-introducing it.
+    """
+
+    def test_no_canon_dest_is_a_prefix_of_another(self, tmp_path):
         chapter = tmp_path / "data" / "rom"
         (chapter / "directives").mkdir(parents=True)
         (chapter / "directives" / "ROM_AGENT.md").write_text("")
 
         cats = dict(core_defaults.rom_default_categories())
         cats.update(core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)))
-        assert len(cats) == 3
+        assert len(cats) == 6
 
+        dests = sorted(dest for _, dest, _ in cats.values())
+        for a in dests:
+            for b in dests:
+                assert a == b or not b.startswith(f"{a}/"), (
+                    f"{b!r} nests inside {a!r} — J-7 retired nested canon binds"
+                )
+
+    def test_all_six_reconcile_without_collision_warnings(self, tmp_path):
+        chapter = tmp_path / "data" / "rom"
+        (chapter / "directives").mkdir(parents=True)
+        (chapter / "directives" / "ROM_AGENT.md").write_text("")
+
+        cats = dict(core_defaults.rom_default_categories())
+        cats.update(core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)))
         rec = _reconcile(cats)
-        order = [m.box_dest for m in rec.mounts]
-        bible = f"{GUEST_HOME}/canon/bible"
-        agent = f"{GUEST_HOME}/canon/bible/agent"
-        assert bible in order and agent in order, order
-        assert order.index(bible) < order.index(agent), order
-        # Nested-but-DIFFERENT dests are blessed, never a collision.
         assert not rec.warnings, rec.warnings
+        assert f"{GUEST_HOME}/canon/bible/agent" in {m.box_dest for m in rec.mounts}
 
 
 # ===========================================================================
@@ -458,8 +541,7 @@ class TestLaunchWiring:
     emitters are CORRECT but not that anything CALLS them — deleting both
     ``default_categories.update(...)`` lines from ``start._resolve_launch_snapshot``
     left the entire suite green (mutation-proved, 2026-07-31). These tests close
-    that gap by driving the REAL launch seam with real ``std``/``proj`` objects, in
-    the style of ``test_start_channels``.
+    that gap by driving the REAL launch seam with real ``std``/``proj`` objects.
     """
 
     def _launch_mounts(self, std, proj, target) -> dict:
@@ -483,34 +565,28 @@ class TestLaunchWiring:
         mounts = _emit_category_mounts(reconciled, label="canon-wiring")
         return {m.destination: m for m in mounts}
 
-    def test_core_canon_binds_reach_a_real_launch(self, std, config, project_dir):
+    def test_all_five_core_canon_binds_reach_a_real_launch(
+        self, std, config, project_dir,
+    ):
         """RED if ``core_defaults.rom_default_categories()`` stops being unioned
-        into the launch snapshot: both canon mounts vanish from the emitted set."""
+        into the launch snapshot: every canon mount vanishes from the emitted set."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, _WiringTarget())
 
-        collection = f"{GUEST_HOME}/canon/COLLECTION.md"
-        bible = f"{GUEST_HOME}/canon/bible"
-        assert collection in by_dest, sorted(by_dest)
-        assert bible in by_dest, sorted(by_dest)
-        assert by_dest[collection].options == "ro"
-        assert by_dest[bible].options == "ro"
-        assert Path(by_dest[collection].source).is_file()
-        assert Path(by_dest[bible].source).is_dir()
-        # ⚑ ~/canon itself must NOT be mounted — it has to stay writable for the
-        # SEEDED notebook/workbook books.
+        for dest in _CORE_KEYS.values():
+            guest = dest.replace("~", GUEST_HOME, 1)
+            assert guest in by_dest, sorted(by_dest)
+            assert by_dest[guest].options == "ro"
+        # ⚑ Neither book ROOT is mounted: ~/canon holds the SEEDED notebook/workbook,
+        # and ~/canon/bible is the retired whole-dir bind.
         assert f"{GUEST_HOME}/canon" not in by_dest
+        assert f"{GUEST_HOME}/canon/bible" not in by_dest
 
     def test_plugin_chapter_bind_reaches_a_real_launch(
         self, std, config, project_dir, tmp_path,
     ):
         """RED if ``core_defaults.rom_agent_default_categories(target)`` stops being
-        unioned in: the nested chapter mount vanishes.
-
-        Also pins the ORDER on the real path — ``bible`` must be emitted BEFORE
-        ``bible/agent`` or the plugin's chapter would be shadowed BY the placeholder
-        instead of shadowing it.
-        """
+        unioned in: the chapter mount vanishes."""
         chapter = tmp_path / "plugin-pkg" / "data" / "rom"
         (chapter / "directives").mkdir(parents=True)
         (chapter / "directives" / "ROM_AGENT.md").write_text("# chapter\n")
@@ -523,36 +599,240 @@ class TestLaunchWiring:
         assert by_dest[agent_dest].options == "ro"
         assert Path(by_dest[agent_dest].source) == chapter
 
-        order = [m.destination for m in by_dest.values()]
-        assert order.index(f"{GUEST_HOME}/canon/bible") < order.index(agent_dest)
-
-    def test_no_plugin_chapter_mount_when_the_gate_is_negative(
+    def test_gate_negative_yields_no_mount_but_the_skeleton_still_pre_created_it(
         self, std, config, project_dir, tmp_path,
     ):
-        """A plugin with no chapter contributes no mount — it must not shadow core's
-        placeholder chapter with an empty directory."""
+        """⚑ THE GATE-FALSE SHAPE J-7 SPECIFIES: no bind, but the mountpoint EXISTS in
+        the box home as an empty root-owned directory. The dangling ``@agent/`` import
+        warning from the flattener is the honest signal — not a missing directory."""
         bare = tmp_path / "plugin-pkg" / "data" / "rom"
         bare.mkdir(parents=True)
         (bare / "_bundled_future_use_").write_text("")
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, _WiringTarget(bare))
-
-        assert f"{GUEST_HOME}/canon/bible" in by_dest
         assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
+
+        with patch("kanibako.container.ContainerRuntime"):
+            core_defaults.materialize_canon_skeleton(proj.shell_path)
+        chapter_dir = proj.shell_path / "canon" / "bible" / "agent"
+        assert chapter_dir.is_dir(), "the mountpoint must exist even with no bind"
+        assert not any(chapter_dir.iterdir()), "and it must be EMPTY"
 
     def test_core_canon_binds_land_even_without_an_agent(
         self, std, config, project_dir,
     ):
-        """A no-agent (plain shell) box still gets the canon: the two core binds are
+        """A no-agent (plain shell) box still gets the canon: the five core binds are
         emitted OUTSIDE the ``target is not None`` block, only the plugin chapter is
         inside it."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, None)
 
-        assert f"{GUEST_HOME}/canon/COLLECTION.md" in by_dest
-        assert f"{GUEST_HOME}/canon/bible" in by_dest
+        for dest in _CORE_KEYS.values():
+            assert dest.replace("~", GUEST_HOME, 1) in by_dest
         assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
+
+
+# ===========================================================================
+# The box-create CANON SKELETON (J-7).
+# ===========================================================================
+
+
+@pytest.fixture
+def fake_runtime():
+    """Patch ``ContainerRuntime`` at its definition module (the import inside
+    ``_protect_canon_skeleton`` is deferred, so this is the attribute it reads)."""
+    with patch("kanibako.container.ContainerRuntime") as rt:
+        rt.return_value.unshare_chown.return_value = True
+        rt.return_value.unshare_chmod.return_value = True
+        yield rt
+
+
+class TestCanonSkeleton:
+    def test_materializes_the_full_declared_set(self, tmp_path, fake_runtime):
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        for rel, is_dir in core_defaults.canon_skeleton_rels():
+            p = home / rel
+            assert p.exists(), rel
+            assert p.is_dir() == is_dir, rel
+
+    def test_the_three_file_mountpoints_are_zero_byte_files(self, tmp_path, fake_runtime):
+        """A FILE bind mounts file-onto-file, so each needs a real (empty) file to
+        land on — not a directory, and not nothing."""
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        for rel in (
+            "canon/COLLECTION.md",
+            "canon/bible/ROM_CONTENTS.md",
+            "canon/handbook/SYS_CONTENTS.md",
+        ):
+            p = home / rel
+            assert p.is_file(), rel
+            assert p.stat().st_size == 0, rel
+
+    def test_skeleton_mirrors_the_bind_dests_exactly(self, tmp_path, fake_runtime):
+        """⚑ THE MOUNTPOINT CONTRACT. Every canon bind dest must have a mountpoint in
+        the skeleton. A dest with none is a mountpoint podman creates itself — which
+        under the retired nested model meant mkdir-ing into site-packages, the exact
+        failure J-7 exists to remove."""
+        cats = dict(core_defaults.rom_default_categories())
+        cats[_BIBLE_AGENT_KEY] = ("/x", _BIBLE_AGENT_DEST, "ro")
+        skeleton = {rel for rel, _ in core_defaults.canon_skeleton_rels()}
+        for _src, dest, _opt in cats.values():
+            assert dest.removeprefix("~/") in skeleton, dest
+
+    def test_creates_the_handbook_mountpoints_too(self, tmp_path, fake_runtime):
+        """⚑ The handbook BINDS are the seeds half's (they need ``<scope>.canon``
+        resolution, which does not exist yet) but their MOUNTPOINTS are part of THIS
+        one closed set. J-7 specifies the skeleton as a single set, an absent chapter
+        must show as an empty root-owned dir, and creating them later would mean
+        mkdir-ing into an already-555 tree."""
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        assert (home / "canon" / "handbook" / "SYS_CONTENTS.md").is_file()
+        for chapter in HANDBOOK_CHAPTERS:
+            assert (home / "canon" / "handbook" / chapter).is_dir(), chapter
+
+    def test_does_not_create_the_seeded_books(self, tmp_path, fake_runtime):
+        """``notebook``/``workbook`` are SEEDED, agent-owned and writable. They become
+        undeletable only because their parent is 555 — intended, per J-7."""
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+        assert not (home / "canon" / "notebook").exists()
+        assert not (home / "canon" / "workbook").exists()
+
+    def test_is_idempotent(self, tmp_path, fake_runtime):
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+        (home / "canon" / "notebook").mkdir()
+        (home / "canon" / "notebook" / "keep.md").write_text("mine\n")
+
+        core_defaults.materialize_canon_skeleton(home)  # must not raise or clobber
+        assert (home / "canon" / "notebook" / "keep.md").read_text() == "mine\n"
+
+    def test_chown_covers_everything_with_the_container_root_uid(
+        self, tmp_path, fake_runtime,
+    ):
+        """⚑ THE UID ORACLE. ``chown 0:0`` inside ``podman unshare`` is the REAL host
+        user, whom ``keep-id:uid=1000`` maps to the in-box AGENT — so 0 would leave the
+        books agent-owned, the opposite of the intent. Pin the constant."""
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        chown_paths, uid, gid = fake_runtime.return_value.unshare_chown.call_args.args
+        assert (uid, gid) == (UNSHARE_BOX_ROOT_UID, UNSHARE_BOX_ROOT_GID)
+        assert uid != 0, "0 inside podman unshare is the host user = the in-box agent"
+        # ONE chown over the WHOLE skeleton — ownership is uniform, only modes split.
+        expected = [home / rel for rel, _ in core_defaults.canon_skeleton_rels()]
+        assert sorted(chown_paths) == sorted(expected)
+
+    def test_chmod_splits_dirs_555_from_file_mountpoints_444(
+        self, tmp_path, fake_runtime,
+    ):
+        """⚑ TWO MODES, TWO CALLS (spec J-7 banner, amended 2026-07-31).
+
+        The split is not cosmetic on the directory side: 555 keeps the SEARCH bit, and
+        a 444 directory would make crun's openat2 walk fail on every canon bind. On the
+        file side 555 would mark a 0-byte ``.md`` executable for no reason.
+        """
+        home = tmp_path / "home"
+        home.mkdir()
+        core_defaults.materialize_canon_skeleton(home)
+
+        calls = {
+            mode: paths
+            for (paths, mode) in (
+                c.args for c in fake_runtime.return_value.unshare_chmod.call_args_list
+            )
+        }
+        assert set(calls) == {CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE}
+        assert (CANON_SKELETON_DIR_MODE, CANON_SKELETON_FILE_MODE) == ("555", "444")
+
+        rels = core_defaults.canon_skeleton_rels()
+        assert sorted(calls["555"]) == sorted(home / r for r, d in rels if d)
+        assert sorted(calls["444"]) == sorted(home / r for r, d in rels if not d)
+
+    def test_ownership_never_recurses_over_the_seeded_books(self, tmp_path, fake_runtime):
+        """A ``-R`` sweep of ``canon/`` would take the agent's own notebook/workbook
+        with it. The path list must be the enumerated skeleton, nothing more."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "canon" / "notebook").mkdir(parents=True)
+        core_defaults.materialize_canon_skeleton(home)
+
+        chown_paths = fake_runtime.return_value.unshare_chown.call_args.args[0]
+        assert home / "canon" / "notebook" not in chown_paths
+
+    def test_falls_back_with_a_warning_when_no_runtime(self, tmp_path, caplog):
+        """DEGRADED BUT FUNCTIONAL: box create must not hard-fail without podman —
+        creating a box works today with no runtime installed — and the skeleton is
+        what makes the binds land, so the box is fully usable, just not litter-proof.
+        """
+        from kanibako.container import ContainerError
+
+        home = tmp_path / "home"
+        home.mkdir()
+        with patch("kanibako.container.ContainerRuntime",
+                   side_effect=ContainerError("no podman")), \
+                caplog.at_level(logging.WARNING):
+            core_defaults.materialize_canon_skeleton(home)
+
+        assert (home / "canon" / "bible" / "general").is_dir(), "skeleton still built"
+        assert any("left writable" in r.message for r in caplog.records), caplog.text
+
+    @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
+    def test_falls_back_with_a_warning_when_unshare_fails(
+        self, tmp_path, caplog, failing: str,
+    ):
+        """docker (no ``unshare``) or a failing call — same degraded shape."""
+        home = tmp_path / "home"
+        home.mkdir()
+        rt = MagicMock()
+        rt.unshare_chown.return_value = True
+        rt.unshare_chmod.return_value = True
+        getattr(rt, failing).return_value = False
+        with patch("kanibako.container.ContainerRuntime", return_value=rt), \
+                caplog.at_level(logging.WARNING):
+            core_defaults.materialize_canon_skeleton(home)
+
+        assert (home / "canon" / "COLLECTION.md").is_file()
+        # ⚑ The two arms say DIFFERENT things and must not be conflated: a failed
+        # CHOWN leaves the tree agent-owned and writable; a failed CHMOD leaves it
+        # root-owned at default modes, where the agent still cannot write.
+        warning = " ".join(r.message for r in caplog.records)
+        if failing == "unshare_chown":
+            assert "left writable" in warning, caplog.text
+        else:
+            assert "root-owned but keep their default modes" in warning, caplog.text
+            assert "left writable" not in warning, caplog.text
+
+    def test_create_runs_the_skeleton_after_the_seed(self):
+        """⚑ ORDER IS LOAD-BEARING. The seeds half seeds ``canon/{notebook,workbook}``
+        UNDER the root this step makes 555; protect first and those copies die with
+        EACCES. Asserted on the SOURCE so it cannot rot silently.
+        """
+        import inspect
+
+        from kanibako.commands.box import _parser
+
+        src = inspect.getsource(_parser.run_create)
+        seed = src.index("seed_new_box(std, config, proj")
+        skeleton = src.index("materialize_canon_skeleton(proj.shell_path)")
+        clear = src.index("_clear_create_entry(std, proj)")
+        assert seed < skeleton, "the skeleton must be materialized AFTER the seed"
+        assert skeleton < clear, (
+            "and INSIDE the create-journal window, so an interrupted create replays it"
+        )
 
 
 # ===========================================================================

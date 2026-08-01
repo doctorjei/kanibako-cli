@@ -1,17 +1,23 @@
-# Operating Guide for Agents in a Kanibako Box
-
-<!--
-Universal operating instructions for agents inside a *Kanibako* box, for all projects/harnesses
-(Claude, Codex, Goose, …). This file is provided by kanibako (read-only) & describes the box
-environment. Your own project-/agent-specific notes belong in your box's own file(s), not here.
--->
----
-
 ## Identity & Environment
+<!--[STOCK]
+# Core Tome: General Operating Guide
+
+> This file is the entrypoint for the "general" chapter of the "bible"; it is read directly from
+> the package's "rom" index and cannot be edited. The core instructions are updated together with
+> the package(s). This file describes the box environment & universal operating instructions for
+> agents inside a *Kanibako* box, for all projects/harnesses (Claude, Codex, Goose, …). Your own
+> system/configuration and/or project-/agent-specific instructions should go in the handbook
+> and/or notebook chapters (not here).
+-->
+
+You are operating within Kanibako, a sandboxed environment for autonomous agents. You are
+**one named instance**, possibly among many on this system.
 
 ### Who you are: read it from the environment
 
-You are **one named instance**, possibly among many that may talk to one other. Two environment variables identify you - your _box name_ and your _agent_ (persona + harness). **Read them; do not guess or hardcode your name** — guessing is the single most common way instances get confused.
+Two environment variables identify you - your _box name_ and what _agent_ (persona + harness) you
+are. **Read them; do not guess or hardcode your name** — guessing is the single most common way
+instances get confused.
 
 | Variable | What it is |
 |----------|-----------|
@@ -29,7 +35,11 @@ For example, if your box is _"walter"_ and your agent is _"white"_, you are **"w
 
 ### Where you are: in a sandbox
 
-You are inside a rootless container with a persistent home, isolated from the host and from other boxes. It is **ephemeral** — the container itself can be stopped, removed, or rebuilt at any time. Only $HOME survives container termination, which resets the entire filesystem (arbitrary paths, `/tmp`, etc.). **Only content in the persistent stores below survives a complete rebuild;** even $HOME may vanish. The goal of this arrangement is to empower the user and agent by mitigating risk.
+You are inside a rootless container with a persistent home, isolated from the host and from other
+boxes. It is **ephemeral** — the container itself can be stopped, removed, or rebuilt at any time.
+Only $HOME survives container termination, which resets the entire filesystem (arbitrary paths,
+`/tmp`, etc.). **Only content in the persistent stores below survives a complete rebuild;** even
+$HOME may vanish. The goal of this arrangement is to empower the user and agent by mitigating risk.
 
 | Path | What it is | Writable? |
 |------|-----------|-----------|
@@ -37,11 +47,10 @@ You are inside a rootless container with a persistent home, isolated from the ho
 | `~/channels` | The inter-instance channel system (see below). | Yes |
 | `~/vault/rw` | Read-write vault — durable scratch/output the host operator can see. | Yes |
 | `~/vault/ro` | Read-only vault — reference material the operator gives you. | No |
-| `~/canon/handbook` | System tome — the user's own directives, owned and edited on the host. | No |
-| `~/canon/notebook` | Local tome — this box's own directives, resources, and history. | Yes |
-| `~/canon/workbook` | This box's process, progress, and state (devnotes, tasks, plans). | Yes |
+| `~/canon` | The instructional canon — tomes and policy per its own COLLECTION/CANON docs. | varies |
 
-`~/canon`, `~/channels`, and `~/vault` are infrastructure; do not treat them as project content or commit them to the repository.
+`~/canon`, `~/channels`, and `~/vault` are infrastructure; do not treat them as project content
+or commit them to the repository.
 
 ---
 
@@ -63,7 +72,8 @@ You are inside a rootless container with a persistent home, isolated from the ho
 
 ### The channel system
 
-Boxes talk to each other through `~/channels/`. It is plain file I/O — **to send, write a file; to receive, read one.** No special command is required.
+Boxes talk to each other through `~/channels/`. It is plain file I/O — **to send, write a file; to
+receive, read one.** No special command is required.
 
 | Channel | Where | Use it for |
 |---------|-------|-----------|
@@ -79,6 +89,7 @@ If your box belongs to a **workset** (a named group of projects), you also get a
 
 ### Session handoff
 
-If you receive `[Agent handoff - Continue prior task(s)]`, your session was just handed to this surface — if you had a task in progress, continue it; if nothing was in progress, no action needed.
+If you receive `[Agent handoff - Continue prior task(s)]`, your session was just handed to this
+surface — if you had a task in progress, continue it; if nothing was in progress, no action needed.
 
 ---

@@ -554,6 +554,18 @@ def run_disconnect(args: argparse.Namespace) -> int:
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        # ⚑ A box tree can refuse deletion (root-owned canon skeleton, or any file a
+        # rootless container wrote as root). ``remove_project`` reports that by
+        # raising, and only ``WorksetError`` was caught — so the PermissionError
+        # escaped as a raw traceback. Report it like every other verb does, with the
+        # escalation the user can actually run.
+        print(f"Error: could not remove project '{member}': {e}", file=sys.stderr)
+        print(
+            f"  Try: podman unshare rm -rf {ws.projects_dir / member}",
+            file=sys.stderr,
+        )
+        return 1
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     return 0
 

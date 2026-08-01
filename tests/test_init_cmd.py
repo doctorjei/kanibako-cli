@@ -107,6 +107,108 @@ class TestRunCreate:
         assert seeded_proj.is_new is True
         assert seeded_proj.mode.value == "standalone"
 
+    def test_create_materializes_the_canon_skeleton(
+        self, config_file, credentials_dir, project_dir,
+    ):
+        """⚑ C-CANON R1b / J-7: ``box create`` materializes the canon SKELETON in the
+        box home — the mountpoints every canon bind lands on at launch.
+
+        Without it, podman would have to create each mountpoint itself, which is
+        exactly the failure the sibling model exists to remove. This is a create-time
+        guarantee, so it belongs in the create suite, not the launch one.
+        """
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        with patch("kanibako.container.ContainerRuntime"):
+            rc = run_create(args)
+        assert rc == 0
+
+        home = project_dir.resolve() / "box_data" / "home"
+        for rel in (
+            "canon",
+            "canon/bible",
+            "canon/bible/general",
+            "canon/bible/agent",
+            "canon/handbook",
+        ):
+            assert (home / rel).is_dir(), rel
+        for rel in (
+            "canon/COLLECTION.md",
+            "canon/bible/ROM_CONTENTS.md",
+            "canon/handbook/SYS_CONTENTS.md",
+        ):
+            assert (home / rel).is_file(), rel
+
+    def test_create_materializes_the_skeleton_for_a_primary_box_too(
+        self, config_file, credentials_dir, project_dir,
+    ):
+        """⚑ COVERAGE GAP the standalone test leaves open: the skeleton must land for
+        DEFAULT/primary boxes as well, whose home lives under the primary workset
+        rather than in-tree. One call site serves both modes — this is what proves it
+        is not accidentally on the standalone branch.
+        """
+        from kanibako.config import load_config
+        from kanibako.paths import load_std_paths, resolve_any_project
+
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", str(project_dir), "--name", "prim"])
+        with patch("kanibako.container.ContainerRuntime"):
+            rc = run_create(args)
+        assert rc == 0
+
+        std = load_std_paths(load_config(config_file))
+        proj = resolve_any_project(std, "prim")
+        assert (proj.shell_path / "canon" / "bible" / "agent").is_dir()
+        assert (proj.shell_path / "canon" / "COLLECTION.md").is_file()
+
+    def test_create_protects_the_skeleton_after_seeding(
+        self, config_file, credentials_dir, project_dir,
+    ):
+        """⚑ ORDER. The ownership pass must run AFTER the seed: the seeds half writes
+        ``canon/{notebook,workbook}`` UNDER the root this step makes 555, so protecting
+        first would kill those copies with EACCES.
+        """
+        calls: list[str] = []
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+
+        from kanibako.commands import start as _start
+
+        real_seed = _start.seed_new_box
+
+        def _seed(*a, **kw):
+            calls.append("seed")
+            return real_seed(*a, **kw)
+
+        rt = patch("kanibako.container.ContainerRuntime")
+        with rt as m_rt, patch.object(_start, "seed_new_box", _seed):
+            m_rt.return_value.unshare_chown.side_effect = (
+                lambda *a, **kw: calls.append("chown") or True
+            )
+            m_rt.return_value.unshare_chmod.return_value = True
+            rc = run_create(args)
+
+        assert rc == 0
+        assert calls == ["seed", "chown"], calls
+
+    def test_create_survives_a_missing_container_runtime(
+        self, config_file, credentials_dir, project_dir,
+    ):
+        """DEGRADED BUT FUNCTIONAL: creating a box works today with no podman
+        installed, and must keep working. The skeleton is still built (so the binds
+        land); only the ownership lockdown is skipped, with a warning."""
+        from kanibako.container import ContainerError
+
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        with patch("kanibako.container.ContainerRuntime",
+                   side_effect=ContainerError("no podman")):
+            rc = run_create(args)
+
+        assert rc == 0
+        home = project_dir.resolve() / "box_data" / "home"
+        assert (home / "canon" / "bible" / "general").is_dir()
+
     def test_create_standalone_cwd(
         self, config_file, credentials_dir, project_dir, monkeypatch, capsys,
     ):

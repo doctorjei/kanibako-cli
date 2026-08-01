@@ -13,6 +13,8 @@ from kanibako.config import (
     load_config,
 )
 from kanibako.config_io import dump_doc
+from kanibako.container import remove_box_tree
+from kanibako.core_defaults import materialize_canon_skeleton
 from kanibako.paths import (
     _STANDALONE_META_DIR,
     BoxMode,
@@ -183,12 +185,18 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             print(f"Error: destination already exists: {new_path}", file=sys.stderr)
             print("  Use --force to overwrite.", file=sys.stderr)
             if not new_path_existed and new_path.is_dir():
-                shutil.rmtree(new_path, ignore_errors=True)
+                # ⚑ The failure points below are all AFTER the skeleton is created,
+                # so a plain rmtree leaves a half-built box behind (silently, under
+                # ignore_errors) instead of rolling the duplicate back cleanly.
+                remove_box_tree(new_path)
             return 1
         except (ProjectError, OSError) as e:
             print(f"Error: {e}", file=sys.stderr)
             if not new_path_existed and new_path.is_dir():
-                shutil.rmtree(new_path, ignore_errors=True)
+                # ⚑ The failure points below are all AFTER the skeleton is created,
+                # so a plain rmtree leaves a half-built box behind (silently, under
+                # ignore_errors) instead of rolling the duplicate back cleanly.
+                remove_box_tree(new_path)
             return 1
 
     print(f"Duplicated project to {target_mode.value} mode:")
@@ -214,6 +222,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
     """
     from kanibako.config import BOX_META_FILE
+    from kanibako.errors import ProjectError
     from kanibako.paths import establish_standalone
     from kanibako.utils import write_project_gitignore
 
@@ -229,8 +238,13 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # Copy the source box metadata into box_data/ — preserving misc session
     # files — but NOT the lock, the home (copied separately below), or the
     # source settings.yaml (which is relocated to the ROOT, drift I).
-    if force and dst_metadata.is_dir():
-        shutil.rmtree(dst_metadata)
+    if force and dst_metadata.is_dir() and not remove_box_tree(dst_metadata):
+        # The copytree below uses dirs_exist_ok=True, so a silently-failed removal
+        # would MERGE the new box into the old one rather than replace it.
+        raise ProjectError(
+            f"could not remove the existing box data at {dst_metadata}.\n"
+            f"Try: podman unshare rm -rf {dst_metadata}"
+        )
     shutil.copytree(
         src_proj.metadata_path, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home", BOX_META_FILE),
@@ -239,8 +253,12 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     if src_proj.shell_path.is_dir():
         if force and dst_shell.is_dir():
-            shutil.rmtree(dst_shell)
+            # The home carries the root-owned canon skeleton (J-7); a bare rmtree
+            # fails with EACCES and strands a half-removed destination.
+            remove_box_tree(dst_shell)
         shutil.copytree(src_proj.shell_path, dst_shell)
+        # copytree carries the skeleton's modes but not its ownership — re-assert.
+        materialize_canon_skeleton(dst_shell)
 
     # Carry the source's box-scope settings into the destination's BOX TIER (M-8) —
     # box tier first, with a pre-P2 standalone source's root-stored ``box.*`` keys
@@ -292,7 +310,7 @@ def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
         pass
     try:
         if dst_project.exists():
-            shutil.rmtree(dst_project)
+            remove_box_tree(dst_project)
     except Exception:  # noqa: BLE001 - best-effort restore
         pass
 
@@ -363,7 +381,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # leaves no trace.
     try:
         if force and dst_project.is_dir():
-            shutil.rmtree(dst_project)
+            remove_box_tree(dst_project)
         shutil.copytree(
             src_meta_dir, dst_project,
             ignore=shutil.ignore_patterns(".kanibako.lock"),
@@ -381,6 +399,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
             dst_home = dst_project / "home"
             if not dst_home.is_dir():
                 shutil.copytree(src_proj.shell_path, dst_home)
+            materialize_canon_skeleton(dst_home)
     except BaseException:
         _unwind_local_name(std, project_name, dst_project)
         raise
@@ -706,11 +725,15 @@ def run_duplicate(args: argparse.Namespace) -> int:
     try:
         # Copy metadata (entire project dir including home/).
         if args.force and new_project_dir.is_dir():
-            shutil.rmtree(new_project_dir)
+            remove_box_tree(new_project_dir)
         shutil.copytree(
             source_project_dir, new_project_dir,
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )
+        # The copy included home/ — re-assert its canon skeleton's ownership (J-7).
+        _dup_home = new_project_dir / "home"
+        if _dup_home.is_dir():
+            materialize_canon_skeleton(_dup_home)
     except BaseException:
         _unwind_local_name(std, dup_name, new_project_dir)
         raise

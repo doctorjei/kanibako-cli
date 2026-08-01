@@ -36,10 +36,11 @@ THE TWO DELIVERY LAYERS
    ``kanibako.commands.start._apply_init_seeds``.
 
 2. BIND-delivered (SOURCE+DEST resolvable host-side; physical bind needs podman):
-   * the RO packaged CANON → TWO binds from ``core_defaults.rom_default_categories``
-     (``canon_collection``, the ``~/canon/COLLECTION.md`` index as a FILE bind, and
-     ``canon_bible``, the whole ``~/canon/bible`` book as a DIRECTORY bind),
-     reconciled through ``reconcile_categories``; plus
+   * the RO packaged CANON → FIVE SIBLING binds from
+     ``core_defaults.rom_default_categories`` (spec §2c, J-7): ``canon_collection``
+     and ``canon_bible_contents`` as FILE binds, plus one whole-directory bind per
+     packaged bible chapter (``canon_bible_{general,workset,box}``), reconciled
+     through ``reconcile_categories``; plus
    * the PLUGIN's bible chapter (``canon_bible_agent``) at ``~/canon/bible/agent``,
      emitted by core from the RESOLVED target and GATED on that plugin shipping
      ``data/rom/directives/ROM_AGENT.md``; and
@@ -51,10 +52,11 @@ THE TWO DELIVERY LAYERS
    native-slot bind is RETIRED (see ``test_instructions_bind.py``), AND the per-file
    rom enumerator that replaced the old whole-dir ``playbook_kanibako`` bind is
    itself retired (C-CANON R1). The guide now reaches the box ONLY as a file INSIDE
-   the whole-dir ``canon_bible`` bind, at
+   the ``canon_bible_general`` CHAPTER bind, at
    ``~/canon/bible/general/directives/ROM_GENERAL.md`` — so this manifest asserts
-   the packaged guide under the bible bind's SOURCE and the bind at its dest, NOT a
-   bind of its own.
+   the packaged guide under that chapter's SOURCE and the bind at its dest, NOT a
+   bind of its own. (Under R1 the same guide rode a whole-dir ``canon_bible`` bind;
+   J-7 replaced that book-level bind with per-chapter siblings.)
 """
 
 from __future__ import annotations
@@ -67,10 +69,12 @@ import pytest
 
 from kanibako import core_defaults
 from kanibako.core_defaults import (
+    BIBLE_AGENT_CHAPTER,
     PLUGIN_CHAPTER_MARKER_REL,
-    ROM_AGENT_CHAPTER_REL,
+    ROM_BIBLE_CHAPTERS,
     ROM_BIBLE_REL,
     ROM_COLLECTION_REL,
+    ROM_CONTENTS_REL,
     ROM_GUIDE_REL,
 )
 from kanibako.paths import resolve_project
@@ -154,22 +158,38 @@ def _seed_source_root(layer: str) -> Path | None:
 _BIND_AGENTS = ("claude", "codex", "goose")
 _KICKOFF_BOX_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
 
-# --- BIND layer: the RO packaged canon (two core binds + the gated plugin one). ---
+# --- BIND layer: the RO packaged canon (five core siblings + the gated plugin one). ---
 #
-# rom-root-relative source paths; each is also its ``~/``-relative guest dest,
-# because the packaged tree MIRRORS the guest layout.
+# ⚑ rom-root-relative source paths are NO LONGER their own ``~``-dests: the packaged
+# tree is FLAT (``rom/{COLLECTION.md, bible/**}``, no ``canon/`` wrapper — J-7 /
+# Jei's samples), while every guest dest lives under ``~/canon``. The two are spelled
+# separately here on purpose, so a relayout that moves one without the other fails.
 _COLLECTION_REL_IN_ROM = ROM_COLLECTION_REL
+_CONTENTS_REL_IN_ROM = ROM_CONTENTS_REL
 _BIBLE_REL_IN_ROM = ROM_BIBLE_REL
-_GUIDE_REL_IN_ROM = ROM_GUIDE_REL  # a file INSIDE the bible bind, not its own bind
+_GUIDE_REL_IN_ROM = ROM_GUIDE_REL  # a file INSIDE the general chapter, not its own bind
 
-_COLLECTION_BOX_DEST = f"{GUEST_HOME}/{_COLLECTION_REL_IN_ROM}"
-_BIBLE_BOX_DEST = f"{GUEST_HOME}/{_BIBLE_REL_IN_ROM}"
-_BIBLE_AGENT_BOX_DEST = f"{GUEST_HOME}/{ROM_AGENT_CHAPTER_REL}"
+_CANON_BOX_ROOT = f"{GUEST_HOME}/canon"
+_BIBLE_AGENT_BOX_DEST = f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{BIBLE_AGENT_CHAPTER}"
 
-_CANON_BIND_KEYS = {
-    "box.bindings.ro.canon_collection": _COLLECTION_BOX_DEST,
-    "box.bindings.ro.canon_bible": _BIBLE_BOX_DEST,
+# key -> (rom-relative SOURCE, guest DEST, source is a directory)
+_CANON_BINDS: dict[str, tuple[str, str, bool]] = {
+    "box.bindings.ro.canon_collection": (
+        _COLLECTION_REL_IN_ROM, f"{_CANON_BOX_ROOT}/{_COLLECTION_REL_IN_ROM}", False,
+    ),
+    "box.bindings.ro.canon_bible_contents": (
+        _CONTENTS_REL_IN_ROM, f"{_CANON_BOX_ROOT}/{_CONTENTS_REL_IN_ROM}", False,
+    ),
+    **{
+        f"box.bindings.ro.canon_bible_{chapter}": (
+            f"{_BIBLE_REL_IN_ROM}/{chapter}",
+            f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{chapter}",
+            True,
+        )
+        for chapter in ROM_BIBLE_CHAPTERS
+    },
 }
+_CANON_BIND_KEYS = {k: v[1] for k, v in _CANON_BINDS.items()}
 
 # The plugin chapter's gate marker, relative to a plugin's ``data/rom`` root.
 _CHAPTER_MARKER = PLUGIN_CHAPTER_MARKER_REL
@@ -265,8 +285,9 @@ class TestSeededManifest:
 
 
 class TestRomBindManifest:
-    """The RO packaged CANON: the COLLECTION.md index and the whole bible book,
-    each declared with a stable key and reconciled to a read-only Mount.
+    """The RO packaged CANON: the COLLECTION.md index, the bible's ROM_CONTENTS.md
+    and one bind per packaged chapter — each declared with a stable key and
+    reconciled to a read-only Mount.
 
     Modeled on ``test_canon_delivery.py::TestCanonBinds``: the binds ride the
     keystore as ``box.bindings.ro.canon_*`` and resolve through the launch cascade →
@@ -307,44 +328,53 @@ class TestRomBindManifest:
             assert by_dest[box_dest].options == "ro", key
         assert not missing, f"packaged canon SOURCE missing for: {missing}"
 
-    def test_index_is_a_file_bind_and_bible_is_a_directory_bind(self):
-        """The shapes are load-bearing: a whole-dir bind on ``~/canon`` itself would
-        freeze the SEEDED notebook/workbook, which is why the index binds as a FILE."""
+    def test_index_and_contents_are_file_binds_and_chapters_are_directory_binds(self):
+        """The shapes are load-bearing: the two indexes mount FILE-onto-file over the
+        skeleton's 0-byte mountpoints, while each chapter replaces a whole directory.
+        Neither book ROOT is ever bound — ``~/canon`` holds the SEEDED
+        notebook/workbook, and ``~/canon/bible`` is R1's retired whole-dir bind."""
         cats, _rec = self._reconcile_rom()
-        assert Path(cats["box.bindings.ro.canon_collection"][0]).is_file()
-        assert Path(cats["box.bindings.ro.canon_bible"][0]).is_dir()
-        assert f"{GUEST_HOME}/canon" not in {v for v in _CANON_BIND_KEYS.values()}
+        for key, (_rel, _dest, is_dir) in _CANON_BINDS.items():
+            assert Path(cats[key][0]).is_dir() == is_dir, key
+        dests = set(_CANON_BIND_KEYS.values())
+        assert f"{GUEST_HOME}/canon" not in dests
+        assert f"{GUEST_HOME}/canon/{_BIBLE_REL_IN_ROM}" not in dests
 
-    def test_box_guide_delivered_inside_the_bible_bind(self):
-        """The guide has NO bind of its own — it is a file inside the whole-dir
-        bible bind, at ``~/canon/bible/general/directives/ROM_GENERAL.md``.
+    def test_box_guide_delivered_inside_the_general_chapter_bind(self):
+        """The guide has NO bind of its own — it is a file inside the ``general``
+        CHAPTER bind, at ``~/canon/bible/general/directives/ROM_GENERAL.md``.
 
         The former per-agent ``@system.instructions`` → native-slot bind is retired,
         and so is the per-file rom enumerator that used to give the guide its own
-        mount. This is the assertion that catches a guide that stops shipping.
+        mount. Under R1 it rode a whole-dir ``canon_bible`` bind; J-7 replaced that
+        with per-chapter siblings, so it now rides the chapter it belongs to. This is
+        the assertion that catches a guide that stops shipping.
         """
         cats, rec = self._reconcile_rom()
-        bible_src = Path(cats["box.bindings.ro.canon_bible"][0])
+        general_key = "box.bindings.ro.canon_bible_general"
+        general_src = Path(cats[general_key][0])
         rom_root = _packaged_shared_bundle()
         assert rom_root is not None
-        assert bible_src == rom_root / _BIBLE_REL_IN_ROM
+        assert general_src == rom_root / f"{_BIBLE_REL_IN_ROM}/general"
 
         guide = rom_root / _GUIDE_REL_IN_ROM
         assert guide.is_file(), f"box guide source missing: {guide}"
-        assert guide.is_relative_to(bible_src), "the guide must ride the bible bind"
+        assert guide.is_relative_to(general_src), "the guide must ride its chapter"
 
         by_dest = {m.box_dest: m for m in rec.mounts}
-        assert _BIBLE_BOX_DEST in by_dest
-        assert _BIBLE_BOX_DEST == f"{GUEST_HOME}/canon/bible"
-        # No separate mount for the guide: it arrives with its book.
-        assert f"{GUEST_HOME}/{_GUIDE_REL_IN_ROM}" not in by_dest
+        general_dest = _CANON_BIND_KEYS[general_key]
+        assert general_dest in by_dest
+        assert general_dest == f"{GUEST_HOME}/canon/bible/general"
+        # No separate mount for the guide: it arrives with its chapter.
+        assert f"{GUEST_HOME}/canon/{_GUIDE_REL_IN_ROM}" not in by_dest
 
     def test_plugin_bible_chapter_declared_and_gate_negative_today(self):
-        """The SEVENTH canon bind (``canon_bible_agent``): R1 lands the emitter and
+        """The SIXTH canon bind (``canon_bible_agent``): R1 lands the emitter and
         the ``Target.rom_root`` interface; R2 fans the CONTENT out to the three
         plugin packages. Until a plugin ships its chapter marker the emitter yields
-        NOTHING — correct, because an empty plugin rom would shadow core's
-        placeholder chapter into a dangling ``@agent/directives/ROM_AGENT.md``.
+        NOTHING — correct, because an ungated empty plugin rom would bind an EMPTY
+        directory over the mountpoint, buying a per-launch missing-source warning for
+        no visible difference (J-7 retired core's placeholder chapter entirely).
 
         ⚑ WHEN R2 LANDS this test does not need editing: it asserts the CONTRACT on
         both sides of the gate, so a harness that starts shipping a chapter is
@@ -359,7 +389,8 @@ class TestRomBindManifest:
             if (root / _CHAPTER_MARKER).is_file():
                 assert set(cats) == {"box.bindings.ro.canon_bible_agent"}, agent
                 src, dest, opts = cats["box.bindings.ro.canon_bible_agent"]
-                assert Path(src) == root and dest == f"~/{ROM_AGENT_CHAPTER_REL}"
+                assert Path(src) == root
+                assert dest == _BIBLE_AGENT_BOX_DEST.replace(GUEST_HOME, "~", 1)
                 assert opts == "ro"
                 assert _BIBLE_AGENT_BOX_DEST == f"{GUEST_HOME}/canon/bible/agent"
             else:

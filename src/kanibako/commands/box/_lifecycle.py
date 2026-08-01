@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Callable
 
 from kanibako.box_identity import validate_box_name
+from kanibako.container import remove_box_tree
+from kanibako.core_defaults import materialize_canon_skeleton
 from kanibako.config import (
     BOX_META_FILE,
     KanibakoConfig,
@@ -475,6 +477,8 @@ def copy_into_workset(
         if shell_path.is_dir():
             dst_shell = dst_project / "home"
             shutil.copytree(shell_path, dst_shell, dirs_exist_ok=True)
+            # Copy carries the skeleton's modes but not its ownership — re-assert.
+            materialize_canon_skeleton(dst_shell)
 
         if copy_workspace:
             dst_workspace = ws.workspaces_dir / proj_name
@@ -935,6 +939,16 @@ def _apply_ownership_and_markers(
 
 # -- per-target-mode ownership steps ---------------------------------------
 
+def _unwind_box_tree(path: Path) -> None:
+    """Best-effort box-tree removal shaped for ``_Unwind.push``.
+
+    ``remove_box_tree`` returns a bool; ``_Unwind`` wants ``Callable[[], None]``.
+    A named wrapper rather than an inline lambda that discards the result, because
+    "swallow this value" is exactly the kind of thing worth saying out loud.
+    """
+    remove_box_tree(path)
+
+
 def _copy_metadata(
     src_metadata: Path,
     src_shell: Path,
@@ -954,11 +968,19 @@ def _copy_metadata(
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
-    unwind.push(lambda: shutil.rmtree(dst_metadata, ignore_errors=True))
+    # ⚑ The unwind must use the SAME escalation as every other box-tree deletion:
+    # this function creates the destination's canon skeleton four lines down, so a
+    # failed move/convert unwinding with a plain rmtree would silently fail to clean
+    # up its own destination (ignore_errors swallows the PermissionError).
+    unwind.push(lambda: _unwind_box_tree(dst_metadata))
 
     dst_shell = dst_metadata / home_leaf
     if src_shell.is_dir():
         shutil.copytree(src_shell, dst_shell, dirs_exist_ok=True)
+        # ⚑ copytree reproduces the canon skeleton's 555 MODES but never its
+        # OWNERSHIP, so the copy lands host-user-owned — which in-box is the agent,
+        # who can chmod it back.  Re-assert (idempotent; J-7).
+        materialize_canon_skeleton(dst_shell)
     return dst_shell
 
 
@@ -1026,7 +1048,9 @@ def _remove_old_metadata(
         root = state.metadata_path
         box_data = root / _STANDALONE_META_DIR
         if box_data.is_dir():
-            shutil.rmtree(box_data, ignore_errors=True)
+            # Carries the box home + its root-owned canon skeleton (J-7): a bare
+            # rmtree fails with EACCES and leaves the old box behind.
+            remove_box_tree(box_data)
         settings = root / BOX_META_FILE
         if settings.is_file():
             settings.unlink()
@@ -1048,7 +1072,7 @@ def _remove_old_metadata(
         if reused_in_place:
             return
         if state.metadata_path.is_dir():
-            shutil.rmtree(state.metadata_path, ignore_errors=True)
+            remove_box_tree(state.metadata_path)
         # PRIMARY vault lives under @config.primary_workset/vault/{ro,rw}/<name>
         # (Phase 5), so it is NOT under metadata_path — remove the per-box ro/rw
         # dirs explicitly (NOT their shared parent, which holds every box's
@@ -1064,7 +1088,7 @@ def _remove_old_metadata(
             try:
                 state.shell_path.relative_to(state.metadata_path)
             except ValueError:
-                shutil.rmtree(state.shell_path, ignore_errors=True)
+                remove_box_tree(state.shell_path)
         return
 
     # workset source
@@ -1491,6 +1515,8 @@ def _to_workset(
     dst_shell = dst_project / "home"
     if shell_source.is_dir():
         shutil.copytree(shell_source, dst_shell, dirs_exist_ok=True)
+        # Copy carries the skeleton's modes but not its ownership — re-assert (J-7).
+        materialize_canon_skeleton(dst_shell)
 
     if copy_workspace:
         dst_workspace = target_ws.workspaces_dir / new_name

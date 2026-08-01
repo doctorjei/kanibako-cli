@@ -20,10 +20,11 @@ inspect the exited container's Mounts/Env.
 ``_ensure_initialized`` early-returns and the packaged-template install is skipped.
 Each test runs the real ``install_packaged_templates`` against the fixture data dir
 first — exactly what first-init does — so the install + bind path is genuinely
-exercised.  (The box guide itself is delivered live inside the whole-dir canon RO
-bind at ``~/canon/bible`` — the guide sits at
-``bible/general/directives/ROM_GENERAL.md`` — plus launch-flatten, not installed
-to a host path.)
+exercised.  (The box guide itself is delivered live inside the ``canon_bible_general``
+CHAPTER RO bind at ``~/canon/bible/general`` — the guide sits at
+``directives/ROM_GENERAL.md`` inside it — plus launch-flatten, not installed to a
+host path.  J-7 replaced R1's single whole-dir ``~/canon/bible`` bind with these
+per-chapter siblings.)
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from tests.e2e.conftest import (
     _active_env,
     _podman,
     e2e_requires,
+    podman_exec,
     run_kanibako,
 )
 
@@ -107,27 +109,78 @@ DIRECTIVE_IMPORT = "@~/canon/COLLECTION.md"
 # so its REMOVAL (migration M-12) is a deliberate edit here, not a silent drift.
 LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
 
-# The two CORE canon binds (spec §2c), asserted on the REAL container Mounts — the
-# physical materialization host-side tests cannot see.  ⚑ COLLECTION.md is a FILE
-# bind precisely so ~/canon itself stays WRITABLE for the seeded notebook/workbook.
-CANON_COLLECTION_DEST = f"{GUEST_HOME}/canon/COLLECTION.md"
-CANON_BIBLE_DEST = f"{GUEST_HOME}/canon/bible"
+# The FIVE CORE canon binds (spec §2c, J-7 SIBLING model), asserted on the REAL
+# container Mounts — the physical materialization host-side tests cannot see.
+# ⚑ The two indexes are FILE binds, landing file-onto-file on the 0-byte mountpoints
+# the box-create skeleton made; each bible chapter is its own directory bind.  NEITHER
+# book ROOT is bound: ~/canon holds the SEEDED notebook/workbook, and ~/canon/bible is
+# R1's retired whole-dir bind (re-introducing it would put the agent chapter's
+# mountpoint back inside a bind SOURCE, which is what J-7 removed).
+CANON_CORE_DESTS = (
+    f"{GUEST_HOME}/canon/COLLECTION.md",
+    f"{GUEST_HOME}/canon/bible/ROM_CONTENTS.md",
+    f"{GUEST_HOME}/canon/bible/general",
+    f"{GUEST_HOME}/canon/bible/workset",
+    f"{GUEST_HOME}/canon/bible/box",
+)
+CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/bible")
 
 
 def assert_canon_binds_ro(cfg: dict) -> None:
-    """The packaged canon is mounted READ-ONLY at both declared guest slots.
+    """The packaged canon is mounted READ-ONLY at all five declared guest slots.
 
     Host-side tests prove the SOURCE→DEST mapping; only a real container proves the
-    binds actually materialize — and that ``~/canon`` itself is NOT mounted, which
-    is what keeps the seeded books writable.
+    binds actually materialize onto the pre-created mountpoints, and that neither
+    book root is mounted.
     """
-    for dest in (CANON_COLLECTION_DEST, CANON_BIBLE_DEST):
+    for dest in CANON_CORE_DESTS:
         m = find_mount(cfg, dest)
         assert m is not None, f"canon bind missing at {dest}"
         assert m.get("RW") is False, f"canon bind at {dest} must be read-only"
-    assert find_mount(cfg, f"{GUEST_HOME}/canon") is None, (
-        "~/canon must NOT be bound — it has to stay writable for the seeded "
-        "notebook/workbook books"
+    for root in CANON_UNBOUND_ROOTS:
+        assert find_mount(cfg, root) is None, (
+            f"{root} must NOT be bound — the canon is delivered as SIBLINGS onto "
+            "pre-created mountpoints (J-7), and ~/canon must stay traversable to the "
+            "seeded notebook/workbook books"
+        )
+
+
+def assert_canon_locked_down(box: str) -> None:
+    """⚑ THE OWNERSHIP FLIP (J-7) — the half no mount table can show.
+
+    Two assertions, and the SECOND is the one bifrost exists to settle:
+
+    1. ``mkdir ~/canon/scratch`` is REFUSED. Under R1 it SUCCEEDED — that is exactly
+       the stray-file pollution the skeleton exists to prevent, so its refusal is the
+       behavioural contract.
+    2. ``~/canon`` and ``~/canon/bible`` are owned by uid 0 IN-BOX. Without this a
+       wrong ``UNSHARE_BOX_ROOT_UID`` landing on some other non-agent subuid would
+       satisfy assertion 1 and sail through the entire suite — and that uid is
+       precisely the derivation this e2e is here to prove (``chown 0:0`` inside
+       ``podman unshare`` is the REAL HOST USER, whom ``keep-id:uid=1000`` maps to
+       the in-box agent; container-root is ns-uid 1).
+
+    ⚑ NOT asserted here: that ``~/canon/{notebook,workbook}`` are writable. Nothing
+    in R1b CREATES them — the template relayout that seeds them is the seeds half's
+    (M-11) — and ``~/canon`` is root-owned 555, so an agent ``mkdir`` of them is
+    correctly refused today. This assertion returns WITH the seeds half.
+    """
+    refused = podman_exec(
+        container_name(box),
+        ["sh", "-c", "mkdir ~/canon/scratch 2>&1; echo rc=$?"],
+    ).stdout
+    assert "rc=0" not in refused, (
+        f"~/canon must be UNWRITABLE from inside the box, got: {refused!r}"
+    )
+
+    owners = podman_exec(
+        container_name(box),
+        ["sh", "-c", "stat -c %u ~/canon ~/canon/bible"],
+    ).stdout.split()
+    assert owners == ["0", "0"], (
+        f"the canon book roots must be ROOT-OWNED in-box, got uids {owners!r}. "
+        "A non-zero non-1000 uid means UNSHARE_BOX_ROOT_UID landed on the wrong "
+        "subuid; 1000 means it landed on the agent (the chown 0:0 trap)."
     )
 
 
@@ -157,6 +210,7 @@ def test_claude_kickoff_loader_delivery(e2e_env):
         assert DIRECTIVE_IMPORT in kickoff
         assert LEGACY_DIRECTIVE_IMPORT in kickoff
         assert_canon_binds_ro(cfg)
+        assert_canon_locked_down(box)
     finally:
         rm(container_name(box))
 
@@ -192,6 +246,7 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
         assert DIRECTIVE_IMPORT in kickoff
         assert LEGACY_DIRECTIVE_IMPORT in kickoff
         assert_canon_binds_ro(cfg)
+        assert_canon_locked_down(box)
         assert "AGENTS.md" in json.loads(
             env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")
         )

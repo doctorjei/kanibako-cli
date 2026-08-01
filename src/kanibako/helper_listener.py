@@ -303,9 +303,22 @@ class HelperHub:
         if model:
             cli_args.extend(["--model", model])
 
+        # ⚑ Canon re-protect, same as the primary launch seam.  A helper home has no
+        # canon skeleton TODAY, so this is a no-op — but ``:U`` re-chowns whatever
+        # IS in the bind source at every container creation, so the day a helper home
+        # gains one, the seam that forgot to pass this would silently be the one
+        # unprotected launch path.  Passing it now costs nothing and removes that.
+        helper_home = helpers_dir_host / str(helper_num)
+
+        def _helper_reprotect() -> None:
+            from kanibako.core_defaults import materialize_canon_skeleton_if_present
+
+            materialize_canon_skeleton_if_present(helper_home)
+
         try:
             rc = ctx.runtime.run(
                 ctx.image,
+                post_start=_helper_reprotect,
                 shell_path=helpers_dir_host / str(helper_num),
                 project_path=helpers_dir_host / str(helper_num) / "workspace",
                 vault_ro_path=helpers_dir_host / str(helper_num) / "vault" / "ro",

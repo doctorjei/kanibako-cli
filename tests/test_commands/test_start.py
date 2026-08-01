@@ -208,6 +208,44 @@ class TestTargetWarnings:
             assert rc == 0
             m.runtime.run.assert_called_once()
 
+    def test_launch_passes_the_canon_reprotect_hook_to_run(self, start_mocks):
+        """⚑ THE WIRING. ``runtime.run`` gets a ``post_start`` callable, and that
+        callable re-protects the canon skeleton of THIS box's home.
+
+        This is the mutation-honest half: deleting ``post_start=`` from the
+        ``runtime.run(...)`` call in ``_run_container`` makes this RED. Without it
+        the whole re-protect mechanism could be wired correctly inside
+        ``ContainerRuntime`` and never actually reached from a launch.
+        """
+        from unittest.mock import patch as _patch
+
+        with start_mocks() as m:
+            m.target.detect.return_value = None
+            rc = _run_container(
+                project_dir=None,
+                entrypoint=None,
+                image_override=None,
+                new_session=False,
+                safe_mode=False,
+                resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 0
+            hook = m.runtime.run.call_args.kwargs.get("post_start")
+            assert callable(hook), (
+                "runtime.run must receive a post_start hook — podman's :U re-chowns "
+                "the home bind source at container creation, undoing the canon "
+                "ownership box create established"
+            )
+
+            # And it must re-protect THIS box's home, not merely be some callable.
+            with _patch(
+                "kanibako.core_defaults.materialize_canon_skeleton"
+            ) as m_protect:
+                hook()
+            m_protect.assert_called_once()
+            assert m_protect.call_args.args[0] == m.proj.shell_path
+
     def test_no_agent_target_still_launches(self, start_mocks):
         """Container should still launch with no_agent target."""
         with start_mocks() as m:

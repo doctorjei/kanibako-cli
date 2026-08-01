@@ -516,8 +516,18 @@ class TestArchiveRestoreRoundTrip:
             )
             assert rc == 0
 
-            # Verify data landed in project B's settings
+            # ⚑ THIS ASSERTION USED TO PASS OVER A BUG. project_b was never
+            # registered, so BOTH the write (inside _restore_one) and this read went
+            # through the SAME `boxes/__unregistered__` sentinel — the content check
+            # was satisfied while the data sat in a shared junk dir and no box
+            # existed. Assert the DESTINATION, not just the bytes.
             proj_b = resolve_project(std, config, project_dir=str(project_b), initialize=False)
+            assert proj_b.name, "extract must leave project_b with a registered box"
+            assert proj_b.metadata_path == std.boxes / proj_b.name
+            assert not (std.boxes / "__unregistered__").exists(), (
+                "the name-assignment sentinel must never become a real box dir"
+            )
+
             session_file_b = proj_b.shell_path / ".claude" / "session.txt"
             assert session_file_b.exists()
             assert session_file_b.read_text() == session_data
