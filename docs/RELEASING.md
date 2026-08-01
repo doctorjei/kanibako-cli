@@ -1,125 +1,137 @@
 # Releasing kanibako
 
-This is the operator-facing guide to the **rc-then-promote** release pipeline.
+This is the operator-facing guide to the kanibako **PyPI** release pipeline.
 A fresh operator should be able to cut a release from this document alone.
 
-The core property of this model: **the bits that get tested are the bits that
-get shipped.** A release candidate is built, validated, and pushed as
-immutable, version-scoped artifacts; the final release does not rebuild
-anything — it *promotes* those exact artifacts.
+Two different things get released, from two different repos:
+
+- **The Python packages** — this repo,
+  [`doctorjei/kanibako-cli`](https://github.com/doctorjei/kanibako-cli), driven
+  by `.github/workflows/release.yml`. That is what this document covers.
+- **The container images** — the sibling
+  [`doctorjei/kanibako-images`](https://github.com/doctorjei/kanibako-images)
+  repo, which has its own tag-driven `release.yml`. See
+  [section 6](#6-container-images-live-in-kanibako-images).
+
+Two properties hold this pipeline together:
+
+1. **A pre-release never happens by accident.** Pushing an rc tag uploads
+   *nothing*; publishing an rc or a dev build is always an explicit manual
+   workflow dispatch.
+2. **A production release ships the tree as-is, and only if it is green.** The
+   promote job does no version stamping and refuses to publish unless every
+   required Tests job succeeded for that exact commit.
 
 ---
 
-## 1. Overview
+## 1. Overview — what triggers what
 
-A release is driven by **two git tags** on the **same commit**:
+`release.yml` is triggered by **all `v*` tag pushes** and by
+**`workflow_dispatch`** (inputs: `publish`, boolean, default `false`; `agent`,
+string, default empty). Every job self-gates:
 
-| Tag | Shape | What CI does |
+| Job | Fires when | What it does |
 | --- | --- | --- |
-| Release candidate | `v<ver>-rc<n>` (e.g. `v1.2.5-rc1`) | Builds + validates artifacts. Pushes rc-scoped image tags `ghcr.io/doctorjei/kanibako-<variant>:<ver>-rc<n>`. Builds the 4 PyPI packages and runs `twine check` (**no upload**). Creates a **DRAFT** GitHub prerelease. **Nothing** touches `:latest`, `:edge`, or prod PyPI. |
-| Release | `v<ver>` (e.g. `v1.2.5`) | Does **NOT** rebuild images. **Promotes** the rc images server-side (`docker buildx imagetools create`) to `:<ver>` + `:latest`. Publishes the 4 PyPI packages to **prod** (OIDC trusted publishing). Publishes the GitHub release and deletes the rc draft. |
+| `rc-pypi-check` | **push** of an rc tag `v<ver>-rc<n>` | Validates the tag shape, builds all five packages, runs `twine check`. **No upload.** |
+| `rc-release` | **push** of an rc tag (after `rc-pypi-check`) | Creates a **DRAFT** GitHub prerelease with generated notes (guarded, so a re-run reuses an existing draft). |
+| `dev` | **manual dispatch**, no `agent` input | Builds a pre-release — `<X.Y.Z>rc<N>` when dispatched on an rc tag, `<base>.dev<run_number>` on a branch. Uploads to PyPI **only** when `publish=true`. |
+| `promote` | push of a **bare** `v<ver>` tag (no `-rc`) | Waits for green Tests jobs on the tag's SHA, then builds and publishes all five packages to **prod PyPI** (OIDC) and publishes the GitHub release, deleting the rc draft. |
+| `publish-agent` | **manual dispatch** with `agent=agent-goose\|agent-codex` | Builds and publishes that one agent package at its static version. |
 
-The pipeline lives in `.github/workflows/release.yml`, triggered on **all
-`v*` tags**, self-gated per job by tag shape:
+Two consequences worth internalising:
 
-- `rc-pypi-check`, `rc-images`, `rc-release` run when the tag name contains
-  `-rc`.
-- `promote` runs when the tag starts with `v` and does **not** contain `-rc`.
+- **An rc tag push publishes nothing to PyPI.** It twine-checks the build and
+  drafts a GitHub prerelease, and that is all. Getting an rc onto PyPI is a
+  separate, deliberate dispatch ([section 3.4](#34-dispatch-the-publish)).
+- **The rc path is not self-gated on tests.** Only `promote` waits for green
+  Tests. Before dispatching an rc publish, the releaser confirms the tag's
+  Tests run by hand ([section 3.3](#33-confirm-the-tags-tests-run-is-green)).
 
-The standard test gates in `.github/workflows/test.yml` (`test`,
-`integration`, `e2e`) also run on every `v*` tag push, independently of
-`release.yml`.
-
----
-
-## 2. Image tag semantics (the dual-track model)
-
-There are three distinct image tracks. Keeping them separate is what lets the
-promote step ship exactly what the rc tested.
-
-- **`:edge`** — the moving **dev** tag. `build-images.yml` pushes it for the 4
-  base variants (`min`, `oci`, `lxc`, `vm`) on every push to `main` that
-  touches `src/kanibako/containers/**`. The **e2e CI job pulls `:edge`**, so
-  e2e always exercises current `main`.
-- **`:<ver>-rc<n>`** — the **rc** images, pushed by the rc-tag build
-  (`rc-images` job). These are the artifacts that later get promoted.
-- **`:<ver>` + `:latest`** — set **only** by the release-tag `promote` step.
-  `:latest` therefore equals the **last promoted release**, *not* the tip of
-  `main`.
-
-So: `main` moves `:edge`; a release moves `:latest`. They are deliberately
-decoupled.
-
-**Templates** (one per `src/kanibako/containers/Containerfile.template-*`;
-currently `jvm`, `systems`, `android`, `dotnet`, `js`) are **not published** to
-any registry. They are built **locally** on the user's host via
-`kanibako rig prep <name>`. `build-images.yml` on `main`
-pushes runs a dynamic `discover-templates` → `build-templates` matrix that
-**build-verifies** each template (building it and running its toolchain smoke
-checks, declared via `# kanibako-template-check:` headers) but does **not** push
-the resulting images. Adding a `Containerfile.template-*` file extends this
-verification with no workflow edit. Since they are never published, templates
-are **not a release artifact** and have no part in the promote step.
-
-The four base variants and their droste base images (from `release.yml` /
-`build-images.yml`):
-
-| Variant | Base image |
-| --- | --- |
-| `min` | `ghcr.io/doctorjei/droste-seed:1.1.0` |
-| `oci` | `ghcr.io/doctorjei/droste-fiber:1.1.0` |
-| `lxc` | `ghcr.io/doctorjei/droste-thread:1.1.0` |
-| `vm`  | `ghcr.io/doctorjei/droste-hair:1.1.0` |
+The test gates live in `.github/workflows/test.yml` — workflow name **Tests**,
+jobs `test` (ruff + mypy + unit pytest), `integration`, and `e2e`. It runs on
+pushes to `main`, on pull requests, and on every `v*` tag. `e2e` is tag-gated:
+it runs only on a `v*` tag or a dispatch with `run_e2e=true`, and it exercises
+the **HEAD** code by pulling `ghcr.io/doctorjei/kanibako-oci:latest` and
+overlaying a freshly built wheel onto it (`tests/e2e/Containerfile.head`).
 
 ---
 
-## 3. The PyPI packages
+## 2. The packages
 
-Four packages are built and published on a release. They share one version,
-bumped together by `.bumpversion.cfg`:
+Five distributions are built from this repo. Both `scripts/build-all.sh` and
+every build step in `release.yml` use exactly this list:
 
-| Package | Source dir |
-| --- | --- |
-| `kanibako-cli` | `.` (repo root) |
-| `kanibako-agent-claude` | `packages/agent-claude` |
-| `kanibako` (meta) | `packages/meta` |
+| Package | Source dir | Versioning |
+| --- | --- | --- |
+| `kanibako-cli` | `.` (repo root) | the train (`.bumpversion.cfg`) |
+| `kanibako-agent-claude` | `packages/agent-claude` | the train (`.bumpversion.cfg`) |
+| `kanibako` (meta) | `packages/meta` | the train (`.bumpversion.cfg`) |
+| `kanibako-agent-goose` | `packages/agent-goose` | **independent** (currently `0.3.0`) |
+| `kanibako-agent-codex` | `packages/agent-codex` | **independent** (currently `0.3.0`) |
 
-`kanibako-agent-goose` is **excluded** — it versions independently (`0.1.0`),
-is off-PyPI, and has no image. It is not part of this pipeline.
+`.bumpversion.cfg` stamps five files — `pyproject.toml`,
+`src/kanibako/__init__.py`, `packages/agent-claude/pyproject.toml`,
+`packages/agent-claude/src/kanibako/plugins/claude/__init__.py`, and
+`packages/meta/pyproject.toml`. The goose and codex packages are deliberately
+**not** in it: they version independently and are published either alongside a
+train release or on their own ([section 5](#5-publishing-a-single-agent-package)).
 
-Both `scripts/build-all.sh` and the `release.yml` build steps use exactly this
-package list.
+**Meta pinning.** In-tree, `packages/meta` depends on `kanibako-cli` as a
+*range*, so a source checkout or a dev flow never breaks. Every publish path in
+`release.yml` rewrites that one line to an exact `kanibako-cli==<version>` pin
+at build time, so a freshly published meta can never pair with a stale cli
+during PyPI index propagation. The contract is asserted by
+`tests/test_meta_pin.py`. Meta's *agent* dependencies stay `>=` floors — which
+is why the `dev` and `promote` jobs also build goose and codex and upload them
+with `skip-existing`: the versions meta's floors point at must be resolvable on
+the index, but an unchanged agent version must not fail the publish.
+
+**Version stamping, by path:**
+
+- `dev` (rc/dev pre-releases) — **stamps** the computed version with anchored
+  `sed` into the three train `pyproject.toml`s and the two `__init__.py`s (no
+  commit, no tag). goose and codex are **not** stamped; they build at their
+  static `pyproject.toml` version.
+- `promote` (production) — **stamps nothing**. It builds the checked-out tree
+  exactly as tagged. ⚑ **The in-tree versions must already equal the tag** at
+  tag time (see [section 4.0](#40-preconditions)).
+
+**Config-compat constants.** `src/kanibako/__init__.py` also carries
+`SETUP_BCV` / `SETUP_FCV`, the two-tier setup-compatibility markers. They are
+independent of the release version and are bumped only when a release changes
+setup: `SETUP_FCV` whenever setup adds a feature/case (older configs get a
+non-blocking nudge), `SETUP_BCV` only when a config can no longer be
+auto-filled (older configs get a hard error). Most releases bump neither.
 
 ---
 
-## 4. Step-by-step release procedure
+## 3. Cutting and publishing a release candidate
 
-Example throughout: cutting **v1.2.5** from a `v1.2.5-rc1` candidate.
+Example throughout: cutting and publishing **`v1.8.0-rc1`**.
 
-### 4.0 Prerequisites
+### 3.0 Prerequisites
 
 - A clean `main` (no modified tracked files; untracked files are fine).
 - The **one-time** PyPI Trusted Publisher config from
-  [section 7](#7-prerequisites-one-time-operatoradmin) must already be in
-  place, or the promote PyPI publish will fail.
+  [section 9](#9-prerequisites-one-time-operatoradmin) must already be in
+  place, or every publish path fails with `invalid-publisher`.
 
-### 4.1 Mint the release candidate
+### 3.1 Mint the release candidate
 
 On a clean `main`:
 
 ```bash
 scripts/release-rc.sh <patch|minor|major> [--rc N]
 # e.g.
-scripts/release-rc.sh patch          # -> bumps to 1.2.5, tags v1.2.5-rc1
+scripts/release-rc.sh minor          # -> bumps to 1.8.0, tags v1.8.0-rc1
 ```
 
 This helper:
 
 1. Verifies the working tree has no modified tracked files.
 2. Runs `bump2version --no-tag <part>`, which bumps every version file in
-   `.bumpversion.cfg` and makes **one commit** titled `Release v<ver>` (it does
-   **not** auto-tag in this mode).
-3. Reads the new version from `.bumpversion.cfg` and creates the
+   `.bumpversion.cfg` and makes **one commit** titled `Release v<ver>`.
+3. Reads the new version back from `.bumpversion.cfg` and creates the
    `v<ver>-rc<N>` git tag on that commit.
 4. Prints the exact push commands and a reminder about rc discipline.
 
@@ -131,160 +143,333 @@ Notes:
   candidate fails and you cut a fresh one.
 - `--version X.Y.Z` sets the version explicitly (a part is still required and
   defaults to `patch`).
+- `--dry-run` prints every command it would run without executing anything.
 - `bump2version` is not on `PATH` in this environment — it lives in
   `~/.venv/bin/`. The helper locates it automatically (`command -v
   bump2version`/`bumpversion`, then `~/.venv/bin/bump2version`).
-- `--dry-run` prints every command it would run without executing anything.
+- ⚑ **Never run a bare `bump2version <part>`.** `.bumpversion.cfg` sets
+  `tag = True` with `tag_name = v{new_version}`, so a bare run creates a
+  `v<ver>` tag — which is the **production** trigger. The helper always passes
+  `--no-tag`; if you bump by hand, pass it yourself.
 
-### 4.2 Push the branch + rc tag
+### 3.2 Push the branch + rc tag
 
 The helper prints these; run them:
 
 ```bash
-git push origin main && git push origin v1.2.5-rc1
+git push origin main && git push origin v1.8.0-rc1
 ```
 
-### 4.3 Wait for GREEN CI on the rc tag
+This fires `rc-pypi-check` + `rc-release` (build, `twine check`, draft
+prerelease) and the **Tests** workflow, including `e2e`. Nothing is uploaded.
 
-This is the discipline point — **stop and wait here.** Both workflows must go
-green on the rc tag:
+### 3.3 Confirm the tag's Tests run is GREEN
 
-- `test.yml` — `test` + `integration` + `e2e`.
-- `release.yml` — the rc jobs: `rc-pypi-check`, `rc-images`, `rc-release`
-  (build + push rc images, `twine check`, draft prerelease).
+This is the discipline point — **stop and check here.** Unlike `promote`, the
+rc publish is *not* gated on tests; you are the gate.
 
-Then **review the draft GitHub release notes** for `v1.2.5-rc1`.
+```bash
+SHA=$(git rev-parse "v1.8.0-rc1^{}")
+gh api "repos/doctorjei/kanibako-cli/actions/workflows/test.yml/runs?head_sha=$SHA" \
+  --jq '.workflow_runs[0] | "\(.status) \(.conclusion) \(.html_url)"'
+```
 
-### 4.4 Promote (only after green)
+⚑ **Filter by workflow, not by SHA alone.** Several workflows fire on the same
+commit; a bare "what concluded at this SHA" query can report a run that is not
+**Tests**. The query above (and `gh run list --workflow=test.yml --commit
+$SHA`) scopes to the right workflow. To be thorough, check the individual job
+conclusions — `test`, `integration`, `e2e` — the same three the promote gate
+requires:
+
+```bash
+RUN=$(gh api "repos/doctorjei/kanibako-cli/actions/workflows/test.yml/runs?head_sha=$SHA" \
+  --jq '.workflow_runs[0].id')
+gh api "repos/doctorjei/kanibako-cli/actions/runs/$RUN/jobs?per_page=100" \
+  --jq '.jobs[] | "\(.name) \(.conclusion)"'
+```
+
+Also confirm `release.yml`'s rc jobs went green and **review the draft GitHub
+release notes** for `v1.8.0-rc1`.
+
+### 3.4 Dispatch the publish
+
+Publishing the rc to PyPI is an explicit manual dispatch **on the rc tag**:
+
+```bash
+gh workflow run release.yml --ref v1.8.0-rc1 -f publish=true
+```
+
+- The dispatch **ref** decides the version: an rc tag `v<X.Y.Z>-rc<N>` builds
+  the PEP 440 pre-release `<X.Y.Z>rc<N>` — never the bare `<X.Y.Z>`, which is
+  reserved for the gated prod promote.
+- `kanibako-cli`, `kanibako-agent-claude` and `kanibako` (meta) are stamped to
+  `<X.Y.Z>rc<N>`; `kanibako-agent-goose` and `kanibako-agent-codex` are built
+  and published **unstamped**, at their own static versions, with
+  `skip-existing`.
+- `publish=false` (the default) builds and `twine check`s without uploading —
+  useful for smoke-testing a build or a new Trusted Publisher.
+- ⚑ `workflow_dispatch` runs the workflow file **as-at the dispatched ref**. An
+  rc tag cut before a pipeline change carries the *old* workflow.
+
+### 3.5 Dev builds off a branch
+
+The same job serves an on-demand dev channel: dispatch with the ref left at a
+branch instead of a tag.
+
+```bash
+gh workflow run release.yml -f publish=true          # ref defaults to main
+```
+
+The version becomes `<base>.dev<run_number>`, where `<base>` is the repo
+version from `pyproject.toml` with any `.dev` suffix stripped and
+`<run_number>` is the workflow run number — monotonic, so each upload is unique
+on PyPI. The stamp is ephemeral: no commit, no tag; `main` keeps its plain
+`X.Y.Z` baseline.
+
+Per PEP 440 both `X.Y.ZrcN` and `X.Y.Z.devN` sort **below** `X.Y.Z`, so neither
+is installed by default. Install one explicitly:
+
+```bash
+pip install --pre kanibako            # newest pre-release
+pip install kanibako==1.8.0rc1        # an exact pre-release pin
+```
+
+### 3.6 Verify
+
+```bash
+pip download --no-deps --no-cache-dir --pre -d /tmp/verify kanibako-cli==1.8.0rc1
+```
+
+Use `--no-cache-dir` when verifying a just-published version, and see the
+**simple-index propagation gotcha** in
+[section 6](#6-container-images-live-in-kanibako-images) before chaining
+anything (like an image build) onto a fresh publish.
+
+*Proven on `v1.8.0-rc1` (2026-08-01): tag pushed, Tests confirmed green by
+hand, publish dispatched on the tag — `kanibako-cli`, `kanibako-agent-claude`
+and `kanibako` went out as `1.8.0rc1` pre-releases, while
+`kanibako-agent-goose` and `kanibako-agent-codex` published unstamped at
+`0.3.0`.*
+
+---
+
+## 4. Promoting to production
+
+### 4.0 Preconditions
+
+- ⚑ **The in-tree versions must already equal the release version.** The
+  `promote` job stamps nothing; it publishes the tree as tagged. Coming out of
+  the rc flow this is automatic — `release-rc.sh` bumped the tree to `X.Y.Z`
+  before tagging `vX.Y.Z-rc1`, and you promote the same commit.
+- The rc has been published and soaked to your satisfaction.
+- The promote commit must have a **green Tests run**; the job re-checks and
+  will refuse otherwise.
+
+### 4.1 Tag and push
 
 With `HEAD` still at the rc commit:
 
 ```bash
-scripts/release-rc.sh --promote 1.2.5   # tags v1.2.5 on the SAME commit (no bump)
-git push origin v1.2.5
+scripts/release-rc.sh --promote 1.8.0   # tags v1.8.0 on the SAME commit (no bump)
+git push origin v1.8.0
 ```
 
 `--promote` performs **no version bump**. It just tags `v<ver>` on the current
 `HEAD`, which must be the rc commit.
 
-### 4.5 The promote job runs
+### 4.2 What the promote job does
 
-Pushing `v1.2.5` triggers `release.yml`'s `promote` job, which:
+Pushing the bare `v1.8.0` tag triggers `release.yml`'s `promote` job
+(`environment: pypi`), which:
 
-1. Validates the tag shape (`v<MAJOR>.<MINOR>.<PATCH>`, no `-rc`).
-2. **Finds the matching rc tag** (`v1.2.5-rc*`, highest by version sort) and
-   **hard-fails if none exists**.
-3. Verifies the rc images exist (`docker buildx imagetools inspect` for each of
-   the 4 variants) and **fails fast** if any is missing.
-4. **Promotes** rc → `:<ver>` + `:latest` via `docker buildx imagetools create`
-   (a bit-identical, server-side multi-tag copy — no pull/push round-trip, no
-   templates).
-5. Builds the 4 PyPI packages and **publishes to prod PyPI** via OIDC trusted
-   publishing (`pypa/gh-action-pypi-publish`, `environment: pypi`, no token).
-6. Publishes the GitHub release for `v1.2.5` and **deletes the rc draft**.
+1. **Gates on GREEN Tests for this exact commit.** It polls the **Tests**
+   workflow run for the tag's SHA (30s interval, 45-minute deadline) until it
+   completes, then requires `test`, `integration` **and** `e2e` to each report
+   `conclusion == success`. A missing, skipped or renamed required job counts
+   as a failure — the gate is fail-safe by design, because both workflows fire
+   independently on the tag and a red Tests job would otherwise not block a
+   prod publish.
+2. Validates the tag shape (`v<MAJOR>.<MINOR>.<PATCH>`, no `-rc`) and derives
+   `VER`.
+3. Pins `packages/meta`'s `kanibako-cli` dependency to `==$VER` at build time.
+4. Builds all five packages from the tagged tree.
+5. **Publishes to prod PyPI** via OIDC trusted publishing
+   (`pypa/gh-action-pypi-publish`, `skip-existing: true`, no token) — so the
+   independently-versioned agents are skipped rather than failing when their
+   version is unchanged.
+6. Publishes the GitHub release with generated notes and **deletes** any
+   matching `v<ver>-rc*` draft prereleases.
 
-### 4.6 Verify + broadcast
+### 4.3 Verify + broadcast
 
-- PyPI shows `1.2.5` for all four packages.
-- `ghcr.io/doctorjei/kanibako-oci:1.2.5` and
-  `ghcr.io/doctorjei/kanibako-oci:latest` resolve (e.g.
-  `docker buildx imagetools inspect ...`).
-- Then **broadcast** to the cluster (droste / gemet) per project convention.
-
----
-
-## 5. Development builds
-
-Alongside the official tag-driven flow, `release.yml` exposes an **on-demand
-development channel** for publishing `.dev` pre-releases of the three PyPI
-packages — useful for smoke-testing a build (or a new Trusted Publisher) before
-cutting a final release.
-
-- **Trigger:** GitHub → **Actions** → **Release** → **Run workflow**
-  (`workflow_dispatch`). This is decoupled from any git tag.
-- **`publish` input** (boolean, default `false`):
-  - `false` — build all three packages and run `twine check` only; **nothing**
-    is uploaded.
-  - `true` — additionally upload to **prod PyPI** via the same OIDC Trusted
-    Publisher used by `promote` (`environment: pypi`).
-- **Versioning:** the build is stamped `X.Y.Z.dev<run_number>`, where `X.Y.Z`
-  is the repo version (`pyproject.toml`, pre-release suffix stripped) and
-  `<run_number>` is the workflow run number — monotonic, so each upload is
-  unique on PyPI. The stamp is ephemeral (no commit, no tag); `main` keeps its
-  plain `X.Y.Z` baseline.
-- **Pre-release semantics:** per PEP 440, `X.Y.Z.devN < X.Y.Z`, so dev builds
-  are **not** installed by default. Install one explicitly with `--pre`:
+- Prod PyPI shows `<ver>` for `kanibako-cli`, `kanibako-agent-claude` and
+  `kanibako`, and the agent packages at their own versions:
 
   ```bash
-  pip install --pre kanibako-cli      # or: pip install --pre kanibako
+  pip download --no-deps --no-cache-dir -d /tmp/verify kanibako==1.8.0
   ```
 
-The official rc→promote flow ([section 4](#4-step-by-step-release-procedure))
-is unaffected by this channel.
+- The GitHub release for `v<ver>` is published and the rc draft is gone.
+- If the release needs new images, hand off to `kanibako-images`
+  ([section 6](#6-container-images-live-in-kanibako-images)).
+- Then broadcast per project convention.
 
 ---
 
-## 6. The wait-for-green / rc-discipline rule
+## 5. Publishing a single agent package
 
-**NEVER push the rc tag and the release tag back-to-back.**
+`kanibako-agent-goose` and `kanibako-agent-codex` version independently of the
+train, so they have their own on-demand path:
 
-The entire point of this pipeline is to let the rc go **green first**, so that
-the promoted artifacts are exactly the validated ones. The `release-rc.sh`
-helper never pushes for you precisely so you stay in control of timing.
+```bash
+gh workflow run release.yml --ref main -f agent=agent-codex
+```
 
-The pipeline enforces this from the server side too:
+The `publish-agent` job validates the input (only `agent-goose` and
+`agent-codex` are accepted), builds **only** that package into `dist/`, and
+publishes it to prod PyPI at its static `pyproject.toml` version with
+`skip-existing`. There is no `publish` toggle on this path and no version
+stamping — bump the package's `pyproject.toml` version in a commit first.
 
-- `promote` **hard-fails** if no matching `v<ver>-rc*` tag exists.
-- `promote` **fails fast** if the rc images for any variant are missing.
-
-So a stray `v<ver>` tag with no green rc behind it cannot ship.
+**Ordering across the base/plugin contract.** Meta's agent dependencies are
+`>=` floors, so an agent version that meta requires must be on the index **no
+later than** the meta that points at it — which is exactly why the `dev` and
+`promote` jobs build goose and codex alongside the train and upload them with
+`skip-existing`. When a plugin bump has to go out ahead of, or between, train
+releases, publish the plugin through this path first and let the base train
+follow. The converse constraint also holds: a plugin change that depends on
+base behaviour which only exists on `main` is not usable until the **base** is
+released too — "it's on main" is not "it's shipped".
 
 ---
 
-## 7. Prerequisites (one-time, operator/admin)
+## 6. Container images live in `kanibako-images`
+
+Image building left this repo at the 2026-06-12 split. `release.yml` here
+publishes **PyPI packages only**; there is no image job, no GHCR push, and the
+promote step has no image-promotion phase.
+
+The four base variants (`min`, `oci`, `lxc`, `vm`) are built and published from
+[`doctorjei/kanibako-images`](https://github.com/doctorjei/kanibako-images),
+which mirrors this rc-then-promote shape in its own `release.yml`: an rc tag
+(or a dispatch supplying `version` + `rc`) builds all four variants and
+publishes `:<ver>-rc<n>` plus a guarded `:edge` advance, and the promote path
+**digest-copies** those exact manifests to `:<ver>`, `:latest` and `:edge` with
+no rebuild. Consult that repo for the authoritative procedure.
+
+Two couplings matter to a cli releaser:
+
+- **The image build pins the cli release.** Each variant is built with
+  `--build-arg KANIBAKO_CLI_VERSION=<ver>` where `<ver>` is the bare version,
+  so **`kanibako-cli <ver>` must already be published on PyPI** before the
+  image rc build runs. The cli promote comes first; images follow.
+- ⚑ **PyPI simple-index propagation race.** Immediately after a publish, an
+  image build's `pip install kanibako-cli==<ver>` can still fail with "No
+  matching distribution" — pip's simple index
+  (`https://pypi.org/simple/kanibako-cli/`) is a separate cache from the JSON
+  API, so the JSON API showing the version is **not** sufficient. Gate the
+  image build on the simple index instead:
+
+  ```bash
+  curl -s https://pypi.org/simple/kanibako-cli/ | grep 1.8.0-
+  ```
+
+- The `e2e` job in `test.yml` consumes a published image
+  (`ghcr.io/doctorjei/kanibako-oci:latest`) as the base it overlays HEAD onto,
+  so images and cli are coupled in the test direction too.
+
+---
+
+## 7. Bundled templates
+
+The template Containerfiles (`src/kanibako/containers/Containerfile.template-*`
+— currently `android`, `dotnet`, `js`, `jvm`, `systems`) still ship inside the
+`kanibako-cli` package. They are **not published** to any registry: they are
+built locally on the user's host via `kanibako rig prep <name>`.
+
+`.github/workflows/template-verify.yml` build-verifies them on changes to the
+template Containerfiles: a `discover` job globs the directory into a matrix (so
+adding a `Containerfile.template-*` extends the verification with no workflow
+edit), and each matrix job builds the template and runs the smoke checks that
+the file declares in its leading `# kanibako-template-check:` headers. A
+template with zero declared checks is a hard error.
+
+Since they are never published, templates are **not a release artifact** and
+have no part in any publish or promote step.
+
+---
+
+## 8. Discipline rules
+
+- **Never push the rc tag and the release tag back-to-back.** The point of the
+  rc is to be published, soaked and confirmed green *before* the same commit is
+  promoted. `release-rc.sh` never pushes for you precisely so you control the
+  timing.
+- **Confirm Tests green before dispatching an rc publish.** The rc path has no
+  server-side gate; only the prod promote does.
+- **Never run a bare `bump2version`** — `tag = True` in `.bumpversion.cfg`
+  means it creates a `v<ver>` tag, which *is* the production trigger. Use
+  `release-rc.sh`, or pass `--no-tag` yourself.
+- **Do not dispatch `release.yml` on a bare `v<ver>` tag ref.** The `promote`
+  job gates on the ref shape, not on the event, so a dispatch on a non-rc `v`
+  tag runs the production promote (and the `dev` job alongside it). Dispatch on
+  a branch (dev) or on an rc tag (rc) only.
+- **A promote publishes the tree, not the tag's intent.** If the in-tree
+  versions do not already equal the tag, the promote publishes the wrong
+  version numbers. Check before tagging.
+
+---
+
+## 9. Prerequisites (one-time, operator/admin)
 
 ### PyPI Trusted Publishers
 
-Each of the **three** PyPI projects must have a Trusted Publisher configured so
-the `promote` job can publish via OIDC:
+Every package that `release.yml` uploads needs a Trusted Publisher on PyPI so
+the OIDC publish works — all five:
 
 - `kanibako-cli`
 - `kanibako-agent-claude`
 - `kanibako`
+- `kanibako-agent-goose`
+- `kanibako-agent-codex`
 
-For **each** project, add a Trusted Publisher with:
+For **each** project, configure:
 
 | Field | Value |
 | --- | --- |
 | Owner | `doctorjei` |
-| Repository | `kanibako` |
+| Repository | `kanibako-cli` |
 | Workflow | `release.yml` |
 | Environment | `pypi` |
 
-This is **additive** to any existing `test.yml` publisher — keep both. Without
-the `release.yml` publisher, the promote PyPI publish fails with
+⚑ The repository field is **`kanibako-cli`** — the repo was renamed at the
+2026-06-12 split. Without a matching publisher, the upload fails with
 `invalid-publisher`.
 
 This must be done manually in the **PyPI web UI**; it cannot be automated.
 
-### GHCR
+### GitHub
 
-GHCR publishing (rc image push + promote `imagetools` copy) uses the workflow's
-built-in `GITHUB_TOKEN`. **No extra secret is required.**
+The draft-prerelease and release-publishing steps use the workflow's built-in
+`GITHUB_TOKEN` (`permissions: contents: write`, `id-token: write`). **No extra
+secret is required** in this repo. GHCR credentials are a `kanibako-images`
+concern.
 
 ---
 
-## 8. Deferred / out of scope
+## 10. Known gaps
 
-- **Templates** — bundled templates (one per `Containerfile.template-*`) are
-  built locally and CI-verified (build + toolchain smoke checks) by
-  `build-images.yml`; they are **not published** to any registry and so are not
-  a release artifact. Nothing template-related is part of the promote step.
-- **Tag-immutability rulesets** — making release tags (`v<ver>`) immutable
-  while rc tags (`v<ver>-rc<n>`) stay mutable is a separate repo-settings
-  follow-up, not yet applied.
-- **`kanibako-agent-goose`** — versions independently (`0.1.0`), off-PyPI, no
-  image; excluded from this pipeline entirely.
+- **`template-verify.yml` builds its base from
+  `src/kanibako/containers/Containerfile.kanibako`, which no longer exists in
+  this repo** (only the `Containerfile.template-*` files remain; the base
+  Containerfile moved to `kanibako-images`). The workflow's "Build kanibako-oci
+  base" step cannot succeed as written until it is re-pointed at a published
+  base image or the file is restored.
+- **The bundled template Containerfiles still ship inside the cli package**
+  (`pyproject.toml` package-data `"kanibako.containers" = ["Containerfile.*",
+  ...]`) even though image building moved to `kanibako-images`. Nothing in the
+  release pipeline depends on that; it is noted here so a releaser is not
+  surprised to find Containerfiles in a PyPI artifact.
 
 ---
 
