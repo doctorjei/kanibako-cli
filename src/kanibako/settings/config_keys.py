@@ -36,9 +36,15 @@ above nothing but the keyspace primitives, so it must not import either of them.
 
 from __future__ import annotations
 
+import re
 from enum import Enum
+from pathlib import Path  # noqa: F401  (annotations)
+from typing import Mapping
 
+from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
+from kanibako.errors import ConfigError
 from kanibako.settings.config import coerce_bool
+from kanibako.settings.config_io import render_stored_scalar
 from kanibako.settings.settings_store import SCOPE_CONTAINMENT
 
 
@@ -451,3 +457,461 @@ _FLAT_TO_CANONICAL: dict[str, str] = {
 def _route_key(canonical: str) -> str:
     """Map a flat-underscore key spelling to its canonical routing key."""
     return _FLAT_TO_CANONICAL.get(canonical, canonical)
+
+
+# ---------------------------------------------------------------------------
+# Canonical key resolution
+# ---------------------------------------------------------------------------
+
+def resolve_key(raw: str) -> str:
+    """Return the canonical config key for a user-supplied key name.
+
+    Most config keys are already canonical (dot-notation like ``box.image`` or
+    ``box.enable_vault``, or a raw flat key) and pass through unchanged; this is the
+    single canonicalization seam every get/set/reset path routes through.
+
+    The ONE canonicalization it performs (block B1): for a per-persona agent key
+    ``agent.<node>.<key>`` it canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘``
+    (``agent.navigator+claude.endpoint`` -> ``agent.navigator℘claude.endpoint``),
+    so the write/get/reset all target the canonical ``agents/<node>/`` slot the
+    resolver reads.  The node segment is canonicalized as a WHOLE via
+    :func:`canonicalize_agent_ref` (agent_ref design law: never re-split a ref on
+    the raw separator); the tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``)
+    is preserved verbatim.  A malformed node is left RAW here — the set/reset
+    persona branch surfaces the parse error (and a bad node never silently swaps).
+    Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.
+
+    The per-node DESCRIPTOR bind key ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0)
+    is canonicalized the SAME way (``<node>`` ``+`` -> ``℘``) and is matched BEFORE the
+    persona form — a bind named after a persona state leaf
+    (``agent.<node>.bindings.ro.model``) would otherwise be mis-parsed by
+    :func:`_parse_persona_agent_key` (``model`` is a state leaf). The ``bindings.
+    {ro,rw}`` category segment + the bind name are preserved verbatim.
+    """
+    bind = parse_agent_node_bind_key(raw)
+    if bind is not None:
+        node_raw, cat, name = bind
+        try:
+            node = canonicalize_agent_ref(node_raw)
+        except ConfigError:
+            return raw
+        return f"agent.{node}.{cat}.{name}"
+    secret = _parse_agent_node_secret_key(raw)
+    if secret is not None:
+        node_raw, var = secret
+        try:
+            node = canonicalize_agent_ref(node_raw)
+        except ConfigError:
+            return raw
+        return f"agent.{node}.secret_path.{var}"
+    parsed = _parse_persona_agent_key(raw)
+    if parsed is None:
+        return raw
+    node_raw, tail = parsed
+    try:
+        node = canonicalize_agent_ref(node_raw)
+    except ConfigError:
+        return raw
+    return f"agent.{node}.{tail}"
+
+# ---------------------------------------------------------------------------
+# Per-persona agent keys (block B1) — ``agent.<node>.<key>`` set on the agent's
+# OWN settings file ``agents/<node>/settings.yaml``.
+# ---------------------------------------------------------------------------
+
+# The settable per-persona agent leaves: the FLAT agent-state knobs (``_is_agent_
+# setting`` set) plus the ``env.`` section — the EXACT shape
+# ``agent_config.load_agent_config`` reads back (``AgentConfig.state`` / ``.env``),
+# so a value ``set`` here is what the launch snapshot resolves for the persona
+# (endpoint via ``effective_behavior``). The former ``env_file.`` section is RENAMED
+# to the DISCRIMINATED ``agent.<node>.secret_path.<VAR>`` SECRET category (routed by
+# ``_is_agent_node_secret_key`` → ``_node_secret_target``, NOT here — a clean break;
+# ``env_file`` only shipped rc0-rc2, no alias).
+_PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
+    {
+        "endpoint", "model", "continue_mode", "auto_approve", "allow_helpers",
+        "bootstrap",
+        # Per-agent template SOURCE (template-trio, spec §2a/§2d L598; Q2 2026-07-09
+        # "agent = persona + harness"). A settable STRING-path leaf on the agent
+        # (persona+harness) node — default @config.agents/<harness>/template — read
+        # by the layer-2 seed ``agent.<a>.seeded.template = (@agent.<a>.template, ~)``,
+        # so repointing it reroutes the agent template seed.
+        "template",
+        # Per-agent CANON CONTRIBUTION root (spec §2d L1000) — the source of the ro
+        # ``canon_hb_agent`` bind, i.e. WHERE THIS AGENT'S HANDBOOK CHAPTER LIVES.
+        # A settable STRING-path leaf on the agent (persona+harness) node, wired
+        # here for the same reason ``template`` is: both are per-agent path SOURCES a
+        # user may legitimately relocate, and both default off the agent's store.
+        # ⚑ Its FLOOR default is chosen per J-1: the node's own store when that store
+        # provides a canon, else the ``agent.default`` tier — and a value set HERE
+        # beats the floor either way, which is what makes the tier a fallback rather
+        # than a ceiling.
+        "canon",
+    }
+)
+_PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
+
+# The RESERVED any-agent tier name (mirrors ``settings_assemble._AGENT_DEFAULT_SUB``
+# / ``config.read_agent_settings``: "no real agent may be named default"). It is
+# NOT a persona node — an ``agent.default.<key>`` write is refused (the any-agent
+# default is the BARE key), so nothing lands at a never-read ``agents/default/``.
+AGENT_DEFAULT_SUB = "default"
+
+
+def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
+    """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
+
+    Returns ``None`` when *key* is not a settable per-persona agent key. The
+    settable *tail* forms are a FLAT state leaf (``endpoint`` / ``model`` /
+    ``continue_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>``
+    pointer.  The SECRET pointer ``secret_path.<VAR>`` is NOT parsed here — it is
+    matched EARLIER (``_is_agent_node_secret_key``) and stored DISCRIMINATED (spec §2a;
+    it replaced the rc-only ``env_file.<VAR>``, which routed here).  The node segment
+    is returned VERBATIM (possibly a ``+`` form, possibly itself dotted — a
+    persona/harness segment may contain ``.``) for :func:`canonicalize_agent_ref` to
+    canonicalize as a WHOLE.
+
+    Parsed from the RIGHT: the closed set of settable tails is unambiguous, so
+    everything left of a recognised tail is the node.  ``env`` is matched BEFORE the
+    flat leaves so ``agent.<node>.env.MODEL`` is an env var named ``MODEL``, never
+    mis-split as the state leaf ``model``.
+    """
+    if not key.startswith("agent."):
+        return None
+    rest = key[len("agent."):]
+    parts = rest.split(".")
+    # env.<VAR> — the section is the 2nd-from-last segment.
+    if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
+        return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
+    # Flat state leaf — the last segment.
+    if len(parts) >= 2 and parts[-1] in _PERSONA_STATE_LEAVES:
+        return (".".join(parts[:-1]), parts[-1])
+    return None
+
+
+def _is_persona_agent_key(key: str) -> bool:
+    """True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1)."""
+    return _parse_persona_agent_key(key) is not None
+
+
+def is_auto_approve_key(canonical: str) -> bool:
+    """True iff *canonical* is the auth-critical ``auto_approve`` permission key.
+
+    Matches BOTH settable forms: the BARE any-agent ``agent.default`` tier key
+    (``canonical == "auto_approve"``, routed via :func:`_is_agent_setting`) and a
+    per-persona override ``agent.<node>.auto_approve`` (routed via
+    :func:`_is_persona_agent_key`).  Used to WRITE-VALIDATE the value at ``config
+    set`` time: ``auto_approve`` drives ``--dangerously-skip-permissions`` and is
+    ``coerce_bool``'d at LAUNCH with an UNRECOGNISED value falling back to the
+    PERMISSIVE default (True) — so a typo (``flase``) must be REJECTED here, never
+    silently resolved permissive (the unsafe direction).  Only ``auto_approve``
+    gets this guard (Jei: only the auth-critical key), not ``allow_helpers`` /
+    ``model``.
+    """
+    if canonical == "auto_approve":
+        return True
+    parsed = _parse_persona_agent_key(canonical)
+    return parsed is not None and parsed[1] == "auto_approve"
+
+# ---------------------------------------------------------------------------
+# Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``
+# repointed (source-only) on the agent's OWN settings file, via the CATEGORY path.
+# ---------------------------------------------------------------------------
+
+# ``agent.<node>.bindings.{ro,rw}.<name>`` — the per-node descriptor delivery bind
+# (claude launcher/share …). ``<node>`` is NON-greedy so the FIRST ``.bindings.
+# {ro,rw}.`` segment splits node from name (a bind literally NAMED ``model`` — the
+# name group — is thus ``agent.<node>.bindings.ro.model``, disambiguated from the
+# persona state leaf ``agent.<node>.model`` by the ``bindings.{ro,rw}`` segment).
+# NOTE: the agent tier is DISCRIMINATED — ``agent.<node>`` is the ONLY agent form
+# (§2d / §0 L21); an undiscriminated ``agent.<category>`` is not a key and
+# ``BIND_KEY_RE`` refuses it. ``BIND_KEY_RE`` DOES match this node form (it is a
+# well-formed category key), so both predicates fire — every dispatch checks the
+# node-bind FIRST. This does not match the ``box.agent.bindings.*`` box-mirror form
+# (a ``box`` top-token).
+_AGENT_NODE_BIND_RE = re.compile(
+    r"^agent\.(?P<node>.+?)\.(?P<cat>bindings\.(?:ro|rw))\.(?P<name>.+)$"
+)
+
+
+def parse_agent_node_bind_key(key: str) -> "tuple[str, str, str] | None":
+    """Split ``agent.<node>.bindings.{ro,rw}.<name>`` into ``(node_raw, cat, name)``.
+
+    Returns ``None`` when *key* is not a per-node descriptor bind key. ``cat`` is the
+    ``bindings.ro`` / ``bindings.rw`` segment; ``node_raw`` is VERBATIM (possibly a
+    ``+`` form) for :func:`canonicalize_agent_ref` to canonicalize as a WHOLE. Parsed
+    BEFORE :func:`_parse_persona_agent_key` everywhere so a bind named after a persona
+    state leaf (``agent.claude.bindings.ro.model``) is a BIND, never mis-split as the
+    state key ``agent.claude.model``.
+    """
+    m = _AGENT_NODE_BIND_RE.match(key)
+    if m is None:
+        return None
+    return m.group("node"), m.group("cat"), m.group("name")
+
+
+def _is_agent_node_bind_key(key: str) -> bool:
+    """True iff *key* is a per-node descriptor bind ``agent.<node>.bindings.*`` key
+    (item-0). Checked BEFORE :func:`_is_persona_agent_key` in the routing dispatch."""
+    return parse_agent_node_bind_key(key) is not None
+
+# ``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a, 2026-
+# 07-06). Like the descriptor bind key it is DISCRIMINATED (node in the key) and
+# stored UNDER the ``agent.<node>.secret_path`` sub-table in the node's OWN settings
+# file — the shape ``_agent_partial`` reads into the launch cascade — but the value
+# is a SCALAR host PATH, not a Bind tuple (so it routes via a plain scalar write, NOT
+# ``_set_category_value``/``repoint_host_src``). ``<node>`` is NON-greedy so the
+# FIRST ``.secret_path.`` splits node from VAR; VAR is the env-name shape (no dots).
+_AGENT_NODE_SECRET_RE = re.compile(
+    r"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+)
+
+
+def _parse_agent_node_secret_key(key: str) -> "tuple[str, str] | None":
+    """Split ``agent.<node>.secret_path.<VAR>`` into ``(node_raw, var)``, or ``None``.
+
+    ``node_raw`` is VERBATIM (possibly a ``+`` form) for :func:`canonicalize_agent_ref`
+    to canonicalize as a WHOLE. Parsed BEFORE :func:`_parse_persona_agent_key` so a
+    secret pointer never falls through to the (now env_file-less) persona branch.
+    """
+    m = _AGENT_NODE_SECRET_RE.match(key)
+    if m is None:
+        return None
+    return m.group("node"), m.group("var")
+
+
+def _is_agent_node_secret_key(key: str) -> bool:
+    """True iff *key* is a per-node ``agent.<node>.secret_path.<VAR>`` key (SECRET
+    category). Checked BEFORE the persona + path-category branches in dispatch."""
+    return _parse_agent_node_secret_key(key) is not None
+
+def _persona_display_key(canonical: str) -> str:
+    """Render a canonical persona key for USER-FACING output (``℘`` -> ``+``)."""
+    parsed = _parse_persona_agent_key(canonical)
+    if parsed is None:
+        return canonical
+    node, tail = parsed
+    return f"agent.{display_agent_ref(node)}.{tail}"
+
+
+def _node_secret_display_key(canonical: str) -> str:
+    """Render a canonical ``agent.<node>.secret_path.<VAR>`` key for USER-FACING
+    output (``℘`` -> ``+`` on the node segment)."""
+    parsed = _parse_agent_node_secret_key(canonical)
+    if parsed is None:
+        return canonical
+    node, var = parsed
+    return f"agent.{display_agent_ref(node)}.secret_path.{var}"
+
+def _floor_bind_display(
+    canonical: str, default_categories: "Mapping[str, object] | None",
+) -> "tuple[str, str] | None":
+    """The reverted-to descriptor FLOOR ``(value, tier)`` a reset of a floor bind
+    lands on (item 3), or ``None`` when no registry is threaded / no floor entry.
+
+    *default_categories* is the SAME context-light floor registry the set path folds
+    (``agent_representation.agent_default_bind_keys`` for a node bind). Its element-0
+    host_src is a SET-TIME SENTINEL (``core_defaults.FLOOR_PLACEHOLDER_SRC``) — the
+    real host source is re-resolved at LAUNCH (``detect()``), so it is NEVER printed
+    as a value (evidence-honesty: the exact fabricate-a-value lie the honest-reset
+    fix targets). We report the STATIC part that actually reverts — the descriptor
+    destination [+ options] — and name the tier so the user knows the host source is
+    launch-resolved. A non-tuple / absent / placeholder-only entry → ``None`` (keep
+    the cleared-only form).
+    """
+    from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
+
+    if not default_categories:
+        return None
+    val = default_categories.get(canonical)
+    if not isinstance(val, (list, tuple)) or len(val) < 2:
+        return None
+    parts = list(val)
+    if parts and parts[0] == FLOOR_PLACEHOLDER_SRC:
+        parts = parts[1:]  # drop the set-time sentinel — it is not a launch value
+    if not parts:
+        return None
+    rendered = render_stored_scalar(parts)
+    if rendered is None:
+        return None
+    return (rendered, "descriptor floor; host re-resolved at launch")
+
+def _is_env_key(key: str) -> bool:
+    return key.startswith("env.")
+
+
+def _is_agent_setting(key: str) -> bool:
+    """Keys that belong in the agent section of settings.yaml."""
+    return key in {
+        "model", "continue_mode", "auto_approve", "endpoint", "allow_helpers",
+        "bootstrap",
+    }
+
+def _is_box_agent_key(key: str) -> bool:
+    """The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b).
+
+    ⮕ **P7 RETIRED THE SETTABLE MIRROR.** ``box.agent.<key>`` was the box's
+    box-scoped override of its active agent's settings subtree. Spec §2b L709
+    replaces it with the RO read-back ``meta.box.agent.<key>`` (readable, never
+    settable — ``meta.*`` is RO by contract), and a box tweaks its agent with the
+    §2h request ``pref.agent.<agent>.<key>``, which targets the AGENT tier properly
+    instead of smuggling a box-scope key into it.
+
+    This predicate now exists ONLY to RECOGNISE the retired spelling so set / reset
+    / get can refuse it with the cure (:func:`box_agent_retired_error`) rather than
+    fail as an unknown key — a user who has the old form in muscle memory must be
+    TOLD what replaced it.
+    """
+    return key.startswith("box.agent.")
+
+
+def box_agent_retired_error(
+    canonical: str, *, verb: str, active_agent: str | None = None,
+) -> str:
+    """The refusal + cure for a RETIRED ``box.agent.<key>`` op (P7, spec §2b).
+
+    ⚑ The pointer names what ``--effective`` ACTUALLY RENDERS — the ``pref`` block,
+    which prints each REQUEST beside the value it produced. It deliberately does NOT
+    promise ``meta.box.agent.<key>``: that key is real in the snapshot (the RO
+    read-back) but no renderer emits it today, and a cure that points at output the
+    user will not find is worse than no pointer.
+    """
+    tail = canonical[len("box.agent."):]
+    agent = active_agent or "<agent>"
+    return (
+        f"Error: '{canonical}' is RETIRED — a box no longer carries a settable "
+        f"mirror of its agent's settings (spec §2b). Tweak the agent for THIS box "
+        f"with the request '{verb} pref.agent.{agent}.{tail}' (spec §2h); "
+        f"'kanibako box config --effective' then shows that request beside the "
+        f"value it produced."
+    )
+
+# The command scopes that CANNOT write a BARE agent behavior key: a bare key
+# (``_is_agent_setting``) targets the any-agent ``agent.default`` tier, which both
+# box (agent ⊃ box) and workset (agent ⊃ workset) CONTAIN — so a bare write from
+# either is UPWARD and is DROPPED at launch by
+# ``settings_assemble._drop_upward_scopes`` (a silent no-op the CLI reported as
+# "Set"). The two differ in the CURE: a BOX has a single active agent, so it is
+# redirected to the spec §2h request ``pref.agent.<active>.<key>``
+# (``box_agent_redirect_key``); a WORKSET spans many boxes/agents, so there is no
+# single agent to redirect TO — it simply refuses (configure at system scope for
+# all agents, or per-box via the §2h request).
+_NO_BARE_AGENT_KEY_SCOPES: "frozenset[ConfigLevel]" = frozenset(
+    {ConfigLevel.box, ConfigLevel.workset}
+)
+
+
+def box_agent_redirect_key(
+    canonical: str,
+    command_scope: "ConfigLevel | None",
+    active_agent: str | None = None,
+) -> str | None:
+    """The canonical ``pref.agent.<active>.<key>`` request a BARE agent behavior key
+    redirects to at BOX command scope, or ``None`` when this case does not apply.
+
+    ⮕ **P7 RETARGETED THIS.** It used to name the settable ``box.agent.<key>``
+    mirror, which spec §2b retired; the box-scoped way to set an agent value is now
+    the §2h request. *active_agent* is the box's resolved agent NODE — required,
+    because the request targets a DISCRIMINATED agent slot (there is no bare
+    ``agent.<key>``, §0 L21). With no resolvable agent there is nothing to redirect
+    to, so this returns ``None`` and the caller falls through to the ordinary
+    bare-key refusal, which names the shape.
+
+    A BARE agent behavior key — the WHOLE :func:`_is_agent_setting` family
+    (``model`` / ``auto_approve`` / ``bootstrap`` / ``endpoint`` /
+    ``allow_helpers`` / ``continue_mode``), uniformly, NOT a per-key list — targets
+    the any-agent ``agent.default`` tier. From a BOX that is an UPWARD write (agent
+    ⊃ box in the containment order): the §0 directional rule REFUSES it (spec §2h
+    replaced the old "box tweaks its agent through its own mirror" device).
+    The old code wrote ``agent.default.<key>`` into the BOX settings file, which
+    ``settings_assemble._drop_upward_scopes`` then DROPPED at launch (a box file may
+    not set a containing ``agent`` table) — a silent no-op the CLI still reported as
+    "Set". So the bare form at box scope is REDIRECTED to the box's request
+    ``pref.agent.<active>.<key>``: ``set``/``reset`` REFUSE (the value lives at, and
+    is set/reset at, the request), ``get`` reads/names the request.
+
+    Fires ONLY for the bare form at BOX command scope (the mirror is box-specific).
+    A WORKSET bare agent key is caught by :func:`bare_agent_key_scope_error`
+    (refuse, no mirror). The already-qualified ``box.agent.<key>`` is
+    ``_is_box_agent_key`` (NOT ``_is_agent_setting``) — a legal SAME-scope box
+    write; a per-agent ``agent.<name>.<key>`` is ``_is_persona_agent_key``; a bare
+    key at SYSTEM scope is a DOWNWARD write (agent is a scope the system CONTAINS).
+    None of those match, so all stay unaffected.
+    """
+    if (
+        command_scope is ConfigLevel.box
+        and _is_agent_setting(canonical)
+        and active_agent
+    ):
+        return f"pref.agent.{active_agent}.{canonical}"
+    return None
+
+
+def bare_agent_key_scope_error(
+    canonical: str,
+    command_scope: "ConfigLevel | None",
+    *,
+    verb: str,
+    active_agent: str | None = None,
+) -> str | None:
+    """Error string refusing a WRITE-shaped op on a BARE agent behavior key at a
+    scope that cannot write it (box / workset), or ``None`` when it is permitted.
+
+    A BARE agent behavior key (:func:`_is_agent_setting`, the whole family —
+    uniform, NOT a per-key list) targets the any-agent ``agent.default`` tier, which
+    both BOX (agent ⊃ box) and WORKSET (agent ⊃ workset) CONTAIN. A bare write from
+    either is UPWARD — ``settings_assemble._drop_upward_scopes`` DROPS it at launch,
+    a silent no-op the old CLI reported as "Set". So it is refused HERE, uniformly
+    for ``set`` / ``reset`` (writes) at both scopes, and for the workset ``get``
+    (the box ``get`` instead REDIRECTS via :func:`box_agent_redirect_key`).
+
+    *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``).
+    *active_agent* names the box's resolved agent in the cure so the suggested
+    command is COPY-PASTEABLE (``pref.agent.claude.model``) rather than a shape to
+    fill in; the placeholder is used only where no agent resolves.
+
+    * **BOX** — a box has a single active agent, so the refusal TEACHES the §2h
+      request ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface since P7
+      retired the ``box.agent.*`` mirror).
+    * **WORKSET** — a workset spans multiple boxes/agents, so there is deliberately
+      no single "the agent". The refusal points at system scope (all agents) or the
+      per-box request.
+
+    Returns ``None`` for every other scope — a bare key at SYSTEM scope is a legit
+    DOWNWARD write; ``agent`` / ``system`` (no command scope) is unconstrained here.
+    """
+    if not _is_agent_setting(canonical) or command_scope not in _NO_BARE_AGENT_KEY_SCOPES:
+        return None
+    agent = active_agent or "<agent>"
+    if command_scope is ConfigLevel.box:
+        return (
+            f"Error: box-scope agent settings can't be {verb} bare (a bare agent "
+            f"key targets agent.default, which a box cannot write). "
+            f"Use '{verb} pref.agent.{agent}.<key>' — did you mean "
+            f"'{verb} pref.agent.{agent}.{canonical}'? (spec §2h)"
+        )
+    # workset — no mirror; point at system (all agents) or the per-box mirror.
+    # WORKSET keeps the PLACEHOLDER on purpose: a workset spans many boxes and many
+    # agents, so naming one box's resolved agent here would be a lie.
+    return (
+        f"Error: agent settings can't be {verb} at workset scope (a workset spans "
+        f"multiple boxes/agents, so there's no single agent to configure). "
+        f"Configure them at system scope to apply to all agents, or per-box via "
+        f"'pref.agent.<agent>.{canonical}' (spec §2h)."
+    )
+
+def _agent_scope_node(key: str) -> str:
+    """The agent NODE a discriminated agent-scope *key* names, else ``""``.
+
+    ``agent.claude.common.plugins`` -> ``claude``; ``box.bindings.rw.home`` -> ``""``.
+    Reads the scope token the category regex already parses, so the discriminator is
+    split the one canonical way (a persona node carries no dot, so the first two
+    segments are the whole scope).
+    """
+    from kanibako.settings.settings_categories import BIND_KEY_RE
+
+    m = BIND_KEY_RE.match(key)
+    if m is None:
+        return ""
+    scope = m.group("scope")
+    return scope.split(".", 1)[1] if scope.startswith("agent.") else ""

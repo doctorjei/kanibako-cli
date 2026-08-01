@@ -5,7 +5,7 @@ threaded with an ``agents_root``), proving:
 
 * a ``+`` node key writes the CANONICAL ``℘`` on-disk dir + the right leaf;
 * ``+`` and ``℘`` spellings hit the SAME store (canonicalization) — MUTATION-
-  proven (break the ``_resolve_key`` swap and the ``+`` key lands in a
+  proven (break the ``resolve_key`` swap and the ``+`` key lands in a
   ``<node-with-+>`` dir the resolver never reads);
 * ``get`` reads exactly where ``set`` wrote; ``reset`` removes it;
 * a default-only persona file stays SPARSE (only the keys the user set);
@@ -22,7 +22,7 @@ import pytest
 from kanibako.settings.agent_config import load_agent_config
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.config_interface import (
-    _resolve_key,
+    resolve_key,
     get_config_value,
     is_known_key,
     reset_config_value,
@@ -50,37 +50,37 @@ def _node_file(agents_root, node="navigator℘claude"):
 
 
 # ---------------------------------------------------------------------------
-# _resolve_key canonicalization (the seam)
+# resolve_key canonicalization (the seam)
 # ---------------------------------------------------------------------------
 
 class TestResolveKeyCanonicalization:
     def test_plus_node_is_canonicalized_to_script_p(self):
         assert (
-            _resolve_key("agent.navigator+claude.endpoint")
+            resolve_key("agent.navigator+claude.endpoint")
             == "agent.navigator℘claude.endpoint"
         )
 
     def test_already_canonical_is_unchanged(self):
         assert (
-            _resolve_key("agent.navigator℘claude.endpoint")
+            resolve_key("agent.navigator℘claude.endpoint")
             == "agent.navigator℘claude.endpoint"
         )
 
     def test_secret_path_tail_preserved(self):
         assert (
-            _resolve_key(f"agent.navigator+claude.secret_path.{_TOKEN_VAR}")
+            resolve_key(f"agent.navigator+claude.secret_path.{_TOKEN_VAR}")
             == f"agent.navigator℘claude.secret_path.{_TOKEN_VAR}"
         )
 
     def test_non_persona_key_untouched(self):
-        assert _resolve_key("box.image") == "box.image"
-        assert _resolve_key("model") == "model"
+        assert resolve_key("box.image") == "box.image"
+        assert resolve_key("model") == "model"
 
     def test_malformed_node_left_raw(self):
         # A double separator is an illegal segment → parse raises → left RAW (the
         # set/reset branch surfaces the error; a bad node never silently swaps).
         assert (
-            _resolve_key("agent.a+b+c.endpoint") == "agent.a+b+c.endpoint"
+            resolve_key("agent.a+b+c.endpoint") == "agent.a+b+c.endpoint"
         )
 
     def test_is_known_key_recognizes_persona_key_plus_form(self):

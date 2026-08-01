@@ -263,8 +263,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_keys import ConfigLevel
     from kanibako.settings.config_interface import (
         ConfigAction,
-        _AGENT_DEFAULT_SUB,
-        _parse_agent_node_bind_key,
+        AGENT_DEFAULT_SUB,
+        parse_agent_node_bind_key,
         get_config_value,
         is_known_key,
         parse_config_arg,
@@ -307,7 +307,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # keys``) so the honest cleared-message names the reverted-to floor value
         # (symmetric with the set handler's ``default_categories`` build).
         reset_default_categories = None
-        reset_bind_parse = _parse_agent_node_bind_key(key)
+        reset_bind_parse = parse_agent_node_bind_key(key)
         if reset_bind_parse is not None:
             node_raw, _rcat, _rname = reset_bind_parse
             try:
@@ -393,7 +393,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         set_default_categories = None
         set_cascade_agent_path = None
         set_cascade_agent_name = ""
-        bind_parse = _parse_agent_node_bind_key(key)
+        bind_parse = parse_agent_node_bind_key(key)
         if bind_parse is not None:
             node_raw, _cat, _name = bind_parse
             # A MALFORMED ref is REFUSED here, naming the ref. Swallowing the parse
@@ -412,7 +412,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # The refusal itself belongs to the engine's node guard
             # (``_set_category_value``), which owns that message for every caller —
             # duplicating the text here would be a second copy to drift.
-            if node != _AGENT_DEFAULT_SUB:
+            if node != AGENT_DEFAULT_SUB:
                 node_file = agent_settings_path(std.agents, node)
                 node_file.parent.mkdir(parents=True, exist_ok=True)
                 set_config_path = node_file

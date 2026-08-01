@@ -866,7 +866,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         """auto_approve is AUTH-CRITICAL: it read-coerces at launch, where an
         UNRECOGNISED value falls back PERMISSIVE (True). A typo (``flase``) must be
         REJECTED at set time, never silently accepted + written (Editor finding B).
-        Mutation proof: dropping the ``_is_auto_approve_key`` write-guard lets this
+        Mutation proof: dropping the ``is_auto_approve_key`` write-guard lets this
         through and this assertion reddens."""
         project_toml = tmp_path / "settings.yaml"
         msg = set_config_value("auto_approve", "flase", config_path=project_toml)
@@ -3302,15 +3302,15 @@ class TestAgentNodeBindRouting:
         assert _is_path_category_key("agent.default.caches.foo")
 
     def test_resolve_key_canonicalizes_node_plus_form(self):
-        from kanibako.settings.config_interface import _resolve_key
+        from kanibako.settings.config_interface import resolve_key
         assert (
-            _resolve_key("agent.navigator+claude.bindings.rw.plugins")
+            resolve_key("agent.navigator+claude.bindings.rw.plugins")
             == "agent.navigator℘claude.bindings.rw.plugins"
         )
         # A bind named ``model`` under a persona keeps its bind shape (NOT the
         # persona-scalar re-root).
         assert (
-            _resolve_key("agent.nav+claude.bindings.ro.model")
+            resolve_key("agent.nav+claude.bindings.ro.model")
             == "agent.nav℘claude.bindings.ro.model"
         )
 
