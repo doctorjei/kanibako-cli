@@ -72,7 +72,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.vscode_config import CodexModelProvider
+from kanibako.vscode.vscode_config import CodexModelProvider
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "panel_delivery"
 

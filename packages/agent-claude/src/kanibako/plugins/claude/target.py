@@ -37,7 +37,7 @@ from kanibako.plugins.claude.credentials import (
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
-    from kanibako.vscode_config import CodexModelProvider
+    from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.claude")
 
@@ -215,9 +215,9 @@ class ClaudeTarget(Target):
         bypassPermissions``; OFF CLEARS it (no-op on an absent file), so
         toggling yolo off takes effect in the panel.  Both directions merge
         (never clobber user settings) and are idempotent (core emitters in
-        :mod:`kanibako.vscode_config`).
+        :mod:`kanibako.vscode.vscode_config`).
         """
-        from kanibako.vscode_config import (
+        from kanibako.vscode.vscode_config import (
             clear_claude_bypass_permissions,
             seed_claude_bypass_permissions,
         )
@@ -241,9 +241,9 @@ class ClaudeTarget(Target):
         UNCONDITIONAL — orthogonal to *auto_approve* — and *model_provider* is
         IGNORED (claude carries its persona endpoint/token via env, not config;
         the write is byte-identical either way).  Union-merge, idempotent (see
-        :func:`kanibako.vscode_config.seed_session_start_hook`).
+        :func:`kanibako.vscode.vscode_config.seed_session_start_hook`).
         """
-        from kanibako.vscode_config import seed_session_start_hook
+        from kanibako.vscode.vscode_config import seed_session_start_hook
 
         return seed_session_start_hook(
             config_root / ".claude" / "settings.json",

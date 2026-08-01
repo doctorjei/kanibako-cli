@@ -589,6 +589,34 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
 5. **Build hygiene:** `rm -rf build/ packages/*/build` before any local wheel build — stale
    `build/lib/` trees ship deleted files (CI builds clean; local builds do not).
 
+### 3.1 Core module paths moved (package-ification) — shims ship for one release
+
+v1.8.0 promotes the flat `src/kanibako/*.py` modules into coarse domain subpackages
+(`kanibako.settings`, `kanibako.launch`, `kanibako.runtime`, `kanibako.vscode`,
+`kanibako.channels`). **The plugin-facing surface — `kanibako.targets.base`, the
+`kanibako.agents` entry-point group, and the `kanibako.plugins.*` namespace scan — did not
+move**, so a plugin written against the documented interface (`docs/writing-targets.md`) is
+unaffected.
+
+Four core modules that the first-party plugins import *did* move. Because the plugins depend
+on `kanibako-cli` with no upper bound, an already-published plugin can land beside the new
+base — so each old path keeps a **re-export shim** for one release:
+
+| Legacy path (shim) | New path | Imported by |
+|---|---|---|
+| `kanibako.vscode_config` | `kanibako.vscode.vscode_config` | claude, codex, goose |
+| `kanibako.settings_resolve` | `kanibako.settings.settings_resolve` | claude, codex (`GUEST_HOME`) |
+| `kanibako.agent_defaults` | `kanibako.settings.agent_defaults` | claude, codex, goose |
+| `kanibako.agent_config` | `kanibako.settings.agent_config` | claude, codex, goose |
+
+**Plugin authors: switch to the new paths now.** The shims re-export the full public surface
+of each moved module, so the change is a one-line edit per import site.
+
+⚑ **REMOVAL GATE — the same shape as item 3 above.** The four shim files are deleted only
+once `kanibako-agent-claude`, `-codex` AND `-goose` have all **published** releases importing
+the new paths. Until then a shim deletion silently breaks agent detection for anyone on an
+older plugin. `tests/test_plugin_import_compat.py` pins the contract.
+
 **Version numbers.** This release ships as `kanibako-cli` **1.8.0**, `kanibako` (meta)
 **1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.3.0** and
 `kanibako-agent-goose` **0.3.0**. The plugins version independently and do not adopt the

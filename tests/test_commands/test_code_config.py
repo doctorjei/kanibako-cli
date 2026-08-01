@@ -1,4 +1,4 @@
-"""Tests for kanibako.vscode_config (attached-container config generation)."""
+"""Tests for kanibako.vscode.vscode_config (attached-container config generation)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from kanibako.vscode_config import (
+from kanibako.vscode.vscode_config import (
     _AGENT_MARKER_REMOVE_COMMAND,
     _AGENT_MARKER_WRITE_COMMAND,
     _CODEX_EVENT_KEY,

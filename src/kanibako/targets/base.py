@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
-    from kanibako.vscode_config import CodexModelProvider
+    from kanibako.vscode.vscode_config import CodexModelProvider
 
 # A STRUCTURED category bind default (spec §2a "REPRESENTATION"): a 2- or
 # 3-element ``(host_src, box_dest[, options])`` tuple — NOT a colon-joined

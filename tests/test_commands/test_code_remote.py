@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako import vscode_remote as vr
+from kanibako.vscode import vscode_remote as vr
 from kanibako.commands.code_cmd import _attach_uri, run_code
 
 
@@ -67,9 +67,9 @@ def test_remote_refuses_in_container_shim_before_ssh(capsys):
 
     with (
         patch("kanibako.commands.code_cmd.shutil.which", side_effect=_which),
-        patch("kanibako.vscode_remote.probe_remote") as m_probe,
-        patch("kanibako.vscode_remote.ensure_tunnel") as m_tunnel,
-        patch("kanibako.vscode_remote.remote_run_kanibako") as m_life,
+        patch("kanibako.vscode.vscode_remote.probe_remote") as m_probe,
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel") as m_tunnel,
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako") as m_life,
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -121,7 +121,7 @@ def test_settings_prompt_accept_updates_and_proceeds(
         patch("sys.stdin.isatty", return_value=True),
         patch("builtins.input", return_value="y"),
         patch(
-            "kanibako.vscode_remote.probe_remote",
+            "kanibako.vscode.vscode_remote.probe_remote",
             side_effect=RuntimeError("stop-after-wire"),
         ),
     ):
@@ -188,7 +188,7 @@ def test_settings_already_wired_jsonc_proceeds(
         "}\n"
     )
     with patch(
-        "kanibako.vscode_remote.probe_remote",
+        "kanibako.vscode.vscode_remote.probe_remote",
         side_effect=RuntimeError("proceeded"),
     ):
         with pytest.raises(RuntimeError, match="proceeded"):
@@ -225,7 +225,7 @@ def test_settings_already_wired_proceeds(
     ))
     # No prompt needed → flow proceeds until probe (stubbed to stop).
     with patch(
-        "kanibako.vscode_remote.probe_remote",
+        "kanibako.vscode.vscode_remote.probe_remote",
         side_effect=RuntimeError("proceeded"),
     ):
         with pytest.raises(RuntimeError, match="proceeded"):
@@ -252,10 +252,10 @@ def test_remote_lifecycle_failure_surfaces_remote_stderr(
     _wire_ok(tmp_path, monkeypatch)
     failed = MagicMock(returncode=1, stdout="", stderr="bash: kanibako: command not found")
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.preflight_engine"),
-        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -277,10 +277,10 @@ def test_remote_failure_attributes_remote_error_to_host(
     )
     failed = MagicMock(returncode=1, stdout="", stderr=remote_err)
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.preflight_engine"),
-        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -299,10 +299,10 @@ def test_remote_failure_no_remote_output_called_out(
     _wire_ok(tmp_path, monkeypatch)
     failed = MagicMock(returncode=1, stdout="", stderr="")
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.preflight_engine"),
-        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -331,11 +331,11 @@ def test_remote_happy_path_uses_context_uri_and_seeds_remote_image(
         return True
 
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel") as m_tunnel,
-        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=started),
-        patch("kanibako.vscode_remote.RemoteEngine", return_value=engine),
-        patch("kanibako.vscode_remote.ensure_docker_context_meta"),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel") as m_tunnel,
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=started),
+        patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=engine),
+        patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
         patch(
             "kanibako.commands.code_cmd._extension_for_agent",
             return_value="anthropic.claude-code",
@@ -394,11 +394,11 @@ def test_remote_box_not_running_after_start_errors(
         False, 'Error: no such container "kanibako-mybox"',
     )
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=started),
-        patch("kanibako.vscode_remote.RemoteEngine", return_value=engine),
-        patch("kanibako.vscode_remote.ensure_docker_context_meta"),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=started),
+        patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=engine),
+        patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
         patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
     ):
         rc = run_code(_args(project="mybox", remote="host"))
@@ -423,14 +423,14 @@ def test_remote_start_argv_is_detached_warm_only_print_container(
     engine.container_image.return_value = "ghcr.io/x/img:latest"
     engine.inspect_env.return_value = "claude"
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.preflight_engine"),
         patch(
-            "kanibako.vscode_remote.remote_run_kanibako", return_value=started,
+            "kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=started,
         ) as m_life,
-        patch("kanibako.vscode_remote.RemoteEngine", return_value=engine),
-        patch("kanibako.vscode_remote.ensure_docker_context_meta"),
+        patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=engine),
+        patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
         patch(
             "kanibako.commands.code_cmd._extension_for_agent",
             return_value="anthropic.claude-code",
@@ -460,10 +460,10 @@ def test_remote_warm_only_unrecognized_surfaces_upgrade_hint(
                "unrecognized arguments: --warm-only",
     )
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.preflight_engine"),
-        patch("kanibako.vscode_remote.remote_run_kanibako", return_value=failed),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.preflight_engine"),
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -483,15 +483,15 @@ def test_remote_tunnel_failure_refused_before_lifecycle(
 
     _wire_ok(tmp_path, monkeypatch)
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
         patch(
-            "kanibako.vscode_remote.ensure_tunnel",
+            "kanibako.vscode.vscode_remote.ensure_tunnel",
             side_effect=KanibakoError(
                 "Could not establish the ssh tunnel to the remote podman "
                 "socket on 'host' (exit 255).\n  ssh: connect refused"
             ),
         ),
-        patch("kanibako.vscode_remote.remote_run_kanibako") as m_life,
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako") as m_life,
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -511,17 +511,17 @@ def test_remote_preflight_failure_surfaces_podman_stderr(
 
     _wire_ok(tmp_path, monkeypatch)
     with (
-        patch("kanibako.vscode_remote.probe_remote", return_value=1000),
-        patch("kanibako.vscode_remote.ensure_tunnel"),
-        patch("kanibako.vscode_remote.RemoteEngine"),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.RemoteEngine"),
         patch(
-            "kanibako.vscode_remote.preflight_engine",
+            "kanibako.vscode.vscode_remote.preflight_engine",
             side_effect=KanibakoError(
                 "Could not reach the remote podman engine over the ssh "
                 "tunnel.\n  ... connection refused"
             ),
         ),
-        patch("kanibako.vscode_remote.remote_run_kanibako") as m_life,
+        patch("kanibako.vscode.vscode_remote.remote_run_kanibako") as m_life,
     ):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1

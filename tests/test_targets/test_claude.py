@@ -796,7 +796,7 @@ class TestTransformCred:
 
 class TestDeliverySeams:
     """T1 seams: ClaudeTarget's panel-permission + directive-hook deliveries
-    (thin dispatch over the core emitters in :mod:`kanibako.vscode_config`)."""
+    (thin dispatch over the core emitters in :mod:`kanibako.vscode.vscode_config`)."""
 
     def _settings(self, config_root: Path) -> Path:
         return config_root / ".claude" / "settings.json"
@@ -842,7 +842,7 @@ class TestDeliverySeams:
     def test_directive_hook_ignores_model_provider(self, tmp_path):
         """claude carries its persona via env, not config — the write is
         byte-identical with or without a provider."""
-        from kanibako.vscode_config import CodexModelProvider
+        from kanibako.vscode.vscode_config import CodexModelProvider
         t = ClaudeTarget()
         r1 = tmp_path / "with"
         r2 = tmp_path / "without"

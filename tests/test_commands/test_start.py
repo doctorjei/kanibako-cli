@@ -5093,7 +5093,7 @@ class TestPreflightCodexPersona:
 
     def test_keyspace_endpoint_and_key_resolves_provider(self, tmp_path):
         from kanibako.commands.start import _preflight_persona_load
-        from kanibako.vscode_config import CodexModelProvider
+        from kanibako.vscode.vscode_config import CodexModelProvider
 
         key = tmp_path / "navkey"
         key.write_text("nv-secret\n")
@@ -5384,7 +5384,7 @@ class TestCodexPersonaLaunchWiring:
     """
 
     def _provider(self):
-        from kanibako.vscode_config import CodexModelProvider
+        from kanibako.vscode.vscode_config import CodexModelProvider
         return CodexModelProvider(
             provider_id="navigator", name="navigator",
             base_url="https://api.example/v1", wire_api="chat",

@@ -677,7 +677,7 @@ class TestDeliverySeams:
         return config_root / ".codex" / "config.toml"
 
     def _provider(self):
-        from kanibako.vscode_config import CodexModelProvider
+        from kanibako.vscode.vscode_config import CodexModelProvider
         return CodexModelProvider(
             provider_id="navigator", name="navigator",
             base_url="https://api.example/v1", wire_api="chat",
@@ -765,7 +765,7 @@ class TestDeliverySeams:
         no SessionEnd event; the supervisor's kill-0 scan is the remove side)."""
         import tomllib
         from kanibako.settings_resolve import GUEST_HOME
-        from kanibako.vscode_config import (
+        from kanibako.vscode.vscode_config import (
             _AGENT_MARKER_WRITE_COMMAND,
             _SESSION_START_COMMAND,
         )

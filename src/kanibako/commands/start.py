@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from kanibako.paths import ProjectPaths, StandardPaths
     from kanibako.settings_launch import AuthSource
     from kanibako.targets.base import PersonaSpec
-    from kanibako.vscode_config import CodexModelProvider
+    from kanibako.vscode.vscode_config import CodexModelProvider
 
 from kanibako.agent_config import (
     agent_category_root,
@@ -69,7 +69,7 @@ from kanibako.agent_ref import (
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
-from kanibako.vscode_config import AGENT_MARKERS_DIR
+from kanibako.vscode.vscode_config import AGENT_MARKERS_DIR
 
 
 def _agent_critical_dests() -> list[tuple[str, str]]:
@@ -665,7 +665,7 @@ _BOOTSTRAP_NONE = "none"
 _BOOTSTRAP_DEFAULT = "tmux"
 
 # E2g / increment 4a — the box-local AGENT LIVENESS MARKERS directory (per-PID).
-# The canonical constant lives in :mod:`kanibako.vscode_config` (the low-level module
+# The canonical constant lives in :mod:`kanibako.vscode.vscode_config` (the low-level module
 # that owns the marker write-side hook command); it is imported here (see the module
 # imports) so this file's ``--agent-markers-dir`` value (read side) and the
 # ``KANIBAKO_AGENT_MARKERS_DIR`` env it seeds are byte-identical to the seeded hook's
@@ -3789,7 +3789,7 @@ def _directive_flatten_shim(
     and rides the existing unconditional ``kani_pkg`` bind (whole package dir, ro)
     to ``/opt/kanibako/kanibako/scripts/import-directives.py`` — no extra bind, no
     extra key.  No sudo — the native slots are agent-owned.  ⚑ The SAME literal is
-    carried by the SessionStart hook command in :mod:`kanibako.vscode_config`; the
+    carried by the SessionStart hook command in :mod:`kanibako.vscode.vscode_config`; the
     two must move TOGETHER, because a one-sided change is SILENT (``|| true``
     swallows the failure and the box just loses its directives).  SILENT-SAFE
     (``|| true``) and GUARDED on
@@ -4117,9 +4117,9 @@ def _resolve_codex_persona_provider(
     """Build the resolved codex model-provider bundle INC 3 wires into config.toml.
 
     A pure assembly of the persona's resolved values (no I/O) into the
-    :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 feeds through
+    :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 feeds through
     ``CodexTarget.deliver_directive_hook`` →
-    :func:`~kanibako.vscode_config.seed_codex_config`:
+    :func:`~kanibako.vscode.vscode_config.seed_codex_config`:
 
     * *provider_id* / *name* — the persona segment (``navigator``); the table id +
       the human-readable provider name (INC 3/4 may add a display-name keyspace key).
@@ -4134,7 +4134,7 @@ def _resolve_codex_persona_provider(
       GATE (a codex persona needs a real model id): the caller rejects an empty
       *model* BEFORE reaching here, so this is always non-empty.
     """
-    from kanibako.vscode_config import CodexModelProvider
+    from kanibako.vscode.vscode_config import CodexModelProvider
 
     persona = persona_of(agent_id)
     return CodexModelProvider(
@@ -4169,7 +4169,7 @@ def _preflight_persona_load(
     * *adopted* — True iff B3 mutated *agent_cfg* in place (so the caller persists
       the adopted config).
     * *provider* — for a CONFIG-FILE harness (codex) the resolved
-      :class:`~kanibako.vscode_config.CodexModelProvider` INC 3 wires into
+      :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
       ``~/.codex/config.toml``; ``None`` for an ENV harness (claude) — whose endpoint
       + token ride their existing single-source channels (the
       ``endpoint``→``ANTHROPIC_BASE_URL`` :class:`SettingArg` env + the
@@ -4400,7 +4400,7 @@ def _preflight_config_file_persona(
        ⇒ error (a NaviGator ``[model_providers.<id>]`` block needs a model — never ship
        ``model = ""``).
 
-    On success return the resolved :class:`~kanibako.vscode_config.CodexModelProvider`
+    On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
     for INC 3.  NEVER mutates *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist),
     so ``adopted`` is False.
     """

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako import vscode_remote as vr
+from kanibako.vscode import vscode_remote as vr
 
 # The stored context name for the fixture's dest (slug carries a digest of the
 # verbatim dest, so derive it from the API rather than hardcoding).

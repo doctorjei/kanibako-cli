@@ -1087,7 +1087,7 @@ class TestCheckVscode:
         self, tmp_path: Path, monkeypatch,
     ) -> None:
         """dockerPath == the kanibako dispatch wrapper path -> [ok] (FF-1)."""
-        from kanibako import vscode_remote as vr
+        from kanibako.vscode import vscode_remote as vr
 
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         wrapper = str(vr.dispatch_wrapper_path())
