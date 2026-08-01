@@ -192,7 +192,7 @@ class TestSelectionLevel:
             agent_name="claude", ctx=_ctx("claude"),
             system_path=None, agent_path=None, workset_path=None, box_path=box,
             valid_agents=AGENTS,
-            selection_level={"system.agent": "claude"},
+            cli_level={"system.agent": "claude"},
         )
         assert snap.system.agent == "claude"
 
@@ -218,7 +218,7 @@ class TestSelectionLevel:
             agent_name="claude", ctx=_ctx("claude"),
             system_path=None, agent_path=None, workset_path=None, box_path=None,
             valid_agents=AGENTS,
-            selection_level={"system.agent": "claude"},
+            cli_level={"system.agent": "claude"},
         )
         assert snap.system.agent == "claude"
 
@@ -247,7 +247,7 @@ class TestSelectionLevel:
             system_path=None, agent_path=None, workset_path=None, box_path=box,
             valid_agents=AGENTS,
             auth_chain=auth_chain_floor(mode="primary", agent_name="claude"),
-            selection_level={"system.agent": "claude"},
+            cli_level={"system.agent": "claude"},
         )
         assert snap.meta.box.auth.workset_path.endswith("/claude")
 
@@ -553,7 +553,7 @@ class TestNoAgentAuthPathIsUnreachable:
                 {f"meta.agent.{agent_name}.auth.share_support": support}
                 if agent_name else {}
             ),
-            selection_level=selection_level,
+            cli_level=selection_level,
         )
         return snap, resolve_auth_source(snap, mode="primary")
 

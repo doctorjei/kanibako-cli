@@ -607,7 +607,7 @@ def _auth_snapshot(
         # Python-interpolated name, so the §1A SELECTION LEVEL must carry the
         # resolved agent — exactly as the launch does. A blank agent_name is the
         # NO-AGENT box and installs nothing (the embedded ref then coerces to "").
-        selection_level=({"system.agent": agent_name} if agent_name else None),
+        cli_level=({"system.agent": agent_name} if agent_name else None),
     )
 
 
@@ -1593,7 +1593,7 @@ def test_meta_box_agent_mirror_keeps_the_auth_capability_floor_key():
             share_workset=None, agent_name="claude", agent_real_name="claude",
             agent_auth_share_support=True,
         ),
-        selection_level={"system.agent": "claude"},
+        cli_level={"system.agent": "claude"},
     )
     assert snap.meta.box.agent.auth.share_support is True
     assert snap.meta.box.agent.model == "opus"
@@ -2568,7 +2568,7 @@ class TestPrefRejectionAtLaunch:
             tmp_path / "box.yaml",
             {"pref": {"agent": {"zippity": {"model": "x"}}}},
         )
-        with pytest.raises(SettingsError) as exc:
+        with pytest.raises(_SettingsError) as exc:
             build_launch_snapshot(
                 agent_name="claude", ctx=_ctx(),
                 system_path=None, agent_path=None,
@@ -2627,3 +2627,119 @@ class TestPrefFreeByteIdentity:
 
         assert build(None) == build([])
         assert "pref" not in build(None)
+
+
+# --------------------------------------------------------------------------- #
+# P8 — the §1A CLI LEVEL: precedence + the guard that cannot be bypassed       #
+# --------------------------------------------------------------------------- #
+
+
+class TestCliLevelPrecedence:
+    """spec §1A L320-326 — *"its OWN LEVEL — the highest, above everything"*.
+
+    The unit-level shape of the level lives in ``test_settings_cli_level.py``;
+    these pin what it BEATS once spliced, which is the only thing that makes it a
+    level rather than a dict.
+    """
+
+    def _agent_file_snap(self, tmp_path, *, stored, cli_level):
+        """A snapshot over an AGENT-tier settings file.
+
+        ⚑ Not a BOX file: §0 directional enforcement DROPS an ``agent.*`` table
+        from a box file (a file contributes keys of its OWN scope), so the box
+        tier cannot hold the contender. The agent FILE is where a stored
+        ``agent.<active>.model`` legitimately lives — and a box that wants one
+        writes ``pref.agent.<agent>.model``, covered separately below.
+        """
+        agent_file = _yaml(
+            tmp_path / "agent.yaml", {"self": {"claude": {"model": stored}}},
+        )
+        return build_launch_snapshot(
+            agent_name="claude",
+            ctx=_ctx(),
+            system_path=None, agent_path=agent_file,
+            workset_path=None, box_path=None,
+            cli_level=cli_level,
+        )
+
+    def test_the_cli_level_beats_an_agent_file(self, tmp_path):
+        """INVERT: drop ``cli_level`` and the agent file's value stands."""
+        snap = self._agent_file_snap(
+            tmp_path, stored="from-file",
+            cli_level={"agent.claude.model": "from-cli"},
+        )
+        assert snap.agent.claude.model == "from-cli"
+        assert effective_behavior(snap, active_agent="claude")["model"] == "from-cli"
+
+        without = self._agent_file_snap(
+            tmp_path, stored="from-file", cli_level=None,
+        )
+        assert without.agent.claude.model == "from-file"
+
+    def test_the_cli_level_beats_a_box_pref(self, tmp_path):
+        """Above every settings file AND every pref (§1A) — the pref is the
+        strongest thing a FILE can say about another scope's key."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
+            cli_level={"agent.claude.model": "from-cli"},
+        )
+        assert snap.agent.claude.model == "from-cli"
+
+    def test_the_cli_level_beats_a_pref_on_the_selection_key(self, tmp_path):
+        """The P7 case, restated at the generalised seam: ``--agent`` over
+        ``pref.system.agent`` (spec §2h L1335 precedence chain)."""
+        snap = _pref_snap(
+            tmp_path,
+            box={"pref": {"system": {"agent": "goose"}}},
+            cli_level={"system.agent": "codex"},
+        )
+        assert snap.system.agent == "codex"
+
+    def test_the_active_slot_is_why_the_default_slot_is_not_used(self, tmp_path):
+        """⚑ R1, proven rather than asserted.
+
+        ``effective_behavior`` picks active-over-default AFTER the merge, so a CLI
+        value at ``agent.default.model`` would LOSE to a file's
+        ``agent.claude.model`` even from level index 0. That is why
+        ``build_cli_level`` spells the ACTIVE slot; this is the failure it avoids.
+        """
+        snap = self._agent_file_snap(
+            tmp_path, stored="from-file",
+            cli_level={"agent.default.model": "from-cli"},
+        )
+        assert effective_behavior(snap, active_agent="claude")["model"] == "from-file"
+
+
+class TestCliLevelGuardIsNotBypassable:
+    """spec §1A L335-338 — the guard lives INSIDE ``build_launch_snapshot``.
+
+    A guard a caller can forget to run is not a guard, so it is asserted at the
+    production seam and not only against ``guard_cli_level`` directly.
+    """
+
+    def test_a_locator_key_from_the_cli_is_refused(self, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            _pref_snap(tmp_path, cli_level={"workset.boxes": "/tmp/elsewhere"})
+        assert "workset.boxes" in str(exc.value)
+
+    def test_an_undeclared_key_from_the_cli_is_refused(self, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            _pref_snap(tmp_path, cli_level={"box.wibble": "x"})
+        assert "box.wibble" in str(exc.value)
+
+    def test_a_meta_key_from_the_cli_is_refused(self, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            _pref_snap(tmp_path, cli_level={"meta.box.path": "/tmp/x"})
+        assert "meta.box.path" in str(exc.value)
+
+    def test_the_wired_keys_pass_the_seam(self, tmp_path):
+        snap = _pref_snap(
+            tmp_path,
+            cli_level={
+                "system.agent": "claude",
+                "agent.claude.model": "opus",
+                "agent.claude.continue_mode": False,
+            },
+        )
+        assert snap.agent.claude.continue_mode is False

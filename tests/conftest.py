@@ -641,6 +641,7 @@ def start_mocks():
                     # through this level, so a stub that swallows it would make
                     # every flag silently inert — and the flag tests in
                     # test_start.py would be asserting the harness, not the code.
+                    cli_level=kw.get("cli_level"),
                 )
                 entries = snapshot_category_entries(
                     snap, active_agent=_node, box_ctx=ctx,

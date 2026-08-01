@@ -2353,7 +2353,27 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     # ``meta.box.auth.workset_path`` would drop the agent segment).
                     # A display that disagrees with the launch is worse than no
                     # display.
-                    selection_level=(
+                    #
+                    # ⚑ SELECTION ONLY — and that is the whole of the CLI level for a
+                    # READ verb (P8). ``box config`` carries none of the launch's
+                    # ephemeral VALUE flags (``-M`` / ``-N``-``-C``-``-R`` /
+                    # ``--image`` / ``--share-images`` live on ``start``), so there
+                    # is nothing ephemeral to install here. Rendering a flag from
+                    # some OTHER invocation would be the "a flag mutated a stored
+                    # value" failure §1A forbids, one screen removed:
+                    # ``--effective`` reports what the box IS configured to do, and
+                    # a per-launch override is by definition not that.
+                    #
+                    # ⚑ ``--agent`` is the EXCEPTION, and it is a PRE-EXISTING
+                    # DEFECT, not a P8 decision: the blanket flag injector puts it
+                    # on every leaf parser, so ``box config --agent goose
+                    # --effective`` PARSES — but this call site (and the other four
+                    # read-verb ``select_agent`` sites) never passes it through, so
+                    # it is silently IGNORED. It is advertised and inert. P8 leaves
+                    # the behaviour exactly as it found it rather than quietly
+                    # changing what a read verb reports; honouring it (or refusing
+                    # it) is tracked as a follow-on.
+                    cli_level=(
                         effective_selection.selection_level
                         if effective_selection is not None
                         else None
