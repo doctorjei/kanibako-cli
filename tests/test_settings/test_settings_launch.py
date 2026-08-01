@@ -1991,11 +1991,15 @@ def test_workset_anchor_floor_allows_every_spec_declared_channel_leaf():
         mode="named",
         workset_channels={
             leaf: f"/ws/{leaf}"
-            for leaf in ("common", "chat", "broadcast", "share", "mailboxes")
+            for leaf in (
+                "common", "chat", "broadcast", "share", "mailboxes",
+                "share_global",
+            )
         },
     )
     assert floor["workset.channels.broadcast"] == "/ws/broadcast"
     assert floor["workset.channels.mailboxes"] == "/ws/mailboxes"
+    assert floor["workset.channels.share_global"] == "/ws/share_global"
 
 
 def test_workset_anchor_floor_meta_box_path_per_mode():

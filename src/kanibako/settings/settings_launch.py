@@ -656,18 +656,27 @@ def meta_identity_floor(
 #: and is REFUSED rather than silently taking the primary/named arm.
 _BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
 
-#: The DECLARED ``workset.channels.*`` leaves (spec §2c). The floor
-#: MANUFACTURES these keys from a caller-supplied mapping, so without this set it
-#: was a free-form passthrough: any leaf the caller invented became a key, which is
-#: precisely what the CLOSED keyspace (spec §0) forbids — an undeclared key is not
-#: a key, and code must REFUSE it rather than quietly accept it.
+#: The DECLARED ``workset.channels.*`` leaves (spec §2c) — the FULL family: the
+#: workset-LOCAL type roots (``common``/``chat``/``broadcast``/``share``) plus
+#: the ALL-PROJECTS system-rooted addresses (``mailboxes``/``share_global``,
+#: §2c "uniform per-mode addresses"). The floor MANUFACTURES these keys from a
+#: caller-supplied mapping, so without this set it was a free-form passthrough:
+#: any leaf the caller invented became a key, which is precisely what the
+#: CLOSED keyspace (spec §0) forbids — an undeclared key is not a key, and code
+#: must REFUSE it rather than quietly accept it.
 #:
 #: ⚑ It is the SPEC's declared family, not the subset the one live caller happens
 #: to pass (``{common, chat, share}``). Pinning it to today's caller would refuse a
 #: declared key the moment a second caller supplied one — the check exists to stop
 #: FABRICATION, not to freeze the current call.
+#:
+#: ⚑ It must EQUAL ``settings_keyspace.DECLARED_WORKSET_CHANNEL_LEAVES`` (the
+#: validity table). The two declarations answer the SAME question ("is this a
+#: ``workset.channels`` leaf?") from different seams, and R-35's bug was exactly
+#: their disagreement — ``mailboxes`` accepted here, refused there. A test pins
+#: the agreement so neither set can drift alone.
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset(
-    {"common", "chat", "broadcast", "share", "mailboxes"}
+    {"common", "chat", "broadcast", "share", "mailboxes", "share_global"}
 )
 
 

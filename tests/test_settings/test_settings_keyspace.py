@@ -138,6 +138,7 @@ def test_non_active_agent_is_valid():
     "workset.auth.share_allowed", "workset.auth.global_sync", "workset.auth.path",
     "workset.channels.common", "workset.channels.chat",
     "workset.channels.broadcast", "workset.channels.share",
+    "workset.channels.mailboxes", "workset.channels.share_global",
     "box.bindings.rw.home", "box.bindings.ro.vault", "box.masks",
     "box.env.MYVAR", "box.secret_path.TOKEN",
 ])
@@ -172,10 +173,36 @@ def test_unknown_namespace_rejected():
     assert "not a declared namespace" in reason("zippity.wibble")
 
 
-def test_workset_has_no_mailboxes_channel():
-    """§2f — mailboxes aggregate at SYSTEM only."""
+def test_workset_channel_addresses_into_the_system_stores_are_keys():
+    """R-35 (spec §2c) — ``workset.channels.{mailboxes,share_global}`` are KEYS.
+
+    Mailboxes still AGGREGATE at system only (§2f); the workset leaf is the
+    workset's declared ADDRESS into that aggregate
+    (``@system.channels.mailboxes/@meta.workset.name``), present in EVERY mode.
+    This test previously pinned the EXCLUSION of ``workset.channels.mailboxes``
+    — that pin mis-read aggregation-at-system as absence-from-the-family, and
+    made the validity table refuse a leaf the launch floor accepted (R-35,
+    RATIFIED: fix the CODE).
+    """
     assert valid("system.channels.mailboxes")
-    assert not valid("workset.channels.mailboxes")
+    assert valid("workset.channels.mailboxes")
+    assert valid("workset.channels.share_global")
+    # ``share_global`` is the WORKSET-scope address; at system scope the store
+    # is plain ``share`` — the workset spelling is not a system leaf.
+    assert not valid("system.channels.share_global")
+
+
+def test_launch_floor_and_validity_table_agree_on_workset_channel_leaves():
+    """R-35's actual failure mode: the launch floor's allowlist and the
+    validity table are the SAME question asked at two seams, and they had
+    drifted apart (``mailboxes`` accepted by the floor, refused by the table).
+    Pin them EQUAL so neither declaration can move alone."""
+    from kanibako.settings.settings_keyspace import (
+        DECLARED_WORKSET_CHANNEL_LEAVES,
+    )
+    from kanibako.settings.settings_launch import _WORKSET_CHANNEL_LEAVES
+
+    assert _WORKSET_CHANNEL_LEAVES == DECLARED_WORKSET_CHANNEL_LEAVES
 
 
 def test_pref_validity_delegates_to_the_target():
