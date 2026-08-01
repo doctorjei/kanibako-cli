@@ -4217,8 +4217,13 @@ class TestPrefShow:
             effective=True, category_snapshot=snap,
         )
         out = capsys.readouterr().out
-        assert "(omitted — the entry is suppressed; no mount)" in out
+        assert "(omitted — the entry is suppressed; no mount." in out
         assert "(unset — the consumer applies its default)" in out
+        # B-6: suppression has no verb of its own, so the message that reports a
+        # suppression is where the user learns what UNDOES it — and WHERE, since
+        # a reset at the wrong noun removes nothing.
+        assert "'reset pref.agent.claude.common.plugins'" in out
+        assert "at the scope that set it" in out
 
 
 # ---------------------------------------------------------------------------
@@ -4326,7 +4331,11 @@ class TestNullSpelling:
             "env.FOO", None, config_path=f, env_path=tmp_path / "env",
             command_scope=ConfigLevel.box,
         )
-        assert "not supported" in msg and "--reset" in msg
+        assert "not supported" in msg
+        # B-6: name the CURE with the spelling the user can actually type —
+        # ``reset`` is a sibling VERB, and no parser defines a ``--reset`` flag.
+        assert "'reset env.FOO'" in msg
+        assert "--reset" not in msg
 
 
 class TestPrefGetRendersAllThreeEmptyIdioms:

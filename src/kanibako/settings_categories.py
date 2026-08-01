@@ -731,14 +731,20 @@ def _rule_changed(body: str) -> str:
 def _suppress_then_add(occupant_key: str, *, ambiguous: bool = False) -> str:
     """The SUPPRESS-THEN-ADD remedy (§0), spelled as the YAML edit it really is.
 
-    ⚑ There is NO CLI verb for suppression today: ``config set`` writes a string
-    value, the category set path is source-only by contract, and ``--reset``
-    REMOVES this file's own override (the opposite operation — it re-exposes the
-    inherited entry). So the remedy is a hand edit of the settings file that owns
-    the key, and the message says so rather than naming a command that would not
-    work. It also names the SCOPE, because a box file may not suppress a
-    containing scope's key (``settings_assemble._drop_upward_scopes`` drops it) —
-    the edit belongs in that scope's own file.
+    ⚑ There is no CLI verb that can express THIS suppression: ``config set``
+    writes a string value, the category set path is source-only by contract, and
+    ``reset`` REMOVES this file's own override (the opposite operation — it
+    re-exposes the inherited entry). The one CLI suppression channel,
+    ``set --null pref.<key>``, does not reach here either: a pref may be WRITTEN
+    only at workset/box (``settings_prefs.PREF_LEGAL_LEVELS``, enforced by
+    ``refuse_pref_table``) and may TARGET only ``system.agent`` or
+    ``agent.*.**`` (``settings_prefs.ALLOWLIST``), while the occupant named here
+    can be any category key of any scope. So the remedy is a hand edit of the
+    settings file that owns the key, and the message says so rather than naming a
+    command that would not work. It also names the SCOPE, because a box file may
+    not suppress a containing scope's key by writing that scope's top-level table
+    (``settings_assemble._drop_upward_scopes`` drops it) — the edit belongs in
+    that scope's own file.
 
     *ambiguous* is True when the caller could not know WHICH entry the user wants
     to keep (row 1: two peers, either is a legitimate choice), so the printed

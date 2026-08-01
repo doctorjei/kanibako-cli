@@ -8,8 +8,13 @@ syntax:
 - ``key``        → get (if key is known)
 - no args        → show all overrides
 - ``--effective`` → show resolved values
-- ``--reset key`` → remove override
-- ``--reset --all`` → remove all overrides (with confirmation)
+- ``--null key`` → SET an explicit present-``None`` (the suppression request)
+- ``reset key``  → remove override (the verb that UNDOES ``--null``)
+- ``reset --all`` → remove all overrides (with confirmation)
+
+⚑ ``reset`` is a sibling VERB (``box reset <key>``), not a ``--reset`` flag —
+no parser defines one.  ``args.reset`` is only the namespace attribute the
+command modules set before calling in here.
 """
 
 from __future__ import annotations
@@ -415,8 +420,9 @@ def parse_config_arg(
 
     *set_null* is the ``--null`` flag: ``config set --null <key>`` is a SET whose
     value is Python ``None`` — an explicit present-``None``, distinct from the
-    terminal empty string ``key=`` and from ``--reset`` (which REMOVES the
-    override rather than writing one).
+    terminal empty string ``key=`` and from the sibling ``reset`` VERB (which
+    REMOVES the override rather than writing one, and is therefore how a user
+    UNDOES a ``--null``).
 
     ⚑ Why a FLAG and not a magic value token. ``config set`` stores scalars
     VERBATIM — nothing in it YAML- or literal-parses a value (only keys declared
@@ -1086,7 +1092,7 @@ def _system_key_refusal(key: str) -> str:
     STRUCTURAL ``system.*`` path-tier keys (the ``SYSTEM_PATH_DEFAULTS`` family,
     see :func:`_is_system_path_key`) are layout config, not behavior settings,
     so they are file-only: editable in the config file (or via ``kanibako
-    setup``) but never via ``config set``/``--reset``.  Points the user at the
+    setup``) but never via ``config set``/``config reset``.  Points the user at the
     REAL resolved config file — the ``kanibako_config.yaml`` ``[system]`` table
     that ``resolve_system_paths`` actually reads — never the command scope's
     settings file (which would be wrong-file advice: the F2 lesson)."""
@@ -1294,7 +1300,8 @@ def _pref_value_error(
             f"scalar (spec §2a). Write the request in the settings file:\n"
             f"  pref:\n"
             f"    {chr(10).join(_yaml_skeleton(target)).lstrip()}\n"
-            f"...or suppress the entry with: --null {canonical}"
+            f"...or suppress the entry with: --null {canonical}\n"
+            f"(that WRITES a suppression; 'reset {canonical}' undoes it)"
         )
 
     # A SCALAR target: run the same E3 resolution probe the direct scalar route
@@ -2399,7 +2406,7 @@ def set_config_value(
             return (
                 f"Error: --null is not supported for '{canonical}': the env file "
                 f"is a plain string store with no null value. Use "
-                f"'--reset {canonical}' to remove the variable."
+                f"'reset {canonical}' to remove the variable."
             )
         if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
             return (
@@ -2408,7 +2415,8 @@ def set_config_value(
                 f"repoint, which has no null form). Suppress the entry by "
                 f"writing 'null' at the key in the settings file, or request the "
                 f"suppression from a box/workset with "
-                f"'--null pref.{canonical}' (spec §2h)."
+                f"'--null pref.{canonical}' (spec §2h) — which 'reset "
+                f"pref.{canonical}' undoes."
             )
 
     # Write-time validation for the auth-critical ``auto_approve`` permission key
@@ -2441,7 +2449,7 @@ def set_config_value(
     #
     # The probe blocks ONLY on the edited value's own transitive upstream chain,
     # so an UNRELATED pre-existing defect still allows the set and ``config set``
-    # stays usable to REPAIR a broken config. ``--reset`` is untouched: removing
+    # stays usable to REPAIR a broken config. ``reset`` is untouched: removing
     # an override cannot introduce a dangling ref in the removed value.
     if value is not None and _probes_at_set_time(canonical):
         from kanibako.settings_configset import Error as _SetError
@@ -2729,7 +2737,7 @@ def reset_config_value(
     (``@config.settings`` = ``global/settings.yaml``); when None (box/workset)
     they are removed from ``config_path`` as before.
 
-    *command_scope* is the scope the ``config --reset`` was issued at (block B2,
+    *command_scope* is the scope the ``config reset`` was issued at (block B2,
     RESET-GUARD). It drives the §0 directional-write guard
     (``_scope_direction_error``) symmetrically with ``set_config_value``: a reset
     is permitted for a key of the command scope's OWN namespace or of any scope
@@ -3423,8 +3431,20 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
         if missing:
             # The ordinary present-None rule OMITTED it: a bind / category /
             # masks leaf was suppressed. Saying so is the whole point — this is
-            # the difference between "suppressed" and "unset".
-            result = "(omitted — the entry is suppressed; no mount)"
+            # the difference between "suppressed" and "unset". Name the CURE
+            # too (B-6): suppression has no verb of its own, so the only place a
+            # user learns that ``reset`` undoes it is a message like this one.
+            #
+            # ⚑ "at the scope that set it" is not vagueness — it is the only
+            # honest form available here. Both halves of this block are read off
+            # the MERGED snapshot, which no longer carries which file wrote the
+            # request, and a ``reset`` issued at the wrong noun removes nothing
+            # (or is refused by the directional guard). Naming a specific scope
+            # would be a guess dressed as an instruction.
+            result = (
+                f"(omitted — the entry is suppressed; no mount. Undo with "
+                f"'reset {PREF_ROOT}.{target}' at the scope that set it)"
+            )
         elif cur is None:
             result = "(unset — the consumer applies its default)"
         else:

@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 
+from kanibako.commands.flags import add_null_flag
 from kanibako.config import config_file_path, load_config
 from kanibako.errors import WorksetError
 from kanibako.paths import (
@@ -163,7 +164,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     set_p.add_argument("workset", help="Name of the working set")
     set_p.add_argument("key_value", nargs="?", help="key=value pair")
-    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
+    add_null_flag(set_p, undo="workset reset <workset> <key>")
     set_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompts",
     )

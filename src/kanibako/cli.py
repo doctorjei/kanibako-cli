@@ -55,7 +55,16 @@ def build_parser() -> argparse.ArgumentParser:
         add_help=False,
     )
 
-    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
+    # ``parser_class`` (B-5): every subcommand — and, since add_subparsers
+    # defaults the class to its own parser's type, every NESTED subcommand —
+    # accepts its flags in ANY position, including between two positionals.
+    # Inert for parsers that argparse already interleaves correctly; see
+    # kanibako.commands.flags.hoist_optionals.
+    from kanibako.commands.flags import OptionsAnywhereParser
+
+    subparsers = parser.add_subparsers(
+        dest="command", metavar="COMMAND", parser_class=OptionsAnywhereParser,
+    )
 
     # Import and register all subcommand parsers.
     from kanibako.commands.start import (

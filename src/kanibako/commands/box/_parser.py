@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.box_identity import validate_box_name
+from kanibako.commands.flags import add_null_flag
 from kanibako.config import (
     BOX_META_FILE,
     config_file_path,
@@ -352,7 +353,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     set_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompts",
     )
-    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
+    add_null_flag(set_p, undo="box reset [project] <key>")
     set_p.set_defaults(func=run_set)
 
     # kanibako box reset [project] <key> | --all  [--force]

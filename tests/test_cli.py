@@ -1610,3 +1610,51 @@ class TestBoxConfigVerbsAcceptBoxFlag:
              patch("kanibako.paths.xdg", return_value=tmp_path):
             _setup_nudge(argparse.Namespace(command="shell"))
         assert capsys.readouterr().err == ""
+
+
+class TestNullFlagEndToEnd:
+    """B-5, whole path: argv -> parser -> run_set -> settings file.
+
+    The per-verb parse matrix lives in ``test_commands/test_flags.py``.  This
+    pins the END of the path too, because a parse fix that stranded the flag
+    before the writer would look green there and still be broken in the box.
+    """
+
+    def _settings_for(self, tmp_home, config_file, name, argv_tail):
+        from kanibako.cli import build_parser
+        from kanibako.config import load_config
+        from kanibako.config_io import load_doc
+        from kanibako.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = tmp_home / name
+        src.mkdir()
+        proj = resolve_project(std, config, project_dir=str(src), initialize=True)
+
+        args = build_parser().parse_args(
+            ["box", "set"] + [str(src) if a is None else a for a in argv_tail]
+        )
+        assert args.func(args) == 0
+        return load_doc(proj.metadata_path / "settings.yaml")
+
+    def test_every_ordering_writes_the_same_null(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        # ``None`` stands in for the box path (filled per-case).  The middle
+        # ordering is the one the P7 bifrost run recorded as broken.
+        orderings = {
+            "leading": ["--null", None, "pref.system.agent"],
+            "middle": [None, "--null", "pref.system.agent"],
+            "trailing": [None, "pref.system.agent", "--null"],
+        }
+        written = {
+            label: self._settings_for(tmp_home, config_file, f"nullproj-{label}", tail)
+            for label, tail in orderings.items()
+        }
+        for label, doc in written.items():
+            assert "agent" in doc["pref"]["system"], label
+            assert doc["pref"]["system"]["agent"] is None, label
+        # Equivalence, not just success: the position of a flag may not change
+        # what lands on disk.
+        assert written["middle"] == written["leading"] == written["trailing"]

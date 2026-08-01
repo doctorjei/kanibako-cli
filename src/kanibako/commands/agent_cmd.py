@@ -7,6 +7,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
+from kanibako.commands.flags import add_null_flag
 
 if TYPE_CHECKING:
     from kanibako.agent_config import AgentConfig
@@ -54,7 +55,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     set_p.add_argument("agent_id", help="Agent identifier")
     set_p.add_argument("key_value", nargs="?", help="key=value pair")
-    set_p.add_argument("--null", action="store_true", help='Write an explicit null (present-None) at the key instead of a value — the CLI spelling of a suppression request (spec §2h). Distinct from --reset, which REMOVES the override rather than writing one.')
+    add_null_flag(set_p, undo="agent reset <agent> <key>")
     set_p.set_defaults(func=run_set)
 
     # agent reset <agent> <key> | --all  [--force]
@@ -395,6 +396,43 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         else:
             print(f"No override for {key}")
         return 0
+
+    # ``--null`` at AGENT scope — REFUSED, honestly and by name.
+    #
+    # ⚑ Handled BEFORE the ``=`` split and the get fallback, because a bare key
+    # with no ``=`` falls through to GET: the flag PARSED (it is on this parser)
+    # and the command then READ a value and printed it, exit 0, writing nothing.
+    # An accepted-and-ignored flag is the worse failure — the user is told the
+    # write happened by the absence of any error.
+    #
+    # ⚑ Why REFUSE rather than write the null. This file's reader coerces every
+    # value it loads: ``load_agent_config`` builds ``cfg.state`` / ``cfg.env``
+    # with ``str(v)``, so a YAML ``null`` here comes back as the TEXT ``"None"``
+    # — not a suppression, a four-character string. For ``auto_approve`` that
+    # string ``coerce_bool``s to None at launch and start.py falls back to the
+    # PERMISSIVE default, so a flag whose whole promise is "suppress this" would
+    # turn ``--dangerously-skip-permissions`` ON. The other three scopes route
+    # through ``set_config_value``, which owns the closed-keyspace check and the
+    # per-route null refusals (env has no null; a category set is a source-only
+    # repoint); this verb has its own writer and none of that, so writing here
+    # would also put two disagreeing spellings of one idea in the tree. Agent-file
+    # null semantics need the READER to change with them — a separate change that
+    # owns launch consumption, not a CLI polish.
+    if getattr(args, "null", False):
+        if key_value is None:
+            print("Error: --null requires a key", file=sys.stderr)
+            return 1
+        # ``partition`` so a mistaken ``--null key=value`` still names the KEY in
+        # the cure rather than echoing the whole token back.
+        null_key = key_value.partition("=")[0].strip()
+        print(
+            f"Error: --null is not supported at agent scope. To clear the "
+            f"agent's OWN value use 'agent reset {agent_display} {null_key}'; "
+            f"to suppress what this agent declares, request it from a box or "
+            f"workset with '--null pref.agent.{agent_id}.{null_key}' (spec §2h).",
+            file=sys.stderr,
+        )
+        return 1
 
     # Parse key/value argument
     if key_value is None:
