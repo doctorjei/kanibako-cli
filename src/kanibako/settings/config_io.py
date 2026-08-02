@@ -24,10 +24,40 @@ from pathlib import Path
 import yaml
 
 from kanibako._atomic import atomic_write_text
+from kanibako.errors import ConfigError
+
+
+def _yaml_problem(exc: yaml.YAMLError) -> str:
+    """One-line rendering of a YAML parse failure (the problem + where).
+
+    ``yaml``'s own ``str()`` is multi-line and cites ``"<unicode string>"`` as
+    the source (we hand :func:`yaml.safe_load` TEXT, not the file), so it names
+    everything except the file.  The caller supplies the file; this supplies the
+    problem and its line/column.
+    """
+    if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
+        mark = exc.problem_mark
+        where = (
+            f" (line {mark.line + 1}, column {mark.column + 1})"
+            if mark is not None else ""
+        )
+        return f"{exc.problem}{where}"
+    return " ".join(str(exc).split())
 
 
 def load_doc(path: Path | None) -> dict:
-    """Load a config document → dict. Missing/empty/non-mapping → {}."""
+    """Load a config document → dict. Missing/empty/non-mapping → {}.
+
+    A file that is not parseable YAML raises :class:`~kanibako.errors.ConfigError`
+    ("Configuration file missing or malformed") naming the FILE and the parse
+    problem.  ⚑ THE NORMALIZATION BELONGS HERE and nowhere else: this is the one
+    seam that knows WHICH file is being read — ``yaml`` is handed a string, so its
+    own mark says ``"<unicode string>"`` — and a raw ``yaml.YAMLError`` escaping
+    to the CLI (which converts only ``KanibakoError`` into a clean rc1) is a
+    traceback on any verb that touches the cascade, including the BOX-LESS ones
+    (``rig list`` / ``setup`` / ``baseline``) that reach it through
+    ``load_merged_config``'s box-scalar resolve (B6-Editor S-3).
+    """
     if path is None or not path.exists():
         return {}
     text = path.read_text()
@@ -36,7 +66,13 @@ def load_doc(path: Path | None) -> dict:
     # catastrophically — guard the host instead of trusting the input.
     if not isinstance(text, str):
         return {}
-    data = yaml.safe_load(text)
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ConfigError(
+            f"the config file {path} is not valid YAML: {_yaml_problem(exc)}. "
+            "Fix or remove the file, then retry."
+        ) from exc
     return data if isinstance(data, dict) else {}
 
 

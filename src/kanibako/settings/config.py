@@ -229,8 +229,11 @@ def _resolve_box_scalars(
     from kanibako.settings.settings_resolve import ResolveCtx
     from kanibako.settings.settings_store import KeyStore
 
-    # The system SETTINGS file (@config.settings = global/settings.yaml) — pure
-    # path resolution (no mkdir; deliberately NOT load_std_paths).
+    # The system SETTINGS file (@config.settings = global/settings.yaml) — path
+    # resolution, deliberately NOT load_std_paths (which materializes the store).
+    # ⚑ Not literally mkdir-free: with XDG_RUNTIME_DIR unset, resolve_system_paths'
+    # fallback CREATES its replacement runtime dir (once per process, cached) —
+    # the single directory this call can make.
     system_path = load_system_config(
         global_path, data_home=xdg("XDG_DATA_HOME", ".local/share"),
         home=Path.home(),

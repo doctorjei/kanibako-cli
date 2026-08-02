@@ -963,3 +963,94 @@ class TestMergedConfigKeyspaceResolve:
         gp = self._global(tmp_path, monkeypatch)
         merged = load_merged_config(gp, None)
         assert merged.box_image == "global-img:1"
+
+
+class TestMalformedSettingsFileIsNamed:
+    """B6-Editor S-3: a malformed settings YAML surfaces as a NAMED ConfigError.
+
+    B6 put a real keyspace resolve inside ``load_merged_config``, so every
+    consumer — including the BOX-LESS verbs (``rig list`` / ``setup`` /
+    ``baseline``), which pass no project — now parses the cascade files. A raw
+    ``yaml.parser.ParserError`` out of that resolve is a traceback, because
+    ``cli.main`` converts only ``KanibakoError`` into a clean rc1. The
+    normalization sits at the ONE load seam that knows the file
+    (``config_io.load_doc``); these pin the seam, the resolve, and the verb.
+    """
+
+    _CORRUPT = "box:\n  image: ok\n :\n  - [unclosed\n"
+
+    def test_load_doc_names_the_file_and_the_problem(self, tmp_path):
+        """The seam raises ConfigError naming the FILE and the parse problem."""
+        from kanibako.errors import ConfigError, KanibakoError
+        from kanibako.settings.config_io import load_doc
+
+        bad = tmp_path / "settings.yaml"
+        bad.write_text(self._CORRUPT)
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert isinstance(exc.value, KanibakoError)  # → cli's clean rc1 band
+        msg = str(exc.value)
+        assert str(bad) in msg                       # the FILE
+        assert "not valid YAML" in msg               # the CLASS of failure
+        assert "line " in msg and "column " in msg   # the parse problem, located
+
+    def test_valid_yaml_is_untouched(self, tmp_path):
+        """The guard is a normalization, not a new refusal."""
+        from kanibako.settings.config_io import load_doc
+
+        good = tmp_path / "settings.yaml"
+        good.write_text("box:\n  image: ok:1\n")
+        assert load_doc(good) == {"box": {"image": "ok:1"}}
+
+    def test_boxless_merged_resolve_raises_the_named_error(
+        self, tmp_path, monkeypatch,
+    ):
+        """The BOX-LESS shape (``load_merged_config(cf, None)``) — the one every
+        rig/setup/baseline call site uses — surfaces the named error."""
+        from kanibako.errors import ConfigError
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        (tmp_path / "config").mkdir(exist_ok=True)
+        gp = tmp_path / "config" / "kanibako_config.yaml"
+        write_global_config(gp, KanibakoConfig())
+        ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text(self._CORRUPT)
+
+        with pytest.raises(ConfigError) as exc:
+            load_merged_config(gp, None)
+        assert str(ssp) in str(exc.value)
+
+    def test_boxless_verb_exits_rc1_with_a_clean_message(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """E2E through ``main(["rig", "list"])``: rc1 + ``Error: …``, no traceback.
+
+        ``rig list`` is a BOX-LESS verb whose ``load_merged_config(cf, None)``
+        reaches the corrupt system settings file; before the normalization it
+        died with a ``yaml.parser.ParserError`` traceback.
+        """
+        from unittest.mock import patch
+
+        from kanibako.cli import main
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        (tmp_path / "config").mkdir(exist_ok=True)
+        write_global_config(
+            tmp_path / "config" / "kanibako_config.yaml", KanibakoConfig(),
+        )
+        ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text(self._CORRUPT)
+
+        with patch("kanibako.cli._ensure_initialized"):
+            with pytest.raises(SystemExit) as exc:
+                main(["rig", "list", "-q"])
+        assert exc.value.code == 1  # the clean band, not an interpreter crash
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert str(ssp) in err
+        assert "not valid YAML" in err
