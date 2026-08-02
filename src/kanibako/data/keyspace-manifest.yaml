@@ -1469,10 +1469,12 @@ declared_instances:
     spec: "§2c (ALL PROJECTS; R-23 / R-28)"
   box.bindings.rw.helper_sock:
     user_key: true
-    default: "(@system.runtime/@meta.box.name-@meta.workset.name.sock, $XDG_STATE_HOME/kanibako/helper.sock)"
+    default: "(@system.runtime/@{meta.box.name}-@{meta.workset.name}.sock, $XDG_STATE_HOME/kanibako/helper.sock)"
     note: "mount options MUST stay empty ('') — a LIVE unix socket; Z/U
            relabel/chown would break the shared socket topology (core-defaults
-           carries the empty 3rd slot)"
+           carries the empty 3rd slot). ⚑ THE BRACES ARE LOAD-BEARING (R-23 /
+           ruling 9a, 2026-08-02): a bare workset-name ref would greedily eat
+           the `.sock` suffix as one absent ref name (cf. helper_log)."
     spec: "§2c (ALL PROJECTS)"
   box.bindings.ro.kani_pkg:
     user_key: false
