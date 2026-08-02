@@ -11,9 +11,15 @@ from kanibako.runtime.image_sharing import (
     detect_graph_root,
     generate_storage_conf,
     is_rootless_podman,
-    prepare_image_sharing_sources,
     virtiofs_graphroot_message,
+    write_storage_conf,
 )
+
+#: The tail of the ``images_conf`` bind's box destination (the declarative
+#: ``~/.config/containers/storage.conf`` row, resolved against the guest home).
+#: Matched by SUFFIX so the assertions pin the DELIVERY, not the guest-home
+#: constant.
+_STORAGE_CONF_SUFFIX = ".config/containers/storage.conf"
 
 
 # ---------------------------------------------------------------------------
@@ -134,38 +140,37 @@ class TestGenerateStorageConf:
 
 
 # ---------------------------------------------------------------------------
-# prepare_image_sharing_sources (Phase B: the source-resolver the launch seam
-# calls so the binds flow through the category resolver, not hardwired Mounts)
+# write_storage_conf (11a, 2026-08-02: the GENERATION half, split from the
+# probe — the old combined prepare_image_sharing_sources coupled probe-fail to
+# skipping everything, which a SET box.images_store must survive)
 # ---------------------------------------------------------------------------
 
-class TestPrepareImageSharingSources:
-    """Tests for prepare_image_sharing_sources()."""
+class TestWriteStorageConf:
+    """Tests for write_storage_conf()."""
 
-    def test_returns_graph_root_and_conf_path(self, tmp_path):
-        """Returns (graph_root, storage_conf_path) when graph root is detected."""
-        graph_dir = tmp_path / "overlay"
-        graph_dir.mkdir()
+    def test_writes_conf_and_returns_path(self, tmp_path):
+        """Writes the generated storage.conf into staging, returns its path."""
         staging = tmp_path / "staging"
 
-        with patch("kanibako.runtime.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = graph_dir
-            result = prepare_image_sharing_sources("podman", staging)
+        conf_path = write_storage_conf(staging)
 
-        assert result is not None
-        graph_root, conf_path = result
-        assert graph_root == graph_dir
         assert conf_path == staging / "storage.conf"
         # The generated conf is WRITTEN (it is the bound source, spec D-M8).
         assert conf_path.exists()
         assert SHARED_STORE_CONTAINER_PATH in conf_path.read_text()
 
-    def test_returns_none_when_detection_fails(self, tmp_path):
-        """Returns None when the host graph root cannot be detected."""
+    def test_independent_of_the_probe(self, tmp_path):
+        """Generation does not consult the probe (11a: the probe feeds ONLY
+        the box.images_store default; the conf content is store-independent)."""
         staging = tmp_path / "staging"
 
-        with patch("kanibako.runtime.image_sharing.detect_graph_root") as mock_detect:
-            mock_detect.return_value = None
-            assert prepare_image_sharing_sources("podman", staging) is None
+        with patch(
+            "kanibako.runtime.image_sharing.detect_graph_root"
+        ) as mock_detect:
+            conf_path = write_storage_conf(staging)
+
+        mock_detect.assert_not_called()
+        assert conf_path.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +185,10 @@ class TestImageSharingInRunContainer:
 
         Phase B: the mounts now flow through the category resolver (the seam
         injects the probed graph root + generated storage.conf into keyed
-        ``box.bindings.ro.images_*`` binds).  ``prepare_image_sharing_sources`` is
-        the source-resolver the seam calls; patch it to return real paths so the
-        reconciled ro mount keeps its existing source (not dropped by L7).
+        ``box.bindings.ro.images_*`` binds).  11a: the seam calls the split
+        probe (``detect_graph_root``) + generation (``write_storage_conf``);
+        patch both to real paths so the reconciled ro mount keeps its existing
+        source (not dropped by L7).  The PROBED-DEFAULT arm — unchanged by 11a.
         """
         from kanibako.commands.start import _run_container
 
@@ -192,11 +198,22 @@ class TestImageSharingInRunContainer:
         conf.write_text("[storage]\n")
 
         with start_mocks() as m:
-            with patch(
-                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
-            ) as mock_prep:
-                mock_prep.return_value = (graph_root, conf)
-
+            # ⚑ The seam gate reads ``merged.box_share_images`` ALONE (B6) and
+            # this fixture MOCKS ``load_merged_config``, so the ``--share-images``
+            # ride through the §1A CLI level cannot reach it here — set the value
+            # that resolve would have produced.  (The flag→key transport itself is
+            # pinned by tests/test_settings/test_config.py.)
+            m.merged.box_share_images = True
+            with (
+                patch(
+                    "kanibako.runtime.image_sharing.detect_graph_root",
+                    return_value=graph_root,
+                ) as mock_detect,
+                patch(
+                    "kanibako.runtime.image_sharing.write_storage_conf",
+                    return_value=conf,
+                ) as mock_write,
+            ):
                 rc = _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -208,21 +225,32 @@ class TestImageSharingInRunContainer:
                     share_images=True,
                 )
                 assert rc == 0
-                mock_prep.assert_called_once()
+                mock_detect.assert_called_once()
+                mock_write.assert_called_once()
                 # Verify the mount was included in the runtime.run call
                 call_kwargs = m.runtime.run.call_args.kwargs
                 extra = call_kwargs.get("extra_mounts") or []
                 destinations = [mt.destination for mt in extra]
                 assert SHARED_STORE_CONTAINER_PATH in destinations
+                # The store bind's SOURCE is the probed default (the resolved
+                # ``box.images_store`` with no set tier value).
+                by_dest = {mt.destination: mt for mt in extra}
+                assert by_dest[SHARED_STORE_CONTAINER_PATH].source == graph_root
+                # ... and the GENERATED storage.conf rides with it.
+                conf_mounts = [
+                    mt for mt in extra
+                    if str(mt.destination).endswith(_STORAGE_CONF_SUFFIX)
+                ]
+                assert [mt.source for mt in conf_mounts] == [conf]
 
     def test_share_images_disabled_by_default(self, start_mocks):
-        """Without --share-images, no image sharing mounts are added."""
+        """Without --share-images, the probe is never even run."""
         from kanibako.commands.start import _run_container
 
         with start_mocks():
             with patch(
-                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
-            ) as mock_prep:
+                "kanibako.runtime.image_sharing.detect_graph_root",
+            ) as mock_detect:
                 _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -232,17 +260,32 @@ class TestImageSharingInRunContainer:
                     resume_mode=False,
                     extra_args=[],
                 )
-                mock_prep.assert_not_called()
+                mock_detect.assert_not_called()
 
-    def test_share_images_detection_failure_warns(self, start_mocks, capsys):
-        """When detection fails, a warning is printed but launch continues."""
+    def test_share_images_probe_fail_unset_warns(
+        self, start_mocks, tmp_path, capsys,
+    ):
+        """Probe-fail + NO set box.images_store: skip WITH the 11a warning.
+
+        The warning must NAME the cause (the probe failed AND no
+        ``box.images_store`` is set) and the cure (set the key or fix podman)
+        — the pre-11a silent-cause warning named only "could not be detected".
+        Launch continues without sharing.
+        """
         from kanibako.commands.start import _run_container
 
-        with start_mocks():
+        box_meta = tmp_path / "box-meta"
+        box_meta.mkdir()
+
+        with start_mocks() as m:
+            # A REAL metadata path: the staging storage.conf is genuinely
+            # written; the box-tier settings.yaml is absent (no set value).
+            m.proj.metadata_path = box_meta
+            m.merged.box_share_images = True  # the B6 gate (see above)
             with patch(
-                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
-            ) as mock_prep:
-                mock_prep.return_value = None  # detection failed
+                "kanibako.runtime.image_sharing.detect_graph_root",
+                return_value=None,  # the probe failed
+            ):
                 rc = _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -254,21 +297,97 @@ class TestImageSharingInRunContainer:
                     share_images=True,
                 )
                 assert rc == 0  # continues without image sharing
+                # Nothing image-flavored was mounted — NEITHER the store bind
+                # NOR the generated storage.conf (its DELIVERY follows the
+                # resolved store: no store, nothing delivered).
+                call_kwargs = m.runtime.run.call_args.kwargs
+                extra = call_kwargs.get("extra_mounts") or []
+                dests = [str(mt.destination) for mt in extra]
+                assert SHARED_STORE_CONTAINER_PATH not in dests
+                assert not [d for d in dests if d.endswith(_STORAGE_CONF_SUFFIX)]
 
         captured = capsys.readouterr()
         assert "Warning" in captured.err
-        assert "image storage" in captured.err
+        assert "probe failed" in captured.err
+        assert "no box.images_store is set" in captured.err
+        assert "set box.images_store" in captured.err
+        assert "Continuing without image sharing" in captured.err
 
-    def test_share_images_via_config(self, start_mocks):
-        """share_images=true in config triggers image sharing source resolution."""
+    def test_share_images_set_store_shares_on_probe_fail(
+        self, start_mocks, tmp_path, capsys,
+    ):
+        """Ruled 11a: probe-fail + a SET box.images_store still shares.
+
+        The probe feeds ONLY the key's DEFAULT; the RESOLVED key (here the
+        box-tier file value) feeds the bind — so a failed probe with a set
+        store emits the mounts FROM THE SET STORE, with no warning.
+        """
         from kanibako.commands.start import _run_container
 
+        store_dir = tmp_path / "host-store"
+        store_dir.mkdir()
+        box_meta = tmp_path / "box-meta"
+        box_meta.mkdir()
+        (box_meta / "settings.yaml").write_text(
+            f"box:\n  images_store: {store_dir}\n"
+        )
+
         with start_mocks() as m:
+            m.proj.metadata_path = box_meta
+            m.merged.box_share_images = True  # the B6 gate (see above)
+            with patch(
+                "kanibako.runtime.image_sharing.detect_graph_root",
+                return_value=None,  # the probe failed
+            ):
+                rc = _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    share_images=True,
+                )
+                assert rc == 0
+                call_kwargs = m.runtime.run.call_args.kwargs
+                extra = call_kwargs.get("extra_mounts") or []
+                by_dest = {mt.destination: mt for mt in extra}
+                # The store bind emitted FROM THE SET VALUE.
+                assert SHARED_STORE_CONTAINER_PATH in by_dest
+                assert by_dest[SHARED_STORE_CONTAINER_PATH].source == store_dir
+                # The generated storage.conf was written for real AND delivered
+                # alongside the resolved store (the ``images_conf`` internal
+                # bind — it follows the store, not the probe).
+                staged_conf = box_meta / ".image-sharing" / "storage.conf"
+                assert staged_conf.exists()
+                conf_mounts = [
+                    mt for mt in extra
+                    if str(mt.destination).endswith(_STORAGE_CONF_SUFFIX)
+                ]
+                assert [mt.source for mt in conf_mounts] == [staged_conf]
+
+        captured = capsys.readouterr()
+        assert "Continuing without image sharing" not in captured.err
+
+    def test_share_images_via_config(self, start_mocks, tmp_path):
+        """share_images=true in config triggers image sharing source resolution.
+
+        The gate is the RESOLVED ``box.share_images`` (B6), so a stored value
+        drives the seam with no flag at all.
+        """
+        from kanibako.commands.start import _run_container
+
+        box_meta = tmp_path / "box-meta"
+        box_meta.mkdir()
+
+        with start_mocks() as m:
+            m.proj.metadata_path = box_meta
             m.merged.box_share_images = True
             with patch(
-                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
-            ) as mock_prep:
-                mock_prep.return_value = None
+                "kanibako.runtime.image_sharing.detect_graph_root",
+                return_value=None,
+            ) as mock_detect:
                 _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -279,17 +398,22 @@ class TestImageSharingInRunContainer:
                     extra_args=[],
                     share_images=False,
                 )
-                mock_prep.assert_called_once()
+                mock_detect.assert_called_once()
 
-    def test_share_images_in_shell_mode(self, start_mocks):
+    def test_share_images_in_shell_mode(self, start_mocks, tmp_path):
         """--share-images works in shell mode too."""
         from kanibako.commands.start import _run_container
 
-        with start_mocks():
+        box_meta = tmp_path / "box-meta"
+        box_meta.mkdir()
+
+        with start_mocks() as m:
+            m.proj.metadata_path = box_meta
+            m.merged.box_share_images = True  # the B6 gate (see above)
             with patch(
-                "kanibako.runtime.image_sharing.prepare_image_sharing_sources",
-            ) as mock_prep:
-                mock_prep.return_value = None
+                "kanibako.runtime.image_sharing.detect_graph_root",
+                return_value=None,
+            ) as mock_detect:
                 _run_container(
                     project_dir=None,
                     entrypoint="/bin/bash",
@@ -300,7 +424,7 @@ class TestImageSharingInRunContainer:
                     extra_args=[],
                     share_images=True,
                 )
-                mock_prep.assert_called_once()
+                mock_detect.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

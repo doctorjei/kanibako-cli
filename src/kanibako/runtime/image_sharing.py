@@ -214,31 +214,23 @@ def generate_storage_conf(shared_store_path: str) -> str:
     )
 
 
-def prepare_image_sharing_sources(
-    runtime_cmd: str,
-    staging_dir: Path,
-) -> tuple[Path, Path] | None:
-    """Probe the host graph root + GENERATE the storage.conf, returning their paths.
+def write_storage_conf(staging_dir: Path) -> Path:
+    """GENERATE + write the shared-store ``storage.conf`` into *staging_dir*.
 
-    The SOURCE-resolver half of image sharing (spec D-M8 = generated+bound), split
-    out so the box-launch seam can inject these runtime-probed/generated host paths
-    into a keyed ``box.bindings.ro.images_*`` binding (routed through the category
-    resolver) rather than hardwiring two :class:`Mount`s.
+    The GENERATION half of image sharing (spec D-M8 = generated+bound), split
+    from the graph-root PROBE (ruled 11a, 2026-08-02): the probe
+    (:func:`detect_graph_root`) feeds ONLY the ``box.images_store`` DEFAULT,
+    while this generated file serves the RESOLVED store — probed default OR a
+    set tier value — so the launch seam writes it whenever sharing is
+    requested (its content is store-independent: it names the in-box
+    ``additionalImageStores`` path, not the host store).  The old combined
+    ``prepare_image_sharing_sources`` (probe-fail = skip everything) was the
+    coupling that ruling removed.
 
-    Detects the host ``GraphRoot`` and writes the generated ``storage.conf`` into
-    *staging_dir*; returns ``(graph_root, storage_conf_path)`` on success, or
-    *None* if the host graph root can't be detected (caller skips sharing).
+    Returns the written path.
     """
-    graph_root = detect_graph_root(runtime_cmd)
-    if graph_root is None:
-        logger.info("Image sharing: could not detect host graph root, skipping")
-        return None
-
-    logger.info("Image sharing: host graph root at %s", graph_root)
-
     storage_conf_content = generate_storage_conf(SHARED_STORE_CONTAINER_PATH)
     staging_dir.mkdir(parents=True, exist_ok=True)
     storage_conf_path = staging_dir / "storage.conf"
     storage_conf_path.write_text(storage_conf_content)
-
-    return graph_root, storage_conf_path
+    return storage_conf_path

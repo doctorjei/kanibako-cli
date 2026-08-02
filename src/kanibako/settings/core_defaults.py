@@ -1249,7 +1249,7 @@ def helper_default_categories(
 
 def image_default_categories(
     *,
-    graph_root: Path,
+    graph_root: Path | None,
     storage_conf_path: Path,
 ) -> dict[str, tuple[str, str, str] | str]:
     """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
@@ -1271,29 +1271,35 @@ def image_default_categories(
     bind's host_src to the winning value.  ``images_conf`` stays an INTERNAL bind
     and NOT a key (fixed location, generated content — spec §0's test).
 
-    The caller applies the CONDITIONAL gate (only when image-sharing is requested
-    AND the host graph root is detectable) before invoking this, so every entry is
-    emitted unconditionally once called — that gate is the code realization of the
-    spec's ``%if @box.share_images%`` condition on the ``images`` row.
+    ⚑ 11a (2026-08-02): the PROBE feeds ONLY that default — *graph_root* may be
+    ``None`` (probe failed), in which case NO floor scalar is emitted and the
+    ``@box.images_store`` host_src resolves solely from a set tier value (or
+    propagates ABSENT, dropping the bind).  The caller's gate is now just
+    "image-sharing requested" — the code realization of the spec's
+    ``%if @box.share_images%`` condition on the ``images`` row; whether the
+    RESOLVED store exists is decided after the resolve, at the seam.
     """
     sources: dict[str, str] = {
-        "images_store": str(graph_root),
         "images_conf": str(storage_conf_path),
     }
 
-    binds: dict[str, tuple[str, str, str] | str] = {
+    binds: dict[str, tuple[str, str, str] | str] = {}
+    if graph_root is not None:
+        sources["images_store"] = str(graph_root)
         # The USER KEY behind the store bind: the probe lands as the DEFAULT of
         # ``box.images_store`` (manifest §2b row — "<runtime-probed podman
         # graphroot>"); the ``images`` bind's ``@box.images_store`` host_src
         # resolves against whatever value wins the cascade.
-        "box.images_store": str(graph_root),
-    }
+        binds["box.images_store"] = str(graph_root)
     for entry in _load_doc().get("images", []):
         category = entry["category"]
         # ``meta_ref`` (when declared) is the emitted host_src — the spec's own
         # @-ref spelling; the symbolic ``source`` stays the probed-literal
-        # fallback (helper_default_categories parity).
-        host_src = entry.get("meta_ref", sources[entry["source"]])
+        # fallback (helper_default_categories parity; LAZY so a probe-fail
+        # ``None`` only raises if an entry actually needs the probed literal).
+        host_src = entry.get("meta_ref")
+        if host_src is None:
+            host_src = sources[entry["source"]]
         binds[f"box.{category}.{entry['key']}"] = (
             host_src,
             str(entry["box_dest"]),

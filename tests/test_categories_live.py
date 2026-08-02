@@ -572,13 +572,17 @@ class TestB3ImagesStoreKey:
         )
 
     @staticmethod
-    def _resolve_images_mounts(tmp_path, box_yaml: str | None):
+    def _resolve_images_mounts(tmp_path, box_yaml: str | None, *, probed_ok=True):
         """Resolve the CONDITIONAL image table through the LIVE pipeline.
 
         Mirrors the launch's narrow image resolve: ONLY the image table as the
         floor (``include_base_families=False`` shape), plus an optional box
         settings FILE — the tier a user's ``box: images_store:`` repoint lives
         in.  All host sources are real dirs/files so the reconcile keeps them.
+
+        *probed_ok* False is the FAILED PROBE (ruled 11a): ``graph_root=None``,
+        so the table carries no floor scalar for ``box.images_store`` and only a
+        set tier value can resolve the bind.
         """
         from kanibako.settings import core_defaults
         from kanibako.settings.settings_launch import (
@@ -597,7 +601,7 @@ class TestB3ImagesStoreKey:
 
         ctx = make_ctx()
         floor = dict(core_defaults.image_default_categories(
-            graph_root=probed, storage_conf_path=conf,
+            graph_root=probed if probed_ok else None, storage_conf_path=conf,
         ))
         snap = build_launch_snapshot(
             agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
@@ -631,6 +635,57 @@ class TestB3ImagesStoreKey:
         )
         assert by_dest["/var/lib/shared-images"] == str(custom)
         assert by_dest["/var/lib/shared-images"] != str(probed)
+
+    def test_probe_fail_emits_no_floor_scalar(self):
+        """Ruled 11a: a FAILED probe contributes no ``box.images_store`` default.
+
+        The probe feeds ONLY the key's default, so ``graph_root=None`` leaves the
+        key unset in the table — the bind is still spelled as the @-ref (nothing
+        falls back to a probed literal) and the INTERNAL conf bind is unaffected.
+        """
+        from kanibako.settings import core_defaults
+
+        emitted = core_defaults.image_default_categories(
+            graph_root=None,
+            storage_conf_path=Path("/host/staging/storage.conf"),
+        )
+        assert "box.images_store" not in emitted
+        assert emitted["box.bindings.ro.images"] == (
+            "@box.images_store",
+            "/var/lib/shared-images",
+            "ro",
+        )
+        assert emitted["box.bindings.ro.images_conf"] == (
+            "/host/staging/storage.conf",
+            "~/.config/containers/storage.conf",
+            "ro",
+        )
+
+    def test_probe_fail_without_a_set_key_drops_the_store_mount(self, tmp_path):
+        """Probe fail + no set key: ``@box.images_store`` propagates ABSENT.
+
+        The whole-value @-ref to an unset key drops the bind (§6b), so the store
+        mount simply is not there — the launch seam reads the same resolved key
+        and warns rather than mounting half of the pair.
+        """
+        _probed, by_dest = self._resolve_images_mounts(
+            tmp_path, box_yaml=None, probed_ok=False,
+        )
+        assert "/var/lib/shared-images" not in by_dest
+
+    def test_probe_fail_still_follows_a_set_images_store(self, tmp_path):
+        """Probe fail + a SET key: the bind resolves from the SET value.
+
+        THE 11a case — the probe's only job was the default, so losing it costs
+        nothing once the user (or a cascade tier) has named the store.
+        """
+        custom = tmp_path / "custom-store"
+        custom.mkdir()
+        _probed, by_dest = self._resolve_images_mounts(
+            tmp_path, box_yaml=f"box:\n  images_store: {custom}\n",
+            probed_ok=False,
+        )
+        assert by_dest["/var/lib/shared-images"] == str(custom)
 
 
 class TestDeclarationRoots:
