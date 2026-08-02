@@ -1862,6 +1862,10 @@ not_keys:
     "required":           "the non-overridable ceiling TIER was CUT (Jei 2026-06-29f)"
     ".env":               "global/workset/project .env FILES were DROPPED (2026-06-27) — a
                            duplicate shared channel for env; use <scope>.env.<VAR> instead"
+    "env.<VAR>":          "the BARE, UNSCOPED env KEY spelling — RETIRED (R-39): it wrote the
+                           .env files above, which are themselves dropped. The env family is
+                           SCOPED (§2a), so use <scope>.env.<VAR>; set/get/reset refuse the
+                           bare form BY NAME with that cure"
     "agent.<agent>.<anyleaf>": "free-form leaf passthrough — the keyspace is CLOSED (spec §0)"
 
   code_residue:                   # appeared in CODE only, never spec-sanctioned
