@@ -2288,6 +2288,25 @@ class TestImportPersonaStoreForCreate:
         err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
         assert err is not None and err.startswith("Error:")
 
+    def test_corrupt_existing_settings_is_an_error(self, tmp_home, monkeypatch):
+        """A corrupt node ``settings.yaml`` is refused ACTIONABLY, not crashed.
+
+        The parse failure now arrives NORMALIZED (``config_io.load_doc`` raises
+        ConfigError naming the file, B6-Editor S-3) rather than as a raw
+        ``yaml.YAMLError``; the gate must still convert it to the create-refusal
+        message instead of letting it traceback out of ``create``.
+        """
+        self._store(tmp_home)
+        settings = self._settings_path(tmp_home)
+        settings.parent.mkdir(parents=True)
+        settings.write_text("self:\n  endpoint: ok\n :\n  - [unclosed\n")
+
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is not None and err.startswith("Error:")
+        assert "corrupt" in err
+        assert str(settings) in err  # the normalized error names the FILE
+        assert "then retry" in err
+
     def test_token_pointer_warning_still_imports(self, tmp_home, monkeypatch, capsys):
         from kanibako.settings.config_io import load_doc
 

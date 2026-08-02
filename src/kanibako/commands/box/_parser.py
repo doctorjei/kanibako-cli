@@ -584,8 +584,6 @@ def _import_persona_store_for_create(std, agent_ref: str, project_path) -> str |
     harness not installed — all fall through to today's create behavior) or
     the import succeeded (a soft token-pointer warning is printed here).
     """
-    import yaml
-
     from kanibako.agent_ref import display_agent_ref
     from kanibako.errors import ConfigError
     from kanibako.persona_store import import_persona_entry, locate_entry
@@ -602,9 +600,13 @@ def _import_persona_store_for_create(std, agent_ref: str, project_path) -> str |
     display = display_agent_ref(entry.node)
     try:
         result = import_persona_entry(std.agents, entry, target)
-    except yaml.YAMLError as e:
+    except ConfigError as e:
         # The node's EXISTING settings.yaml is corrupt — surface it actionably
         # (the launch would hit the same file); never traceback-crash a create.
+        # ⚑ The parse failure arrives NORMALIZED (config_io.load_doc raises
+        # ConfigError naming the file), so this catches the one type rather than
+        # the raw yaml error it used to; the plugins' own persona-config readers
+        # swallow their parse failures, so nothing else reaches here.
         return (
             f"Error: the agent settings file for '{display}' is corrupt and "
             f"cannot be updated from the persona store ({e}).\n"
