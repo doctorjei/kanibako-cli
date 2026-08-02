@@ -130,24 +130,31 @@ def find_connected_external_box(
     project_dir: Path,
     std: StandardPaths,
 ) -> _OwnedBox | None:
-    """Resolve *project_dir* (or an ancestor) to an EXTERNAL-connected box.
+    """Resolve *project_dir* (or an ancestor) to a registered box OUTSIDE the
+    current composition (external connect OR a pre-repoint stranded member).
 
-    The per-workset registries collectively ARE the reverse index (D10): a
-    connected box is a NAMED workset's ``boxes:`` entry whose registered PATH is
-    an EXTERNAL directory (outside that workset's root).  This enumerates every
-    NAMED workset (the global ``worksets:`` discovery section), scans its
-    per-workset ``boxes:`` membership (honoring a ``workset.registry`` repoint),
-    and returns the entry whose registered path is *project_dir* OR a proper
-    ANCESTOR of it — DEEPEST wins, the same ancestor semantics the legacy
+    The per-workset registries collectively ARE the reverse index (D10): this
+    enumerates every NAMED workset (the global ``worksets:`` discovery section),
+    scans its per-workset ``boxes:`` membership (honoring a ``workset.registry``
+    repoint), and returns the entry whose registered path is *project_dir* OR a
+    proper ANCESTOR of it — DEEPEST wins, the same ancestor semantics the legacy
     ``connected:`` index used so a launch from a SUBDIR of a connected dir still
-    resolves.  In-tree boxes (path under the workset root) are skipped — they are
-    resolved by ordinary location detection.  The PRIMARY workset is skipped:
+    resolves.  Boxes under the workset's CURRENT resolved ``workset.workspaces``
+    dir are skipped — those (and ONLY those) are resolved by ordinary location
+    detection.  ⚑ The skip is deliberately NOT "under the workset root": the
+    registry's ``boxes:`` membership is the SOLE authoritative name → workspace
+    store, and a member registered under an OLD composition (in-root, before a
+    ``workset.workspaces`` repoint) is invisible to the workspaces walk — it must
+    resolve HERE by its REGISTERED path (bifrost A0, 2026-08-02: the root-wide
+    skip stranded exactly those members).  The PRIMARY workset is skipped:
     default-mode external boxes were never in ``connected:`` and resolve by their
-    own name index.  ``None`` when no connected box owns *project_dir*.
+    own name index.  ``None`` when no such box owns *project_dir*.
 
     This REPLACES the global ``connected:`` index + ``workset._find_connected_project``
     (D10 enumerate-and-scan; no marker in the user's repo).
     """
+    from kanibako.project.workset import resolve_workset_workspaces
+
     target = project_dir.resolve()
     best: _OwnedBox | None = None
     best_depth = -1
@@ -155,18 +162,22 @@ def find_connected_external_box(
         std.registry, "worksets"
     ).items():
         root = Path(root_str)
-        root_resolved = root.resolve()
         settings: Any = load_doc(root / "settings.yaml")
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
+        # ``resolve_workset_workspaces`` guards non-mapping docs itself (the
+        # same *settings* value the registry-path resolver above consumes).
+        workspaces_resolved = resolve_workset_workspaces(root, settings).resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
             box_path = Path(box_path_str).resolve()
-            # EXTERNAL only: an in-tree box (path under the workset root) is a
-            # normal membership entry, never a connected-external record.
+            # Skip ONLY members under the CURRENT resolved workspaces dir —
+            # ordinary location detection owns those.  Anything else (external
+            # connect, or an in-root path stranded by a repoint) resolves here
+            # by its registered path.
             try:
-                box_path.relative_to(root_resolved)
+                box_path.relative_to(workspaces_resolved)
                 continue
             except ValueError:
                 pass

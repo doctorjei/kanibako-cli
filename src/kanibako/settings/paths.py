@@ -1657,6 +1657,25 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
     return workset_registry.reverse_lookup_workset_box(registry_path, workspace)
 
 
+def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None:
+    """Forward-look-up *box_name* in *ws_root*'s per-workset ``boxes:`` membership.
+
+    Returns the REGISTERED workspace path (the ``boxes:`` entry VALUE) or
+    ``None``.  The forward twin of :func:`_workset_box_name_for_workspace`, with
+    the same registry-path resolution.  The registered path is authoritative
+    (D1b/D3-auth) *wherever a composition epoch put it* — a member registered
+    before a ``workset.workspaces`` repoint keeps resolving to its recorded
+    workspace, never re-derived from the CURRENT composition (bifrost A0).
+    """
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws_root, load_doc(ws_root / "settings.yaml"),
+    )
+    return workset_registry.workset_box_path(registry_path, box_name)
+
+
 def _register_workset_box_membership(
     ws_root: Path, box_name: str, workspace: Path,
 ) -> None:
@@ -1927,20 +1946,25 @@ def resolve_workset_project(
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
-    # Workspace override (P7/D10).  A box connected to an EXTERNAL dir has that
-    # dir recorded as its workspace in the workset's per-workset registry
-    # (``boxes:`` name → external path, written by ``connect``).  Source it from
-    # box_resolve: its ``workspace`` field == the registered box path — the
-    # EXTERNAL dir for a connected box, ``workspaces/<name>`` for an in-tree box
-    # (a no-op override).  Replaces the transitional ``read_project_meta``
-    # ``resolved.workspace`` read (P7 drops that consumer).  *project_path* (the
-    # ``workspaces/<name>`` symlink for a connect) resolves through the symlink,
-    # so it path-matches the registered external entry.
+    # Workspace override (P7/D10).  The per-workset registry's ``boxes:``
+    # membership is the SOLE authoritative name → workspace store (D1b/D3-auth):
+    # when *project_name* is registered, its REGISTERED path IS the workspace —
+    # the EXTERNAL dir for a connected box, ``workspaces/<name>`` for an in-tree
+    # box, and the OLD-composition path for a member registered before a
+    # ``workset.workspaces`` repoint (bifrost A0: re-deriving that member from
+    # the CURRENT composition strands it).  An UNREGISTERED member (an in-tree
+    # connect before its first start, or a fresh ``initialize`` create) falls
+    # back to the composed default, with the box_resolve identity derivation
+    # preserved for any residual override.
     project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
-    from kanibako.launch import box_resolve
-    identity = box_resolve.resolve_box_identity(project_path, std, config)
-    if identity is not None:
-        project_path = Path(identity["workspace"])
+    registered_workspace = _workset_box_workspace_for_name(ws.root, project_name)
+    if registered_workspace is not None:
+        project_path = Path(registered_workspace)
+    else:
+        from kanibako.launch import box_resolve
+        identity = box_resolve.resolve_box_identity(project_path, std, config)
+        if identity is not None:
+            project_path = Path(identity["workspace"])
     # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
     # OVERRIDE is DROPPED (mirrors the PRIMARY path) — home/vault are SOLELY the
     # spec-derived default location, customized via the box.bindings cascade. The
@@ -2106,7 +2130,9 @@ def iter_workset_projects(
     """
     import sys
 
+    from kanibako.project import workset_registry
     from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.settings.config_io import load_doc
 
     registry = list_worksets(std)
     results: list[tuple[str, _WorksetLike, list[tuple[str, str]]]] = []
@@ -2128,10 +2154,27 @@ def iter_workset_projects(
             )
             continue
 
+        # The per-workset ``boxes:`` membership (loaded ONCE per workset) — the
+        # authoritative name → workspace store.  Workspace presence is checked
+        # at the REGISTERED path when the member is registered: a member
+        # registered under an OLD composition (before a ``workset.workspaces``
+        # repoint) otherwise reads as "missing" and vanishes from ``list``
+        # (bifrost A0).  An unregistered member falls back to the composed
+        # location.
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "settings.yaml"),
+        )
+        registered_boxes = workset_registry.load_workset_boxes(registry_path)
+
         project_list: list[tuple[str, str]] = []
         for proj in ws.projects:
             has_project_dir = (ws.projects_dir / proj.name).is_dir()
-            has_workspace = (ws.workspaces_dir / proj.name).is_dir()
+            registered_ws_path = registered_boxes.get(proj.name)
+            workspace_path = (
+                Path(registered_ws_path) if registered_ws_path is not None
+                else ws.workspaces_dir / proj.name
+            )
+            has_workspace = workspace_path.is_dir()
             if has_project_dir and has_workspace:
                 status = "ok"
             elif has_project_dir and not has_workspace:

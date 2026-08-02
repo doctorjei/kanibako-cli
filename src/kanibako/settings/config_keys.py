@@ -163,6 +163,16 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.vault_ro",
     "workset.vault_rw",
     "workset.logs",
+    # workset.workspaces / workset.channelroot — the two RESOLVED workset dir
+    # keys (§3.3: real and USED; manifest ``set: cli+file``).  Declared in the
+    # keyspace and consumed live (``resolve_workset_workspaces`` /
+    # ``resolve_workset_channelroot`` read the ``workset:`` nested slot this
+    # route writes), but absent HERE — so ``workset set workset.workspaces=…``
+    # refused with "unknown config key" and a repoint required a settings-file
+    # edit (bifrost A1).  Same shape as the sibling anchors above: STRING paths
+    # (no KEY_TYPES), routed to the ``workset:`` nested slot.
+    "workset.workspaces",
+    "workset.channelroot",
     "workset.channels.common",
     "workset.channels.chat",
     "workset.channels.share",
@@ -300,6 +310,12 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "workset.vault_ro": (("workset",), "vault_ro"),
     "workset.vault_rw": (("workset",), "vault_rw"),
     "workset.logs": (("workset",), "logs"),
+    # workset.workspaces / workset.channelroot (§3.3, bifrost A1): routed to the
+    # ``workset:`` nested slot — EXACTLY where ``resolve_workset_workspaces`` /
+    # ``resolve_workset_channelroot`` (and ``resolve_workset_registry_path``'s
+    # sibling pattern) read the repoint back.  STRING paths (no KEY_TYPES).
+    "workset.workspaces": (("workset",), "workspaces"),
+    "workset.channelroot": (("workset",), "channelroot"),
     "workset.channels.common": (("workset", "channels"), "common"),
     "workset.channels.chat": (("workset", "channels"), "chat"),
     "workset.channels.share": (("workset", "channels"), "share"),
