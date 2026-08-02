@@ -149,82 +149,83 @@ class TestReadSetupCompleted:
         assert "agent_name" not in data["box"]
 
 
-class TestReadTemplatesStamp:
-    """read_templates_stamp: raw [system] templates_stamp reader (template gate)."""
+class TestRetiredTemplatesStamp:
+    """R-38: the ``system.templates_stamp`` MECHANISM is gone, the LEAF is inert.
 
-    def test_reads_stored_string(self, tmp_path):
-        from kanibako.settings.config import read_templates_stamp
+    The reader (``read_templates_stamp``), the gate (``template_staleness_gate``)
+    and every writer were deleted.  What an existing host keeps on disk is an
+    ORPHANED ``[system] templates_stamp`` leaf — the retired-``projects:``-section
+    precedent — so the contract these tests pin is: the symbols are GONE, and a
+    config still carrying the leaf loads and gates exactly like one without it.
+    """
+
+    def test_symbols_are_gone(self):
+        from kanibako.settings import config as config_mod
+
+        assert not hasattr(config_mod, "read_templates_stamp")
+        assert not hasattr(config_mod, "template_staleness_gate")
+
+    def test_orphaned_leaf_loads_without_error(self, tmp_path):
+        """An old config carrying the leaf loads; nothing raises, nothing maps."""
+        from dataclasses import fields
+
+        from kanibako.settings.config import KanibakoConfig, load_config
         from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
+        write_global_config(cf)
         write_system_value(cf, "templates_stamp", "deadbeef")
-        assert read_templates_stamp(cf) == "deadbeef"
 
-    def test_absent_key_returns_none(self, tmp_path):
-        from kanibako.settings.config import read_templates_stamp
+        cfg = load_config(cf)  # must not raise
+        # It reaches no dataclass field...
+        assert "templates_stamp" not in {fld.name for fld in fields(KanibakoConfig)}
+        assert not hasattr(cfg, "templates_stamp")
+        # ...and it DOES land in the raw ``config_paths`` set (the whole [system]
+        # table is flattened there verbatim), which is the honest statement of
+        # "orphaned-ignored": the set is only ever READ BY KEY — resolve_system_paths
+        # iterates SYSTEM_PATH_DEFAULTS — so an undeclared leaf reaches no consumer.
+        # The next test proves the inertness rather than asserting it here.
+        assert cfg.config_paths["system.templates_stamp"] == "deadbeef"
 
-        cf = tmp_path / "kanibako_config.yaml"
-        write_global_config(cf)  # has [system] but no templates_stamp
-        assert read_templates_stamp(cf) is None
+    def test_orphaned_leaf_resolves_paths_identically(self, tmp_path):
+        """The orphan changes NO resolved system path (it reaches no consumer)."""
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_interface import write_system_value
+        from kanibako.settings.paths import resolve_system_paths
 
-    def test_missing_file_returns_none(self, tmp_path):
-        from kanibako.settings.config import read_templates_stamp
+        clean = tmp_path / "clean.yaml"
+        stamped = tmp_path / "stamped.yaml"
+        write_global_config(clean)
+        write_global_config(stamped)
+        write_system_value(stamped, "templates_stamp", "deadbeef")
 
-        assert read_templates_stamp(tmp_path / "nope.yaml") is None
-        assert read_templates_stamp(None) is None
+        kw = {"data_home": tmp_path / "data", "home": tmp_path / "home"}
+        assert resolve_system_paths(
+            load_config(stamped).config_paths, **kw
+        ) == resolve_system_paths(load_config(clean).config_paths, **kw)
 
+    def test_orphaned_leaf_does_not_disturb_the_setup_gate(self, tmp_path):
+        """The one gate that remains reads the same answer with the orphan present."""
+        from packaging.version import Version
 
-class TestTemplateStalenessGate:
-    """template_staleness_gate: HARD rc1 gate on packaged-template drift."""
-
-    def _current_digest(self):
-        from kanibako.targets import discover_targets
-        from kanibako.launch.templates import packaged_templates_digest
-
-        return packaged_templates_digest(sorted(discover_targets()))
-
-    def test_absent_stamp_on_initialized_host_raises(self, tmp_path):
-        """Initialized host (config file present) with NO stamp → hard error."""
-        from kanibako.settings.config import template_staleness_gate
-        from kanibako.errors import ConfigError
-
-        cf = tmp_path / "kanibako_config.yaml"
-        write_global_config(cf)  # initialized, but predates the stamp
-        with pytest.raises(ConfigError) as exc:
-            template_staleness_gate(cf)
-        assert "bundled templates changed" in str(exc.value)
-
-    def test_current_stamp_passes(self, tmp_path):
-        from kanibako.settings.config import template_staleness_gate
+        import kanibako
+        from kanibako.settings.config import setup_compat_gate
         from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "templates_stamp", self._current_digest())
-        assert template_staleness_gate(cf) is None
-
-    def test_stale_stamp_raises(self, tmp_path):
-        from kanibako.settings.config import template_staleness_gate
-        from kanibako.settings.config_interface import write_system_value
-        from kanibako.errors import ConfigError
-
-        cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "templates_stamp", "stale-digest")
-        with pytest.raises(ConfigError):
-            template_staleness_gate(cf)
-
-    def test_uninitialized_host_not_gated(self, tmp_path):
-        """No config file yet → first-run init owns the stamp; never hard-block."""
-        from kanibako.settings.config import template_staleness_gate
-
-        assert template_staleness_gate(tmp_path / "nope.yaml") is None
-        assert template_staleness_gate(None) is None
+        write_system_value(
+            cf, "setup_completed", Version(kanibako.__version__).base_version
+        )
+        write_system_value(cf, "templates_stamp", "deadbeef")
+        assert setup_compat_gate(cf) is None  # == band: no nudge, no raise
 
 
 class TestSetupCompatGate:
     """setup_compat_gate: the 5-band setup/config compatibility gate.
 
-    The shipped constants are BCV == FCV == CurrentVer == 1.6.0, which collapses
-    several bands to empty ranges.  To exercise EACH band independently of the
+    The shipped constants are BCV == FCV == CurrentVer == 1.8.0 (verified
+    2026-08-02, after the R-38 rider bumped BCV), which collapses several bands to
+    empty ranges.  To exercise EACH band independently of the
     build version, most tests patch ``kanibako.__version__`` (CurrentVer) and the
     ``SETUP_BCV``/``SETUP_FCV`` module constants — the gate imports them inside
     the function, so patching the ``kanibako`` module attributes is honoured.
@@ -420,6 +421,26 @@ class TestSetupCompatGate:
         cf = self._marker(tmp_path, f"{self._below_bcv()}.dev1")  # base < BCV
         with pytest.raises(ConfigError):
             self._gate()(cf)
+
+    # --- the R-38 rider: a 1.7.x-era config is HARD-BLOCKED, not nudged ----
+    @pytest.mark.parametrize("marker", ["1.7.0", "1.7.2", "1.7.2.dev4", "1.7.0rc1"])
+    def test_v1_7_era_marker_is_hard_blocked(self, tmp_path, marker):
+        """A host set up by any 1.7.x build must RAISE, using the LIVE constants.
+
+        ⚑ The load-bearing half of R-38.  With ``SETUP_BCV`` still at 1.6.0 a 1.7.x
+        marker landed in the BCV..FCV NUDGE band, and the M-11 template-root
+        restructure — previously hard-blocked by the now-deleted template-staleness
+        gate — would have degraded to a non-blocking message.  Deliberately UNPATCHED
+        (no ``_patch_bands``): it is the SHIPPED constants that must produce the hard
+        band, so this fails if a future release lowers BCV back below 1.8.0 without
+        re-thinking the upgrade path.
+        """
+        from kanibako.errors import ConfigError
+
+        cf = self._marker(tmp_path, marker)
+        with pytest.raises(ConfigError) as exc:
+            self._gate()(cf)
+        assert "too old to auto-update" in str(exc.value)
 
 
 class TestMergedConfig:

@@ -549,8 +549,9 @@ def _packaged_shared_bundle() -> Path | None:
     :func:`kanibako.settings.core_defaults.rom_default_categories`).  It is NOT
     copied/seeded to a host runtime dir, so it has no
     ``install``/``plan_template_refresh`` target; it is enumerated here only for the
-    staleness DIGEST so the setup gate still trips when the shipped canon content
-    drifts.
+    content DIGEST, so a drift in the shipped canon content is visible to the
+    release-time check that requires the matching ``SETUP_FCV``/``SETUP_BCV`` bump
+    (R-38 retired the host-side staleness gate that used to consume the digest).
 
     ⚑ Repointed from the retired ``global/rom/playbook/kanibako`` bundle root when
     rom became the canon: the rom ROOT is now the digest root, so a file added
@@ -819,8 +820,8 @@ def _is_shipped_content(entry: Path) -> bool:
     """True iff *entry* is a real shipped file (not a build/editor artifact).
 
     Build and editor junk (``__pycache__``/``*.pyc``, ``.DS_Store``) never ships in
-    a wheel, so hashing it would make the staleness digest non-deterministic across
-    environments/Python versions and spuriously trip the setup gate.  The filter
+    a wheel, so hashing it would make the content digest non-deterministic across
+    environments/Python versions and report drift that never shipped.  The filter
     was written when the RO bundle still carried the flattener ``.py`` beside the
     guide (a dev checkout, or the repo's own suite ``exec_module``-ing it, dropped a
     ``__pycache__`` right in the digest source).  The canon ships NO ``.py`` at all
@@ -908,10 +909,15 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
     """Return a content-manifest sha256 over the packaged template src trees.
 
     A CONTENT hash over :func:`_packaged_manifest_entries`, not a version marker:
-    it trips ONLY when packaged template content actually changes (so the
-    staleness gate never hard-errors on a version bump that doesn't touch
-    templates), and it is immune to the ``setup_completed`` silent forward-bump
-    that would mask template drift.
+    it moves ONLY when packaged template content actually changes, and it is immune
+    to the ``setup_completed`` silent forward-bump that would mask template drift.
+
+    ⚑ NO RUNTIME CONSUMER since R-38 (verified 2026-08-02: the host-side
+    ``template_staleness_gate`` and both stamp writers were deleted; the only callers
+    left in-tree are this module's own tests).  It is kept for the RELEASE-TIME
+    check — compare the digest against the previous tag and REQUIRE the matching
+    ``SETUP_FCV``/``SETUP_BCV`` bump — which is planned CI work (plan step C2) and is
+    NOT wired yet.
     """
     digest = hashlib.sha256()
     for key, data in _packaged_manifest_entries(agent_names):

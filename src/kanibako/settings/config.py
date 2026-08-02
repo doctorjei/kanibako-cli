@@ -803,62 +803,21 @@ def read_setup_completed(config_path: Path | None) -> str | None:
     return value or None
 
 
-def read_templates_stamp(config_path: Path | None) -> str | None:
-    """Read the ``system.templates_stamp`` content-manifest hash from the CONFIG file.
-
-    A sibling of :func:`read_setup_completed`: ``system.templates_stamp`` is a
-    plain ``[system]`` leaf in ``~/.config/kanibako_config.yaml`` recording the
-    packaged-template content digest at which the runtime template dirs were last
-    installed/refreshed (first-run init or ``kanibako setup``).  The typed loader
-    ignores unknown ``[system]`` leaves, so this RAW reader is required for the
-    template-staleness gate to read it back.  *config_path* is the
-    kanibako_config.yaml CONFIG file.
-
-    Returns the stored digest string, or ``None`` when the file/key is absent or
-    empty (a host that predates the stamp — the gate treats that as STALE).
-    """
-    if config_path is None or not config_path.exists():
-        return None
-    data = load_doc(config_path)
-    system = data.get("system")
-    if not isinstance(system, dict):
-        return None
-    value = str(system.get("templates_stamp", "")).strip()
-    return value or None
-
-
-def template_staleness_gate(config_path: Path | None) -> None:
-    """HARD template-staleness gate: raise :class:`ConfigError` when stale.
-
-    STALE ⟺ the recorded ``system.templates_stamp`` differs from the CURRENT
-    packaged-template digest (:func:`kanibako.launch.templates.packaged_templates_digest`
-    over the INSTALLED agent plugins, ``sorted(discover_targets())`` — matching
-    first-run ``target_names``).  A host that predates the stamp reads ``None``,
-    which is likewise ``!= digest`` → stale.  Returns ``None`` when current.
-
-    An UNINITIALIZED host (no config file yet) is NOT gated: first-run init
-    (``cli._ensure_initialized``) installs the templates and writes the stamp, and
-    the nudge runs BEFORE init on that very first invocation — hard-blocking it
-    would break first run.  Only an already-initialized host (config file present)
-    with a missing/stale stamp trips the gate.  The comparison is over the PACKAGED
-    src digest + the recorded stamp, so it needs no host-side template dirs.
-    """
-    from kanibako.errors import ConfigError
-
-    if config_path is None or not config_path.exists():
-        return
-
-    from kanibako.targets import discover_targets
-    from kanibako.launch.templates import packaged_templates_digest
-
-    agent_names = sorted(discover_targets().keys())
-    current = packaged_templates_digest(agent_names)
-    stored = read_templates_stamp(config_path)
-    if stored != current:
-        raise ConfigError(
-            "kanibako's bundled templates changed since setup was last run. "
-            "Run 'kanibako setup' to update them."
-        )
+# ⚑ ``read_templates_stamp`` + ``template_staleness_gate`` lived here and are
+# RETIRED (R-38, 2026-08-01).  ``system.templates_stamp`` was a LIVE but UNDECLARED
+# key — a §0 closed-keyspace violation — and its HARD gate false-blocked hosts whose
+# only sin was a packaged-content digest the config had never recorded.  The
+# protection folds into :func:`setup_compat_gate` below: a template CONTENT change
+# ⇒ ``SETUP_FCV`` bump (nudge), a STRUCTURAL/breaking one ⇒ ``SETUP_BCV`` bump (hard
+# block), with a CI check comparing the packaged-template digest against the previous
+# tag to REQUIRE the bump.  ACCEPTED LOSS (ruled): drift WITHIN one version — a dev
+# build, or a plugin pip-installed after first run — is no longer detected; the cure
+# is the same ``kanibako setup`` the gate used to demand.  A stored
+# ``[system] templates_stamp`` leaf on an existing host is ORPHANED-IGNORED (verified
+# 2026-08-02: ``_present_scalar_fields`` pops the whole ``[system]`` table and then
+# keeps only ``KanibakoConfig`` field names, and ``resolve_system_paths`` iterates
+# ``SYSTEM_PATH_DEFAULTS``, never the file's set-values — so an unknown ``system.*``
+# leaf reaches no consumer and raises nothing).  Migration record: M-23.
 
 
 def setup_compat_gate(config_path: Path | None) -> str | None:

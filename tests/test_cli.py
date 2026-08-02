@@ -1111,19 +1111,6 @@ class TestSetupNudge:
 
         return argparse.Namespace(command=command, **kw)
 
-    def _write_current_stamp(self, cf):
-        """Write ``system.templates_stamp`` = the current packaged digest so the
-        (separate) template-staleness gate PASSES — isolating the compat-gate
-        band under test from the template gate."""
-        from kanibako.settings.config_interface import write_system_value
-        from kanibako.targets import discover_targets
-        from kanibako.launch.templates import packaged_templates_digest
-
-        write_system_value(
-            cf, "templates_stamp",
-            packaged_templates_digest(sorted(discover_targets())),
-        )
-
     def test_absent_marker_nudges_agent_command(self, tmp_path, capsys):
         """Agent-requiring command + absent marker → nudge on stderr; returns None."""
         from unittest.mock import patch
@@ -1171,7 +1158,6 @@ class TestSetupNudge:
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
-        self._write_current_stamp(cf)
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch.object(kanibako, "__version__", "1.8.0"), \
@@ -1196,7 +1182,6 @@ class TestSetupNudge:
         write_system_value(
             cf, "setup_completed", Version(kanibako.__version__).base_version
         )
-        self._write_current_stamp(cf)
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("start"))
@@ -1355,7 +1340,6 @@ class TestSetupNudge:
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(cf, "setup_completed", "1.6.0")
-        self._write_current_stamp(cf)
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch.object(kanibako, "__version__", "1.8.0"), \
@@ -1366,22 +1350,23 @@ class TestSetupNudge:
         assert capsys.readouterr().err == ""
 
 
-class TestTemplateStalenessNudge:
-    """The HARD template-staleness gate wired into _setup_nudge (rc1 on drift)."""
+class TestTemplateStalenessRetired:
+    """R-38: the HARD template-staleness gate is GONE from ``_setup_nudge``.
+
+    These are the FALSE-BLOCK cases the deleted gate produced — an initialized
+    host whose config simply never carried a stamp (every host set up before the
+    stamp existed) was hard-blocked out of every agent command.  Template drift is
+    now announced by the setup bands instead (``SETUP_FCV`` nudge / ``SETUP_BCV``
+    hard block), which is what ``TestSetupNudge`` covers.
+    """
 
     def _ns(self, command, **kw):
         import argparse
 
         return argparse.Namespace(command=command, **kw)
 
-    def _current_digest(self):
-        from kanibako.targets import discover_targets
-        from kanibako.launch.templates import packaged_templates_digest
-
-        return packaged_templates_digest(sorted(discover_targets()))
-
     def _init_cf(self, tmp_path, stamp=None):
-        """Write an initialized config (current setup marker) + optional stamp."""
+        """An initialized config (current setup marker) + an optional ORPHAN stamp."""
         from packaging.version import Version
 
         import kanibako
@@ -1395,56 +1380,23 @@ class TestTemplateStalenessNudge:
             write_system_value(cf, "templates_stamp", stamp)
         return cf
 
-    def test_absent_stamp_initialized_host_hard_errors(self, tmp_path):
-        from unittest.mock import patch
-
-        from kanibako.cli import _setup_nudge
-        from kanibako.errors import KanibakoError
-
-        cf = self._init_cf(tmp_path)  # current marker but NO stamp
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            with pytest.raises(KanibakoError) as exc:
-                _setup_nudge(self._ns("start"))
-        assert "bundled templates changed" in str(exc.value)
-
-    def test_current_stamp_no_error(self, tmp_path, capsys):
+    @pytest.mark.parametrize("stamp", [None, "stale-digest"])
+    def test_initialized_host_never_hard_blocks_on_templates(
+        self, tmp_path, capsys, stamp
+    ):
+        """No stamp at all, or a stale one: neither raises and neither prints."""
         from unittest.mock import patch
 
         from kanibako.cli import _setup_nudge
 
-        cf = self._init_cf(tmp_path, stamp=self._current_digest())
+        cf = self._init_cf(tmp_path, stamp=stamp)
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             assert _setup_nudge(self._ns("start")) is None
         assert capsys.readouterr().err == ""
 
-    def test_stale_stamp_hard_errors(self, tmp_path):
-        from unittest.mock import patch
-
-        from kanibako.cli import _setup_nudge
-        from kanibako.errors import KanibakoError
-
-        cf = self._init_cf(tmp_path, stamp="stale-digest")
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            with pytest.raises(KanibakoError):
-                _setup_nudge(self._ns("start"))
-
-    def test_reauth_also_gated(self, tmp_path):
-        from unittest.mock import patch
-
-        from kanibako.cli import _setup_nudge
-        from kanibako.errors import KanibakoError
-
-        cf = self._init_cf(tmp_path, stamp="stale-digest")
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            with pytest.raises(KanibakoError):
-                _setup_nudge(self._ns("agent", agent_command="reauth"))
-
-    def test_non_agent_command_does_not_trip(self, tmp_path, capsys):
-        """A non-agent command (list) never runs the gate, even when stale."""
+    def test_reauth_not_blocked_either(self, tmp_path):
+        """The other agent-requiring command the old gate also blocked."""
         from unittest.mock import patch
 
         from kanibako.cli import _setup_nudge
@@ -1452,48 +1404,22 @@ class TestTemplateStalenessNudge:
         cf = self._init_cf(tmp_path, stamp="stale-digest")
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            assert _setup_nudge(self._ns("list")) is None
-        assert capsys.readouterr().err == ""
+            assert _setup_nudge(self._ns("agent", agent_command="reauth")) is None
 
-    def test_uninitialized_host_not_hard_blocked(self, tmp_path, capsys):
-        """Virgin host (no config file) → the template gate must NOT hard-block;
-        the soft first-run nudge still prints and first-run init can proceed."""
-        from unittest.mock import patch
+    def test_first_run_init_writes_no_stamp(self, tmp_home):
+        """_ensure_initialized installs the templates and records NO stamp (R-38).
 
-        from kanibako.cli import _setup_nudge
-
-        cf = tmp_path / "kanibako_config.yaml"  # does not exist
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path):
-            assert _setup_nudge(self._ns("start")) is None
-        assert "isn't set up yet" in capsys.readouterr().err
-
-    def test_unexpected_template_gate_failure_swallowed(self, tmp_path, capsys):
-        from unittest.mock import patch
-
-        from kanibako.cli import _setup_nudge
-
-        cf = self._init_cf(tmp_path, stamp=self._current_digest())
-        with patch("kanibako.settings.config.config_file_path", return_value=cf), \
-             patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
-             patch(
-                 "kanibako.settings.config.template_staleness_gate",
-                 side_effect=RuntimeError("boom"),
-             ):
-            # Unexpected (non-KanibakoError) faults are swallowed — never break.
-            assert _setup_nudge(self._ns("start")) is None
-        assert capsys.readouterr().err == ""
-
-    def test_first_run_init_stamps_so_gate_does_not_trip(self, tmp_home):
-        """_ensure_initialized installs templates AND writes the stamp, so an
-        immediately-following gated command does NOT trip the staleness gate."""
+        Pins the deleted writer on the REAL first-run path, and that the gated
+        command immediately after it still runs (soft first-run nudge only).
+        """
         from kanibako.cli import _ensure_initialized, _setup_nudge
-        from kanibako.settings.config import config_file_path, read_templates_stamp
+        from kanibako.settings.config import config_file_path
+        from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import xdg
 
         _ensure_initialized()
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        assert read_templates_stamp(cf) is not None
+        assert "templates_stamp" not in (load_doc(cf).get("system") or {})
         # No patching: _setup_nudge resolves the same XDG-derived config file.
         # (setup marker is still absent → a soft nudge prints, but no hard error.)
         assert _setup_nudge(self._ns("start")) is None

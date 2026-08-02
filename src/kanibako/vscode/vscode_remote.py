@@ -141,8 +141,8 @@ def format_remote_failure(command: str, dest: str, remote_output: str) -> str:
     """Format an ATTRIBUTED failure message for a relayed remote command.
 
     A remote ``kanibako`` invocation's own stderr is relayed back over ssh
-    verbatim; when the remote's message itself begins with ``Error:`` (its
-    template-staleness gate, an argparse error, etc.), surfacing it raw under a
+    verbatim; when the remote's message itself begins with ``Error:`` (its setup
+    compatibility gate, an argparse error, etc.), surfacing it raw under a
     local ``Error:`` line produces TWO stacked ``Error:`` lines with nothing to
     say the second came from the remote host — the user has to infer the
     boundary (Jei, rc10 dogfood).  This wraps the remote output under a clear

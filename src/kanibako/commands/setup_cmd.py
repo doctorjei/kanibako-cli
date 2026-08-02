@@ -29,8 +29,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--refresh-templates",
         action="store_true",
         help=(
-            "Force-accept the template refresh non-interactively (headless path "
-            "out of the template-staleness gate): overwrite shipped template "
+            "Force-accept the template refresh non-interactively (the headless "
+            "path — the prompt needs a terminal): overwrite shipped template "
             "files with their current packaged versions. The flag is itself the "
             "informed consent — your OWN files are untouched, but edits you made "
             "to SHIPPED files are replaced."
@@ -110,33 +110,23 @@ def _write_setup_marker() -> None:
     write_system_value(cf, "setup_completed", __version__)
 
 
-def _write_templates_stamp(names: list[str]) -> None:
-    """Write ``system.templates_stamp`` = the current packaged-template digest.
-
-    Recording the stamp is what CLEARS the hard template-staleness gate — done
-    after a refresh is applied, when nothing is stale, or on an informed decline.
-    """
-    from kanibako.settings.config_interface import write_system_value
-    from kanibako.launch.templates import packaged_templates_digest
-
-    cf, _ = _settings_paths()
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    write_system_value(cf, "templates_stamp", packaged_templates_digest(names))
-
-
 def _run_template_refresh(args: argparse.Namespace) -> None:
-    """Template-update step: refresh shipped templates + stamp (informed consent).
+    """Template-update step: refresh shipped templates under informed consent.
 
-    Branches (ratified brief):
+    ⚑ The ``system.templates_stamp`` write that every branch below used to make is
+    RETIRED (R-38): there is no template-staleness gate left to clear, so this step
+    now only ever COPIES (or declines to copy) files.  The drift announcement moved
+    to the setup bands (``SETUP_FCV``/``SETUP_BCV``); migration record M-23.
 
-    * ``--refresh-templates`` forced flag → apply refresh + stamp (the flag IS
-      the consent), one-line summary.
-    * nothing to add AND nothing to overwrite → stamp silently (clears the gate).
+    Branches (ratified brief, minus the stamping):
+
+    * ``--refresh-templates`` forced flag → apply the refresh (the flag IS the
+      consent), one-line summary.
+    * nothing to add AND nothing to overwrite AND nothing kept → say so, no prompt.
     * TTY → warn, show the add/overwrite plan + reassurance + peril, prompt:
-      accept → apply + stamp; decline → STAMP ANYWAY (informed choice; the gate
-      clears) but leave files as-is.
-    * non-TTY, no flag → SKIP WITHOUT stamping (no informed choice possible → the
-      hard gate keeps erroring), point at interactive setup / ``--refresh-templates``.
+      accept → apply; decline → leave files as-is.
+    * non-TTY, no flag → SKIP (no informed choice is possible without a terminal),
+      point at interactive setup / ``--refresh-templates``.
 
     ⚑ This step is J-6's **B-action** (TEMPLATE UPDATE) and its A-action trigger in
     one place. The refresh reaches the system-owned packaged STAGING only, so it
@@ -146,7 +136,9 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
     materialisation (``ensure_agent_stores``, run inside
     ``install_packaged_templates``), which is where a newly pip-installed plugin
     finally gets its store — pip installs run no code, so "at plugin install" means
-    "at the next trigger", and the staleness gate is what forces this one.
+    "at the next trigger". ⚑ Since R-38 nothing FORCES that trigger within a version:
+    running ``kanibako setup`` after installing a plugin is now the user's move (the
+    ruled accepted loss; M-18's "the staleness gate forces it" no longer holds).
     """
     from kanibako.settings.config import load_config
     from kanibako.settings.paths import load_std_paths
@@ -170,7 +162,6 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
 
     if forced:
         install_packaged_templates(std, names, refresh=True)
-        _write_templates_stamp(names)
         print(
             f"  [ok] Templates refreshed "
             f"({len(added)} added, {len(overwritten)} updated)."
@@ -179,8 +170,7 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
         return
 
     if not added and not overwritten and not kept:
-        # Already current: clear the gate silently, no prompt.
-        _write_templates_stamp(names)
+        # Already current: nothing to copy and nothing to ask about.
         print("  [ok] Templates are up to date.")
         return
 
@@ -204,11 +194,10 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
             answer = ""
         if answer in ("y", "yes"):
             install_packaged_templates(std, names, refresh=True)
-            _write_templates_stamp(names)
             print("  [ok] Templates refreshed.")
         else:
-            # Informed decline: STAMP ANYWAY so the gate clears; files unchanged.
-            _write_templates_stamp(names)
+            # Informed decline: files unchanged, and (since R-38) nothing is
+            # recorded either — the next setup run simply asks again.
             print(
                 "  [--] Declining leaves your template store out of date — an "
                 "unblessed state you're choosing knowingly. Re-run "
@@ -216,9 +205,9 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
             )
         return
 
-    # Non-TTY, no forced flag: no informed choice possible → skip WITHOUT
-    # stamping, so the hard staleness gate keeps erroring until the user runs an
-    # interactive setup or passes --refresh-templates.
+    # Non-TTY, no forced flag: no informed choice is possible → skip, leaving the
+    # store as-is until the user runs an interactive setup or passes
+    # --refresh-templates.  Nothing is recorded, so the skip is not sticky.
     print(
         "  [--] Templates are out of date but cannot be updated non-"
         "interactively."
@@ -373,7 +362,7 @@ def run_setup(args: argparse.Namespace) -> int:
     selected = _run_agent_selection(args)
     print()
 
-    # Step 5: Template refresh (TRUE REFRESH; clears the staleness gate).
+    # Step 5: Template refresh (TRUE REFRESH of the system-owned staging).
     _run_template_refresh(args)
     print()
 

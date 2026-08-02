@@ -337,24 +337,20 @@ def _ensure_initialized() -> None:
     # mkdir this used to be is gone.
     #
     # ⚑ It fires on FIRST RUN ONLY (this whole function returns early once the config
-    # file exists).  That is not a gap: a plugin installed later adds its files to
-    # ``packaged_templates_digest``, which trips the HARD template-staleness gate,
-    # which sends the user to ``kanibako setup`` — the deliberate trigger, with
-    # reporting.  Recorded as migration M-18.
+    # file exists), and since R-38 retired the template-staleness stamp NOTHING
+    # detects packaged-content drift on an already-initialized host automatically.
+    # A template change that RIDES A RELEASE is announced by the setup bands
+    # (``SETUP_FCV`` nudge / ``SETUP_BCV`` hard block in ``setup_compat_gate``); a
+    # plugin pip-installed LATER at the SAME kanibako version is the ruled ACCEPTED
+    # LOSS — its store materialises at the next ``kanibako setup``, the deliberate
+    # trigger.  Verified 2026-08-02: ``install_packaged_templates`` has exactly two
+    # callers, this first-run backstop and ``setup_cmd._run_template_refresh``.
+    # Recorded as migrations M-18 (superseded in part) and M-23.
     from kanibako.settings.paths import load_std_paths
-    from kanibako.launch.templates import (
-        install_packaged_templates,
-        packaged_templates_digest,
-    )
+    from kanibako.launch.templates import install_packaged_templates
 
     std_paths = load_std_paths(config)
     install_packaged_templates(std_paths, target_names)
-    # Record the template content stamp so the staleness gate never trips on a
-    # freshly-initialized host (install + stamp are one atomic first-run step).
-    # ``target_names`` matches the gate's ``sorted(discover_targets())`` set.
-    from kanibako.settings.config_interface import write_system_value
-
-    write_system_value(cf, "templates_stamp", packaged_templates_digest(target_names))
 
     # Seed default global environment variables (don't overwrite existing).
     from kanibako.shellenv import read_env_file, write_env_file
@@ -403,21 +399,15 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         return
 
     try:
-        from kanibako.settings.config import (
-            config_file_path,
-            setup_compat_gate,
-            template_staleness_gate,
-        )
+        from kanibako.settings.config import config_file_path, setup_compat_gate
         from kanibako.settings.paths import xdg
 
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        # ⚑ The separate HARD template-staleness gate that used to run here is
+        # RETIRED (R-38): packaged-template drift is now announced by the bands
+        # above — a content change bumps ``SETUP_FCV`` (nudge), a structural one
+        # ``SETUP_BCV`` (hard block).  ``setup_compat_gate`` is the ONE gate.
         message = setup_compat_gate(cf)
-        # Template-staleness gate (HARD error, rc1): fires only on an already-
-        # initialized host whose recorded stamp != the current packaged-template
-        # digest.  Kept INSIDE this defensive try so any unexpected failure
-        # (missing packaged data, hash error) is swallowed like every other
-        # non-deliberate fault; only the deliberate ConfigError propagates.
-        template_staleness_gate(cf)
     except KanibakoError:
         # Deliberate ERROR band — propagate so the CLI surfaces rc1.
         raise
