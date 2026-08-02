@@ -2669,7 +2669,8 @@ def resolve_standalone_project(
     runtime dir) is the standalone workset root and holds, in fixed positions:
     ``settings.yaml`` (the box meta, AT THE ROOT — ``metadata_path``), a
     ``workspace/`` subdir (the live workspace → ``~/workspace`` — the
-    ``project_path``), a ``box_data/`` marker dir holding ``home/`` + the
+    ``project_path``; the resolved ``workset.workspaces``, default
+    ``@meta.workset.path/workspace``), a ``box_data/`` marker dir holding ``home/`` + the
     ``<box>.jsonl`` helper log, and ``vault/{ro,rw}/``.  The box identity is
     ``<kuid>_<sanitized leaf>`` (generated + registered in
     ``registry.standalone`` at create time; reused from the stored meta after).
@@ -2689,21 +2690,35 @@ def resolve_standalone_project(
     # is stable; the workspace subdir is the bind source, not the identity.
     phash = project_hash(str(root))
 
+    from kanibako.project.workset import (
+        load_workset_settings_doc,
+        resolve_workset_workspaces,
+    )
+
     # Metadata at the ROOT (settings.yaml); the ``box_data/`` marker dir holds
-    # home/ + the helper log.  ``project_path`` is the ``workspace/`` subdir.
+    # home/ + the helper log.  ``project_path`` is the resolved
+    # ``workset.workspaces`` (ruled 10, 2026-08-02): the STANDALONE default is
+    # ``@meta.workset.path/workspace`` == the ``workspace/`` subdir, and a set
+    # ``workset: {workspaces: …}`` in the ROOT settings.yaml repoints it
+    # ("changeable from workset level", spec §2e).
     metadata_path = root
     box_data = root / _STANDALONE_META_DIR
-    project_path = root / "workspace"
+    project_path = resolve_workset_workspaces(
+        root, load_workset_settings_doc(root), standalone=True,
+    )
     # The mode-aware tier pair from the ONE derivation (M-8): the BOX tier is
     # ``box_data/settings.yaml`` (absent by default) and the WORKSET tier is the ROOT
     # ``settings.yaml`` — the file §5 detection reads and where ``workset.kuid`` lives.
     box_settings, project_toml = _standalone_settings_files(root)
 
-    # STANDALONE paths are ALWAYS derived from the (current) root, never the
-    # stored absolutes: a standalone tree is drop-in portable, so a moved/
-    # imported tree must resolve against its new location.  The resolved.*
-    # section in settings.yaml is advisory only (BUG#1 fix); home/vault always
-    # live at the fixed box_data/home + <root>/vault/{ro,rw} positions.
+    # STANDALONE paths are derived from the (current) root, never the stored
+    # absolutes: the DEFAULT formulas are all ``@``-anchored to the root
+    # (``@meta.workset.path/…``), so a default-shaped tree is drop-in portable
+    # BY CONSTRUCTION — a moved/imported tree resolves against its new
+    # location.  A stored ABSOLUTE repoint (e.g. ``workset.workspaces``) is the
+    # user's own choice and travels as written.  The resolved.* section in
+    # settings.yaml is advisory only (BUG#1 fix); home/vault always live at the
+    # fixed box_data/home + <root>/vault/{ro,rw} positions.
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
     # enable_vault (P5a): explicit param wins; else the stored box-scope
     # ``box.enable_vault`` — read from the BOX tier, falling back to the WORKSET tier

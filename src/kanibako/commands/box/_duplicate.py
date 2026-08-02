@@ -159,8 +159,21 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
         if not args.bare and workspace_src.is_dir():
+            # The copy DESTINATION is the destination root's resolved
+            # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
+            # default ``@meta.workset.path/workspace`` for a fresh root (no
+            # settings.yaml yet); a pre-existing root repoint is honored.
+            from kanibako.project.workset import (
+                load_workset_settings_doc,
+                resolve_workset_workspaces,
+            )
             shutil.copytree(
-                workspace_src, new_path / "workspace", dirs_exist_ok=args.force,
+                workspace_src,
+                resolve_workset_workspaces(
+                    new_path, load_workset_settings_doc(new_path),
+                    standalone=True,
+                ),
+                dirs_exist_ok=args.force,
             )
         _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
