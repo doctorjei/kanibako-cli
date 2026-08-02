@@ -702,7 +702,12 @@ keys:
     set: cli+file
     default: {primary: null, named: "@meta.workset.path/workspaces",
               standalone: "@meta.workset.path/workspace"}
-    note: "standalone: just the one box; changeable from workset level (R-26)"
+    note: "standalone: just the one box; changeable from workset level (R-26).
+           ⚑ PRIMARY arm: the spec default is null, but the CODE composes and
+           HONORS a `workspaces` leaf at primary (a set value repoints member
+           workspace composition). Behavior-preserving divergence — do NOT
+           'conform' the code to the null (that relocation would be an M-3-shaped
+           migration, not a conformance fix). B2-Editor S-1, 2026-08-02."
     spec: "§2c / §2e (R-26)"
   workset.boxes:
     scope: workset
@@ -764,10 +769,14 @@ keys:
     scope: workset
     type: path
     set: cli+file
-    default: "@meta.workset.path/template"
+    default: {primary: "@meta.workset.path/template",
+              named: "@meta.workset.path/template", standalone: null}
     note: "seed layer 3; the layer is SKIPPED when the source dir is absent
-           (ruled 2026-07-09, was <None>)"
-    spec: "§2c / §2a"
+           (ruled 2026-07-09, was <None>). standalone: <None> — a lone box has
+           no template tier (the spec's STANDALONE block states it explicitly:
+           'workset.{registry,template} | <None>'; per-mode shape ruled F-1/5a,
+           2026-08-02)"
+    spec: "§2c / §2a (F-1/5a)"
   workset.kuid:
     scope: workset
     type: str
@@ -1475,6 +1484,19 @@ declared_instances:
     value: "(<entry script>, ~/.local/bin/kanibako)"
     note: "kanibako CLI delivery; same class as kani_pkg (same flag applies)"
     spec: "§2c (kanibako CLI delivery)"
+  box.bindings.ro.secret_export:
+    user_key: false
+    value: "(<packaged kanibako-secrets.sh>, /etc/profile.d/kanibako-secrets.sh)"
+    note: "INTERNAL, like kani_pkg — the secrets-into-shell-profile machinery:
+           an RO bind delivering the generic self-adapting profile.d snippet
+           every LOGIN shell sources, exporting each mounted secret from
+           SECRET_MOUNT_DIR (/run/kanibako/secrets) in-box (the paths the PID-1
+           _secret_export_shim cannot reach — non-login execs never inherit its
+           env). UNCONDITIONAL/universal: the snippet no-ops when nothing is
+           mounted. Only the snippet PATH is bound, never a token (arm's-length
+           preserved). Spec row added per ruling 8a (2026-08-02) — resolves the
+           former A6-era 'no spec §2c row' flag."
+    spec: "§2c (kanibako CLI delivery; ruled 8a, 2026-08-02)"
   box.bindings.rw.global_common:
     user_key: true
     default: "(@system.channels.common, ~/channels/common)"
@@ -1515,13 +1537,6 @@ declared_instances:
     default: "(@workset.channels.share, ~/channels/workset/share)"
     note: "PRIMARY/NAMED only; rw* -> ro under future (C)"
     spec: "§2c (ALL WORKSETS)"
-  # ⚑ FLAG (unresolved): core-defaults ALSO emits a `secret_export` bind
-  #   (bindings.ro — /etc/profile.d/kanibako-secrets.sh, the universal
-  #   secret-export profile.d snippet) with NO spec §2c row. It is EXCLUDED here
-  #   per the only-spec-named rule: either the name is fine as an ordinary
-  #   family-pattern instance, or it is a spec gap to queue — recorded, not
-  #   resolved.
-
   ## ---- THE SIX SEED LAYERS — `{system, agent.<agent>, workset}.seeded.
   ## {template,handbook}` (R-14; same class as R-10) -------------------------
   ## COPIES, not mounts: dests are HOST paths (§0 / R-20). Ordered layers,
@@ -1702,7 +1717,11 @@ not_keys:
                             declaration derives. NOT a key, not user-addressable;
                             the closed head dispatch refuses it. Replaces the CUT
                             meta.derived.<declaration-key> family (R-8); the
-                            materialisation requirement is unchanged.
+                            materialisation requirement is unchanged. ENFORCED at
+                            assembly: a file-borne top-level `binding_derivations:`
+                            table is DROPPED at assembly with a warning
+                            (settings_assemble._drop_upward_scopes; landed at the
+                            B4 fix round, 2026-08-02 — B4-Editor S-3).
                             spec: §0 (TWO LAYERS — the reservation clause)"
 
   never_a_key:                    # plugin/descriptor variables or CLI-only surfaces
