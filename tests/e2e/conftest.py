@@ -466,23 +466,6 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
-    # This fixture PRE-SEEDS the config instead of running first-run init, so it
-    # must also record the template-staleness stamp the way init does
-    # (cli.py: write_system_value("templates_stamp", packaged_templates_digest(...))).
-    # Otherwise template_staleness_gate sees "config file exists + no stamp"
-    # (None != digest) and HARD-ERRORS every `kanibako start` with "bundled
-    # templates changed since setup was last run", so no container is ever created.
-    # Computed over the SAME sorted(discover_targets()) set the gate recomputes in
-    # the subprocess, so host + subprocess digests match.
-    from kanibako.settings.config_interface import write_system_value
-    from kanibako.targets import discover_targets
-    from kanibako.launch.templates import packaged_templates_digest
-    write_system_value(
-        kanibako_config,
-        "templates_stamp",
-        packaged_templates_digest(sorted(discover_targets().keys())),
-    )
-
     # Create a name file so container_name_for() gives a predictable name
     # We register via kanibako create later, but for name computation we
     # need the names.yaml to exist.
@@ -632,18 +615,6 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     kanibako_config.write_text(
         f'kanibako:\n  image: "{E2E_IMAGE}"\n'
     )
-    # Record the template stamp the way first-run init does — this fixture
-    # pre-seeds the config instead of running init, so without the stamp
-    # template_staleness_gate hard-errors every `kanibako start` (see e2e_env).
-    from kanibako.settings.config_interface import write_system_value
-    from kanibako.targets import discover_targets
-    from kanibako.launch.templates import packaged_templates_digest
-    write_system_value(
-        kanibako_config,
-        "templates_stamp",
-        packaged_templates_digest(sorted(discover_targets().keys())),
-    )
-
     names_dir = data_home / "kanibako"
     names_dir.mkdir(parents=True)
 

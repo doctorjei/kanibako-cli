@@ -21,5 +21,13 @@ __version__ = "1.8.0"
 # Invariant: ``SETUP_BCV <= SETUP_FCV <= __version__`` (base versions).  Most
 # releases change setup in no way → bump NEITHER → existing configs land
 # ``>= FCV`` → silent.
-SETUP_BCV = "1.6.0"
+# ⚑ 1.6.0 → 1.8.0 (R-38 rider, 2026-08-01).  1.8.0 restructures the packaged
+# template root (M-11: ``system.base_template`` → ``system.template`` + the ``box/``
+# subtree) — the can't-auto-fill class BCV exists for — and the HARD block that used
+# to be delivered by the now-retired template-staleness gate must not degrade to a
+# nudge.  With BCV still at 1.6.0 a 1.7.x marker landed in the BCV..FCV NUDGE band;
+# at 1.8.0 it lands below BCV and the gate raises (verified 2026-08-02 against
+# ``setup_compat_gate``'s band order and pinned by
+# ``TestSetupCompatGate::test_v1_7_era_marker_is_hard_blocked``).
+SETUP_BCV = "1.8.0"
 SETUP_FCV = "1.8.0"
