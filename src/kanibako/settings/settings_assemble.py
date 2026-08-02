@@ -100,7 +100,12 @@ from kanibako.settings.config import settings_base_path
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_prefs import refuse_pref_table
 from kanibako.settings.settings_resolve import SettingsError, unpack_bind
-from kanibako.settings.settings_store import SCOPE_CONTAINMENT, Bind, KeyStore
+from kanibako.settings.settings_store import (
+    BINDING_DERIVATIONS_NODE,
+    SCOPE_CONTAINMENT,
+    Bind,
+    KeyStore,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -250,8 +255,9 @@ def _containing_scopes(file_scope: str) -> frozenset[str]:
 def _drop_upward_scopes(
     raw: dict, *, file_scope: str, path: Path | None
 ) -> dict:
-    """Return *raw* with any CONTAINING-scope top-level table AND a top-level
-    ``meta:`` table removed (spec §0).
+    """Return *raw* with any CONTAINING-scope top-level table, a top-level
+    ``meta:`` table AND a top-level ``binding_derivations:`` table removed
+    (spec §0).
 
     Directional enforcement at RESOLVE: a settings file may set keys of its own
     scope and of scopes it CONTAINS, but a top-level key of a CONTAINING scope
@@ -272,6 +278,20 @@ def _drop_upward_scopes(
     sanctioned meta source is the FLOOR (``dotted_partial``), inserted separately
     and never routed through this drop.
 
+    ``binding_derivations`` is the THIRD dropped token, with a THIRD rationale
+    (spec §0 fault class: "never enters the merge"): it is the RESERVED INTERNAL
+    derivations node at the snapshot root (R-8, manifest
+    ``not_keys.reserved_internal``) — machinery output regenerated per launch by
+    ``commands.start._install_derived_bindings``, not a key. A hand-forged table
+    in a settings file would otherwise ride into the snapshot beside the real
+    materialisation (phantom ``--effective`` lines; a non-``Bind`` leaf crashes
+    the ``derived_bindings`` lens with ``ViewError``). Same profile as ``meta``:
+    EVERY file (``base`` included), TOP-LEVEL ONLY — a NESTED
+    ``<scope>.binding_derivations`` key is not this rule's business. SCOPE
+    TIGHT: this ONE name only — arbitrary unknown top-level tables still ride
+    (general unknown-table refusal is the backlogged keyspace-ENFORCEMENT work,
+    not this drop).
+
     ``base`` is EXEMPT for SCOPE keys (its containing set is empty — it is the
     system-scope floor) but NOT for ``meta``: a base-file top-level ``meta:`` table
     would clobber the floor's materialized identity anchors, so it drops too.
@@ -290,7 +310,7 @@ def _drop_upward_scopes(
         if file_scope in SCOPE_CONTAINMENT
         else frozenset()
     )
-    drop_set = containing | frozenset({"meta"})
+    drop_set = containing | frozenset({"meta", BINDING_DERIVATIONS_NODE})
     dropped = [str(k) for k in raw if str(k) in drop_set]
     if not dropped:
         return raw
@@ -306,6 +326,19 @@ def _drop_upward_scopes(
                 "construct-time/bootstrap layer and remains RO everywhere (spec "
                 "§0 meta-RO / clause 4); the key is ignored.",
                 file_scope, where,
+            )
+        elif token == BINDING_DERIVATIONS_NODE:
+            # binding_derivations is neither a containing scope nor meta — a
+            # THIRD rationale (spec §0 fault class): the RESERVED INTERNAL
+            # derivations node (R-8), machinery output, never file input.
+            _log.warning(
+                "Dropping top-level %r table from %s settings file %s: "
+                "'%s' is the RESERVED INTERNAL derivations node (R-8; manifest "
+                "not_keys.reserved_internal) — machinery output regenerated at "
+                "every launch, not a settable key, so it never enters the merge "
+                "(spec §0). Delete the table from the file; to change a "
+                "binding, change the DECLARATION it derives from (spec §0).",
+                token, file_scope, where, token,
             )
         else:
             _log.warning(

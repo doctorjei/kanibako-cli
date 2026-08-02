@@ -574,7 +574,7 @@ class TestCredentialGateRunsFirst:
 
 
 class TestDeriveBindingKeys:
-    def test_every_abstract_declaration_gets_a_meta_derived_key(self):
+    def test_every_abstract_declaration_gets_a_binding_derivations_entry(self):
         derived = derive_binding_keys([
             entry("common", name="plugins", scope="agent.claude",
                   host_src="/store/common/plugins"),
@@ -582,17 +582,17 @@ class TestDeriveBindingKeys:
             entry("seeded", name="template", scope="system", host_src="/t"),
         ])
         assert set(derived) == {
-            "meta.derived.agent.claude.common.plugins",
-            "meta.derived.workset.caches.build",
-            "meta.derived.system.seeded.template",
+            "binding_derivations.agent.claude.common.plugins",
+            "binding_derivations.workset.caches.build",
+            "binding_derivations.system.seeded.template",
         }
-        bind = derived["meta.derived.agent.claude.common.plugins"]
+        bind = derived["binding_derivations.agent.claude.common.plugins"]
         assert bind.host == "/store/common/plugins"
         assert bind.box == DEST
 
     def test_a_CONCRETE_binding_gets_nothing(self):
-        """M13's target: the derivation is filed under ``meta.derived``, never
-        into ``<scope>.bindings.rw``.
+        """M13's target: the derivation is filed under ``binding_derivations``,
+        never into ``<scope>.bindings.rw``.
 
         ⚑ Not because the reconcile would break — this map never feeds back into
         the entry list, so nothing would misresolve. Because a key sitting in the
@@ -618,14 +618,16 @@ class TestDeriveBindingKeys:
         ]
         assert reconcile_categories(entries).warnings  # the loser did lose
         derived = derive_binding_keys(entries)
-        assert derived["meta.derived.box.caches.build"].host == "/loser"
+        assert derived["binding_derivations.box.caches.build"].host == "/loser"
 
     def test_the_derivation_is_idempotent(self):
         entries = [entry("common", name="plugins", scope="box")]
         assert derive_binding_keys(entries) == derive_binding_keys(entries)
 
-    def test_the_launch_seam_installs_them_under_meta_derived(self):
-        """The keys land where the READ lens finds them, at the one seam."""
+    def test_the_launch_seam_installs_them_under_binding_derivations(self):
+        """The entries land where the READ lens finds them — under the reserved
+        ``binding_derivations`` node at the SNAPSHOT ROOT (R-8) — at the one
+        seam."""
         from kanibako.commands.start import _install_derived_bindings
         from kanibako.settings.settings_store import KeyStore
         from kanibako.settings.settings_views import derived_bindings
@@ -634,12 +636,12 @@ class TestDeriveBindingKeys:
         _install_derived_bindings(snapshot, derive_binding_keys([
             entry("common", name="plugins", scope="agent.claude", host_src="/p"),
         ]))
-        node = dict.__getitem__(dict.__getitem__(snapshot, "meta"), "derived")
+        node = dict.__getitem__(snapshot, "binding_derivations")
         assert derived_bindings(node) == {
             "agent.claude.common.plugins": derive_binding_keys([
                 entry("common", name="plugins", scope="agent.claude",
                       host_src="/p"),
-            ])["meta.derived.agent.claude.common.plugins"],
+            ])["binding_derivations.agent.claude.common.plugins"],
         }
 
 

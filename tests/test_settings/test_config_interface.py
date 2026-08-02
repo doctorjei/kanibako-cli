@@ -3988,7 +3988,7 @@ class TestEffectiveCategoryBlock:
             if ln.strip().startswith("agent.claude.common.plugins =")
         )
         assert lines[decl + 1].strip().startswith(
-            "meta.derived.agent.claude.common.plugins ="
+            "binding_derivations.agent.claude.common.plugins ="
         )
         # The declaration carries the DEFERRED box-side ``~``; the derivation
         # carries the resolved guest dest. Seeing both is the point.
@@ -4001,15 +4001,15 @@ class TestEffectiveCategoryBlock:
         once at create and is then the box's own file. A reader who cannot tell
         them apart cannot answer the question this display exists for."""
         text = self._render(tmp_path)
-        assert "meta.derived.agent.claude.seeded.template" in text
+        assert "binding_derivations.agent.claude.seeded.template" in text
         seeded_line = next(
             ln for ln in text.splitlines()
-            if "meta.derived.agent.claude.seeded.template" in ln
+            if "binding_derivations.agent.claude.seeded.template" in ln
         )
         assert seeded_line.rstrip().endswith("(copy)")
         common_line = next(
             ln for ln in text.splitlines()
-            if "meta.derived.agent.claude.common.plugins" in ln
+            if "binding_derivations.agent.claude.common.plugins" in ln
         )
         assert common_line.rstrip().endswith("(mount)")
 

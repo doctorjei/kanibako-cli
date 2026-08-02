@@ -248,20 +248,21 @@ def bindings(node: KeyStore, *, label: str = "bindings") -> tuple[
 
 
 def derived_bindings(
-    node: KeyStore, *, label: str = "meta.derived",
+    node: KeyStore, *, label: str = "binding_derivations",
 ) -> dict[str, Bind]:
-    """FLATTEN the ``meta.derived`` subtree to ``{declaration-key: Bind}`` (§0).
+    """FLATTEN the ``binding_derivations`` subtree to ``{declaration-key: Bind}``.
 
-    *node* is the ``meta.derived`` :class:`KeyStore` subtree — the MATERIALISED
-    binding each ABSTRACT declaration (``common`` / ``caches`` / ``seeded``)
-    derives, filed at ``meta.derived.<declaration-key>`` so a reader can see the
-    declaration AND the binding it produces (spec §0, declared 2026-07-31).
+    *node* is the ``binding_derivations`` :class:`KeyStore` subtree — the
+    reserved INTERNAL node at the snapshot root (R-8, not a key) carrying the
+    MATERIALISED binding each ABSTRACT declaration (``common`` / ``caches`` /
+    ``seeded``) derives, filed at ``binding_derivations.<declaration-key>`` so a
+    reader can see the declaration AND the binding it produces (spec §0).
 
     Unlike the tier-2 lenses this returns a fresh dict rather than a live view:
-    the family is PARAMETRIC over the whole key space below it
-    (``meta.derived.agent.claude.common.plugins``), so the useful shape is the
-    FLAT declaration key, which no lens over one node can present. The Binds
-    themselves are shared, not copied — they are immutable.
+    the node is PARAMETRIC over the whole key space below it
+    (``binding_derivations.agent.claude.common.plugins``), so the useful shape
+    is the FLAT declaration key, which no lens over one node can present. The
+    Binds themselves are shared, not copied — they are immutable.
 
     An absent / empty node yields ``{}``. A non-``Bind`` leaf RAISES
     :class:`ViewError` (S22 — a build breach, never type-laundered).

@@ -383,6 +383,128 @@ def test_top_level_meta_drop_warns_once_per_agent_file(
 
 
 # --------------------------------------------------------------------------- #
+# binding_derivations is the RESERVED INTERNAL node (R-8) — a top-level table  #
+# in a settings file is DROPPED from EVERY file, like meta (spec §0)           #
+# --------------------------------------------------------------------------- #
+
+
+# A plausible forged table: one bind-shaped entry + one junk leaf (the junk leaf
+# is what crashes the derived_bindings lens with ViewError if it ever rides).
+_FORGED_DERIVATIONS = {
+    "agent": {"claude": {"common": {"plugins": ["/forged/src", "~/forged"]}}},
+    "junk": "zebra-not-a-bind",
+}
+
+
+def _derivations_warns(
+    caplog: pytest.LogCaptureFixture, path: Path
+) -> list[str]:
+    """Warnings announcing a top-level ``binding_derivations`` drop naming *path*."""
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING"
+        and "binding_derivations" in r.getMessage()
+        and str(path) in r.getMessage()
+    ]
+
+
+@pytest.mark.parametrize(("path_kw", "level_idx", "own_scope"), _META_CASES)
+def test_top_level_binding_derivations_dropped_across_scopes(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    path_kw: str,
+    level_idx: int,
+    own_scope: str,
+) -> None:
+    # R-8 / spec §0 fault class: binding_derivations is the RESERVED INTERNAL
+    # derivations node — machinery output regenerated per launch, never file
+    # input. A hand-forged top-level table drops from box, workset AND system
+    # files with a warning naming the file + token ("never enters the merge").
+    # Own-scope key survives; the forged table is absent; warning fired.
+    f = _write(
+        tmp_path / "f.yaml",
+        {own_scope: {"marker": "keep"},
+         "binding_derivations": _FORGED_DERIVATIONS},
+    )
+    with caplog.at_level("WARNING"):
+        level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
+    assert dict.get(level[own_scope], "marker", _MISSING) == "keep"
+    assert dict.get(level, "binding_derivations", _MISSING) is _MISSING
+    assert _derivations_warns(caplog, f), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_top_level_binding_derivations_in_base_file_drops_too(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Same base-file profile as meta: EXEMPT for scope keys (system.* is the
+    # floor and survives) but NOT for the reserved node — a base-file forged
+    # table would ride into the merged snapshot beside the real materialisation.
+    base = _write(
+        tmp_path / "base.yaml",
+        {"system": {"auth": {"share_allowed": True}},
+         "binding_derivations": _FORGED_DERIVATIONS},
+    )
+    with caplog.at_level("WARNING"):
+        base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
+    assert (
+        dict.get(base_level["system"]["auth"], "share_allowed", _MISSING) is True
+    )
+    assert dict.get(base_level, "binding_derivations", _MISSING) is _MISSING
+    assert _derivations_warns(caplog, base), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_nested_binding_derivations_is_untouched(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The drop is TOP-LEVEL ONLY, mirroring the meta rule: a NESTED
+    # box.binding_derivations key rides under its scope table and is not this
+    # rule's business — no descent, no drop, no warning. (It is not a KEY either
+    # way; that refusal belongs to the closed head dispatch, not this drop.)
+    box = _write(
+        tmp_path / "box.yaml",
+        {"box": {"binding_derivations": {"marker": "rides"}, "image": "img"}},
+    )
+    with caplog.at_level("WARNING"):
+        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+    assert dict.get(box_level["box"], "image", _MISSING) == "img"
+    nested = dict.get(box_level["box"], "binding_derivations", _MISSING)
+    assert isinstance(nested, KeyStore)
+    assert dict.get(nested, "marker", _MISSING) == "rides"
+    assert not _derivations_warns(caplog, box), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_arbitrary_unknown_table_still_rides(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # SCOPE TIGHT (pins the drop to the ONE reserved name): an arbitrary unknown
+    # top-level table (zebra:) is NOT dropped and NOT warned about — general
+    # unknown-table refusal is the backlogged keyspace-ENFORCEMENT work, not
+    # this drop. If this test reddens because zebra: was dropped, the drop-set
+    # widened beyond its brief.
+    box = _write(
+        tmp_path / "box.yaml",
+        {"box": {"image": "img"}, "zebra": {"stripes": 3}},
+    )
+    with caplog.at_level("WARNING"):
+        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+    zebra = dict.get(box_level, "zebra", _MISSING)
+    assert isinstance(zebra, KeyStore)
+    assert dict.get(zebra, "stripes", _MISSING) == 3
+    assert not [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING" and "zebra" in r.getMessage()
+    ]
+
+
+# --------------------------------------------------------------------------- #
 # agent.default vs agent.<active> split — TRUE discriminated keys (§2) #
 # --------------------------------------------------------------------------- #
 
