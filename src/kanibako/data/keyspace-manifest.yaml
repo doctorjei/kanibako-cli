@@ -272,6 +272,8 @@ policy:
     #                                this version's plate (plan step B6). Listing an
     #                                unwired entry as `wired` would assert a contract
     #                                the code does not honour — hence the marker.
+    #                                (B6 LANDED: no entry carries this status now;
+    #                                the marker is kept for any future ruled gap.)
     #   projected_surface_excluded — folded at its EPHEMERAL consumer (the launch
     #                                argv); never enters the CLI level, because the
     #                                projection outlives the launch (the structural
@@ -291,10 +293,12 @@ policy:
         status: wired
       "--image":
         key: box.image
-        status: pending_wire        # B6 (R-11a(a))
+        status: wired               # B6 (R-11a(a)): keyspace-resolved via the
+                                    #   box-scalar resolve (config.load_merged_config)
       "--share-images":
         key: box.share_images
-        status: pending_wire        # B6 (R-11a(a))
+        status: wired               # B6 (R-11a(a)): same resolve; store_true, so
+                                    #   only a GIVEN flag installs (True)
       "-S/-A":
         key: "agent.<agent>.access"
         status: projected_surface_excluded

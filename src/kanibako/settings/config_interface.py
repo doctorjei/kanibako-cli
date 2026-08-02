@@ -27,6 +27,7 @@ from typing import Any, Mapping
 
 from kanibako.settings.config import (
     coerce_bool,
+    load_config,
     load_merged_config,
     load_project_overrides,
     read_agent_settings,
@@ -891,9 +892,13 @@ def get_config_value(
 
     # config.* / system.* path keys — read the raw set-value from the bootstrap
     # config file's [config]/[system] tables (file-only tier; not a merged-config
-    # field).
+    # field).  ``load_config``, not ``load_merged_config``: ``config_paths`` is
+    # CONFIG-FILE-ONLY (project/workset files never contribute it), and the
+    # merged loader now runs the B6 box-scalar KEYSPACE resolve — pure cost here,
+    # and a malformed box settings file must not break a bootstrap-tier read
+    # (the doctrine boundary the B6 consumer map fences off).
     if is_system_path_key(canonical):
-        cfg = load_merged_config(global_config_path, project_toml)
+        cfg = load_config(global_config_path)
         return cfg.config_paths.get(canonical)
 
     # Regular config keys — route via the SAME known-key table that set/reset

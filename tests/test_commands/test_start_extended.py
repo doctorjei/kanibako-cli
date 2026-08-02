@@ -352,38 +352,69 @@ class TestFlagCombinations:
 # ---------------------------------------------------------------------------
 
 class TestFirstBootImagePersistence:
-    def test_first_boot_image_persisted(self, start_mocks):
+    """The launch side of the §1A CREATE EXCEPTION (B6, R-11a + the 2026-08-02
+    materialization ruling): the launch calls the ONE shared gate
+    (``config.persist_creation_flags``) with its is-being-materialized signal;
+    the gate's own write/no-write matrix is pinned in
+    ``tests/test_settings/test_config.py``.
+    """
+
+    def test_materializing_launch_calls_the_gate_with_the_flag(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.settings.config.write_project_config") as m_wpc:
+            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-                m_wpc.assert_called_once()
+                m_gate.assert_called_once()
+                kwargs = m_gate.call_args.kwargs
+                assert kwargs["materializing"] is True
+                assert kwargs["image"] == "custom:v1"
 
-    def test_existing_project_image_not_persisted(self, start_mocks):
+    def test_existing_box_reports_not_materializing(self, start_mocks):
+        """`start --image` on an EXISTING box: the gate sees materializing=False
+        — strictly ephemeral (the prove-the-negative, unit half; the gate's
+        no-write on False is pinned at the gate)."""
         with start_mocks() as m:
             m.proj.is_new = False
-            with patch("kanibako.settings.config.write_project_config") as m_wpc:
+            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-                m_wpc.assert_not_called()
+                m_gate.assert_called_once()
+                assert m_gate.call_args.kwargs["materializing"] is False
 
-    def test_first_boot_no_override_not_persisted(self, start_mocks):
+    def test_no_flags_pass_no_values_to_the_gate(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.settings.config.write_project_config") as m_wpc:
+            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-                m_wpc.assert_not_called()
+                m_gate.assert_called_once()
+                kwargs = m_gate.call_args.kwargs
+                assert kwargs["image"] is None
+                assert kwargs["share_images"] is None
+
+    def test_share_images_flag_reaches_the_gate(self, start_mocks):
+        """`--share-images` on a materializing launch persists too (ALL shadowing
+        flags act uniformly — the 4a ruling)."""
+        with start_mocks() as m:
+            m.proj.is_new = True
+            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], share_images=True,
+                )
+                m_gate.assert_called_once()
+                assert m_gate.call_args.kwargs["share_images"] is True
 
 
 # ---------------------------------------------------------------------------

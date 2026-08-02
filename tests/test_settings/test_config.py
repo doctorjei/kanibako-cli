@@ -834,3 +834,132 @@ class TestTargetSettings:
         # The base box section should still be intact.
         cfg = load_config(p)
         assert cfg.box_image == "base:image"
+
+
+class TestPersistCreationFlags:
+    """The §1A CREATE EXCEPTION gate (B6, R-11a + the 2026-08-02 materialization
+    ruling) — the ONE function through which a shadowing flag's value ever
+    persists.  ``kanibako create`` and the launch-materialization path both call
+    THIS gate; there is no per-path persist logic anywhere else.
+    """
+
+    def test_materializing_with_image_persists_it(self, tmp_path):
+        from kanibako.settings.config import persist_creation_flags
+        from kanibako.settings.config_io import load_doc
+
+        p = tmp_path / "settings.yaml"
+        persist_creation_flags(p, materializing=True, image="custom:v1")
+        assert load_doc(p)["box"]["image"] == "custom:v1"
+
+    def test_materializing_with_share_images_persists_a_real_bool(self, tmp_path):
+        from kanibako.settings.config import persist_creation_flags
+        from kanibako.settings.config_io import load_doc
+
+        p = tmp_path / "settings.yaml"
+        persist_creation_flags(p, materializing=True, share_images=True)
+        assert load_doc(p)["box"]["share_images"] is True
+
+    def test_not_materializing_never_writes(self, tmp_path):
+        """The prove-the-negative: on an EXISTING box (materializing=False) a
+        flag is STRICTLY EPHEMERAL — the gate writes nothing at all."""
+        from kanibako.settings.config import persist_creation_flags
+
+        p = tmp_path / "settings.yaml"
+        persist_creation_flags(
+            p, materializing=False, image="custom:v1", share_images=True,
+        )
+        assert not p.exists()
+
+    def test_no_flags_writes_nothing_not_even_an_empty_file(self, tmp_path):
+        """A no-flag create bakes NOTHING (the stop-baking decision): absent
+        flags leave the box tier untouched, so the box resolves the live
+        cascade.  ``""`` for image is absent, not a value (absent ≠ '')."""
+        from kanibako.settings.config import persist_creation_flags
+
+        p = tmp_path / "settings.yaml"
+        persist_creation_flags(p, materializing=True)
+        persist_creation_flags(p, materializing=True, image="", share_images=None)
+        assert not p.exists()
+
+    def test_write_is_merge_preserving(self, tmp_path):
+        from kanibako.settings.config import persist_creation_flags
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        p = tmp_path / "settings.yaml"
+        dump_doc(p, {"box": {"enable_vault": False}, "agent": {"claude": {"model": "opus"}}})
+        persist_creation_flags(p, materializing=True, image="custom:v1")
+        doc = load_doc(p)
+        assert doc["box"] == {"enable_vault": False, "image": "custom:v1"}
+        assert doc["agent"] == {"claude": {"model": "opus"}}
+
+
+class TestMergedConfigKeyspaceResolve:
+    """B6 (R-11a(a), option (b)): ``load_merged_config``'s box scalars resolve
+    through the KEYSPACE — one resolve behind every consumer, agent-lessly.
+    """
+
+    def _global(self, tmp_path, monkeypatch, image="global-img:1"):
+        from kanibako.settings.config import write_global_config
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        (tmp_path / "config").mkdir(exist_ok=True)
+        gp = tmp_path / "config" / "kanibako_config.yaml"
+        write_global_config(gp, KanibakoConfig(box_image=image))
+        return gp
+
+    def test_stored_system_default_is_mapped_not_stranded(self, tmp_path, monkeypatch):
+        """Consumer-map risk 1: the ``kanibako_config.yaml [box]`` table (written
+        at init on EVERY install) enters the resolve as the floor."""
+        gp = self._global(tmp_path, monkeypatch)
+        merged = load_merged_config(gp, None)
+        assert merged.box_image == "global-img:1"
+
+    def test_box_tier_beats_workset_beats_global(self, tmp_path, monkeypatch):
+        gp = self._global(tmp_path, monkeypatch)
+        ws = tmp_path / "wconfig.yaml"
+        ws.write_text("box:\n  image: ws-img:2\n")
+        bt = tmp_path / "settings.yaml"
+        bt.write_text("box:\n  image: box-img:3\n  shell: zsh\n")
+        assert load_merged_config(gp, None, workset_path=ws).box_image == "ws-img:2"
+        merged = load_merged_config(gp, bt, workset_path=ws)
+        assert merged.box_image == "box-img:3"
+        assert merged.box_shell == "zsh"  # box.shell rides the same resolve
+
+    def test_system_settings_file_box_table_now_resolves(self, tmp_path, monkeypatch):
+        """``kanibako system config set box.image=…`` has always written the
+        ``box:`` table of global/settings.yaml — stranded before B6, live now."""
+        gp = self._global(tmp_path, monkeypatch)
+        ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text("box:\n  image: sys-img:4\n")
+        assert load_merged_config(gp, None).box_image == "sys-img:4"
+        # ...but every settings-file tier above it still wins.
+        bt = tmp_path / "settings.yaml"
+        bt.write_text("box:\n  image: box-img:3\n")
+        assert load_merged_config(gp, bt).box_image == "box-img:3"
+
+    def test_cli_level_outranks_every_file(self, tmp_path, monkeypatch):
+        gp = self._global(tmp_path, monkeypatch)
+        bt = tmp_path / "settings.yaml"
+        bt.write_text("box:\n  image: box-img:3\n")
+        merged = load_merged_config(
+            gp, bt,
+            cli_overrides={"box_image": "cli-img:9", "box_share_images": True},
+        )
+        assert merged.box_image == "cli-img:9"
+        assert merged.box_share_images is True
+
+    def test_share_images_resolves_as_a_bool_from_files(self, tmp_path, monkeypatch):
+        gp = self._global(tmp_path, monkeypatch)
+        bt = tmp_path / "settings.yaml"
+        bt.write_text("box:\n  share_images: true\n")
+        assert load_merged_config(gp, bt).box_share_images is True
+
+    def test_agentless_resolve_no_agent_required(self, tmp_path, monkeypatch):
+        """The resolve is AGENT-LESS by construction (the ``kanibako shell``
+        requirement): nothing here selects or consults an agent, and a host with
+        zero agents still resolves the box scalars."""
+        gp = self._global(tmp_path, monkeypatch)
+        merged = load_merged_config(gp, None)
+        assert merged.box_image == "global-img:1"

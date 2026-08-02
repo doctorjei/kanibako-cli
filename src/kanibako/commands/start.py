@@ -35,6 +35,7 @@ from kanibako.settings.config import (
     config_file_path,
     load_config,
     load_merged_config,
+    persist_creation_flags,
     read_system_agent,
 )
 from kanibako.settings import core_defaults
@@ -1334,7 +1335,6 @@ def _deliver_panel_permissions(
 
 def _assemble_image_sharing_mounts(
     *,
-    share_images,
     merged,
     proj,
     runtime,
@@ -1350,8 +1350,12 @@ def _assemble_image_sharing_mounts(
 
     Extracted verbatim from ``_run_container``; extends the passed
     ``extra_mounts`` list in place exactly as the inline block did.
+
+    ⮕ B6: the gate reads ``merged.box_share_images`` ALONE — the ``--share-images``
+    flag already rides the §1A CLI level inside the merged-config resolve, so a
+    separate flag disjunct here would be a second mechanism for the same value.
     """
-    if share_images or merged.box_share_images:
+    if merged.box_share_images:
         from kanibako.runtime.image_sharing import prepare_image_sharing_sources
         staging = proj.metadata_path / ".image-sharing"
         img_sources = prepare_image_sharing_sources(runtime.cmd, staging)
@@ -1745,13 +1749,20 @@ def _run_container(
 
     _orphan_hint()
 
-    # Load merged config (global + workset + project)
+    # Load merged config (global + workset + project). The box scalars resolve
+    # through the KEYSPACE inside the loader (B6); the two flags ride its §1A
+    # CLI level via this transport (translated by the ONE builder inside).
+    _cli_scalar_overrides: "dict[str, object]" = {}
+    if image_override:
+        _cli_scalar_overrides["box_image"] = image_override
+    if share_images:
+        _cli_scalar_overrides["box_share_images"] = True
     project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file,
         project_toml,
         workset_path=workset_path,
-        cli_overrides={"box_image": image_override} if image_override else None,
+        cli_overrides=_cli_scalar_overrides or None,
     )
 
     image = merged.box_image
@@ -1770,13 +1781,10 @@ def _run_container(
     if detach:
         persistent = True
 
-    # Persist image override for new projects so it becomes the default
-    def _persist_image_override() -> None:
-        if proj.is_new and image_override:
-            from kanibako.settings.config import write_project_config
-            write_project_config(project_toml, image_override)
-
-    _persist_image_override()
+    # ⚑ NO per-path flag persist here: the §1A CREATE EXCEPTION runs through the
+    # ONE shared gate (``config.persist_creation_flags``), called ONCE below at
+    # the point where BOTH the direct and the deferred-materialization arms have
+    # a materialized ``proj`` — see the call after the ``_defer_box`` block.
 
     # Resolve target (agent plugin) and detect installation.
     #
@@ -2116,9 +2124,22 @@ def _run_container(
             config_file,
             project_toml,
             workset_path=workset_path,
-            cli_overrides={"box_image": image_override} if image_override else None,
+            cli_overrides=_cli_scalar_overrides or None,
         )
-        _persist_image_override()
+
+    # §1A CREATE EXCEPTION (R-11a + the 2026-08-02 materialization ruling): a
+    # shadowing flag's value persists ONLY while the box is BEING MATERIALIZED —
+    # launch-materialization counts as creation, so the launch calls the SAME
+    # gate ``kanibako create`` does, at the one point where BOTH arms (direct
+    # and deferred-persona) hold a materialized ``proj`` and the REAL
+    # ``project_toml``. For an EXISTING box (``is_new`` False) the gate no-ops:
+    # ``start --image`` stays strictly ephemeral.
+    persist_creation_flags(
+        project_toml,
+        materializing=proj.is_new,
+        image=image_override,
+        share_images=True if share_images else None,
+    )
 
     # D5 CRITICAL integrity gate (host components).  ``proj`` is now fully
     # materialised in BOTH the deferred and non-deferred paths, so its required
@@ -2481,6 +2502,12 @@ def _run_container(
             new_session=new_session,
             continue_session=continue_override,
             resume=resume_mode,
+            # B6: the box-scope flags ride EVERY runtime resolve uniformly (§1A —
+            # box.image / box.share_images are agent-independent, so they install
+            # for shell/no-agent launches too; the image itself was settled off
+            # the merged-config resolve above, which carried the same level).
+            image=image_override,
+            share_images=share_images,
         )
         _snapshot, reconciled = _resolve_launch_snapshot(
             std=std,
@@ -2774,7 +2801,6 @@ def _run_container(
         # the keyed ``box.bindings.ro.images_*`` binds.  CONDITIONAL: only when
         # sharing is requested AND the host graph root is detectable.
         _assemble_image_sharing_mounts(
-            share_images=share_images,
             merged=merged,
             proj=proj,
             runtime=runtime,
