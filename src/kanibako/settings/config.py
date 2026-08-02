@@ -175,17 +175,129 @@ def load_config(path: Path) -> KanibakoConfig:
     return cfg
 
 
+#: The three box-scope SCALAR keys the merged loader resolves through the
+#: KEYSPACE (B6, R-11a(a)): dotted key → the flat ``KanibakoConfig`` field it
+#: lands on. ``box.shell`` rides the same resolve (it lives on the same object
+#: and the same ``box:`` tables — consumer-map risk 4).
+_BOX_SCALAR_FIELDS: dict[str, str] = {
+    "box.image": "box_image",
+    "box.share_images": "box_share_images",
+    "box.shell": "box_shell",
+}
+
+
+def _resolve_box_scalars(
+    global_path: Path,
+    floor_values: "dict[str, object]",
+    *,
+    workset_path: Path | None,
+    box_path: Path | None,
+    cli_overrides: "dict[str, object] | None",
+) -> dict[str, object]:
+    """Resolve the three box scalars (:data:`_BOX_SCALAR_FIELDS`) through the
+    KEYSPACE — the ONE resolve behind ``load_merged_config`` (B6, option (b)).
+
+    A focused, AGENT-LESS ``build_launch_snapshot`` (the ``"general"`` slot —
+    the proven ``_effective_bootstrap`` shape, so ``kanibako shell`` and every
+    box-less caller resolve without an agent) over the real cascade files::
+
+        floor(kanibako_config.yaml [box]) < /etc settings_base.yaml < system
+        (global/settings.yaml) < workset < box < CLI level
+
+    * **The stored system default is MAPPED, not stranded** (consumer-map risk
+      1): every install's ``kanibako_config.yaml`` carries a ``[box]`` table
+      (written at init), which the settings cascade does not read — its values
+      enter here as the FLOOR (*floor_values*, captured from the ``load_config``
+      read of *global_path* BEFORE any overlay), so they keep beating the
+      built-in defaults and keep losing to every settings file, exactly the flat
+      loader's precedence. A ``box:`` table in ``global/settings.yaml`` — where
+      ``kanibako system config set box.image=…`` has always written — now
+      resolves too (it was silently stranded before B6).
+    * **The CLI flags ride the §1A LEVEL**: *cli_overrides* (flat field names,
+      the historical transport) are translated through the ONE builder
+      :func:`~kanibako.settings.settings_cli_level.build_cli_level` and guarded
+      inside ``build_launch_snapshot`` — not overlaid ad hoc.
+
+    Returns ``{dotted key: resolved leaf}`` with ABSENT keys omitted (the caller
+    falls back to the flat value, which owns the ``None``-reset / built-in
+    default corner semantics). Lazy imports throughout: ``paths`` and
+    ``settings_launch`` both import this module at module load.
+    """
+    from kanibako.settings.paths import load_system_config, host_xdg_map, xdg
+    from kanibako.settings.settings_cli_level import build_cli_level
+    from kanibako.settings.settings_launch import build_launch_snapshot
+    from kanibako.settings.settings_resolve import ResolveCtx
+    from kanibako.settings.settings_store import KeyStore
+
+    # The system SETTINGS file (@config.settings = global/settings.yaml) — pure
+    # path resolution (no mkdir; deliberately NOT load_std_paths).
+    system_path = load_system_config(
+        global_path, data_home=xdg("XDG_DATA_HOME", ".local/share"),
+        home=Path.home(),
+    )["config.settings"]
+
+    # The kanibako_config [box] tier as the FLOOR (risk 1). ``""`` entries are
+    # dropped by the fold (absent ≡ no default) — the flat fallback then applies
+    # the built-in default, preserving the ""-corner byte-identically.
+    floor = dict(floor_values)
+
+    overrides = cli_overrides or {}
+    image_val = overrides.get("box_image")
+    cli_level = build_cli_level(
+        image=str(image_val) if image_val else None,
+        share_images=bool(overrides.get("box_share_images", False)),
+    )
+
+    snapshot = build_launch_snapshot(
+        agent_name="general",
+        ctx=ResolveCtx(
+            agent_name="general", workset_name=None,
+            host_home=str(Path.home()), xdg=host_xdg_map(),
+        ),
+        system_path=system_path if system_path.exists() else None,
+        agent_path=None,
+        workset_path=workset_path,
+        box_path=box_path,
+        default_categories=floor,
+        cli_level=cli_level,
+    )
+
+    resolved: dict[str, object] = {}
+    for dotted in _BOX_SCALAR_FIELDS:
+        node: object = snapshot
+        for seg in dotted.split("."):
+            if not isinstance(node, KeyStore):
+                node = None
+                break
+            node = dict.get(node, seg)
+        if node is not None:
+            resolved[dotted] = node
+    return resolved
+
+
 def load_merged_config(
     global_path: Path,
     project_path: Path | None = None,
     *,
     workset_path: Path | None = None,
-    cli_overrides: dict[str, str] | None = None,
+    cli_overrides: "dict[str, object] | None" = None,
 ) -> KanibakoConfig:
     """Load global config, overlay workset, project, then CLI overrides.
 
     Precedence: CLI flags > settings.yaml > workset config.yaml >
     kanibako_config.yaml (user) > hardcoded defaults.
+
+    ⮕ **B6 (R-11a(a)): the box scalars are KEYSPACE-RESOLVED.** The three
+    declared keys ``box.image`` / ``box.share_images`` / ``box.shell`` are no
+    longer the flat overlay's product: :func:`_resolve_box_scalars` resolves
+    them through the real cascade (base < system < workset < box < the §1A CLI
+    level), with the ``kanibako_config.yaml [box]`` tier mapped as the floor, and
+    the resolved values overwrite the flat fields on the returned object. Every
+    caller — the launch, ``kanibako shell`` (agent-less), and the box-less sites
+    (``rig``/``diagnose``/``setup``/``baseline``, which pass no project) — reads
+    the SAME resolve through the same fields, so there is ONE live source. The
+    flat overlay walk below still runs: it owns ``paths_project_toml`` and the
+    corner semantics (present-``None`` reset; ``""``) the resolve falls back to.
 
     The old machine-wide ``/etc/kanibako/kanibako.yaml`` third file is DELETED
     (spec §2 — the admin authority is exactly the ``config_base.yaml`` /
@@ -213,6 +325,13 @@ def load_merged_config(
     # the machine third-file is deleted), then overlay the workset + project
     # layers so the most-specific present value wins (null/empty resets).
     cfg = load_config(global_path)
+    # The kanibako_config [box] tier for the resolve's FLOOR — captured BEFORE
+    # the overlays, so a workset/box value cannot masquerade as the system-stored
+    # default (it enters the resolve at its OWN tier instead).
+    floor_values: dict[str, object] = {
+        dotted: getattr(cfg, field_name)
+        for dotted, field_name in _BOX_SCALAR_FIELDS.items()
+    }
     if workset_path and workset_path.exists():
         _overlay_scalars(cfg, workset_path)
     if project_path and project_path.exists():
@@ -222,6 +341,24 @@ def load_merged_config(
         for k, v in cli_overrides.items():
             if k in valid_keys:
                 setattr(cfg, k, v)
+
+    # KEYSPACE resolve for the box scalars (B6): the resolved value wins; an
+    # ABSENT/None resolve keeps the flat value (which owns the None-reset / ""
+    # corner semantics — see _resolve_box_scalars).
+    resolved = _resolve_box_scalars(
+        global_path, floor_values,
+        workset_path=workset_path, box_path=project_path,
+        cli_overrides=cli_overrides,
+    )
+    for dotted, field_name in _BOX_SCALAR_FIELDS.items():
+        if dotted not in resolved:
+            continue
+        value = resolved[dotted]
+        if field_name == "box_share_images":
+            coerced = coerce_bool(value)
+            setattr(cfg, field_name, coerced if coerced is not None else bool(value))
+        else:
+            setattr(cfg, field_name, str(value))
     return cfg
 
 
@@ -277,6 +414,59 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
 def write_project_config(path: Path, image: str) -> None:
     """Write or update a settings.yaml with the given image."""
     write_project_config_key(path, "box_image", image)
+
+
+def persist_creation_flags(
+    box_settings_path: Path,
+    *,
+    materializing: bool,
+    image: str | None = None,
+    share_images: bool | None = None,
+) -> None:
+    """The §1A **CREATE EXCEPTION** — the ONE gate through which a shadowing CLI
+    flag's value ever PERSISTS (R-11a; materialization ruling 2026-08-02).
+
+    Spec §1A: a flag applies to ONE launch and NEVER mutates an EXISTING stored
+    value — *"at box CREATION only, a shadowing flag's value PERSISTS — it
+    INITIALIZES the box's stored config."* Launch-MATERIALIZATION counts as
+    creation (Jei, 2026-08-02): the one signal is *materializing* — "is this box
+    being materialized by THIS invocation?" — which ``kanibako create`` and the
+    launch path both read off their resolve's ``proj.is_new``. Every caller
+    routes through THIS gate; there is no per-path persist logic (the former
+    ``start._persist_image_override`` and its deferred-arm replay collapsed into
+    it), so ``create``, a launch that materializes a registered-but-unbuilt box,
+    and a plain ``start --image`` on an EXISTING box (strictly ephemeral) all
+    get the rule from one place.
+
+    Only EXPLICITLY-GIVEN flag values persist: an absent flag (``None``; ``""``
+    for *image* — absent ≠ ``""``) writes NOTHING, so a no-flag create bakes NO
+    default into the box tier and the box resolves the live cascade (single
+    source of truth; the stored default stays at its own tier). No flags → no
+    write at all — no empty settings.yaml is materialized (the
+    :func:`write_box_enable_vault` rule).
+
+    *box_settings_path* is the BOX-TIER settings file from
+    ``box_workset_settings_paths`` — the same file ``box set box.image=…`` writes
+    and the launch cascade reads as the box tier (M-8). *share_images* is a real
+    bool or ``None`` (absent); it is written as a bool, matching the
+    ``KEY_TYPES`` coercion ``config set box.share_images`` applies.
+    """
+    if not materializing:
+        return
+    updates: dict[str, object] = {}
+    if image:
+        updates["image"] = image
+    if share_images is not None:
+        updates["share_images"] = bool(share_images)
+    if not updates:
+        return
+    data = load_doc(box_settings_path)
+    sec = data.get("box")
+    if not isinstance(sec, dict):
+        sec = {}
+        data["box"] = sec
+    sec.update(updates)
+    dump_doc(box_settings_path, data)
 
 
 def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:

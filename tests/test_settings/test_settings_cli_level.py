@@ -134,19 +134,47 @@ def test_declared_table_lists_only_wired_flags() -> None:
     """The table is a contract: every entry must be one the builder can produce.
 
     An unwired entry would read as a promise (the reason ``settings_keyspace``
-    deleted its unused ``CATEGORY_SCOPES``). ``--image`` / ``--share-images`` /
-    ``-S``/``-A`` are deliberately ABSENT — see the module docstring.
+    deleted its unused ``CATEGORY_SCOPES``). ``--image`` / ``--share-images``
+    are WIRED (B6, R-11a(a)); ``-S``/``-A`` stay deliberately ABSENT
+    (projected-surface exception) — see the module docstring.
     """
-    assert set(CLI_SHADOWED_KEYS) == {"--agent", "-M/--model", "-N/-C/-R"}
+    assert set(CLI_SHADOWED_KEYS) == {
+        "--agent", "-M/--model", "-N/-C/-R", "--image", "--share-images",
+    }
     built = build_cli_level(
         selection={SELECTION_KEY: ACTIVE},
         active_agent=ACTIVE,
         model="opus",
         new_session=True,
+        image="ghcr.io/x:y",
+        share_images=True,
     )
     assert set(built or {}) == {
         tmpl.replace("<agent>", ACTIVE) for tmpl in CLI_SHADOWED_KEYS.values()
     }
+
+
+def test_image_installs_the_box_key_agent_independently() -> None:
+    """``--image`` is BOX-scope: it installs with NO active agent (B6).
+
+    A ``kanibako shell`` launch has no agent yet still selects a rig, so the
+    entry must not be gated on *active_agent* the way the agent-scope flags are.
+    """
+    assert build_cli_level(image="ghcr.io/x:y") == {"box.image": "ghcr.io/x:y"}
+
+
+def test_image_absent_or_empty_installs_nothing() -> None:
+    """Absent ≠ ``""`` — a flag-not-given must not launder into a terminal value."""
+    assert build_cli_level(image=None) is None
+    assert build_cli_level(image="") is None
+
+
+def test_share_images_true_installs_false_means_absent() -> None:
+    """``--share-images`` is ``store_true``: ``False`` is the UN-GIVEN flag and
+    must install NOTHING (the stored value stands), never an explicit override.
+    """
+    assert build_cli_level(share_images=True) == {"box.share_images": True}
+    assert build_cli_level(share_images=False) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -173,11 +201,11 @@ def test_guard_is_a_noop_for_an_absent_level() -> None:
 def test_guard_accepts_a_declared_unwired_key() -> None:
     """The guard tests VALIDITY, not wiring.
 
-    ``box.image`` is a declared, non-locator key with no CLI wiring yet (P8b). The
-    guard must not double as a wiring list — that would make it refuse the very key
-    the next phase installs.
+    ``box.shell`` is a declared, non-locator key with no CLI flag of its own. The
+    guard must not double as a wiring list — that would make it refuse a valid
+    key merely because no flag installs it.
     """
-    guard_cli_level({"box.image": "ghcr.io/x:y"}, active_agent=ACTIVE)
+    guard_cli_level({"box.shell": "zsh"}, active_agent=ACTIVE)
 
 
 @pytest.mark.parametrize(

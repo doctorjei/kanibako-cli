@@ -490,22 +490,44 @@ class TestCreateImage:
         from kanibako.settings.config_io import load_doc
         assert load_doc(box_tier)["box"]["image"] == "kanibako-template-jvm-oci"
 
-    def test_create_default_image_persisted(
+    def test_create_without_flag_bakes_nothing_and_resolves_live(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
+        """B6 (§1A CREATE EXCEPTION, R-11a): only an EXPLICIT flag persists.
+
+        A no-flag create writes NO ``box.image`` into the box tier — the box
+        resolves the LIVE cascade instead (single source: a later change to the
+        stored default reaches this box; the pre-B6 bake froze it forever).
+        """
         from kanibako.settings.config import load_merged_config
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
 
         box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+        # NOT persisted at the box tier...
+        from kanibako.settings.config_io import load_doc
+        assert "image" not in (load_doc(box_tier).get("box") or {})
+        # ...and the merged resolve still yields the live default.
         merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
         assert "kanibako" in merged.box_image
-        # Assert PERSISTENCE, not just the merged default: the create-time write must
-        # actually be in the box tier.  (Reading merged alone passes vacuously — the
-        # built-in default also contains "kanibako".)
-        from kanibako.settings.config_io import load_doc
-        assert "kanibako" in load_doc(box_tier)["box"]["image"]
+
+    def test_create_follows_a_later_default_change(
+        self, config_file, credentials_dir, project_dir, capsys,
+    ):
+        """The live-cascade payoff the no-bake decision buys: change the stored
+        system default AFTER create and the existing no-flag box follows it."""
+        from kanibako.settings.config import (
+            KanibakoConfig, load_merged_config, write_global_config,
+        )
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
+        run_create(args)
+
+        write_global_config(config_file, KanibakoConfig(box_image="changed-later:1"))
+        box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
+        merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
+        assert merged.box_image == "changed-later:1"
 
 
 class TestCreatePrivate:

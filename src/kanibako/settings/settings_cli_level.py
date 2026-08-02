@@ -68,24 +68,28 @@ SELECTION_KEY: Final[str] = "system.agent"
 
 #: The DECLARED flag→key table (spec §1A). **WIRED ENTRIES ONLY.**
 #:
-#: ⚑ The spec's enumeration also names ``--image`` (``box.image``), ``-S``/``-A``
-#: (``auto_approve``) and ``--share-images`` (``box.share_images``). Those are NOT
-#: listed here, because listing an unwired entry would read as a contract this
-#: module honours — the same reason ``settings_keyspace`` deleted its unused
-#: ``CATEGORY_SCOPES`` rather than keeping it. Each is blocked on something real,
-#: recorded in the P8 plan:
+#: ⚑ The spec's enumeration also names ``-S``/``-A`` (``access``, superseding
+#: ``auto_approve``). Those are NOT listed here, because listing an unwired entry
+#: would read as a contract this module honours — the same reason
+#: ``settings_keyspace`` deleted its unused ``CATEGORY_SCOPES`` rather than
+#: keeping it:
 #:
-#: * ``--image`` / ``--share-images`` — ``box.image`` / ``box.share_images`` are
-#:   declared KEYS but have no keyspace CONSUMER: they are read off the legacy flat
-#:   loader (``config.load_merged_config`` → ``KanibakoConfig``), and the image is
-#:   needed BEFORE the agent is resolved, i.e. before any launch snapshot exists.
-#:   Adding the level entry without migrating the consumer would install a key
-#:   nothing reads.
-#: * ``-S``/``-A`` — ``auto_approve`` is read once and consumed TWICE: by the
+#: * ``-S``/``-A`` — the key is read once and consumed TWICE: by the
 #:   ephemeral safe-bypass argv, and by ``deliver_panel_permissions`` /
 #:   ``deliver_directive_hook``, which WRITE it onto the box's own persisted agent
-#:   config surface. Installing the flag at this level would make an ephemeral flag
-#:   mutate a stored value — exactly what §1A forbids.
+#:   config surface (§1A's PROJECTED-SURFACE EXCEPTION, a structural class rule).
+#:   Installing the flag at this level would make an ephemeral flag mutate a
+#:   stored value — exactly what §1A forbids. ``-M`` is likewise barred from the
+#:   codex config-projection RESOLVE (that consumer reads the cascade, never the
+#:   CLI level), though the flag itself is wired for the launch argv.
+#:
+#: ``--image`` / ``--share-images`` are WIRED (B6, R-11a(a)): ``box.image`` /
+#: ``box.share_images`` resolve through the keyspace (the box-scalar resolve in
+#: ``config.load_merged_config``), agent-lessly — a box-scope flag needs no
+#: active-agent discriminator. Their PERSISTENCE at box CREATION is NOT this
+#: level's doing: §1A's CREATE EXCEPTION is implemented as the ONE gate
+#: :func:`kanibako.settings.config.persist_creation_flags`, called by ``create``
+#: and by the launch-materialization path alike; this level stays ephemeral.
 #:
 #: The value is a display TEMPLATE (``<agent>`` = the active discriminator), used
 #: by tests and by humans; the builder below is the executable form.
@@ -93,6 +97,8 @@ CLI_SHADOWED_KEYS: Final[Mapping[str, str]] = {
     "--agent": SELECTION_KEY,
     "-M/--model": "agent.<agent>.model",
     "-N/-C/-R": "agent.<agent>.continue_mode",
+    "--image": "box.image",
+    "--share-images": "box.share_images",
 }
 
 #: Namespaces a CLI value may never target (spec §2h's CATEGORICAL tier, which the
@@ -114,6 +120,8 @@ def build_cli_level(
     new_session: bool = False,
     continue_session: bool = False,
     resume: bool = False,
+    image: "str | None" = None,
+    share_images: bool = False,
 ) -> "dict[str, object] | None":
     """Build the §1A CLI level for one launch, or ``None`` when it is empty.
 
@@ -157,6 +165,17 @@ def build_cli_level(
     ``resolve_new_session`` returned "not fresh" for ``-R`` regardless of the stored
     key, so a picker-less ``-R`` yielded ``"continue"``. If ``-R`` installed nothing,
     a box with a stored ``continue_mode: false`` would flip to ``"start"``.
+
+    *image* (``--image``, B6/R-11a(a)): a non-empty string installs ``box.image``.
+    ``None`` or ``""`` installs NOTHING (absent ≠ ``""``, same rule as *model*).
+    BOX-scope — installed independently of *active_agent*, because a box selects
+    its rig whether or not an agent launches (``kanibako shell`` included).
+
+    *share_images* (``--share-images``): ``True`` installs
+    ``box.share_images = True``; ``False`` installs NOTHING. The flag is argparse
+    ``store_true`` — there is no negative spelling — so an un-given flag arrives
+    here as ``False`` and must mean ABSENT (the stored value stands), never an
+    explicit override to ``False``.
     """
     level: dict[str, object] = {}
     if selection:
@@ -168,6 +187,10 @@ def build_cli_level(
             level[f"agent.{active_agent}.continue_mode"] = False
         elif continue_session or resume:
             level[f"agent.{active_agent}.continue_mode"] = True
+    if image:
+        level["box.image"] = image
+    if share_images:
+        level["box.share_images"] = True
     return level or None
 
 

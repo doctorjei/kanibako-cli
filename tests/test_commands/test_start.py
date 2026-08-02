@@ -5805,7 +5805,6 @@ class TestPersonaLoadOrErrorIntegration:
                     return_value=(_SHARED_AUTH, None, None),  # unrecognised keyspace → B3
                 ),
                 patch("kanibako.commands.start.write_agent_config"),
-                patch("kanibako.settings.config.write_project_config") as m_write_toml,
                 patch("kanibako.commands.start.credsync") as m_credsync,
             ):
                 m_credsync.selected_source_root = m.credsync.selected_source_root
@@ -5815,12 +5814,14 @@ class TestPersonaLoadOrErrorIntegration:
                     extra_args=[], explicit_agent="navigator+claude",
                 )
             assert rc == 0
-            # The image override persisted to the REAL box settings file, NOT the
-            # placeholder — proving project_toml was rebound after materialise.
-            m_write_toml.assert_called_once()
-            written_path = m_write_toml.call_args.args[0]
-            assert written_path == real / "settings.yaml"
-            assert "__unregistered__" not in str(written_path)
+            # The image override persisted (via the ONE shared CREATE-exception
+            # gate, B6) to the REAL box settings file, NOT the placeholder —
+            # proving project_toml was rebound after materialise.  The REAL gate
+            # ran: assert the on-disk write itself.
+            from kanibako.settings.config_io import load_doc
+            written = load_doc(real / "settings.yaml")
+            assert written.get("box", {}).get("image") == "custom:img"
+            assert not (unreg / "settings.yaml").exists()
 
 
 class TestPersonaLoadOrErrorUnmasked:

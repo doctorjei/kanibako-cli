@@ -14,7 +14,7 @@ from kanibako.settings.config import (
     config_file_path,
     load_config,
     load_merged_config,
-    write_project_config,
+    persist_creation_flags,
 )
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, ProjectError
@@ -818,14 +818,21 @@ def run_create(args: argparse.Namespace) -> int:
     # re-create reuses the half-built box's already-written meta (the on-disk
     # record is authoritative; do not overwrite it with possibly-different args).
     if proj.is_new:
-        # Persist image setting.  The write target is the BOX-TIER settings file from
-        # the ONE pair (M-8) — for standalone that is ``box_data/settings.yaml``, the
-        # same file ``box set box.image=…`` writes and the launch cascade reads as the
-        # box tier.  Deriving it independently here is exactly the split M-8 exists
+        # §1A CREATE EXCEPTION (R-11a) via the ONE shared gate — the SAME gate the
+        # launch-materialization path calls (`start.py`), so the persist rule has
+        # exactly one home. Only an EXPLICITLY-GIVEN ``-i``/``--image`` persists:
+        # a no-flag create bakes NOTHING into the box tier, and the box resolves
+        # the live cascade for its image (single source — the stored default
+        # stays at its own tier and later default changes reach this box).
+        # The write target is the BOX-TIER settings file from the ONE pair (M-8)
+        # — for standalone that is ``box_data/settings.yaml``, the same file
+        # ``box set box.image=…`` writes and the launch cascade reads as the box
+        # tier.  Deriving it independently here is exactly the split M-8 exists
         # to prevent.
-        image = args.image or config.box_image
         project_toml, _ = box_workset_settings_paths(proj)
-        write_project_config(project_toml, image)
+        persist_creation_flags(
+            project_toml, materializing=proj.is_new, image=args.image,
+        )
 
         # --private: turn the box PRIVATE *before* the home seed runs, so the
         # host OAuth cred is never forwarded.  Persist both box-scope auth
