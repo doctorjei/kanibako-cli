@@ -698,6 +698,143 @@ class TestWorksetProperties:
         assert ws.toml_path == resolved / "settings.yaml"
 
 
+class TestWorksetWorkspacesResolved:
+    """B2 (§3.3 ruling: ``workset.{workspaces,channelroot}`` "need to be real
+    and USED — not hard-coded"): the composing sites route through the resolved
+    key value — a ``workset: {workspaces: …}`` / ``{channelroot: …}`` repoint in
+    the workset's settings.yaml is honored, and the default is the spec's
+    per-mode formula spelled once in the resolver, never a per-site literal."""
+
+    # -- the shared resolvers (pure units) ---------------------------------
+
+    def test_resolver_default_is_the_spec_formula(self, tmp_path):
+        from kanibako.project.workset import (
+            resolve_workset_channelroot,
+            resolve_workset_workspaces,
+        )
+
+        assert resolve_workset_workspaces(tmp_path, None) == tmp_path / "workspaces"
+        assert resolve_workset_channelroot(tmp_path, None) == tmp_path / "channels"
+
+    def test_resolver_relative_repoint_anchors_under_root(self, tmp_path):
+        from kanibako.project.workset import (
+            resolve_workset_channelroot,
+            resolve_workset_workspaces,
+        )
+
+        doc = {"workset": {"workspaces": "pods", "channelroot": "comms"}}
+        assert resolve_workset_workspaces(tmp_path, doc) == tmp_path / "pods"
+        assert resolve_workset_channelroot(tmp_path, doc) == tmp_path / "comms"
+
+    def test_resolver_absolute_repoint_used_as_is(self, tmp_path):
+        from kanibako.project.workset import resolve_workset_workspaces
+
+        doc = {"workset": {"workspaces": "/srv/pods"}}
+        assert resolve_workset_workspaces(tmp_path, doc) == Path("/srv/pods")
+
+    def test_resolver_ignores_malformed_or_empty_slots(self, tmp_path):
+        from kanibako.project.workset import resolve_workset_workspaces
+
+        for doc in (None, {}, {"workset": "oops"}, {"workset": {"workspaces": ""}}):
+            assert (
+                resolve_workset_workspaces(tmp_path, doc)
+                == tmp_path / "workspaces"
+            )
+
+    # -- NAMED: load_workset captures the repoint --------------------------
+
+    def test_named_workspaces_dir_follows_repoint(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        root = tmp_home / "worksets" / "repointed"
+        create_workset("repointed", root, std)
+
+        # Merge the repoint into the root settings.yaml (identity preserved).
+        settings = root.resolve() / "settings.yaml"
+        data = load_doc(settings)
+        data.setdefault("workset", {})["workspaces"] = "pods"
+        dump_doc(settings, data)
+
+        ws = load_workset(root)
+        assert ws.workspaces_dir == root.resolve() / "pods"
+        # Unset → the default composition, unchanged.
+        ws_default = load_workset(
+            create_workset("plain", tmp_home / "worksets" / "plain", std).root
+        )
+        assert (
+            ws_default.workspaces_dir
+            == (tmp_home / "worksets" / "plain").resolve() / "workspaces"
+        )
+
+    # -- PRIMARY: default_workset honors the primary settings repoint ------
+
+    def test_primary_workspaces_dir_follows_repoint(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+
+        std.primary_workset.mkdir(parents=True, exist_ok=True)
+        dump_doc(
+            std.primary_workset / "settings.yaml",
+            {"workset": {"workspaces": "pods"}},
+        )
+        ws = default_workset(std)
+        assert ws.workspaces_dir == std.primary_workset / "pods"
+
+    def test_primary_workspaces_dir_default_unchanged(self, std):
+        ws = default_workset(std)
+        assert ws.workspaces_dir == std.primary_workset / "workspaces"
+
+    # -- detection + reverse lookup follow the repoint (paths.py sites) ----
+
+    def test_detection_follows_workspaces_repoint(self, std, tmp_home, config):
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import detect_project_mode
+
+        root = tmp_home / "worksets" / "det"
+        create_workset("det", root, std)
+        settings = root.resolve() / "settings.yaml"
+        data = load_doc(settings)
+        data.setdefault("workset", {})["workspaces"] = "pods"
+        dump_doc(settings, data)
+
+        app = root.resolve() / "pods" / "app"
+        app.mkdir(parents=True)
+        result = detect_project_mode(app, std, config)
+        assert result.mode is BoxMode.named
+
+    # -- tripwire: the literal joins must not come back --------------------
+
+    def test_no_workspaces_literal_join_remains_at_the_sites(self):
+        """Pins B2: the six ``"workspaces"`` composition sites (paths.py ×2,
+        project/workset.py ×2, project/names.py ×2) and the channels.py
+        ``"channels"`` root join route through the resolvers.  The ONLY allowed
+        spelling of each leaf is the resolver-module constant — a join-form
+        literal reappearing in these files is the hard-coding the §3.3 ruling
+        retired."""
+        import re
+
+        from tests.support.repo import REPO_ROOT
+
+        src = REPO_ROOT / "src" / "kanibako"
+        join_re = re.compile(r'/\s*"workspaces"|"workspaces"\s*/')
+        for rel in (
+            "settings/paths.py",
+            "project/workset.py",
+            "project/names.py",
+        ):
+            text = (src / rel).read_text(encoding="utf-8")
+            assert not join_re.search(text), (
+                f"literal workspaces join in {rel}; route it through "
+                f"resolve_workset_workspaces"
+            )
+        channels_text = (src / "channels" / "channels.py").read_text(
+            encoding="utf-8"
+        )
+        assert not re.search(r'/\s*"channels"', channels_text), (
+            "literal channelroot join in channels/channels.py; route it "
+            "through resolve_workset_channelroot"
+        )
+
+
 class TestWorksetSettingsFile:
     def test_identity_under_workset_meta(self, std, tmp_home):
         """create_workset writes identity into settings.yaml's workset.meta."""

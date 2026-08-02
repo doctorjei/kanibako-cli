@@ -194,6 +194,13 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "config.agents",
     "config.primary_workset",
     "config.registry",
+    # config.journal — the lifecycle-journal location (§3.3 ruling "needs to be
+    # recognized"): resolved/consumed as ``std.journal`` all along, but absent
+    # from this list, so the config verbs treated the key name as a project
+    # name.  Recognition here gives it EXACT sibling parity: the get/show path
+    # reads it through ``is_system_path_key``'s ``config.`` branch, and set/
+    # reset refuse it with the ruled bootstrap-file message like the other five.
+    "config.journal",
     # Layer-2 system.* path SETTINGS (``[system]`` table, spec §2g).  ``global``
     # is ELIMINATED (children inline ``@config.data/global/...``).
     "system.backup",

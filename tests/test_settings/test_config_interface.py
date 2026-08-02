@@ -1337,7 +1337,7 @@ class TestSystemConfigFileOnly:
             cf = tmp_path / "kanibako_config.yaml"
             for key in (
                 "config.data", "config.settings", "config.agents",
-                "config.primary_workset", "config.registry",
+                "config.primary_workset", "config.registry", "config.journal",
             ):
                 msg = set_config_value(key, "x", config_path=cf, command_scope=scope)
                 assert msg.startswith(
@@ -1352,7 +1352,7 @@ class TestSystemConfigFileOnly:
         scope with the ruled message (verb "changed" — a reset is a change)."""
         for scope in (None, ConfigLevel.system, ConfigLevel.box, ConfigLevel.workset):
             cf = tmp_path / "kanibako_config.yaml"
-            for key in ("config.data", "config.registry"):
+            for key in ("config.data", "config.registry", "config.journal"):
                 msg = reset_config_value(key, config_path=cf, command_scope=scope)
                 assert msg.startswith(
                     "Error: config.* keys can only be changed by editing"
@@ -1370,6 +1370,52 @@ class TestSystemConfigFileOnly:
             get_config_value("system.cache", global_config_path=cf)
             == "/custom/cache"
         )
+
+
+class TestConfigJournalRecognition:
+    """B2 (§3.3 ruling "needs to be recognized"): ``config.journal`` is a
+    recognized ``config.*`` key with EXACT sibling parity — the known-key
+    heuristic treats it as a key (not a project name), the get path reads the
+    raw stored ``[config]`` value like its five siblings, and set/reset refuse
+    it with the ruled bootstrap-file message.  (It was already resolved and
+    consumed as ``std.journal``; only recognition was missing.)"""
+
+    def test_journal_is_a_known_key(self):
+        assert is_known_key("config.journal") is True
+
+    def test_get_reads_stored_value_like_the_registry_sibling(self, tmp_path):
+        cf = tmp_path / "kanibako_config.yaml"
+        dump_doc(cf, {"config": {
+            "registry": "/srv/kani/registry.yaml",
+            "journal": "/srv/kani/journal.yaml",
+        }})
+        settings = tmp_path / "settings.yaml"
+        assert get_config_value(
+            "config.registry", global_config_path=cf, project_toml=settings,
+        ) == "/srv/kani/registry.yaml"
+        assert get_config_value(
+            "config.journal", global_config_path=cf, project_toml=settings,
+        ) == "/srv/kani/journal.yaml"
+
+    def test_get_unset_is_none_like_the_sibling(self, tmp_path):
+        cf = tmp_path / "kanibako_config.yaml"
+        settings = tmp_path / "settings.yaml"
+        for key in ("config.registry", "config.journal"):
+            assert get_config_value(
+                key, global_config_path=cf, project_toml=settings,
+            ) is None
+
+    def test_set_and_reset_refused_with_the_ruled_message(self, tmp_path):
+        cf = tmp_path / "kanibako_config.yaml"
+        msg = set_config_value("config.journal", "/x/j.yaml", config_path=cf)
+        assert msg.startswith(
+            "Error: config.* keys can only be set by editing"
+        ), msg
+        msg = reset_config_value("config.journal", config_path=cf)
+        assert msg.startswith(
+            "Error: config.* keys can only be changed by editing"
+        ), msg
+        assert not cf.exists()
 
     def test_non_system_key_still_settable_at_global_tier(self, tmp_path):
         """Narrow scope (a): only system.*-prefixed keys are refused.  A

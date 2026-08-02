@@ -1605,6 +1605,10 @@ def _check_workset(
     itself (inside workset but not necessarily a project workspace).
     """
     from kanibako.project import registry_store
+    from kanibako.project.workset import (
+        load_workset_settings_doc,
+        resolve_workset_workspaces,
+    )
 
     worksets_section = registry_store.load_section(
         std.registry, "worksets"
@@ -1614,7 +1618,11 @@ def _check_workset(
 
     for _root_str in worksets_section.values():
         ws_root = Path(_root_str).resolve()
-        ws_workspaces = ws_root / "workspaces"
+        # The resolved ``workset.workspaces`` (repoint honored; default
+        # ``@meta.workset.path/workspaces`` — §3.3: real and USED).
+        ws_workspaces = resolve_workset_workspaces(
+            ws_root, load_workset_settings_doc(ws_root)
+        )
         # Check workspaces/ first (more specific).
         try:
             resolved_dir.relative_to(ws_workspaces)
@@ -2154,13 +2162,22 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
     Raises ``WorksetError`` if *project_dir* does not belong to any
     registered workset.
     """
-    from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.project.workset import (
+        list_worksets,
+        load_workset,
+        load_workset_settings_doc,
+        resolve_workset_workspaces,
+    )
 
     registry = list_worksets(std)
     resolved = project_dir.resolve()
     for _name, root in registry.items():
         ws_root = root.resolve()
-        ws_workspaces = ws_root / "workspaces"
+        # The resolved ``workset.workspaces`` (repoint honored; default
+        # ``@meta.workset.path/workspaces`` — §3.3: real and USED).
+        ws_workspaces = resolve_workset_workspaces(
+            ws_root, load_workset_settings_doc(ws_root)
+        )
         # Check workspaces/ first (specific project).
         try:
             rel = resolved.relative_to(ws_workspaces)
