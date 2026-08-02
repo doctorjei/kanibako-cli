@@ -468,7 +468,11 @@ class TestPersistWindow:
 
 
 class TestEphemeralImageHint:
-    """Ruling #12 arm (b) — ``--image`` on a NON-materializing launch says so."""
+    """Ruling #12 arm (b) — a shadowing flag on a NON-materializing launch says so.
+
+    Jei, 2026-08-02b — *"yes, same hint"*: ``--share-images`` has the identical
+    silent gap as ``--image`` and gets the identical treatment.
+    """
 
     def test_hint_names_the_ephemerality_and_the_cure(self, start_mocks, capsys):
         with start_mocks() as m:
@@ -509,6 +513,99 @@ class TestEphemeralImageHint:
                 )
             err = capsys.readouterr().err
         assert "applies to THIS launch only" not in err
+
+    # -- ``--share-images``: the same hint (Jei 2026-08-02b) ----------------
+
+    def test_share_images_hint_names_the_ephemerality_and_the_cure(
+        self, start_mocks, capsys,
+    ):
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], share_images=True,
+            )
+            err = capsys.readouterr().err
+        assert "--share-images applies to THIS launch only" in err
+        assert "testproject" in err                       # names the box
+        assert "its stored image-sharing setting is unchanged" in err
+        # LIVE-CHECKED cure: `kanibako box set` takes the key directly (there is
+        # no `box config` subcommand), and box.share_images is a bool key whose
+        # coercion accepts `true`.
+        assert "kanibako box set box.share_images=true" in err
+        # ...and it does NOT drag the unrelated --image key in.
+        assert "box.image" not in err
+
+    def test_no_share_images_hint_without_the_flag(self, start_mocks, capsys):
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], share_images=False,
+            )
+            err = capsys.readouterr().err
+        assert "applies to THIS launch only" not in err
+        assert "box.share_images" not in err
+
+    def test_no_share_images_hint_when_the_flag_persists(self, start_mocks, capsys):
+        """A MATERIALIZING launch stores the value — nothing to warn about."""
+        with start_mocks() as m:
+            m.proj.is_new = True
+            with patch("kanibako.commands.start.persist_creation_flags"):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], share_images=True,
+                )
+            err = capsys.readouterr().err
+        assert "applies to THIS launch only" not in err
+
+    def test_both_flags_share_ONE_notice(self, start_mocks, capsys):
+        """Both flags on one non-materializing launch → ONE notice, not two.
+
+        The explanation ("the box already exists, so nothing was stored") is the
+        same sentence for both flags, so it is said ONCE and each flag gets its
+        own cure line.  Two notices would make the reader diff two
+        near-identical paragraphs.
+        """
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override="custom:v1",
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], share_images=True,
+            )
+            err = capsys.readouterr().err
+        assert err.count("Notice:") == 1
+        assert err.count("already exists") == 1
+        # One sentence naming BOTH flags and BOTH nouns, plural-agreed.
+        assert (
+            "--image custom:v1 and --share-images apply to THIS launch only"
+        ) in err
+        assert "its stored image and image-sharing setting are unchanged" in err
+        # ...and one cure line per flag, both copy-pasteable.
+        assert "  To persist them:" in err
+        assert "    kanibako box set box.image=custom:v1" in err
+        assert "    kanibako box set box.share_images=true" in err
+
+    def test_single_flag_wording_stays_singular(self, start_mocks, capsys):
+        """The one-flag rendering is UNCHANGED by the two-flag support: singular
+        verb, singular copula, inline cure (``ade2570``'s exact text)."""
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override="custom:v1",
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], share_images=False,
+            )
+            err = capsys.readouterr().err
+        assert (
+            "Notice: --image custom:v1 applies to THIS launch only — box "
+            "'testproject' already exists, so its stored image is unchanged.\n"
+            "  To persist it: kanibako box set box.image=custom:v1"
+        ) in err
 
 
 # ---------------------------------------------------------------------------

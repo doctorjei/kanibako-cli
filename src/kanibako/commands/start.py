@@ -1751,11 +1751,21 @@ def _persist_or_announce_flags(
       launch-decision resolve and the persona pre-flight — each of which can
       return non-zero — inside the window.
 
-    **Announce arm.**  On a NON-materializing launch a supplied ``--image``
+    **Announce arm.**  On a NON-materializing launch a supplied shadowing flag
     applies to that launch alone (spec §1A) and, before this, said nothing about
     it.  It now prints the ephemerality and the cure, which is the general fix
     for the residual window above *and* for the far commoner case of a user who
-    simply expected ``start --image`` to stick.
+    simply expected ``start --image`` to stick.  BOTH shadowing flags this seam
+    settles are announced — ``--image`` and ``--share-images`` have the identical
+    silent gap, and Jei ruled (2026-08-02b) *"yes, same hint"* for the second.
+
+    ⚑ ONE notice, never two.  The flags are announced TOGETHER because the
+    explanation ("this box already exists, so nothing was stored") is the SAME
+    sentence for both: emitting it once per flag would make a user read two
+    near-identical paragraphs and diff them to find the difference.  The
+    single-flag rendering is therefore byte-identical to what one flag printed
+    before; a second flag extends the same sentence and adds a second cure line
+    rather than starting a second notice.
 
     *box_settings_path* is the BOX-TIER settings file from
     ``box_workset_settings_paths`` (M-8) — the file ``box set box.image=…`` writes.
@@ -1766,14 +1776,40 @@ def _persist_or_announce_flags(
         image=image_override,
         share_images=True if share_images else None,
     )
-    if not proj.is_new and image_override:
-        label = proj.name or proj.project_path
-        print(
-            f"Notice: --image {image_override} applies to THIS launch only — "
-            f"box '{label}' already exists, so its stored image is unchanged.\n"
-            f"  To persist it: kanibako box set box.image={image_override}",
-            file=sys.stderr,
+    if proj.is_new:
+        return
+    # (flag as the user typed it, the noun for "its stored ___", the cure's
+    # ``key=value``).  The cure verb is ``box set`` — checked against the LIVE
+    # CLI, since there is NO ``box config`` subcommand (the correction in
+    # 6adb18d was exactly this class of un-pasteable cure).
+    announce: list[tuple[str, str, str]] = []
+    if image_override:
+        announce.append((
+            f"--image {image_override}", "image", f"box.image={image_override}",
+        ))
+    if share_images:
+        announce.append((
+            "--share-images", "image-sharing setting", "box.share_images=true",
+        ))
+    if not announce:
+        return
+    label = proj.name or proj.project_path
+    flags = " and ".join(flag for flag, _, _ in announce)
+    nouns = " and ".join(noun for _, noun, _ in announce)
+    if len(announce) == 1:
+        verb, copula = "applies", "is"
+        cure = f"  To persist it: kanibako box set {announce[0][2]}"
+    else:
+        verb, copula = "apply", "are"
+        cure = "  To persist them:\n" + "\n".join(
+            f"    kanibako box set {setting}" for _, _, setting in announce
         )
+    print(
+        f"Notice: {flags} {verb} to THIS launch only — "
+        f"box '{label}' already exists, so its stored {nouns} {copula} "
+        f"unchanged.\n{cure}",
+        file=sys.stderr,
+    )
 
 
 def _legacy_env_file_has_content(path) -> bool:
