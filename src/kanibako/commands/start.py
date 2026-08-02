@@ -1507,6 +1507,11 @@ def _assemble_launch_env(
     # Target-derived state env and per-run CLI -e env stay above all config
     # levels.  The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
+    #
+    # ⚑ Which means a user who set values through the OLD spelling has a file
+    # that silently stopped being delivered.  Announce it HERE, at the seam that
+    # used to read it, so the loss is named rather than discovered.
+    _warn_legacy_env_files(std, proj)
     container_env = _build_config_env(agent_cfg.env, reconciled.envs)
     # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
     # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
@@ -1716,6 +1721,139 @@ def _start_helper_hub(
     return hub
 
 
+def _persist_or_announce_flags(
+    proj,
+    box_settings_path: Path,
+    *,
+    image_override: str | None,
+    share_images: bool,
+) -> None:
+    """Settle a launch's SHADOWING flags — persist them, or say OUT LOUD that
+    they are ephemeral.  Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.
+
+    **Persist arm.**  Every flag value still routes through the ONE §1A
+    CREATE-EXCEPTION gate (:func:`~kanibako.settings.config.persist_creation_flags`),
+    which reads the single ``materializing`` signal and decides; this function
+    adds no persist logic of its own.  It is called from the EARLIEST point on
+    each launch arm at which BOTH preconditions hold — the rig is PREPPED (built
+    or pulled) and ``proj`` is MATERIALIZED — because everything between
+    materialization and the persist is a window in which a failed launch leaves
+    the box EXISTING with the flag unstored, so the user's retry is
+    non-materializing and their ``--image`` is silently discarded.  Ordering
+    both ways round has a cost and the two are not symmetric:
+
+    * BEFORE the rig prep would store an image that never pulled (the hazard Jei
+      named) — so we never go earlier than the prep.  A pull that FAILS is
+      therefore the one window that stays open by design; the announce arm below
+      is what keeps it from being SILENT.
+    * AFTER the rest of the launch (where this used to be called) left the
+      baseline probe, the agent-config load, the persona store reconcile, the
+      launch-decision resolve and the persona pre-flight — each of which can
+      return non-zero — inside the window.
+
+    **Announce arm.**  On a NON-materializing launch a supplied ``--image``
+    applies to that launch alone (spec §1A) and, before this, said nothing about
+    it.  It now prints the ephemerality and the cure, which is the general fix
+    for the residual window above *and* for the far commoner case of a user who
+    simply expected ``start --image`` to stick.
+
+    *box_settings_path* is the BOX-TIER settings file from
+    ``box_workset_settings_paths`` (M-8) — the file ``box set box.image=…`` writes.
+    """
+    persist_creation_flags(
+        box_settings_path,
+        materializing=proj.is_new,
+        image=image_override,
+        share_images=True if share_images else None,
+    )
+    if not proj.is_new and image_override:
+        label = proj.name or proj.project_path
+        print(
+            f"Notice: --image {image_override} applies to THIS launch only — "
+            f"box '{label}' already exists, so its stored image is unchanged.\n"
+            f"  To persist it: kanibako box set box.image={image_override}",
+            file=sys.stderr,
+        )
+
+
+def _legacy_env_file_has_content(path) -> bool:
+    """True iff *path* is a regular file with bytes in it.
+
+    Deliberately does NOT read or parse the file: the retirement DELETED
+    ``shellenv.read_env_file``, and a warning is not a reason to bring a parser
+    for a dead format back.  Existence + size is the honest signal for "the user
+    has something here", and it costs ONE stat on the common (absent) path.
+    Any non-filesystem value — a MagicMock path in a unit test — is not a stale
+    file (same defensive shape as :func:`_rotate_file`).
+    """
+    try:
+        if not path.is_file():
+            return False
+        size = path.stat().st_size
+    except (OSError, TypeError, AttributeError):
+        return False
+    return isinstance(size, int) and size > 0
+
+
+def _warn_legacy_env_files(std, proj) -> None:
+    """NOTICE a leftover docker ``env`` FILE that no longer reaches the box.
+
+    The launch used to layer THREE such files into the container environment
+    (system < workset < box).  Jei's RQ-1 re-ruling (2026-08-02) retired them —
+    the ratified manifest records the files as DROPPED — so ``_build_config_env``
+    no longer reads them and ``shellenv`` is deleted.  Their replacement is the
+    declared key ``<scope>.env.<VAR>``.
+
+    Which means a user who ran ``config set env.FOO`` before the retirement has a
+    file whose values reached their box yesterday and do not today.  Silent value
+    loss is exactly the class this project refuses, so each stale file is named
+    with the cure for ITS OWN tier — the real verb for that scope, carrying the
+    scoped key.
+
+    ⚑ NO new persisted state, by design: the FILE'S EXISTENCE is the signal (the
+    same shape as "registry membership is the seed signal"), so the notice
+    self-clears when the user migrates the values and deletes the file, and a
+    box created after the retirement never sees it.
+    """
+    tiers: list[tuple[Path, str]] = [(
+        std.data_path / "env",
+        "kanibako system set system.env.<VAR>=<value>",
+    )]
+    # Standalone boxes have no workset tier — and never had a workset env file.
+    group = getattr(proj, "group", None)
+    if group is not None:
+        tiers.append((
+            group.root / "env",
+            f"kanibako workset set {group.name} workset.env.<VAR>=<value>",
+        ))
+    tiers.append((
+        proj.metadata_path / "env",
+        "kanibako box set box.env.<VAR>=<value>",
+    ))
+
+    seen: set[str] = set()
+    stale: list[tuple[Path, str]] = []
+    for path, cure in tiers:
+        if not _legacy_env_file_has_content(path):
+            continue
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        stale.append((path, cure))
+    if not stale:
+        return
+
+    lines = [
+        "Notice: these env files are NO LONGER READ — values in them do not "
+        "reach the box.",
+    ]
+    for path, cure in stale:
+        lines.append(f"  {path}")
+        lines.append(f"    move values with: {cure}")
+    lines.append("  Delete the file(s) once migrated to silence this notice.")
+    print("\n".join(lines), file=sys.stderr)
+
 
 def _run_container(
     *,
@@ -1856,9 +1994,13 @@ def _run_container(
         persistent = True
 
     # ⚑ NO per-path flag persist here: the §1A CREATE EXCEPTION runs through the
-    # ONE shared gate (``config.persist_creation_flags``), called ONCE below at
-    # the point where BOTH the direct and the deferred-materialization arms have
-    # a materialized ``proj`` — see the call after the ``_defer_box`` block.
+    # ONE shared gate (``config.persist_creation_flags``), reached from the ONE
+    # seam ``_persist_or_announce_flags``.  That seam is called ONCE per launch,
+    # from whichever of the two materialization arms this launch took — the
+    # direct arm right after the rig prep succeeds, the deferred-persona arm
+    # right after its late materialization (itself already past the prep).  See
+    # the seam's docstring for why "after the prep, before the rest of the
+    # launch" is where it lands (ruling #12).
 
     # Resolve target (agent plugin) and detect installation.
     #
@@ -2059,6 +2201,18 @@ def _run_container(
         return 1
     image = res.image
 
+    # §1A CREATE EXCEPTION — the DIRECT arm's call to the one seam (ruling #12).
+    # THE EARLIEST SAFE POINT: the rig is now prepped (so a never-pulled image can
+    # never be stored) and this arm materialized ``proj`` at the resolve up top, so
+    # everything from here on is window the flag would otherwise sit unstored
+    # through.  The DEFERRED arm has no materialized box yet and calls the seam
+    # from its own site below.
+    if not _defer_box:
+        _persist_or_announce_flags(
+            proj, project_toml,
+            image_override=image_override, share_images=share_images,
+        )
+
     # Capture the image's login shell (idempotent, never fatal) so the
     # box-shell resolver reads a stored value instead of probing in the hot path.
     from kanibako.launch.shells import capture_image_shell
@@ -2201,19 +2355,20 @@ def _run_container(
             cli_overrides=_cli_scalar_overrides or None,
         )
 
-    # §1A CREATE EXCEPTION (R-11a + the 2026-08-02 materialization ruling): a
-    # shadowing flag's value persists ONLY while the box is BEING MATERIALIZED —
-    # launch-materialization counts as creation, so the launch calls the SAME
-    # gate ``kanibako create`` does, at the one point where BOTH arms (direct
-    # and deferred-persona) hold a materialized ``proj`` and the REAL
-    # ``project_toml``. For an EXISTING box (``is_new`` False) the gate no-ops:
-    # ``start --image`` stays strictly ephemeral.
-    persist_creation_flags(
-        project_toml,
-        materializing=proj.is_new,
-        image=image_override,
-        share_images=True if share_images else None,
-    )
+        # §1A CREATE EXCEPTION — the DEFERRED arm's call to the one seam (ruling
+        # #12): a shadowing flag's value persists ONLY while the box is BEING
+        # MATERIALIZED, and this arm materializes HERE, so this IS its earliest
+        # safe point (the rig was prepped further up, and ``project_toml`` was
+        # just rebound to the box's REAL settings file — never the
+        # ``__unregistered__`` placeholder the probe resolved against).  The
+        # direct arm already called the seam and does not reach this line.  For
+        # an EXISTING box (``is_new`` False) the gate no-ops and the seam
+        # announces the ephemerality instead: ``start --image`` stays strictly
+        # ephemeral, but no longer silently.
+        _persist_or_announce_flags(
+            proj, project_toml,
+            image_override=image_override, share_images=share_images,
+        )
 
     # D5 CRITICAL integrity gate (host components).  ``proj`` is now fully
     # materialised in BOTH the deferred and non-deferred paths, so its required

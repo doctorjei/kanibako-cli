@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -415,6 +416,217 @@ class TestFirstBootImagePersistence:
                 )
                 m_gate.assert_called_once()
                 assert m_gate.call_args.kwargs["share_images"] is True
+
+
+class TestPersistWindow:
+    """Ruling #12 arm (a) — the persist WINDOW (Jei 2026-08-02, "(c) BOTH").
+
+    A materializing launch that fails between materialization and the persist
+    leaves the box EXISTING with the flag unstored, so the user's retry is
+    non-materializing and their ``--image`` is silently dropped on every attempt
+    after the first.  The gate call therefore sits at the EARLIEST point where
+    the rig is prepped AND the box is materialized — not after the rest of the
+    launch.
+    """
+
+    def test_persist_survives_a_failure_after_the_rig_prep(self, start_mocks):
+        """MUTATION-PROOF window test: the launch dies at the tier-1 baseline
+        hard stop — which is AFTER the rig prep and BEFORE where the gate used
+        to be called — and the flag is stored anyway, so the retry is not
+        silently ephemeral.  Moving the call back down the function fails this.
+        """
+        from kanibako.commands.start import _BOOTSTRAP_MISSING
+
+        with start_mocks() as m:
+            m.proj.is_new = True
+            m.launch_check.return_value = _BOOTSTRAP_MISSING
+            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override="custom:v1",
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True,
+                )
+            assert rc == 1                       # the launch really did fail
+            m_gate.assert_called_once()          # ...and the flag was still stored
+            assert m_gate.call_args.kwargs["materializing"] is True
+            assert m_gate.call_args.kwargs["image"] == "custom:v1"
+
+    def test_no_persist_when_the_rig_prep_fails(self, start_mocks):
+        """The other side of the tension Jei named: an image that never pulled
+        is NEVER stored, so the gate is not reached when the prep fails."""
+        with start_mocks() as m:
+            m.proj.is_new = True
+            m.runtime.ensure_image.side_effect = ContainerError("no such image")
+            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override="bogus:v1",
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert rc == 1
+            m_gate.assert_not_called()
+
+
+class TestEphemeralImageHint:
+    """Ruling #12 arm (b) — ``--image`` on a NON-materializing launch says so."""
+
+    def test_hint_names_the_ephemerality_and_the_cure(self, start_mocks, capsys):
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override="custom:v1",
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            err = capsys.readouterr().err
+        assert "--image custom:v1 applies to THIS launch only" in err
+        assert "testproject" in err                       # names the box
+        # The cure is a REAL, copy-pasteable command (`kanibako box set` — there
+        # is no `box config` subcommand).
+        assert "kanibako box set box.image=custom:v1" in err
+
+    def test_no_hint_without_the_flag(self, start_mocks, capsys):
+        with start_mocks() as m:
+            m.proj.is_new = False
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            err = capsys.readouterr().err
+        assert "applies to THIS launch only" not in err
+
+    def test_no_hint_when_the_flag_persists(self, start_mocks, capsys):
+        """A MATERIALIZING launch stores the value, so there is nothing to warn
+        about — the hint is the ephemeral case ONLY."""
+        with start_mocks() as m:
+            m.proj.is_new = True
+            with patch("kanibako.commands.start.persist_creation_flags"):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override="custom:v1",
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            err = capsys.readouterr().err
+        assert "applies to THIS launch only" not in err
+
+
+# ---------------------------------------------------------------------------
+# Retired docker env FILES — the launch-time notice (RQ-1 fallout)
+# ---------------------------------------------------------------------------
+
+class TestLegacyEnvFileNotice:
+    """The `.env` retirement (B9) left anyone who used ``config set env.FOO``
+    with a file that silently stopped being delivered.  The launch names it.
+
+    ⚑ NO persisted "already warned" state: the FILE'S EXISTENCE is the signal,
+    so the notice self-clears on migration/deletion and never fires for a box
+    created after the retirement.
+    """
+
+    @staticmethod
+    def _std_proj(tmp_path, *, with_group=True):
+        from kanibako.settings.paths import ProjectGroup
+
+        data = tmp_path / "data"
+        ws = tmp_path / "worksets" / "myws"
+        box = tmp_path / "boxes" / "mybox"
+        for d in (data, ws, box):
+            d.mkdir(parents=True)
+        std = SimpleNamespace(data_path=data)
+        proj = SimpleNamespace(
+            metadata_path=box,
+            group=ProjectGroup(
+                name="myws", root=ws, is_default=False, local_shared_base=ws,
+            ) if with_group else None,
+        )
+        return std, proj
+
+    def test_silent_when_no_legacy_file_exists(self, tmp_path, capsys):
+        from kanibako.commands.start import _warn_legacy_env_files
+
+        std, proj = self._std_proj(tmp_path)
+        _warn_legacy_env_files(std, proj)
+        assert capsys.readouterr().err == ""
+
+    def test_silent_for_an_empty_file(self, tmp_path, capsys):
+        """An empty leftover carries no values, so it loses the user nothing."""
+        from kanibako.commands.start import _warn_legacy_env_files
+
+        std, proj = self._std_proj(tmp_path)
+        (std.data_path / "env").write_text("")
+        _warn_legacy_env_files(std, proj)
+        assert capsys.readouterr().err == ""
+
+    def test_silent_for_a_directory_named_env(self, tmp_path, capsys):
+        from kanibako.commands.start import _warn_legacy_env_files
+
+        std, proj = self._std_proj(tmp_path)
+        (std.data_path / "env").mkdir()
+        (std.data_path / "env" / "x").write_text("junk")
+        _warn_legacy_env_files(std, proj)
+        assert capsys.readouterr().err == ""
+
+    def test_names_every_stale_tier_with_its_own_cure(self, tmp_path, capsys):
+        from kanibako.commands.start import _warn_legacy_env_files
+
+        std, proj = self._std_proj(tmp_path)
+        (std.data_path / "env").write_text("COLORTERM=truecolor\n")
+        (proj.group.root / "env").write_text("SHARED=1\n")
+        (proj.metadata_path / "env").write_text("FOO=bar\n")
+        _warn_legacy_env_files(std, proj)
+        err = capsys.readouterr().err
+        assert "NO LONGER READ" in err
+        for path in (
+            std.data_path / "env", proj.group.root / "env",
+            proj.metadata_path / "env",
+        ):
+            assert str(path) in err
+        # Each tier's cure is the REAL verb for that scope, with the scoped key.
+        assert "kanibako system set system.env.<VAR>=<value>" in err
+        assert "kanibako workset set myws workset.env.<VAR>=<value>" in err
+        assert "kanibako box set box.env.<VAR>=<value>" in err
+
+    def test_standalone_box_has_no_workset_tier(self, tmp_path, capsys):
+        """A standalone box has no workset group — and no workset env file."""
+        from kanibako.commands.start import _warn_legacy_env_files
+
+        std, proj = self._std_proj(tmp_path, with_group=False)
+        (proj.metadata_path / "env").write_text("FOO=bar\n")
+        _warn_legacy_env_files(std, proj)
+        err = capsys.readouterr().err
+        assert str(proj.metadata_path / "env") in err
+        assert "workset set" not in err
+
+    def test_aliased_tiers_are_named_once(self, tmp_path, capsys):
+        """A host where the workset root IS the data path must not double-print."""
+        from kanibako.commands.start import _warn_legacy_env_files
+        from kanibako.settings.paths import ProjectGroup
+
+        std, proj = self._std_proj(tmp_path)
+        proj.group = ProjectGroup(
+            name="default", root=std.data_path, is_default=True,
+            local_shared_base=std.data_path,
+        )
+        (std.data_path / "env").write_text("FOO=bar\n")
+        _warn_legacy_env_files(std, proj)
+        err = capsys.readouterr().err
+        assert err.count(str(std.data_path / "env")) == 1
+
+    def test_fires_on_the_real_launch_path(self, start_mocks, tmp_path, capsys):
+        """WIRING: the notice is reached by an actual launch, not just callable."""
+        legacy = tmp_path / "env"
+        legacy.write_text("FOO=bar\n")
+        with start_mocks() as m:
+            m.load_std_paths.return_value.data_path = tmp_path
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            err = capsys.readouterr().err
+        assert str(legacy) in err
+        assert "kanibako system set system.env.<VAR>=<value>" in err
 
 
 # ---------------------------------------------------------------------------
