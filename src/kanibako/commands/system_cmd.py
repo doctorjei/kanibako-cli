@@ -34,7 +34,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Set a global setting (key=value).\n\n"
             "  system set model=opus              set the global default model\n"
-            "  system set env.EDITOR=nano         set a global env var\n"
+            "  system set system.env.EDITOR=nano  set a global env var\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

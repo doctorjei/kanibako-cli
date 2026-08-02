@@ -702,7 +702,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # handler (system settings file + this workset file; no box scope here).
         # Bug 2: thread the context-light CORE box-mount floor registry too, for
         # message consistency with the box handler. Workset CONTAINS box (§0), so a
-        # DOWNWARD ``workset config reset box.bindings.{ro,rw}.<key>`` is permitted;
+        # DOWNWARD ``workset reset <ws> box.bindings.{ro,rw}.<key>`` is permitted;
         # if the workset file held such a downward default, the honest cleared-
         # message names the reverted-to FLOOR. ``core_default_bind_keys`` is
         # host-free (no proj/std probe).

@@ -1127,7 +1127,7 @@ class TestRefuseRetiredBehaviorKeys:
         assert "agent.claude.auto_approve" in str(exc.value)
 
     def test_agent_file_self_table_is_refused(self, tmp_path) -> None:
-        """The per-agent file's FLAT shape — where ``crab set`` wrote it."""
+        """The per-agent file's FLAT shape — where ``agent set`` wrote it."""
         with pytest.raises(SettingsError) as exc:
             self._refuse(
                 {"self": {"auto_approve": False, "model": "opus"}},
@@ -1135,7 +1135,7 @@ class TestRefuseRetiredBehaviorKeys:
             )
         msg = str(exc.value)
         assert "self.auto_approve" in msg
-        assert "kanibako crab set claude access=restricted" in msg
+        assert "kanibako agent set claude access=restricted" in msg
 
     def test_a_pref_request_is_refused(self, tmp_path) -> None:
         with pytest.raises(SettingsError) as exc:
@@ -1160,8 +1160,8 @@ class TestRefuseRetiredBehaviorKeys:
                     level=level, path=tmp_path / "s.yaml", subject="claude",
                 )
             cures[level] = str(exc.value)
-        assert "kanibako system config set access=full" in cures["base"]
-        assert "kanibako system config set access=full" in cures["system"]
+        assert "kanibako system set access=full" in cures["base"]
+        assert "kanibako system set access=full" in cures["system"]
         assert "kanibako workset set pref.agent.claude.access=full" in cures["workset"]
         assert "kanibako box set pref.agent.claude.access=full" in cures["box"]
 

@@ -5159,7 +5159,7 @@ class TestPreflightCodexPersona:
             )
             assert endpoint is None and provider is None
             assert err is not None and "no model configured" in err
-            assert "config set" in err and ".model=" in err
+            assert "system set" in err and ".model=" in err
 
     def test_no_endpoint_config_file_error_no_hostdir(self, tmp_path, monkeypatch):
         # No keyspace endpoint → hard error worded for config-file (no host-dir /
@@ -5182,7 +5182,7 @@ class TestPreflightCodexPersona:
         assert endpoint is None
         assert provider is None
         assert err is not None and "cannot be loaded" in err
-        assert "config set" in err  # points at the keyspace route.
+        assert "system set" in err  # points at the keyspace route.
         assert "settings.json" not in err  # NOT the claude host-dir wording.
         assert called["b3"] is False  # B3 is NEVER attempted for codex.
 
@@ -5331,7 +5331,7 @@ class TestPreflightGoosePersona:
         )
         assert endpoint is None and provider is None
         assert err is not None and "cannot be loaded" in err
-        assert "config set" in err and ".endpoint=" in err
+        assert "system set" in err and ".endpoint=" in err
         assert "OPENAI_API_KEY" in err  # names the API-key secret_path route.
         assert "settings.json" not in err  # NOT the claude host-dir wording.
         assert "class setup" not in err
@@ -5363,7 +5363,7 @@ class TestPreflightGoosePersona:
             )
             assert endpoint is None and provider is None
             assert err is not None and "no model configured" in err
-            assert "config set" in err and ".model=" in err
+            assert "system set" in err and ".model=" in err
 
     def test_goose_wiring_declares_pin_and_gates(self):
         from kanibako.commands.start import _persona_wiring
@@ -6479,7 +6479,7 @@ class TestRetiredBehaviorRefusalWiring:
 
     def test_a_stale_key_in_the_ACTIVE_AGENT_file_refuses(self, tmp_path):
         """⚑ The tier the SELECTION refusal does not read — and the file
-        ``crab set <agent> auto_approve=…`` actually wrote to.  Omitting it here
+        ``agent set <agent> auto_approve=…`` actually wrote to.  Omitting it here
         would leave the commonest stale spelling silent."""
         from kanibako.settings.settings_resolve import SettingsError
 
@@ -6487,7 +6487,7 @@ class TestRetiredBehaviorRefusalWiring:
             self._call(tmp_path, agent_doc={"self": {"auto_approve": True}})
         msg = str(exc.value)
         assert "self.auto_approve" in msg
-        assert "kanibako crab set claude access=full" in msg
+        assert "kanibako agent set claude access=full" in msg
 
     def test_a_stale_pref_request_in_the_BOX_file_refuses(self, tmp_path):
         from kanibako.settings.settings_resolve import SettingsError

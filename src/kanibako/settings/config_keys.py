@@ -691,7 +691,7 @@ def access_value_error(canonical: str, value: str) -> str | None:
     """The LOUD refusal for an illegal ``access`` value, or ``None`` when legal.
 
     The single set-time validator for the permission tier, shared by BOTH set
-    paths (``config_interface.validate_config_set`` and the ``crab config set``
+    paths (``config_interface.validate_config_set`` and the ``agent set``
     verb) so there is one message and one truth table.  Legal values are exactly
     :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS`; the message NAMES
     the key and lists them.

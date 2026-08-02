@@ -211,7 +211,7 @@ def _resolve_box_scalars(
       read of *global_path* BEFORE any overlay), so they keep beating the
       built-in defaults and keep losing to every settings file, exactly the flat
       loader's precedence. A ``box:`` table in ``global/settings.yaml`` — where
-      ``kanibako system config set box.image=…`` has always written — now
+      ``kanibako system set box.image=…`` has always written — now
       resolves too (it was silently stranded before B6).
     * **The CLI flags ride the §1A LEVEL**: *cli_overrides* (flat field names,
       the historical transport) are translated through the ONE builder
