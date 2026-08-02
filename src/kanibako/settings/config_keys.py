@@ -115,6 +115,12 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # ``pref.system.agent`` (spec §2b RETIRED the box key).
     "box.image",
     "box.share_images",
+    # box.images_store — the host image-store root behind the shared-images bind
+    # (spec §2b; B3): a USER key whose DEFAULT is the runtime-probed podman
+    # graphroot, injected as a floor scalar at the launch seam
+    # (core_defaults.image_default_categories). A STRING path — no KEY_TYPES
+    # entry (only bools are coerced, cf. ``box.share_images``).
+    "box.images_store",
     "box.shell",
     # Auth sharing — settable 3-tier chain (system/workset/box.auth.*)
     "system.auth.share_allowed",
@@ -245,6 +251,11 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "box.image": (("box",), "image"),
     "box.shell": (("box",), "shell"),
     "box.share_images": (("box",), "share_images"),
+    # box.images_store (B3): routes to the ``box:`` table nested slot
+    # ``images_store`` — the SAME nested-settings pattern as ``box.image``, and
+    # exactly the file shape the launch cascade reads when resolving the
+    # ``@box.images_store`` host_src of the shared-images bind.
+    "box.images_store": (("box",), "images_store"),
     # Auth sharing — settable 3-tier chain (system/workset/box.auth.*). These are
     # ordinary SETTINGS keys: each routes to its nested ``<scope>.auth.<leaf>``
     # slot in the command-scope settings file (the same nested-settings pattern as

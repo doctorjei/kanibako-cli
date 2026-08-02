@@ -222,6 +222,47 @@ class TestCoreDefaultsShape:
                 entry["box_dest"], f"core mount {entry['key']} box_dest"
             )
 
+    def test_images_entries_are_structured_and_keyed(self):
+        """The image-sharing table: structured entries + the B3 key routing.
+
+        Shape first (the golden guard's job): every ``images:`` entry carries the
+        structural fields with clean box_dests.  Then the two B3 pins this file
+        is the right home for, because both are properties of the SHIPPED DATA:
+
+        * the store bind's entry is ``images`` — NOT ``images_store``.  The bind
+          row and the scalar user key ``box.images_store`` must not share a name
+          (the B3 rider; a revived ``images_store`` entry here would silently
+          re-open the collision the rename closed);
+        * the store bind's emitted host_src is the @-ref ``@box.images_store``
+          (``meta_ref``), so the mount follows the USER KEY (spec §2b/D-M8) —
+          a bare probed literal here would disconnect the key from its bind.
+        """
+        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        images = doc["images"]
+        assert isinstance(images, list) and images
+        for entry in images:
+            assert isinstance(entry, dict), f"images entry must be a mapping: {entry!r}"
+            for fld in ("key", "category", "source", "box_dest", "options"):
+                assert fld in entry, f"images entry missing {fld!r}: {entry!r}"
+                assert isinstance(entry[fld], str), (
+                    f"images {fld} must be str: {entry!r}"
+                )
+            assert entry["category"] == "bindings.ro", (
+                f"images category must be bindings.ro: {entry!r}"
+            )
+            _assert_no_joined_string(
+                entry["box_dest"], f"images mount {entry['key']} box_dest"
+            )
+        keys = [entry["key"] for entry in images]
+        assert keys == ["images", "images_conf"], (
+            f"images table must be exactly the store bind ('images' — renamed "
+            f"from 'images_store', B3 rider) + the internal 'images_conf': {keys}"
+        )
+        assert images[0].get("meta_ref") == "@box.images_store", (
+            "the store bind's host_src must be the @-ref to the user key "
+            f"box.images_store (spec §2b/D-M8): {images[0]!r}"
+        )
+
 
 # --------------------------------------------------------------------------- #
 # 1. SPECCED-SHAPE ASSERTIONS — per-agent defaults files
