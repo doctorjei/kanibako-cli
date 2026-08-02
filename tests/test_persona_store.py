@@ -473,7 +473,7 @@ class TestImportMapping:
             "  name: My Codex\n"
             "  run_args:\n"
             "  - --verbose\n"
-            "  auto_approve: 'false'\n"
+            "  access: restricted\n"
             "  endpoint: https://stale.example\n"
             "  model: stale-model\n"
             "  env:\n"
@@ -500,7 +500,7 @@ class TestImportMapping:
         # Unowned values preserved verbatim:
         assert sec["name"] == "My Codex"
         assert sec["run_args"] == ["--verbose"]
-        assert sec["auto_approve"] == "false"
+        assert sec["access"] == "restricted"
         assert sec["env"] == {"KEEP_ME": "yes"}
         assert sec["transform_settings"] == {"theme": "dark"}
         assert sec["secret_path"]["OTHER_TOKEN"] == "/keep/this/tok"

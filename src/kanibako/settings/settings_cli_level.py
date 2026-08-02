@@ -68,16 +68,18 @@ SELECTION_KEY: Final[str] = "system.agent"
 
 #: The DECLARED flag→key table (spec §1A). **WIRED ENTRIES ONLY.**
 #:
-#: ⚑ The spec's enumeration also names ``-S``/``-A`` (``access``, superseding
-#: ``auto_approve``). Those are NOT listed here, because listing an unwired entry
+#: ⚑ The spec's enumeration also names ``-S``/``-A`` (``access`` — ``-S`` selects
+#: the ``restricted`` tier, ``-A`` the ``full`` one). Those are NOT listed here,
+#: because listing an unwired entry
 #: would read as a contract this module honours — the same reason
 #: ``settings_keyspace`` deleted its unused ``CATEGORY_SCOPES`` rather than
 #: keeping it:
 #:
-#: * ``-S``/``-A`` — the key is read once and consumed TWICE: by the
-#:   ephemeral safe-bypass argv, and by ``deliver_panel_permissions`` /
+#: * ``-S``/``-A`` — the key is read TWICE, deliberately: the CASCADE tier feeds
+#:   ``deliver_panel_permissions`` /
 #:   ``deliver_directive_hook``, which WRITE it onto the box's own persisted agent
-#:   config surface (§1A's PROJECTED-SURFACE EXCEPTION, a structural class rule).
+#:   config surface (§1A's PROJECTED-SURFACE EXCEPTION, a structural class rule),
+#:   while the FLAG-folded tier feeds the ephemeral launch argv/env.
 #:   Installing the flag at this level would make an ephemeral flag mutate a
 #:   stored value — exactly what §1A forbids. ``-M`` is likewise barred from the
 #:   codex config-projection RESOLVE (that consumer reads the cascade, never the

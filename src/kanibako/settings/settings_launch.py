@@ -1138,7 +1138,7 @@ def build_launch_snapshot(
     floor: dict[str, object] = {}
     # OS1: bare behavior keys → scope-qualified agent.default.<key>. The declared
     # behavior defaults are the ALL-AGENTS backstop (spec §2d lists them under
-    # ``agent.default.*`` — auto_approve / allow_helpers / model / …). The §2d
+    # ``agent.default.*`` — access / allow_helpers / model / …). The §2d
     # active-over-default READ (effective_behavior) then layers a per-agent
     # ``agent.<active>.<key>`` over this default. There is NO bare ``agent.<key>``
     # (spec §0).
@@ -1574,7 +1574,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 #     from the §2d pick — which for ``"general"`` is the ``agent.default`` backstop
 #     alone (no ``agent.general`` table exists anywhere). MEASURED on the launch
 #     shape: ``meta.box.agent`` holds ``auth`` (the floor's capability key) PLUS the
-#     agent.default behavior leaves (``auto_approve`` / ``bootstrap`` / ``model``).
+#     agent.default behavior leaves (``access`` / ``bootstrap`` / ``model``).
 #     That is a defensible read-back — it IS the effective subtree when the
 #     effective agent is the default backstop — and NOTHING consumes those leaves
 #     (the only runtime reader under ``meta.box.agent`` is ``auth.share_support``,

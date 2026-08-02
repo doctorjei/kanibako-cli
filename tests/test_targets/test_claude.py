@@ -540,10 +540,11 @@ class TestSettingDescriptors:
         assert descriptors["model"].default == "opus"
         assert descriptors["model"].choices == ()  # freeform
 
-    def test_access_and_auto_approve_not_declared_settings(self):
-        # ``access`` is RETIRED (folded into ``auto_approve``). ``auto_approve`` is
-        # NOT a declared TargetSetting either — it is the agent-scope bool key routed
-        # verbatim (safe_bypass.setting_key), redeemed + coerced at launch.
+    def test_access_is_not_a_declared_setting(self):
+        # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting: it
+        # is the agent-scope enum key routed verbatim (safe_bypass.setting_key),
+        # redeemed + validated at launch.  ``auto_approve`` is RETIRED and must
+        # not reappear on this surface either.
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "access" not in descriptors
@@ -564,8 +565,8 @@ class TestGenerateAgentConfig:
         t = ClaudeTarget()
         cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
-        # ``access`` retired: the default crab state carries model only; auto_approve
-        # is UNSET (launch reader defaults it True/PERMISSIVE).
+        # The default crab state carries model only; ``access`` is UNSET (the
+        # launch reader defaults it to the ``full`` tier).
         assert cfg.state == {"model": "opus"}
         assert cfg.run_args == []
         assert cfg.env == {}
@@ -692,12 +693,17 @@ class TestDescriptor:
         assert "exec" in d.operations
         assert d.operations["exec"].fragment == ("-p",)
 
-    def test_safe_bypass(self):
+    def test_safe_bypass_access_rows(self):
+        # The three VERIFIED claude rows (claude 2.1.220 --help: both
+        # --dangerously-skip-permissions and --permission-mode acceptEdits).
         sb = ClaudeTarget().descriptor.safe_bypass
         assert sb is not None
         assert sb.channel == Channel.FLAG
-        assert sb.flag == ("--dangerously-skip-permissions",)
-        assert sb.setting_key == "auto_approve"
+        assert sb.setting_key == "access"
+        assert sb.full.flag == ("--dangerously-skip-permissions",)
+        assert sb.editing.flag == ("--permission-mode", "acceptEdits")
+        assert sb.restricted.flag == ()          # declared, emits nothing
+        assert sb.rendered_tiers() == ("restricted", "editing", "full")
 
     def test_settings_model(self):
         d = ClaudeTarget().descriptor
@@ -801,32 +807,62 @@ class TestDeliverySeams:
     def _settings(self, config_root: Path) -> Path:
         return config_root / ".claude" / "settings.json"
 
-    def test_panel_permissions_on_sets_bypass(self, tmp_path):
+    def test_panel_permissions_full_sets_bypass(self, tmp_path):
         t = ClaudeTarget()
         assert t.deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is True
         doc = json.loads(self._settings(tmp_path).read_text())
         assert doc["permissions"]["defaultMode"] == "bypassPermissions"
 
-    def test_panel_permissions_off_clears_managed_value(self, tmp_path):
+    def test_panel_permissions_editing_sets_accept_edits(self, tmp_path):
+        # The MIDDLE tier on the PROJECTED surface (R-41).
         t = ClaudeTarget()
-        t.deliver_panel_permissions(config_root=tmp_path, auto_approve=True)
         assert t.deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="editing",
+        ) is True
+        doc = json.loads(self._settings(tmp_path).read_text())
+        assert doc["permissions"]["defaultMode"] == "acceptEdits"
+
+    def test_panel_permissions_restricted_clears_managed_value(self, tmp_path):
+        t = ClaudeTarget()
+        t.deliver_panel_permissions(config_root=tmp_path, access="full")
+        assert t.deliver_panel_permissions(
+            config_root=tmp_path, access="restricted",
         ) is True
         doc = json.loads(self._settings(tmp_path).read_text())
         assert "defaultMode" not in doc.get("permissions", {})
 
-    def test_panel_permissions_off_absent_is_inert(self, tmp_path):
+    def test_panel_permissions_restricted_clears_a_stale_editing_value(
+        self, tmp_path,
+    ):
+        # ⚑ The tier-set clear: going editing → restricted must remove the
+        # ``acceptEdits`` WE wrote, not leave a stale middle tier persisted.
+        t = ClaudeTarget()
+        t.deliver_panel_permissions(config_root=tmp_path, access="editing")
+        assert t.deliver_panel_permissions(
+            config_root=tmp_path, access="restricted",
+        ) is True
+        doc = json.loads(self._settings(tmp_path).read_text())
+        assert "defaultMode" not in doc.get("permissions", {})
+
+    def test_panel_permissions_restricted_absent_is_inert(self, tmp_path):
         assert ClaudeTarget().deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="restricted",
         ) is False
         assert not self._settings(tmp_path).exists()
 
+    def test_panel_permissions_unknown_tier_raises(self, tmp_path):
+        from kanibako.errors import ConfigError
+
+        with pytest.raises(ConfigError):
+            ClaudeTarget().deliver_panel_permissions(
+                config_root=tmp_path, access="bogus",
+            )
+
     def test_directive_hook_seeds_managed_hook_set(self, tmp_path):
         assert ClaudeTarget().deliver_directive_hook(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="restricted",
         ) is True
         doc = json.loads(self._settings(tmp_path).read_text())
         commands = [
@@ -836,7 +872,7 @@ class TestDeliverySeams:
         ]
         assert any("import-directives.py" in c for c in commands)
         assert "SessionEnd" in doc["hooks"]  # marker-remove hook
-        # orthogonal to auto_approve: NO permission key was written here
+        # orthogonal to ``access``: NO permission key was written here
         assert "permissions" not in doc
 
     def test_directive_hook_ignores_model_provider(self, tmp_path):
@@ -847,11 +883,11 @@ class TestDeliverySeams:
         r1 = tmp_path / "with"
         r2 = tmp_path / "without"
         t.deliver_directive_hook(
-            config_root=r1, auto_approve=True,
+            config_root=r1, access="full",
             model_provider=CodexModelProvider(
                 provider_id="p", name="p", base_url="https://x/v1",
                 wire_api="chat", env_key="K", model="m",
             ),
         )
-        t.deliver_directive_hook(config_root=r2, auto_approve=True)
+        t.deliver_directive_hook(config_root=r2, access="full")
         assert self._settings(r1).read_bytes() == self._settings(r2).read_bytes()

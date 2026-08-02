@@ -6,6 +6,7 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 from kanibako.vscode.vscode_config import (
@@ -19,18 +20,17 @@ from kanibako.vscode.vscode_config import (
     CodexModelProvider,
     _encode_image_ref,
     attached_container_config_path,
-    clear_bypass_permissions,
-    clear_claude_bypass_permissions,
+    clear_permission_mode,
     codex_trusted_hash,
     merge_attached_container_config,
-    merge_bypass_permissions,
+    merge_permission_mode,
     merge_codex_config,
     merge_codex_model_provider,
     merge_marker_remove_hook,
     merge_marker_write_hook,
     merge_session_start_hook,
     seed_attached_container_config,
-    seed_claude_bypass_permissions,
+    seed_claude_permission_mode,
     seed_codex_approval,
     seed_codex_config,
     seed_goose_mode,
@@ -198,42 +198,45 @@ def test_seed_tolerates_corrupt_existing(tmp_path):
     }
 
 
-# --- Ph4b Vector A: in-box claude settings.json bypassPermissions -----------
+# --- Ph4b Vector A: in-box claude settings.json permission modes -----------
 
-def test_merge_bypass_into_empty():
-    assert merge_bypass_permissions({}) == {
+def test_merge_mode_into_empty():
+    assert merge_permission_mode({}, "bypassPermissions") == {
         "permissions": {"defaultMode": "bypassPermissions"},
+    }
+    assert merge_permission_mode({}, "acceptEdits") == {
+        "permissions": {"defaultMode": "acceptEdits"},
     }
 
 
-def test_merge_bypass_preserves_other_top_level_keys():
+def test_merge_mode_preserves_other_top_level_keys():
     """The curated template keys ($schema, includeCoAuthoredBy) are preserved."""
     existing = {
         "$schema": "https://json.schemastore.org/claude-code-settings.json",
         "includeCoAuthoredBy": False,
     }
-    merged = merge_bypass_permissions(existing)
+    merged = merge_permission_mode(existing, "bypassPermissions")
     assert merged["$schema"] == existing["$schema"]
     assert merged["includeCoAuthoredBy"] is False
     assert merged["permissions"]["defaultMode"] == "bypassPermissions"
 
 
-def test_merge_bypass_preserves_other_permissions_subkeys():
+def test_merge_mode_preserves_other_permissions_subkeys():
     """Sibling permissions.* sub-keys (allow/deny) are preserved."""
     existing = {"permissions": {"allow": ["Bash(ls)"], "deny": ["Bash(rm)"]}}
-    merged = merge_bypass_permissions(existing)
+    merged = merge_permission_mode(existing, "bypassPermissions")
     assert merged["permissions"]["allow"] == ["Bash(ls)"]
     assert merged["permissions"]["deny"] == ["Bash(rm)"]
     assert merged["permissions"]["defaultMode"] == "bypassPermissions"
 
 
-def test_merge_bypass_does_not_mutate_input():
+def test_merge_mode_does_not_mutate_input():
     existing = {"permissions": {"allow": ["x"]}}
-    merge_bypass_permissions(existing)
+    merge_permission_mode(existing, "bypassPermissions")
     assert existing == {"permissions": {"allow": ["x"]}}
 
 
-def test_seed_bypass_writes_and_merges_template(tmp_path):
+def test_seed_mode_writes_and_merges_template(tmp_path):
     """Merges into the curated seed, preserving its keys; returns True."""
     path = tmp_path / ".claude" / "settings.json"
     path.parent.mkdir(parents=True)
@@ -241,25 +244,25 @@ def test_seed_bypass_writes_and_merges_template(tmp_path):
         "$schema": "https://json.schemastore.org/claude-code-settings.json",
         "includeCoAuthoredBy": False,
     }))
-    wrote = seed_claude_bypass_permissions(path)
+    wrote = seed_claude_permission_mode(path, access="full")
     assert wrote is True
     written = json.loads(path.read_text())
     assert written["includeCoAuthoredBy"] is False
     assert written["permissions"]["defaultMode"] == "bypassPermissions"
 
 
-def test_seed_bypass_idempotent(tmp_path):
+def test_seed_mode_idempotent(tmp_path):
     path = tmp_path / "settings.json"
-    assert seed_claude_bypass_permissions(path) is True
+    assert seed_claude_permission_mode(path, access="full") is True
     before = path.read_text()
-    assert seed_claude_bypass_permissions(path) is False
+    assert seed_claude_permission_mode(path, access="full") is False
     assert path.read_text() == before
 
 
-def test_seed_bypass_tolerates_corrupt(tmp_path):
+def test_seed_mode_tolerates_corrupt(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("not json {{{")
-    assert seed_claude_bypass_permissions(path) is True
+    assert seed_claude_permission_mode(path, access="full") is True
     assert json.loads(path.read_text()) == {
         "permissions": {"defaultMode": "bypassPermissions"},
     }
@@ -270,16 +273,31 @@ def test_seed_bypass_tolerates_corrupt(tmp_path):
 def test_clear_removes_only_our_managed_value():
     """Our exact ``bypassPermissions`` value is removed; permissions dropped when
     it was created only by us (empty after removal)."""
-    assert clear_bypass_permissions(
+    assert clear_permission_mode(
         {"permissions": {"defaultMode": "bypassPermissions"}},
     ) == {}
 
 
 def test_clear_preserves_user_chosen_mode():
-    """A user-chosen mode (plan/default/acceptEdits) is NOT touched."""
-    for mode in ("plan", "default", "acceptEdits"):
+    """A mode we never write is NOT touched.
+
+    ⚑ ``acceptEdits`` LEFT this list at R-41: it is now the ``editing`` tier's
+    managed value, so the clear is entitled (and required) to remove it — see
+    ``test_clear_removes_a_stale_editing_value``.  "User-chosen" means "outside
+    the managed SET", which is exactly what the clear tests against.
+    """
+    for mode in ("plan", "default", "dontAsk", "auto"):
         existing = {"permissions": {"defaultMode": mode}}
-        assert clear_bypass_permissions(existing) == existing
+        assert clear_permission_mode(existing) == existing
+
+
+def test_clear_removes_a_stale_editing_value():
+    """The managed SET, not a single value: the ``acceptEdits`` WE wrote for the
+    ``editing`` tier is removed when the box drops to ``restricted`` — otherwise
+    a tier change would silently leave the middle tier in force."""
+    assert clear_permission_mode(
+        {"permissions": {"defaultMode": "acceptEdits"}},
+    ) == {}
 
 
 def test_clear_keeps_sibling_permissions_and_drops_only_default_mode():
@@ -292,7 +310,7 @@ def test_clear_keeps_sibling_permissions_and_drops_only_default_mode():
         },
         "includeCoAuthoredBy": False,
     }
-    cleared = clear_bypass_permissions(existing)
+    cleared = clear_permission_mode(existing)
     assert "defaultMode" not in cleared["permissions"]
     assert cleared["permissions"]["allow"] == ["Bash(ls)"]
     assert cleared["permissions"]["deny"] == ["Bash(rm)"]
@@ -300,42 +318,42 @@ def test_clear_keeps_sibling_permissions_and_drops_only_default_mode():
 
 
 def test_clear_no_permissions_is_noop():
-    assert clear_bypass_permissions({"includeCoAuthoredBy": False}) == {
+    assert clear_permission_mode({"includeCoAuthoredBy": False}) == {
         "includeCoAuthoredBy": False,
     }
 
 
 def test_clear_does_not_mutate_input():
     existing = {"permissions": {"defaultMode": "bypassPermissions", "allow": ["x"]}}
-    clear_bypass_permissions(existing)
+    clear_permission_mode(existing)
     assert existing == {"permissions": {"defaultMode": "bypassPermissions", "allow": ["x"]}}
 
 
-def test_clear_claude_bypass_absent_file_noop(tmp_path):
+def test_restricted_tier_absent_file_noop(tmp_path):
     """No file → no-op, and the file is NOT created."""
     path = tmp_path / "settings.json"
-    assert clear_claude_bypass_permissions(path) is False
+    assert seed_claude_permission_mode(path, access="restricted") is False
     assert not path.exists()
 
 
-def test_clear_claude_bypass_writes_when_present(tmp_path):
+def test_restricted_tier_writes_when_present(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({
         "includeCoAuthoredBy": False,
         "permissions": {"defaultMode": "bypassPermissions", "allow": ["x"]},
     }))
-    assert clear_claude_bypass_permissions(path) is True
+    assert seed_claude_permission_mode(path, access="restricted") is True
     written = json.loads(path.read_text())
     assert "defaultMode" not in written["permissions"]
     assert written["permissions"]["allow"] == ["x"]
     assert written["includeCoAuthoredBy"] is False
 
 
-def test_clear_claude_bypass_idempotent(tmp_path):
+def test_restricted_tier_idempotent(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"permissions": {"defaultMode": "plan"}}))
     # A user's own mode → no change, no write.
-    assert clear_claude_bypass_permissions(path) is False
+    assert seed_claude_permission_mode(path, access="restricted") is False
 
 
 # --- merge_session_start_hook (pure, increment 2b) -------------------------
@@ -1228,65 +1246,133 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
 
 def test_seed_codex_approval_on_absent_creates_approval_only(tmp_path):
     path = tmp_path / ".codex" / "config.toml"
-    assert seed_codex_approval(path, auto_approve=True) is True
+    assert seed_codex_approval(path, access="full") is True
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
     assert data["sandbox_mode"] == "danger-full-access"
     assert "hooks" not in data  # approval ONLY — no region, no trust
 
 
-def test_seed_codex_approval_off_absent_creates_sandbox_invariant(tmp_path):
-    """sandbox_mode is a BOX INVARIANT: even an OFF launch on an absent file
-    CREATES the config to establish ``danger-full-access`` (the panel
-    app-server needs it regardless of yolo).  approval_policy stays absent
-    (yolo-gated, nothing to set when OFF)."""
+def test_seed_codex_approval_restricted_absent_writes_both_managed_keys(tmp_path):
+    """``restricted`` on an absent file CREATES the config with BOTH keys.
+
+    ``sandbox_mode`` is the BOX INVARIANT (the panel app-server needs
+    ``danger-full-access`` at every tier), and ``approval_policy`` is now SET
+    ``untrusted`` rather than left absent: with the sandbox forced open, leaving
+    approval to codex's own undocumented default is not a ``restricted`` the box
+    can promise."""
     path = tmp_path / ".codex" / "config.toml"
-    assert seed_codex_approval(path, auto_approve=False) is True
+    assert seed_codex_approval(path, access="restricted") is True
     data = tomllib.loads(path.read_text())
     assert data["sandbox_mode"] == "danger-full-access"
-    assert "approval_policy" not in data
+    assert data["approval_policy"] == "untrusted"
     assert "hooks" not in data
 
 
 def test_seed_codex_approval_idempotent(tmp_path):
     path = tmp_path / "config.toml"
-    assert seed_codex_approval(path, auto_approve=True) is True
+    assert seed_codex_approval(path, access="full") is True
     before = path.read_bytes()
-    assert seed_codex_approval(path, auto_approve=True) is False
+    assert seed_codex_approval(path, access="full") is False
     assert path.read_bytes() == before
 
 
-def test_seed_codex_approval_off_removes_managed_policy_forces_sandbox(tmp_path):
-    """OFF removes a MANAGED approval_policy but sandbox_mode is FORCED to the
-    invariant (kanibako owns it) — a prior user ``read-only`` is migrated, not
-    preserved."""
+def test_seed_codex_approval_restricted_replaces_full_tier_values(tmp_path):
+    """full → restricted rewrites BOTH managed keys down to the tier.
+
+    ``approval_policy`` goes ``never`` → ``untrusted`` (not removed), and a
+    prior ``sandbox_mode = "read-only"`` is migrated to the invariant."""
     path = tmp_path / "config.toml"
     path.write_text('approval_policy = "never"\nsandbox_mode = "read-only"\n')
-    assert seed_codex_approval(path, auto_approve=False) is True
+    assert seed_codex_approval(path, access="restricted") is True
     data = tomllib.loads(path.read_text())
-    assert "approval_policy" not in data  # was our managed value → removed
+    assert data["approval_policy"] == "untrusted"
     assert data["sandbox_mode"] == "danger-full-access"  # kanibako-owned → forced
 
 
-def test_seed_codex_approval_off_preserves_user_chosen_approval_policy(tmp_path):
-    """A user-chosen approval_policy (NOT the managed ``never``) survives OFF;
-    sandbox_mode is still forced to the invariant alongside it."""
+def test_seed_codex_approval_owns_the_key_and_overwrites_a_user_value(tmp_path):
+    """kanibako OWNS ``approval_policy`` — a user value is REPLACED, not kept.
+
+    ⚑ DELIBERATE CHANGE, and the direction matters.  While ``restricted`` merely
+    CLEARED, a value outside kanibako's managed set survived; now every tier
+    SETS, so the box's configured tier always wins.  The example is
+    ``on-failure`` — a real member of the codex enum (its own help marks it
+    DEPRECATED) that kanibako never writes, i.e. unambiguously a user's value.
+    Overwriting it is the point: the panel must reflect the tier the box was
+    configured with, not a stale hand edit in the box's in-box config.
+    """
     path = tmp_path / "config.toml"
-    path.write_text('approval_policy = "on-request"\n')
-    assert seed_codex_approval(path, auto_approve=False) is True
+    path.write_text('approval_policy = "on-failure"\n')
+    assert seed_codex_approval(path, access="restricted") is True
     data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "on-request"  # user value → preserved
+    assert data["approval_policy"] == "untrusted"
     assert data["sandbox_mode"] == "danger-full-access"
+
+
+def test_seed_codex_approval_editing_sets_on_request(tmp_path):
+    """The MIDDLE tier (R-41): approval_policy = ``on-request`` (verbatim from
+    codex 0.141.0's approval enum), sandbox_mode still the box invariant."""
+    path = tmp_path / "config.toml"
+    assert seed_codex_approval(path, access="editing") is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "on-request"
+    assert data["sandbox_mode"] == "danger-full-access"
+
+
+def test_seed_codex_approval_restricted_replaces_a_stale_editing_value(tmp_path):
+    """editing → restricted rewrites the ``on-request`` WE wrote to ``untrusted``.
+
+    The value must not survive the downgrade — it is more permissive than
+    ``restricted`` asked for.  Replacing rather than removing also makes the
+    three tiers mutually DISTINCT on this surface: a removal would have left
+    ``restricted`` byte-indistinguishable from "kanibako never ran here".
+    """
+    path = tmp_path / "config.toml"
+    assert seed_codex_approval(path, access="editing") is True
+    assert seed_codex_approval(path, access="restricted") is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == "untrusted"
+    assert data["sandbox_mode"] == "danger-full-access"
+
+
+@pytest.mark.parametrize(
+    ("tier", "policy"),
+    [("restricted", "untrusted"), ("editing", "on-request"), ("full", "never")],
+)
+def test_seed_codex_approval_sets_a_distinct_policy_at_every_tier(
+    tmp_path, tier, policy
+):
+    """The tier→policy table is TOTAL and INJECTIVE on this surface.
+
+    Total: no tier leaves ``approval_policy`` to codex's own default. Injective:
+    no two tiers deliver the same bytes, so ``restricted`` can never be
+    byte-equivalent to ``editing`` (the shape the clear-at-restricted discipline
+    allowed).
+    """
+    path = tmp_path / f"config-{tier}.toml"
+    assert seed_codex_approval(path, access=tier) is True
+    data = tomllib.loads(path.read_text())
+    assert data["approval_policy"] == policy
+    assert data["sandbox_mode"] == "danger-full-access"
+
+
+def test_seed_codex_approval_unknown_tier_raises(tmp_path):
+    from kanibako.errors import ConfigError
+
+    path = tmp_path / "config.toml"
+    with pytest.raises(ConfigError):
+        seed_codex_approval(path, access="bogus")
+    assert not path.exists()
 
 
 def test_seed_codex_approval_migrates_old_workspace_write(tmp_path):
     """MIGRATION: a config carrying the OLD kanibako-managed
     ``sandbox_mode = "workspace-write"`` reconciles to ``danger-full-access``
-    on BOTH the ON and OFF paths (the invariant is independent of yolo)."""
-    for auto in (True, False):
-        path = tmp_path / f"config-{auto}.toml"
+    at EVERY tier (the invariant is independent of ``access``)."""
+    for tier in ("full", "editing", "restricted"):
+        path = tmp_path / f"config-{tier}.toml"
         path.write_text('sandbox_mode = "workspace-write"\n')
-        assert seed_codex_approval(path, auto_approve=auto) is True
+        assert seed_codex_approval(path, access=tier) is True
         assert tomllib.loads(path.read_text())["sandbox_mode"] == (
             "danger-full-access"
         )
@@ -1297,11 +1383,14 @@ def test_seed_codex_approval_no_op_never_normalizes_user_bytes(tmp_path):
     (approval_policy correct AND sandbox_mode already the invariant) the seeder
     must NOT rewrite (no trailing-newline normalization, no region relocation)."""
     path = tmp_path / "config.toml"
-    # already-correct OFF state: no approval_policy, sandbox at the invariant,
-    # plus extra trailing newlines that must NOT be normalized away.
-    odd = '# mine\nsandbox_mode = "danger-full-access"\nfoo = "bar"\n\n\n'
+    # already-correct restricted state: BOTH managed keys already at their
+    # tier values, plus extra trailing newlines that must NOT be normalized away.
+    odd = (
+        '# mine\nsandbox_mode = "danger-full-access"\n'
+        'approval_policy = "untrusted"\nfoo = "bar"\n\n\n'
+    )
     path.write_text(odd)
-    assert seed_codex_approval(path, auto_approve=False) is False
+    assert seed_codex_approval(path, access="restricted") is False
     assert path.read_text() == odd
 
 
@@ -1317,7 +1406,7 @@ def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
     )
     region_only = path.read_text()
     assert region_only.lstrip().startswith("# >>> kanibako-managed")
-    assert seed_codex_approval(path, auto_approve=True) is True
+    assert seed_codex_approval(path, access="full") is True
     out = path.read_text()
     # keys present, and BEFORE the region begin marker (root section):
     assert out.index("approval_policy") < out.index("# >>> kanibako-managed")
@@ -1339,18 +1428,19 @@ def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
     the provider region (the legacy insert lost them there; the hazard was
     deleted at plan Step 5).  Under D1 the provider region only exists on a
     PERSONA launch (a bare launch WIPES it), so the region-present cell is a
-    persona launch: with approval keys absent, toggle yolo ON and confirm the
-    keys sit OUTSIDE (before) the provider region."""
+    persona launch: start from a ``restricted`` history, raise the tier to
+    ``full``, and confirm the keys sit OUTSIDE (before) the provider region."""
     path = tmp_path / "config.toml"
-    # Persona launch with approval keys absent (auto_approve=False history):
-    seed_codex_approval(path, auto_approve=False)
+    # Persona launch with a ``restricted`` history (which itself writes both
+    # managed keys — approval_policy = "untrusted"):
+    seed_codex_approval(path, access="restricted")
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    # Toggle yolo ON on the provider-region-bearing file — the keys must NOT land
+    # Raise the tier on the provider-region-bearing file — the keys must NOT land
     # inside the provider region:
-    assert seed_codex_approval(path, auto_approve=True) is True
+    assert seed_codex_approval(path, access="full") is True
     out = path.read_text()
     assert out.index("approval_policy") < out.index(
         "# >>> kanibako-managed (model provider)"
@@ -1381,7 +1471,7 @@ def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    assert seed_codex_approval(path, auto_approve=True) is True
+    assert seed_codex_approval(path, access="full") is True
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
     assert data["model_provider"] == "navigator"
@@ -1404,12 +1494,12 @@ def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
 def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
     """Second seam pass over its own output: neither call writes."""
     path = tmp_path / "config.toml"
-    seed_codex_approval(path, auto_approve=True)
+    seed_codex_approval(path, access="full")
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     )
     before = path.read_bytes()
-    assert seed_codex_approval(path, auto_approve=True) is False
+    assert seed_codex_approval(path, access="full") is False
     assert seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is False
@@ -1421,26 +1511,50 @@ def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
 
 def test_seed_goose_mode_on_writes_auto(tmp_path):
     path = tmp_path / "config.yaml"
-    assert seed_goose_mode(path, auto_approve=True) is True
+    assert seed_goose_mode(path, access="full") is True
     assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "auto"
 
 
 def test_seed_goose_mode_off_writes_explicit_approve(tmp_path):
     path = tmp_path / "config.yaml"
-    assert seed_goose_mode(path, auto_approve=False) is True
+    assert seed_goose_mode(path, access="restricted") is True
     assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "approve"
+
+
+def test_seed_goose_mode_editing_refuses_and_writes_nothing(tmp_path):
+    """R-41 / the B7b goose ruling: goose cannot render ``editing``.
+
+    ⚑ The refusal must come BEFORE any write — a fall-through leaving GOOSE_MODE
+    unset is read by goose as ``auto``, i.e. the full bypass.
+    """
+    from kanibako.errors import ConfigError
+
+    path = tmp_path / "config.yaml"
+    with pytest.raises(ConfigError) as exc:
+        seed_goose_mode(path, access="editing")
+    assert "restricted | full" in str(exc.value)
+    assert not path.exists()
+
+
+def test_seed_goose_mode_unknown_tier_refuses(tmp_path):
+    from kanibako.errors import ConfigError
+
+    path = tmp_path / "config.yaml"
+    with pytest.raises(ConfigError):
+        seed_goose_mode(path, access="bogus")
+    assert not path.exists()
 
 
 def test_seed_goose_mode_idempotent_and_merge_preserving(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("GOOSE_PROVIDER: openai\nextensions:\n  developer:\n    enabled: true\n")
-    assert seed_goose_mode(path, auto_approve=True) is True
+    assert seed_goose_mode(path, access="full") is True
     doc = yaml.safe_load(path.read_text())
     assert doc["GOOSE_MODE"] == "auto"
     assert doc["GOOSE_PROVIDER"] == "openai"
     assert doc["extensions"]["developer"]["enabled"] is True
     before = path.read_bytes()
-    assert seed_goose_mode(path, auto_approve=True) is False
+    assert seed_goose_mode(path, access="full") is False
     assert path.read_bytes() == before
 
 
@@ -1453,18 +1567,24 @@ def test_seed_goose_mode_overwrites_conflicting_existing_value(tmp_path):
         "GOOSE_MODE": "auto",
         "GOOSE_PROVIDER": "anthropic",
     }))
-    assert seed_goose_mode(path, auto_approve=False) is True
+    assert seed_goose_mode(path, access="restricted") is True
     written = yaml.safe_load(path.read_text())
     assert written["GOOSE_MODE"] == "approve"
     assert written["GOOSE_PROVIDER"] == "anthropic"
 
 
 def test_seed_codex_approval_on_overrides_user_value(tmp_path):
-    """ON SETS the managed value even over a user-chosen one (mirrors claude
-    merge_bypass_permissions ON-direction)."""
+    """``full`` SETS the managed value even over a user-chosen one (mirrors
+    claude merge_bypass_permissions ON-direction).
+
+    The pre-state is ``on-failure`` — a real enum member kanibako never writes,
+    so it is unambiguously a user's value.  (It used to be ``untrusted``; since
+    that is now the ``restricted`` tier's managed value, it would no longer
+    demonstrate the user-value case.)
+    """
     path = tmp_path / "config.toml"
-    path.write_text('approval_policy = "untrusted"\n')
-    assert seed_codex_approval(path, auto_approve=True) is True
+    path.write_text('approval_policy = "on-failure"\n')
+    assert seed_codex_approval(path, access="full") is True
     data = tomllib.loads(path.read_text())
     assert data["approval_policy"] == "never"
     assert data["sandbox_mode"] == "danger-full-access"
@@ -1474,10 +1594,10 @@ def test_seed_codex_approval_toggle_on_off_on_round_trips(tmp_path):
     """ON → OFF → ON round-trips back to the ON bytes (the toggle discipline
     that lived in the retired coupled merge, now the seeder's contract)."""
     path = tmp_path / "config.toml"
-    seed_codex_approval(path, auto_approve=True)
+    seed_codex_approval(path, access="full")
     on1 = path.read_bytes()
-    assert seed_codex_approval(path, auto_approve=False) is True
-    assert seed_codex_approval(path, auto_approve=True) is True
+    assert seed_codex_approval(path, access="restricted") is True
+    assert seed_codex_approval(path, access="full") is True
     assert path.read_bytes() == on1
 
 
@@ -1533,7 +1653,7 @@ def test_codex_marker_group_composes_with_approval_and_provider(tmp_path):
     """Full composed file (panel approval + directive region with marker +
     provider) parses and carries everything — the Phase-2 super-set cell."""
     path = tmp_path / "config.toml"
-    seed_codex_approval(path, auto_approve=True)
+    seed_codex_approval(path, access="full")
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),

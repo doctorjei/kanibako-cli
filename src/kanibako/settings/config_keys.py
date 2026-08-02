@@ -52,6 +52,7 @@ from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.config_io import render_stored_scalar
+from kanibako.settings.settings_keyspace import ACCESS_DEFAULT, ACCESS_TIERS
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.settings_store import SCOPE_CONTAINMENT
 
@@ -77,15 +78,20 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # listener at launch (start.py). Was a flat scopeless top-level scalar
     # (1.7.0-rc clean break — no back-compat for the old bare-config-field form).
     "allow_helpers",
-    # auto_approve: an agent-scope BEHAVIOR key (spec §2d
-    # ``agent.default.auto_approve | true``, PERMISSIVE). The bare key is the
-    # any-agent ``agent.default`` tier (mirrors ``model``); per-agent overrides are
-    # the persona key ``agent.<agent>.auto_approve``. Redeemed by each descriptor's
-    # ``safe_bypass.setting_key`` at launch (claude/codex FLAG, goose GOOSE_MODE
-    # ENV), coerced to bool (default True); the per-launch ``-A``/``-S`` flags
-    # override it. COLLAPSES the dead ``autonomous`` persisted leaf + the claude-only
-    # ``access`` string leaf (1.7.0-rc clean break — no alias for either).
-    "auto_approve",
+    # access: the agent-scope PERMISSION TIER (spec §2d
+    # ``agent.default.access | full``, enum ``restricted|editing|full``). The bare
+    # key is the any-agent ``agent.default`` tier (mirrors ``model``); per-agent
+    # overrides are the persona key ``agent.<agent>.access``. Redeemed by each
+    # descriptor's ``safe_bypass.setting_key`` at launch (claude/codex FLAG rows,
+    # goose GOOSE_MODE ENV rows) and by the PROJECTED surfaces; the per-launch
+    # ``-S``/``-A`` flags override it for the ARGV only (``-S`` ⇒ restricted,
+    # ``-A`` ⇒ full), never for the projection (spec §1A projected-surface
+    # exception). SUPERSEDES the boolean ``auto_approve`` (R-41, 1.8.0: mapping
+    # true→full / false→restricted; a stored ``auto_approve`` is REFUSED at launch
+    # by ``settings_assemble.refuse_retired_behavior_keys``, never mapped
+    # silently). An UNKNOWN value is rejected at SET time
+    # (:func:`access_value_error`) and at launch — never treated as permissive.
+    "access",
     # endpoint (persona): alternate harness base-URL, a sibling of model (block B).
     "endpoint",
     # bootstrap: an agent-scope BEHAVIOR key (spec §2d
@@ -101,15 +107,16 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # continue_mode: an agent-scope BEHAVIOR key (spec §2d
     # ``agent.default.continue_mode | true``; "continue vs fresh; resume removed").
     # The bare key is the any-agent ``agent.default`` tier (mirrors ``model``/
-    # ``auto_approve``); per-agent overrides are the persona key
+    # ``access``); per-agent overrides are the persona key
     # ``agent.<agent>.continue_mode``. Coerced to bool (default True): true ⇒
     # continue the most-recent conversation, false ⇒ start fresh. It is the
     # PERSISTED FALLBACK for the continue-vs-fresh decision at launch (start.py's
     # ``resolve_mode`` seam); the per-launch ``-N``/``-C``/``-R`` flags OVERRIDE it
-    # (ephemeral wins), mirroring how ``-M`` overrides ``model`` and ``-A``/``-S``
-    # override ``auto_approve``. REPLACES the dead ``start_mode`` leaf (never read at
+    # (ephemeral wins), mirroring how ``-M`` overrides ``model`` and ``-S``/``-A``
+    # override ``access``. REPLACES the dead ``start_mode`` leaf (never read at
     # launch; spec §3 "``start_mode`` fully covered by ``continue_mode`` +
-    # ``auto_approve``" — 1.7.0-rc clean break, no alias).
+    # ``auto_approve``" — 1.7.0-rc clean break, no alias; ``auto_approve`` has
+    # itself since been superseded by ``access``, R-41).
     "continue_mode",
     # Box.  ⚑ NO ``box.agent_name`` (P7): the agent SELECTION is the §2h request
     # ``pref.system.agent`` (spec §2b RETIRED the box key).
@@ -347,10 +354,12 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # disables it).  Build this extensibly — later phases add vault_enabled etc.  The
 # truth table itself lives in ``config`` (shared with the box.meta writer); see
 # ``config.coerce_bool``.  NOTE: the agent-scope scalars (``allow_helpers`` /
-# ``auto_approve``) are NOT here — the bare key routes through ``_is_agent_setting``
+# ``access``) are NOT here — the bare key routes through ``_is_agent_setting``
 # (verbatim string write, like ``model``) and the launch reader coerces at read;
 # this table only governs the ROUTED ``_KEY_ROUTES`` writer + the category
-# ``validate_config_set`` path.
+# ``validate_config_set`` path.  ``access`` is an ENUM, not a bool: its set-time
+# guard is :func:`access_value_error` (which REFUSES an unknown value outright
+# rather than coercing it), not a KEY_TYPES coercion.
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
     "system.auth.share_allowed": "bool",
@@ -389,7 +398,7 @@ def _coerce_value(canonical: str, value: "str | None") -> object | str | None:
 
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
 # A key whose first segment is NOT one of these (``env.*`` and
-# the un-prefixed scalars ``model`` / ``continue_mode`` / ``auto_approve`` /
+# the un-prefixed scalars ``model`` / ``continue_mode`` / ``access`` /
 # ``allow_helpers``) is SCOPELESS — it always writes to the command
 # scope's OWN file, so the direction guard does not apply to it. ``config`` is a
 # real namespace (config.* keys exist) but no config.* key actually REACHES this
@@ -571,7 +580,7 @@ def resolve_key(raw: str) -> str:
 # ``env_file`` only shipped rc0-rc2, no alias).
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
     {
-        "endpoint", "model", "continue_mode", "auto_approve", "allow_helpers",
+        "endpoint", "model", "continue_mode", "access", "allow_helpers",
         "bootstrap",
         # Per-agent template SOURCE (template-trio, spec §2a/§2d; Q2 2026-07-09
         # "agent = persona + harness"). A settable STRING-path leaf on the agent
@@ -605,7 +614,7 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 
     Returns ``None`` when *key* is not a settable per-persona agent key. The
     settable *tail* forms are a FLAT state leaf (``endpoint`` / ``model`` /
-    ``continue_mode`` / ``auto_approve`` / ``allow_helpers``) or a sectioned ``env.<VAR>``
+    ``continue_mode`` / ``access`` / ``allow_helpers``) or a sectioned ``env.<VAR>``
     pointer.  The SECRET pointer ``secret_path.<VAR>`` is NOT parsed here — it is
     matched EARLIER (``_is_agent_node_secret_key``) and stored DISCRIMINATED (spec §2a;
     it replaced the rc-only ``env_file.<VAR>``, which routed here).  The node segment
@@ -636,24 +645,59 @@ def _is_persona_agent_key(key: str) -> bool:
     return _parse_persona_agent_key(key) is not None
 
 
-def is_auto_approve_key(canonical: str) -> bool:
-    """True iff *canonical* is the auth-critical ``auto_approve`` permission key.
+def is_access_key(canonical: str) -> bool:
+    """True iff *canonical* is the auth-critical ``access`` permission key.
 
-    Matches BOTH settable forms: the BARE any-agent ``agent.default`` tier key
-    (``canonical == "auto_approve"``, routed via :func:`_is_agent_setting`) and a
-    per-persona override ``agent.<node>.auto_approve`` (routed via
+    Matches both DIRECT settable forms: the BARE any-agent ``agent.default`` tier
+    key (``canonical == "access"``, routed via :func:`_is_agent_setting`) and a
+    per-persona override ``agent.<node>.access`` (routed via
     :func:`_is_persona_agent_key`).  Used to WRITE-VALIDATE the value at ``config
-    set`` time: ``auto_approve`` drives ``--dangerously-skip-permissions`` and is
-    ``coerce_bool``'d at LAUNCH with an UNRECOGNISED value falling back to the
-    PERMISSIVE default (True) — so a typo (``flase``) must be REJECTED here, never
-    silently resolved permissive (the unsafe direction).  Only ``auto_approve``
-    gets this guard (Jei: only the auth-critical key), not ``allow_helpers`` /
-    ``model``.
+    set`` time (:func:`access_value_error`): ``access`` decides whether the box's
+    agent prompts at all, so an unrecognised value must be REJECTED at the write,
+    never stored to be re-read at launch.  Only ``access`` gets this guard (Jei:
+    only the auth-critical key), not ``allow_helpers`` / ``model``.
+
+    ⚑ It answers False for the §2h REQUEST spelling ``pref.agent.<node>.access``,
+    and that is correct rather than a gap: this predicate names TARGET keys, and
+    a pref is not its target.  The request form is guarded at its TARGET, by
+    ``config_interface._pref_value_error`` — which calls THIS function on the
+    target it extracts, so both spellings redeem the one truth table.  (That call
+    is what closes the hole; before it, ``box set pref.agent.claude.access=fll``
+    — the very command the RQ-2 refusal prescribes — was accepted and stored.)
+
+    ⚑ R-41 (1.8.0): this is the RENAMED ``is_auto_approve_key``. The rename
+    follows the KEY, not the name — the guard exists because this key is the
+    permission axis, so it must travel with the axis when the axis is respelled.
     """
-    if canonical == "auto_approve":
+    if canonical == "access":
         return True
     parsed = _parse_persona_agent_key(canonical)
-    return parsed is not None and parsed[1] == "auto_approve"
+    return parsed is not None and parsed[1] == "access"
+
+
+def access_value_error(canonical: str, value: str) -> str | None:
+    """The LOUD refusal for an illegal ``access`` value, or ``None`` when legal.
+
+    The single set-time validator for the permission tier, shared by BOTH set
+    paths (``config_interface.validate_config_set`` and the ``crab config set``
+    verb) so there is one message and one truth table.  Legal values are exactly
+    :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS`; the message NAMES
+    the key and lists them.
+
+    ⚑ Never lenient, never permissive-by-default: an unknown value is refused
+    outright rather than coerced or defaulted (a typo must not be the difference
+    between an agent that prompts and one that does not).  Matching is EXACT —
+    no case folding — because the stored value is what the launch resolver reads
+    back and the launch resolver is exact too.
+    """
+    if value in ACCESS_TIERS:
+        return None
+    legal = " | ".join(ACCESS_TIERS)
+    return (
+        f"Error: {canonical} must be one of {legal} (spec §2d); got {value!r}. "
+        f"An unrecognised permission tier is REFUSED, never treated as "
+        f"'{ACCESS_DEFAULT}'."
+    )
 
 # ---------------------------------------------------------------------------
 # Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``
@@ -785,7 +829,7 @@ def _is_env_key(key: str) -> bool:
 def _is_agent_setting(key: str) -> bool:
     """Keys that belong in the agent section of settings.yaml."""
     return key in {
-        "model", "continue_mode", "auto_approve", "endpoint", "allow_helpers",
+        "model", "continue_mode", "access", "endpoint", "allow_helpers",
         "bootstrap",
     }
 
@@ -860,7 +904,7 @@ def box_agent_redirect_key(
     bare-key refusal, which names the shape.
 
     A BARE agent behavior key — the WHOLE :func:`_is_agent_setting` family
-    (``model`` / ``auto_approve`` / ``bootstrap`` / ``endpoint`` /
+    (``model`` / ``access`` / ``bootstrap`` / ``endpoint`` /
     ``allow_helpers`` / ``continue_mode``), uniformly, NOT a per-key list — targets
     the any-agent ``agent.default`` tier. From a BOX that is an UPWARD write (agent
     ⊃ box in the containment order): the §0 directional rule REFUSES it (spec §2h

@@ -204,41 +204,39 @@ class ClaudeTarget(Target):
         return ".claude"
 
     def deliver_panel_permissions(
-        self, *, config_root: Path, auto_approve: bool,
+        self, *, config_root: Path, access: str,
     ) -> bool:
-        """Mirror the box's PERSISTED ``auto_approve`` into the box's in-box
-        ``~/.claude/settings.json`` so the VS Code claude-code PANEL reflects
-        the configured yolo (Ph4b Vector A — the panel spawns its own claude
-        without kanibako's launch flags).
+        """Mirror the box's CASCADE-resolved ``access`` TIER into the box's
+        in-box ``~/.claude/settings.json`` so the VS Code claude-code PANEL
+        reflects the configured tier (Ph4b Vector A — the panel spawns its own
+        claude without kanibako's launch flags).
 
-        SYMMETRIC: ON SETs the managed ``permissions.defaultMode=
-        bypassPermissions``; OFF CLEARS it (no-op on an absent file), so
-        toggling yolo off takes effect in the panel.  Both directions merge
-        (never clobber user settings) and are idempotent (core emitters in
-        :mod:`kanibako.vscode.vscode_config`).
+        THREE-VALUED (R-41): ``full`` SETs ``permissions.defaultMode=
+        bypassPermissions``, ``editing`` SETs ``acceptEdits``, ``restricted``
+        CLEARS the managed mode (no-op on an absent file), so changing the tier
+        takes effect in the panel.  The tier→mode table lives in the core
+        emitter (:func:`kanibako.vscode.vscode_config.seed_claude_permission_mode`),
+        which merges (never clobbers user settings), is idempotent, and RAISES on
+        an unknown tier rather than defaulting either way.
         """
-        from kanibako.vscode.vscode_config import (
-            clear_claude_bypass_permissions,
-            seed_claude_bypass_permissions,
-        )
+        from kanibako.vscode.vscode_config import seed_claude_permission_mode
 
-        settings_path = config_root / ".claude" / "settings.json"
-        if auto_approve:
-            return seed_claude_bypass_permissions(settings_path)
-        return clear_claude_bypass_permissions(settings_path)
+        return seed_claude_permission_mode(
+            config_root / ".claude" / "settings.json", access=access,
+        )
 
     def deliver_directive_hook(
         self,
         *,
         config_root: Path,
-        auto_approve: bool,
+        access: str,
         model_provider: "CodexModelProvider | None" = None,
     ) -> bool:
         """Seed claude's full managed JSON hook set into the box's in-box
         ``~/.claude/settings.json``: the instruction-delivery ``SessionStart``
         hook + the per-PID liveness-marker write/remove hooks.
 
-        UNCONDITIONAL — orthogonal to *auto_approve* — and *model_provider* is
+        UNCONDITIONAL — orthogonal to *access* — and *model_provider* is
         IGNORED (claude carries its persona endpoint/token via env, not config;
         the write is byte-identical either way).  Union-merge, idempotent (see
         :func:`kanibako.vscode.vscode_config.seed_session_start_hook`).
@@ -590,11 +588,12 @@ class ClaudeTarget(Target):
         - ``model``: freeform (Claude adds models regularly).
         - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
 
-        ``auto_approve`` is NOT declared here: it is the agent-scope boolean
-        behavior key (spec §2d, ``agent.default.auto_approve | true``, default
-        PERMISSIVE) redeemed by ``safe_bypass.setting_key`` and resolved at launch
-        (coerced to bool, default True) — routed verbatim like ``allow_helpers``,
-        with the per-launch ``-S``/``-A`` flags overriding it.
+        ``access`` is NOT declared here: it is the agent-scope permission TIER
+        key (spec §2d, ``agent.default.access | full``, enum
+        restricted|editing|full) redeemed by ``safe_bypass.setting_key`` and
+        resolved at launch (validated against the enum, defaulting to ``full``
+        when unset) — routed verbatim like ``allow_helpers``, with the per-launch
+        ``-S``/``-A`` flags overriding it for the ARGV only.
         """
         return [
             TargetSetting(

@@ -26,7 +26,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Collection, Sequence
 
+from kanibako.errors import ConfigError
 from kanibako.log import get_logger
+from kanibako.settings.settings_keyspace import ACCESS_DEFAULT, ACCESS_TIERS
 from kanibako.targets.base import (
     BindScope,
     Channel,
@@ -36,6 +38,7 @@ from kanibako.targets.base import (
 
 if TYPE_CHECKING:
     from kanibako.targets.base import (
+        AccessTierRow,
         AgentInstall,
         Binding,
         PluginDescriptor,
@@ -104,30 +107,117 @@ def resolve_mode(
     return "start"
 
 
-def effective_safe_mode_off(
+def resolve_access_tier(access: "str | None") -> str:
+    """Validate a CASCADE-resolved ``access`` value into a permission TIER.
+
+    ``None`` / unset ⇒ :data:`~kanibako.settings.settings_keyspace.ACCESS_DEFAULT`
+    (``full`` — R-41's ruled default: today's behaviour preserved, the box is the
+    containment boundary).  Anything else must be a member of
+    :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS` EXACTLY.
+
+    ⚑ An unknown value RAISES, naming the key and the legal values.  It is NEVER
+    coerced and NEVER falls back to the default: on a permission axis a typo must
+    not decide whether the agent prompts.  (The old boolean read did exactly that
+    — ``coerce_bool("flase")`` → ``None`` → the permissive default — which is why
+    the set-time guard existed; the guard stays, and this is now a second fence
+    for a value that reached the file some other way, e.g. a hand edit.)
+
+    ⚑ The EMPTY STRING is not unset — it is an INVALID VALUE, and it refuses like
+    any other.  Only ``None`` (the key absent from the cascade) takes the default.
+    Both set paths already refuse ``""``, so the only way it reaches here is the
+    hand edit the paragraph above describes — i.e. exactly the case this second
+    fence exists for.  Treating it as unset would make the ONE reachable route to
+    this function's permissive arm a route the validators never approved (R-41: an
+    unknown stored value is rejected, never treated as permissive).
+    """
+    if access is None:
+        return ACCESS_DEFAULT
+    if access not in ACCESS_TIERS:
+        raise ConfigError(
+            f"'access' must be one of {' | '.join(ACCESS_TIERS)} (spec §2d); "
+            f"this box resolved {access!r}. Refusing rather than running: an "
+            f"unrecognised permission tier is never treated as "
+            f"'{ACCESS_DEFAULT}'."
+        )
+    return access
+
+
+def effective_access(
     *,
     secure: bool,
     autonomous: bool,
-    auto_approve: bool = True,
-) -> bool:
-    """Return True when the agent should run WITHOUT safety (safe-bypass ON).
+    access: "str | None" = None,
+) -> str:
+    """Return the permission TIER this launch's ARGV/ENV should run at.
 
-    Resolution (matches kanibako's documented PERMISSIVE default; the box is the
-    isolation boundary):
+    Resolution (spec §2d + §1A; R-41 replaced the old boolean
+    ``effective_safe_mode_off``):
 
-    * *secure* (``-S``) -> ``False`` (safe mode ON, bypass OFF) — wins over everything.
-    * *autonomous* (``-A``) -> ``True`` (bypass ON) — the per-launch override.
-    * else the persisted *auto_approve* key (spec §2d
-      ``agent.default.auto_approve | true``, resolved off the launch snapshot and
-      DEFAULTING True when unset): ``True`` -> bypass ON (permissive), ``False`` ->
-      safe.  This is the redeemed persisted default; the per-launch ``-S``/``-A``
-      flags above still win over it.
+    * *secure* (``-S``) -> ``"restricted"`` — wins over everything.
+    * *autonomous* (``-A``) -> ``"full"`` — the per-launch override.
+    * else the cascade-resolved *access* key, defaulting to ``full`` when unset
+      (:func:`resolve_access_tier`, which REFUSES an unknown value).
+
+    ⚑ The flags are EPHEMERAL and apply to the launch argv/env ONLY. The
+    PROJECTED surfaces (claude ``settings.json`` / codex ``config.toml`` / goose
+    ``config.yaml``) resolve the tier from the CASCADE alone — spec §1A's
+    projected-surface exception, because a projection outlives the launch.  So
+    both values exist at a launch and they are deliberately NOT the same read.
     """
     if secure:
-        return False
+        return "restricted"
     if autonomous:
-        return True
-    return auto_approve
+        return "full"
+    return resolve_access_tier(access)
+
+
+def access_row(
+    descriptor: PluginDescriptor, tier: str, *, agent: str = "",
+) -> "AccessTierRow | None":
+    """The descriptor's realization of *tier*, or ``None`` when it declares no
+    ``safe_bypass`` at all (an agent with no permission surface).
+
+    RAISES when the descriptor HAS a ``safe_bypass`` but cannot render *tier* —
+    the un-rendered-tier rule: the launch stops and names the tiers this agent
+    CAN render, rather than substituting a neighbouring one.  Never silently
+    permissive, never silently stricter (goose's missing ``editing``: substituting
+    ``auto`` would over-permit, substituting ``approve`` would deliver
+    prompt-on-every-edit while reporting success — both are lies about what the
+    user asked for).
+
+    ⚑ A descriptor that declares a ``safe_bypass`` with ZERO rows is diagnosed
+    SEPARATELY as PLUGIN VERSION SKEW, because that is what it actually is: a
+    harness with a permission surface always realizes at least one tier, so no
+    rows means the block was parsed from a plugin that predates the ``access``
+    tiers (the retired ``flag``/``secure_flag`` shape carries no ``tiers:`` and
+    loads to an empty :class:`SafeBypass`).  Reporting "this agent cannot render
+    that tier" there would blame the agent for an install problem and send the
+    user looking for a capability limit that does not exist.
+    """
+    sb = descriptor.safe_bypass
+    if sb is None:
+        return None
+    row = sb.row(tier)
+    if row is None:
+        who = f"'{agent}'" if agent else "this agent"
+        rendered = sb.rendered_tiers()
+        if not rendered:
+            raise ConfigError(
+                f"access tier '{tier}' cannot be delivered for {who}: its "
+                f"plugin declares a permission surface with NO tier rows at "
+                f"all. That is PLUGIN VERSION SKEW, not a limit of the agent — "
+                f"a kanibako-agent-* package published before the 'access' "
+                f"tiers declares the retired pre-tier safe_bypass shape, which "
+                f"carries no tiers. Upgrade the kanibako-agent-* packages to "
+                f"match the base (they are released together)."
+            )
+        raise ConfigError(
+            f"access tier '{tier}' cannot be rendered by {who}: its harness has "
+            f"no realization for it. Legal tiers for this agent: "
+            f"{' | '.join(rendered)}. Refusing rather than running at a "
+            f"DIFFERENT tier than you asked for (spec §2d)."
+        )
+    return row
 
 
 # ⚑ ``resolve_new_session`` was DELETED in P8 (v1.8.0). Its whole body was the fold
@@ -149,10 +239,11 @@ def assemble_argv(
     descriptor: PluginDescriptor,
     *,
     mode_fragment: "Sequence[str] | None",
-    safe_mode_off: bool,
+    access: str,
     setting_values: dict[str, str],
     op_fragment: "Sequence[str] | None" = None,
     extra_args: list[str],
+    agent: str = "",
 ) -> list[str]:
     """Assemble the agent argv that follows the entrypoint binary.
 
@@ -180,15 +271,18 @@ def assemble_argv(
        MUTUALLY EXCLUSIVE at this argv slot (spec §2d).
     2. Else if *mode_fragment* is set: the interactive mode fragment
        (``meta.agent.<a>.mode[mode_key]`` for the resolved *mode_key*).
-    3. If the descriptor's ``safe_bypass`` is FLAG-channel: emit its ``flag``
-       when *safe_mode_off*, else its ``secure_flag`` (the symmetric SECURE
-       emission — empty ``secure_flag`` emits nothing on safe-ON, the
-       claude/codex default-safe behavior).
+    3. If the descriptor's ``safe_bypass`` is FLAG-channel: emit the ``flag`` of
+       its row for the *access* TIER (R-41).  An EMPTY row emits nothing (the
+       claude/codex ``restricted`` realization — their own default already
+       prompts); a MISSING row RAISES (:func:`access_row` — the un-rendered-tier
+       rule), so no tier can ever fall through to a different tier's emission.
     4. For each FLAG-channel :class:`SettingArg` whose value in *setting_values*
        is truthy: ``flag + [value]``.
     5. *extra_args*, appended last.
 
-    ENV-channel safe-bypass / settings are NOT argv and are emitted by
+    *access* is the tier this LAUNCH runs at (``-S``/``-A``-folded — see
+    :func:`effective_access`); *agent* names the agent in the refusal message.
+    ENV-channel access rows / settings are NOT argv and are emitted by
     :func:`assemble_env` instead.
     """
     argv: list[str] = list(descriptor.command[1:])
@@ -200,10 +294,9 @@ def assemble_argv(
 
     sb = descriptor.safe_bypass
     if sb is not None and sb.channel is Channel.FLAG:
-        if safe_mode_off:
-            argv.extend(sb.flag)
-        elif sb.secure_flag:
-            argv.extend(sb.secure_flag)
+        row = access_row(descriptor, access, agent=agent)
+        if row is not None:
+            argv.extend(row.flag)
 
     for s in descriptor.settings:
         if s.channel is Channel.FLAG:
@@ -219,36 +312,35 @@ def assemble_argv(
 def assemble_env(
     descriptor: PluginDescriptor,
     *,
-    safe_mode_off: bool,
+    access: str,
     setting_values: dict[str, str],
+    agent: str = "",
 ) -> dict[str, str]:
     """Assemble the container environment overlay from the descriptor.
 
     Starts from ``descriptor.container_env``, then:
 
-    * If *safe_mode_off* and the descriptor's ``safe_bypass`` is ENV-channel with
-      an ``env_var``: set it to ``env_value`` (falling back to ``"auto"`` when the
-      descriptor left ``env_value`` empty, e.g. goose ``GOOSE_MODE=auto``).
-    * Else (NOT *safe_mode_off* — secure/``-S``) if the ENV-channel ``safe_bypass``
-      declares a non-empty ``secure_env_value``: set ``env_var`` to it (the
-      symmetric SECURE emission, e.g. goose ``GOOSE_MODE=approve``).  This is
-      REQUIRED for agents whose unset env default is unsafe (goose's ``GOOSE_MODE``
-      defaults to ``auto``); an empty ``secure_env_value`` emits nothing on
-      safe-ON, preserving agents already safe-by-default (claude/codex).
+    * If the descriptor's ``safe_bypass`` is ENV-channel with an ``env_var``: set
+      it to the ``env_value`` of the row for the *access* TIER (R-41; goose
+      ``GOOSE_MODE=auto`` at ``full``, ``approve`` at ``restricted``).  An EMPTY
+      row emits nothing; a MISSING row RAISES (:func:`access_row`).  ⚑ For an
+      agent whose UNSET env default is itself permissive (goose's ``GOOSE_MODE``
+      defaults to ``auto``) every renderable tier must carry a value — emitting
+      nothing there would BE the bypass, which is why the un-rendered tier
+      refuses instead of falling through.
     * For each ENV-channel :class:`SettingArg` with an ``env_var`` and a truthy
       value in *setting_values*: set ``env_var`` to that value.
 
-    FLAG-channel safe-bypass / settings are argv and are emitted by
+    FLAG-channel access rows / settings are argv and are emitted by
     :func:`assemble_argv` instead.
     """
     env: dict[str, str] = dict(descriptor.container_env)
 
     sb = descriptor.safe_bypass
     if sb is not None and sb.channel is Channel.ENV and sb.env_var:
-        if safe_mode_off:
-            env[sb.env_var] = sb.env_value or "auto"
-        elif sb.secure_env_value:
-            env[sb.env_var] = sb.secure_env_value
+        row = access_row(descriptor, access, agent=agent)
+        if row is not None and row.env_value:
+            env[sb.env_var] = row.env_value
 
     for s in descriptor.settings:
         if s.channel is Channel.ENV and s.env_var:

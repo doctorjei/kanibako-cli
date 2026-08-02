@@ -46,12 +46,12 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
         agent_path=None,
         workset_path=None,
         box_path=None,
-        behavior_floor={"model": "opus", "auto_approve": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true"},
     )
     # OS1: bare floor → agent.default.<key> (the all-agents backstop, §2d/§0 —
     # NO bare agent.<key>).
     assert snap.agent.default.model == "opus"
-    assert snap.agent.default.auto_approve == "true"
+    assert snap.agent.default.allow_helpers == "true"
 
 
 def test_category_default_table_folds_into_snapshot():
@@ -377,23 +377,23 @@ def test_adapter_feeds_reconcile_unchanged():
 
 def test_effective_behavior_reads_agent_default_backstop():
     # No active-slot override → the agent.default backstop value is read (§2d).
-    snap = KeyStore({"agent": {"default": {"model": "opus", "auto_approve": True}}})
+    snap = KeyStore({"agent": {"default": {"model": "opus", "allow_helpers": True}}})
     eff = effective_behavior(
-        snap, active_agent="claude", keys=["model", "auto_approve", "missing"],
+        snap, active_agent="claude", keys=["model", "allow_helpers", "missing"],
     )
-    assert eff == {"model": "opus", "auto_approve": "True"}
+    assert eff == {"model": "opus", "allow_helpers": "True"}
 
 
 def test_effective_behavior_active_over_default():
     # §2d: the active slot wins; agent.default fills a gap.
     snap = KeyStore({"agent": {
-        "default": {"model": "sonnet", "auto_approve": True},
+        "default": {"model": "sonnet", "allow_helpers": True},
         "claude": {"model": "opus"},
     }})
     eff = effective_behavior(
-        snap, active_agent="claude", keys=["model", "auto_approve"],
+        snap, active_agent="claude", keys=["model", "allow_helpers"],
     )
-    assert eff == {"model": "opus", "auto_approve": "True"}
+    assert eff == {"model": "opus", "allow_helpers": "True"}
 
 
 def test_effective_behavior_resolves_allow_helpers_default_tier():
@@ -434,7 +434,7 @@ def test_effective_behavior_discovers_all_keys_when_keys_none():
     # keys=None (the LIVE default): DISCOVER every scalar behavior leaf across both
     # slots (so undeclared pass-through keys survive), skipping category subtrees.
     snap = KeyStore({"agent": {
-        "default": {"model": "sonnet", "auto_approve": True},
+        "default": {"model": "sonnet", "allow_helpers": True},
         "claude": {
             "model": "opus",            # active wins
             "custom_leaf": "fresh",     # undeclared pass-through (active only)
@@ -445,7 +445,7 @@ def test_effective_behavior_discovers_all_keys_when_keys_none():
     eff = effective_behavior(snap, active_agent="claude")
     assert eff == {
         "model": "opus",            # active over default
-        "auto_approve": "True",     # default fills the gap
+        "allow_helpers": "True",    # default fills the gap
         "custom_leaf": "fresh",     # undeclared pass-through discovered
     }
     # category / meta subtrees are NOT behavior → never surface.
@@ -1710,13 +1710,13 @@ def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "auto_approve": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true"},
         default_categories={
             "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
         },
     )
     assert snap.meta.box.agent.model == snap.agent.default.model == "opus"
-    assert snap.meta.box.agent.auto_approve == "true"
+    assert snap.meta.box.agent.allow_helpers == "true"
     # The whole subtree mirrors — including category subtrees (a Bind leaf).
     mirrored = snap.meta.box.agent.common.plugins
     assert isinstance(mirrored, Bind)
@@ -1738,7 +1738,7 @@ def test_a_box_file_box_agent_table_is_inert(tmp_path: Path):
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        behavior_floor={"model": "opus", "auto_approve": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true"},
     )
     assert snap.meta.box.agent.model == "opus"        # the read-back, not the file.
     assert snap.agent.default.model == "opus"         # the agent tier is untouched.
@@ -1846,11 +1846,11 @@ def test_the_no_agent_LAUNCH_shape_mirrors_the_default_backstop():
         agent_name="general",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "auto_approve": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true"},
         auth_chain=auth_chain_floor(mode="primary", agent_name=""),
     )
     mirror = snap.meta.box.agent
-    assert sorted(dict.keys(mirror)) == ["auth", "auto_approve", "model"]
+    assert sorted(dict.keys(mirror)) == ["allow_helpers", "auth", "model"]
     assert mirror.model == "opus"          # the agent.default backstop
     # NOTHING consumes these leaves: the only runtime reader under
     # meta.box.agent is auth.share_support, which the FLOOR supplies.
@@ -2008,11 +2008,11 @@ def test_box_pref_changes_effective_behavior(tmp_path: Path):
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        behavior_floor={"model": "opus", "auto_approve": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true"},
     )
     eff = effective_behavior(snap, active_agent="claude")
     assert eff["model"] == "sonnet"
-    assert eff["auto_approve"] == "true"
+    assert eff["allow_helpers"] == "true"
 
 
 def test_box_agent_no_override_effective_behavior_identical_to_baseline():
@@ -2021,11 +2021,11 @@ def test_box_agent_no_override_effective_behavior_identical_to_baseline():
     common = dict(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "auto_approve": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true"},
     )
     snap = build_launch_snapshot(**common)
     eff = effective_behavior(snap, active_agent="claude")
-    assert eff == {"model": "opus", "auto_approve": "true"}
+    assert eff == {"model": "opus", "allow_helpers": "true"}
 
 
 def test_box_pref_bindings_override_changes_category_entries(tmp_path: Path):

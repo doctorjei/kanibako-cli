@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from kanibako.settings.config import (
-    coerce_bool,
     load_config,
     load_merged_config,
     load_project_overrides,
@@ -76,10 +75,11 @@ from kanibako.settings.config_keys import (
     _persona_display_key,
     _route_key,
     _scope_direction_error,
+    access_value_error,
     bare_agent_key_scope_error,
     box_agent_redirect_key,
     box_agent_retired_error,
-    is_auto_approve_key,
+    is_access_key,
     is_system_path_key,
     parse_agent_node_bind_key,
     system_key_refusal,
@@ -210,6 +210,23 @@ def _pref_value_error(
     # pre-configuring an agent you may switch to is allowed"* (§2h).
     # An unknown NAME here surfaces at agent RESOLUTION (P7), with the error that
     # subsystem already owns, rather than being pre-judged by the config writer.
+
+    # ⚑ The auth-critical ``access`` ENUM guard, reached through the pref
+    # spelling. ``is_access_key`` answers False for ``pref.agent.<node>.access``
+    # BY DESIGN — it matches the TARGET key shapes, and a pref is not its target
+    # — so the generic set-time guard in ``validate_config_set`` does not see it.
+    # It is checked HERE instead, at the TARGET, which is this function's whole
+    # rule: a pref's value is legal iff it is legal at the key it requests.
+    #
+    # Not cosmetic. ``pref.agent.<agent>.access=<tier>`` is the exact command the
+    # RQ-2 retired-key refusal PRESCRIBES to box/workset users, i.e. the spelling
+    # they are most likely to type; without this the write is accepted and the
+    # launch resolver is the only fence, so a typo is STORED and then fails every
+    # future launch of that box instead of failing the write that caused it.
+    if is_access_key(target):
+        access_err = access_value_error(canonical, value)
+        if access_err is not None:
+            return access_err
 
     if BIND_KEY_RE.match(target) is not None or MASK_KEY_RE.match(target) is not None:
         return (
@@ -834,7 +851,7 @@ def get_config_value(
             return read_stored_leaf(path, sections, leaf)
         return None
 
-    # target settings (model, continue_mode, auto_approve, allow_helpers)
+    # target settings (model, continue_mode, access, allow_helpers)
     if _is_agent_setting(canonical):
         # The agent-agnostic ``config`` CLI reads/writes the reserved any-agent
         # ``agent.default`` tier; per-agent overrides live under ``agent.<name>``
@@ -1051,22 +1068,18 @@ def set_config_value(
                 f"pref.{canonical}' undoes."
             )
 
-    # Write-time validation for the auth-critical ``auto_approve`` permission key
-    # (Editor finding B). It routes VERBATIM below (bare -> ``_is_agent_setting``;
-    # per-node -> ``_is_persona_agent_key``) and is ``coerce_bool``'d at LAUNCH with
-    # an UNRECOGNISED value falling back to the PERMISSIVE default (True). So a typo
-    # (``config set auto_approve=flase``) would otherwise be accepted here and
-    # silently bring the box up permissive (the UNSAFE direction). Reject a non-bool
-    # value NOW using the SAME truth table (``config.coerce_bool``) the launch
-    # coercion uses — the happy literals (true/false/1/0/yes/no/on/off, any case)
-    # still write verbatim as before; ONLY ``auto_approve`` is guarded (Jei: only
-    # the auth-critical key), not ``allow_helpers`` / ``model``.
-    if (
-        value is not None
-        and is_auto_approve_key(canonical)
-        and coerce_bool(value) is None
-    ):
-        return f"Error: auto_approve must be a boolean (true/false); got {value!r}"
+    # Write-time validation for the auth-critical ``access`` permission key
+    # (Editor finding B; R-41 respelled the key and the guard followed it). It
+    # routes VERBATIM below (bare -> ``_is_agent_setting``; per-node ->
+    # ``_is_persona_agent_key``), so a typo (``config set access=fll``) would
+    # otherwise be STORED and then re-read at launch. Reject an off-enum value NOW,
+    # with the SAME message and the SAME truth table the launch resolver uses
+    # (:data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS`); ONLY ``access`` is
+    # guarded (Jei: only the auth-critical key), not ``allow_helpers`` / ``model``.
+    if value is not None and is_access_key(canonical):
+        access_err = access_value_error(canonical, value)
+        if access_err is not None:
+            return access_err
 
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a
     # / Q9).  See :func:`_probes_at_set_time` for exactly which keys qualify and
@@ -1598,7 +1611,7 @@ def reset_config_value(
         # ({system,agent,workset,box}.*) actually READS through the
         # assemble/merge cascade — so only for those is the assembled snapshot the
         # key's real read path. A SCOPELESS key (``vault.*``, ``allow_helpers``,
-        # ``model``/``continue_mode``/``auto_approve``) is read from a single settings
+        # ``model``/``continue_mode``/``access``) is read from a single settings
         # file / the flat ``KanibakoConfig`` (NOT the cascade), so a
         # cascade-derived "effective" would name a value from a tier NOTHING reads
         # — a wrong claim. Those keep the cleared-only form. This is the SAME token

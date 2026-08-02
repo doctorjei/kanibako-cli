@@ -44,8 +44,10 @@ from kanibako.settings.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
+from kanibako.settings.settings_keyspace import ACCESS_TIERS
 from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
+    AccessTierRow,
     BindDefault,
     BindKind,
     Binding,
@@ -119,17 +121,112 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
     )
 
 
-def _build_safe_bypass(raw: dict[str, Any] | None) -> SafeBypass | None:
-    """Build the :class:`SafeBypass` toggle from its declarative block (or None)."""
+def _build_access_row(
+    tier: str, raw: dict[str, Any] | None, *, channel: Channel, source: str = "",
+) -> AccessTierRow:
+    """Build ONE :class:`AccessTierRow` from a declarative ``tiers.<tier>`` block.
+
+    On the FLAG channel an EMPTY/absent body is the legal "emit nothing,
+    deliberately" row (a default-safe harness's ``restricted``).  A field
+    belonging to the OTHER channel is REFUSED rather than ignored: a ``flag:``
+    under an ENV-channel descriptor would never be emitted, and a permission row
+    that silently does nothing is precisely the failure this axis cannot afford.
+
+    ⚑ On the ENV channel an empty row is REFUSED, not accepted.  Emitting nothing
+    there leaves the harness's env var UNSET, and for the agents this channel
+    exists for the unset default is the PERMISSIVE one (goose: no ``GOOSE_MODE``
+    ⇒ ``auto`` ⇒ the full bypass).  So a DECLARED-but-empty ENV row would silently
+    deliver ``full`` under another tier's name — the exact substitution the
+    missing-row rule refuses to make.  A harness that cannot realize a tier OMITS
+    the row (declaration, refused loudly at launch); declaring one obliges it to
+    carry a value.  This is the invariant :class:`AccessTierRow` documents, now
+    ENFORCED where the declaration is read rather than trusted.
+
+    *source* names the defaults file for the message (the descriptor loader's
+    ``filename``), so a refusal points at the plugin that has to be fixed.
+    """
+    body = raw or {}
+    where = f" ({source})" if source else ""
+    unknown = set(body) - {"flag", "env_value"}
+    if unknown:
+        raise SettingsError(
+            f"safe_bypass.tiers.{tier}{where} declares unknown field(s) "
+            f"{sorted(unknown)}; a tier row carries only 'flag' (FLAG channel) "
+            f"or 'env_value' (ENV channel)."
+        )
+    if channel is Channel.FLAG and body.get("env_value"):
+        raise SettingsError(
+            f"safe_bypass.tiers.{tier}{where} sets 'env_value' but the "
+            f"descriptor's channel is 'flag' — the value would never be emitted."
+        )
+    if channel is Channel.ENV and body.get("flag"):
+        raise SettingsError(
+            f"safe_bypass.tiers.{tier}{where} sets 'flag' but the descriptor's "
+            f"channel is 'env' — the flag would never be emitted."
+        )
+    if channel is Channel.ENV and not body.get("env_value"):
+        raise SettingsError(
+            f"safe_bypass.tiers.{tier}{where} is DECLARED but empty on the 'env' "
+            f"channel: it would set no variable, and an unset permission "
+            f"variable is the harness's own default — which on this channel is "
+            f"the PERMISSIVE one. A tier this harness cannot realize must OMIT "
+            f"its row (the launch then refuses it by name); a declared row must "
+            f"carry an 'env_value'."
+        )
+    return AccessTierRow(
+        flag=tuple(body.get("flag", ())),
+        env_value=body.get("env_value", ""),
+    )
+
+
+def _build_safe_bypass(
+    raw: dict[str, Any] | None, *, source: str = "",
+) -> SafeBypass | None:
+    """Build the :class:`SafeBypass` access-tier realization from its block.
+
+    ⚑ R-41: the block is now PER-TIER ROWS under ``tiers:`` (``restricted`` /
+    ``editing`` / ``full``), not the old two-polarity ``flag``/``secure_flag`` +
+    ``env_value``/``secure_env_value`` pair.  A tier the plugin OMITS is one this
+    harness CANNOT render — the launch refuses that tier by name rather than
+    substituting a neighbouring one (goose has no ``editing`` realization; see
+    ``goose-defaults.yaml``).
+
+    An unknown tier name is REFUSED: the tier set is closed by the spec, so a
+    typo'd row must fail loudly at descriptor load instead of silently declaring
+    nothing (which would read, at launch, as "this harness cannot do that").
+
+    *source* names the defaults file in every refusal (see
+    :func:`_build_access_row`).
+    """
     if not raw:
         return None
+    where = f" ({source})" if source else ""
+    channel = Channel(raw["channel"])
+    tiers_raw = raw.get("tiers") or {}
+    if not isinstance(tiers_raw, dict):
+        raise SettingsError(
+            f"safe_bypass.tiers{where} must be a mapping of tier name → row."
+        )
+    unknown_tiers = set(tiers_raw) - set(ACCESS_TIERS)
+    if unknown_tiers:
+        raise SettingsError(
+            f"safe_bypass.tiers{where} declares unknown tier(s) "
+            f"{sorted(unknown_tiers)}; the permission tiers are "
+            f"{' | '.join(ACCESS_TIERS)} (spec §2d)."
+        )
+    rows = {
+        tier: _build_access_row(
+            tier, tiers_raw[tier], channel=channel, source=source,
+        )
+        for tier in ACCESS_TIERS
+        if tier in tiers_raw
+    }
     return SafeBypass(
-        channel=Channel(raw["channel"]),
-        flag=tuple(raw.get("flag", ())),
+        channel=channel,
         env_var=raw.get("env_var", ""),
-        env_value=raw.get("env_value", ""),
-        secure_env_value=raw.get("secure_env_value", ""),
-        secure_flag=tuple(raw.get("secure_flag", ())),
+        restricted=rows.get("restricted"),
+        editing=rows.get("editing"),
+        full=rows.get("full"),
         setting_key=raw.get("setting_key", ""),
     )
 
@@ -198,7 +295,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
             k: Operation(tuple(v["fragment"]))
             for k, v in desc.get("operations", {}).items()
         },
-        safe_bypass=_build_safe_bypass(desc.get("safe_bypass")),
+        safe_bypass=_build_safe_bypass(desc.get("safe_bypass"), source=filename),
         settings=tuple(_build_setting_arg(s) for s in desc.get("settings", [])),
         persona=_build_persona(desc.get("persona")),
         container_env={

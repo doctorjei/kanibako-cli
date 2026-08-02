@@ -526,8 +526,10 @@ def run_start(args: argparse.Namespace) -> int:
     # (run_shell) bypasses it.
     agent_args = getattr(args, "agent_args", [])
 
-    # Map -A/-S to safe_mode: -A means autonomous (safe_mode=False),
-    # -S means secure (safe_mode=True). Neither means autonomous (default).
+    # The two ephemeral permission flags, carried RAW to the launch: ``-S``
+    # (secure) selects the ``restricted`` access tier, ``-A`` (autonomous)
+    # selects ``full``, and NEITHER means "use the box's resolved ``access``
+    # key" (R-41; the fold lives in ``assembly.effective_access``, one place).
     safe_mode = secure
     autonomous = getattr(args, "autonomous", False)
 
@@ -697,7 +699,7 @@ def _effective_bootstrap(
     ``bootstrap`` is an agent-scope behavior key (spec §2d
     ``agent.default.bootstrap | tmux``), resolved off the SAME KeyStore snapshot
     pipeline the launch reads for the other agent behavior scalars (``model`` /
-    ``auto_approve`` / ``allow_helpers``): a focused ``build_launch_snapshot`` over
+    ``access`` / ``allow_helpers``): a focused ``build_launch_snapshot`` over
     the scope settings FILES (system / workset / box) + the per-agent file's flat
     state, then :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d
     active-over-default pick.  There is NO derived-on-disk value — the keystore is
@@ -1269,11 +1271,59 @@ def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]:
     return env
 
 
+def _refuse_retired_behavior(
+    *, proj, agent_id, system_settings_path, agent_cfg_path,
+) -> None:
+    """Refuse a RETIRED behavior spelling found in ANY cascade file (R-41/RQ-2).
+
+    The BEHAVIOR-tier twin of the selection-seam refusal in
+    :func:`kanibako.settings.agent_select.select_agent`: same shape, same
+    "refuse rather than run" rule, different key set
+    (:data:`~kanibako.settings.settings_assemble.RETIRED_BEHAVIOR_KEYS` —
+    today just ``auto_approve`` → ``access``).
+
+    EVERY tier the cascade reads is checked, in cascade order so the OUTERMOST
+    stale value is reported first (fix-one-then-see-the-next, like every other
+    config error here):
+
+    * ``base`` / ``system`` / ``workset`` / ``box`` — the scope settings files,
+      where the key sits under ``agent.<sub>`` or a ``pref.agent.<node>``
+      request;
+    * ``agent`` — the ACTIVE agent's own file, where it sits FLAT under
+      ``self``. This tier is NOT in the selection refusal's list (agent
+      SELECTION cannot live in an agent file) and it is exactly where
+      ``crab set <agent> auto_approve=…`` used to write, so omitting it would
+      leave the commonest stale spelling silent.
+
+    Raises :class:`~kanibako.settings.settings_resolve.SettingsError`; the
+    launch stops.
+    """
+    from kanibako.settings.config import settings_base_path
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.paths import box_workset_settings_paths
+    from kanibako.settings.settings_assemble import refuse_retired_behavior_keys
+
+    box_path, workset_path = box_workset_settings_paths(proj)
+    subject = agent_id if agent_id and agent_id != "general" else None
+    for level, path in (
+        ("base", settings_base_path()),
+        ("system", system_settings_path),
+        ("agent", agent_cfg_path),
+        ("workset", workset_path),
+        ("box", box_path),
+    ):
+        if path is not None and Path(path).exists():
+            refuse_retired_behavior_keys(
+                load_doc(Path(path)), level=level, path=Path(path),
+                subject=subject,
+            )
+
+
 def _deliver_panel_permissions(
     *,
     target,
     proj,
-    auto_approve,
+    access,
     provider,
     logger,
 ):
@@ -1284,13 +1334,21 @@ def _deliver_panel_permissions(
     an agent without a behavior inherits the base no-op.  Each seam call is
     independently best-effort and never blocks the launch.
 
-    Both deliveries key on the box's PERSISTED ``auto_approve`` (resolved just
-    above at the call site), NOT the per-launch ``-S``/``-A`` flags: the VS
+    Both deliveries key on the box's CASCADE-resolved ``access`` TIER (resolved
+    just above at the call site), NOT the per-launch ``-S``/``-A`` flags: the VS
     Code panels spawn their OWN in-box agents without kanibako's launch
     env/flags, so they see only what is persisted onto each agent's native
-    config surface — the panel reflects the box's configured yolo, not a
-    transient launch flag.  What lands where is each plugin's knowledge (see
-    the ``Target.deliver_panel_permissions`` / ``deliver_directive_hook``
+    config surface — the panel reflects the box's configured tier, not a
+    transient launch flag (spec §1A's projected-surface exception).
+
+    ⚑ *access* is one of ``restricted`` / ``editing`` / ``full`` and has ALREADY
+    been checked against this agent's descriptor rows by the caller: the
+    per-delivery ``except`` below is BEST-EFFORT and would SWALLOW an
+    unrenderable-tier refusal, so that refusal must happen (and does) BEFORE this
+    function is reached. Nothing here may fall back to a permissive default.
+
+    What lands where is each plugin's knowledge (see the
+    ``Target.deliver_panel_permissions`` / ``deliver_directive_hook``
     docstrings and the plugin implementations); ``proj.shell_path`` is the box
     home as seen from the host — the one root every surface lives under.
 
@@ -1311,9 +1369,20 @@ def _deliver_panel_permissions(
     try:
         target.deliver_panel_permissions(
             config_root=proj.shell_path,
-            auto_approve=auto_approve,
+            access=access,
         )
     except Exception:
+        # ⚑ WARNING, not debug (R-41): this delivery is the PERMISSION axis. A
+        # failure means the panel keeps whatever was persisted before — which for
+        # an agent whose own default is permissive (goose's unset GOOSE_MODE is
+        # ``auto``) is MORE permissive than the box asked for. Still best-effort
+        # (the launch is never blocked, per the seam contract), but never silent.
+        logger.warning(
+            "could not deliver the '%s' permission tier to %s's panel config "
+            "surface; the panel keeps its previous permissions (run with -v for "
+            "the traceback)",
+            access, target.name,
+        )
         logger.debug(
             "failed to deliver %s panel permissions",
             target.name,
@@ -1322,7 +1391,7 @@ def _deliver_panel_permissions(
     try:
         target.deliver_directive_hook(
             config_root=proj.shell_path,
-            auto_approve=auto_approve,
+            access=access,
             model_provider=provider,
         )
     except Exception:
@@ -1945,7 +2014,7 @@ def _run_container(
 
     # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
     # resolved off the SAME settings snapshot the launch reads for ``model`` /
-    # ``auto_approve`` (single-route, [[settings-must-map-to-keystore-key]]) — via the
+    # ``access`` (single-route, [[settings-must-map-to-keystore-key]]) — via the
     # active agent + its ``agent.default.bootstrap`` / ``agent.<agent>.bootstrap``
     # cascade — with the consumer default ``tmux`` when unset (byte-identical to the
     # retired ``box.bootstrap_program or "tmux"`` for the default case).  Resolved
@@ -2533,6 +2602,20 @@ def _run_container(
             image=image_override,
             share_images=share_images,
         )
+        # RETIRED BEHAVIOR spellings (R-41 / RQ-2): refuse a stored
+        # ``auto_approve`` by name, at the BEHAVIOR tier, BEFORE anything reads a
+        # permission value. ``access`` superseded it, so the old key is now
+        # UNDECLARED — and an undeclared stored key is SILENT, which on this axis
+        # means a box deliberately set ``auto_approve: false`` would come up at
+        # the ``full`` default with nothing printed. Every cascade tier is
+        # checked, BASE included (a site-admin default reaches every box on the
+        # machine), plus the ACTIVE AGENT's own file — the one tier the selection
+        # refusal above does not read, and the very file ``crab set`` writes.
+        _refuse_retired_behavior(
+            proj=proj, agent_id=agent_id,
+            system_settings_path=system_settings_path,
+            agent_cfg_path=agent_cfg_path,
+        )
         _snapshot, reconciled = _resolve_launch_snapshot(
             std=std,
             proj=proj,
@@ -2606,37 +2689,58 @@ def _run_container(
                 # apply_state / build_cli_args hooks for descriptor-bearing
                 # targets).
                 #
-                # safe_off redeems the persisted `auto_approve` agent-scope key
-                # (spec §2d ``agent.default.auto_approve | true``; every shipped
-                # descriptor sets safe_bypass.setting_key="auto_approve"), coerced to
-                # bool and DEFAULTING True (PERMISSIVE) when unset.  The per-launch
-                # -A/-S flags still win (safe_mode IS the -S `secure` bool; autonomous
-                # IS -A).  An agent whose descriptor declares no safe_bypass.setting_
-                # key falls back to the True default via effective_safe_mode_off.
+                # THE PERMISSION AXIS (R-41, spec §2d). TWO tiers are resolved
+                # here, deliberately, and they are NOT the same read:
+                #
+                #  * ``cascade_access`` — the box's stored ``access`` key
+                #    (``agent.default.access | full``; every shipped descriptor
+                #    sets safe_bypass.setting_key="access"), validated against the
+                #    enum and DEFAULTING to ``full`` when unset. This is what the
+                #    PROJECTED surfaces get: they are written into the box's own
+                #    agent config files and OUTLIVE this launch, so an ephemeral
+                #    flag must never reach them (spec §1A projected-surface
+                #    exception).
+                #  * ``launch_access`` — the same value with the per-launch
+                #    ``-S``/``-A`` folded in (``-S`` ⇒ restricted, ``-A`` ⇒ full).
+                #    This is what the ARGV/ENV get, and only they.
+                #
+                # An agent whose descriptor declares no safe_bypass.setting_key
+                # falls back to the ``full`` default, as before.
+                #
+                # ⚑ UN-RENDERED TIER GATE, before ANY delivery. Both tiers are
+                # checked against the descriptor's rows here, where the launch can
+                # still stop: the projected-surface deliveries below are wrapped
+                # best-effort and would SWALLOW the refusal, leaving the box
+                # running at a tier the user did not ask for (goose has no
+                # ``editing`` realization — the case this exists for).
                 sb = desc.safe_bypass
-                _aa = coerce_bool(
+                cascade_access = assembly.resolve_access_tier(
                     effective_state.get(sb.setting_key)
                     if sb is not None and sb.setting_key
                     else None
                 )
-                auto_approve = True if _aa is None else _aa
+                launch_access = assembly.effective_access(
+                    secure=safe_mode,
+                    autonomous=autonomous,
+                    access=cascade_access,
+                )
+                # dict.fromkeys, not a set: dedupe while keeping a DETERMINISTIC
+                # order (cascade first), so when both tiers are unrenderable the
+                # error names the same one every run.
+                for _tier in dict.fromkeys((cascade_access, launch_access)):
+                    assembly.access_row(desc, _tier, agent=agent_id)
                 _deliver_panel_permissions(
                     target=target,
                     proj=proj,
-                    auto_approve=auto_approve,
+                    access=cascade_access,
                     provider=provider,
                     logger=logger,
-                )
-                safe_off = assembly.effective_safe_mode_off(
-                    secure=safe_mode,
-                    autonomous=autonomous,
-                    auto_approve=auto_approve,
                 )
                 # continue_mode is an AGENT-scope behavior key (spec §2d
                 # ``agent.default.continue_mode | true``): resolve it off the SAME
                 # launch snapshot via the §2d active-over-default pick, coerced to
-                # bool and DEFAULTING True (continue) when unset — byte-identical to
-                # the ``auto_approve`` read above.
+                # bool and DEFAULTING True (continue) when unset — the same
+                # snapshot read as the ``access`` resolve above.
                 #
                 # ⚑ P8: the per-launch ``-N``/``-C``/``-R`` flags are ALREADY folded
                 # in — they rode the §1A CLI LEVEL as ``agent.<active>.continue_mode``
@@ -2706,10 +2810,11 @@ def _run_container(
                     # grammar that lacks the resolved key fails LOUDLY, exactly
                     # as the retired descriptor-direct read did.
                     mode_fragment=grammar.mode[mode_key],
-                    safe_mode_off=safe_off,
+                    access=launch_access,
                     setting_values=effective_state,
                     op_fragment=None,
                     extra_args=all_extra,
+                    agent=agent_id,
                 )
                 # E2b: ALSO assemble the CONTINUE-mode grammar (when the descriptor
                 # exposes it) for the always-on supervisor's self-heal restart — a
@@ -2723,15 +2828,17 @@ def _run_container(
                     agent_continue_argv = assembly.assemble_argv(
                         desc,
                         mode_fragment=grammar.mode["continue"],
-                        safe_mode_off=safe_off,
+                        access=launch_access,
                         setting_values=effective_state,
                         op_fragment=None,
                         extra_args=all_extra,
+                        agent=agent_id,
                     )
                 state_env = assembly.assemble_env(
                     desc,
-                    safe_mode_off=safe_off,
+                    access=launch_access,
                     setting_values=effective_state,
+                    agent=agent_id,
                 )
             else:
                 # Descriptor-less target: the only one is NoAgentTarget (the

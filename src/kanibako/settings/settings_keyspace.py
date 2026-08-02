@@ -151,7 +151,7 @@ DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
 #: PLUGIN-declared"), which is why ``endpoint`` appearing here is a floor, not a
 #: ceiling.
 DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
-    "auto_approve",        # §2d
+    "access",              # §2d (the permission TIER — SUPERSEDES ``auto_approve``)
     "allow_helpers",       # §2d
     "continue_mode",       # §2d
     "bootstrap",           # §2d
@@ -162,6 +162,32 @@ DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
     "template",            # §2d
     "canon",               # §2d
 })
+
+# ---------------------------------------------------------------------------
+# The ``access`` permission TIER — the one enum-valued agent leaf (spec §2d)
+# ---------------------------------------------------------------------------
+
+#: The LEGAL values of ``agent.<agent>.access`` / ``agent.default.access``
+#: (spec §2d, R-41), ordered LEAST → MOST permissive:
+#:
+#: * ``restricted`` — everything prompts.
+#: * ``editing`` — the middle tier: free for safe, contained edit-class
+#:   operations; ask at the boundaries.
+#: * ``full`` — today's bypass (the DEFAULT: the box IS the containment
+#:   boundary, so in-box permission prompts are a second fence inside the first).
+#:
+#: ⚑ The value set is CLOSED (spec §0): an unknown value is REJECTED LOUDLY at
+#: BOTH ends — ``config set`` time (``config_keys.access_value_error``) and
+#: launch (``targets.assembly.effective_access``). It is NEVER treated as
+#: permissive: a typo must not be the difference between prompting and not.
+#: Declared HERE, beside the leaf itself, so the settable surface, the launch
+#: resolver and the plugin descriptors all read ONE list.
+ACCESS_TIERS: Final[tuple[str, ...]] = ("restricted", "editing", "full")
+
+#: The tier a launch uses when NO scope in the cascade sets ``access``
+#: (spec §2d ``agent.default.access | full``; R-41 CLOSED: option (a), today's
+#: behaviour preserved).
+ACCESS_DEFAULT: Final[str] = "full"
 
 # ---------------------------------------------------------------------------
 # The §2a CATEGORIES — parametric over every scope

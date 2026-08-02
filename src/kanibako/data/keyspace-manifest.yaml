@@ -1799,8 +1799,13 @@ not_keys:
     "agent.<agent>.mode":      "-> meta.agent.<agent>.mode (non-editable key, Jei 2026-07-28)"
     "agent.<agent>.exec":      "-> meta.agent.<agent>.exec (non-editable key, Jei 2026-07-28)"
     "agent.default.auto_approve": "-> agent.default.access (R-41, 2026-08-01; values map
-                                    true→full, false→restricted)"
-    "agent.<agent>.auto_approve": "-> agent.<agent>.access (R-41; same value mapping)"
+                                    true→full, false→restricted). A STORED one HARD-REFUSES
+                                    the launch with a level-appropriate cure naming access
+                                    and quoting the user's value through that mapping (RQ-2,
+                                    ruled 2026-08-02 — an undeclared key is SILENT, and
+                                    silence on a permission axis resolves PERMISSIVE)"
+    "agent.<agent>.auto_approve": "-> agent.<agent>.access (R-41; same value mapping, same
+                                    launch refusal)"
     "agent.default.default_agent": "-> system.agent (R-18 — MOVED from code_residue:
                                     the deferred code sweep is DONE; it is a
                                     RETIRED_FILE_KEY that hard-refuses with a cure

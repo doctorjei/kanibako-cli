@@ -35,7 +35,14 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   ``workspace-write``, present only ON) — the panel's own app-server must not
   attempt a nested bubblewrap sandbox the container blocks.  So the OFF fixtures
   gain the key and the user fixtures migrate their ``read-only`` to it;
-  approval_policy is unchanged (still yolo-gated).
+  approval_policy was unchanged at the time (still gated on the boolean).
+
+* codex ``restricted`` SETS ``approval_policy = "untrusted"`` (Editor round,
+  R-41 follow-up): the 6 ``codex--*--access-restricted--*`` fixtures gain that
+  line.  ``restricted`` used to CLEAR the key, which handed the tier to codex's
+  own undocumented default while this same writer forced ``sandbox_mode`` open —
+  and left ``restricted`` potentially byte-identical to ``editing``.  Now all
+  three tiers deliver DISTINCT, kanibako-chosen bytes.
 
 Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
 ``.config/goose/config.yaml``, codex ``.codex/config.toml``):
@@ -43,12 +50,22 @@ Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
 * pre-state ∈ {absent, user (representative user content incl. user-chosen
   values + a user hook group), relaunch (the absent-run output fed back in —
   asserts idempotence AND that the second pass reports no write)}
-* ``auto_approve`` ∈ {True, False}
+* ``access`` ∈ the tiers the agent CAN render: {restricted, editing, full} for
+  claude/codex, {restricted, full} for goose (R-41: goose has no ``editing``
+  realization — its refusal is asserted separately, below, precisely because
+  there are no bytes to freeze for a tier that never writes)
 * codex only: ``model_provider`` ∈ {None, the navigator persona sample}
 
-→ 6 claude + 6 goose + 12 codex = 24 fixtures under
+→ 9 claude + 6 goose + 18 codex = 33 fixtures under
 ``tests/fixtures/panel_delivery/``, named
-``<agent>--<pre>--auto-<on|off>[--prov-<none|nav>].<real suffix>``.
+``<agent>--<pre>--access-<tier>[--prov-<none|nav>].<real suffix>``.
+
+⚑ R-41 REGENERATION (this pass): the ``auto-on``/``auto-off`` cells were RENAMED
+to ``access-full``/``access-restricted`` and their bytes verified BYTE-IDENTICAL
+to the pre-R-41 fixtures — the boolean's two states map onto two of the three
+tiers exactly, so the tier rework provably changed nothing for a box that used
+either of them.  The 11 new ``access-editing`` cells (claude + codex) are the
+only genuinely new bytes.
 
 Fixtures are machine-independent: every in-file path is a GUEST_HOME
 box-absolute literal; no host/tmp path ever appears in the bytes (asserted).
@@ -116,36 +133,47 @@ NAVIGATOR_PROVIDER = CodexModelProvider(
 _PRE_STATES = ("absent", "user", "relaunch")
 
 
-def _matrix() -> list[tuple[str, str, bool, CodexModelProvider | None]]:
-    """Every (agent, pre_state, auto_approve, model_provider) cell, in a fixed
+#: The tiers each agent can RENDER — the fixture axis.  goose's missing
+#: ``editing`` is the B7b ruling (no GOOSE_MODE value realizes it), and it is
+#: covered by the refusal test at the bottom of this module rather than by a
+#: fixture: a tier that refuses writes NO bytes to freeze.
+_TIERS_BY_AGENT = {
+    "claude": ("restricted", "editing", "full"),
+    "goose": ("restricted", "full"),
+    "codex": ("restricted", "editing", "full"),
+}
+
+
+def _matrix() -> list[tuple[str, str, str, CodexModelProvider | None]]:
+    """Every (agent, pre_state, access, model_provider) cell, in a fixed
     deterministic order.  codex fans out over the provider axis; claude/goose
     always launch with ``provider=None`` (the call site only ever resolves a
     provider for a codex persona)."""
-    cells: list[tuple[str, str, bool, CodexModelProvider | None]] = []
+    cells: list[tuple[str, str, str, CodexModelProvider | None]] = []
     for agent in ("claude", "goose", "codex"):
         providers: tuple[CodexModelProvider | None, ...] = (
             (None, NAVIGATOR_PROVIDER) if agent == "codex" else (None,)
         )
         for pre in _PRE_STATES:
-            for auto in (True, False):
+            for tier in _TIERS_BY_AGENT[agent]:
                 for provider in providers:
-                    cells.append((agent, pre, auto, provider))
+                    cells.append((agent, pre, tier, provider))
     return cells
 
 
-def _cell_stem(agent: str, pre: str, auto: bool, provider) -> str:
-    stem = f"{agent}--{pre}--auto-{'on' if auto else 'off'}"
+def _cell_stem(agent: str, pre: str, tier: str, provider) -> str:
+    stem = f"{agent}--{pre}--access-{tier}"
     if agent == "codex":
         stem += f"--prov-{'nav' if provider is not None else 'none'}"
     return stem
 
 
-def _fixture_name(agent: str, pre: str, auto: bool, provider) -> str:
-    return _cell_stem(agent, pre, auto, provider) + _FIXTURE_SUFFIX[agent]
+def _fixture_name(agent: str, pre: str, tier: str, provider) -> str:
+    return _cell_stem(agent, pre, tier, provider) + _FIXTURE_SUFFIX[agent]
 
 
 _MATRIX = _matrix()
-_IDS = [_cell_stem(a, p, au, pr) for a, p, au, pr in _MATRIX]
+_IDS = [_cell_stem(a, p, t, pr) for a, p, t, pr in _MATRIX]
 
 
 # --------------------------------------------------------------------------- #
@@ -153,7 +181,8 @@ _IDS = [_cell_stem(a, p, au, pr) for a, p, au, pr in _MATRIX]
 # --------------------------------------------------------------------------- #
 
 # claude: existing user settings + a user hook group + a user-chosen
-# ``permissions.defaultMode`` ("plan": overwritten by ON, PRESERVED by OFF).
+# ``permissions.defaultMode`` ("plan": overwritten by full/editing, PRESERVED by
+# restricted — "plan" is not a value kanibako manages).
 _CLAUDE_USER_SETTINGS = (
     json.dumps(
         {
@@ -227,7 +256,7 @@ def _drive_seam_path(
     *,
     agent: str,
     config_root: Path,
-    auto_approve: bool,
+    access: str,
     provider: CodexModelProvider | None,
 ) -> bool:
     """Drive the delivery for a launch of *agent*: its REAL Target,
@@ -247,12 +276,12 @@ def _drive_seam_path(
         "goose": GooseTarget,
     }[agent]()
     wrote = target.deliver_panel_permissions(
-        config_root=config_root, auto_approve=auto_approve,
+        config_root=config_root, access=access,
     )
     wrote = (
         target.deliver_directive_hook(
             config_root=config_root,
-            auto_approve=auto_approve,
+            access=access,
             model_provider=provider,
         )
         or wrote
@@ -262,7 +291,7 @@ def _drive_seam_path(
 
 def _sanity_check(
     agent: str,
-    auto: bool,
+    tier: str,
     provider: CodexModelProvider | None,
     data: bytes,
     tmp_path: Path,
@@ -282,18 +311,26 @@ def _sanity_check(
             for h in group["hooks"]
         ]
         assert any("import-directives.py" in c for c in commands)
-        if auto:
-            assert doc["permissions"]["defaultMode"] == "bypassPermissions"
+        mode = doc.get("permissions", {}).get("defaultMode")
+        if tier == "full":
+            assert mode == "bypassPermissions"
+        elif tier == "editing":
+            assert mode == "acceptEdits"
         else:
-            assert doc.get("permissions", {}).get("defaultMode") != "bypassPermissions"
+            assert mode not in ("bypassPermissions", "acceptEdits")
     elif agent == "goose":
         doc = yaml.safe_load(text)
-        assert doc["GOOSE_MODE"] == ("auto" if auto else "approve")
+        assert doc["GOOSE_MODE"] == {"full": "auto", "restricted": "approve"}[tier]
     else:  # codex
         assert "# >>> kanibako-managed (instruction-delivery hook + trust)" in text
-        # approval_policy is yolo-gated; sandbox_mode is a BOX INVARIANT always
-        # forced to danger-full-access (independent of auto_approve).
-        assert ('approval_policy = "never"' in text) == auto
+        # approval_policy is TIER-driven and set at EVERY tier (one distinct
+        # value each); sandbox_mode is a BOX INVARIANT always forced to
+        # danger-full-access (independent of the tier).
+        policy = {
+            "restricted": "untrusted", "editing": "on-request", "full": "never",
+        }[tier]
+        assert f'approval_policy = "{policy}"' in text
+        assert text.count("approval_policy") == 1
         assert 'sandbox_mode = "danger-full-access"' in text
         assert ("# >>> kanibako-managed (model provider)" in text) == (
             provider is not None
@@ -305,8 +342,8 @@ def _sanity_check(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(("agent", "pre", "auto", "provider"), _MATRIX, ids=_IDS)
-def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider):
+@pytest.mark.parametrize(("agent", "pre", "tier", "provider"), _MATRIX, ids=_IDS)
+def test_delivered_bytes_match_golden(tmp_path, agent, pre, tier, provider):
     drive = _drive_seam_path
     config_root = tmp_path / "box-home"
     config_root.mkdir()
@@ -319,12 +356,12 @@ def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider):
         # Feed the absent-run output back in: the first pass materializes the
         # delivered file, the second pass must be a byte-level no-op.
         first = drive(
-            agent=agent, config_root=config_root, auto_approve=auto, provider=provider,
+            agent=agent, config_root=config_root, access=tier, provider=provider,
         )
         assert first is True, "absent-state first pass must report a write"
 
     wrote = drive(
-        agent=agent, config_root=config_root, auto_approve=auto, provider=provider,
+        agent=agent, config_root=config_root, access=tier, provider=provider,
     )
     if pre == "relaunch":
         assert wrote is False, "relaunch pass must report NO write (idempotence)"
@@ -332,9 +369,9 @@ def test_delivered_bytes_match_golden(tmp_path, agent, pre, auto, provider):
         assert wrote is True
 
     delivered = delivered_path.read_bytes()
-    _sanity_check(agent, auto, provider, delivered, tmp_path)
+    _sanity_check(agent, tier, provider, delivered, tmp_path)
 
-    fixture = FIXTURES_DIR / _fixture_name(agent, pre, auto, provider)
+    fixture = FIXTURES_DIR / _fixture_name(agent, pre, tier, provider)
     if _update_mode():
         fixture.parent.mkdir(parents=True, exist_ok=True)
         fixture.write_bytes(delivered)
@@ -353,7 +390,37 @@ def test_fixture_inventory_matches_matrix():
     """The fixture dir holds EXACTLY the matrix's files — no strays, no gaps."""
     if _update_mode():
         pytest.skip("update mode: inventory is being (re)written by this run")
-    expected = {_fixture_name(a, p, au, pr) for a, p, au, pr in _MATRIX}
-    assert len(expected) == 24  # 6 claude + 6 goose + 12 codex
+    expected = {_fixture_name(a, p, t, pr) for a, p, t, pr in _MATRIX}
+    assert len(expected) == 33  # 9 claude + 6 goose + 18 codex
     actual = {p.name for p in FIXTURES_DIR.iterdir() if p.is_file()}
     assert actual == expected
+
+
+@pytest.mark.parametrize("pre", _PRE_STATES)
+def test_goose_editing_refuses_and_delivers_nothing(tmp_path, pre):
+    """The un-renderable tier has NO fixture because it writes NO bytes.
+
+    ⚑ This is the golden matrix's dangerous-direction cell: if goose ``editing``
+    ever "succeeded" by writing nothing, the box would run at goose's own
+    default — ``auto``, the FULL bypass — under the name ``editing``.  So the
+    absence of a fixture is itself asserted: refuse, and leave the surface as it
+    was found.
+    """
+    from kanibako.errors import ConfigError
+
+    config_root = tmp_path / "box-home"
+    config_root.mkdir()
+    delivered_path = config_root / DELIVERED_FILE["goose"]
+    if pre != "absent":
+        delivered_path.parent.mkdir(parents=True, exist_ok=True)
+        delivered_path.write_text(_USER_CONTENT["goose"])
+    before = delivered_path.read_bytes() if delivered_path.exists() else None
+
+    with pytest.raises(ConfigError):
+        _drive_seam_path(
+            agent="goose", config_root=config_root, access="editing",
+            provider=None,
+        )
+
+    after = delivered_path.read_bytes() if delivered_path.exists() else None
+    assert after == before, "a refused tier must leave the surface untouched"

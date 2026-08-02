@@ -292,8 +292,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         agent_settings_path,
         load_agent_config,
     )
-    from kanibako.settings.config import coerce_bool
-    from kanibako.settings.config_keys import is_auto_approve_key
+    from kanibako.settings.config_keys import access_value_error, is_access_key
     from kanibako.settings.config_io import (
         remove_nested_key,
         write_nested_key,
@@ -406,10 +405,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # ⚑ Why REFUSE rather than write the null. This file's reader coerces every
     # value it loads: ``load_agent_config`` builds ``cfg.state`` / ``cfg.env``
     # with ``str(v)``, so a YAML ``null`` here comes back as the TEXT ``"None"``
-    # — not a suppression, a four-character string. For ``auto_approve`` that
-    # string ``coerce_bool``s to None at launch and start.py falls back to the
-    # PERMISSIVE default, so a flag whose whole promise is "suppress this" would
-    # turn ``--dangerously-skip-permissions`` ON. The other three scopes route
+    # — not a suppression, a four-character string. For ``access`` that string
+    # is not a legal tier at all, so a flag whose whole promise is "suppress
+    # this" would leave the box REFUSING to launch (and, before R-41 made the
+    # resolver exact, it would have run PERMISSIVE instead). The other three scopes route
     # through ``set_config_value``, which owns the closed-keyspace check and the
     # per-route null refusals (env has no null; a category set is a source-only
     # repoint); this verb has its own writer and none of that, so writing here
@@ -442,22 +441,21 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         key, _, value = key_value.partition("=")
         key = key.strip()
         value = value.strip()
-        # Write-time validation for the auth-critical ``auto_approve`` permission
-        # key (parity with the ``config set`` path in config_interface.py). This
-        # sibling ``agent set`` verb writes the SAME keyspace slot but through a
-        # different setter, so without this guard a typo (``auto_approve=flase``)
-        # would land verbatim as the string ``"flase"`` and ``coerce_bool`` to
-        # None at LAUNCH — falling back to the PERMISSIVE default (True →
-        # ``--dangerously-skip-permissions``), the unsafe direction. Reject a
-        # non-bool value NOW using the SAME truth table (``config.coerce_bool``)
-        # the launch coercion uses; only ``auto_approve`` is guarded, never
-        # ``model`` / ``allow_helpers`` / ``run_args`` / ``env.*`` / ``secret_path.*``.
-        if is_auto_approve_key(key) and coerce_bool(value) is None:
-            print(
-                f"Error: auto_approve must be a boolean (true/false); got {value!r}",
-                file=sys.stderr,
-            )
-            return 1
+        # Write-time validation for the auth-critical ``access`` permission key
+        # (parity with the ``config set`` path in config_interface.py; R-41
+        # respelled the key and the guard followed it). This sibling ``agent set``
+        # verb writes the SAME keyspace slot but through a different setter, so
+        # without this guard a typo (``access=fll``) would land verbatim as the
+        # string ``"fll"`` and be re-read at LAUNCH. Reject an off-enum value NOW
+        # through the SAME validator (``access_value_error``) the ``config set``
+        # path uses — one message, one truth table; only ``access`` is guarded,
+        # never ``model`` / ``allow_helpers`` / ``run_args`` / ``env.*`` /
+        # ``secret_path.*``.
+        if is_access_key(key):
+            access_err = access_value_error(key, value)
+            if access_err is not None:
+                print(access_err, file=sys.stderr)
+                return 1
         sections, leaf = _agent_key_route(key, agent_id)
         # run_args is stored as a LIST (space-split); everything else is the
         # raw string. Sparse write — only the touched key is materialized.

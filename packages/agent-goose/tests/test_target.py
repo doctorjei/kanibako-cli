@@ -433,24 +433,45 @@ class TestDescriptor:
         assert "exec" in d.operations
         assert d.operations["exec"].fragment == ("run", "--no-session", "-t")
 
-    def test_safe_bypass_env_goose_mode(self):
-        """Safe-bypass is symmetric ENV GOOSE_MODE (NO --approve-all flag in 1.37.0).
+    def test_access_rows_env_goose_mode(self):
+        """The ``access`` tier rows ride ENV GOOSE_MODE (goose has no permission
+        CLI flag).
 
-        safe-OFF/-A -> ``auto``; safe-ON/-S -> ``approve``.  The secure value is
+        ``full`` -> ``auto``; ``restricted`` -> ``approve``.  BOTH values are
         MANDATORY because goose's unset GOOSE_MODE default is itself ``auto``
-        (the A1 fix).
+        (i.e. "emit nothing" would BE the bypass).
         """
         sb = GooseTarget().descriptor.safe_bypass
         assert sb is not None
         assert sb.channel == Channel.ENV
         assert sb.env_var == "GOOSE_MODE"
-        assert sb.env_value == "auto"
-        assert sb.secure_env_value == "approve"
-        assert sb.flag == ()
-        assert sb.secure_flag == ()
-        # goose persists auto_approve uniformly: the persisted default is redeemed
-        # via setting_key="auto_approve" (spec §2d).
-        assert sb.setting_key == "auto_approve"
+        assert sb.full.env_value == "auto"
+        assert sb.restricted.env_value == "approve"
+        assert sb.full.flag == () and sb.restricted.flag == ()
+        # goose persists the tier uniformly: redeemed via setting_key="access".
+        assert sb.setting_key == "access"
+
+    def test_editing_tier_has_NO_row_and_is_refused(self):
+        """R-41 / the B7b goose ruling: goose CANNOT render ``editing``.
+
+        Source-verified at goose v1.38.0: no GOOSE_MODE value realizes it
+        (``smart_approve`` auto-approves READ-ONLY tools and PROMPTS for writes —
+        the inverse of claude's acceptEdits).  So the row is ABSENT and the tier
+        is REFUSED by name, never substituted with a neighbour.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.targets import assembly
+
+        desc = GooseTarget().descriptor
+        sb = desc.safe_bypass
+        assert sb.editing is None
+        assert sb.renders("editing") is False
+        assert sb.rendered_tiers() == ("restricted", "full")
+        with pytest.raises(ConfigError) as exc:
+            assembly.assemble_env(
+                desc, access="editing", setting_values={}, agent="goose",
+            )
+        assert "restricted | full" in str(exc.value)
 
     def test_settings_model_provider_and_endpoint_env(self):
         d = GooseTarget().descriptor
@@ -638,7 +659,7 @@ class TestTransformCred:
 class TestDescriptorAssembly:
     """Integration: goose's argv/env assembled from the descriptor via assembly.*."""
 
-    def _argv(self, *, resume_mode=False, safe_off=True, state=None, extra_args=None):
+    def _argv(self, *, resume_mode=False, access="full", state=None, extra_args=None):
         d = GooseTarget().descriptor
         mode_key = assembly.resolve_mode(
             resume_mode=resume_mode,
@@ -653,7 +674,7 @@ class TestDescriptorAssembly:
         return assembly.assemble_argv(
             d,
             mode_fragment=d.mode[mode_key],
-            safe_mode_off=safe_off,
+            access=access,
             setting_values=state or {},
             op_fragment=None,
             extra_args=extra_args or [],
@@ -675,7 +696,7 @@ class TestDescriptorAssembly:
         """Explicit start mode -> bare ['session']."""
         d = GooseTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=True,
+            d, mode_fragment=d.mode["start"], access="full",
             setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["session"]
@@ -683,7 +704,7 @@ class TestDescriptorAssembly:
     def test_continue_argv(self):
         d = GooseTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["continue"], safe_mode_off=True,
+            d, mode_fragment=d.mode["continue"], access="full",
             setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["session", "--resume"]
@@ -695,7 +716,7 @@ class TestDescriptorAssembly:
             extra_args=[], available_modes=d.mode.keys(),
         )
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode[mode_key], safe_mode_off=True,
+            d, mode_fragment=d.mode[mode_key], access="full",
             setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["session"]
@@ -703,30 +724,30 @@ class TestDescriptorAssembly:
     def test_exec_op_argv(self):
         d = GooseTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=True,
+            d, mode_fragment=d.mode["start"], access="full",
             setting_values={}, op_fragment=d.operations["exec"].fragment, extra_args=["do the thing"],
         )
         assert argv == ["run", "--no-session", "-t", "do the thing"]
 
-    def test_env_safe_off_sets_goose_mode_auto(self):
+    def test_env_full_tier_sets_goose_mode_auto(self):
         d = GooseTarget().descriptor
-        env = assembly.assemble_env(d, safe_mode_off=True, setting_values={})
+        env = assembly.assemble_env(d, access="full", setting_values={})
         assert env["GOOSE_MODE"] == "auto"
 
-    def test_env_safe_on_sets_goose_mode_approve(self):
-        """The A1 fix: -S/secure emits GOOSE_MODE=approve (NOT nothing).
+    def test_env_restricted_tier_sets_goose_mode_approve(self):
+        """``restricted`` emits GOOSE_MODE=approve (NOT nothing).
 
-        goose's unset GOOSE_MODE default is ``auto`` (tools auto-run), so -S must
-        emit a restrictive value or it would not actually be safe.
+        goose's unset GOOSE_MODE default is ``auto`` (tools auto-run), so the
+        restrictive tier must emit a value or it would not actually restrict.
         """
         d = GooseTarget().descriptor
-        env = assembly.assemble_env(d, safe_mode_off=False, setting_values={})
+        env = assembly.assemble_env(d, access="restricted", setting_values={})
         assert env["GOOSE_MODE"] == "approve"
 
     def test_env_model_and_provider_from_settings(self):
         d = GooseTarget().descriptor
         env = assembly.assemble_env(
-            d, safe_mode_off=True,
+            d, access="full",
             setting_values={"model": "claude-4", "provider": "anthropic"},
         )
         assert env["GOOSE_MODEL"] == "claude-4"
@@ -741,7 +762,7 @@ class TestDescriptorAssembly:
         GOOSE_DISABLE_KEYRING still emit.
         """
         d = GooseTarget().descriptor
-        env = assembly.assemble_env(d, safe_mode_off=True, setting_values={})
+        env = assembly.assemble_env(d, access="full", setting_values={})
         assert "GOOSE_PROVIDER" not in env
         assert "GOOSE_MODEL" not in env
         assert env["GOOSE_MODE"] == "auto"
@@ -752,7 +773,7 @@ class TestDescriptorAssembly:
         falsy and so are omitted, exactly like a missing key."""
         d = GooseTarget().descriptor
         env = assembly.assemble_env(
-            d, safe_mode_off=True,
+            d, access="full",
             setting_values={"model": "", "provider": ""},
         )
         assert "GOOSE_PROVIDER" not in env
@@ -763,15 +784,16 @@ class TestDescriptorAssembly:
         """GOOSE_DISABLE_KEYRING=true is in the assembled box env unconditionally.
 
         It is a static container_env constant, so it survives every assembly path
-        regardless of safe-mode or settings (in-box keyring unavailable -> goose
+        regardless of the permission tier or settings (in-box keyring
+        unavailable -> goose
         falls back to file-based ~/.config/goose/secrets.yaml).
         """
         d = GooseTarget().descriptor
-        for safe_off in (True, False):
-            env = assembly.assemble_env(d, safe_mode_off=safe_off, setting_values={})
+        for tier in ("restricted", "full"):
+            env = assembly.assemble_env(d, access=tier, setting_values={})
             assert env["GOOSE_DISABLE_KEYRING"] == "true"
         env = assembly.assemble_env(
-            d, safe_mode_off=True,
+            d, access="full",
             setting_values={"model": "claude-4", "provider": "anthropic"},
         )
         assert env["GOOSE_DISABLE_KEYRING"] == "true"
@@ -785,27 +807,53 @@ class TestDeliverySeams:
     def _config(self, config_root: Path) -> Path:
         return config_root / ".config" / "goose" / "config.yaml"
 
-    def test_panel_permissions_on_writes_auto(self, tmp_path):
+    def test_panel_permissions_full_writes_auto(self, tmp_path):
         import yaml
         assert GooseTarget().deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is True
         doc = yaml.safe_load(self._config(tmp_path).read_text())
         assert doc["GOOSE_MODE"] == "auto"
 
-    def test_panel_permissions_off_writes_explicit_approve(self, tmp_path):
-        """OFF persists the secure value EXPLICITLY (unset GOOSE_MODE defaults
+    def test_panel_permissions_restricted_writes_explicit_approve(self, tmp_path):
+        """``restricted`` persists the value EXPLICITLY (unset GOOSE_MODE defaults
         permissive) — even onto an absent file, unlike claude's clear."""
         import yaml
         assert GooseTarget().deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="restricted",
         ) is True
         doc = yaml.safe_load(self._config(tmp_path).read_text())
         assert doc["GOOSE_MODE"] == "approve"
 
+    def test_panel_permissions_editing_refuses_and_writes_nothing(self, tmp_path):
+        """The un-renderable tier on the PROJECTED surface: REFUSE + no write.
+
+        ⚑ Non-vacuous in the dangerous direction — a fall-through that wrote
+        nothing would leave GOOSE_MODE unset, which goose reads as ``auto``.
+        (The launch refuses this tier BEFORE delivery; this is the second fence,
+        and it must not be the one that silently succeeds.)
+        """
+        from kanibako.errors import ConfigError
+
+        with pytest.raises(ConfigError) as exc:
+            GooseTarget().deliver_panel_permissions(
+                config_root=tmp_path, access="editing",
+            )
+        assert "restricted | full" in str(exc.value)
+        assert not self._config(tmp_path).exists()
+
+    def test_panel_permissions_unknown_tier_refuses(self, tmp_path):
+        from kanibako.errors import ConfigError
+
+        with pytest.raises(ConfigError):
+            GooseTarget().deliver_panel_permissions(
+                config_root=tmp_path, access="bogus",
+            )
+        assert not self._config(tmp_path).exists()
+
     def test_directive_hook_is_inherited_no_op(self, tmp_path):
         assert GooseTarget().deliver_directive_hook(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is False
         assert not (tmp_path / ".config").exists()
         assert not (tmp_path / ".goose").exists()

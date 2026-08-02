@@ -1,7 +1,6 @@
 
 sandbox_mode = "danger-full-access"
-model = "gemma-4-31b-it"
-model_provider = "navigator"
+approval_policy = "untrusted"
 
 # >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>
 [[hooks.SessionStart]]
@@ -27,11 +26,3 @@ trusted_hash = "sha256:1e3cf5c337cafcb027e68d507c303734be24da775b1e101f1e84e3266
 [projects."/home/agent/workspace"]
 trust_level = "trusted"
 # <<< kanibako-managed (instruction-delivery hook + trust) <<<
-
-# >>> kanibako-managed (model provider) — do not edit >>>
-[model_providers."navigator"]
-name = "navigator"
-base_url = "https://api.example/v1"
-wire_api = "chat"
-env_key = "NAVIGATOR_API_KEY"
-# <<< kanibako-managed (model provider) <<<

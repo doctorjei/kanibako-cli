@@ -76,13 +76,24 @@ descriptor:
     exec:
       fragment: ["-p"]
 
-  # safe-bypass is the FLAG --dangerously-skip-permissions; persisted default via
-  # the "auto_approve" agent-scope key (spec §2d, default true/PERMISSIVE;
-  # claude is default-safe so no secure_flag needed).
+  # The `access` permission TIER (spec §2d, R-41) — claude realizes all three on
+  # the FLAG channel.  VERIFIED against the installed binary (claude 2.1.220,
+  # 2026-08-02): `--help` lists `--dangerously-skip-permissions` ("Bypass all
+  # permission checks") and `--permission-mode <mode>` with the choices
+  # "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan".
+  #   full       -> --dangerously-skip-permissions (today's bypass, unchanged)
+  #   editing    -> --permission-mode acceptEdits  (edits free, boundaries ask)
+  #   restricted -> EMIT NOTHING: claude's own default already prompts for
+  #                 everything, so the empty row is the correct realization (and
+  #                 it is byte-identical to the pre-R-41 `-S` behaviour, which
+  #                 declared no secure_flag).
   safe_bypass:
     channel: flag
-    flag: ["--dangerously-skip-permissions"]
-    setting_key: auto_approve
+    setting_key: access
+    tiers:
+      restricted: {}
+      editing: {flag: ["--permission-mode", "acceptEdits"]}
+      full: {flag: ["--dangerously-skip-permissions"]}
 
   settings:
     - setting_key: model

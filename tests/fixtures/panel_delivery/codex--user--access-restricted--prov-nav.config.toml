@@ -2,6 +2,7 @@
 model_reasoning_effort = "high"
 sandbox_mode = "danger-full-access"
 
+approval_policy = "untrusted"
 model = "gemma-4-31b-it"
 model_provider = "navigator"
 [profiles.fast]

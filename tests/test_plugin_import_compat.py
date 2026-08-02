@@ -61,9 +61,32 @@ _SHIMS: list[tuple[str, str, tuple[str, ...]]] = [
         "kanibako.vscode_config",
         "kanibako.vscode.vscode_config",
         (
+            # ⚑ FIVE of the published wheels' SEVEN names. R-41 (the ``access``
+            # permission tiers) DELETED the other two —
+            # ``seed_claude_bypass_permissions`` /
+            # ``clear_claude_bypass_permissions`` were the two polarities of a
+            # boolean axis that no longer exists (successor:
+            # ``seed_claude_permission_mode(path, access=…)``). They are
+            # deliberately NOT shimmed: re-implementing a boolean permission API
+            # to keep an old wheel importing would put two spellings of the
+            # permission axis in the tree, and the boolean one cannot express
+            # ``editing``. The same release changes
+            # ``Target.deliver_panel_permissions`` to take ``access=``, so such a
+            # wheel is substantively incompatible regardless.
+            #
+            # ⚑ CORRECTION (Editor round, verified): an earlier version of this
+            # note said the old claude wheel "fails at IMPORT — visibly". BOTH
+            # halves were false. It imports those two names FUNCTION-LOCALLY
+            # inside ``deliver_panel_permissions``, so the module imports fine
+            # and the plugin loads; and a module-scope failure would NOT be
+            # visible anyway, because the plugin scan in ``targets/__init__.py``
+            # swallows a failed plugin import at ``logger.debug``. What actually
+            # stops such a wheel is its OWN stale ``claude-defaults.yaml``: no
+            # ``tiers:`` block ⇒ a descriptor with ZERO access rows ⇒ the
+            # launch's un-rendered-tier gate refuses (and names version skew).
+            # That is why THIS file only pins the names the shim owes — the
+            # import surface — and claims nothing about launch behaviour.
             "CodexModelProvider",
-            "clear_claude_bypass_permissions",
-            "seed_claude_bypass_permissions",
             "seed_session_start_hook",
             "seed_codex_approval",
             "seed_codex_config",

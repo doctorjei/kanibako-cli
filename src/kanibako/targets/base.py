@@ -9,6 +9,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
+from kanibako.settings.settings_keyspace import ACCESS_TIERS
+
 if TYPE_CHECKING:
     from kanibako.settings.agent_config import AgentConfig
     from kanibako.vscode.vscode_config import CodexModelProvider
@@ -122,33 +124,97 @@ class SettingArg:
 
 
 @dataclass(frozen=True)
+class AccessTierRow:
+    """How ONE ``access`` tier is REALIZED for one harness (spec §2d, R-41).
+
+    A row is the harness's answer to *"what do I emit to run at this tier?"*, in
+    whichever channel its :class:`SafeBypass` declares:
+
+    * FLAG channel — *flag* is the argv fragment (``("--permission-mode",
+      "acceptEdits")``).
+    * ENV channel — *env_value* is the value for the ``SafeBypass.env_var``
+      (goose ``GOOSE_MODE=approve``).
+
+    An EMPTY row (both fields empty) means **emit nothing, deliberately** — the
+    correct realization for a tier a default-safe harness already runs at with no
+    argument (claude/codex ``restricted``).  It is NOT the same as having no row:
+    a MISSING tier means the harness CANNOT render that tier and the launch
+    REFUSES (see :meth:`SafeBypass.row`).  That distinction is the whole reason
+    the rows are optional rather than defaulted — for an agent whose unset
+    default is UNSAFE (goose's ``GOOSE_MODE`` defaults to ``auto``), "emit
+    nothing" and "cannot render" would otherwise both silently mean *permissive*.
+    """
+
+    flag: tuple[str, ...] = ()   # FLAG channel emission ( () = emit nothing )
+    env_value: str = ""          # ENV channel emission ( "" = emit nothing )
+
+
+@dataclass(frozen=True)
 class SafeBypass:
-    """The safe-mode TOGGLE, with SYMMETRIC emissions for both polarities.
+    """The per-harness realization of the ``access`` permission TIER (spec §2d).
 
-    Two independent emissions, selected by the resolved effective safe-mode:
+    ⚑ **R-41 generalized this from a two-polarity toggle to per-tier ROWS.** It
+    used to carry one unsafe emission plus one "secure" emission, selected by a
+    bool; the permission axis is now the three-valued key ``access``
+    (``restricted | editing | full``, default ``full``), so each harness declares
+    one :class:`AccessTierRow` per tier it can render.
 
-    * safe-mode OFF (bypass ON, ``-A``/autonomous): emit the UNSAFE form —
-      ``flag`` (FLAG channel) or ``env_var=env_value`` (ENV channel).
-    * safe-mode ON (secure, ``-S``): emit the restrictive/SECURE form —
-      ``secure_flag`` (FLAG channel) or ``env_var=secure_env_value`` (ENV
-      channel).  Empty secure fields emit NOTHING on safe-ON, which is correct
-      for an agent whose UNSET default is already safe (claude/codex); an agent
-      whose unset default is UNSAFE (goose: ``GOOSE_MODE`` defaults to ``auto``)
-      MUST set the secure field so ``-S`` actually restricts it.
+    * *channel* — where every row of this harness is emitted: ``FLAG`` (argv,
+      claude/codex) or ``ENV`` (``env_var``, goose ``GOOSE_MODE``).  ONE channel
+      per harness, as before: a harness that expressed one tier as a flag and
+      another as an env var would be two mechanisms for one axis.
+    * *restricted* / *editing* / *full* — the tier rows.  ``None`` = **this
+      harness cannot render this tier**; the launch then REFUSES, naming the
+      tiers it CAN render (never a silent substitution, and never a fall-through
+      to the permissive arm).  The fields are named for the tiers because the
+      tier set is CLOSED by the spec (a fourth tier is a spec edit, not a data
+      change).
+    * *setting_key* — the persisted key the launch reader redeems (all three
+      shipped agents = ``"access"``, spec §2d, default ``full``); empty =
+      per-launch ``-S``/``-A`` only.
 
-    Special vs SettingArg: it's driven by the resolved effective safe-mode, not a plain setting value.
-    *setting_key* names the persisted default key the launch reader redeems (all
-    three shipped agents = ``"auto_approve"``, spec §2d, default True); empty =
-    per-launch ``-A``/``-S`` only.
+    Special vs :class:`SettingArg`: it is driven by the resolved permission tier,
+    not by a plain setting value.
     """
 
     channel: Channel
-    flag: tuple[str, ...] = ()        # emitted when effective safe-mode is OFF (FLAG channel)
-    env_var: str = ""                 # ENV form (e.g. goose GOOSE_MODE -> value "auto")
-    env_value: str = ""               # value to set for env_var when ENV channel + effective safe-mode is OFF (e.g. goose "auto")
-    secure_env_value: str = ""        # value to set for env_var when ENV channel + effective safe-mode is ON (e.g. goose "approve"); empty = emit nothing on safe-ON
-    secure_flag: tuple[str, ...] = ()  # FLAG form emitted when effective safe-mode is ON; empty = emit nothing on safe-ON (claude/codex default-safe)
+    env_var: str = ""            # ENV form's variable name (e.g. goose GOOSE_MODE)
+    restricted: "AccessTierRow | None" = None   # None = unrenderable by this harness
+    editing: "AccessTierRow | None" = None      # None = unrenderable by this harness
+    full: "AccessTierRow | None" = None         # None = unrenderable by this harness
     setting_key: str = ""
+
+    def row(self, tier: str) -> "AccessTierRow | None":
+        """The :class:`AccessTierRow` for *tier*, or ``None`` when unrenderable.
+
+        ``None`` covers BOTH "this harness declared no row for that tier"
+        (goose ``editing``) and "that is not a tier at all" — the caller refuses
+        either way, which is the safe collapse: an unknown tier must never reach
+        an emission.
+        """
+        if tier == "restricted":
+            return self.restricted
+        if tier == "editing":
+            return self.editing
+        if tier == "full":
+            return self.full
+        return None
+
+    def renders(self, tier: str) -> bool:
+        """Can this harness render *tier* at all? (presence of a row)"""
+        return self.row(tier) is not None
+
+    def rendered_tiers(self) -> tuple[str, ...]:
+        """The tiers this harness CAN render, least→most permissive.
+
+        Used by the launch refusal to name the legal alternatives for THIS
+        agent rather than the abstract enum.  The ORDER comes from
+        :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS`, the one
+        declaration of the tier vocabulary — this class spells the tier NAMES as
+        fields (that is what makes a missing row a declaration, not a lookup
+        miss), but it does not get to have its own opinion about their order.
+        """
+        return tuple(t for t in ACCESS_TIERS if self.renders(t))
 
 
 @dataclass(frozen=True)
@@ -678,9 +744,9 @@ class Target(ABC):
         return None
 
     def deliver_panel_permissions(
-        self, *, config_root: Path, auto_approve: bool,
+        self, *, config_root: Path, access: str,
     ) -> bool:
-        """Persist the box's resolved ``auto_approve`` onto this agent's
+        """Persist the box's resolved ``access`` TIER onto this agent's
         PANEL-visible config surface under *config_root*.
 
         *config_root* is the box home as seen from the HOST (``proj.shell_path``)
@@ -688,10 +754,18 @@ class Target(ABC):
         each implementation appends its own config surface beneath it (claude
         ``.claude/settings.json``, goose ``.config/goose/config.yaml``, codex
         ``.codex/config.toml``).  The VS Code panel spawns its OWN in-box agent
-        WITHOUT kanibako's launch env, so the box's configured yolo must be
-        PERSISTED onto the agent's native config surface to reach it; this hook
-        is that delivery, keyed on the PERSISTED ``auto_approve`` (never the
-        per-launch ``-A``/``-S`` flags).
+        WITHOUT kanibako's launch env, so the box's configured permission tier
+        must be PERSISTED onto the agent's native config surface to reach it;
+        this hook is that delivery, keyed on the CASCADE-resolved ``access``
+        (never the per-launch ``-S``/``-A`` flags — spec §1A's projected-surface
+        exception: the projection OUTLIVES the launch).
+
+        *access* is one of ``restricted`` / ``editing`` / ``full``.  An
+        implementation MUST render every tier explicitly and MUST NOT fall
+        through to the permissive arm for a tier it does not recognise; the
+        launch has already refused a tier this agent's descriptor cannot render,
+        so an unexpected value here is a BUG and should raise rather than
+        default.
 
         Best-effort contract: the caller wraps the call, so a failure never
         blocks the launch — but implementations should still be merge-preserving
@@ -705,7 +779,7 @@ class Target(ABC):
         self,
         *,
         config_root: Path,
-        auto_approve: bool,
+        access: str,
         model_provider: "CodexModelProvider | None" = None,
     ) -> bool:
         """Seed this agent's instruction-delivery SessionStart hook (plus any

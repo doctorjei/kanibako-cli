@@ -192,17 +192,20 @@ class GooseTarget(Target):
             return True
 
     def deliver_panel_permissions(
-        self, *, config_root: Path, auto_approve: bool,
+        self, *, config_root: Path, access: str,
     ) -> bool:
-        """Persist the box's PERSISTED ``auto_approve`` as the top-level
+        """Persist the box's CASCADE-resolved ``access`` TIER as the top-level
         ``GOOSE_MODE`` in the box's in-box ``~/.config/goose/config.yaml`` (FF-5
         permission parity): the ``block.vscode-goose`` panel spawns its own
         in-box goose WITHOUT kanibako's launch env, so it never sees the
         ``GOOSE_MODE`` env var the CLI entrypoint sets.
 
-        ASYMMETRIC vs claude: OFF writes the secure ``approve`` EXPLICITLY (an
+        ASYMMETRIC vs claude: ``restricted`` writes ``approve`` EXPLICITLY (an
         unset ``GOOSE_MODE`` defaults to permissive ``auto`` — clearing would
-        silently restore permissive).  Merge-preserving + idempotent (see
+        silently restore permissive).  ⚑ ``editing`` is REFUSED: goose has no
+        mode that realizes it (``smart_approve`` prompts for writes — the
+        inverse of acceptEdits), and the launch has already refused that tier
+        before delivery.  Merge-preserving + idempotent (see
         :func:`kanibako.vscode.vscode_config.seed_goose_mode`).  goose declares NO
         directive-hook surface, so ``deliver_directive_hook`` stays the
         inherited no-op.
@@ -211,7 +214,7 @@ class GooseTarget(Target):
 
         return seed_goose_mode(
             config_root / ".config" / "goose" / "config.yaml",
-            auto_approve=auto_approve,
+            access=access,
         )
 
     def should_run_setup(self, output: str) -> bool:

@@ -8,11 +8,41 @@ declare ``dependencies = ["kanibako-cli"]`` with NO upper bound — so a user wh
 upgrades the base gets the new core beside an old plugin that still imports this
 path.  Every IN-REPO caller uses the new path.
 
-The published plugins import seven names from here (``CodexModelProvider``,
-``clear_claude_bypass_permissions``, ``seed_claude_bypass_permissions``,
-``seed_session_start_hook``, ``seed_codex_approval``, ``seed_codex_config``,
-``seed_goose_mode``); the whole public surface is re-exported so a third-party
-plugin written against any of it keeps working too.
+The published plugins import seven names from here; five still exist and are
+re-exported (``CodexModelProvider``, ``seed_session_start_hook``,
+``seed_codex_approval``, ``seed_codex_config``, ``seed_goose_mode``), and the
+whole public surface is re-exported so a third-party plugin written against any
+of it keeps working too.
+
+⚑ **R-41 (the ``access`` permission tiers) REMOVED two of the seven.**
+``seed_claude_bypass_permissions`` / ``clear_claude_bypass_permissions`` were the
+two POLARITIES of a boolean axis that no longer exists; the successor is the
+single tier-valued ``seed_claude_permission_mode(path, access=…)``.  They are NOT
+re-exported and NOT re-implemented here: a compatibility shim that re-invented a
+boolean permission API would put two spellings of the permission axis in the tree
+(Code Convention 0), and the boolean spelling is the one that cannot express
+``editing``.
+
+⚑ **What an old claude wheel beside this core ACTUALLY does — VERIFIED, and NOT
+what an earlier draft of this note claimed.** It does not fail at import, and it
+would not be visible if it did:
+
+* the published wheel imports those two names FUNCTION-LOCALLY, inside
+  ``deliver_panel_permissions`` (its only other reference is a ``TYPE_CHECKING``
+  import of ``CodexModelProvider``), so its module imports FINE and the plugin
+  LOADS;
+* even a module-scope failure would be silent — ``targets/__init__.py``'s plugin
+  scan catches a failed plugin import and logs it at ``logger.debug``.
+
+The real behaviour is safer than the claim but arrives by a different route: the
+old wheel also ships the old ``claude-defaults.yaml``, whose pre-R-41
+``safe_bypass:`` block has no ``tiers:``, so its descriptor loads with ZERO
+access rows and the launch's un-rendered-tier gate REFUSES before any delivery
+(:func:`kanibako.targets.assembly.access_row`, which diagnoses a zero-row surface
+as plugin version skew BY NAME).  The same release also changes
+``Target.deliver_panel_permissions`` to take ``access=``, so such a wheel is
+substantively incompatible either way; a GENERIC plugin-version-skew error is the
+follow-up release's ruled mechanism, not this shim's.
 
 ⚑ REMOVAL GATE — delete this file once ``kanibako-agent-claude``,
 ``kanibako-agent-goose`` AND ``kanibako-agent-codex`` have all PUBLISHED (not
@@ -33,10 +63,7 @@ from kanibako.vscode.vscode_config import (
     attached_container_config_path as attached_container_config_path,
 )
 from kanibako.vscode.vscode_config import (
-    clear_bypass_permissions as clear_bypass_permissions,
-)
-from kanibako.vscode.vscode_config import (
-    clear_claude_bypass_permissions as clear_claude_bypass_permissions,
+    clear_permission_mode as clear_permission_mode,
 )
 from kanibako.vscode.vscode_config import (
     codex_trusted_hash as codex_trusted_hash,
@@ -46,9 +73,6 @@ from kanibako.vscode.vscode_config import (
 )
 from kanibako.vscode.vscode_config import (
     merge_attached_container_config as merge_attached_container_config,
-)
-from kanibako.vscode.vscode_config import (
-    merge_bypass_permissions as merge_bypass_permissions,
 )
 from kanibako.vscode.vscode_config import (
     merge_codex_config as merge_codex_config,
@@ -69,7 +93,10 @@ from kanibako.vscode.vscode_config import (
     seed_attached_container_config as seed_attached_container_config,
 )
 from kanibako.vscode.vscode_config import (
-    seed_claude_bypass_permissions as seed_claude_bypass_permissions,
+    merge_permission_mode as merge_permission_mode,
+)
+from kanibako.vscode.vscode_config import (
+    seed_claude_permission_mode as seed_claude_permission_mode,
 )
 from kanibako.vscode.vscode_config import (
     seed_codex_approval as seed_codex_approval,

@@ -418,8 +418,8 @@ def test_behavior_floor_and_per_agent_state(agent, tmp_path):
     # The common case: a descriptor floor + the per-agent file's flat state, no
     # box/system override. The snapshot read surfaces the per-agent overrides over
     # the declared floor (a None floor default shadowed by a set state value).
-    floor = {"model": None, "auto_approve": "true", "continue_mode": "true"}
-    state = {"model": "opus", "access": "permissive"}  # the per-agent file (flat)
+    floor = {"model": None, "allow_helpers": "true", "continue_mode": "true"}
+    state = {"model": "opus", "access": "editing"}  # the per-agent file (flat)
 
     snap = _behavior_snapshot(
         agent, floor=floor, agent_state=state, box_path=None, system_path=None,
@@ -430,8 +430,8 @@ def test_behavior_floor_and_per_agent_state(agent, tmp_path):
     # None floor default (model) is shadowed by the state's set value.
     assert eff == {
         "model": "opus",
-        "access": "permissive",
-        "auto_approve": "true",
+        "access": "editing",
+        "allow_helpers": "true",
         "continue_mode": "true",
     }
 
@@ -492,14 +492,14 @@ def test_higher_scope_present_none_suppresses_floor(tmp_path):
     (``build_launch_snapshot`` + ``effective_behavior``)."""
     snap = _behavior_snapshot(
         "claude",
-        floor={"auto_approve": "true", "model": "sonnet"},
-        agent_state={"auto_approve": None},  # present-None resets the floor key
+        floor={"allow_helpers": "true", "model": "sonnet"},
+        agent_state={"allow_helpers": None},  # present-None resets the floor key
         box_path=None,
         system_path=None,
     )
     eff = effective_behavior(snap, active_agent="claude")
     # The suppressed key is OMITted — the floor "true" was NOT consulted.
-    assert "auto_approve" not in eff
+    assert "allow_helpers" not in eff
     # A non-suppressed floor default still shows through (floor IS the fallback).
     assert eff.get("model") == "sonnet"
 
@@ -526,8 +526,8 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     agent = "claude"
     # agent.default.model rides the floor ("haiku") — the all-agents default the
     # §2d active-over-default pick must be beaten by the active "opus".
-    floor = {"model": "haiku", "auto_approve": "true"}
-    state = {"model": "opus", "access": "permissive"}
+    floor = {"model": "haiku", "allow_helpers": "true"}
+    state = {"model": "opus", "access": "editing"}
     # A box settings file with only a legal box.* key (no upward agent.* table).
     box = _write_yaml(
         tmp_path / "settings.yaml", {"box": {"image": "img"}},
@@ -552,11 +552,11 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     # The display equals an INDEPENDENT spec-correct expected dict (NOT merely
     # "== the launch read"): model = the agent-file active "opus" (§2d active beats
     # the box agent.default "haiku" — the correction the retired old resolver did
-    # NOT do), access = the per-agent passthrough, auto_approve = the floor default.
+    # NOT do), access = the per-agent passthrough, allow_helpers = the floor default.
     assert display == {
         "model": "opus",
-        "access": "permissive",
-        "auto_approve": "true",
+        "access": "editing",
+        "allow_helpers": "true",
     }
     # ...and it MATCHES the live launch behavior read over the same inputs.
     assert display == launch_read

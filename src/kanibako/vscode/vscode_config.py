@@ -47,7 +47,9 @@ from typing import NamedTuple
 
 import yaml
 
+from kanibako.errors import ConfigError
 from kanibako.settings.config_io import load_doc
+from kanibako.settings.settings_keyspace import ACCESS_TIERS
 
 
 def _strip_jsonc(text: str) -> str:
@@ -217,56 +219,88 @@ def seed_attached_container_config(
 
 
 # ---------------------------------------------------------------------------
-# Ph4b Vector A: in-box claude settings.json bypassPermissions delivery.
+# Ph4b Vector A: in-box claude settings.json permission-mode delivery.
 #
-# kanibako's per-agent ``auto_approve`` reaches the CLI claude via the
-# ``--dangerously-skip-permissions`` flag, but NOT the VS Code claude-code
-# EXTENSION panel (the default `kanibako code` UX), which reads the box's
-# in-box ``~/.claude/settings.json``.  This file is PER-BOX (the box home mount),
-# so it is the correctly-scoped place to reflect the box's configured yolo.
+# kanibako's per-agent ``access`` TIER reaches the CLI claude via its argv flag
+# row, but NOT the VS Code claude-code EXTENSION panel (the default
+# `kanibako code` UX), which reads the box's in-box ``~/.claude/settings.json``.
+# This file is PER-BOX (the box home mount), so it is the correctly-scoped place
+# to reflect the box's configured tier.
 #
-# SYMMETRIC: the managed ``permissions.defaultMode`` is DRIVEN by the box's
-# resolved claude ``auto_approve`` — SET to ``"bypassPermissions"`` when yolo is
-# ON, and CLEARED when yolo is OFF (so toggling off actually takes effect in the
-# panel).  Both directions merge, never clobber: the clear removes ONLY the exact
-# value we manage, leaving a user-chosen mode (``plan``/``default``/
-# ``acceptEdits``), sibling ``permissions.allow``/``deny``, and every other
-# top-level key intact.
+# ⚑ R-41 made this projection THREE-VALUED.  The managed
+# ``permissions.defaultMode`` is DRIVEN by the box's CASCADE-resolved claude
+# ``access`` (never the ephemeral ``-S``/``-A`` — a projection outlives the
+# launch, spec §1A):
+#     full       -> "bypassPermissions"
+#     editing    -> "acceptEdits"
+#     restricted -> CLEARED (claude's own default already prompts)
+# Every direction merges, never clobbers: the clear removes ONLY a value we
+# MANAGE — and that is now the SET of managed values, so switching
+# editing → restricted removes the ``acceptEdits`` WE wrote instead of leaving a
+# stale middle tier behind.  A user-chosen mode we never write (``plan`` /
+# ``default`` / ``dontAsk`` / ``auto``), sibling ``permissions.allow``/``deny``,
+# and every other top-level key stay intact.
 # ---------------------------------------------------------------------------
 
-# The exact ``permissions.defaultMode`` value kanibako owns for the panel-yolo
-# delivery.  We SET it on and CLEAR it (only when unchanged from this) off — a
-# user's own mode is never touched.
-_MANAGED_MODE = "bypassPermissions"
+# The ``permissions.defaultMode`` value kanibako owns PER TIER.  A tier ABSENT
+# from this table renders as "clear the managed value" (restricted); an UNKNOWN
+# tier is a hard error (:func:`_claude_managed_mode`) — never a silent clear and
+# never a silent bypass.
+_CLAUDE_MODE_BY_TIER: "dict[str, str]" = {
+    "editing": "acceptEdits",
+    "full": "bypassPermissions",
+}
+
+#: Every value kanibako may have written here — what the CLEAR path is allowed to
+#: remove.  (Was a single ``_MANAGED_MODE`` before the middle tier existed.)
+_MANAGED_MODES: frozenset[str] = frozenset(_CLAUDE_MODE_BY_TIER.values())
 
 
-def merge_bypass_permissions(settings: dict) -> dict:
-    """UNION-MERGE ``permissions.defaultMode = "bypassPermissions"`` into a claude
+def _claude_managed_mode(access: str) -> "str | None":
+    """The managed ``defaultMode`` for *access*, or ``None`` to CLEAR it.
+
+    RAISES on an unknown tier: this surface must never fall through to the
+    permissive arm, and "clear" would be an equally wrong guess for a tier we do
+    not understand.
+    """
+    if access == "restricted":
+        return None
+    mode = _CLAUDE_MODE_BY_TIER.get(access)
+    if mode is None:
+        raise ConfigError(
+            f"claude panel permissions: unknown access tier {access!r} "
+            f"(expected restricted | editing | full)."
+        )
+    return mode
+
+
+def merge_permission_mode(settings: dict, mode: str) -> dict:
+    """UNION-MERGE ``permissions.defaultMode = <mode>`` into a claude
     ``settings.json`` dict, returning a NEW dict (input never mutated).
 
     * ``permissions`` — created if absent; if present, its OTHER sub-keys
-      (``allow``/``deny``/…) are preserved.  ``defaultMode`` is SET to
-      ``"bypassPermissions"`` (the yolo delivery target for the panel).
+      (``allow``/``deny``/…) are preserved.  ``defaultMode`` is SET to *mode*
+      (the tier's delivery target for the panel).
     * every OTHER top-level key (``$schema``, ``includeCoAuthoredBy``, …) is
       preserved untouched.
     """
     merged = copy.deepcopy(settings)
     current = merged.get("permissions")
     perms = dict(current) if isinstance(current, dict) else {}
-    perms["defaultMode"] = _MANAGED_MODE
+    perms["defaultMode"] = mode
     merged["permissions"] = perms
     return merged
 
 
-def clear_bypass_permissions(settings: dict) -> dict:
+def clear_permission_mode(settings: dict) -> dict:
     """Return a NEW dict with kanibako's MANAGED ``permissions.defaultMode`` removed.
 
-    The OFF-direction of the symmetric delivery.  Pure; input never mutated:
+    The ``restricted``-tier direction of the delivery.  Pure; input never mutated:
 
-    * ``permissions.defaultMode`` is removed ONLY when it equals the value we
-      manage (``"bypassPermissions"``).  A user-chosen mode (``plan``/``default``/
-      ``acceptEdits``) is left intact, and an absent ``permissions``/``defaultMode``
-      is a no-op.
+    * ``permissions.defaultMode`` is removed ONLY when it is one of the values we
+      manage (:data:`_MANAGED_MODES`).  A user-chosen mode we never write
+      (``plan``/``default``/``dontAsk``/``auto``) is left intact, and an absent
+      ``permissions``/``defaultMode`` is a no-op.
     * sibling ``permissions`` sub-keys (``allow``/``deny``/…) and every other
       top-level key are preserved.
     * if removing ``defaultMode`` empties the ``permissions`` object, the now-stray
@@ -275,7 +309,7 @@ def clear_bypass_permissions(settings: dict) -> dict:
     """
     merged = copy.deepcopy(settings)
     current = merged.get("permissions")
-    if not isinstance(current, dict) or current.get("defaultMode") != _MANAGED_MODE:
+    if not isinstance(current, dict) or current.get("defaultMode") not in _MANAGED_MODES:
         return merged
     perms = dict(current)
     del perms["defaultMode"]
@@ -299,35 +333,36 @@ def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool:
     return True
 
 
-def seed_claude_bypass_permissions(settings_path: Path) -> bool:
-    """Read-modify-write: SET ``permissions.defaultMode=bypassPermissions`` into the
-    box's in-box claude ``~/.claude/settings.json`` (host path *settings_path*).
+def seed_claude_permission_mode(settings_path: Path, *, access: str) -> bool:
+    """Read-modify-write the box's in-box claude ``~/.claude/settings.json``
+    (host path *settings_path*) so its ``permissions.defaultMode`` reflects the
+    box's resolved ``access`` TIER.
 
-    Reads the existing file tolerantly (absent/corrupt → ``{}``), merges via
-    :func:`merge_bypass_permissions`, and writes it back as pretty JSON (creating
-    parent dirs) iff it changed (idempotent).  Returns ``True`` iff it wrote the
-    file.  The ON-direction of ``ClaudeTarget.deliver_panel_permissions``.
+    The WHOLE of ``ClaudeTarget.deliver_panel_permissions`` — the tier→mode
+    knowledge lives HERE, beside its codex/goose siblings, not in the plugin's
+    branch (R-41: one place decides what a tier means for this surface).
+
+    * ``full`` / ``editing`` — read tolerantly (absent/corrupt → ``{}``), merge
+      via :func:`merge_permission_mode`, write pretty JSON (creating parent dirs)
+      iff it changed.
+    * ``restricted`` — clear the managed mode via :func:`clear_permission_mode`;
+      NO-OP when the file is ABSENT (nothing to clear — never creates it).
+    * an UNKNOWN tier RAISES (:func:`_claude_managed_mode`) — never a silent
+      clear, never a silent bypass.
+
+    Idempotent; returns ``True`` iff it wrote the file.
     """
+    mode = _claude_managed_mode(access)
+    if mode is None:
+        if not settings_path.exists():
+            return False
+        existing = _read_existing_config(settings_path)
+        return _write_if_changed(
+            settings_path, existing, clear_permission_mode(existing),
+        )
     existing = _read_existing_config(settings_path)
     return _write_if_changed(
-        settings_path, existing, merge_bypass_permissions(existing),
-    )
-
-
-def clear_claude_bypass_permissions(settings_path: Path) -> bool:
-    """Read-modify-write: CLEAR our managed ``permissions.defaultMode`` from the
-    box's in-box claude ``~/.claude/settings.json`` (host path *settings_path*).
-
-    No-ops when the file is ABSENT (nothing to clear — never creates it).  Reads
-    tolerantly, applies :func:`clear_bypass_permissions`, and writes back iff it
-    changed (idempotent).  Returns ``True`` iff it wrote the file.  The
-    OFF-direction of ``ClaudeTarget.deliver_panel_permissions``.
-    """
-    if not settings_path.exists():
-        return False
-    existing = _read_existing_config(settings_path)
-    return _write_if_changed(
-        settings_path, existing, clear_bypass_permissions(existing),
+        settings_path, existing, merge_permission_mode(existing, mode),
     )
 
 
@@ -617,10 +652,26 @@ _CODEX_EVENT_KEY = "session_start"
 
 # kanibako's two managed root keys split along their DIFFERENT disciplines:
 #
-#   * ``approval_policy`` — YOLO-GATED, driven by the box's resolved codex
-#     ``auto_approve``: ON → SET ``"never"``; OFF → CLEAR ONLY when it still
-#     equals the managed value (symmetric with :func:`clear_bypass_permissions`;
-#     a user-chosen approval_policy is preserved).
+#   * ``approval_policy`` — TIER-DRIVEN by the box's CASCADE-resolved codex
+#     ``access`` (R-41), and SET at EVERY tier: ``full`` → ``"never"``;
+#     ``editing`` → ``"on-request"``; ``restricted`` → ``"untrusted"``.
+#     ⚑ ``restricted`` used to CLEAR the line instead, which was a promise
+#     kanibako could not keep.  Clearing leaves codex running at ITS OWN default
+#     approval policy — a value NOT documented anywhere in 0.141.0's local help,
+#     so unknown to us — while this same function forces ``sandbox_mode`` to
+#     ``danger-full-access``.  "Restricted" would then have meant "unknown
+#     approval behaviour with full disk access", and it may well have been
+#     BYTE-IDENTICAL to ``editing``'s delivered state on a file that already
+#     carried ``on-request``.  Setting ``untrusted`` — the most guarded member of
+#     the verified enum (``untrusted | on-failure | on-request | never``; its
+#     help text: "Only run 'trusted' commands (e.g. ls, cat, sed) without asking
+#     for user approval") — makes the tier mean something we control.  Same
+#     defensive reasoning as goose, which writes ``approve`` explicitly rather
+#     than relying on an unset default.
+#     CONSEQUENCE, deliberate: kanibako now OWNS this key the way it owns
+#     ``sandbox_mode``.  A user-chosen ``approval_policy`` in the box's in-box
+#     config.toml is OVERWRITTEN at every tier, not preserved — the permission
+#     tier the box was configured with is the one the panel gets.
 #   * ``sandbox_mode`` — a BOX INVARIANT, NOT yolo-gated.  A kanibako box is a
 #     hardened rootless podman container = the security boundary, so the codex
 #     ``openai.chatgpt`` panel's OWN in-box ``codex app-server`` (which reads
@@ -630,14 +681,53 @@ _CODEX_EVENT_KEY = "session_start"
 #     bubblewrap sandbox, which needs nested user namespaces podman blocks, so it
 #     stalls on sandbox setup ("could not find bubblewrap").  kanibako therefore
 #     OWNS this key and FORCES it to ``"danger-full-access"`` — ALWAYS present,
-#     INDEPENDENT of ``auto_approve``, NEVER removed by the OFF path, and any
+#     INDEPENDENT of ``access``, NEVER removed by the restricted path, and any
 #     prior value (the old managed ``"workspace-write"``, or a user-chosen one
 #     that would re-break the panel) is MIGRATED to it.  Parity with the CLI's
 #     unconditional bypass: the container is the sandbox.
+#     ⚑ This is ALSO why the PANEL's middle tier is carried by the APPROVAL axis
+#     and not by ``sandbox_mode``: the CLI's ``editing`` row uses
+#     ``-s workspace-write``, but writing that same value HERE is the exact
+#     configuration that hangs the panel's app-server.  Two surfaces, one tier,
+#     different realizations — each verified against the surface it is written to.
 _CODEX_APPROVAL_POLICY_KEY = "approval_policy"
-_CODEX_APPROVAL_POLICY = "never"
 _CODEX_SANDBOX_MODE_KEY = "sandbox_mode"
 _CODEX_SANDBOX_MODE = "danger-full-access"
+
+# The ``approval_policy`` value kanibako owns PER TIER (R-41).  Values are exact
+# members of the codex approval enum, verified verbatim from `codex --help`
+# (codex-cli 0.141.0):
+#   untrusted  — "Only run \"trusted\" commands (e.g. ls, cat, sed) without asking
+#                 for user approval. Will escalate to the user if the model
+#                 proposes a command that is not in the \"trusted\" set"
+#                                                          → the `restricted` tier
+#   on-request — "The model decides when to ask the user for approval"
+#                                                             → the `editing` tier
+#   never      — "Never ask for user approval Execution failures are immediately
+#                 returned to the model"                      → the `full` tier
+# EVERY tier has an entry — the table is TOTAL over ACCESS_TIERS, which is what
+# makes "kanibako owns this key" true rather than aspirational.  (``on-failure``
+# is the enum's fourth member and is deliberately unused: its own help text marks
+# it DEPRECATED.)
+# ⚑ FLAG FOR THE LIVE MATRIX: ``never``/``full`` is the pre-existing, shipped
+# pairing; ``on-request``↔``editing`` and ``untrusted``↔``restricted`` are this
+# pass's judgments from the verified enum text — the VOCABULARY is verified, the
+# tiers' *semantics* on the panel are not separately verified and must be
+# confirmed by the bifrost matrix.
+_CODEX_APPROVAL_BY_TIER: "dict[str, str]" = {
+    "restricted": "untrusted",
+    "editing": "on-request",
+    "full": "never",
+}
+
+#: Every ``approval_policy`` value kanibako may have written.  Passed as the
+#: CLEAR-path allowlist for symmetry with the ``sandbox_mode`` call; neither key
+#: is ever cleared today (both are SET at every tier), so like that call's
+#: ``managed`` argument it is currently unconsulted — it stays as the single
+#: record of the values kanibako owns.
+_CODEX_MANAGED_APPROVALS: frozenset[str] = frozenset(
+    _CODEX_APPROVAL_BY_TIER.values()
+)
 
 # Delimiters bounding the regenerated kanibako-managed region (hook group + trust
 # hash + directory trust).  Everything OUTSIDE this region is preserved verbatim.
@@ -780,69 +870,98 @@ def _strip_codex_region(text: str) -> str:
     return _strip_delimited_region(text, _CODEX_REGION_BEGIN, _CODEX_REGION_END)
 
 
-def _reconcile_codex_approval(text: str, auto_approve: bool) -> str:
-    """Reconcile the managed TOP-LEVEL ``approval_policy``/``sandbox_mode`` keys,
-    each along its OWN discipline (see the constants above):
+def _codex_managed_approval(access: str) -> str:
+    """The managed ``approval_policy`` for *access* — one per tier, always a value.
 
-    * ``approval_policy`` (YOLO-GATED) — ON: SET ``"never"`` (in place if a
-      root-section line exists, else inserted before the first table header);
-      OFF: REMOVE the root-section line ONLY when it still equals the managed
-      value (a user-chosen approval_policy is left intact, symmetric with
-      :func:`clear_bypass_permissions`).
+    RAISES on an unknown tier — this surface must never fall through to the
+    permissive arm, and "clear it" would be an equally wrong guess (clearing is
+    what the ``restricted`` tier used to do, and it left the panel at codex's
+    own undocumented default; see ``_CODEX_APPROVAL_BY_TIER``).
+    """
+    policy = _CODEX_APPROVAL_BY_TIER.get(access)
+    if policy is None:
+        raise ConfigError(
+            f"codex panel approval: unknown access tier {access!r} "
+            f"(expected restricted | editing | full)."
+        )
+    return policy
+
+
+def _reconcile_codex_approval(text: str, access: str) -> str:
+    """Reconcile the managed TOP-LEVEL ``approval_policy``/``sandbox_mode`` keys
+    (see the constants above):
+
+    * ``approval_policy`` (TIER-DRIVEN, R-41) — ALWAYS SET, one value per tier:
+      ``full`` → ``"never"``, ``editing`` → ``"on-request"``, ``restricted`` →
+      ``"untrusted"``.  In place if a root-section line exists, else inserted
+      before the first table header.  ⚑ ``restricted`` no longer CLEARS: clearing
+      handed the tier to codex's own undocumented default while ``sandbox_mode``
+      was being forced open, which is not a "restricted" anyone can rely on.
     * ``sandbox_mode`` (BOX INVARIANT) — ALWAYS SET ``"danger-full-access"``,
-      independent of *auto_approve*: forced in place if a line already exists
-      (so a prior ``"workspace-write"``/user value is MIGRATED) else inserted,
-      and NEVER removed.  kanibako owns this key (a nested sandbox re-breaks the
+      independent of *access*: forced in place if a line already exists (so a
+      prior ``"workspace-write"``/user value is MIGRATED) else inserted, and
+      NEVER removed.  kanibako owns this key (a nested sandbox re-breaks the
       panel app-server).
+
+    Both keys are therefore kanibako-OWNED and are overwritten, not merged: a
+    user value in either is replaced by the box's configured tier.
 
     Only the ROOT section (before the first ``[table]`` header) is considered,
     so a same-named key inside a user table (e.g. a ``[profiles.x]`` override) is
     never touched.
     """
     lines = text.split("\n")
-    # sandbox_mode FIRST (it is unconditional — a box invariant, not a yolo
-    # toggle — so it is forced present/migrated even when auto_approve is OFF).
-    # Emitting the always-present invariant before the yolo-toggled
-    # approval_policy makes the freshly-inserted order CANONICAL and toggle-STABLE:
-    # an ON→OFF→ON round-trip re-inserts approval_policy AFTER the surviving
-    # sandbox_mode line, reproducing the original ON bytes exactly.
+    # sandbox_mode FIRST (it is unconditional — a box invariant, not a tier
+    # toggle — so it is forced present/migrated at EVERY tier).  Emitting the
+    # always-present invariant before the tier-gated approval_policy makes the
+    # freshly-inserted order CANONICAL and toggle-STABLE: a full→restricted→full
+    # round-trip re-inserts approval_policy AFTER the surviving sandbox_mode
+    # line, reproducing the original bytes exactly.
     lines = _apply_root_key(
-        lines, _CODEX_SANDBOX_MODE_KEY, _CODEX_SANDBOX_MODE, True,
+        lines, _CODEX_SANDBOX_MODE_KEY,
+        desired=_CODEX_SANDBOX_MODE, managed=(_CODEX_SANDBOX_MODE,),
     )
     lines = _apply_root_key(
-        lines, _CODEX_APPROVAL_POLICY_KEY, _CODEX_APPROVAL_POLICY, auto_approve,
+        lines, _CODEX_APPROVAL_POLICY_KEY,
+        desired=_codex_managed_approval(access),
+        managed=tuple(sorted(_CODEX_MANAGED_APPROVALS)),
     )
     return "\n".join(lines)
 
 
 def _apply_root_key(
-    lines: list[str], key: str, managed_val: str, auto_approve: bool,
-    *, unconditional: bool = False,
+    lines: list[str], key: str, *,
+    desired: "str | None",
+    managed: "tuple[str, ...]",
+    unconditional: bool = False,
 ) -> list[str]:
-    """Apply the ON/OFF discipline for one managed root key.  Returns NEW list.
+    """Apply the SET-or-CLEAR discipline for one managed root key.  NEW list.
 
-    ON (*auto_approve*): SET *key* to *managed_val* (in place if a root-section
-    line exists, else inserted before the first table header).  OFF: REMOVE the
-    root-section line — by DEFAULT only when it still equals *managed_val* (a
-    user-chosen value survives, symmetric with :func:`clear_bypass_permissions`);
-    with *unconditional* the line is removed REGARDLESS of value.  The
-    unconditional OFF is for keys kanibako OWNS OUTRIGHT as a derived projection
-    rather than a hand-edit surface (D1: the codex ``model``/``model_provider``
-    wipe when a box goes bare — *managed_val* is then irrelevant and unused).
+    *desired* is the value this launch wants (SET it: in place if a root-section
+    line exists, else inserted before the first table header) or ``None`` to
+    CLEAR the line.  The CLEAR removes it only when the current value is one of
+    *managed* — the values kanibako itself may have written — so a user-chosen
+    value survives (symmetric with :func:`clear_permission_mode`), while a stale
+    value from a DIFFERENT tier of ours (``on-request`` left over from
+    ``editing``) is correctly removed.  With *unconditional* the line is removed
+    REGARDLESS of value: that is for keys kanibako OWNS OUTRIGHT as a derived
+    projection rather than a hand-edit surface (D1: the codex
+    ``model``/``model_provider`` wipe when a box goes bare — *managed* is then
+    irrelevant and unused).
     """
     result = list(lines)
     table = _first_table_index(result)
     key_re = re.compile(r"\s*" + re.escape(key) + r"\s*=")
     found = next((i for i in range(table) if key_re.match(result[i])), None)
-    if auto_approve:
-        new_line = f"{key} = {_toml_basic_string(managed_val)}"
+    if desired is not None:
+        new_line = f"{key} = {_toml_basic_string(desired)}"
         if found is not None:
             result[found] = new_line
         else:
             result.insert(table, new_line)
         return result
-    # OFF: remove the root-section line.  Unconditional (kanibako-owned key) →
-    # drop regardless of value; otherwise drop ONLY our managed value, leaving a
+    # CLEAR: remove the root-section line.  Unconditional (kanibako-owned key) →
+    # drop regardless of value; otherwise drop ONLY a value we manage, leaving a
     # user-chosen one intact.
     if found is not None:
         if unconditional:
@@ -850,7 +969,7 @@ def _apply_root_key(
             return result
         val_re = re.compile(r"\s*" + re.escape(key) + r'\s*=\s*"([^"]*)"')
         m = val_re.match(result[found])
-        if m is not None and m.group(1) == managed_val:
+        if m is not None and m.group(1) in managed:
             del result[found]
     return result
 
@@ -1086,15 +1205,17 @@ def _strip_codex_provider_region(text: str) -> str:
 def _apply_provider_root_keys(body: str, *, model: str, provider_id: str) -> str:
     """SET the managed top-level ``model``/``model_provider`` root keys on *body*.
 
-    Reuses :func:`_apply_root_key`'s ON-direction (always SET, in place if a
+    Reuses :func:`_apply_root_key`'s SET-direction (in place if a
     root-section line already exists else inserted before the first table header),
     so the keys land in the legal top-level position and updating a value touches
     ONLY that line — never a user key.  *body* must be CLEAN user content (no
     managed region), so the "first table" is a real user table, not our own.
     """
     lines = body.split("\n")
-    lines = _apply_root_key(lines, "model", model, True)
-    lines = _apply_root_key(lines, "model_provider", provider_id, True)
+    lines = _apply_root_key(lines, "model", desired=model, managed=(model,))
+    lines = _apply_root_key(
+        lines, "model_provider", desired=provider_id, managed=(provider_id,),
+    )
     return "\n".join(lines)
 
 
@@ -1111,9 +1232,11 @@ def _remove_provider_root_keys(body: str) -> str:
     must be CLEAN user content (managed regions already stripped).
     """
     lines = body.split("\n")
-    lines = _apply_root_key(lines, "model", "", False, unconditional=True)
     lines = _apply_root_key(
-        lines, "model_provider", "", False, unconditional=True,
+        lines, "model", desired=None, managed=(), unconditional=True,
+    )
+    lines = _apply_root_key(
+        lines, "model_provider", desired=None, managed=(), unconditional=True,
     )
     return "\n".join(lines)
 
@@ -1227,24 +1350,25 @@ def seed_codex_config(
     return True
 
 
-def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
+def seed_codex_approval(config_path: Path, *, access: str) -> bool:
     """Read-modify-write ONLY the managed codex approval/sandbox parity keys in
     the box's in-box ``~/.codex/config.toml`` (host path *config_path*).
 
     The codex PANEL-permissions deliverer (``Target.deliver_panel_permissions``):
     the ``openai.chatgpt`` panel spawns its OWN in-box codex without kanibako's
     launch flags, and codex approval/sandbox has NO VS Code settings key — the
-    box's resolved ``auto_approve`` reaches the panel only via the managed
+    box's CASCADE-resolved ``access`` TIER reaches the panel only via the managed
     ``approval_policy``/``sandbox_mode`` root keys here.  The SOLE writer of
     those keys; the directive-hook write (:func:`seed_codex_config`) never
     touches them, so no key ever has two writers (T1 seam split).
 
-    Discipline (see :func:`_reconcile_codex_approval`): the yolo-gated
-    ``approval_policy`` is SET on / removed-iff-managed off, while
-    ``sandbox_mode`` is a BOX INVARIANT forced to ``"danger-full-access"``
-    ALWAYS (independent of *auto_approve*, migrating any prior value, never
-    removed) — so even an OFF launch (or one over a file with no ``sandbox_mode``
-    line) writes to establish/repair the invariant.  The managed region(s) —
+    Discipline (see :func:`_reconcile_codex_approval`): the TIER-driven
+    ``approval_policy`` is SET at EVERY tier (``never`` / ``on-request`` /
+    ``untrusted``), while ``sandbox_mode`` is a BOX INVARIANT forced to
+    ``"danger-full-access"`` ALWAYS (independent of *access*, migrating any
+    prior value, never removed) — so even a ``restricted`` launch (or one over a
+    file with no ``sandbox_mode`` line) writes to establish/repair both.  An
+    UNKNOWN tier RAISES.  The managed region(s) —
     instruction-delivery hook + model provider — are carried through VERBATIM
     (extracted before the root-key surgery, reattached by the shared
     :func:`_assemble_codex_managed`, so a root-key insert can never land inside
@@ -1266,7 +1390,7 @@ def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
         body, _CODEX_PROVIDER_REGION_BEGIN, _CODEX_PROVIDER_REGION_END,
     )
     clean = body.rstrip("\n")
-    reconciled = _reconcile_codex_approval(clean, auto_approve)
+    reconciled = _reconcile_codex_approval(clean, access)
     if reconciled == clean:
         # Approval state already correct — NEVER rewrite (no gratuitous
         # normalization of user bytes; OFF on an absent file never creates it).
@@ -1283,42 +1407,73 @@ def seed_codex_approval(config_path: Path, *, auto_approve: bool) -> bool:
 # ---------------------------------------------------------------------------
 # FF-5 permission parity (goose surface): in-box goose config.yaml GOOSE_MODE.
 #
-# kanibako's per-agent ``auto_approve`` reaches the CLI goose via the
+# kanibako's per-agent ``access`` TIER reaches the CLI goose via the
 # ``GOOSE_MODE`` env var it sets on its own launch entrypoint, but NOT the VS
 # Code goose EXTENSION panel (``block.vscode-goose``), which spawns its OWN
 # in-container goose WITHOUT kanibako's launch env — so the panel goose never
 # sees ``GOOSE_MODE``.  ``GOOSE_MODE`` is also a valid top-level goose
 # ``config.yaml`` key, so persisting it into the box's in-box
 # ``~/.config/goose/config.yaml`` (PER-BOX, the box home mount) gives the panel
-# the box's configured yolo.
+# the box's configured tier.
 #
-# ASYMMETRIC vs claude (which CLEARS off): goose's UNSET ``GOOSE_MODE`` default
-# is ``auto`` (permissive), so an OFF box MUST persist the secure ``approve``
-# value EXPLICITLY — clearing the key would silently restore permissive.
+# ASYMMETRIC vs claude (which CLEARS at ``restricted``): goose's UNSET
+# ``GOOSE_MODE`` default is ``auto`` (permissive), so a ``restricted`` box MUST
+# persist ``approve`` EXPLICITLY — clearing the key would silently restore
+# permissive.  Same reason there is no "emit nothing" tier here at all.
+# (codex USED to clear too; it now writes ``approval_policy = "untrusted"`` at
+# ``restricted`` for this same reason — its own default is not documented, so it
+# is not something to hand the tier to.  claude is the only CLEAR left, and it
+# is sound there: claude's unset ``permissions.defaultMode`` default PROMPTS.)
+#
+# ⚑ ``editing`` is REFUSED, not approximated (R-41 / the B7b goose ruling): no
+# GOOSE_MODE value realizes it (``smart_approve`` auto-approves READ-ONLY tools
+# and PROMPTS for writes — the inverse of acceptEdits), and this surface is
+# PERSISTED, so a silent substitution would outlive the launch.  The launch gate
+# refuses the tier before delivery; this refusal is the second fence.
 # ---------------------------------------------------------------------------
 
-# The exact top-level ``GOOSE_MODE`` values kanibako owns for the panel-yolo
-# delivery: ON → ``auto`` (approvals off), OFF → ``approve`` (approvals on).
-_GOOSE_MODE_ON = "auto"
-_GOOSE_MODE_OFF = "approve"
+# The exact top-level ``GOOSE_MODE`` value kanibako owns PER TIER: ``full`` →
+# ``auto`` (approvals off), ``restricted`` → ``approve`` (approvals on).
+# ``editing`` is deliberately ABSENT — goose cannot render it (see above).
+_GOOSE_MODE_BY_TIER: "dict[str, str]" = {
+    "restricted": "approve",
+    "full": "auto",
+}
 
 
-def seed_goose_mode(config_path: Path, *, auto_approve: bool) -> bool:
+def seed_goose_mode(config_path: Path, *, access: str) -> bool:
     """Read-modify-write the box's in-box goose ``config.yaml`` (host path
-    *config_path*): SET the top-level ``GOOSE_MODE`` to the box's yolo parity
-    value.
+    *config_path*): SET the top-level ``GOOSE_MODE`` to this box's ``access``
+    tier parity value.
 
     The goose PANEL-permissions emitter behind
-    ``GooseTarget.deliver_panel_permissions``: ON → ``auto`` (approvals off),
-    OFF → the EXPLICIT secure ``approve`` (an unset ``GOOSE_MODE`` defaults to
-    permissive ``auto``, so OFF must persist, not clear — see the FF-5 block
-    comment above).  Merge-preserving (only the top-level ``GOOSE_MODE`` key is
-    set; every other key is preserved; an absent file is created with just
-    ``GOOSE_MODE``) and idempotent (no write when the key already equals the
-    desired value).  Returns whether a write occurred.  Callers wrap this
-    best-effort so a failure never blocks the launch.
+    ``GooseTarget.deliver_panel_permissions``: ``full`` → ``auto`` (approvals
+    off), ``restricted`` → the EXPLICIT ``approve`` (an unset ``GOOSE_MODE``
+    defaults to permissive ``auto``, so restricted must persist, not clear — see
+    the FF-5 block comment above).  Merge-preserving (only the top-level
+    ``GOOSE_MODE`` key is set; every other key is preserved; an absent file is
+    created with just ``GOOSE_MODE``) and idempotent (no write when the key
+    already equals the desired value).  Returns whether a write occurred.
+
+    RAISES for ``editing`` (goose has no realization for it) and for any unknown
+    tier.  ⚑ The callers wrap panel delivery best-effort, so this raise alone
+    would be SWALLOWED — which is exactly why the launch refuses an unrenderable
+    tier BEFORE any delivery runs (``targets.assembly.access_row``).  This check
+    exists so the function is honest in isolation, never as the primary gate.
     """
-    desired = _GOOSE_MODE_ON if auto_approve else _GOOSE_MODE_OFF
+    desired = _GOOSE_MODE_BY_TIER.get(access)
+    if desired is None:
+        # Ordered least → most permissive, like every other tier listing (a
+        # sorted() here would print "full | restricted" and read as a ladder
+        # that runs the wrong way).
+        legal = " | ".join(
+            t for t in ACCESS_TIERS if t in _GOOSE_MODE_BY_TIER
+        )
+        raise ConfigError(
+            f"goose has no GOOSE_MODE realization for access tier {access!r}; "
+            f"goose renders {legal}. Refusing rather than persisting a "
+            f"DIFFERENT tier onto the box's config.yaml."
+        )
     existing = load_doc(config_path)
     if existing.get("GOOSE_MODE") == desired:
         return False

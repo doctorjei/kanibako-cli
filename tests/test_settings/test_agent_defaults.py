@@ -313,3 +313,95 @@ class TestPersonaHostDirAdopt:
         spelled out explicitly by ``start.py``'s ``_persona_wiring``)."""
         package, filename = declfile("descriptor:\n  command: [\"probe\"]\n")
         assert agent_defaults.load_descriptor(package, filename).persona is None
+
+
+class TestAccessRowChannelDiscipline:
+    """``safe_bypass.tiers`` rows are checked AGAINST THEIR CHANNEL at load.
+
+    The dangerous asymmetry this class pins: an EMPTY row is legal on the FLAG
+    channel (emit no flag — claude/codex ``restricted``) and ILLEGAL on the ENV
+    channel.  Emitting nothing on ENV leaves the variable unset, and an unset
+    permission variable is the harness's own default, which for the agents that
+    use this channel is the PERMISSIVE one (goose: no ``GOOSE_MODE`` ⇒ ``auto``
+    ⇒ full bypass).  So a declared-but-empty ENV row would deliver ``full`` under
+    another tier's name — silently, with the launch reporting success.
+
+    A harness that cannot realize a tier OMITS the row; that is a DECLARATION and
+    the launch refuses it loudly by name.  Declaring one obliges it to carry a
+    value.
+    """
+
+    def _descriptor(self, declfile, block: str):
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  safe_bypass:\n" + block
+        )
+        return agent_defaults.load_descriptor(package, filename)
+
+    def test_env_channel_refuses_a_declared_empty_row(self, declfile):
+        """THE fix: ``restricted: {}`` on ENV is REFUSED at descriptor load.
+
+        (Mutation: drop the guard → the row loads with ``env_value=""``,
+        ``assemble_env`` emits nothing, and the box runs at goose's ``auto``
+        default while reporting the ``restricted`` tier → RED here.)
+        """
+        with pytest.raises(SettingsError) as exc:
+            self._descriptor(
+                declfile,
+                "    channel: env\n"
+                "    env_var: PROBE_MODE\n"
+                "    tiers:\n"
+                "      restricted: {}\n"
+                "      full: {env_value: auto}\n",
+            )
+        msg = str(exc.value)
+        assert "restricted" in msg          # names the tier
+        assert "probe-defaults.yaml" in msg  # ...and the plugin file to fix
+        assert "env_value" in msg
+
+    def test_env_channel_accepts_rows_that_carry_values(self, declfile):
+        """The shipped goose shape stays legal (both rows carry a value)."""
+        d = self._descriptor(
+            declfile,
+            "    channel: env\n"
+            "    env_var: PROBE_MODE\n"
+            "    tiers:\n"
+            "      restricted: {env_value: approve}\n"
+            "      full: {env_value: auto}\n",
+        )
+        assert d.safe_bypass is not None
+        assert d.safe_bypass.rendered_tiers() == ("restricted", "full")
+        assert d.safe_bypass.restricted.env_value == "approve"
+
+    def test_flag_channel_still_allows_the_empty_row(self, declfile):
+        """The claude/codex shape: an empty FLAG row means "emit nothing".
+
+        Legal, because the tier is realized by the ABSENCE of a flag on an argv
+        that carries the tier's other flags — nothing is left to a harness
+        default that we would then be lying about.
+        """
+        d = self._descriptor(
+            declfile,
+            "    channel: flag\n"
+            "    tiers:\n"
+            "      restricted: {}\n"
+            "      full: {flag: [\"--bypass\"]}\n",
+        )
+        assert d.safe_bypass is not None
+        assert d.safe_bypass.restricted.flag == ()
+        assert d.safe_bypass.rendered_tiers() == ("restricted", "full")
+
+    def test_omitted_row_is_not_the_same_as_an_empty_one(self, declfile):
+        """OMITTING a row on ENV is legal — that is the "cannot render" case."""
+        d = self._descriptor(
+            declfile,
+            "    channel: env\n"
+            "    env_var: PROBE_MODE\n"
+            "    tiers:\n"
+            "      restricted: {env_value: approve}\n"
+            "      full: {env_value: auto}\n",
+        )
+        assert d.safe_bypass is not None
+        assert d.safe_bypass.editing is None
+        assert d.safe_bypass.renders("editing") is False

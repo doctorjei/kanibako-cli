@@ -11,17 +11,21 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.errors import ConfigError
 from kanibako.targets.assembly import (
     BindingSourceError,
+    access_row,
     assemble_argv,
     assemble_env,
     descriptor_mounts,
-    effective_safe_mode_off,
+    effective_access,
     entrypoint,
+    resolve_access_tier,
     resolve_binding_source,
     resolve_mode,
 )
 from kanibako.targets.base import (
+    AccessTierRow,
     AgentInstall,
     BindKind,
     Binding,
@@ -41,7 +45,7 @@ from kanibako.targets.base import (
 
 
 def _claude_descriptor() -> PluginDescriptor:
-    """A claude-shaped descriptor: FLAG safe-bypass + FLAG model setting."""
+    """A claude-shaped descriptor: FLAG access rows + FLAG model setting."""
     return PluginDescriptor(
         command=("claude",),
         bindings=(),
@@ -53,8 +57,12 @@ def _claude_descriptor() -> PluginDescriptor:
         operations={"exec": Operation(fragment=("--print",))},
         safe_bypass=SafeBypass(
             channel=Channel.FLAG,
-            flag=("--dangerously-skip-permissions",),
-            setting_key="auto_approve",
+            restricted=AccessTierRow(),                       # emit nothing
+            editing=AccessTierRow(
+                flag=("--permission-mode", "acceptEdits"),
+            ),
+            full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
+            setting_key="access",
         ),
         settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
         container_env={"DISABLE_AUTOUPDATER": "1"},
@@ -62,7 +70,12 @@ def _claude_descriptor() -> PluginDescriptor:
 
 
 def _goose_descriptor() -> PluginDescriptor:
-    """A goose-shaped descriptor: ENV safe-bypass + ENV model setting."""
+    """A goose-shaped descriptor: ENV access rows + ENV model setting.
+
+    Mirrors the SHIPPED goose rows, ``editing`` INCLUDED-BY-ABSENCE: goose has no
+    realization for the middle tier, so the row is missing and the launch refuses
+    it (R-41 / the B7b goose ruling).
+    """
     return PluginDescriptor(
         command=("goose",),
         bindings=(),
@@ -74,7 +87,9 @@ def _goose_descriptor() -> PluginDescriptor:
         safe_bypass=SafeBypass(
             channel=Channel.ENV,
             env_var="GOOSE_MODE",
-            env_value="auto",
+            restricted=AccessTierRow(env_value="approve"),
+            full=AccessTierRow(env_value="auto"),
+            setting_key="access",
         ),
         settings=(
             SettingArg(setting_key="model", channel=Channel.ENV, env_var="GOOSE_MODEL"),
@@ -224,48 +239,153 @@ def test_resolve_mode_bare_descriptor_always_start() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# effective_safe_mode_off                                                     #
+# resolve_access_tier / effective_access  (R-41 — the permission TIER)        #
 # --------------------------------------------------------------------------- #
 
 
-def test_safe_off_secure_is_false() -> None:
-    assert effective_safe_mode_off(secure=True, autonomous=False) is False
+def test_access_unset_defaults_to_full() -> None:
+    # R-41's ruled default: today's behaviour preserved (the box IS the
+    # containment boundary).  ``None`` — the key absent from the cascade — is
+    # the ONE spelling of "unset"; see the next test for ``""``.
+    assert resolve_access_tier(None) == "full"
 
 
-def test_safe_off_autonomous_is_true() -> None:
-    assert effective_safe_mode_off(secure=False, autonomous=True) is True
+def test_access_empty_string_is_refused_not_treated_as_unset() -> None:
+    """``access: ""`` is an INVALID VALUE, not "unset" — it must REFUSE.
+
+    R-41: an unknown stored value is rejected and NEVER treated as permissive.
+    ``""`` is not a member of the tier enum, so the only reading that obeys the
+    rule is the same loud refusal every other non-tier value gets.
+
+    ⚑ This is the one direction that mattered: the launch reads the key with
+    ``dict.get``, so an ABSENT key already arrives as ``None``.  The only route
+    to a ``""`` here is a hand-edited settings file — both set paths refuse the
+    value — i.e. precisely the case this second fence exists for.  Folding it
+    into the default arm would have made the sole reachable route to the
+    permissive default one no validator ever approved.
+    """
+    with pytest.raises(ConfigError) as exc:
+        resolve_access_tier("")
+    msg = str(exc.value)
+    assert "access" in msg
+    assert "restricted | editing | full" in msg
+    assert "''" in msg
+    assert "never treated as" in msg
 
 
-def test_safe_off_default_is_true() -> None:
-    assert effective_safe_mode_off(secure=False, autonomous=False) is True
+@pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+def test_access_declared_tiers_pass_through(tier: str) -> None:
+    assert resolve_access_tier(tier) == tier
 
 
-def test_safe_off_persisted_auto_approve_true_is_true() -> None:
-    assert (
-        effective_safe_mode_off(secure=False, autonomous=False, auto_approve=True)
-        is True
+@pytest.mark.parametrize("bogus", ["fll", "FULL", "true", "yolo", "secure"])
+def test_access_unknown_value_is_refused_never_permissive(bogus: str) -> None:
+    """THE permission-axis guard: an unknown value RAISES, naming key + legals.
+
+    Never coerced, never defaulted — a typo must not decide whether the agent
+    prompts.  ``FULL`` is in the list on purpose: matching is EXACT, because the
+    stored value and the resolver must agree byte for byte.
+    """
+    with pytest.raises(ConfigError) as exc:
+        resolve_access_tier(bogus)
+    msg = str(exc.value)
+    assert "access" in msg
+    assert "restricted | editing | full" in msg
+    assert repr(bogus) in msg
+
+
+def test_effective_access_secure_flag_is_restricted() -> None:
+    assert effective_access(secure=True, autonomous=False) == "restricted"
+
+
+def test_effective_access_autonomous_flag_is_full() -> None:
+    assert effective_access(secure=False, autonomous=True) == "full"
+
+
+def test_effective_access_no_flag_no_key_is_full() -> None:
+    assert effective_access(secure=False, autonomous=False) == "full"
+
+
+@pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+def test_effective_access_no_flag_uses_the_resolved_key(tier: str) -> None:
+    assert effective_access(secure=False, autonomous=False, access=tier) == tier
+
+
+@pytest.mark.parametrize("stored", ["restricted", "editing", "full"])
+def test_effective_access_secure_beats_every_stored_tier(stored: str) -> None:
+    assert effective_access(secure=True, autonomous=False, access=stored) == "restricted"
+
+
+@pytest.mark.parametrize("stored", ["restricted", "editing", "full"])
+def test_effective_access_autonomous_beats_every_stored_tier(stored: str) -> None:
+    assert effective_access(secure=False, autonomous=True, access=stored) == "full"
+
+
+# --------------------------------------------------------------------------- #
+# access_row — the UN-RENDERED TIER rule                                      #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+def test_access_row_returns_the_declared_row(tier: str) -> None:
+    d = _claude_descriptor()
+    assert access_row(d, tier) is d.safe_bypass.row(tier)
+
+
+def test_access_row_none_for_descriptor_without_safe_bypass() -> None:
+    # An agent with NO permission surface at all: no row, no refusal.
+    assert access_row(_bare_descriptor(), "editing") is None
+
+
+def test_access_row_refuses_a_tier_the_harness_cannot_render() -> None:
+    """goose + ``editing``: REFUSE, never substitute (R-41 / B7b ruling).
+
+    Substituting ``auto`` would over-permit; substituting ``approve`` would
+    deliver prompt-on-every-edit while reporting success.  Both lie about what
+    the user asked for, so the launch stops and names goose's real tiers.
+    """
+    d = _goose_descriptor()
+    with pytest.raises(ConfigError) as exc:
+        access_row(d, "editing", agent="goose")
+    msg = str(exc.value)
+    assert "editing" in msg
+    assert "goose" in msg
+    assert "restricted | full" in msg
+
+
+def test_access_row_refuses_an_unknown_tier() -> None:
+    with pytest.raises(ConfigError):
+        access_row(_claude_descriptor(), "bogus")
+
+
+@pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+def test_access_row_zero_rows_is_diagnosed_as_plugin_version_skew(tier: str) -> None:
+    """A ``safe_bypass`` with NO rows means PLUGIN VERSION SKEW — say so.
+
+    This is exactly the shape a kanibako-agent-* wheel published BEFORE the
+    ``access`` tiers produces: its defaults file carries the retired
+    ``flag``/``secure_flag`` block with no ``tiers:``, which loads to a
+    :class:`SafeBypass` whose every row is ``None``.  The generic refusal would
+    read "this agent cannot render that tier … Legal tiers: (none)", blaming the
+    HARNESS for an install problem and pointing the user at a capability limit
+    that does not exist.  No tier is renderable, so the message must name the
+    real cause and the real cure.
+    """
+    d = PluginDescriptor(
+        command=("claude",),
+        bindings=(),
+        mode={"start": ()},
+        safe_bypass=SafeBypass(channel=Channel.FLAG, setting_key="access"),
     )
-
-
-def test_safe_off_persisted_auto_approve_false_is_false() -> None:
-    assert (
-        effective_safe_mode_off(secure=False, autonomous=False, auto_approve=False)
-        is False
-    )
-
-
-def test_safe_off_secure_beats_persisted_auto_approve_true() -> None:
-    assert (
-        effective_safe_mode_off(secure=True, autonomous=False, auto_approve=True)
-        is False
-    )
-
-
-def test_safe_off_autonomous_beats_persisted_auto_approve_false() -> None:
-    assert (
-        effective_safe_mode_off(secure=False, autonomous=True, auto_approve=False)
-        is True
-    )
+    with pytest.raises(ConfigError) as exc:
+        access_row(d, tier, agent="claude")
+    msg = str(exc.value)
+    assert "VERSION SKEW" in msg
+    assert "kanibako-agent-" in msg
+    assert "claude" in msg
+    # ...and NOT the capability-limit wording, which would misdirect.
+    assert "no realization for it" not in msg
+    assert "(none)" not in msg
 
 
 # --------------------------------------------------------------------------- #
@@ -288,7 +408,7 @@ def test_argv_claude_continue_safe_off_with_model_and_extra() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["continue"],
-        safe_mode_off=True,
+        access="full",
         setting_values={"model": "opus"},
         extra_args=["--foo", "bar"],
     )
@@ -309,7 +429,7 @@ def test_argv_claude_safe_on_omits_bypass_flag() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["continue"],
-        safe_mode_off=False,
+        access="restricted",
         setting_values={},
         extra_args=[],
     )
@@ -322,7 +442,7 @@ def test_argv_model_absent_when_value_falsy() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["start"],
-        safe_mode_off=False,
+        access="restricted",
         setting_values={"model": ""},
         extra_args=[],
     )
@@ -335,7 +455,7 @@ def test_argv_start_mode_empty_fragment() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["start"],
-        safe_mode_off=True,
+        access="full",
         setting_values={},
         extra_args=["x"],
     )
@@ -347,7 +467,7 @@ def test_argv_goose_env_channels_not_in_argv() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["continue"],
-        safe_mode_off=True,
+        access="full",
         setting_values={"model": "gpt-4o"},
         extra_args=[],
     )
@@ -363,7 +483,7 @@ def test_argv_op_path_uses_fragment_no_mode() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["continue"],  # must be ignored when op_fragment set
-        safe_mode_off=True,
+        access="full",
         setting_values={"model": "opus"},
         op_fragment=d.operations["exec"].fragment,
         extra_args=["hello"],
@@ -378,7 +498,7 @@ def test_argv_goose_op_fragment() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=None,
-        safe_mode_off=False,
+        access="restricted",
         setting_values={},
         op_fragment=d.operations["exec"].fragment,
         extra_args=["do this"],
@@ -386,41 +506,83 @@ def test_argv_goose_op_fragment() -> None:
     assert argv == ["run", "-t", "do this"]
 
 
-def test_argv_flag_secure_emission_on_safe_on() -> None:
-    # A FLAG safe-bypass with a secure_flag emits it on safe-ON (symmetric to
-    # the OFF flag). Completes the model for a future FLAG agent whose default
-    # is unsafe; no current consumer ships secure_flag.
+def test_argv_flag_per_tier_emits_its_own_row() -> None:
+    # A FLAG harness that declares a NON-EMPTY row at every tier (the shape a
+    # future agent whose own default is unsafe needs): each tier emits ITS row
+    # and nothing else — no polarity, no fallback.
     d = PluginDescriptor(
         command=("agent",),
         bindings=(),
         mode={"start": ()},
         safe_bypass=SafeBypass(
             channel=Channel.FLAG,
-            flag=("--yolo",),
-            secure_flag=("--ask-every-time",),
+            restricted=AccessTierRow(flag=("--ask-every-time",)),
+            editing=AccessTierRow(flag=("--edits-ok",)),
+            full=AccessTierRow(flag=("--yolo",)),
+            setting_key="access",
         ),
     )
-    off = assemble_argv(
-        d, mode_fragment=d.mode["start"], safe_mode_off=True,
-        setting_values={}, extra_args=[],
-    )
-    on = assemble_argv(
-        d, mode_fragment=d.mode["start"], safe_mode_off=False,
-        setting_values={}, extra_args=[],
-    )
-    assert off == ["--yolo"]
-    assert on == ["--ask-every-time"]
+
+    def argv_at(tier: str) -> list[str]:
+        return assemble_argv(
+            d, mode_fragment=d.mode["start"], access=tier,
+            setting_values={}, extra_args=[],
+        )
+
+    assert argv_at("full") == ["--yolo"]
+    assert argv_at("editing") == ["--edits-ok"]
+    assert argv_at("restricted") == ["--ask-every-time"]
 
 
-def test_argv_claude_safe_on_emits_nothing_when_secure_flag_empty() -> None:
-    # claude leaves secure_flag empty -> nothing emitted on -S (default-safe).
+def test_argv_claude_editing_emits_accept_edits_not_the_bypass() -> None:
+    # The MIDDLE tier on the ARGV path (R-41 / D-7, verified vs claude 2.1.220's
+    # --permission-mode choices).  Explicitly asserts the bypass flag is ABSENT:
+    # the failure this axis fears is `editing` quietly meaning `full`.
+    d = _claude_descriptor()
+    argv = assemble_argv(
+        d, mode_fragment=d.mode["continue"], access="editing",
+        setting_values={}, extra_args=[],
+    )
+    assert argv == ["--continue", "--permission-mode", "acceptEdits"]
+    assert "--dangerously-skip-permissions" not in argv
+
+
+def test_argv_claude_restricted_emits_nothing_from_an_empty_row() -> None:
+    # claude's `restricted` row is EMPTY -> emit nothing (its own default already
+    # prompts).  An empty row is a DECLARED realization, unlike a MISSING one.
     d = _claude_descriptor()
     on = assemble_argv(
-        d, mode_fragment=d.mode["continue"], safe_mode_off=False,
+        d, mode_fragment=d.mode["continue"], access="restricted",
         setting_values={}, extra_args=[],
     )
     assert on == ["--continue"]
     assert "--dangerously-skip-permissions" not in on
+    assert "--permission-mode" not in on
+
+
+def test_argv_refuses_a_tier_the_harness_cannot_render() -> None:
+    # The un-rendered-tier rule reaches the ARGV seam too (a caller that skipped
+    # the launch gate must still not get a silent substitution).  A FLAG harness
+    # that renders only the two extremes: `editing` REFUSES rather than falling
+    # through to an empty argv, which would silently be that harness's OWN
+    # default rather than the tier asked for.
+    d = PluginDescriptor(
+        command=("agent",),
+        bindings=(),
+        mode={"start": ()},
+        safe_bypass=SafeBypass(
+            channel=Channel.FLAG,
+            restricted=AccessTierRow(),
+            full=AccessTierRow(flag=("--yolo",)),
+            setting_key="access",
+        ),
+    )
+    with pytest.raises(ConfigError) as exc:
+        assemble_argv(
+            d, mode_fragment=d.mode["start"], access="editing",
+            setting_values={}, extra_args=[], agent="agent",
+        )
+    assert "restricted | full" in str(exc.value)
 
 
 def test_argv_command_tail_included_when_multi_element() -> None:
@@ -432,7 +594,7 @@ def test_argv_command_tail_included_when_multi_element() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=d.mode["start"],
-        safe_mode_off=False,
+        access="restricted",
         setting_values={},
         extra_args=[],
     )
@@ -454,7 +616,7 @@ def test_argv_single_source_fragment_wins_over_descriptor() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=["--SNAPSHOT-CONTINUE"],
-        safe_mode_off=False,
+        access="restricted",
         setting_values={},
         extra_args=[],
     )
@@ -464,7 +626,7 @@ def test_argv_single_source_fragment_wins_over_descriptor() -> None:
     argv = assemble_argv(
         d,
         mode_fragment=["--SNAPSHOT-CONTINUE"],
-        safe_mode_off=False,
+        access="restricted",
         setting_values={},
         op_fragment=["--SNAPSHOT-EXEC"],
         extra_args=[],
@@ -494,13 +656,13 @@ def test_assemble_argv_has_no_descriptor_grammar_params() -> None:
 
 def test_env_base_container_env() -> None:
     d = _claude_descriptor()
-    env = assemble_env(d, safe_mode_off=False, setting_values={})
+    env = assemble_env(d, access="restricted", setting_values={})
     assert env == {"DISABLE_AUTOUPDATER": "1"}
 
 
 def test_env_claude_flag_settings_not_in_env() -> None:
     d = _claude_descriptor()
-    env = assemble_env(d, safe_mode_off=True, setting_values={"model": "opus"})
+    env = assemble_env(d, access="full", setting_values={"model": "opus"})
     # FLAG channels never land in env; only base container_env present.
     assert env == {"DISABLE_AUTOUPDATER": "1"}
     assert "model" not in env
@@ -508,26 +670,34 @@ def test_env_claude_flag_settings_not_in_env() -> None:
 
 def test_env_goose_safe_off_sets_goose_mode_auto() -> None:
     d = _goose_descriptor()
-    env = assemble_env(d, safe_mode_off=True, setting_values={})
+    env = assemble_env(d, access="full", setting_values={})
     assert env["GOOSE_MODE"] == "auto"
 
 
-def test_env_goose_safe_on_omits_goose_mode() -> None:
-    d = _goose_descriptor()
-    env = assemble_env(d, safe_mode_off=False, setting_values={})
-    assert "GOOSE_MODE" not in env
-    assert env == {"GOOSE_DISABLE_KEYRING": "1"}
+@pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+def test_env_flag_channel_harness_emits_no_permission_env_at_any_tier(
+    tier: str,
+) -> None:
+    # CHANNEL SEPARATION, at every tier: a FLAG harness's permission realization
+    # never leaks into the container env.  (Replaces the pre-R-41
+    # "safe-ON omits GOOSE_MODE" test, whose premise — an ENV harness with no
+    # restrictive value — is exactly the shape the tier rows abolished: goose's
+    # restricted row now EMITS `approve`, asserted just below.)
+    d = _claude_descriptor()
+    assert assemble_env(d, access=tier, setting_values={}) == {
+        "DISABLE_AUTOUPDATER": "1",
+    }
 
 
 def test_env_goose_model_env_set() -> None:
     d = _goose_descriptor()
-    env = assemble_env(d, safe_mode_off=False, setting_values={"model": "gpt-4o"})
+    env = assemble_env(d, access="restricted", setting_values={"model": "gpt-4o"})
     assert env["GOOSE_MODEL"] == "gpt-4o"
 
 
 def test_env_goose_model_absent_when_value_falsy() -> None:
     d = _goose_descriptor()
-    env = assemble_env(d, safe_mode_off=False, setting_values={"model": ""})
+    env = assemble_env(d, access="restricted", setting_values={"model": ""})
     assert "GOOSE_MODEL" not in env
 
 
@@ -554,7 +724,7 @@ def test_env_claude_endpoint_emits_base_url_when_set() -> None:
     # agent.<node>.endpoint is set (a persona pointing at an alternate endpoint).
     d = _claude_endpoint_descriptor()
     env = assemble_env(
-        d, safe_mode_off=True,
+        d, access="full",
         setting_values={"model": "opus", "endpoint": "http://localhost:8080"},
     )
     assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8080"
@@ -565,9 +735,9 @@ def test_env_claude_endpoint_absent_when_none() -> None:
     # bare claude is byte-identical to today. Mutation check: the ONLY difference
     # vs the set case is the env key, so its absence here is non-vacuous.
     d = _claude_endpoint_descriptor()
-    env_absent = assemble_env(d, safe_mode_off=True, setting_values={"model": "opus"})
+    env_absent = assemble_env(d, access="full", setting_values={"model": "opus"})
     env_empty = assemble_env(
-        d, safe_mode_off=True, setting_values={"model": "opus", "endpoint": ""},
+        d, access="full", setting_values={"model": "opus", "endpoint": ""},
     )
     assert "ANTHROPIC_BASE_URL" not in env_absent
     assert "ANTHROPIC_BASE_URL" not in env_empty
@@ -582,7 +752,7 @@ def test_argv_claude_endpoint_never_in_argv() -> None:
 
     d = _claude_endpoint_descriptor()
     argv = assemble_argv(
-        d, mode_fragment=d.mode["start"], safe_mode_off=True,
+        d, mode_fragment=d.mode["start"], access="full",
         setting_values={"model": "opus", "endpoint": "http://localhost:8080"},
         op_fragment=None, extra_args=[],
     )
@@ -592,45 +762,44 @@ def test_argv_claude_endpoint_never_in_argv() -> None:
     assert "--model" in argv and "opus" in argv
 
 
-def test_env_goose_secure_emits_goose_mode_approve_on_safe_on() -> None:
-    # The A1 fix: an ENV safe-bypass with secure_env_value emits the restrictive
-    # value on safe-ON (goose GOOSE_MODE=approve), because goose's unset default
-    # is itself "auto" (unsafe). Safe-OFF still emits the OFF value ("auto").
-    d = PluginDescriptor(
-        command=("goose",),
-        bindings=(),
-        mode={"start": ("session",)},
-        safe_bypass=SafeBypass(
-            channel=Channel.ENV,
-            env_var="GOOSE_MODE",
-            env_value="auto",
-            secure_env_value="approve",
-        ),
+def test_env_goose_restricted_emits_approve_explicitly() -> None:
+    # goose's unset GOOSE_MODE default is itself "auto" (permissive), so the
+    # restrictive tier MUST emit a value — "emit nothing" here would BE the
+    # bypass.  Both renderable tiers are asserted from the shipped-shaped fixture.
+    d = _goose_descriptor()
+    assert assemble_env(d, access="full", setting_values={})["GOOSE_MODE"] == "auto"
+    assert (
+        assemble_env(d, access="restricted", setting_values={})["GOOSE_MODE"]
+        == "approve"
     )
-    env_off = assemble_env(d, safe_mode_off=True, setting_values={})
-    env_on = assemble_env(d, safe_mode_off=False, setting_values={})
-    assert env_off["GOOSE_MODE"] == "auto"
-    assert env_on["GOOSE_MODE"] == "approve"
 
 
-def test_env_secure_emits_nothing_when_secure_env_value_empty() -> None:
-    # claude/codex shape: ENV safe-bypass (or none) with no secure_env_value ->
-    # nothing emitted on safe-ON. The goose fixture here has empty secure value.
-    d = _goose_descriptor()  # env_value="auto", secure_env_value="" (default)
-    env_on = assemble_env(d, safe_mode_off=False, setting_values={})
-    assert "GOOSE_MODE" not in env_on
-    assert env_on == {"GOOSE_DISABLE_KEYRING": "1"}
+def test_env_refuses_a_tier_the_harness_cannot_render() -> None:
+    # goose + editing on the ENV seam: REFUSE.  ⚑ Non-vacuous in the dangerous
+    # direction — falling through would emit NO GOOSE_MODE, which goose reads as
+    # "auto", i.e. the full bypass under the name `editing`.
+    d = _goose_descriptor()
+    with pytest.raises(ConfigError) as exc:
+        assemble_env(d, access="editing", setting_values={}, agent="goose")
+    assert "restricted | full" in str(exc.value)
 
 
-def test_env_safe_bypass_uses_default_auto_when_env_value_empty() -> None:
+def test_env_empty_row_emits_nothing() -> None:
+    # An ENV harness whose declared row carries no value emits NOTHING.
+    # ⚑ The implicit ``env_value or "auto"`` fallback is DELETED: "auto" is
+    # goose's vocabulary, and agent-specific knowledge does not belong in the
+    # agent-agnostic assembler.  A harness that needs a value declares it.
     d = PluginDescriptor(
         command=("x",),
         bindings=(),
         mode={"start": ()},
-        safe_bypass=SafeBypass(channel=Channel.ENV, env_var="X_MODE"),  # no env_value
+        safe_bypass=SafeBypass(
+            channel=Channel.ENV, env_var="X_MODE",
+            full=AccessTierRow(),  # declared, but empty
+            setting_key="access",
+        ),
     )
-    env = assemble_env(d, safe_mode_off=True, setting_values={})
-    assert env["X_MODE"] == "auto"
+    assert assemble_env(d, access="full", setting_values={}) == {}
 
 
 # --------------------------------------------------------------------------- #

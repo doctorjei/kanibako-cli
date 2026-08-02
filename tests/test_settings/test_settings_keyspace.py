@@ -38,7 +38,7 @@ def reason(key: str) -> str:
 @pytest.mark.parametrize("key", [
     "system.agent",
     "agent.claude.model",
-    "agent.claude.auto_approve",
+    "agent.claude.access",
     "agent.claude.allow_helpers",
     "agent.claude.continue_mode",
     "agent.claude.bootstrap",
@@ -47,7 +47,7 @@ def reason(key: str) -> str:
     "agent.claude.endpoint",
     "agent.claude.template",
     "agent.claude.canon",
-    "agent.default.auto_approve",
+    "agent.default.access",
     "agent.navigator℘claude.model",
     "agent.claude.bindings.ro.share",
     "agent.claude.bindings.rw.thing",
@@ -113,7 +113,7 @@ def test_non_active_agent_is_valid():
     """§2h — the test is 'is it a VALID agent', NOT 'is it the ACTIVE
     agent': pre-configuring an agent you may switch to is allowed."""
     assert valid("agent.goose.model")
-    assert valid("agent.codex.auto_approve")
+    assert valid("agent.codex.access")
 
 
 # ---------------------------------------------------------------------------
@@ -305,9 +305,34 @@ def test_retiring_keys_are_all_invalid_today():
 def test_declared_agent_leaves_cover_the_spec_2d_default_tier():
     """Spot-check against spec §2d so a silent deletion is caught."""
     assert {
-        "auto_approve", "allow_helpers", "continue_mode", "bootstrap", "model",
+        "access", "allow_helpers", "continue_mode", "bootstrap", "model",
         "run_args", "transform_settings", "endpoint", "template", "canon",
     } <= DECLARED_AGENT_LEAVES
+
+
+def test_retired_auto_approve_is_not_a_key():
+    """R-41 RETIRED the boolean spelling: it is UNDECLARED, so the closed
+    keyspace must REFUSE it by name (spec §0).  A stored one is separately
+    refused at launch with the mapping — see
+    ``settings_assemble.refuse_retired_behavior_keys``."""
+    assert "auto_approve" not in DECLARED_AGENT_LEAVES
+    for key in (
+        "agent.claude.auto_approve",
+        "agent.default.auto_approve",
+        "pref.agent.claude.auto_approve",
+    ):
+        assert key_validity(key, valid_agents=AGENTS) is not None, key
+
+
+def test_access_tier_vocabulary_is_declared_once():
+    """The enum + its default live beside the leaf they belong to, so the
+    settable surface, the launch resolver and the plugin descriptors read ONE
+    list (R-41)."""
+    from kanibako.settings.settings_keyspace import ACCESS_DEFAULT, ACCESS_TIERS
+
+    assert ACCESS_TIERS == ("restricted", "editing", "full")
+    assert ACCESS_DEFAULT == "full"
+    assert ACCESS_DEFAULT in ACCESS_TIERS
 
 
 def test_reserved_names_match_the_keystore_write_time_set():
