@@ -1018,37 +1018,70 @@ class TestPrimaryWorksetSpecConvergence:
 
 
 class TestWorksetEnv:
-    """F9: ``workset config set env.<VAR>`` threads the workset env file into
-    the config engine (mirroring the box handler's ``env_path`` threading),
-    for BOTH named and primary worksets."""
+    """``workset config set workset.env.<VAR>`` — the workset env tier.
 
-    def test_set_env_named_workset(self, config_file, tmp_home, capsys):
+    ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote a docker ``.env`` FILE
+    at the workset root, threaded into the engine as ``env_path``; R-39 retired
+    the spelling and RQ-1 retired the launch READ of those files, so both the
+    threading and the file are gone. The workset env tier is the settings key
+    ``workset.env.<VAR>``, stored in the workset's own ``settings.yaml`` — for
+    BOTH named and primary worksets.
+    """
+
+    def test_bare_env_set_is_refused_with_the_workset_cure(
+        self, config_file, tmp_home, capsys,
+    ):
         from kanibako.commands.workset_cmd import run_set
-        from kanibako.shellenv import read_env_file
 
         std = load_std_paths(load_config(config_file))
         ws = create_workset("envws", tmp_home / "ws_env", std)
         args = argparse.Namespace(
             workset="envws", key_value="env.EDITOR=vim", force=False,
         )
-        rc = run_set(args)
-        assert rc == 0
-        assert "Set EDITOR=vim" in capsys.readouterr().out
-        assert read_env_file(ws.root / "env").get("EDITOR") == "vim"
+        assert run_set(args) == 1
+        assert "workset.env.EDITOR" in capsys.readouterr().err
+        assert not (ws.root / "env").exists()
 
-    def test_set_env_default_workset(self, config_file, tmp_home, capsys):
-        """PRIMARY: the env file lands under ``@config.primary_workset``."""
-        from kanibako.commands.workset_cmd import run_set
-        from kanibako.shellenv import read_env_file
+    def test_bare_env_get_is_refused_at_the_handler(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_get
 
         std = load_std_paths(load_config(config_file))
+        create_workset("envgetbare", tmp_home / "ws_envgetbare", std)
+        rc = run_get(argparse.Namespace(workset="envgetbare", key="env.MY_VAR"))
+        assert rc == 1
+        assert "workset.env.MY_VAR" in capsys.readouterr().err
+
+    def test_set_env_named_workset(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_set
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("envws2", tmp_home / "ws_env2", std)
         args = argparse.Namespace(
-            workset="default", key_value="env.EDITOR=vim", force=False,
+            workset="envws2", key_value="workset.env.EDITOR=vim", force=False,
         )
         rc = run_set(args)
         assert rc == 0
-        assert "Set EDITOR=vim" in capsys.readouterr().out
-        assert read_env_file(std.primary_workset / "env").get("EDITOR") == "vim"
+        assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
+        from kanibako.settings.config_io import load_doc
+        assert load_doc(ws.root / "settings.yaml")["workset"]["env"]["EDITOR"] == "vim"
+
+    def test_set_env_default_workset(self, config_file, tmp_home, capsys):
+        """PRIMARY: the value lands under ``@config.primary_workset``."""
+        from kanibako.commands.workset_cmd import run_set
+
+        std = load_std_paths(load_config(config_file))
+        args = argparse.Namespace(
+            workset="default", key_value="workset.env.EDITOR=vim", force=False,
+        )
+        rc = run_set(args)
+        assert rc == 0
+        assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
+        from kanibako.settings.config_io import load_doc
+        assert load_doc(
+            std.primary_workset / "settings.yaml",
+        )["workset"]["env"]["EDITOR"] == "vim"
 
     def test_get_env_workset(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_get, run_set
@@ -1056,67 +1089,84 @@ class TestWorksetEnv:
         std = load_std_paths(load_config(config_file))
         create_workset("envget", tmp_home / "ws_envget", std)
         args = argparse.Namespace(
-            workset="envget", key_value="env.MY_VAR=hello", force=False,
+            workset="envget", key_value="workset.env.MY_VAR=hello", force=False,
         )
         assert run_set(args) == 0
         capsys.readouterr()
-        get_args = argparse.Namespace(workset="envget", key="env.MY_VAR")
+        get_args = argparse.Namespace(workset="envget", key="workset.env.MY_VAR")
         rc = run_get(get_args)
         assert rc == 0
         assert "hello" in capsys.readouterr().out
 
     def test_reset_env_workset(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_reset, run_set
-        from kanibako.shellenv import read_env_file
 
         std = load_std_paths(load_config(config_file))
         ws = create_workset("envreset", tmp_home / "ws_envreset", std)
         args = argparse.Namespace(
-            workset="envreset", key_value="env.MY_VAR=hello", force=False,
+            workset="envreset", key_value="workset.env.MY_VAR=hello", force=False,
         )
         assert run_set(args) == 0
         reset_args = argparse.Namespace(
-            workset="envreset", key="env.MY_VAR", reset_all=False, force=False,
+            workset="envreset", key="workset.env.MY_VAR",
+            reset_all=False, force=False,
         )
         rc = run_reset(reset_args)
         assert rc == 0
         capsys.readouterr()
-        assert "MY_VAR" not in read_env_file(ws.root / "env")
+        from kanibako.settings.config_io import load_doc
+        assert "env" not in load_doc(ws.root / "settings.yaml").get("workset", {})
 
-    def test_primary_workset_env_reaches_launch_env(
+    def test_primary_workset_env_reaches_the_launch_snapshot(
         self, config_file, tmp_home, capsys,
     ):
         """A primary-workset env var reaches the launch env accumulation and
-        overrides the system tier (precedence system < workset)."""
-        from kanibako.commands.start import _build_config_env
-        from kanibako.commands.workset_cmd import run_set
-        from kanibako.settings.paths import resolve_project, workset_env_path
-        from kanibako.shellenv import write_env_file
+        overrides the system tier (precedence system < workset).
 
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        write_env_file(std.data_path / "env", {"EDITOR": "nano", "PAGER": "less"})
-        args = argparse.Namespace(
-            workset="default", key_value="env.EDITOR=vim", force=False,
-        )
-        assert run_set(args) == 0
+        ⚑ Proven through the SNAPSHOT now, not a ``.env`` file layering: the
+        reconcile picks the per-VAR winner and ``_build_config_env`` applies it.
+        """
+        from kanibako.commands.start import _build_config_env
+        from kanibako.commands.system_cmd import run_set as system_set
+        from kanibako.commands.workset_cmd import run_set
+        from kanibako.settings.settings_launch import snapshot_category_entries
+        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.settings_store import KeyStore
+
+        assert system_set(argparse.Namespace(
+            key_value="system.env.EDITOR=nano", force=True,
+        )) == 0
+        assert system_set(argparse.Namespace(
+            key_value="system.env.PAGER=less", force=True,
+        )) == 0
+        assert run_set(argparse.Namespace(
+            workset="default", key_value="workset.env.EDITOR=vim", force=False,
+        )) == 0
         capsys.readouterr()
 
-        (tmp_home / "envproj").mkdir()
-        proj = resolve_project(
-            std, config, project_dir=str(tmp_home / "envproj"), initialize=True,
+        from kanibako.settings.config_io import load_doc
+        std = load_std_paths(load_config(config_file))
+        system_tbl = load_doc(std.settings)["system"]["env"]
+        workset_tbl = load_doc(
+            std.primary_workset / "settings.yaml",
+        )["workset"]["env"]
+
+        snapshot = KeyStore({
+            "system": {"env": dict(system_tbl)},
+            "workset": {"env": dict(workset_tbl)},
+        })
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None,
+            host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
         )
-        assert proj.group is not None and proj.group.is_default
-        # The launch's workset env-file derivation (start.py) — post-F9 the
-        # PRIMARY workset has its own env tier (no longer skipped).
-        env = _build_config_env(
-            std.data_path / "env",
-            {},
-            workset_env_path(proj.group),
-            proj.metadata_path / "env",
-        )
+        reconciled = reconcile_categories(snapshot_category_entries(
+            snapshot, active_agent="claude", box_ctx=ctx,
+        ))
+        env = _build_config_env({}, reconciled.envs)
         assert env["EDITOR"] == "vim"   # workset overrides system
         assert env["PAGER"] == "less"   # system tier still present
+
 
 class TestPrimaryWorksetMigration:
     """The approved F4 migration behavior (director ruling (c), 2026-07-02):

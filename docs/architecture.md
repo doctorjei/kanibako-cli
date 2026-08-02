@@ -23,7 +23,6 @@ cross-cutting entry points and utilities stay at the package root.
 | `install_method.py` | Detect kanibako's own install method (pipx/uv/pip) to tailor the "install a plugin" command in agent-resolution errors |
 | `settings/paths.py` | XDG resolution, mode detection (primary/named/standalone), box/workset init |
 | `runtime/container.py` | Box runtime (detect, pull, build, run, stop, detach) |
-| `shellenv.py` | Environment variable file handling |
 | `snapshots.py` | Vault snapshot engine |
 | `project/workset.py` | Workset data model and persistence (`<root>/settings.yaml`) |
 | `project/names.py` | Project/workset name registry (the `projects`/`worksets` sections of `system.registry`) |

@@ -57,7 +57,6 @@ from kanibako.settings.paths import (
     xdg,
     load_std_paths,
     resolve_box_target,
-    workset_env_path,
 )
 from kanibako.agent_ref import (
     canonicalize_agent_ref,
@@ -1502,31 +1501,13 @@ def _assemble_launch_env(
     the secret mounts in place (exactly where the inline block did) and returns
     the assembled ``container_env`` plus the ``secret_export_vars`` list.
     """
-    # Read environment variables, accumulating across config levels with
-    # the settings-framework precedence (low->high): system < agent <
-    # workset < box.  Target-derived state env and per-run CLI -e env stay
-    # above all config levels.
-    global_env_path = std.data_path / "env"
-    project_env_path = proj.metadata_path / "env"
-    # Workset-level env for named AND primary worksets (F9): the primary's
-    # tier file lives under @config.primary_workset, distinct from the
-    # system tier's @config.data/env (pre-F4 the two aliased, so the
-    # default group was skipped here).
-    ws_env_path = workset_env_path(proj.group)
-    container_env = _build_config_env(
-        global_env_path, agent_cfg.env, ws_env_path, project_env_path,
-    )
-    # Settings-framework env (the `<scope>.env.<VAR>` category) supersedes
-    # the retired `.env` files (Phase 2 decision E).  reconcile (the single
-    # launch reconcile above) picked the most-specific scope per VAR
-    # (system<agent<workset<box), so applying its ENV winners over the legacy
-    # map is the documented config-level precedence.  Each ENV entry carries
-    # the VAR name in ``box_dest`` and the resolved value in ``options``.  It
-    # stays BELOW target state env and CLI -e.  ADDITIVE: with no `env.*` keys
-    # configured the reconciled env set is empty -> byte-identical.
-    container_env.update(
-        {e.box_dest: e.options for e in reconciled.envs}
-    )
+    # Config-level env: the agent tier under the settings-framework env (the
+    # `<scope>.env.<VAR>` category), whose per-VAR winner the single launch
+    # reconcile above already picked over system < agent < workset < box.
+    # Target-derived state env and per-run CLI -e env stay above all config
+    # levels.  The docker `.env` files that used to layer in here are RETIRED
+    # (RQ-1, 2026-08-02) — see ``_build_config_env``.
+    container_env = _build_config_env(agent_cfg.env, reconciled.envs)
     # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
     # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
     # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
@@ -3791,26 +3772,36 @@ def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> 
         )
 
 
-def _build_config_env(
-    global_env_path,
-    agent_env: dict[str, str],
-    workset_env_path,
-    project_env_path,
-) -> dict[str, str]:
-    """Layer config-level env vars, low->high: system < agent < workset < box.
+def _build_config_env(agent_env: dict[str, str], reconciled_envs) -> dict[str, str]:
+    """Layer config-level env vars, low->high: agent < the reconciled scope env.
 
-    Shared between container launch (start) and ``box show --effective`` so
-    the resolved config-env matches exactly. Runtime-only layers (target state
-    env, per-run ``-e``) are applied by the caller ON TOP of this and are NOT
-    config, so they are excluded here.
+    Shared between container launch (start) and ``box show --effective`` so the
+    resolved config-env matches exactly — that sharing is the whole point of the
+    function, and it is why the reconcile's ENV winners are folded in HERE rather
+    than by the launch caller alone (they were, and the display consequently
+    under-reported every ``<scope>.env.<VAR>`` the box actually receives).
+    Runtime-only layers (target state env, per-run ``-e``) are applied by the
+    caller ON TOP of this and are NOT config, so they are excluded here.
+
+    *reconciled_envs* is ``reconcile_categories(...).envs`` — the per-VAR
+    precedence winners over system < agent < workset < box, each carrying the VAR
+    in ``box_dest`` and the resolved value in ``options``.
+
+    *agent_env* is ``AgentConfig.env`` (``agent.<node>.env.<VAR>``) and stays as
+    the UNDER-layer rather than being dropped as redundant: the reconcile reads
+    the node's settings FILE, while a box whose agent config has not been
+    materialised yet is displayed from ``target.generate_agent_config()``, which
+    the snapshot cannot see.
+
+    ⚑ The docker ``.env`` FILES (system/workset/box) that were the other three
+    tiers here are GONE — Jei's RQ-1 re-ruling (2026-08-02): the ratified
+    manifest records them as DROPPED, so a live launch read of them was an
+    authority-vs-code divergence. Their replacement is ``<scope>.env.<VAR>``,
+    which arrives through *reconciled_envs*.
     """
-    from kanibako.shellenv import read_env_file
     env: dict[str, str] = {}
-    env.update(read_env_file(global_env_path))   # system
-    env.update(agent_env)                        # agent
-    if workset_env_path is not None:
-        env.update(read_env_file(workset_env_path))  # workset
-    env.update(read_env_file(project_env_path))  # box (highest config level)
+    env.update(agent_env)                                    # agent tier
+    env.update({e.box_dest: e.options for e in reconciled_envs})
     return env
 
 

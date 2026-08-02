@@ -60,11 +60,12 @@ from kanibako.settings.config_keys import (
     _is_agent_node_bind_key,
     _is_agent_node_secret_key,
     _is_agent_setting,
+    _is_bare_env_key,
     _is_box_agent_key,
-    _is_env_key,
     _is_path_category_key,
     _is_persona_agent_key,
     _is_pref_key,
+    _is_scope_env_key,
     _is_scope_secret_key,
     _config_key_refusal,
     _node_secret_display_key,
@@ -77,9 +78,11 @@ from kanibako.settings.config_keys import (
     _scope_direction_error,
     access_value_error,
     bare_agent_key_scope_error,
+    bare_env_retired_error,
     box_agent_redirect_key,
     box_agent_retired_error,
     is_access_key,
+    scope_env_var_error,
     is_system_path_key,
     parse_agent_node_bind_key,
     system_key_refusal,
@@ -100,13 +103,6 @@ from kanibako.settings.config_io import (
 from kanibako.errors import UserCancelled
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.settings_store import _MISSING, ReservedKeyError
-from kanibako.shellenv import (
-    merge_env,
-    read_env_file,
-    set_env_var,
-    unset_env_var,
-    write_env_file,
-)
 from kanibako.utils import confirm_prompt
 
 
@@ -735,6 +731,14 @@ def get_config_value(
     Returns the resolved (merged) value as a string, or None if the key
     is not set.
 
+    ⚑ *env_global* / *env_project* are VESTIGIAL and feed nothing. They named the
+    docker ``.env`` files, which R-39 + the RQ-1 re-ruling RETIRED outright — no
+    verb writes them, no launch reads them. They are still ACCEPTED so that
+    call sites (the handlers and ``test_config_dest_parity``'s bench) keep
+    working unchanged; DELETING them is a signature change across that bench and
+    belongs to the KeyKind verb rewrite, not here. Nothing else may be threaded
+    through them in the meantime. The live env family is ``<scope>.env.<VAR>``.
+
     *system_settings_path*, when supplied (the SYSTEM scope), is the file used
     for SETTINGS reads (``system.agent`` + agent settings) — i.e.
     ``@config.settings`` = ``global/settings.yaml``.  When None (box/workset
@@ -787,11 +791,26 @@ def get_config_value(
         sections, leaf = _pref_sections_leaf(canonical)
         return read_stored_pref(noun_file, sections, leaf)
 
-    # env.* keys — read from env files
-    if _is_env_key(canonical):
-        env_name = canonical[4:]  # strip "env."
-        merged = merge_env(env_global, env_project)
-        return merged.get(env_name)
+    # Bare env.* — RETIRED (R-39, spec §2a: the env family is scoped). This
+    # engine returns values, never error strings, so the refusal-with-cure lives
+    # at the three command handlers (``bare_env_retired_error``, verb "read") —
+    # the same handler-side split as the workset bare-agent-key read. ``None``
+    # here keeps a direct library read honest: the bare spelling is not a key,
+    # and the docker ``.env`` FILE the old branch merged is not read by anything
+    # any more (RQ-1 re-ruling — the launch-side layering is gone too).
+    if _is_bare_env_key(canonical):
+        return None
+
+    # <scope>.env.<VAR> (system/workset/box) — the LIVE env family: read the
+    # stored value from the NOUN's settings file (stored-at-noun, exactly where
+    # set wrote). The SIBLING of the scope-secret read below, and threaded the
+    # same way — ``noun_file`` is the system settings file at SYSTEM, else the
+    # command's own ``project_toml``.
+    if _is_scope_env_key(canonical):
+        if noun_file and noun_file.exists():
+            parts = canonical.split(".")
+            return read_stored_leaf(noun_file, (parts[0], "env"), parts[2])
+        return None
 
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
     # read the RAW tuple STORED at ``agent.<node>.bindings.<ro|rw>.<name>`` in the
@@ -968,6 +987,14 @@ def set_config_value(
     kanibako_config.yaml CONFIG file.  When None (box/workset) writes go to
     ``config_path`` as before.  Returns a human-readable confirmation message.
 
+    ⚑ *env_path* is VESTIGIAL and nothing routes to it: it named the docker
+    ``.env`` file, which R-39 + the RQ-1 re-ruling RETIRED outright (the bare
+    ``env.<VAR>`` spelling is refused below; no launch reads the file). It is
+    still ACCEPTED for call-site stability (the handlers and the dest-parity
+    bench thread it); removing it is a signature change across that bench and
+    belongs to the KeyKind verb rewrite.  ``<scope>.env.<VAR>`` is the live env
+    key and writes to the SETTINGS file like every other scope key.
+
     The ``cascade_*`` kwargs supply the FULL launch cascade (every scope's settings
     file + the active agent name) for a CATEGORY ``config set``'s set-time E3
     resolution probe (Jei (b), 2026-06-29): the three set handlers
@@ -1036,27 +1063,45 @@ def set_config_value(
     if bare_err is not None:
         return bare_err
 
+    # Bare env.* — RETIRED (R-39, spec §2a): the env family is scoped
+    # (``<scope>.env.<VAR>``); the bare spelling wrote the docker ``.env`` FILE —
+    # an undiscriminated variant that silently meant something different from the
+    # discriminated key (Code Convention 0). Refused with the cure BEFORE any
+    # write machinery (``--null`` included). The cure is REACHABLE: the scoped
+    # arm it names is routed a few branches below.
+    env_err = bare_env_retired_error(
+        canonical, verb="set", command_scope=command_scope,
+    )
+    if env_err is not None:
+        return env_err
+
+    # <scope>.env.<VAR> with a RESERVED VAR name (spec §0 — a public dict method
+    # name or a dunder). Refused HERE, at write time, as §0 requires; the shape
+    # test deliberately still MATCHES the key so the message can name the rule
+    # instead of degrading to "unknown config key".
+    env_var_err = scope_env_var_error(canonical)
+    if env_var_err is not None:
+        return env_var_err
+
     # ``--null`` ROUTE COVERAGE. The RULE is uniform — ``--null <key>`` writes an
-    # explicit present-``None`` at that key — but two write MECHANISMS cannot
-    # express it, and silently doing something else would be worse than refusing:
+    # explicit present-``None`` at that key — but the CATEGORY write MECHANISM
+    # cannot express it, and silently doing something else would be worse than
+    # refusing:
     #
-    # * ``env.<VAR>`` is a docker ``.env`` STRING store (``shellenv.set_env_var``);
-    #   it has no null, and writing the text "None" is the bug this refuses.
     # * the CATEGORY route is a SOURCE-ONLY REPOINT (``repoint_host_src``) — it
     #   rewrites the host half of an EXISTING tuple and has no null form. Direct
     #   category suppression is its own feature (write ``null`` in the settings
     #   file); it is NOT part of this phase, and half-implementing it here would
     #   put two spellings of one idea in the tree.
     #
+    # (The docker ``env.<VAR>`` arm that also refused ``--null`` — "the env file
+    # is a plain string store with no null value" — is GONE with the spelling
+    # itself, refused above. The LIVE ``<scope>.env.<VAR>`` is a nested YAML
+    # scalar and carries ``None`` natively, so it needs no exception.)
+    #
     # Everything else lands through a nested YAML write, which carries ``None``
     # natively — so ``pref.*``, ``box.agent.*`` and the routed scalars all work.
     if value is None:
-        if _is_env_key(canonical):
-            return (
-                f"Error: --null is not supported for '{canonical}': the env file "
-                f"is a plain string store with no null value. Use "
-                f"'reset {canonical}' to remove the variable."
-            )
         if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
             return (
                 f"Error: --null is not yet supported for the category key "
@@ -1147,19 +1192,6 @@ def set_config_value(
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={'null' if value is None else value}"
 
-    # env.* keys
-    if _is_env_key(canonical):
-        env_name = canonical[4:]
-        if env_path is None:
-            return f"Error: no env file path for key {canonical}"
-        # value is narrowed by the --null route guard above (env has no null).
-        assert value is not None
-        try:
-            set_env_var(env_path, env_name, value)
-        except ValueError as e:
-            return f"Error: {e}"
-        return f"Set {env_name}={value}"
-
     # agent.<node>.<key> — the PER-PERSONA agent key (block B1): write to the
     # agent's OWN settings file ``agents/<node>/settings.yaml`` (NOT the command
     # scope's settings file), at the FLAT slot ``load_agent_config`` reads back
@@ -1233,6 +1265,25 @@ def set_config_value(
         assert dest is not None  # the scope-secret family always has a slot
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={value}"
+
+    # <scope>.env.<VAR> (system/workset/box) — the ENV category at a NON-agent
+    # scope: a SCALAR write to the command scope's SETTINGS file at the nested
+    # ``<scope>.env.<VAR>`` slot (the shape ``_file_partial`` reads into the
+    # cascade and ``settings_launch._emit_scope_node`` delivers as a
+    # ``category="env"`` entry). Spec §2a declares the key (L383) and puts it
+    # under "Scalars → full CLI set" (L496); the AGENT form
+    # ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed by the persona
+    # branch below, into the node's own file. Value written VERBATIM — the
+    # set-time E3 probe already ran on it (``_probes_at_set_time``: this arm IS
+    # host-expanded at launch, so a dangling ``@``-ref must be caught now).
+    if _is_scope_env_key(canonical):
+        dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
+        )
+        assert dest is not None  # the scope-env family always has a slot
+        write_nested_key(dest.file, dest.sections, dest.leaf, value)
+        return f"Set {canonical}={'null' if value is None else value}"
 
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
@@ -1392,6 +1443,10 @@ def reset_config_value(
     (``@config.settings`` = ``global/settings.yaml``); when None (box/workset)
     they are removed from ``config_path`` as before.
 
+    ⚑ *env_path* is VESTIGIAL — see :func:`set_config_value`. The docker ``.env``
+    file it named is retired; the bare ``env.<VAR>`` spelling is refused below
+    and ``<scope>.env.<VAR>`` clears from the settings file like any other key.
+
     *command_scope* is the scope the ``config reset`` was issued at (block B2,
     RESET-GUARD). It drives the §0 directional-write guard
     (``_scope_direction_error``) symmetrically with ``set_config_value``: a reset
@@ -1452,6 +1507,21 @@ def reset_config_value(
     if bare_err is not None:
         return bare_err
 
+    # Bare env.* — RETIRED (R-39): refused symmetrically with set (a reset is a
+    # WRITE on a retired spelling, and "No override" would be a lie — the
+    # ``.env`` file is not an override store any more, and nothing reads it).
+    env_err = bare_env_retired_error(
+        canonical, verb="reset", command_scope=command_scope,
+    )
+    if env_err is not None:
+        return env_err
+
+    # A RESERVED VAR in ``<scope>.env.<VAR>`` — refused symmetrically with set,
+    # so a name that can never be written is never reported as merely unset.
+    env_var_err = scope_env_var_error(canonical)
+    if env_var_err is not None:
+        return env_var_err
+
     # pref.<target-key> — remove the REQUEST from this noun's settings file
     # (symmetric with the set/get branches: reset clears exactly where set wrote).
     if _is_pref_key(canonical):
@@ -1459,13 +1529,6 @@ def reset_config_value(
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return f"Cleared {canonical}"
         return f"No override for {canonical}"
-
-    # env.* keys
-    if _is_env_key(canonical):
-        env_name = canonical[4:]
-        if env_path and unset_env_var(env_path, env_name):
-            return f"Unset env.{env_name}"
-        return f"No override for env.{env_name}"
 
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
     # remove the source-only repoint from the node's OWN settings file
@@ -1511,6 +1574,15 @@ def reset_config_value(
     # <scope>.secret_path.<VAR> (system/workset/box) — remove the stored pointer
     # from the command scope's settings file (symmetric with set/get).
     if _is_scope_secret_key(canonical):
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
+            return _honest_reset_message(canonical, command_scope)
+        return f"No override for {canonical}"
+
+    # <scope>.env.<VAR> (system/workset/box) — remove the stored value from the
+    # command scope's settings file (symmetric with set/get: reset clears
+    # exactly where set wrote). The SIBLING of the scope-secret reset above.
+    if _is_scope_env_key(canonical):
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
@@ -1888,8 +1960,15 @@ def reset_all(
     tables (residuals item 3): ``--all`` clears a nested table iff a single reset
     of a key in it at this scope would pass ``_scope_direction_error`` — the
     command scope's OWN namespace + those it CONTAINS; an UPWARD table is left
-    intact. When ``None`` the flat/agent/env clears still run (backward
+    intact. When ``None`` the flat/agent clears still run (backward
     compatible) but no nested SCOPE table is touched.
+
+    ⚑ *env_path* is VESTIGIAL. This used to WIPE the level's docker ``.env`` file
+    and count its lines as overrides; R-39 + the RQ-1 re-ruling retired that file
+    outright (nothing writes it, nothing reads it), so clearing it would neither
+    change what the box gets nor be honestly countable as "overrides reset".
+    ``<scope>.env.<VAR>`` lives in the settings file and IS swept, as part of the
+    nested scope tables above.
     """
     if not force:
         try:
@@ -1937,13 +2016,6 @@ def reset_all(
     # the §0 containment guard.
     count += _clear_writable_scope_tables(settings_dest, command_scope)
 
-    # Clear env file
-    if env_path and env_path.is_file():
-        env = read_env_file(env_path)
-        if env:
-            count += len(env)
-            write_env_file(env_path, {})
-
     return f"Reset {count} override(s)." if count else "No overrides to reset."
 
 
@@ -1986,6 +2058,15 @@ def show_config(
     = ``global/settings.yaml``); the ``system.*`` CONFIG display always uses
     ``global_config_path``.  When None (box/workset) settings display reads
     ``config_path`` as before.
+
+    ⚑ *env_global* / *env_project* are VESTIGIAL and are NOT displayed. They named
+    the docker ``.env`` files: this display used to harvest ``env.<K>`` rows from
+    them whenever *env_resolved* was absent, which after the RQ-1 retirement
+    would render as EFFECTIVE config values that never reach the box — the false
+    surface this project refuses. Env rows now come from *env_resolved* alone
+    (the BOX view, composed by ``commands.start._build_config_env`` from exactly
+    what the launch applies), so a row shown here is a value the box gets. See
+    :func:`set_config_value` on why the parameters are still accepted.
     """
     out = file or sys.stdout
     # The file agent SETTINGS are read from for display: system settings file for
@@ -2043,16 +2124,23 @@ def show_config(
         if category_error is not None or category_snapshot is not None:
             _print_category_block(category_snapshot, category_error, out)
 
-        # Env vars.  Prefer the fully-resolved env (box view) when supplied.
-        merged = (
-            env_resolved
-            if env_resolved is not None
-            else merge_env(env_global, env_project)
-        )
-        if merged:
+        # Env vars — the fully-resolved box view (agent tier + the reconciled
+        # ``<scope>.env.<VAR>`` winners), and ONLY that. The former fallback
+        # harvested the docker ``.env`` files, which nothing reads any more
+        # (R-39/RQ-1): printing them under ``--effective`` would assert an
+        # effect that does not happen. A scope with no box view shows no env
+        # block rather than a fabricated one.
+        #
+        # ⚑ Rendered ``env <VAR>``, NOT ``env.<VAR>``. Every other row here is a
+        # KEY, and ``env.<VAR>`` is now a REFUSED spelling (R-39) — a reader who
+        # copied it into ``config set`` would be told it is retired. These rows
+        # are not a key at all: they are the MERGE the box receives, whose parts
+        # live at ``<scope>.env.<VAR>`` across several scopes, so no single key
+        # names a row. The space says so.
+        if env_resolved:
             print("", file=out)
-            for k in sorted(merged):
-                print(f"  env.{k} = {merged[k]}", file=out)
+            for k in sorted(env_resolved):
+                print(f"  env {k} = {env_resolved[k]}", file=out)
 
     else:
         # Show only overrides
@@ -2084,12 +2172,12 @@ def show_config(
             print(f"  {k} = {v}", file=out)
             has_output = True
 
-        # Env vars (project-level only)
-        if env_project:
-            env = read_env_file(env_project)
-            for k in sorted(env):
-                print(f"  env.{k} = {env[k]}", file=out)
-                has_output = True
+        # (No docker ``.env`` block. The plain view used to list the level's
+        # ``.env`` file as ``env.<K>`` overrides; those files are RETIRED
+        # (R-39/RQ-1) — not written by any verb, not read at launch — so the rows
+        # would name a refused spelling AND assert an override that has no
+        # effect. A stored ``<scope>.env.<VAR>`` is a nested SETTINGS entry and
+        # shows through ``_nested_settings_overrides`` above, under its real key.)
 
         if not has_output:
             print("  (no overrides)", file=out)

@@ -32,7 +32,6 @@ from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import load_std_paths
-from kanibako.shellenv import read_env_file
 
 
 def _set(key_value, *, force=True):
@@ -225,73 +224,90 @@ class TestSystemDefaultAgentSetting:
 
 
 class TestSystemEnvTier:
-    """``system set env.<VAR>`` — the system env tier (F4/F9 sibling).
+    """``system set system.env.<VAR>`` — the system env tier.
 
-    The storage is ``@config.data/env`` — the EXACT file the launch env
-    layering reads as its system tier (``start._build_config_env``; precedence
-    system < agent < workset < box).
+    ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote ``@config.data/env``,
+    a docker ``.env`` FILE the launch layered as its system tier. R-39 retired
+    the spelling and Jei's RQ-1 re-ruling retired the launch READ, so the file is
+    gone from both ends. The system env tier is now the settings key
+    ``system.env.<VAR>``, stored in the system SETTINGS file and delivered by
+    ``settings_launch._emit_scope_node`` as a system-scope ``env`` entry.
     """
 
-    def test_set_env_writes_the_launch_system_tier_file(
-        self, config_file, tmp_home,
+    def test_bare_env_set_is_refused_with_the_system_cure(
+        self, config_file, tmp_home, capsys,
     ):
         rc = _set("env.EDITOR=nano")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "system.env.EDITOR" in err
+        # The retired FILE is not created, and not suggested.
+        assert not (_std(config_file).data_path / "env").exists()
+        assert "no longer read at all" in err
+
+    def test_bare_env_get_is_refused_at_the_handler(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``env.`` stays KEY-SHAPED (``is_known_key``) precisely so the read
+        reaches this refusal instead of being read as a project name."""
+        rc = _get("env.EDITOR")
+        assert rc == 1
+        assert "system.env.EDITOR" in capsys.readouterr().err
+
+    def test_set_env_writes_the_system_settings_file(self, config_file, tmp_home):
+        rc = _set("system.env.EDITOR=nano")
         assert rc == 0
         std = _std(config_file)
-        assert read_env_file(std.data_path / "env")["EDITOR"] == "nano"
+        assert load_doc(std.settings)["system"]["env"]["EDITOR"] == "nano"
+        # SETTINGS, never the Layer-1 CONFIG file.
+        assert "env" not in load_doc(config_file).get("system", {})
 
     def test_get_env_reads_back(self, config_file, tmp_home, capsys):
-        _set("env.EDITOR=nano")
+        _set("system.env.EDITOR=nano")
         capsys.readouterr()
-        rc = _get("env.EDITOR")
+        rc = _get("system.env.EDITOR")
         assert rc == 0
-        assert "env.EDITOR=nano" in capsys.readouterr().out
+        assert "system.env.EDITOR=nano" in capsys.readouterr().out
 
     def test_show_renders_env(self, config_file, tmp_home, capsys):
-        _set("env.EDITOR=nano")
+        _set("system.env.EDITOR=nano")
         capsys.readouterr()
         rc = _show()
         assert rc == 0
-        assert "env.EDITOR = nano" in capsys.readouterr().out
+        assert "system.env.EDITOR = nano" in capsys.readouterr().out
 
-    def test_launch_env_includes_it_at_system_precedence(
-        self, config_file, tmp_home, tmp_path,
-    ):
-        """The launch layering picks the value up from the system tier, and
-        every higher tier (agent < workset < box) overrides it."""
+    def test_launch_env_takes_the_reconciled_winner_over_the_agent_tier(self):
+        """``_build_config_env`` layers the agent tier UNDER the reconciled
+        ``<scope>.env.<VAR>`` winners — the reconcile has already picked the
+        most-specific scope per VAR (system < agent < workset < box), so the
+        launch applies its result rather than re-deriving the precedence."""
         from kanibako.commands.start import _build_config_env
+        from kanibako.settings.settings_categories import CategoryEntry
 
-        _set("env.EDITOR=nano")
-        std = _std(config_file)
-        sys_env = std.data_path / "env"
-        absent = tmp_path / "absent-box-env"
-        # System tier alone → the set value is live at launch.
-        env = _build_config_env(sys_env, {}, None, absent)
-        assert env["EDITOR"] == "nano"
-        # EVERY higher tier overrides in order (system is the LOWEST):
-        # agent beats system …
+        def _env(var, value, scope):
+            return CategoryEntry(
+                category="env", scope=scope, box_dest=var, host_src=None,
+                delivery="ENV", options=value, name=var,
+                key=f"{scope}.env.{var}",
+            )
+
+        # Agent tier alone (no scoped env configured) → unchanged.
+        assert _build_config_env({"EDITOR": "agent-e"}, [])["EDITOR"] == "agent-e"
+        # A reconciled winner supersedes it.
         assert _build_config_env(
-            sys_env, {"EDITOR": "agent-e"}, None, absent,
-        )["EDITOR"] == "agent-e"
-        # … workset beats agent …
-        ws_env = tmp_path / "ws-env"
-        ws_env.write_text("EDITOR=ws-e\n")
-        assert _build_config_env(
-            sys_env, {"EDITOR": "agent-e"}, ws_env, absent,
-        )["EDITOR"] == "ws-e"
-        # … box beats workset (the full system < agent < workset < box chain).
-        box_env = tmp_path / "box-env"
-        box_env.write_text("EDITOR=box-e\n")
-        assert _build_config_env(
-            sys_env, {"EDITOR": "agent-e"}, ws_env, box_env,
+            {"EDITOR": "agent-e"}, [_env("EDITOR", "box-e", "box")],
         )["EDITOR"] == "box-e"
+        # And a var only the reconcile knows about still arrives.
+        assert _build_config_env(
+            {}, [_env("PAGER", "less", "system")],
+        )["PAGER"] == "less"
 
     def test_reset_env_removes_it(self, config_file, tmp_home, capsys):
-        _set("env.EDITOR=nano")
-        rc = _reset("env.EDITOR")
+        _set("system.env.EDITOR=nano")
+        rc = _reset("system.env.EDITOR")
         assert rc == 0
         std = _std(config_file)
-        assert "EDITOR" not in read_env_file(std.data_path / "env")
+        assert "env" not in load_doc(std.settings).get("system", {})
 
 
 class TestSystemStructuralFileOnly:

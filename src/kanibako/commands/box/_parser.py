@@ -36,7 +36,6 @@ from kanibako.settings.paths import (
     resolve_project,
     resolve_standalone_project,
     unregister_primary_box_name,
-    workset_env_path,
 )
 from kanibako.agent_ref import harness_of, with_harness
 from kanibako.targets import resolve_target
@@ -2207,10 +2206,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
             project_toml, _ = box_workset_settings_paths(proj)
-            env_path = proj.metadata_path / "env"
             msg = reset_all(
                 config_path=project_toml,
-                env_path=env_path,
                 force=args.force,
                 command_scope=ConfigLevel.box,
             )
@@ -2227,7 +2224,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # The box-tier target AND the workset tier come from the ONE pair (M-8), so
         # reset clears exactly the file set/get address.
         project_toml, reset_ws_path = box_workset_settings_paths(proj)
-        env_path = proj.metadata_path / "env"
         # Full launch cascade so the honest cleared-message can name the
         # now-effective value + source tier (item 1) — the SAME context the box
         # SET handler threads. A resolution failure just leaves the agent name
@@ -2246,7 +2242,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
         msg = reset_config_value(
             reset_key,
             config_path=project_toml,
-            env_path=env_path,
             command_scope=ConfigLevel.box,
             cascade_system_path=std.settings,
             cascade_workset_path=reset_ws_path,
@@ -2274,11 +2269,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
 
     # ⚑ THE M-8 CHOKEPOINT: get / set / show / reset all address the box through the
     # ONE pair, so a box-scope write and the read that follows it CANNOT disagree.
-    # (The box ``env`` tier stays at ``<metadata_path>/env`` in every mode — read and
-    # write both spell it that way, so there is no split to close there.)
+    # (The box's docker ``env`` FILE tier is GONE — R-39/RQ-1; the env family is
+    # the settings key ``box.env.<VAR>``, which lives in this same pair's file.)
     project_toml, workset_path = box_workset_settings_paths(proj)
-    env_global = std.data_path / "env"
-    env_project = proj.metadata_path / "env"
 
     if action == ConfigAction.show:
         agent_state = None
@@ -2329,15 +2322,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     workset_config_path=workset_path,
                     node_name=agent_id,
                 )
-            # Workset env for named AND primary worksets (F9) — the primary's
-            # tier file lives under @config.primary_workset.
-            ws_env_path = workset_env_path(proj.group)
-            env_resolved = _build_config_env(
-                std.data_path / "env",
-                agent_cfg.env if agent_cfg is not None else {},
-                ws_env_path,
-                proj.metadata_path / "env",
-            )
             # The PATH-DELIVERY categories + their materialised derivations (§0):
             # resolved off the SAME single launch pipeline a start takes, so the
             # display cannot drift from what actually mounts. A collision is
@@ -2347,7 +2331,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             from kanibako.commands.start import _resolve_launch_snapshot
             from kanibako.errors import KanibakoError
             try:
-                category_snapshot, _ = _resolve_launch_snapshot(
+                category_snapshot, _reconciled = _resolve_launch_snapshot(
                     std=std, proj=proj, agent_name=agent_id,
                     system_settings_path=std.settings,
                     agent_cfg_path=agent_cfg_path,
@@ -2390,13 +2374,21 @@ def _run_box_config(args: argparse.Namespace) -> int:
                         else None
                     ),
                 )
+                # The box's resolved config ENV, composed by the SAME helper the
+                # launch uses (agent tier under the reconciled
+                # ``<scope>.env.<VAR>`` winners), so the display cannot claim an
+                # env the box will not get — or miss one it will. It needs the
+                # RECONCILE, which is why it lands here rather than beside the
+                # agent state above.
+                env_resolved = _build_config_env(
+                    agent_cfg.env if agent_cfg is not None else {},
+                    _reconciled.envs,
+                )
             except KanibakoError as exc:
                 category_error = str(exc)
         return show_config(
             global_config_path=config_file,
             config_path=project_toml,
-            env_global=env_global,
-            env_project=env_project,
             effective=args.effective,
             workset_path=workset_path,
             agent_state=agent_state,
@@ -2406,6 +2398,16 @@ def _run_box_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
+        # Bare env.* — RETIRED (R-39): refused at the HANDLER because the get
+        # engine returns values, never error strings (the same handler-side split
+        # as the workset bare-agent-key read guard).
+        from kanibako.settings.config_keys import bare_env_retired_error
+        _env_err = bare_env_retired_error(
+            key, verb="read", command_scope=ConfigLevel.box,
+        )
+        if _env_err is not None:
+            print(_env_err, file=sys.stderr)
+            return 1
         # The box's resolved agent NODE — needed to name/READ the box-scoped
         # request a BARE agent key redirects to (``pref.agent.<active>.<key>``,
         # P7). Best-effort: an unresolvable agent just means no redirect.
@@ -2419,8 +2421,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
             key,
             global_config_path=config_file,
             project_toml=project_toml,
-            env_global=env_global,
-            env_project=env_project,
             command_scope=ConfigLevel.box,
             active_agent=_get_agent_name or None,
         )
@@ -2471,7 +2471,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
         msg = set_config_value(
             key, value,
             config_path=project_toml,
-            env_path=env_project,
             cascade_system_path=std.settings,
             cascade_workset_path=cascade_workset_path,
             cascade_box_path=project_toml,

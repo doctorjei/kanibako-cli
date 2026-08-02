@@ -268,7 +268,8 @@ def noun_settings_file(
 #: ``SCOPED`` = the key's own scope token picks between the settings file and the
 #: command's config file; ``CATEGORY`` = ``SCOPED`` plus the one arm below that is
 #: deliberately broken.  This is a per-FAMILY fact, not a per-caller option: the
-#: pref request, the non-agent secret pointer and the bare agent key are settings
+#: pref request, the non-agent secret pointer, the non-agent env var and the
+#: bare agent key are settings
 #: by construction and have no config-file form, while a category or routed key
 #: can land in either.  It reads as a field here and becomes a field on the
 #: KeyKind descriptor later — the same fact, declared once.
@@ -285,7 +286,7 @@ _NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
 def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     """``(sections, leaf, file_rule)`` for a FILE-scope key, or ``None``.
 
-    Covers the five families whose value lives in a scope's own settings/config
+    Covers the six families whose value lives in a scope's own settings/config
     file. The per-node agent families are NOT here — their slot depends on the
     node's file shape and is resolved by :func:`_agent_node_route`. A key no
     family claims returns ``None``.
@@ -294,6 +295,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         _is_agent_setting,
         _is_path_category_key,
         _is_pref_key,
+        _is_scope_env_key,
         _is_scope_secret_key,
         _KEY_ROUTES,
         _pref_sections_leaf,
@@ -306,6 +308,15 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     if _is_scope_secret_key(canonical):
         parts = canonical.split(".")  # [<scope>, "secret_path", <VAR>]
         return (parts[0], "secret_path"), parts[2], _NOUN
+    if _is_scope_env_key(canonical):
+        # <scope>.env.<VAR> — the SIBLING of the scope secret pointer above: a
+        # scalar in the noun's settings file at ``<scope>.env.<VAR>``, the shape
+        # ``settings_assemble._file_partial`` reads into the cascade and
+        # ``settings_launch._emit_scope_node`` emits as a ``category="env"``
+        # entry.  ``_NOUN`` for the same reason: env is a SETTINGS category and
+        # has no Layer-1 config-file form.
+        parts = canonical.split(".")  # [<scope>, "env", <VAR>]
+        return (parts[0], "env"), parts[2], _NOUN
     if _is_agent_setting(canonical):
         return ("agent", "default"), canonical, _NOUN
     if _is_path_category_key(canonical):
