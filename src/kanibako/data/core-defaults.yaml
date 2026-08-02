@@ -381,14 +381,17 @@ helpers:
     meta_ref: "@workset.logs/@{meta.box.name}.jsonl"
     options: "ro"
 
-# Image-sharing bind (Phase B, D-M8).  The host image graph root + the GENERATED
+# Image-sharing bind (Phase B, D-M8).  The host image store + the GENERATED
 # `storage.conf` (additionalImageStores), routed through the category resolver
-# (the seam is `image_sharing.prepare_image_sharing_sources` feeding
-# `core_defaults.image_default_categories`).  GATED: emitted only when
-# image-sharing applies AND the host graph root is detectable (the caller's
-# conditional gate realizes the spec's `%if @box.share_images%` condition).
-# box-side destinations + options are STATIC; the host SOURCES (probed graph
-# root + generated conf path) are injected at the seam.
+# (the seam is `image_sharing.detect_graph_root` + `image_sharing.
+# write_storage_conf` feeding `core_defaults.image_default_categories`).  GATED:
+# the table is injected only when image-sharing applies (the caller's conditional
+# gate realizes the spec's `%if @box.share_images%` condition).  ⚑ 11a
+# (2026-08-02): the PROBE feeds ONLY the `box.images_store` DEFAULT, so a failed
+# probe does not gate the table — the RESOLVED key decides, and probe-fail with
+# no set value leaves `@box.images_store` absent (the seam then warns and skips).
+# box-side destinations + options are STATIC; the host SOURCES (the probed store
+# default + the generated conf path) are injected at the seam.
 images:
   # Host graph root → /var/lib/shared-images (ro).
   # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS row `images`, D-M8): the host_src

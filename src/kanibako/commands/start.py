@@ -1354,38 +1354,62 @@ def _assemble_image_sharing_mounts(
     ⮕ B6: the gate reads ``merged.box_share_images`` ALONE — the ``--share-images``
     flag already rides the §1A CLI level inside the merged-config resolve, so a
     separate flag disjunct here would be a second mechanism for the same value.
+
+    ⮕ 11a (2026-08-02): the PROBE feeds ONLY the DEFAULT of ``box.images_store``;
+    the RESOLVED key (any tier) feeds the bind AND the storage.conf delivery.  A
+    failed probe therefore no longer skips sharing on its own — a SET
+    ``box.images_store`` still shares; probe-fail + no set value skips WITH a
+    warning naming both the cause and the cure.
     """
     if merged.box_share_images:
-        from kanibako.runtime.image_sharing import prepare_image_sharing_sources
+        from kanibako.runtime.image_sharing import (
+            detect_graph_root,
+            write_storage_conf,
+        )
+        from kanibako.settings.settings_store import KeyStore
+
+        graph_root = detect_graph_root(runtime.cmd)
         staging = proj.metadata_path / ".image-sharing"
-        img_sources = prepare_image_sharing_sources(runtime.cmd, staging)
-        if img_sources is not None:
-            graph_root, storage_conf_path = img_sources
-            # Late, CONDITIONAL resolve through the same snapshot pipeline,
-            # carrying ONLY the image table (include_base_families=False) — its
-            # box_dests are disjoint from the main reconcile, so a separate
-            # reconcile is byte-for-byte equivalent.
-            _img_snap, _img_rec = _resolve_launch_snapshot(
-                std=std,
-                proj=proj,
-                agent_name=agent_id,
-                system_settings_path=system_settings_path,
-                agent_cfg_path=agent_cfg_path,
-                desc=None,
-                install=None,
-                target=None,
-                graph_root=graph_root,
-                storage_conf_path=storage_conf_path,
-                deliver_creds=auth_src.creds_shared,
-                include_base_families=False,
-            )
+        # The GENERATED storage.conf (spec D-M8): written up front so the
+        # reconcile's skip-if-missing sees a real source; its box DELIVERY
+        # follows the resolved store below (no store → nothing emitted).
+        storage_conf_path = write_storage_conf(staging)
+        # Late, CONDITIONAL resolve through the same snapshot pipeline,
+        # carrying ONLY the image table (include_base_families=False) — its
+        # box_dests are disjoint from the main reconcile, so a separate
+        # reconcile is byte-for-byte equivalent.
+        _img_snap, _img_rec = _resolve_launch_snapshot(
+            std=std,
+            proj=proj,
+            agent_name=agent_id,
+            system_settings_path=system_settings_path,
+            agent_cfg_path=agent_cfg_path,
+            desc=None,
+            install=None,
+            target=None,
+            graph_root=graph_root,
+            storage_conf_path=storage_conf_path,
+            deliver_creds=auth_src.creds_shared,
+            include_base_families=False,
+        )
+        # The RESOLVED store (probed default OR a set tier value) gates the
+        # emit — read off the snapshot, the PRIMARY SOURCE, with the UNBOUND
+        # dict.get protocol (S3; the config._resolve_box_scalars walk).
+        node: object = _img_snap
+        for seg in ("box", "images_store"):
+            node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+        resolved_store = node if isinstance(node, str) and node else None
+        if resolved_store is not None:
             img_mounts = _emit_category_mounts(_img_rec, label="images")
             extra_mounts.extend(img_mounts)
             logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
         else:
             print(
-                "Warning: --share-images enabled but host image storage "
-                "could not be detected. Continuing without image sharing.",
+                "Warning: image sharing is enabled (box.share_images) but "
+                "the host image store probe failed and no box.images_store "
+                "is set. Continuing without image sharing. To share images, "
+                "set box.images_store to the host store path or fix the "
+                "podman storage probe.",
                 file=sys.stderr,
             )
 
@@ -2795,11 +2819,14 @@ def _run_container(
 
         # Image sharing: mount host image storage read-only into child, routed
         # through the category resolver (Phase B, D-M8) instead of hardwired
-        # Mounts.  The graph root is runtime-probed and the storage.conf is
-        # GENERATED+written by ``prepare_image_sharing_sources`` (still the SOURCE
-        # of the bind); those probed/generated paths are injected at the seam into
+        # Mounts.  The graph root is runtime-probed (feeding ONLY the
+        # ``box.images_store`` default, ruled 11a) and the storage.conf is
+        # GENERATED+written by ``write_storage_conf`` (still the SOURCE of the
+        # bind); those probed/generated paths are injected at the seam into
         # the keyed ``box.bindings.ro.images_*`` binds.  CONDITIONAL: only when
-        # sharing is requested AND the host graph root is detectable.
+        # sharing is requested AND the RESOLVED store (probed default or a set
+        # ``box.images_store``) is present — probe-fail alone warns, not skips
+        # silently.
         _assemble_image_sharing_mounts(
             merged=merged,
             proj=proj,
@@ -5072,8 +5099,10 @@ def _resolve_launch_snapshot(
     site — NOT a parallel ``descriptor_mounts`` route.
 
     The image + helper tables are CONDITIONAL: a table is included ONLY when its
-    gate holds (image-sharing active → *graph_root*/*storage_conf_path* given;
-    helpers enabled → *box_state_kanibako*/*socket_path*/*log_path* given), so
+    gate holds (image-sharing active → *storage_conf_path* given, *graph_root*
+    only when the probe succeeded — it feeds ONLY the ``box.images_store``
+    default, ruled 11a; helpers enabled →
+    *box_state_kanibako*/*socket_path*/*log_path* given), so
     their binds do NOT appear otherwise — exactly as the per-family path emitted
     them only inside their conditional block.
 
@@ -5211,7 +5240,10 @@ def _resolve_launch_snapshot(
                 log_path=log_path,
             )
         )
-    if graph_root is not None and storage_conf_path is not None:
+    # 11a: *storage_conf_path* alone gates the image table — *graph_root* may be
+    # ``None`` (probe failed), in which case the table carries the binds but NO
+    # ``box.images_store`` floor default (a set tier value, or nothing, decides).
+    if storage_conf_path is not None:
         default_categories.update(
             core_defaults.image_default_categories(
                 graph_root=graph_root,
