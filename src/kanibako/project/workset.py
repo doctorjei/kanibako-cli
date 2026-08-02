@@ -22,11 +22,12 @@ names to root paths so they can be discovered from anywhere.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from kanibako.project import registry_store
 from kanibako.settings.config_io import dump_doc, load_doc
@@ -46,6 +47,119 @@ WORKSET_META_FILE = "settings.yaml"
 # ``remove_workset``, which holds a bare root Path from the registry and must clear
 # each member box tree through the unshare-aware deleter before the plain rmtree.
 BOXES_DIR_NAME = "boxes"
+
+# Default leaf names for the two RESOLVED workset dir keys below — each is the
+# spec's per-mode default formula ``@meta.workset.path/<leaf>`` spelled ONCE
+# (§3.3 ruling: the keys are "real and USED — not hard-coded"; the per-mode
+# default table is the source, never a second literal at a consumer site):
+#
+# * ``workset.workspaces`` — spec §2c NAMED default ``@meta.workset.path/
+#   workspaces`` (PRIMARY declares ``<None>`` — primary boxes have EXTERNAL
+#   workspaces — but the synthesized default workset keeps composing the same
+#   leaf, today's behavior; STANDALONE's ``workspace`` arm lives in
+#   ``paths.resolve_standalone_project``, outside these resolvers).
+# * ``workset.channelroot`` — spec §2c ALL-WORKSETS default
+#   ``@meta.workset.path/channels`` (standalone: no workset channels).
+_WORKSPACES_LEAF = "workspaces"
+_CHANNELROOT_LEAF = "channels"
+
+
+# ---------------------------------------------------------------------------
+# Resolved workset dir keys (workset.workspaces / workset.channelroot)
+#
+# These mirror :func:`kanibako.project.workset_registry.
+# resolve_workset_registry_path` — the established seam for contexts WITHOUT a
+# launch snapshot (registry lookups, mode detection, workset CRUD): a pure
+# function of the workset root + its settings document, honoring the routed
+# nested slot ``workset: {<leaf>: …}`` (the same location a settings-file edit
+# — or a future ``config set workset workset.<leaf>=…`` — writes) and falling
+# back to the spec default.  Repoint semantics MATCH the registry resolver's:
+# ``~`` expands; an absolute path is used as-is; a relative repoint anchors
+# under the workset root.
+# ---------------------------------------------------------------------------
+
+def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
+    """Best-effort read of *root*'s workset ``settings.yaml`` document.
+
+    Returns the raw document mapping, or ``None`` when the file is absent,
+    unreadable, or not a mapping — mirroring :func:`read_workset_meta`'s
+    failure shape so a broken settings file degrades a repoint to the default
+    composition instead of crashing detection/lookup paths.
+    """
+    path = root / WORKSET_META_FILE
+    if not path.is_file():
+        return None
+    try:
+        data = load_doc(path)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _workset_path_repoint(
+    workset_settings: Mapping[str, Any] | None, leaf: str,
+) -> str | None:
+    """Return the RAW ``workset.<leaf>`` repoint from a workset settings doc.
+
+    Reads the routed nested slot ``workset: {<leaf>: …}``.  ``None`` (or a
+    non-mapping table / empty value) means unset — the caller falls back to the
+    default formula.
+    """
+    if isinstance(workset_settings, Mapping):
+        workset_table = workset_settings.get("workset")
+        if isinstance(workset_table, Mapping):
+            repoint = workset_table.get(leaf)
+            if repoint:
+                return str(repoint)
+    return None
+
+
+def _apply_workset_dir_repoint(
+    workset_root: Path, repoint: str | None, default_leaf: str,
+) -> Path:
+    """Apply a workset dir-key *repoint* (or the ``<root>/<default_leaf>`` default).
+
+    Same repoint semantics as ``resolve_workset_registry_path``: ``~`` expands,
+    an absolute path is used as-is, a relative repoint anchors under
+    *workset_root* (deterministic, like the sibling path keys).
+    """
+    if repoint:
+        expanded = Path(repoint).expanduser()
+        if not expanded.is_absolute():
+            expanded = workset_root / expanded
+        return expanded
+    return workset_root / default_leaf
+
+
+def resolve_workset_workspaces(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.workspaces`` dir for a workset.
+
+    Honors a set ``workset: {workspaces: …}`` in *workset_settings*; else the
+    spec default ``@meta.workset.path/workspaces`` == ``<root>/workspaces``.
+    """
+    return _apply_workset_dir_repoint(
+        workset_root,
+        _workset_path_repoint(workset_settings, _WORKSPACES_LEAF),
+        _WORKSPACES_LEAF,
+    )
+
+
+def resolve_workset_channelroot(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.channelroot`` for a workset (primary/named).
+
+    Honors a set ``workset: {channelroot: …}`` in *workset_settings*; else the
+    spec default ``@meta.workset.path/channels``.  Standalone has no workset
+    channels (the key is ``<None>`` there) — callers gate on mode before this.
+    """
+    return _apply_workset_dir_repoint(
+        workset_root,
+        _workset_path_repoint(workset_settings, "channelroot"),
+        _CHANNELROOT_LEAF,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +280,12 @@ class Workset:
     created: str                            # ISO 8601, UTC
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False                 # True = synthesized default workset
+    #: RAW ``workset.workspaces`` repoint captured from the root settings.yaml
+    #: (the routed ``workset: {workspaces: …}`` slot) at load/synthesis time;
+    #: ``None`` = unset → the spec default composes below.  A direct
+    #: construction (fresh ``create_workset``, tests) has no settings yet, so
+    #: the default applies — which is exactly the resolved value there.
+    workspaces_repoint: str | None = None
 
     # Convenience paths -------------------------------------------------------
 
@@ -175,7 +295,11 @@ class Workset:
 
     @property
     def workspaces_dir(self) -> Path:
-        return self.root / "workspaces"
+        # The resolved ``workset.workspaces`` (§3.3: real and USED) — repoint
+        # honored, default spelled once in the resolver machinery above.
+        return _apply_workset_dir_repoint(
+            self.root, self.workspaces_repoint, _WORKSPACES_LEAF,
+        )
 
     @property
     def vault_dir(self) -> Path:
@@ -258,7 +382,14 @@ def _load_workset_toml(root: Path) -> Workset:
                 source_path=Path(entry["source_path"]),
             )
         )
-    return Workset(name=name, root=root, created=created, projects=projects)
+    return Workset(
+        name=name, root=root, created=created, projects=projects,
+        # Capture the ``workset.workspaces`` repoint (if set) from the SAME
+        # settings.yaml, so ``workspaces_dir`` composes the resolved key.
+        workspaces_repoint=_workset_path_repoint(
+            load_workset_settings_doc(root), _WORKSPACES_LEAF,
+        ),
+    )
 
 
 def read_workset_meta(path: Path) -> dict | None:
@@ -378,11 +509,18 @@ def create_workset(
 
     unwind = _Unwind()
     try:
-        # Create directory skeleton.
+        # Create directory skeleton.  The workspaces dir routes through the
+        # resolved ``workset.workspaces`` (a fresh create has no settings yet,
+        # so the resolver yields the spec default under *root*).
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
-        for subdir in ("boxes", "workspaces", "vault", "logs"):
-            (root / subdir).mkdir()
+        for subdir_path in (
+            root / BOXES_DIR_NAME,
+            resolve_workset_workspaces(root, None),
+            root / "vault",
+            root / "logs",
+        ):
+            subdir_path.mkdir()
 
         ws = Workset(
             name=name,
@@ -464,6 +602,12 @@ def default_workset(std: StandardPaths) -> Workset:
         created="",
         projects=projects,
         is_default=True,
+        # PRIMARY honors a ``workset.workspaces`` repoint from the primary
+        # workset's own settings.yaml, like a named workset (unset → the same
+        # default composition as before).
+        workspaces_repoint=_workset_path_repoint(
+            load_workset_settings_doc(std.primary_workset), _WORKSPACES_LEAF,
+        ),
     )
 
 

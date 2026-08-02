@@ -14,10 +14,10 @@ Two channel scopes (TARGET §1, §2c, §2f):
   *partitioned* by the workset-name token: ``mailboxes/<ws>`` and ``share/<ws>``
   where ``<ws>`` is ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``.  These
   partition roots apply to EVERY mode (standalone included).
-* **workset scope** — three type roots under ``@meta.workset.path/channels``
-  (common, chat, share).  These exist for the PRIMARY and NAMED modes ONLY;
-  standalone has no workset-local channels (its ``workset.channelroot`` is
-  ``<None>`` per the TARGET).
+* **workset scope** — three type roots under the resolved ``workset.channelroot``
+  (default ``@meta.workset.path/channels``; common, chat, share).  These exist
+  for the PRIMARY and NAMED modes ONLY; standalone has no workset-local channels
+  (its ``workset.channelroot`` is ``<None>`` per the TARGET).
 
 The per-instance partition ADDRESSES (``meta.box.{inbox,share_global,
 share_workset}``) are this box's own mailbox/share dirs *within* the partitioned
@@ -213,13 +213,22 @@ def workset_channel_paths(
 ) -> WorksetChannels | None:
     """Derive the WORKSET-local channel roots for *proj* (PRIMARY/NAMED only).
 
-    Returns ``None`` for standalone (no workset-local channels).  Rooted at
-    ``@meta.workset.path/channels`` (A3 — a derived helper, NOT new fields on
-    ``ProjectPaths``).
+    Returns ``None`` for standalone (no workset-local channels).  Rooted at the
+    resolved ``workset.channelroot`` (default ``@meta.workset.path/channels``;
+    a repoint in the workset's settings.yaml is honored — §3.3: real and USED)
+    (A3 — a derived helper, NOT new fields on ``ProjectPaths``).
     """
     if not has_workset_channels(proj):
         return None
-    root = workset_root(proj, std) / "channels"
+    # Lazy import (mirrors the module's other function-level imports; keeps
+    # this pure-derivation module import-light at load).
+    from kanibako.project.workset import (
+        load_workset_settings_doc,
+        resolve_workset_channelroot,
+    )
+
+    ws_root = workset_root(proj, std)
+    root = resolve_workset_channelroot(ws_root, load_workset_settings_doc(ws_root))
     chat = root / "chat"
     return WorksetChannels(
         root=root,

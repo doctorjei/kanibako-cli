@@ -226,9 +226,17 @@ def resolve_name(
         for ws_name, ws_root in names["worksets"].items():
             if cwd_str == ws_root or cwd_str.startswith(ws_root + "/"):
                 # cwd is inside this workset — check if name matches a
-                # workspace subdir.
+                # workspace subdir under the resolved ``workset.workspaces``
+                # (repoint honored — §3.3: real and USED).
+                from kanibako.project.workset import (
+                    load_workset_settings_doc,
+                    resolve_workset_workspaces,
+                )
+
                 ws_path = Path(ws_root)
-                candidate = ws_path / "workspaces" / name
+                candidate = resolve_workset_workspaces(
+                    ws_path, load_workset_settings_doc(ws_path)
+                ) / name
                 if candidate.is_dir():
                     return str(candidate), "project"
 
@@ -303,8 +311,16 @@ def resolve_qualified_name(
     if ws_name not in names["worksets"]:
         raise ProjectError(f"Unknown workset: '{ws_name}'")
 
+    from kanibako.project.workset import (
+        load_workset_settings_doc,
+        resolve_workset_workspaces,
+    )
+
     ws_root = Path(names["worksets"][ws_name])
-    candidate = ws_root / "workspaces" / proj_name
+    # The resolved ``workset.workspaces`` (repoint honored — §3.3).
+    candidate = resolve_workset_workspaces(
+        ws_root, load_workset_settings_doc(ws_root)
+    ) / proj_name
     if not candidate.is_dir():
         raise ProjectError(
             f"Project '{proj_name}' not found in workset '{ws_name}'"

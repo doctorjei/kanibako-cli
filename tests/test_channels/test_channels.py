@@ -11,6 +11,8 @@ These are pure derivations — no directories are created, no mounts touched.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from kanibako.channels import channels
@@ -194,6 +196,43 @@ class TestWorksetChannelPaths:
 
     def test_standalone_has_no_workset_channels(self, standalone_proj, std):
         assert channels.workset_channel_paths(standalone_proj, std) is None
+
+    def test_named_channelroot_repoint_honored(self, named_proj, std):
+        """B2 (§3.3): the workset-local roots compose from the RESOLVED
+        ``workset.channelroot`` — a ``workset: {channelroot: …}`` repoint in
+        the workset's settings.yaml is honored (default unchanged, pinned by
+        the sibling tests above)."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        assert named_proj.group is not None
+        settings = named_proj.group.root / "settings.yaml"
+        data = load_doc(settings)
+        data.setdefault("workset", {})["channelroot"] = "comms"
+        dump_doc(settings, data)
+
+        wch = channels.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        root = named_proj.group.root / "comms"
+        assert wch.root == root
+        assert wch.chat == root / "chat"
+        assert wch.share == root / "share"
+
+    def test_primary_channelroot_repoint_honored(self, primary_proj, std):
+        """PRIMARY honors a repoint from the primary workset's settings.yaml."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        settings = std.primary_workset / "settings.yaml"
+        data = load_doc(settings) if settings.is_file() else {}
+        if not isinstance(data, dict):
+            data = {}
+        data.setdefault("workset", {})["channelroot"] = "/srv/comms"
+        std.primary_workset.mkdir(parents=True, exist_ok=True)
+        dump_doc(settings, data)
+
+        wch = channels.workset_channel_paths(primary_proj, std)
+        assert wch is not None
+        assert wch.root == Path("/srv/comms")
+        assert wch.common == Path("/srv/comms") / "common"
 
     def test_has_workset_channels_flag(
         self, primary_proj, named_proj, standalone_proj

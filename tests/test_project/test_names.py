@@ -206,6 +206,25 @@ class TestResolveName:
         assert path == str(ws_root / "workspaces" / "api")
         assert kind == "project"
 
+    def test_cwd_context_honors_workspaces_repoint(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """B2 (§3.3): the cwd-context step composes through the RESOLVED
+        ``workset.workspaces`` — a repoint in the workset settings.yaml is
+        honored, and the default dir is no longer consulted for the name."""
+        from kanibako.settings.config_io import dump_doc
+
+        ws_root = tmp_path / "ws"
+        (ws_root / "pods" / "api").mkdir(parents=True)
+        # A decoy under the DEFAULT leaf proves the repoint is what resolves.
+        (ws_root / "workspaces" / "api").mkdir(parents=True)
+        dump_doc(ws_root / "settings.yaml", {"workset": {"workspaces": "pods"}})
+        register_name(registry, "myws", str(ws_root), section="worksets")
+
+        path, kind = resolve_name(registry, "api", cwd=ws_root)
+        assert path == str(ws_root / "pods" / "api")
+        assert kind == "project"
+
     def test_cwd_context_falls_through_to_primary(
         self, registry: Path, tmp_path: Path
     ) -> None:
@@ -292,6 +311,22 @@ class TestResolveQualifiedName:
 
         path, ws_name = resolve_qualified_name(registry, "myws/api")
         assert path == str(ws_root / "workspaces" / "api")
+        assert ws_name == "myws"
+
+    def test_qualified_honors_workspaces_repoint(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """B2 (§3.3): ``workset/project`` composes through the RESOLVED
+        ``workset.workspaces`` (repoint honored)."""
+        from kanibako.settings.config_io import dump_doc
+
+        ws_root = tmp_path / "ws"
+        (ws_root / "pods" / "api").mkdir(parents=True)
+        dump_doc(ws_root / "settings.yaml", {"workset": {"workspaces": "pods"}})
+        register_name(registry, "myws", str(ws_root), section="worksets")
+
+        path, ws_name = resolve_qualified_name(registry, "myws/api")
+        assert path == str(ws_root / "pods" / "api")
         assert ws_name == "myws"
 
     def test_unknown_workset_raises(self, registry: Path) -> None:
