@@ -2514,8 +2514,9 @@ def _run_container(
         # E2b: the CONTINUE-mode agent grammar for a detached box's always-on
         # supervisor self-heal restart (threaded to the detach branch below via
         # ``--continue-cmd``).  Populated only for a descriptor-bearing agent whose
-        # descriptor exposes a ``continue`` mode; ``None`` otherwise (the supervisor
-        # then safely defaults its restart to the start grammar).
+        # launch grammar (``meta.agent.<a>.mode``, B5) exposes a ``continue`` mode;
+        # ``None`` otherwise (the supervisor then safely defaults its restart to
+        # the start grammar).
         agent_continue_argv: list[str] | None = None
 
         # Build CLI args via target, merging agent run_args and state
@@ -2605,12 +2606,22 @@ def _run_container(
                 _cm = coerce_bool(effective_state.get("continue_mode"))
                 continue_default = True if _cm is None else _cm
                 effective_new_session = not continue_default
+                # B5 (spec §2d, the §3.3 rulings): the launch GRAMMAR comes off
+                # the ONE snapshot — ``meta.agent.<a>.mode`` / ``.exec``,
+                # materialized from the descriptor in ``_launch_snapshot_inputs``
+                # (``meta_agent_grammar_floor``). The descriptor is NOT read for
+                # argv fragments here or below: the keyspace is the single
+                # source, and a descriptor-direct read beside it would be the
+                # two-sources drift shape B5 replaced.
+                grammar = settings_launch.meta_agent_grammar(
+                    _snapshot, active_agent=agent_id,
+                )
                 mode_key = assembly.resolve_mode(
                     resume_mode=resume_mode,
                     new_session=effective_new_session,
                     is_new_project=proj.is_new,
                     extra_args=all_extra,
-                    available_modes=desc.mode.keys(),
+                    available_modes=grammar.mode.keys(),
                 )
                 # First-launch death-race fix: the DEFAULT continue mode on a
                 # box whose agent positively has nothing to resume is DOOMED
@@ -2639,10 +2650,14 @@ def _run_container(
                     mode_key = "start"
                 cli_args = assembly.assemble_argv(
                     desc,
-                    mode_key=mode_key,
+                    # The selected mode's argv fragment, from the keyspace
+                    # (meta.agent.<a>.mode[mode_key] — B5). Plain indexing so a
+                    # grammar that lacks the resolved key fails LOUDLY, exactly
+                    # as the retired descriptor-direct read did.
+                    mode_fragment=grammar.mode[mode_key],
                     safe_mode_off=safe_off,
                     setting_values=effective_state,
-                    op=None,
+                    op_fragment=None,
                     extra_args=all_extra,
                 )
                 # E2b: ALSO assemble the CONTINUE-mode grammar (when the descriptor
@@ -2653,13 +2668,13 @@ def _run_container(
                 # resolved above: the per-launch ``-N``/``-C``/``-R`` flags are
                 # consumed into new_session/continue_override/resume_mode (not
                 # ``all_extra``), so none of them leak into the continue grammar.
-                if "continue" in desc.mode:
+                if "continue" in grammar.mode:
                     agent_continue_argv = assembly.assemble_argv(
                         desc,
-                        mode_key="continue",
+                        mode_fragment=grammar.mode["continue"],
                         safe_mode_off=safe_off,
                         setting_values=effective_state,
-                        op=None,
+                        op_fragment=None,
                         extra_args=all_extra,
                     )
                 state_env = assembly.assemble_env(
@@ -4893,15 +4908,20 @@ def _launch_snapshot_inputs(
     # box enables degenerate false). Best-effort: an unresolvable target is treated
     # as non-capable rather than crashing the snapshot build.
     agent_auth_support = False
+    # The HARNESS descriptor, resolved ONCE here for BOTH plugin-set key families:
+    # the auth capability below AND the B5 launch-grammar materialization
+    # (meta.agent.<a>.{mode,exec} via meta_agent_grammar_floor — the single
+    # descriptor→keyspace seam). None when no descriptor resolves.
+    agent_desc = None
     if agent_name:
         from kanibako.targets import resolve_target
 
         try:
-            _desc = resolve_target(
+            agent_desc = resolve_target(
                 harness_of(agent_name), proj.project_path
             ).descriptor
             agent_auth_support = bool(
-                _desc.auth_share_support if _desc is not None else False
+                agent_desc.auth_share_support if agent_desc is not None else False
             )
         except (KeyError, ValueError):
             # GENUINELY ABSENT: no matching target (KeyError) or the target lacks a
@@ -4913,6 +4933,7 @@ def _launch_snapshot_inputs(
                 "auth capability: no descriptor for agent %r → non-capable",
                 agent_name,
             )
+            agent_desc = None
             agent_auth_support = False
     # The SINGLE-SOURCE (box_tier, workset_tier) settings-file pair (M-8). It is
     # UNIFORM now: primary/named = (the box's own settings.yaml, the workset root's);
@@ -4943,6 +4964,15 @@ def _launch_snapshot_inputs(
         agent_real_name=agent_name if agent_name else None,
         agent_auth_share_support=agent_auth_support,
     )
+    # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d;
+    # the §3.3 "it should exist and be used" / "we should be using this" rulings).
+    # Materialized from the SAME harness descriptor resolved above — the single
+    # descriptor→keyspace seam; the launch then COMPOSES its argv from these
+    # snapshot keys (meta_agent_grammar), never from the descriptor directly.
+    if agent_name:
+        meta_identity.update(
+            settings_launch_module.meta_agent_grammar_floor(agent_name, agent_desc)
+        )
 
     # LAYOUT-anchor materialization (spec §2c/§2g): the workset-scope path anchors
     # AND the RO per-mode box root ``meta.box.path`` that the @-ref-routed core

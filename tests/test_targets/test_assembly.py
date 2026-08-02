@@ -287,7 +287,7 @@ def test_argv_claude_continue_safe_off_with_model_and_extra() -> None:
     d = _claude_descriptor()
     argv = assemble_argv(
         d,
-        mode_key="continue",
+        mode_fragment=d.mode["continue"],
         safe_mode_off=True,
         setting_values={"model": "opus"},
         extra_args=["--foo", "bar"],
@@ -308,7 +308,7 @@ def test_argv_claude_safe_on_omits_bypass_flag() -> None:
     d = _claude_descriptor()
     argv = assemble_argv(
         d,
-        mode_key="continue",
+        mode_fragment=d.mode["continue"],
         safe_mode_off=False,
         setting_values={},
         extra_args=[],
@@ -321,7 +321,7 @@ def test_argv_model_absent_when_value_falsy() -> None:
     d = _claude_descriptor()
     argv = assemble_argv(
         d,
-        mode_key="start",
+        mode_fragment=d.mode["start"],
         safe_mode_off=False,
         setting_values={"model": ""},
         extra_args=[],
@@ -334,7 +334,7 @@ def test_argv_start_mode_empty_fragment() -> None:
     d = _claude_descriptor()
     argv = assemble_argv(
         d,
-        mode_key="start",
+        mode_fragment=d.mode["start"],
         safe_mode_off=True,
         setting_values={},
         extra_args=["x"],
@@ -346,7 +346,7 @@ def test_argv_goose_env_channels_not_in_argv() -> None:
     d = _goose_descriptor()
     argv = assemble_argv(
         d,
-        mode_key="continue",
+        mode_fragment=d.mode["continue"],
         safe_mode_off=True,
         setting_values={"model": "gpt-4o"},
         extra_args=[],
@@ -362,10 +362,10 @@ def test_argv_op_path_uses_fragment_no_mode() -> None:
     d = _claude_descriptor()
     argv = assemble_argv(
         d,
-        mode_key="continue",  # must be ignored when op is set
+        mode_fragment=d.mode["continue"],  # must be ignored when op_fragment set
         safe_mode_off=True,
         setting_values={"model": "opus"},
-        op="exec",
+        op_fragment=d.operations["exec"].fragment,
         extra_args=["hello"],
     )
     # op fragment replaces mode; safe-bypass + model + extra still apply.
@@ -377,10 +377,10 @@ def test_argv_goose_op_fragment() -> None:
     d = _goose_descriptor()
     argv = assemble_argv(
         d,
-        mode_key=None,
+        mode_fragment=None,
         safe_mode_off=False,
         setting_values={},
-        op="exec",
+        op_fragment=d.operations["exec"].fragment,
         extra_args=["do this"],
     )
     assert argv == ["run", "-t", "do this"]
@@ -400,8 +400,14 @@ def test_argv_flag_secure_emission_on_safe_on() -> None:
             secure_flag=("--ask-every-time",),
         ),
     )
-    off = assemble_argv(d, mode_key="start", safe_mode_off=True, setting_values={}, extra_args=[])
-    on = assemble_argv(d, mode_key="start", safe_mode_off=False, setting_values={}, extra_args=[])
+    off = assemble_argv(
+        d, mode_fragment=d.mode["start"], safe_mode_off=True,
+        setting_values={}, extra_args=[],
+    )
+    on = assemble_argv(
+        d, mode_fragment=d.mode["start"], safe_mode_off=False,
+        setting_values={}, extra_args=[],
+    )
     assert off == ["--yolo"]
     assert on == ["--ask-every-time"]
 
@@ -409,7 +415,10 @@ def test_argv_flag_secure_emission_on_safe_on() -> None:
 def test_argv_claude_safe_on_emits_nothing_when_secure_flag_empty() -> None:
     # claude leaves secure_flag empty -> nothing emitted on -S (default-safe).
     d = _claude_descriptor()
-    on = assemble_argv(d, mode_key="continue", safe_mode_off=False, setting_values={}, extra_args=[])
+    on = assemble_argv(
+        d, mode_fragment=d.mode["continue"], safe_mode_off=False,
+        setting_values={}, extra_args=[],
+    )
     assert on == ["--continue"]
     assert "--dangerously-skip-permissions" not in on
 
@@ -422,13 +431,60 @@ def test_argv_command_tail_included_when_multi_element() -> None:
     )
     argv = assemble_argv(
         d,
-        mode_key="start",
+        mode_fragment=d.mode["start"],
         safe_mode_off=False,
         setting_values={},
         extra_args=[],
     )
     # command[0] ("npx") excluded; command[1:] ("claude") included.
     assert argv == ["claude"]
+
+
+def test_argv_single_source_fragment_wins_over_descriptor() -> None:
+    """B5 single-source pin: the argv splices the PASSED fragment (the keyspace
+    value), never a descriptor-read one.
+
+    If ``assemble_argv`` ever regrows a ``descriptor.mode`` /
+    ``descriptor.operations`` direct read, a snapshot value that DIVERGES from
+    the descriptor could no longer reach argv — so we pass fragments that
+    deliberately diverge from the descriptor's and assert the passed values win
+    and the descriptor's never appear.
+    """
+    d = _claude_descriptor()  # descriptor says continue = ("--continue",)
+    argv = assemble_argv(
+        d,
+        mode_fragment=["--SNAPSHOT-CONTINUE"],
+        safe_mode_off=False,
+        setting_values={},
+        extra_args=[],
+    )
+    assert argv == ["--SNAPSHOT-CONTINUE"]
+    assert "--continue" not in argv
+    # Same for the one-shot op fragment (descriptor says exec = ("--print",)).
+    argv = assemble_argv(
+        d,
+        mode_fragment=["--SNAPSHOT-CONTINUE"],
+        safe_mode_off=False,
+        setting_values={},
+        op_fragment=["--SNAPSHOT-EXEC"],
+        extra_args=[],
+    )
+    assert argv == ["--SNAPSHOT-EXEC"]
+    assert "--print" not in argv and "--continue" not in argv
+
+
+def test_assemble_argv_has_no_descriptor_grammar_params() -> None:
+    """B5 reintroduction guard: the signature carries NO ``mode_key`` / ``op``
+    descriptor-lookup parameters — fragments are passed in from the keyspace.
+
+    (A revived ``mode_key=``/``op=`` lookup param is the cheapest way the
+    descriptor-direct read could come back; this pins the seam's shape.)
+    """
+    import inspect
+
+    params = inspect.signature(assemble_argv).parameters
+    assert "mode_key" not in params and "op" not in params
+    assert "mode_fragment" in params and "op_fragment" in params
 
 
 # --------------------------------------------------------------------------- #
@@ -526,9 +582,9 @@ def test_argv_claude_endpoint_never_in_argv() -> None:
 
     d = _claude_endpoint_descriptor()
     argv = assemble_argv(
-        d, mode_key="start", safe_mode_off=True,
+        d, mode_fragment=d.mode["start"], safe_mode_off=True,
         setting_values={"model": "opus", "endpoint": "http://localhost:8080"},
-        op=None, extra_args=[],
+        op_fragment=None, extra_args=[],
     )
     assert "http://localhost:8080" not in argv
     assert "ANTHROPIC_BASE_URL" not in argv

@@ -71,7 +71,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Collection, Literal, Mapping, Sequence
+from typing import TYPE_CHECKING, Collection, Literal, Mapping, NamedTuple, Sequence
+
+if TYPE_CHECKING:
+    from kanibako.targets.base import PluginDescriptor
 
 from kanibako.agent_ref import harness_of
 from kanibako.settings.settings_assemble import assemble_levels, dotted_partial
@@ -452,8 +455,13 @@ def meta_runtime_floor(
 #   meta.box.share_global   | this box's system-scope share dir (str(addr.share_global))
 #   meta.box.share_workset  | this box's workset-local share dir (str | None standalone)
 #   meta.agent.<a>.name     | the plugin-set agent name (REQUIRED when an agent exists)
-# (meta.workset.name is now a meta_runtime_floor anchor into meta.runtime.ws_name —
-#  the single source for the partition token, spec §2c 2026-07-04 — NOT a B2 key.)
+#   meta.agent.<a>.settings | the agent-tier settings FILE anchor
+#                             (@meta.agent.<a>.path/settings.yaml — B5, spec §2d)
+# (meta.agent.<a>.{mode,exec} — the plugin-set LAUNCH GRAMMAR — are B5 keys built
+#  by meta_agent_grammar_floor from the harness descriptor and folded into this
+#  same identity floor by the caller. meta.workset.name is now a meta_runtime_floor
+#  anchor into meta.runtime.ws_name — the single source for the partition token,
+#  spec §2c 2026-07-04 — NOT a B2 key.)
 #
 # meta.box.settings is the RO box-TIER settings-file anchor, and it is UNIFORM in
 # EVERY mode (spec §2c ALL PROJECTS: @meta.box.path/settings.yaml). Standalone is
@@ -508,6 +516,50 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
         f"meta.agent.{store_agent}.path": f"@config.agents/{store_agent}"
         for store_agent in {agent_name, harness_of(agent_name)}
     }
+
+
+def meta_agent_grammar_floor(
+    agent_name: str, descriptor: "PluginDescriptor | None"
+) -> dict[str, object]:
+    """The plugin-set LAUNCH-GRAMMAR anchors ``meta.agent.<a>.{mode,exec}`` (B5).
+
+    THE single descriptor→keyspace seam for the invocation grammar (spec §2d;
+    §3.3 rulings "it should exist and be used" / "we should be using this";
+    R-37 pattern — the manifest declares the SHAPE, the descriptor supplies the
+    MEMBERS). Returns the ``{dotted_key: value}`` floor fragment:
+
+    * ``meta.agent.<a>.mode`` — the harness's INTERACTIVE launch grammar,
+      ``dict[mode_key → argv fragment]`` (the descriptor's ``mode`` field,
+      tuples normalized to lists).
+    * ``meta.agent.<a>.exec`` — the STANDALONE one-shot fragment
+      (``operations["exec"].fragment``); omitted when the descriptor declares
+      no ``exec`` operation.
+
+    ⚑ REPLACEMENT, not a second path: after B5 the launch composes its argv from
+    these snapshot keys (:func:`meta_agent_grammar` →
+    :func:`kanibako.targets.assembly.assemble_argv`), and NOTHING reads
+    ``descriptor.mode`` / ``descriptor.operations`` at argv-assembly time — the
+    descriptor feeds the keyspace HERE and nowhere else. Two sources for one
+    argv fragment is the drift shape this arc exists to kill.
+
+    Keyed on the DISCRIMINATOR (*agent_name*, the ACTIVE node) like ``name`` /
+    ``auth.share_support`` — on a persona box the harness slot stays grammar-less
+    (nothing reads it; see :func:`meta_agent_path_floor`'s asymmetry note), while
+    the grammar itself is the HARNESS's (the caller resolves the harness
+    descriptor). A descriptor-less agent (``None``) materializes nothing — the
+    launch has no grammar to compose and takes the no-agent path.
+    """
+    if descriptor is None:
+        return {}
+    floor: dict[str, object] = {
+        f"meta.agent.{agent_name}.mode": {
+            key: list(fragment) for key, fragment in descriptor.mode.items()
+        },
+    }
+    exec_op = descriptor.operations.get("exec")
+    if exec_op is not None:
+        floor[f"meta.agent.{agent_name}.exec"] = list(exec_op.fragment)
+    return floor
 
 
 def meta_identity_floor(
@@ -600,6 +652,16 @@ def meta_identity_floor(
         # The agent's STORE ROOT — see :func:`meta_agent_path_floor` (shared with
         # the SET-TIME validation snapshot, so a value that validates resolves).
         floor.update(meta_agent_path_floor(agent_name))
+        # The agent-tier SETTINGS cascade FILE anchor (spec §2d; B5 — the §3.3
+        # "keep and use" ruling): the spec's own formula
+        # ``@meta.agent.<a>.path/settings.yaml``, resolved transitively through
+        # the sibling ``path`` anchor above by ``expand`` — the SAME file
+        # ``agent_settings_path`` composes (``agents/<a>/settings.yaml``,
+        # D-2026-06-22). Keyed on the DISCRIMINATOR like ``name``: the store
+        # (and so the settings file) follows the active node.
+        floor[f"meta.agent.{agent_name}.settings"] = (
+            f"@meta.agent.{agent_name}.path/settings.yaml"
+        )
         # The agent's credential-SHARING CAPABILITY (spec §2d; design step 2):
         # plugin-set, RO — the hard floor a user can't fake. The auth chain's
         # meta.box.agent.auth.share_support mirror views UP to this key, so it must
@@ -1725,6 +1787,77 @@ def effective_behavior(
             continue
         out[key] = val if isinstance(val, str) else str(val)
     return out
+
+
+class AgentGrammar(NamedTuple):
+    """The resolved launch-grammar pair read off the snapshot (B5, spec §2d)."""
+
+    #: ``meta.agent.<a>.mode`` — mode_key → the interactive argv fragment.
+    mode: dict[str, list[str]]
+    #: ``meta.agent.<a>.exec`` — the standalone one-shot fragment; ``None`` when
+    #: the agent declares no ``exec`` operation.
+    exec_fragment: "list[str] | None"
+
+
+def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar:
+    """Read ``meta.agent.<a>.{mode,exec}`` off the ONE launch snapshot (B5).
+
+    The LIVE launch-grammar reader: the composition seam
+    (``start.py`` → :func:`kanibako.targets.assembly.resolve_mode` /
+    :func:`~kanibako.targets.assembly.assemble_argv`) takes its argv fragments
+    from HERE — the keyspace is the single source; the descriptor only ever feeds
+    it (:func:`meta_agent_grammar_floor`). There is deliberately NO fallback to
+    the descriptor: a descriptor-bearing launch whose snapshot lacks the grammar
+    is a BUILD BUG (the materialization and the launch resolve share
+    ``_launch_snapshot_inputs``), and falling back would silently reintroduce the
+    second source. Raises :class:`SettingsError` naming the key instead.
+    """
+    key = f"meta.agent.{active_agent}.mode"
+    meta_node = dict.get(snapshot, "meta", _MISSING)
+    agent_root = (
+        dict.get(meta_node, "agent", _MISSING)
+        if isinstance(meta_node, KeyStore) else _MISSING
+    )
+    slot = (
+        dict.get(agent_root, active_agent, _MISSING)
+        if isinstance(agent_root, KeyStore) else _MISSING
+    )
+    if not isinstance(slot, KeyStore):
+        raise SettingsError(
+            f"'{key}' is not materialized in this snapshot (no "
+            f"meta.agent.{active_agent} node) — the launch grammar composes from "
+            f"the keyspace, so the resolve must carry meta_agent_grammar_floor()"
+        )
+    mode_node = dict.get(slot, "mode", _MISSING)
+    if not isinstance(mode_node, KeyStore):
+        raise SettingsError(
+            f"'{key}' is not materialized in this snapshot — the launch grammar "
+            f"composes from the keyspace, so the resolve must carry "
+            f"meta_agent_grammar_floor()"
+        )
+    mode: dict[str, list[str]] = {}
+    for mode_key in dict.keys(mode_node):
+        fragment = dict.__getitem__(mode_node, mode_key)
+        if not isinstance(fragment, (list, tuple)) or not all(
+            isinstance(part, str) for part in fragment
+        ):
+            raise SettingsError(
+                f"'{key}.{mode_key}' is not an argv fragment "
+                f"(expected a list of strings, got {type(fragment).__name__})"
+            )
+        mode[str(mode_key)] = list(fragment)
+    exec_raw = dict.get(slot, "exec", _MISSING)
+    exec_fragment: "list[str] | None" = None
+    if exec_raw is not _MISSING and exec_raw is not None:
+        if not isinstance(exec_raw, (list, tuple)) or not all(
+            isinstance(part, str) for part in exec_raw
+        ):
+            raise SettingsError(
+                f"'meta.agent.{active_agent}.exec' is not an argv fragment "
+                f"(expected a list of strings, got {type(exec_raw).__name__})"
+            )
+        exec_fragment = list(exec_raw)
+    return AgentGrammar(mode=mode, exec_fragment=exec_fragment)
 
 
 # --------------------------------------------------------------------------- #

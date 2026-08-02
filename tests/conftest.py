@@ -571,6 +571,7 @@ def start_mocks():
                 from kanibako.settings.settings_categories import reconcile_categories
                 from kanibako.settings.settings_launch import (
                     build_launch_snapshot,
+                    meta_agent_grammar_floor,
                     snapshot_category_entries,
                 )
                 from kanibako.settings.settings_resolve import ResolveCtx
@@ -636,6 +637,11 @@ def start_mocks():
                     behavior_floor=_floor, default_categories=_default_cats,
                     agent_partial=partial,
                     agent_state=_state,
+                    # B5: the launch grammar (meta.agent.<a>.{mode,exec}) — the
+                    # argv composition now READS THE SNAPSHOT, so the stub must
+                    # materialize it exactly as the real orchestrator does, via
+                    # the SAME single builder (no second seam to drift).
+                    meta_identity=meta_agent_grammar_floor(_node, _desc),
                     # P8: the §1A CLI LEVEL must be FORWARDED, not dropped. The
                     # per-launch flags (-M / -N/-C/-R) now reach the launch ONLY
                     # through this level, so a stub that swallows it would make

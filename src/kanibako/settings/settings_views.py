@@ -87,6 +87,8 @@ __all__ = [
     "as_float",
     "as_path",
     "as_opt_path",
+    "as_argv_fragment",
+    "as_mode_table",
     "FiniteView",
     "MetaView",
     "MetaRuntimeView",
@@ -404,6 +406,42 @@ def as_opt_path(value: Any) -> Path | None:
     return Path(value)
 
 
+def as_argv_fragment(value: Any) -> list[str]:
+    """Checking coercer: a stored argv fragment (``list``/``tuple`` of ``str``) →
+    ``list[str]``.
+
+    For the plugin-set launch-grammar leaves (``meta.agent.<a>.exec`` and the
+    values inside ``meta.agent.<a>.mode``, spec §2d / B5). Rejects any non-str
+    element (never launders); a tuple (the descriptor's in-memory form) is
+    normalized to a list.
+    """
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(part, str) for part in value
+    ):
+        raise ValueError(
+            f"expected an argv fragment (list of str), got {type(value).__name__}"
+        )
+    return list(value)
+
+
+def as_mode_table(value: Any) -> dict[str, list[str]]:
+    """Checking coercer: the ``meta.agent.<a>.mode`` NODE → ``dict[str, list[str]]``.
+
+    The launch-grammar table is materialized as a KeyStore sub-node (the floor's
+    dict value, spec §2d ``dict[mode_key → argv fragment]``); each mode's value
+    must itself be an argv fragment. A non-node (scalar / Bind) or a malformed
+    fragment is rejected — a finite view never launders a build bug.
+    """
+    if not isinstance(value, KeyStore):
+        raise ValueError(
+            f"expected the mode table node, got {type(value).__name__}"
+        )
+    table: dict[str, list[str]] = {}
+    for key in dict.keys(value):
+        table[str(key)] = as_argv_fragment(dict.__getitem__(value, key))
+    return table
+
+
 T = TypeVar("T")
 
 
@@ -569,19 +607,27 @@ class MetaWorksetView(FiniteView):
 
 
 class MetaAgentView(FiniteView):
-    """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2, spec §2d).
+    """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2 + B5, spec §2d).
 
     Exposes the plugin-set ``name`` (spec §2d — REQUIRED when an agent
-    exists; identifies the store dir & cascade key) and the agent STORE ROOT
+    exists; identifies the store dir & cascade key), the agent STORE ROOT
     ``path`` (§2d = ``@config.agents/<agent>``), which is also §2a's agent
     DECLARATION ROOT: an abstract-category source stores
-    ``@meta.agent.<agent>.path/<category>/<leaf>``, so the key resolves for real.
-    Read-only; wraps ``store.meta.agent.<agent>``. (``settings`` — §2d — is
-    still unmaterialized; its consumers have not moved onto @meta.* yet.)
+    ``@meta.agent.<agent>.path/<category>/<leaf>``, so the key resolves for real —
+    and the B5-materialized trio (§3.3 rulings): ``settings`` (the agent-tier
+    settings cascade FILE, ``@meta.agent.<a>.path/settings.yaml`` resolved),
+    ``mode`` (the harness's INTERACTIVE launch grammar,
+    ``dict[mode_key → argv fragment]``), and ``exec`` (the STANDALONE one-shot
+    fragment — declared under the Python-safe attribute ``exec``; absent for an
+    agent with no ``exec`` operation, so access it only where materialized).
+    Read-only; wraps ``store.meta.agent.<agent>``.
     """
 
     name: str = typed_field(as_str)  # type: ignore[assignment]
     path: str = typed_field(as_str)  # type: ignore[assignment]
+    settings: Path = typed_field(as_path)  # type: ignore[assignment]
+    mode: "dict[str, list[str]]" = typed_field(as_mode_table)  # type: ignore[assignment]
+    exec: "list[str]" = typed_field(as_argv_fragment)  # type: ignore[assignment]
 
 
 # --------------------------------------------------------------------------- #

@@ -587,12 +587,15 @@ class TestDescriptorAssembly:
             extra_args=extra_args or [],
             available_modes=d.mode.keys(),
         )
+        # B5: fragments are passed in (the live caller reads them off the
+        # launch snapshot's meta.agent.<a>.{mode,exec}); the descriptor is the
+        # fixture's fragment source here.
         return assembly.assemble_argv(
             d,
-            mode_key=mode_key,
+            mode_fragment=d.mode[mode_key],
             safe_mode_off=safe_off,
             setting_values=state or {},
-            op=op,
+            op_fragment=d.operations[op].fragment if op is not None else None,
             extra_args=extra_args or [],
         )
 
@@ -607,8 +610,8 @@ class TestDescriptorAssembly:
     def test_start_mode_is_empty(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=False,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == []
 
@@ -619,40 +622,40 @@ class TestDescriptorAssembly:
             extra_args=[], available_modes=d.mode.keys(),
         )
         argv = assembly.assemble_argv(
-            d, mode_key=mode_key, safe_mode_off=False,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode[mode_key], safe_mode_off=False,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == []
 
     def test_safe_off_adds_bypass_flag(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=True,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode["start"], safe_mode_off=True,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["--dangerously-bypass-approvals-and-sandbox"]
 
     def test_safe_on_no_bypass_flag(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=False,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert "--dangerously-bypass-approvals-and-sandbox" not in argv
 
     def test_model_flag_from_settings(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=False,
-            setting_values={"model": "gpt-5.5"}, op=None, extra_args=[],
+            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            setting_values={"model": "gpt-5.5"}, op_fragment=None, extra_args=[],
         )
         assert argv == ["--model", "gpt-5.5"]
 
     def test_exec_op_argv(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=False,
-            setting_values={}, op="exec", extra_args=["do the thing"],
+            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            setting_values={}, op_fragment=d.operations["exec"].fragment, extra_args=["do the thing"],
         )
         assert argv == ["exec", "do the thing"]
 

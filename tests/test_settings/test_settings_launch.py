@@ -1326,6 +1326,172 @@ class TestMetaAgentPath:
         assert ma.path == "/data/agents/claude"
 
 
+# --------------------------------------------------------------------------- #
+# B5 — meta.agent.<a>.{mode, exec, settings} materialization + the reader      #
+# spec §2d; the §3.3 rulings ("keep and use" / "it should exist and be used" / #
+# "we should be using this"); R-37 (shape in the manifest, members from        #
+# descriptors)                                                                 #
+# --------------------------------------------------------------------------- #
+
+from kanibako.settings.settings_launch import (  # noqa: E402
+    meta_agent_grammar,
+    meta_agent_grammar_floor,
+)
+
+
+class TestMetaAgentGrammarFloor:
+    """The SINGLE descriptor→keyspace seam materializes each shipped plugin's
+    launch grammar EXACTLY as its descriptor (⟵ its ``*-defaults.yaml``)
+    declares it — values cross-checked against the descriptor so a yaml edit
+    that changes the grammar changes this floor with it (one seam, no drift)."""
+
+    def test_claude_mode_and_exec(self):
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        desc = ClaudeTarget().descriptor
+        floor = meta_agent_grammar_floor("claude", desc)
+        assert floor["meta.agent.claude.mode"] == {
+            "start": [], "continue": ["--continue"],
+        }
+        assert floor["meta.agent.claude.exec"] == ["-p"]
+        # The values ARE the descriptor's (tuples normalized to lists).
+        assert floor["meta.agent.claude.mode"] == {
+            k: list(v) for k, v in desc.mode.items()
+        }
+        assert floor["meta.agent.claude.exec"] == list(
+            desc.operations["exec"].fragment
+        )
+
+    def test_codex_mode_and_exec(self):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        floor = meta_agent_grammar_floor("codex", CodexTarget().descriptor)
+        assert floor["meta.agent.codex.mode"] == {
+            "start": [], "continue": ["resume", "--last"],
+        }
+        assert floor["meta.agent.codex.exec"] == ["exec"]
+
+    def test_goose_mode_and_exec(self):
+        from kanibako.plugins.goose.target import GooseTarget
+
+        floor = meta_agent_grammar_floor("goose", GooseTarget().descriptor)
+        assert floor["meta.agent.goose.mode"] == {
+            "start": ["session"], "continue": ["session", "--resume"],
+        }
+        assert floor["meta.agent.goose.exec"] == ["run", "--no-session", "-t"]
+
+    def test_descriptor_less_agent_materializes_nothing(self):
+        assert meta_agent_grammar_floor("whatever", None) == {}
+
+    def test_exec_omitted_when_no_exec_operation(self):
+        from kanibako.targets.base import PluginDescriptor
+
+        d = PluginDescriptor(command=("a",), bindings=(), mode={"start": ()})
+        floor = meta_agent_grammar_floor("a", d)
+        assert floor == {"meta.agent.a.mode": {"start": []}}
+        assert "meta.agent.a.exec" not in floor
+
+
+def _grammar_snapshot(agent_name="claude", *, with_grammar=True):
+    """An identity snapshot that ALSO carries the B5 grammar floor, folded in
+    exactly as ``_launch_snapshot_inputs`` does (identity dict + grammar dict →
+    one ``meta_identity``)."""
+    from kanibako.plugins.claude.target import ClaudeTarget
+
+    ident = meta_identity_floor(
+        box_name="droste", project_path="/code/droste", inbox="/i",
+        share_global="/s", share_workset=None, agent_name=agent_name,
+        agent_real_name=agent_name,
+    )
+    if with_grammar:
+        ident.update(
+            meta_agent_grammar_floor(agent_name, ClaudeTarget().descriptor)
+        )
+    return build_launch_snapshot(
+        agent_name=agent_name,
+        ctx=_ctx_with_config(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        meta_identity=ident,
+    )
+
+
+class TestMetaAgentGrammarSnapshot:
+    """The three B5 leaves land in the EXPANDED snapshot and the launch reader
+    returns them typed — the keyspace is the argv-fragment source of truth."""
+
+    def test_mode_and_exec_leaves_materialized(self):
+        snap = _grammar_snapshot()
+        ma = _meta_node(snap, "meta", "agent", "claude")
+        mode = dict.get(ma, "mode")
+        assert isinstance(mode, KeyStore)
+        assert dict.get(mode, "start") == []
+        assert dict.get(mode, "continue") == ["--continue"]
+        assert dict.get(ma, "exec") == ["-p"]
+
+    def test_settings_leaf_resolves_through_the_path_anchor(self):
+        """``meta.agent.<a>.settings`` = @meta.agent.<a>.path/settings.yaml —
+        the @-ref chain resolves through the sibling ``path`` anchor to the SAME
+        file ``agent_settings_path`` composes (agents/<a>/settings.yaml)."""
+        from kanibako.settings.agent_config import agent_settings_path
+
+        snap = _grammar_snapshot()
+        ma = _meta_node(snap, "meta", "agent", "claude")
+        assert dict.get(ma, "settings") == "/data/agents/claude/settings.yaml"
+        assert dict.get(ma, "settings") == str(
+            agent_settings_path(Path("/data/agents"), "claude")
+        )
+
+    def test_reader_returns_the_grammar(self):
+        snap = _grammar_snapshot()
+        g = meta_agent_grammar(snap, active_agent="claude")
+        assert g.mode == {"start": [], "continue": ["--continue"]}
+        assert g.exec_fragment == ["-p"]
+
+    def test_reader_refuses_an_unmaterialized_snapshot(self):
+        """NO descriptor fallback (single source): a snapshot without the
+        grammar is a build bug and the reader raises, naming the key —
+        falling back to the descriptor would silently regrow the second path."""
+        snap = _grammar_snapshot(with_grammar=False)
+        with pytest.raises(_SettingsError, match="meta.agent.claude.mode"):
+            meta_agent_grammar(snap, active_agent="claude")
+
+    def test_reader_exec_none_when_absent(self):
+        from kanibako.targets.base import PluginDescriptor
+
+        ident = meta_identity_floor(
+            box_name="x", project_path="/p", inbox="/i", share_global="/s",
+            share_workset=None, agent_name="a", agent_real_name="a",
+        )
+        ident.update(meta_agent_grammar_floor(
+            "a", PluginDescriptor(command=("a",), bindings=(), mode={"start": ()}),
+        ))
+        snap = build_launch_snapshot(
+            agent_name="a", ctx=_ctx_with_config(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            meta_identity=ident,
+        )
+        g = meta_agent_grammar(snap, active_agent="a")
+        assert g.mode == {"start": []}
+        assert g.exec_fragment is None
+
+    def test_view_exposes_the_trio(self):
+        """MetaAgentView displays settings/mode/exec beside name/path — the
+        'settings unmaterialized' deferral note is dead (B5, step 3)."""
+        from kanibako.settings import settings_views as views
+
+        snap = _grammar_snapshot()
+        ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
+        assert ma.settings == Path("/data/agents/claude/settings.yaml")
+        assert ma.mode == {"start": [], "continue": ["--continue"]}
+        assert ma.exec == ["-p"]
+
+    def test_view_docstring_no_longer_defers_settings(self):
+        """The ~:578-579 'still unmaterialized' note died honestly."""
+        from kanibako.settings import settings_views as views
+
+        assert "unmaterialized" not in (views.MetaAgentView.__doc__ or "")
+
+
 def test_meta_identity_no_agent_omits_agent_key():
     """A NO-AGENT box (agent_name=None) materializes NO meta.agent.* key."""
     floor = meta_identity_floor(
