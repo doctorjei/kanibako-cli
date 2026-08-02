@@ -1437,10 +1437,13 @@ declared_instances:
            box.share_images + box.images_store (the USER KEY host store root).
            The GENERATED storage.conf companion (images_conf) is an INTERNAL bind
            and NOT a key (not_keys.never_a_key) — the store mount is INERT
-           without it. ⚑ B3-PENDING PAIR: core-defaults' bind entry is spelled
-           `images_store` today; plan step B3's rider renames it to `images` so
-           the bind and the scalar stop sharing a name — EXPECTED skew until B3;
-           flagged, unresolved — not an error."
+           without it. RESOLVED by B3: core-defaults' bind entry is `images`
+           (renamed from `images_store` — the bind row and the scalar no longer
+           share a name); the shipped host_src is the @-ref `@box.images_store`,
+           whose runtime-probed-graphroot DEFAULT enters as a floor scalar at
+           the launch seam (core_defaults.image_default_categories). The %if%
+           condition is realized by the caller's conditional gate (the image
+           table is only injected when image sharing is active)."
     spec: "§2c (ALL PROJECTS; D-M8) / §2b (box.images_store)"
   box.bindings.ro.helper_log:
     user_key: true

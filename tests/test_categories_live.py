@@ -528,6 +528,111 @@ class TestP1BoxRootAnchor:
         assert snap.meta.box.path == snap.workset.boxes
 
 
+class TestB3ImagesStoreKey:
+    """B3 — the image-store bind routes through the USER KEY ``box.images_store``.
+
+    Spec §2b (``box.images_store``) + §2c ALL PROJECTS row ``images`` (D-M8): the
+    runtime-probed podman graphroot is the KEY'S DEFAULT, the bind's host_src is
+    the @-ref ``@box.images_store``, and a cascade-tier repoint of the key MOVES
+    the mount.  The rider is pinned too: the bind entry is ``images`` — the bind
+    row and the scalar key no longer share a name.
+    """
+
+    def test_images_bind_is_the_at_ref_and_the_probe_is_the_key_default(self):
+        """The emitted table = the @-ref bind + the probed-default scalar.
+
+        Spelled, not just resolved (helper_log precedent): the host_src IS
+        ``@box.images_store``, so the mount follows the KEY rather than a probed
+        literal that happens to match.  The probe enters the keyspace in the SAME
+        table, as the key's floor-scalar default.  And the RENAME is structural:
+        the old ``box.bindings.ro.images_store`` spelling must not come back — an
+        undeclared bind row sharing the scalar's name was the confusion the B3
+        rider retired.
+        """
+        from kanibako.settings import core_defaults
+
+        emitted = core_defaults.image_default_categories(
+            graph_root=Path("/host/graph"),
+            storage_conf_path=Path("/host/staging/storage.conf"),
+        )
+        assert emitted["box.bindings.ro.images"] == (
+            "@box.images_store",
+            "/var/lib/shared-images",
+            "ro",
+        )
+        # The probed graphroot IS the user key's default, entering here.
+        assert emitted["box.images_store"] == "/host/graph"
+        # The rider: the bind row no longer shares the scalar key's name.
+        assert "box.bindings.ro.images_store" not in emitted
+        # images_conf stays an INTERNAL bind (NOT a key) and keeps its name.
+        assert emitted["box.bindings.ro.images_conf"] == (
+            "/host/staging/storage.conf",
+            "~/.config/containers/storage.conf",
+            "ro",
+        )
+
+    @staticmethod
+    def _resolve_images_mounts(tmp_path, box_yaml: str | None):
+        """Resolve the CONDITIONAL image table through the LIVE pipeline.
+
+        Mirrors the launch's narrow image resolve: ONLY the image table as the
+        floor (``include_base_families=False`` shape), plus an optional box
+        settings FILE — the tier a user's ``box: images_store:`` repoint lives
+        in.  All host sources are real dirs/files so the reconcile keeps them.
+        """
+        from kanibako.settings import core_defaults
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+
+        probed = tmp_path / "probed-graph"
+        probed.mkdir()
+        conf = tmp_path / "storage.conf"
+        conf.write_text("[storage]\n")
+        box_path = None
+        if box_yaml is not None:
+            box_path = tmp_path / "box-settings.yaml"
+            box_path.write_text(box_yaml)
+
+        ctx = make_ctx()
+        floor = dict(core_defaults.image_default_categories(
+            graph_root=probed, storage_conf_path=conf,
+        ))
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=box_path, default_categories=floor,
+        )
+        rec = reconcile_categories(
+            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        )
+        return probed, {m.box_dest: m.host_src for m in rec.mounts}
+
+    def test_default_resolves_to_the_probed_graphroot(self, tmp_path):
+        """Out of the box, ``@box.images_store`` resolves to the probe.
+
+        No file sets the key, so the floor default (the probed graphroot) wins
+        and the store mount is byte-identical to the pre-B3 hardwired source.
+        """
+        probed, by_dest = self._resolve_images_mounts(tmp_path, box_yaml=None)
+        assert by_dest["/var/lib/shared-images"] == str(probed)
+
+    def test_images_bind_follows_a_repointed_images_store(self, tmp_path):
+        """A box-file ``box.images_store`` repoint MOVES the store mount.
+
+        THE key ruling of B3 (§3.3): the key is consulted — a cascade value
+        beats the probed default by name, and the bind lands on the user's
+        store, not the probe's.
+        """
+        custom = tmp_path / "custom-store"
+        custom.mkdir()
+        probed, by_dest = self._resolve_images_mounts(
+            tmp_path, box_yaml=f"box:\n  images_store: {custom}\n",
+        )
+        assert by_dest["/var/lib/shared-images"] == str(custom)
+        assert by_dest["/var/lib/shared-images"] != str(probed)
+
+
 class TestDeclarationRoots:
     """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a).
 

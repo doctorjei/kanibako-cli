@@ -383,18 +383,31 @@ helpers:
 
 # Image-sharing bind (Phase B, D-M8).  The host image graph root + the GENERATED
 # `storage.conf` (additionalImageStores), routed through the category resolver
-# instead of the hardwired Mounts that `image_sharing.build_image_sharing_mounts`
-# returned.  GATED: emitted only when image-sharing applies AND the host graph
-# root is detectable.  box-side destinations + options are STATIC; the host
-# SOURCES (probed graph root + generated conf path) are injected at the seam.
+# (the seam is `image_sharing.prepare_image_sharing_sources` feeding
+# `core_defaults.image_default_categories`).  GATED: emitted only when
+# image-sharing applies AND the host graph root is detectable (the caller's
+# conditional gate realizes the spec's `%if @box.share_images%` condition).
+# box-side destinations + options are STATIC; the host SOURCES (probed graph
+# root + generated conf path) are injected at the seam.
 images:
   # Host graph root → /var/lib/shared-images (ro).
-  - key: images_store
+  # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS row `images`, D-M8): the host_src
+  # is the @-ref `@box.images_store` — the USER KEY whose DEFAULT is the
+  # runtime-probed podman graph root, injected as a floor scalar at the same
+  # seam (`image_default_categories`).  Repointing `box.images_store` at any
+  # cascade tier (box > workset > system file) moves this mount.  ⚑ Entry
+  # RENAMED `images_store` → `images` (B3 rider): the bind row and the scalar
+  # key no longer share a name.  `source:` stays the symbolic probe pointer
+  # (helper_log parity); `meta_ref` is what the loader emits as host_src.
+  - key: images
     category: bindings.ro
     source: images_store
+    meta_ref: "@box.images_store"
     box_dest: "/var/lib/shared-images"
     options: "ro"
   # Generated storage.conf → ~/.config/containers/storage.conf (ro).
+  # INTERNAL bind, NOT a key (not_keys.never_a_key): fixed location, generated
+  # content — nothing for a user to configure (spec §0's test).
   - key: images_conf
     category: bindings.ro
     source: images_conf

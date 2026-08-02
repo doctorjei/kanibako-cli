@@ -1251,31 +1251,51 @@ def image_default_categories(
     *,
     graph_root: Path,
     storage_conf_path: Path,
-) -> dict[str, tuple[str, str, str]]:
+) -> dict[str, tuple[str, str, str] | str]:
     """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
 
     Maps ``box.bindings.ro.<key>`` → a STRUCTURED 3-TUPLE
     ``(host_src, box_dest, options)`` for the host image graph root + the GENERATED
-    ``storage.conf`` — TODAY's hardwired Mounts from
-    :func:`kanibako.runtime.image_sharing.build_image_sharing_mounts` routed through the
-    category resolver.  The box-side destinations + options come from the
-    declarative file (``images:`` list); the host SOURCES (the runtime-probed
+    ``storage.conf``, routed through the category resolver (the sole route; the
+    old hardwired Mounts are gone).  The box-side destinations + options come from
+    the declarative file (``images:`` list); the host SOURCES (the runtime-probed
     *graph_root* and the already-GENERATED *storage_conf_path*) are injected here.
+
+    ⚑ B3 (spec §2b / §2c, D-M8): the store bind ``box.bindings.ro.images`` is
+    ROUTED THROUGH THE USER KEY — its shipped host_src is the @-ref
+    ``@box.images_store`` (the file's ``meta_ref``, helper_log parity), and the
+    runtime-probed *graph_root* enters the keyspace HERE as that key's DEFAULT: a
+    floor scalar in the returned table.  The floor is the least-specific cascade
+    level (``base``), so a ``box:``/``workset:``/``system:`` FILE value for
+    ``images_store`` overrides it by name and the ONE expand pass resolves the
+    bind's host_src to the winning value.  ``images_conf`` stays an INTERNAL bind
+    and NOT a key (fixed location, generated content — spec §0's test).
 
     The caller applies the CONDITIONAL gate (only when image-sharing is requested
     AND the host graph root is detectable) before invoking this, so every entry is
-    emitted unconditionally once called.
+    emitted unconditionally once called — that gate is the code realization of the
+    spec's ``%if @box.share_images%`` condition on the ``images`` row.
     """
     sources: dict[str, str] = {
         "images_store": str(graph_root),
         "images_conf": str(storage_conf_path),
     }
 
-    binds: dict[str, tuple[str, str, str]] = {}
+    binds: dict[str, tuple[str, str, str] | str] = {
+        # The USER KEY behind the store bind: the probe lands as the DEFAULT of
+        # ``box.images_store`` (manifest §2b row — "<runtime-probed podman
+        # graphroot>"); the ``images`` bind's ``@box.images_store`` host_src
+        # resolves against whatever value wins the cascade.
+        "box.images_store": str(graph_root),
+    }
     for entry in _load_doc().get("images", []):
         category = entry["category"]
+        # ``meta_ref`` (when declared) is the emitted host_src — the spec's own
+        # @-ref spelling; the symbolic ``source`` stays the probed-literal
+        # fallback (helper_default_categories parity).
+        host_src = entry.get("meta_ref", sources[entry["source"]])
         binds[f"box.{category}.{entry['key']}"] = (
-            sources[entry["source"]],
+            host_src,
             str(entry["box_dest"]),
             str(entry["options"]),
         )
