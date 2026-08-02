@@ -353,13 +353,27 @@ def _ensure_initialized() -> None:
     install_packaged_templates(std_paths, target_names)
 
     # Seed default global environment variables (don't overwrite existing).
-    from kanibako.shellenv import read_env_file, write_env_file
+    #
+    # ⚑ RE-HOMED onto the real mechanism (R-39/RQ-1, 2026-08-02). This wrote
+    # ``COLORTERM=truecolor`` into the global docker ``.env`` FILE, whose ONLY
+    # delivery path was the three-tier launch read that RQ-1 retired — so left as
+    # it was, the seed would have kept writing a file nothing reads and boxes
+    # would have lost truecolor with nothing announcing it. The value now lands
+    # at ``system.env.COLORTERM`` in the system SETTINGS file, which
+    # ``settings_launch._emit_scope_node`` already delivers as a system-scope
+    # ``env`` category entry — the same value, through the single route, and now
+    # visible to ``config get`` / ``show`` and overridable at any scope.
+    #
+    # setdefault semantics are PRESERVED: first run only (this function returns
+    # early once the config file exists) AND create-if-absent, so a user value
+    # already at the key is never clobbered.
+    from kanibako.settings.config_io import read_stored_leaf, write_nested_key
 
-    global_env_path = data_path / "env"
-    global_env = read_env_file(global_env_path)
-    for key, value in {"COLORTERM": "truecolor"}.items():
-        global_env.setdefault(key, value)
-    write_env_file(global_env_path, global_env)
+    if read_stored_leaf(std_paths.settings, ("system", "env"), "COLORTERM") is None:
+        std_paths.settings.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(
+            std_paths.settings, ("system", "env"), "COLORTERM", "truecolor",
+        )
 
     # Try shell completion
     try:

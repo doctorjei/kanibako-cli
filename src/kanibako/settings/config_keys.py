@@ -52,7 +52,11 @@ from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.config_io import render_stored_scalar
-from kanibako.settings.settings_keyspace import ACCESS_DEFAULT, ACCESS_TIERS
+from kanibako.settings.settings_keyspace import (
+    ACCESS_DEFAULT,
+    ACCESS_TIERS,
+    leaf_name_reason,
+)
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.settings_store import SCOPE_CONTAINMENT
 
@@ -245,7 +249,11 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.agent",
 })
 
-# Prefixes for dynamic keys (env vars).
+# The RETIRED bare env-var prefix (R-39, spec §2a: the env family is SCOPED —
+# ``<scope>.env.<VAR>``; a bare ``env.<VAR>`` is not a key). Kept ONLY so the
+# spelling stays RECOGNISED as key-shaped: ``is_known_key`` must not read it as
+# a project name, and the verbs refuse it with the cure
+# (:func:`bare_env_retired_error`) rather than fail as an unknown key.
 DYNAMIC_PREFIXES: tuple[str, ...] = ("env.",)
 
 # ---------------------------------------------------------------------------
@@ -397,10 +405,13 @@ def _coerce_value(canonical: str, value: "str | None") -> object | str | None:
 # ---------------------------------------------------------------------------
 
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token).
-# A key whose first segment is NOT one of these (``env.*`` and
-# the un-prefixed scalars ``model`` / ``continue_mode`` / ``access`` /
-# ``allow_helpers``) is SCOPELESS — it always writes to the command
-# scope's OWN file, so the direction guard does not apply to it. ``config`` is a
+# A key whose first segment is NOT one of these (the un-prefixed scalars
+# ``model`` / ``continue_mode`` / ``access`` / ``allow_helpers``) is
+# SCOPELESS — it always writes to the command
+# scope's OWN file, so the direction guard does not apply to it. (The RETIRED
+# bare ``env.<VAR>`` is scopeless in SHAPE too, but it never reaches this guard:
+# set/reset refuse it in the preamble — R-39. The live env family is
+# ``<scope>.env.<VAR>``, whose token IS a namespace and IS guarded.) ``config`` is a
 # real namespace (config.* keys exist) but no config.* key actually REACHES this
 # guard: set/reset short-circuit config.* earlier with the file-only refusal (B2).
 _SCOPE_NAMESPACES: frozenset[str] = frozenset({
@@ -464,12 +475,13 @@ def _scope_direction_error(
     one).
 
     The guard keys on the key's TOP-LEVEL dotted token. A SCOPELESS key
-    (``env.*`` / the un-prefixed scalars) is always permitted —
-    it writes to the command scope's own file by construction.
+    (the un-prefixed scalars) is always permitted — it writes to the command
+    scope's own file by construction. (The RETIRED bare ``env.*`` is scopeless
+    in shape too but never arrives here: the verbs refuse it earlier — R-39.)
     """
     key_scope = canonical.split(".", 1)[0]
     if key_scope not in _SCOPE_NAMESPACES:
-        # Scopeless key (env.*, model, allow_helpers, …) — own-file write.
+        # Scopeless key (model, allow_helpers, …) — own-file write.
         return None
     if key_scope == "meta":
         return (
@@ -822,8 +834,102 @@ def _floor_bind_display(
         return None
     return (rendered, "descriptor floor; host re-resolved at launch")
 
-def _is_env_key(key: str) -> bool:
+def _is_bare_env_key(key: str) -> bool:
+    """The RETIRED bare docker-``.env`` spelling ``env.<VAR>`` (R-39, spec §2a).
+
+    ⮕ **R-39 RETIRED THE BARE SPELLING.** The keyspace env family is SCOPED —
+    ``<scope>.env.<VAR>``, matched by :func:`_is_scope_env_key` — and the bare
+    form wrote the docker ``.env`` FILE instead: an undiscriminated variant that
+    silently meant something different from the discriminated key (Code
+    Convention 0's failure mode). This predicate now exists ONLY to RECOGNISE
+    the retired spelling so set / reset / get can refuse it with the cure
+    (:func:`bare_env_retired_error`) rather than fail as an unknown key — the
+    same recognise-to-refuse role as :func:`_is_box_agent_key` (P7).
+    """
     return key.startswith("env.")
+
+
+# ``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — the LIVE
+# env family (spec §2a L383 ``<scope>.env.<VAR> | value | scoped env var``; §2a
+# L496 "Scalars (incl. ``env.<VAR>``, whose value is scalar) → full CLI set").
+# The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed by
+# ``_is_persona_agent_key`` (the node file); this covers the other three, which
+# write a scalar to the COMMAND scope's OWN settings file at
+# ``<scope>.env.<VAR>`` — the shape ``_file_partial`` reads into the cascade and
+# ``settings_launch._emit_scope_node`` delivers as a ``category="env"`` entry.
+# Deliberately the SIBLING-EXACT twin of ``_SCOPE_SECRET_RE``: same three scopes,
+# same VAR shape (no dots), same NOUN-file destination. VAR matching is
+# CASE-SENSITIVE (spec §0 "Reserved key names" / §2a L386) — there is no
+# case-folding anywhere on this path.
+_SCOPE_ENV_RE = re.compile(
+    r"^(?P<scope>system|workset|box)\.env\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+)
+
+
+def _is_scope_env_key(key: str) -> bool:
+    """True iff *key* is a NON-agent ``<scope>.env.<VAR>`` key (system/workset/
+    box) — settable to the command scope's own settings file.
+
+    SHAPE only. The spec §0 RESERVED-NAME floor is enforced at WRITE time by
+    :func:`scope_env_var_error`, not here: a reserved VAR must be refused by
+    NAME ("'get' is a RESERVED key name"), and excluding it from the shape test
+    would instead report the far less useful "unknown config key".
+    """
+    return _SCOPE_ENV_RE.match(key) is not None
+
+
+def scope_env_var_error(canonical: str) -> str | None:
+    """Refuse a ``<scope>.env.<VAR>`` WRITE whose VAR is a RESERVED name.
+
+    Spec §0: an ``env.<VAR>`` name may not be a public ``dict`` method name nor
+    match the dunder pattern, and the refusal is due "loudly at write/``config
+    set`` time" — this is that site (set AND reset; a reset is a write, and
+    "No override for box.env.get" would imply the name was legal).
+
+    Returns an ``Error: …`` string when refused, else ``None`` (including for
+    every non-scope-env key, so the verbs can apply it unconditionally).
+    """
+    m = _SCOPE_ENV_RE.match(canonical)
+    if m is None:
+        return None
+    reason = leaf_name_reason(m.group("var"))
+    return None if reason is None else f"Error: {reason}."
+
+
+def bare_env_retired_error(
+    key: str, *, verb: str, command_scope: "ConfigLevel | None" = None,
+) -> str | None:
+    """The refusal + cure for a RETIRED bare ``env.<VAR>`` op (R-39, spec §2a),
+    or ``None`` when *key* is not a bare env key.
+
+    The cure NAMES the DISCRIMINATED key for the command scope (``box`` when no
+    scope is threaded — the box tier is where the old spelling's writes bit) and
+    quotes the user's spelling. That key is REAL and REACHABLE: this same change
+    routed ``<scope>.env.<VAR>`` through get / set / reset
+    (:func:`_is_scope_env_key`), so the cure is an instruction the user can
+    follow verbatim, not a pointer at an unimplemented key.
+
+    ⚑ The docker ``.env`` FILES the bare spelling used to write are RETIRED
+    OUTRIGHT (Jei's 2026-08-02 RQ-1 re-ruling; the ratified manifest records the
+    files as DROPPED): the launch-side three-tier read is gone, so a hand edit
+    no longer reaches the box either. The message says so — a cure that implied
+    "edit the file instead" would send the user to a surface nothing reads.
+
+    *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``).
+    Like :func:`bare_agent_key_scope_error` this gates itself — ``None`` for
+    every other key — so every verb door applies it uniformly and unconditionally.
+    """
+    if not _is_bare_env_key(key):
+        return None
+    var = key[len("env."):]
+    scope = command_scope.value if command_scope is not None else "box"
+    return (
+        f"Error: '{key}' cannot be {verb} — the bare env.<VAR> spelling is "
+        f"RETIRED (the env family is scoped, spec §2a). Use '{scope}.env.{var}', "
+        f"which is stored in the {scope} settings file and exported into the box "
+        f"at launch. The docker .env files the bare spelling wrote are no longer "
+        f"read at all."
+    )
 
 
 def _is_agent_setting(key: str) -> bool:
@@ -1007,6 +1113,9 @@ def is_known_key(arg: str) -> bool:
     """Return True if *arg* looks like a config key (not a project name)."""
     if arg in KNOWN_CONFIG_KEYS:
         return True
+    # Bare env.<VAR> — RETIRED (R-39) but still KEY-SHAPED on purpose: the verbs
+    # must refuse it with the cure, which requires the positional-vs-key
+    # disambiguator to read it as a key, never as a project name.
     if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
         return True
     # pref.<target-key> — the §2h REQUEST family. SHAPE-only here: this is the
@@ -1025,6 +1134,11 @@ def is_known_key(arg: str) -> bool:
     # here so get/show + the project-name heuristic treat it as a KEY. Also the
     # NON-agent ``<scope>.secret_path.<VAR>`` scope form.
     if _is_agent_node_secret_key(arg) or _is_scope_secret_key(arg):
+        return True
+    # <scope>.env.<VAR> (system/workset/box) — the LIVE env family (spec §2a
+    # L383). Its agent twin ``agent.<node>.env.<VAR>`` is recognised by the
+    # per-persona arm below.
+    if _is_scope_env_key(arg):
         return True
     # agent.<node>.<key> — the per-persona agent key (block B1): a settable key
     # (recognised on the +form too, before canonicalization) so get/show + the
@@ -1261,7 +1375,9 @@ def _is_path_category_key(key: str) -> bool:
     The source-only RAW repoint (spec §2a / design §6d / S24) applies to the
     bind-shaped categories ONLY — ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
     ``common`` / ``synced`` (a 2-/3-element ``[host_src, box_dest[, options]]``
-    tuple). ``env`` (scalar) is routed by the earlier ``_is_env_key`` branch;
+    tuple). ``env`` (scalar) is NOT matched here — the live ``<scope>.env.<VAR>``
+    arm is routed by the earlier :func:`_is_scope_env_key` branch as a plain
+    scalar write, and the bare spelling is refused before dispatch (R-39);
     ``masks`` (a keyed list) is YAML-only (spec §2a) and is NOT matched here.
     """
     from kanibako.settings.settings_categories import BIND_KEY_RE
@@ -1274,7 +1390,10 @@ def _has_dedicated_route(canonical: str) -> bool:
     ⚑ MIRRORS THE DISPATCH CHAIN in :func:`set_config_value`, in the same order.
     A branch added there without a term here would make this say "no route" for a
     key that in fact has one — so the two must be edited together, and
-    ``TestSetDispatchCoverage`` fails if they drift.
+    ``TestSetDispatchCoverage`` fails if they drift.  PREAMBLE guards are NOT
+    terms: a key refused before the dispatch (the bare-agent scalars at box/
+    workset; the retired bare ``env.<VAR>``, R-39) never reaches the probe this
+    feeds, so a term for it here would be a second spelling of the refusal.
 
     Its ONE job is to keep :func:`_probes_at_set_time` off keys nothing handles,
     so an unknown key still reaches the routing table at the bottom of the
@@ -1284,10 +1403,10 @@ def _has_dedicated_route(canonical: str) -> bool:
     """
     return (
         _is_pref_key(canonical)
-        or _is_env_key(canonical)
         or _is_agent_node_bind_key(canonical)
         or _is_agent_node_secret_key(canonical)
         or _is_scope_secret_key(canonical)
+        or _is_scope_env_key(canonical)
         or _is_persona_agent_key(canonical)
         or _is_agent_setting(canonical)
         or _is_box_agent_key(canonical)
@@ -1307,39 +1426,31 @@ def _probes_at_set_time(canonical: str) -> bool:
 
     Excluded, and why:
 
-    * **The docker ``.env`` family (bare ``env.<VAR>``).** It is written VERBATIM
-      by ``shellenv.set_env_var`` and read verbatim into the container env; it
-      never enters the settings snapshot. So ``env.EMAIL=jei@example.com`` and
-      ``env.MY_PATH=$HOME/bin`` are ordinary values — the second deliberately
-      names a GUEST-side variable, which is the whole point of deferral. ⚑ The
-      escape hatch does not help here and must not be suggested: ``\\@`` passes
-      the probe but lands in the file WITH the backslash, because the write is
-      verbatim while only the probe unescapes. There is no CLI spelling that
-      would produce the right value, which is what makes this an exclusion rather
-      than a documented sharp edge.
     * **The two CATEGORY paths.** They run their own probe with
       ``is_category=True``, which additionally enforces the source-only and
       self-resolving rules; probing twice would only duplicate the diagnosis.
     * **Keys nothing claims.** They must reach the routing table and be reported
       as an unknown KEY (see :func:`_has_dedicated_route`).
 
-    ⚑ RULED, not incidental — the exclusion is the DOCKER family and nothing
-    more. Every other scalar whose value the expander DOES see stays LOUD:
-    ``box.shell``, ``workset.boxes``, ``<scope>.secret_path.<VAR>`` and the rest
-    all probe, because for them a dangling ref really does resolve to ``""``
-    silently at launch.
+    The docker ``.env`` family (bare ``env.<VAR>``, written VERBATIM to a file
+    the expander never saw) WAS the third exclusion. R-39 retired the spelling:
+    it is refused in the verb preamble (:func:`bare_env_retired_error`) and
+    never reaches this predicate, so the exclusion went with the route. Every
+    scalar whose value the expander DOES see stays LOUD: ``box.shell``,
+    ``workset.boxes``, ``<scope>.secret_path.<VAR>`` and the rest all probe,
+    because for them a dangling ref really does resolve to ``""`` silently at
+    launch.
 
     ⚑ The KEYSPACE env arm ``<scope>.env.<VAR>`` (``box.env.FOO``) is a DIFFERENT
-    key from the bare ``env.FOO`` above and is deliberately NOT excluded here — it
+    key from the retired bare ``env.FOO`` and is deliberately NOT excluded — it
     IS host-expanded at launch (``settings_launch._emit_scope_node`` reads it off
-    the EXPANDED snapshot). It is nonetheless unreachable from ``config set``
-    today for an unrelated reason: no dispatch branch claims it, so it is reported
-    as an unknown key. When a route for it is added it will probe by default,
-    which is the intended direction — do not "fix" that by widening
-    :func:`_is_env_key`, which would silence the arm that needs the check.
+    the EXPANDED snapshot), so a dangling ref in it fails silently exactly the
+    way the probe exists to catch. It now HAS a dispatch branch
+    (:func:`_is_scope_env_key`), so it reaches the fall-through below and probes
+    — the intended direction. Do NOT "fix" a probe complaint on it by widening
+    :func:`_is_bare_env_key`: that would drag the live scoped keys into the
+    retired spelling's refusal.
     """
-    if _is_env_key(canonical):
-        return False
     if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
         return False
     if _is_pref_key(canonical):

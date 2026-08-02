@@ -1955,137 +1955,89 @@ class TestAgentConfigIntegration:
 
 
 class TestContainerEnvPrecedence:
-    """Verify container env accumulation precedence (P3.4).
+    """Verify container env accumulation precedence.
 
-    Order (low->high, later .update wins):
-        system < crab < workset < box < state < cli
+    Order (low->high, later ``.update`` wins):
+        agent < the reconciled ``<scope>.env.<VAR>`` winners < state < cli
 
-    This mirrors the exact ``.update`` sequence in ``_run_container``
-    (see ``src/kanibako/commands/start.py``) over real ``.env`` files plus
-    a fake crab ``[env]`` mapping, so the contract is pinned even when the
-    surrounding launch flow is heavily mocked.
+    ⚑ FLIPPED by B9/RQ-1. The three docker ``.env`` FILE tiers (system, workset,
+    box) that used to open this sequence are RETIRED — the ratified manifest
+    records the files as DROPPED, so the launch read of them was an
+    authority-vs-code divergence. Their replacement is the settings key
+    ``<scope>.env.<VAR>``, whose per-VAR precedence winner (system < agent <
+    workset < box) the single launch reconcile has ALREADY picked; the launch
+    applies that result rather than re-deriving the order.
     """
 
     @staticmethod
-    def _assemble(
-        *,
-        system_env_path,
-        project_env_path,
-        workset_env_path,
-        crab_env,
-        state_env,
-        cli_env,
-    ):
-        """Replicate the start.py env-assembly sequence verbatim."""
-        from kanibako.shellenv import read_env_file
+    def _env_entry(var, value, scope="box"):
+        from kanibako.settings.settings_categories import CategoryEntry
 
-        container_env: dict[str, str] = {}
-        container_env.update(read_env_file(system_env_path))   # system
-        container_env.update(crab_env)                         # crab
-        if workset_env_path is not None:
-            container_env.update(read_env_file(workset_env_path))  # workset
-        container_env.update(read_env_file(project_env_path))  # box
+        return CategoryEntry(
+            category="env", scope=scope, box_dest=var, host_src=None,
+            delivery="ENV", options=value, name=var, key=f"{scope}.env.{var}",
+        )
+
+    @classmethod
+    def _assemble(cls, *, agent_env, reconciled_envs, state_env, cli_env):
+        """Replicate the start.py env-assembly sequence verbatim."""
+        from kanibako.commands.start import _build_config_env
+
+        container_env = _build_config_env(agent_env, reconciled_envs)
         container_env.update(state_env)                        # state
         container_env.update(cli_env)                          # cli
         return container_env
 
-    def test_box_overrides_crab_overrides_system(self, tmp_path):
-        """box (project/env) > crab ([env]) > system (global/env)."""
-        system = tmp_path / "global_env"
-        system.write_text("K=system\nONLY_SYSTEM=s\n")
-        box = tmp_path / "project_env"
-        box.write_text("K=box\nONLY_BOX=b\n")
+    def test_scoped_env_overrides_the_agent_tier(self):
         env = self._assemble(
-            system_env_path=system,
-            project_env_path=box,
-            workset_env_path=None,
-            crab_env={"K": "crab", "ONLY_CRAB": "c"},
+            agent_env={"K": "agent", "ONLY_AGENT": "a"},
+            reconciled_envs=[
+                self._env_entry("K", "box"), self._env_entry("ONLY_BOX", "b"),
+            ],
             state_env={},
             cli_env={},
         )
-        assert env["K"] == "box"          # box wins the shared key
+        assert env["K"] == "box"          # the reconciled winner wins
         assert env["ONLY_BOX"] == "b"
-        assert env["ONLY_CRAB"] == "c"
-        assert env["ONLY_SYSTEM"] == "s"
+        assert env["ONLY_AGENT"] == "a"
 
-    def test_workset_sits_between_crab_and_box(self, tmp_path):
-        """workset (ws_root/env) overrides crab/system, loses to box."""
-        system = tmp_path / "global_env"
-        system.write_text("K=system\n")
-        ws = tmp_path / "ws_env"
-        ws.write_text("K=workset\nONLY_WS=w\n")
-        box = tmp_path / "project_env"
-        box.write_text("K=box\n")
+    def test_the_reconcile_owns_the_cross_scope_order(self):
+        """The launch does NOT re-layer scopes: reconcile already emitted ONE
+        winner per VAR, so whichever entry it hands over is the value used."""
         env = self._assemble(
-            system_env_path=system,
-            project_env_path=box,
-            workset_env_path=ws,
-            crab_env={"K": "crab"},
+            agent_env={"K": "agent"},
+            reconciled_envs=[self._env_entry("K", "workset", scope="workset")],
             state_env={},
             cli_env={},
         )
-        assert env["K"] == "box"          # box still wins overall
-        assert env["ONLY_WS"] == "w"
-        # Without a box value, the workset value should beat crab/system.
-        box.write_text("")               # box empty
-        env2 = self._assemble(
-            system_env_path=system,
-            project_env_path=box,
-            workset_env_path=ws,
-            crab_env={"K": "crab"},
-            state_env={},
-            cli_env={},
-        )
-        assert env2["K"] == "workset"
+        assert env["K"] == "workset"
 
-    def test_state_and_cli_override_all_config_levels(self, tmp_path):
+    def test_state_and_cli_override_all_config_levels(self):
         """state_env and CLI -e env both sit above every config level."""
-        system = tmp_path / "global_env"
-        system.write_text("K=system\n")
-        box = tmp_path / "project_env"
-        box.write_text("K=box\n")
-        ws = tmp_path / "ws_env"
-        ws.write_text("K=workset\n")
-        # state beats config levels
-        env_state = self._assemble(
-            system_env_path=system,
-            project_env_path=box,
-            workset_env_path=ws,
-            crab_env={"K": "crab"},
-            state_env={"K": "state"},
-            cli_env={},
+        base = dict(
+            agent_env={"K": "agent"},
+            reconciled_envs=[self._env_entry("K", "box")],
         )
+        env_state = self._assemble(**base, state_env={"K": "state"}, cli_env={})
         assert env_state["K"] == "state"
-        # cli beats everything incl. state
         env_cli = self._assemble(
-            system_env_path=system,
-            project_env_path=box,
-            workset_env_path=ws,
-            crab_env={"K": "crab"},
-            state_env={"K": "state"},
-            cli_env={"K": "cli"},
+            **base, state_env={"K": "state"}, cli_env={"K": "cli"},
         )
         assert env_cli["K"] == "cli"
 
 
-class TestContainerEnvWorksetGating:
-    """Verify the workset env tier is read for named AND primary worksets.
-
-    Exercises the real ``_run_container`` flow.  F9: the PRIMARY (default)
-    workset has its own env tier at ``<group.root>/env`` (rooted at
-    ``@config.primary_workset``, distinct from the system tier's
-    ``@config.data/env`` — pre-F4 the two roots aliased, so the default group
-    used to be skipped here).  ``proj.group`` is None (standalone) still means
-    no workset env path.
+class TestRetiredEnvFilesAreNotRead:
+    """⚑ THE RQ-1 PIN, FLIPPED. These used to prove the workset ``.env`` FILE was
+    injected for named AND primary worksets (F9). Jei re-ruled RQ-1 on
+    2026-08-02: the ratified manifest records the ``.env`` files as DROPPED, so
+    the launch-side three-tier read is REMOVED and a value in such a file must
+    reach the box no more. Exercises the real ``_run_container`` flow.
     """
 
-    def test_primary_workset_env_is_read(self, start_mocks, tmp_path):
-        """Default (primary) group → its workset env tier IS injected (F9)."""
+    def test_primary_workset_env_file_is_ignored(self, start_mocks, tmp_path):
         with start_mocks() as m:
             # Fixture default: proj.group.is_default is True.
             assert m.proj.group.is_default is True
-            # Point the workset root at a dir with an env file that must now
-            # be read.  group is frozen-ish dataclass; rebuild with a real root.
             from kanibako.settings.paths import ProjectGroup
             ws_root = tmp_path / "ws"
             ws_root.mkdir()
@@ -2102,10 +2054,11 @@ class TestContainerEnvWorksetGating:
                 extra_args=[],
             )
             env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert env.get("PRIMARY_WS_VAR") == "present"
+            assert "PRIMARY_WS_VAR" not in env
 
     def test_no_workset_env_when_group_none(self, start_mocks, tmp_path):
-        """proj.group is None → workset env path is None (no crash)."""
+        """proj.group is None → no crash (the group is no longer consulted for
+        an env path at all)."""
         with start_mocks() as m:
             m.proj.group = None
             rc = _run_container(
@@ -2117,8 +2070,7 @@ class TestContainerEnvWorksetGating:
             env = m.runtime.run.call_args.kwargs.get("env") or {}
             assert "LEAKED" not in env
 
-    def test_named_workset_env_is_read(self, start_mocks, tmp_path):
-        """Named (non-default) workset → ws_root/env is injected."""
+    def test_named_workset_env_file_is_ignored(self, start_mocks, tmp_path):
         with start_mocks() as m:
             from kanibako.settings.paths import ProjectGroup
             ws_root = tmp_path / "ws"
@@ -2136,7 +2088,7 @@ class TestContainerEnvWorksetGating:
                 extra_args=[],
             )
             env = m.runtime.run.call_args.kwargs.get("env") or {}
-            assert env.get("WS_VAR") == "present"
+            assert "WS_VAR" not in env
 
 
 class TestTweakccIntegration:

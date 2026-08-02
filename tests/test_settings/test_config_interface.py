@@ -419,23 +419,30 @@ class TestWorksetKuidKeys:
 
 
 # ---------------------------------------------------------------------------
-# env.* keys
+# The env family: bare RETIRED (R-39), scoped LIVE
 # ---------------------------------------------------------------------------
 
 class TestEnvKeys:
-    """Tests for env.* config keys."""
+    """The engine's half of the R-39 retirement + the scoped replacement.
 
-    def test_set_env_var(self, tmp_path):
+    The FULL family behaviour (every scope arm, the reserved-name floor, the
+    round trip) lives in ``tests/test_env_cmd.py``; these are the seams this
+    module already owned.
+    """
+
+    def test_set_bare_env_var_is_refused(self, tmp_path):
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.MY_VAR", "hello",
             config_path=tmp_path / "settings.yaml",
             env_path=env_path,
         )
-        assert "Set MY_VAR=hello" in msg
-        assert env_path.read_text().strip() == "MY_VAR=hello"
+        assert msg.startswith("Error:"), msg
+        assert "box.env.MY_VAR" in msg
+        assert not env_path.exists()
 
-    def test_get_env_var(self, tmp_path):
+    def test_get_bare_env_var_reads_nothing(self, tmp_path):
+        """The docker ``.env`` file is not a store any more (RQ-1)."""
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
         val = get_config_value(
@@ -443,7 +450,7 @@ class TestEnvKeys:
             global_config_path=tmp_path / "kanibako_config.yaml",
             env_project=env_path,
         )
-        assert val == "bar"
+        assert val is None
 
     def test_get_env_var_not_set(self, tmp_path):
         val = get_config_value(
@@ -452,17 +459,32 @@ class TestEnvKeys:
         )
         assert val is None
 
-    def test_reset_env_var(self, tmp_path):
+    def test_reset_bare_env_var_is_refused(self, tmp_path):
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
-        msg = reset_config_value("env.FOO", config_path=tmp_path / "p.yaml", env_path=env_path)
-        assert "Unset" in msg
-
-    def test_reset_env_var_missing(self, tmp_path):
         msg = reset_config_value(
-            "env.MISSING",
+            "env.FOO", config_path=tmp_path / "p.yaml", env_path=env_path,
+        )
+        assert msg.startswith("Error:"), msg
+        assert env_path.read_text() == "FOO=bar\n"
+
+    def test_scoped_env_var_round_trips(self, tmp_path):
+        f = tmp_path / "settings.yaml"
+        assert set_config_value(
+            "box.env.MY_VAR", "hello",
+            config_path=f, command_scope=ConfigLevel.box,
+        ) == "Set box.env.MY_VAR=hello"
+        assert get_config_value(
+            "box.env.MY_VAR",
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            project_toml=f, command_scope=ConfigLevel.box,
+        ) == "hello"
+
+    def test_reset_scoped_env_var_missing(self, tmp_path):
+        msg = reset_config_value(
+            "box.env.MISSING",
             config_path=tmp_path / "p.yaml",
-            env_path=tmp_path / "env",
+            command_scope=ConfigLevel.box,
         )
         assert "No override" in msg
 
@@ -660,7 +682,12 @@ class TestShowConfig:
             env_resolved={"RESOLVED_VAR": "yes"},
         )
         captured = capsys.readouterr()
-        assert "env.RESOLVED_VAR = yes" in captured.out
+        # ⚑ Rendered ``env <VAR>``, NOT ``env.<VAR>``: every other row in this
+        # display is a KEY and ``env.<VAR>`` is now a REFUSED spelling (R-39),
+        # while these rows are the MERGE the box receives, which no single key
+        # names.
+        assert "env RESOLVED_VAR = yes" in captured.out
+        assert "env.RESOLVED_VAR" not in captured.out
 
     def test_show_hides_legacy_resource_overrides_table(self, tmp_path):
         # The dropped resource.* surface (spec §3 D-M7) may leave an inert
@@ -2365,30 +2392,38 @@ class TestScopeDirectionGuard:
         )
         assert "cannot be set from the system scope" not in msg
 
-    # --- scopeless keys always pass the guard -----------------------------
+    # --- the env family under the guard -----------------------------------
+    #
+    # ⚑ The bare ``env.<VAR>`` spelling used to be the SCOPELESS specimen here.
+    # R-39 retired it (refused in the verb preamble, before this guard ever
+    # runs), and the live family ``<scope>.env.<VAR>`` is scope-TOKENED — so it
+    # is GUARDED like any other scope key rather than exempt from the guard.
 
-    def test_scopeless_env_key_allowed_at_box(self, tmp_path):
-        env_f = tmp_path / "env"
+    def test_own_scope_env_key_allowed_at_box(self, tmp_path):
         msg = set_config_value(
-            "env.FOO", "bar",
-            config_path=tmp_path / "settings.yaml", env_path=env_f,
+            "box.env.FOO", "bar",
+            config_path=tmp_path / "settings.yaml",
             command_scope=ConfigLevel.box,
         )
         assert not msg.startswith("Error:"), msg
 
-    def test_scopeless_env_key_allowed_at_workset(self, tmp_path):
-        # A SCOPELESS key (``env.*``) is legal at any scope by construction
-        # (own-file write); the DIRECTIONAL guard does not apply to it. (NB: the
-        # bare agent scalars — also scopeless — are separately REFUSED at box/
-        # workset by the multibox bare-agent rule; see
-        # TestBareAgentKeyAtWorksetScope. This test isolates the directional guard.)
-        env_f = tmp_path / "env"
+    def test_downward_env_key_allowed_at_workset(self, tmp_path):
+        # workset ⊃ box, so a workset may store a box-scope default.
         msg = set_config_value(
-            "env.FOO", "bar",
-            config_path=tmp_path / "ws-settings.yaml", env_path=env_f,
+            "box.env.FOO", "bar",
+            config_path=tmp_path / "ws-settings.yaml",
             command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
+
+    def test_upward_env_key_refused_at_box(self, tmp_path):
+        msg = set_config_value(
+            "workset.env.FOO", "bar",
+            config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "cannot be set from the box scope" in msg
 
     def test_removed_bare_vault_keys_are_unknown(self, tmp_path):
         # Bug 4: the old bare ``vault.ro``/``vault.rw`` keys routed to the
@@ -3894,44 +3929,45 @@ class TestSetTimeResolutionProbe:
         msg = reset_config_value("box.image", config_path=cfg)
         assert not msg.startswith("Error:"), msg
 
-    def test_docker_env_values_are_DATA_not_syntax(self, tmp_path):
-        """A bare ``env.<VAR>`` never reaches the expander: ``shellenv.set_env_var``
-        writes it VERBATIM and the launch reads it verbatim into the container
-        env. So ``@`` and ``$`` in it are ordinary characters, and probing would
-        refuse legitimate values.
+    def test_the_docker_env_exclusion_died_with_the_spelling(self, tmp_path):
+        """⚑ FLIPPED by R-39. The bare ``env.<VAR>`` family was the probe's third
+        exclusion: it was written VERBATIM to a docker ``.env`` file the expander
+        never saw, so ``@``/``$`` in its value were ordinary characters and
+        probing would have refused legitimate input with no correct spelling
+        available (the escape hatch could not rescue it — ``\\@`` passed the
+        probe but landed in the file WITH the backslash).
 
-        ⚑ The escape hatch cannot rescue this and must not be suggested:
-        ``jei\\@example.com`` passes the probe but lands in the file WITH the
-        backslash, because the write is verbatim while only the probe unescapes.
-        There is no CLI spelling that produces the right value — which is what
-        makes this an exclusion rather than a documented sharp edge.
+        The spelling is now RETIRED, refused in the verb preamble before the
+        probe is ever consulted, so the exclusion has nothing left to exclude —
+        and the LIVE ``<scope>.env.<VAR>`` arm probes, because its value IS
+        host-expanded at launch.
         """
-        env_path = tmp_path / ".env"
-        for var, value in (
-            ("EMAIL", "jei@example.com"),
-            ("MY_PATH", "$HOME/bin"),
-            ("GREETING", "hi @ $HOME"),
-        ):
-            msg = set_config_value(
-                f"env.{var}", value,
-                config_path=tmp_path / "settings.yaml", env_path=env_path,
-            )
-            assert not msg.startswith("Error:"), (var, msg)
-        text = env_path.read_text()
-        # Landed VERBATIM — no expansion, no escaping, no mangling.
-        assert "EMAIL=jei@example.com" in text
-        assert "MY_PATH=$HOME/bin" in text
+        from kanibako.settings.config_keys import _probes_at_set_time
 
-    def test_guest_side_dollar_in_a_docker_env_value_is_the_whole_point(self, tmp_path):
-        """``$HOME`` here is the GUEST's home — the variable deferral exists for
-        exactly this, so a host-side resolution check would be wrong twice over.
-        """
+        assert not _probes_at_set_time("env.EMAIL")   # never reaches the probe
+        assert _probes_at_set_time("box.env.EMAIL")   # the live arm is LOUD
+
         env_path = tmp_path / ".env"
-        set_config_value(
-            "env.MY_PATH", "$HOME/bin",
+        msg = set_config_value(
+            "env.EMAIL", "jei@example.com",
             config_path=tmp_path / "settings.yaml", env_path=env_path,
         )
-        assert env_path.read_text().strip().endswith("$HOME/bin")
+        assert msg.startswith("Error:"), msg
+        assert "box.env.EMAIL" in msg
+        assert not env_path.exists()
+
+    def test_a_dangling_ref_in_a_scoped_env_value_is_refused(self, tmp_path):
+        """The live env arm is host-expanded at launch, so it gets the check.
+
+        This is the direction the retired arm could not take: an unresolvable
+        ``@``-ref here would otherwise resolve to ``""`` silently at launch.
+        """
+        msg = set_config_value(
+            "box.env.MY_PATH", "@nope.not.a.key/bin",
+            config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
 
     def test_an_expanded_scalar_key_still_refuses_a_dangling_ref(self, tmp_path):
         """The exclusion is the DOCKER family and nothing more.
@@ -3979,10 +4015,10 @@ class TestSetDispatchCoverage:
         from kanibako.settings.config_keys import _has_dedicated_route
 
         for key in (
-            "env.FOO",                            # docker .env
             "agent.claude.bindings.ro.launcher",  # per-node descriptor bind
             "agent.claude.secret_path.TOK",       # per-node secret
             "box.secret_path.TOK",                # scope secret
+            "box.env.FOO",                        # scope env
             "agent.claude.model",                 # persona setting
             "model",                              # bare agent setting
             "box.agent.model",                    # box agent mirror
@@ -3994,16 +4030,24 @@ class TestSetDispatchCoverage:
     def test_a_fabricated_key_is_claimed_by_nothing(self):
         from kanibako.settings.config_keys import _has_dedicated_route
 
-        for key in ("run_args", "box.env.FOO", "nonsense.key"):
+        # ⚑ ``env.FOO`` (the RETIRED bare spelling) is claimed by nothing on
+        # purpose: R-39 refuses it in the verb PREAMBLE, and a preamble guard is
+        # not a dispatch branch — a term for it here would be a second spelling
+        # of the refusal. ``box.env.FOO`` moved the OTHER way, into the claimed
+        # list above, when the scoped arm got its route.
+        for key in ("run_args", "env.FOO", "nonsense.key"):
             assert not _has_dedicated_route(key), key
 
-    def test_the_probe_is_off_for_the_docker_env_and_category_families(self):
+    def test_the_probe_is_off_for_the_category_and_unclaimed_families(self):
         from kanibako.settings.config_keys import _probes_at_set_time
 
+        # ``env.FOO`` is off because NOTHING claims it any more (R-39), not
+        # because of a docker-family exclusion — that exclusion is gone.
         for off in ("env.FOO", "box.common.plugins",
                     "agent.claude.bindings.ro.launcher", "run_args"):
             assert not _probes_at_set_time(off), off
-        for on in ("box.shell", "box.secret_path.TOK", "model", "box.image"):
+        for on in ("box.shell", "box.secret_path.TOK", "box.env.FOO",
+                   "model", "box.image"):
             assert _probes_at_set_time(on), on
 
 
@@ -4354,17 +4398,20 @@ class TestPrefIsKnownKey:
         assert is_known_key("pref.agent.claude.model")
         assert not is_known_key("someproject")
 
-    def test_the_scope_env_arm_is_still_unknown_to_config_set(self, tmp_path):
-        """⚑ P5-inherited hazard, pinned. ``<scope>.env.<VAR>`` is a DIFFERENT
-        key from the bare ``env.<VAR>`` and has no dispatch route; when one is
-        added it will probe by default, which is the intended direction. P6 adds
-        a route for ``pref.*`` ONLY — this pins that it did not widen the env arm.
+    def test_the_scope_env_arm_now_has_a_route(self, tmp_path):
+        """⚑ FLIPPED by B9/R-39. ``<scope>.env.<VAR>`` is a DIFFERENT key from the
+        bare ``env.<VAR>`` and used to have NO dispatch route — it was reported as
+        an unknown key. It has one now, and it MUST: the R-39 refusal names it as
+        the cure, and the same change retired the ``.env`` launch read that was
+        the bare spelling's only delivery. Without this the cure would be a
+        dead end and no config verb could set a container env var at all.
         """
         f = tmp_path / "settings.yaml"
         msg = set_config_value(
             "box.env.FOO", "x", config_path=f, command_scope=ConfigLevel.box,
         )
-        assert "unknown config key" in msg
+        assert msg == "Set box.env.FOO=x", msg
+        assert is_known_key("box.env.FOO")
 
 
 class TestPrefShow:
@@ -4531,16 +4578,35 @@ class TestNullSpelling:
         assert doc["pref"]["agent"]["claude"]["common"]["plugins"] is None
 
     def test_null_is_refused_where_the_write_mechanism_has_no_null(self, tmp_path):
+        """⚑ The specimen MOVED. The docker ``env.<VAR>`` arm ("the env file is a
+        plain string store with no null value") went with the spelling itself
+        (R-39 refuses it in the preamble, --null included), leaving the CATEGORY
+        source-only repoint as the one mechanism that cannot express a null.
+        """
+        f = tmp_path / "settings.yaml"
+        f.write_text(yaml.safe_dump({"box": {"common": {"plugins": ["/a", "~/b"]}}}))
+        msg = set_config_value(
+            "box.common.plugins", None,
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert "not yet supported" in msg
+        # B-6: name the CURE with the spelling the user can actually type —
+        # ``reset`` is a sibling VERB, and no parser defines a ``--reset`` flag.
+        assert "'reset pref.box.common.plugins'" in msg
+        assert "--reset" not in msg
+
+    def test_null_on_the_retired_bare_env_gets_the_retirement_cure(self, tmp_path):
+        """The R-39 refusal runs BEFORE the --null route guard, so a user who
+        writes ``--null env.FOO`` is told the spelling is retired — not offered a
+        null-mechanics explanation for a key that does not exist."""
         f = tmp_path / "settings.yaml"
         msg = set_config_value(
             "env.FOO", None, config_path=f, env_path=tmp_path / "env",
             command_scope=ConfigLevel.box,
         )
-        assert "not supported" in msg
-        # B-6: name the CURE with the spelling the user can actually type —
-        # ``reset`` is a sibling VERB, and no parser defines a ``--reset`` flag.
-        assert "'reset env.FOO'" in msg
-        assert "--reset" not in msg
+        assert msg.startswith("Error:"), msg
+        assert "box.env.FOO" in msg
+        assert "no null value" not in msg
 
 
 class TestPrefGetRendersAllThreeEmptyIdioms:

@@ -12,7 +12,6 @@ from kanibako.settings.config import config_file_path, load_config
 from kanibako.errors import WorksetError
 from kanibako.settings.paths import (
     load_std_paths,
-    workset_env_path,
     workset_settings_path,
     xdg,
 )
@@ -680,11 +679,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     ws_config = _workset_config_path(ws)
-    # The workset-tier env FILE (F9): threaded into the engine exactly like the
-    # box handler threads its ``<metadata>/env`` — named AND primary worksets
-    # (the primary's lives under ``@config.primary_workset``, distinct from the
-    # system tier's ``@config.data/env``).
-    ws_env = workset_env_path(ws)
+    # (The workset-tier docker env FILE is GONE — R-39/RQ-1. The env family is
+    # the settings key ``workset.env.<VAR>``, stored in ``ws_config`` like every
+    # other workset key.)
 
     key_value = getattr(args, "key_value", None)
 
@@ -693,7 +690,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         if args.reset_all or args.reset == "__ALL__":
             msg = reset_all(
                 config_path=ws_config,
-                env_path=ws_env,
                 force=args.force,
                 command_scope=ConfigLevel.workset,
             )
@@ -714,7 +710,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
-            env_path=ws_env,
             command_scope=ConfigLevel.workset,
             cascade_system_path=std.settings,
             cascade_workset_path=ws_config,
@@ -735,8 +730,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return show_config(
             global_config_path=config_file,
             config_path=ws_config,
-            env_global=std.data_path / "env",
-            env_project=ws_env,
             effective=args.effective,
         )
 
@@ -746,7 +739,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # mirror; set/get/reset are all refused symmetrically). The box scope
         # instead redirects the read to its box.agent.* mirror.
         from kanibako.settings.config_keys import (
-            resolve_key, bare_agent_key_scope_error,
+            bare_agent_key_scope_error,
+            bare_env_retired_error,
+            resolve_key,
         )
         _bare_err = bare_agent_key_scope_error(
             resolve_key(key), ConfigLevel.workset, verb="read",
@@ -754,12 +749,18 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         if _bare_err is not None:
             print(_bare_err, file=sys.stderr)
             return 1
+        # Bare env.* — RETIRED (R-39): refused at the HANDLER because the get
+        # engine returns values, never error strings.
+        _env_err = bare_env_retired_error(
+            key, verb="read", command_scope=ConfigLevel.workset,
+        )
+        if _env_err is not None:
+            print(_env_err, file=sys.stderr)
+            return 1
         val = get_config_value(
             key,
             global_config_path=config_file,
             project_toml=ws_config,
-            env_global=std.data_path / "env",
-            env_project=ws_env,
             command_scope=ConfigLevel.workset,
         )
         if val is not None:
@@ -777,7 +778,6 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         msg = set_config_value(
             key, value,
             config_path=ws_config,
-            env_path=ws_env,
             cascade_system_path=std.settings,
             cascade_workset_path=ws_config,
             command_scope=ConfigLevel.workset,

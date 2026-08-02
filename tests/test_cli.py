@@ -1424,6 +1424,47 @@ class TestTemplateStalenessRetired:
         # (setup marker is still absent → a soft nudge prints, but no hard error.)
         assert _setup_nudge(self._ns("start")) is None
 
+    def test_first_run_seeds_colorterm_at_the_real_key(self, tmp_home):
+        """⚑ RE-HOMED by B9/RQ-1. The seed wrote ``COLORTERM=truecolor`` into the
+        global docker ``.env`` FILE, whose ONLY delivery path was the launch read
+        this change retires — so left alone it would have written a file nothing
+        reads and boxes would have lost truecolor SILENTLY. It now lands at
+        ``system.env.COLORTERM`` in the system settings file, which
+        ``settings_launch._emit_scope_node`` already delivers.
+        """
+        from kanibako.cli import _ensure_initialized
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths, xdg
+
+        _ensure_initialized()
+        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        std = load_std_paths(load_config(cf))
+        assert load_doc(std.settings)["system"]["env"]["COLORTERM"] == "truecolor"
+        # And NOT into the retired docker .env file.
+        assert not (std.data_path / "env").exists()
+
+    def test_first_run_colorterm_seed_never_clobbers_a_user_value(self, tmp_home):
+        """setdefault semantics, preserved through the re-home."""
+        from kanibako.cli import _ensure_initialized
+        from kanibako.settings.config import (
+            KanibakoConfig, config_file_path, load_config,
+        )
+        from kanibako.settings.config_io import load_doc, write_nested_key
+        from kanibako.settings.paths import load_std_paths, xdg
+
+        # Materialise the config file the way a first run would, WITHOUT the
+        # rest of init, then plant a user value and let init run for real.
+        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        std = load_std_paths(KanibakoConfig())
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(std.settings, ("system", "env"), "COLORTERM", "mine")
+
+        _ensure_initialized()
+        std = load_std_paths(load_config(cf)) if cf.exists() else std
+        assert load_doc(std.settings)["system"]["env"]["COLORTERM"] == "mine"
+
 
 class TestShellAgentFlagIgnored:
     """shell + --agent is IGNORED with a note (not a hard FlagRelevanceError)."""

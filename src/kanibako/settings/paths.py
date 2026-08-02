@@ -239,23 +239,6 @@ def warn_legacy_primary_settings(std: StandardPaths) -> None:
         )
 
 
-@overload
-def workset_env_path(group: _WorksetRooted) -> Path: ...
-@overload
-def workset_env_path(group: None) -> None: ...
-
-
-def workset_env_path(group: _WorksetRooted | None) -> Path | None:
-    """The workset-tier env FILE for *group* (``<workset root>/env``).
-
-    Mirrors the box tier's ``<metadata>/env`` and the system tier's
-    ``@config.data/env``.  The PRIMARY workset roots at
-    ``@config.primary_workset``, so its env tier is distinct from the system
-    file.  ``None`` (standalone) has no workset env tier.
-    """
-    return group.root / "env" if group is not None else None
-
-
 @dataclass
 class ProjectPaths:
     """Resolved paths for a specific project."""

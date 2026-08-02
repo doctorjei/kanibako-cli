@@ -282,8 +282,16 @@ RETIRING_KEYS: Final[frozenset[str]] = frozenset()
 # The validator
 # ---------------------------------------------------------------------------
 
-def _leaf_name_reason(leaf: str) -> str | None:
-    """Reject a RESERVED / dunder leaf name (spec §0)."""
+def leaf_name_reason(leaf: str) -> str | None:
+    """Reject a RESERVED / dunder leaf name (spec §0).
+
+    PUBLIC because the floor is due at TWO moments, not one: spec §0 says a
+    reserved name is "rejected loudly at write/``config set`` time", so the
+    ``<scope>.env.<VAR>`` set/reset route calls this directly
+    (``config_keys.scope_env_var_error``) rather than waiting for the
+    resolve-time :func:`key_validity` pass — a stored key that only fails at the
+    NEXT launch is exactly the deferred surprise §0 forbids.
+    """
     if leaf in RESERVED_LEAF_NAMES:
         return (
             f"'{leaf}' is a RESERVED key name (a public dict method) and may not "
@@ -348,7 +356,7 @@ def _category_reason(
                 f"'{var}' is not a legal environment variable name for "
                 f"'{prefix}.{head}.<VAR>' (spec §2a)"
             )
-        return _leaf_name_reason(var)
+        return leaf_name_reason(var)
 
     # bindings.{ro,rw}.<name> — the arm is REQUIRED (spec §2d: an
     # ARM-LESS binding is not a declared key).
@@ -359,7 +367,7 @@ def _category_reason(
                 f"per ARM — '{prefix}.bindings.ro.<name>' / "
                 f"'{prefix}.bindings.rw.<name>' (spec §2a / §2d L960-964)"
             )
-        return _leaf_name_reason(rest[-1])
+        return leaf_name_reason(rest[-1])
 
     # The remaining leaf categories: caches / seeded / common / synced.
     if head in {c for c in BIND_CATEGORIES if "." not in c}:
@@ -368,7 +376,7 @@ def _category_reason(
                 f"'{prefix}.{head}' is a CATEGORY ROOT, not a key; entries are "
                 f"named — '{prefix}.{head}.<name>' (spec §2a)"
             )
-        return _leaf_name_reason(rest[-1])
+        return leaf_name_reason(rest[-1])
 
     return None  # signals "not a category tail" — the caller reports the leaf.
 
@@ -400,7 +408,7 @@ def _scope_reason(
         return _category_reason(scope, rest, what=what)
     if len(rest) == 1:
         if rest[0] in leaves:
-            return _leaf_name_reason(rest[0])
+            return leaf_name_reason(rest[0])
         return (
             f"'{rest[0]}' is not a declared {what} key (declared: "
             f"{', '.join(sorted(leaves))}, plus the §2a categories)"
@@ -408,7 +416,7 @@ def _scope_reason(
     if len(rest) == 2 and rest[0] in sub_tables:
         table = sub_tables[rest[0]]
         if rest[1] in table:
-            return _leaf_name_reason(rest[1])
+            return leaf_name_reason(rest[1])
         return (
             f"'{scope}.{rest[0]}.{rest[1]}' is not a declared key (declared "
             f"'{scope}.{rest[0]}.*': {', '.join(sorted(table))})"
@@ -522,7 +530,7 @@ def _agent_tail_reason(
         return _category_reason(prefix, tail, what=f"'{prefix}'")
     if len(tail) == 1:
         if tail[0] in leaves:
-            return _leaf_name_reason(tail[0])
+            return leaf_name_reason(tail[0])
         return (
             f"'{tail[0]}' is not a declared agent key (declared: "
             f"{', '.join(sorted(leaves))}, plus the §2a "

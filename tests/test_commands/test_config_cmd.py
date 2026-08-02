@@ -181,7 +181,14 @@ class TestBoxConfigGet:
         assert rc == 1
         assert "requires a key" in capsys.readouterr().err
 
-    def test_get_env_key(self, config_file, tmp_home, credentials_dir, capsys):
+    def test_get_bare_env_key_is_refused_with_the_cure(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """R-39 read guard at the BOX handler (the get engine returns values,
+        never error strings — the same handler-side split as the workset
+        bare-agent-key read). ⚑ The legacy ``.env`` file is seeded here on
+        purpose: after RQ-1 nothing reads it, so the refusal must fire even when
+        the var "is there"."""
         from kanibako.commands.box._parser import run_get
 
         config = load_config(config_file)
@@ -190,15 +197,33 @@ class TestBoxConfigGet:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Write an env var
-        env_path = proj.metadata_path / "env"
-        env_path.write_text("MY_VAR=hello\n")
+        (proj.metadata_path / "env").write_text("MY_VAR=hello\n")
 
         args = argparse.Namespace(args=[project_dir, "env.MY_VAR"])
         rc = run_get(args)
-        assert rc == 0
+        assert rc == 1
         captured = capsys.readouterr()
-        assert "hello" in captured.out
+        assert "hello" not in captured.out
+        assert "box.env.MY_VAR" in captured.err
+
+    def test_get_scoped_env_key(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.box._parser import run_get, run_set
+
+        config = load_config(config_file)
+        from kanibako.settings.paths import load_std_paths, resolve_project
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        rc = run_set(argparse.Namespace(
+            args=[project_dir, "box.env.MY_VAR=hello"], force=False,
+        ))
+        assert rc == 0
+        capsys.readouterr()
+
+        rc = run_get(argparse.Namespace(args=[project_dir, "box.env.MY_VAR"]))
+        assert rc == 0
+        assert "hello" in capsys.readouterr().out
 
 
 class TestBoxConfigSet:
@@ -221,21 +246,28 @@ class TestBoxConfigSet:
         assert "new-image:v1" in captured.out
 
     def test_set_env_var(self, config_file, tmp_home, credentials_dir, capsys):
+        """The bare spelling is REFUSED (R-39) and the cure it names WORKS —
+        both halves, because a cure that errors is worse than no cure."""
         from kanibako.commands.box._parser import run_set
 
         config = load_config(config_file)
         from kanibako.settings.paths import load_std_paths, resolve_project
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
-        resolve_project(std, config, project_dir=project_dir, initialize=True)
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        args = argparse.Namespace(
+        rc = run_set(argparse.Namespace(
             args=[project_dir, "env.EDITOR=vim"], force=False,
-        )
-        rc = run_set(args)
+        ))
+        assert rc == 1
+        assert "box.env.EDITOR" in capsys.readouterr().err
+        assert not (proj.metadata_path / "env").exists()
+
+        rc = run_set(argparse.Namespace(
+            args=[project_dir, "box.env.EDITOR=vim"], force=False,
+        ))
         assert rc == 0
-        captured = capsys.readouterr()
-        assert "Set EDITOR=vim" in captured.out
+        assert "Set box.env.EDITOR=vim" in capsys.readouterr().out
 
     def test_set_model(self, config_file, tmp_home, credentials_dir, capsys):
         """Agent behavior keys are set at box scope via the §2h REQUEST

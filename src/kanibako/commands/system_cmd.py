@@ -241,11 +241,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
     ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
     the same file the launch cascade's system tier reads (F2/F3).
 
-    The system-tier ENV file is ``@config.data/env`` (``env_sys``) — the exact
-    file the launch env layering reads as its system tier (start.py
-    ``global_env_path = std.data_path / "env"``; precedence system < agent <
-    workset < box), threaded into every verb so ``system set env.X`` lands
-    where the launch reads it.
+    ⚑ There is NO system-tier ENV FILE any more. ``@config.data/env`` was the
+    docker ``.env`` the launch layered as its system tier; R-39 retired the bare
+    ``env.<VAR>`` spelling that wrote it and Jei's RQ-1 re-ruling retired the
+    launch READ, so no verb threads it. The system env family is the settings key
+    ``system.env.<VAR>``, stored in ``ssp`` like every other system setting.
     """
     from kanibako.settings.paths import load_std_paths
 
@@ -254,8 +254,6 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # The system SETTINGS file (separate from the kanibako_config.yaml CONFIG file).
     std = load_std_paths(load_config(cf))
     ssp = std.settings
-    # The system-tier env file (mirrors the launch's system env source).
-    env_sys = std.data_path / "env"
 
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import canonicalize_agent_ref
@@ -263,6 +261,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_keys import (
         AGENT_DEFAULT_SUB,
         ConfigLevel,
+        bare_env_retired_error,
         is_known_key,
         parse_agent_node_bind_key,
     )
@@ -285,7 +284,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # --reset --all
     if args.reset and getattr(args, "all_keys", False):
         msg = reset_all(
-            config_path=cf, env_path=env_sys, force=args.force,
+            config_path=cf, force=args.force,
             system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
@@ -323,7 +322,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # (item 1). A system-scope regular settings key was removed FROM ssp, so
         # ssp is the tier the post-reset snapshot must read.
         msg = reset_config_value(
-            key, config_path=cf, env_path=env_sys, system_settings_path=ssp,
+            key, config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
             agents_root=std.agents,
@@ -340,9 +339,6 @@ def _run_system_config(args: argparse.Namespace) -> int:
         show_config(
             global_config_path=cf,
             config_path=cf,
-            # The system env file IS this level's own env tier: env_project is
-            # the "this level's overrides" slot (shown by the plain view too).
-            env_project=env_sys,
             effective=args.effective,
             system_settings_path=ssp,
         )
@@ -350,6 +346,15 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     # get
     if action == ConfigAction.get:
+        # Bare env.* — RETIRED (R-39): refused with the cure BEFORE the known-key
+        # gate (``env.`` stays key-shaped for disambiguation, so it passes
+        # ``is_known_key`` — deliberately, to reach THIS refusal).
+        _env_err = bare_env_retired_error(
+            key, verb="read", command_scope=ConfigLevel.system,
+        )
+        if _env_err is not None:
+            print(_env_err, file=sys.stderr)
+            return 1
         if not is_known_key(key):
             # Residuals item 4: a STRUCTURAL file-only key (system.setup_completed,
             # system.channels.*) is not in the settable known-key set, so the plain
@@ -367,7 +372,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             print(f"Error: unknown config key: {key}", file=sys.stderr)
             return 1
         val = get_config_value(
-            key, global_config_path=cf, env_global=env_sys,
+            key, global_config_path=cf,
             system_settings_path=ssp,
             agents_root=std.agents,
             # ⚑ The scope is threaded even though every other handler threads it
@@ -438,7 +443,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # here while a system category set wrote to cf, so the must-exist probe agreed
         # with neither the launch nor reset; both halves now name ssp.
         msg = set_config_value(
-            key, value, config_path=set_config_path, env_path=env_sys,
+            key, value, config_path=set_config_path,
             is_system=True,
             system_settings_path=ssp,
             cascade_system_path=ssp,

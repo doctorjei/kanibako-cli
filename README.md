@@ -677,23 +677,27 @@ Set per-project or global environment variables that are passed to the
 container:
 
 ```bash
-# Persistent (stored in project config)
-kanibako box set env.EDITOR=vim              # project-level
-kanibako system set env.EDITOR=nano          # global (all projects)
-kanibako box get env.EDITOR                  # show one value
+# Persistent (stored in the scope's settings file)
+kanibako box set box.env.EDITOR=vim             # box-level
+kanibako workset set workset.env.EDITOR=vim     # workset-level
+kanibako system set system.env.EDITOR=nano      # global (all boxes)
+kanibako box get box.env.EDITOR                 # show one value
 
 # Per-run (not persisted)
 kanibako start -e EDITOR=vim -e DEBUG=1
 ```
 
-Project env vars override global ones.
+The scope is part of the key: `<scope>.env.<VAR>`, where `<scope>` is
+`system`, `workset` or `box` (an agent's own vars are
+`agent.<agent>.env.<VAR>`).  The most specific scope wins, so a box var
+overrides a workset one, which overrides the global one.
 
 ### Custom prompt
 
 The shell prompt is controlled by the `KANIBAKO_PS1` environment variable:
 
 ```bash
-kanibako box set env.KANIBAKO_PS1="(myproject) \u:\w\$ "
+kanibako box set box.env.KANIBAKO_PS1="(myproject) \u:\w\$ "
 ```
 
 ### Init scripts
