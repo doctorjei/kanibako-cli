@@ -352,27 +352,28 @@ def _ensure_initialized() -> None:
     std_paths = load_std_paths(config)
     install_packaged_templates(std_paths, target_names)
 
-    # Seed default global environment variables (don't overwrite existing).
+    # Seed the default box environment (don't overwrite existing).
     #
-    # ⚑ RE-HOMED onto the real mechanism (R-39/RQ-1, 2026-08-02). This wrote
-    # ``COLORTERM=truecolor`` into the global docker ``.env`` FILE, whose ONLY
-    # delivery path was the three-tier launch read that RQ-1 retired — so left as
-    # it was, the seed would have kept writing a file nothing reads and boxes
-    # would have lost truecolor with nothing announcing it. The value now lands
-    # at ``system.env.COLORTERM`` in the system SETTINGS file, which
-    # ``settings_launch._emit_scope_node`` already delivers as a system-scope
-    # ``env`` category entry — the same value, through the single route, and now
-    # visible to ``config get`` / ``show`` and overridable at any scope.
+    # ``COLORTERM=truecolor`` is declared at BOX scope — the scope that actually
+    # describes it (it is a property of the terminal a box runs, not of the host
+    # install) — and written DOWNWARD into the system SETTINGS file, which the
+    # directional rule allows (a system file may set keys of the scopes it
+    # contains). ``settings_launch._emit_scope_node`` delivers it as a box-scope
+    # ``env`` category entry, so a box's own ``box.env.COLORTERM`` overrides it.
     #
-    # setdefault semantics are PRESERVED: first run only (this function returns
-    # early once the config file exists) AND create-if-absent, so a user value
-    # already at the key is never clobbered.
+    # ⚑ This is still a WRITTEN VALUE, not a default. The proper fix — no write at
+    # all, and a declared box-scope DEFAULT that populates with nothing stored —
+    # is tracked as MBR-2 and is deliberately NOT done here (it is HELD pending a
+    # decision on where defaults live).
+    #
+    # setdefault semantics: first run only (this function returns early once the
+    # config file exists) AND create-if-absent, so a user value is never clobbered.
     from kanibako.settings.config_io import read_stored_leaf, write_nested_key
 
-    if read_stored_leaf(std_paths.settings, ("system", "env"), "COLORTERM") is None:
+    if read_stored_leaf(std_paths.settings, ("box", "env"), "COLORTERM") is None:
         std_paths.settings.parent.mkdir(parents=True, exist_ok=True)
         write_nested_key(
-            std_paths.settings, ("system", "env"), "COLORTERM", "truecolor",
+            std_paths.settings, ("box", "env"), "COLORTERM", "truecolor",
         )
 
     # Try shell completion
