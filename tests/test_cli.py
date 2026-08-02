@@ -1425,12 +1425,14 @@ class TestTemplateStalenessRetired:
         assert _setup_nudge(self._ns("start")) is None
 
     def test_first_run_seeds_colorterm_at_the_real_key(self, tmp_home):
-        """⚑ RE-HOMED by B9/RQ-1. The seed wrote ``COLORTERM=truecolor`` into the
-        global docker ``.env`` FILE, whose ONLY delivery path was the launch read
-        this change retires — so left alone it would have written a file nothing
-        reads and boxes would have lost truecolor SILENTLY. It now lands at
-        ``system.env.COLORTERM`` in the system settings file, which
-        ``settings_launch._emit_scope_node`` already delivers.
+        """⚑ RE-HOMED by B9/RQ-1, then moved to BOX scope (2026-08-02b).
+
+        The seed wrote ``COLORTERM=truecolor`` into the global docker ``.env``
+        FILE, whose ONLY delivery path was the launch read B9 retired. It now
+        lands at ``box.env.COLORTERM`` — the scope that describes the value —
+        written DOWNWARD into the SYSTEM settings file (legal: a system file may
+        set keys of the scopes it contains). Delivery is pinned by
+        ``test_first_run_colorterm_reaches_the_resolved_container_env``.
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.settings.config import config_file_path, load_config
@@ -1440,12 +1442,15 @@ class TestTemplateStalenessRetired:
         _ensure_initialized()
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         std = load_std_paths(load_config(cf))
-        assert load_doc(std.settings)["system"]["env"]["COLORTERM"] == "truecolor"
+        doc = load_doc(std.settings)
+        assert doc["box"]["env"]["COLORTERM"] == "truecolor"
+        # BOX scope, not system — the value is a property of the box's terminal.
+        assert "COLORTERM" not in ((doc.get("system") or {}).get("env") or {})
         # And NOT into the retired docker .env file.
         assert not (std.data_path / "env").exists()
 
     def test_first_run_colorterm_seed_never_clobbers_a_user_value(self, tmp_home):
-        """setdefault semantics, preserved through the re-home."""
+        """setdefault semantics, preserved through the re-home and the move."""
         from kanibako.cli import _ensure_initialized
         from kanibako.settings.config import (
             KanibakoConfig, config_file_path, load_config,
@@ -1459,11 +1464,100 @@ class TestTemplateStalenessRetired:
         cf.parent.mkdir(parents=True, exist_ok=True)
         std = load_std_paths(KanibakoConfig())
         std.settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(std.settings, ("system", "env"), "COLORTERM", "mine")
+        write_nested_key(std.settings, ("box", "env"), "COLORTERM", "mine")
 
         _ensure_initialized()
         std = load_std_paths(load_config(cf)) if cf.exists() else std
-        assert load_doc(std.settings)["system"]["env"]["COLORTERM"] == "mine"
+        assert load_doc(std.settings)["box"]["env"]["COLORTERM"] == "mine"
+
+    def test_first_run_colorterm_reaches_the_resolved_container_env(self, tmp_home):
+        """⚑ THE DELIVERY PROOF for the box-scope move (2026-08-02b).
+
+        The move makes the seed a DOWNWARD ``box:`` table in the SYSTEM settings
+        file. That shape is legal (``_drop_upward_scopes`` keeps downward tables),
+        but "legal to write" is not "delivered" — so drive the value all the way
+        through the REAL launch route the container env is built from::
+
+            build_launch_snapshot -> snapshot_category_entries
+            -> reconcile_categories -> start._build_config_env
+
+        and assert ``COLORTERM=truecolor`` arrives, carrying the ``box`` scope. A
+        ``config show --effective`` check would NOT substitute: it shares code
+        with the display path B9 changed the same day.
+        """
+        from kanibako.cli import _ensure_initialized
+        from kanibako.commands.start import _build_config_env
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import load_std_paths, xdg
+        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        _ensure_initialized()
+        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        std = load_std_paths(load_config(cf))
+
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None, host_home=str(tmp_home),
+            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
+        )
+        # ONLY the system settings file on disk — no workset/box file supplies it.
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=std.settings,
+            agent_path=None, workset_path=None, box_path=None,
+            default_categories={},
+        )
+        entries = snapshot_category_entries(
+            snap, active_agent="claude", box_ctx=ctx,
+        )
+        rec = reconcile_categories(entries)
+        assert _build_config_env({}, rec.envs)["COLORTERM"] == "truecolor"
+        winner = next(e for e in rec.envs if e.box_dest == "COLORTERM")
+        assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
+
+    def test_colorterm_box_file_override_beats_the_system_file_seed(self, tmp_home):
+        """A box's OWN ``box.env.COLORTERM`` still wins over the seeded value.
+
+        The move only makes sense if the downward declaration stays overridable
+        at the scope it is declared for — otherwise the system file would have
+        pinned a box-scope value nothing could beat.
+        """
+        from kanibako.cli import _ensure_initialized
+        from kanibako.commands.start import _build_config_env
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import load_std_paths, xdg
+        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        _ensure_initialized()
+        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        std = load_std_paths(load_config(cf))
+
+        box_settings = tmp_home / "abox" / "settings.yaml"
+        box_settings.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(box_settings, ("box", "env"), "COLORTERM", "256color")
+
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None, host_home=str(tmp_home),
+            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=std.settings,
+            agent_path=None, workset_path=None, box_path=box_settings,
+            default_categories={},
+        )
+        rec = reconcile_categories(
+            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        )
+        assert _build_config_env({}, rec.envs)["COLORTERM"] == "256color"
 
 
 class TestShellAgentFlagIgnored:
