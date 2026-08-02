@@ -760,8 +760,8 @@ class TestDeclarationKeyIsDiscriminated:
     ``CategoryEntry.scope`` is the BARE precedence token (``agent``), but
     ``CategoryEntry.key`` must name a real tier — ``agent.<agent>`` or
     ``agent.default``. A bare ``agent.<category>.<name>`` is not a key at all, so
-    a collision message or a ``meta.derived.*`` key spelled that way would point
-    a reader at something the keyspace forbids them to write.
+    a collision message or a ``binding_derivations.*`` entry spelled that way
+    would point a reader at something the keyspace forbids them to write.
 
     ⚑ The agent tier is the ONLY place the two can differ, because
     ``_agent_pick_node`` collapses ``agent.default`` and ``agent.<active>`` into
@@ -952,7 +952,7 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         ]
         assert abstract, "the claude plugin declares no abstract category"
 
-        node = dict.get(dict.get(snap, "meta"), "derived")
+        node = dict.get(snap, "binding_derivations")
         assert isinstance(node, KeyStore)
         derived = derived_bindings(node)
         # One derivation per abstract declaration, keyed by the DISCRIMINATED
@@ -978,7 +978,112 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
             if entry.category not in ("common", "caches", "seeded"):
                 continue
             assert f"  {entry.key} = " in text, entry.key
-            assert f"    meta.derived.{entry.key} = " in text, entry.key
+            assert f"    binding_derivations.{entry.key} = " in text, entry.key
         # The bare agent form never appears (it is not a key).
         assert "agent.common" not in text
         assert "agent.caches" not in text
+
+
+class TestForgedDerivationsTableNeverEntersTheMerge:
+    """B4 Editor fix — spec §0 fault class for the RESERVED node (R-8).
+
+    INVERTS the pre-fix repro: a box settings file carrying a hand-forged
+    top-level ``binding_derivations:`` table used to ride into the snapshot
+    (the old ``meta.derived`` spelling was shielded by the ``meta:`` drop; the
+    root-level rename lost the shield). The forged table planted (i) an entry
+    COLLIDING with a real declaration key and (ii) a non-``Bind`` junk leaf —
+    and the junk leaf crashed the ``derived_bindings`` lens, and with it the
+    ``--effective`` display route, with ``ViewError`` (user-reachable via
+    ``config show --effective``). Post-fix the table is DROPPED at assembly
+    with a warning, so the node holds EXACTLY what the launch seam
+    (``_install_derived_bindings``) wrote.
+    """
+
+    # The REAL declaration the forged table collides with.
+    _DECL_KEY = "agent.claude.common.plugins"
+
+    @staticmethod
+    def _snapshot(tmp_path):
+        import yaml
+
+        from kanibako.commands.start import _install_derived_bindings
+        from kanibako.settings.settings_categories import derive_binding_keys
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            meta_identity_floor,
+            meta_runtime_floor,
+            snapshot_category_entries,
+            workset_anchor_floor,
+        )
+
+        box_file = tmp_path / "settings.yaml"
+        box_file.write_text(yaml.safe_dump({
+            "box": {"enable_vault": False},
+            "binding_derivations": {
+                # (i) collides with the REAL declaration key below.
+                "agent": {"claude": {"common": {
+                    "plugins": ["/forged/src", "~/forged"],
+                }}},
+                # (ii) non-Bind junk — pre-fix this leaf crashed the lens.
+                "junk": "zebra-not-a-bind",
+            },
+        }))
+
+        floor: dict[str, object] = {
+            "agent.claude.common.plugins": (
+                "/store/plugins", "~/.claude/plugins", "Z",
+            ),
+        }
+        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+        floor.update(workset_anchor_floor(mode="primary"))
+        floor.update(meta_identity_floor(
+            box_name="mybox", project_path="/code/x", inbox="/i",
+            share_global="/sg", share_workset="/sw", agent_name="claude",
+        ))
+        ctx = make_ctx(
+            workset_name=None, config={"config.primary_workset": "/data/pw"},
+        )
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=box_file, default_categories=floor,
+        )
+        entries = snapshot_category_entries(
+            snap, active_agent="claude", box_ctx=ctx,
+        )
+        _install_derived_bindings(snap, derive_binding_keys(entries))
+        return snap, box_file
+
+    def test_lens_returns_exactly_the_real_derivations(self, tmp_path, caplog):
+        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.settings_views import derived_bindings
+
+        with caplog.at_level("WARNING"):
+            snap, box_file = self._snapshot(tmp_path)
+        # The drop announced itself, naming the box file and the token.
+        assert [
+            r.getMessage() for r in caplog.records
+            if r.levelname == "WARNING"
+            and "binding_derivations" in r.getMessage()
+            and str(box_file) in r.getMessage()
+        ]
+        node = dict.get(snap, "binding_derivations")
+        assert isinstance(node, KeyStore)
+        # EXACTLY the real derivations: the launch seam's write, nothing forged.
+        derived = derived_bindings(node)  # pre-fix: ViewError on the junk leaf
+        assert set(derived) == {self._DECL_KEY}
+        # The colliding key carries the REAL host source, not the forged one.
+        assert derived[self._DECL_KEY].host == "/store/plugins"
+
+    def test_effective_display_renders_without_viewerror(self, tmp_path):
+        import io
+
+        from kanibako.settings.config_display import _print_category_block
+
+        snap, _ = self._snapshot(tmp_path)
+        buf = io.StringIO()
+        _print_category_block(snap, None, buf)  # pre-fix: raised ViewError
+        text = buf.getvalue()
+        # The real declaration/derivation pair renders; no phantom lines.
+        assert f"    binding_derivations.{self._DECL_KEY} = " in text
+        assert "/forged" not in text
+        assert "junk" not in text

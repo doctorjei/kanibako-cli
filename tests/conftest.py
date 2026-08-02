@@ -650,7 +650,7 @@ def start_mocks():
                     entries, deliver_creds=kw.get("deliver_creds", True),
                 )
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
-                # ``meta.derived.*`` materialisation (``derive_binding_keys``) and
+                # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and
                 # emits the §0 row-5 collision warnings. This stub does NEITHER,
                 # because mirroring them would put a second copy of that seam in
                 # the test harness — the drift risk the single-route rule exists

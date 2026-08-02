@@ -463,25 +463,9 @@ def _meta_reason(
             f"auth.share_support)"
         )
 
-    if group == "derived":
-        # meta.derived.<declaration-key> — the MATERIALISED binding an ABSTRACT
-        # declaration derives (spec §0, declared 2026-07-31). Valid iff
-        # the tail is itself a valid declaration key.
-        if not tail:
-            return "'meta.derived' is a namespace, not a key (spec §0 L94)"
-        inner = key_validity(
-            ".".join(tail), valid_agents=valid_agents, agent_leaves=leaves,
-        )
-        if inner is None:
-            return None
-        return (
-            f"'meta.derived.{'.'.join(tail)}' is not a declared key: its "
-            f"declaration key is invalid — {inner} (spec §0 L94)"
-        )
-
     return (
         f"'meta.{group}' is not a declared meta group (declared: runtime, "
-        f"workset, box, agent, derived)"
+        f"workset, box, agent)"
     )
 
 

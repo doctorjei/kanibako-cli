@@ -1899,9 +1899,9 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
     into ONE effective node per NAME before emission, and the emitted
     ``CategoryEntry.scope`` is the BARE ``agent`` precedence token. But an entry's
     declared KEY must be DISCRIMINATED: a bare ``agent.<category>.<name>`` is not
-    a key at all (spec §0), so a message or a ``meta.derived.*`` key spelled
-    that way would name a shape the keyspace forbids and point a reader at
-    something they cannot write.
+    a key at all (spec §0), so a message or a ``binding_derivations.*`` entry
+    spelled that way would name a shape the keyspace forbids and point a reader
+    at something they cannot write.
 
     So recover the tier the same way the pick decides it, and from the same RAW
     tiers ``snapshot_category_entries`` already walks: a leaf declared by the
@@ -2223,8 +2223,8 @@ def _emit_bind(
 
     *key* is the DISCRIMINATED declaration key the caller built from
     ``decl_scope_fn`` — carried on the entry for the collision messages and the
-    ``meta.derived.*`` materialisation, and used here so even the malformed-leaf
-    raise names the key the user actually wrote.
+    ``binding_derivations.*`` materialisation, and used here so even the
+    malformed-leaf raise names the key the user actually wrote.
 
     *optional_keys* / *host_dest_keys* are matched on that same *key*. A HOST-space
     dest is taken VERBATIM — it is already an absolute host path (``_expand_bind``

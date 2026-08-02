@@ -187,12 +187,13 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
 
     Every CONCRETE binding is listed with the destination it occupies, and every
     ABSTRACT declaration (``common`` / ``caches`` / ``seeded``) is listed with the
-    ``meta.derived.<declaration-key>`` binding it produces indented beneath it —
-    so a reader can see the declaration AND the mount it becomes, which is the
-    whole point of materialising the derivation.
+    ``binding_derivations.<declaration-key>`` binding it produces indented
+    beneath it — so a reader can see the declaration AND the mount it becomes,
+    which is the whole point of materialising the derivation.
 
     Both halves are read off the SAME snapshot: the declaration at its own key,
-    the derivation at ``meta.derived.<that key>``.  Nothing is re-derived here.
+    the derivation at ``binding_derivations.<that key>`` (the reserved internal
+    node, R-8 — not a key).  Nothing is re-derived here.
     """
     from kanibako.settings.settings_store import Bind, KeyStore
     from kanibako.settings.settings_views import derived_bindings
@@ -241,7 +242,7 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     # box's own file. A reader who cannot tell them apart cannot answer the
     # question this display exists for — WHY is this here, and what happens if I
     # change it.
-    derived_node = _leaf("meta.derived")
+    derived_node = _leaf("binding_derivations")
     if isinstance(derived_node, KeyStore):
         for decl_key, bind in sorted(derived_bindings(derived_node).items()):
             declaration = _leaf(decl_key)
@@ -249,7 +250,7 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
                 print(f"  {decl_key} = {_pair(declaration)}", file=out)
             kind = "copy" if _declaration_delivery(decl_key) == "COPY" else "mount"
             print(
-                f"    meta.derived.{decl_key} = {_pair(bind)}  ({kind})",
+                f"    binding_derivations.{decl_key} = {_pair(bind)}  ({kind})",
                 file=out,
             )
 

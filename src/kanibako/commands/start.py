@@ -5233,9 +5233,10 @@ def _resolve_launch_snapshot(
         # same enrichment the collision path gets applies — otherwise the box
         # fails to start pointing at a key that is in none of their files.
         raise _annotate_pref_origin(exc, prefs) from None
-    # MATERIALISE each ABSTRACT declaration's derived binding beside it, at
-    # ``meta.derived.<declaration-key>`` (spec §0), BEFORE the reconcile — the
-    # derivation is a property of the declaration, not of whether it won.
+    # MATERIALISE each ABSTRACT declaration's derived binding beside it, under
+    # the reserved ``binding_derivations`` node at the snapshot root (R-8),
+    # BEFORE the reconcile — the derivation is a property of the declaration,
+    # not of whether it won.
     _install_derived_bindings(snapshot, derive_binding_keys(entries))
     try:
         reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
@@ -5304,25 +5305,21 @@ def _annotate_pref_origin(exc, prefs):
 
 
 def _install_derived_bindings(snapshot, derived: "Mapping[str, object]") -> None:
-    """Write the ``meta.derived.*`` materialisation into *snapshot* in place.
+    """Write the ``binding_derivations.*`` materialisation into *snapshot* in place.
 
     Mirrors ``settings_launch._materialize_box_agent_mirror``: a post-expand
-    ``meta.*`` write into the built snapshot at ONE seam.  ``meta.*`` is RO by
-    contract, and ``assemble_levels`` drops a top-level ``meta:`` table from every
-    settings file, so nothing a user writes can forge or collide with these.
+    write into the built snapshot at ONE seam.  ``binding_derivations`` is the
+    reserved INTERNAL node at the snapshot root (R-8, manifest
+    ``not_keys.reserved_internal``) — not a key, guarded by TWO protections:
+    the closed head dispatch refuses it (no config verb can address or write
+    it) and assembly drops a file-borne top-level table with a warning
+    (``settings_assemble._drop_upward_scopes``), so this seam is the node's
+    ONLY producer.
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.settings_store import insert_dotted
 
     for dotted, value in derived.items():
-        node = snapshot
-        parts = dotted.split(".")
-        for seg in parts[:-1]:
-            child = dict.get(node, seg, None)
-            if not isinstance(child, KeyStore):
-                child = KeyStore()
-                node[seg] = child
-            node = child
-        node[parts[-1]] = value
+        insert_dotted(snapshot, dotted, value)
 
 
 #: Process-scoped DISPLAY state for :func:`emit_collision_warnings`: the

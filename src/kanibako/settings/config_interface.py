@@ -1951,7 +1951,7 @@ def show_config(
 
     *category_snapshot* (BOX scope, ``--effective`` only) is the resolved launch
     KeyStore.  When supplied, the PATH-DELIVERY categories are rendered too: each
-    binding, and each ABSTRACT declaration paired with the ``meta.derived.*``
+    binding, and each ABSTRACT declaration paired with the ``binding_derivations.*``
     binding it produces (spec §0 — "``--effective`` shows BOTH the declaration and
     the derived binding and a user can see WHY a mount exists").  *category_error*
     carries a collision message when the snapshot could not be resolved, so

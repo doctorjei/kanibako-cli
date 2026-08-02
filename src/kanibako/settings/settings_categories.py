@@ -254,7 +254,8 @@ class CategoryEntry:
     token, and it replaces nothing: three consumers need it and none of them can
     be served by *scope* + *category* + *name*.
 
-    * the derived-binding materialisation key (``meta.derived.<key>``, §0);
+    * the derived-binding materialisation entry (``binding_derivations.<key>``,
+      the reserved internal snapshot node — R-8);
     * every collision error / warning message (a message that named only the
       category would not tell a user which declaration to edit);
     * the base-vs-extension provenance the §0 collision table reads.
@@ -793,9 +794,10 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
     ``common`` / ``caches`` / ``seeded`` are ROOTED declarations that EXTEND
     ``bindings.rw``; §0 requires the binding each one produces to be materialised
     BESIDE the declaration so ``--effective`` can show both and a reader can see
-    WHY a mount exists.  The key is ``meta.derived.<declaration-key>`` (spec §0,
-    declared 2026-07-31) — mechanically one fixed prefix on the declaration key,
-    so the pairing is a string operation and cannot drift.
+    WHY a mount exists.  The entry is ``binding_derivations.<declaration-key>``
+    (R-8: the reserved INTERNAL node at the snapshot root — NOT a key) —
+    mechanically one fixed prefix on the declaration key, so the pairing is a
+    string operation and cannot drift.
 
     ⚑ It is deliberately NOT written into ``<scope>.bindings.rw.<name>``, which is
     §0's own ruling.  Be precise about WHY, because the obvious argument is
@@ -806,9 +808,13 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
     emits no mount is a FORGERY of the one thing the table reads.  Every reader —
     ``config show``, the ``--effective`` block, a future validator, the next
     person to add a consumer — would have to learn a rule ("some
-    ``bindings.rw.*`` are real and some are shadows") that the ``meta.derived``
-    prefix states structurally and for free.  ``meta.*`` is also RO by contract,
-    which is exactly the status a derivation has.
+    ``bindings.rw.*`` are real and some are shadows") that the
+    ``binding_derivations`` prefix states structurally and for free.  The node
+    is also not a key at all, and is unwritable by TWO protections: the config
+    verbs refuse the head (the closed head dispatch, R-8) and assembly DROPS a
+    file-borne top-level table with a warning
+    (``settings_assemble._drop_upward_scopes``) — exactly the status a
+    derivation has.
 
     PURE — takes the adapter's entry list, returns a fresh ``{key: Bind}`` map;
     the ONE seam that installs it into a snapshot is
@@ -821,13 +827,13 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
     ⚑ Distinct by NAME from the READ lens ``settings_views.derived_bindings`` —
     one PRODUCES the keys, the other READS them back off a snapshot.
     """
-    from kanibako.settings.settings_store import Bind
+    from kanibako.settings.settings_store import BINDING_DERIVATIONS_NODE, Bind
 
     out: dict[str, Bind] = {}
     for e in entries:
         if e.category not in ABSTRACT_CATEGORIES:
             continue
-        out[f"meta.derived.{e.key}"] = Bind(
+        out[f"{BINDING_DERIVATIONS_NODE}.{e.key}"] = Bind(
             host=e.host_src or "", box=e.box_dest,
             opts=e.options or None,
         )

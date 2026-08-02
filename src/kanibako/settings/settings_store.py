@@ -80,7 +80,7 @@ so the custom ``__getattribute__`` interception of block 1 is no longer needed.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple, Union
+from typing import Any, Final, NamedTuple, Union
 
 
 class ReservedKeyError(KeyError):
@@ -176,6 +176,15 @@ StoreValue = Union["KeyStore", Bind, str, int, float, bool, list[str], None]
 #: CONTAINS every scope to its RIGHT; the tail-slice from a scope onward is the
 #: set it may write DOWN into.
 SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
+
+
+#: The reserved INTERNAL derivations node at the snapshot root (R-8, manifest
+#: ``not_keys.reserved_internal``) — NOT a key. Declared ONCE, here in the
+#: settings-stack leaf, so the producer
+#: (``settings_categories.derive_binding_keys``) and the assembly drop
+#: (``settings_assemble._drop_upward_scopes``) spell the same token by
+#: construction and cannot drift.
+BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"
 
 
 class _Missing:
@@ -344,7 +353,7 @@ def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
     deeper key, so the shallower leaf cannot survive as a leaf).
 
     THE single non-parsing dotted installer. Two callers need exactly this:
-    the ``meta.derived.*`` materialisation
+    the ``binding_derivations.*`` materialisation
     (``kanibako.commands.start._install_derived_bindings``) and the ``pref.*``
     overlay builder (:func:`kanibako.settings.settings_prefs.pref_overlay`), whose
     contract is *"values are installed VERBATIM — including ``None``"* (spec

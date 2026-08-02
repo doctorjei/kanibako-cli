@@ -156,17 +156,28 @@ def test_supporting_surface_is_valid(key):
     "meta.agent.claude.name", "meta.agent.claude.path",
     "meta.agent.claude.settings", "meta.agent.claude.mode",
     "meta.agent.claude.exec", "meta.agent.claude.auth.share_support",
-    "meta.derived.agent.claude.common.plugins",
-    "meta.derived.workset.caches.build",
 ])
 def test_meta_families_are_valid(key):
     assert valid(key), reason(key)
 
 
-def test_meta_derived_rejects_an_invalid_declaration_key():
-    """spec §0 — meta.derived.<declaration-key>; the declaration must
-    itself be a key, else the derived name means nothing."""
-    assert "declaration key is invalid" in reason("meta.derived.zippity.wibble")
+def test_the_cut_meta_derived_family_is_refused():
+    """R-8 (option 2) — the ``meta.derived.*`` key family is CUT: it is not a
+    key, and the refusal is the ORDINARY unknown-meta-group refusal."""
+    assert "not a declared meta group" in reason("meta.derived.x")
+    assert "not a declared meta group" in reason(
+        "meta.derived.agent.claude.common.plugins"
+    )
+
+
+def test_the_reserved_binding_derivations_node_is_not_a_key():
+    """R-8 / D-4 — ``binding_derivations`` is the reserved INTERNAL snapshot
+    node (manifest ``not_keys.reserved_internal``): refused by the closed head
+    dispatch by construction, so it can never be re-claimed as a key."""
+    assert "not a declared namespace" in reason("binding_derivations.x")
+    assert "not a declared namespace" in reason(
+        "binding_derivations.agent.claude.common.plugins"
+    )
 
 
 def test_unknown_namespace_rejected():
