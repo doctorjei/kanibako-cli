@@ -77,7 +77,7 @@ descriptor:
   # it onto `auto` would silently deliver the full bypass.  Ruled (Jei,
   # 2026-08-02): REFUSE.  A future goose that gains an edits-auto mode adds the
   # row here and nothing else changes.
-  safe_bypass:
+  access_realization:
     channel: env
     env_var: GOOSE_MODE
     setting_key: access
@@ -195,7 +195,7 @@ descriptor:
   #     normally like claude/codex.
   #   - `GOOSE_MODE` (permission parity) is seeded into the box's config.yaml from
   #     the box's `access` tier so the panel-spawned goose reflects it (goose
-  #     renders restricted|full only — `editing` is refused, see safe_bypass).
+  #     renders restricted|full only — `editing` is refused, see access_realization).
   vscode_extension: block.vscode-goose
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →

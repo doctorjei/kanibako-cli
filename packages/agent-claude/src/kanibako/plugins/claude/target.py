@@ -590,7 +590,7 @@ class ClaudeTarget(Target):
 
         ``access`` is NOT declared here: it is the agent-scope permission TIER
         key (spec §2d, ``agent.default.access | full``, enum
-        restricted|editing|full) redeemed by ``safe_bypass.setting_key`` and
+        restricted|editing|full) redeemed by ``access_realization.setting_key`` and
         resolved at launch (validated against the enum, defaulting to ``full``
         when unset) — routed verbatim like ``allow_helpers``, with the per-launch
         ``-S``/``-A`` flags overriding it for the ARGV only.

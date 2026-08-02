@@ -128,18 +128,18 @@ class AccessTierRow:
     """How ONE ``access`` tier is REALIZED for one harness (spec §2d, R-41).
 
     A row is the harness's answer to *"what do I emit to run at this tier?"*, in
-    whichever channel its :class:`SafeBypass` declares:
+    whichever channel its :class:`AccessRealization` declares:
 
     * FLAG channel — *flag* is the argv fragment (``("--permission-mode",
       "acceptEdits")``).
-    * ENV channel — *env_value* is the value for the ``SafeBypass.env_var``
+    * ENV channel — *env_value* is the value for the ``AccessRealization.env_var``
       (goose ``GOOSE_MODE=approve``).
 
     An EMPTY row (both fields empty) means **emit nothing, deliberately** — the
     correct realization for a tier a default-safe harness already runs at with no
     argument (claude/codex ``restricted``).  It is NOT the same as having no row:
     a MISSING tier means the harness CANNOT render that tier and the launch
-    REFUSES (see :meth:`SafeBypass.row`).  That distinction is the whole reason
+    REFUSES (see :meth:`AccessRealization.row`).  That distinction is the whole reason
     the rows are optional rather than defaulted — for an agent whose unset
     default is UNSAFE (goose's ``GOOSE_MODE`` defaults to ``auto``), "emit
     nothing" and "cannot render" would otherwise both silently mean *permissive*.
@@ -150,7 +150,7 @@ class AccessTierRow:
 
 
 @dataclass(frozen=True)
-class SafeBypass:
+class AccessRealization:
     """The per-harness realization of the ``access`` permission TIER (spec §2d).
 
     ⚑ **R-41 generalized this from a two-polarity toggle to per-tier ROWS.** It
@@ -175,6 +175,16 @@ class SafeBypass:
 
     Special vs :class:`SettingArg`: it is driven by the resolved permission tier,
     not by a plain setting value.
+
+    ⚑ NAME: this was ``SafeBypass`` (descriptor field / defaults-file key
+    ``safe_bypass``) up to and including v1.8.0rc1 — the name of the two-polarity
+    toggle R-41 replaced, which had outlived its meaning: nothing here is a
+    "bypass" (``restricted`` is the opposite of one), and the class is the
+    harness's REALIZATION of the access tiers.  Renamed with NO alias: a defaults
+    file still spelling ``safe_bypass:`` is REFUSED by name at descriptor load
+    (:func:`~kanibako.settings.agent_defaults.load_descriptor`) rather than
+    ignored as an unknown key, because being ignored would mean launching with no
+    permission emission at all.
     """
 
     channel: Channel
@@ -410,7 +420,7 @@ class PluginDescriptor:
     bindings: tuple[Binding, ...]                  # ALL bound elements; ordered; >=1
     mode: dict[str, tuple[str, ...]]               # INTERACTIVE launch ONLY: {"start": (...), "continue": (...)}
     operations: dict[str, Operation] = field(default_factory=dict)  # pass-1: {"exec": ...}; standalone, no mode
-    safe_bypass: SafeBypass | None = None
+    access_realization: AccessRealization | None = None
     settings: tuple[SettingArg, ...] = ()
     persona: "PersonaSpec | None" = None   # harness-specific persona endpoint/token
                                            # delivery (None = claude-style env +

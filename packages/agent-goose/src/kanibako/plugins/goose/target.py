@@ -41,8 +41,8 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 # :mod:`kanibako.settings.agent_defaults` loader — the file documents each non-obvious
 # field (goose 1.37.0, empirically verified): the bare ``session`` /
 # ``session --resume`` mode grammar; the ``run --no-session -t`` exec op; the
-# SYMMETRIC ENV GOOSE_MODE safe-bypass (auto/approve — the secure value is
-# MANDATORY because goose's unset default is ``auto``); model/provider routed as
+# SYMMETRIC ENV GOOSE_MODE access realization (auto/approve — the ``restricted``
+# value is MANDATORY because goose's unset default is ``auto``); model/provider routed as
 # ENV GOOSE_MODEL/GOOSE_PROVIDER with NO default value (goose falls back to its
 # own config.yaml from ``goose configure``); the always-on
 # GOOSE_DISABLE_KEYRING container env; and the three two-way SYNC cred files

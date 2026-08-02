@@ -77,7 +77,7 @@ class PluginDescriptor:
     bindings: tuple[Binding, ...]                 # all bound elements; ordered; >= 1
     mode: dict[str, tuple[str, ...]]             # interactive modes: {"start": (...), "continue": (...)}
     operations: dict[str, Operation] = {}        # standalone ops, e.g. {"exec": ...}
-    safe_bypass: SafeBypass | None = None        # the -A/-S safe-mode toggle
+    access_realization: AccessRealization | None = None  # per-tier `access` realization
     settings: tuple[SettingArg, ...] = ()        # value-bearing settings -> flag/env
     container_env: dict[str, str] = {}           # static env injected into the box
     cred_files: tuple[CredFileSpec, ...] = ()    # credential/config file lifecycle
@@ -113,14 +113,27 @@ fragment appended after `command`.  Always provide `"start"` (new session) and
 value-bearing setting (e.g. `model`) to a `Channel.FLAG` argv flag
 (`("--model",)`) or a `Channel.ENV` environment variable (`"GOOSE_MODEL"`).
 
-**`SafeBypass(channel, flag=(), env_var="", env_value="", secure_env_value="",
-secure_flag=(), setting_key="")`** — the `-A` (autonomous) / `-S` (secure)
-toggle, with symmetric emissions for both polarities.  Empty *secure* fields
-emit nothing on `-S`, which is correct for an agent whose unset default is
-already safe (claude/codex).  An agent whose unset default is *unsafe* (goose:
-`GOOSE_MODE` defaults to `auto`) MUST set `secure_env_value` so `-S` actually
-restricts it.  A non-empty `setting_key` makes the toggle a persisted default
-(claude `access`); empty means per-launch only.
+**`AccessRealization(channel, env_var="", restricted=None, editing=None,
+full=None, setting_key="")`** — how *your* harness realizes each `access`
+permission tier (`restricted | editing | full`).  One `channel` for the whole
+harness: `Channel.FLAG` (argv, claude/codex) or `Channel.ENV` (`env_var`, goose
+`GOOSE_MODE`).  Each tier field is an `AccessTierRow(flag=(), env_value="")` or
+`None`.
+
+- **`None` = this harness CANNOT render that tier.**  The launch then REFUSES,
+  naming the tiers you *can* render — it never substitutes a neighbour (goose
+  declares no `editing`).
+- **An EMPTY row = "emit nothing, deliberately"** — correct on the FLAG channel
+  for a harness whose own default already prompts (claude/codex `restricted`).
+  On the ENV channel an empty row is REFUSED at load: leaving the variable unset
+  means the harness's own default, which on that channel is the permissive one.
+- A non-empty `setting_key` makes the tier a persisted, cascade-resolved key
+  (all three shipped agents use `"access"`); empty means the per-launch
+  `-S` / `-A` flags only.
+
+> ⚑ This block was named `SafeBypass` / `safe_bypass:` before v1.8.0, when it was
+> a two-polarity `-A`/`-S` toggle.  There is no alias: a defaults file still
+> using the old key is refused by name at descriptor load.
 
 **`CredFileSpec(home_rel, host_rel, cadence=SYNC, mtime_gate=True,
 filtered=False)`** — one credential/config file's lifecycle.
@@ -148,8 +161,8 @@ descriptor:
 
 ```python
 from kanibako.targets.base import (
-    AgentInstall, BindKind, Binding, BindScope, Cadence, Channel,
-    CredFileSpec, HostSrcOrigin, Operation, PluginDescriptor, SafeBypass,
+    AccessRealization, AccessTierRow, AgentInstall, BindKind, Binding, BindScope,
+    Cadence, Channel, CredFileSpec, HostSrcOrigin, Operation, PluginDescriptor,
     SettingArg, Target, TargetSetting,
 )
 
@@ -164,10 +177,14 @@ _CODEX_DESCRIPTOR = PluginDescriptor(
     ),
     mode={"start": (), "continue": ("resume", "--last")},
     operations={"exec": Operation(("exec",))},
-    safe_bypass=SafeBypass(
+    access_realization=AccessRealization(
         Channel.FLAG,
-        flag=("--dangerously-bypass-approvals-and-sandbox",),
-        setting_key="",
+        restricted=AccessTierRow(),                       # codex already prompts
+        editing=AccessTierRow(flag=("-s", "workspace-write")),
+        full=AccessTierRow(
+            flag=("--dangerously-bypass-approvals-and-sandbox",),
+        ),
+        setting_key="access",
     ),
     settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
     cred_files=(

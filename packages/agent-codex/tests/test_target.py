@@ -454,7 +454,7 @@ class TestSettingDescriptors:
         assert endpoint.default == ""
         # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting —
         # it is the agent-scope enum key routed verbatim
-        # (safe_bypass.setting_key), redeemed + validated at launch.  The retired
+        # (access_realization.setting_key), redeemed + validated at launch.  The retired
         # ``auto_approve`` spelling must not reappear here either.
         assert "access" not in keys
         assert "auto_approve" not in keys
@@ -518,7 +518,7 @@ class TestDescriptor:
         assert "exec" in d.operations
         assert d.operations["exec"].fragment == ("exec",)
 
-    def test_safe_bypass_access_rows(self):
+    def test_access_realization_access_rows(self):
         """The three codex rows (R-41), all from VERIFIED codex-cli 0.141.0
         vocabulary: the bypass flag, the sandbox enum's middle step, and an
         EMPTY restricted row (nothing on the argv — the pre-R-41 ``-S``
@@ -531,14 +531,14 @@ class TestDescriptor:
         OWN default approval policy is not documented in 0.141.0's local help
         and must not be relied on.
         """
-        sb = CodexTarget().descriptor.safe_bypass
-        assert sb is not None
-        assert sb.channel == Channel.FLAG
-        assert sb.env_var == ""
-        assert sb.full.flag == ("--dangerously-bypass-approvals-and-sandbox",)
-        assert sb.editing.flag == ("-s", "workspace-write")
-        assert sb.restricted.flag == ()
-        assert sb.rendered_tiers() == ("restricted", "editing", "full")
+        ar = CodexTarget().descriptor.access_realization
+        assert ar is not None
+        assert ar.channel == Channel.FLAG
+        assert ar.env_var == ""
+        assert ar.full.flag == ("--dangerously-bypass-approvals-and-sandbox",)
+        assert ar.editing.flag == ("-s", "workspace-write")
+        assert ar.restricted.flag == ()
+        assert ar.rendered_tiers() == ("restricted", "editing", "full")
         # Never emitted (D-7) — and NOT because they are absent or undocumented.
         # Verified on 0.141.0 (2026-08-02): neither is listed in ``codex --help``
         # or ``codex exec --help``, yet BOTH parse (``--yolo`` top-level,
@@ -548,11 +548,11 @@ class TestDescriptor:
         # explicit, self-describing spelling that IS in ``--help`` with an
         # unambiguous description — the emitted argv says what it does.
         for tier in ("restricted", "editing", "full"):
-            assert "--full-auto" not in sb.row(tier).flag
-            assert "--yolo" not in sb.row(tier).flag
+            assert "--full-auto" not in ar.row(tier).flag
+            assert "--yolo" not in ar.row(tier).flag
         # codex persists the tier uniformly (2026-06-27 collapse ruling carried
         # over to ``access``): redeemed via setting_key="access".
-        assert sb.setting_key == "access"
+        assert ar.setting_key == "access"
 
     def test_settings_model_flag(self):
         d = CodexTarget().descriptor

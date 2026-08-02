@@ -441,15 +441,15 @@ class TestDescriptor:
         MANDATORY because goose's unset GOOSE_MODE default is itself ``auto``
         (i.e. "emit nothing" would BE the bypass).
         """
-        sb = GooseTarget().descriptor.safe_bypass
-        assert sb is not None
-        assert sb.channel == Channel.ENV
-        assert sb.env_var == "GOOSE_MODE"
-        assert sb.full.env_value == "auto"
-        assert sb.restricted.env_value == "approve"
-        assert sb.full.flag == () and sb.restricted.flag == ()
+        ar = GooseTarget().descriptor.access_realization
+        assert ar is not None
+        assert ar.channel == Channel.ENV
+        assert ar.env_var == "GOOSE_MODE"
+        assert ar.full.env_value == "auto"
+        assert ar.restricted.env_value == "approve"
+        assert ar.full.flag == () and ar.restricted.flag == ()
         # goose persists the tier uniformly: redeemed via setting_key="access".
-        assert sb.setting_key == "access"
+        assert ar.setting_key == "access"
 
     def test_editing_tier_has_NO_row_and_is_refused(self):
         """R-41 / the B7b goose ruling: goose CANNOT render ``editing``.
@@ -463,10 +463,10 @@ class TestDescriptor:
         from kanibako.targets import assembly
 
         desc = GooseTarget().descriptor
-        sb = desc.safe_bypass
-        assert sb.editing is None
-        assert sb.renders("editing") is False
-        assert sb.rendered_tiers() == ("restricted", "full")
+        ar = desc.access_realization
+        assert ar.editing is None
+        assert ar.renders("editing") is False
+        assert ar.rendered_tiers() == ("restricted", "full")
         with pytest.raises(ConfigError) as exc:
             assembly.assemble_env(
                 desc, access="editing", setting_values={}, agent="goose",

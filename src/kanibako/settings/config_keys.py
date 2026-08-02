@@ -82,7 +82,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # ``agent.default.access | full``, enum ``restricted|editing|full``). The bare
     # key is the any-agent ``agent.default`` tier (mirrors ``model``); per-agent
     # overrides are the persona key ``agent.<agent>.access``. Redeemed by each
-    # descriptor's ``safe_bypass.setting_key`` at launch (claude/codex FLAG rows,
+    # descriptor's ``access_realization.setting_key`` at launch (claude/codex FLAG rows,
     # goose GOOSE_MODE ENV rows) and by the PROJECTED surfaces; the per-launch
     # ``-S``/``-A`` flags override it for the ARGV only (``-S`` ⇒ restricted,
     # ``-A`` ⇒ full), never for the projection (spec §1A projected-surface

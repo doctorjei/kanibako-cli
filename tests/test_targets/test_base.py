@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.targets.base import (
+    AccessRealization,
     AccessTierRow,
     AgentInstall,
     BindKind,
@@ -21,7 +22,6 @@ from kanibako.targets.base import (
     Operation,
     PersonaSpec,
     PluginDescriptor,
-    SafeBypass,
     SettingArg,
     Target,
     _validate_agent_binary,
@@ -424,21 +424,21 @@ class TestPluginDescriptorDataclasses:
         assert env.env_var == "GOOSE_MODEL"
         assert env.flag == ()
 
-    def test_safe_bypass_defaults(self):
+    def test_access_realization_defaults(self):
         # ⚑ R-41: EVERY tier row defaults to ``None`` = "this harness cannot
         # render that tier", so a descriptor that declares a permission channel
         # and forgets a row REFUSES it rather than emitting nothing (which, for a
         # harness whose own default is permissive, would BE the bypass).
-        sb = SafeBypass(channel=Channel.FLAG)
-        assert sb.restricted is None
-        assert sb.editing is None
-        assert sb.full is None
-        assert sb.rendered_tiers() == ()
-        assert sb.env_var == ""
-        assert sb.setting_key == ""
+        ar = AccessRealization(channel=Channel.FLAG)
+        assert ar.restricted is None
+        assert ar.editing is None
+        assert ar.full is None
+        assert ar.rendered_tiers() == ()
+        assert ar.env_var == ""
+        assert ar.setting_key == ""
 
-    def test_safe_bypass_rows_and_lookup(self):
-        sb = SafeBypass(
+    def test_access_realization_rows_and_lookup(self):
+        ar = AccessRealization(
             channel=Channel.FLAG,
             restricted=AccessTierRow(),
             full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
@@ -446,14 +446,14 @@ class TestPluginDescriptorDataclasses:
         )
         # An EMPTY row is a DECLARED realization (emit nothing); a MISSING row is
         # not renderable at all. The two must never collapse.
-        assert sb.row("restricted") == AccessTierRow()
-        assert sb.renders("restricted") is True
-        assert sb.row("editing") is None
-        assert sb.renders("editing") is False
-        assert sb.row("full").flag == ("--dangerously-skip-permissions",)
-        assert sb.rendered_tiers() == ("restricted", "full")
+        assert ar.row("restricted") == AccessTierRow()
+        assert ar.renders("restricted") is True
+        assert ar.row("editing") is None
+        assert ar.renders("editing") is False
+        assert ar.row("full").flag == ("--dangerously-skip-permissions",)
+        assert ar.rendered_tiers() == ("restricted", "full")
         # An unknown tier collapses to "not renderable" — never to a row.
-        assert sb.row("bogus") is None
+        assert ar.row("bogus") is None
 
     def test_access_tier_row_defaults_and_frozen(self):
         row = AccessTierRow()
@@ -510,7 +510,7 @@ class TestPluginDescriptorDataclasses:
             mode={"start": (), "continue": ("--continue",)},
         )
         assert d.operations == {}
-        assert d.safe_bypass is None
+        assert d.access_realization is None
         assert d.settings == ()
         assert d.container_env == {}
         assert d.cred_files == ()
@@ -532,7 +532,7 @@ class TestPluginDescriptorDataclasses:
             ),
             mode={"start": (), "continue": ("--continue",)},
             operations={"exec": Operation(fragment=("--print",))},
-            safe_bypass=SafeBypass(
+            access_realization=AccessRealization(
                 channel=Channel.FLAG,
                 full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
                 setting_key="access",
@@ -557,7 +557,7 @@ class TestPluginDescriptorDataclasses:
         assert d.bindings[0].scope is BindScope.AGENT_CRITICAL
         assert d.mode["continue"] == ("--continue",)
         assert d.operations["exec"].fragment == ("--print",)
-        assert d.safe_bypass is not None and d.safe_bypass.setting_key == "access"
+        assert d.access_realization is not None and d.access_realization.setting_key == "access"
         assert d.cred_files[0].cadence is Cadence.SYNC
         assert d.cred_files[1].cadence is Cadence.SEED_ONCE
         assert d.init_dirs == (".claude",)

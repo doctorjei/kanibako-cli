@@ -25,6 +25,7 @@ from kanibako.targets.assembly import (
     resolve_mode,
 )
 from kanibako.targets.base import (
+    AccessRealization,
     AccessTierRow,
     AgentInstall,
     BindKind,
@@ -35,7 +36,6 @@ from kanibako.targets.base import (
     Mount,
     Operation,
     PluginDescriptor,
-    SafeBypass,
     SettingArg,
 )
 
@@ -55,7 +55,7 @@ def _claude_descriptor() -> PluginDescriptor:
             "resume": ("--resume",),
         },
         operations={"exec": Operation(fragment=("--print",))},
-        safe_bypass=SafeBypass(
+        access_realization=AccessRealization(
             channel=Channel.FLAG,
             restricted=AccessTierRow(),                       # emit nothing
             editing=AccessTierRow(
@@ -84,7 +84,7 @@ def _goose_descriptor() -> PluginDescriptor:
             "continue": ("session", "--resume"),
         },
         operations={"exec": Operation(fragment=("run", "-t"))},
-        safe_bypass=SafeBypass(
+        access_realization=AccessRealization(
             channel=Channel.ENV,
             env_var="GOOSE_MODE",
             restricted=AccessTierRow(env_value="approve"),
@@ -329,10 +329,10 @@ def test_effective_access_autonomous_beats_every_stored_tier(stored: str) -> Non
 @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
 def test_access_row_returns_the_declared_row(tier: str) -> None:
     d = _claude_descriptor()
-    assert access_row(d, tier) is d.safe_bypass.row(tier)
+    assert access_row(d, tier) is d.access_realization.row(tier)
 
 
-def test_access_row_none_for_descriptor_without_safe_bypass() -> None:
+def test_access_row_none_for_descriptor_without_access_realization() -> None:
     # An agent with NO permission surface at all: no row, no refusal.
     assert access_row(_bare_descriptor(), "editing") is None
 
@@ -360,12 +360,12 @@ def test_access_row_refuses_an_unknown_tier() -> None:
 
 @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
 def test_access_row_zero_rows_is_diagnosed_as_plugin_version_skew(tier: str) -> None:
-    """A ``safe_bypass`` with NO rows means PLUGIN VERSION SKEW — say so.
+    """A ``access_realization`` with NO rows means PLUGIN VERSION SKEW — say so.
 
     This is exactly the shape a kanibako-agent-* wheel published BEFORE the
     ``access`` tiers produces: its defaults file carries the retired
     ``flag``/``secure_flag`` block with no ``tiers:``, which loads to a
-    :class:`SafeBypass` whose every row is ``None``.  The generic refusal would
+    :class:`AccessRealization` whose every row is ``None``.  The generic refusal would
     read "this agent cannot render that tier … Legal tiers: (none)", blaming the
     HARNESS for an install problem and pointing the user at a capability limit
     that does not exist.  No tier is renderable, so the message must name the
@@ -375,7 +375,7 @@ def test_access_row_zero_rows_is_diagnosed_as_plugin_version_skew(tier: str) -> 
         command=("claude",),
         bindings=(),
         mode={"start": ()},
-        safe_bypass=SafeBypass(channel=Channel.FLAG, setting_key="access"),
+        access_realization=AccessRealization(channel=Channel.FLAG, setting_key="access"),
     )
     with pytest.raises(ConfigError) as exc:
         access_row(d, tier, agent="claude")
@@ -412,7 +412,7 @@ def test_argv_claude_continue_safe_off_with_model_and_extra() -> None:
         setting_values={"model": "opus"},
         extra_args=["--foo", "bar"],
     )
-    # command[0] ("claude") excluded; mode, FLAG safe-bypass, FLAG model, extra.
+    # command[0] ("claude") excluded; mode, FLAG access row, FLAG model, extra.
     assert "claude" not in argv
     assert argv == [
         "--continue",
@@ -471,7 +471,7 @@ def test_argv_goose_env_channels_not_in_argv() -> None:
         setting_values={"model": "gpt-4o"},
         extra_args=[],
     )
-    # ENV safe-bypass and ENV model never appear in argv; mode does.
+    # ENV access row and ENV model never appear in argv; mode does.
     assert argv == ["session", "--resume"]
     assert "GOOSE_MODE" not in argv
     assert "GOOSE_MODEL" not in argv
@@ -488,7 +488,7 @@ def test_argv_op_path_uses_fragment_no_mode() -> None:
         op_fragment=d.operations["exec"].fragment,
         extra_args=["hello"],
     )
-    # op fragment replaces mode; safe-bypass + model + extra still apply.
+    # op fragment replaces mode; access row + model + extra still apply.
     assert argv == ["--print", "--dangerously-skip-permissions", "--model", "opus", "hello"]
     assert "--continue" not in argv
 
@@ -514,7 +514,7 @@ def test_argv_flag_per_tier_emits_its_own_row() -> None:
         command=("agent",),
         bindings=(),
         mode={"start": ()},
-        safe_bypass=SafeBypass(
+        access_realization=AccessRealization(
             channel=Channel.FLAG,
             restricted=AccessTierRow(flag=("--ask-every-time",)),
             editing=AccessTierRow(flag=("--edits-ok",)),
@@ -570,7 +570,7 @@ def test_argv_refuses_a_tier_the_harness_cannot_render() -> None:
         command=("agent",),
         bindings=(),
         mode={"start": ()},
-        safe_bypass=SafeBypass(
+        access_realization=AccessRealization(
             channel=Channel.FLAG,
             restricted=AccessTierRow(),
             full=AccessTierRow(flag=("--yolo",)),
@@ -793,7 +793,7 @@ def test_env_empty_row_emits_nothing() -> None:
         command=("x",),
         bindings=(),
         mode={"start": ()},
-        safe_bypass=SafeBypass(
+        access_realization=AccessRealization(
             channel=Channel.ENV, env_var="X_MODE",
             full=AccessTierRow(),  # declared, but empty
             setting_key="access",

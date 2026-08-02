@@ -45,18 +45,18 @@ def _start_argv(
 
     Mirrors start.py: the launch TIER is resolved by ``effective_access`` from
     the per-launch -S (safe_mode) / -A (autonomous) flags plus the persisted
-    ``access`` enum key redeemed via ``safe_bypass.setting_key`` (validated
+    ``access`` enum key redeemed via ``access_realization.setting_key`` (validated
     against the enum, DEFAULT ``full`` when unset).
     """
     from kanibako.settings.settings_launch import meta_agent_grammar_floor
 
-    sb = desc.safe_bypass
+    ar = desc.access_realization
     launch_access = assembly.effective_access(
         secure=safe_mode,
         autonomous=autonomous,
         access=(
-            state.get(sb.setting_key)
-            if sb is not None and sb.setting_key
+            state.get(ar.setting_key)
+            if ar is not None and ar.setting_key
             else None
         ),
     )
@@ -246,7 +246,7 @@ class TestDescriptorArgv:
             state=DEFAULT_STATE,
         )
 
-        # safe-bypass: present iff NOT secure (-S).
+        # access realization: present iff NOT secure (-S).
         assert ("--dangerously-skip-permissions" in argv) is (not safe_mode)
 
         # continue: present iff continuing (not new-session/new-project and no
@@ -270,7 +270,7 @@ class TestPersistedAccessTierClaude:
     DEFAULT ``full`` when unset); the rows below are the documented behavior
     contract.  ``--dangerously-skip-permissions`` is claude's ``full`` row and
     ``--permission-mode acceptEdits`` its ``editing`` row (FLAG-channel
-    ``safe_bypass``).
+    ``access_realization``).
     """
 
     BYPASS = "--dangerously-skip-permissions"
@@ -347,17 +347,17 @@ class TestPersistedAccessTierClaude:
 def _launch_tier(desc, *, secure, autonomous, persisted):
     """Mirror start.py's launch read: validate the persisted ``access``
     (DEFAULT ``full`` when unset) then fold in the per-launch flags."""
-    sb = desc.safe_bypass
+    ar = desc.access_realization
     return assembly.effective_access(
         secure=secure,
         autonomous=autonomous,
-        access=persisted if sb is not None and sb.setting_key else None,
+        access=persisted if ar is not None and ar.setting_key else None,
     )
 
 
 class TestUniformAccessAcrossAgents:
     """``access`` is a UNIFORM persisted key across all 3 shipped agents: each
-    descriptor redeems it via ``safe_bypass.setting_key == "access"``
+    descriptor redeems it via ``access_realization.setting_key == "access"``
     (claude/codex FLAG channel, goose ENV channel).  This class is the
     3 tiers × 3 agents half of the R-41 matrix on the EPHEMERAL (argv/env)
     consumer; the projected-surface half lives in the panel-delivery tests."""
@@ -367,8 +367,8 @@ class TestUniformAccessAcrossAgents:
         from kanibako.plugins.goose.target import GooseTarget
 
         for T in (ClaudeTarget, CodexTarget, GooseTarget):
-            sb = T().descriptor.safe_bypass
-            assert sb is not None and sb.setting_key == "access"
+            ar = T().descriptor.access_realization
+            assert ar is not None and ar.setting_key == "access"
 
     def _argv_at(self, desc, *, secure=False, autonomous=False, persisted=None):
         tier = _launch_tier(
@@ -478,13 +478,13 @@ class TestUniformAccessAcrossAgents:
         from kanibako.plugins.codex.target import CodexTarget
         from kanibako.plugins.goose.target import GooseTarget
 
-        assert ClaudeTarget().descriptor.safe_bypass.rendered_tiers() == (
+        assert ClaudeTarget().descriptor.access_realization.rendered_tiers() == (
             "restricted", "editing", "full",
         )
-        assert CodexTarget().descriptor.safe_bypass.rendered_tiers() == (
+        assert CodexTarget().descriptor.access_realization.rendered_tiers() == (
             "restricted", "editing", "full",
         )
-        assert GooseTarget().descriptor.safe_bypass.rendered_tiers() == (
+        assert GooseTarget().descriptor.access_realization.rendered_tiers() == (
             "restricted", "full",
         )
 
