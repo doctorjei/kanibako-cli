@@ -647,12 +647,15 @@ class TestDescriptorAssembly:
             extra_args=extra_args or [],
             available_modes=d.mode.keys(),
         )
+        # B5: fragments are passed in (the live caller reads them off the
+        # launch snapshot's meta.agent.<a>.{mode,exec}); the descriptor is the
+        # fixture's fragment source here.
         return assembly.assemble_argv(
             d,
-            mode_key=mode_key,
+            mode_fragment=d.mode[mode_key],
             safe_mode_off=safe_off,
             setting_values=state or {},
-            op=None,
+            op_fragment=None,
             extra_args=extra_args or [],
         )
 
@@ -672,16 +675,16 @@ class TestDescriptorAssembly:
         """Explicit start mode -> bare ['session']."""
         d = GooseTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=True,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode["start"], safe_mode_off=True,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["session"]
 
     def test_continue_argv(self):
         d = GooseTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="continue", safe_mode_off=True,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode["continue"], safe_mode_off=True,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["session", "--resume"]
 
@@ -692,16 +695,16 @@ class TestDescriptorAssembly:
             extra_args=[], available_modes=d.mode.keys(),
         )
         argv = assembly.assemble_argv(
-            d, mode_key=mode_key, safe_mode_off=True,
-            setting_values={}, op=None, extra_args=[],
+            d, mode_fragment=d.mode[mode_key], safe_mode_off=True,
+            setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["session"]
 
     def test_exec_op_argv(self):
         d = GooseTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_key="start", safe_mode_off=True,
-            setting_values={}, op="exec", extra_args=["do the thing"],
+            d, mode_fragment=d.mode["start"], safe_mode_off=True,
+            setting_values={}, op_fragment=d.operations["exec"].fragment, extra_args=["do the thing"],
         )
         assert argv == ["run", "--no-session", "-t", "do the thing"]
 

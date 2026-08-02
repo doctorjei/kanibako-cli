@@ -49,6 +49,8 @@ def _start_argv(
     """
     from kanibako.settings.config import coerce_bool
 
+    from kanibako.settings.settings_launch import meta_agent_grammar_floor
+
     sb = desc.safe_bypass
     _aa = coerce_bool(
         state.get(sb.setting_key)
@@ -61,19 +63,23 @@ def _start_argv(
         autonomous=autonomous,
         auto_approve=auto_approve,
     )
+    # B5: mirror start.py — the launch grammar is MATERIALIZED into the keyspace
+    # (the same single descriptor→keyspace builder the launch uses) and the
+    # composition reads the table, never the descriptor directly.
+    mode_table = meta_agent_grammar_floor("claude", desc)["meta.agent.claude.mode"]
     mode_key = assembly.resolve_mode(
         resume_mode=resume_mode,
         new_session=new_session,
         is_new_project=is_new_project,
         extra_args=extra_args,
-        available_modes=desc.mode.keys(),
+        available_modes=mode_table.keys(),
     )
     return assembly.assemble_argv(
         desc,
-        mode_key=mode_key,
+        mode_fragment=mode_table[mode_key],
         safe_mode_off=safe_off,
         setting_values=state,
-        op=None,
+        op_fragment=None,
         extra_args=extra_args,
     )
 
@@ -350,7 +356,7 @@ class TestUniformAutoApproveAcrossAgents:
             desc, secure=secure, autonomous=autonomous, persisted=persisted,
         )
         argv = assembly.assemble_argv(
-            desc, mode_key="start", safe_mode_off=off,
+            desc, mode_fragment=desc.mode["start"], safe_mode_off=off,
             setting_values={}, extra_args=[],
         )
         return flag in argv

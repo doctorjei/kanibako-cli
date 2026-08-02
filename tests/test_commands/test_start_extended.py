@@ -195,6 +195,36 @@ class TestFlagCombinations:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--continue" in cli_args
 
+    def test_launch_grammar_single_source_snapshot_wins(self, start_mocks):
+        """B5 single-source pin at the REAL argv seam: the launch splices the
+        SNAPSHOT's ``meta.agent.<a>.mode`` fragment, never the descriptor's.
+
+        The materialization seam (``meta_agent_grammar_floor``) is patched to
+        emit a continue fragment that DIVERGES from the descriptor's
+        ``--continue``; the diverged (keyspace) value must reach argv and the
+        descriptor's must NOT.  If the descriptor-direct read is ever
+        reintroduced at the composition seam, ``--continue`` reappears here →
+        RED.  (The drift shape B5 replaced: two sources for one fragment.)"""
+        with start_mocks() as m:
+            m.proj.is_new = False
+            with patch(
+                "kanibako.settings.settings_launch.meta_agent_grammar_floor",
+                return_value={
+                    "meta.agent.claude.mode": {
+                        "start": [], "continue": ["--SNAPSHOT-DIVERGED"],
+                    },
+                    "meta.agent.claude.exec": ["-p"],
+                },
+            ):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--SNAPSHOT-DIVERGED" in cli_args
+            assert "--continue" not in cli_args
+
     def test_entrypoint_disables_claude_mode(self, start_mocks):
         with start_mocks() as m:
             _run_container(

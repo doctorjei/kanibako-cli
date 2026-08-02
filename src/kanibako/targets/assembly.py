@@ -24,7 +24,7 @@ argv and no delivery binds.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Collection
+from typing import TYPE_CHECKING, Collection, Sequence
 
 from kanibako.log import get_logger
 from kanibako.targets.base import (
@@ -75,8 +75,9 @@ def resolve_mode(
 ) -> str:
     """Select the interactive launch mode key, lifting claude's ``build_cli_args`` logic.
 
-    *available_modes* is the set of mode keys the descriptor declares
-    (``descriptor.mode.keys()``).  Resolution order:
+    *available_modes* is the set of mode keys the agent's launch grammar declares —
+    read off the snapshot's ``meta.agent.<a>.mode`` table (B5, spec §2d), where the
+    descriptor materialized it.  Resolution order:
 
     1. ``-R`` resume picker: if *resume_mode* and ``"resume"`` is available -> ``"resume"``.
     2. ``skip_continue`` is true when a new session was forced (*new_session* /
@@ -147,10 +148,10 @@ def effective_safe_mode_off(
 def assemble_argv(
     descriptor: PluginDescriptor,
     *,
-    mode_key: str | None,
+    mode_fragment: "Sequence[str] | None",
     safe_mode_off: bool,
     setting_values: dict[str, str],
-    op: str | None = None,
+    op_fragment: "Sequence[str] | None" = None,
     extra_args: list[str],
 ) -> list[str]:
     """Assemble the agent argv that follows the entrypoint binary.
@@ -162,12 +163,23 @@ def assemble_argv(
     after setting ``--entrypoint`` separately, and corresponds to today's
     ``build_cli_args + state_args`` tail.
 
+    ⚑ B5 (spec §2d): the launch-grammar fragments are PARAMETERS, not descriptor
+    reads.  The live caller reads them off the ONE launch snapshot —
+    ``meta.agent.<a>.mode[mode_key]`` (*mode_fragment*) and ``meta.agent.<a>.exec``
+    (*op_fragment*) via :func:`kanibako.settings.settings_launch.meta_agent_grammar`
+    — where the descriptor MATERIALIZED them
+    (:func:`~kanibako.settings.settings_launch.meta_agent_grammar_floor`).  This
+    function must NOT read ``descriptor.mode`` / ``descriptor.operations``: the
+    descriptor feeds the KEYSPACE only, and a second (descriptor-direct) source
+    for the same argv fragment is the drift shape B5 exists to kill.
+
     Build order (after ``command[1:]``):
 
-    1. If *op* is set: the standalone operation fragment
-       (``descriptor.operations[op].fragment``); NO interactive mode is added.
-    2. Else if *mode_key* is set: the interactive mode fragment
-       (``descriptor.mode[mode_key]``).
+    1. If *op_fragment* is set: the standalone operation fragment
+       (``meta.agent.<a>.exec``); NO interactive mode is added — the two are
+       MUTUALLY EXCLUSIVE at this argv slot (spec §2d).
+    2. Else if *mode_fragment* is set: the interactive mode fragment
+       (``meta.agent.<a>.mode[mode_key]`` for the resolved *mode_key*).
     3. If the descriptor's ``safe_bypass`` is FLAG-channel: emit its ``flag``
        when *safe_mode_off*, else its ``secure_flag`` (the symmetric SECURE
        emission — empty ``secure_flag`` emits nothing on safe-ON, the
@@ -181,10 +193,10 @@ def assemble_argv(
     """
     argv: list[str] = list(descriptor.command[1:])
 
-    if op is not None:
-        argv.extend(descriptor.operations[op].fragment)
-    elif mode_key is not None:
-        argv.extend(descriptor.mode[mode_key])
+    if op_fragment is not None:
+        argv.extend(op_fragment)
+    elif mode_fragment is not None:
+        argv.extend(mode_fragment)
 
     sb = descriptor.safe_bypass
     if sb is not None and sb.channel is Channel.FLAG:
