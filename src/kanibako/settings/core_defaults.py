@@ -211,7 +211,7 @@ def core_default_categories(
             # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is
             # still emitted with the same host_src, so a read-only consumer sees
             # exactly what a launch would mount without making it so. It exists
-            # because ``box config show --effective`` resolves this same table:
+            # because ``box show --effective`` resolves this same table:
             # a DISPLAY verb must not write to disk.
             if guarantee_create:
                 src_path.mkdir(parents=True, exist_ok=True)
@@ -254,7 +254,7 @@ def core_default_bind_keys() -> dict[str, tuple[str, str, str]]:
     floor is ``base[1:]`` (box_dest + options), which are pure declarative literals
     (``settings_configset.repoint_host_src`` discards element 0). So this exposes
     EXACTLY the launch core-floor keys to ``config set`` so a source-only repoint of
-    a core bind (``box config set box.bindings.rw.home /new``) is no longer refused
+    a core bind (``box set box.bindings.rw.home /new``) is no longer refused
     as "nowhere in the cascade".
 
     Vault keys are ALWAYS emitted (both ``ro`` and ``rw``), regardless of whether

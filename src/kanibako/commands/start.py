@@ -1291,7 +1291,7 @@ def _refuse_retired_behavior(
     * ``agent`` — the ACTIVE agent's own file, where it sits FLAT under
       ``self``. This tier is NOT in the selection refusal's list (agent
       SELECTION cannot live in an agent file) and it is exactly where
-      ``crab set <agent> auto_approve=…`` used to write, so omitting it would
+      ``agent set <agent> auto_approve=…`` used to write, so omitting it would
       leave the commonest stale spelling silent.
 
     Raises :class:`~kanibako.settings.settings_resolve.SettingsError`; the
@@ -2746,7 +2746,7 @@ def _run_container(
         # the ``full`` default with nothing printed. Every cascade tier is
         # checked, BASE included (a site-admin default reaches every box on the
         # machine), plus the ACTIVE AGENT's own file — the one tier the selection
-        # refusal above does not read, and the very file ``crab set`` writes.
+        # refusal above does not read, and the very file ``agent set`` writes.
         _refuse_retired_behavior(
             proj=proj, agent_id=agent_id,
             system_settings_path=system_settings_path,
@@ -4627,7 +4627,7 @@ def _preflight_env_keyspace_persona(
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
             f"usable auth token.\n"
             f"  A custom-endpoint persona needs an API key delivered via a "
-            f"`kanibako config set agent.{display}.secret_path.{wiring.token_var}="
+            f"`kanibako system set agent.{display}.secret_path.{wiring.token_var}="
             f"<path>` entry; none was found (or it points at an unusable file).\n"
             f"  Set the key for this persona, then retry."
         ), False, None
@@ -4637,7 +4637,7 @@ def _preflight_env_keyspace_persona(
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
             f"model configured.\n"
             f"  A custom-endpoint persona must name the provider's model id "
-            f"(e.g. `kanibako config set agent.{display}.model=<model-id>`); the "
+            f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
             f"harness default is not used for a third-party provider.\n"
             f"  Set the model for this persona, then retry."
         ), False, None
@@ -4665,7 +4665,7 @@ def _persona_no_endpoint_error(agent_id: str, persona: str, wiring) -> str:
         if wiring.endpoint_delivery == "env" and wiring.token_var:
             key_hint = (
                 f" and its API key "
-                f"(`kanibako config set agent.{display}.secret_path."
+                f"(`kanibako system set agent.{display}.secret_path."
                 f"{wiring.token_var}=<path>`)"
             )
         return (
@@ -4674,7 +4674,7 @@ def _persona_no_endpoint_error(agent_id: str, persona: str, wiring) -> str:
             f"  Kanibako will not launch a persona as bare host {harness} on your "
             f"real account.\n"
             f"  Set the endpoint for this persona (e.g. "
-            f"`kanibako config set agent.{display}.endpoint=<url>`){key_hint}, "
+            f"`kanibako system set agent.{display}.endpoint=<url>`){key_hint}, "
             f"then retry."
         )
     host_dir = _persona_host_dir(persona)
@@ -4737,7 +4737,7 @@ def _preflight_config_file_persona(
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
             f"model configured.\n"
             f"  A custom-endpoint codex persona must name the provider's model id "
-            f"(e.g. `kanibako config set agent.{display}.model=<model-id>`); the "
+            f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
             f"harness default is not used for a third-party provider.\n"
             f"  Set the model for this persona, then retry."
         ), False, None
@@ -5134,7 +5134,7 @@ def _launch_snapshot_inputs(
     # ``resolved_sys`` map.  channelroot/template/canon each @-ref a config key,
     # already resolved into ``std`` by the flat foundation.
     # ⚑ ``commands/workset_cmd._print_effective_shares`` builds a SECOND map of the
-    # same tier for ``workset config show --effective``.  Both must carry the same
+    # same tier for ``workset show --effective``.  Both must carry the same
     # keys or the display diverges from what a launch mounts; pinned by
     # ``tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor``.
     resolved_sys = {
@@ -5361,7 +5361,7 @@ def _resolve_launch_snapshot(
 
     *guarantee_create* (default True — a LAUNCH) gates the core table's
     create-if-missing of the vault source dirs. A READ-ONLY consumer of this
-    resolve — ``box config show --effective``, which renders the resolved
+    resolve — ``box show --effective``, which renders the resolved
     categories — passes False: it must show what a launch WOULD mount without
     making it so. Nothing else about the resolve differs.
 
@@ -5421,7 +5421,7 @@ def _resolve_launch_snapshot(
         # otherwise the RESOLVED TARGET's own.  Both, in that order, on purpose:
         # ``desc`` is what ``agent_default_partial`` (below) turns into agent-level
         # binds, so gating on it is gating on what this very snapshot will carry —
-        # but ``box config show --effective`` resolves the launch with ``desc=None``
+        # but ``box show --effective`` resolves the launch with ``desc=None``
         # and a real ``target``, and a display that shows a kickoff bind the launch
         # would not emit is exactly the drift that call site's own comment forbids.
         default_categories.update(core_defaults.kickoff_default_categories(

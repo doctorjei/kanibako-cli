@@ -948,7 +948,7 @@ class TestMergedConfigKeyspaceResolve:
         assert merged.box_shell == "zsh"  # box.shell rides the same resolve
 
     def test_system_settings_file_box_table_now_resolves(self, tmp_path, monkeypatch):
-        """``kanibako system config set box.image=…`` has always written the
+        """``kanibako system set box.image=…`` has always written the
         ``box:`` table of global/settings.yaml — stranded before B6, live now."""
         gp = self._global(tmp_path, monkeypatch)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"

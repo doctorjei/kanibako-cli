@@ -159,7 +159,7 @@ def _retired_key_cure(key: str, *, level: str, value: str) -> str:
     if key == "system.default_agent":
         # Always the same cure: the replacement is a SYSTEM-scope key wherever the
         # stale leaf was found.
-        return f"kanibako system config set system.agent={value}"
+        return f"kanibako system set system.agent={value}"
     # box.agent_name → the §2h request, but ONLY where a request may be written.
     if level in _PREF_LEGAL_LEVELS:
         return (
@@ -171,7 +171,7 @@ def _retired_key_cure(key: str, *, level: str, value: str) -> str:
     return (
         f"REMOVE it — a request may be written ONLY in a workset or box settings "
         f"file (spec §2h), so this key has NO equivalent at {level} scope. If you "
-        f"meant the host-wide default, set it: kanibako system config set "
+        f"meant the host-wide default, set it: kanibako system set "
         f"system.agent={value}. If you meant one box, set the request in THAT "
         f"box's settings file: kanibako box set pref.system.agent={value}"
     )
@@ -334,10 +334,10 @@ def _retired_behavior_cure(
     """
     agent = subject or "<agent>"
     if level == "agent":
-        return f"kanibako crab set {agent} {successor}={tier}"
+        return f"kanibako agent set {agent} {successor}={tier}"
     if level in _PREF_LEGAL_LEVELS:
         return f"kanibako {level} set pref.agent.{agent}.{successor}={tier}"
-    return f"kanibako system config set {successor}={tier}"
+    return f"kanibako system set {successor}={tier}"
 
 
 def refuse_retired_behavior_keys(

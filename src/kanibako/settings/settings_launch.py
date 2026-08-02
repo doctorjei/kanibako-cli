@@ -1420,7 +1420,7 @@ def resolve_selected_agent(
         raise SettingsError(
             f"The agent selection key '{SELECTION_KEY}' did not resolve: "
             f"{errors[SELECTION_KEY]}. Refusing to launch rather than falling back "
-            f"to a different agent — set it with `kanibako system config set "
+            f"to a different agent — set it with `kanibako system set "
             f"{SELECTION_KEY}=<name>`, or request one per box with "
             f"`kanibako box set pref.{SELECTION_KEY}=<name>` (spec §2h)."
         )

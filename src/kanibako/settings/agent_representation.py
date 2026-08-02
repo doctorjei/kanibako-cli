@@ -187,7 +187,7 @@ def agent_default_bind_keys(node_name: str) -> "dict[str, tuple[str, ...]]":
     gate needs from the floor is ``base[1:]`` (box_dest + options), which are pure
     declarative literals (``settings_configset.repoint_host_src`` discards element 0).
     So this exposes EXACTLY the launch descriptor-floor keys to ``config set`` so a
-    source-only repoint of a delivery bind (``system config set
+    source-only repoint of a delivery bind (``system set
     agent.claude.bindings.ro.launcher /new``) is no longer refused / mis-routed.
 
     ``box_dest`` / ``options`` are byte-identical to :func:`agent_default_partial`

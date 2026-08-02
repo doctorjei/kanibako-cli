@@ -140,7 +140,7 @@ def parse_config_arg(
     VERBATIM — nothing in it YAML- or literal-parses a value (only keys declared
     ``bool`` in ``KEY_TYPES`` coerce) — so there is no existing rule under which
     the string ``"null"`` would become ``None``, and inventing one for this route
-    alone would be a dialect: ``env.X=null`` and ``box.image=null`` are
+    alone would be a dialect: ``box.env.X=null`` and ``box.image=null`` are
     legitimate strings. The flag says what is meant, applies to EVERY key whose
     leaf accepts the §3 present-``None`` terminal, and cannot collide with data.
     It is the CLI spelling of §2h's suppression request

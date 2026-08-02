@@ -284,7 +284,7 @@ class TestRetiredKeyRefusal:
             refuse_retired_keys(yaml.safe_load(f.read_text()), level="system", path=f)
         msg = str(ei.value)
         assert "system.default_agent" in msg
-        assert "system config set system.agent=claude" in msg
+        assert "system set system.agent=claude" in msg
 
     def test_a_clean_file_passes(self, tmp_path):
         f = _yaml(tmp_path / "box.yaml", {"pref": {"system": {"agent": "goose"}}})
@@ -506,7 +506,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
             assert "REMOVE it" in msg
             assert f"NO equivalent at {level} scope" in msg
             # It still says what to do INSTEAD, at both plausible intents.
-            assert "system config set system.agent=goose" in msg
+            assert "system set system.agent=goose" in msg
             assert "box set pref.system.agent=goose" in msg
 
     def test_the_system_default_cure_is_level_independent(self, tmp_path):
@@ -514,7 +514,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
             msg = self._msg(
                 tmp_path, level, {"agent": {"default": {"default_agent": "claude"}}},
             )
-            assert "system config set system.agent=claude" in msg
+            assert "system set system.agent=claude" in msg
 
 
 class TestNoAgentAuthPathIsUnreachable:
