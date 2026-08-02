@@ -58,16 +58,32 @@ descriptor:
     exec:
       fragment: ["run", "--no-session", "-t"]
 
-  # safe-bypass is the SYMMETRIC ENV channel GOOSE_MODE (no --approve-all flag in
-  # 1.37.0): safe-OFF -> auto; safe-ON -> approve.  The secure value is MANDATORY
-  # because goose's unset GOOSE_MODE default is itself `auto`.  Persisted default
-  # via the "auto_approve" agent-scope key (spec §2d, default true/PERMISSIVE).
+  # The `access` permission TIER (spec §2d, R-41) — goose realizes it on the ENV
+  # channel GOOSE_MODE (goose exposes no permission CLI flag; verified against
+  # 1.38.0 `--help`).  BOTH rows are MANDATORY, not optional: goose's own unset
+  # GOOSE_MODE default is `auto` (permissive), so a missing value is not "safe by
+  # default" — it is the bypass.
+  #   full       -> auto     ("Automatically approve tool calls")
+  #   restricted -> approve  ("Ask before every tool call")
+  #
+  # ⚑ NO `editing` ROW — goose CANNOT render that tier, and the launch REFUSES it
+  # by name (naming restricted/full as goose's legal tiers) rather than
+  # substituting a neighbour.  Source-verified at pinned tag v1.38.0 (evidence:
+  # plans/ratification-implementation-b7b-goose-smartapprove.md): the mode ladder
+  # is auto > smart_approve > approve > chat, and `smart_approve` auto-approves
+  # READ-ONLY tools while PROMPTING for write/edit/shell — the INVERSE of claude's
+  # acceptEdits, i.e. the analog of claude's DEFAULT mode, not of `editing`.
+  # Mapping `editing` onto it would silently deliver prompt-on-every-edit; mapping
+  # it onto `auto` would silently deliver the full bypass.  Ruled (Jei,
+  # 2026-08-02): REFUSE.  A future goose that gains an edits-auto mode adds the
+  # row here and nothing else changes.
   safe_bypass:
     channel: env
     env_var: GOOSE_MODE
-    env_value: auto
-    secure_env_value: approve
-    setting_key: auto_approve
+    setting_key: access
+    tiers:
+      restricted: {env_value: approve}
+      full: {env_value: auto}
 
   # provider/model route via the ENV channel (GOOSE_MODEL/GOOSE_PROVIDER); the
   # SettingArg only wires the env-var NAME — there is deliberately NO default
@@ -178,7 +194,8 @@ descriptor:
   #     is the manual alternative).  Under an MS-Marketplace attach the id installs
   #     normally like claude/codex.
   #   - `GOOSE_MODE` (permission parity) is seeded into the box's config.yaml from
-  #     auto_approve so the panel-spawned goose reflects the box's yolo.
+  #     the box's `access` tier so the panel-spawned goose reflects it (goose
+  #     renders restricted|full only — `editing` is refused, see safe_bypass).
   vscode_extension: block.vscode-goose
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →

@@ -393,7 +393,7 @@ class TestEffectiveBootstrapResolution:
     """`_effective_bootstrap` resolves the AGENT-scope ``bootstrap`` behavior key
     (spec §2d) off the settings snapshot, with the ``tmux`` consumer default —
     the relocation of the retired box-scope ``box.bootstrap_program``.  It resolves
-    exactly like ``model`` / ``auto_approve``: the ``agent.default`` tier lives in the
+    exactly like ``model`` / ``access``: the ``agent.default`` tier lives in the
     SYSTEM settings file (a box/workset file's ``agent.*`` is an upward write, dropped
     by directional enforcement), a per-agent override in the agent's OWN file, and a
     box-level tweak via the ``box.agent.*`` mirror."""
@@ -1008,13 +1008,13 @@ class TestDescriptorLaunchPath:
             assert "--dangerously-skip-permissions" not in cli_args
             assert "--continue" in cli_args
 
-    def test_persisted_auto_approve_false_omits_bypass(self, start_mocks):
-        """Persisted ``agent.default.auto_approve=false`` (no -A/-S) resolves off the
-        snapshot via effective_behavior -> SAFE -> bypass ABSENT. This is the whole
-        point of the auto_approve BUILD (the writer now has a reader)."""
+    def test_persisted_access_restricted_omits_bypass(self, start_mocks):
+        """Persisted ``agent.default.access=restricted`` (no -S/-A) resolves off
+        the snapshot via effective_behavior -> bypass ABSENT.  This is the whole
+        point of the key (the writer has a reader)."""
         with start_mocks() as m:
             self._drive(m)
-            m.agent_cfg.state = {"model": "opus", "auto_approve": "false"}
+            m.agent_cfg.state = {"model": "opus", "access": "restricted"}
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1023,11 +1023,27 @@ class TestDescriptorLaunchPath:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
 
-    def test_autonomous_flag_overrides_persisted_false(self, start_mocks):
-        """-A (autonomous) WINS over a persisted auto_approve=false -> bypass PRESENT."""
+    def test_persisted_access_editing_emits_accept_edits(self, start_mocks):
+        """The MIDDLE tier through the REAL launch path (R-41): the argv carries
+        acceptEdits and NOT the bypass."""
         with start_mocks() as m:
             self._drive(m)
-            m.agent_cfg.state = {"model": "opus", "auto_approve": "false"}
+            m.agent_cfg.state = {"model": "opus", "access": "editing"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert "--dangerously-skip-permissions" not in cli_args
+            assert "--permission-mode" in cli_args
+            assert cli_args[cli_args.index("--permission-mode") + 1] == "acceptEdits"
+
+    def test_autonomous_flag_overrides_persisted_restricted(self, start_mocks):
+        """-A (autonomous) WINS over a persisted ``restricted`` -> bypass PRESENT."""
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "access": "restricted"}
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1036,11 +1052,11 @@ class TestDescriptorLaunchPath:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" in cli_args
 
-    def test_secure_flag_overrides_persisted_true(self, start_mocks):
-        """-S (secure) WINS over a persisted auto_approve=true -> bypass ABSENT."""
+    def test_secure_flag_overrides_persisted_full(self, start_mocks):
+        """-S (secure) WINS over a persisted ``full`` -> bypass ABSENT."""
         with start_mocks() as m:
             self._drive(m)
-            m.agent_cfg.state = {"model": "opus", "auto_approve": "true"}
+            m.agent_cfg.state = {"model": "opus", "access": "full"}
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=True, resume_mode=False,
@@ -1048,6 +1064,68 @@ class TestDescriptorLaunchPath:
             )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
+
+    def test_flags_do_NOT_reach_the_projected_surface(self, start_mocks):
+        """⚑ Spec §1A's PROJECTED-SURFACE exception, on the real launch path:
+        ``-S``/``-A`` fold into the ARGV only.  The panel delivery — which writes
+        a file that OUTLIVES this launch — gets the CASCADE tier, so a transient
+        flag can never mutate persisted permission state.
+        """
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "access": "editing"}
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=True, resume_mode=False,
+                extra_args=[],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            # -S folded into the ARGV: restricted (nothing emitted).
+            assert "--dangerously-skip-permissions" not in cli_args
+            assert "--permission-mode" not in cli_args
+            # ...while the PROJECTION still got the stored tier.
+            m.target.deliver_panel_permissions.assert_called_once_with(
+                config_root=m.proj.shell_path, access="editing",
+            )
+
+    def test_unknown_stored_tier_refuses_the_launch(self, start_mocks):
+        """R-41's inversion: a junk stored value used to coerce to the PERMISSIVE
+        default.  It now stops the launch — the container is never run."""
+        from kanibako.errors import ConfigError
+
+        with start_mocks() as m:
+            self._drive(m)
+            m.agent_cfg.state = {"model": "opus", "access": "bogus"}
+            with pytest.raises(ConfigError):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            m.runtime.run.assert_not_called()
+
+    def test_a_tier_the_agent_cannot_render_refuses_the_launch(self, start_mocks):
+        """The un-rendered-tier gate, on the real launch path: goose + ``editing``
+        stops BEFORE any delivery (the panel seams are best-effort and would
+        swallow the refusal), so no projection is written either."""
+        from kanibako.errors import ConfigError
+        from kanibako.plugins.goose.target import GooseTarget
+
+        with start_mocks() as m:
+            self._drive(m)
+            m.resolve_agent.return_value = _sel("goose")
+            m.target.name = "goose"
+            m.target.descriptor = GooseTarget().descriptor
+            m.agent_cfg.state = {"access": "editing"}
+            with pytest.raises(ConfigError) as exc:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+            assert "restricted | full" in str(exc.value)
+            m.target.deliver_panel_permissions.assert_not_called()
+            m.runtime.run.assert_not_called()
 
     def test_new_session_drops_continue(self, start_mocks):
         with start_mocks() as m:
@@ -5357,7 +5435,7 @@ class TestGooseProviderAutoPin:
         desc = GooseTarget().descriptor
         # Simulate the launch-site pin (active_endpoint set → provider forced openai).
         state = {"endpoint": "https://oai.example/v1", "provider": "openai"}
-        env = assembly.assemble_env(desc, safe_mode_off=True, setting_values=state)
+        env = assembly.assemble_env(desc, access="full", setting_values=state)
         assert env["GOOSE_PROVIDER"] == "openai"
         assert env["OPENAI_HOST"] == "https://oai.example/v1"
 
@@ -5414,12 +5492,12 @@ class TestCodexPersonaLaunchWiring:
             # config_root is THE box home as seen from the host — identity, not
             # a bare called-once (R5: a typo'd kwarg must not silently pass).
             assert kwargs["config_root"] is m.proj.shell_path
-            assert kwargs["auto_approve"] is True
+            assert kwargs["access"] == "full"
             # the SAME provider the preflight resolved reaches the seam.
             assert kwargs["model_provider"] is prov
             # the sibling panel seam fires unconditionally at the same site.
             m.target.deliver_panel_permissions.assert_called_once_with(
-                config_root=m.proj.shell_path, auto_approve=True,
+                config_root=m.proj.shell_path, access="full",
             )
 
     def test_bare_codex_launch_passes_no_provider(self, start_mocks):
@@ -5437,11 +5515,11 @@ class TestCodexPersonaLaunchWiring:
             # bare (non-persona) codex → no provider → byte-identical write.
             m.target.deliver_directive_hook.assert_called_once_with(
                 config_root=m.proj.shell_path,
-                auto_approve=True,
+                access="full",
                 model_provider=None,
             )
             m.target.deliver_panel_permissions.assert_called_once_with(
-                config_root=m.proj.shell_path, auto_approve=True,
+                config_root=m.proj.shell_path, access="full",
             )
 
     def test_claude_launch_passes_no_provider(self, start_mocks):
@@ -5456,11 +5534,11 @@ class TestCodexPersonaLaunchWiring:
             assert rc == 0
             m.target.deliver_directive_hook.assert_called_once_with(
                 config_root=m.proj.shell_path,
-                auto_approve=True,
+                access="full",
                 model_provider=None,
             )
             m.target.deliver_panel_permissions.assert_called_once_with(
-                config_root=m.proj.shell_path, auto_approve=True,
+                config_root=m.proj.shell_path, access="full",
             )
 
 
@@ -6382,3 +6460,102 @@ class TestSuppressedBoxLaunchesNoAgent:
             m.target.detect.assert_called()
             env = m.runtime.run.call_args.kwargs["env"]
             assert env["KANIBAKO_AGENT"] == "claude"
+
+
+class TestRetiredBehaviorRefusalWiring:
+    """``_refuse_retired_behavior`` — the LAUNCH seam for R-41/RQ-2.
+
+    The unit semantics of the refusal itself live in
+    ``tests/test_settings/test_settings_assemble.py``; what is proven HERE is the
+    WIRING: which files the launch actually hands it, in which order, with which
+    level labels.  A refusal that reads the wrong file is a refusal that never
+    fires.
+    """
+
+    def _proj(self, tmp_path, box_file):
+        from types import SimpleNamespace
+
+        from kanibako.settings.paths import BoxMode
+
+        return SimpleNamespace(
+            mode=BoxMode.standalone,
+            metadata_path=box_file.parent,
+            group=None,
+        )
+
+    def _call(self, tmp_path, *, box_doc=None, agent_doc=None, system_doc=None):
+        from kanibako.commands.start import _refuse_retired_behavior
+        from kanibako.settings.config_io import dump_doc
+
+        box_file = tmp_path / "box" / "settings.yaml"
+        box_file.parent.mkdir(parents=True, exist_ok=True)
+        if box_doc is not None:
+            dump_doc(box_file, box_doc)
+        agent_file = tmp_path / "agents" / "claude" / "settings.yaml"
+        agent_file.parent.mkdir(parents=True, exist_ok=True)
+        if agent_doc is not None:
+            dump_doc(agent_file, agent_doc)
+        system_file = tmp_path / "global" / "settings.yaml"
+        system_file.parent.mkdir(parents=True, exist_ok=True)
+        if system_doc is not None:
+            dump_doc(system_file, system_doc)
+        return _refuse_retired_behavior(
+            proj=self._proj(tmp_path, box_file),
+            agent_id="claude",
+            system_settings_path=system_file,
+            agent_cfg_path=agent_file,
+        )
+
+    def test_a_clean_set_of_files_passes(self, tmp_path):
+        self._call(
+            tmp_path,
+            box_doc={"box": {"image": "img"}},
+            agent_doc={"self": {"access": "full"}},
+            system_doc={"agent": {"default": {"access": "restricted"}}},
+        )
+
+    def test_a_stale_key_in_the_SYSTEM_file_refuses(self, tmp_path):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._call(
+                tmp_path, system_doc={"agent": {"default": {"auto_approve": False}}},
+            )
+        msg = str(exc.value)
+        assert "auto_approve" in msg and "access" in msg
+        assert "system" in msg
+
+    def test_a_stale_key_in_the_ACTIVE_AGENT_file_refuses(self, tmp_path):
+        """⚑ The tier the SELECTION refusal does not read — and the file
+        ``crab set <agent> auto_approve=…`` actually wrote to.  Omitting it here
+        would leave the commonest stale spelling silent."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._call(tmp_path, agent_doc={"self": {"auto_approve": True}})
+        msg = str(exc.value)
+        assert "self.auto_approve" in msg
+        assert "kanibako crab set claude access=full" in msg
+
+    def test_a_stale_pref_request_in_the_BOX_file_refuses(self, tmp_path):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._call(
+                tmp_path,
+                box_doc={"pref": {"agent": {"claude": {"auto_approve": False}}}},
+            )
+        assert "pref.agent.claude.auto_approve" in str(exc.value)
+
+    def test_outermost_offender_is_reported_first(self, tmp_path):
+        """Cascade order, so fixing one then re-running walks outward→inward
+        rather than bouncing between files."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._call(
+                tmp_path,
+                system_doc={"agent": {"default": {"auto_approve": True}}},
+                agent_doc={"self": {"auto_approve": False}},
+            )
+        assert "the system settings file" in str(exc.value)

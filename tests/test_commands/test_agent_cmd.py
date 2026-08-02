@@ -216,50 +216,64 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.state["model"] == "sonnet"
 
-    def test_config_set_auto_approve_accepts_bool(self, agent_env, capsys):
-        """AUTH-CRITICAL parity: ``agent set <agent> auto_approve=<bool>`` is
-        accepted and written VERBATIM to the flat agent leaf — the SAME happy
-        path the ``config set`` verb takes (test_config_interface.py). Both bool
-        literals round-trip.
+    def test_config_set_access_accepts_every_tier(self, agent_env, capsys):
+        """AUTH-CRITICAL parity: ``agent set <agent> access=<tier>`` is accepted
+        and written VERBATIM to the flat agent leaf — the SAME happy path the
+        ``config set`` verb takes (test_config_interface.py). All three tiers
+        round-trip.
         """
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.agent_config import agent_config_path
 
         path = agent_config_path(agent_env, "claude")
-        for literal in ("false", "true"):
+        for tier in ("restricted", "editing", "full"):
             rc = run_set(argparse.Namespace(
-                agent_id="claude", key_value=f"auto_approve={literal}",
+                agent_id="claude", key_value=f"access={tier}",
             ))
             assert rc == 0
-            assert f"Set auto_approve={literal}" in capsys.readouterr().out
-            assert load_doc(path)["self"]["auto_approve"] == literal
+            assert f"Set access={tier}" in capsys.readouterr().out
+            assert load_doc(path)["self"]["access"] == tier
 
-    def test_config_set_auto_approve_typo_rejected(self, agent_env, capsys):
-        """AUTH-CRITICAL: ``agent set <agent> auto_approve=<typo>`` is REJECTED at
-        set time (rc 1, "must be a boolean" on stderr) and the key is NOT written
-        — closing the gap that this sibling verb bypassed the ``config set``
-        guard (commit a368026). Mutation proof: dropping the ``_is_auto_approve_
-        key`` guard lets ``flase`` land verbatim and this reddens.
+    def test_config_set_access_off_enum_rejected(self, agent_env, capsys):
+        """AUTH-CRITICAL: ``agent set <agent> access=<junk>`` is REJECTED at set
+        time (rc 1, the legal tiers on stderr) and the key is NOT written —
+        closing the gap that this sibling verb bypassed the ``config set`` guard
+        (commit a368026). Mutation proof: dropping the ``is_access_key`` guard
+        lets ``fll`` land verbatim and this reddens.
         """
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.agent_config import agent_config_path
 
         rc = run_set(argparse.Namespace(
-            agent_id="claude", key_value="auto_approve=flase",
+            agent_id="claude", key_value="access=fll",
         ))
         assert rc == 1
-        assert "auto_approve must be a boolean" in capsys.readouterr().err
-        # The typo did not land: the fixture's agent doc has no auto_approve key.
+        assert "restricted | editing | full" in capsys.readouterr().err
+        # The typo did not land: the fixture's agent doc has no access key.
         path = agent_config_path(agent_env, "claude")
-        assert "auto_approve" not in load_doc(path).get("self", {})
+        assert "access" not in load_doc(path).get("self", {})
+
+    def test_config_set_access_rejects_the_retired_boolean(self, agent_env, capsys):
+        """⚑ Muscle memory: the retired ``auto_approve`` vocabulary must not
+        sneak back in through the successor key."""
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.agent_config import agent_config_path
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="access=true",
+        ))
+        assert rc == 1
+        path = agent_config_path(agent_env, "claude")
+        assert "access" not in load_doc(path).get("self", {})
 
     def test_config_set_model_still_succeeds_guard_not_overreaching(
         self, agent_env, capsys,
     ):
-        """CONTROL: the auto_approve guard does NOT over-reach — a non-bool
-        ``model`` value still writes fine (only ``auto_approve`` is validated).
+        """CONTROL: the ``access`` guard does NOT over-reach — a freeform
+        ``model`` value still writes fine (only ``access`` is validated).
         """
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_config import agent_config_path, load_agent_config
@@ -1071,9 +1085,10 @@ class TestAgentSetNull:
     It is REFUSED rather than wired, because this file's reader coerces what it
     loads (``load_agent_config`` builds ``cfg.state``/``cfg.env`` with
     ``str(v)``): a YAML null here would read back as the TEXT ``"None"``, and
-    for ``auto_approve`` that ``coerce_bool``s to None and launches PERMISSIVE —
-    a suppression flag turning ``--dangerously-skip-permissions`` on.  Agent-file
-    null semantics need the reader to change with them.
+    for ``access`` that is not a legal tier at all — a suppression flag that
+    would leave the box refusing to launch (and, before R-41 made the resolver
+    exact, would have launched it PERMISSIVE).  Agent-file null semantics need
+    the reader to change with them.
     """
 
     def _stored(self, agent_env):
@@ -1109,7 +1124,7 @@ class TestAgentSetNull:
             agent_id="claude", key_value="env.EDITOR", null=True,
         )) == 1
         assert run_set(argparse.Namespace(
-            agent_id="claude", key_value="auto_approve", null=True,
+            agent_id="claude", key_value="access", null=True,
         )) == 1
         assert self._stored(agent_env) == before
 

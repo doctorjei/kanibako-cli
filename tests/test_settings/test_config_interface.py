@@ -131,7 +131,7 @@ class TestIsKnownKey:
         The old box-scope ``box.bootstrap_program`` is RETIRED (relocated to the
         agent scope, 1.7.0-rc clean break — no alias)."""
         assert is_known_key("bootstrap") is True
-        # Per-agent override form (persona key), mirroring model/auto_approve.
+        # Per-agent override form (persona key), mirroring model/access.
         assert is_known_key("agent.claude.bootstrap") is True
         # The retired box-scope key is no longer known.
         assert is_known_key("box.bootstrap_program") is False
@@ -291,17 +291,17 @@ class TestRegularConfigKeys:
 class TestContinueMode:
     """``continue_mode`` — an agent-scope BOOL behavior key (spec §2d
     ``agent.default.continue_mode | true``; "continue vs fresh; resume removed").
-    Wired EXACTLY like ``auto_approve``/``bootstrap``; REPLACES the dead
+    Wired EXACTLY like ``access``/``bootstrap``; REPLACES the dead
     ``start_mode`` leaf (spec §3, 1.7.0-rc clean break — no alias)."""
 
     def test_continue_mode_is_known(self):
         assert is_known_key("continue_mode") is True
-        # Per-agent override form (persona key), mirroring model/auto_approve.
+        # Per-agent override form (persona key), mirroring model/access.
         assert is_known_key("agent.claude.continue_mode") is True
 
     def test_start_mode_is_retired(self):
         """The dead ``start_mode`` leaf is GONE — not a known key (no reader at
-        launch; fully covered by continue_mode + auto_approve, spec §3)."""
+        launch; fully covered by continue_mode + access, spec §3)."""
         assert is_known_key("start_mode") is False
         assert is_known_key("agent.claude.start_mode") is False
 
@@ -334,7 +334,7 @@ class TestContinueMode:
 
     def test_set_explicit_agent_default_continue_mode_refused(self, tmp_path):
         """``agent.default.continue_mode`` is refused (the any-agent default is the
-        BARE key), mirroring model/auto_approve."""
+        BARE key), mirroring model/access."""
         project_toml = tmp_path / "settings.yaml"
         msg = set_config_value(
             "agent.default.continue_mode", "false", config_path=project_toml,
@@ -836,58 +836,72 @@ class TestH1NoCrashOnAdvertisedKeys:
         # Clean break: the old flat top-level scalar is gone.
         assert "allow_helpers" not in data
 
-    def test_set_auto_approve_lands_in_agent_default_tier(self, tmp_path):
-        """auto_approve is an AGENT-scope bool key (spec §2d): the bare key is
+    def test_set_access_lands_in_agent_default_tier(self, tmp_path):
+        """``access`` is an AGENT-scope enum key (spec §2d, R-41): the bare key is
         the any-agent ``agent.default`` tier (mirrors ``model``/``allow_helpers``),
-        written VERBATIM (no KEY_TYPES coercion — read-coerced at launch)."""
+        written VERBATIM (no KEY_TYPES coercion — validated at set AND at launch)."""
         project_toml = tmp_path / "settings.yaml"
-        msg = set_config_value("auto_approve", "false", config_path=project_toml)
+        msg = set_config_value("access", "restricted", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
-        assert data["agent"]["default"]["auto_approve"] == "false"
+        assert data["agent"]["default"]["access"] == "restricted"
         # No flat top-level scalar leaks out.
-        assert "auto_approve" not in data
+        assert "access" not in data
 
-    def test_set_explicit_agent_default_auto_approve_refused(self, tmp_path):
-        """An explicit ``agent.default.auto_approve`` write is REFUSED — the
-        any-agent default is the BARE key (``default`` is the reserved tier, never
-        a persona node)."""
+    def test_set_explicit_agent_default_access_refused(self, tmp_path):
+        """An explicit ``agent.default.access`` write is REFUSED — the any-agent
+        default is the BARE key (``default`` is the reserved tier, never a persona
+        node)."""
         cf = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
-            "agent.default.auto_approve", "false",
+            "agent.default.access", "restricted",
             config_path=cf, is_system=True, command_scope=ConfigLevel.system,
             agents_root=tmp_path / "agents",
         )
         assert msg.startswith("Error:")
         assert "reserved any-agent tier" in msg
 
-    def test_set_auto_approve_typo_is_rejected(self, tmp_path):
-        """auto_approve is AUTH-CRITICAL: it read-coerces at launch, where an
-        UNRECOGNISED value falls back PERMISSIVE (True). A typo (``flase``) must be
-        REJECTED at set time, never silently accepted + written (Editor finding B).
-        Mutation proof: dropping the ``is_auto_approve_key`` write-guard lets this
+    def test_set_access_off_enum_value_is_rejected(self, tmp_path):
+        """``access`` is AUTH-CRITICAL: a value outside the enum must be REJECTED
+        at set time, never stored to be re-read at launch.
+
+        Mutation proof: dropping the ``is_access_key`` write-guard lets this
         through and this assertion reddens."""
         project_toml = tmp_path / "settings.yaml"
-        msg = set_config_value("auto_approve", "flase", config_path=project_toml)
+        msg = set_config_value("access", "fll", config_path=project_toml)
         assert msg.startswith("Error:")
-        assert "auto_approve must be a boolean" in msg
+        assert "restricted | editing | full" in msg
         # NOT written: the typo never lands in the file.
-        assert not project_toml.exists() or "auto_approve" not in (
+        assert not project_toml.exists() or "access" not in (
             load_doc(project_toml).get("agent", {}).get("default", {})
         )
 
-    def test_set_auto_approve_accepts_all_bool_literals(self, tmp_path):
-        """Every recognised bool literal (any case) is accepted + written VERBATIM
-        (happy path unchanged; coerce_bool's full truth table)."""
-        for literal in ("false", "true", "1", "0", "no", "yes", "ON", "off"):
+    def test_set_access_rejects_the_retired_boolean_literals(self, tmp_path):
+        """⚑ Muscle memory: ``access=true`` is NOT ``full``.  The boolean
+        spelling is retired, and silently mapping it at SET time would put two
+        vocabularies on one key."""
+        for literal in ("true", "false", "1", "0", "yes", "no"):
             project_toml = tmp_path / f"settings_{literal}.yaml"
-            msg = set_config_value(
-                "auto_approve", literal, config_path=project_toml,
-            )
-            assert msg.startswith("Set"), literal
+            msg = set_config_value("access", literal, config_path=project_toml)
+            assert msg.startswith("Error:"), literal
+            assert not project_toml.exists()
+
+    def test_set_access_is_case_sensitive(self, tmp_path):
+        """EXACT matching: the stored value is what the launch resolver reads
+        back, and that resolver is exact too."""
+        project_toml = tmp_path / "settings.yaml"
+        assert set_config_value(
+            "access", "FULL", config_path=project_toml,
+        ).startswith("Error:")
+
+    def test_set_access_accepts_every_declared_tier(self, tmp_path):
+        """Happy path: each declared tier is accepted + written VERBATIM."""
+        for tier in ("restricted", "editing", "full"):
+            project_toml = tmp_path / f"settings_{tier}.yaml"
+            msg = set_config_value("access", tier, config_path=project_toml)
+            assert msg.startswith("Set"), tier
             data = load_doc(project_toml)
-            # Written verbatim (the string as typed) — launch does the coercion.
-            assert data["agent"]["default"]["auto_approve"] == literal
+            assert data["agent"]["default"]["access"] == tier
 
     def test_set_box_enable_vault_lands_in_box_table(self, tmp_path):
         """P2: ``box.enable_vault`` routes to the ``box:`` table nested slot
@@ -1229,46 +1243,50 @@ class TestH2BoolCoercion:
             "self": {"allow_helpers": "false"},
         }
 
-    def test_get_auto_approve_round_trips_agent_default(self, tmp_path):
-        """The bare ``auto_approve`` get reads the value STORED at the any-agent
+    def test_get_access_round_trips_agent_default(self, tmp_path):
+        """The bare ``access`` get reads the value STORED at the any-agent
         ``agent.default`` tier (symmetric with set; mirrors ``model``)."""
         project_toml = tmp_path / "settings.yaml"
-        dump_doc(project_toml, {"agent": {"default": {"auto_approve": "false"}}})
+        dump_doc(project_toml, {"agent": {"default": {"access": "restricted"}}})
         val = get_config_value(
-            "auto_approve",
+            "access",
             global_config_path=tmp_path / "kanibako_config.yaml",
             project_toml=project_toml,
         )
-        assert val == "false"
+        assert val == "restricted"
 
-    def test_set_auto_approve_per_agent_override(self, tmp_path):
-        """A per-agent override ``agent.<agent>.auto_approve`` is a PERSONA key: it
+    def test_set_access_per_agent_override(self, tmp_path):
+        """A per-agent override ``agent.<agent>.access`` is a PERSONA key: it
         lands on the agent's OWN ``agents/<agent>/settings.yaml`` flat slot the
         launch reader picks over ``agent.default`` (§2d active-over-default)."""
         cf = tmp_path / "kanibako_config.yaml"
         agents_root = tmp_path / "agents"
         msg = set_config_value(
-            "agent.claude.auto_approve", "false",
+            "agent.claude.access", "restricted",
             config_path=cf, is_system=True, command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(agents_root / "claude" / "settings.yaml") == {
-            "self": {"auto_approve": "false"},
+            "self": {"access": "restricted"},
         }
 
-    def test_retired_autonomous_and_access_do_not_route(self, tmp_path):
-        """The dead ``autonomous`` persisted leaf and the claude-only ``access``
-        string leaf are RETIRED (folded into ``auto_approve``): neither is a known
-        key, and a bare set is refused as unknown (never lands in agent.default)."""
+    def test_retired_autonomous_and_auto_approve_do_not_route(self, tmp_path):
+        """The dead ``autonomous`` leaf and the RETIRED ``auto_approve`` spelling
+        (R-41: superseded by ``access``) are neither known keys; a bare set of
+        either is refused as unknown (never lands in agent.default).
+
+        ⚑ ``access`` moved the OTHER way in the same ruling — it is now the
+        declared key, so it is asserted KNOWN here, in the same test, so the two
+        halves of the swap can never drift apart."""
         assert is_known_key("autonomous") is False
-        assert is_known_key("access") is False
-        # A bare ``autonomous`` set no longer takes the agent.default agent-setting
-        # route (which model/auto_approve take) — it is refused as an unknown key.
+        assert is_known_key("auto_approve") is False
+        assert is_known_key("access") is True
         project_toml = tmp_path / "settings.yaml"
-        msg = set_config_value("autonomous", "true", config_path=project_toml)
-        assert msg == "Error: unknown config key: autonomous"
-        assert not project_toml.exists()
+        for dead in ("autonomous", "auto_approve"):
+            msg = set_config_value(dead, "true", config_path=project_toml)
+            assert msg == f"Error: unknown config key: {dead}", dead
+            assert not project_toml.exists()
 
     def test_bool_key_rejects_garbage(self, tmp_path):
         project_toml = tmp_path / "settings.yaml"
@@ -2601,7 +2619,7 @@ class TestBoxAgentMirrorConfigSet:
 
 
 class TestBareAgentKeyAtBoxScope:
-    """A BARE agent behavior key (model / auto_approve / bootstrap / endpoint /
+    """A BARE agent behavior key (model / access / bootstrap / endpoint /
     allow_helpers / continue_mode) at BOX command scope targets the any-agent
     ``agent.default`` tier — an UPWARD write a box cannot make (spec L440: a box
     tweaks its agent through its own ``box.agent.*`` mirror; §0 directional rule).
@@ -2622,8 +2640,8 @@ class TestBareAgentKeyAtBoxScope:
         assert box_agent_redirect_key(
             "model", ConfigLevel.box, "claude") == "pref.agent.claude.model"
         assert box_agent_redirect_key(
-            "auto_approve", ConfigLevel.box, "nav℘claude",
-        ) == "pref.agent.nav℘claude.auto_approve"
+            "access", ConfigLevel.box, "nav℘claude",
+        ) == "pref.agent.nav℘claude.access"
         # No resolvable agent → NO redirect (the request targets a DISCRIMINATED
         # agent slot; there is no bare ``agent.<key>``, §0).
         assert box_agent_redirect_key("bootstrap", ConfigLevel.box) is None
@@ -2650,10 +2668,10 @@ class TestBareAgentKeyAtBoxScope:
         # agent.default.bootstrap). This is the mutation guard vs the old no-op write.
         assert not f.exists(), "the refused set must not write the box file"
 
-    def test_set_bare_model_and_auto_approve_at_box_scope_refused(self, tmp_path):
+    def test_set_bare_model_and_access_at_box_scope_refused(self, tmp_path):
         # Uniformity: the SAME refusal for other agent behavior keys (proves the
         # fix is keyed on the _is_agent_setting family, not a single per-key branch).
-        cases = {"model": "sonnet", "auto_approve": "true"}
+        cases = {"model": "sonnet", "access": "restricted"}
         for key, value in cases.items():
             f = tmp_path / f"box-{key}.yaml"
             msg = set_config_value(
@@ -2696,19 +2714,19 @@ class TestBareAgentKeyAtBoxScope:
             project_toml=f, command_scope=ConfigLevel.box,
         ) is None
 
-    def test_get_bare_model_and_auto_approve_redirect(self, tmp_path):
+    def test_get_bare_model_and_access_redirect(self, tmp_path):
         f = tmp_path / "box-settings.yaml"
         dump_doc(f, {"pref": {"agent": {"claude": {
-            "model": "sonnet", "auto_approve": True,
+            "model": "sonnet", "access": "restricted",
         }}}})
         assert get_config_value(
             "model", global_config_path=tmp_path / "cfg.yaml",
             project_toml=f, command_scope=ConfigLevel.box, active_agent="claude",
         ) == "sonnet"
         assert get_config_value(
-            "auto_approve", global_config_path=tmp_path / "cfg.yaml",
+            "access", global_config_path=tmp_path / "cfg.yaml",
             project_toml=f, command_scope=ConfigLevel.box, active_agent="claude",
-        ) == "true"
+        ) == "restricted"
 
     def test_bare_agent_key_at_system_scope_unaffected(self, tmp_path):
         # A bare agent key at SYSTEM scope is a legit DOWNWARD write to
@@ -2744,9 +2762,9 @@ class TestBareAgentKeyAtBoxScope:
         # The stuck-value mutation guard: the stored value is NOT removed.
         assert load_doc(f)["pref"]["agent"]["claude"]["bootstrap"] == "screen"
 
-    def test_reset_bare_model_and_auto_approve_at_box_scope_refused(self, tmp_path):
+    def test_reset_bare_model_and_access_at_box_scope_refused(self, tmp_path):
         # Uniformity: the SAME reset refusal for other agent behavior keys.
-        for key in ("model", "auto_approve"):
+        for key in ("model", "access"):
             f = tmp_path / f"box-{key}.yaml"
             dump_doc(f, {"pref": {"agent": {"claude": {key: "x"}}}})
             msg = reset_config_value(
@@ -2825,8 +2843,8 @@ class TestBareAgentKeyAtWorksetScope:
             "agent.claude.bootstrap", ConfigLevel.workset, verb="set") is None
 
     def test_set_bare_agent_keys_at_workset_scope_refused(self, tmp_path):
-        # Uniformity: bootstrap + model + auto_approve all refused, nothing written.
-        cases = {"bootstrap": "none", "model": "sonnet", "auto_approve": "true"}
+        # Uniformity: bootstrap + model + access all refused, nothing written.
+        cases = {"bootstrap": "none", "model": "sonnet", "access": "restricted"}
         for key, value in cases.items():
             f = tmp_path / f"ws-{key}.yaml"
             msg = set_config_value(
@@ -2837,7 +2855,7 @@ class TestBareAgentKeyAtWorksetScope:
             assert not f.exists(), (key, "the refused set must not write")
 
     def test_reset_bare_agent_keys_at_workset_scope_refused(self, tmp_path):
-        for key in ("bootstrap", "model", "auto_approve"):
+        for key in ("bootstrap", "model", "access"):
             f = tmp_path / f"ws-{key}.yaml"
             # Even a pre-existing (mis-written) agent.default value stays put.
             dump_doc(f, {"agent": {"default": {key: "x"}}})
@@ -4263,6 +4281,69 @@ class TestPrefTargetFiltersAtSetTime:
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Set")
+
+
+class TestPrefAccessEnumGuard:
+    """The auth-critical ``access`` enum is enforced through the PREF spelling.
+
+    ``pref.agent.<agent>.access=<tier>`` is exactly the command the RQ-2
+    retired-key refusal PRESCRIBES to box/workset users, so it is the spelling
+    they are most likely to type.  ``is_access_key`` answers False for it by
+    design (it names TARGET keys), so the guard has to be applied at the TARGET
+    — which is what ``_pref_value_error`` is for.
+
+    Not a permissive hole (the launch resolver refuses the stored typo too), but
+    without this the refusal arrives at every future LAUNCH of the box instead of
+    at the write that caused it, and the config file records a value no validator
+    ever accepted.
+    """
+
+    @pytest.mark.parametrize("bogus", ["fll", "FULL", "true", "", "yolo"])
+    def test_an_off_enum_value_is_refused_at_set_time(self, tmp_path, bogus):
+        """Mutation proof: drop the ``is_access_key(target)`` arm in
+        ``_pref_value_error`` → the write succeeds and this reddens."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.access", bogus,
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), (bogus, msg)
+        assert "restricted | editing | full" in msg
+        # The message names the key the USER typed, not the extracted target.
+        assert "pref.agent.claude.access" in msg
+        assert not f.exists()  # the typo never lands in the file
+
+    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+    def test_every_declared_tier_is_accepted(self, tmp_path, tier):
+        f = tmp_path / f"settings_{tier}.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.access", tier,
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Set"), (tier, msg)
+        assert yaml.safe_load(f.read_text()) == {
+            "pref": {"agent": {"claude": {"access": tier}}}
+        }
+
+    def test_the_persona_node_spelling_is_guarded_too(self, tmp_path):
+        """A ``+``/``℘`` persona node is still an ``access`` target."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.nav+claude.access", "fll",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "restricted | editing | full" in msg
+
+    def test_the_suppression_request_is_still_legal(self, tmp_path):
+        """``--null`` is §2h's suppression channel and is legal at ANY leaf —
+        the enum guard must not swallow it (present-``None`` is not a value)."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.access", None,
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Set"), msg
 
 
 class TestPrefIsKnownKey:

@@ -412,15 +412,18 @@ class TestBinaryMountContract:
 # descriptor argv assembly so these tests pin the same flag invariants.
 
 
-def _claude_argv(*, safe_mode, resume_mode, new_session, is_new_project, extra_args):
+def _claude_argv(
+    *, safe_mode, resume_mode, new_session, is_new_project, extra_args,
+    access=None,
+):
     from kanibako.settings.settings_launch import meta_agent_grammar_floor
     from kanibako.targets import assembly
 
     desc = ClaudeTarget().descriptor
-    # Persisted auto_approve defaults True (PERMISSIVE) when unset; mirror the
-    # launch reader's bool coercion (the setting_key is now "auto_approve").
-    safe_off = assembly.effective_safe_mode_off(
-        secure=safe_mode, autonomous=False, auto_approve=True,
+    # The persisted ``access`` tier defaults to ``full`` when unset (R-41);
+    # mirror the launch reader's resolve + the -S/-A fold.
+    launch_access = assembly.effective_access(
+        secure=safe_mode, autonomous=False, access=access,
     )
     # B5: mirror start.py — the launch grammar is materialized into the keyspace
     # (same single builder) and the composition reads the table, not the
@@ -436,7 +439,7 @@ def _claude_argv(*, safe_mode, resume_mode, new_session, is_new_project, extra_a
     return assembly.assemble_argv(
         desc,
         mode_fragment=mode_table[mode_key],
-        safe_mode_off=safe_off,
+        access=launch_access,
         setting_values={"model": "opus"},
         op_fragment=None,
         extra_args=extra_args,
@@ -471,12 +474,47 @@ class TestCLIArgsContract:
         assert "--dangerously-skip-permissions" in args
 
     def test_safe_mode_excludes_dangerous_skip(self):
-        """Safe mode must NOT include --dangerously-skip-permissions."""
+        """Safe mode (-S ⇒ the ``restricted`` tier) must NOT include
+        --dangerously-skip-permissions."""
         args = _claude_argv(
             safe_mode=True, resume_mode=False, new_session=False,
             is_new_project=False, extra_args=[],
         )
         assert "--dangerously-skip-permissions" not in args
+
+    def test_editing_tier_excludes_dangerous_skip(self):
+        """SAFETY INVARIANT for the new middle tier (R-41): ``editing`` must
+        NEVER emit the full bypass — the whole point of the tier is that it is
+        NOT ``full``."""
+        args = _claude_argv(
+            safe_mode=False, resume_mode=False, new_session=False,
+            is_new_project=False, extra_args=[], access="editing",
+        )
+        assert "--dangerously-skip-permissions" not in args
+        assert "--permission-mode" in args
+        assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+
+    def test_restricted_tier_excludes_every_permission_flag(self):
+        """SAFETY INVARIANT: the stored ``restricted`` tier emits NOTHING —
+        neither the bypass nor the edit-mode flag."""
+        args = _claude_argv(
+            safe_mode=False, resume_mode=False, new_session=False,
+            is_new_project=False, extra_args=[], access="restricted",
+        )
+        assert "--dangerously-skip-permissions" not in args
+        assert "--permission-mode" not in args
+
+    def test_unknown_stored_tier_refuses_rather_than_running_permissive(self):
+        """SAFETY INVARIANT (R-41's inversion): an unrecognised stored value
+        RAISES.  The retired boolean coerced junk to the PERMISSIVE default —
+        i.e. a typo used to grant the bypass."""
+        from kanibako.errors import ConfigError
+
+        with pytest.raises(ConfigError):
+            _claude_argv(
+                safe_mode=False, resume_mode=False, new_session=False,
+                is_new_project=False, extra_args=[], access="bogus",
+            )
 
     def test_extra_args_with_resume_skips_continue(self):
         """Passing --resume in extra_args must skip --continue."""

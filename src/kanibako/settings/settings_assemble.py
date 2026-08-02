@@ -238,6 +238,172 @@ def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# RETIRED BEHAVIOR spellings — the permission axis (R-41, spec §2d)
+# ---------------------------------------------------------------------------
+#
+# ⚑ SAME shape, SAME reason, DIFFERENT seam as :data:`RETIRED_FILE_KEYS` above.
+# R-41 replaced the boolean ``auto_approve`` with the enum ``access``
+# (``restricted|editing|full``, default ``full``). Under the closed keyspace the
+# old spelling is now UNDECLARED, and an undeclared stored key is SILENT at
+# launch — which on a PERMISSION axis means a box deliberately configured
+# ``auto_approve: false`` would come up at the new ``full`` default with nothing
+# printed. That is a safety-class silent regression in the UNSAFE direction, so
+# the stale key is REFUSED (RQ-2, ruled by Jei 2026-08-02) with a
+# level-appropriate cure that NAMES ``access`` and QUOTES the user's own value
+# through the ruled mapping (``true`` → ``full``, ``false`` → ``restricted``).
+#
+# Scope is deliberately TIGHT: this one key, in the shapes a settings file can
+# actually carry it. It is NOT general resolve enforcement (still deferred, still
+# gated on ``settings_keyspace.RETIRING_KEYS`` being EMPTY — this refusal does
+# NOT repopulate that set).
+#
+# The seam is the LAUNCH's BEHAVIOR tier (``commands/start.py``), NOT
+# :func:`assemble_levels`: a raise inside assembly would also break ``config
+# set``, i.e. the very command the message prescribes as the cure.
+# Migration record: M-22.
+
+#: The RETIRED behavior leaf → its successor key (R-41).
+RETIRED_BEHAVIOR_KEYS: "dict[str, str]" = {"auto_approve": "access"}
+
+#: The RULED value mapping for the retired boolean (R-41): what the user's own
+#: stored value becomes in the successor enum. Keys are the ``coerce_bool``
+#: results; an UNPARSEABLE stored value maps to nothing and the cure then names
+#: the legal tiers instead of quoting a translation (never guess a tier).
+_RETIRED_BEHAVIOR_VALUE_MAP: "dict[str, dict[bool, str]]" = {
+    "auto_approve": {True: "full", False: "restricted"},
+}
+
+#: The nested TABLES a behavior leaf can live under, per settings-file shape:
+#: the scope files carry ``agent.<sub>.<leaf>`` (``<sub>`` = ``default`` or an
+#: agent node) and ``pref.agent.<node>.<leaf>`` (a §2h request), while a
+#: per-agent file carries it FLAT under its ``self`` table
+#: (``agent_config.agent_file_route``). Each entry is (prefix, depth-of-<sub>).
+_BEHAVIOR_TABLE_SHAPES: "tuple[tuple[tuple[str, ...], int], ...]" = (
+    (("agent",), 1),          # scope file:  agent.<sub>.<leaf>
+    (("pref", "agent"), 1),   # §2h request: pref.agent.<node>.<leaf>
+    (("self",), 0),           # agent file:  self.<leaf>
+)
+
+
+def _behavior_leaf_sites(
+    raw: Any, leaf: str
+) -> "list[tuple[tuple[str, ...], Any]]":
+    """Every (nested path, value) where *leaf* is present in *raw*.
+
+    Walks exactly the :data:`_BEHAVIOR_TABLE_SHAPES` — no free-form recursion, so
+    an unrelated user key that happens to be spelled ``auto_approve`` deeper in
+    some other table is not swept up.
+    """
+    sites: "list[tuple[tuple[str, ...], Any]]" = []
+    if not isinstance(raw, dict):
+        return sites
+    for prefix, sub_depth in _BEHAVIOR_TABLE_SHAPES:
+        node = _nested_present(raw, prefix)
+        if node is _NO_LEAF or not isinstance(node, dict):
+            continue
+        if sub_depth == 0:
+            found = _nested_present(node, (leaf,))
+            if found is not _NO_LEAF:
+                sites.append(((*prefix, leaf), found))
+            continue
+        for sub, sub_node in node.items():
+            if not isinstance(sub_node, dict):
+                continue
+            found = _nested_present(sub_node, (leaf,))
+            if found is not _NO_LEAF:
+                sites.append(((*prefix, str(sub), leaf), found))
+    return sites
+
+
+def _retired_behavior_cure(
+    successor: str, *, level: str, tier: str, subject: str | None,
+) -> str:
+    """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22).
+
+    ``access`` is an AGENT-scope key, so where it may be WRITTEN depends on the
+    file the stale value was found in — the same asymmetry
+    :func:`_retired_key_cure` handles for the selection keys:
+
+    * ``base`` / ``system`` — a bare agent key is a DOWNWARD write from system
+      scope, so the system verb sets it for every agent.
+    * ``agent`` — the per-agent file has its own verb (*subject* is the node).
+    * ``workset`` / ``box`` — a BARE agent key is an UPWARD write there (agent
+      ⊃ workset ⊃ box) and is dropped at assembly, so the legal spelling is the
+      §2h REQUEST, which is exactly where a per-box permission tier belongs.
+    """
+    agent = subject or "<agent>"
+    if level == "agent":
+        return f"kanibako crab set {agent} {successor}={tier}"
+    if level in _PREF_LEGAL_LEVELS:
+        return f"kanibako {level} set pref.agent.{agent}.{successor}={tier}"
+    return f"kanibako system config set {successor}={tier}"
+
+
+def refuse_retired_behavior_keys(
+    raw: Any, *, level: str, path: Path | None, subject: str | None = None,
+) -> None:
+    """RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2).
+
+    Today that is exactly one key, :data:`RETIRED_BEHAVIOR_KEYS`
+    (``auto_approve`` → ``access``). The message names the KEY, the SPELLING
+    found, the LEVEL, the FILE, the fact that THE RULE CHANGED, the user's own
+    value translated through the RULED mapping, and the one-line cure.
+
+    Never a warning and never a silent drop: the whole point is that an
+    undeclared stored key is silent, and silence on the permission axis resolves
+    to the PERMISSIVE default. *subject* is the agent node the cure should name
+    (the file's own node for an agent file, the box's active agent otherwise);
+    ``None`` renders the shape ``<agent>``.
+
+    Called at the LAUNCH's behavior tier, NOT inside :func:`assemble_levels` —
+    see the block comment above.
+    """
+    from kanibako.settings.config import coerce_bool
+
+    if not isinstance(raw, dict):
+        return
+    for leaf, successor in RETIRED_BEHAVIOR_KEYS.items():
+        for parts, found in _behavior_leaf_sites(raw, leaf):
+            spelling = ".".join(parts)
+            raw_value = "" if found is None else str(found).strip()
+            mapped = _RETIRED_BEHAVIOR_VALUE_MAP.get(leaf, {})
+            as_bool = coerce_bool(raw_value) if raw_value else None
+            tier = mapped.get(as_bool) if as_bool is not None else None
+            # The value line only ever states a translation the RULING makes. An
+            # unparseable stored value gets the legal tiers instead of a guess.
+            if tier is not None:
+                value_line = (
+                    f"Your stored `{leaf}: {raw_value}` means "
+                    f"`{successor}: {tier}` (R-41's mapping: true → full, "
+                    f"false → restricted)."
+                )
+            else:
+                tier = "<restricted|editing|full>"
+                value_line = (
+                    f"Your stored `{leaf}: {raw_value or '(empty)'}` is not a "
+                    f"boolean, so it maps to no tier — choose one of "
+                    f"restricted | editing | full."
+                )
+            cure = _retired_behavior_cure(
+                successor, level=level, tier=tier, subject=subject,
+            )
+            raise SettingsError(
+                f"'{leaf}' is RETIRED and is still set in the {level} settings "
+                f"file {path if path is not None else '<settings>'} "
+                f"(as `{spelling}`).\n"
+                f"The RULE CHANGED in kanibako 1.8.0: the permission axis is no "
+                f"longer a boolean — it is the TIER key `{successor}` "
+                f"(restricted | editing | full, default full). Refusing rather "
+                f"than running: an undeclared key is not read at all, so this "
+                f"box would come up at the DEFAULT tier and a deliberately "
+                f"restricted box would silently run permissive.\n"
+                f"  {value_line}\n"
+                f"  Fix: {cure}\n"
+                f"  then delete the `{spelling}` entry from {path}."
+            )
+
+
 def _containing_scopes(file_scope: str) -> frozenset[str]:
     """The scope tokens that CONTAIN *file_scope* (spec §0, the drop-set).
 
@@ -457,7 +623,7 @@ def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
     *floor* is the target's declared ``{key: default}`` behavior defaults plus
     default-categories (mirrors what ``start.py`` gathers today). Its keys are the
     same SCOPE-QUALIFIED logical keys as the files use (flat dotted, e.g.
-    ``"box.bindings.rw.home"`` / ``"agent.auto_approve"``); dotted keys are
+    ``"box.bindings.rw.home"`` / ``"agent.access"``); dotted keys are
     EXPLODED to the nested keyspace (S7) so the floor merges uniformly with the
     other partials. Bind-shaped values are parsed to :class:`Bind`.
     """

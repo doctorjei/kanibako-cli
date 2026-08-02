@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.targets.base import (
+    AccessTierRow,
     AgentInstall,
     BindKind,
     Binding,
@@ -185,17 +186,15 @@ class TestTargetABC:
         t = PlainTarget()
         config_root = tmp_path / "box-home"
         config_root.mkdir()
-        assert t.deliver_panel_permissions(
-            config_root=config_root, auto_approve=True,
-        ) is False
-        assert t.deliver_panel_permissions(
-            config_root=config_root, auto_approve=False,
-        ) is False
+        for tier in ("restricted", "editing", "full"):
+            assert t.deliver_panel_permissions(
+                config_root=config_root, access=tier,
+            ) is False
+            assert t.deliver_directive_hook(
+                config_root=config_root, access=tier,
+            ) is False
         assert t.deliver_directive_hook(
-            config_root=config_root, auto_approve=True,
-        ) is False
-        assert t.deliver_directive_hook(
-            config_root=config_root, auto_approve=False, model_provider=None,
+            config_root=config_root, access="full", model_provider=None,
         ) is False
         # Inert means INERT: nothing was created under the box home.
         assert list(config_root.iterdir()) == []
@@ -426,10 +425,42 @@ class TestPluginDescriptorDataclasses:
         assert env.flag == ()
 
     def test_safe_bypass_defaults(self):
-        sb = SafeBypass(channel=Channel.FLAG, flag=("--dangerously-skip-permissions",))
-        assert sb.flag == ("--dangerously-skip-permissions",)
+        # ⚑ R-41: EVERY tier row defaults to ``None`` = "this harness cannot
+        # render that tier", so a descriptor that declares a permission channel
+        # and forgets a row REFUSES it rather than emitting nothing (which, for a
+        # harness whose own default is permissive, would BE the bypass).
+        sb = SafeBypass(channel=Channel.FLAG)
+        assert sb.restricted is None
+        assert sb.editing is None
+        assert sb.full is None
+        assert sb.rendered_tiers() == ()
         assert sb.env_var == ""
         assert sb.setting_key == ""
+
+    def test_safe_bypass_rows_and_lookup(self):
+        sb = SafeBypass(
+            channel=Channel.FLAG,
+            restricted=AccessTierRow(),
+            full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
+            setting_key="access",
+        )
+        # An EMPTY row is a DECLARED realization (emit nothing); a MISSING row is
+        # not renderable at all. The two must never collapse.
+        assert sb.row("restricted") == AccessTierRow()
+        assert sb.renders("restricted") is True
+        assert sb.row("editing") is None
+        assert sb.renders("editing") is False
+        assert sb.row("full").flag == ("--dangerously-skip-permissions",)
+        assert sb.rendered_tiers() == ("restricted", "full")
+        # An unknown tier collapses to "not renderable" — never to a row.
+        assert sb.row("bogus") is None
+
+    def test_access_tier_row_defaults_and_frozen(self):
+        row = AccessTierRow()
+        assert row.flag == ()
+        assert row.env_value == ""
+        with pytest.raises(FrozenInstanceError):
+            row.flag = ("x",)  # type: ignore[misc]
 
     def test_operation_fragment(self):
         op = Operation(fragment=("--print",))
@@ -503,8 +534,8 @@ class TestPluginDescriptorDataclasses:
             operations={"exec": Operation(fragment=("--print",))},
             safe_bypass=SafeBypass(
                 channel=Channel.FLAG,
-                flag=("--dangerously-skip-permissions",),
-                setting_key="auto_approve",
+                full=AccessTierRow(flag=("--dangerously-skip-permissions",)),
+                setting_key="access",
             ),
             settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
             cred_files=(
@@ -526,7 +557,7 @@ class TestPluginDescriptorDataclasses:
         assert d.bindings[0].scope is BindScope.AGENT_CRITICAL
         assert d.mode["continue"] == ("--continue",)
         assert d.operations["exec"].fragment == ("--print",)
-        assert d.safe_bypass is not None and d.safe_bypass.setting_key == "auto_approve"
+        assert d.safe_bypass is not None and d.safe_bypass.setting_key == "access"
         assert d.cred_files[0].cadence is Cadence.SYNC
         assert d.cred_files[1].cadence is Cadence.SEED_ONCE
         assert d.init_dirs == (".claude",)

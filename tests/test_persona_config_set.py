@@ -150,31 +150,31 @@ class TestSetPersona:
             "self": {"env": {"ANTHROPIC_MODEL": "gemma"}},
         }
 
-    def test_set_persona_auto_approve_accepts_bool(self, tmp_path, agents_root):
-        """A per-persona ``agent.<node>.auto_approve`` bool literal is accepted +
-        written VERBATIM to the node's flat agent leaf (happy path unchanged)."""
+    def test_set_persona_access_accepts_a_declared_tier(self, tmp_path, agents_root):
+        """A per-persona ``agent.<node>.access`` tier is accepted + written
+        VERBATIM to the node's flat agent leaf (happy path)."""
         msg = set_config_value(
-            "agent.navigator+claude.auto_approve", "false",
+            "agent.navigator+claude.access", "restricted",
             config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         assert msg.startswith("Set")
         assert load_doc(_node_file(agents_root)) == {
-            "self": {"auto_approve": "false"},
+            "self": {"access": "restricted"},
         }
 
-    def test_set_persona_auto_approve_typo_rejected(self, tmp_path, agents_root):
-        """AUTH-CRITICAL: a per-persona ``auto_approve`` typo is REJECTED at set
-        time (never written), same write-guard as the bare key (Editor finding B).
-        Mutation proof: dropping the guard lets ``garbage`` through and this
+    def test_set_persona_access_off_enum_rejected(self, tmp_path, agents_root):
+        """AUTH-CRITICAL: a per-persona ``access`` value outside the enum is
+        REJECTED at set time (never written), by the SAME write-guard as the bare
+        key.  Mutation proof: dropping the guard lets ``garbage`` through and this
         reddens."""
         msg = set_config_value(
-            "agent.navigator+claude.auto_approve", "garbage",
+            "agent.navigator+claude.access", "garbage",
             config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         assert msg.startswith("Error:")
-        assert "auto_approve must be a boolean" in msg
+        assert "restricted | editing | full" in msg
         # The node file was never written (the typo did not land).
         assert not _node_file(agents_root).exists()
 

@@ -25,7 +25,7 @@ class AgentConfig:
 
     Sections:
       agent        — identity (name, run_args) plus agent-state knobs
-                     (model, auto_approve, allow_helpers, endpoint, …). The
+                     (model, access, allow_helpers, endpoint, …). The
                      per-node DISCRIMINATED sub-table ``agent.<node>.secret_path``
                      also lives here (see *secret_path* below).
       env          — raw env vars injected into container (VAR -> value)
@@ -206,7 +206,7 @@ def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
     top-level table is ``self`` (its self-reference — the renamed old bare
     ``agent`` values), and the category split is load-bearing:
 
-    * flat state (``model`` / ``endpoint`` / ``auto_approve`` / …) and ``env.*`` live
+    * flat state (``model`` / ``endpoint`` / ``access`` / …) and ``env.*`` live
       DIRECTLY under ``self`` (``self.<key>`` / ``self.env.<VAR>``) — the shape
       :func:`load_agent_config` reads into ``AgentConfig`` for the launch invocation;
     * ``secret_path.*`` lives DIRECTLY under ``self`` (``self.secret_path.<VAR>``) —

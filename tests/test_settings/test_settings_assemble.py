@@ -514,7 +514,7 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
         tmp_path / "agent.yaml",
         {
             "self": {
-                "default": {"auto_approve": True, "model": "dmodel"},
+                "default": {"allow_helpers": True, "model": "dmodel"},
                 "claude": {"model": "cmodel"},
             }
         },
@@ -526,9 +526,9 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
     default = levels[AGENT_DEFAULT]["agent"]["default"]
     # active carries ONLY what claude set (NOT pre-merged with default).
     assert dict.get(active, "model", _MISSING) == "cmodel"
-    assert dict.get(active, "auto_approve", _MISSING) is _MISSING
+    assert dict.get(active, "allow_helpers", _MISSING) is _MISSING
     assert dict.get(default, "model", _MISSING) == "dmodel"
-    assert dict.get(default, "auto_approve", _MISSING) is True
+    assert dict.get(default, "allow_helpers", _MISSING) is True
     # The discriminator is KEPT (the §2d key form), not collapsed to bare `agent`.
     assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", _MISSING) is not _MISSING
     assert dict.get(levels[AGENT_DEFAULT]["agent"], "default", _MISSING) is not _MISSING
@@ -734,10 +734,10 @@ def test_floor_lands_on_base_level() -> None:
     # agent.*); they explode to the nested keyspace on the BASE level.
     levels = assemble_levels(
         agent_name="claude",
-        floor={"agent.default.auto_approve": True, "agent.default.bootstrap": "tmux"},
+        floor={"agent.default.allow_helpers": True, "agent.default.bootstrap": "tmux"},
     )
     base = levels[BASE]["agent"]["default"]
-    assert dict.get(base, "auto_approve", _MISSING) is True
+    assert dict.get(base, "allow_helpers", _MISSING) is True
     assert dict.get(base, "bootstrap", _MISSING) == "tmux"
     # The floor is NOT in any other level.
     assert len(levels[BOX]) == 0
@@ -1044,3 +1044,172 @@ class TestPrefTableWriteSiteAtAssembly:
         )
         levels = assemble_levels(agent_name="claude", box_path=box)
         assert isinstance(levels[BOX].pref.agent.claude.common.x, Bind)
+
+
+# --------------------------------------------------------------------------- #
+# RETIRED BEHAVIOR keys — the ``auto_approve`` → ``access`` refusal (R-41/RQ-2)
+# --------------------------------------------------------------------------- #
+
+
+class TestRefuseRetiredBehaviorKeys:
+    """A stored ``auto_approve`` is REFUSED at launch, never silently ignored.
+
+    The failure this prevents: under the closed keyspace the retired spelling is
+    UNDECLARED, and an undeclared stored key is SILENT — so a box deliberately
+    configured ``auto_approve: false`` would come up at the new ``full`` default
+    with nothing printed.  On a permission axis that is a silent regression in
+    the UNSAFE direction.
+    """
+
+    def _refuse(self, raw, **kw):
+        from kanibako.settings.settings_assemble import refuse_retired_behavior_keys
+
+        return refuse_retired_behavior_keys(raw, **kw)
+
+    def test_scope_file_agent_default_table_is_refused(self, tmp_path) -> None:
+        path = tmp_path / "settings.yaml"
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"default": {"auto_approve": False}}},
+                level="system", path=path,
+            )
+        msg = str(exc.value)
+        # NAMES: the key, the spelling found, the level, the file, and the cure.
+        assert "auto_approve" in msg
+        assert "agent.default.auto_approve" in msg
+        assert "system" in msg
+        assert str(path) in msg
+        assert "access" in msg
+
+    def test_the_cure_quotes_the_users_value_through_the_ruled_mapping(
+        self, tmp_path,
+    ) -> None:
+        """R-41's mapping, in the message: true → full, false → restricted."""
+        for stored, tier in ((True, "full"), (False, "restricted")):
+            with pytest.raises(SettingsError) as exc:
+                self._refuse(
+                    {"agent": {"default": {"auto_approve": stored}}},
+                    level="system", path=tmp_path / "s.yaml",
+                )
+            msg = str(exc.value)
+            assert f"access={tier}" in msg, stored
+            assert f"`access: {tier}`" in msg, stored
+
+    def test_string_booleans_map_too(self, tmp_path) -> None:
+        """Settings files carry ``true``/``yes``/``0`` as often as real bools."""
+        for stored, tier in (("true", "full"), ("no", "restricted"), ("1", "full")):
+            with pytest.raises(SettingsError) as exc:
+                self._refuse(
+                    {"agent": {"default": {"auto_approve": stored}}},
+                    level="system", path=tmp_path / "s.yaml",
+                )
+            assert f"access={tier}" in str(exc.value), stored
+
+    def test_an_unparseable_value_names_the_tiers_instead_of_guessing(
+        self, tmp_path,
+    ) -> None:
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"default": {"auto_approve": "sortof"}}},
+                level="system", path=tmp_path / "s.yaml",
+            )
+        msg = str(exc.value)
+        assert "restricted | editing | full" in msg
+        # No invented tier: the cure carries the shape, not a guess.
+        assert "access=<restricted|editing|full>" in msg
+
+    def test_per_agent_table_is_refused_and_names_that_agent(self, tmp_path) -> None:
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"claude": {"auto_approve": True}}},
+                level="system", path=tmp_path / "s.yaml",
+            )
+        assert "agent.claude.auto_approve" in str(exc.value)
+
+    def test_agent_file_self_table_is_refused(self, tmp_path) -> None:
+        """The per-agent file's FLAT shape — where ``crab set`` wrote it."""
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"self": {"auto_approve": False, "model": "opus"}},
+                level="agent", path=tmp_path / "claude.yaml", subject="claude",
+            )
+        msg = str(exc.value)
+        assert "self.auto_approve" in msg
+        assert "kanibako crab set claude access=restricted" in msg
+
+    def test_a_pref_request_is_refused(self, tmp_path) -> None:
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"pref": {"agent": {"claude": {"auto_approve": True}}}},
+                level="box", path=tmp_path / "box.yaml", subject="claude",
+            )
+        msg = str(exc.value)
+        assert "pref.agent.claude.auto_approve" in msg
+        assert "kanibako box set pref.agent.claude.access=full" in msg
+
+    def test_the_cure_is_level_appropriate(self, tmp_path) -> None:
+        """``access`` is an AGENT-scope key, so where it may be WRITTEN depends
+        on the file it was found in (the same asymmetry the selection refusal
+        handles): system writes it directly, box/workset must use the §2h
+        request (a bare agent key there is an UPWARD write and is dropped)."""
+        cures = {}
+        for level in ("base", "system", "workset", "box"):
+            with pytest.raises(SettingsError) as exc:
+                self._refuse(
+                    {"agent": {"default": {"auto_approve": True}}},
+                    level=level, path=tmp_path / "s.yaml", subject="claude",
+                )
+            cures[level] = str(exc.value)
+        assert "kanibako system config set access=full" in cures["base"]
+        assert "kanibako system config set access=full" in cures["system"]
+        assert "kanibako workset set pref.agent.claude.access=full" in cures["workset"]
+        assert "kanibako box set pref.agent.claude.access=full" in cures["box"]
+
+    def test_a_clean_file_passes(self, tmp_path) -> None:
+        """Non-vacuity: the same shapes with the SUCCESSOR key do not raise."""
+        self._refuse(
+            {
+                "agent": {"default": {"access": "restricted"}, "claude": {"model": "o"}},
+                "self": {"access": "full"},
+                "pref": {"agent": {"claude": {"access": "editing"}}},
+            },
+            level="box", path=tmp_path / "box.yaml",
+        )
+
+    def test_an_unrelated_deep_key_of_the_same_name_is_not_swept_up(
+        self, tmp_path,
+    ) -> None:
+        """SCOPE-TIGHT: only the declared behavior TABLES are walked, so a
+        same-named leaf somewhere else is none of this rule's business."""
+        self._refuse(
+            {"box": {"masks": {"auto_approve": True}}},
+            level="box", path=tmp_path / "box.yaml",
+        )
+
+    def test_a_present_none_leaf_is_still_the_retired_key(self, tmp_path) -> None:
+        """ABSENT ≠ PRESENT-null: an empty ``auto_approve:`` leaf is still the
+        stale key (the same 3-state trap the selection refusal documents)."""
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"default": {"auto_approve": None}}},
+                level="system", path=tmp_path / "s.yaml",
+            )
+        assert "auto_approve" in str(exc.value)
+
+    def test_retiring_keys_stays_empty(self) -> None:
+        """§4 of the plan: this refusal must NOT repopulate the deferred
+        general-enforcement gate."""
+        from kanibako.settings.settings_keyspace import RETIRING_KEYS
+
+        assert RETIRING_KEYS == frozenset()
+
+    def test_assemble_levels_itself_does_not_raise(self, tmp_path) -> None:
+        """The refusal lives at the LAUNCH seam, NOT inside assembly — a raise
+        here would also break ``config set``, the very command the message
+        prescribes as the cure."""
+        path = _write(
+            tmp_path / "system.yaml",
+            {"agent": {"default": {"auto_approve": False}}},
+        )
+        levels = assemble_levels(agent_name="claude", system_path=path)
+        assert levels is not None

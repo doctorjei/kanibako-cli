@@ -148,7 +148,7 @@ def test_codex_delivery_real_box(e2e_env):
         for entry in data["hooks"]["state"].values():
             assert entry["trusted_hash"].startswith("sha256:")
         assert data["projects"][f"{GUEST_HOME}/workspace"]["trust_level"] == "trusted"
-        # default auto_approve=True → the panel-permission seam delivered parity.
+        # default access=full → the panel-permission seam delivered parity.
         assert data["approval_policy"] == "never"
         # sandbox_mode is a box invariant (danger-full-access), not yolo-gated.
         assert data["sandbox_mode"] == "danger-full-access"

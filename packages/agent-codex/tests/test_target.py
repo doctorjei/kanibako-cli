@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kanibako.plugins.codex import CodexTarget
 from kanibako.targets import assembly
 from kanibako.targets.base import (
@@ -450,11 +452,12 @@ class TestSettingDescriptors:
         assert keys == ["model", "endpoint"]
         endpoint = next(s for s in settings if s.key == "endpoint")
         assert endpoint.default == ""
-        # auto_approve is NOT a declared TargetSetting — it is the agent-scope bool
-        # key routed verbatim (safe_bypass.setting_key), redeemed at launch.
-        assert "auto_approve" not in keys
-        # 'access' is fully retired (folded into auto_approve).
+        # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting —
+        # it is the agent-scope enum key routed verbatim
+        # (safe_bypass.setting_key), redeemed + validated at launch.  The retired
+        # ``auto_approve`` spelling must not reappear here either.
         assert "access" not in keys
+        assert "auto_approve" not in keys
 
     def test_persona_wiring_declared(self):
         # INC 2: codex declares config-file endpoint delivery + a dynamic token var
@@ -515,15 +518,41 @@ class TestDescriptor:
         assert "exec" in d.operations
         assert d.operations["exec"].fragment == ("exec",)
 
-    def test_safe_bypass_flag(self):
+    def test_safe_bypass_access_rows(self):
+        """The three codex rows (R-41), all from VERIFIED codex-cli 0.141.0
+        vocabulary: the bypass flag, the sandbox enum's middle step, and an
+        EMPTY restricted row (nothing on the argv — the pre-R-41 ``-S``
+        behaviour).
+
+        ⚑ The approval flag is deliberately NOT in any row: ``-a`` does not exist
+        on ``codex exec``, which shares this argv tail.  Approval rides the
+        PROJECTED config.toml instead — where ``restricted`` SETS
+        ``approval_policy = "untrusted"`` explicitly, precisely because codex's
+        OWN default approval policy is not documented in 0.141.0's local help
+        and must not be relied on.
+        """
         sb = CodexTarget().descriptor.safe_bypass
         assert sb is not None
         assert sb.channel == Channel.FLAG
-        assert sb.flag == ("--dangerously-bypass-approvals-and-sandbox",)
         assert sb.env_var == ""
-        # codex persists auto_approve uniformly (2026-06-27 collapse ruling): the
-        # persisted default is redeemed via setting_key="auto_approve".
-        assert sb.setting_key == "auto_approve"
+        assert sb.full.flag == ("--dangerously-bypass-approvals-and-sandbox",)
+        assert sb.editing.flag == ("-s", "workspace-write")
+        assert sb.restricted.flag == ()
+        assert sb.rendered_tiers() == ("restricted", "editing", "full")
+        # Never emitted (D-7) — and NOT because they are absent or undocumented.
+        # Verified on 0.141.0 (2026-08-02): neither is listed in ``codex --help``
+        # or ``codex exec --help``, yet BOTH parse (``--yolo`` top-level,
+        # ``--full-auto`` on ``exec``), and OpenAI's docs reference ``--yolo`` in
+        # ordinary prose usage. We emit
+        # ``--dangerously-bypass-approvals-and-sandbox`` because it is the
+        # explicit, self-describing spelling that IS in ``--help`` with an
+        # unambiguous description — the emitted argv says what it does.
+        for tier in ("restricted", "editing", "full"):
+            assert "--full-auto" not in sb.row(tier).flag
+            assert "--yolo" not in sb.row(tier).flag
+        # codex persists the tier uniformly (2026-06-27 collapse ruling carried
+        # over to ``access``): redeemed via setting_key="access".
+        assert sb.setting_key == "access"
 
     def test_settings_model_flag(self):
         d = CodexTarget().descriptor
@@ -578,7 +607,7 @@ class TestInheritedDefaults:
 class TestDescriptorAssembly:
     """Integration: codex's argv/env assembled from the descriptor via assembly.*."""
 
-    def _argv(self, *, resume_mode=False, safe_off=True, state=None, extra_args=None, op=None):
+    def _argv(self, *, resume_mode=False, access="full", state=None, extra_args=None, op=None):
         d = CodexTarget().descriptor
         mode_key = assembly.resolve_mode(
             resume_mode=resume_mode,
@@ -593,7 +622,7 @@ class TestDescriptorAssembly:
         return assembly.assemble_argv(
             d,
             mode_fragment=d.mode[mode_key],
-            safe_mode_off=safe_off,
+            access=access,
             setting_values=state or {},
             op_fragment=d.operations[op].fragment if op is not None else None,
             extra_args=extra_args or [],
@@ -602,15 +631,15 @@ class TestDescriptorAssembly:
     def test_default_argv_is_continue(self):
         """Default launch resolves to continue-last -> ['resume', '--last'].
 
-        safe_off=False so the bypass flag does not appear.
+        The ``restricted`` tier, so the bypass flag does not appear.
         """
-        argv = self._argv(safe_off=False)
+        argv = self._argv(access="restricted")
         assert argv == ["resume", "--last"]
 
     def test_start_mode_is_empty(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            d, mode_fragment=d.mode["start"], access="restricted",
             setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == []
@@ -622,31 +651,52 @@ class TestDescriptorAssembly:
             extra_args=[], available_modes=d.mode.keys(),
         )
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode[mode_key], safe_mode_off=False,
+            d, mode_fragment=d.mode[mode_key], access="restricted",
             setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == []
 
-    def test_safe_off_adds_bypass_flag(self):
+    def test_full_tier_adds_bypass_flag(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=True,
+            d, mode_fragment=d.mode["start"], access="full",
             setting_values={}, op_fragment=None, extra_args=[],
         )
         assert argv == ["--dangerously-bypass-approvals-and-sandbox"]
 
-    def test_safe_on_no_bypass_flag(self):
+    def test_editing_tier_uses_the_sandbox_middle_step(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            d, mode_fragment=d.mode["start"], access="editing",
             setting_values={}, op_fragment=None, extra_args=[],
         )
+        assert argv == ["-s", "workspace-write"]
         assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+
+    def test_editing_tier_survives_the_exec_path(self):
+        """⚑ The exec constraint, pinned: `codex exec` REJECTS `-a`, so the
+        editing row must carry the sandbox flag ONLY.  This asserts the op path
+        (which shares the same tail) emits nothing codex exec would reject."""
+        d = CodexTarget().descriptor
+        argv = assembly.assemble_argv(
+            d, mode_fragment=None, access="editing", setting_values={},
+            op_fragment=d.operations["exec"].fragment, extra_args=["do it"],
+        )
+        assert argv == ["exec", "-s", "workspace-write", "do it"]
+        assert "-a" not in argv and "--ask-for-approval" not in argv
+
+    def test_restricted_tier_no_bypass_flag(self):
+        d = CodexTarget().descriptor
+        argv = assembly.assemble_argv(
+            d, mode_fragment=d.mode["start"], access="restricted",
+            setting_values={}, op_fragment=None, extra_args=[],
+        )
+        assert argv == []
 
     def test_model_flag_from_settings(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            d, mode_fragment=d.mode["start"], access="restricted",
             setting_values={"model": "gpt-5.5"}, op_fragment=None, extra_args=[],
         )
         assert argv == ["--model", "gpt-5.5"]
@@ -654,14 +704,14 @@ class TestDescriptorAssembly:
     def test_exec_op_argv(self):
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
-            d, mode_fragment=d.mode["start"], safe_mode_off=False,
+            d, mode_fragment=d.mode["start"], access="restricted",
             setting_values={}, op_fragment=d.operations["exec"].fragment, extra_args=["do the thing"],
         )
         assert argv == ["exec", "do the thing"]
 
     def test_env_carries_directive_final_slot(self):
         d = CodexTarget().descriptor
-        env = assembly.assemble_env(d, safe_mode_off=True, setting_values={"model": "gpt-5.5"})
+        env = assembly.assemble_env(d, access="full", setting_values={"model": "gpt-5.5"})
         # model is a FLAG (argv), not env; bypass is a flag.  The only
         # container_env is the instruction-delivery FINAL slot (codex's native
         # ~/.codex/AGENTS.md the box-start flattener writes the guide to).
@@ -687,34 +737,100 @@ class TestDeliverySeams:
             env_key="NAVIGATOR_API_KEY", model="gemma-4-31b-it",
         )
 
-    def test_panel_permissions_on_writes_approval_only(self, tmp_path):
+    def test_panel_permissions_full_writes_approval_never(self, tmp_path):
         import tomllib
         assert CodexTarget().deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
         assert data["approval_policy"] == "never"
         assert data["sandbox_mode"] == "danger-full-access"
         assert "hooks" not in data  # panel seam NEVER writes the hook/trust
 
-    def test_panel_permissions_off_writes_sandbox_invariant(self, tmp_path):
-        """sandbox_mode is a BOX INVARIANT: an OFF launch on an absent file still
-        writes ``danger-full-access`` (the panel app-server needs it regardless
-        of yolo), with no approval_policy (yolo-gated)."""
+    def test_panel_permissions_editing_writes_approval_on_request(self, tmp_path):
+        """The MIDDLE tier on the PROJECTED surface rides the APPROVAL axis.
+
+        ⚑ NOT ``sandbox_mode``: that key is a box INVARIANT
+        (``danger-full-access``) because the panel's app-server hangs attempting
+        a nested sandbox — so the CLI's ``-s workspace-write`` editing row has no
+        counterpart here.  ``on-request`` is verbatim from codex 0.141.0's
+        approval enum ("The model decides when to ask the user for approval").
+        """
         import tomllib
         assert CodexTarget().deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="editing",
+        ) is True
+        data = tomllib.loads(self._config(tmp_path).read_text())
+        assert data["approval_policy"] == "on-request"
+        assert data["sandbox_mode"] == "danger-full-access"
+
+    def test_panel_permissions_restricted_writes_both_managed_keys(self, tmp_path):
+        """A ``restricted`` launch on an absent file writes BOTH managed keys.
+
+        ``sandbox_mode`` is the BOX INVARIANT (``danger-full-access`` at every
+        tier — the panel app-server needs it), and ``approval_policy`` is SET to
+        ``untrusted``.  It used to be left ABSENT, which handed the tier to
+        codex's own undocumented default while the sandbox was forced open."""
+        import tomllib
+        assert CodexTarget().deliver_panel_permissions(
+            config_root=tmp_path, access="restricted",
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
         assert data["sandbox_mode"] == "danger-full-access"
-        assert "approval_policy" not in data
+        assert data["approval_policy"] == "untrusted"
         assert "hooks" not in data
+
+    def test_panel_permissions_restricted_replaces_a_stale_editing_value(
+        self, tmp_path,
+    ):
+        """editing → restricted must not leave the ``on-request`` WE wrote.
+
+        It is REPLACED (with ``untrusted``), not removed: replacing keeps the
+        three tiers mutually distinct on this surface, where a removal left
+        ``restricted`` byte-indistinguishable from "kanibako never ran here"."""
+        import tomllib
+        t = CodexTarget()
+        t.deliver_panel_permissions(config_root=tmp_path, access="editing")
+        assert t.deliver_panel_permissions(
+            config_root=tmp_path, access="restricted",
+        ) is True
+        data = tomllib.loads(self._config(tmp_path).read_text())
+        assert data["approval_policy"] == "untrusted"
+        assert data["sandbox_mode"] == "danger-full-access"
+
+    def test_panel_permissions_restricted_overwrites_a_user_chosen_value(
+        self, tmp_path,
+    ):
+        """kanibako OWNS ``approval_policy`` — a user value is REPLACED.
+
+        ⚑ This test used to assert the OPPOSITE (a value outside the managed set
+        survived ``restricted``, which then only cleared).  Now every tier SETS,
+        so the box's configured tier always wins.  The pre-state is
+        ``on-failure`` — a real enum member (help-marked DEPRECATED) that
+        kanibako never writes, so unambiguously a user's value."""
+        import tomllib
+        cfg = self._config(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text('approval_policy = "on-failure"\n')
+        CodexTarget().deliver_panel_permissions(
+            config_root=tmp_path, access="restricted",
+        )
+        data = tomllib.loads(cfg.read_text())
+        assert data["approval_policy"] == "untrusted"
+
+    def test_panel_permissions_unknown_tier_raises(self, tmp_path):
+        from kanibako.errors import ConfigError
+
+        with pytest.raises(ConfigError):
+            CodexTarget().deliver_panel_permissions(
+                config_root=tmp_path, access="bogus",
+            )
 
     def test_directive_hook_writes_hook_trust_never_approval(self, tmp_path):
         import tomllib
         from kanibako.settings.settings_resolve import GUEST_HOME
         assert CodexTarget().deliver_directive_hook(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
         # hook + GUEST_HOME-derived trust literals (directive group 0 + the
@@ -728,7 +844,7 @@ class TestDeliverySeams:
         assert (
             data["projects"][f"{GUEST_HOME}/workspace"]["trust_level"] == "trusted"
         )
-        # the split: even with auto_approve=True the directive write carries NO
+        # the split: even at the ``full`` tier the directive write carries NO
         # approval keys — those belong solely to deliver_panel_permissions.
         assert "approval_policy" not in data
         assert "sandbox_mode" not in data
@@ -736,7 +852,7 @@ class TestDeliverySeams:
     def test_directive_hook_threads_model_provider(self, tmp_path):
         import tomllib
         assert CodexTarget().deliver_directive_hook(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="restricted",
             model_provider=self._provider(),
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
@@ -750,14 +866,14 @@ class TestDeliverySeams:
         """Panel then directive (core call order), twice: second launch is a
         byte-level no-op — no writer fights the other."""
         t = CodexTarget()
-        t.deliver_panel_permissions(config_root=tmp_path, auto_approve=True)
-        t.deliver_directive_hook(config_root=tmp_path, auto_approve=True)
+        t.deliver_panel_permissions(config_root=tmp_path, access="full")
+        t.deliver_directive_hook(config_root=tmp_path, access="full")
         before = self._config(tmp_path).read_bytes()
         assert t.deliver_panel_permissions(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is False
         assert t.deliver_directive_hook(
-            config_root=tmp_path, auto_approve=True,
+            config_root=tmp_path, access="full",
         ) is False
         assert self._config(tmp_path).read_bytes() == before
 
@@ -773,7 +889,7 @@ class TestDeliverySeams:
             _SESSION_START_COMMAND,
         )
         assert CodexTarget().deliver_directive_hook(
-            config_root=tmp_path, auto_approve=False,
+            config_root=tmp_path, access="restricted",
         ) is True
         out = self._config(tmp_path).read_text()
         data = tomllib.loads(out)

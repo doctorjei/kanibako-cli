@@ -282,35 +282,38 @@ class CodexTarget(Target):
             return False
 
     def deliver_panel_permissions(
-        self, *, config_root: Path, auto_approve: bool,
+        self, *, config_root: Path, access: str,
     ) -> bool:
-        """Mirror the box's PERSISTED ``auto_approve`` into the managed
+        """Mirror the box's CASCADE-resolved ``access`` TIER into the managed
         ``approval_policy``/``sandbox_mode`` root keys of the box's in-box
         ``~/.codex/config.toml``.
 
         Codex approval/sandbox has NO VS Code settings key and the
         ``openai.chatgpt`` panel spawns its own in-box codex without kanibako's
         launch flags — this config.toml parity is the ONLY way the panel sees
-        the box's yolo.  The SOLE writer of those two keys (the directive-hook
+        the box's tier.  The SOLE writer of those two keys (the directive-hook
         write below is hook/trust/provider only).  ``approval_policy`` is
-        yolo-gated (ON SETs ``"never"``; OFF removes it only while it still
-        equals the managed value, preserving a user-chosen one); ``sandbox_mode``
-        is a BOX INVARIANT forced to ``"danger-full-access"`` ALWAYS (the
-        container is the sandbox, so the panel's app-server must not attempt a
-        nested one) — independent of *auto_approve*.  See
+        TIER-gated (``full`` → ``"never"``, ``editing`` → ``"on-request"``,
+        ``restricted`` → removed while it still equals a value WE manage,
+        preserving a user-chosen one); ``sandbox_mode`` is a BOX INVARIANT forced
+        to ``"danger-full-access"`` ALWAYS (the container is the sandbox, so the
+        panel's app-server must not attempt a nested one) — independent of
+        *access*.  ⚑ That invariant is why the panel's middle tier rides the
+        APPROVAL axis while the CLI's rides ``-s workspace-write``: writing
+        workspace-write here is the configuration that hangs the app-server.  See
         :func:`kanibako.vscode.vscode_config.seed_codex_approval`.
         """
         from kanibako.vscode.vscode_config import seed_codex_approval
 
         return seed_codex_approval(
-            config_root / ".codex" / "config.toml", auto_approve=auto_approve,
+            config_root / ".codex" / "config.toml", access=access,
         )
 
     def deliver_directive_hook(
         self,
         *,
         config_root: Path,
-        auto_approve: bool,
+        access: str,
         model_provider: "CodexModelProvider | None" = None,
     ) -> bool:
         """Seed the managed codex config.toml: the instruction-delivery
@@ -319,8 +322,7 @@ class CodexTarget(Target):
 
         NEVER the approval/sandbox keys — those belong to
         :meth:`deliver_panel_permissions` alone, so no managed key has two
-        writers (*auto_approve* is accepted per the seam contract but unused
-        here).  The box-side literals codex keys
+        writers (*access* is accepted per the seam contract but unused here).  The box-side literals codex keys
         its trust entries on (the in-box config path and workdir) are derived
         here from the core :data:`~kanibako.settings.settings_resolve.GUEST_HOME`
         constant: the workdir is the fixed container WORKDIR
@@ -587,8 +589,9 @@ class CodexTarget(Target):
           it is declared here only to make it a first-class SETTABLE + cascade-
           resolved behavior key (``config set``/``--effective``).
 
-        Safe-bypass is NOT a setting descriptor: it rides the uniform ``auto_approve``
-        key (the descriptor's ``safe_bypass.setting_key`` is ``auto_approve``),
+        The permission tier is NOT a setting descriptor: it rides the uniform
+        ``access`` key (the descriptor's ``safe_bypass.setting_key`` is
+        ``access``),
         persisted + cascade-resolved, default permissive; ``-A``/``-S`` override per
         launch.
         """

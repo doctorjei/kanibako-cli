@@ -18,14 +18,15 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.errors import ConfigError
 from kanibako.plugins.claude.target import ClaudeTarget
 from kanibako.targets import assembly
 from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 from kanibako.targets.base import AgentInstall
 
 
-# Claude crab default state: model=opus (generate_agent_config).  auto_approve is
-# UNSET here — the launch reader defaults it True (PERMISSIVE).
+# Claude crab default state: model=opus (generate_agent_config).  ``access`` is
+# UNSET here — the launch reader defaults it to the ``full`` tier (R-41).
 DEFAULT_STATE = {"model": "opus"}
 
 
@@ -42,26 +43,22 @@ def _start_argv(
 ) -> list[str]:
     """Reproduce start.py's descriptor argv assembly exactly.
 
-    Mirrors start.py: safe_off is resolved by ``effective_safe_mode_off`` from
+    Mirrors start.py: the launch TIER is resolved by ``effective_access`` from
     the per-launch -S (safe_mode) / -A (autonomous) flags plus the persisted
-    ``auto_approve`` bool key redeemed via ``safe_bypass.setting_key`` (coerced to
-    bool, DEFAULT True when unset).
+    ``access`` enum key redeemed via ``safe_bypass.setting_key`` (validated
+    against the enum, DEFAULT ``full`` when unset).
     """
-    from kanibako.settings.config import coerce_bool
-
     from kanibako.settings.settings_launch import meta_agent_grammar_floor
 
     sb = desc.safe_bypass
-    _aa = coerce_bool(
-        state.get(sb.setting_key)
-        if sb is not None and sb.setting_key
-        else None
-    )
-    auto_approve = True if _aa is None else _aa
-    safe_off = assembly.effective_safe_mode_off(
+    launch_access = assembly.effective_access(
         secure=safe_mode,
         autonomous=autonomous,
-        auto_approve=auto_approve,
+        access=(
+            state.get(sb.setting_key)
+            if sb is not None and sb.setting_key
+            else None
+        ),
     )
     # B5: mirror start.py — the launch grammar is MATERIALIZED into the keyspace
     # (the same single descriptor→keyspace builder the launch uses) and the
@@ -77,7 +74,7 @@ def _start_argv(
     return assembly.assemble_argv(
         desc,
         mode_fragment=mode_table[mode_key],
-        safe_mode_off=safe_off,
+        access=launch_access,
         setting_values=state,
         op_fragment=None,
         extra_args=extra_args,
@@ -265,26 +262,28 @@ class TestDescriptorArgv:
             assert a in argv
 
 
-class TestPersistedAutoApproveSafeBypass:
-    """The persisted ``auto_approve`` bool key (spec §2d) is LIVE for claude.
+class TestPersistedAccessTierClaude:
+    """The persisted ``access`` TIER key (spec §2d, R-41) is LIVE for claude.
 
-    safe_off is resolved by ``effective_safe_mode_off`` from the per-launch
-    -S/-A flags plus the redeemed ``auto_approve`` key (coerced to bool, DEFAULT
-    True when unset); the rows below are the documented behavior contract.
-    ``--dangerously-skip-permissions`` is the claude safe-bypass flag (FLAG-channel
+    The launch tier is resolved by ``effective_access`` from the per-launch
+    -S/-A flags plus the redeemed ``access`` key (validated against the enum,
+    DEFAULT ``full`` when unset); the rows below are the documented behavior
+    contract.  ``--dangerously-skip-permissions`` is claude's ``full`` row and
+    ``--permission-mode acceptEdits`` its ``editing`` row (FLAG-channel
     ``safe_bypass``).
     """
 
     BYPASS = "--dangerously-skip-permissions"
+    ACCEPT_EDITS = ("--permission-mode", "acceptEdits")
 
     def setup_method(self):
         self.desc = ClaudeTarget().descriptor
         assert self.desc is not None
 
-    def _argv(self, *, safe_mode, autonomous, auto_approve):
+    def _argv(self, *, safe_mode, autonomous, access):
         state = {"model": "opus"}
-        if auto_approve is not None:
-            state["auto_approve"] = auto_approve
+        if access is not None:
+            state["access"] = access
         return _start_argv(
             self.desc,
             safe_mode=safe_mode,
@@ -296,119 +295,198 @@ class TestPersistedAutoApproveSafeBypass:
             state=state,
         )
 
-    def test_default_permissive_includes_bypass(self):
-        """No -A/-S, auto_approve=true (default) -> bypass PRESENT (critical)."""
-        argv = self._argv(safe_mode=False, autonomous=False, auto_approve="true")
-        assert self.BYPASS in argv
+    def _has_edits(self, argv):
+        return any(
+            argv[i:i + 2] == list(self.ACCEPT_EDITS) for i in range(len(argv))
+        )
 
-    def test_secure_excludes_bypass_regardless_of_auto_approve(self):
-        """-S wins: bypass ABSENT even when auto_approve=true."""
-        argv = self._argv(safe_mode=True, autonomous=False, auto_approve="true")
+    def test_default_full_includes_bypass(self):
+        """No -S/-A, access=full (the default) -> bypass PRESENT (critical)."""
+        argv = self._argv(safe_mode=False, autonomous=False, access="full")
+        assert self.BYPASS in argv
+        assert not self._has_edits(argv)
+
+    def test_editing_emits_accept_edits_and_not_the_bypass(self):
+        """The MIDDLE tier: acceptEdits PRESENT, bypass ABSENT."""
+        argv = self._argv(safe_mode=False, autonomous=False, access="editing")
+        assert self._has_edits(argv)
         assert self.BYPASS not in argv
 
-    def test_autonomous_overrides_false(self):
-        """-A wins: bypass PRESENT even when auto_approve=false."""
-        argv = self._argv(safe_mode=False, autonomous=True, auto_approve="false")
-        assert self.BYPASS in argv
-
-    def test_false_excludes_bypass(self):
-        """No flags, auto_approve=false -> bypass ABSENT (persistent-safe)."""
-        argv = self._argv(safe_mode=False, autonomous=False, auto_approve="false")
+    def test_restricted_emits_neither(self):
+        """No flags, access=restricted -> nothing emitted (claude prompts)."""
+        argv = self._argv(safe_mode=False, autonomous=False, access="restricted")
         assert self.BYPASS not in argv
+        assert not self._has_edits(argv)
 
-    def test_unset_or_unknown_defaults_permissive(self):
-        """No flags, auto_approve unset/non-bool -> bypass PRESENT (default True)."""
-        argv_unset = self._argv(safe_mode=False, autonomous=False, auto_approve=None)
-        argv_stale = self._argv(safe_mode=False, autonomous=False, auto_approve="bogus")
-        assert self.BYPASS in argv_unset
-        assert self.BYPASS in argv_stale
+    def test_secure_flag_beats_every_stored_tier(self):
+        """-S wins from ANY stored tier -> restricted (nothing emitted)."""
+        for stored in ("restricted", "editing", "full"):
+            argv = self._argv(safe_mode=True, autonomous=False, access=stored)
+            assert self.BYPASS not in argv, stored
+            assert not self._has_edits(argv), stored
+
+    def test_autonomous_flag_beats_every_stored_tier(self):
+        """-A wins from ANY stored tier -> full (bypass present)."""
+        for stored in ("restricted", "editing", "full"):
+            argv = self._argv(safe_mode=False, autonomous=True, access=stored)
+            assert self.BYPASS in argv, stored
+
+    def test_unset_defaults_to_full(self):
+        """No flags, access unset -> bypass PRESENT (the ``full`` default)."""
+        assert self.BYPASS in self._argv(
+            safe_mode=False, autonomous=False, access=None,
+        )
+
+    def test_unknown_stored_value_is_refused_not_permissive(self):
+        """⚑ THE inversion vs the retired boolean: a junk value used to
+        ``coerce_bool`` to None and fall back to PERMISSIVE.  It now RAISES."""
+        with pytest.raises(ConfigError):
+            self._argv(safe_mode=False, autonomous=False, access="bogus")
 
 
-def _safe_off_for(desc, *, secure, autonomous, persisted):
-    """Mirror start.py's launch read: coerce the persisted ``auto_approve``
-    (DEFAULT True when unset/non-bool) then resolve the effective safe-off."""
-    from kanibako.settings.config import coerce_bool
-
+def _launch_tier(desc, *, secure, autonomous, persisted):
+    """Mirror start.py's launch read: validate the persisted ``access``
+    (DEFAULT ``full`` when unset) then fold in the per-launch flags."""
     sb = desc.safe_bypass
-    _aa = coerce_bool(persisted if sb is not None and sb.setting_key else None)
-    auto_approve = True if _aa is None else _aa
-    return assembly.effective_safe_mode_off(
-        secure=secure, autonomous=autonomous, auto_approve=auto_approve,
+    return assembly.effective_access(
+        secure=secure,
+        autonomous=autonomous,
+        access=persisted if sb is not None and sb.setting_key else None,
     )
 
 
-class TestUniformAutoApproveAcrossAgents:
-    """``auto_approve`` is a UNIFORM persisted key across all 3 shipped agents:
-    each descriptor redeems it via ``safe_bypass.setting_key == "auto_approve"``
-    (claude/codex FLAG channel, goose ENV channel).  Proves the persisted value
-    drives per-agent emission and that ``-A``/``-S`` override it."""
+class TestUniformAccessAcrossAgents:
+    """``access`` is a UNIFORM persisted key across all 3 shipped agents: each
+    descriptor redeems it via ``safe_bypass.setting_key == "access"``
+    (claude/codex FLAG channel, goose ENV channel).  This class is the
+    3 tiers × 3 agents half of the R-41 matrix on the EPHEMERAL (argv/env)
+    consumer; the projected-surface half lives in the panel-delivery tests."""
 
-    def test_all_descriptors_redeem_auto_approve(self):
+    def test_all_descriptors_redeem_access(self):
         from kanibako.plugins.codex.target import CodexTarget
         from kanibako.plugins.goose.target import GooseTarget
 
         for T in (ClaudeTarget, CodexTarget, GooseTarget):
             sb = T().descriptor.safe_bypass
-            assert sb is not None and sb.setting_key == "auto_approve"
+            assert sb is not None and sb.setting_key == "access"
 
-    def _flag_present(self, desc, flag, *, secure, autonomous, persisted):
-        off = _safe_off_for(
+    def _argv_at(self, desc, *, secure=False, autonomous=False, persisted=None):
+        tier = _launch_tier(
             desc, secure=secure, autonomous=autonomous, persisted=persisted,
         )
-        argv = assembly.assemble_argv(
-            desc, mode_fragment=desc.mode["start"], safe_mode_off=off,
+        return assembly.assemble_argv(
+            desc, mode_fragment=desc.mode["start"], access=tier,
             setting_values={}, extra_args=[],
         )
-        return flag in argv
 
-    def test_claude_flag_gated_by_auto_approve(self):
+    def test_claude_rows_per_tier(self):
         desc = ClaudeTarget().descriptor
-        flag = "--dangerously-skip-permissions"
-        # persisted false, no flags -> ABSENT (safe)
-        assert not self._flag_present(
-            desc, flag, secure=False, autonomous=False, persisted="false")
-        # unset -> default permissive -> PRESENT
-        assert self._flag_present(
-            desc, flag, secure=False, autonomous=False, persisted=None)
-        # -A overrides persisted false -> PRESENT
-        assert self._flag_present(
-            desc, flag, secure=False, autonomous=True, persisted="false")
+        bypass = "--dangerously-skip-permissions"
+        assert self._argv_at(desc, persisted="full") == [bypass]
+        assert self._argv_at(desc, persisted="editing") == [
+            "--permission-mode", "acceptEdits",
+        ]
+        assert self._argv_at(desc, persisted="restricted") == []
+        # unset -> the ``full`` default
+        assert self._argv_at(desc, persisted=None) == [bypass]
+        # -A overrides a stored restricted -> full; -S overrides a stored full.
+        assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
+        assert self._argv_at(desc, secure=True, persisted="full") == []
 
-    def test_codex_flag_gated_by_auto_approve(self):
+    def test_codex_rows_per_tier(self):
         from kanibako.plugins.codex.target import CodexTarget
 
         desc = CodexTarget().descriptor
-        flag = "--dangerously-bypass-approvals-and-sandbox"
-        assert not self._flag_present(
-            desc, flag, secure=False, autonomous=False, persisted="false")
-        assert self._flag_present(
-            desc, flag, secure=False, autonomous=False, persisted=None)
-        assert self._flag_present(
-            desc, flag, secure=False, autonomous=True, persisted="false")
-        # -S overrides persisted true -> ABSENT
-        assert not self._flag_present(
-            desc, flag, secure=True, autonomous=False, persisted="true")
+        bypass = "--dangerously-bypass-approvals-and-sandbox"
+        assert self._argv_at(desc, persisted="full") == [bypass]
+        # ⚑ The editing row is the VERIFIED sandbox enum's middle step. The
+        # approval flag is deliberately NOT emitted: `-a` does not exist on
+        # `codex exec`, which shares this argv tail.
+        assert self._argv_at(desc, persisted="editing") == ["-s", "workspace-write"]
+        assert "-a" not in self._argv_at(desc, persisted="editing")
+        assert "--ask-for-approval" not in self._argv_at(desc, persisted="editing")
+        assert self._argv_at(desc, persisted="restricted") == []
+        assert self._argv_at(desc, persisted=None) == [bypass]
+        assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
+        assert self._argv_at(desc, secure=True, persisted="full") == []
 
-    def test_goose_env_gated_by_auto_approve(self):
+    def test_codex_never_emits_the_alias_bypass_flags(self):
+        """``--yolo`` / ``--full-auto`` are never emitted (D-7).
+
+        ⚑ NOT because they are absent or undocumented — that justification was
+        false. Verified on codex-cli 0.141.0 (2026-08-02): neither is listed in
+        ``codex --help`` / ``codex exec --help``, but BOTH parse (``--yolo`` at
+        the top level, ``--full-auto`` on ``exec``), and OpenAI's own docs
+        reference ``--yolo`` in ordinary prose usage — it is a real user-facing
+        spelling.
+
+        The reason is positive: ``--dangerously-bypass-approvals-and-sandbox``
+        IS in ``--help`` with an unambiguous description, so the argv kanibako
+        emits says what it does to anyone reading a log or a process list. This
+        test pins the BEHAVIOUR (which is unchanged); only its justification
+        was wrong.
+        """
+        from kanibako.plugins.codex.target import CodexTarget
+
+        desc = CodexTarget().descriptor
+        for tier in ("restricted", "editing", "full"):
+            argv = self._argv_at(desc, persisted=tier)
+            assert "--full-auto" not in argv
+            assert "--yolo" not in argv
+
+    def test_goose_env_per_tier(self):
         from kanibako.plugins.goose.target import GooseTarget
 
         desc = GooseTarget().descriptor
 
-        def _mode(*, secure, autonomous, persisted):
-            off = _safe_off_for(
-                desc, secure=secure, autonomous=autonomous, persisted=persisted)
+        def _mode(*, secure=False, autonomous=False, persisted=None):
+            tier = _launch_tier(
+                desc, secure=secure, autonomous=autonomous, persisted=persisted,
+            )
             return assembly.assemble_env(
-                desc, safe_mode_off=off, setting_values={},
+                desc, access=tier, setting_values={}, agent="goose",
             )["GOOSE_MODE"]
 
-        # persisted false, no flags -> approve (SAFE)
-        assert _mode(secure=False, autonomous=False, persisted="false") == "approve"
-        # unset -> default permissive -> auto
-        assert _mode(secure=False, autonomous=False, persisted=None) == "auto"
-        # -A overrides persisted false -> auto
-        assert _mode(secure=False, autonomous=True, persisted="false") == "auto"
-        # -S overrides persisted true -> approve
-        assert _mode(secure=True, autonomous=False, persisted="true") == "approve"
+        assert _mode(persisted="restricted") == "approve"
+        assert _mode(persisted="full") == "auto"
+        # unset -> the ``full`` default
+        assert _mode(persisted=None) == "auto"
+        # -A overrides a stored restricted; -S overrides a stored full.
+        assert _mode(autonomous=True, persisted="restricted") == "auto"
+        assert _mode(secure=True, persisted="full") == "approve"
+
+    def test_goose_editing_is_REFUSED_never_substituted(self):
+        """The B7b goose ruling, on the ENV consumer.
+
+        ⚑ Non-vacuous in the dangerous direction: goose's UNSET GOOSE_MODE is
+        ``auto``, so a fall-through (emitting nothing) would deliver the FULL
+        bypass under the name ``editing``.
+        """
+        from kanibako.plugins.goose.target import GooseTarget
+
+        desc = GooseTarget().descriptor
+        with pytest.raises(ConfigError) as exc:
+            assembly.assemble_env(
+                desc, access="editing", setting_values={}, agent="goose",
+            )
+        msg = str(exc.value)
+        assert "editing" in msg and "goose" in msg
+        assert "restricted | full" in msg
+
+    def test_only_goose_lacks_the_editing_row(self):
+        """The refusal is goose-SPECIFIC, not a blanket middle-tier hole."""
+        from kanibako.plugins.codex.target import CodexTarget
+        from kanibako.plugins.goose.target import GooseTarget
+
+        assert ClaudeTarget().descriptor.safe_bypass.rendered_tiers() == (
+            "restricted", "editing", "full",
+        )
+        assert CodexTarget().descriptor.safe_bypass.rendered_tiers() == (
+            "restricted", "editing", "full",
+        )
+        assert GooseTarget().descriptor.safe_bypass.rendered_tiers() == (
+            "restricted", "full",
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -423,14 +501,14 @@ class TestDescriptorEnv:
 
     def test_carries_autoupdater_and_telemetry(self):
         env = assembly.assemble_env(
-            self.desc, safe_mode_off=True, setting_values=DEFAULT_STATE,
+            self.desc, access="full", setting_values=DEFAULT_STATE,
         )
         assert env["DISABLE_AUTOUPDATER"] == "1"
         assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
 
     def test_env_present_in_secure_mode_too(self):
         env = assembly.assemble_env(
-            self.desc, safe_mode_off=False, setting_values=DEFAULT_STATE,
+            self.desc, access="restricted", setting_values=DEFAULT_STATE,
         )
         assert env["DISABLE_AUTOUPDATER"] == "1"
         assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
@@ -441,7 +519,7 @@ class TestDescriptorEnv:
         target = ClaudeTarget()
         _, legacy_env = target.apply_state(DEFAULT_STATE)
         new_env = assembly.assemble_env(
-            target.descriptor, safe_mode_off=True, setting_values=DEFAULT_STATE,
+            target.descriptor, access="full", setting_values=DEFAULT_STATE,
         )
         for k, v in legacy_env.items():
             assert new_env.get(k) == v
