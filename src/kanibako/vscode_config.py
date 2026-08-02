@@ -35,11 +35,23 @@ would not be visible if it did:
   scan catches a failed plugin import and logs it at ``logger.debug``.
 
 The real behaviour is safer than the claim but arrives by a different route: the
-old wheel also ships the old ``claude-defaults.yaml``, whose pre-R-41
-``safe_bypass:`` block has no ``tiers:``, so its descriptor loads with ZERO
-access rows and the launch's un-rendered-tier gate REFUSES before any delivery
-(:func:`kanibako.targets.assembly.access_row`, which diagnoses a zero-row surface
-as plugin version skew BY NAME).  The same release also changes
+old wheel also ships the old ``claude-defaults.yaml``, which spells the
+access-tier block with the RETIRED key ``safe_bypass:`` (renamed to
+``access_realization:`` in this release).  That key is REFUSED BY NAME at
+descriptor load (:func:`kanibako.settings.agent_defaults.load_descriptor`), and
+the plugin builds its descriptor at MODULE scope — so an old wheel installed the
+normal way (an entry point) raises out of ``discover_targets`` uncaught, which is
+loud.  Under the bind-mount ``kanibako.plugins.*`` fallback the same raise is
+swallowed at ``logger.debug`` and the plugin is simply ABSENT (the launch falls
+back to ``NoAgentTarget`` — no agent runs).  Either way nothing launches with an
+unrealized permission surface, which is the property that matters.
+
+⚑ Before that rename the same wheel was caught one step later instead: the
+pre-R-41 block has no ``tiers:``, so the descriptor loaded with ZERO access rows
+and the launch's un-rendered-tier gate refused before any delivery
+(:func:`kanibako.targets.assembly.access_row`, which still diagnoses a zero-row
+surface as plugin version skew BY NAME — reachable now for a wheel that adopted
+the new KEY with the old BODY).  The same release also changes
 ``Target.deliver_panel_permissions`` to take ``access=``, so such a wheel is
 substantively incompatible either way; a GENERIC plugin-version-skew error is the
 follow-up release's ruled mechanism, not this shim's.

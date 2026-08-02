@@ -2694,7 +2694,7 @@ def _run_container(
                 #
                 #  * ``cascade_access`` — the box's stored ``access`` key
                 #    (``agent.default.access | full``; every shipped descriptor
-                #    sets safe_bypass.setting_key="access"), validated against the
+                #    sets access_realization.setting_key="access"), validated against the
                 #    enum and DEFAULTING to ``full`` when unset. This is what the
                 #    PROJECTED surfaces get: they are written into the box's own
                 #    agent config files and OUTLIVE this launch, so an ephemeral
@@ -2704,7 +2704,7 @@ def _run_container(
                 #    ``-S``/``-A`` folded in (``-S`` ⇒ restricted, ``-A`` ⇒ full).
                 #    This is what the ARGV/ENV get, and only they.
                 #
-                # An agent whose descriptor declares no safe_bypass.setting_key
+                # An agent whose descriptor declares no access_realization.setting_key
                 # falls back to the ``full`` default, as before.
                 #
                 # ⚑ UN-RENDERED TIER GATE, before ANY delivery. Both tiers are
@@ -2713,10 +2713,10 @@ def _run_container(
                 # best-effort and would SWALLOW the refusal, leaving the box
                 # running at a tier the user did not ask for (goose has no
                 # ``editing`` realization — the case this exists for).
-                sb = desc.safe_bypass
+                ar = desc.access_realization
                 cascade_access = assembly.resolve_access_tier(
-                    effective_state.get(sb.setting_key)
-                    if sb is not None and sb.setting_key
+                    effective_state.get(ar.setting_key)
+                    if ar is not None and ar.setting_key
                     else None
                 )
                 launch_access = assembly.effective_access(

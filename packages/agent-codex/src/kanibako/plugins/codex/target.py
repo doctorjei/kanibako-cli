@@ -80,7 +80,7 @@ _NPM_ROOT_TIMEOUT = 10
 # :mod:`kanibako.settings.agent_defaults` loader — the file documents each non-obvious
 # field (codex 0.140.0): the bare ``codex`` / ``codex resume --last`` mode
 # grammar; the ``codex exec`` op; the FLAG
-# ``--dangerously-bypass-approvals-and-sandbox`` per-launch-only safe-bypass; the
+# ``--dangerously-bypass-approvals-and-sandbox`` ``full`` access realization; the
 # ``--model`` FLAG; the single SYNC ``.codex/auth.json`` cred file (filtered=False
 # wholesale copy, an E2E gate); and the ``.codex`` init dir.  The box-side binary
 # destination is fixed in the file; the CRITICAL host binary path is
@@ -590,7 +590,7 @@ class CodexTarget(Target):
           resolved behavior key (``config set``/``--effective``).
 
         The permission tier is NOT a setting descriptor: it rides the uniform
-        ``access`` key (the descriptor's ``safe_bypass.setting_key`` is
+        ``access`` key (the descriptor's ``access_realization.setting_key`` is
         ``access``),
         persisted + cascade-resolved, default permissive; ``-A``/``-S`` override per
         launch.

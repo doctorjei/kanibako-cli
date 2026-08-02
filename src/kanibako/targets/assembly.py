@@ -175,39 +175,49 @@ def access_row(
     descriptor: PluginDescriptor, tier: str, *, agent: str = "",
 ) -> "AccessTierRow | None":
     """The descriptor's realization of *tier*, or ``None`` when it declares no
-    ``safe_bypass`` at all (an agent with no permission surface).
+    ``access_realization`` at all (an agent with no permission surface).
 
-    RAISES when the descriptor HAS a ``safe_bypass`` but cannot render *tier* —
-    the un-rendered-tier rule: the launch stops and names the tiers this agent
-    CAN render, rather than substituting a neighbouring one.  Never silently
+    RAISES when the descriptor HAS an ``access_realization`` but cannot render
+    *tier* — the un-rendered-tier rule: the launch stops and names the tiers this
+    agent CAN render, rather than substituting a neighbouring one.  Never silently
     permissive, never silently stricter (goose's missing ``editing``: substituting
     ``auto`` would over-permit, substituting ``approve`` would deliver
     prompt-on-every-edit while reporting success — both are lies about what the
     user asked for).
 
-    ⚑ A descriptor that declares a ``safe_bypass`` with ZERO rows is diagnosed
-    SEPARATELY as PLUGIN VERSION SKEW, because that is what it actually is: a
-    harness with a permission surface always realizes at least one tier, so no
-    rows means the block was parsed from a plugin that predates the ``access``
-    tiers (the retired ``flag``/``secure_flag`` shape carries no ``tiers:`` and
-    loads to an empty :class:`SafeBypass`).  Reporting "this agent cannot render
-    that tier" there would blame the agent for an install problem and send the
-    user looking for a capability limit that does not exist.
+    ⚑ A descriptor that declares an ``access_realization`` with ZERO rows is
+    diagnosed SEPARATELY as PLUGIN VERSION SKEW, because that is what it actually
+    is: a harness with a permission surface always realizes at least one tier, so
+    no rows means the block was parsed from a plugin that predates the ``access``
+    tiers — the retired PRE-TIER BODY (``flag``/``secure_flag`` with no ``tiers:``)
+    loads to an empty :class:`AccessRealization`.  Reporting "this agent cannot
+    render that tier" there would blame the agent for an install problem and send
+    the user looking for a capability limit that does not exist.
+
+    ⚑ SPELLING, old vs new: the block is named ``access_realization:`` (this
+    release); it was named ``safe_bypass:`` before.  A descriptor still using the
+    OLD KEY never reaches here — it is refused at descriptor load by
+    :func:`~kanibako.settings.agent_defaults.load_descriptor`, because an unknown
+    descriptor key would otherwise be ignored and leave the agent with NO
+    permission surface at all.  So the only pre-tier shape that survives to this
+    point is the old BODY under the NEW key, which is what the message below
+    describes.
     """
-    sb = descriptor.safe_bypass
-    if sb is None:
+    ar = descriptor.access_realization
+    if ar is None:
         return None
-    row = sb.row(tier)
+    row = ar.row(tier)
     if row is None:
         who = f"'{agent}'" if agent else "this agent"
-        rendered = sb.rendered_tiers()
+        rendered = ar.rendered_tiers()
         if not rendered:
             raise ConfigError(
                 f"access tier '{tier}' cannot be delivered for {who}: its "
                 f"plugin declares a permission surface with NO tier rows at "
                 f"all. That is PLUGIN VERSION SKEW, not a limit of the agent — "
                 f"a kanibako-agent-* package published before the 'access' "
-                f"tiers declares the retired pre-tier safe_bypass shape, which "
+                f"tiers declares the retired PRE-TIER body (a realization block "
+                f"with no 'tiers:', formerly spelled 'safe_bypass:'), which "
                 f"carries no tiers. Upgrade the kanibako-agent-* packages to "
                 f"match the base (they are released together)."
             )
@@ -271,7 +281,7 @@ def assemble_argv(
        MUTUALLY EXCLUSIVE at this argv slot (spec §2d).
     2. Else if *mode_fragment* is set: the interactive mode fragment
        (``meta.agent.<a>.mode[mode_key]`` for the resolved *mode_key*).
-    3. If the descriptor's ``safe_bypass`` is FLAG-channel: emit the ``flag`` of
+    3. If the descriptor's ``access_realization`` is FLAG-channel: emit the ``flag`` of
        its row for the *access* TIER (R-41).  An EMPTY row emits nothing (the
        claude/codex ``restricted`` realization — their own default already
        prompts); a MISSING row RAISES (:func:`access_row` — the un-rendered-tier
@@ -292,8 +302,8 @@ def assemble_argv(
     elif mode_fragment is not None:
         argv.extend(mode_fragment)
 
-    sb = descriptor.safe_bypass
-    if sb is not None and sb.channel is Channel.FLAG:
+    ar = descriptor.access_realization
+    if ar is not None and ar.channel is Channel.FLAG:
         row = access_row(descriptor, access, agent=agent)
         if row is not None:
             argv.extend(row.flag)
@@ -320,7 +330,7 @@ def assemble_env(
 
     Starts from ``descriptor.container_env``, then:
 
-    * If the descriptor's ``safe_bypass`` is ENV-channel with an ``env_var``: set
+    * If the descriptor's ``access_realization`` is ENV-channel with an ``env_var``: set
       it to the ``env_value`` of the row for the *access* TIER (R-41; goose
       ``GOOSE_MODE=auto`` at ``full``, ``approve`` at ``restricted``).  An EMPTY
       row emits nothing; a MISSING row RAISES (:func:`access_row`).  ⚑ For an
@@ -336,11 +346,11 @@ def assemble_env(
     """
     env: dict[str, str] = dict(descriptor.container_env)
 
-    sb = descriptor.safe_bypass
-    if sb is not None and sb.channel is Channel.ENV and sb.env_var:
+    ar = descriptor.access_realization
+    if ar is not None and ar.channel is Channel.ENV and ar.env_var:
         row = access_row(descriptor, access, agent=agent)
         if row is not None and row.env_value:
-            env[sb.env_var] = row.env_value
+            env[ar.env_var] = row.env_value
 
     for s in descriptor.settings:
         if s.channel is Channel.ENV and s.env_var:

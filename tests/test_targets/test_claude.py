@@ -542,7 +542,7 @@ class TestSettingDescriptors:
 
     def test_access_is_not_a_declared_setting(self):
         # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting: it
-        # is the agent-scope enum key routed verbatim (safe_bypass.setting_key),
+        # is the agent-scope enum key routed verbatim (access_realization.setting_key),
         # redeemed + validated at launch.  ``auto_approve`` is RETIRED and must
         # not reappear on this surface either.
         t = ClaudeTarget()
@@ -693,17 +693,17 @@ class TestDescriptor:
         assert "exec" in d.operations
         assert d.operations["exec"].fragment == ("-p",)
 
-    def test_safe_bypass_access_rows(self):
+    def test_access_realization_access_rows(self):
         # The three VERIFIED claude rows (claude 2.1.220 --help: both
         # --dangerously-skip-permissions and --permission-mode acceptEdits).
-        sb = ClaudeTarget().descriptor.safe_bypass
-        assert sb is not None
-        assert sb.channel == Channel.FLAG
-        assert sb.setting_key == "access"
-        assert sb.full.flag == ("--dangerously-skip-permissions",)
-        assert sb.editing.flag == ("--permission-mode", "acceptEdits")
-        assert sb.restricted.flag == ()          # declared, emits nothing
-        assert sb.rendered_tiers() == ("restricted", "editing", "full")
+        ar = ClaudeTarget().descriptor.access_realization
+        assert ar is not None
+        assert ar.channel == Channel.FLAG
+        assert ar.setting_key == "access"
+        assert ar.full.flag == ("--dangerously-skip-permissions",)
+        assert ar.editing.flag == ("--permission-mode", "acceptEdits")
+        assert ar.restricted.flag == ()          # declared, emits nothing
+        assert ar.rendered_tiers() == ("restricted", "editing", "full")
 
     def test_settings_model(self):
         d = ClaudeTarget().descriptor

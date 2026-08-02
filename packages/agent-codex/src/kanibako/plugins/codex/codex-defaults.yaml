@@ -104,7 +104,7 @@ descriptor:
   # are name-only in local help (no per-value description); "writable workspace,
   # rest read-only" is plausible but UNVERIFIED — the bifrost matrix must confirm
   # the editing row.
-  safe_bypass:
+  access_realization:
     channel: flag
     setting_key: access
     tiers:

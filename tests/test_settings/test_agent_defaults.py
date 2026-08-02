@@ -315,8 +315,58 @@ class TestPersonaHostDirAdopt:
         assert agent_defaults.load_descriptor(package, filename).persona is None
 
 
+class TestRetiredSafeBypassKey:
+    """The pre-rename key ``safe_bypass:`` is REFUSED BY NAME, not ignored.
+
+    ``load_descriptor`` reads descriptor keys individually, so an unrecognized
+    one is simply never read.  For THIS key that silence is the dangerous
+    outcome, not the harmless one: the descriptor would load with
+    ``access_realization=None``, ``access_row`` would return ``None`` for every
+    tier, the un-rendered-tier gate would have nothing to check, and the agent
+    would launch with no permission emission at all — which on the ENV channel
+    IS the bypass (goose: unset ``GOOSE_MODE`` ⇒ ``auto``).
+
+    (Mutation: drop the guard → the descriptor loads clean with no realization
+    → a stale plugin silently runs permissive → RED here.)
+    """
+
+    def test_retired_key_is_refused_and_names_its_replacement(self, declfile):
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  safe_bypass:\n"
+            "    channel: env\n"
+            "    env_var: PROBE_MODE\n"
+            "    setting_key: access\n"
+            "    tiers:\n"
+            "      restricted: {env_value: approve}\n"
+            "      full: {env_value: auto}\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        msg = str(exc.value)
+        assert "safe_bypass" in msg          # names what is wrong
+        assert "access_realization" in msg   # ...and the cure
+        assert filename in msg               # ...and the file to fix
+
+    def test_new_key_still_loads(self, declfile):
+        """The guard keys off the RETIRED spelling only — the new one is fine."""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  access_realization:\n"
+            "    channel: env\n"
+            "    env_var: PROBE_MODE\n"
+            "    tiers:\n"
+            "      full: {env_value: auto}\n"
+        )
+        d = agent_defaults.load_descriptor(package, filename)
+        assert d.access_realization is not None
+        assert d.access_realization.rendered_tiers() == ("full",)
+
+
 class TestAccessRowChannelDiscipline:
-    """``safe_bypass.tiers`` rows are checked AGAINST THEIR CHANNEL at load.
+    """``access_realization.tiers`` rows are checked AGAINST THEIR CHANNEL at load.
 
     The dangerous asymmetry this class pins: an EMPTY row is legal on the FLAG
     channel (emit no flag — claude/codex ``restricted``) and ILLEGAL on the ENV
@@ -335,7 +385,7 @@ class TestAccessRowChannelDiscipline:
         package, filename = declfile(
             "descriptor:\n"
             "  command: [\"probe\"]\n"
-            "  safe_bypass:\n" + block
+            "  access_realization:\n" + block
         )
         return agent_defaults.load_descriptor(package, filename)
 
@@ -370,9 +420,9 @@ class TestAccessRowChannelDiscipline:
             "      restricted: {env_value: approve}\n"
             "      full: {env_value: auto}\n",
         )
-        assert d.safe_bypass is not None
-        assert d.safe_bypass.rendered_tiers() == ("restricted", "full")
-        assert d.safe_bypass.restricted.env_value == "approve"
+        assert d.access_realization is not None
+        assert d.access_realization.rendered_tiers() == ("restricted", "full")
+        assert d.access_realization.restricted.env_value == "approve"
 
     def test_flag_channel_still_allows_the_empty_row(self, declfile):
         """The claude/codex shape: an empty FLAG row means "emit nothing".
@@ -388,9 +438,9 @@ class TestAccessRowChannelDiscipline:
             "      restricted: {}\n"
             "      full: {flag: [\"--bypass\"]}\n",
         )
-        assert d.safe_bypass is not None
-        assert d.safe_bypass.restricted.flag == ()
-        assert d.safe_bypass.rendered_tiers() == ("restricted", "full")
+        assert d.access_realization is not None
+        assert d.access_realization.restricted.flag == ()
+        assert d.access_realization.rendered_tiers() == ("restricted", "full")
 
     def test_omitted_row_is_not_the_same_as_an_empty_one(self, declfile):
         """OMITTING a row on ENV is legal — that is the "cannot render" case."""
@@ -402,6 +452,6 @@ class TestAccessRowChannelDiscipline:
             "      restricted: {env_value: approve}\n"
             "      full: {env_value: auto}\n",
         )
-        assert d.safe_bypass is not None
-        assert d.safe_bypass.editing is None
-        assert d.safe_bypass.renders("editing") is False
+        assert d.access_realization is not None
+        assert d.access_realization.editing is None
+        assert d.access_realization.renders("editing") is False

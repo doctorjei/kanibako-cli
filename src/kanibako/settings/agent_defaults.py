@@ -47,6 +47,7 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.settings_keyspace import ACCESS_TIERS
 from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
+    AccessRealization,
     AccessTierRow,
     BindDefault,
     BindKind,
@@ -59,7 +60,6 @@ from kanibako.targets.base import (
     Operation,
     PersonaSpec,
     PluginDescriptor,
-    SafeBypass,
     SettingArg,
 )
 
@@ -150,23 +150,23 @@ def _build_access_row(
     unknown = set(body) - {"flag", "env_value"}
     if unknown:
         raise SettingsError(
-            f"safe_bypass.tiers.{tier}{where} declares unknown field(s) "
+            f"access_realization.tiers.{tier}{where} declares unknown field(s) "
             f"{sorted(unknown)}; a tier row carries only 'flag' (FLAG channel) "
             f"or 'env_value' (ENV channel)."
         )
     if channel is Channel.FLAG and body.get("env_value"):
         raise SettingsError(
-            f"safe_bypass.tiers.{tier}{where} sets 'env_value' but the "
+            f"access_realization.tiers.{tier}{where} sets 'env_value' but the "
             f"descriptor's channel is 'flag' — the value would never be emitted."
         )
     if channel is Channel.ENV and body.get("flag"):
         raise SettingsError(
-            f"safe_bypass.tiers.{tier}{where} sets 'flag' but the descriptor's "
+            f"access_realization.tiers.{tier}{where} sets 'flag' but the descriptor's "
             f"channel is 'env' — the flag would never be emitted."
         )
     if channel is Channel.ENV and not body.get("env_value"):
         raise SettingsError(
-            f"safe_bypass.tiers.{tier}{where} is DECLARED but empty on the 'env' "
+            f"access_realization.tiers.{tier}{where} is DECLARED but empty on the 'env' "
             f"channel: it would set no variable, and an unset permission "
             f"variable is the harness's own default — which on this channel is "
             f"the PERMISSIVE one. A tier this harness cannot realize must OMIT "
@@ -179,10 +179,10 @@ def _build_access_row(
     )
 
 
-def _build_safe_bypass(
+def _build_access_realization(
     raw: dict[str, Any] | None, *, source: str = "",
-) -> SafeBypass | None:
-    """Build the :class:`SafeBypass` access-tier realization from its block.
+) -> AccessRealization | None:
+    """Build the harness's :class:`AccessRealization` from its declarative block.
 
     ⚑ R-41: the block is now PER-TIER ROWS under ``tiers:`` (``restricted`` /
     ``editing`` / ``full``), not the old two-polarity ``flag``/``secure_flag`` +
@@ -205,12 +205,12 @@ def _build_safe_bypass(
     tiers_raw = raw.get("tiers") or {}
     if not isinstance(tiers_raw, dict):
         raise SettingsError(
-            f"safe_bypass.tiers{where} must be a mapping of tier name → row."
+            f"access_realization.tiers{where} must be a mapping of tier name → row."
         )
     unknown_tiers = set(tiers_raw) - set(ACCESS_TIERS)
     if unknown_tiers:
         raise SettingsError(
-            f"safe_bypass.tiers{where} declares unknown tier(s) "
+            f"access_realization.tiers{where} declares unknown tier(s) "
             f"{sorted(unknown_tiers)}; the permission tiers are "
             f"{' | '.join(ACCESS_TIERS)} (spec §2d)."
         )
@@ -221,7 +221,7 @@ def _build_safe_bypass(
         for tier in ACCESS_TIERS
         if tier in tiers_raw
     }
-    return SafeBypass(
+    return AccessRealization(
         channel=channel,
         env_var=raw.get("env_var", ""),
         restricted=rows.get("restricted"),
@@ -283,9 +283,28 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     The returned descriptor is byte-for-byte equivalent to the former hand-written
     one — box_dest ``$GUEST_HOME`` expressions are expanded and every enum field
     is mapped from its string name.
+
+    ⚑ The RETIRED key ``safe_bypass:`` is REFUSED by name.  Descriptor keys are
+    read individually (``desc.get(...)``), so an unrecognized one is simply not
+    read — and for THIS key that silence is dangerous rather than harmless: the
+    descriptor would load with NO ``access_realization``, the launch's
+    un-rendered-tier gate would have nothing to check, and the agent would run
+    with no permission emission at all.  On the ENV channel that IS the bypass
+    (goose: an unset ``GOOSE_MODE`` means ``auto``).  A renamed key must fail
+    loudly and name its replacement, never degrade quietly into permissive.
     """
     doc = _load_doc(package, filename)
     desc = doc.get("descriptor", {})
+
+    if "safe_bypass" in desc:
+        raise SettingsError(
+            f"{filename}: descriptor declares the RETIRED key 'safe_bypass'. "
+            f"The access-tier realization block is now 'access_realization' "
+            f"(same shape). Rename the key: left as-is it is an unknown "
+            f"descriptor key, so this agent would load with NO permission "
+            f"realization and launch with none emitted — which on the 'env' "
+            f"channel is the harness's own PERMISSIVE default."
+        )
 
     return PluginDescriptor(
         command=tuple(desc["command"]),
@@ -295,7 +314,9 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
             k: Operation(tuple(v["fragment"]))
             for k, v in desc.get("operations", {}).items()
         },
-        safe_bypass=_build_safe_bypass(desc.get("safe_bypass"), source=filename),
+        access_realization=_build_access_realization(
+            desc.get("access_realization"), source=filename,
+        ),
         settings=tuple(_build_setting_arg(s) for s in desc.get("settings", [])),
         persona=_build_persona(desc.get("persona")),
         container_env={

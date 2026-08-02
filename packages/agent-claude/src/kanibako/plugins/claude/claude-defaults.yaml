@@ -87,7 +87,7 @@ descriptor:
   #                 everything, so the empty row is the correct realization (and
   #                 it is byte-identical to the pre-R-41 `-S` behaviour, which
   #                 declared no secure_flag).
-  safe_bypass:
+  access_realization:
     channel: flag
     setting_key: access
     tiers:
