@@ -834,6 +834,32 @@ class TestWorksetWorkspacesResolved:
             "through resolve_workset_channelroot"
         )
 
+    def test_no_standalone_workspace_literal_join_remains_at_the_sites(self):
+        """Pins the ruled-10 follow-up (2026-08-02): the two STANDALONE
+        ``"workspace"`` composition sites — ``resolve_standalone_project``
+        (settings/paths.py) and the duplicate-to-standalone copy destination
+        (commands/box/_duplicate.py) — route through
+        ``resolve_workset_workspaces(standalone=True)``.  The ONLY allowed
+        spelling of the singular leaf is the resolver-module constant
+        ``_STANDALONE_WORKSPACE_LEAF``.  (A third hardcode remains in
+        commands/box/_lifecycle.py's convert-to-standalone consolidation —
+        outside the ruled two sites; not pinned here.)"""
+        import re
+
+        from tests.support.repo import REPO_ROOT
+
+        src = REPO_ROOT / "src" / "kanibako"
+        join_re = re.compile(r'/\s*"workspace"|"workspace"\s*/')
+        for rel in (
+            "settings/paths.py",
+            "commands/box/_duplicate.py",
+        ):
+            text = (src / rel).read_text(encoding="utf-8")
+            assert not join_re.search(text), (
+                f"literal standalone workspace join in {rel}; route it "
+                f"through resolve_workset_workspaces(standalone=True)"
+            )
+
 
 class TestWorksetSettingsFile:
     def test_identity_under_workset_meta(self, std, tmp_home):

@@ -56,11 +56,13 @@ BOXES_DIR_NAME = "boxes"
 # * ``workset.workspaces`` — spec §2c NAMED default ``@meta.workset.path/
 #   workspaces`` (PRIMARY declares ``<None>`` — primary boxes have EXTERNAL
 #   workspaces — but the synthesized default workset keeps composing the same
-#   leaf, today's behavior; STANDALONE's ``workspace`` arm lives in
-#   ``paths.resolve_standalone_project``, outside these resolvers).
+#   leaf, today's behavior; STANDALONE's default is the singular
+#   ``@meta.workset.path/workspace`` arm — the ``standalone=`` flag on
+#   :func:`resolve_workset_workspaces`, ruled 10, 2026-08-02).
 # * ``workset.channelroot`` — spec §2c ALL-WORKSETS default
 #   ``@meta.workset.path/channels`` (standalone: no workset channels).
 _WORKSPACES_LEAF = "workspaces"
+_STANDALONE_WORKSPACE_LEAF = "workspace"
 _CHANNELROOT_LEAF = "channels"
 
 
@@ -133,16 +135,23 @@ def _apply_workset_dir_repoint(
 
 def resolve_workset_workspaces(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, standalone: bool = False,
 ) -> Path:
     """Return the resolved ``workset.workspaces`` dir for a workset.
 
     Honors a set ``workset: {workspaces: …}`` in *workset_settings*; else the
     spec default ``@meta.workset.path/workspaces`` == ``<root>/workspaces``.
+
+    *standalone* selects the STANDALONE arm of the per-mode default table
+    (spec §2e / ruled 10, 2026-08-02): the degenerate one-box workset defaults
+    to the singular ``@meta.workset.path/workspace`` == ``<root>/workspace``.
+    The repoint SLOT is the same ``workset: {workspaces: …}`` key either way —
+    only the default formula varies by mode.
     """
     return _apply_workset_dir_repoint(
         workset_root,
         _workset_path_repoint(workset_settings, _WORKSPACES_LEAF),
-        _WORKSPACES_LEAF,
+        _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
     )
 
 

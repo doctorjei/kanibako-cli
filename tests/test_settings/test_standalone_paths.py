@@ -60,6 +60,29 @@ class TestResolveStandaloneProject:
         assert proj.project_path == project_dir.resolve() / "workspace"
         assert proj.metadata_path == project_dir.resolve()
 
+    def test_workspace_follows_root_relative_repoint(
+        self, std, config, project_dir,
+    ):
+        """A set ``workset: {workspaces: …}`` in the ROOT settings.yaml
+        repoints the standalone workspace (ruled 10, 2026-08-02: the spec's
+        "changeable from workset level").  A relative repoint anchors under
+        the root, matching the sibling workset dir-key resolvers."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        settings = project_dir.resolve() / "settings.yaml"
+        data = load_doc(settings)
+        data.setdefault("workset", {})["workspaces"] = "code"
+        dump_doc(settings, data)
+
+        proj = resolve_standalone_project(std, config, str(project_dir))
+        assert proj.project_path == project_dir.resolve() / "code"
+        # The other fixed positions are untouched by the repoint.
+        assert proj.metadata_path == project_dir.resolve()
+        assert proj.shell_path == project_dir.resolve() / "box_data" / "home"
+
     def test_initialize_creates_metadata_and_home(
         self, std, config, project_dir, credentials_dir,
     ):
