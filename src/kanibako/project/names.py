@@ -220,25 +220,43 @@ def resolve_name(
     names = _load(registry)
 
     # 1. Context-aware: if cwd is inside a registered workset, check its
-    #    projects first.
+    #    projects first.  "Inside" covers BOTH the workset root AND its resolved
+    #    ``workset.workspaces`` dir — an absolute repoint places the workspaces
+    #    dir OUTSIDE the root, and a cwd there is workset context too (the S-2
+    #    cwd-asymmetry).  The member consult reads the per-workset registry
+    #    ``boxes:`` membership FIRST (the authoritative name → workspace store,
+    #    honoring paths any composition epoch recorded — bifrost A0), then falls
+    #    back to a workspace subdir under the resolved composition.
     if cwd is not None:
+        from kanibako.project import workset_registry
+        from kanibako.project.workset import (
+            load_workset_settings_doc,
+            resolve_workset_workspaces,
+        )
+
         cwd_str = str(cwd.resolve())
         for ws_name, ws_root in names["worksets"].items():
-            if cwd_str == ws_root or cwd_str.startswith(ws_root + "/"):
-                # cwd is inside this workset — check if name matches a
-                # workspace subdir under the resolved ``workset.workspaces``
-                # (repoint honored — §3.3: real and USED).
-                from kanibako.project.workset import (
-                    load_workset_settings_doc,
-                    resolve_workset_workspaces,
-                )
-
-                ws_path = Path(ws_root)
-                candidate = resolve_workset_workspaces(
-                    ws_path, load_workset_settings_doc(ws_path)
-                ) / name
-                if candidate.is_dir():
-                    return str(candidate), "project"
+            ws_path = Path(ws_root)
+            settings_doc = load_workset_settings_doc(ws_path)
+            ws_workspaces = resolve_workset_workspaces(ws_path, settings_doc)
+            ws_workspaces_str = str(ws_workspaces)
+            inside = (
+                cwd_str == ws_root
+                or cwd_str.startswith(ws_root + "/")
+                or cwd_str == ws_workspaces_str
+                or cwd_str.startswith(ws_workspaces_str + "/")
+            )
+            if not inside:
+                continue
+            registry_path = workset_registry.resolve_workset_registry_path(
+                ws_path, settings_doc
+            )
+            registered = workset_registry.workset_box_path(registry_path, name)
+            if registered is not None:
+                return registered, "project"
+            candidate = ws_workspaces / name
+            if candidate.is_dir():
+                return str(candidate), "project"
 
     # 2. PRIMARY default-mode boxes (the primary per-workset membership — the
     #    store that succeeded the retired ``[projects]`` section, at the SAME
@@ -311,16 +329,28 @@ def resolve_qualified_name(
     if ws_name not in names["worksets"]:
         raise ProjectError(f"Unknown workset: '{ws_name}'")
 
+    from kanibako.project import workset_registry
     from kanibako.project.workset import (
         load_workset_settings_doc,
         resolve_workset_workspaces,
     )
 
     ws_root = Path(names["worksets"][ws_name])
-    # The resolved ``workset.workspaces`` (repoint honored — §3.3).
-    candidate = resolve_workset_workspaces(
-        ws_root, load_workset_settings_doc(ws_root)
-    ) / proj_name
+    settings_doc = load_workset_settings_doc(ws_root)
+    # Registered membership FIRST (the authoritative name → workspace store):
+    # a member keeps its REGISTERED path wherever a composition epoch put it —
+    # a ``workset.workspaces`` repoint must not orphan a pre-repoint member
+    # (bifrost A0).
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws_root, settings_doc
+    )
+    registered = workset_registry.workset_box_path(registry_path, proj_name)
+    if registered is not None:
+        return registered, ws_name
+    # Fallback: a workspace subdir under the resolved ``workset.workspaces``
+    # (repoint honored — §3.3) — e.g. an in-tree connect before its first start
+    # (no ``boxes:`` entry yet).
+    candidate = resolve_workset_workspaces(ws_root, settings_doc) / proj_name
     if not candidate.is_dir():
         raise ProjectError(
             f"Project '{proj_name}' not found in workset '{ws_name}'"

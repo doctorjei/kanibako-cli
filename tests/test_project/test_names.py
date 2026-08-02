@@ -298,6 +298,62 @@ class TestResolveName:
         with pytest.raises(ProjectError, match="Unknown"):
             resolve_name(registry, "not-a-member", cwd=tmp_path)
 
+    # -- Registered path is authoritative (bifrost A0 / S-2) ----------------
+
+    def test_cwd_context_resolves_stranded_member_after_repoint(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """Bifrost A0: a member registered under the OLD composition (in-root,
+        before a ``workset.workspaces`` repoint) still resolves by cwd context —
+        the step-1 consult reads the REGISTERED ``boxes:`` path, never
+        re-deriving from the CURRENT composition.  The same name is a member of
+        a SECOND workset, so a step-1 miss would fall through to step 4 and
+        raise Ambiguous — the mutation proof."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        box_ws = self._register_ws_member(registry, tmp_path, "ws-a", "dup")
+        self._register_ws_member(registry, tmp_path, "ws-b", "dup")
+        # Absolute repoint of ws-a AFTER the member was registered in-root.
+        ws_root = tmp_path / "ws-a"
+        doc = load_doc(ws_root / "settings.yaml") if (
+            ws_root / "settings.yaml"
+        ).is_file() else {}
+        doc.setdefault("workset", {})["workspaces"] = str(tmp_path / "pods-a")
+        dump_doc(ws_root / "settings.yaml", doc)
+
+        path, kind = resolve_name(registry, "dup", cwd=ws_root)
+        assert kind == "project"
+        assert Path(path).resolve() == box_ws.resolve()
+
+    def test_cwd_inside_external_repointed_workspaces_dir(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """S-2 (the cwd-context asymmetry): a cwd INSIDE an EXTERNAL repointed
+        ``workset.workspaces`` dir is workset context too — the step-1 gate no
+        longer requires cwd under the workset ROOT.  Again disambiguated
+        against a second workset's same-named member (a gate miss → step 4 →
+        Ambiguous → RED)."""
+        from kanibako.project import workset_registry
+        from kanibako.settings.config_io import dump_doc
+
+        external_pods = tmp_path / "external-pods"
+        member = external_pods / "dup"
+        member.mkdir(parents=True)
+        ws_root = tmp_path / "ws-a"
+        ws_root.mkdir()
+        dump_doc(
+            ws_root / "settings.yaml",
+            {"workset": {"workspaces": str(external_pods)}},
+        )
+        register_name(registry, "ws-a", str(ws_root), section="worksets")
+        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
+        workset_registry.register_workset_box(reg_path, "dup", member)
+        self._register_ws_member(registry, tmp_path, "ws-b", "dup")
+
+        path, kind = resolve_name(registry, "dup", cwd=member)
+        assert kind == "project"
+        assert Path(path).resolve() == member.resolve()
+
 
 # ---------------------------------------------------------------------------
 # resolve_qualified_name
@@ -327,6 +383,32 @@ class TestResolveQualifiedName:
 
         path, ws_name = resolve_qualified_name(registry, "myws/api")
         assert path == str(ws_root / "pods" / "api")
+        assert ws_name == "myws"
+
+    def test_qualified_resolves_stranded_member_after_repoint(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """Bifrost A0: ``workset/project`` consults the REGISTERED ``boxes:``
+        membership FIRST, so a member registered under the OLD composition
+        still resolves after an absolute ``workset.workspaces`` repoint (the
+        composed candidate no longer exists → the pre-fix code raised
+        "not found in workset")."""
+        from kanibako.project import workset_registry
+        from kanibako.settings.config_io import dump_doc
+
+        ws_root = tmp_path / "ws"
+        member = ws_root / "workspaces" / "api"
+        member.mkdir(parents=True)
+        register_name(registry, "myws", str(ws_root), section="worksets")
+        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
+        workset_registry.register_workset_box(reg_path, "api", member)
+        dump_doc(
+            ws_root / "settings.yaml",
+            {"workset": {"workspaces": str(tmp_path / "elsewhere")}},
+        )
+
+        path, ws_name = resolve_qualified_name(registry, "myws/api")
+        assert Path(path).resolve() == member.resolve()
         assert ws_name == "myws"
 
     def test_unknown_workset_raises(self, registry: Path) -> None:

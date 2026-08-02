@@ -1566,6 +1566,140 @@ class TestP7ConnectRegistry:
         assert proj.project_path == ws.workspaces_dir / "inproj"
 
 
+class TestA0RepointStrandedMembers:
+    """Bifrost A0 (2026-08-02, B2-ii-b): an absolute ``workset.workspaces``
+    repoint must NOT strand members registered under the OLD composition.
+
+    The per-workset registry's ``boxes:`` membership is the SOLE authoritative
+    name → workspace store: resolution trusts the REGISTERED path wherever a
+    composition epoch put it, never re-deriving membership from the CURRENT
+    composition.  The live defect: after the repoint, a pre-repoint in-tree
+    member vanished from ``list``, was unresolvable by bare name, and
+    unresolvable from INSIDE its own workspace dir ("Inside workset ... but not
+    in a specific project workspace") — data intact, box invisible.
+    """
+
+    def _setup(self, config_file, tmp_home):
+        """Named workset + IN-TREE member under the DEFAULT composition,
+        registered in ``boxes:`` (the first-start registration), THEN an
+        absolute ``workset.workspaces`` repoint to a dir outside the root
+        (the bifrost B2-ii shape)."""
+        from kanibako.project import workset_registry
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("b2ws", tmp_home / "worksets" / "b2ws", std)
+        internal = (ws.root / "workspaces" / "boxa").resolve()
+        add_project(ws, "boxa", internal, std)
+        # The first-start membership registration (in-tree members register at
+        # first launch; connect registers external ones at connect time).
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "settings.yaml"),
+        )
+        workset_registry.register_workset_box(registry_path, "boxa", internal)
+        # Absolute repoint AFTER the member exists, preserving workset.meta.
+        pods = (tmp_home / "b2pods").resolve()
+        pods.mkdir()
+        doc = load_doc(ws.root / "settings.yaml")
+        doc.setdefault("workset", {})["workspaces"] = str(pods)
+        dump_doc(ws.root / "settings.yaml", doc)
+        return config, std, ws, internal
+
+    def test_list_still_shows_stranded_member(self, config_file, tmp_home):
+        """Surface 1 (``kanibako list``): workspace presence is checked at the
+        REGISTERED path, so the member stays "ok" — not "missing" (which plain
+        ``list`` hides).  Mutation: re-derive from ``ws.workspaces_dir`` → RED."""
+        from kanibako.settings.paths import iter_workset_projects
+
+        config, std, _ws, _internal = self._setup(config_file, tmp_home)
+        rows = {name: plist for name, _w, plist in iter_workset_projects(std, config)}
+        assert ("boxa", "ok") in rows["b2ws"]
+
+    def test_bare_name_resolves_stranded_member(
+        self, config_file, tmp_home, monkeypatch
+    ):
+        """Surface 2 (bare name from outside): ``box info boxa``-shape resolution
+        lands on the REGISTERED workspace (pre-fix: the name resolved but the
+        location attribution died on "not in a specific project workspace")."""
+        config, std, _ws, internal = self._setup(config_file, tmp_home)
+        monkeypatch.chdir(tmp_home)  # outside any workset
+        proj = resolve_any_project(std, config, project_dir="boxa")
+        assert proj.mode is BoxMode.named
+        assert proj.name == "boxa"
+        assert proj.project_path.resolve() == internal
+        assert proj.group is not None and proj.group.name == "b2ws"
+
+    def test_resolve_from_inside_stranded_workspace(self, config_file, tmp_home):
+        """Surface 3 (cwd/location detection): resolving FROM the member's own
+        workspace dir — the live failure was this exact call erroring with
+        "Inside workset 'b2ws' but not in a specific project workspace"."""
+        config, std, _ws, internal = self._setup(config_file, tmp_home)
+        result = detect_project_mode(internal, std, config)
+        assert result.mode is BoxMode.named
+        proj = resolve_any_project(std, config, project_dir=str(internal))
+        assert proj.name == "boxa"
+        assert proj.project_path.resolve() == internal
+        # A SUBDIR of the stranded workspace resolves too (ancestor walk).
+        subdir = internal / "src"
+        subdir.mkdir()
+        proj2 = resolve_any_project(std, config, project_dir=str(subdir))
+        assert proj2.name == "boxa"
+        assert proj2.project_path.resolve() == internal
+
+    def test_find_connected_external_box_matches_stranded_member(
+        self, config_file, tmp_home
+    ):
+        """The narrowed skip: ONLY members under the CURRENT resolved
+        workspaces dir are excluded from the registry reverse index; a stranded
+        in-root member matches by its registered path.  Mutation: restore the
+        root-wide skip → ``None`` → RED."""
+        from kanibako.launch import box_resolve
+
+        _config, std, _ws, internal = self._setup(config_file, tmp_home)
+        owned = box_resolve.find_connected_external_box(internal, std)
+        assert owned is not None
+        assert owned.box_name == "boxa"
+        assert owned.workset_name == "b2ws"
+        assert Path(owned.box_path).resolve() == internal
+
+    def test_resolve_workset_project_uses_registered_path(
+        self, config_file, tmp_home
+    ):
+        """The workspace override sources the REGISTERED path by NAME — never
+        the CURRENT composition (``<pods>/boxa``)."""
+        from kanibako.project.workset import load_workset
+
+        config, std, ws, internal = self._setup(config_file, tmp_home)
+        ws_reloaded = load_workset(ws.root)  # captures the repoint
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws_reloaded), "boxa", std, config,
+            initialize=False,
+        )
+        assert proj.project_path.resolve() == internal
+        assert proj.project_path != ws_reloaded.workspaces_dir / "boxa"
+
+    def test_current_composition_member_still_skipped_by_external_index(
+        self, config_file, tmp_home
+    ):
+        """Keep-green guard: a member under the CURRENT resolved workspaces dir
+        stays owned by ordinary location detection — the narrowed skip still
+        excludes it from the reverse index (Test 5/6 semantics, post-repoint)."""
+        from kanibako.launch import box_resolve
+        from kanibako.project import workset_registry
+        from kanibako.settings.config_io import load_doc
+
+        _config, std, ws, _internal = self._setup(config_file, tmp_home)
+        pods_member = (tmp_home / "b2pods" / "boxb").resolve()
+        pods_member.mkdir()
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "settings.yaml"),
+        )
+        workset_registry.register_workset_box(registry_path, "boxb", pods_member)
+        assert box_resolve.find_connected_external_box(pods_member, std) is None
+
+
 # ---------------------------------------------------------------------------
 # P5a — create-then-resolve round-trip + create dual-register (new registries)
 # ---------------------------------------------------------------------------

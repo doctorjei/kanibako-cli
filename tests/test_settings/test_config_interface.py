@@ -1039,6 +1039,81 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert not msg.startswith("Error:"), msg
         assert load_doc(f)["workset"]["boxes"] == "/srv/boxes"
 
+    def test_set_workset_workspaces_lands_in_workset_table_as_string(
+        self, tmp_path
+    ):
+        """Bifrost A1: ``workset.workspaces`` is CLI-settable (manifest ``set:
+        cli+file``), routed to the ``workset:`` nested slot ``workspaces`` — a
+        real STRING path (NOT bool-coerced).  Pre-fix, the key was declared and
+        consumed live but refused by the verbs ("unknown config key"), forcing
+        a settings-file edit."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.workspaces", "/srv/pods", config_path=project_toml
+        )
+        assert msg.startswith("Set"), msg
+        data = load_doc(project_toml)
+        assert data["workset"]["workspaces"] == "/srv/pods"
+        assert isinstance(data["workset"]["workspaces"], str)
+
+    def test_set_workset_channelroot_lands_in_workset_table_as_string(
+        self, tmp_path
+    ):
+        """``workset.channelroot`` — the sibling resolved workset dir key
+        (§3.3), same route shape as ``workset.workspaces``."""
+        project_toml = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "workset.channelroot", "/srv/comms", config_path=project_toml
+        )
+        assert msg.startswith("Set"), msg
+        assert load_doc(project_toml)["workset"]["channelroot"] == "/srv/comms"
+
+    def test_set_workset_workspaces_read_back_by_the_live_resolver(
+        self, tmp_path
+    ):
+        """End-to-end with the CONSUMER: the slot ``config set`` writes is the
+        one ``resolve_workset_workspaces`` reads the repoint from — one
+        location, no drift."""
+        from pathlib import Path
+
+        from kanibako.project.workset import (
+            load_workset_settings_doc,
+            resolve_workset_workspaces,
+        )
+
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value(
+            "workset.workspaces", "/srv/pods", config_path=project_toml
+        )
+        assert resolve_workset_workspaces(
+            tmp_path, load_workset_settings_doc(tmp_path)
+        ) == Path("/srv/pods")
+
+    def test_reset_workset_workspaces_removes_it(self, tmp_path):
+        """Reset clears the workset-scope override (sparse store)."""
+        project_toml = tmp_path / "settings.yaml"
+        set_config_value(
+            "workset.workspaces", "/srv/pods", config_path=project_toml
+        )
+        reset_config_value(
+            "workset.workspaces", config_path=project_toml,
+            command_scope=ConfigLevel.workset,
+        )
+        assert "workspaces" not in load_doc(project_toml).get("workset", {})
+
+    def test_set_workset_workspaces_at_box_scope_refused(self, tmp_path):
+        """UPWARD from the box scope — refused like the sibling anchors (the
+        bifrost A1 probe was ``box set workset.workspaces``: it now refuses
+        with the DIRECTION cure, not "unknown config key")."""
+        f = tmp_path / "box-settings.yaml"
+        msg = set_config_value(
+            "workset.workspaces", "/srv/pods",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "workset" in msg and "box" in msg
+        assert not f.exists()
+
     def test_set_mode_rejected_not_settable(self, tmp_path):
         """``mode`` is no longer settable via config set (block B1, spec §2b /
         §0): the project mode is the RO identity anchor ``meta.box.mode``, set by
