@@ -76,9 +76,12 @@ class TestKanibakoLazyInit:
 
         ⚑ The env seed is a settings KEY now, not a file.  Lazy init used to
         write a docker-style ``<data>/env``; B9 (``77c4cf4``) retired that file
-        under Jei's RQ-1 re-ruling and replaced the seed with a declared
-        ``box.env.COLORTERM`` key in the system settings file.  Both halves are
-        asserted below — the file must be ABSENT, the key must be present.
+        under Jei's RQ-1 re-ruling and re-homed the seed to a declared
+        ``system.env.COLORTERM`` key in the system settings file, which
+        ``6e3d016`` then moved to ``box.env.COLORTERM`` — the scope that actually
+        describes the value (still written into the SAME system settings file, as
+        a downward table).  Both halves are asserted below — the file must be
+        ABSENT, the key must be present.
         """
         result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert result.returncode == 0, f"lazy init failed: {result.stderr}"
@@ -210,8 +213,10 @@ class TestKanibakoShell:
     ):
         """``<scope>.env.<VAR>`` reaches the box; the retired env FILE does not.
 
-        The full three-part RQ-1 contract (Jei's re-ruling, 2026-08-02; landed as
-        B9 ``77c4cf4``), proved end to end on a real container:
+        The full three-part RQ-1 contract (Jei's re-ruling, 2026-08-02), proved
+        end to end on a real container.  It landed across two commits: (a) and (b)
+        with B9 ``77c4cf4``, which retired the file and re-homed the seed; (c) with
+        ``ade2570``, which added the notice naming the retired files.
 
         (a) **the replacement works** — a var set through
             ``kanibako system set system.env.<VAR>`` is visible in the box.

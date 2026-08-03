@@ -265,7 +265,10 @@ def test_full_setup_non_tty_stale_templates_records_no_marker(
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     # No _stage_templates(): the store is stale, exactly like a 1.7.x upgrade.
     rc = setup_cmd.run_setup(_ns())
-    assert rc == 0
+    # ⚑ The EXIT STATUS carries the same claim the banner does: a run that
+    # recorded nothing is a failure for anything scripting it (`kanibako setup &&
+    # kanibako start`, `kanibako setup || exit 1`).
+    assert rc == 1
     cf, _ = _config_paths(tmp_home)
     assert read_setup_completed(cf) is None
     out = capsys.readouterr().out
@@ -296,6 +299,61 @@ def test_full_setup_non_tty_stale_templates_refresh_flag_cures(
     assert "Setup Complete" in capsys.readouterr().out
 
 
+def test_full_setup_tty_decline_completes_and_exits_zero(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """An INFORMED decline is a settled state: marker recorded, rc 0.
+
+    The rc follows the MARKER, not the refresh.  Declining at the prompt leaves
+    the store out of date by the user's own knowing choice, so the run is
+    complete — the withholding rc is reserved for the run that could not ask.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    # No _stage_templates(): the store is stale, so Step 5 reaches the prompt.
+    rc = setup_cmd.run_setup(_ns(agent="claude"))
+    assert rc == 0
+    cf, _ = _config_paths(tmp_home)
+    assert read_setup_completed(cf) == __version__
+    assert "Setup Complete" in capsys.readouterr().out
+
+
+def test_full_setup_marker_write_failure_is_incomplete_and_nonzero(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """⚑ A marker write that RAISES is a failed setup — banner and rc alike.
+
+    The realistic shape is a read-only ``~/.config`` on an upgraded 1.7.x host:
+    ``kanibako setup --refresh-templates`` refreshes the store, the marker write
+    then raises, and the ``except`` arm used to leave ``recorded`` TRUE.  stdout
+    printed "Setup Complete" and the command exited 0 while stderr said the
+    completion could not be recorded — and the next ``kanibako start`` hard-
+    blocked on the marker that was never written.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    def _boom():
+        raise OSError("Read-only file system")
+
+    monkeypatch.setattr(setup_cmd, "_write_setup_marker", _boom)
+    rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
+    assert rc == 1
+    cap = capsys.readouterr()
+    assert "Could not record setup completion" in cap.err
+    assert "Setup Complete" not in cap.out
+    assert "Setup Incomplete" in cap.out
+    # The cure must match the CAUSE: Step 5 settled here, so the "needs a
+    # terminal / pass --refresh-templates" advice would be simply wrong.
+    assert "writing the marker failed" in cap.out
+    assert "needs an informed choice" not in cap.out
+    cf, _ = _config_paths(tmp_home)
+    assert read_setup_completed(cf) is None
+
+
 # --- Step 2: binary-less shell agent ---------------------------------------
 
 
@@ -312,6 +370,9 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
     monkeypatch.setattr(
         "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
     )
+    # Step 5 is not this test's subject, and its outcome now gates both the marker
+    # and the RC — stage the templates so it reports CURRENT deterministically.
+    _stage_templates()
     rc = setup_cmd.run_setup(_ns(agent="no_agent"))
     assert rc == 0
     out = capsys.readouterr().out
@@ -356,13 +417,28 @@ def _staged_marker(std):
 def test_only_skipped_outcome_withholds_completion():
     """⚑ The marker gate: SKIPPED is the ONLY outcome that withholds completion.
 
-    Written as a set equality over the whole enum so a NEW outcome cannot inherit
-    either answer silently — adding a member forces an explicit decision here.
+    Pinned as a set equality in BOTH directions over the whole enum, which is what
+    makes "a NEW outcome cannot inherit either answer silently" true rather than
+    merely intended.  A single ``withholding == {SKIPPED}`` assertion does NOT
+    catch a new member: paired with the old negative property
+    (``self is not SKIPPED``) a new member landed in the RECORDING set, which that
+    assertion never looked at, so it passed — an unnoticed member would have
+    cleared the ``setup_compat_gate`` BCV block with a green suite.
+
+    With the property now a POSITIVE membership test, a new member fails here
+    whichever way it is introduced: left alone it falls into ``withholding``;
+    added to the property's recording set it falls into ``recording``.  Either
+    way it must be named below, which is the explicit decision this test forces.
     """
-    withholding = {
-        step for step in setup_cmd.TemplateStep if not step.records_completion
-    }
+    recording = {step for step in setup_cmd.TemplateStep if step.records_completion}
+    withholding = set(setup_cmd.TemplateStep) - recording
+
     assert withholding == {setup_cmd.TemplateStep.SKIPPED}
+    assert recording == {
+        setup_cmd.TemplateStep.REFRESHED,
+        setup_cmd.TemplateStep.CURRENT,
+        setup_cmd.TemplateStep.DECLINED,
+    }
 
 
 def test_template_step_forced_flag_applies(tmp_home, config_file):

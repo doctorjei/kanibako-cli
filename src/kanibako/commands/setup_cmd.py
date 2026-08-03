@@ -118,7 +118,10 @@ class TemplateStep(Enum):
     a settled state the user either got or knowingly chose".  Three of the four
     outcomes do; :attr:`SKIPPED` does not, because no informed choice is possible
     without a terminal.  :attr:`records_completion` is the one place that mapping
-    lives, so a new outcome must decide explicitly rather than inherit a default.
+    lives, and it names the recording outcomes POSITIVELY: a new member added here
+    withholds the marker until it is listed there, so the default is the safe
+    direction and the guard test (``test_only_skipped_outcome_withholds_completion``)
+    fails until the decision is made explicitly.
     """
 
     #: Packaged templates were copied into the system-owned staging.
@@ -137,11 +140,24 @@ class TemplateStep(Enum):
 
         ⚑ False for :attr:`SKIPPED` ONLY.  Withholding the marker is what keeps
         the ``setup_compat_gate`` BCV block erroring on an unmigrated store — the
-        backstop that makes "a new box seeds empty" unreachable.  Recording
-        completion for a run that silently skipped the template step would clear
-        that block against a store setup never touched.
+        backstop that makes "a new box seeds empty" unreachable WITHOUT an informed
+        decline.  (A decline reaches a byte-identical on-disk state by the user's
+        own knowing choice, and withholding is a no-op when the stored marker
+        already clears the gate.)  Recording completion for a run that silently
+        skipped the template step would clear that block against a store setup
+        never touched.
+
+        ⚑ The test is POSITIVE membership, not ``is not SKIPPED``: a negative test
+        makes every FUTURE member record completion by default, which is the unsafe
+        direction — a later ``FAILED`` arm would clear the BCV block with a green
+        suite.  Listing the recording outcomes means a new member withholds until
+        someone adds it here deliberately.
         """
-        return self is not TemplateStep.SKIPPED
+        return self in {
+            TemplateStep.REFRESHED,
+            TemplateStep.CURRENT,
+            TemplateStep.DECLINED,
+        }
 
 
 def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
@@ -325,7 +341,17 @@ def _select_agent_interactive(detected: list[tuple[str, str]]) -> str | None:
 
 
 def run_setup(args: argparse.Namespace) -> int:
-    """Run the interactive setup wizard."""
+    """Run the interactive setup wizard.
+
+    Returns ``0`` only when the run recorded the setup-completion marker.  A run
+    that withheld it — the non-TTY template SKIP, or a marker write that raised —
+    returns ``1``, the same refusal code every other blocked path in this CLI uses
+    (``ConfigError`` → rc 1 in :func:`kanibako.cli.main`, and Step 1's missing
+    runtime below).  Exiting 0 while printing "Setup Incomplete" would let
+    ``kanibako setup && kanibako start`` proceed and ``kanibako setup || exit 1``
+    report a success that did not happen — the automation-facing form of exactly
+    the false claim the marker gate exists to remove.
+    """
     print()
     print("Kanibako Setup")
     print("=" * 40)
@@ -419,18 +445,31 @@ def run_setup(args: argparse.Namespace) -> int:
     # ``setup_compat_gate``'s BCV hard block erroring on an unmigrated store.
     # Records the running build's version string.
     recorded = template_step.records_completion
+    write_failed = False
     if recorded:
         try:
             _write_setup_marker()
-        except Exception as e:  # pragma: no cover - defensive
+        except Exception as e:
             print(f"  [!!] Could not record setup completion: {e}", file=sys.stderr)
+            # The write IS the recording: if it raised, nothing was stored, and
+            # this run is incomplete exactly as a non-TTY skip is.  Leaving
+            # ``recorded`` true would print "Setup Complete" over a failed write
+            # and exit 0 — the banner would claim the very thing that just failed.
+            recorded = False
+            write_failed = True
 
     # Summary.  ⚑ The banner must not claim a completion that was not recorded.
     print("Setup Complete" if recorded else "Setup Incomplete")
     print("-" * 40)
     if selected is not None:
         print(f"  Default agent set to '{selected}'.")
-    if not recorded:
+    if write_failed:
+        # Distinct cause, distinct cure: the template step DID settle, so the
+        # terminal/`--refresh-templates` advice below would be simply wrong here.
+        print("  Setup completion was NOT recorded: writing the marker failed")
+        print("  (the error is on stderr above). Fix that, then re-run")
+        print("  `kanibako setup`.")
+    elif not recorded:
         print("  Setup completion was NOT recorded: the template step (Step 5)")
         print("  needs an informed choice it cannot get without a terminal.")
         print(
@@ -445,7 +484,9 @@ def run_setup(args: argparse.Namespace) -> int:
     print("  For a full health check: kanibako system diagnose")
     print()
 
-    return 0
+    # ⚑ The exit status carries the same claim the banner does: a run that
+    # recorded nothing is a FAILED setup for anything scripting it.
+    return 0 if recorded else 1
 
 
 def _run_agent_selection(args: argparse.Namespace) -> str | None:
