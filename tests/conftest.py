@@ -436,6 +436,15 @@ def start_mocks():
             _pw = Path(_store_tmp.name) / "primary_workset"
             proj.shell_path = _pw / "boxes" / "testproject" / "home"
             proj.shell_path.mkdir(parents=True, exist_ok=True)
+            # A REAL workspace path too.  The launch's workspace pre-flight calls
+            # ``proj.project_path.is_dir()`` (a MagicMock passes it vacuously),
+            # and the ephemeral shadowing-flag notice interpolates it into a
+            # COPY-PASTEABLE cure — under a MagicMock that cure would render as
+            # ``<MagicMock id=…>`` and a subject-less (wrong-box) cure would look
+            # identical to a correct one.  Tests that need it ABSENT override it
+            # (see test_start.py's missing-workspace gate).
+            proj.project_path = _pw / "workspaces" / "testproject"
+            proj.project_path.mkdir(parents=True, exist_ok=True)
             proj.name = "testproject"
             m_resolve_any.return_value = proj
 
