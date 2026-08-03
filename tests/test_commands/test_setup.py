@@ -33,7 +33,7 @@ def _templates_current():
 class TestSetupRuntime:
     """Step 1: container runtime detection."""
 
-    def test_setup_detects_runtime(self, setup_args, capsys):
+    def test_setup_detects_runtime(self, setup_args, capsys, tmp_path):
         """When a runtime is available, Step 1 shows [ok]."""
         with (
             patch(
@@ -44,13 +44,18 @@ class TestSetupRuntime:
                 "kanibako.targets.discover_targets",
                 return_value={},
             ),
+            patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+            _templates_current(),
         ):
             rc = run_setup(setup_args)
 
         captured = capsys.readouterr()
         assert "[ok]" in captured.out
         assert "podman" in captured.out
-        # No runtime → no early exit, but no agents either → returns 0
+        # A run with nothing to do still COMPLETES, and the rc follows the
+        # completion marker → 0.  (Step 5 is stubbed: unstubbed it would report
+        # SKIPPED or CURRENT depending on the developer's real template store,
+        # which would make this assertion host-dependent.)
         assert rc == 0
 
     def test_setup_no_runtime_exits_1(self, setup_args, capsys):
@@ -104,7 +109,7 @@ class TestSetupAgents:
         assert "[ok] Claude Code detected" in captured.out
         assert "You're ready to go" in captured.out
 
-    def test_setup_no_agents(self, setup_args, capsys):
+    def test_setup_no_agents(self, setup_args, capsys, tmp_path):
         """When no agent plugins are installed, it shows [!!]."""
         with (
             patch(
@@ -115,9 +120,12 @@ class TestSetupAgents:
                 "kanibako.targets.discover_targets",
                 return_value={},
             ),
+            patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+            _templates_current(),
         ):
             rc = run_setup(setup_args)
 
+        # No agents is a REPORT, not a refusal: the run still completes → rc 0.
         assert rc == 0
         captured = capsys.readouterr()
         assert "No agent plugins installed" in captured.out
@@ -174,7 +182,7 @@ class TestSetupParser:
 
         assert "setup" in _SUBCOMMANDS
 
-    def test_setup_skips_ensure_initialized(self):
+    def test_setup_skips_ensure_initialized(self, tmp_path):
         """'setup' should work even before kanibako is initialized."""
         # Verify the skip list includes 'setup' by checking main() behavior.
         # We test the condition directly rather than running main().
@@ -190,6 +198,12 @@ class TestSetupParser:
                 "kanibako.targets.discover_targets",
                 return_value={},
             ),
+            # Step 5 is stubbed (and the marker write redirected at tmp_path) so
+            # this stays a test OF the init skip: unstubbed, the rc would follow
+            # the developer's real template store and the marker would be written
+            # into the real config file.
+            patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+            _templates_current(),
             patch.object(
                 type(_ensure_initialized),
                 "__call__",

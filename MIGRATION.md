@@ -43,12 +43,15 @@ mount category, and `system.base_template`. Directory layouts also move, on the 
 inside boxes. In order of likely impact:
 
 1. **Your first `kanibako start` (or `create`, or `reauth`) after upgrading is a hard error
-   until you run `kanibako setup`.** The packaged templates changed, which trips the
-   template-staleness gate: `Error: kanibako's bundled templates changed since setup was last
-   run. Run 'kanibako setup' to update them.` (rc 1). This is deliberate — setup is what
-   installs the new host-store layout (§2.12). Run `kanibako setup` once, right after
-   upgrading. Headless: `kanibako setup --refresh-templates` (add `--agent <name>` to skip
-   the menu).
+   until you run `kanibako setup`.** v1.8.0 raises the setup baseline (`SETUP_BCV`), so the
+   `setup_completed` marker your v1.7.2 config recorded is too old for the running build and
+   the setup-compatibility gate hard-blocks: `Error: This kanibako config (1.7.2) is too old
+   to auto-update. Re-run 'kanibako setup' before agent commands.` (rc 1). This is deliberate
+   — setup is what installs the new host-store layout (§2.12). Run `kanibako setup` once,
+   right after upgrading. Headless: `kanibako setup --refresh-templates` (add
+   `--agent <name>` to skip the menu). ⚑ Pass `--refresh-templates` on a headless run: a
+   non-interactive setup that cannot ask about the template refresh deliberately records
+   nothing, prints `Setup Incomplete` and exits **rc 1**, so the block stays up (§2.12).
 
 2. **Your boxes will refuse to launch until you replace the agent-selection key.** Every box
    that ever chose an agent has `box.agent_name` stored; v1.8.0 refuses to launch such a box
@@ -364,12 +367,16 @@ and the box-home seed lives two levels down (`global/template/box/home/`). What 
 happens when you upgrade a store that still has `global/base_template/` (the sequence is
 forced, not optional):
 
-1. Your first `start` / `create` / `reauth` hits the template-staleness gate: a hard rc 1
-   error telling you to run `kanibako setup` (§2.12). You cannot create a box on the
-   unmigrated store, so the "new box seeds empty" hazard is **unreachable in practice**.
+1. Your first `start` / `create` / `reauth` hits the setup-compatibility gate: a hard rc 1
+   error telling you to run `kanibako setup` (§2.12). Setup is what rebuilds the template
+   store, and a setup run that could not rebuild it records no completion (§2.12), so the
+   gate keeps erroring: you cannot create a box on the unmigrated store, and the "new box
+   seeds empty" hazard is **unreachable without an informed decline**. The one way out is
+   the deliberate one — decline the refresh at the interactive prompt, which setup warns you
+   leaves the store "out of date … an unblessed state you're choosing knowingly".
 2. `kanibako setup` re-creates the NEW tree — `global/template/{box,workset,agent}` and
    `global/canon/handbook` — with **stock packaged content** (reported as
-   `Templates refreshed (N added, M updated)`), and records the new stamp.
+   `Templates refreshed (N added, M updated)`), and records the setup completion.
 3. Your old `global/base_template/` is **orphaned but preserved**: untouched on disk, read by
    nothing, and mentioned by nothing — setup does not warn about it. New boxes now seed the
    stock content, **not yours**. That masking is the real exposure: if you customized
@@ -513,11 +520,27 @@ The v1.8.0 host stores — `global/template/{box,workset,agent}`, `global/canon/
 the restructured `agents/<agent>/{template,canon/handbook}` stores — are installed by first-run
 init or by `kanibako setup`, **never by `pip install`** (installing a package runs no code),
 and the lazy first-run installer never re-fires on an already-initialised host. The designed
-trigger for an upgrade is `setup`, and the **template-staleness gate forces it**: the packaged
-content changed between v1.7.2 and v1.8.0, so your recorded stamp mismatches and every
-`start` / `box start` / `create` / `box create` / `reauth` hard-errors (rc 1) with
-`kanibako's bundled templates changed since setup was last run. Run 'kanibako setup' to update
-them.` — verified on a simulated stale store.
+trigger for an upgrade is `setup`, and the **setup-compatibility gate forces it**: v1.8.0
+raises the setup baseline (`SETUP_BCV`), so the `setup_completed` marker your v1.7.2 config
+recorded is too old for the running build and every `start` / `box start` / `create` /
+`box create` / `reauth` / `agent reauth` hard-errors (rc 1) with `This kanibako config (1.7.2)
+is too old to auto-update. Re-run 'kanibako setup' before agent commands.`
+
+⚑ The separate per-digest **template-staleness gate of the v1.7.x line is retired**. It read
+and wrote an undeclared `system.templates_stamp` key — a closed-keyspace violation — and
+hard-blocked hosts whose only sin was never having recorded a digest. Its protection folds
+into the band above: packaged content that changes with a RELEASE is announced by a
+`SETUP_FCV` nudge or a `SETUP_BCV` block. The accepted loss is that template drift *within one
+version* (a dev build, or a plugin pip-installed after first run) is no longer detected; the
+cure is the same `kanibako setup`. A `[system] templates_stamp` leaf left in your config is
+inert — read by nothing, and no error.
+
+**What clears the block.** Only a `setup` run that reached a settled template state: one that
+refreshed the store, one that found nothing to do, or an interactive one where you were asked
+and knowingly declined. A HEADLESS run with no `--refresh-templates` cannot ask, so it
+refreshes nothing, prints `Setup Incomplete`, exits **rc 1**, and records **no** completion —
+the block stays up rather than being cleared against a store setup never touched. `kanibako
+setup --refresh-templates` is the headless path that both refreshes and completes.
 
 In the window before setup runs, non-gated verbs (e.g. `shell`, config/list commands) still
 work; a launch in that window has no `@system.canon/handbook` yet, so the two non-optional
