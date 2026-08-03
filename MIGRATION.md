@@ -54,7 +54,7 @@ inside boxes. In order of likely impact:
    that ever chose an agent has `box.agent_name` stored; v1.8.0 refuses to launch such a box
    with an error that names the file and the exact fix (§2.1). One command per box:
    `kanibako box set pref.system.agent=<name>`. The system default moved too:
-   `kanibako system config set system.agent=<name>`.
+   `kanibako system set system.agent=<name>`.
 
 3. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
    `kanibako-cli` while keeping v1.7.2-era agent plugins silently deletes your boxes' entire
@@ -159,9 +159,9 @@ The cure is level-appropriate, with your own stored value interpolated so it is 
   for a no-agent box)
 - `box.agent_name` in a **system or agent** file: REMOVE it — a request may be written ONLY in
   a workset or box settings file (spec §2h), so this key has no equivalent at that scope. If
-  you meant the host-wide default: `kanibako system config set system.agent=<value>`. If you
+  you meant the host-wide default: `kanibako system set system.agent=<value>`. If you
   meant one box, set the request in THAT box's settings file.
-- `system.default_agent` (anywhere): `kanibako system config set system.agent=<value>`
+- `system.default_agent` (anywhere): `kanibako system set system.agent=<value>`
 
 Notes:
 - An **empty** leaf (`box: agent_name:` with no value) still counts as the retired key and is
@@ -1576,7 +1576,7 @@ shows** them; it refuses to set them and points you at the config file:
   `global/settings.yaml`'s `[agent.default] default_agent` directly.
   > ⮕ **SUPERSEDED IN v1.8.0** ([v1.8.0 guide](#migrating-to-kanibako-v180) §2.1): the
   > key is now `system.agent`, it lives in that
-  > file's `system:` table, and it IS CLI-settable — `kanibako system config set
+  > file's `system:` table, and it IS CLI-settable — `kanibako system set
   > system.agent=<name>`. Only the layout-PATH keys stay file-only.
 - To change a structural path (e.g. `system.data`): edit `~/.config/kanibako.yaml`.
 

@@ -143,7 +143,7 @@ migration code.** Four released config surfaces are removed outright
 - **BREAKING: `system.default_agent` → `system.agent`**, and it moves out of the reserved
   `agent.default` table into the `system:` table of the same settings file
   (`<data>/global/settings.yaml`). `kanibako setup` writes the new location; `kanibako
-  system config set system.agent=<name>` now works as an ordinary setting (it was
+  system set system.agent=<name>` now works as an ordinary setting (it was
   previously special-cased). A stale `agent.default.default_agent` is refused by name,
   like the key above.
 - **BREAKING: the settable `box.agent.*` mirror is retired.** A box tweaks its agent's

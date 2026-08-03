@@ -941,7 +941,7 @@ kanibako system reset --all             # reset all global settings
 
 `system.*` LAYOUT-PATH keys are **file-only**: the CLI shows them but refuses to
 set/reset them, pointing you at the config file. `system.agent` is NOT one of those —
-it is an ordinary system-scope setting, so `kanibako system config set
+it is an ordinary system-scope setting, so `kanibako system set
 system.agent=<name>` works (as does `kanibako setup`). Edit structural paths in
 `~/.config/kanibako_config.yaml` directly.
 
