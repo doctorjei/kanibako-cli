@@ -1796,13 +1796,33 @@ def _persist_or_announce_flags(
     label = proj.name or proj.project_path
     flags = " and ".join(flag for flag, _, _ in announce)
     nouns = " and ".join(noun for _, noun, _ in announce)
+    # ⚑ The cure NAMES ITS SUBJECT.  Without one, ``kanibako box set
+    # box.image=…`` is a single ``=``-bearing positional, which the box-config
+    # parser takes as the key=value with ``project_dir`` left None
+    # (``commands/box/_parser.py``, the ``len(positional) == 1`` branch) — so it
+    # applies to the CWD box.  ``kanibako start otherbox --image X`` run from
+    # inside THIS box's workspace would then hand the user a command that writes
+    # into THIS box: a SILENT WRONG-BOX WRITE.  (And from a cwd that is no box at
+    # all it lands in an ``__unregistered__`` phantom, which is worse than an
+    # error.)  Two positionals take the ``[project]`` branch instead.
+    #
+    # ⚑ A PATH, never ``proj.name``: ``box set`` resolves names through
+    # ``resolve_any_project`` → ``project.names.resolve_name``, which does NOT
+    # index the standalone section (see ``settings/paths.py``), so a name-based
+    # cure fails outright — "Unknown project or workset" — for a standalone box.
+    # ``proj.project_path`` resolves for all three project modes (live-checked
+    # against the real CLI: default, workset-member and standalone).
+    # ``shlex.quote`` keeps the command pasteable when the path holds a space —
+    # unquoted, that path would split into a THIRD positional and be refused.
+    subject = shlex.quote(str(proj.project_path))
     if len(announce) == 1:
         verb, copula = "applies", "is"
-        cure = f"  To persist it: kanibako box set {announce[0][2]}"
+        cure = f"  To persist it: kanibako box set {subject} {announce[0][2]}"
     else:
         verb, copula = "apply", "are"
         cure = "  To persist them:\n" + "\n".join(
-            f"    kanibako box set {setting}" for _, _, setting in announce
+            f"    kanibako box set {subject} {setting}"
+            for _, _, setting in announce
         )
     print(
         f"Notice: {flags} {verb} to THIS launch only — "
@@ -1862,9 +1882,14 @@ def _warn_legacy_env_files(std, proj) -> None:
             group.root / "env",
             f"kanibako workset set {group.name} workset.env.<VAR>=<value>",
         ))
+    # The box tier NAMES ITS SUBJECT as a path, for the same reason the workset
+    # tier above names ``{group.name}``: a subjectless ``box set`` applies to the
+    # CWD box, not to the box being launched.  See the note in
+    # :func:`_persist_or_announce_flags` for why it is a PATH and not a name.
     tiers.append((
         proj.metadata_path / "env",
-        "kanibako box set box.env.<VAR>=<value>",
+        f"kanibako box set {shlex.quote(str(proj.project_path))} "
+        "box.env.<VAR>=<value>",
     ))
 
     seen: set[str] = set()

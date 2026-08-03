@@ -477,6 +477,7 @@ class TestEphemeralImageHint:
     def test_hint_names_the_ephemerality_and_the_cure(self, start_mocks, capsys):
         with start_mocks() as m:
             m.proj.is_new = False
+            subject = m.proj.project_path
             _run_container(
                 project_dir=None, entrypoint=None, image_override="custom:v1",
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -486,8 +487,8 @@ class TestEphemeralImageHint:
         assert "--image custom:v1 applies to THIS launch only" in err
         assert "testproject" in err                       # names the box
         # The cure is a REAL, copy-pasteable command (`kanibako box set` — there
-        # is no `box config` subcommand).
-        assert "kanibako box set box.image=custom:v1" in err
+        # is no `box config` subcommand) and it NAMES ITS SUBJECT (F-2).
+        assert f"kanibako box set {subject} box.image=custom:v1" in err
 
     def test_no_hint_without_the_flag(self, start_mocks, capsys):
         with start_mocks() as m:
@@ -521,6 +522,7 @@ class TestEphemeralImageHint:
     ):
         with start_mocks() as m:
             m.proj.is_new = False
+            subject = m.proj.project_path
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -530,10 +532,10 @@ class TestEphemeralImageHint:
         assert "--share-images applies to THIS launch only" in err
         assert "testproject" in err                       # names the box
         assert "its stored image-sharing setting is unchanged" in err
-        # LIVE-CHECKED cure: `kanibako box set` takes the key directly (there is
-        # no `box config` subcommand), and box.share_images is a bool key whose
-        # coercion accepts `true`.
-        assert "kanibako box set box.share_images=true" in err
+        # LIVE-CHECKED cure: `kanibako box set` takes a `[project] key=value`
+        # pair (there is no `box config` subcommand), and box.share_images is a
+        # bool key whose coercion accepts `true`.
+        assert f"kanibako box set {subject} box.share_images=true" in err
         # ...and it does NOT drag the unrelated --image key in.
         assert "box.image" not in err
 
@@ -572,6 +574,7 @@ class TestEphemeralImageHint:
         """
         with start_mocks() as m:
             m.proj.is_new = False
+            subject = m.proj.project_path
             _run_container(
                 project_dir=None, entrypoint=None, image_override="custom:v1",
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -585,16 +588,18 @@ class TestEphemeralImageHint:
             "--image custom:v1 and --share-images apply to THIS launch only"
         ) in err
         assert "its stored image and image-sharing setting are unchanged" in err
-        # ...and one cure line per flag, both copy-pasteable.
+        # ...and one cure line per flag, both copy-pasteable — and EACH names the
+        # subject box, so neither writes into whatever box the cwd happens to be.
         assert "  To persist them:" in err
-        assert "    kanibako box set box.image=custom:v1" in err
-        assert "    kanibako box set box.share_images=true" in err
+        assert f"    kanibako box set {subject} box.image=custom:v1" in err
+        assert f"    kanibako box set {subject} box.share_images=true" in err
 
     def test_single_flag_wording_stays_singular(self, start_mocks, capsys):
-        """The one-flag rendering is UNCHANGED by the two-flag support: singular
-        verb, singular copula, inline cure (``ade2570``'s exact text)."""
+        """The one-flag rendering keeps ``ade2570``'s wording: singular verb,
+        singular copula, inline cure — now with the F-2 subject added."""
         with start_mocks() as m:
             m.proj.is_new = False
+            subject = m.proj.project_path
             _run_container(
                 project_dir=None, entrypoint=None, image_override="custom:v1",
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -604,8 +609,74 @@ class TestEphemeralImageHint:
         assert (
             "Notice: --image custom:v1 applies to THIS launch only — box "
             "'testproject' already exists, so its stored image is unchanged.\n"
-            "  To persist it: kanibako box set box.image=custom:v1"
+            f"  To persist it: kanibako box set {subject} box.image=custom:v1"
         ) in err
+
+    # -- F-2: the cure must name its SUBJECT, never the cwd -----------------
+
+    def test_cure_names_the_subject_box_not_the_cwd(self, start_mocks, capsys):
+        """REGRESSION PIN (F-2): a subject-less ``box set box.image=…`` is a
+        single ``=``-bearing positional, which the box-config parser reads as the
+        key=value with ``project_dir`` left None — i.e. it writes to the CWD box.
+        ``kanibako start otherbox --image X`` from inside THIS box's workspace
+        would therefore hand the user a SILENT WRONG-BOX WRITE.
+
+        Mutation-proof: dropping the subject from either cure line fails here.
+        """
+        with start_mocks() as m:
+            m.proj.is_new = False
+            subject = m.proj.project_path
+            _run_container(
+                project_dir=None, entrypoint=None, image_override="custom:v1",
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], share_images=True,
+            )
+            err = capsys.readouterr().err
+        # No cure line anywhere goes straight from the verb to the key.
+        assert "box set box." not in err
+        for line in err.splitlines():
+            if "kanibako box set" in line:
+                assert f"kanibako box set {subject} box." in line, line
+
+    def test_cure_subject_is_the_path_not_the_name(self, start_mocks, capsys):
+        """The subject is a PATH.  ``box set`` resolves names through
+        ``resolve_any_project`` → ``project.names.resolve_name``, which does not
+        index the standalone section — live-checked, a name-based cure dies with
+        "Unknown project or workset" for a standalone box, while the path form is
+        accepted in all three project modes.
+        """
+        with start_mocks() as m:
+            m.proj.is_new = False
+            m.proj.name = "testproject"
+            subject = m.proj.project_path
+            _run_container(
+                project_dir=None, entrypoint=None, image_override="custom:v1",
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            err = capsys.readouterr().err
+        assert f"kanibako box set {subject} box.image=custom:v1" in err
+        # ...and NOT the bare name, which would not resolve for a standalone box.
+        assert "kanibako box set testproject box.image" not in err
+
+    def test_cure_subject_is_quoted_when_the_path_has_a_space(
+        self, start_mocks, capsys, tmp_path,
+    ):
+        """A workspace path with a space, pasted unquoted, would split into a
+        THIRD positional and be refused ("too many arguments") — so the subject
+        is shell-quoted."""
+        spaced = tmp_path / "my projects" / "box one"
+        spaced.mkdir(parents=True)
+        with start_mocks() as m:
+            m.proj.is_new = False
+            m.proj.project_path = spaced
+            _run_container(
+                project_dir=None, entrypoint=None, image_override="custom:v1",
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            err = capsys.readouterr().err
+        assert f"kanibako box set '{spaced}' box.image=custom:v1" in err
 
 
 # ---------------------------------------------------------------------------
@@ -628,11 +699,13 @@ class TestLegacyEnvFileNotice:
         data = tmp_path / "data"
         ws = tmp_path / "worksets" / "myws"
         box = tmp_path / "boxes" / "mybox"
-        for d in (data, ws, box):
+        workspace = tmp_path / "workspaces" / "mybox"
+        for d in (data, ws, box, workspace):
             d.mkdir(parents=True)
         std = SimpleNamespace(data_path=data)
         proj = SimpleNamespace(
             metadata_path=box,
+            project_path=workspace,
             group=ProjectGroup(
                 name="myws", root=ws, is_default=False, local_shared_base=ws,
             ) if with_group else None,
@@ -679,10 +752,16 @@ class TestLegacyEnvFileNotice:
             proj.metadata_path / "env",
         ):
             assert str(path) in err
-        # Each tier's cure is the REAL verb for that scope, with the scoped key.
+        # Each tier's cure is the REAL verb for that scope, with the scoped key —
+        # and each SCOPED tier names its subject (F-2): the workset by name, the
+        # box by PATH.  Only ``system`` is global and needs none.
         assert "kanibako system set system.env.<VAR>=<value>" in err
         assert "kanibako workset set myws workset.env.<VAR>=<value>" in err
-        assert "kanibako box set box.env.<VAR>=<value>" in err
+        assert (
+            f"kanibako box set {proj.project_path} box.env.<VAR>=<value>"
+        ) in err
+        # A subject-less box cure would write into the CWD box, not this one.
+        assert "kanibako box set box.env" not in err
 
     def test_standalone_box_has_no_workset_tier(self, tmp_path, capsys):
         """A standalone box has no workset group — and no workset env file."""
