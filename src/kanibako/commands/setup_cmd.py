@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from enum import Enum
 from pathlib import Path
 
 from kanibako.errors import ConfigError
@@ -110,7 +111,40 @@ def _write_setup_marker() -> None:
     write_system_value(cf, "setup_completed", __version__)
 
 
-def _run_template_refresh(args: argparse.Namespace) -> None:
+class TemplateStep(Enum):
+    """What Step 5 actually did — and therefore whether setup may claim completion.
+
+    The distinction that matters is NOT "were files copied" but "did this run reach
+    a settled state the user either got or knowingly chose".  Three of the four
+    outcomes do; :attr:`SKIPPED` does not, because no informed choice is possible
+    without a terminal.  :attr:`records_completion` is the one place that mapping
+    lives, so a new outcome must decide explicitly rather than inherit a default.
+    """
+
+    #: Packaged templates were copied into the system-owned staging.
+    REFRESHED = "refreshed"
+    #: Nothing to add, nothing to overwrite, nothing kept — already current.
+    CURRENT = "current"
+    #: The user was asked at a terminal and said no.  An INFORMED choice.
+    DECLINED = "declined"
+    #: Non-TTY with no ``--refresh-templates``: no informed choice was possible,
+    #: so the store was left stale WITHOUT the user ever being asked.
+    SKIPPED = "skipped"
+
+    @property
+    def records_completion(self) -> bool:
+        """Whether :func:`run_setup` may write the setup-completion marker.
+
+        ⚑ False for :attr:`SKIPPED` ONLY.  Withholding the marker is what keeps
+        the ``setup_compat_gate`` BCV block erroring on an unmigrated store — the
+        backstop that makes "a new box seeds empty" unreachable.  Recording
+        completion for a run that silently skipped the template step would clear
+        that block against a store setup never touched.
+        """
+        return self is not TemplateStep.SKIPPED
+
+
+def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
     """Template-update step: refresh shipped templates under informed consent.
 
     ⚑ The ``system.templates_stamp`` write that every branch below used to make is
@@ -118,15 +152,24 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
     now only ever COPIES (or declines to copy) files.  The drift announcement moved
     to the setup bands (``SETUP_FCV``/``SETUP_BCV``); migration record M-23.
 
-    Branches (ratified brief, minus the stamping):
+    Branches (ratified brief, minus the stamping) and the :class:`TemplateStep`
+    each returns:
 
     * ``--refresh-templates`` forced flag → apply the refresh (the flag IS the
-      consent), one-line summary.
-    * nothing to add AND nothing to overwrite AND nothing kept → say so, no prompt.
+      consent), one-line summary → ``REFRESHED``.
+    * nothing to add AND nothing to overwrite AND nothing kept → say so, no prompt
+      → ``CURRENT``.
     * TTY → warn, show the add/overwrite plan + reassurance + peril, prompt:
-      accept → apply; decline → leave files as-is.
+      accept → apply (``REFRESHED``); decline → leave files as-is (``DECLINED``).
     * non-TTY, no flag → SKIP (no informed choice is possible without a terminal),
-      point at interactive setup / ``--refresh-templates``.
+      point at interactive setup / ``--refresh-templates`` → ``SKIPPED``.
+
+    ⚑ The returned outcome GATES the setup-completion marker in :func:`run_setup`
+    (see :attr:`TemplateStep.records_completion`).  R-38 retired the per-branch
+    stamp but left the completion marker unconditional, which made the non-TTY skip
+    sticky: it cleared the BCV hard block against a store the run never migrated.
+    Withholding the marker on ``SKIPPED`` restores the pre-R-38 invariant exactly —
+    the informed decline still records, only the un-asked skip does not.
 
     ⚑ This step is J-6's **B-action** (TEMPLATE UPDATE) and its A-action trigger in
     one place. The refresh reaches the system-owned packaged STAGING only, so it
@@ -167,12 +210,13 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
             f"({len(added)} added, {len(overwritten)} updated)."
         )
         _report_kept()
-        return
+        return TemplateStep.REFRESHED
 
     if not added and not overwritten and not kept:
-        # Already current: nothing to copy and nothing to ask about.
+        # Already current: nothing to copy and nothing to ask about.  A run with
+        # nothing to do is still a COMPLETE run.
         print("  [ok] Templates are up to date.")
-        return
+        return TemplateStep.CURRENT
 
     if sys.stdin.isatty():
         print("  Your template store is out of date with this kanibako build.")
@@ -195,19 +239,21 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
         if answer in ("y", "yes"):
             install_packaged_templates(std, names, refresh=True)
             print("  [ok] Templates refreshed.")
-        else:
-            # Informed decline: files unchanged, and (since R-38) nothing is
-            # recorded either — the next setup run simply asks again.
-            print(
-                "  [--] Declining leaves your template store out of date — an "
-                "unblessed state you're choosing knowingly. Re-run "
-                "`kanibako setup` anytime to update."
-            )
-        return
+            return TemplateStep.REFRESHED
+        # Informed decline: files unchanged, and (since R-38) no template stamp is
+        # recorded either — the next setup run simply asks again.  The user WAS
+        # asked, so the run still counts as complete (pre-R-38 stamped here too).
+        print(
+            "  [--] Declining leaves your template store out of date — an "
+            "unblessed state you're choosing knowingly. Re-run "
+            "`kanibako setup` anytime to update."
+        )
+        return TemplateStep.DECLINED
 
     # Non-TTY, no forced flag: no informed choice is possible → skip, leaving the
     # store as-is until the user runs an interactive setup or passes
-    # --refresh-templates.  Nothing is recorded, so the skip is not sticky.
+    # --refresh-templates.  ⚑ This is the ONE outcome that withholds the
+    # setup-completion marker, so the skip cannot become sticky.
     print(
         "  [--] Templates are out of date but cannot be updated non-"
         "interactively."
@@ -216,6 +262,7 @@ def _run_template_refresh(args: argparse.Namespace) -> None:
         "       Re-run `kanibako setup` in a terminal, or pass "
         "`--refresh-templates`."
     )
+    return TemplateStep.SKIPPED
 
 
 def _select_agent_interactive(detected: list[tuple[str, str]]) -> str | None:
@@ -363,22 +410,34 @@ def run_setup(args: argparse.Namespace) -> int:
     print()
 
     # Step 5: Template refresh (TRUE REFRESH of the system-owned staging).
-    _run_template_refresh(args)
+    template_step = _run_template_refresh(args)
     print()
 
-    # Mark setup complete (always — a graceful non-TTY skip still counts as a
-    # successful setup run).  Records the running build's version string.
-    try:
-        _write_setup_marker()
-    except Exception as e:  # pragma: no cover - defensive
-        print(f"  [!!] Could not record setup completion: {e}", file=sys.stderr)
+    # Mark setup complete — but ONLY when Step 5 reached a settled state (see
+    # ``TemplateStep.records_completion``).  A non-TTY skip could not ask, did not
+    # refresh, and must therefore record NOTHING: the withheld marker is what keeps
+    # ``setup_compat_gate``'s BCV hard block erroring on an unmigrated store.
+    # Records the running build's version string.
+    recorded = template_step.records_completion
+    if recorded:
+        try:
+            _write_setup_marker()
+        except Exception as e:  # pragma: no cover - defensive
+            print(f"  [!!] Could not record setup completion: {e}", file=sys.stderr)
 
-    # Summary
-    print("Setup Complete")
+    # Summary.  ⚑ The banner must not claim a completion that was not recorded.
+    print("Setup Complete" if recorded else "Setup Incomplete")
     print("-" * 40)
     if selected is not None:
         print(f"  Default agent set to '{selected}'.")
-    if found_any:
+    if not recorded:
+        print("  Setup completion was NOT recorded: the template step (Step 5)")
+        print("  needs an informed choice it cannot get without a terminal.")
+        print(
+            "  Re-run `kanibako setup` in a terminal, or pass "
+            "`--refresh-templates`."
+        )
+    elif found_any:
         print("  You're ready to go! Run `kanibako` in any project directory.")
     else:
         print("  Install an agent plugin and its host binary, then run `kanibako`.")

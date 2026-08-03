@@ -7,13 +7,27 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.commands.setup_cmd import run_setup
+from kanibako.commands.setup_cmd import TemplateStep, run_setup
 
 
 @pytest.fixture
 def setup_args():
     """Minimal argparse.Namespace for run_setup."""
     return argparse.Namespace()
+
+
+def _templates_current():
+    """Patch Step 5 to the "nothing to do" outcome.
+
+    These tests are about Steps 1-3 and the closing summary, not the template
+    refresh — and Step 5's outcome now GATES both the completion marker and the
+    summary banner, so an unstubbed step would make them assert Step 5's
+    behaviour by accident.  Step 5 itself is covered in tests/test_setup_cmd.py.
+    """
+    return patch(
+        "kanibako.commands.setup_cmd._run_template_refresh",
+        return_value=TemplateStep.CURRENT,
+    )
 
 
 class TestSetupRuntime:
@@ -63,11 +77,10 @@ class TestSetupAgents:
 
         mock_cls = MagicMock(return_value=mock_target)
 
-        # ``xdg()`` must return a REAL directory: setup's unconditional
-        # ``_write_setup_marker`` resolves the config path off it and calls
-        # ``mkdir``.  A bare MagicMock here leaks a ``<MagicMock name='xdg()'>``
-        # dir into the CWD.  Point it at tmp_path so the marker write lands in a
-        # throwaway location instead.
+        # ``xdg()`` must return a REAL directory: ``_write_setup_marker``
+        # resolves the config path off it and calls ``mkdir``.  A bare MagicMock
+        # here leaks a ``<MagicMock name='xdg()'>`` dir into the CWD.  Point it at
+        # tmp_path so the marker write lands in a throwaway location instead.
         with (
             patch(
                 "kanibako.commands.diagnose._check_runtime",
@@ -82,6 +95,7 @@ class TestSetupAgents:
                 return_value=("ok", "test:latest (available locally)"),
             ),
             patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+            _templates_current(),
         ):
             rc = run_setup(setup_args)
 
@@ -116,8 +130,8 @@ class TestSetupAgents:
 
         mock_cls = MagicMock(return_value=mock_target)
 
-        # Real xdg() dir so the unconditional setup-marker write lands in
-        # tmp_path rather than leaking a MagicMock-named dir into the CWD.
+        # Real xdg() dir so the setup-marker write lands in tmp_path rather than
+        # leaking a MagicMock-named dir into the CWD.
         with (
             patch(
                 "kanibako.commands.diagnose._check_runtime",
@@ -132,6 +146,7 @@ class TestSetupAgents:
                 return_value=("--", "not found"),
             ),
             patch("kanibako.settings.paths.xdg", return_value=tmp_path),
+            _templates_current(),
         ):
             rc = run_setup(setup_args)
 

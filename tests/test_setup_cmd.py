@@ -197,16 +197,31 @@ def test_marker_written_equals_version(tmp_home, config_file):
     assert read_setup_completed(cf) == __version__
 
 
-def test_full_setup_flag_writes_marker_and_default(
-    tmp_home, config_file, monkeypatch
-):
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+def _stub_probes(monkeypatch):
+    """Make Steps 1 and 3 succeed without touching a real runtime."""
     monkeypatch.setattr(
         "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
     )
     monkeypatch.setattr(
         "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
     )
+
+
+def _stage_templates():
+    """Install the packaged templates so Step 5 has nothing to do (``CURRENT``)."""
+    from kanibako.launch.templates import install_packaged_templates
+
+    install_packaged_templates(_resolve_std(), setup_cmd._known_target_names())
+
+
+def test_full_setup_flag_writes_marker_and_default(
+    tmp_home, config_file, monkeypatch
+):
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    # Templates already current → Step 5 is a no-op, isolating this to the
+    # --agent flag.  A run with NOTHING TO DO still records completion.
+    _stage_templates()
     rc = setup_cmd.run_setup(_ns(agent="claude"))
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
@@ -214,22 +229,71 @@ def test_full_setup_flag_writes_marker_and_default(
     assert read_setup_completed(cf) == __version__
 
 
-def test_full_setup_non_tty_writes_marker_no_default(
+def test_full_setup_non_tty_current_templates_writes_marker_no_default(
     tmp_home, config_file, monkeypatch
 ):
+    """Non-TTY agent skip is graceful and STILL completes — Step 5 had nothing to do."""
     _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
-    )
-    monkeypatch.setattr(
-        "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig")
-    )
+    _stub_probes(monkeypatch)
+    _stage_templates()
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     rc = setup_cmd.run_setup(_ns())
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
     assert read_system_agent(ssp) is None
     assert read_setup_completed(cf) == __version__
+
+
+def test_full_setup_non_tty_stale_templates_records_no_marker(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """⚑ REGRESSION (F-1): a non-TTY run that SKIPPED Step 5 records NOTHING.
+
+    The defect this pins: R-38 removed the per-branch template stamp but left the
+    setup-completion marker unconditional, so a headless ``kanibako setup`` on an
+    unmigrated store printed "cannot be updated non-interactively", refreshed
+    nothing, and then recorded ``setup_completed = <this build>`` anyway.  That
+    cleared ``setup_compat_gate``'s BCV hard block against a store setup never
+    touched, and the next ``box create`` seeded an empty home, silently.
+
+    The existing step-level test exercises ``_run_template_refresh`` in isolation
+    and never reaches the marker write — which is exactly why the defect shipped.
+    This one runs the WHOLE wizard.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    # No _stage_templates(): the store is stale, exactly like a 1.7.x upgrade.
+    rc = setup_cmd.run_setup(_ns())
+    assert rc == 0
+    cf, _ = _config_paths(tmp_home)
+    assert read_setup_completed(cf) is None
+    out = capsys.readouterr().out
+    # The banner must not claim a completion that was not recorded, and must
+    # name the cure.
+    assert "Setup Complete" not in out
+    assert "Setup Incomplete" in out
+    assert "--refresh-templates" in out
+
+
+def test_full_setup_non_tty_stale_templates_refresh_flag_cures(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """⚑ The refusal above has a REACHABLE cure: the documented headless path.
+
+    ``kanibako setup --refresh-templates`` (with ``--agent`` to skip the menu) is
+    the same stale store, non-interactive, and it both refreshes and completes.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
+    assert rc == 0
+    cf, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(cf) == __version__
+    assert read_system_agent(ssp) == "claude"
+    assert _staged_marker(_resolve_std()).is_file()  # the refresh really ran
+    assert "Setup Complete" in capsys.readouterr().out
 
 
 # --- Step 2: binary-less shell agent ---------------------------------------
@@ -289,13 +353,26 @@ def _staged_marker(std):
     )
 
 
+def test_only_skipped_outcome_withholds_completion():
+    """⚑ The marker gate: SKIPPED is the ONLY outcome that withholds completion.
+
+    Written as a set equality over the whole enum so a NEW outcome cannot inherit
+    either answer silently — adding a member forces an explicit decision here.
+    """
+    withholding = {
+        step for step in setup_cmd.TemplateStep if not step.records_completion
+    }
+    assert withholding == {setup_cmd.TemplateStep.SKIPPED}
+
+
 def test_template_step_forced_flag_applies(tmp_home, config_file):
     """--refresh-templates: apply the refresh non-interactively (no prompt).
 
     ⚑ R-38: the step no longer writes ``system.templates_stamp`` — pinned here so a
     reintroduced writer fails rather than silently resurrecting the retired key.
     """
-    setup_cmd._run_template_refresh(_ns(refresh_templates=True))
+    outcome = setup_cmd._run_template_refresh(_ns(refresh_templates=True))
+    assert outcome is setup_cmd.TemplateStep.REFRESHED
     std = _resolve_std()
     assert _staged_marker(std).is_file()  # applied
     assert (
@@ -310,7 +387,8 @@ def test_template_step_nothing_to_do_reports_up_to_date(tmp_home, config_file, c
 
     std = _resolve_std()
     install_packaged_templates(std, setup_cmd._known_target_names())
-    setup_cmd._run_template_refresh(_ns())
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.CURRENT
     assert "up to date" in capsys.readouterr().out
     assert "templates_stamp" not in _system_table(tmp_home)
 
@@ -318,7 +396,8 @@ def test_template_step_nothing_to_do_reports_up_to_date(tmp_home, config_file, c
 def test_template_step_tty_accept_applies(tmp_home, config_file, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *a: "y")
-    setup_cmd._run_template_refresh(_ns())
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.REFRESHED
     std = _resolve_std()
     assert _staged_marker(std).is_file()  # applied
     assert "templates_stamp" not in _system_table(tmp_home)
@@ -327,10 +406,17 @@ def test_template_step_tty_accept_applies(tmp_home, config_file, monkeypatch):
 def test_template_step_tty_decline_does_not_apply(
     tmp_home, config_file, monkeypatch, capsys
 ):
-    """Decline: do NOT apply, and (R-38) record nothing either."""
+    """Decline: do NOT apply, and (R-38) record no template stamp either.
+
+    ⚑ The decline is an INFORMED choice, so it still reports ``DECLINED`` — an
+    outcome that DOES record setup completion (pre-R-38 this branch stamped too).
+    Only the un-asked non-TTY skip withholds the marker.
+    """
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *a: "n")
-    setup_cmd._run_template_refresh(_ns())
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.DECLINED
+    assert outcome.records_completion
     std = _resolve_std()
     # Not applied — the shipped files were NOT written.
     assert not _staged_marker(std).exists()
@@ -348,7 +434,9 @@ def test_template_step_non_tty_no_flag_skips(
         raise AssertionError("input() must not be called in non-TTY mode")
 
     monkeypatch.setattr("builtins.input", _boom)
-    setup_cmd._run_template_refresh(_ns())
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.SKIPPED
+    assert not outcome.records_completion
     std = _resolve_std()
     assert not _staged_marker(std).exists()  # not applied
     assert "cannot be updated non-interactively" in capsys.readouterr().out
