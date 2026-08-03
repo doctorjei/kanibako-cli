@@ -12,6 +12,7 @@ import subprocess
 import time
 
 import pytest
+import yaml
 
 from tests.conftest_integration import requires_runtime
 
@@ -71,7 +72,14 @@ class TestKanibakoLazyInit:
     """Verify lazy init creates expected files and dirs on first command."""
 
     def test_lazy_init_creates_config_and_dirs(self, cli_env):
-        """Any kanibako command triggers lazy init (config file, agents, env)."""
+        """Lazy init writes the config file, the agent stores, and the env SEED.
+
+        ⚑ The env seed is a settings KEY now, not a file.  Lazy init used to
+        write a docker-style ``<data>/env``; B9 (``77c4cf4``) retired that file
+        under Jei's RQ-1 re-ruling and replaced the seed with a declared
+        ``box.env.COLORTERM`` key in the system settings file.  Both halves are
+        asserted below — the file must be ABSENT, the key must be present.
+        """
         result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert result.returncode == 0, f"lazy init failed: {result.stderr}"
 
@@ -82,8 +90,27 @@ class TestKanibakoLazyInit:
         agents_dir = data_path / "agents"
         assert agents_dir.is_dir(), "agents dir not created"
 
-        env_file = data_path / "env"
-        assert env_file.is_file(), "env file not created"
+        # The RETIRED half.  Nothing writes this path and nothing reads it; if
+        # it reappears, the dead writer came back.  This assertion is the pin.
+        assert not (data_path / "env").exists(), (
+            "the retired docker-style env FILE was re-created by lazy init"
+        )
+
+        # The REPLACEMENT half.  ``cli._ensure_initialized`` seeds
+        # ``COLORTERM=truecolor`` at BOX scope, written downward into the system
+        # settings file (``@config.settings`` = ``@config.data/global/settings.yaml``)
+        # via ``config_io.write_nested_key``.
+        #
+        # ⚑ MBR-2 — the QUEUED task that deletes that write entirely and declares
+        # COLORTERM as a real DEFAULT instead.  Whoever lands MBR-2 lands here:
+        # drop the COLORTERM assertion below (keep the env-FILE one above), since
+        # a defaulted key is resolved, not stored.
+        settings_file = data_path / "global" / "settings.yaml"
+        assert settings_file.is_file(), "system settings file not created"
+        stored = yaml.safe_load(settings_file.read_text()) or {}
+        assert stored.get("box", {}).get("env", {}).get("COLORTERM") == "truecolor", (
+            f"first-run box.env.COLORTERM seed missing; settings file holds: {stored!r}"
+        )
 
     def test_lazy_init_idempotent(self, cli_env):
         """Running commands twice succeeds without errors (lazy init is idempotent)."""
@@ -178,26 +205,70 @@ class TestKanibakoShell:
         assert "workspace-ok" in result.stdout
 
     @requires_runtime
-    def test_shell_env_vars_applied(self, cli_env, container_runtime_cmd):
-        """Environment variables from the env file are visible inside the container."""
+    def test_shell_env_comes_from_the_key_not_the_retired_file(
+        self, cli_env, container_runtime_cmd,
+    ):
+        """``<scope>.env.<VAR>`` reaches the box; the retired env FILE does not.
+
+        The full three-part RQ-1 contract (Jei's re-ruling, 2026-08-02; landed as
+        B9 ``77c4cf4``), proved end to end on a real container:
+
+        (a) **the replacement works** — a var set through
+            ``kanibako system set system.env.<VAR>`` is visible in the box.
+            SYSTEM scope is the faithful successor to what was a *global* env
+            file;
+        (b) **the retired path is genuinely dead** — a var written into the
+            legacy ``<data>/env`` file does NOT arrive.  This is the half that
+            matters: it is the only end-to-end proof in the tree that the old
+            launch input is gone, and a unit test cannot give it;
+        (c) **the retirement is announced, not silent** —
+            ``start._warn_legacy_env_files`` names the stale file on stderr and
+            gives the cure for its own tier.
+
+        The two variables are deliberately given DIFFERENT names so that a pass
+        on (a) can never be mistaken for a pass on (b).
+        """
         _setup_with_image(cli_env, "busybox:latest")
         subprocess.run(
             [container_runtime_cmd, "pull", "busybox:latest"],
             capture_output=True, check=True,
         )
 
-        # Write a custom env var to the global env file.
-        env_file = cli_env["data_home"] / "kanibako" / "env"
-        env_file.write_text("MY_TEST_VAR=lifecycle-check\n")
+        # (a) The REPLACEMENT: the declared key, set through the real CLI verb.
+        set_result = _run_kanibako(
+            "system", "set", "system.env.MY_TEST_VAR=lifecycle-check",
+            env=cli_env["env"], cwd=str(cli_env["project"]),
+        )
+        assert set_result.returncode == 0, f"system set failed: {set_result.stderr}"
+
+        # (b) The RETIRED input: the docker-style file the launch no longer reads.
+        legacy_env_file = cli_env["data_home"] / "kanibako" / "env"
+        legacy_env_file.write_text("LEGACY_TEST_VAR=should-not-arrive\n")
 
         result = _run_kanibako(
             "shell", "--ephemeral", "--entrypoint", "/bin/sh",
-            "--", "-c", "echo $MY_TEST_VAR",
+            "--", "-c", "echo key=[$MY_TEST_VAR] legacy=[$LEGACY_TEST_VAR]",
             env=cli_env["env"],
             cwd=str(cli_env["project"]),
         )
         assert result.returncode == 0, f"shell failed: {result.stderr}"
-        assert "lifecycle-check" in result.stdout
+
+        # (a) delivered
+        assert "key=[lifecycle-check]" in result.stdout, (
+            f"system.env.MY_TEST_VAR did not reach the box: {result.stdout!r}"
+        )
+        # (b) NOT delivered — the point of the rewrite
+        assert "legacy=[]" in result.stdout, (
+            f"the retired env FILE still reaches the box: {result.stdout!r}"
+        )
+        assert "should-not-arrive" not in result.stdout
+
+        # (c) announced on stderr, naming the file and the system-tier cure
+        assert "NO LONGER READ" in result.stderr, (
+            f"stale legacy env file was not announced: {result.stderr!r}"
+        )
+        assert str(legacy_env_file) in result.stderr
+        assert "kanibako system set system.env.<VAR>=<value>" in result.stderr
 
 
 # =========================================================================
