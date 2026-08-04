@@ -387,6 +387,54 @@ def test_expand_ref_admits_hyphenated_node_name(node: str) -> None:
     assert seen == [ref_name, ref_name]
 
 
+@pytest.mark.parametrize(
+    "node",
+    [
+        f"漢字{CANONICAL_SEP}claude",
+        f"café{CANONICAL_SEP}claude",
+        f"яндекс{CANONICAL_SEP}claude",
+        f"über_k3{CANONICAL_SEP}claude",
+    ],
+)
+def test_ref_name_admits_non_ascii_node_name(node: str) -> None:
+    # A persona may be named in ANY language (Jei, 2026-08-04), so a node-name —
+    # which is a KEY SEGMENT — may hold non-ASCII word characters.  ``_REF_SEG``
+    # is built from ``\w`` for exactly this reason: an ASCII-only class truncated
+    # ``@meta.agent.漢字℘claude.auth.share_support`` to the absent name
+    # ``meta.agent.`` and left the rest as a literal suffix — the SAME failure as
+    # the hyphen bug (silent ``""`` in a path key, ``expected bool, got str`` in
+    # a bool key).  Leftover MUST be empty.
+    ref_name = f"meta.agent.{node}.auth.share_support"
+    assert match_ref("@" + ref_name, 0) == (ref_name, len(ref_name) + 1)
+    assert match_ref("@{" + ref_name + "}", 0) == (ref_name, len(ref_name) + 3)
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        f"漢字{CANONICAL_SEP}claude",
+        f"café{CANONICAL_SEP}claude",
+        f"яндекс{CANONICAL_SEP}claude",
+    ],
+)
+def test_expand_ref_admits_non_ascii_node_name(node: str) -> None:
+    # End-to-end through the expression route: the ref resolves WHOLE, with no
+    # literal remainder glued onto the resolved value.
+    ref_name = f"meta.agent.{node}.auth.share_support"
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "true"
+
+    bare = expand_expr("@" + ref_name, space="host", ctx=make_ctx(), lookup=lookup)
+    braced = expand_expr(
+        "@{" + ref_name + "}", space="host", ctx=make_ctx(), lookup=lookup
+    )
+    assert bare == braced == "true"
+    assert seen == [ref_name, ref_name]
+
+
 def test_expand_brace_not_after_at_is_literal() -> None:
     # A ``{`` that does NOT immediately follow ``@`` is an ordinary literal: the
     # bare ref ends at it, and the braces pass through untouched.

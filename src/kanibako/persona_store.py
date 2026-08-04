@@ -109,9 +109,6 @@ def locate_entry(ref: str) -> PersonaEntry | None:
 
     * the ref is BARE (node == harness, e.g. ``claude``): a bare agent never
       has a persona store entry;
-    * either segment is ``.`` / ``..`` (legal in a ref, but AS A PATH COMPONENT
-      it would escape the store root — ``..+claude`` must not hit
-      ``$XDG_CONFIG_HOME/claude/``);
     * the store dir ``<root>/<pid>/<hid>/`` is absent (or not a directory):
       store PRESENCE decides persona-vs-plain (DESIGN §4), so the caller falls
       through to normal agent handling.
@@ -119,13 +116,18 @@ def locate_entry(ref: str) -> PersonaEntry | None:
     A malformed ref raises :class:`~kanibako.errors.ConfigError` from
     ``parse_agent_ref`` — the same contract as every other ref consumer (a bad
     ref is a user error, not a store miss).
+
+    ⚑ PATH TRAVERSAL is handled upstream, not here.  ``.`` stopped being a legal
+    segment character on 2026-08-04, so ``..+claude`` (which would have resolved
+    ``<root>/../claude``, an ordinary harness config dir) and ``navigator+..``
+    (``<root>/navigator/..``, the store root) now RAISE from ``parse_agent_ref``
+    on the first line below rather than being screened out afterwards.  There is
+    deliberately no second dot-check here: one charset, enforced in one place.
     """
     node, harness = parse_agent_ref(ref)
     if harness_of(node) == node:
         return None  # bare agent: no persona segment -> never a store entry
     persona = persona_of(node)
-    if persona in (".", "..") or harness in (".", ".."):
-        return None  # dot segments traverse OUT of the store root: never a persona
     root = persona_store_root()
     persona_dir = root / persona
     config_dir = persona_dir / harness

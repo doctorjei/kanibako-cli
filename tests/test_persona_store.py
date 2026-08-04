@@ -87,17 +87,25 @@ class TestLocateEntry:
 
     def test_dot_dot_persona_never_escapes_store_root(self, tmp_home):
         # "..+claude" would resolve <root>/../claude == $XDG_CONFIG_HOME/claude
-        # — an ordinary harness config dir, NOT a store entry.  A dot segment
-        # is a legal ref but must never traverse out of the store root.
+        # — an ordinary harness config dir, NOT a store entry.
+        # ⚑ CHANGED 2026-08-04: this used to return None from a dot-check inside
+        # locate_entry.  '.' is no longer a legal segment character at all, so
+        # parse_agent_ref refuses the ref outright and the separate check is
+        # gone.  Refusing LOUDLY is strictly better than a silent "not a
+        # persona" — but either way the traversal never reaches the filesystem.
         (tmp_home / "config" / "claude").mkdir(parents=True)
         (tmp_home / "config" / "personas").mkdir()
-        assert locate_entry("..+claude") is None
-        assert locate_entry(".+claude") is None
+        with pytest.raises(ConfigError):
+            locate_entry("..+claude")
+        with pytest.raises(ConfigError):
+            locate_entry(".+claude")
 
     def test_dot_dot_harness_never_escapes_persona_dir(self, tmp_home):
         # "navigator+.." would resolve <root>/navigator/.. == the store root.
+        # Refused at parse time as above.
         _make_store_entry(tmp_home)
-        assert locate_entry("navigator+..") is None
+        with pytest.raises(ConfigError):
+            locate_entry("navigator+..")
 
     def test_malformed_ref_raises_config_error(self, tmp_home):
         with pytest.raises(ConfigError):

@@ -29,6 +29,8 @@ is byte-for-byte identical to pre-persona behaviour.
 
 from __future__ import annotations
 
+import re
+
 from kanibako.errors import ConfigError
 
 #: The canonical persona/harness separator (U+2118 SCRIPT CAPITAL P).
@@ -38,13 +40,56 @@ PLUS_SEP = "+"
 #: Both accepted separators.
 SEPARATORS = (PLUS_SEP, CANONICAL_SEP)
 
-#: Characters permitted in a persona OR harness segment (fs- and key-safe).
-#: Alphanumeric plus ``-``, ``.``, ``_`` — NO separators, NO path/whitespace.
-_SAFE_EXTRA = frozenset("-._")
+#: Characters permitted in a persona OR harness segment BEYOND ``str.isalnum()``.
+#:
+#: ⚑ ``str.isalnum()`` is Unicode-aware and that is DELIBERATE: letters and
+#: digits in ANY language are legal, so ``漢字+claude`` and ``café+claude`` are
+#: valid refs.
+#:
+#: ⚑ ``.`` was REMOVED 2026-08-04.  The bar for denying a character is BOTH
+#: "not a word character" AND "problematic" — being a symbol alone is not
+#: grounds.  ``.`` is both: it is the settings key-path separator, so a dotted
+#: node makes ``agent.a.b℘claude.model`` ambiguous with a genuine nested key,
+#: and it admits ``..``, i.e. the path ``agents/../``.
+#: ``-`` is likewise not a word character but is NOT problematic — the ref-name
+#: grammar admits it as of ``0da8778``.  That contrast is the standard working
+#: as intended: when a name character broke the ref grammar, the GRAMMAR was
+#: widened rather than the name charset narrowed.
+#: ``_`` is a word character, so the deny question never arises for it — but it
+#: MUST stay listed here regardless, because the predicate below tests
+#: ``str.isalnum()``, and ``'_'.isalnum()`` is False (this is the one and only
+#: character on which ``str.isalnum()`` and ``\w`` disagree).
+_SAFE_EXTRA = frozenset("-_")
+
+#: Regex character-class BODY (no brackets) matching EXACTLY the characters
+#: :func:`_is_segment_safe` admits, for consumers that must parse a node-name
+#: out of a larger string.
+#:
+#: ⚑ ``settings_resolve._REF_SEG`` is composed from this, which is the whole
+#: point: a node-name is a KEY SEGMENT (``agent.<node>.…``), so every character
+#: legal here MUST be matchable there or an ``@``-ref naming the node truncates
+#: mid-name — silently rendering ``""`` at the bind-path sites and crashing with
+#: "expected bool, got str" at the auth site.  Those two charsets were separate
+#: literals and drifted TWICE (``℘``, then ``-``); deriving one from the other
+#: makes the subset relation hold by construction.
+#:
+#: ``\w`` is exactly ``str.isalnum()`` plus ``_`` (swept over all of Unicode by
+#: ``test_word_char_class_equals_isalnum_plus_underscore``), and the extras are
+#: ``re.escape``-d so the class is position-independent — a consumer may splice
+#: characters in on either side without the ``-`` forming a range.
+SEGMENT_CHAR_CLASS = r"\w" + "".join(re.escape(ch) for ch in sorted(_SAFE_EXTRA))
+
+#: Appended to a rejection message when the offending segment contains a ``.``.
+#: ``.`` is the mistake users actually make (``kimi.k3+claude``), and "only
+#: letters and digits" does not explain why a dot is not one.
+_DOT_HINT = (
+    "; '.' is reserved as the settings key-path separator and cannot appear in "
+    "an agent name"
+)
 
 
 def _is_segment_safe(segment: str) -> bool:
-    """A non-empty segment of only ``[A-Za-z0-9]`` plus ``-`` / ``.`` / ``_``."""
+    """A non-empty segment of only letters/digits (any language) plus ``-``/``_``."""
     if not segment:
         return False
     return all(ch.isalnum() or ch in _SAFE_EXTRA for ch in segment)
@@ -67,7 +112,8 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
       the canonical ``℘`` separator to form the node-name.
 
     Splits on the FIRST separator only; a second separator in EITHER segment is
-    rejected (a segment must be fs/key-safe: alnum plus ``-``/``.``/``_``).
+    rejected (a segment must be fs/key-safe: letters and digits in any language,
+    plus ``-``/``_`` — see :data:`_SAFE_EXTRA` for why ``.`` is not among them).
 
     :raises ConfigError: on empty input, an empty persona/harness segment, or a
         segment containing an illegal character (incl. a stray separator).
@@ -85,8 +131,8 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
         # Bare: node == harness == the whole (validated) name.
         if not _is_segment_safe(ref):
             raise ConfigError(
-                f"invalid agent name '{ref}': names may contain only letters, "
-                f"digits, '-', '.', '_'"
+                f"invalid agent name '{ref}': names may contain only letters and "
+                f"digits (in any language), '-' and '_'{_DOT_HINT if '.' in ref else ''}"
             )
         return ref, ref
 
@@ -96,14 +142,16 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
     if not _is_segment_safe(persona):
         raise ConfigError(
             f"invalid agent ref '{raw}': the persona segment '{persona}' must be "
-            f"non-empty and contain only letters, digits, '-', '.', '_' "
-            f"(no separator)"
+            f"non-empty and contain only letters and digits (in any language), "
+            f"'-' and '_' (no separator)"
+            f"{_DOT_HINT if '.' in persona else ''}"
         )
     if not _is_segment_safe(harness):
         raise ConfigError(
             f"invalid agent ref '{raw}': the harness segment '{harness}' must be "
-            f"non-empty and contain only letters, digits, '-', '.', '_' "
-            f"(no separator)"
+            f"non-empty and contain only letters and digits (in any language), "
+            f"'-' and '_' (no separator)"
+            f"{_DOT_HINT if '.' in harness else ''}"
         )
 
     node = f"{persona}{CANONICAL_SEP}{harness}"
