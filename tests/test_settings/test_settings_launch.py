@@ -628,6 +628,28 @@ def test_auth_named_default_workset_tier(tmp_path):
     assert a.tier == "workset"
 
 
+@pytest.mark.parametrize("agent_name", ["navigator℘claude", "kimi-k3℘claude"])
+def test_auth_persona_node_name_with_hyphen_resolves(tmp_path, agent_name):
+    """A persona node-name containing ``-`` must resolve the capability MIRROR.
+
+    ``meta.box.agent.auth.share_support`` is the interpolated @-ref
+    ``@meta.agent.<node>.auth.share_support``.  When the ref grammar omitted
+    ``-`` the name truncated to ``meta.agent.kimi``, the leftover ``-k3℘claude.
+    auth.share_support`` survived as a literal, and ``as_bool`` raised
+    "expected bool, got str" — i.e. every ``--agent kimi-k3+claude`` launch
+    crashed.  ``agent_ref._SAFE_EXTRA`` allows ``-`` in a persona segment, so
+    the grammar must too.
+    """
+    a = resolve_auth_source(
+        _auth_snapshot("primary", tmp_path=tmp_path, agent_name=agent_name),
+        mode="primary",
+    )
+    assert isinstance(a.creds_shared, bool)
+    assert a.tier == "workset"
+    assert a.workset_source is not None
+    assert a.workset_source.endswith(f"/auth/{agent_name}")
+
+
 def test_auth_capability_gating_no_share_support(tmp_path):
     """share_support=False (a non-capable agent) → NO sharing at any tier
     (tier box), regardless of the allow flags (the hard capability floor)."""
