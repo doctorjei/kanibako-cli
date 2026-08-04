@@ -330,7 +330,12 @@ def test_embedded_absent_token_to_empty_keeps_key() -> None:
 
 
 def test_embedded_present_none_token_to_empty() -> None:
-    snap = KeyStore({"name": "x-@y-z", "y": None})
+    # ⚑ The ref is BRACED because ``-`` is a ref-name character (a persona
+    # node-name may contain one — ``settings_resolve._REF_SEG``); bare ``@y-z``
+    # would be the single name ``y-z``.  The braced form is the sanctioned
+    # spelling for a LITERAL suffix after a ref, and is what is under test here:
+    # a present-but-None key substitutes to "" without deleting the key.
+    snap = KeyStore({"name": "x-@{y}-z", "y": None})
     out = expand(snap, _ctx())
     assert out["name"] == "x--z"
 
@@ -487,7 +492,10 @@ def test_self_cycle_whole_value_raises() -> None:
 
 def test_embedded_cycle_raises() -> None:
     # B7 — a cycle reached THROUGH an embedded token is also a hard error.
-    snap = KeyStore({"a": "x-@b-y", "b": "p-@a-q"})
+    # ⚑ BRACED: ``-`` is a ref-name character, so bare ``@b-y`` would name the
+    # absent key ``b-y`` and there would be no cycle to detect.  The braces keep
+    # the fixture's intent (an embedded ref with a literal ``-`` suffix).
+    snap = KeyStore({"a": "x-@{b}-y", "b": "p-@{a}-q"})
     with pytest.raises(SettingsError) as ei:
         expand(snap, _ctx())
     assert "ycl" in str(ei.value).lower() or "cycl" in str(ei.value).lower()
@@ -649,7 +657,11 @@ def test_lenient_collects_dangling_whole_value_ref() -> None:
 
 
 def test_lenient_collects_dangling_embedded_ref() -> None:
-    snap = KeyStore({"a": "pre-@nope.x-post", "c": "/ok"})
+    # ⚑ BRACED: ``-`` is a ref-name char, so bare ``@nope.x-post`` would name
+    # ``nope.x-post``.  That still dangles, and the assertion below is a SUBSTRING
+    # check, so the test would pass either way — it would just no longer test the
+    # ref it names.  The braces keep the fixture honest.
+    snap = KeyStore({"a": "pre-@{nope.x}-post", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "nope.x" in errors["a"]
     assert _probe(expanded, "a") is _MISSING

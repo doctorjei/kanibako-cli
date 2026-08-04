@@ -672,7 +672,10 @@ def test_e3_embedded_dangling_ELSEWHERE_allows() -> None:
     # value resolves cleanly.
     def probe(key, value):
         return _resolves_with(
-            {"other": {"x": "pre-@gone.embedded-post"}}, key=key, value=value
+            # ⚑ BRACED: ``-`` is a ref-name char, so the bare spelling would name
+            # ``gone.embedded-post``.  Inert either way (this is the UNRELATED
+            # key), but the braces keep the fixture reading as written.
+            {"other": {"x": "pre-@{gone.embedded}-post"}}, key=key, value=value
         )
 
     v = _validate(

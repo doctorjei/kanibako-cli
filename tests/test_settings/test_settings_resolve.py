@@ -240,9 +240,30 @@ def test_expand_ref_ends_at_nonname_char() -> None:
         seen.append(ref)
         return "/x"
 
-    # The dotted ref stops before "/"; "-y" too.
+    # The dotted ref stops before "/" (and before any other non-name char).
     assert (
-        expand_expr("@a.b.c-y", space="host", ctx=make_ctx(), lookup=lookup) == "/x-y"
+        expand_expr("@a.b.c/y", space="host", ctx=make_ctx(), lookup=lookup) == "/x/y"
+    )
+    assert seen == ["a.b.c"]
+
+
+def test_expand_bare_ref_swallows_hyphen_braces_are_the_escape() -> None:
+    # ⚑ ``-`` is a NAME character (a node-name may contain one — see
+    # ``_REF_SEG``), so it does NOT terminate a bare ref: ``@a.b.c-y`` is the
+    # single name ``a.b.c-y``.  A LITERAL ``-`` suffix after a ref is spelled
+    # with the braced form, which is exactly what PHASE R's ``@{...}`` exists for.
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "/x"
+
+    assert expand_expr("@a.b.c-y", space="host", ctx=make_ctx(), lookup=lookup) == "/x"
+    assert seen == ["a.b.c-y"]
+
+    seen.clear()
+    assert (
+        expand_expr("@{a.b.c}-y", space="host", ctx=make_ctx(), lookup=lookup) == "/x-y"
     )
     assert seen == ["a.b.c"]
 
@@ -330,6 +351,40 @@ def test_expand_braced_ref_admits_persona_separator() -> None:
         == "true.x"
     )
     assert seen == [ref_name]
+
+
+@pytest.mark.parametrize("node", [f"navigator{CANONICAL_SEP}claude",
+                                  f"kimi-k3{CANONICAL_SEP}claude"])
+def test_ref_name_admits_hyphenated_node_name(node: str) -> None:
+    # ``agent_ref._SAFE_EXTRA`` admits ``-`` inside a persona/harness segment, so
+    # a node-name that is a KEY SEGMENT may contain one.  The ref grammar must
+    # admit it too, or ``@meta.agent.kimi-k3℘claude.auth.share_support`` truncates
+    # to the (absent) name ``meta.agent.kimi`` and leaves the rest as a literal
+    # suffix — silent garbage in a path key, a crash in a bool key.
+    ref_name = f"meta.agent.{node}.auth.share_support"
+    assert match_ref("@" + ref_name, 0) == (ref_name, len(ref_name) + 1)
+    # The braced spelling shares ``_REF_SEG``, so it must agree (before the fix
+    # it did not truncate — it raised "Unterminated @{...}" instead).
+    assert match_ref("@{" + ref_name + "}", 0) == (ref_name, len(ref_name) + 3)
+
+
+@pytest.mark.parametrize("node", [f"navigator{CANONICAL_SEP}claude",
+                                  f"kimi-k3{CANONICAL_SEP}claude"])
+def test_expand_ref_admits_hyphenated_node_name(node: str) -> None:
+    # The whole-expression route agrees with the raw grammar, bare and braced.
+    ref_name = f"meta.agent.{node}.auth.share_support"
+    seen: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        seen.append(ref)
+        return "true"
+
+    bare = expand_expr("@" + ref_name, space="host", ctx=make_ctx(), lookup=lookup)
+    braced = expand_expr(
+        "@{" + ref_name + "}", space="host", ctx=make_ctx(), lookup=lookup
+    )
+    assert bare == braced == "true"
+    assert seen == [ref_name, ref_name]
 
 
 def test_expand_brace_not_after_at_is_literal() -> None:
