@@ -34,7 +34,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
-from kanibako.agent_ref import CANONICAL_SEP
+from kanibako.agent_ref import CANONICAL_SEP, SEGMENT_CHAR_CLASS
 from kanibako.errors import KanibakoError
 
 # Single source of truth for the box-side home directory.  Boxes always run as
@@ -57,27 +57,29 @@ MAX_REF_DEPTH = 64
 _VAR_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # The ``@``-ref name grammar MUST admit every character an AGENT NODE-NAME can
 # contain, because a node-name is a key segment (``meta.agent.<node>.…``,
-# ``agent.<node>.…``).  ``agent_ref`` builds a node as
-# ``<persona>℘<harness>`` where each half admits ``[A-Za-z0-9]`` plus
-# ``agent_ref._SAFE_EXTRA`` (``-``, ``.``, ``_``), so the two additions here are:
+# ``agent.<node>.…``).  ⚑ So it is COMPOSED FROM the agent-side charset rather
+# than restating it: ``agent_ref.SEGMENT_CHAR_CLASS`` is exactly what
+# ``agent_ref._is_segment_safe`` admits in one half of ``<persona>℘<harness>``,
+# and this class is that plus the ``℘`` that joins the halves.  The subset
+# relation therefore holds BY CONSTRUCTION.
 #
-#   * ``℘``  (U+2118, ``agent_ref.CANONICAL_SEP``) — the persona node-separator;
-#   * ``-``  — legal inside a persona OR harness segment (``kimi-k3℘claude``).
-#
-# (``.`` and ``_`` already belong to the class — ``.`` as the ref-name segment
-# separator, which is why a DOTTED persona name is a separate latent ambiguity
-# and not something this grammar can disentangle.)
-#
-# Omitting either one truncates the name mid-segment and leaves the rest as a
-# literal suffix: ``@meta.agent.kimi-k3℘claude.auth.share_support`` parsed as the
-# absent name ``meta.agent.kimi`` (rendered ``""``) plus the literal
+# ⚑ That composition is the point.  These were two independent literals and they
+# drifted TWICE — first missing ``℘``, then missing ``-`` — each time truncating
+# the name mid-segment and leaving the rest as a literal suffix:
+# ``@meta.agent.kimi-k3℘claude.auth.share_support`` parsed as the absent name
+# ``meta.agent.kimi`` (rendered ``""``) plus the literal
 # ``-k3℘claude.auth.share_support``, which then fed ``as_bool`` and crashed every
 # such launch with "expected bool, got str" — and, at the ``@meta.agent.<a>.path``
-# sites, silently produced a garbage path instead.  NARROW additions only: both
-# are added to the single dotted-segment char class; a broad ``[^\s@]+`` is
-# REJECTED (it would swallow ``/`` and break embedded ``@config.data/...`` path
-# refs).  ⚑ The hyphen is LAST in the class so it cannot form a range.
-_REF_SEG = f"[A-Za-z0-9_{CANONICAL_SEP}-]+"
+# sites, silently produced a garbage path instead.  A third drift (non-ASCII
+# personas, e.g. ``漢字℘claude``) was latent here until 2026-08-04.
+#
+# ``\w`` (inside ``SEGMENT_CHAR_CLASS``) is what admits letters and digits in any
+# language.  It is still a NARROW class, not a catch-all: a broad ``[^\s@]+`` is
+# REJECTED because it would swallow ``/`` and break embedded ``@config.data/...``
+# path refs.  ``.`` is absent from BOTH sides — it is this grammar's own segment
+# separator, which is why an agent name may not contain one (``agent_ref``
+# rejects it at parse time).
+_REF_SEG = f"[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+"
 _REF_NAME_RE = re.compile(rf"{_REF_SEG}(?:\.{_REF_SEG})*")
 
 

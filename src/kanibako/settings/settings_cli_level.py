@@ -230,11 +230,14 @@ def guard_cli_level(
     them.
 
     ⚑ A dotted key is split on ``.``, so an agent NODE whose name contains a dot
-    (``a.b℘claude``) is refused by arm 1 rather than silently mis-parsed. Such a box
-    is already broken end-to-end — every dotted-key builder in the launch
-    (``agent_defaults``, ``meta_agent_path_floor``, ``dotted_partial``) splits the
-    same way and would never re-find the node — so this converts a silent
-    mis-resolution into a loud one. Fixing the underlying spelling is out of scope.
+    (``a.b℘claude``) is refused by arm 1 rather than silently mis-parsed. As of
+    2026-08-04 such a node can no longer be CONSTRUCTED — ``agent_ref`` rejects
+    ``.`` in a persona/harness segment for exactly this ambiguity — so this arm is
+    now defence in depth against a node that reached here by some other route,
+    not a live case. It stays because it is free and because every dotted-key
+    builder in the launch (``agent_defaults``, ``meta_agent_path_floor``,
+    ``dotted_partial``) splits the same way and would never re-find the node;
+    refusing loudly beats mis-resolving silently.
     """
     if not level:
         return
