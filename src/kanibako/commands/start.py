@@ -273,6 +273,17 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Run in foreground without tmux (single-use session)",
     )
 
+    # The CURE named by the already-running override gate (_run_container): stop
+    # the box, then start it fresh with this invocation's flags in force.  It is
+    # NOT a separate verb — "this only really applies to start" (Jei,
+    # 2026-08-05) — and it deliberately BYPASSES that gate: passing it IS the
+    # user saying "I know this needs a new container, do it".
+    p.add_argument(
+        "--restart", action="store_true",
+        help="Stop the box first, then start it fresh — the way to apply flags "
+             "(--rig, -e, -N, ...) that cannot be applied to a running box",
+    )
+
     # Attach mode: --detach/--background (start a keep-alive box in the
     # background, do NOT attach this terminal) vs --attach (the default: attach
     # the terminal into the session).  Detach implies a persistent/tmux session:
@@ -394,6 +405,7 @@ def run_start(args: argparse.Namespace) -> int:
     print_container = getattr(args, "print_container", False)
     explicit_persistent = getattr(args, "persistent", False)
     explicit_ephemeral = getattr(args, "ephemeral", False)
+    restart = getattr(args, "restart", False)
     warm_only = getattr(args, "warm_only", False)
     # --detach/--attach tri-state: True (--detach/--background), False (an EXPLICIT
     # --attach), or None (neither given -> the attach default).  Distinguishing an
@@ -546,7 +558,10 @@ def run_start(args: argparse.Namespace) -> int:
         browser=browser,
         share_images=share_images,
         persistent=persistent,
+        explicit_persistent=explicit_persistent,
+        explicit_ephemeral=explicit_ephemeral,
         detach=detach,
+        restart=restart,
         warm_only=warm_only,
         model_override=model_override,
         cli_env=env_vars,
@@ -605,6 +620,12 @@ def run_shell(args: argparse.Namespace) -> int:
         no_helpers=no_helpers,
         share_images=share_images,
         persistent=persistent,
+        # The typed flags, kept distinct from the derived mode above — same
+        # contract as ``run_start``.  ``shell`` DEFAULTS to ephemeral, so an
+        # explicit ``--ephemeral`` here is a no-op that must still be reported
+        # as typed rather than inferred.
+        explicit_persistent=explicit_persistent,
+        explicit_ephemeral=explicit_ephemeral,
         cli_env=env_vars,
         box_shell_mode=box_shell_mode,
     )
@@ -1764,6 +1785,13 @@ def _persist_or_announce_flags(
       launch-decision resolve and the persona pre-flight — each of which can
       return non-zero — inside the window.
 
+    ⚑ A REATTACH reaches this seam ZERO times (2026-08-05f).  There is no window
+    to close: the box already exists and no container is being created, so
+    nothing could be materializing, and both flags this seam settles are refused
+    outright by the running-box override gate — a user who wants ``--rig`` to
+    take is told to ``kanibako --restart``, which relaunches through the normal
+    arm and lands here as usual.
+
     **Announce arm.**  On a NON-materializing launch a supplied shadowing flag
     applies to that launch alone (spec §1A) and, before this, said nothing about
     it.  It now prints the ephemerality and the cure, which is the general fix
@@ -1945,7 +1973,17 @@ def _run_container(
     browser: bool = False,
     share_images: bool = False,
     persistent: bool = False,
+    # ⚑ The DERIVED session mode (``persistent``) and the flags the user actually
+    # TYPED are separate facts and must stay separate: ``run_start`` defaults
+    # ``persistent`` True whenever the bootstrap program is present, so it says
+    # nothing about intent.  The override gate reads these two, never
+    # ``persistent``.  Both callers that own the flags pass them (``run_start``,
+    # ``run_shell``); callers with no such flags (``start_detached``,
+    # ``agent_cmd``'s setup launch) correctly leave them False.
+    explicit_persistent: bool = False,
+    explicit_ephemeral: bool = False,
     detach: bool = False,
+    restart: bool = False,
     model_override: str | None = None,
     cli_env: list[str] | None = None,
     box_shell_mode: bool = False,
@@ -2069,12 +2107,13 @@ def _run_container(
 
     # ⚑ NO per-path flag persist here: the §1A CREATE EXCEPTION runs through the
     # ONE shared gate (``config.persist_creation_flags``), reached from the ONE
-    # seam ``_persist_or_announce_flags``.  That seam is called ONCE per launch,
-    # from whichever of the two materialization arms this launch took — the
-    # direct arm right after the rig prep succeeds, the deferred-persona arm
+    # seam ``_persist_or_announce_flags``.  That seam is called AT MOST ONCE per
+    # launch, from whichever of the two materialization arms this launch took —
+    # the direct arm right after the rig prep succeeds, the deferred-persona arm
     # right after its late materialization (itself already past the prep).  See
     # the seam's docstring for why "after the prep, before the rest of the
-    # launch" is where it lands (ruling #12).
+    # launch" is where it lands (ruling #12), and why a REATTACH reaches it ZERO
+    # times.
 
     # Resolve target (agent plugin) and detect installation.
     #
@@ -2104,6 +2143,41 @@ def _run_container(
         )
         return 1
 
+    # ``--restart``: STOP FIRST, then launch normally.  This is the CURE named by
+    # the already-running override gate below, and it runs BEFORE
+    # ``reattach_running`` is computed on purpose: once the box is stopped there
+    # is nothing to reattach to, so the entire running-box regime — the reattach
+    # fast path, the Class-A/B override refusals, AND the mismatched ``--agent``
+    # hard error just below — simply does not apply, and this becomes an ordinary
+    # fresh launch with every flag in force.  That is the whole point of the flag
+    # ("I know this needs a new container, do it"), and it falls out of the
+    # placement rather than needing a bypass at each site.
+    #
+    # The stop IS the stop verb (``_stop_one``) — same pre-stop credential
+    # writeback, same container removal, same output — never a second teardown
+    # implementation.  ``runtime.stop`` shells out to ``podman stop``, which
+    # BLOCKS until the container is down, and ``_stop_one`` then removes it, so
+    # there is no asynchrony to paper over.  The one real failure mode is a stop
+    # that did not take (``podman stop`` non-zero → ``_stop_one`` still returns
+    # 0), which is CHECKED rather than assumed: relaunching into a live container
+    # name would otherwise fail much deeper, in ``runtime.run``, as a name clash.
+    #
+    # NOT running is NOT an error.  ``--restart`` means "this launch must be a
+    # fresh container with my flags applied"; a stopped box already satisfies
+    # that, and erroring would make a ``--restart`` alias/script fail purely
+    # because it won the race.
+    if restart and runtime.is_running(container_name_for(proj)):
+        from kanibako.commands.stop import _stop_one
+        _stop_one(runtime, project_dir=project_dir)
+        if runtime.is_running(container_name_for(proj)):
+            print(
+                f"Error: --restart could not stop box '{proj.name}' — it is "
+                f"still running. Stop it manually (`kanibako stop "
+                f"{proj.name}`), then start it again.",
+                file=sys.stderr,
+            )
+            return 1
+
     # Reattach fast-source: for a PERSISTENT box that is ALREADY RUNNING, the
     # box's identity is its container name (agent-independent) and `kanibako
     # start` should simply reattach.  The reattach path needs an agent only for
@@ -2116,9 +2190,16 @@ def _run_container(
     # (stop the box to relaunch with a different agent).  Boxes launched before
     # this change have no stamp -> inspect_env returns None -> normal resolution
     # (a default/--agent is then required, unchanged behaviour).
+    #
+    # ⚑ ``box_running`` (is the container UP?) and ``reattach_running`` (is this
+    # launch going to REATTACH to it?) are two different facts and are kept as
+    # two values: the override gate below must refuse an explicit ``--ephemeral``
+    # at a live box, and that invocation is precisely one where the box IS
+    # running but a reattach is NOT what would happen.
+    box_running = runtime.is_running(container_name_for(proj))
     reattach_running = False
     stored_agent: str | None = None
-    if persistent and runtime.is_running(container_name_for(proj)):
+    if persistent and box_running:
         reattach_running = True
         stored_agent = runtime.inspect_env(
             container_name_for(proj), "KANIBAKO_AGENT"
@@ -2142,6 +2223,95 @@ def _run_container(
             explicit_agent = stored_agent
 
     is_agent_mode = entrypoint is None and not box_shell_mode
+
+    # ── OVERRIDE GATE for an ALREADY-RUNNING box ─────────────────────────────
+    # Jei's test (2026-08-05): "could this setting work without restarting the
+    # box and without making a mangled / corrupted / unexpected state?"  For the
+    # flags below the answer is no — so they are REFUSED BY NAME rather than
+    # silently dropped, which is what happens today:
+    #   Class A (container-CREATION inputs) — the container already EXISTS, so a
+    #     creation-time input cannot reach it.  That is the whole justification,
+    #     and it is uniform across the class: no member of it gets a bespoke
+    #     rationale, and none is softened because some later code path happens to
+    #     ignore it anyway.
+    #   Class B (agent argv) — the reattach execs a bootstrap ATTACH, never a
+    #     fresh agent, so ``start -N <running-box>`` attaches to the OLD
+    #     conversation instead of starting a new one.
+    #   The two SESSION-SHAPE flags — an EXPLICIT ``--persistent`` asks for a
+    #     fresh persistent session, which we cannot give without killing the
+    #     bootstrap session that is already there, and an explicit ``--ephemeral``
+    #     asks for a foreground single-use session, which cannot coexist with it.
+    #     Jei (2026-08-05f): "it SHOULDN'T be necessary to kill tmux for this; we
+    #     should find out if tmux is running BEFORE we try to reattach.  If tmux
+    #     is there, we go back to the command line (and leave the old tmux thread
+    #     running)."  This gate is that check: it precedes every attach, so the
+    #     running session is never signalled, killed, or even touched.
+    # This sits ahead of BOTH seams (the flag persist and the reattach fast path
+    # below), so neither can ever observe one.  ``--restart`` never reaches here
+    # — it stopped the box above, so nothing is running.
+    #
+    # ⚑ THE SESSION-SHAPE PAIR IS KEYED ON THE FLAG THE USER TYPED, NOT ON
+    # ``persistent``.  ``persistent`` is DERIVED: ``run_start`` defaults it True
+    # whenever the bootstrap program is present, so gating on it would refuse
+    # every ordinary reattach.  ``explicit_persistent``/``explicit_ephemeral``
+    # carry the typed flags, threaded in from both callers that own them
+    # (``run_start`` and ``run_shell``) precisely so the two facts stay distinct.
+    # They are also the reason this gate keys on ``box_running`` rather than
+    # ``reattach_running``: an explicit ``--ephemeral`` DERIVES ``persistent``
+    # False, so it never becomes a reattach and ``reattach_running`` would be
+    # False for the very case that must be refused.
+    #
+    # DELIBERATELY NOT GATED: ``--attach``/``--detach``/``--print-container``/
+    # ``--warm-only`` (all meaningful against a live box); ``--entrypoint``
+    # (routed to an exec — a second process in the box — on the fast path
+    # below); and ``-e/--env`` WHEN an ``--entrypoint`` is given, because that
+    # exec does apply it.
+    if box_running:
+        _rejected: list[str] = []
+        # Session shape.  Scoped to an AGENT launch: ``kanibako shell`` and
+        # ``shell -- cmd`` against a live box exec INTO it (the documented UX),
+        # which honours an ``--ephemeral`` request rather than dropping it, so
+        # there is nothing there to refuse.
+        if is_agent_mode and explicit_persistent:
+            _rejected.append("--persistent")
+        if is_agent_mode and explicit_ephemeral:
+            _rejected.append("--ephemeral")
+        if reattach_running:
+            if image_override:
+                _rejected.append("--rig/--image")
+            if cli_env and entrypoint is None:
+                _rejected.append("-e/--env")
+            if no_helpers:
+                _rejected.append("--no-helpers")
+            if no_auto_auth:
+                _rejected.append("--no-auto-auth")
+            if browser:
+                _rejected.append("--browser")
+            if share_images:
+                _rejected.append("--share-images")
+            if is_agent_mode:
+                _rejected += [
+                    _flag for _flag, _given in (
+                        ("-N/--new", new_session),
+                        ("-C/--continue", continue_override),
+                        ("-R/--resume", resume_mode),
+                        ("-M/--model", model_override is not None),
+                        ("-A/--autonomous", autonomous),
+                        ("-S/--secure", safe_mode),
+                    ) if _given
+                ]
+        if _rejected:
+            print(
+                f"Error: Box '{proj.name}' is already running, so "
+                f"{', '.join(_rejected)} cannot be applied to it (a running "
+                f"box keeps the container and the agent session it was "
+                f"launched with).\n"
+                f"  Restart it: kanibako --restart {proj.name}\n"
+                f"  Or stop it: kanibako stop {proj.name}",
+                file=sys.stderr,
+            )
+            return 1
+
     target = None
     install = None
     agent_selection = None
@@ -2237,85 +2407,110 @@ def _run_container(
         )
         return 1
 
-    # Resolve the rig name to a kind + prep action, then materialize it.
-    # Templates BUILD their Containerfile; prefabs/bases are pull-only via
-    # ensure_image (inspect -> pull; no local base build).
-    containers_dir = std.data_path / "containers"
-    registry = load_registry(registry_path(std))
-    res = resolve_rig(image, runtime, std, merged, registry=registry)
-    try:
-        if (
-            res.kind == "template"
-            and res.containerfile is not None
-            and not runtime.image_exists(res.image)
-        ):
-            print(
-                f"Rig '{image}' isn't prepped — building...",
-                file=sys.stderr,
-            )
-            rc = runtime.rebuild(
-                res.image,
-                res.containerfile,
-                res.containerfile.parent,
-                build_args=None,
-            )
-            if rc != 0:
+    # ── IMAGE PREP + LAUNCH BASELINE — for a launch that will CREATE a container.
+    # Every step here exists to make a NEW container possible: resolve/build/pull
+    # the rig, settle the shadowing flags that only matter while a box is being
+    # materialized, cache the image's login shell, warn on staleness, and probe
+    # the image's launch baseline in a throwaway container.  A REATTACH creates
+    # nothing — the box is already up, running the image it was launched with —
+    # so the whole block is skipped for it (Jei 2026-08-05: "if the box is
+    # already up, we should be skipping everything unless there's an agent change
+    # or similar").  Skipping is safe rather than merely cheap: the only inputs
+    # these steps consume that a user could have changed are ``--rig/--image``
+    # and ``--share-images``, and both are refused outright by the override gate
+    # above, so nothing settled here can be silently stale on a reattach.
+    #
+    # ⚑ GATED IN PLACE, not moved.  The three blocks below it (agent config,
+    # persona store, launch decisions) DO feed the reattach, so the fast path
+    # must fire after them — but hoisting this prep past them would reorder
+    # ruling #12's ``_persist_or_announce_flags`` seam and the user-visible error
+    # ordering on the ordinary launch path.  A guard changes neither.
+    if not reattach_running:
+        # Resolve the rig name to a kind + prep action, then materialize it.
+        # Templates BUILD their Containerfile; prefabs/bases are pull-only via
+        # ensure_image (inspect -> pull; no local base build).
+        containers_dir = std.data_path / "containers"
+        registry = load_registry(registry_path(std))
+        res = resolve_rig(image, runtime, std, merged, registry=registry)
+        try:
+            if (
+                res.kind == "template"
+                and res.containerfile is not None
+                and not runtime.image_exists(res.image)
+            ):
                 print(
-                    f"Error: failed to build rig '{image}' "
-                    f"(exit code {rc}).",
+                    f"Rig '{image}' isn't prepped — building...",
                     file=sys.stderr,
                 )
-                return 1
-        else:
-            # Prefab/base (or already-local template/extended): inspect, then
-            # pull if missing. Base images are pull-only (no local build).
-            runtime.ensure_image(res.image, containers_dir)
-    except ContainerError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    image = res.image
-
-    # §1A CREATE EXCEPTION — the DIRECT arm's call to the one seam (ruling #12).
-    # THE EARLIEST SAFE POINT: the rig is now prepped (so a never-pulled image can
-    # never be stored) and this arm materialized ``proj`` at the resolve up top, so
-    # everything from here on is window the flag would otherwise sit unstored
-    # through.  The DEFERRED arm has no materialized box yet and calls the seam
-    # from its own site below.
-    if not _defer_box:
-        _persist_or_announce_flags(
-            proj, project_toml,
-            image_override=image_override, share_images=share_images,
-        )
-
-    # Capture the image's login shell (idempotent, never fatal) so the
-    # box-shell resolver reads a stored value instead of probing in the hot path.
-    from kanibako.launch.shells import capture_image_shell
-    capture_image_shell(runtime, image, std)
-
-    # `kanibako shell` (interactive, no agent): resolve the box.shell now, with
-    # the runtime/image handle, so the image-default tier participates.  This
-    # makes entrypoint concrete *before* the agent-vs-shell decision (line ~672)
-    # and the exec-into-running check (line ~737), so neither regresses.
-    if box_shell_mode and entrypoint is None:
-        from kanibako.launch.shells import resolve_box_shell
-        entrypoint, _src = resolve_box_shell(merged, std, runtime=runtime, image=image)
-
-    from kanibako.runtime.freshness import check_image_freshness
-    check_image_freshness(runtime, image, std.cache_path)
-
-    # Two-tier launch verification (one ephemeral probe covers both tiers).
-    # Only meaningful for a persistent, bootstrap-wrapped session: the bootstrap
-    # program is launch-critical only when we actually run it. Ephemeral and
-    # one-shot launches don't use it, so skip the probe (and its hard stop)
-    # entirely — otherwise a minimal --image (no tmux) couldn't run ephemerally.
-    #   TIER 1 (bootstrap) — missing → HARD STOP before launch.
-    #   TIER 2 (rest of baseline) — missing → WARN only; persisted + surfaced
-    #   after the bootstrap session closes.
-    if persistent:
-        if _check_launch_baseline(
-            runtime, image, bootstrap_program, container_name_for(proj), std,
-        ) is _BOOTSTRAP_MISSING:
+                rc = runtime.rebuild(
+                    res.image,
+                    res.containerfile,
+                    res.containerfile.parent,
+                    build_args=None,
+                )
+                if rc != 0:
+                    print(
+                        f"Error: failed to build rig '{image}' "
+                        f"(exit code {rc}).",
+                        file=sys.stderr,
+                    )
+                    return 1
+            else:
+                # Prefab/base (or already-local template/extended): inspect, then
+                # pull if missing. Base images are pull-only (no local build).
+                runtime.ensure_image(res.image, containers_dir)
+        except ContainerError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
+        image = res.image
+
+        # §1A CREATE EXCEPTION — the DIRECT arm's call to the one seam (ruling
+        # #12).  THE EARLIEST SAFE POINT: the rig is now prepped (so a
+        # never-pulled image can never be stored) and this arm materialized
+        # ``proj`` at the resolve up top, so everything from here on is window
+        # the flag would otherwise sit unstored through.  The DEFERRED arm has no
+        # materialized box yet and calls the seam from its own site below.
+        if not _defer_box:
+            _persist_or_announce_flags(
+                proj, project_toml,
+                image_override=image_override, share_images=share_images,
+            )
+
+        # Capture the image's login shell (idempotent, never fatal) so the
+        # box-shell resolver reads a stored value instead of probing in the hot
+        # path.
+        from kanibako.launch.shells import capture_image_shell
+        capture_image_shell(runtime, image, std)
+
+        # `kanibako shell` (interactive, no agent): resolve the box.shell now,
+        # with the runtime/image handle, so the image-default tier participates.
+        # This makes entrypoint concrete *before* the agent-vs-shell decision
+        # (line ~672) and the exec-into-running check (line ~737), so neither
+        # regresses.  A reattach needs no shell: it attaches to the bootstrap
+        # session that is already running one.
+        if box_shell_mode and entrypoint is None:
+            from kanibako.launch.shells import resolve_box_shell
+            entrypoint, _src = resolve_box_shell(
+                merged, std, runtime=runtime, image=image,
+            )
+
+        from kanibako.runtime.freshness import check_image_freshness
+        check_image_freshness(runtime, image, std.cache_path)
+
+        # Two-tier launch verification (one ephemeral probe covers both tiers).
+        # Only meaningful for a persistent, bootstrap-wrapped session: the
+        # bootstrap program is launch-critical only when we actually run it.
+        # Ephemeral and one-shot launches don't use it, so skip the probe (and
+        # its hard stop) entirely — otherwise a minimal --image (no tmux)
+        # couldn't run ephemerally.
+        #   TIER 1 (bootstrap) — missing → HARD STOP before launch.
+        #   TIER 2 (rest of baseline) — missing → WARN only; persisted +
+        #   surfaced after the bootstrap session closes.
+        if persistent:
+            if _check_launch_baseline(
+                runtime, image, bootstrap_program, container_name_for(proj), std,
+            ) is _BOOTSTRAP_MISSING:
+                return 1
 
     # Load agent config.  ``agent_id`` / ``agent_cfg_path`` were hoisted ABOVE (the
     # agent-scope ``bootstrap`` resolution needs them ahead of the baseline probe);
@@ -2385,6 +2580,118 @@ def _run_container(
             agent_selection.selection_level if agent_selection is not None else None
         ),
     )
+
+    # Plugin descriptor (None for legacy/no_agent targets).  Hoisted here so
+    # EVERY credential lifecycle site — the reattach refresh immediately below,
+    # and the init / refresh / writeback sites on the launch path — branches off a
+    # single value: descriptor-bearing targets route their cred lifecycle through
+    # the credsync engine, legacy targets keep the per-plugin refresh/writeback
+    # hooks.  It depends only on ``target``, which nothing below rebinds.
+    desc = target.descriptor if target else None
+
+    # ══ REATTACH FAST PATH ═══════════════════════════════════════════════════
+    # THE BOX IS ALREADY UP.  Every input the reattach consumes is settled as of
+    # this line — the agent selection, the in-memory agent config, the persona
+    # store read, and the launch decisions above (``auth_src`` drives credsync;
+    # ``active_endpoint is not None`` is the cred-fork signal) — so the reattach
+    # fires HERE instead of ~130 lines further down, and nothing in between runs
+    # for a live box.  What that skips, and why skipping is correct:
+    #   * the persona LOAD-OR-ERROR pre-flight and its per-launch network PROBE.
+    #     The box's agent is already running and authenticated, and the probe
+    #     HARD-ERRORS on a REJECTED verdict — i.e. it could refuse to reattach a
+    #     user to a perfectly working box, which is the report that opened this
+    #     fix.  The endpoint VALUE the pre-flight would refine is not an input
+    #     here: the reattach only asks WHETHER one exists (``suppress_oauth``),
+    #     and the launch decisions above already answered that.
+    #   * deferred box materialisation and ``_check_box_components`` — a RUNNING
+    #     box is materialised by definition and its dirs are live bind mounts.
+    #   * the persona ARTIFACT writes (``write_agent_config`` /
+    #     ``ensure_persona_share_symlinks``).  ⚑ A reattach must NOT write the
+    #     agent config: it delivers nothing to the live box, and rewriting under
+    #     a running agent is precisely the hazard ``reattach_config_notice``
+    #     exists to warn about.
+    if reattach_running:
+        container_name = container_name_for(proj)
+        if detach:
+            # Detach = "ensure the box is Up in the background".  It already
+            # is, so there is nothing to attach — report and return without
+            # touching the running session.  We do NOT claim it is a
+            # keep-alive box: a box already running the agent as PID-1 is
+            # "running" but not a keep-alive, so the message stays neutral.
+            # (`kanibako code` pre-checks is_running so it never auto-starts
+            # a live box; `kanibako start --detach` on a live box lands here.)
+            print(
+                f"Box '{proj.name}' is already running.",
+                file=sys.stderr,
+            )
+            # --print-container: emit the cname as the final stdout line so
+            # the remote-code leg parses it even when the box is already up.
+            if print_container:
+                print(container_name)
+            return 0
+        if entrypoint is not None:
+            # An explicit ``--entrypoint`` against a live box is a SECOND
+            # PROCESS entering it, not a reattach — the one case Jei marked
+            # FEASIBLE (2026-08-05).  Route it to the very same ``runtime.exec``
+            # the ephemeral path uses further down, per-run ``-e`` included.
+            # Without this the entrypoint is silently DROPPED and the user gets
+            # the bootstrap session instead, because ``start`` defaults
+            # ``persistent=True`` whenever the bootstrap program is present — so
+            # an ``--entrypoint`` launch reaches the reattach, which never looks
+            # at it.  ``--detach`` is answered first (above): it means "ensure
+            # the box is Up", which needs no process at all.
+            return runtime.exec(
+                container_name, [entrypoint] + (extra_args or []),
+                env=_parse_cli_env(cli_env),
+            )
+        # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
+        # stream we're about to attach to).
+        # Show the NODE-name (persona identity) in user-facing ``+`` form; a
+        # bare node == harness == target.name, so the label is byte-identical.
+        agent_label = display_agent_ref(agent_id) if target else (
+            display_agent_ref(stored_agent) if stored_agent else "shell"
+        )
+        print(
+            f"Reattaching to running box '{proj.name}' "
+            f"(agent: {agent_label}).",
+            file=sys.stderr,
+        )
+        # Reconciled-projection heads-up (D1): a reattach does NOT re-deliver
+        # the agent's launch-projected config, and rewriting under a live
+        # app-server is unsafe.  Agents whose config is a reconciled
+        # projection (codex) return a notice; core prints it WITHOUT touching
+        # the live file (reconciled on next start).  Seam call, no
+        # name-branching — a bare-config agent inherits the None default.
+        if target is not None:
+            _reattach_notice = target.reattach_config_notice()
+            if _reattach_notice:
+                print(_reattach_notice, file=sys.stderr)
+        # Refresh credentials before reattaching.  ``suppress_oauth`` is FINAL
+        # here: on the launch path the persona pre-flight can still refine
+        # ``active_endpoint``, but this path skips it, so the launch decisions'
+        # value is the last word — a persona endpoint (from the keyspace or the
+        # store tier below it) drops the host OAuth cred sync so an Anthropic
+        # token never reaches a box pointed at a third-party endpoint.
+        if target and auth_src.creds_shared:
+            if desc is not None:
+                credsync.refresh_box_credentials(
+                    desc, target, auth=auth_src, host_home=Path.home(),
+                    project_home=proj.shell_path,
+                    suppress_oauth=active_endpoint is not None,
+                )
+            else:
+                target.refresh_credentials(proj.shell_path)
+        reattach_rc = runtime.exec(
+            container_name, _bootstrap_attach(bootstrap_program), attach=True
+        )
+        # FIX 1: the reattach session has ended (detach or in-box exit).
+        # An in-box login during this attach must reach the host, so write
+        # back here too — the reattach path (4a32871) previously skipped the
+        # post-session cred lifecycle entirely.
+        writeback_session_credentials(target, proj, auth_src=auth_src)
+        # Two-state lifecycle ("d"): tear down on exit, keep on detach.
+        _teardown_persistent_box(runtime, container_name)
+        return reattach_rc
 
     # PERSONA LOAD-OR-ERROR: a persona (node != harness) that cannot resolve a
     # loadable endpoint MUST error out here — never silently degrade to bare host
@@ -2492,77 +2799,11 @@ def _run_container(
     logger.debug("Image: %s", image)
     logger.debug("Container: %s", container_name)
 
-    # Plugin descriptor (None for legacy/no_agent targets).  Hoisted here so the
-    # credential lifecycle sites below (init / refresh / writeback) and the
-    # launch-assembly block all branch off a single value: descriptor-bearing
-    # targets route their cred lifecycle through the credsync engine, legacy
-    # targets keep the per-plugin refresh/writeback hooks.
-    desc = target.descriptor if target else None
-
-    # Persistent mode: reattach if already running, clean up stale containers
+    # Persistent mode: clean up a stale container before recreating.  A RUNNING
+    # box never reaches here — it returned from the reattach fast path above (or
+    # was stopped by ``--restart`` before ``reattach_running`` was computed), so
+    # the only container that can exist at this point is a stopped one.
     if persistent:
-        if runtime.is_running(container_name):
-            if detach:
-                # Detach = "ensure the box is Up in the background".  It already
-                # is, so there is nothing to attach — report and return without
-                # touching the running session.  We do NOT claim it is a
-                # keep-alive box: a box already running the agent as PID-1 is
-                # "running" but not a keep-alive, so the message stays neutral.
-                # (`kanibako code` pre-checks is_running so it never auto-starts
-                # a live box; `kanibako start --detach` on a live box lands here.)
-                print(
-                    f"Box '{proj.name}' is already running.",
-                    file=sys.stderr,
-                )
-                # --print-container: emit the cname as the final stdout line so
-                # the remote-code leg parses it even when the box is already up.
-                if print_container:
-                    print(container_name_for(proj))
-                return 0
-            # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
-            # stream we're about to attach to).
-            # Show the NODE-name (persona identity) in user-facing ``+`` form; a
-            # bare node == harness == target.name, so the label is byte-identical.
-            agent_label = display_agent_ref(agent_id) if target else (
-                display_agent_ref(stored_agent)
-                if reattach_running and stored_agent else "shell"
-            )
-            print(
-                f"Reattaching to running box '{proj.name}' "
-                f"(agent: {agent_label}).",
-                file=sys.stderr,
-            )
-            # Reconciled-projection heads-up (D1): a reattach does NOT re-deliver
-            # the agent's launch-projected config, and rewriting under a live
-            # app-server is unsafe.  Agents whose config is a reconciled
-            # projection (codex) return a notice; core prints it WITHOUT touching
-            # the live file (reconciled on next start).  Seam call, no
-            # name-branching — a bare-config agent inherits the None default.
-            if target is not None:
-                _reattach_notice = target.reattach_config_notice()
-                if _reattach_notice:
-                    print(_reattach_notice, file=sys.stderr)
-            # Refresh credentials before reattaching
-            if target and auth_src.creds_shared:
-                if desc is not None:
-                    credsync.refresh_box_credentials(
-                        desc, target, auth=auth_src, host_home=Path.home(),
-                        project_home=proj.shell_path,
-                        suppress_oauth=suppress_oauth,
-                    )
-                else:
-                    target.refresh_credentials(proj.shell_path)
-            reattach_rc = runtime.exec(
-                container_name, _bootstrap_attach(bootstrap_program), attach=True
-            )
-            # FIX 1: the reattach session has ended (detach or in-box exit).
-            # An in-box login during this attach must reach the host, so write
-            # back here too — the reattach path (4a32871) previously skipped the
-            # post-session cred lifecycle entirely.
-            writeback_session_credentials(target, proj, auth_src=auth_src)
-            # Two-state lifecycle ("d"): tear down on exit, keep on detach.
-            _teardown_persistent_box(runtime, container_name)
-            return reattach_rc
         # Stale stopped container: remove before recreating
         if runtime.container_exists(container_name):
             runtime.rm(container_name)
@@ -2583,9 +2824,13 @@ def _run_container(
                 container_name, exec_cmd, env=_parse_cli_env(cli_env)
             )
         if runtime.container_exists(container_name):
+            # Where an --ephemeral / shell launch meets a live box.  It is the
+            # same "cannot be integrated into a running box" wall the override
+            # gate puts up, so it names the same cures.
             print(
                 "Error: A box is already running for this project.\n"
                 "  Reattach:  kanibako start\n"
+                "  Restart:   kanibako --restart\n"
                 "  Stop it:   kanibako stop",
                 file=sys.stderr,
             )
