@@ -633,12 +633,20 @@ class ContainerRuntime:
 
         Reads the running container's ``.ImageName`` (the fully-qualified image
         reference recorded at ``run`` time).  Returns None if the container does
-        not exist, the field is empty, or the inspect fails — callers fall back
-        to the configured ``box_image``.
+        not exist, the field is empty, or the inspect fails.
+
+        ⚑ What a None MEANS is the caller's call, not this function's, and the
+        two callers answer it differently — neither is a sanctioned default:
+        ``code_cmd._resolve_box_image`` falls back to the configured
+        ``box_image`` (it only needs a stable key for image-shared config),
+        while the box-shell resolve on the reattach fast path
+        (``commands/start.py``) DROPS the image tier instead, because there the
+        configured image was never run through ``resolve_rig`` and can name a
+        different rig than the live box.
 
         Note: ``.ImageName`` is podman-specific; ``docker inspect`` has no such
-        field, so on Docker this errors → returns None → caller degrades to the
-        ``box_image`` config fallback (Docker is backlog, not yet supported).
+        field, so on Docker this errors → returns None (Docker is backlog, not
+        yet supported).
         """
         result = subprocess.run(
             [self.cmd, "inspect", "--format", "{{.ImageName}}", name],

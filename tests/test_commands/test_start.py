@@ -7505,6 +7505,177 @@ class TestReattachFastPath(_RunningBoxDriver):
         assert call.kwargs.get("attach") is not True
 
 
+class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
+    """2026-08-05g S1 — ``kanibako shell --persistent <live box>`` handed the
+    user the AGENT'S tmux session instead of a shell.
+
+    Cause: ``resolve_box_shell`` sits inside the ``not reattach_running`` prep
+    block, so on a reattach ``entrypoint`` stayed None, the fast path's exec arm
+    was skipped, and it fell through to the bootstrap attach.  Fix (Jei's ruling,
+    option 1): resolve the shell in the fast path FROM THE RUNNING CONTAINER'S
+    OWN IMAGE.
+
+    ⚑ SCOPED TO A BOX RUNNING AN AGENT, keyed on the live ``KANIBAKO_AGENT``
+    stamp — ``self._running(m)`` supplies one.  A live NO-AGENT box's tmux
+    session IS the user's own shell, so it must keep reattaching; that is
+    ``test_a_live_no_agent_box_reattaches_to_its_own_shell_session``.
+    """
+
+    _LIVE_IMAGE = "ghcr.io/doctorjei/live-box:latest"
+
+    def _shell(self, **over):
+        """``kanibako shell`` (interactive, no agent) with ``--persistent``."""
+        kw = dict(box_shell_mode=True, explicit_persistent=True)
+        kw.update(over)
+        return self._start(**kw)
+
+    def test_shell_persistent_at_a_running_box_execs_a_shell(self, start_mocks):
+        """⚑ THE REPORTED BUG.  The user asked for a shell and must get one —
+        not ``tmux attach`` onto the running agent's session."""
+        with start_mocks() as m:
+            m.merged.box_shell = "/bin/zsh"
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
+            self._running(m)
+            rc = self._shell()
+        assert rc == 0
+        call = m.runtime.exec.call_args
+        assert call.args[1] == ["/bin/zsh"]
+        assert call.kwargs.get("attach") is not True
+        assert not [
+            c for c in m.runtime.exec.call_args_list
+            if c.kwargs.get("attach") is True
+        ]
+
+    def test_the_image_tier_reads_the_running_containers_own_image(
+        self, start_mocks,
+    ):
+        """⚑ The load-bearing half of the ruling: the image tier comes from
+        ``.ImageName`` (what the box was CREATED from), never from the
+        module-level ``image``, which this path never ran through
+        ``resolve_rig`` and which can therefore name a different rig."""
+        with start_mocks() as m, patch(
+            "kanibako.launch.shells.resolve_box_shell",
+            return_value=("/bin/bash", "image"),
+        ) as m_resolve:
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
+            self._running(m)
+            assert self._shell() == 0
+            m.runtime.container_image.assert_called_once_with("kanibako-testproject")
+            kwargs = m_resolve.call_args.kwargs
+        assert kwargs["image"] == self._LIVE_IMAGE
+        # ... and NOT the configured rig the merged config carries.
+        assert m.merged.box_image == "test:latest"
+        assert kwargs["image"] != "test:latest"
+        # ⚑ The runtime goes in WITH it, and is not optional decoration: without
+        # one ``resolve_box_shell`` can neither compute the digest store key nor
+        # lazily probe (``launch/shells.py``), so a box whose image shell was
+        # never captured would silently fall to ``sh`` instead of the image's
+        # own login shell.  A ``runtime=None`` implementation passes every other
+        # assertion in this class.
+        assert kwargs["runtime"] is m.runtime
+        assert m.runtime.exec.call_args.args[1] == ["/bin/bash"]
+
+    def test_an_unreadable_container_image_drops_the_image_tier(self, start_mocks):
+        """``container_image()`` → None (podman inspect failure; Docker has no
+        ``.ImageName``).  We degrade the tier rather than substitute the wrong
+        image — so both ``image`` and ``runtime`` go in as None."""
+        with start_mocks() as m, patch(
+            "kanibako.launch.shells.resolve_box_shell",
+            return_value=("sh", "sh"),
+        ) as m_resolve:
+            m.runtime.container_image.return_value = None
+            self._running(m)
+            assert self._shell() == 0
+            kwargs = m_resolve.call_args.kwargs
+        assert kwargs["image"] is None
+        assert kwargs["runtime"] is None
+
+    def test_the_degraded_resolve_never_probes_the_configured_rig(
+        self, start_mocks, monkeypatch,
+    ):
+        """The same case through the REAL resolver: with no readable live image
+        it falls ``box.shell`` -> ``$KANIBAKO_SHELL`` -> ``sh`` and touches no
+        image at all (an image probe here would be probing the WRONG one)."""
+        monkeypatch.delenv("KANIBAKO_SHELL", raising=False)
+        with start_mocks() as m:
+            m.merged.box_shell = ""
+            m.runtime.container_image.return_value = None
+            self._running(m)
+            rc = self._shell()
+        assert rc == 0
+        assert m.runtime.exec.call_args.args[1] == ["sh"]
+        m.runtime.get_local_digest.assert_not_called()
+
+    def test_a_live_no_agent_box_reattaches_to_its_own_shell_session(
+        self, start_mocks,
+    ):
+        """⚑ THE ARM MUST NOT FIRE AT A LIVE NO-AGENT BOX.  Such a box has PID-1
+        ``tmux new-session -s kanibako -- <box shell>`` (pinned in
+        ``test_start_extended.py``), so its tmux session IS the user's own
+        shell.  Exec'ing a fresh shell here would strand it — a running build
+        would become unreachable through ``shell``.  The discriminator is the
+        live ``KANIBAKO_AGENT`` stamp, not what this invocation requested: both
+        legs below type the identical command."""
+        with start_mocks() as m:
+            m.merged.box_shell = "/bin/zsh"
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
+            self._running(m, agent=None)          # no stamp == no agent in there
+            assert self._shell() == 0
+            attach = [
+                c for c in m.runtime.exec.call_args_list
+                if c.kwargs.get("attach") is True
+            ]
+            assert len(attach) == 1
+            assert attach[0].args[1] == ["tmux", "attach", "-t", "kanibako"]
+            assert not [
+                c for c in m.runtime.exec.call_args_list
+                if c.args[1] == ["/bin/zsh"]
+            ]
+            # ... and the live image is never even read: nothing to resolve.
+            m.runtime.container_image.assert_not_called()
+        # Control: the SAME command at a box that IS running an agent execs the
+        # resolved shell, so the assertion above pins the stamp, not the class.
+        with start_mocks() as m:
+            m.merged.box_shell = "/bin/zsh"
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
+            self._running(m)
+            assert self._shell() == 0
+        assert m.runtime.exec.call_args.args[1] == ["/bin/zsh"]
+
+    def test_an_ordinary_agent_reattach_is_unchanged(self, start_mocks):
+        """The control: without ``box_shell_mode`` nothing here fires and the
+        agent reattach is still the bootstrap attach."""
+        with start_mocks() as m:
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
+            self._running(m)
+            assert self._start() == 0
+            m.runtime.container_image.assert_not_called()
+        attach = [
+            c for c in m.runtime.exec.call_args_list
+            if c.kwargs.get("attach") is True
+        ]
+        assert len(attach) == 1
+        assert attach[0].args[1] == ["tmux", "attach", "-t", "kanibako"]
+
+    def test_per_run_env_is_still_refused_by_the_override_gate(
+        self, start_mocks, capsys,
+    ):
+        """⚑ PINS TODAY'S BEHAVIOUR, NOT AN ENDORSEMENT OF IT (reported
+        2026-08-05g).  The exec this path lands on DOES apply ``-e``, but the
+        override gate runs far earlier and reads ``entrypoint``, which is still
+        None for a box-shell reattach at that point — so ``-e/--env`` is refused
+        before the resolve ever happens.  ``kanibako shell -e`` (ephemeral, the
+        shell's own default) is unaffected: it never becomes a reattach.  If the
+        gate is re-ruled, this test changes with it."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._shell(cli_env=["FOO=bar"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "-e/--env" in err
+        m.runtime.exec.assert_not_called()
+
+
 class TestRunningBoxOverrideGate(_RunningBoxDriver):
     """Overrides that cannot be integrated into a live box are REFUSED BY NAME
     (Jei 2026-08-05: "could this setting work without restarting the box and

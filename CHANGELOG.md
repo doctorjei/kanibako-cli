@@ -331,6 +331,17 @@ migration code.** Four released config surfaces are removed outright
   already had ephemerally. Previously `start` defaulted to persistent whenever tmux was present, so
   the invocation reattached and the entrypoint was silently discarded. Same fix covers
   `kanibako shell --persistent <box> -- cmd`.
+- **`kanibako shell --persistent <box>` gives you a shell, not the agent's session.** Against a box
+  that is running an **agent** it attached to that agent's tmux session instead, because the
+  box-shell resolution ran only on the path that creates a container. The shell is now resolved on
+  the reattach too and exec'd into the live box as a second process. ⚑ Its image tier is read from
+  the **running container's own image** (the reference it was created from), not from the configured
+  rig — on this path the rig was never resolved, so it can name a different image than the box is
+  actually running. Where that image cannot be read, the image tier is dropped rather than guessed:
+  `box.shell` → `$KANIBAKO_SHELL` → `sh`. **A persistent no-agent box is unchanged and still
+  reattaches**: its session already *is* your shell, so you get back the one you left running
+  rather than a new one. (A box launched before agent stamping keeps the old behaviour until its
+  next restart.)
 - **A flag now works wherever you type it.** `kanibako box set <box> --null <key>` failed
   with `unrecognized arguments: <key>` — argparse groups positionals around the optionals
   between them, so a flag written *between* two positionals stranded everything after it
