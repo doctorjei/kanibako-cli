@@ -247,8 +247,9 @@ def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
     endpoint delivery + the ``ANTHROPIC_AUTH_TOKEN`` token var (byte-identical).
 
     Every field falls back to the :class:`PersonaSpec` field default when the block
-    omits it — ``host_dir_adopt`` included, whose default is ``False``: a harness
-    that does not DECLARE the claude-shaped B3 host-dir adoption does not get it.
+    omits it — ``model_required`` included, whose default is ``False``: a harness
+    that does not DECLARE the model veto does not get it, so an absent model means
+    "this persona needs none".
     """
     if not raw:
         return None
@@ -258,7 +259,6 @@ def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
         token_var=raw.get("token_var", ""),
         endpoint_delivery=raw.get("endpoint_delivery", "env"),
         wire_api=raw.get("wire_api", "responses"),
-        host_dir_adopt=bool(raw.get("host_dir_adopt", False)),
         provider_pin=provider_pin,
         model_required=bool(raw.get("model_required", False)),
     )

@@ -44,8 +44,8 @@ class AgentConfig:
                      pending the tracked bindings flatten). NOT modelled here (they
                      ride ``_agent_partial`` into the launch cascade, not the launch
                      invocation) but carried OPAQUELY through the load→write
-                     round-trip so a read-modify-write persist (persona adopt /
-                     store import) never drops a user's node binds.
+                     round-trip so a read-modify-write persist never drops a
+                     user's node binds.
     """
 
     name: str = ""

@@ -321,8 +321,8 @@ class TestNodeTablesCarryThrough:
     """The discriminated ``self.<node>.*`` sub-table (node binds) must survive
     the load→write round-trip OPAQUELY.  AgentConfig does not model it (it
     rides ``_agent_partial`` into the launch cascade), but before the
-    ``node_tables`` carry every read-modify-write persist (launch adopt,
-    persona import) silently DROPPED a user's node binds."""
+    ``node_tables`` carry every read-modify-write persist silently DROPPED a
+    user's node binds."""
 
     _NODE_YAML = (
         "self:\n"

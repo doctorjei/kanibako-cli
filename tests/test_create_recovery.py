@@ -272,10 +272,10 @@ class TestRunCreatePersonaGate:
         from kanibako.settings.paths import load_std_paths
         from kanibako.launch import journal
 
-        # No persona host dir under XDG_CONFIG_HOME (tmp_home/config) → the
-        # explicit persona 'navigator+claude' is unrecognised AND unadoptable, so
-        # the create verdict is a hard error.  claude IS an installed harness in
-        # the test env, so the gate is genuinely reached (not skipped as no-agent).
+        # Nothing configures the explicit persona 'navigator+claude' — no keyspace
+        # endpoint, no persona-store entry — so the create verdict is a hard error.
+        # claude IS an installed harness in the test env, so the gate is genuinely
+        # reached (not skipped as no-agent).
         seed_called = {"v": False}
 
         def spy_seed(std, config, proj, **kw):  # must NEVER run.

@@ -270,13 +270,14 @@ class TestLayoutSingleSource:
         assert is_self_resolving(src) is expected
 
 
-class TestPersonaHostDirAdopt:
-    """The ``host_dir_adopt`` LOADER default (T3.2): declared-or-nothing.
+class TestPersonaBlockLoading:
+    """The ``persona:`` block LOADER: declared-or-nothing (T3.2).
 
-    The claude-shaped B3 host-dir adoption (``~/.config/claude/<persona>/``) is a
-    CLAUDE capability — claude's class-setup script is the only thing that writes
-    that dir.  A plugin gets it only by DECLARING it; the loader default is False,
-    so no plugin silently inherits claude's adoption semantics.
+    Every field falls back to its :class:`PersonaSpec` default when the block omits
+    it, so a plugin never silently inherits another harness's semantics.  The
+    load-bearing one is ``model_required``: a MISSING model is not automatically
+    invalid, so absence means "this persona needs none" unless the harness declares
+    the veto.
     """
 
     def _persona(self, declfile, block: str):
@@ -287,26 +288,45 @@ class TestPersonaHostDirAdopt:
         )
         return agent_defaults.load_descriptor(package, filename).persona
 
-    def test_block_without_the_field_does_not_adopt(self, declfile):
-        """A ``persona:`` block that omits ``host_dir_adopt`` gets False.
+    def test_block_without_the_field_does_not_veto(self, declfile):
+        """A ``persona:`` block that omits ``model_required`` gets False.
 
-        (Mutation: loader default back to True → RED.)"""
+        (Mutation: loader default to True → RED.)"""
         p = self._persona(declfile, "    endpoint_delivery: env\n    token_var: PROBE\n")
         assert p is not None
-        assert p.host_dir_adopt is False
+        assert p.model_required is False
         assert p.token_var == "PROBE"
 
-    def test_declared_true_adopts(self, declfile):
-        """The claude shape: adoption is available, but only when DECLARED."""
-        p = self._persona(declfile, "    endpoint_delivery: env\n    host_dir_adopt: true\n")
+    def test_declared_true_vetoes(self, declfile):
+        """The goose/codex shape: the veto exists, but only when DECLARED."""
+        p = self._persona(declfile, "    endpoint_delivery: env\n    model_required: true\n")
         assert p is not None
-        assert p.host_dir_adopt is True
+        assert p.model_required is True
 
-    def test_declared_false_does_not_adopt(self, declfile):
-        """The codex/goose shape (explicit refusal) reads the same as omission."""
-        p = self._persona(declfile, "    endpoint_delivery: env\n    host_dir_adopt: false\n")
+    def test_declared_false_does_not_veto(self, declfile):
+        """An explicit refusal reads the same as omission."""
+        p = self._persona(declfile, "    endpoint_delivery: env\n    model_required: false\n")
         assert p is not None
-        assert p.host_dir_adopt is False
+        assert p.model_required is False
+
+    def test_a_retired_host_dir_adopt_key_is_IGNORED(self, declfile):
+        """B3 is retired (D3): a skewed plugin still declaring it still LOADS.
+
+        Descriptor keys are read individually, so an unrecognized one is simply not
+        read.  That silence is the RIGHT answer here — unlike ``safe_bypass``, whose
+        absence would degrade the launch into permissive, a stale ``host_dir_adopt``
+        asks for a credential route that no longer exists, and refusing to load the
+        plugin over it would break an install whose base upgraded first.
+        """
+        p = self._persona(
+            declfile,
+            "    endpoint_delivery: env\n"
+            "    token_var: PROBE\n"
+            "    host_dir_adopt: true\n",
+        )
+        assert p is not None
+        assert p.token_var == "PROBE"
+        assert not hasattr(p, "host_dir_adopt")
 
     def test_no_persona_block_is_none(self, declfile):
         """No block at all → no spec (the legacy claude-shaped fallback territory,

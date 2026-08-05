@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import fcntl
-import json
 import os
 import shlex
 import shutil
@@ -2387,13 +2386,13 @@ def _run_container(
         ),
     )
 
-    # PERSONA LOAD-OR-ERROR (A + B3): a persona (node != harness) that cannot
-    # resolve a loadable endpoint MUST error out here — never silently degrade to
-    # bare host claude on the user's real account.  The pre-flight may B3-adopt the
-    # persona's config from ``~/.config/claude/<persona>/`` (mutating the in-memory
-    # ``agent_cfg``).  On a hard error we return BEFORE creating any artifact; for a
-    # DEFERRED explicit persona (``_defer_box``) the box was never materialised, so
-    # NOTHING is left behind — a true pre-flight, not a rollback.
+    # PERSONA LOAD-OR-ERROR: a persona (node != harness) that cannot resolve a
+    # loadable endpoint MUST error out here — never silently degrade to bare host
+    # claude on the user's real account.  The pre-flight only READS (every persona
+    # value is already resolved through the cascade); on a hard error we return
+    # BEFORE creating any artifact, and for a DEFERRED explicit persona
+    # (``_defer_box``) the box was never materialised, so NOTHING is left behind —
+    # a true pre-flight, not a rollback.
     #
     # ``provider`` is the resolved codex CodexModelProvider for a config-file
     # (codex) persona (None for claude / non-persona / bare) — INC 3 threads it into
@@ -2402,14 +2401,11 @@ def _run_container(
     # write with a None provider (byte-identical) instead of an unbound local.
     provider: CodexModelProvider | None = None
     # FIRST-USE GENERATE ONLY.  Nothing else on this path may dirty the agent
-    # settings file: the persona store is a live resolution input and is never
-    # written back (the B3 adopt fold below is the one remaining exception, and
-    # it dies with B3).
+    # settings file: every persona value is a live resolution input and is never
+    # written back.  There is no other writer left.
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
-        (
-            active_endpoint, persona_error, persona_adopted, provider,
-        ) = _preflight_persona_load(
+        active_endpoint, persona_error, provider = _preflight_persona_load(
             agent_id, agent_cfg, active_endpoint, logger,
             target=target, keyspace_model=active_model,
             # The store read from above — the pre-flight's SECOND token source
@@ -2421,7 +2417,6 @@ def _run_container(
         if persona_error is not None:
             print(persona_error, file=sys.stderr)
             return 1
-        agent_cfg_dirty = agent_cfg_dirty or persona_adopted
 
     # Loadability resolved → materialise the DEFERRED box now (the explicit-persona
     # path resolved paths only above; mkdir the box + set ``is_new`` here, then
@@ -2475,17 +2470,17 @@ def _run_container(
         return 1
 
     # ``suppress_oauth`` and the persona endpoint are now settled; a persona ALWAYS
-    # suppresses the host OAuth cred sync (guard + suppress move together — a
-    # B3-adopted persona suppresses exactly as a keyspace-configured one does).
+    # suppresses the host OAuth cred sync (guard + suppress move together), whether
+    # its endpoint came from the keyspace or the persona-store tier below it.
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → NOW materialise the persona artifacts.  Persist the
-    # agent config (freshly generated OR B3-adopted); the common-dir shim points
+    # freshly generated agent config; the common-dir shim points
     # ``agents/<node>/common/{plugins,cache}`` at the harness's dirs BEFORE mount
     # assembly resolves them.  A bare agent (node == harness) is a no-op for the shim.
-    # ⚑ ``agent_cfg_dirty`` is FIRST-USE ONLY (plus the B3 adopt, which dies with
-    # B3): the persona store is never written back here, so a persona launch
-    # leaves an existing ``agents/<node>/settings.yaml`` byte-identical.
+    # ⚑ ``agent_cfg_dirty`` is FIRST-USE ONLY: nothing on this path writes a resolved
+    # persona value back, so a persona launch leaves an existing
+    # ``agents/<node>/settings.yaml`` byte-identical.
     if target and agent_cfg_dirty:
         write_agent_config(agent_cfg_path, agent_cfg)
     ensure_persona_share_symlinks(std, agent_id, target)
@@ -4231,24 +4226,27 @@ def _directive_flatten_shim(
 
 
 # --------------------------------------------------------------------------- #
-# Persona LOAD-OR-ERROR pre-flight (A + B3, Jei dogfood 2026-07-03).            #
+# Persona LOAD-OR-ERROR pre-flight (Jei dogfood 2026-07-03).                    #
 # --------------------------------------------------------------------------- #
 #
 # A persona (node != harness, e.g. ``navigator℘claude``) that CANNOT resolve a
 # loadable endpoint must ERROR before any launch or artifact — never silently
 # degrade to bare host claude on the user's real Anthropic account.  "Loadable" =
-# a resolvable endpoint from EITHER the keyspace (``agent.<node>.endpoint``) OR —
-# when the persona is not recognised — auto-adopted (B3) from the host dir the
-# class setup script writes, ``~/.config/claude/<persona>/``.
+# a resolvable ``agent.<node>.endpoint`` off the launch snapshot, which the
+# persona-grata store feeds as a live cascade tier.  ⚑ There is exactly ONE
+# ingestion route.  The legacy claude host dir ``~/.config/claude/<persona>/``
+# (B3) was a second one and is RETIRED — nothing here reads it, and nothing may
+# re-add it: an alternate route is precisely what let a stale endpoint mask a
+# rejected store config.
 #
 # The host-login OAuth env var (BASE_URL) and the bearer token reach the box
 # through the EXISTING single-route channels (no bespoke copy): the endpoint via
-# the descriptor's ``endpoint``->``ANTHROPIC_BASE_URL`` env (populated into
-# ``agent_cfg.state``), the token via the ``secret_path`` category (arm's-length ro
-# mount + in-box export), and any other non-secret settings.json env (the model-map
-# ``ANTHROPIC_DEFAULT_*_MODEL``) via the agent ``env`` channel (``_build_config_env``).
-# BASE_URL and the token are carried by their dedicated channels and excluded from
-# the env overlay so each var has exactly ONE source.
+# the descriptor's ``endpoint``->``ANTHROPIC_BASE_URL`` env, the token via the
+# ``secret_path`` category (arm's-length ro mount + in-box export), and any other
+# non-secret persona env (the model-map ``ANTHROPIC_DEFAULT_*_MODEL``) via the
+# agent ``env`` channel (``_build_config_env``).  BASE_URL and the token are
+# carried by their dedicated channels and excluded from the env overlay so each
+# var has exactly ONE source.
 
 #: The persona's bearer token env var (harness-agnostic here: the persona MVP
 #: bearer channel).  Excluded from the model-map env overlay (delivered via the
@@ -4270,65 +4268,6 @@ def _secret_pointer_usable(raw_path: str) -> bool:
     except OSError:
         return False
     return p.is_file() and os.access(p, os.R_OK) and st.st_size > 0
-#: The base-URL env var carried by the ``endpoint`` descriptor (its single
-#: source); excluded from the model-map env overlay so it is never double-sourced.
-_PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
-
-
-def _persona_host_dir(persona: str) -> Path:
-    """The host config dir the class setup script writes for *persona*.
-
-    ``$XDG_CONFIG_HOME/claude/<persona>/`` (``~/.config/claude/<persona>/`` by
-    default) — the same convention a hand-set ``secret_path`` pointer expands.
-    """
-    return xdg("XDG_CONFIG_HOME", ".config") / "claude" / persona
-
-
-def _adopt_persona_from_host_dir(
-    persona: str,
-) -> "tuple[str, dict[str, str], str] | None":
-    """B3 auto-adopt: read a persona's config from its host dir.
-
-    Reads ``~/.config/claude/<persona>/settings.json`` and returns
-    ``(base_url, extra_env, token_path)`` when it yields an ``env.ANTHROPIC_BASE_URL``:
-
-    * *base_url* — the alternate endpoint (drives ``agent.<node>.endpoint`` and,
-      through it, the OAuth-suppress cred fork + the ``ANTHROPIC_BASE_URL`` env);
-    * *extra_env* — the rest of the settings.json ``env`` block (the model-map
-      ``ANTHROPIC_DEFAULT_*_MODEL``), MINUS the base-URL and bearer-token vars
-      (each of those has its own single-source channel);
-    * *token_path* — the ``token`` file path (delivered via the ``secret_path``
-      category → arm's-length ro mount + in-box export; returned even when absent so
-      the caller emits the token-missing error).
-
-    Returns ``None`` when the dir / settings.json is absent, unreadable, not a
-    JSON object, or carries no ``ANTHROPIC_BASE_URL`` (→ the caller hard-errors:
-    an unrecognised, unadoptable persona is unloadable).  NEVER logs the token.
-    """
-    host_dir = _persona_host_dir(persona)
-    settings = host_dir / "settings.json"
-    try:
-        data = json.loads(settings.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    env = data.get("env")
-    if not isinstance(env, dict):
-        return None
-    base_url = env.get(_PERSONA_BASE_URL_VAR)
-    if not isinstance(base_url, str) or not base_url:
-        return None
-    # Skip non-string env values (a JSON number/bool/null would otherwise be
-    # str()'d into a Python repr and delivered as a bogus env value); the
-    # base-URL and bearer token are carried by their own single-source channels.
-    extra_env = {
-        k: v
-        for k, v in env.items()
-        if isinstance(v, str) and k not in (_PERSONA_BASE_URL_VAR, _PERSONA_TOKEN_VAR)
-    }
-    token_path = host_dir / "token"
-    return base_url, extra_env, str(token_path)
 
 
 def _name_new_box_probe(std, proj) -> None:
@@ -4483,17 +4422,16 @@ def _persona_wiring(target) -> "PersonaSpec":
     Consults the resolved :class:`~kanibako.targets.base.Target`'s descriptor for a
     declared :class:`~kanibako.targets.base.PersonaSpec`; a target with no descriptor
     or no ``persona:`` block falls back to the claude-style shape (ENV endpoint
-    delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var + B3 host-dir adopt) so
-    any pre-seam / no-target caller resolves BYTE-IDENTICALLY to before this seam
-    existed.  That shape is spelled out EXPLICITLY at the fallback below: it is a
-    legacy compatibility shape, NOT the field defaults (``host_dir_adopt`` defaults
-    to ``False`` — an undeclared harness never inherits claude's adoption).
+    delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var) so any pre-seam /
+    no-target caller resolves BYTE-IDENTICALLY to before this seam existed.  That
+    shape is spelled out EXPLICITLY at the fallback below: it is a legacy
+    compatibility shape, not an accident of the field defaults.
 
     ⚑ NEUTRALIZING this fallback (the planned T3.1 "a plugin that declares no
     ``persona:`` block gets NO persona wiring") NEEDS A VERSION FLOOR on the agent
     plugins: the plugin packages are unpinned deps, so a base upgraded WITHOUT its
-    agent-claude package would fall through to a neutral spec and silently strip B3
-    host-dir adoption from claude personas that resolve through it today.
+    agent-claude package would fall through to a neutral spec and a claude persona
+    that resolves through it today would lose its declared token var.
     """
     from kanibako.targets.base import PersonaSpec
 
@@ -4511,12 +4449,10 @@ def _persona_wiring(target) -> "PersonaSpec":
             return replace(spec, token_var=_PERSONA_TOKEN_VAR)
         return spec
     # LEGACY fallback shape (no descriptor / no ``persona:`` block): claude as it
-    # resolved before this seam.  ``host_dir_adopt`` is passed EXPLICITLY because the
-    # field default is False — this site keeps the pre-seam behaviour byte-identical
-    # and is what a later neutralization of the fallback would remove.
-    return PersonaSpec(
-        token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env", host_dir_adopt=True,
-    )
+    # resolved before this seam.  Spelled out EXPLICITLY rather than left to the
+    # field defaults — this site keeps the pre-seam behaviour byte-identical and is
+    # what a later neutralization of the fallback would remove.
+    return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
 
 
 def _persona_token_pointer(agent_cfg, var: str, bundle) -> "str | None":
@@ -4707,49 +4643,52 @@ def _preflight_persona_load(
     keyspace_model: str | None = None,
     bundle=None,
     probe: bool = False,
-) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
-    """Resolve a persona's LOADABILITY (A + B3) — a TRUE pre-flight.
+) -> "tuple[str | None, str | None, CodexModelProvider | None]":
+    """Resolve a persona's LOADABILITY — a TRUE pre-flight.
 
     Called ONLY for a persona (``harness_of(agent_id) != agent_id``), BEFORE any
-    persona artifact is created.  Returns ``(endpoint, error, adopted, provider)``:
+    persona artifact is created.  Returns ``(endpoint, error, provider)``:
 
     * *endpoint* — the resolved endpoint URL on success (``error`` None); ``None``
       when unloadable;
     * *error* — an actionable message when the persona cannot be loaded (unresolved
       endpoint, or endpoint-but-no-token); ``None`` on success.  The caller prints
       it (start) or raises it (create) and refuses to launch.
-    * *adopted* — True iff B3 mutated *agent_cfg* in place (so the caller persists
-      the adopted config).
     * *provider* — for a CONFIG-FILE harness (codex) the resolved
       :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
-      ``~/.codex/config.toml``; ``None`` for an ENV harness (claude) — whose endpoint
-      + token ride their existing single-source channels (the
+      ``~/.codex/config.toml``; ``None`` for an ENV harness (claude, goose) — whose
+      endpoint + token ride their existing single-source channels (the
       ``endpoint``→``ANTHROPIC_BASE_URL`` :class:`SettingArg` env + the
       ``secret_path`` mount), so no separate carry is needed.
 
+    ⚑ NOTHING here mutates *agent_cfg*.  Every persona value is a LIVE resolution
+    input resolved through the cascade before this seam, so there is nothing to
+    adopt and nothing to write back to ``agents/<node>/settings.yaml``.
+
     HARNESS-AWARE (INC 2): the token var and endpoint DESTINATION are chosen per the
-    resolved target's :func:`_persona_wiring`, not hardwired to Anthropic.  Claude
-    (``endpoint_delivery == "env"``) keeps the ``ANTHROPIC_AUTH_TOKEN`` token var,
-    the ``ANTHROPIC_BASE_URL`` env endpoint, and B3 host-dir auto-adopt — BYTE-
-    IDENTICAL to before this seam.  Codex (``config_file``) resolves the endpoint +
-    ``secret_path`` key (== the provider ``env_key``) from the KEYSPACE ONLY (no B3),
-    and returns the CodexModelProvider for INC 3.
+    resolved target's :func:`_persona_wiring`, not hardwired to Anthropic.  There are
+    exactly TWO gates below it and ``endpoint_delivery`` alone picks between them:
+    ENV (:func:`_preflight_env_persona` — claude, goose) and CONFIG-FILE
+    (:func:`_preflight_config_file_persona` — codex, which also returns the
+    CodexModelProvider for INC 3).  Everything that used to distinguish claude from
+    another ENV harness was the retired B3 host-dir path.
 
     ``keyspace_endpoint`` is the endpoint the launch snapshot already resolved from
-    ``agent.<node>.endpoint`` (explicit config wins).  For an ENV harness, when it is
-    ``None`` the persona is not recognised → B3 adopts from
-    ``~/.config/claude/<persona>/``, populating ``agent_cfg.state['endpoint']``
-    (endpoint), ``agent_cfg.secret_path`` (bearer token pointer) and ``agent_cfg.env``
-    (model-map).  A resolved endpoint with NO usable token is ALSO a hard error (a
-    bearer endpoint with no token 401s inside the box).
+    ``agent.<node>.endpoint`` — the persona STORE is a cascade tier of that snapshot,
+    so a store-configured endpoint arrives here already resolved.  ``None`` therefore
+    means no endpoint is configured for this persona ANYWHERE, which is a hard error:
+    kanibako will not launch a persona as the bare host harness on the user's real
+    account.  A resolved endpoint with NO usable token is ALSO a hard error (a bearer
+    endpoint with no token 401s inside the box).
 
     ``keyspace_model`` is the box-level cascade-resolved ``agent.<node>.model`` (the
     single-source resolution done by the caller off the launch snapshot, harness
-    default excluded — see :func:`_resolve_box_launch_decisions`).  It is used ONLY by
-    the config-file (codex) path, which REQUIRES a real model id: an empty/absent
-    model is a hard error there (a NaviGator provider block with ``model = ""`` is
-    meaningless).  It is ignored by the ENV (claude) path, whose model rides its
-    existing channels.
+    default excluded — see :func:`_resolve_box_launch_decisions`).  Whether an absent
+    model is fatal is the HARNESS's declaration (``PersonaSpec.model_required``), not
+    a property of the path: codex vetoes (a config-file provider block with
+    ``model = ""`` is meaningless and an omitted key falls through to codex's own
+    moving default), goose vetoes (a third-party OpenAI-compatible endpoint has no
+    meaningful default), claude does not (its model rides its own channels).
 
     ``bundle`` is the persona-grata store read for this same launch
     (:func:`_persona_bundle_for`).  It is the SECOND token source — the agent
@@ -4769,10 +4708,7 @@ def _preflight_persona_load(
     launch: the create path keeps its own WARN-ONLY probe (locked ruling #2), so
     a create must not inherit this one's hard error on a rejected token.
     """
-    persona = persona_of(agent_id)
     wiring = _persona_wiring(target)
-    endpoint = keyspace_endpoint
-    adopted = False
     display = display_agent_ref(agent_id)
 
     # The store REFUSED its own config: hard error naming the cause VERBATIM.
@@ -4787,87 +4723,24 @@ def _preflight_persona_load(
             f"  Its persona-store entry exists but yielded no usable values, "
             f"and nothing is cached from a previous launch.\n"
             f"  Fix the store config named above, then retry."
-        ), False, None
+        ), None
 
-    # B3 host-dir auto-adopt is CLAUDE-SHAPED (reads ~/.config/claude/<persona>/
-    # settings.json) — ENV delivery AND ``host_dir_adopt`` (claude ONLY).  A
-    # config-file harness (codex) and a NON-claude env harness (goose) both resolve
-    # from the KEYSPACE only: an absent endpoint is a hard error, never a
-    # claude-host-dir adoption attempt against a dir that plays no part in their
-    # resolution.
-    if endpoint is None and wiring.endpoint_delivery == "env" and wiring.host_dir_adopt:
-        adoption = _adopt_persona_from_host_dir(persona)
-        if adoption is not None:
-            base_url, extra_env, token_path = adoption
-            agent_cfg.state["endpoint"] = base_url
-            # Deliver the bearer token via the SECRET category (arm's-length ro
-            # mount + in-box export; the secret stays in the host file — kanibako
-            # never reads it). Do not clobber a pre-set keyspace pointer. Written to
-            # ``agent.<persona>.secret_path.ANTHROPIC_AUTH_TOKEN`` when persisted.
-            agent_cfg.secret_path.setdefault(wiring.token_var, token_path)
-            # Deliver the model-map (and any other non-secret settings.json env)
-            # via the agent env channel; keyspace env wins (do not clobber).
-            for var, val in extra_env.items():
-                agent_cfg.env.setdefault(var, val)
-            endpoint = base_url
-            adopted = True
-
-    if endpoint is None:
-        return None, _persona_no_endpoint_error(agent_id, persona, wiring), False, None
+    if keyspace_endpoint is None:
+        return None, _persona_no_endpoint_error(agent_id, wiring), None
 
     if wiring.endpoint_delivery == "config_file":
         return _preflight_config_file_persona(
-            agent_id, agent_cfg, endpoint, keyspace_model, wiring, display,
+            agent_id, agent_cfg, keyspace_endpoint, keyspace_model, wiring, display,
             bundle=bundle, target=target, probe=probe, logger=logger,
         )
 
-    # --- ENV harness, KEYSPACE-config (goose): NO claude host-dir --------------
-    # A non-claude env harness (``host_dir_adopt`` False) resolves its bearer token
-    # and (required) model from the KEYSPACE only — it must NEVER read/word against
-    # the claude-shaped ``~/.config/claude/<persona>/`` dir.
-    if not wiring.host_dir_adopt:
-        return _preflight_env_keyspace_persona(
-            agent_cfg, endpoint, keyspace_model, wiring, display,
-            bundle=bundle, target=target, probe=probe, logger=logger,
-        )
-
-    # --- ENV harness (claude): byte-identical token gate ------------------------
-    host_dir = _persona_host_dir(persona)
-    # Endpoint resolved — require a usable BEARER token.  THREE sources, in
-    # cascade order: the agent FILE rung, then the persona STORE tier
-    # (:func:`_persona_token_pointer`), then — only when neither resolved — the
-    # host-dir ``token`` file (F4/B3): the endpoint may come from the keyspace
-    # while the class setup script supplies the token on disk.  B3 sits LAST
-    # because it is the legacy pre-keyspace source and is being retired; it must
-    # not shadow a store token.  Only when NONE of the three exists is it an error.
-    host_token = host_dir / "token"
-    token_ptr = _persona_token_pointer(agent_cfg, wiring.token_var, bundle)
-    if not token_ptr and host_token.exists():
-        agent_cfg.secret_path[wiring.token_var] = str(host_token)
-        adopted = True  # secret_path mutated in place → caller persists it.
-        token_ptr = str(host_token)
-    # Check the TOKEN var SPECIFICALLY (N1): a usable result for some OTHER
-    # secret_path var does not mean a bearer token is present. STAT the pointer
-    # arm's-length (never read the value — the value flows only via the launch mount).
-    if not token_ptr or not _secret_pointer_usable(token_ptr):
-        return None, (
-            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
-            f"auth token.\n"
-            f"  A custom-endpoint persona needs a bearer token; none was found "
-            f"(neither a configured secret_path, nor its persona-store "
-            f"`.secret_path`, nor {host_token}).\n"
-            f"  Run the class setup script to write {host_token}, then retry."
-        ), adopted, None
-    if probe:
-        probe_err = _persona_probe_error(
-            target, endpoint, token_ptr, keyspace_model, display, logger,
-        )
-        if probe_err is not None:
-            return None, probe_err, adopted, None
-    return endpoint, None, adopted, None
+    return _preflight_env_persona(
+        agent_cfg, keyspace_endpoint, keyspace_model, wiring, display,
+        bundle=bundle, target=target, probe=probe, logger=logger,
+    )
 
 
-def _preflight_env_keyspace_persona(
+def _preflight_env_persona(
     agent_cfg,
     endpoint: str,
     keyspace_model: str | None,
@@ -4878,29 +4751,32 @@ def _preflight_env_keyspace_persona(
     target=None,
     probe: bool = False,
     logger=None,
-) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
-    """Token + (optional) model gate for a KEYSPACE-config ENV harness (goose, INC G1).
+) -> "tuple[str | None, str | None, CodexModelProvider | None]":
+    """Token + (optional) model gate for an ENV-delivery harness (claude, goose).
 
-    The endpoint is resolved (keyspace only — no claude host-dir B3).  Unlike the
-    claude ENV path this NEVER consults ``~/.config/claude/<persona>/``: the bearer
-    token comes from ``agent.<node>.secret_path.<token_var>`` (goose:
-    ``OPENAI_API_KEY``) or the persona store's own ``.secret_path``, and the error
-    wording points at the keyspace ``config set`` route — NOT the claude
-    class-setup script / host dir.
+    THE single ENV path.  It was two until B3 — the legacy claude host dir
+    ``~/.config/claude/<persona>/`` — was retired: with that source gone, claude
+    and goose ask exactly the same questions of exactly the same sources, and what
+    still differs between them is DECLARED (``token_var``, ``model_required``), not
+    branched.  Do not re-split this on harness identity.
 
     Gates (each an ACTIONABLE, harness-appropriate error):
 
-    1. a usable bearer token under the FIXED ``wiring.token_var`` (goose
-       ``OPENAI_API_KEY``), agent FILE first then the store
-       (:func:`_persona_token_pointer`): missing/unusable ⇒ error pointing at
-       ``agent.<node>.secret_path.<token_var>``.
+    1. a usable bearer token under the FIXED ``wiring.token_var`` (claude
+       ``ANTHROPIC_AUTH_TOKEN``, goose ``OPENAI_API_KEY``), agent FILE first then
+       the store (:func:`_persona_token_pointer`): missing/unusable ⇒ error pointing
+       at ``agent.<node>.secret_path.<token_var>``.  ⚑ The token var is checked
+       SPECIFICALLY (N1): a usable pointer under some OTHER ``secret_path`` key does
+       not mean a bearer token is present.  The pointer is STAT'd arm's length —
+       never read; the value flows only through the launch mount.
     2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model`` id
        (``keyspace_model``): empty ⇒ error (a third-party OpenAI-compatible endpoint
-       has no meaningful default model — parity with the codex model gate).
+       has no meaningful default model — parity with the codex model gate).  Claude
+       declares no veto: a persona that names no model needs none.
     3. on the LAUNCH path only, the verify probe (:func:`_persona_probe_error`).
 
-    NEVER mutates *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist), so
-    ``adopted`` is False; the endpoint + token ride their existing single-source
+    NEVER mutates *agent_cfg*: every value is resolved live through the cascade
+    before this seam.  The endpoint + token ride their existing single-source
     channels (the ``endpoint``→env ``SettingArg`` + the ``secret_path`` mount), so
     there is no config-file provider to carry (``provider`` None).
     """
@@ -4913,7 +4789,7 @@ def _preflight_env_keyspace_persona(
             f"`kanibako system set agent.{display}.secret_path.{wiring.token_var}="
             f"<path>` entry; none was found (or it points at an unusable file).\n"
             f"  Set the key for this persona, then retry."
-        ), False, None
+        ), None
     model = (keyspace_model or "").strip()
     if wiring.model_required and not model:
         return None, (
@@ -4923,67 +4799,47 @@ def _preflight_env_keyspace_persona(
             f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
             f"harness default is not used for a third-party provider.\n"
             f"  Set the model for this persona, then retry."
-        ), False, None
+        ), None
     if probe:
         probe_err = _persona_probe_error(
             target, endpoint, token_ptr, model or None, display, logger,
         )
         if probe_err is not None:
-            return None, probe_err, False, None
-    return endpoint, None, False, None
+            return None, probe_err, None
+    return endpoint, None, None
 
 
-def _persona_no_endpoint_error(agent_id: str, persona: str, wiring) -> str:
-    """The actionable "no endpoint configured" error, worded per harness.
+def _persona_no_endpoint_error(agent_id: str, wiring) -> str:
+    """The actionable "no endpoint configured" error.
 
-    ENV+host_dir_adopt (claude) distinguishes "no host config" from
-    "present-but-unusable" (N2) and points at the class setup script / B3 host dir.
-    Every OTHER harness — CONFIG-FILE (codex, no B3) and a NON-claude ENV harness
-    (goose, ``host_dir_adopt`` False) — points ONLY at the keyspace ``config set``
-    route (endpoint + API key); it never references a host dir that plays no part in
-    its resolution.
+    ONE wording for every harness, pointing at the keyspace ``config set`` route.
+    It used to fork: claude's arm named the class setup script and the B3 host dir
+    ``~/.config/claude/<persona>/``, distinguishing "no host config at all" from
+    "host config present but unusable".  B3 is retired, that dir plays no part in
+    any harness's resolution, and a message naming it would send the user to a
+    place kanibako no longer reads.
+
+    An ENV harness also names the API-key ``secret_path`` so the user has the full
+    recipe; a config-file harness (codex) resolves its key downstream from the
+    single configured key, so it names only the endpoint here.
     """
     display = display_agent_ref(agent_id)
     harness = harness_of(agent_id)
-    if not wiring.host_dir_adopt:
-        # KEYSPACE-config harness (codex config_file OR goose env-no-adopt): word the
-        # error for the keyspace route.  An ENV harness (goose) also names the API-key
-        # secret_path so the user has the full recipe; a config-file harness (codex)
-        # resolves its key downstream, so it names only the endpoint here.
-        key_hint = ""
-        if wiring.endpoint_delivery == "env" and wiring.token_var:
-            key_hint = (
-                f" and its API key "
-                f"(`kanibako system set agent.{display}.secret_path."
-                f"{wiring.token_var}=<path>`)"
-            )
-        return (
-            f"Error: persona '{display}' cannot be loaded — no endpoint is "
-            f"configured for it.\n"
-            f"  Kanibako will not launch a persona as bare host {harness} on your "
-            f"real account.\n"
-            f"  Set the endpoint for this persona (e.g. "
-            f"`kanibako system set agent.{display}.endpoint=<url>`){key_hint}, "
-            f"then retry."
+    key_hint = ""
+    if wiring.endpoint_delivery == "env" and wiring.token_var:
+        key_hint = (
+            f" and its API key "
+            f"(`kanibako system set agent.{display}.secret_path."
+            f"{wiring.token_var}=<path>`)"
         )
-    host_dir = _persona_host_dir(persona)
-    # Distinguish "no host config at all" from "host config present but with no
-    # usable endpoint" (N2): a settings.json that lacks ANTHROPIC_BASE_URL is a
-    # PRESENT-but-unusable config, not an absent one.
-    if (host_dir / "settings.json").exists():
-        detail = (
-            f"the host config at {host_dir}/ is not usable "
-            f"(settings.json has no env.ANTHROPIC_BASE_URL)"
-        )
-    else:
-        detail = f"no host config was found at {host_dir}/"
     return (
         f"Error: persona '{display}' cannot be loaded — no endpoint is "
-        f"configured for it and {detail}.\n"
+        f"configured for it.\n"
         f"  Kanibako will not launch a persona as bare host {harness} on your "
         f"real account.\n"
-        f"  Run the class setup script to create {host_dir}/ (settings.json + "
-        f"token), or set the endpoint for this persona, then retry."
+        f"  Set the endpoint for this persona (e.g. "
+        f"`kanibako system set agent.{display}.endpoint=<url>`){key_hint}, "
+        f"then retry."
     )
 
 
@@ -4999,10 +4855,10 @@ def _preflight_config_file_persona(
     target=None,
     probe: bool = False,
     logger=None,
-) -> "tuple[str | None, str | None, bool, CodexModelProvider | None]":
+) -> "tuple[str | None, str | None, CodexModelProvider | None]":
     """Token + model gate + provider resolve for a CONFIG-FILE harness (codex, INC 2/3).
 
-    The endpoint is resolved (keyspace only — no B3).  Two load gates, each with an
+    The endpoint is resolved through the cascade.  Two load gates, each with an
     ACTIONABLE, SUB-CASE-SPECIFIC error (INC-3 fold-in), then the provider assemble:
 
     1. a usable bearer token under the DYNAMIC token var (the single ``secret_path``
@@ -5023,14 +4879,14 @@ def _preflight_config_file_persona(
        ``model = ""``).
 
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
-    for INC 3.  NEVER mutates *agent_cfg* (keyspace-only ⇒ nothing to adopt/persist),
-    so ``adopted`` is False.
+    for INC 3.  NEVER mutates *agent_cfg*: every value is resolved live through the
+    cascade before this seam.
     """
     token_err = _codex_persona_token_error(
         agent_cfg, wiring, endpoint, display, bundle,
     )
     if token_err is not None:
-        return None, token_err, False, None
+        return None, token_err, None
     # token gate passed ⇒ a single, usable secret_path key resolves the env_key.
     env_key = _resolve_codex_persona_env_key(agent_cfg, wiring, bundle)
     assert env_key is not None  # guaranteed by the passed token gate above.
@@ -5039,7 +4895,7 @@ def _preflight_config_file_persona(
         # A MISSING model is not automatically invalid — some endpoints need no
         # model spec — so absence is allowed unless the HARNESS vetoes it via its
         # declared ``persona.model_required``. Gate on the DECLARATION, exactly as
-        # the ENV path does (:func:`_preflight_env_keyspace_persona`); this path
+        # the ENV path does (:func:`_preflight_env_persona`); this path
         # used to hardwire the rule, which made one of the two sibling gates
         # ignore the descriptor it was supposed to read.
         if wiring.model_required:
@@ -5050,7 +4906,7 @@ def _preflight_config_file_persona(
                 f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
                 f"harness default is not used for a third-party provider.\n"
                 f"  Set the model for this persona, then retry."
-            ), False, None
+            ), None
         # No model AND no veto: a CONFIG-FILE harness cannot deliver "no model".
         # The provider projection types ``model`` as a non-optional ``str``
         # (``vscode_config.CodexModelProvider``), and an emitted ``model = ""`` is
@@ -5066,7 +4922,7 @@ def _preflight_config_file_persona(
             f"block must name one.\n"
             f"  Either configure a model for this persona, or set "
             f"`persona.model_required: true` in the harness descriptor."
-        ), False, None
+        ), None
     if probe:
         probe_err = _persona_probe_error(
             target, endpoint,
@@ -5074,11 +4930,11 @@ def _preflight_config_file_persona(
             model, display, logger,
         )
         if probe_err is not None:
-            return None, probe_err, False, None
+            return None, probe_err, None
     provider = _resolve_codex_persona_provider(
         agent_id, endpoint, env_key, model, wiring,
     )
-    return endpoint, None, False, provider
+    return endpoint, None, provider
 
 
 def _codex_persona_token_error(
@@ -6247,7 +6103,7 @@ def persona_create_verdict(
 
     Read-only: resolves the agent → endpoint against a THROWAWAY config copy and
     runs the same :func:`_preflight_persona_load` the launch uses; it never writes
-    (the real adoption + persist happens inside :func:`seed_new_box`).
+    (the first-use generate happens inside :func:`seed_new_box`).
     """
     logger = get_logger("start")
     system_settings_path = std.settings
@@ -6299,7 +6155,7 @@ def persona_create_verdict(
     # ``box/_parser._check_persona_store_for_create`` (locked ruling #2). Setting
     # it here would turn a create with a rejected token into a refusal, which is
     # exactly the unification that ruling forbids.
-    _ep, error, _adopted, _provider = _preflight_persona_load(
+    _ep, error, _provider = _preflight_persona_load(
         agent_id, probe_cfg, endpoint, logger, target=target, keyspace_model=model,
         bundle=persona_bundle, probe=False,
     )
@@ -6396,9 +6252,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # CREATE, symmetric with the launch path.
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
-        (
-            active_endpoint, persona_error, persona_adopted, _provider,
-        ) = _preflight_persona_load(
+        active_endpoint, persona_error, _provider = _preflight_persona_load(
             agent_id, seed_agent_cfg, active_endpoint, logger,
             target=target, keyspace_model=active_model,
             # ``probe=False`` for the same reason as the create verdict: the
@@ -6407,12 +6261,11 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         )
         if persona_error is not None:
             raise KanibakoError(persona_error)
-        agent_cfg_dirty = agent_cfg_dirty or persona_adopted
 
     suppress_oauth = active_endpoint is not None
 
-    # Loadability resolved → materialise the persona artifacts (write the fresh /
-    # B3-adopted config, then the common-dir shim) BEFORE the seed reconcile reads them.
+    # Loadability resolved → materialise the persona artifacts (write the freshly
+    # generated config, then the common-dir shim) BEFORE the seed reconcile reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
         write_agent_config(agent_cfg_path, seed_agent_cfg)
