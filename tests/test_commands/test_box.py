@@ -2220,10 +2220,13 @@ class TestCheckPersonaStoreForCreate:
             (persona_dir / ".secret_path").write_text("./token\n")
         return persona_dir
 
-    def _call(self, tmp_home, ref, monkeypatch, *, target="real", verdict=True):
+    def _call(self, tmp_home, ref, monkeypatch, *, target="real", outcome=None):
         import kanibako.commands.box._parser as parser_mod
         from kanibako.commands.box._parser import _check_persona_store_for_create
+        from kanibako.targets.base import PersonaProbeOutcome
 
+        if outcome is None:
+            outcome = PersonaProbeOutcome.passed()
         if target == "real":
             from kanibako.plugins.codex.target import CodexTarget
 
@@ -2231,7 +2234,7 @@ class TestCheckPersonaStoreForCreate:
             # Stub the network probe (instance-level): unit tests never do
             # real I/O; the wire itself is covered in test_persona_settings.
             resolved.verify_persona = (  # type: ignore[method-assign]
-                lambda *a, **k: verdict
+                lambda *a, **k: outcome
             )
         else:
             resolved = target
@@ -2344,26 +2347,71 @@ class TestCheckPersonaStoreForCreate:
     # --- does not re-probe) --------------------------------------------------
 
     def test_verified_store_emits_no_warning(self, tmp_home, monkeypatch, capsys):
+        from kanibako.targets.base import PersonaProbeOutcome
+
         self._store(tmp_home)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=True)
+        err = self._call(
+            tmp_home, "navigator+codex", monkeypatch,
+            outcome=PersonaProbeOutcome.passed(),
+        )
         assert err is None
         assert "Warning" not in capsys.readouterr().err
 
     def test_rejected_token_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,
     ):
+        """⚑ Locked ruling #2: an auth reject is WARN-ONLY here.
+
+        The LAUNCH path hard-errors on the same verdict; a create must not, so a
+        fixable token never blocks one.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome
+
         self._store(tmp_home)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=False)
+        err = self._call(
+            tmp_home, "navigator+codex", monkeypatch,
+            outcome=PersonaProbeOutcome.rejected(),
+        )
         assert err is None  # warn-only: create still proceeds
         assert "rejected the token" in capsys.readouterr().err
 
-    def test_unverifiable_endpoint_warns_but_still_creates(
+    def test_an_INCONCLUSIVE_endpoint_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,
     ):
+        from kanibako.targets.base import PersonaProbeOutcome
+
         self._store(tmp_home)
-        err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=None)
+        err = self._call(
+            tmp_home, "navigator+codex", monkeypatch,
+            outcome=PersonaProbeOutcome.inconclusive("the endpoint imploded"),
+        )
         assert err is None
-        assert "could not verify" in capsys.readouterr().err
+        out = capsys.readouterr().err
+        assert "could not verify" in out
+        assert "the endpoint imploded" in out
+
+    def test_a_NOT_APPLICABLE_probe_is_SILENT_here_too(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        """⚑ WARN-ONLY covers the two ANSWERED verdicts, not this one.
+
+        NOT_APPLICABLE means nothing was learned about the token and nothing will
+        be — a harness with no probe, an endpoint that wants a model this persona
+        does not name.  Warning about it on every create would be as un-actionable
+        as it was on every launch.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome
+
+        self._store(tmp_home)
+        err = self._call(
+            tmp_home, "navigator+codex", monkeypatch,
+            outcome=PersonaProbeOutcome.not_applicable(
+                "the endpoint requires a model in the request (HTTP 400) and "
+                "the persona names none",
+            ),
+        )
+        assert err is None
+        assert "Warning" not in capsys.readouterr().err
 
     def test_probe_raise_is_held_to_the_contract(self, tmp_home, monkeypatch, capsys):
         from kanibako.plugins.codex.target import CodexTarget

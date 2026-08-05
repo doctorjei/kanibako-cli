@@ -24,7 +24,12 @@ import pytest
 from kanibako.plugins.claude.target import ClaudeTarget
 from kanibako.plugins.codex.target import CodexTarget
 from kanibako.plugins.goose.target import GooseTarget
-from kanibako.targets.base import PersonaReadOutcome, PersonaSettings, Target
+from kanibako.targets.base import (
+    PersonaProbeVerdict,
+    PersonaReadOutcome,
+    PersonaSettings,
+    Target,
+)
 from kanibako.targets.no_agent import NoAgentTarget
 
 
@@ -291,7 +296,7 @@ class TestCodexReadPersonaSettings:
 
 
 # ---------------------------------------------------------------------------
-# verify_persona: the minimal real-completion probe (tri-state verdict)
+# verify_persona: the minimal real-completion probe (four-arm PersonaProbeOutcome)
 # ---------------------------------------------------------------------------
 
 
@@ -364,21 +369,30 @@ def _probe(target, server, token_file, *, model="gemma4", timeout=5.0):
 
 
 class TestVerifyPersonaBase:
-    def test_base_default_is_unverifiable(self, tmp_path):
-        assert (
-            NoAgentTarget().verify_persona("https://e.example", tmp_path, "m")
-            is None
-        )
+    """A harness with NO probe answers NOT_APPLICABLE, naming itself.
 
-    def test_goose_inherits_unverifiable(self, tmp_path):
-        assert (
-            GooseTarget().verify_persona("https://e.example", tmp_path, "m")
-            is None
+    ⚑ Not ``INCONCLUSIVE``: nothing was attempted and nothing ever will be, so a
+    caller must stay SILENT.  Collapsing the two is what made every goose persona
+    launch warn "could not verify the endpoint" forever, un-actionably.
+    """
+
+    def test_base_default_is_not_applicable(self, tmp_path):
+        outcome = NoAgentTarget().verify_persona(
+            "https://e.example", tmp_path, "m",
         )
+        assert outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE
+        assert "no persona verify probe" in outcome.reason
+
+    def test_goose_inherits_not_applicable(self, tmp_path):
+        outcome = GooseTarget().verify_persona(
+            "https://e.example", tmp_path, "m",
+        )
+        assert outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE
+        assert "goose" in outcome.reason
 
 
 class TestVerifyPersonaWire:
-    """Both harness probes against a live local endpoint: verdicts + wire shape."""
+    """Both harness probes against a live local endpoint: outcomes + wire shape."""
 
     @pytest.mark.parametrize("target_cls,path,versioned", [
         (ClaudeTarget, "/v1/messages", True),
@@ -389,7 +403,8 @@ class TestVerifyPersonaWire:
     ):
         server = _ProbeServer(status=200)
         try:
-            assert _probe(target_cls(), server, token_file) is True
+            outcome = _probe(target_cls(), server, token_file)
+            assert outcome.verdict is PersonaProbeVerdict.PASS
         finally:
             server.close()
         assert server.last_path == path
@@ -400,40 +415,44 @@ class TestVerifyPersonaWire:
 
     @pytest.mark.parametrize("status", [401, 403])
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_auth_reject_fails(self, token_file, target_cls, status):
+    def test_auth_reject_is_REJECTED(self, token_file, target_cls, status):
         server = _ProbeServer(status=status)
         try:
-            assert _probe(target_cls(), server, token_file) is False
+            outcome = _probe(target_cls(), server, token_file)
+            assert outcome.verdict is PersonaProbeVerdict.REJECTED
         finally:
             server.close()
 
     @pytest.mark.parametrize("status", [404, 429, 500])
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_ambiguous_status_is_unverifiable(self, token_file, target_cls, status):
+    def test_ambiguous_status_is_INCONCLUSIVE(self, token_file, target_cls, status):
         server = _ProbeServer(status=status)
         try:
-            assert _probe(target_cls(), server, token_file) is None
+            outcome = _probe(target_cls(), server, token_file)
+            assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+            assert str(status) in outcome.reason
         finally:
             server.close()
 
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_unreachable_endpoint_is_unverifiable(self, token_file, target_cls):
+    def test_unreachable_endpoint_is_INCONCLUSIVE(self, token_file, target_cls):
         server = _ProbeServer()
         server.close()  # closed port -> connection refused
-        assert _probe(target_cls(), server, token_file) is None
+        outcome = _probe(target_cls(), server, token_file)
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+        assert "could not be reached" in outcome.reason
 
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_timeout_is_unverifiable(self, token_file, target_cls):
+    def test_timeout_is_INCONCLUSIVE(self, token_file, target_cls):
         server = _ProbeServer(status=200, hang=2.0)
         try:
-            assert (
-                _probe(target_cls(), server, token_file, timeout=0.3) is None
-            )
+            outcome = _probe(target_cls(), server, token_file, timeout=0.3)
+            assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
         finally:
             server.close()
 
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_garbage_response_is_unverifiable(self, token_file, target_cls):
+    def test_garbage_response_is_INCONCLUSIVE(self, token_file, target_cls):
         import socket
         import threading
 
@@ -453,9 +472,10 @@ class TestVerifyPersonaWire:
         thread.start()
         try:
             target = target_cls()
-            assert target.verify_persona(
+            outcome = target.verify_persona(
                 f"http://127.0.0.1:{port}", token_file, "gemma4", timeout=2.0,
-            ) is None
+            )
+            assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
         finally:
             sock.close()
 
@@ -488,44 +508,41 @@ class TestVerifyPersonaWire:
 
         threading.Thread(target=_serve_redirect, daemon=True).start()
         try:
-            verdict = target_cls().verify_persona(
+            outcome = target_cls().verify_persona(
                 f"http://127.0.0.1:{port}", token_file, "gemma4", timeout=2.0,
             )
         finally:
             sock.close()
             leak_target.close()
-        assert verdict is None  # 302 = ambiguous, not pass/fail
+        # 302 = ambiguous, not pass/fail.
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
         assert leak_target.last_path is None  # bearer never left for the target
         assert leak_target.last_auth is None
 
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_missing_token_file_is_unverifiable(self, tmp_path, target_cls):
+    def test_missing_token_file_is_NOT_APPLICABLE(self, tmp_path, target_cls):
+        """No token to send = nothing was learned; the user cannot act on it."""
         server = _ProbeServer(status=200)
         try:
-            assert _probe(
+            outcome = _probe(
                 target_cls(), server, tmp_path / "nonexistent-token",
-            ) is None
+            )
+            assert outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE
+            assert "could not be read" in outcome.reason
             assert server.last_path is None  # no request was even sent
         finally:
             server.close()
 
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_empty_token_file_is_unverifiable(self, tmp_path, target_cls):
-        tok = tmp_path / "token"
-        tok.write_text("   \n")
+    def test_empty_token_file_is_NOT_APPLICABLE(self, tmp_path, target_cls):
         server = _ProbeServer(status=200)
+        empty = tmp_path / "empty-token"
+        empty.write_text("   \n")
         try:
-            assert _probe(target_cls(), server, tok) is None
+            outcome = _probe(target_cls(), server, empty)
+            assert outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE
+            assert "is empty" in outcome.reason
             assert server.last_path is None
-        finally:
-            server.close()
-
-    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_no_model_is_unverifiable(self, token_file, target_cls):
-        server = _ProbeServer(status=200)
-        try:
-            assert _probe(target_cls(), server, token_file, model=None) is None
-            assert server.last_path is None  # a real call needs a model id
         finally:
             server.close()
 
@@ -552,3 +569,118 @@ class TestVerifyPersonaWire:
             "input": "ping",
             "max_output_tokens": 16,
         }
+
+
+class TestVerifyPersonaWithoutAModel:
+    """⚑ A persona that names NO model is PROBED — with the key OMITTED.
+
+    Jei's ruling: a persona endpoint is a third-party anthropic-/OpenAI-compatible
+    provider, not the reference API, and such a server may serve exactly one model
+    or apply its own default.  So "no model" is not a permanent can't-probe — it is
+    UNKNOWN UNTIL WE ASK.  Declining to ask would let a DEAD token sail past the
+    launch gate and 401 inside the box, which is the one protection the per-launch
+    probe was added to give.
+
+    ⚑ And never a SUBSTITUTE.  A server with a hardwired model can REJECT an id it
+    does not serve, so injecting a plausible default (the harness floor, a
+    well-known id, anything) risks a FALSE ``REJECTED`` — a hard error that would
+    refuse a working box.  The probe verifies the TOKEN, not the model.
+    """
+
+    @pytest.mark.parametrize("target_cls,required_keys", [
+        (ClaudeTarget, ("max_tokens", "messages")),
+        (CodexTarget, ("input", "max_output_tokens")),
+    ])
+    def test_the_request_body_carries_NO_model_key(
+        self, token_file, target_cls, required_keys,
+    ):
+        """⚑ Do not "helpfully" restore a fallback value here.
+
+        Not an empty string, not a default id, not the descriptor floor: the key
+        is ABSENT, and everything else the call needs is still present.
+        """
+        server = _ProbeServer(status=200)
+        try:
+            outcome = _probe(target_cls(), server, token_file, model=None)
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+        assert server.last_body is not None
+        assert "model" not in server.last_body
+        for key in required_keys:
+            assert key in server.last_body
+
+    @pytest.mark.parametrize("status", [401, 403])
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_model_less_persona_still_reports_an_auth_REJECT(
+        self, token_file, target_cls, status,
+    ):
+        """⚑ The regression this whole arm exists to prevent.
+
+        An auth reject is an auth reject whether or not a model was named.  If a
+        model-less persona were never probed, a dead token would reach the box.
+        """
+        server = _ProbeServer(status=status)
+        try:
+            outcome = _probe(target_cls(), server, token_file, model=None)
+            assert outcome.verdict is PersonaProbeVerdict.REJECTED
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("status", [400, 422])
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_model_required_answer_is_NOT_APPLICABLE(
+        self, token_file, target_cls, status,
+    ):
+        """The endpoint DOES need a model: we learned nothing about the token.
+
+        Silent, not a warning and never a refusal — the harness may still supply
+        its own default at runtime.
+        """
+        server = _ProbeServer(status=status)
+        try:
+            outcome = _probe(target_cls(), server, token_file, model=None)
+            assert outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE
+            assert "requires a model" in outcome.reason
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("status", [400, 422])
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_the_same_status_stays_INCONCLUSIVE_when_a_model_WAS_named(
+        self, token_file, target_cls, status,
+    ):
+        """The model-required reading is gated on OMITTING the field.
+
+        With a model named, a 400 is just a malformed-request answer like any
+        other — it must keep warning, not go quiet.
+        """
+        server = _ProbeServer(status=status)
+        try:
+            outcome = _probe(target_cls(), server, token_file, model="gemma4")
+            assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_an_unreachable_endpoint_still_warns_for_a_model_less_persona(
+        self, token_file, target_cls,
+    ):
+        """The real signal must survive the fix that silenced the false ones."""
+        server = _ProbeServer()
+        server.close()  # closed port -> connection refused
+        outcome = _probe(target_cls(), server, token_file, model=None)
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_an_empty_model_string_is_treated_as_absent(
+        self, token_file, target_cls,
+    ):
+        """``""`` is not a model id; it must be omitted, never sent as empty."""
+        server = _ProbeServer(status=200)
+        try:
+            _probe(target_cls(), server, token_file, model="")
+        finally:
+            server.close()
+        assert server.last_body is not None
+        assert "model" not in server.last_body

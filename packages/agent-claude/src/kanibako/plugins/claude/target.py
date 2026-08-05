@@ -20,13 +20,15 @@ from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
     CredFileSpec,
+    PersonaProbeOutcome,
     PersonaReadOutcome,
     PersonaSettings,
     PluginDescriptor,
     Target,
     TargetSetting,
     http_probe_status,
-    probe_verdict,
+    probe_outcome,
+    probe_outcome_no_model,
 )
 
 from kanibako.plugins.claude.credentials import (
@@ -330,39 +332,58 @@ class ClaudeTarget(Target):
         model: str | None,
         *,
         timeout: float = 5.0,
-    ) -> bool | None:
+    ) -> PersonaProbeOutcome:
         """Minimal anthropic ``/v1/messages`` ack against a persona endpoint.
 
         A genuine 1-token completion request (the messages wire an
         ``ANTHROPIC_BASE_URL`` endpoint serves), bearer-authed with the token
         at *token_path* — the same delivery shape the box uses
-        (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  Tri-state per
-        the base contract: 2xx → PASS, 401/403 → FAIL, anything else
-        (unreachable, no readable token, no *model* to name — the messages API
-        requires one) → UNVERIFIABLE ``None``.  The token is read transiently
-        for this request only; never logged or persisted.
+        (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  Per the base
+        contract: 2xx → ``PASS``, 401/403 → ``REJECTED``, unreachable/ambiguous
+        → ``INCONCLUSIVE``.
+
+        ⚑ **A persona that names no *model* is still PROBED, with the ``model``
+        key OMITTED from the body** — claude declares ``model_required: false``
+        and a third-party ``ANTHROPIC_BASE_URL`` endpoint may serve exactly one
+        model or apply its own.  Declining to probe would let a DEAD token reach
+        the box, which is the one thing this gate is for; the answer is read
+        through :func:`~kanibako.targets.base.probe_outcome_no_model` so a
+        "model required" reply is silent rather than a permanent warning.
+        ⚑ NEVER substitute a placeholder/default/guessed model id to make the
+        call go through: a server with a hardwired model can REJECT an id it
+        does not serve, and a false ``REJECTED`` is a hard error that would
+        refuse a working box.  Omitting the key is the only correct behavior.
+
+        The one ``NOT_APPLICABLE`` this decides for itself is an unreadable or
+        empty token file.  The token is read transiently for this request only;
+        never logged or persisted.
         """
-        if not model:
-            return None  # cannot build a real messages call without a model id
         try:
             token = token_path.read_text(encoding="utf-8").strip()
         except (OSError, UnicodeDecodeError):
-            return None
+            return PersonaProbeOutcome.not_applicable(
+                f"the token file ({token_path}) could not be read"
+            )
         if not token:
-            return None
-        return probe_verdict(http_probe_status(
+            return PersonaProbeOutcome.not_applicable(
+                f"the token file ({token_path}) is empty"
+            )
+        body: dict = {
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "ping"}],
+        }
+        if model:
+            body["model"] = model
+        status = http_probe_status(
             endpoint.rstrip("/") + "/v1/messages",
             headers={
                 "Authorization": f"Bearer {token}",
                 "anthropic-version": "2023-06-01",
             },
-            body={
-                "model": model,
-                "max_tokens": 1,
-                "messages": [{"role": "user", "content": "ping"}],
-            },
+            body=body,
             timeout=timeout,
-        ))
+        )
+        return probe_outcome(status) if model else probe_outcome_no_model(status)
 
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files from a shell directory."""

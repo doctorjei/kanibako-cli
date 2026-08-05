@@ -310,7 +310,7 @@ def http_probe_status(
     the request (*headers* carry a bearer token).  Redirects are NOT followed:
     urllib would re-send EVERY header — the ``Authorization`` bearer included —
     to the redirect target, possibly cross-origin; a 3xx comes back as its
-    status (→ unverifiable).  The response body is not read — the status alone
+    status (→ ``INCONCLUSIVE``).  The response body is not read — the status alone
     answers "does this endpoint accept this token".
     """
     import json as _json
@@ -338,24 +338,6 @@ def http_probe_status(
         # URLError / socket.timeout / ConnectionError / ssl / ValueError (bad
         # URL) — all transport shapes; the probe contract is never-raises.
         return None
-
-
-def probe_verdict(status: int | None) -> bool | None:
-    """Map an HTTP probe *status* to the tri-state persona-verify verdict.
-
-    * 2xx — the endpoint accepted the token and answered → ``True`` (PASS);
-    * 401 / 403 — a POSITIVE auth reject → ``False`` (FAIL);
-    * anything else (404 wrong path, 429 rate-limit — the token was accepted,
-      5xx, or ``None`` transport failure) → ``None`` (UNVERIFIABLE / can't-tell:
-      never punish a launch for an endpoint blip — DESIGN §5b).
-    """
-    if status is None:
-        return None
-    if 200 <= status < 300:
-        return True
-    if status in (401, 403):
-        return False
-    return None
 
 
 class PersonaSettings(NamedTuple):
@@ -411,6 +393,144 @@ class PersonaReadOutcome(NamedTuple):
 
     settings: PersonaSettings | None
     reject_reason: str | None
+
+
+class PersonaProbeVerdict(Enum):
+    """The FOUR distinct answers :meth:`Target.verify_persona` can give.
+
+    Same defect this names as :class:`PersonaReadOutcome` did for the reader: a
+    bare ``None`` collapsed "the probe ran and could not decide" together with
+    "no probe ever ran, and none ever will for this input", so the only report a
+    caller could make covered both — and warned, forever, about configurations
+    that are perfectly valid (a harness that implements no probe at all; an
+    endpoint that turns out to need a model this persona does not name).  Each
+    arm is now its own name.
+    """
+
+    PASS = "pass"                        # 2xx — the endpoint accepted the token
+    REJECTED = "rejected"                # 401/403 — a POSITIVE auth reject
+    INCONCLUSIVE = "inconclusive"        # probed, could not decide (blip/ambiguous)
+    NOT_APPLICABLE = "not_applicable"    # no probe was attempted, and none will be
+
+
+class PersonaProbeOutcome(NamedTuple):
+    """The result of :meth:`Target.verify_persona` — a verdict + a NAMED cause.
+
+    * ``PASS`` — the endpoint accepted the token and answered;
+    * ``REJECTED`` — the endpoint POSITIVELY refused it (401/403);
+    * ``INCONCLUSIVE`` — the probe WAS attempted and could not decide: the
+      endpoint was unreachable, or answered something that is neither an accept
+      nor an auth reject.  This is a TRANSIENT, reportable condition — the one
+      the launch warning exists for (DESIGN §5b: never punish a launch for a
+      blip, but do say the endpoint went unanswered);
+    * ``NOT_APPLICABLE`` — nothing was learned about the token, and nothing
+      will be for this input: the harness implements no probe, the token could
+      not be read, or the endpoint answered that it requires a model this
+      persona does not name (:func:`probe_outcome_no_model`).  There is nothing
+      wrong and nothing a user could do, so a caller reports it to the LOG, not
+      to the user.  ⚑ "The persona names no model" is NOT on this list on its
+      own: such a persona is probed with the field OMITTED, because the
+      endpoint may not need one.
+
+    *reason* is a human-readable clause naming the specific cause, set for the
+    two non-answer arms and ``None`` for ``PASS``/``REJECTED`` (which name
+    themselves).  It is written to be interpolated into a sentence, e.g.
+    ``f"could not verify … ({outcome.reason})"``.
+    """
+
+    verdict: PersonaProbeVerdict
+    reason: str | None = None
+
+    @classmethod
+    def passed(cls) -> "PersonaProbeOutcome":
+        """2xx: the endpoint accepted the token."""
+        return cls(PersonaProbeVerdict.PASS)
+
+    @classmethod
+    def rejected(cls) -> "PersonaProbeOutcome":
+        """401/403: the endpoint positively refused the token."""
+        return cls(PersonaProbeVerdict.REJECTED)
+
+    @classmethod
+    def inconclusive(cls, reason: str) -> "PersonaProbeOutcome":
+        """The probe ran and could not decide; *reason* says what it saw."""
+        return cls(PersonaProbeVerdict.INCONCLUSIVE, reason)
+
+    @classmethod
+    def not_applicable(cls, reason: str) -> "PersonaProbeOutcome":
+        """No probe was attempted; *reason* says why none is possible."""
+        return cls(PersonaProbeVerdict.NOT_APPLICABLE, reason)
+
+
+def probe_outcome(status: int | None) -> PersonaProbeOutcome:
+    """Map an HTTP probe *status* onto a :class:`PersonaProbeOutcome`.
+
+    Covers only the arms an ATTEMPTED HTTP probe can reach — every caller has
+    already decided a request was possible, so ``NOT_APPLICABLE`` never comes
+    from here:
+
+    * 2xx — the endpoint accepted the token and answered → ``PASS``;
+    * 401 / 403 — a POSITIVE auth reject → ``REJECTED``;
+    * ``None`` (transport failure: DNS, refused, TLS, timeout, bad URL) →
+      ``INCONCLUSIVE`` "unreachable";
+    * anything else (404 wrong path, 429 rate-limit — the token was accepted,
+      5xx, a 3xx we refuse to follow) → ``INCONCLUSIVE`` naming the status.
+      Never punish a launch for an endpoint blip (DESIGN §5b).
+    """
+    if status is None:
+        return PersonaProbeOutcome.inconclusive(
+            "the endpoint could not be reached"
+        )
+    if 200 <= status < 300:
+        return PersonaProbeOutcome.passed()
+    if status in (401, 403):
+        return PersonaProbeOutcome.rejected()
+    return PersonaProbeOutcome.inconclusive(
+        f"the endpoint answered HTTP {status}, which is neither an accept "
+        f"nor an auth reject"
+    )
+
+
+#: The statuses an endpoint answers when the request is well-formed EXCEPT for a
+#: missing ``model`` field: 400 (the ``invalid_request_error`` the reference
+#: anthropic/OpenAI APIs return) and 422 (the validation status FastAPI/vLLM-style
+#: OpenAI-compatible servers use for the same thing).  Consulted ONLY by
+#: :func:`probe_outcome_no_model`.
+_MODEL_REQUIRED_STATUSES = (400, 422)
+
+
+def probe_outcome_no_model(status: int | None) -> PersonaProbeOutcome:
+    """:func:`probe_outcome`, for a probe that deliberately OMITTED ``model``.
+
+    A persona that names no model is NOT invalid: a persona endpoint is a
+    third-party anthropic-/OpenAI-compatible provider, not the reference API, and
+    such a server may serve exactly one model or apply its own default.  So the
+    probe ASKS rather than declining to run — declining would let a DEAD token
+    sail past the launch gate and 401 inside the box, which is the one protection
+    the per-launch probe exists to give.
+
+    The answer then needs one reading :func:`probe_outcome` cannot make, because
+    only the caller knows the field was left out:
+
+    * ``PASS`` / ``REJECTED`` / ``INCONCLUSIVE`` are UNCHANGED.  ⚑ An auth reject
+      is an auth reject whether or not a model was named — preserving that arm
+      for a model-less persona is the entire point of probing one.
+    * a MODEL-REQUIRED answer (:data:`_MODEL_REQUIRED_STATUSES`) becomes
+      ``NOT_APPLICABLE``, not a warning: it says this endpoint needs a model and
+      this persona names none, so NOTHING was learned about the token, and the
+      harness may still supply its own default at runtime.  It must neither
+      block a launch nor nag on every one.
+
+    ⚑ The status set is an INFERENCE — the wire does not say "you omitted the
+    model" — so it is deliberately narrow and applies ONLY when the caller
+    omitted the field.  It never widens :func:`probe_outcome`'s own mapping.
+    """
+    if status in _MODEL_REQUIRED_STATUSES:
+        return PersonaProbeOutcome.not_applicable(
+            f"the endpoint requires a model in the request (HTTP {status}) and "
+            f"the persona names none"
+        )
+    return probe_outcome(status)
 
 
 @dataclass(frozen=True)
@@ -897,34 +1017,43 @@ class Target(ABC):
         model: str | None,
         *,
         timeout: float = 5.0,
-    ) -> bool | None:
+    ) -> PersonaProbeOutcome:
         """Probe *endpoint* with the token at *token_path* — a minimal real ack.
 
         The persona verify probe (DESIGN §3b): a FEW-token genuine completion
         round-trip against the persona's endpoint, harness-API specific
-        (anthropic messages vs OpenAI responses wire).  TRI-STATE:
+        (anthropic messages vs OpenAI responses wire).  Returns a
+        :class:`PersonaProbeOutcome`, whose four arms separate the two things a
+        single "unverifiable" used to merge — a probe that RAN and could not
+        decide (``INCONCLUSIVE``) from one that learned nothing about the token
+        and never will for this input (``NOT_APPLICABLE``, carrying the named
+        cause).
 
-        * ``True``  — PASS: the endpoint accepted the token and responded;
-        * ``False`` — FAIL: a POSITIVE auth reject (401/403);
-        * ``None``  — UNVERIFIABLE: no probe implemented for this harness, the
-          endpoint is unreachable, the token/model is unavailable, or the
-          answer is ambiguous.  NOT pass/fail.
+        ⚑ *model* MAY be ``None``: a persona that names none is valid, and an
+        implementation must probe it with the ``model`` field OMITTED rather
+        than decline — never with a placeholder or default id (see
+        :func:`probe_outcome_no_model`).
 
-        ⚑ The VERDICT is all this reports; what to do with it belongs to the
+        ⚑ The OUTCOME is all this reports; what to do with it belongs to the
         caller, and there is no longer any "last-known-good" for it to protect
         (the verified swap that persisted store values into the agent settings
         file is GONE — the store is resolved live at every launch).  The two
         callers deliberately answer it DIFFERENTLY: the per-LAUNCH probe treats
-        ``False`` as a hard error (a token the provider rejects cannot work, and
-        saying so beats an in-box 401), while the CREATE-path probe is WARN-ONLY
-        on both non-PASS verdicts so a fixable token never blocks a create.
+        ``REJECTED`` as a hard error (a token the provider rejects cannot work,
+        and saying so beats an in-box 401), while the CREATE-path probe is
+        WARN-ONLY on both answered-but-not-PASS verdicts so a fixable token
+        never blocks a create.  BOTH are silent on ``NOT_APPLICABLE``: it names
+        a valid configuration the user cannot act on.
 
         Contract: NEVER raises; SHORT *timeout* (a launch must not hang on a
         blip); the token value is read TRANSIENTLY for the request only —
-        never logged, never persisted, never returned.  Default: ``None``
-        (base has no wire knowledge — goose/no_agent add theirs later).
+        never logged, never persisted, never returned.  Default:
+        ``NOT_APPLICABLE`` — this harness has no probe (goose/no_agent inherit
+        it; add a per-harness one later).
         """
-        return None
+        return PersonaProbeOutcome.not_applicable(
+            f"the {self.name} harness implements no persona verify probe"
+        )
 
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files when switching to distinct auth. Default: no-op."""

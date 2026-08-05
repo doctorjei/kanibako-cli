@@ -53,13 +53,15 @@ from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
+    PersonaProbeOutcome,
     PersonaReadOutcome,
     PersonaSettings,
     PluginDescriptor,
     Target,
     TargetSetting,
     http_probe_status,
-    probe_verdict,
+    probe_outcome,
+    probe_outcome_no_model,
 )
 
 if TYPE_CHECKING:
@@ -566,7 +568,7 @@ class CodexTarget(Target):
         model: str | None,
         *,
         timeout: float = 5.0,
-    ) -> bool | None:
+    ) -> PersonaProbeOutcome:
         """Minimal OpenAI ``/responses`` ack against a persona endpoint.
 
         A genuine few-token completion on the RESPONSES wire (the only wire
@@ -574,30 +576,47 @@ class CodexTarget(Target):
         the endpoint is the provider ``base_url``, which by that convention
         already carries the ``/v1``-style prefix codex appends ``/responses``
         to).  Bearer-authed with the token at *token_path* (the ``env_key``
-        var's value in-box).  Tri-state per the base contract: 2xx → PASS,
-        401/403 → FAIL, anything else (unreachable, no readable token, no
-        *model* — a codex persona always names one) → UNVERIFIABLE ``None``.
-        The token is read transiently for this request only; never logged or
-        persisted.
+        var's value in-box).  Per the base contract: 2xx → ``PASS``, 401/403 →
+        ``REJECTED``, unreachable/ambiguous → ``INCONCLUSIVE``.
+
+        ⚑ **A persona that names no *model* is still PROBED, with the ``model``
+        key OMITTED from the body** — an OpenAI-compatible endpoint may serve
+        exactly one model or apply its own, and declining to probe would let a
+        DEAD token reach the box.  The answer is read through
+        :func:`~kanibako.targets.base.probe_outcome_no_model` so a "model
+        required" reply is silent rather than a permanent warning.  ⚑ NEVER
+        substitute a placeholder/default/guessed model id to make the call go
+        through: a server with a hardwired model can REJECT an id it does not
+        serve, and a false ``REJECTED`` is a hard error that would refuse a
+        working box.  (The codex LAUNCH gate is stricter than the probe — the
+        descriptor declares ``model_required: true`` — but this method is also
+        called straight off the store on the CREATE path, where no model may
+        have been resolved at all.)
+
+        The one ``NOT_APPLICABLE`` this decides for itself is an unreadable or
+        empty token file.  The token is read transiently for this request only;
+        never logged or persisted.
         """
-        if not model:
-            return None  # a real /responses call requires a model id
         try:
             token = token_path.read_text(encoding="utf-8").strip()
         except (OSError, UnicodeDecodeError):
-            return None
+            return PersonaProbeOutcome.not_applicable(
+                f"the token file ({token_path}) could not be read"
+            )
         if not token:
-            return None
-        return probe_verdict(http_probe_status(
+            return PersonaProbeOutcome.not_applicable(
+                f"the token file ({token_path}) is empty"
+            )
+        body: dict = {"input": "ping", "max_output_tokens": 16}
+        if model:
+            body["model"] = model
+        status = http_probe_status(
             endpoint.rstrip("/") + "/responses",
             headers={"Authorization": f"Bearer {token}"},
-            body={
-                "model": model,
-                "input": "ping",
-                "max_output_tokens": 16,
-            },
+            body=body,
             timeout=timeout,
-        ))
+        )
+        return probe_outcome(status) if model else probe_outcome_no_model(status)
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex agent configuration.

@@ -4580,30 +4580,44 @@ def _persona_probe_error(
     Runs once endpoint AND a usable token are both resolved, and only on the
     LAUNCH path (the create path keeps its own WARN-ONLY probe — locked ruling
     #2; unifying them would turn a create with a bad token into a refusal).
-    Applies the DESIGN §5b verdict rules:
+    Applies the DESIGN §5b verdict rules to the :class:`PersonaProbeOutcome`:
 
-    * ``False`` (a POSITIVE 401/403 auth reject) ⇒ HARD ERROR.  There is no
+    * ``REJECTED`` (a POSITIVE 401/403 auth reject) ⇒ HARD ERROR.  There is no
       last-known-good to fall back on any more — the store is resolved live —
       so a rejected token means the launch cannot work, and saying so here beats
       a confusing in-box 401.
-    * ``None`` (unreachable, no probe implemented, no model to name) ⇒ WARN and
-      PROCEED.  A blip is not a config error, and the box surfaces a real
-      failure itself.
-    * ``True`` ⇒ proceed silently.
+    * ``INCONCLUSIVE`` (the probe RAN: unreachable endpoint, ambiguous answer)
+      ⇒ WARN and PROCEED.  This is the case the warning was written for: a
+      transient condition worth reporting, but a blip is not a config error and
+      the box surfaces a real failure itself.
+    * ``NOT_APPLICABLE`` (nothing was learned about the token and nothing will
+      be for this input: the harness implements no probe, the token was
+      unreadable, or the endpoint answered that it requires a model this persona
+      does not name) ⇒ SILENT, to the LOG only, and proceed.  ⚑ This arm covers
+      VALID configurations — a goose persona is keyspace-only by design — so a
+      warning here would fire on EVERY launch, forever, with nothing the user
+      could do about it.  ⚑ It is NOT reached merely because the persona names
+      no model: such a persona IS probed (model field omitted), so a dead token
+      still hard-errors here.
+    * ``PASS`` ⇒ proceed silently.
 
     The probe contract is NEVER-RAISE; a third-party plugin can still break it,
-    so a raise is caught and treated as UNVERIFIABLE — no launch may die on a
-    probe bug.  Returns the error message, or ``None`` to proceed.
+    so a raise is caught and treated as INCONCLUSIVE (a plugin bug IS an anomaly
+    worth surfacing) — no launch may die on a probe bug.  Returns the error
+    message, or ``None`` to proceed.
     """
+    from kanibako.targets.base import PersonaProbeOutcome, PersonaProbeVerdict
+
     if target is None:
         return None
     try:
-        verdict = target.verify_persona(endpoint, Path(token_ptr), model)
+        outcome = target.verify_persona(endpoint, Path(token_ptr), model)
     except Exception:
-        logger.debug("persona '%s': verify probe raised; unverifiable", display,
-                     exc_info=True)
-        verdict = None
-    if verdict is False:
+        if logger is not None:
+            logger.debug("persona '%s': verify probe raised; inconclusive",
+                         display, exc_info=True)
+        outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
+    if outcome.verdict is PersonaProbeVerdict.REJECTED:
         return (
             f"Error: persona '{display}' cannot be loaded — the endpoint "
             f"({endpoint}) rejected the token.\n"
@@ -4613,12 +4627,16 @@ def _persona_probe_error(
             f"`.secret_path`, or the `secret_path` key configured for it), "
             f"then retry."
         )
-    if verdict is None:
+    if outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
         print(
             f"Warning: persona '{display}': could not verify the endpoint "
-            f"({endpoint}) — unreachable, or no probe was possible; launching "
-            f"unverified.",
+            f"({endpoint}) — {outcome.reason}; launching unverified.",
             file=sys.stderr,
+        )
+    elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE and logger is not None:
+        logger.debug(
+            "persona '%s': no verify probe was possible (%s); launching unprobed",
+            display, outcome.reason,
         )
     return None
 
