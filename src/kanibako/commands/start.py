@@ -2486,8 +2486,9 @@ def _run_container(
         # with the runtime/image handle, so the image-default tier participates.
         # This makes entrypoint concrete *before* the agent-vs-shell decision
         # (line ~672) and the exec-into-running check (line ~737), so neither
-        # regresses.  A reattach needs no shell: it attaches to the bootstrap
-        # session that is already running one.
+        # regresses.  A reattach never reaches here (this whole block is inside
+        # ``not reattach_running``); it resolves its own shell at the fast path
+        # below, off the LIVE container's image rather than this ``image``.
         if box_shell_mode and entrypoint is None:
             from kanibako.launch.shells import resolve_box_shell
             entrypoint, _src = resolve_box_shell(
@@ -2629,6 +2630,49 @@ def _run_container(
             if print_container:
                 print(container_name)
             return 0
+        if box_shell_mode and entrypoint is None and stored_agent:
+            # ``kanibako shell`` (interactive, no agent) at a live box that is
+            # RUNNING AN AGENT: the user asked for a SHELL, so resolve one here
+            # and let the exec arm below run it.  The launch path's resolve
+            # (line ~2491) sits INSIDE the ``not reattach_running`` prep block,
+            # so on this path ``entrypoint`` would still be None and we would
+            # fall through to the bootstrap attach — handing the user the
+            # AGENT'S tmux session instead of a shell (ruled a bug, Jei
+            # 2026-08-05g).  The override gate above deliberately does not
+            # refuse this: its session-shape arm is scoped to an AGENT launch,
+            # and a shell is something we can just do.
+            #
+            # ⚑ THE DISCRIMINATOR IS ``stored_agent`` — the LIVE box's
+            # ``KANIBAKO_AGENT`` stamp — NOT what this invocation asked for.
+            # Those are two different facts, and only the stamp answers "what is
+            # the box running?".  A live NO-AGENT box has PID-1 ``tmux
+            # new-session -s kanibako -- <box shell>``, so ITS tmux session IS
+            # the user's own shell: for that box the fall-through hands them
+            # back the shell they left running, which is exactly what they want.
+            # Firing here would exec a BRAND-NEW shell and strand that session
+            # (a running build would become unreachable through ``shell``).
+            # ⚑ Accepted degrade: a pre-stamp legacy agent box (see the
+            # fast-source note above) carries no stamp, so it keeps today's
+            # behaviour — the original bug persists there rather than a live
+            # session being stranded, and such boxes clear on their next
+            # restart.  Degrading to the status quo is the safe direction.
+            #
+            # ⚑ THE IMAGE TIER IS READ OFF THE RUNNING CONTAINER'S OWN IMAGE —
+            # ``.ImageName``, the reference it was CREATED from — never off the
+            # module-level ``image``: this path skipped ``resolve_rig``, so that
+            # variable can name a different image than the live box.  When the
+            # inspect yields nothing (podman failure; Docker has no
+            # ``.ImageName``) we drop the image tier entirely rather than
+            # substitute a wrong one, leaving ``box.shell`` -> ``$KANIBAKO_SHELL``
+            # -> ``sh``.  Degrading a tier we cannot read is honest; reading one
+            # off the wrong image is not.
+            from kanibako.launch.shells import resolve_box_shell
+            live_image = runtime.container_image(container_name)
+            entrypoint, _live_shell_src = resolve_box_shell(
+                merged, std,
+                runtime=runtime if live_image else None,
+                image=live_image,
+            )
         if entrypoint is not None:
             # An explicit ``--entrypoint`` against a live box is a SECOND
             # PROCESS entering it, not a reattach — the one case Jei marked
@@ -2640,6 +2684,15 @@ def _run_container(
             # an ``--entrypoint`` launch reaches the reattach, which never looks
             # at it.  ``--detach`` is answered first (above): it means "ensure
             # the box is Up", which needs no process at all.
+            #
+            # The box-shell resolve above is the SECOND way in here: a shell in a
+            # live AGENT box is likewise a second process, and gets the identical
+            # exec.
+            # ⚑ Its ``env`` is empty in practice today — the override gate reads
+            # ``entrypoint`` BEFORE that resolve runs, so it still refuses
+            # ``-e/--env`` for a box-shell reattach.  Reported 2026-08-05g; not
+            # changed here, because the gate is a separate concern under its own
+            # ruling.
             return runtime.exec(
                 container_name, [entrypoint] + (extra_args or []),
                 env=_parse_cli_env(cli_env),
