@@ -311,7 +311,9 @@ migration code.** Four released config surfaces are removed outright
   cure (`kanibako --restart`). An explicit session-shape refusal leaves the running session
   completely untouched — nothing is signalled, killed, or attached. Exempt because they are
   genuinely honoured against a live box: `--attach`, `--detach`, `--print-container`, `--warm-only`,
-  `--entrypoint`, and `-e`/`--env` when it accompanies an `--entrypoint`. ⚑ **Check scripts that
+  `--entrypoint`, and `-e`/`--env` whenever the invocation starts a second process in the box that
+  will apply it (`--entrypoint`, or `kanibako shell --persistent` at a box that is running an
+  agent) — env is refused only where nothing would consume it. ⚑ **Check scripts that
   pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` §2.17).
 
 ### Fixed
@@ -341,7 +343,8 @@ migration code.** Four released config surfaces are removed outright
   `box.shell` → `$KANIBAKO_SHELL` → `sh`. **A persistent no-agent box is unchanged and still
   reattaches**: its session already *is* your shell, so you get back the one you left running
   rather than a new one. (A box launched before agent stamping keeps the old behaviour until its
-  next restart.)
+  next restart.) Per-run `-e`/`--env` is applied to that shell, like any other second process in a
+  live box; it stays refused at a no-agent box, which reattaches and would drop it.
 - **A flag now works wherever you type it.** `kanibako box set <box> --null <key>` failed
   with `unrecognized arguments: <key>` — argparse groups positionals around the optionals
   between them, so a flag written *between* two positionals stranded everything after it

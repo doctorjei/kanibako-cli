@@ -379,11 +379,14 @@ context.
 
 ⚑ **Against a box that is already RUNNING, most of these are refused, not applied.** A running
 container keeps the creation-time settings and the agent session it was launched with, so
-`--image`, `-e`, `--no-helpers`, `--no-auto-auth`, `--browser`, `--share-images`, an explicit
-`--persistent`/`--ephemeral`, and the agent flags `-N -C -R -M -A -S` produce an error naming the
-cure rather than being silently dropped. Use `kanibako --restart [box]` to stop and relaunch with
-them in force. Two exceptions: `--entrypoint` runs your command as a **second process inside the
-running box** (with `-e` applied), and `--detach`/`--print-container`/`--warm-only` are honoured.
+`--image`, `-e` (except where something in the box will actually apply it, below), `--no-helpers`,
+`--no-auto-auth`, `--browser`, `--share-images`, an explicit `--persistent`/`--ephemeral`, and the
+agent flags `-N -C -R -M -A -S` produce an error naming the cure rather than being silently
+dropped. Use `kanibako --restart [box]` to stop and relaunch with them in force. Two exceptions:
+`--detach`/`--print-container`/`--warm-only` are honoured; and anything that starts a **second
+process inside the running box** — `--entrypoint CMD`, or `kanibako shell --persistent` at a box
+that is running an agent — runs with `-e` applied, so `-e` is refused only where nothing would
+apply it.
 
 ### Global Flags
 
