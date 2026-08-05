@@ -227,25 +227,18 @@ migration code.** Four released config surfaces are removed outright
   --all` untouched. All three verbs, reset-all and the launch now agree on
   `<data>/global/settings.yaml`. A hand-placed system binding that exists only in the
   config file now gets a must-exist refusal; the cure is to move the sub-table.
-- **BREAKING (plugin authors): a persona's claude-shaped host-dir adoption is now
-  DECLARED, not inherited.** In a plugin that DECLARES a `persona:` block,
-  `persona.host_dir_adopt` now defaults to `false` (was `true`): omitting it no longer
-  opts the harness in, and the persona resolves its endpoint from the keyspace only
-  instead of auto-adopting a config from claude's `~/.config/claude/<persona>/`.
-
-  ```yaml
-  # <agent>-defaults.yaml — opt IN if your harness reads claude's host dir
-  descriptor:
-    persona:
-      endpoint_delivery: env
-      host_dir_adopt: true
-  ```
-
-  A plugin with **no** `persona:` block at all is unchanged (it still gets the full
-  legacy claude shape through the fallback, which stays load-bearing for version-skewed
-  installs). No behaviour change for the shipped agents: claude now declares
-  `endpoint_delivery`, `token_var` and `host_dir_adopt: true` explicitly; codex and goose
-  already declared `false`.
+- **BREAKING: the legacy claude host-dir credential path is GONE.** A persona used to be
+  able to resolve its endpoint, bearer token and model-map env by auto-adopting
+  `~/.config/claude/<persona>/settings.json` + its sibling `token` file when nothing was
+  configured for it in the keyspace. That was a second ingestion route for values the
+  persona-grata store now carries for every harness, and it fired only while nothing was
+  configured — so once a persona had adopted and persisted a host dir, later edits to
+  that directory never reached it again.
+  Nothing reads that directory any more; a persona with no configured endpoint is a hard
+  error naming the `kanibako system set agent.<node>.endpoint=<url>` route. The plugin
+  descriptor field that gated it, `persona.host_dir_adopt`, is removed — a `persona:`
+  block that still declares it is ignored. Cure: set the endpoint and
+  `secret_path.<TOKEN_VAR>` for the persona, or give it a persona-store entry.
 - **The command line is its own cascade level.** Ephemeral launch flags are no longer
   post-resolve patches: a declared flag-to-key table spells them as level entries — `-M`
   as the active agent's `model` key (the only spelling under which a flag outranks a

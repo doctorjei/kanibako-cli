@@ -127,17 +127,12 @@ descriptor:
   # PERSONA endpoint/token delivery (codex; INC 2 harness-aware persona resolution).
   # config_file = the endpoint is written into ~/.codex/config.toml's model-provider
   # block (not ANTHROPIC_BASE_URL); token_var EMPTY = DYNAMIC (the single configured
-  # secret_path key IS the provider env_key + the in-box bearer var).  config_file
-  # also disables the claude-shaped B3 host-dir auto-adopt (MVP keyspace-config only).
+  # secret_path key IS the provider env_key + the in-box bearer var).
   persona:
     endpoint_delivery: config_file
     # Codex removed the "chat" wire (openai/codex#7782); "responses" is the only
     # value current Codex accepts.  NaviGator serves both wires.
     wire_api: responses
-    # config_file delivery already excludes codex from the ENV-only B3 host-dir
-    # adopt gate; host_dir_adopt=false is declared for correctness/clarity (codex
-    # resolves its endpoint from the KEYSPACE only, never a claude-shaped host dir).
-    host_dir_adopt: false
     # model_required: a missing model is NOT automatically invalid — some endpoints
     # need no model spec — so the RULE is that absence in the persona store means
     # "this persona does not need one", and THIS declaration is the per-harness veto.

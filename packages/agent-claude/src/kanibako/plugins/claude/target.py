@@ -57,9 +57,11 @@ _UPDATE_TIMEOUT = 300
 _LAUNCHER = Path.home() / ".local" / "bin" / "claude"
 _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 
-# Persona wiring constants (claude's FIXED env vars; mirror the launch-side
-# ``_PERSONA_BASE_URL_VAR`` / ``_PERSONA_TOKEN_VAR`` in core start.py — claude's
-# settings.json does not self-name its token var the way codex ``env_key`` does).
+# Persona wiring constants (claude's FIXED env vars).  The token var mirrors the
+# launch-side ``_PERSONA_TOKEN_VAR`` in core start.py — claude's settings.json does
+# not self-name its token var the way codex ``env_key`` does.  The base-URL var has
+# no launch-side twin: the endpoint is a keyspace value by the time the launch sees
+# it, and this is the only place that reads it out of a rendered settings.json.
 _PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
 _PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
 
@@ -258,9 +260,8 @@ class ClaudeTarget(Target):
 
         The persona-grata store renders a claude persona as a harness-native
         ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
-        endpoint and whose top-level ``model`` (when present) names the model —
-        the same shape the launch-time B3 host-dir adopt reads.  The bearer
-        token var is claude's FIXED ``ANTHROPIC_AUTH_TOKEN`` (the harness does
+        endpoint and whose top-level ``model`` (when present) names the model.
+        The bearer token var is claude's FIXED ``ANTHROPIC_AUTH_TOKEN`` (the harness does
         not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
         block is carried through verbatim as
         :attr:`~kanibako.targets.base.PersonaSettings.env` — the two

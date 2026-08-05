@@ -176,10 +176,10 @@ def persona_of(node: str) -> str:
     """Return the persona segment (part LEFT of ``℘``) of a *node*-name.
 
     The inverse of :func:`harness_of`.  A persona node (``navigator℘claude``)
-    yields its identity segment (``navigator``) — the name the class setup script
-    uses for its host config dir ``~/.config/claude/<persona>/``.  A bare node with
-    no separator has no distinct persona (``"claude" -> "claude"``); callers use
-    this only for personas (``harness_of(node) != node``).
+    yields its identity segment (``navigator``) — the name its persona-store entry
+    and its generated config-provider block use.  A bare node with no separator has
+    no distinct persona (``"claude" -> "claude"``); callers use this only for
+    personas (``harness_of(node) != node``).
 
     Reuses the same canonical ``℘`` split as :func:`harness_of` / :func:`with_harness`
     (design law: never re-split a ref on the raw separator at the call site).

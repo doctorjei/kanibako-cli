@@ -247,22 +247,11 @@ class PersonaSpec:
       ``endpoint``→``ANTHROPIC_BASE_URL`` ENV :class:`SettingArg`) or ``"config_file"``
       (codex: the endpoint is written into ``~/.codex/config.toml``'s
       ``[model_providers.<id>]`` block by the launch config generator — NOT an env
-      var).  ``"config_file"`` ALSO disables the claude-shaped B3 host-dir auto-adopt
-      (MVP keyspace-config only).
+      var).  It is the ONLY thing that picks between the two pre-flight gates in
+      ``start.py``.
     * *wire_api* — the config-file harness's model-provider wire protocol (codex
       ``[model_providers.<id>].wire_api``); default ``"responses"`` (Codex removed
       the ``"chat"`` wire, openai/codex#7782).  Ignored for ``"env"`` delivery.
-    * *host_dir_adopt* — whether an ENV-delivery persona with an UNSET keyspace
-      endpoint may auto-adopt a config from the CLAUDE-shaped host dir
-      ``~/.config/claude/<persona>/`` (the B3 gate in ``start.py``).  Claude is the
-      ONLY harness whose class-setup script writes that dir, so CLAUDE DECLARES
-      ``True`` in its own defaults file; the FIELD default is ``False`` — a harness
-      that does not declare adoption does not get claude's adoption semantics.  An
-      env-delivery harness that declines it (goose) resolves from the KEYSPACE only
-      and errors with a HARNESS-appropriate keyspace-config message instead of
-      consulting/erroring against claude's dir.  A config-file harness (codex) is
-      unaffected either way — B3's ENV gate already excludes it — but it declares
-      ``False`` too for correctness/clarity.
     * *provider_pin* — ``(setting_key, value)`` pairs FORCE-applied to the launch's
       effective setting state WHENEVER this persona resolves an active endpoint (so a
       harness whose endpoint requires a specific provider can't be misconfigured).
@@ -270,27 +259,27 @@ class PersonaSpec:
       ``GOOSE_PROVIDER`` :class:`SettingArg` then emits ``GOOSE_PROVIDER=openai`` in
       the box.  Empty (claude/codex) = no pin (byte-identical); a BARE box (no active
       endpoint) is never touched.
-    * *model_required* — whether an ENV-delivery persona with a resolved endpoint but
-      NO cascade-resolved model is a hard error (parity with the codex config-file
-      model gate).  Claude keeps the default ``False`` (its model rides its own
-      channels / harness default); goose sets ``True`` (a third-party OpenAI-compatible
-      endpoint has no meaningful default model).
+    * *model_required* — whether a persona with a resolved endpoint but NO
+      cascade-resolved model is a hard error.  A MISSING model is not automatically
+      invalid — some endpoints need no model spec — so absence means "this persona
+      needs none" unless the harness VETOES here.  Claude keeps the default ``False``
+      (its model rides its own channels / harness default); goose and codex both set
+      ``True`` (a third-party OpenAI-compatible endpoint has no meaningful default,
+      and a config-file harness cannot express "no model" at all).
 
     A target with NO :class:`PersonaSpec` (``descriptor.persona is None``) resolves
     through the legacy fallback in ``start.py``'s ``_persona_wiring``, which spells
     out the claude shape EXPLICITLY (ENV endpoint delivery + ``ANTHROPIC_AUTH_TOKEN``
-    token var + ``host_dir_adopt=True``, no provider pin, no model gate) — byte-
-    identical to before this seam existed.  That explicit spelling is what keeps the
-    fallback claude-shaped: the FIELD defaults below are the DECLARED-NOTHING
-    defaults, and ``host_dir_adopt`` among them is ``False``.
+    token var, no provider pin, no model gate) — byte-identical to before this seam
+    existed.  That explicit spelling is what keeps the fallback claude-shaped: the
+    FIELD defaults below are the DECLARED-NOTHING defaults.
     """
 
     token_var: str = ""
     endpoint_delivery: str = "env"   # "env" | "config_file"
     wire_api: str = "responses"      # config-file harness wire; codex dropped "chat" (openai/codex#7782)
-    host_dir_adopt: bool = False     # env-delivery B3 host-dir auto-adopt; claude DECLARES True (only harness that writes that dir)
     provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
-    model_required: bool = False     # error if endpoint set but no model (goose parity)
+    model_required: bool = False     # harness VETO: error if endpoint set but no model
 
 
 def http_probe_status(

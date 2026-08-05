@@ -478,22 +478,34 @@ class TestPluginDescriptorDataclasses:
         assert cf.filtered is False
 
     def test_persona_spec_defaults(self):
-        """A DECLARED-NOTHING persona spec does NOT adopt from claude's host dir.
+        """A DECLARED-NOTHING persona spec vetoes nothing and pins nothing.
 
-        The ``host_dir_adopt`` FIELD default is False: only a harness that DECLARES
-        the claude-shaped B3 host-dir adoption (``~/.config/claude/<persona>/``) gets
-        it — claude declares it in its own defaults file.  (Mutation: default back to
-        True → RED.)
+        ⚑ ``model_required`` False is the load-bearing one: a missing model is NOT
+        automatically invalid, so absence means "this persona needs none" unless the
+        HARNESS declares the veto.  (Mutation: default it to True → RED.)
         """
         p = PersonaSpec()
-        assert p.host_dir_adopt is False
-        # the other defaults are unchanged by that flip
         assert p.token_var == ""
         assert p.endpoint_delivery == "env"
         assert p.wire_api == "responses"
         assert p.provider_pin == ()
         assert p.model_required is False
-        assert PersonaSpec(host_dir_adopt=True).host_dir_adopt is True
+
+    def test_persona_spec_has_no_host_dir_adopt_field(self):
+        """B3 is retired: the field that gated it does not exist (D3).
+
+        The legacy claude host dir ``~/.config/claude/<persona>/`` was a SECOND
+        credential ingestion route; nothing reads it any more, so nothing declares
+        it either.  Pinned because a field re-added "just in case" is exactly the
+        compatibility arm the retirement ruled out.
+        """
+        import dataclasses
+
+        assert "host_dir_adopt" not in {
+            f.name for f in dataclasses.fields(PersonaSpec)
+        }
+        with pytest.raises(TypeError):
+            PersonaSpec(host_dir_adopt=True)   # type: ignore[call-arg]
 
     def test_plugin_descriptor_minimal_defaults(self):
         d = PluginDescriptor(

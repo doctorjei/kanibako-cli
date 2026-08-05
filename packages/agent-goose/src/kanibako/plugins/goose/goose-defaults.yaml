@@ -110,16 +110,14 @@ descriptor:
   # PERSONA endpoint/token delivery (goose; INC G1 harness-aware persona resolution).
   # env = the endpoint rides the descriptor's endpoint->OPENAI_HOST ENV SettingArg
   # (NOT config_file); token_var=OPENAI_API_KEY is the FIXED secret_path key / in-box
-  # bearer var goose's `openai` provider reads.  host_dir_adopt=false: goose is NOT
-  # claude, so it must NOT auto-adopt from the claude-shaped ~/.config/claude/<persona>/
-  # host dir — an unset endpoint resolves from the KEYSPACE only (goose-worded error).
+  # bearer var goose's `openai` provider reads.  An unset endpoint is a hard error
+  # (there is no second ingestion route to fall back to).
   # provider_pin forces GOOSE_PROVIDER=openai (via the `provider` setting) whenever a
   # goose persona endpoint is active, so the openai provider can't be forgotten.
   # model_required: a third-party endpoint has no meaningful default model → require one.
   persona:
     endpoint_delivery: env
     token_var: OPENAI_API_KEY
-    host_dir_adopt: false
     model_required: true
     provider_pin:
       provider: openai

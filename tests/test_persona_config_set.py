@@ -375,7 +375,7 @@ class TestPersonaLoadableEndToEnd:
         assert agent_cfg.state["model"] == "gemma-4-31b-it"
         assert agent_cfg.secret_path[_TOKEN_VAR] == str(token)
 
-        endpoint, error, _adopted, _provider = _preflight_persona_load(
+        endpoint, error, _provider = _preflight_persona_load(
             "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
         )
         assert error is None
@@ -386,8 +386,8 @@ class TestPersonaLoadableEndToEnd:
     ):
         from kanibako.commands.start import _preflight_persona_load
 
-        # Isolate the host persona dir ($XDG_CONFIG_HOME/claude/<persona>) to an
-        # empty tree so the no-token check does not adopt a real host token.
+        # Point XDG_CONFIG_HOME at an empty tree: no persona-store entry can
+        # supply the token the agent file does not name.
         empty_cfg = tmp_path / "xdgcfg"
         empty_cfg.mkdir()
         monkeypatch.setenv("XDG_CONFIG_HOME", str(empty_cfg))
@@ -396,8 +396,8 @@ class TestPersonaLoadableEndToEnd:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         agent_cfg = load_agent_config(_node_file(agents_root))
-        _ep, error, _adopted, _provider = _preflight_persona_load(
+        _ep, error, _provider = _preflight_persona_load(
             "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
         )
         assert error is not None
-        assert "no auth token" in error
+        assert "no usable auth token" in error

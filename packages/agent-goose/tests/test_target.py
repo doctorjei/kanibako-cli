@@ -487,13 +487,12 @@ class TestDescriptor:
         assert settings["endpoint"].env_var == "OPENAI_HOST"
 
     def test_persona_spec_env_delivery_openai(self):
-        # INC G1: goose persona = ENV delivery, OPENAI_API_KEY token var, NO claude
-        # host-dir adopt, GOOSE_PROVIDER auto-pin (via provider setting), model gate.
+        # INC G1: goose persona = ENV delivery, OPENAI_API_KEY token var,
+        # GOOSE_PROVIDER auto-pin (via provider setting), model gate.
         p = GooseTarget().descriptor.persona
         assert p is not None
         assert p.endpoint_delivery == "env"
         assert p.token_var == "OPENAI_API_KEY"
-        assert p.host_dir_adopt is False
         assert p.model_required is True
         assert p.provider_pin == (("provider", "openai"),)
 
