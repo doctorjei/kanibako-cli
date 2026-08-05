@@ -2264,8 +2264,14 @@ def _run_container(
     # DELIBERATELY NOT GATED: ``--attach``/``--detach``/``--print-container``/
     # ``--warm-only`` (all meaningful against a live box); ``--entrypoint``
     # (routed to an exec — a second process in the box — on the fast path
-    # below); and ``-e/--env`` WHEN an ``--entrypoint`` is given, because that
-    # exec does apply it.
+    # below); and ``-e/--env`` whenever something below WILL consume it.  That
+    # is the whole principle for env: refuse it only when nothing would apply
+    # it.  There are TWO doors into the one ``runtime.exec`` that passes
+    # ``env=`` — an explicit ``--entrypoint``, and the box-shell resolve a
+    # ``kanibako shell`` gets at a live AGENT box.  The second door is not
+    # readable from ``entrypoint`` here: it sets it ~360 lines BELOW this gate,
+    # so it is named by its own inputs instead (``box_shell_mode`` and the live
+    # box's ``stored_agent`` stamp).
     if box_running:
         _rejected: list[str] = []
         # Session shape.  Scoped to an AGENT launch: ``kanibako shell`` and
@@ -2279,7 +2285,17 @@ def _run_container(
         if reattach_running:
             if image_override:
                 _rejected.append("--rig/--image")
-            if cli_env and entrypoint is None:
+            if cli_env and entrypoint is None and not (
+                box_shell_mode and stored_agent
+            ):
+                # ⚑ ``stored_agent`` is LOAD-BEARING here, not a redundant
+                # narrowing of ``box_shell_mode``: the box-shell exec arm below
+                # fires only at a box carrying a ``KANIBAKO_AGENT`` stamp.
+                # Without one the reattach falls through to
+                # ``_bootstrap_attach``, whose exec takes NO ``env`` — so
+                # relaxing this to ``not box_shell_mode`` would ACCEPT ``-e`` at
+                # a live no-agent box and then silently discard it, which is the
+                # exact class of failure this gate exists to end.
                 _rejected.append("-e/--env")
             if no_helpers:
                 _rejected.append("--no-helpers")
@@ -2688,11 +2704,12 @@ def _run_container(
             # The box-shell resolve above is the SECOND way in here: a shell in a
             # live AGENT box is likewise a second process, and gets the identical
             # exec.
-            # ⚑ Its ``env`` is empty in practice today — the override gate reads
-            # ``entrypoint`` BEFORE that resolve runs, so it still refuses
-            # ``-e/--env`` for a box-shell reattach.  Reported 2026-08-05g; not
-            # changed here, because the gate is a separate concern under its own
-            # ruling.
+            # ⚑ Per-run ``-e`` is applied through BOTH doors: the override gate
+            # cannot read this resolve's ``entrypoint`` (it runs ~360 lines
+            # earlier), so it names the box-shell door by its own inputs and
+            # lets ``-e`` through for it too.  A box-shell reattach at a box with
+            # NO agent stamp never reaches this arm, and there ``-e`` is still
+            # refused — nothing downstream of it would apply one.
             return runtime.exec(
                 container_name, [entrypoint] + (extra_args or []),
                 env=_parse_cli_env(cli_env),

@@ -116,8 +116,9 @@ inside boxes. In order of likely impact:
 
 14. **If you pass flags to a box that may already be running, they are now refused instead of
     silently ignored** (§2.17). `kanibako start -N <running box>` used to reattach you to the OLD
-    conversation without a word; it now errors. Same for `--rig`, `-e`, `--browser`,
-    `--share-images`, `--no-helpers`, `--no-auto-auth`, `-C`, `-R`, `-M`, `-A`, `-S`, and an
+    conversation without a word; it now errors. Same for `--rig`, `-e` (except where a second
+    process in the box will apply it — see §2.17), `--browser`, `--share-images`, `--no-helpers`,
+    `--no-auto-auth`, `-C`, `-R`, `-M`, `-A`, `-S`, and an
     explicit `--persistent`/`--ephemeral`. The cure is the new **`kanibako --restart [box]`**, which
     stops the box and starts it again with your flags in force. Scripts that start boxes with flags
     are the thing to check. (Two upsides in the same change: a reattach no longer builds images or
@@ -682,7 +683,7 @@ by name, with a nonzero exit**, where most of them were previously accepted and 
 | Flag | Previously | Now |
 |---|---|---|
 | `--rig`/`--image`, `--browser`, `--share-images`, `--no-helpers`, `--no-auto-auth` | silently ignored (`--image` was even recorded, then ignored) | error |
-| `-e`/`--env` | silently ignored | error — *unless* `--entrypoint` is also given, which does apply it |
+| `-e`/`--env` | silently ignored | error — *unless* it reaches a second process in the box, which does apply it: `--entrypoint`, or `kanibako shell --persistent` at a box that is running an agent |
 | `-N`, `-C`, `-R`, `-M`, `-A`, `-S` | **silently ignored** — `kanibako start -N <running box>` reattached to the OLD conversation | error |
 | `--persistent`, `--ephemeral` (typed explicitly) | reattached / hit a generic error | error, leaving the running session untouched |
 | `--entrypoint` | silently ignored; you got the agent session instead | **runs the command as a second process in the box** |

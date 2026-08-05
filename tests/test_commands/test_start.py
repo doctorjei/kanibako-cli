@@ -7657,19 +7657,52 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
         assert len(attach) == 1
         assert attach[0].args[1] == ["tmux", "attach", "-t", "kanibako"]
 
-    def test_per_run_env_is_still_refused_by_the_override_gate(
-        self, start_mocks, capsys,
-    ):
-        """⚑ PINS TODAY'S BEHAVIOUR, NOT AN ENDORSEMENT OF IT (reported
-        2026-08-05g).  The exec this path lands on DOES apply ``-e``, but the
-        override gate runs far earlier and reads ``entrypoint``, which is still
-        None for a box-shell reattach at that point — so ``-e/--env`` is refused
-        before the resolve ever happens.  ``kanibako shell -e`` (ephemeral, the
-        shell's own default) is unaffected: it never becomes a reattach.  If the
-        gate is re-ruled, this test changes with it."""
+    def test_per_run_env_reaches_the_exec_at_a_live_agent_box(self, start_mocks):
+        """⚑ THE NARROWING (ruled 2026-08-05g).  The gate's principle for env is
+        "refuse it only when nothing will apply it", and this door lands on
+        ``runtime.exec(..., env=...)``, which applies it — the same exec an
+        explicit ``--entrypoint`` gets, and that one was never refused.  The gate
+        cannot see it in ``entrypoint`` (the resolve is ~360 lines below it), so
+        it names the door by ``box_shell_mode`` plus the live stamp."""
         with start_mocks() as m:
+            m.merged.box_shell = "/bin/zsh"
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
             self._running(m)
             rc = self._shell(cli_env=["FOO=bar"])
+        assert rc == 0
+        call = m.runtime.exec.call_args
+        assert call.args[1] == ["/bin/zsh"]
+        assert call.kwargs.get("env") == {"FOO": "bar"}
+        assert call.kwargs.get("attach") is not True
+
+    def test_per_run_env_is_still_refused_at_a_live_no_agent_box(
+        self, start_mocks, capsys,
+    ):
+        """⚑ THE MUTATION GUARD for ``stored_agent`` in that condition.  Relaxed
+        to ``not box_shell_mode`` it would ACCEPT ``-e`` here — but this box
+        reattaches through ``_bootstrap_attach``, whose exec takes no ``env``, so
+        the variable would be silently discarded.  Named refusal is exactly what
+        the gate exists to give instead."""
+        with start_mocks() as m:
+            m.merged.box_shell = "/bin/zsh"
+            m.runtime.container_image.return_value = self._LIVE_IMAGE
+            self._running(m, agent=None)          # no stamp == no agent in there
+            rc = self._shell(cli_env=["FOO=bar"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "-e/--env" in err
+        m.runtime.exec.assert_not_called()
+
+    def test_per_run_env_is_still_refused_on_an_ordinary_agent_reattach(
+        self, start_mocks, capsys,
+    ):
+        """The other control: no ``box_shell_mode``, so the reattach is the tmux
+        attach and nothing downstream would apply ``-e``.  ``kanibako shell -e``
+        (ephemeral, the shell's own default) is unaffected either way — it never
+        becomes a reattach."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(cli_env=["FOO=bar"])
         err = capsys.readouterr().err
         assert rc == 1
         assert "-e/--env" in err
