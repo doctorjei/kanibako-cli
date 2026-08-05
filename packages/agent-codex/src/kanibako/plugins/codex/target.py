@@ -53,6 +53,7 @@ from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
+    PersonaReadOutcome,
     PersonaSettings,
     PluginDescriptor,
     Target,
@@ -479,7 +480,7 @@ class CodexTarget(Target):
 
         return False
 
-    def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
+    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
         """Extract persona values from a rendered codex ``config.toml``.
 
         The persona-grata store renders a codex persona as the SAME
@@ -490,44 +491,73 @@ class CodexTarget(Target):
         ``model``.  Provider-table selection: the top-level ``model_provider``
         key when it names a present table (what kanibako writes), else the
         single table when exactly one exists; zero tables or an unresolvable
-        ambiguity → ``None``.
+        ambiguity is a reject.  A codex config carries NO env block, so
+        ``env``/``env_dropped`` stay at their (empty) defaults — unlike
+        claude, whose persona env rides the config.
 
-        FAIL-SOFT (base-class contract): absent / unreadable / malformed TOML,
+        FAIL-SOFT (base-class contract): absent / unreadable, malformed TOML,
         no usable provider table, or a missing/empty ``base_url``/``env_key``
-        (a codex persona is meaningless without both) → ``None``.  Pure read
-        via stdlib ``tomllib``; never touches the token.
+        (a codex persona is meaningless without both) each return an outcome
+        NAMING that cause and the file.  Pure read via stdlib ``tomllib``;
+        never touches the token.
         """
         import tomllib
 
         cfg = config_dir / "config.toml"
         try:
-            data = tomllib.loads(cfg.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            # OSError: absent/unreadable; ValueError covers both
-            # tomllib.TOMLDecodeError and UnicodeDecodeError.
-            return None
+            raw = cfg.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg} is absent or unreadable ({exc})"
+            ))
+        try:
+            data = tomllib.loads(raw)
+        except ValueError as exc:
+            # ValueError covers tomllib.TOMLDecodeError.
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg} is not valid TOML ({exc})"
+            ))
         providers = data.get("model_providers")
         if not isinstance(providers, dict) or not providers:
-            return None
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg} declares no "
+                f"[model_providers.<id>] table"
+            ))
         selected = data.get("model_provider")
         if isinstance(selected, str) and selected in providers:
             table = providers[selected]
         elif len(providers) == 1:
             table = next(iter(providers.values()))
         else:
-            return None  # several tables, none selected -> ambiguous
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg} declares {len(providers)} "
+                f"[model_providers.<id>] tables and no 'model_provider' "
+                f"selecting one of them"
+            ))
         if not isinstance(table, dict):
-            return None
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg}: the selected model_providers "
+                f"entry is not a table"
+            ))
         base_url = table.get("base_url")
         env_key = table.get("env_key")
         if not isinstance(base_url, str) or not base_url:
-            return None
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg}: the selected model_providers "
+                f"table names no 'base_url'"
+            ))
         if not isinstance(env_key, str) or not env_key:
-            return None
+            return PersonaReadOutcome(None, (
+                f"codex persona config {cfg}: the selected model_providers "
+                f"table names no 'env_key'"
+            ))
         model = data.get("model")
         if not isinstance(model, str) or not model:
             model = None
-        return PersonaSettings(endpoint=base_url, model=model, auth_env=env_key)
+        return PersonaReadOutcome(
+            PersonaSettings(endpoint=base_url, model=model, auth_env=env_key),
+            None,
+        )
 
     def verify_persona(
         self,
@@ -570,12 +600,20 @@ class CodexTarget(Target):
         ))
 
     def generate_agent_config(self) -> AgentConfig:
-        """Return default Codex crab configuration."""
+        """Return default Codex agent configuration.
+
+        ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
+        settings file holds USER INTENT only, and defaults come from the
+        descriptor floor (:meth:`setting_descriptors` — ``model`` defaults to
+        ``gpt-5.5``).  Seeding that same value into the file would pin every
+        install ABOVE the floor, so a later change to the default could never
+        reach an existing box.
+        """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(
             name=self.display_name,
-            state={"model": "gpt-5.5"},
+            state={},
         )
 
     def setting_descriptors(self) -> list[TargetSetting]:

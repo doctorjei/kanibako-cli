@@ -2934,3 +2934,336 @@ class TestCliLevelGuardIsNotBypassable:
             },
         )
         assert snap.agent.claude.continue_mode is False
+
+
+# --------------------------------------------------------------------------- #
+# The PERSONA rung — the persona store's LIVE, never-persisted tier            #
+# --------------------------------------------------------------------------- #
+#
+# ``persona_values`` is threaded IN MEMORY, not written to any file: the persona
+# store's rendered host config is a live resolution input, and ``build_launch_
+# snapshot`` rebuilds from FILES several times per launch, so a never-written
+# layer has no file to ride. Its rung is BELOW the per-agent FILE (both the flat
+# ``[agent]`` state channel and the discriminated ``agent.<active>`` tables) and
+# ABOVE ``agent.default`` — the agent file stores only NON-default values, so a
+# file value that beats the persona can only be a deliberate user edit.
+
+#: One persona key per VALUE CLASS, with the snapshot path it must land on under
+#: ``agent.<active>``. The two bare keys are behavior scalars; the two dotted ones
+#: are the open categories, whose ``<VAR>`` half is arbitrary user text.
+_PERSONA_CLASSES = [
+    ("endpoint", ("endpoint",)),
+    ("model", ("model",)),
+    ("secret_path.ANTHROPIC_AUTH_TOKEN", ("secret_path", "ANTHROPIC_AUTH_TOKEN")),
+    ("env.PERSONA_FLAG", ("env", "PERSONA_FLAG")),
+]
+
+#: Marker for "no leaf at that path" — distinct from a stored ``None``.
+_NO_LEAF = object()
+
+
+def _leaf(snap, path, *, agent_name="claude"):
+    """Read the leaf at ``agent.<agent_name>.<path>`` off *snap*, or ``_NO_LEAF``.
+
+    Unbound ``dict`` ops (S3) throughout, and tolerant of a missing intermediate
+    node, so an ABSENCE assertion cannot be satisfied by an exception instead.
+    """
+    node = dict.get(snap, "agent", _NO_LEAF)
+    for seg in (agent_name, *path):
+        if not isinstance(node, KeyStore):
+            return _NO_LEAF
+        node = dict.get(node, seg, _NO_LEAF)
+    return node
+
+
+def _nested(key, value):
+    """Spell one persona key as the nested FILE shape it corresponds to.
+
+    ``"model"`` → ``{"model": v}``; ``"env.FOO"`` → ``{"env": {"FOO": v}}``. First
+    dot only — the same split the production helper does, for the same reason.
+    """
+    category, sep, var = key.partition(".")
+    return {category: {var: value}} if sep else {key: value}
+
+
+def _persona_snap(
+    tmp_path,
+    *,
+    persona_values,
+    agent_file=None,
+    agent_state=None,
+    system=None,
+    workset=None,
+    box=None,
+):
+    """A launch snapshot with the persona tier and any subset of its contenders."""
+    return build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=(
+            _write_yaml(tmp_path / "system.yaml", system) if system else None
+        ),
+        agent_path=(
+            _write_yaml(tmp_path / "agent.yaml", agent_file) if agent_file else None
+        ),
+        workset_path=(
+            _write_yaml(tmp_path / "ws.yaml", workset) if workset else None
+        ),
+        box_path=_write_yaml(tmp_path / "box.yaml", box) if box else None,
+        agent_state=agent_state,
+        persona_values=persona_values,
+        valid_agents=_PREF_AGENTS,
+    )
+
+
+@pytest.mark.parametrize("key,path", _PERSONA_CLASSES, ids=lambda v: str(v))
+class TestPersonaRungOrdering:
+    """The ruled precedence, asserted once per persona VALUE CLASS.
+
+    Each test is MUTATION-PROOF by construction: the contender and the persona
+    carry different values, so a rung spliced on the wrong side of a neighbour
+    flips exactly one of these red.
+    """
+
+    def test_persona_beats_the_descriptor_default_partial(self, tmp_path, key, path):
+        """The 7a descriptor DEFAULT (``agent_partial``) is the LEAST-specific level
+        that spells the ACTIVE slot, and it sits below ``agent.default``.
+
+        ⚑ This — not ``agent.default`` — is the nearest level the persona rung
+        actually CONTENDS with going down. ``agent.default.*`` is a DISJOINT name
+        from ``agent.<active>.*`` (§2d keeps the two slots distinct), so the merge
+        never puts them in the same contest; see the sibling test below for where
+        that comparison really happens.
+        """
+        category, sep, var = key.partition(".")
+        node = {category: {var: "from-descriptor"}} if sep else {key: "from-descriptor"}
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            agent_partial=KeyStore({"agent": {"claude": node}}),
+            persona_values={key: "from-persona"},
+        )
+        assert _leaf(snap, path) == "from-persona"
+        # CONTROL: without the persona the descriptor default lands, so the assert
+        # above is a contest and not an absence.
+        control = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            agent_partial=KeyStore({"agent": {"claude": node}}),
+        )
+        assert _leaf(control, path) == "from-descriptor"
+
+    def test_the_agent_default_backstop_is_a_disjoint_name_not_a_contest(
+        self, tmp_path, key, path,
+    ):
+        """⚑ Recorded rather than papered over.
+
+        The ruling puts the persona rung ABOVE ``agent.default``, and semantically
+        it is: the §2d active-over-default pick (``effective_behavior``) takes the
+        active slot unconditionally, and the persona writes the active slot. But
+        the two are DIFFERENT KEYS, so the MERGE never contends them — both survive
+        side by side, and the level order between them is unobservable. A test that
+        asserted an ordering there would be asserting nothing.
+        """
+        snap = _persona_snap(
+            tmp_path,
+            persona_values={key: "from-persona"},
+            agent_file={"self": {"default": _nested(key, "from-agent-default")}},
+        )
+        assert _leaf(snap, path) == "from-persona"
+        # The backstop is untouched under its OWN true name — no clobber, no merge.
+        assert _leaf(snap, path, agent_name="default") == "from-agent-default"
+
+    def test_persona_beats_the_system_file(self, tmp_path, key, path):
+        """``system`` CONTAINS ``agent``, so a system file may legally set
+        ``agent.<node>.*`` as a machine-wide default — and the persona outranks it."""
+        snap = _persona_snap(
+            tmp_path,
+            persona_values={key: "from-persona"},
+            system={"agent": {"claude": _nested(key, "from-system")}},
+        )
+        assert _leaf(snap, path) == "from-persona"
+
+    def test_persona_loses_to_the_agent_file_active_table(self, tmp_path, key, path):
+        """FILE-BEATS-PERSONA. The agent file holds only non-default values, so an
+        ``agent.<active>.<key>`` in it can only be a deliberate user edit."""
+        self._contended(
+            tmp_path, key, path, "from-agent-file",
+            agent_file={"self": {"claude": _nested(key, "from-agent-file")}},
+        )
+
+    def test_persona_loses_to_a_workset_pref(self, tmp_path, key, path):
+        """A workset/box FILE may not write ``agent.*`` directly (§0 directional
+        enforcement drops the upward table); ``pref.agent.<agent>.*`` (§2h) is how
+        those scopes reach the agent tier — and both pref overlays sit above the
+        persona rung."""
+        self._contended(
+            tmp_path, key, path, "from-workset",
+            workset={"pref": {"agent": {"claude": _nested(key, "from-workset")}}},
+        )
+
+    def test_persona_loses_to_a_box_pref(self, tmp_path, key, path):
+        self._contended(
+            tmp_path, key, path, "from-box",
+            box={"pref": {"agent": {"claude": _nested(key, "from-box")}}},
+        )
+
+    @staticmethod
+    def _contended(tmp_path, key, path, expected, **contender):
+        """Assert the *contender* wins the key — and that it had to.
+
+        ⚑ The CONTROL is what makes a "persona loses" assertion non-vacuous: on its
+        own it would also pass if the persona tier did nothing whatsoever. So the
+        same build is repeated WITHOUT the contender and must yield the persona
+        value; only then does the first assert pin an ORDERING rather than an
+        absence.
+        """
+        snap = _persona_snap(
+            tmp_path / "contended",
+            persona_values={key: "from-persona"},
+            **contender,
+        )
+        assert _leaf(snap, path) == expected
+        control = _persona_snap(
+            tmp_path / "control", persona_values={key: "from-persona"},
+        )
+        assert _leaf(control, path) == "from-persona"
+
+
+@pytest.mark.parametrize("key,path", _PERSONA_CLASSES[:2], ids=lambda v: str(v))
+def test_persona_loses_to_the_agent_file_flat_state(tmp_path, key, path):
+    """The agent file's FLAT ``[agent]`` state rung also beats the persona.
+
+    ⚑ Only the two BARE classes are exercised, and that is structural, not an
+    omission: ``read_agent_settings`` builds ``cfg.state`` from the file's SCALAR
+    entries only — a dict-valued ``env:`` / ``secret_path:`` table is explicitly
+    excluded there and rides ``_agent_partial`` (the ``agent.<active>`` table,
+    covered above) instead. So the flat channel cannot carry a dotted class at all.
+    """
+    snap = _persona_snap(
+        tmp_path / "contended",
+        persona_values={key: "from-persona"},
+        agent_state={key: "from-flat-state"},
+    )
+    assert _leaf(snap, path) == "from-flat-state"
+    # CONTROL (see TestPersonaRungOrdering._contended): without the flat state the
+    # persona value lands, so the assert above pins an ORDERING, not an absence.
+    control = _persona_snap(tmp_path / "control", persona_values={key: "from-persona"})
+    assert _leaf(control, path) == "from-persona"
+
+
+@pytest.mark.parametrize("key", ["endpoint", "model"])
+def test_persona_beats_the_agent_default_backstop_at_the_behavior_read(tmp_path, key):
+    """Where persona-beats-``agent.default`` is REALLY decided: the §2d
+    active-over-default pick, AFTER the merge.
+
+    ⚑ Bare behavior classes only, and that is structural: ``env`` / ``secret_path``
+    are CATEGORIES, read off the discriminated active node by the category adapter,
+    with no default-slot pick to win in the first place.
+    """
+    snap = _persona_snap(
+        tmp_path,
+        persona_values={key: "from-persona"},
+        agent_file={"self": {"default": {key: "from-agent-default"}}},
+    )
+    assert effective_behavior(snap, active_agent="claude")[key] == "from-persona"
+    # CONTROL: the backstop is what a persona-free launch reads.
+    control = _persona_snap(
+        tmp_path / "control",
+        persona_values=None,
+        agent_file={"self": {"default": {key: "from-agent-default"}}},
+    )
+    assert (effective_behavior(control, active_agent="claude")[key]
+            == "from-agent-default")
+
+
+class TestPersonaTierIsInertWhenEmpty:
+    """No persona values ⇒ the snapshot is what it was before the tier existed."""
+
+    @staticmethod
+    def _rich(tmp_path, **persona_kw):
+        # Deliberately NOT a bare snapshot: floor + agent file + both pref-legal
+        # files, so an injected empty ``agent.claude`` node (or a shifted level
+        # index) has somewhere to show up. ``persona_kw`` is passed through so the
+        # ARGUMENT-ABSENT case really omits the parameter (exercising its default).
+        return build_launch_snapshot(
+            agent_name="claude",
+            ctx=_ctx(),
+            system_path=None,
+            agent_path=_write_yaml(
+                tmp_path / "agent.yaml", {"self": {"claude": {"model": "stored"}}},
+            ),
+            workset_path=_write_yaml(
+                tmp_path / "ws.yaml", {"workset": {"boxes": "/ws/boxes"}},
+            ),
+            box_path=_write_yaml(
+                tmp_path / "box.yaml",
+                {"pref": {"agent": {"claude": {"access": "full"}}}},
+            ),
+            behavior_floor={"model": "opus", "allow_helpers": "true"},
+            default_categories={"box.bindings.rw.home": ("/h/home", "~/", "Z,U")},
+            agent_state={"endpoint": "stored-endpoint"},
+            valid_agents=_PREF_AGENTS,
+            **persona_kw,
+        )
+
+    def test_none_and_empty_and_absent_all_agree(self, tmp_path):
+        absent = self._rich(tmp_path / "a")
+        explicit_none = self._rich(tmp_path / "b", persona_values=None)
+        empty = self._rich(tmp_path / "c", persona_values={})
+        assert absent == explicit_none
+        assert absent == empty
+
+    def test_no_empty_node_is_injected_for_the_active_agent(self, tmp_path):
+        """``{}`` must add NOTHING — not even the ``agent.<active>`` scaffolding."""
+        snap = build_launch_snapshot(
+            agent_name="ghost", ctx=_ctx(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            persona_values={},
+        )
+        agent_node = dict.get(snap, "agent")
+        assert agent_node is None or "ghost" not in agent_node
+
+
+def test_a_persona_env_var_name_with_a_dot_is_ONE_literal_leaf(tmp_path):
+    """⚑ REGRESSION PIN for the divergence from ``dotted_partial``.
+
+    A ``<VAR>`` is arbitrary user-supplied text out of a JSON file. Routing it
+    through the dotted exploder would split on EVERY dot and turn one leaf into a
+    nested subtree — the var would then never be exported, silently. Split on the
+    FIRST dot only: everything after it is a literal leaf key.
+    """
+    snap = _persona_snap(
+        tmp_path, persona_values={"env.WEIRD.VAR": "v", "env.PLAIN": "p"},
+    )
+    env = _leaf(snap, ("env",))
+    assert isinstance(env, KeyStore)
+    assert dict.get(env, "WEIRD.VAR") == "v"
+    # MUTATION guard: the exploded shape must NOT exist in any form.
+    assert "WEIRD" not in env
+    assert _leaf(snap, ("env", "WEIRD", "VAR")) is _NO_LEAF
+    # The sibling ordinary var is unaffected by the neighbour's spelling.
+    assert dict.get(env, "PLAIN") == "p"
+
+
+def test_a_persona_secret_path_discriminates_onto_the_active_agent(tmp_path):
+    """``secret_path.<VAR>`` arrives UN-discriminated and must land under the
+    ACTIVE node — the launch SECRET export reads ``agent.<node>.secret_path.*``,
+    so a bare or mis-discriminated landing is an invisible auth break."""
+    token = "/home/host/.config/personas/navigator/token"
+    snap = build_launch_snapshot(
+        agent_name="navigator℘claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        persona_values={"secret_path.ANTHROPIC_AUTH_TOKEN": token},
+    )
+    assert _leaf(
+        snap, ("secret_path", "ANTHROPIC_AUTH_TOKEN"), agent_name="navigator℘claude",
+    ) == token
+    # Not bare — §0 forbids a bare ``agent.<key>``, so the category may not sit
+    # directly on the ``agent`` node, and must not have landed on the ALL-AGENTS
+    # ``default`` slot either.
+    agent_node = dict.get(snap, "agent")
+    assert "secret_path" not in agent_node
+    assert _leaf(
+        snap, ("secret_path", "ANTHROPIC_AUTH_TOKEN"), agent_name="default",
+    ) is _NO_LEAF

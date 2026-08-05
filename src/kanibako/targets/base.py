@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from kanibako.settings.settings_keyspace import ACCESS_TIERS
@@ -362,17 +364,53 @@ class PersonaSettings(NamedTuple):
     The persona-grata store (``$XDG_CONFIG_HOME/personas/<pid>/<hid>/``) lays
     down a harness-NATIVE config file (codex ``config.toml``, claude
     ``settings.json``); :meth:`Target.read_persona_settings` parses the one it
-    understands into this harness-NEUTRAL triple, which the auto-import maps
+    understands into this harness-NEUTRAL record, which the auto-import maps
     onto the agent keyspace (``self.endpoint`` / ``self.model`` /
-    ``self.secret_path.<auth_env>``).  Distinct from :class:`PersonaSpec`,
-    which declares HOW a harness DELIVERS these values into the box — this is
-    the values themselves, read back OUT of a rendered config.
+    ``self.secret_path.<auth_env>``) and whose ``env`` rides the launch as
+    plain passthrough.  Distinct from :class:`PersonaSpec`, which declares HOW
+    a harness DELIVERS these values into the box — this is the values
+    themselves, read back OUT of a rendered config.
+
+    ``env`` is the harness config's env block MINUS the two single-source vars
+    (the base URL and the bearer token), which ride their own channels —
+    ``endpoint`` here and the secret-path bind respectively — and so must never
+    be duplicated into the passthrough.  A config entry whose value is not a
+    string cannot be delivered as an env value (a JSON number/bool/null would
+    be ``str()``'d into a Python repr); its NAME lands in ``env_dropped`` so a
+    caller can warn.  Nothing is ever dropped silently.
     """
 
     endpoint: str | None   # the alternate base URL (codex base_url / claude ANTHROPIC_BASE_URL)
     model: str | None      # the provider model id, when the config names one
     auth_env: str          # env var the bearer token is exported as (codex env_key /
                            # claude's fixed ANTHROPIC_AUTH_TOKEN)
+    # Defaults are IMMUTABLE by construction: a bare ``{}``/``[]`` on a
+    # NamedTuple field is a single object shared by every instance.
+    env: Mapping[str, str] = MappingProxyType({})   # passthrough env block (no single-source vars)
+    env_dropped: tuple[str, ...] = ()               # NAMES skipped: value was not a string
+
+
+class PersonaReadOutcome(NamedTuple):
+    """The TRI-STATE result of :meth:`Target.read_persona_settings`.
+
+    Splitting "no reader" from "unusable config" is the whole point: a reject
+    must name its OWN cause instead of collapsing into a bare ``None`` the
+    caller can only report as a vague "no usable config".
+
+    * *settings* non-``None``, *reject_reason* ``None`` — a USABLE persona
+      config was read;
+    * *settings* ``None``, *reject_reason* a human-readable SPECIFIC cause
+      (naming the offending file and what was wrong with it) — the config is
+      PRESENT but UNUSABLE; the caller reports the reason VERBATIM;
+    * BOTH ``None`` — this harness has NO persona reader at all (today: goose
+      and :class:`~kanibako.targets.no_agent.NoAgentTarget`, which inherit the
+      base no-op).  Not a complaint about any file.
+
+    ``settings`` and ``reject_reason`` are never both non-``None``.
+    """
+
+    settings: PersonaSettings | None
+    reject_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -834,20 +872,23 @@ class Target(ABC):
         """
         return None
 
-    def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
+    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
         """Extract persona values from a rendered harness config in *config_dir*.
 
         *config_dir* is a persona-grata store entry's harness dir
         (``$XDG_CONFIG_HOME/personas/<pid>/<hid>/``) holding this harness's
         NATIVE config file.  A plugin that models the store's rendering parses
         it into a :class:`PersonaSettings`; the auto-import maps that onto the
-        agent keyspace.  FAIL-SOFT contract: absent / unreadable / malformed /
-        missing-required-keys config → ``None`` (never raises) — the caller
-        warns and falls through.  Default: ``None`` (harness has no persona
-        reader yet — goose/no_agent; add per-harness later or stay a no-op).
-        Pure read; never writes, never reads the token file.
+        agent keyspace.  FAIL-SOFT contract (UNCHANGED): absent / unreadable /
+        malformed / missing-required-keys config never raises — but it now
+        returns an outcome carrying the SPECIFIC reject reason rather than a
+        bare ``None``, so the caller can report WHY instead of guessing.  See
+        :class:`PersonaReadOutcome` for the tri-state.  Default:
+        ``PersonaReadOutcome(None, None)`` — harness has no persona reader yet
+        (goose/no_agent; add per-harness later or stay a no-op), which is NOT
+        a reject.  Pure read; never writes, never reads the token file.
         """
-        return None
+        return PersonaReadOutcome(settings=None, reject_reason=None)
 
     def verify_persona(
         self,

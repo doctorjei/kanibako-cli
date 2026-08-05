@@ -323,7 +323,7 @@ class GooseTarget(Target):
         return True
 
     def generate_agent_config(self) -> AgentConfig:
-        """Return default Goose crab configuration.
+        """Return default Goose agent configuration.
 
         ``state`` is intentionally EMPTY: kanibako must NOT pin goose's
         provider/model.  Forcing GOOSE_PROVIDER/GOOSE_MODEL as defaults

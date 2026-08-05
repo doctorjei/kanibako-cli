@@ -752,6 +752,16 @@ def _effective_bootstrap(
         # it has no effect on any other behavior key.
         behavior_floor={"bootstrap": _BOOTSTRAP_DEFAULT},
         agent_state=agent_state,
+        # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). Not an
+        # oversight and not an ordering accident: this resolve extracts EXACTLY
+        # ONE key (``keys=["bootstrap"]`` below), and a persona bundle can only
+        # ever carry ``endpoint`` / ``model`` / ``secret_path.<VAR>`` /
+        # ``env.<VAR>``. ``bootstrap`` is a user's terminal-multiplexer choice —
+        # nothing a harness config renders — so no persona value can reach this
+        # read, and adding the tier would buy a store read per launch (this runs
+        # ahead of the baseline probe, and again from the host-side persistence
+        # heuristic in ``_resolve_bootstrap_program``, which holds no target) for
+        # a value that could not change.
     )
     value = settings_launch.effective_behavior(
         snapshot, active_agent=agent_id, keys=["bootstrap"],
@@ -1459,6 +1469,8 @@ def _assemble_image_sharing_mounts(
             storage_conf_path=storage_conf_path,
             deliver_creds=auth_src.creds_shared,
             include_base_families=False,
+            # No persona tier (audit): the IMAGE table only, whose box_dests are
+            # disjoint from anything a persona bundle can name.
         )
         # The RESOLVED store (probed default OR a set tier value) gates the
         # emit — read off the snapshot, the PRIMARY SOURCE, with the UNBOUND
@@ -1715,6 +1727,8 @@ def _start_helper_hub(
         log_path=log_path,
         deliver_creds=auth_src.creds_shared,
         include_base_families=False,
+        # No persona tier (audit): the HELPER table only, whose runtime-derived
+        # box_dests are disjoint from anything a persona bundle can name.
     )
     helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
     extra_mounts.extend(helper_hub_mounts)
@@ -2337,6 +2351,24 @@ def _run_container(
         agent_cfg, _persona_synced = _reconcile_persona_store(
             std.agents, agent_id, target, agent_cfg, logger,
         )
+    # The store's LIVE values for this launch, read ONCE here and threaded into
+    # every resolve that must see them (the launch snapshot, the launch
+    # decisions, the auth source).  They are a resolution INPUT, never a
+    # persisted one: the tier carries endpoint/model/secret_path/env into the
+    # cascade directly, so nothing has to be written to
+    # ``agents/<node>/settings.yaml`` for a launch to see it.
+    #
+    # ⚑ TRANSITIONAL DOUBLE READ, deliberate: ``_reconcile_persona_store`` above
+    # parses the same store entry for the verified swap it still persists.  Both
+    # routes are live at once ON PURPOSE — the persisted file values sit ABOVE
+    # this tier and are IDENTICAL, so a launch resolves the same values either
+    # way, and the tier is in place BEFORE the persist is removed rather than
+    # after (removing it first would break every persona launch, since
+    # ``secret_path`` is a snapshot-driven category and an unpersisted value
+    # would never reach ``reconcile_categories``).  The second read goes away
+    # with the swap, in the phase that retires ``build_candidate`` /
+    # ``persist_candidate``.
+    persona_values = _persona_values_for(agent_id, target)
 
     # Auth 3-tier SHARING chain + persona endpoint: resolve BOTH per-box decisions
     # ONCE off a SINGLE launch snapshot (single-route) — MOVED AHEAD of every
@@ -2356,6 +2388,7 @@ def _run_container(
         agent_cfg=agent_cfg,
         system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
+        persona_values=persona_values,
         selection_level=(
             agent_selection.selection_level if agent_selection is not None else None
         ),
@@ -2823,6 +2856,7 @@ def _run_container(
             install=install,
             target=target,
             agent_cfg=agent_cfg,
+            persona_values=persona_values,
             deliver_creds=auth_src.creds_shared,
             cli_level=_cli_level,
         )
@@ -4335,6 +4369,49 @@ def _name_new_box_probe(std, proj) -> None:
         proj.name = short_hash(proj.project_hash)
 
 
+def _persona_values_for(agent_id: str, target) -> "dict[str, str] | None":
+    """The persona store's LIVE values for *agent_id*, ready for a snapshot.
+
+    The ONE seam between the store and every ``build_launch_snapshot`` that
+    carries the persona tier (the launch resolve, the launch DECISIONS resolve,
+    the auth-source resolve, and the ``--effective`` display) — so those four
+    cannot disagree about what the store says.  Returns the UN-DISCRIMINATED
+    mapping :func:`~kanibako.settings.settings_launch.build_launch_snapshot`
+    takes as ``persona_values``, or ``None`` when there is no tier to add:
+    a bare agent, a persona with no store entry, or a store entry that yielded
+    nothing (:class:`~kanibako.persona_store.PersonaBundle.reject_reason`).
+
+    TOLERANT BY CONTRACT — never raises.  ``read_persona_bundle`` is fail-soft
+    except for a malformed ref, and every caller here passes an ALREADY-PARSED
+    node-name (the launch resolved it, or it came off a ``KANIBAKO_AGENT``
+    stamp), so that arm is unreachable; the guard is belt-and-braces for the
+    credential-lifecycle callers, where a raise would break an unrelated stop or
+    watch cycle.
+
+    ⚑ DELIBERATELY SILENT.  The bundle's diagnostics (an unresolved token
+    pointer, undeliverable non-string env values, a reject reason) are NOT
+    warned about here: ``_reconcile_persona_store`` still reads the same store
+    on the same launch and still reports them, so warning here too would print
+    every one of them TWICE.  Surfacing them moves here when the reconcile's
+    persist is retired and this becomes the only reader.
+    """
+    if target is None:
+        return None
+    from kanibako.persona_store import read_persona_bundle
+
+    try:
+        if harness_of(agent_id) == agent_id:
+            return None  # bare agent: never a store entry (no read attempted)
+        bundle = read_persona_bundle(agent_id, target)
+    except Exception:
+        # The ref parse is INSIDE the guard so the never-raises contract above
+        # holds for every caller, not just the ones with a validated ref.
+        return None
+    if bundle is None:
+        return None
+    return bundle.to_persona_values() or None
+
+
 def _reconcile_persona_store(
     agents_root, agent_id: str, target, agent_cfg, logger,
 ) -> "tuple[AgentConfig, bool]":
@@ -4794,13 +4871,36 @@ def _preflight_config_file_persona(
     assert env_key is not None  # guaranteed by the passed token gate above.
     model = (keyspace_model or "").strip()
     if not model:
+        # A MISSING model is not automatically invalid — some endpoints need no
+        # model spec — so absence is allowed unless the HARNESS vetoes it via its
+        # declared ``persona.model_required``. Gate on the DECLARATION, exactly as
+        # the ENV path does (:func:`_preflight_env_keyspace_persona`); this path
+        # used to hardwire the rule, which made one of the two sibling gates
+        # ignore the descriptor it was supposed to read.
+        if wiring.model_required:
+            return None, (
+                f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+                f"model configured.\n"
+                f"  A custom-endpoint codex persona must name the provider's model id "
+                f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
+                f"harness default is not used for a third-party provider.\n"
+                f"  Set the model for this persona, then retry."
+            ), False, None
+        # No model AND no veto: a CONFIG-FILE harness cannot deliver "no model".
+        # The provider projection types ``model`` as a non-optional ``str``
+        # (``vscode_config.CodexModelProvider``), and an emitted ``model = ""`` is
+        # meaningless — while an OMITTED key does not mean "no model" either: codex
+        # falls through to its own MOVING recommended default, which a third-party
+        # provider will not serve. So fail LOUDLY at the descriptor rather than
+        # ship either shape. Unreachable while every config_file harness declares
+        # ``model_required: true``.
         return None, (
-            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
-            f"model configured.\n"
-            f"  A custom-endpoint codex persona must name the provider's model id "
-            f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
-            f"harness default is not used for a third-party provider.\n"
-            f"  Set the model for this persona, then retry."
+            f"Error: persona '{display}' resolves no model, and its harness "
+            f"declares `persona.model_required: false`.\n"
+            f"  A config-file harness cannot deliver 'no model' — its provider "
+            f"block must name one.\n"
+            f"  Either configure a model for this persona, or set "
+            f"`persona.model_required: true` in the harness descriptor."
         ), False, None
     provider = _resolve_codex_persona_provider(
         agent_id, endpoint, env_key, model, wiring,
@@ -4904,6 +5004,19 @@ def _effective_behavior_for_display(
     # ``target.name`` when a caller omits the node (legacy / test convenience).
     active = node_name if node_name is not None else target.name
 
+    # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
+    # (:func:`_persona_values_for`), read here for the same node. Without it this
+    # view would fall back to whatever the agent FILE happens to hold, so a
+    # persona value that is live-only (an ``env.<VAR>`` passthrough today, and
+    # endpoint/model/secret_path once the persist is retired) would be invisible
+    # in ``--effective`` while shaping every launch — the precise drift this
+    # function's own docstring promises not to have. ``None`` for a bare agent.
+    #
+    # (The no-descriptor early return above is untouched: it predates the
+    # snapshot path and returns the raw file state. A persona requires a harness
+    # plugin, and every one of those declares descriptors, so it cannot reach it.)
+    persona_values = _persona_values_for(active, target)
+
     # Canonical host XDG map (never a partial one): stored settings-file values
     # (e.g. a 1.6.0-era ``$XDG_CACHE_HOME/...`` cache entry) expand through this
     # ctx too, and the resolver reads ONLY the map — an empty map raised
@@ -4935,6 +5048,7 @@ def _effective_behavior_for_display(
         box_path=project_toml,
         behavior_floor=behavior_floor,
         agent_state=agent_state,
+        persona_values=persona_values,
     )
     return settings_launch.effective_behavior(snapshot, active_agent=active)
 
@@ -4995,6 +5109,37 @@ def _resolve_box_auth_source(
         mode=proj.mode.value,
         agent_name=agent_name,
     )
+    # The persona store's LIVE tier (:func:`_persona_values_for`). This resolve
+    # takes no *target* and its callers (``stop`` writeback, the creds watcher)
+    # hold no bundle, so the plugin is resolved HERE off the node-name — the same
+    # ``resolve_target(harness_of(...))`` step both callers already run for their
+    # own use — rather than reshaping their signatures. EVERY failure is
+    # tolerated: an uninstalled plugin or an unreadable store must never break a
+    # stop or a watch cycle, neither of which is even about the persona.
+    #
+    # ⚑ HONEST SCOPE: this cannot change what this function RETURNS.
+    # ``resolve_auth_source`` reads only ``auth.*`` / ``meta.*`` keys, and a
+    # persona bundle carries only ``endpoint`` / ``model`` / ``secret_path.<VAR>``
+    # / ``env.<VAR>`` — disjoint sets, so the tier is inert on this output today
+    # and stays inert after the persist is retired. It is carried anyway so this
+    # resolve and its sibling ``_resolve_box_launch_decisions`` (the SAME snapshot
+    # plus behavior) cannot be built from different levels: two nearly-identical
+    # resolves that disagree about the cascade is the drift this build exists to
+    # end, and "inert here" is a fact about today's readers, not a guarantee.
+    _auth_persona_values = None
+    try:
+        if harness_of(agent_name) != agent_name:
+            from kanibako.targets import resolve_target
+
+            _auth_persona_values = _persona_values_for(
+                agent_name,
+                resolve_target(harness_of(agent_name), proj.project_path),
+            )
+    except Exception:
+        # Includes the ref parse itself: this resolve is reached with a
+        # ``KANIBAKO_AGENT`` stamp read off a live container, not with a
+        # freshly-validated ref, so nothing here may be assumed well-formed.
+        _auth_persona_values = None
     # The resolved system.* tier is folded into the floor (default_categories
     # here carries ONLY system.* — no category families) so any @-ref in the
     # chain that reaches system.* resolves; this keeps the focused snapshot
@@ -5009,6 +5154,7 @@ def _resolve_box_auth_source(
         workset_path=cascade_workset_path,
         box_path=cascade_box_path,
         default_categories=dict(resolved_sys),
+        persona_values=_auth_persona_values,
         auth_chain=chain,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
@@ -5033,6 +5179,7 @@ def _resolve_box_launch_decisions(
     system_settings_path,
     agent_cfg_path,
     selection_level: "Mapping[str, object] | None",
+    persona_values: "Mapping[str, str] | None" = None,
 ) -> "tuple[AuthSource, str | None, str | None]":
     """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint + persona
     model) off ONE snapshot — the single-source consolidation of the auth resolve and
@@ -5064,6 +5211,18 @@ def _resolve_box_launch_decisions(
     FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
     yields the endpoint for the NODE (persona identity). A target with no declared
     settings contributes no floor → endpoint ``None`` (bare).
+
+    *persona_values* is the persona store's LIVE tier (:func:`_persona_values_for`),
+    threaded in because BOTH returns above depend on it: the *endpoint* is the
+    cred fork (a persona endpoint that did not reach this resolve would silently
+    stop suppressing the host OAuth cred, sending the user's real Anthropic token
+    to a third-party endpoint), and the *model* is written into the codex
+    ``[model_providers.<id>]`` block.  ``None`` for a bare agent.
+
+    ⚑ The store tier sits BELOW the per-agent FILE, so while the swap still
+    persists the same values this changes NOTHING — the file wins with an
+    identical value.  It is what keeps both returns correct once the persist is
+    retired and the file no longer carries them.
 
     ⚑ *selection_level* is the SELECTION only — deliberately NOT the full §1A CLI
     level (P8). The *model* this returns is threaded into ``_preflight_persona_load``
@@ -5116,6 +5275,7 @@ def _resolve_box_launch_decisions(
             if behavior_floor and agent_cfg is not None
             else None
         ),
+        persona_values=persona_values,
         default_categories=dict(resolved_sys),
         auth_chain=chain,
         meta_runtime=meta_runtime,
@@ -5384,6 +5544,7 @@ def _resolve_launch_snapshot(
     install,
     target=None,
     agent_cfg=None,
+    persona_values: "Mapping[str, str] | None" = None,
     box_state_kanibako: str | None = None,
     socket_path=None,
     log_path=None,
@@ -5439,6 +5600,18 @@ def _resolve_launch_snapshot(
     the only one that APPLIES their copies; every other resolve leaves it empty and
     is byte-identical. See ``settings_categories.CategoryEntry.dest_space`` for why
     the space must be carried rather than inferred from the path.
+
+    *persona_values* is the persona store's LIVE tier for this launch
+    (:func:`_persona_values_for`) — ``endpoint`` / ``model`` /
+    ``secret_path.<VAR>`` / ``env.<VAR>``, un-discriminated.  Given ONLY by the
+    MAIN launch resolve and by the ``--effective`` display that must match it:
+    it carries the token MOUNT and the env delivery, so a resolve that omits it
+    would show a persona box without the credential the launch actually mounts.
+    The NARROW resolves leave it ``None`` deliberately — the image / helper
+    tables (``include_base_families=False``, no target) resolve box_dests
+    disjoint from anything a persona touches, and the seed / synced resolves are
+    FILE DELIVERY only, where a behavior scalar or a token pointer has no
+    meaning.  ``None`` is byte-identical to a pre-persona build.
 
     *cli_level* is the §1A CLI LEVEL (P8), built by
     :func:`kanibako.settings.settings_cli_level.build_cli_level` and validated inside
@@ -5612,6 +5785,7 @@ def _resolve_launch_snapshot(
         default_categories=default_categories,
         agent_partial=agent_partial,
         agent_state=agent_state,
+        persona_values=persona_values,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
@@ -6323,6 +6497,9 @@ def _apply_init_seeds(
         extra_default_categories={**default_seeds, **template_seeds},
         deliver_creds=deliver_creds,
         host_dest_keys=seed_keys_of(template_seeds),
+        # No persona tier (audit): SEEDING is file delivery — this resolve reads
+        # ``seeded`` COPY winners and nothing else. A behavior scalar or a token
+        # pointer has no meaning here, and a seed must not vary with a store.
     )
 
     # Group the seeded COPY winners by (dest_space, resolved dest), PRESERVING the
@@ -6435,6 +6612,8 @@ def _apply_synced_copies(
         agent_cfg=None,
         include_base_families=False,
         deliver_creds=deliver_creds,
+        # No persona tier (audit): SYNCED is file delivery — this resolve reads
+        # ``synced`` COPY winners and nothing else, exactly as the seed resolve.
     )
 
     box_root = Path(proj.shell_path).parent

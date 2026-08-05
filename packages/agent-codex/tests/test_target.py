@@ -437,9 +437,18 @@ class TestShouldRunSetup:
 
 class TestGenerateAgentConfig:
     def test_defaults(self):
+        # FILE PURITY: the generated agent settings file carries USER INTENT
+        # only, so state is EMPTY — ``model`` comes from the descriptor floor
+        # (setting_descriptors -> default "gpt-5.5"), never from a seed.
         config = CodexTarget().generate_agent_config()
         assert config.name == "OpenAI Codex CLI"
-        assert config.state["model"] == "gpt-5.5"
+        assert config.state == {}
+
+    def test_model_default_comes_from_the_descriptor_floor(self):
+        t = CodexTarget()
+        assert "model" not in t.generate_agent_config().state
+        model = next(d for d in t.setting_descriptors() if d.key == "model")
+        assert model.default == "gpt-5.5"
 
 
 class TestSettingDescriptors:
@@ -467,6 +476,13 @@ class TestSettingDescriptors:
         assert spec.endpoint_delivery == "config_file"
         assert spec.token_var == ""
         assert spec.wire_api == "responses"
+        # A missing model is not automatically invalid — absence in the persona
+        # store means "this persona needs none" — but codex VETOES via this
+        # declaration: its config-file delivery cannot express "no model" (an
+        # omitted key falls through to codex's own MOVING recommended default,
+        # which a third-party provider will not serve).  The pre-flight gate
+        # reads THIS, not a hardwired rule.
+        assert spec.model_required is True
 
 
 class TestDefaultShares:
