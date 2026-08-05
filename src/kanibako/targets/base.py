@@ -900,17 +900,24 @@ class Target(ABC):
     ) -> bool | None:
         """Probe *endpoint* with the token at *token_path* — a minimal real ack.
 
-        The persona verified-swap probe (DESIGN §2b/§3b): a FEW-token genuine
-        completion round-trip against the persona's endpoint, harness-API
-        specific (anthropic messages vs OpenAI responses wire).  TRI-STATE:
+        The persona verify probe (DESIGN §3b): a FEW-token genuine completion
+        round-trip against the persona's endpoint, harness-API specific
+        (anthropic messages vs OpenAI responses wire).  TRI-STATE:
 
         * ``True``  — PASS: the endpoint accepted the token and responded;
-        * ``False`` — FAIL: a POSITIVE auth reject (401/403) — the caller keeps
-          the last-known-good values;
+        * ``False`` — FAIL: a POSITIVE auth reject (401/403);
         * ``None``  — UNVERIFIABLE: no probe implemented for this harness, the
           endpoint is unreachable, the token/model is unavailable, or the
-          answer is ambiguous.  NOT pass/fail — the caller applies the DESIGN
-          §5b rules (keep last-known-good; first-ever → candidate unverified).
+          answer is ambiguous.  NOT pass/fail.
+
+        ⚑ The VERDICT is all this reports; what to do with it belongs to the
+        caller, and there is no longer any "last-known-good" for it to protect
+        (the verified swap that persisted store values into the agent settings
+        file is GONE — the store is resolved live at every launch).  The two
+        callers deliberately answer it DIFFERENTLY: the per-LAUNCH probe treats
+        ``False`` as a hard error (a token the provider rejects cannot work, and
+        saying so beats an in-box 401), while the CREATE-path probe is WARN-ONLY
+        on both non-PASS verdicts so a fixable token never blocks a create.
 
         Contract: NEVER raises; SHORT *timeout* (a launch must not hang on a
         blip); the token value is read TRANSIENTLY for the request only —
