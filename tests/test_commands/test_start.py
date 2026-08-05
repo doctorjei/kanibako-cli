@@ -6135,219 +6135,6 @@ class TestAgentCriticalDests:
         assert dests.count((".local/bin/dup", "file")) == 1
 
 
-class TestReconcilePersonaStore:
-    """The per-launch persona-grata store reconcile (the credsync analog).
-
-    Exercises the verified-swap state machine of ``_reconcile_persona_store``
-    with a scripted duck-typed target: no-entry / unusable-store / unchanged /
-    PASS-swap / FAIL-keep / unreachable-keep / first-ever-adopt / token-
-    unresolved.  The hook must NEVER persist (the swap rides agent_cfg_dirty
-    into the existing gated write) and never raise through.
-    """
-
-    _ENDPOINT = "https://api.navigator.example/v1"
-
-    class _StoreTarget:
-        """Duck-typed target: fixed PersonaSettings + a scripted verify verdict."""
-
-        def __init__(self, verdict=None, settings=None):
-            from kanibako.targets.base import PersonaSettings
-
-            self.settings = settings if settings is not None else PersonaSettings(
-                endpoint="https://api.navigator.example/v1",
-                model="gemma4",
-                auth_env="NAV_KEY",
-            )
-            self.verdict = verdict
-            self.verify_calls: list = []
-
-        def read_persona_settings(self, config_dir):
-            from kanibako.targets.base import PersonaReadOutcome
-
-            # ``settings = None`` scripts a present-but-UNUSABLE store config,
-            # which now carries a named reason alongside the empty settings.
-            if self.settings is None:
-                return PersonaReadOutcome(None, "scripted reject: unusable config")
-            return PersonaReadOutcome(self.settings, None)
-
-        def verify_persona(self, endpoint, token_path, model, *, timeout=5.0):
-            self.verify_calls.append((endpoint, token_path, model))
-            return self.verdict
-
-    def _store(self, tmp_home, *, pointer: str | None = "./token"):
-        """Lay down $XDG_CONFIG_HOME/personas/navigator/codex/; return persona dir."""
-        persona_dir = tmp_home / "config" / "personas" / "navigator"
-        (persona_dir / "codex").mkdir(parents=True)
-        if pointer is not None:
-            (persona_dir / ".secret_path").write_text(pointer + "\n")
-        return persona_dir
-
-    def _reconcile(self, tmp_home, target, agent_cfg):
-        from kanibako.commands.start import _reconcile_persona_store
-        from kanibako.log import get_logger
-
-        agents_root = tmp_home / "data" / "agents"
-        return _reconcile_persona_store(
-            agents_root, "navigator℘codex", target, agent_cfg,
-            get_logger("test"),
-        )
-
-    def _synced_cfg(self, tmp_home):
-        """An AgentConfig already carrying exactly the store's owned values."""
-        from kanibako.settings.agent_config import AgentConfig
-
-        token = tmp_home / "config" / "personas" / "navigator" / "token"
-        return AgentConfig(
-            state={"endpoint": self._ENDPOINT, "model": "gemma4"},
-            secret_path={"NAV_KEY": str(token)},
-        )
-
-    def test_no_store_entry_returns_unchanged(self, tmp_home):
-        from kanibako.settings.agent_config import AgentConfig
-
-        cfg = AgentConfig(state={"endpoint": "https://old.example"})
-        target = self._StoreTarget(verdict=True)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert out is cfg
-        assert synced is False
-        assert target.verify_calls == []
-
-    def test_unusable_store_warns_and_keeps(self, tmp_home, capsys):
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home)
-        cfg = AgentConfig(state={"endpoint": "https://old.example"})
-        target = self._StoreTarget(verdict=True)
-        target.settings = None  # read_persona_settings -> None (unusable)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert out is cfg
-        assert synced is False
-        assert "unusable" in capsys.readouterr().err
-
-    def test_unchanged_values_spend_no_probe(self, tmp_home):
-        self._store(tmp_home)
-        cfg = self._synced_cfg(tmp_home)
-        target = self._StoreTarget(verdict=True)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert out is cfg
-        assert synced is False
-        assert target.verify_calls == []  # nothing changed -> no probe cost
-
-    def test_changed_and_pass_swaps(self, tmp_home):
-        from kanibako.settings.agent_config import AgentConfig
-
-        persona_dir = self._store(tmp_home)
-        cfg = AgentConfig(
-            name="Keep Me",
-            state={"endpoint": "https://old.example", "model": "old"},
-            secret_path={"NAV_KEY": "/old/tok"},
-        )
-        target = self._StoreTarget(verdict=True)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert synced is True
-        assert out is not cfg
-        assert out.state["endpoint"] == self._ENDPOINT
-        assert out.state["model"] == "gemma4"
-        assert out.secret_path["NAV_KEY"] == str(persona_dir / "token")
-        assert out.name == "Keep Me"  # unowned values carried through
-        # The probe got the parsed values (no store re-parse needed).
-        assert target.verify_calls == [
-            (self._ENDPOINT, persona_dir / "token", "gemma4"),
-        ]
-        # The ORIGINAL config was not mutated (candidate was a copy).
-        assert cfg.state["endpoint"] == "https://old.example"
-
-    def test_changed_and_fail_keeps_last_known_good(self, tmp_home, capsys):
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home)
-        cfg = AgentConfig(state={"endpoint": "https://old.example"})
-        target = self._StoreTarget(verdict=False)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert out is cfg
-        assert synced is False
-        err = capsys.readouterr().err
-        assert "rejected" in err and "last-known-good" in err
-
-    def test_changed_and_unreachable_keeps_last_known_good(self, tmp_home, capsys):
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home)
-        cfg = AgentConfig(state={"endpoint": "https://old.example"})
-        target = self._StoreTarget(verdict=None)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert out is cfg
-        assert synced is False
-        assert "last-known-good" in capsys.readouterr().err
-
-    def test_first_ever_unverifiable_adopts_with_warning(self, tmp_home, capsys):
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home)
-        cfg = AgentConfig()  # no prior endpoint -> first-ever
-        target = self._StoreTarget(verdict=None)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert synced is True
-        assert out.state["endpoint"] == self._ENDPOINT
-        assert "UNVERIFIED" in capsys.readouterr().err
-
-    def test_first_ever_rejected_still_adopts(self, tmp_home, capsys):
-        # A positive reject with NOTHING working to protect: refusing would
-        # only re-error as "no endpoint configured", masking the cause.
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home)
-        cfg = AgentConfig()
-        target = self._StoreTarget(verdict=False)
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert synced is True
-        assert out.state["endpoint"] == self._ENDPOINT
-        assert "UNVERIFIED" in capsys.readouterr().err
-
-    def test_token_unresolved_means_no_probe_and_keeps(self, tmp_home, capsys):
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home, pointer=None)  # no .secret_path
-        cfg = AgentConfig(state={"endpoint": "https://old.example"})
-        target = self._StoreTarget(verdict=True)  # verdict would pass, but…
-        out, synced = self._reconcile(tmp_home, target, cfg)
-        assert target.verify_calls == []  # …no token -> no probe possible
-        assert out is cfg
-        assert synced is False
-        err = capsys.readouterr().err
-        assert "token pointer did not resolve" in err
-
-    def test_hook_never_persists(self, tmp_home):
-        from kanibako.settings.agent_config import AgentConfig
-
-        self._store(tmp_home)
-        target = self._StoreTarget(verdict=True)
-        self._reconcile(tmp_home, target, AgentConfig())
-        agents_root = tmp_home / "data" / "agents"
-        assert not (agents_root / "navigator℘codex" / "settings.yaml").exists()
-        assert not agents_root.exists()  # nothing at all was written
-
-    def test_bare_agent_never_touches_the_store(self, tmp_home, monkeypatch):
-        # Even a mis-gated call with a BARE agent id does zero store access:
-        # locate_entry returns before the store root is even built.
-        import kanibako.persona_store as ps
-        from kanibako.settings.agent_config import AgentConfig
-        from kanibako.commands.start import _reconcile_persona_store
-        from kanibako.log import get_logger
-
-        def _boom():
-            raise AssertionError("store accessed for a bare agent")
-
-        monkeypatch.setattr(ps, "persona_store_root", _boom)
-        cfg = AgentConfig()
-        out, synced = _reconcile_persona_store(
-            tmp_home / "data" / "agents", "claude", self._StoreTarget(), cfg,
-            get_logger("test"),
-        )
-        assert out is cfg
-        assert synced is False
-
-
 # ---------------------------------------------------------------------------
 # D-M6 — a SUPPRESSED box takes the PLAIN-SHELL path (bifrost E-NULL regression)
 # ---------------------------------------------------------------------------
@@ -6563,17 +6350,17 @@ class TestRetiredBehaviorRefusalWiring:
 class TestPersonaLiveTierWiring:
     """The persona store as a LIVE resolution input (never a persisted one).
 
-    Phase C wiring: ``_persona_values_for`` reads the store ONCE and the value
-    rides ``build_launch_snapshot(persona_values=…)`` into every resolve that
-    must see it.  What is asserted here is the SEAM — that a value present only
-    in the store reaches the resolved launch snapshot, and that the DISPLAY
-    resolves the same value the launch does.
+    ``_persona_bundle_for`` reads the store ONCE and its values ride
+    ``build_launch_snapshot(persona_values=…)`` into every resolve that must see
+    them.  What is asserted here is the SEAM — that a value present only in the
+    store reaches the resolved launch snapshot, and that the DISPLAY resolves
+    the same value the launch does.
 
-    ⚑ These launches are byte-identical to before the tier existed for every
-    value the agent FILE also carries (the file rung sits ABOVE the store rung
-    and holds the same values while the verified swap still persists them).  The
-    genuinely NEW capability is the ``env`` passthrough, which no file carries —
-    which is exactly why the regression pin below uses a made-up env var.
+    ⚑ The store rung is now the ONLY route these values take.  While the
+    verified swap still persisted them, the agent FILE carried the same
+    endpoint/model/secret_path on a rung above and would have masked a broken
+    tier; nothing does any more, so every assertion here is load-bearing rather
+    than a duplicate of the file's own.
     """
 
     _ENDPOINT = "https://api.navigator.example/v1"
@@ -6799,34 +6586,26 @@ class TestPersonaLiveTierWiring:
         )
         assert display["model"] == "opus"
 
-    def test_a_rejected_store_still_warns_and_continues_as_before(
+    def test_the_store_read_itself_is_silent(
         self, std, config_file, tmp_home, capsys,
     ):
-        """Phase C adds no second warning: the reconcile still owns the report.
+        """⚑ The READ says nothing; the LAUNCH speaks.
 
-        ``_persona_values_for`` is deliberately silent so a launch does not print
-        every store complaint twice — the reconcile below is the one that speaks,
-        exactly as it did before the tier existed.
+        ``_persona_bundle_for`` also rides ``stop`` and the credential watcher,
+        neither of which is about the persona — a store complaint printed there
+        would narrate an unrelated operation.  The diagnostics live in
+        ``_warn_persona_store_diagnostics``, which only the launch calls (see
+        ``TestPersonaStoreDiagnostics``).
         """
-        from kanibako.commands.start import (
-            _persona_values_for,
-            _reconcile_persona_store,
-        )
-        from kanibako.log import get_logger
-        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.commands.start import _persona_bundle_for, _persona_values_for
 
         self._store(tmp_home, config="{ not json")
         target = self._target()
 
+        bundle = _persona_bundle_for(self._NODE, target)
+        assert bundle is not None and bundle.reject_reason is not None
         assert _persona_values_for(self._NODE, target) is None
-        assert capsys.readouterr().err == ""      # the tier read says nothing
-
-        cfg = AgentConfig(state={"endpoint": "https://old.example"})
-        out, synced = _reconcile_persona_store(
-            std.agents, self._NODE, target, cfg, get_logger("test"),
-        )
-        assert out is cfg and synced is False     # last-known-good kept
-        assert "unusable" in capsys.readouterr().err
+        assert capsys.readouterr().err == ""
 
     # --- a bare launch is untouched ------------------------------------------
 
@@ -6860,3 +6639,700 @@ class TestPersonaLiveTierWiring:
 
         self._store(tmp_home)
         assert _persona_values_for(self._NODE, None) is None
+
+    # --- NEVER-PERSIST -------------------------------------------------------
+
+    def test_a_no_reader_harness_still_resolves_its_keyspace_persona(
+        self, std, config_file, tmp_home,
+    ):
+        """⚑ A goose-shaped persona (no reader, store dir present) still LAUNCHES.
+
+        Its endpoint/token live in the keyspace; the store dir may exist purely
+        for a ``.secret_path``.  The bundle must come back ``no_reader`` — NOT a
+        reject — and the resolve must proceed, because the load-or-error gate
+        treats a reject as fatal.
+        """
+        from kanibako.commands.start import _persona_bundle_for, _persona_values_for
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        self._store(tmp_home)
+        target = NoAgentTarget()
+
+        bundle = _persona_bundle_for(self._NODE, target)
+        assert bundle is not None
+        assert bundle.no_reader is True
+        assert bundle.reject_reason is None
+        assert _persona_values_for(self._NODE, target) is None
+
+        snap = self._snapshot(std, target=target, persona_values=None)
+        assert not dict.get(self._active(snap), "env")
+
+    def test_resolving_a_persona_writes_no_agent_settings_file(
+        self, std, config_file, tmp_home,
+    ):
+        """⚑ NEVER-PERSIST: the agent settings file is USER-INTENT ONLY.
+
+        Resolving the whole persona tier — read, render, snapshot, category
+        reconcile — must leave ``agents/<node>/settings.yaml`` exactly as it was.
+        The retired verified swap wrote endpoint/model/secret_path into it on
+        every launch; nothing may write there again except a user's own
+        ``config set`` and the one-time empty first-use generate.
+        """
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.settings.agent_config import agent_settings_path
+
+        self._store(tmp_home, env={"SOME_NEW_VAR": "brand-new"})
+        target = self._target()
+        path = agent_settings_path(std.agents, self._NODE)
+
+        # (a) FIRST USE — no file at all.  It must still not exist afterwards.
+        assert not path.exists()
+        self._resolve(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        assert not path.exists()
+
+        # (b) EXISTING file — byte-identical afterwards.  The values below are
+        # DELIBERATELY stale/contradictory: a surviving swap would rewrite them
+        # from the store, which is exactly what this pin forbids.
+        from kanibako.settings.agent_config import AgentConfig, write_agent_config
+
+        write_agent_config(path, AgentConfig(
+            state={"endpoint": "https://user-set.example", "model": "user-set"},
+            secret_path={"ANTHROPIC_AUTH_TOKEN": "/user/set/tok"},
+        ))
+        before = path.read_bytes()
+        self._resolve(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        assert path.read_bytes() == before
+
+    # --- the expand() exposure (locked decision #4) ---------------------------
+
+    _EXPAND_HAZARDS = [
+        "$HOME/tok",          # a host $VAR the ctx DOES know
+        "~/tok",              # tilde
+        "plain-value",        # the control: nothing to expand
+        "100%$",              # a bare $ with no name after it
+        "a@b.example",        # an @ that is NOT a leading whole-value ref
+    ]
+
+    def _leaf_outcome(self, std, tmp_home, *, target, category, var,
+                      persona_values=None, system_doc=None,
+                      agent_cfg=None, agent_cfg_path=None):
+        """The resolved leaf, or the EXCEPTION — an expansion defect is an outcome.
+
+        Several hazard values legitimately RAISE out of ``expand`` (``$HOME`` is
+        not in the launch ctx namespace; a bare ``$`` is malformed).  That is a
+        perfectly good answer to "do the two routes behave identically" — it just
+        has to be captured rather than allowed to abort the comparison.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.config_io import dump_doc
+
+        system_file = None
+        if system_doc is not None:
+            system_file = tmp_home / "sys" / "settings.yaml"
+            system_file.parent.mkdir(parents=True, exist_ok=True)
+            dump_doc(system_file, system_doc)
+        try:
+            snap, _rec = _resolve_launch_snapshot(
+                std=std, proj=self._proj(std), agent_name=self._NODE,
+                system_settings_path=system_file, agent_cfg_path=agent_cfg_path,
+                desc=None, install=None, target=target,
+                agent_cfg=agent_cfg, persona_values=persona_values,
+                include_base_families=False,
+            )
+        except Exception as exc:
+            return ("raised", type(exc).__name__, str(exc))
+        return (
+            "ok",
+            dict.get(dict.get(self._active(snap), category) or {}, var),
+        )
+
+    # ⚑ ``$HOME/tok`` is EXCLUDED here and gets its own test below: the store's
+    # ``.secret_path`` pointer is expanded by ``resolve_secret_path`` BEFORE the
+    # keyspace sees it, so a ``$VAR`` in a POINTER is a documented divergence
+    # rather than an expand-time equivalence.  Every other hazard shape agrees.
+    @pytest.mark.parametrize("raw", [
+        r for r in _EXPAND_HAZARDS if not r.startswith("$")
+    ])
+    def test_a_store_secret_path_expands_exactly_as_an_agent_file_one(
+        self, std, config_file, tmp_home, raw,
+    ):
+        """⚑ Locked decision #4, the AGENT-FILE half: same leaf, two levels.
+
+        A `$`/`@` inside a store value reaches ``expand()``.  The agent FILE has
+        the identical exposure — ``_agent_partial`` re-roots the file's FLAT
+        ``self.secret_path`` into the active agent level, so it is the same kind
+        of snapshot leaf on the rung directly above the persona tier.  Not a
+        regression, then; but the equivalence is pinned rather than assumed.
+
+        Structurally it cannot differ once both are leaves — ``expand`` walks the
+        ALREADY-MERGED snapshot and has no idea which level contributed a leaf —
+        and if these ever DO diverge, the store path is the wrong one: the agent
+        file is the released, user-visible behavior.
+        """
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.settings.agent_config import (
+            AgentConfig,
+            agent_settings_path,
+            load_agent_config,
+            write_agent_config,
+        )
+
+        # The store's resolved token pointer is an ABSOLUTE path, so feed *raw*
+        # through both routes as the SAME literal: the store's ``.secret_path``
+        # line is anchored to the persona dir, which would otherwise make the two
+        # inputs differ before ``expand`` ever sees them.
+        self._store(tmp_home)
+        target = self._target()
+        literal = f"/nonexistent/{raw}"
+        (tmp_home / "config" / "personas" / "navigator" / ".secret_path").write_text(
+            literal + "\n",
+        )
+        via_store = self._leaf_outcome(
+            std, tmp_home, target=target,
+            category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+
+        # (b) via the agent FILE — the rung directly above it.
+        path = agent_settings_path(std.agents, self._NODE)
+        write_agent_config(path, AgentConfig(
+            secret_path={"ANTHROPIC_AUTH_TOKEN": literal},
+        ))
+        via_file = self._leaf_outcome(
+            std, tmp_home, target=target,
+            category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
+            agent_cfg=load_agent_config(path), agent_cfg_path=path,
+        )
+        assert via_store == via_file, (
+            f"store and agent-file secret_path disagree for {raw!r}: "
+            f"{via_store!r} vs {via_file!r}"
+        )
+
+    def test_a_dollar_var_in_a_store_POINTER_is_expanded_before_the_keyspace(
+        self, std, config_file, tmp_home, monkeypatch,
+    ):
+        """⚑ THE ONE DIVERGENCE, pinned deliberately — NOT an equivalence.
+
+        A ``$VAR`` in the store's ``.secret_path`` POINTER is expanded by
+        :func:`~kanibako.persona_store.resolve_secret_path` (``os.path.expandvars``
+        over the PROCESS environment, then ``~``) before the value is ever a
+        keyspace leaf.  The same ``$VAR`` written into the agent FILE's
+        ``secret_path`` instead reaches ``expand()`` raw and is resolved — or
+        REFUSED — against kanibako's own, much narrower namespace.
+
+        So the two differ in BOTH namespace and timing, and a name like ``$HOME``
+        resolves through the store while raising ``Unknown variable`` through the
+        file.  That is PRE-EXISTING behavior of the pointer contract (the
+        persona-grata standard specifies a host path spec, expanded host-side),
+        not something the live-tier build introduced — the value the keyspace
+        receives is already a literal path, so it is never double-expanded.
+        Recorded here so the asymmetry is a decision on the record rather than a
+        surprise; changing it is a spec question, not a code cleanup.
+        """
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.settings.agent_config import (
+            AgentConfig,
+            agent_settings_path,
+            load_agent_config,
+            write_agent_config,
+        )
+
+        monkeypatch.setenv("NAV_TOKEN_DIR", "/from/the/process/env")
+        self._store(tmp_home)
+        (tmp_home / "config" / "personas" / "navigator" / ".secret_path").write_text(
+            "$NAV_TOKEN_DIR/tok\n",
+        )
+        target = self._target()
+        via_store = self._leaf_outcome(
+            std, tmp_home, target=target,
+            category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        # Expanded from the PROCESS env, already a literal by snapshot time.
+        assert via_store == ("ok", "/from/the/process/env/tok")
+
+        path = agent_settings_path(std.agents, self._NODE)
+        write_agent_config(path, AgentConfig(
+            secret_path={"ANTHROPIC_AUTH_TOKEN": "$NAV_TOKEN_DIR/tok"},
+        ))
+        via_file = self._leaf_outcome(
+            std, tmp_home, target=target,
+            category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
+            agent_cfg=load_agent_config(path), agent_cfg_path=path,
+        )
+        # kanibako's namespace does not carry it: REFUSED, not silently wrong.
+        assert via_file[0] == "raised"
+        assert "NAV_TOKEN_DIR" in via_file[2]
+
+    @pytest.mark.parametrize("raw", _EXPAND_HAZARDS)
+    def test_a_store_env_value_expands_exactly_as_a_keyspace_one(
+        self, std, config_file, tmp_home, raw,
+    ):
+        """⚑ Locked decision #4, the ENV half — against the RIGHT comparison.
+
+        The like-for-like route for a store ``env.<VAR>`` is a keyspace-scope
+        ``agent.<node>.env.<VAR>``, NOT the agent file's flat ``self.env`` table:
+        ``_agent_partial`` re-roots only ``self.secret_path`` into the cascade,
+        so ``self.env`` never becomes a snapshot leaf at all (it is delivered by
+        the separate ``_build_config_env`` under-layer and sees no ``expand``).
+        Both routes compared here DO ride the snapshot, and must agree.
+        """
+        from kanibako.commands.start import _persona_values_for
+
+        self._store(tmp_home, env={"NAV_X": raw})
+        target = self._target()
+        via_store = self._leaf_outcome(
+            std, tmp_home, target=target, category="env", var="NAV_X",
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        via_keyspace = self._leaf_outcome(
+            std, tmp_home, target=target, category="env", var="NAV_X",
+            system_doc={"agent": {self._NODE: {"env": {"NAV_X": raw}}}},
+        )
+        assert via_store == via_keyspace, (
+            f"store and keyspace env disagree for {raw!r}: "
+            f"{via_store!r} vs {via_keyspace!r}"
+        )
+
+    def test_a_first_use_generated_agent_file_carries_no_persona_values(
+        self, std, config_file, tmp_home,
+    ):
+        """The generated file is EMPTY of persona values, store or no store."""
+        self._store(tmp_home)
+        generated = self._target().generate_agent_config()
+        assert not generated.state.get("endpoint")
+        assert not generated.state.get("model")
+        assert not generated.secret_path
+        assert not generated.env
+
+
+class TestPersonaStoreDiagnostics:
+    """The launch-path printer for a bundle's SOFT diagnostics.
+
+    ⚑ These warnings used to come out of ``_reconcile_persona_store``, which is
+    deleted.  Dropping a diagnostic in the same change that removes its other
+    printer is how a condition goes silent for good — so each one is pinned
+    here, on the function the launch now calls.
+    """
+
+    _NODE = "navigator℘claude"
+
+    def _warn(self, bundle):
+        from kanibako.commands.start import _warn_persona_store_diagnostics
+
+        _warn_persona_store_diagnostics(self._NODE, bundle)
+
+    def test_a_reject_reason_is_NOT_warned_here_it_is_a_hard_error(self, capsys):
+        """⚑ A reject is refused by the pre-flight, not advised about here.
+
+        Warning AND refusing would print the same fact twice — once as advice,
+        once as the refusal.  ``TestPersonaPreflightBundle`` pins the refusal and
+        that it names the reader's own cause.
+        """
+        from kanibako.persona_store import PersonaBundle
+
+        self._warn(PersonaBundle(reject_reason="settings.json is not valid JSON"))
+        assert capsys.readouterr().err == ""
+
+    def test_an_unresolved_token_pointer_is_reported(self, capsys):
+        from kanibako.persona_store import PersonaBundle
+
+        self._warn(PersonaBundle(
+            endpoint="https://api.example", token_error="no .secret_path file",
+        ))
+        err = capsys.readouterr().err
+        assert "token pointer did not resolve" in err
+        assert "no .secret_path file" in err
+
+    def test_undeliverable_env_values_are_named(self, capsys):
+        from kanibako.persona_store import PersonaBundle
+
+        self._warn(PersonaBundle(
+            endpoint="https://api.example", env_dropped=("NAV_RETRIES", "NAV_DEBUG"),
+        ))
+        err = capsys.readouterr().err
+        assert "NAV_RETRIES" in err and "NAV_DEBUG" in err
+
+    def test_a_no_reader_bundle_says_nothing(self, capsys):
+        """No reader = no complaint about any file; a goose persona is normal."""
+        from kanibako.persona_store import PersonaBundle
+
+        self._warn(PersonaBundle(no_reader=True))
+        assert capsys.readouterr().err == ""
+
+    def test_a_clean_bundle_says_nothing(self, capsys):
+        from pathlib import Path
+
+        from kanibako.persona_store import PersonaBundle
+
+        self._warn(PersonaBundle(
+            endpoint="https://api.example", model="gemma4",
+            auth_env="ANTHROPIC_AUTH_TOKEN", token_path=Path("/tok"),
+        ))
+        assert capsys.readouterr().err == ""
+
+
+class TestPersonaPreflightBundle:
+    """The load-or-error pre-flight ON THE BUNDLE (D2).
+
+    Three things meet here, and each is a rule rather than a detail:
+
+    * the TOKEN resolves from TWO sources — the agent FILE rung first, the
+      persona STORE below it.  Nothing persists the store any more, so without
+      the second source every store-only persona would fail its own token gate;
+      and with the order reversed, the gate would approve a token the cascade
+      does not actually mount.
+    * a ``reject_reason`` is a HARD ERROR (no last-known-good exists to keep),
+      while ``no_reader`` is NOT — the whole reason D0 split them.
+    * the PER-LAUNCH verify probe hard-errors on a positive auth reject and only
+      WARNS when it cannot tell.  It is opt-in (``probe=True``) so the create
+      path's separate warn-only probe is not unified into it.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _NODE = "navigator℘claude"
+
+    class _Target:
+        """Duck-typed claude-shaped target with a scripted verify verdict."""
+
+        name = "claude"
+        descriptor = None
+
+        def __init__(self, verdict=None):
+            self.verdict = verdict
+            self.calls: list = []
+
+        def verify_persona(self, endpoint, token_path, model, *, timeout=5.0):
+            self.calls.append((endpoint, token_path, model))
+            if isinstance(self.verdict, Exception):
+                raise self.verdict
+            return self.verdict
+
+    def _token(self, tmp_path, name="tok"):
+        p = tmp_path / name
+        p.write_text("sk-test\n")
+        return p
+
+    def _cfg(self, **kw):
+        from kanibako.settings.agent_config import AgentConfig
+
+        return AgentConfig(**kw)
+
+    def _run(self, agent_cfg, *, bundle=None, probe=False, target=None,
+             endpoint=None, model="gemma4"):
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.log import get_logger
+
+        return _preflight_persona_load(
+            self._NODE, agent_cfg,
+            self._ENDPOINT if endpoint is None else endpoint,
+            get_logger("test"),
+            target=target if target is not None else self._Target(verdict=True),
+            keyspace_model=model, bundle=bundle, probe=probe,
+        )
+
+    # --- the token gate's second source --------------------------------------
+
+    def test_a_store_only_token_satisfies_the_gate(self, tmp_path):
+        """⚑ The D1 breakage this closes: no persist, so no file token.
+
+        A store persona's token pointer exists ONLY in the bundle.  Before the
+        store became a live tier the verified swap had written it into
+        ``agents/<node>/settings.yaml``, and the gate read it from there.
+        """
+        from kanibako.persona_store import PersonaBundle
+
+        tok = self._token(tmp_path)
+        ep, err, _adopted, _prov = self._run(
+            self._cfg(),
+            bundle=PersonaBundle(
+                endpoint=self._ENDPOINT, auth_env="ANTHROPIC_AUTH_TOKEN",
+                token_path=tok,
+            ),
+        )
+        assert err is None
+        assert ep == self._ENDPOINT
+
+    def test_the_agent_file_beats_the_store(self, tmp_path):
+        """The ruled cascade order — and the order the box actually mounts in."""
+        from kanibako.persona_store import PersonaBundle
+
+        file_tok = self._token(tmp_path, "file-tok")
+        store_tok = self._token(tmp_path, "store-tok")
+        target = self._Target(verdict=True)
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(file_tok)}),
+            bundle=PersonaBundle(
+                endpoint=self._ENDPOINT, auth_env="ANTHROPIC_AUTH_TOKEN",
+                token_path=store_tok,
+            ),
+            probe=True, target=target,
+        )
+        assert err is None
+        # The probe is handed the FILE token — the one that wins the cascade.
+        assert target.calls == [(self._ENDPOINT, file_tok, "gemma4")]
+
+    def test_an_unusable_FILE_token_is_not_rescued_by_the_store(self, tmp_path):
+        """⚑ The file rung wins even when it is BROKEN — so it must be reported.
+
+        Falling back to the store here would approve a token the cascade will
+        not mount: the file value still wins ``build_launch_snapshot``, so the
+        box would get the broken one while the gate passed on the good one.
+        """
+        from kanibako.persona_store import PersonaBundle
+
+        store_tok = self._token(tmp_path, "store-tok")
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": "/nonexistent/tok"}),
+            bundle=PersonaBundle(
+                endpoint=self._ENDPOINT, auth_env="ANTHROPIC_AUTH_TOKEN",
+                token_path=store_tok,
+            ),
+        )
+        assert err is not None
+        assert "no auth token" in err
+
+    def test_a_store_token_for_a_DIFFERENT_var_does_not_satisfy_the_gate(
+        self, tmp_path,
+    ):
+        """The token must be exported as the var the harness reads."""
+        from kanibako.persona_store import PersonaBundle
+
+        tok = self._token(tmp_path)
+        _ep, err, _a, _p = self._run(
+            self._cfg(),
+            bundle=PersonaBundle(
+                endpoint=self._ENDPOINT, auth_env="SOME_OTHER_VAR", token_path=tok,
+            ),
+        )
+        assert err is not None
+
+    # --- reject vs no_reader --------------------------------------------------
+
+    def test_a_reject_reason_is_a_hard_error_naming_the_cause(self, tmp_path):
+        from kanibako.persona_store import PersonaBundle
+
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            bundle=PersonaBundle(
+                reject_reason="claude persona config /s/settings.json is not valid JSON",
+            ),
+        )
+        assert err is not None
+        assert "not valid JSON" in err          # the reader's OWN cause, verbatim
+        assert "/s/settings.json" in err        # …naming the offending file
+
+    def test_a_reject_refuses_even_when_the_agent_file_could_have_carried_it(
+        self, tmp_path,
+    ):
+        """No last-known-good arm: a broken store BLOCKS, it does not degrade."""
+        from kanibako.persona_store import PersonaBundle
+
+        _ep, err, _a, _p = self._run(
+            self._cfg(
+                state={"endpoint": self._ENDPOINT},
+                secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))},
+            ),
+            bundle=PersonaBundle(reject_reason="scripted reject"),
+        )
+        assert err is not None and "scripted reject" in err
+
+    def test_a_no_reader_bundle_is_never_an_error(self, tmp_path):
+        """⚑ D0's entire reason for existing.
+
+        A goose-shaped persona is configured through the keyspace and may own a
+        store dir purely for its ``.secret_path``.  Collapsing ``no_reader`` into
+        ``reject_reason`` would refuse every one of those launches.
+        """
+        from kanibako.persona_store import PersonaBundle
+
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            bundle=PersonaBundle(no_reader=True),
+        )
+        assert err is None
+
+    # --- the per-launch probe -------------------------------------------------
+
+    def test_a_rejected_token_is_a_hard_error(self, tmp_path):
+        target = self._Target(verdict=False)
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target,
+        )
+        assert err is not None
+        assert "rejected the token" in err
+
+    def test_an_unverifiable_probe_warns_and_proceeds(self, tmp_path, capsys):
+        """DESIGN §5b: a blip is not a config error; the box surfaces a real 401."""
+        target = self._Target(verdict=None)
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target,
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert "could not verify" in capsys.readouterr().err
+
+    def test_a_passing_probe_is_silent(self, tmp_path, capsys):
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=self._Target(verdict=True),
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert capsys.readouterr().err == ""
+
+    def test_a_probe_that_raises_is_held_to_its_never_raise_contract(
+        self, tmp_path, capsys,
+    ):
+        """A third-party plugin bug must not kill a launch."""
+        target = self._Target(verdict=RuntimeError("misbehaving plugin probe"))
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target,
+        )
+        assert err is None and ep == self._ENDPOINT   # treated as UNVERIFIABLE
+        assert "could not verify" in capsys.readouterr().err
+
+    def test_the_probe_is_OPT_IN_so_create_does_not_inherit_it(self, tmp_path):
+        """⚑ Locked ruling #2: the create path keeps its own WARN-ONLY probe.
+
+        ``persona_create_verdict`` / ``seed_new_box`` call this with
+        ``probe=False``; if the hard error leaked into them, a create with a
+        rejected token would be refused instead of warned about.
+        """
+        target = self._Target(verdict=False)
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=False, target=target,
+        )
+        assert err is None
+        assert target.calls == []      # not probed at all
+
+    def test_no_probe_runs_when_the_token_gate_already_failed(self, tmp_path):
+        """The probe is the LAST question — never asked of a token that failed."""
+        target = self._Target(verdict=True)
+        _ep, err, _a, _p = self._run(self._cfg(), probe=True, target=target)
+        assert err is not None
+        assert target.calls == []
+
+
+class TestCodexDynamicTokenVarWithStore:
+    """The DYNAMIC (codex) token var counted over the FILE **and** the STORE.
+
+    codex has no fixed token var: the single configured ``secret_path`` key IS
+    the ``[model_providers.<id>].env_key``.  Once the store stopped being copied
+    into the agent file, "the single configured key" had to be counted over both
+    sources — a store-only persona has no file key at all and would otherwise
+    read as ZERO keys and be refused.
+
+    ⚑ The three sub-case errors must stay DISTINGUISHABLE.  "The store supplies
+    it" must not collapse into the ambiguous-multiple-keys arm, and the store
+    genuinely CAN create ambiguity (by naming a different var than the file) —
+    which is a real ambiguity and must still be reported as one.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _NODE = "navigator℘codex"
+
+    def _target(self):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        return CodexTarget()
+
+    def _bundle(self, tmp_path, var="NAVIGATOR_API_KEY", *, token=True):
+        from kanibako.persona_store import PersonaBundle
+
+        tok = None
+        if token:
+            tok = tmp_path / "store-tok"
+            tok.write_text("sk-test\n")
+        return PersonaBundle(
+            endpoint=self._ENDPOINT, model="gemma4", auth_env=var, token_path=tok,
+        )
+
+    def _run(self, agent_cfg, bundle):
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.log import get_logger
+
+        return _preflight_persona_load(
+            self._NODE, agent_cfg, self._ENDPOINT, get_logger("test"),
+            target=self._target(), keyspace_model="gemma4",
+            bundle=bundle, probe=False,
+        )
+
+    def _cfg(self, **kw):
+        from kanibako.settings.agent_config import AgentConfig
+
+        return AgentConfig(**kw)
+
+    def test_a_store_only_key_resolves_the_env_key(self, tmp_path):
+        """ZERO file keys + one store key = ONE key, not zero."""
+        ep, err, _a, provider = self._run(
+            self._cfg(), self._bundle(tmp_path, "NAVIGATOR_API_KEY"),
+        )
+        assert err is None and ep == self._ENDPOINT
+        # …and the provider's env_key is the STORE's var, so the generated
+        # config.toml reads exactly the var kanibako exports.
+        assert provider is not None
+        assert provider.env_key == "NAVIGATOR_API_KEY"
+
+    def test_the_file_key_wins_when_both_name_the_same_var(self, tmp_path):
+        file_tok = tmp_path / "file-tok"
+        file_tok.write_text("sk-file\n")
+        ep, err, _a, provider = self._run(
+            self._cfg(secret_path={"NAVIGATOR_API_KEY": str(file_tok)}),
+            self._bundle(tmp_path, "NAVIGATOR_API_KEY"),
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert provider.env_key == "NAVIGATOR_API_KEY"
+
+    def test_a_store_key_that_DIFFERS_from_the_file_key_is_ambiguous(self, tmp_path):
+        """Two vars, and no way to pick the env_key — the ambiguous arm, correctly."""
+        file_tok = tmp_path / "file-tok"
+        file_tok.write_text("sk-file\n")
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"OTHER_KEY": str(file_tok)}),
+            self._bundle(tmp_path, "NAVIGATOR_API_KEY"),
+        )
+        assert err is not None
+        assert "ambiguous" in err
+        assert "OTHER_KEY" in err and "NAVIGATOR_API_KEY" in err
+
+    def test_multiple_file_keys_stay_ambiguous(self, tmp_path):
+        """Unchanged behavior: the store is not what made this ambiguous."""
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"A_KEY": "/a", "B_KEY": "/b"}),
+            self._bundle(tmp_path, "A_KEY"),
+        )
+        assert err is not None and "ambiguous" in err
+
+    def test_no_key_anywhere_is_none_was_found_not_ambiguous(self, tmp_path):
+        """The ZERO sub-case stays its own message."""
+        _ep, err, _a, _p = self._run(
+            self._cfg(), self._bundle(tmp_path, "NAVIGATOR_API_KEY", token=False),
+        )
+        assert err is not None
+        assert "none was found" in err
+        assert "ambiguous" not in err
+
+    def test_a_store_key_pointing_at_an_unusable_file_names_the_key(self, tmp_path):
+        """The UNUSABLE sub-case survives the second source."""
+        from kanibako.persona_store import PersonaBundle
+
+        _ep, err, _a, _p = self._run(
+            self._cfg(),
+            PersonaBundle(
+                endpoint=self._ENDPOINT, model="gemma4",
+                auth_env="NAVIGATOR_API_KEY",
+                token_path=tmp_path / "does-not-exist",
+            ),
+        )
+        assert err is not None
+        assert "unusable file" in err
+        assert "NAVIGATOR_API_KEY" in err

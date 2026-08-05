@@ -1,4 +1,4 @@
-"""persona-grata store discovery, resolve, and import mapping (no box).
+"""persona-grata store discovery and resolve (no box).
 
 The persona-grata STANDARD lays down per-persona / per-harness harness-native
 config under a fixed discovery root (design SOT
@@ -11,13 +11,13 @@ config under a fixed discovery root (design SOT
           config.toml | settings.json   <- rendered harness-NATIVE config
 
 kanibako CONSUMES the store: a ``<pid>+<hid>`` agent ref whose store entry
-exists is a *persona agent*; its endpoint/model/token-pointer are reparsed from
-the store at every start and synced into the agent-scope settings (settings
-sync, never file sync — DESIGN §2b).  Store PRESENCE decides persona-vs-plain
-(DESIGN §4): everything here returns a clean "not a persona" ``None`` on a
-miss so callers fall through to normal agent handling.
+exists is a *persona agent*, and its endpoint/model/token-pointer/env are
+re-read from the store at EVERY launch as a LIVE cascade level — never copied
+into any settings file.  Store PRESENCE decides persona-vs-plain (DESIGN §4):
+everything here returns a clean "not a persona" ``None`` on a miss so callers
+fall through to normal agent handling.
 
-Three parts live here:
+Two parts live here:
 
 * **discovery + resolve** (pure reads): locate an entry and resolve its
   ``.secret_path`` token pointer.  Harness-config extraction lives on the
@@ -27,17 +27,13 @@ Three parts live here:
   resolves against, threaded into ``build_launch_snapshot`` as an in-memory
   level.  Nothing here is persisted — the store is a live resolution input,
   so a launch leaves ``agents/<node>/settings.yaml`` byte-identical.
-* **import mapping** (the settings sync): :func:`build_candidate` turns a
-  located entry into an IN-MEMORY candidate :class:`AgentConfig` (current
-  agent-file values + the store's endpoint/model/token-pointer applied), and
-  :func:`persist_candidate` commits it through ``write_agent_config`` — which
-  routes the values to ``self.endpoint`` / ``self.model`` /
-  ``self.secret_path.<VAR>`` (the flattened shape, ``agent_file_route`` SoT).
-  The split is load-bearing: the start-flow hook (Phase 3) VERIFIES the
-  candidate first and persists only on PASS (verified swap — DESIGN §2b), while
-  keeping the on-disk last-known-good on FAIL.  :func:`import_persona_entry`
-  is the build+persist convenience for the unverified paths (initial create
-  registration).
+
+⚑ There is deliberately NO import/sync half any more.  The store used to be
+copied into ``agents/<node>/settings.yaml`` by a verified swap
+(``build_candidate`` / ``persist_candidate`` / ``import_persona_entry``); that
+route is GONE, because the agent settings file holds USER-INTENT values only
+(the file-purity invariant) and a persisted copy of a live source can only go
+stale.  Do not reintroduce one.
 
 The start-flow / create wiring itself is NOT here.  Nothing in this module
 reads the TOKEN file itself (the pointer is handled arm's-length, exactly like
@@ -53,17 +49,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
-from kanibako.settings.agent_config import (
-    AgentConfig,
-    agent_settings_path,
-    load_agent_config,
-    write_agent_config,
-)
 from kanibako.agent_ref import harness_of, parse_agent_ref, persona_of
 from kanibako.settings.paths import xdg
 
 if TYPE_CHECKING:
-    from kanibako.targets.base import PersonaSettings, Target
+    from kanibako.targets.base import Target
 
 #: Read cap for ``.secret_path`` (bytes).  The file holds one token path
 #: (PATH_MAX-ish); anything larger is a malformed store — rejected WITHOUT
@@ -244,18 +234,22 @@ class PersonaBundle(NamedTuple):
     * *token_path* — the resolved ABSOLUTE host token path, or ``None`` when
       the ``.secret_path`` pointer did not resolve.
     * *token_error* — why it did not resolve (set iff *token_path* is
-      ``None``); a SOFT condition — the rest of the bundle is still usable,
-      matching :func:`build_candidate`'s warn-and-keep-going shape.
-    * *reject_reason* — set iff the located entry yielded NO usable values at
-      all; the bundle then contributes NOTHING (:meth:`to_persona_values`
-      returns ``{}``).
+      ``None``); a SOFT condition — the rest of the bundle is still usable, so
+      a caller warns and carries on rather than refusing the launch.
+    * *reject_reason* — set iff the located entry has a harness reader that
+      REFUSED its config (present but unusable, naming the cause); the bundle
+      then contributes NOTHING (:meth:`to_persona_values` returns ``{}``).
+    * *no_reader* — set iff the harness has NO persona reader at all (today
+      goose and ``NoAgentTarget``, which inherit the base no-op).  Also
+      contributes nothing, and is likewise not a complaint about any file.
 
-    ⚑ *reject_reason* MERGES the two non-success arms of
-    :class:`~kanibako.targets.base.PersonaReadOutcome` (an unusable config, and
-    a harness with no persona reader at all).  Deliberate: to a launch both mean
-    "an entry EXISTS but yielded no values", which is exactly the one condition
-    :func:`build_candidate` reports today.  The reason text still names which it
-    was, so nothing is lost — only the caller's need to branch is.
+    ⚑ *reject_reason* and *no_reader* mirror the two non-success arms of
+    :class:`~kanibako.targets.base.PersonaReadOutcome` ONE-FOR-ONE, and keeping
+    them apart is load-bearing: a launch HARD-ERRORS on *reject_reason* (a
+    config the harness could read and refused), but must NOT error on
+    *no_reader* — a goose persona is configured entirely through the keyspace
+    and merely happens to own a store directory, so refusing it would break
+    every such launch.  Both render ``{}``; only the DIAGNOSIS differs.
     """
 
     endpoint: str | None = None
@@ -268,6 +262,7 @@ class PersonaBundle(NamedTuple):
     token_path: Path | None = None
     token_error: str | None = None
     reject_reason: str | None = None
+    no_reader: bool = False
 
     def to_persona_values(self) -> dict[str, str]:
         """Render this bundle as the UN-DISCRIMINATED persona-values mapping.
@@ -277,7 +272,9 @@ class PersonaBundle(NamedTuple):
         and one ``env.<VAR>`` per passthrough var.  The keys are deliberately
         NOT discriminated onto an agent — the store knows a persona, not a
         cascade; ``settings_launch._persona_partial`` wraps them under the
-        active agent slot.  A bundle carrying *reject_reason* renders ``{}``.
+        active agent slot.  A bundle carrying *reject_reason* — or *no_reader*
+        — renders ``{}``: neither yielded values, however differently a caller
+        must DIAGNOSE them.
 
         ⚑ EMPTINESS IS HANDLED PER VALUE CLASS, and the asymmetry is the point:
 
@@ -294,7 +291,7 @@ class PersonaBundle(NamedTuple):
           passthrough exists to end.  (An empty var NAME is still skipped: no
           env var can be named ``""``, so it is undeliverable, not empty.)
         """
-        if self.reject_reason is not None:
+        if self.reject_reason is not None or self.no_reader:
             return {}
         values: dict[str, str] = {}
         if self.endpoint:
@@ -316,8 +313,15 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
     ``<pid>+<hid>`` with no store entry (:func:`locate_entry`'s clean miss,
     store PRESENCE deciding persona-vs-plain per DESIGN §4).  It is the
     "nothing to do" signal, and it is DISTINCT from a located entry that
-    yielded nothing: that returns a bundle carrying ``reject_reason``, because
-    an entry EXISTS and the user may need to hear why it did not take.
+    yielded nothing, which comes back as a bundle in one of two shapes:
+
+    * ``reject_reason`` — the harness READ the config and refused it; an entry
+      EXISTS and the user needs to hear why it did not take (a launch treats
+      this as fatal);
+    * ``no_reader`` — this harness has no persona reader at ALL, so there was
+      never a config to refuse.  A goose persona is keyspace-configured and may
+      own a store dir purely for its ``.secret_path``; that must keep launching,
+      which is exactly why this is not folded into ``reject_reason``.
 
     Pure read.  No probe, no network, no write; the token file itself is never
     opened (only its pointer is resolved — usability is the launch gate's job).
@@ -343,10 +347,11 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
             f"config reader failed ({exc.__class__.__name__}: {exc})"
         ))
     if outcome.settings is None:
-        return PersonaBundle(reject_reason=outcome.reject_reason or (
-            f"persona store entry for '{entry.node}' has no usable "
-            f"{entry.harness} config under {entry.config_dir}"
-        ))
+        if outcome.reject_reason is None:
+            # BOTH-``None``: the harness has no persona reader (the base no-op).
+            # NOT a reject — nothing was read, so nothing was refused.
+            return PersonaBundle(no_reader=True)
+        return PersonaBundle(reject_reason=outcome.reject_reason)
     settings = outcome.settings
     token = resolve_secret_path(entry)
     return PersonaBundle(
@@ -358,154 +363,3 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
         token_path=token.path,
         token_error=token.error,
     )
-
-
-# --------------------------------------------------------------------------
-# Import mapping (DESIGN §2b/§3): store entry -> agent-scope settings sync.
-# --------------------------------------------------------------------------
-
-
-class ImportResult(NamedTuple):
-    """Outcome of building (and optionally persisting) a persona import.
-
-    * *candidate* — the in-memory :class:`AgentConfig` with the store's values
-      applied on top of the CURRENT agent-file values; ``None`` on a hard
-      failure (nothing importable — the store's harness config is missing /
-      unusable, or names no endpoint).
-    * *error* — the hard-failure reason (*candidate* is ``None``).
-    * *warning* — a SOFT, caller-warnable condition on a successful build:
-      the ``.secret_path`` pointer did not resolve, so the endpoint/model were
-      imported but the existing (last-known-good) token pointer was KEPT —
-      the DESIGN §5b fail-safe shape.  ``None`` when everything resolved.
-    * *settings* — the parsed :class:`~kanibako.targets.base.PersonaSettings`
-      (``None`` only when the store config itself was unusable), so the
-      start-flow verify hook can probe WITHOUT re-parsing the store.
-    * *token_path* — the resolved ABSOLUTE token path (``None`` when the
-      pointer did not resolve — the *warning* case), for the same reason.
-    """
-
-    candidate: AgentConfig | None
-    error: str | None
-    warning: str | None
-    settings: PersonaSettings | None = None
-    token_path: Path | None = None
-
-
-def _copy_config(cfg: AgentConfig) -> AgentConfig:
-    """A per-container copy of *cfg* safe to mutate as a CANDIDATE.
-
-    Every dict/list container is copied one level deep (the import only ever
-    REPLACES whole values inside them, never mutates nested content), so a
-    candidate that fails verification leaves the caller's config untouched.
-    """
-    return AgentConfig(
-        name=cfg.name,
-        run_args=list(cfg.run_args),
-        state=dict(cfg.state),
-        env=dict(cfg.env),
-        secret_path=dict(cfg.secret_path),
-        transform_settings=dict(cfg.transform_settings),
-        node_tables={k: dict(v) for k, v in cfg.node_tables.items()},
-    )
-
-
-def build_candidate(
-    agents_root: Path,
-    entry: PersonaEntry,
-    target: Target,
-    *,
-    base: AgentConfig | None = None,
-) -> ImportResult:
-    """Build the IN-MEMORY candidate agent settings for a store *entry*.
-
-    Read-modify-write shape, WITHOUT the write: start from *base* when given
-    (a COPY of the caller's in-memory config — the start-flow hook passes the
-    launch's live ``agent_cfg``, which for a first-use launch carries
-    generated defaults that exist in NO file yet), else load the node's
-    CURRENT settings file (absent file = fresh defaults).  Then apply ONLY the
-    values the store owns (DESIGN §2b — the store owns the AGENT scope):
-
-    * ``state["endpoint"]`` ← the harness config's endpoint (REQUIRED: a
-      persona import with no endpoint is unusable → hard error);
-    * ``state["model"]`` ← the harness config's model, when it names one (a
-      config that names none leaves any existing agent-scope model untouched —
-      there is no store value to sync);
-    * ``secret_path[<auth_env>]`` ← the resolved ABSOLUTE host token path.  An
-      unresolvable ``.secret_path`` is a WARNING, not a failure: endpoint and
-      model still import, the existing token pointer (last-known-good) is
-      kept, and the reason rides ``ImportResult.warning``.
-
-    Everything else in the file (name, run_args, env, transform_settings,
-    other secret_path vars, the discriminated node-bind sub-tables) is
-    PRESERVED verbatim — this function does not own it.  NOTHING is persisted
-    here: the caller verifies the candidate (Phase 3 S9) and commits via
-    :func:`persist_candidate` only on PASS.
-    """
-    # NOTE: the outcome's ``reject_reason`` is deliberately NOT consumed yet —
-    # unwrapping keeps this caller byte-identical; a later step reports it.
-    settings = target.read_persona_settings(entry.config_dir).settings
-    if settings is None:
-        return ImportResult(None, (
-            f"persona store entry for '{entry.node}' has no usable "
-            f"{entry.harness} config under {entry.config_dir}"
-        ), None)
-    if not settings.endpoint:
-        return ImportResult(None, (
-            f"persona store config at {entry.config_dir} names no endpoint; "
-            f"a persona import needs one"
-        ), None, settings)
-
-    if base is not None:
-        cfg = _copy_config(base)
-    else:
-        cfg = load_agent_config(agent_settings_path(agents_root, entry.node))
-    cfg.state["endpoint"] = settings.endpoint
-    if settings.model:
-        cfg.state["model"] = settings.model
-
-    warning: str | None = None
-    token = resolve_secret_path(entry)
-    if token.path is not None:
-        cfg.secret_path[settings.auth_env] = str(token.path)
-    else:
-        warning = (
-            f"persona '{entry.node}': token pointer did not resolve "
-            f"({token.error}); keeping the existing secret_path values"
-        )
-    return ImportResult(cfg, None, warning, settings, token.path)
-
-
-def persist_candidate(
-    agents_root: Path, entry: PersonaEntry, candidate: AgentConfig,
-) -> Path:
-    """Commit a verified *candidate* to the node's settings file.
-
-    Routes through :func:`~kanibako.settings.agent_config.write_agent_config` — the
-    established persist seam — which stores the persona values as
-    ``self.endpoint`` / ``self.model`` and ``self.secret_path.<VAR>`` (the
-    FLATTENED shape: ``self`` IS ``agent.<node>``, no second node embedding)
-    and re-emits everything the candidate carried through.  Returns the
-    settings-file path written.
-    """
-    path = agent_settings_path(agents_root, entry.node)
-    write_agent_config(path, candidate)
-    return path
-
-
-def import_persona_entry(
-    agents_root: Path, entry: PersonaEntry, target: Target,
-) -> ImportResult:
-    """Build AND persist a persona import (the UNVERIFIED convenience).
-
-    :func:`build_candidate` + :func:`persist_candidate` in one step, for the
-    paths that import without a verify probe (the initial ``create``
-    registration — DESIGN §4).  A hard failure persists NOTHING (the on-disk
-    file, if any, is untouched); a soft ``warning`` still persists (endpoint/
-    model imported, existing token kept) and is the caller's to surface.
-    The start-flow reparse (Phase 3 S9) must NOT use this — it verifies the
-    candidate first and swaps only on PASS.
-    """
-    result = build_candidate(agents_root, entry, target)
-    if result.candidate is not None:
-        persist_candidate(agents_root, entry, result.candidate)
-    return result

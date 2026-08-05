@@ -562,30 +562,32 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
         )
 
 
-def _import_persona_store_for_create(std, agent_ref: str, project_path) -> str | None:
-    """Initial persona-grata store import for ``create --agent <pid>+<hid>``.
+def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
+    """Create-side persona-grata store CHECK for ``create --agent <pid>+<hid>``.
 
     The create-side trigger (DESIGN §4): when the explicit agent ref names a
-    persona whose persona-grata store entry EXISTS, register the agent node by
-    importing the store into ``agents/<node>/settings.yaml`` (endpoint/model +
-    the resolved token pointer) BEFORE the persona create verdict — so the
-    verdict's load-or-error gate sees the imported endpoint and passes for a
-    conforming store.  The import itself is first-ever (no last-known-good to
-    protect — DESIGN §5b), so it always lands; the probe here is WARN-ONLY and
-    never fails the create.  It is also the values' ONE verify: the start-flow
-    reconcile probes only when the store values CHANGE, and a start right after
-    this import sees them unchanged — without this probe a create-imported
-    token would never be verified at all.
+    persona whose persona-grata store entry EXISTS, read the store and refuse
+    the create NOW if it cannot yield a usable persona — BEFORE the persona
+    create verdict, so a broken store is reported as itself rather than as the
+    verdict's downstream "no endpoint configured".
+
+    ⚑ NOTHING IS WRITTEN.  This used to IMPORT the store into
+    ``agents/<node>/settings.yaml``; the store is a LIVE resolution input now
+    (``read_persona_bundle`` → the launch's persona cascade level), and the
+    agent settings file holds user-intent values only, so there is nothing to
+    persist and no ``settings.yaml`` for a corrupt-file arm to trip over.  The
+    gates themselves are UNCHANGED: same hard errors, same WARN-ONLY probe.
 
     Returns an ``"Error: …"`` message for the caller to print-and-refuse
-    (malformed ref, unusable store config, corrupt existing agent settings), or
+    (malformed ref, unusable store config, a store naming no endpoint), or
     ``None`` when there is nothing to do (bare/plain ref, no store entry,
-    harness not installed — all fall through to today's create behavior) or
-    the import succeeded (a soft token-pointer warning is printed here).
+    harness not installed, a harness with no persona reader — all fall through
+    to today's create behavior) or the store checked out (a soft token-pointer
+    warning is printed here).
     """
     from kanibako.agent_ref import display_agent_ref
     from kanibako.errors import ConfigError
-    from kanibako.persona_store import import_persona_entry, locate_entry
+    from kanibako.persona_store import locate_entry, read_persona_bundle
 
     try:
         entry = locate_entry(agent_ref)
@@ -597,41 +599,39 @@ def _import_persona_store_for_create(std, agent_ref: str, project_path) -> str |
     if target is None:
         return None  # harness not installed -> the normal machinery errors
     display = display_agent_ref(entry.node)
-    try:
-        result = import_persona_entry(std.agents, entry, target)
-    except ConfigError as e:
-        # The node's EXISTING settings.yaml is corrupt — surface it actionably
-        # (the launch would hit the same file); never traceback-crash a create.
-        # ⚑ The parse failure arrives NORMALIZED (config_io.load_doc raises
-        # ConfigError naming the file), so this catches the one type rather than
-        # the raw yaml error it used to; the plugins' own persona-config readers
-        # swallow their parse failures, so nothing else reaches here.
+    bundle = read_persona_bundle(entry.node, target)
+    if bundle is None or bundle.no_reader:
+        # ``None`` cannot happen (the entry located a moment ago) but costs
+        # nothing to honour.  ``no_reader`` DOES: a goose persona is configured
+        # entirely through the keyspace and may own a store dir purely for its
+        # ``.secret_path``, so "this harness cannot read a store config" is a
+        # fall-through, never a refusal.
+        return None
+    if bundle.reject_reason is not None:
+        return f"Error: {bundle.reject_reason}"
+    if not bundle.endpoint:
         return (
-            f"Error: the agent settings file for '{display}' is corrupt and "
-            f"cannot be updated from the persona store ({e}).\n"
-            f"  Fix or remove agents/{entry.node}/settings.yaml, then retry."
+            f"Error: persona store config at {entry.config_dir} names no "
+            f"endpoint; a persona needs one"
         )
-    if result.error is not None:
-        return f"Error: {result.error}"
-    if result.warning is not None:
-        print(f"Warning: {result.warning}", file=sys.stderr)
-    # WARN-ONLY first-ever probe (see the docstring): the start-flow reconcile
-    # probes only on CHANGED store values, so this is these values' one verify.
-    if (
-        result.settings is not None
-        and result.settings.endpoint
-        and result.token_path is not None
-    ):
+    if bundle.token_error is not None:
+        print(
+            f"Warning: persona '{display}': token pointer did not resolve "
+            f"({bundle.token_error}); the store contributes no token.",
+            file=sys.stderr,
+        )
+    # WARN-ONLY first-ever probe (see the docstring).
+    if bundle.token_path is not None:
         try:
             verdict = target.verify_persona(
-                result.settings.endpoint, result.token_path, result.settings.model,
+                bundle.endpoint, bundle.token_path, bundle.model,
             )
         except Exception:
             verdict = None  # probe contract is never-raise; hold plugins to it
         if verdict is False:
             print(
                 f"Warning: the persona endpoint rejected the token for "
-                f"'{display}'; imported anyway — fix the token in the store "
+                f"'{display}'; creating anyway — fix the token in the store "
                 f"before starting.",
                 file=sys.stderr,
             )
@@ -639,10 +639,13 @@ def _import_persona_store_for_create(std, agent_ref: str, project_path) -> str |
             print(
                 f"Warning: could not verify the persona endpoint for "
                 f"'{display}' (unreachable, or no probe was possible); "
-                f"imported unverified.",
+                f"creating unverified.",
                 file=sys.stderr,
             )
-    print(f"Imported persona '{display}' from the persona store.")
+    print(
+        f"Recognised persona '{display}' in the persona store; its values are "
+        f"resolved from the store at every launch."
+    )
     return None
 
 
@@ -752,17 +755,16 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
     _name_new_box_probe(std, _probe)
-    # PERSONA-GRATA STORE IMPORT (create trigger): an explicit --agent persona
-    # ref whose store entry exists registers + imports the node's settings NOW,
-    # BEFORE the verdict below — which then gates the imported endpoint through
-    # the same load-or-error pre-flight as any keyspace-configured persona.
-    # Bare refs / absent store entries fall through untouched.  The agents/
-    # <node>/settings.yaml written here is STORE-OWNED and idempotent (every
-    # start re-reconciles it), so it is not a create artifact to roll back.
+    # PERSONA-GRATA STORE CHECK (create trigger): an explicit --agent persona
+    # ref whose store entry exists is READ NOW, BEFORE the verdict below, so a
+    # store that cannot yield a usable persona is refused as ITSELF rather than
+    # as the verdict's downstream "no endpoint configured".  Bare refs / absent
+    # store entries fall through untouched.  ⚑ Nothing is written: the store is
+    # a live resolution input, so a create leaves no persona artifact behind.
     _agent_arg = getattr(args, "agent", None)
     if isinstance(_agent_arg, str) and _agent_arg:
-        _store_err = _import_persona_store_for_create(
-            std, _agent_arg, _probe.project_path,
+        _store_err = _check_persona_store_for_create(
+            _agent_arg, _probe.project_path,
         )
         if _store_err is not None:
             print(_store_err, file=sys.stderr)

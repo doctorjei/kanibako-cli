@@ -2187,13 +2187,18 @@ class TestBoxListStandalone:
         assert "missing" in out
 
 
-class TestImportPersonaStoreForCreate:
+class TestCheckPersonaStoreForCreate:
     """The create-side persona-grata trigger (`create --agent <pid>+<hid>`).
 
-    ``_import_persona_store_for_create`` registers + imports the node's
-    settings when a store entry exists; bare/plain refs, absent entries, and
-    uninstalled harnesses fall through (return None, write nothing) so create
-    behaves exactly as today for them.
+    ``_check_persona_store_for_create`` READS the store and refuses the create
+    when it cannot yield a usable persona; bare/plain refs, absent entries,
+    uninstalled harnesses and readerless harnesses fall through (return None) so
+    create behaves exactly as today for them.
+
+    ⚑ The gates are UNCHANGED from when this function still IMPORTED the store
+    into ``agents/<node>/settings.yaml`` — same hard errors, same warn-only
+    probe.  What changed is that it writes NOTHING, which is why almost every
+    test below also asserts the agents dir was never created.
     """
 
     _ENDPOINT = "https://api.navigator.example/v1"
@@ -2206,11 +2211,6 @@ class TestImportPersonaStoreForCreate:
         'env_key = "NAVIGATOR_API_KEY"\n'
     )
 
-    def _std(self, tmp_home):
-        import types
-
-        return types.SimpleNamespace(agents=tmp_home / "data" / "agents")
-
     def _store(self, tmp_home, *, config=True, pointer=True):
         persona_dir = tmp_home / "config" / "personas" / "navigator"
         (persona_dir / "codex").mkdir(parents=True)
@@ -2222,7 +2222,7 @@ class TestImportPersonaStoreForCreate:
 
     def _call(self, tmp_home, ref, monkeypatch, *, target="real", verdict=True):
         import kanibako.commands.box._parser as parser_mod
-        from kanibako.commands.box._parser import _import_persona_store_for_create
+        from kanibako.commands.box._parser import _check_persona_store_for_create
 
         if target == "real":
             from kanibako.plugins.codex.target import CodexTarget
@@ -2238,9 +2238,7 @@ class TestImportPersonaStoreForCreate:
         monkeypatch.setattr(
             parser_mod, "resolve_target", lambda *a, **k: resolved,
         )
-        return _import_persona_store_for_create(
-            self._std(tmp_home), ref, tmp_home / "project",
-        )
+        return _check_persona_store_for_create(ref, tmp_home / "project")
 
     def _settings_path(self, tmp_home):
         return (
@@ -2264,19 +2262,37 @@ class TestImportPersonaStoreForCreate:
         )
         assert not (tmp_home / "data" / "agents").exists()
 
-    def test_store_entry_registers_and_imports(self, tmp_home, monkeypatch, capsys):
-        from kanibako.settings.config_io import load_doc
+    def test_store_entry_is_recognised_and_persists_nothing(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        """⚑ NEVER-PERSIST: a conforming store is CONFIRMED, not copied.
 
-        persona_dir = self._store(tmp_home)
+        The create used to write ``agents/<node>/settings.yaml`` here from the
+        store.  It must not any more — the store is resolved live at every
+        launch — but the user must still be told the store was recognised.
+        """
+        self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
         assert err is None
-        data = load_doc(self._settings_path(tmp_home))
-        assert data["self"]["endpoint"] == self._ENDPOINT
-        assert data["self"]["model"] == "gemma4"
-        assert data["self"]["secret_path"]["NAVIGATOR_API_KEY"] == str(
-            persona_dir / "token"
-        )
-        assert "Imported persona 'navigator+codex'" in capsys.readouterr().out
+        assert not (tmp_home / "data" / "agents").exists()
+        out = capsys.readouterr().out
+        assert "navigator+codex" in out
+        assert "persona store" in out
+
+    def test_readerless_harness_falls_through(self, tmp_home, monkeypatch):
+        """⚑ ``no_reader`` is a FALL-THROUGH, never a refusal.
+
+        A goose-shaped persona is configured entirely through the keyspace and
+        may own a store dir purely for its ``.secret_path``; a harness that
+        cannot read a store config has made no complaint about any file.
+        """
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        self._store(tmp_home)
+        assert self._call(
+            tmp_home, "navigator+codex", monkeypatch, target=NoAgentTarget(),
+        ) is None
+        assert not (tmp_home / "data" / "agents").exists()
 
     def test_unusable_store_config_is_an_error(self, tmp_home, monkeypatch):
         self._store(tmp_home, config=False)  # entry dir, no config.toml
@@ -2284,74 +2300,70 @@ class TestImportPersonaStoreForCreate:
         assert err is not None and err.startswith("Error:")
         assert not self._settings_path(tmp_home).exists()
 
+    def test_the_reject_reason_names_the_specific_cause(self, tmp_home, monkeypatch):
+        """The reader's OWN reason rides through, not a vague "no usable config"."""
+        store = self._store(tmp_home)
+        (store / "codex" / "config.toml").write_text("this is not = valid = toml\n")
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is not None
+        assert "not valid TOML" in err
+
     def test_malformed_ref_is_an_error(self, tmp_home, monkeypatch):
         err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
         assert err is not None and err.startswith("Error:")
 
-    def test_corrupt_existing_settings_is_an_error(self, tmp_home, monkeypatch):
-        """A corrupt node ``settings.yaml`` is refused ACTIONABLY, not crashed.
+    def test_a_corrupt_agent_settings_file_is_no_longer_consulted(
+        self, tmp_home, monkeypatch,
+    ):
+        """⚑ The DELETED corrupt-file arm, asserted as its absence.
 
-        The parse failure now arrives NORMALIZED (``config_io.load_doc`` raises
-        ConfigError naming the file, B6-Editor S-3) rather than as a raw
-        ``yaml.YAMLError``; the gate must still convert it to the create-refusal
-        message instead of letting it traceback out of ``create``.
+        This gate used to LOAD ``agents/<node>/settings.yaml`` (to build the
+        import candidate on top of it) and convert a parse failure into a create
+        refusal.  Nothing reads that file here any more, so a corrupt one is
+        simply irrelevant — the store check passes straight through it.  (The
+        launch still meets the same file and reports it there.)
         """
         self._store(tmp_home)
         settings = self._settings_path(tmp_home)
         settings.parent.mkdir(parents=True)
         settings.write_text("self:\n  endpoint: ok\n :\n  - [unclosed\n")
 
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is not None and err.startswith("Error:")
-        assert "corrupt" in err
-        assert str(settings) in err  # the normalized error names the FILE
-        assert "then retry" in err
+        assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
+        assert settings.read_text().endswith("- [unclosed\n")  # untouched
 
-    def test_token_pointer_warning_still_imports(self, tmp_home, monkeypatch, capsys):
-        from kanibako.settings.config_io import load_doc
-
+    def test_token_pointer_warning_still_falls_through(
+        self, tmp_home, monkeypatch, capsys,
+    ):
         self._store(tmp_home, pointer=False)
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is None
-        assert "Warning:" in capsys.readouterr().err
-        data = load_doc(self._settings_path(tmp_home))
-        assert data["self"]["endpoint"] == self._ENDPOINT
-        assert "secret_path" not in data["self"]
+        assert err is None  # soft: the endpoint is still usable
+        assert "token pointer did not resolve" in capsys.readouterr().err
+        assert not (tmp_home / "data" / "agents").exists()
 
-    def test_corrupt_existing_settings_is_a_clean_error(self, tmp_home, monkeypatch):
-        self._store(tmp_home)
-        path = self._settings_path(tmp_home)
-        path.parent.mkdir(parents=True)
-        path.write_text("self: [unclosed\n")
-        err = self._call(tmp_home, "navigator+codex", monkeypatch)
-        assert err is not None and "corrupt" in err
+    # --- the create-time WARN-ONLY probe (these values' ONE verify: a start
+    # --- does not re-probe) --------------------------------------------------
 
-    # --- the create-time WARN-ONLY probe (these values' ONE verify: the
-    # --- start reconcile probes only on CHANGED store values) ---------------
-
-    def test_verified_import_emits_no_warning(self, tmp_home, monkeypatch, capsys):
+    def test_verified_store_emits_no_warning(self, tmp_home, monkeypatch, capsys):
         self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=True)
         assert err is None
         assert "Warning" not in capsys.readouterr().err
 
-    def test_rejected_token_warns_but_still_imports(
+    def test_rejected_token_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,
     ):
         self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=False)
-        assert err is None  # warn-only: create still succeeds
+        assert err is None  # warn-only: create still proceeds
         assert "rejected the token" in capsys.readouterr().err
-        assert self._settings_path(tmp_home).exists()
 
-    def test_unverifiable_endpoint_warns_but_still_imports(
+    def test_unverifiable_endpoint_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,
     ):
         self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch, verdict=None)
         assert err is None
         assert "could not verify" in capsys.readouterr().err
-        assert self._settings_path(tmp_home).exists()
 
     def test_probe_raise_is_held_to_the_contract(self, tmp_home, monkeypatch, capsys):
         from kanibako.plugins.codex.target import CodexTarget
@@ -2481,8 +2493,8 @@ class TestCreatePersistsAgentSelection:
         self, config_file, tmp_home, credentials_dir, monkeypatch,
     ):
         """A persona selector persists as TYPED (`+` form; the read side
-        canonicalizes) — and the persona store import still ran (settings.yaml
-        for the node was registered from the store)."""
+        canonicalizes) — and the persona store left NO agent settings file
+        behind (⚑ NEVER-PERSIST: the store is resolved live at every launch)."""
         from kanibako.settings.config_io import load_doc
 
         # Lay down a conforming store entry + a real token file so the persona
@@ -2503,13 +2515,19 @@ class TestCreatePersistsAgentSelection:
         assert self._create(tmp_home, agent="navigator+codex") == 0
         settings = self._box_settings(config_file, tmp_home)
         assert load_doc(settings)["pref"]["system"]["agent"] == "navigator+codex"
-        # The store import registered the agent node as part of the create.
+        # ⚑ NEVER-PERSIST. The node's settings.yaml exists — the one-time
+        # first-use GENERATE writes it — but it must be EMPTY of persona values.
+        # The store's endpoint/model/token reached this create as a live cascade
+        # level; a surviving import would have copied them in here.
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
 
         std = load_std_paths(load_config(config_file))
-        node_settings = load_doc(std.agents / "navigator℘codex" / "settings.yaml")
-        assert node_settings["self"]["endpoint"] == "https://api.navigator.example/v1"
+        node_doc = load_doc(std.agents / "navigator℘codex" / "settings.yaml")
+        node_self = node_doc.get("self") or {}
+        assert "endpoint" not in node_self
+        assert "model" not in node_self
+        assert "secret_path" not in node_self
 
     def test_failing_verdict_leaves_no_box_and_no_agent_selection(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -2517,9 +2535,10 @@ class TestCreatePersistsAgentSelection:
         """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
         leave NO box (no meta, no ``pref.system.agent`` anywhere).  The verdict
         runs BEFORE box materialisation and before the agent-selection write —
-        pin that ordering.  The agents/<node>/settings.yaml written by the
-        store import is the ONE documented exception (STORE-OWNED, reconciled
-        every start — not a create artifact)."""
+        pin that ordering.  ⚑ The ``agents/<node>/settings.yaml`` the store
+        import used to leave behind was the ONE documented exception to "no
+        residue"; the import is gone, so the exception is gone with it and the
+        failure path now leaves NOTHING AT ALL."""
         from kanibako.commands.start import _resolve_existing_box
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
@@ -2548,6 +2567,7 @@ class TestCreatePersistsAgentSelection:
         # No box was materialised: nothing resolves, no settings file exists,
         # so pref.system.agent cannot have been written anywhere.
         assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
-        # The documented store-import exception: the agent node registration
-        # remains (by design; idempotently re-reconciled at every start).
-        assert (std.agents / "navigator℘codex" / "settings.yaml").exists()
+        # …and no persona residue either: the verdict refuses BEFORE the seed's
+        # first-use generate, and nothing persists the store any more, so the
+        # node dir is never created at all.
+        assert not (std.agents / "navigator℘codex" / "settings.yaml").exists()
