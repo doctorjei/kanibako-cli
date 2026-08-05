@@ -7294,3 +7294,588 @@ class TestCodexDynamicTokenVarWithStore:
         assert err is not None
         assert "unusable file" in err
         assert "NAVIGATOR_API_KEY" in err
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-05f — the REATTACH FAST PATH, the running-box OVERRIDE GATE, and
+# ``--restart``.
+#
+# The defect these cover: ``_run_container`` computed ``reattach_running`` up
+# top and then never consulted it until the reattach branch ~380 lines later, so
+# a box that was ALREADY UP still paid the whole launch preamble — rig
+# resolution + build/pull, the flag-persist seam, the image-freshness check, an
+# ephemeral baseline probe container, and (the report that opened this) the
+# per-launch persona network probe, which HARD-ERRORS on a REJECTED verdict and
+# could therefore refuse to reattach a user to a working box.
+# ---------------------------------------------------------------------------
+
+
+class _RunningBoxDriver:
+    """Shared helpers for the three classes below."""
+
+    _PERSONA = "navigator℘claude"
+
+    def _running(self, m, agent: str = "claude"):
+        """Put the harness in the ALREADY-RUNNING state a reattach sees."""
+        m.runtime.is_running.return_value = True
+        m.runtime.inspect_env.return_value = agent
+
+    def _start(self, **over):
+        kw = dict(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[], persistent=True,
+        )
+        kw.update(over)
+        return _run_container(**kw)
+
+
+class TestReattachFastPath(_RunningBoxDriver):
+    """A live box skips every step that only a NEW container needs."""
+
+    def test_reattach_does_not_resolve_or_prep_a_rig(self, start_mocks):
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.resolve_rig",
+        ) as m_rig:
+            self._running(m)
+            assert self._start() == 0
+            m_rig.assert_not_called()
+        # Control: the assertion is not vacuous — an ordinary launch DOES.
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.resolve_rig",
+        ) as m_rig:
+            self._start()
+            assert m_rig.called
+
+    def test_reattach_does_not_run_the_baseline_probe(self, start_mocks):
+        """The tier-1/tier-2 probe spins an EPHEMERAL container; a running box
+        was already verified by the launch that started it."""
+        with start_mocks() as m:
+            self._running(m)
+            assert self._start() == 0
+            m.launch_check.assert_not_called()
+        with start_mocks() as m:
+            self._start()
+            assert m.launch_check.called
+
+    def test_reattach_does_not_check_image_freshness(self, start_mocks):
+        with start_mocks() as m, patch(
+            "kanibako.runtime.freshness.check_image_freshness",
+        ) as m_fresh:
+            self._running(m)
+            assert self._start() == 0
+            m_fresh.assert_not_called()
+        with start_mocks() as m, patch(
+            "kanibako.runtime.freshness.check_image_freshness",
+        ) as m_fresh:
+            self._start()
+            assert m_fresh.called
+
+    def test_reattach_does_not_reach_the_flag_persist_seam(self, start_mocks):
+        """§1A ruling #12's seam must never observe a running box: every input
+        it settles is refused by the override gate instead."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._persist_or_announce_flags",
+        ) as m_seam:
+            self._running(m)
+            assert self._start() == 0
+            m_seam.assert_not_called()
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._persist_or_announce_flags",
+        ) as m_seam:
+            self._start()
+            assert m_seam.called
+
+    def test_reattach_does_not_verify_box_components(self, start_mocks):
+        """A RUNNING box is materialised by definition — its dirs are live
+        bind mounts."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._check_box_components", return_value=None,
+        ) as m_comp:
+            self._running(m)
+            assert self._start() == 0
+            m_comp.assert_not_called()
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._check_box_components", return_value=None,
+        ) as m_comp:
+            self._start()
+            assert m_comp.called
+
+    def test_reattach_does_not_probe_the_persona(self, start_mocks):
+        """⚑ THE REPORTED BUG.  The load-or-error pre-flight posts a real 1-token
+        completion and returns rc 1 on REJECTED — i.e. it could refuse to
+        reattach a user to a box whose agent is already running and
+        authenticated."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._preflight_persona_load",
+        ) as m_pre:
+            m.resolve_agent.return_value = _sel(self._PERSONA)
+            self._running(m, agent=self._PERSONA)
+            assert self._start() == 0
+            m_pre.assert_not_called()
+
+    def test_a_normal_persona_launch_still_probes(self, start_mocks):
+        """The control for the test above: the pre-flight is untouched on the
+        path that actually creates a container."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._preflight_persona_load",
+            return_value=("https://key.example", None, None),
+        ) as m_pre:
+            m.resolve_agent.return_value = _sel(self._PERSONA)
+            self._start()
+            assert m_pre.called
+            assert m_pre.call_args.kwargs.get("probe") is True
+
+    def test_reattach_never_writes_the_agent_config(self, start_mocks):
+        """A reattach delivers nothing, and rewriting under a live agent is the
+        hazard ``reattach_config_notice`` exists to warn about."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.write_agent_config",
+        ) as m_write:
+            # First use (config absent) is the only thing that ever writes it.
+            m.agent_config_path.exists.return_value = False
+            self._running(m)
+            assert self._start() == 0
+            m_write.assert_not_called()
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.write_agent_config",
+        ) as m_write:
+            m.agent_config_path.exists.return_value = False
+            self._start()
+            assert m_write.called
+
+    def test_reattach_still_refreshes_creds_and_attaches(self, start_mocks):
+        """The preserved half: credsync, the projection notice, the bootstrap
+        attach, the post-session writeback, and the teardown all still fire."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._teardown_persistent_box",
+        ) as m_teardown:
+            m.target.reattach_config_notice.return_value = None
+            self._running(m)
+            assert self._start() == 0
+            assert m.credsync.refresh_box_credentials.called
+            assert m.credsync.writeback_box_credentials.called
+            assert m_teardown.called
+            attach = [
+                c for c in m.runtime.exec.call_args_list
+                if c.kwargs.get("attach") is True
+            ]
+            assert len(attach) == 1
+            assert attach[0].args[1] == ["tmux", "attach", "-t", "kanibako"]
+
+    def test_reattach_suppresses_oauth_for_a_persona_endpoint(self, start_mocks):
+        """``suppress_oauth`` is FINAL on this path (the pre-flight that could
+        refine the endpoint is skipped), so the launch decisions' endpoint is the
+        last word — a third-party endpoint still drops the host OAuth sync."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._resolve_box_launch_decisions",
+            return_value=(_SHARED_AUTH, "https://key.example", None),
+        ):
+            self._running(m)
+            assert self._start() == 0
+            assert m.credsync.refresh_box_credentials.call_args.kwargs[
+                "suppress_oauth"
+            ] is True
+
+    def test_detach_on_a_running_box_still_short_circuits(self, start_mocks, capsys):
+        """The ratified early return, unchanged — including its
+        ``--print-container`` stdout line."""
+        with start_mocks() as m:
+            self._running(m)
+            assert self._start(detach=True, print_container=True) == 0
+            out = capsys.readouterr()
+        assert "is already running" in out.err
+        assert out.out.strip().splitlines()[-1] == "kanibako-testproject"
+        m.runtime.exec.assert_not_called()
+
+    def test_entrypoint_on_a_running_box_execs_instead_of_attaching(
+        self, start_mocks,
+    ):
+        """S3: ``--entrypoint`` against a live box is a SECOND PROCESS entering
+        it, not a reattach.  Today it is silently dropped, because ``start``
+        defaults ``persistent=True`` whenever the bootstrap program is present."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(entrypoint="/bin/echo", extra_args=["hi"],
+                             cli_env=["FOO=bar"])
+        assert rc == 0
+        call = m.runtime.exec.call_args
+        assert call.args[1] == ["/bin/echo", "hi"]
+        assert call.kwargs.get("env") == {"FOO": "bar"}
+        assert call.kwargs.get("attach") is not True
+
+
+class TestRunningBoxOverrideGate(_RunningBoxDriver):
+    """Overrides that cannot be integrated into a live box are REFUSED BY NAME
+    (Jei 2026-08-05: "could this setting work without restarting the box and
+    without making a mangled / corrupted / unexpected state?")."""
+
+    _CLASS_A = [
+        ("image_override", "test:other", "--rig/--image"),
+        ("cli_env", ["FOO=bar"], "-e/--env"),
+        ("no_helpers", True, "--no-helpers"),
+        ("no_auto_auth", True, "--no-auto-auth"),
+        ("browser", True, "--browser"),
+        ("share_images", True, "--share-images"),
+    ]
+    _CLASS_B = [
+        ("new_session", True, "-N/--new"),
+        ("continue_override", True, "-C/--continue"),
+        ("resume_mode", True, "-R/--resume"),
+        ("model_override", "opus", "-M/--model"),
+        ("autonomous", True, "-A/--autonomous"),
+        ("safe_mode", True, "-S/--secure"),
+    ]
+
+    @pytest.mark.parametrize("kwarg,value,label", _CLASS_A)
+    def test_class_a_override_is_refused(
+        self, start_mocks, capsys, kwarg, value, label,
+    ):
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(**{kwarg: value})
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert label in err
+        assert "already running" in err
+        assert "kanibako --restart testproject" in err
+        m.runtime.exec.assert_not_called()
+
+    @pytest.mark.parametrize("kwarg,value,label", _CLASS_B)
+    def test_class_b_override_is_refused(
+        self, start_mocks, capsys, kwarg, value, label,
+    ):
+        """Class B is SILENTLY DROPPED today: the reattach execs a tmux attach,
+        so the agent argv is never rebuilt and ``start -N`` lands you in the OLD
+        conversation."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(**{kwarg: value})
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert label in err
+        m.runtime.exec.assert_not_called()
+
+    def test_one_error_names_every_offending_flag(self, start_mocks, capsys):
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(image_override="x:y", new_session=True)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--rig/--image" in err and "-N/--new" in err
+
+    def test_gate_precedes_the_flag_persist_seam(self, start_mocks):
+        """``_persist_or_announce_flags`` must never observe a Class-A flag on a
+        running box — it would store/announce a value the box cannot honour."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._persist_or_announce_flags",
+        ) as m_seam:
+            self._running(m)
+            assert self._start(image_override="x:y") == 1
+            m_seam.assert_not_called()
+
+    def test_a_plain_reattach_is_not_refused(self, start_mocks, capsys):
+        with start_mocks() as m:
+            self._running(m)
+            assert self._start() == 0
+        assert "cannot be applied" not in capsys.readouterr().err
+
+    def test_the_same_flags_are_fine_when_the_box_is_not_running(self, start_mocks):
+        with start_mocks() as m:
+            assert m.runtime.is_running.return_value is False
+            assert self._start(image_override="x:y", new_session=True) == 0
+
+    def test_attach_control_flags_stay_working(self, start_mocks, capsys):
+        """``--detach``/``--print-container``/``--warm-only`` are meaningful
+        against a live box and are deliberately NOT gated."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, print_container=True, warm_only=True)
+        assert rc == 0
+        assert "cannot be applied" not in capsys.readouterr().err
+
+    # ---- the two SESSION-SHAPE flags -------------------------------------
+    # Keyed on the flag the user TYPED, never on the derived ``persistent``.
+
+    def test_explicit_persistent_at_a_live_box_is_refused(
+        self, start_mocks, capsys,
+    ):
+        """Jei: "it shouldn't be necessary to kill tmux for this; we should find
+        out if tmux is running BEFORE we try to reattach."  The refusal lands
+        before any attach, so the running session is never touched."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(explicit_persistent=True)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--persistent" in err
+        assert "kanibako --restart testproject" in err
+        # ⚑ The running session is left completely alone: no attach, no exec of
+        # any kind, no stop, no rm.
+        m.runtime.exec.assert_not_called()
+        m.runtime.stop.assert_not_called()
+        m.runtime.rm.assert_not_called()
+
+    def test_explicit_ephemeral_at_a_live_box_is_refused(
+        self, start_mocks, capsys,
+    ):
+        """⚑ This is why the gate keys on ``box_running``, not
+        ``reattach_running``: an explicit ``--ephemeral`` DERIVES
+        ``persistent=False``, so it never becomes a reattach at all."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(persistent=False, explicit_ephemeral=True)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--ephemeral" in err
+        assert "kanibako --restart testproject" in err
+        m.runtime.exec.assert_not_called()
+
+    def test_a_default_inferred_persistent_reattach_still_reattaches(
+        self, start_mocks, capsys,
+    ):
+        """⚑ THE CONTROL THAT PROVES THE KEYING.  ``run_start`` defaults
+        ``persistent=True`` whenever the bootstrap program is present, so an
+        ordinary ``kanibako start`` arrives here with ``persistent`` True and NO
+        typed flag.  Gating on the derived value would refuse every reattach."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(persistent=True, explicit_persistent=False)
+        err = capsys.readouterr().err
+        assert rc == 0
+        assert "cannot be applied" not in err
+        assert "Reattaching to running box" in err
+        attach = [
+            c for c in m.runtime.exec.call_args_list
+            if c.kwargs.get("attach") is True
+        ]
+        assert len(attach) == 1
+
+    def test_shell_into_a_live_box_is_not_refused(self, start_mocks):
+        """``kanibako shell --ephemeral`` against a live box execs INTO it (the
+        documented UX) — ephemeral is the shell's own default and it is
+        honoured, not dropped, so there is nothing to refuse.  Scoping the
+        session-shape refusal to an AGENT launch is what keeps this working."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(
+                persistent=False, explicit_ephemeral=True, box_shell_mode=True,
+            )
+        assert rc == 0
+        assert m.runtime.exec.called
+
+    def test_derived_ephemeral_still_hits_the_older_already_running_error(
+        self, start_mocks, capsys,
+    ):
+        """The two errors cannot both fire, and the older one keeps a real case:
+        ``persistent`` also derives False when the bootstrap program is missing
+        from the HOST, with no flag typed.  This gate stays out of that, and the
+        older message is accurate there."""
+        with start_mocks() as m:
+            self._running(m)
+            m.runtime.container_exists.return_value = True
+            rc = self._start(persistent=False)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "A box is already running for this project" in err
+        assert "kanibako --restart" in err
+        assert "cannot be applied" not in err
+
+    def test_env_is_allowed_alongside_an_entrypoint(self, start_mocks):
+        """``-e`` is refused on a REATTACH (nothing would apply it) but honoured
+        on the ``--entrypoint`` exec, which does."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(entrypoint="/bin/echo", cli_env=["FOO=bar"])
+        assert rc == 0
+        assert m.runtime.exec.call_args.kwargs.get("env") == {"FOO": "bar"}
+
+
+class TestRestartFlag(_RunningBoxDriver):
+    """``--restart`` = stop, then start fresh with this invocation's flags.  It
+    is the cure the override gate names, and it bypasses both the gate and the
+    fast path by construction (it runs before ``reattach_running`` is computed)."""
+
+    def _stop_patch(self, m):
+        """Patch the stop verb, mirroring reality: after it, nothing is up."""
+        def _stopped(*a, **kw):
+            m.runtime.is_running.return_value = False
+            return 0
+        return patch(
+            "kanibako.commands.stop._stop_one", side_effect=_stopped,
+        )
+
+    def test_parser_exposes_restart(self):
+        from kanibako.cli import build_parser
+
+        args = build_parser().parse_args(["start", "--restart", "mybox"])
+        assert args.restart is True
+        assert args.project == "mybox"
+
+    def test_bare_kanibako_restart_round_trips_to_start(self):
+        """The error text tells the user to run ``kanibako --restart``; pin that
+        the dispatcher actually lands it on ``start``.  ``_normalize_command``
+        leaves a leading flag with NO subcommand alone, and ``main``'s fallback
+        rule then prepends ``start``."""
+        from kanibako.cli import _SUBCOMMANDS, _normalize_command, build_parser
+
+        for argv in (["--restart"], ["--restart", "mybox"]):
+            effective = _normalize_command(list(argv))
+            assert effective == argv          # nothing to reorder
+            assert effective[0] not in _SUBCOMMANDS
+            effective = ["start"] + effective
+            args = build_parser().parse_args(effective)
+            assert args.restart is True
+            assert args.func.__name__ == "run_start"
+        assert build_parser().parse_args(
+            ["start", "--restart", "mybox"],
+        ).project == "mybox"
+
+    def test_run_start_threads_the_flag(self):
+        ns = argparse.Namespace(
+            project=None, box=None, agent_args=[], entrypoint=None, image=None,
+            new_session=False, continue_session=False, resume_session=False,
+            autonomous=False, secure=False, model=None, env=None,
+            no_helpers=False, no_auto_auth=False, browser=False,
+            share_images=False, persistent=False, ephemeral=False,
+            detach=None, warm_only=False, agent=None, restart=True,
+        )
+        with patch(
+            "kanibako.commands.start._run_container", return_value=0,
+        ) as m_run, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            assert run_start(ns) == 0
+        assert m_run.call_args.kwargs.get("restart") is True
+
+    def test_run_start_threads_the_typed_persistence_flags(self):
+        """⚑ The typed flags must arrive as THEIR OWN values.  ``persistent``
+        derives True from the mere presence of the bootstrap program, so a
+        consumer that re-derived intent from it would refuse every reattach."""
+        base = dict(
+            project=None, box=None, agent_args=[], entrypoint=None, image=None,
+            new_session=False, continue_session=False, resume_session=False,
+            autonomous=False, secure=False, model=None, env=None,
+            no_helpers=False, no_auto_auth=False, browser=False,
+            share_images=False, detach=None, warm_only=False, agent=None,
+            restart=False,
+        )
+        cases = [
+            ({"persistent": False, "ephemeral": False}, False, False, True),
+            ({"persistent": True, "ephemeral": False}, True, False, True),
+            ({"persistent": False, "ephemeral": True}, False, True, False),
+        ]
+        for over, exp_p, exp_e, exp_derived in cases:
+            with patch(
+                "kanibako.commands.start._run_container", return_value=0,
+            ) as m_run, patch(
+                "kanibako.commands.start._bootstrap_available", return_value=True,
+            ):
+                run_start(argparse.Namespace(**{**base, **over}))
+            kw = m_run.call_args.kwargs
+            assert kw.get("explicit_persistent") is exp_p
+            assert kw.get("explicit_ephemeral") is exp_e
+            # The DERIVED mode is a separate value and is NOT the typed flag.
+            assert kw.get("persistent") is exp_derived
+
+    def test_run_shell_threads_the_typed_persistence_flags(self):
+        """``shell`` owns the same two flags and must report them the same way —
+        even though its default mode is ephemeral either way."""
+        from kanibako.commands.start import run_shell
+
+        for over, exp_p, exp_e in (
+            ({"persistent": False, "ephemeral": False}, False, False),
+            ({"persistent": True, "ephemeral": False}, True, False),
+            ({"persistent": False, "ephemeral": True}, False, True),
+        ):
+            ns = argparse.Namespace(
+                project=None, box=None, shell_args=[], entrypoint=None,
+                image=None, no_helpers=False, share_images=False, env=None,
+                agent=None, **over,
+            )
+            with patch(
+                "kanibako.commands.start._run_container", return_value=0,
+            ) as m_run:
+                run_shell(ns)
+            kw = m_run.call_args.kwargs
+            assert kw.get("explicit_persistent") is exp_p
+            assert kw.get("explicit_ephemeral") is exp_e
+
+    def test_restart_stops_the_box_then_launches(self, start_mocks):
+        with start_mocks() as m, self._stop_patch(m) as m_stop:
+            self._running(m)
+            assert self._start(restart=True) == 0
+            assert m_stop.called
+            assert m_stop.call_args.kwargs.get("project_dir") is None
+            # A FRESH container, not a reattach.
+            assert m.runtime.run.called
+
+    def test_restart_bypasses_the_override_gate(self, start_mocks, capsys):
+        """Passing ``--restart`` IS the user saying "I know this needs a new
+        container, do it" — so the Class-A/B refusal must not fire."""
+        with start_mocks() as m, self._stop_patch(m):
+            self._running(m)
+            rc = self._start(restart=True, image_override="x:y", new_session=True)
+        assert rc == 0
+        assert "cannot be applied" not in capsys.readouterr().err
+
+    def test_restart_bypasses_the_session_shape_refusal(self, start_mocks):
+        """``--restart --persistent`` is coherent: stop the old session, give me
+        the fresh persistent one I asked for."""
+        with start_mocks() as m, self._stop_patch(m):
+            self._running(m)
+            assert self._start(restart=True, explicit_persistent=True) == 0
+            assert m.runtime.run.called
+
+    def test_restart_bypasses_the_fast_path(self, start_mocks):
+        """After the stop there is nothing to reattach to, so the full launch
+        preamble runs and the overrides reach the new container."""
+        with start_mocks() as m, self._stop_patch(m), patch(
+            "kanibako.commands.start.resolve_rig",
+        ) as m_rig:
+            self._running(m)
+            assert self._start(restart=True, image_override="x:y") == 0
+            assert m_rig.called
+            assert m.launch_check.called
+
+    def test_restart_bypasses_the_agent_mismatch_error(self, start_mocks):
+        """A different ``--agent`` on a running box is a hard error; with
+        ``--restart`` the box is gone before that check, so it relaunches."""
+        with start_mocks() as m, self._stop_patch(m):
+            self._running(m, agent="claude")
+            m.resolve_agent.return_value = _sel("goose")
+            m.target.name = "goose"
+            assert self._start(restart=True, explicit_agent="goose") == 0
+        # Control: without --restart the same invocation is a hard error.
+        from kanibako.errors import KanibakoError
+
+        with start_mocks() as m:
+            self._running(m, agent="claude")
+            m.resolve_agent.return_value = _sel("goose")
+            m.target.name = "goose"
+            with pytest.raises(KanibakoError, match="already running agent"):
+                self._start(explicit_agent="goose")
+
+    def test_restart_on_a_stopped_box_is_not_an_error(self, start_mocks):
+        """``--restart`` means "this launch must be a fresh container with my
+        flags applied"; a stopped box already satisfies that, and erroring would
+        make a ``--restart`` alias fail purely because it won the race."""
+        with start_mocks() as m, self._stop_patch(m) as m_stop:
+            assert m.runtime.is_running.return_value is False
+            assert self._start(restart=True) == 0
+            m_stop.assert_not_called()
+
+    def test_restart_errors_when_the_stop_did_not_take(self, start_mocks, capsys):
+        """``podman stop`` blocks, so the container IS down when the stop verb
+        returns — but the verb returns 0 even when the stop failed, so verify
+        rather than assume.  Relaunching into a live name would otherwise fail
+        much deeper, in ``runtime.run``."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.stop._stop_one", return_value=0,
+        ):
+            self._running(m)
+            rc = self._start(restart=True)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "could not stop" in err
+        assert "kanibako stop testproject" in err

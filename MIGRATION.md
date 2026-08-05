@@ -114,7 +114,17 @@ inside boxes. In order of likely impact:
     rejected token is now a hard error on every `start`, and a generated agent settings file no
     longer carries `model` (§2.15, §2.16).
 
-14. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+14. **If you pass flags to a box that may already be running, they are now refused instead of
+    silently ignored** (§2.17). `kanibako start -N <running box>` used to reattach you to the OLD
+    conversation without a word; it now errors. Same for `--rig`, `-e`, `--browser`,
+    `--share-images`, `--no-helpers`, `--no-auto-auth`, `-C`, `-R`, `-M`, `-A`, `-S`, and an
+    explicit `--persistent`/`--ephemeral`. The cure is the new **`kanibako --restart [box]`**, which
+    stops the box and starts it again with your flags in force. Scripts that start boxes with flags
+    are the thing to check. (Two upsides in the same change: a reattach no longer builds images or
+    makes network calls it cannot use, and `--entrypoint` against a live box now runs your command
+    in it as a second process instead of being dropped.)
+
+15. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -608,11 +618,13 @@ value that DIFFERS is now, by definition, a deliberate user override: keep it if
 - **A broken store config now blocks the launch** instead of silently running on stale values. The
   error names the cause — malformed JSON, no endpoint, an unusable token pointer. There is no
   last-known-good to fall back on, because nothing is kept.
-- **A token the endpoint positively rejects (401/403) is a hard error.** Every persona `start` now
-  probes the endpoint with a minimal request. ⚑ This includes a `start` that merely **reattaches to
-  an already-running box**, and it applies to keyspace-configured personas with no store entry at
-  all — not only store personas. An UNREACHABLE endpoint is *not* an error: it warns and proceeds.
-  `kanibako create` only ever warns, so a fixable credential never blocks a create.
+- **A token the endpoint positively rejects (401/403) is a hard error.** A persona `start` that
+  LAUNCHES a box probes the endpoint with a minimal request first, and it applies to
+  keyspace-configured personas with no store entry at all — not only store personas. An UNREACHABLE
+  endpoint is *not* an error: it warns and proceeds. `kanibako create` only ever warns, so a fixable
+  credential never blocks a create. ⚑ A `start` that merely **reattaches to an already-running box
+  does NOT probe** (§2.17): its agent is already running and authenticated, so there is nothing for
+  the probe to protect — and a probe there could refuse to reconnect you to a working box.
 - ⚑ **NEW: a persona's whole `env` block is now delivered into the box.** Previously kanibako read
   exactly three values out of a persona's `settings.json` (endpoint, model, token var) and ignored
   the rest of its `env`. Now every string-valued entry in that block is exported inside the box,
@@ -649,6 +661,51 @@ silently running against `gpt-5.5`. Set `agent.<node>.model`, or name a model in
 serve a single model or apply its own default. Whether a model is required is declared per harness;
 codex declares that it is, because an omitted key there means "use codex's own moving
 recommendation", not "no model".
+
+---
+
+### 2.17 Reattaching to a running box: flags are now refused instead of ignored
+
+Starting a box that is **already running** reattaches you to it. Previously that reattach still ran
+the whole launch preamble — it could resolve, **build or pull an image**, spawn a throwaway
+container to probe the launch baseline, and make a network call to verify a persona endpoint —
+and then attach to the running session, which none of that work could affect. Worst case, a persona
+whose token had since been revoked got a **hard error and no reattach**, locking you out of a box
+whose agent was up and working. v1.8.0 skips all of it: a reattach now does only what reattaching
+needs (refresh credentials, print the config notice, attach).
+
+**What you must do:** nothing, unless you pass flags to a box that is already up.
+
+**The behaviour change to expect:** flags that a running container cannot adopt are now **refused
+by name, with a nonzero exit**, where most of them were previously accepted and silently dropped.
+
+| Flag | Previously | Now |
+|---|---|---|
+| `--rig`/`--image`, `--browser`, `--share-images`, `--no-helpers`, `--no-auto-auth` | silently ignored (`--image` was even recorded, then ignored) | error |
+| `-e`/`--env` | silently ignored | error — *unless* `--entrypoint` is also given, which does apply it |
+| `-N`, `-C`, `-R`, `-M`, `-A`, `-S` | **silently ignored** — `kanibako start -N <running box>` reattached to the OLD conversation | error |
+| `--persistent`, `--ephemeral` (typed explicitly) | reattached / hit a generic error | error, leaving the running session untouched |
+| `--entrypoint` | silently ignored; you got the agent session instead | **runs the command as a second process in the box** |
+| `--attach`, `--detach`, `--print-container`, `--warm-only` | honoured | unchanged |
+
+⚑ **If you script `kanibako start` with flags, check whether the box may already be running.** A
+script that passed `-N` (or `--rig`) to a live box was silently getting something other than what it
+asked for; it now gets a clear failure instead.
+
+**The cure, and the new flag:** `kanibako --restart [box]` stops the box and starts it again with
+your flags in force. It is the one thing that bypasses these refusals — passing it *is* the
+statement "I know this needs a fresh container". `kanibako stop` followed by `kanibako start` does
+the same thing by hand.
+
+```console
+$ kanibako start -N mybox
+Error: Box 'mybox' is already running, so -N/--new cannot be applied to it (a running
+box keeps the container and the agent session it was launched with).
+  Restart it: kanibako --restart mybox
+  Or stop it: kanibako stop mybox
+
+$ kanibako --restart mybox      # stop, then start fresh with -N in force
+```
 
 ---
 

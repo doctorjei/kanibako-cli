@@ -112,6 +112,14 @@ migration code.** Four released config surfaces are removed outright
   floating, so an upstream release could change the verdict on source nobody had
   touched; a local green now predicts CI again, and adopting a new tool version is a
   deliberate commit of its own.
+- **`kanibako --restart [box]` — stop a box and start it again in one step.** The cure named
+  by the new running-box flag refusals (below): it stops the box, then launches it fresh with
+  the invocation's flags in force, so `kanibako --restart -N mybox` does what
+  `kanibako start -N mybox` looked like it did. It composes the `stop` verb rather than
+  reimplementing teardown, refuses to relaunch if the stop did not take, and is a no-op-then-start
+  on a box that was not running. It is also the ONE thing that bypasses those refusals — passing
+  it is the statement "I know this needs a fresh container". Spelled bare because `start` is the
+  default subcommand.
 
 ### Changed
 
@@ -292,9 +300,37 @@ migration code.** Four released config surfaces are removed outright
   the expander, so an `@` or `$` in the verbatim docker `env` family is data (an email
   address is not a dangling reference), and an unknown key is named as such before any
   probe judges its value.
+- **BREAKING: flags that a RUNNING box cannot adopt are now refused by name instead of silently
+  ignored.** Starting a box that is already up reattaches to it, and a container's creation-time
+  inputs and its agent's argv are both fixed at launch — so `--rig`/`--image`, `-e`/`--env`,
+  `--no-helpers`, `--no-auto-auth`, `--browser`, `--share-images`, `-N`, `-C`, `-R`, `-M`, `-A`,
+  `-S`, and an explicitly typed `--persistent`/`--ephemeral` now produce an actionable error with a
+  nonzero exit. ⚑ The one that bit hardest was silent: **`kanibako start -N <running box>`
+  reattached you to the OLD conversation** rather than starting a new one, and `--image` was even
+  recorded as the box's image before being ignored. The error names every offending flag and the
+  cure (`kanibako --restart`). An explicit session-shape refusal leaves the running session
+  completely untouched — nothing is signalled, killed, or attached. Exempt because they are
+  genuinely honoured against a live box: `--attach`, `--detach`, `--print-container`, `--warm-only`,
+  `--entrypoint`, and `-e`/`--env` when it accompanies an `--entrypoint`. ⚑ **Check scripts that
+  pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` §2.17).
 
 ### Fixed
 
+- **Reattaching to a running box no longer runs the whole launch preamble.** `kanibako start`
+  against a box that is already up reattaches to it — but it used to first resolve the rig
+  (**building or pulling an image**), settle the shadowing-flag persist, cache the image's login
+  shell, check image freshness, spawn a throwaway container to probe the launch baseline, run the
+  persona load-or-error pre-flight **including its network probe**, check box components, and write
+  persona artifacts. None of it could affect the session being attached to. ⚑ The persona probe was
+  the sharp edge: a **`REJECTED` verdict is a hard error**, so a token revoked since launch locked
+  you out of a box whose agent was up and authenticated. A reattach now does only what it needs —
+  refresh credentials, print the reconciled-config notice, attach — and the agent config is never
+  rewritten under a live agent.
+- **`--entrypoint` against a running box runs your command instead of being dropped.** It now execs
+  as a second process in the box, per-run `-e` applied — the behaviour `kanibako shell <box> -- cmd`
+  already had ephemerally. Previously `start` defaulted to persistent whenever tmux was present, so
+  the invocation reattached and the entrypoint was silently discarded. Same fix covers
+  `kanibako shell --persistent <box> -- cmd`.
 - **A flag now works wherever you type it.** `kanibako box set <box> --null <key>` failed
   with `unrecognized arguments: <key>` — argparse groups positionals around the optionals
   between them, so a flag written *between* two positionals stranded everything after it

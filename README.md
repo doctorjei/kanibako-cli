@@ -375,6 +375,15 @@ context.
 | `--no-helpers` | Disable helper spawning |
 | `--no-auto-auth` | Disable automated browser-based OAuth refresh |
 | `--browser` | Launch a headless browser sidecar (`BROWSER_WS_ENDPOINT` injected) |
+| `--restart` | Stop the box first, then start it fresh (`start` only) — the way to apply flags to a box that is already running |
+
+⚑ **Against a box that is already RUNNING, most of these are refused, not applied.** A running
+container keeps the creation-time settings and the agent session it was launched with, so
+`--image`, `-e`, `--no-helpers`, `--no-auto-auth`, `--browser`, `--share-images`, an explicit
+`--persistent`/`--ephemeral`, and the agent flags `-N -C -R -M -A -S` produce an error naming the
+cure rather than being silently dropped. Use `kanibako --restart [box]` to stop and relaunch with
+them in force. Two exceptions: `--entrypoint` runs your command as a **second process inside the
+running box** (with `-e` applied), and `--detach`/`--print-container`/`--warm-only` are honoured.
 
 ### Global Flags
 
@@ -1094,6 +1103,16 @@ kanibako start myproject
 # Detach: Ctrl-B d (agent keeps running)
 # Reattach later:
 kanibako start myproject
+
+# A reattach does ONLY what reattaching needs: it does not rebuild or pull an
+# image, probe the launch baseline, or verify a persona endpoint over the
+# network -- none of which could affect the session it is attaching to.
+# Flags that the running container cannot adopt are refused rather than
+# ignored; restart the box to apply them:
+kanibako --restart -N myproject     # stop, then start a NEW conversation
+
+# Run a command as a second process inside the running box:
+kanibako start --entrypoint htop myproject
 
 # Start without tmux (session dies when terminal closes)
 kanibako start --ephemeral myproject
