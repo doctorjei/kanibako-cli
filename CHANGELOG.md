@@ -315,6 +315,23 @@ migration code.** Four released config surfaces are removed outright
   will apply it (`--entrypoint`, or `kanibako shell --persistent` at a box that is running an
   agent) — env is refused only where nothing would consume it. ⚑ **Check scripts that
   pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` §2.17).
+- **BREAKING: a launch no longer rebuilds a box whose directory has been deleted — it refuses.**
+  If a box's registration survives but its box directory is gone, `kanibako start` used to
+  silently re-create the directory and re-seed the home, reporting nothing. That is a *repair*,
+  not a launch, and a repair has to be asked for by name. The launch now errors before touching
+  the filesystem, names the box and the missing directory, and prints the one command that
+  rebuilds it: `kanibako create <workspace>` for a default-mode box, `kanibako workset
+  disconnect <workset> <box> && kanibako workset connect <workset> <workspace>` for a workset
+  member. Unaffected: `create`, `restore`, and the first launch of a box added with `workset
+  connect` (connect registers the box without seeding it, so that launch is a genuine
+  materialisation). ⚑ **Check anything that deletes box directories and relies on the next
+  `start` to put them back** (`MIGRATION.md` §2.18).
+- **BREAKING: a box-config verb run from a directory that is not a box now errors.** `kanibako
+  box set box.<key>=<value>` (and `get`/`show`/`reset`) with no box named, run from a cwd with no
+  box, used to write `boxes/__unregistered__/settings.yaml` and report success at rc 0 — a
+  settings file for a box that does not exist, which nothing ever reads. It now refuses, naming
+  the directory and the two ways forward: name the box (`kanibako box set <box>
+  <key>=<value>`) or make one (`kanibako create`).
 
 ### Fixed
 

@@ -12,7 +12,12 @@ from __future__ import annotations
 
 import argparse
 
-from kanibako.commands.start import _no_box_error, _resolve_existing_box, _run_container
+from kanibako.commands.start import (
+    _no_box_error,
+    _resolve_existing_box,
+    _run_container,
+    _unbuilt_box_error,
+)
 
 
 def _launch(project_dir, **over):
@@ -181,6 +186,167 @@ class TestInterruptedCreateBoundary:
         assert _pending_create_entry(std, proj) is None
         assert load_primary_boxes(std.primary_workset).get("project") == project_dir
         assert _resolve_existing_box(std, config, None) is not None
+
+
+# ---------------------------------------------------------------------------
+# MBR-6: a launch REFUSES a registered box whose directory is gone
+# ---------------------------------------------------------------------------
+
+class TestLaunchRefusesUnbuiltBox:
+    """Jei 2026-08-02f: *"no, a launch should not silently rebuild anything."*
+
+    A registered box whose directory has been deleted used to be re-materialised
+    by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
+    box, and leaves the filesystem untouched.
+    """
+
+    def test_registered_box_with_missing_dir_refuses_and_builds_nothing(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        import shutil
+
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.paths import load_primary_boxes
+
+        config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        box_dir = std.boxes / "project"
+        assert box_dir.is_dir()
+        capsys.readouterr()
+
+        # The box dir goes; the registration survives.  That IS the case.
+        shutil.rmtree(box_dir)
+        assert load_primary_boxes(std.primary_workset).get("project") == str(
+            tmp_home / "project"
+        )
+
+        rc = _launch(None)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "is registered, but its box directory is gone" in err
+        assert "box 'project'" in err
+        assert "will not rebuild it" in err
+        # NOTHING was materialised — not the box dir, not a home tree.
+        assert not box_dir.exists()
+        # ...and the registration is left exactly as it was, so the cure below
+        # has something to work with.
+        assert load_primary_boxes(std.primary_workset).get("project") == str(
+            tmp_home / "project"
+        )
+
+    def test_the_cure_the_refusal_names_actually_works(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The B9 standard: a cure that does not work is worse than no cure.
+
+        The message names ``kanibako create <workspace>``; run exactly that and
+        the box must come back and pass the launch gate.
+        """
+        import shutil
+
+        from kanibako.commands.box._parser import run_create
+
+        config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        shutil.rmtree(std.boxes / "project")
+        capsys.readouterr()
+
+        assert _launch(None) == 1
+        err = capsys.readouterr().err
+        assert f"Rebuild it:  kanibako create {tmp_home / 'project'}" in err
+
+        # The cure, run as printed.
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        assert (std.boxes / "project" / "home").is_dir()
+        assert _resolve_existing_box(std, config, None) is not None
+
+    def test_shell_and_named_target_route_through_the_same_gate(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """``kanibako shell`` and a bare-NAME target hit the one chokepoint too."""
+        import shutil
+
+        from kanibako.commands.box._parser import run_create
+
+        _config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        shutil.rmtree(std.boxes / "project")
+        capsys.readouterr()
+
+        assert _launch(None, box_shell_mode=True) == 1
+        assert "its box directory is gone" in capsys.readouterr().err
+        assert _launch("project") == 1
+        assert "its box directory is gone" in capsys.readouterr().err
+        assert not (std.boxes / "project").exists()
+
+
+class TestUnbuiltBoxErrorMessage:
+    """``_unbuilt_box_error`` unit: which boxes it refuses, and the cure it names."""
+
+    def test_intact_box_is_not_refused(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        from kanibako.commands.box._parser import run_create
+
+        config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None
+        assert _unbuilt_box_error(proj) is None
+
+    def test_connected_workset_box_is_not_refused_before_its_first_launch(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ The reason the test is the BOX DIR and not the home tree.
+
+        ``workset connect`` registers the box and creates its dir but NEVER
+        seeds — the home is materialised by the FIRST launch.  Gating on
+        ``shell_path`` would refuse that sanctioned flow.
+        """
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.paths import resolve_box_target
+
+        config, std = _std(config_file)
+        ws = create_workset("wsa", tmp_home / "wsa", std)
+        src = tmp_home / "member"
+        src.mkdir()
+        add_project(ws, "member", src, std)
+
+        proj = resolve_box_target(
+            std, config, str(src), initialize=False, register=True, warn=False,
+        )
+        assert proj.name == "member"
+        assert not proj.shell_path.exists()  # never seeded by connect
+        assert _unbuilt_box_error(proj) is None
+
+    def test_named_box_with_missing_dir_names_the_workset_cure(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """``create`` refuses inside a workset member ("already initialized"), so
+        the named-box cure is ``workset disconnect`` + ``workset connect``."""
+        import shutil
+
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.paths import resolve_box_target
+
+        config, std = _std(config_file)
+        ws = create_workset("wsa", tmp_home / "wsa", std)
+        src = tmp_home / "member"
+        src.mkdir()
+        add_project(ws, "member", src, std)
+
+        proj = resolve_box_target(
+            std, config, str(src), initialize=False, register=True, warn=False,
+        )
+        shutil.rmtree(proj.metadata_path)
+
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert "box 'member' is registered" in msg
+        assert (
+            f"Rebuild it:  kanibako workset disconnect wsa member "
+            f"&& kanibako workset connect wsa {src}"
+        ) in msg
 
 
 # ---------------------------------------------------------------------------

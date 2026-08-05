@@ -966,6 +966,58 @@ def _no_box_error(project_dir: str | None) -> str:
     return f"Error: no box at {target}. To create a new box, run '{suggest}'"
 
 
+def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
+    """The launch-time "registered, but its box directory is gone" refusal, or
+    ``None`` when the directory is where the registration says it is.
+
+    MBR-6 (Jei, 2026-08-02f): *"no, a launch should not silently rebuild
+    anything."*  ``_run_container``'s explicit-create gate only asks whether a box
+    is REGISTERED; the materialising resolve right after it re-creates a missing
+    box directory UNDER that surviving registration and reports ``is_new``.  That
+    is a REPAIR of an existing box, not a creation, and a repair has to be asked
+    for by name.  Called from that same gate, on its NON-materialising probe and
+    before the resolve, so the refusal leaves nothing behind on disk.
+
+    ⚑ The test is the BOX DIRECTORY (``metadata_path``), NOT the home tree.  A
+    NAMED workset box is registered by ``workset connect``, which creates the box
+    dir but deliberately NEVER seeds (see ``workset_cmd.run_connect``): its home
+    is materialised by its FIRST launch, legitimately, so gating on ``shell_path``
+    would refuse exactly that flow.  A STANDALONE box whose ``box_data/`` is gone
+    resolves to no name at all, so the explicit-create gate answers it first and
+    it never reaches here.
+
+    ⚑ The CURE LINE is the part a future ``repair`` verb replaces (tasks.md
+    MBR-6); everything above it describes the box, not the remedy.  Both cures
+    were run against the live CLI on a box whose directory had already been
+    deleted: ``kanibako create <workspace>`` rebuilds a PRIMARY box in place and
+    keeps its registration, while a NAMED box needs ``workset disconnect`` +
+    ``workset connect`` (``create`` refuses there — "project already
+    initialized").
+    """
+    from kanibako.settings.paths import BoxMode
+
+    if proj.metadata_path.is_dir():
+        return None
+    label = proj.name or str(proj.project_path)
+    workspace = shlex.quote(str(proj.project_path))
+    if proj.mode is BoxMode.named and proj.group is not None:
+        ws = shlex.quote(proj.group.name)
+        cure = (
+            f"  Rebuild it:  kanibako workset disconnect {ws} "
+            f"{shlex.quote(proj.name)}"
+            f" && kanibako workset connect {ws} {workspace}"
+        )
+    else:
+        cure = f"  Rebuild it:  kanibako create {workspace}"
+    return (
+        f"Error: box '{label}' is registered, but its box directory is gone "
+        f"({proj.metadata_path}).\n"
+        "  A launch will not rebuild it — rebuilding a box is a repair, and a "
+        "repair has to be asked for by name.\n"
+        f"{cure}"
+    )
+
+
 # Sentinel returned by _check_launch_baseline when the launch-critical bootstrap
 # program is missing from the image (tier-1 hard-stop).
 _BOOTSTRAP_MISSING = object()
@@ -2040,8 +2092,18 @@ def _run_container(
     # cwd.  This single chokepoint covers every launch route (``start`` / bare
     # ``kanibako`` / ``code`` → start_detached → here / ``shell``).  Auto-START of
     # an EXISTING box is UNCHANGED — the probe passes and the flow continues.
-    if _resolve_existing_box(std, config, project_dir) is None:
+    _existing = _resolve_existing_box(std, config, project_dir)
+    if _existing is None:
         print(_no_box_error(project_dir), file=sys.stderr)
+        return 1
+
+    # MBR-6 (Jei 2026-08-02f, "no, a launch should not silently rebuild
+    # anything"): the gate above passes a box whose REGISTRATION survives but
+    # whose box DIRECTORY is gone — and the resolve below would rebuild it.
+    # Refuse it on the probe, while nothing has been materialised yet.
+    _unbuilt = _unbuilt_box_error(_existing)
+    if _unbuilt is not None:
+        print(_unbuilt, file=sys.stderr)
         return 1
 
     proj = resolve_box_target(
@@ -2964,9 +3026,8 @@ def _run_container(
         #
         # EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER auto-creates a box —
         # the explicit-create gate at the top of ``_run_container`` already errored
-        # out for any target that is not a fully-registered box, so in real
-        # operation ``proj.is_new`` is False here and this block does not run (an
-        # existing box is never is_new).  Two deliberate consequences:
+        # out for any target that is not a fully-registered box.  Three deliberate
+        # consequences:
         #   * The launch path no longer completes an INTERRUPTED create — the old
         #     ``or _pending_create_entry(...)`` clause is REMOVED.  A half-created,
         #     not-yet-registered box reads as "no box" at the gate and errors;
@@ -2974,9 +3035,16 @@ def _run_container(
         #     (re-running ``kanibako create`` replays seed → register → clear-entry
         #     in ``run_create``).  The launch must not silently resurrect/complete
         #     someone's half-finished create.
-        #   * The ``if proj.is_new:`` guard is retained (not dead semantics — it is
-        #     the correct action IF a box were ever materialized on this path) and
-        #     is the seam the ``_run_container`` seed-routing unit tests drive.
+        #   * MBR-6 (Jei 2026-08-02f) removed the OTHER way a launch reached this
+        #     block: a REGISTERED box whose directory had been deleted used to be
+        #     rebuilt here, which is a repair rather than a creation.
+        #     ``_unbuilt_box_error`` refuses it at the gate now.
+        #   * ⚑ What is LEFT is real, not defensive: a NAMED workset box registered
+        #     by ``workset connect`` — which creates the box dir but NEVER seeds —
+        #     is materialized and seeded by its FIRST launch, right here, with
+        #     ``proj.is_new`` True.  That is the sanctioned connect flow, so this
+        #     block is LIVE on it (and it is also the seam the ``_run_container``
+        #     seed-routing unit tests drive).
         if proj.is_new:
             _write_create_entry(std, proj)
             _seed_box_home(

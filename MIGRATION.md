@@ -125,7 +125,15 @@ inside boxes. In order of likely impact:
     makes network calls it cannot use, and `--entrypoint` against a live box now runs your command
     in it as a second process instead of being dropped.)
 
-15. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+15. **If anything you run deletes a box directory and lets the next `start` put it back, it now
+    errors instead** (§2.18). A launch never rebuilds a box: with the registration intact and the
+    box directory gone, `kanibako start` used to silently re-create and re-seed it. It now refuses
+    and prints the command that rebuilds it (`kanibako create <workspace>`, or `workset disconnect`
+    + `workset connect` for a workset member). In the same section: `kanibako box set
+    box.<key>=<value>` from a directory that is **not** a box now errors instead of writing a
+    settings file for a box that does not exist.
+
+16. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -707,6 +715,61 @@ box keeps the container and the agent session it was launched with).
 
 $ kanibako --restart mybox      # stop, then start fresh with -N in force
 ```
+
+---
+
+### 2.18 A launch never rebuilds anything
+
+Two places used to materialise something rather than tell you it was missing. Both now refuse.
+
+**A registered box whose directory is gone.** A box's registration and its box directory are
+separate things: `box rm` without `--purge` drops one, and deleting `<data>/…/boxes/<name>` (or
+losing the volume it lived on) drops the other. With the registration intact and the directory
+gone, `kanibako start` used to silently re-create the directory and re-seed the home, printing
+nothing about it. That is a repair, not a launch — and a repair has to be asked for by name — so
+the launch now errors before touching the filesystem:
+
+```console
+$ kanibako start
+Error: box 'myproj' is registered, but its box directory is gone
+(/home/you/.local/share/kanibako/primary_workset/boxes/myproj).
+  A launch will not rebuild it — rebuilding a box is a repair, and a repair has to be
+  asked for by name.
+  Rebuild it:  kanibako create /home/you/myproj
+```
+
+**What you must do:** nothing up front. If you hit the error, run the `Rebuild it:` line — it
+rebuilds the box in place and keeps its registration. For a **workset member** the rebuild is
+`kanibako workset disconnect <workset> <box> && kanibako workset connect <workset> <workspace>`
+(`create` refuses inside a workset member with "project already initialized"); the message prints
+the right one for the box you are launching.
+
+⚑ **Check scripts and cleanup jobs that delete box directories** and rely on the next `start` to
+put them back — they now need the explicit rebuild command. A dedicated `repair` verb is planned;
+when it lands it replaces the `Rebuild it:` line and nothing else about this error changes.
+
+**Unaffected**, because they materialise a box legitimately: `kanibako create`, `kanibako restore`,
+and the **first launch of a box added with `workset connect`** — connect registers the box and
+creates its directory but deliberately never seeds it, so that first `start` is the box's real
+materialisation and still works exactly as before.
+
+**A box-config verb with no box.** `kanibako box set box.<key>=<value>` with no box named, run
+from a directory that is not a box, used to write `boxes/__unregistered__/settings.yaml` and exit
+**0** — a settings file for a box that does not exist, which no launch ever reads. The same held
+for `box get`, `box show` and `box reset`. All four now error:
+
+```console
+$ cd ~/somewhere-that-is-not-a-box
+$ kanibako box set box.image=myimage:1
+Error: no box at /home/you/somewhere-that-is-not-a-box — kanibako has no box registered
+for this directory, and a setting has to belong to a box.
+  Name the box:   kanibako box set <box> <key>=<value>
+  Or make one:    kanibako create
+```
+
+**What you must do:** if you have a stray `<data>/<workset>/boxes/__unregistered__/` directory
+from before the upgrade, delete it — nothing reads it. Any values you meant to set are still
+unset; re-run the command with the box named.
 
 ---
 
