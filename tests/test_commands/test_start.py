@@ -5667,13 +5667,19 @@ class TestPersonaLoadOrErrorIntegration:
     def test_deferred_new_box_rebinds_project_toml(
         self, start_mocks, tmp_path, monkeypatch,
     ):
-        # A brand-new DEFERRED (persona) box resolves the probe against the
-        # placeholder metadata_path (boxes/__unregistered__), then materialises the
-        # real one.  The image-override persist + every downstream box-tier
-        # read/write MUST use the REAL box settings file, never __unregistered__/
-        # (Editor round-1 ADD-c).  Mutation-proven: drop the post-materialize
-        # rebind and the write lands in __unregistered__/ → this reddens.
-        unreg = tmp_path / "boxes" / "__unregistered__"
+        # A DEFERRED (persona) launch resolves the probe against ONE box dir and
+        # then materialises against ANOTHER.  The image-override persist + every
+        # downstream box-tier read/write MUST use the box settings file of the
+        # SECOND one (Editor round-1 ADD-c).  Mutation-proven: drop the
+        # post-materialize rebind and the write lands in the probe's dir → this
+        # reddens.
+        # ⚑ MBR-6: the probe's dir EXISTS here.  A launch now refuses a box whose
+        # directory is gone, so the historical spelling of this case — a brand-new
+        # box probing the never-created ``boxes/__unregistered__`` placeholder — is
+        # refused at the gate before it can reach the rebind.  What is pinned is
+        # unchanged: two DIFFERENT dirs across the two resolves.
+        probe_dir = tmp_path / "boxes" / "__unregistered__"
+        probe_dir.mkdir(parents=True)
         real = tmp_path / "boxes" / "navigator-box"
         real.mkdir(parents=True)
         with start_mocks() as m:
@@ -5690,7 +5696,7 @@ class TestPersonaLoadOrErrorIntegration:
                     m.proj.metadata_path = real
                     m.proj.is_new = True
                 else:
-                    m.proj.metadata_path = unreg
+                    m.proj.metadata_path = probe_dir
                     m.proj.is_new = False
                 return m.proj
 
@@ -5717,7 +5723,7 @@ class TestPersonaLoadOrErrorIntegration:
             from kanibako.settings.config_io import load_doc
             written = load_doc(real / "settings.yaml")
             assert written.get("box", {}).get("image") == "custom:img"
-            assert not (unreg / "settings.yaml").exists()
+            assert not (probe_dir / "settings.yaml").exists()
 
 
 class TestPersonaLoadOrErrorUnmasked:

@@ -406,6 +406,91 @@ class TestBoxConfigReset:
         assert "requires a key" in capsys.readouterr().err
 
 
+class TestBoxConfigRefusesThePhantomBox:
+    """MBR-6: a subject-less box-config verb run from a cwd that is NOT a box
+    must REFUSE, not materialise ``boxes/__unregistered__/settings.yaml``.
+
+    ``_resolve_local_dir`` returns that path as a NAME-ASSIGNMENT SENTINEL for
+    resolvers that go on to pick a real name.  The config verbs pick none, so the
+    sentinel was being written to as if it were a box, at rc 0.
+    """
+
+    def _std(self, config_file):
+        from kanibako.settings.paths import load_std_paths
+
+        return load_std_paths(load_config(config_file))
+
+    def test_set_from_a_non_box_cwd_errors_and_writes_nothing(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        from kanibako.commands.box._parser import run_set
+
+        std = self._std(config_file)
+        elsewhere = tmp_home / "not_a_box"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        rc = run_set(argparse.Namespace(args=["box.image=phantom:1"], force=False))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "no box at" in err
+        assert str(elsewhere) in err
+        assert not (std.boxes / "__unregistered__").exists(), (
+            "the __unregistered__ sentinel must never be materialized as a real box"
+        )
+
+    def test_get_show_and_reset_refuse_the_same_way(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """One seam, so every verb that addresses a box refuses together —
+        ``reset --all`` included (it writes too)."""
+        from kanibako.commands.box._parser import (
+            run_get,
+            run_reset,
+            run_show,
+        )
+
+        std = self._std(config_file)
+        elsewhere = tmp_home / "not_a_box"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        assert run_get(argparse.Namespace(args=["box.image"])) == 1
+        assert "no box at" in capsys.readouterr().err
+        assert run_show(argparse.Namespace(args=[], effective=False)) == 1
+        assert "no box at" in capsys.readouterr().err
+        assert run_reset(argparse.Namespace(
+            args=["box.image"], reset_all=False, force=True,
+        )) == 1
+        assert "no box at" in capsys.readouterr().err
+        assert run_reset(argparse.Namespace(
+            args=[], reset_all=True, force=True,
+        )) == 1
+        assert "no box at" in capsys.readouterr().err
+        assert not (std.boxes / "__unregistered__").exists()
+
+    def test_a_real_box_is_untouched_by_the_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """The cure the message names — address the box — works."""
+        from kanibako.commands.box._parser import run_set
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        # cwd is NOT the box — the named subject is what resolves it.
+        monkeypatch.chdir(tmp_home)
+        rc = run_set(argparse.Namespace(
+            args=[project_dir, "box.image=real:1"], force=False,
+        ))
+        assert rc == 0
+        assert "real:1" in capsys.readouterr().out
+        assert not (std.boxes / "__unregistered__").exists()
+
+
 class TestBoxConfigArgParsing:
     """Test the discrete-verb parsers and their flags."""
 

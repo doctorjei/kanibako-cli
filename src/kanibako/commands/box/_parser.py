@@ -2167,6 +2167,41 @@ def run_show(args: argparse.Namespace) -> int:
     return _run_box_config(args)
 
 
+def _resolve_config_subject(std, config, project_dir: str | None):
+    """Resolve the box the ``box`` config verbs address — refusing the
+    ``__unregistered__`` phantom (MBR-6, Jei 2026-08-02f).
+
+    ``_resolve_local_dir`` answers "no PRIMARY box is registered for this
+    workspace" with the SENTINEL ``("", std.boxes / "__unregistered__")`` — a
+    name-assignment placeholder for the resolvers that go on to pick a real name
+    (``resolve_project``'s create block; ``restore``, which rewrites it with the
+    box's real name).  The config verbs pick NO name: they simply address the box
+    the sentinel points at, so ``box set box.image=…`` from a cwd that is no box
+    used to WRITE ``boxes/__unregistered__/settings.yaml`` and report success —
+    materialising a placeholder instead of refusing.
+
+    Refused here, at the verb's own seam, so the sentinel keeps working for the
+    resolvers that legitimately replace it.  ``mode is primary and not name`` IS
+    the sentinel: for a PRIMARY box an empty name means the membership
+    reverse-lookup missed, which is the only way that path is returned; NAMED
+    raises :class:`WorksetError` for a non-member, and STANDALONE addresses its
+    own in-tree files rather than ``std.boxes``.
+
+    Raises :class:`ProjectError` (the shape every caller here already handles).
+    """
+    proj = resolve_any_project(
+        std, config, project_dir=project_dir, initialize=False,
+    )
+    if proj.mode is BoxMode.primary and not proj.name:
+        raise ProjectError(
+            f"no box at {proj.project_path} — kanibako has no box registered "
+            "for this directory, and a setting has to belong to a box.\n"
+            "  Name the box:   kanibako box set <box> <key>=<value>\n"
+            "  Or make one:    kanibako create"
+        )
+    return proj
+
+
 def _run_box_config(args: argparse.Namespace) -> int:
     """Shared project-config engine dispatch.
 
@@ -2219,7 +2254,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # --reset with --all: reset everything
         if args.reset_all or args.reset == "__ALL__":
             try:
-                proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+                proj = _resolve_config_subject(std, config, project_dir)
             except ProjectError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
@@ -2235,7 +2270,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         # --reset KEY: reset a specific key
         reset_key = args.reset
         try:
-            proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+            proj = _resolve_config_subject(std, config, project_dir)
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -2280,7 +2315,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
 
     # Resolve the project
     try:
-        proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
+        proj = _resolve_config_subject(std, config, project_dir)
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

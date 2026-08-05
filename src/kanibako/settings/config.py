@@ -445,9 +445,12 @@ def persist_creation_flags(
     launch path both read off their resolve's ``proj.is_new``. Every caller
     routes through THIS gate; there is no per-path persist logic (the former
     ``start._persist_image_override`` and its deferred-arm replay collapsed into
-    it), so ``create``, a launch that materializes a registered-but-unbuilt box,
-    and a plain ``start --image`` on an EXISTING box (strictly ephemeral) all
-    get the rule from one place.
+    it), so ``create``, the first launch of a ``workset connect``-ed box (connect
+    registers the box and creates its dir but never seeds, so that launch is the
+    materialization), and a plain ``start --image`` on an EXISTING box (strictly
+    ephemeral) all get the rule from one place. ⚑ A launch that rebuilt a
+    REGISTERED box whose directory had been deleted used to reach here too; MBR-6
+    refuses that case at the launch gate now — it is a repair, not a creation.
 
     Only EXPLICITLY-GIVEN flag values persist: an absent flag (``None``; ``""``
     for *image* — absent ≠ ``""``) writes NOTHING, so a no-flag create bakes NO
