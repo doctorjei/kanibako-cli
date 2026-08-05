@@ -108,7 +108,13 @@ inside boxes. In order of likely impact:
     symlinked template files into a dotfiles repo, replace them with real files or a bind
     (§2.13).
 
-13. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+13. **If you use PERSONA agents, delete persona values you did not write yourself** from
+    `agents/<node>/settings.yaml` — the store is now read live and a leftover synced value
+    silently outranks it (§2.15). Also: a persona's whole `env` block now reaches the box, a
+    rejected token is now a hard error on every `start`, and a generated agent settings file no
+    longer carries `model` (§2.15, §2.16).
+
+14. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -576,9 +582,97 @@ replace the symlink with a real file (`cp --dereference`), or deliver the conten
   (Suppression at agent scope is not supported: the per-agent settings file is read back with
   every value coerced to a string, so a null there would return as the text `None`.)
 
+### 2.15 Personas: the store is read live, and stray values in the agent file now win
+
+If you use persona agents (`<persona>+<harness>`, e.g. `navigator+codex`), the way their endpoint,
+model and bearer token reach a box has changed shape.
+
+- **Before:** every start reparsed the persona-grata store, verified the values with a probe, and
+  on PASS wrote endpoint, model and the token pointer into `agents/<node>/settings.yaml`. The
+  launch then resolved that file. On a FAIL it kept the previously-written values and launched.
+- **Now:** the store is read fresh on every launch and resolved directly, as a cascade level below
+  the agent settings file and above the harness defaults. **Nothing is written.** A launch leaves
+  `agents/<node>/settings.yaml` byte-identical, and `kanibako create` no longer imports anything.
+
+**What you must do: delete persona values you did not write yourself.** This is the one action this
+change requires, and nothing warns you about it.
+
+The agent settings file outranks the live store, so any `endpoint`, `model` or `secret_path.<VAR>`
+that the old sync wrote into `agents/<node>/settings.yaml` (kanibako ≤ `v1.8.0-rc1`) keeps
+overriding the store — you edit the persona's `settings.json` and nothing changes, silently. Remove
+those keys. A value that MATCHES the store is always safe to delete (the live tier supplies it). A
+value that DIFFERS is now, by definition, a deliberate user override: keep it if you meant it.
+
+**Behaviour changes to expect:**
+
+- **A broken store config now blocks the launch** instead of silently running on stale values. The
+  error names the cause — malformed JSON, no endpoint, an unusable token pointer. There is no
+  last-known-good to fall back on, because nothing is kept.
+- **A token the endpoint positively rejects (401/403) is a hard error.** Every persona `start` now
+  probes the endpoint with a minimal request. ⚑ This includes a `start` that merely **reattaches to
+  an already-running box**, and it applies to keyspace-configured personas with no store entry at
+  all — not only store personas. An UNREACHABLE endpoint is *not* an error: it warns and proceeds.
+  `kanibako create` only ever warns, so a fixable credential never blocks a create.
+- ⚑ **NEW: a persona's whole `env` block is now delivered into the box.** Previously kanibako read
+  exactly three values out of a persona's `settings.json` (endpoint, model, token var) and ignored
+  the rest of its `env`. Now every string-valued entry in that block is exported inside the box,
+  minus `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, which ride their own channels. **If you
+  put a variable in a persona's `settings.json` for the benefit of the host harness, it now also
+  reaches the container.** Review those blocks before upgrading. (Claude personas only — the codex
+  reader carries no `env`.)
+- Deleting a value from the store now simply stops it resolving on the next launch.
+
+### 2.16 A generated agent settings file no longer carries a model default
+
+`kanibako setup` and first use used to seed a new agent settings file with the plugin's own default
+(claude wrote `model: opus`, codex wrote `model: gpt-5.5`). A stored default outranks the defaults
+floor, so every install seeded that way stayed pinned to the value current when it was created, even
+after the plugin's default moved on. New agent settings files no longer carry it.
+
+⚑ **This is not persona-only** — it applies to bare agents too. **`kanibako agent <agent> model` on
+a fresh install now reports `(not set)` where 1.7.2 reported `opus`.** Nothing about resolution
+changed; `agent get` reads the file and the file no longer states a value the floor already
+supplies.
+
+**Existing files are not touched.** A `model: opus` line left in place keeps working and keeps
+pinning; deleting it changes nothing today and un-pins you from future default evolution. A
+hand-typed pin is indistinguishable from the seed, so if you meant it, leave it.
+
+⚑ **One real behaviour change, codex personas only.** The launch resolve deliberately drops the
+harness `model` default so that an unset persona model surfaces an actionable error rather than
+shipping an own-endpoint default into a third-party provider block. On a first launch there is no
+settings file, so the seed had been re-supplying exactly the value that exclusion dropped. A fresh
+codex-persona box whose store config names no model now refuses at the pre-flight instead of
+silently running against `gpt-5.5`. Set `agent.<node>.model`, or name a model in the store config.
+
+⚑ **A missing model is not, by itself, invalid.** Some endpoints do not require one — a provider may
+serve a single model or apply its own default. Whether a model is required is declared per harness;
+codex declares that it is, because an omitted key there means "use codex's own moving
+recommendation", not "no model".
+
 ---
 
 ## 3. For plugin authors
+
+⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
+updating, and one of them fails at IMPORT time:**
+
+- **`probe_verdict` is REMOVED** from `kanibako.targets.base`, replaced by `probe_outcome`. It was
+  public in released 1.7.2 and the published `kanibako-agent-claude` 1.7.2 imports it at module
+  scope, so an OLD plugin wheel against the NEW base raises `ImportError` out of every command that
+  resolves an agent — not just persona ones. This is why the publish ORDER below matters; upgrade
+  the plugins with the base.
+- **`Target.read_persona_settings`** returns `PersonaReadOutcome` (a tri-state: usable config ·
+  present-but-unusable with a named cause · this harness has no persona reader) instead of
+  `PersonaSettings | None`.
+- **`Target.verify_persona`** returns `PersonaProbeOutcome` (PASS · REJECTED · INCONCLUSIVE ·
+  NOT_APPLICABLE, each carrying a reason where one is meaningful) instead of `bool | None`.
+  ⚑ Build the probe request WITHOUT a `model` key when the persona names no model, rather than
+  declining to probe or substituting a default id: some endpoints do not require one, and a server
+  with a hardwired model can reject an id it does not serve.
+- **`PersonaSpec.host_dir_adopt` is removed** along with the legacy claude host-dir path (§2.11's
+  sibling entry in the CHANGELOG). A `persona:` block that still declares it keeps loading — the
+  key is accepted and ignored, deliberately, so a version-skewed wheel does not break.
 
 The three agent plugins (`kanibako-agent-claude`, `-codex`, `-goose`) version and publish
 independently of the base and depend on **`kanibako-cli`** with **no version pin**; only the

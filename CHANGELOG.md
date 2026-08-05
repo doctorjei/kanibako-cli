@@ -227,6 +227,34 @@ migration code.** Four released config surfaces are removed outright
   --all` untouched. All three verbs, reset-all and the launch now agree on
   `<data>/global/settings.yaml`. A hand-placed system binding that exists only in the
   config file now gets a must-exist refusal; the cure is to move the sub-table.
+- **BREAKING: a persona's values are resolved LIVE and never written to disk.** The persona-grata
+  store used to be reparsed at every start, verified, and PERSISTED into
+  `agents/<node>/settings.yaml`, which the launch then resolved. It is now read fresh on every
+  launch and resolved directly, as a cascade level below the agent settings file. Nothing is
+  written; a launch leaves that file byte-identical and `create` imports nothing. **A value the old
+  sync wrote there still OUTRANKS the live store** — delete persona values you did not write
+  yourself, or edits to the store will silently do nothing (see `MIGRATION.md` §2.15). A broken
+  store config is now a hard error naming the cause instead of a silent fall back to stale values,
+  and a token the endpoint rejects (401/403) refuses the launch — every persona `start` now probes,
+  including a reattach to a running box. An unreachable endpoint only warns.
+- **A persona's whole `env` block now reaches the box.** The reader took exactly three values
+  (endpoint, model, token var) and discarded the rest of a persona `settings.json`'s `env`; every
+  string-valued entry is now exported inside the container, minus `ANTHROPIC_BASE_URL` and
+  `ANTHROPIC_AUTH_TOKEN`, which have their own channels. A non-string value is named rather than
+  dropped in silence. Review those blocks before upgrading. Claude personas only.
+- **A generated agent settings file no longer carries a model default** (was `model: opus` for
+  claude, `gpt-5.5` for codex). A stored default outranks the defaults floor, pinning every seeded
+  install to whatever was current when it was made. Not persona-only: `kanibako agent <agent> model`
+  on a fresh install now reports `(not set)` where it reported `opus` — resolution is unchanged, the
+  file simply no longer restates what the floor supplies. Existing files are untouched. ⚑ One real
+  change: a fresh CODEX-persona box whose store names no model now refuses at the pre-flight
+  instead of silently running against `gpt-5.5`.
+- **BREAKING (plugin authors): three persona surfaces on `Target` changed shape**, and one fails at
+  IMPORT. `probe_verdict` is removed in favour of `probe_outcome`; it was public in 1.7.2 and the
+  published 1.7.2 claude plugin imports it at module scope, so an old plugin wheel against the new
+  base raises `ImportError` from any command that resolves an agent. `read_persona_settings` now
+  returns a tri-state `PersonaReadOutcome`, `verify_persona` a four-way `PersonaProbeOutcome`.
+  Upgrade the plugins with the base — see `MIGRATION.md` §3.
 - **BREAKING: the legacy claude host-dir credential path is GONE.** A persona used to be
   able to resolve its endpoint, bearer token and model-map env by auto-adopting
   `~/.config/claude/<persona>/settings.json` + its sibling `token` file when nothing was
