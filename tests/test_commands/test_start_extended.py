@@ -1037,8 +1037,28 @@ class TestPersistentMode:
             )
             m.target.writeback_credentials.assert_not_called()
 
+    @pytest.mark.skip(
+        reason="BROKEN — vacuous; see the S2 backlog item in tasks.md (Jei, "
+               "2026-08-05g: mark it broken for now)."
+    )
     def test_persistent_forces_no_helpers(self, start_mocks):
-        """Persistent mode disables helper hub even if not requested."""
+        """⚑ BROKEN — THIS TEST ASSERTS NOTHING IT CLAIMS TO.
+
+        The docstring used to read "persistent mode disables helper hub even if
+        not requested", but the only assertion is ``run_kwargs["detach"] is
+        True`` — which holds whether or not the hub started.  It is doubly
+        inert: ``tests/conftest.py`` seeds the ``agent.default`` floor with
+        ``allow_helpers=false``, so helpers are off in this fixture regardless
+        of the force-set the test is named for.  It therefore stays GREEN
+        through the deletion of ``no_helpers = True`` and would have reported
+        coverage it does not have.
+
+        Skipped rather than deleted because the BEHAVIOUR is still wanted — it
+        gets a real test when S2 lands.  ⚑ S2 is parked on a live defect: the
+        helper hub is dead on arrival in a persistent box (``detach=persistent``
+        + ``hub.stop()`` in the same ``finally``), so the ruled deletion cannot
+        ship until hub lifetime is fixed for detached containers.
+        """
         with start_mocks() as m:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
