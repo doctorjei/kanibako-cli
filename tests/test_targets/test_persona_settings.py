@@ -2,13 +2,16 @@
 
 The harness-config extraction seam: each plugin parses ITS OWN rendered config
 out of a store entry's ``<pid>/<hid>/`` dir into the harness-neutral
-:class:`~kanibako.targets.base.PersonaSettings` triple.  Pure reads, fail-soft
-``None`` on anything unusable.  Claude parses ``settings.json``
-(``env.ANTHROPIC_BASE_URL`` + top-level ``model``, fixed
-``ANTHROPIC_AUTH_TOKEN`` auth var); codex parses ``config.toml`` (the inverse
-of the ``CodexModelProvider`` shape kanibako emits — ``base_url``/``env_key``
+:class:`~kanibako.targets.base.PersonaSettings`, wrapped in a
+:class:`~kanibako.targets.base.PersonaReadOutcome`.  Pure reads, fail-soft: an
+unusable config never raises and comes back as ``settings=None`` plus a
+SPECIFIC ``reject_reason`` naming the file and the cause.  Claude parses
+``settings.json`` (``env.ANTHROPIC_BASE_URL`` + top-level ``model``, fixed
+``ANTHROPIC_AUTH_TOKEN`` auth var, the REST of ``env`` carried through as
+passthrough); codex parses ``config.toml`` (the inverse of the
+``CodexModelProvider`` shape kanibako emits — ``base_url``/``env_key``
 + top-level ``model``/``model_provider``).  Goose/no_agent inherit the base
-``None`` default.
+no-reader default: BOTH fields ``None``.
 """
 
 from __future__ import annotations
@@ -21,13 +24,27 @@ import pytest
 from kanibako.plugins.claude.target import ClaudeTarget
 from kanibako.plugins.codex.target import CodexTarget
 from kanibako.plugins.goose.target import GooseTarget
-from kanibako.targets.base import PersonaSettings, Target
+from kanibako.targets.base import PersonaReadOutcome, PersonaSettings, Target
 from kanibako.targets.no_agent import NoAgentTarget
 
 
+def _reject(outcome, *needles: str) -> None:
+    """Assert *outcome* is a NAMED reject mentioning each of *needles*."""
+    assert outcome.settings is None
+    assert outcome.reject_reason, "a reject must carry a specific reason"
+    for needle in needles:
+        assert needle in outcome.reject_reason, (
+            f"reject reason {outcome.reject_reason!r} does not name {needle!r}"
+        )
+
+
 class TestBaseDefault:
-    def test_default_returns_none(self, tmp_path):
-        assert NoAgentTarget().read_persona_settings(tmp_path) is None
+    def test_default_is_no_reader_not_a_reject(self, tmp_path):
+        # BOTH None = "this harness has no persona reader" — distinct from a
+        # present-but-unusable config, which must name its own cause.
+        assert NoAgentTarget().read_persona_settings(tmp_path) == (
+            PersonaReadOutcome(settings=None, reject_reason=None)
+        )
 
     def test_goose_and_no_agent_inherit_the_default(self):
         for target in (GooseTarget(), NoAgentTarget()):
@@ -56,17 +73,20 @@ class TestClaudeReadPersonaSettings:
             "model": "gemma4",
         })
         got = ClaudeTarget().read_persona_settings(tmp_path)
-        assert got == PersonaSettings(
+        assert got.reject_reason is None
+        assert got.settings == PersonaSettings(
             endpoint="https://api.navigator.example/v1",
             model="gemma4",
             auth_env="ANTHROPIC_AUTH_TOKEN",
         )
+        assert got.settings.env == {}
+        assert got.settings.env_dropped == ()
 
     def test_model_absent_is_none(self, tmp_path):
         _write_claude_settings(tmp_path, {
             "env": {"ANTHROPIC_BASE_URL": "https://e.example"},
         })
-        got = ClaudeTarget().read_persona_settings(tmp_path)
+        got = ClaudeTarget().read_persona_settings(tmp_path).settings
         assert got is not None
         assert got.model is None
         assert got.endpoint == "https://e.example"
@@ -76,31 +96,87 @@ class TestClaudeReadPersonaSettings:
             "env": {"ANTHROPIC_BASE_URL": "https://e.example"},
             "model": 7,
         })
-        got = ClaudeTarget().read_persona_settings(tmp_path)
+        got = ClaudeTarget().read_persona_settings(tmp_path).settings
         assert got is not None and got.model is None
+
+    def test_extra_env_vars_pass_through(self, tmp_path):
+        # The PASSTHROUGH contract: everything in the env block rides along —
+        # including a var kanibako has never heard of — EXCEPT the two
+        # single-source vars, which travel on their own channels (endpoint
+        # field / secret-path bind) and must never be duplicated here.
+        _write_claude_settings(tmp_path, {
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://e.example",
+                "ANTHROPIC_AUTH_TOKEN": "sk-should-never-ride-here",
+                "ANTHROPIC_SMALL_FAST_MODEL": "gemma4-mini",
+                "SOME_NEW_VAR": "whatever-the-store-renders",
+            },
+            "model": "gemma4",
+        })
+        got = ClaudeTarget().read_persona_settings(tmp_path).settings
+        assert got.env == {
+            "ANTHROPIC_SMALL_FAST_MODEL": "gemma4-mini",
+            "SOME_NEW_VAR": "whatever-the-store-renders",
+        }
+        assert got.env_dropped == ()
+
+    def test_non_string_env_values_are_reported_not_silently_dropped(self, tmp_path):
+        # A JSON number/bool/null cannot be delivered as an env value (it would
+        # be str()'d into a Python repr) — the NAME is reported instead.
+        _write_claude_settings(tmp_path, {
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://e.example",
+                "KEPT": "yes",
+                "A_NUMBER": 7,
+                "A_NULL": None,
+                "A_BOOL": True,
+            },
+        })
+        got = ClaudeTarget().read_persona_settings(tmp_path).settings
+        assert got.env == {"KEPT": "yes"}
+        assert got.env_dropped == ("A_BOOL", "A_NULL", "A_NUMBER")  # sorted names
 
     def test_missing_base_url_is_unusable(self, tmp_path):
         _write_claude_settings(tmp_path, {"env": {"OTHER": "x"}, "model": "m"})
-        assert ClaudeTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            ClaudeTarget().read_persona_settings(tmp_path),
+            "ANTHROPIC_BASE_URL", "settings.json",
+        )
 
     def test_empty_base_url_is_unusable(self, tmp_path):
         _write_claude_settings(tmp_path, {"env": {"ANTHROPIC_BASE_URL": ""}})
-        assert ClaudeTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            ClaudeTarget().read_persona_settings(tmp_path),
+            "ANTHROPIC_BASE_URL", "settings.json",
+        )
 
     def test_non_dict_env(self, tmp_path):
         _write_claude_settings(tmp_path, {"env": ["not", "a", "dict"]})
-        assert ClaudeTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            ClaudeTarget().read_persona_settings(tmp_path), "env", "settings.json",
+        )
 
     def test_non_object_document(self, tmp_path):
         _write_claude_settings(tmp_path, ["not", "an", "object"])
-        assert ClaudeTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            ClaudeTarget().read_persona_settings(tmp_path),
+            "JSON object", "settings.json",
+        )
 
     def test_malformed_json(self, tmp_path):
         (tmp_path / "settings.json").write_text("{not json")
-        assert ClaudeTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            ClaudeTarget().read_persona_settings(tmp_path),
+            "valid JSON", "settings.json",
+        )
 
     def test_absent_file(self, tmp_path):
-        assert ClaudeTarget().read_persona_settings(tmp_path) is None
+        # An ABSENT file and a MALFORMED one are different user problems and
+        # must not collapse into one reason.
+        _reject(
+            ClaudeTarget().read_persona_settings(tmp_path),
+            "unreadable", "settings.json",
+        )
 
 
 def _write_codex_config(config_dir: Path, text: str) -> None:
@@ -121,11 +197,15 @@ class TestCodexReadPersonaSettings:
     def test_well_formed_single_table(self, tmp_path):
         _write_codex_config(tmp_path, 'model = "gemma4"\n' + _NAVIGATOR_TABLE)
         got = CodexTarget().read_persona_settings(tmp_path)
-        assert got == PersonaSettings(
+        assert got.reject_reason is None
+        assert got.settings == PersonaSettings(
             endpoint="https://api.navigator.example/v1",
             model="gemma4",
             auth_env="NAVIGATOR_API_KEY",
         )
+        # A codex config carries no env block -> the defaults stand.
+        assert got.settings.env == {}
+        assert got.settings.env_dropped == ()
 
     def test_model_provider_selects_among_tables(self, tmp_path):
         _write_codex_config(tmp_path, (
@@ -134,7 +214,7 @@ class TestCodexReadPersonaSettings:
             + '\n[model_providers.other]\n'
             'base_url = "https://other.example"\nenv_key = "OTHER_KEY"\n'
         ))
-        got = CodexTarget().read_persona_settings(tmp_path)
+        got = CodexTarget().read_persona_settings(tmp_path).settings
         assert got is not None
         assert got.endpoint == "https://api.navigator.example/v1"
         assert got.auth_env == "NAVIGATOR_API_KEY"
@@ -145,19 +225,29 @@ class TestCodexReadPersonaSettings:
             + '\n[model_providers.other]\n'
             'base_url = "https://other.example"\nenv_key = "OTHER_KEY"\n'
         ))
-        assert CodexTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "model_provider", "config.toml",
+        )
+
+    def test_selected_entry_is_not_a_table(self, tmp_path):
+        _write_codex_config(tmp_path, 'model_providers = { navigator = "nope" }\n')
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "not a table", "config.toml",
+        )
 
     def test_stale_selector_falls_back_to_single_table(self, tmp_path):
         _write_codex_config(
             tmp_path, 'model_provider = "gone"\n' + _NAVIGATOR_TABLE,
         )
-        got = CodexTarget().read_persona_settings(tmp_path)
+        got = CodexTarget().read_persona_settings(tmp_path).settings
         assert got is not None
         assert got.auth_env == "NAVIGATOR_API_KEY"
 
     def test_model_absent_is_none(self, tmp_path):
         _write_codex_config(tmp_path, _NAVIGATOR_TABLE)
-        got = CodexTarget().read_persona_settings(tmp_path)
+        got = CodexTarget().read_persona_settings(tmp_path).settings
         assert got is not None and got.model is None
 
     def test_missing_env_key_is_unusable(self, tmp_path):
@@ -165,24 +255,39 @@ class TestCodexReadPersonaSettings:
             '[model_providers.navigator]\n'
             'base_url = "https://api.navigator.example/v1"\n'
         ))
-        assert CodexTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "env_key", "config.toml",
+        )
 
     def test_missing_base_url_is_unusable(self, tmp_path):
         _write_codex_config(tmp_path, (
             '[model_providers.navigator]\nenv_key = "NAVIGATOR_API_KEY"\n'
         ))
-        assert CodexTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "base_url", "config.toml",
+        )
 
     def test_no_provider_table(self, tmp_path):
         _write_codex_config(tmp_path, 'model = "gemma4"\n')
-        assert CodexTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "model_providers", "config.toml",
+        )
 
     def test_malformed_toml(self, tmp_path):
         _write_codex_config(tmp_path, "[model_providers.navigator\nbroken")
-        assert CodexTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "valid TOML", "config.toml",
+        )
 
     def test_absent_file(self, tmp_path):
-        assert CodexTarget().read_persona_settings(tmp_path) is None
+        _reject(
+            CodexTarget().read_persona_settings(tmp_path),
+            "unreadable", "config.toml",
+        )
 
 
 # ---------------------------------------------------------------------------

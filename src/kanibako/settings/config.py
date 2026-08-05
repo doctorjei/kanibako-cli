@@ -263,6 +263,14 @@ def _resolve_box_scalars(
         box_path=box_path,
         default_categories=floor,
         cli_level=cli_level,
+        # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). This resolve
+        # is AGENT-LESS by construction — it runs in the ``"general"`` slot, for
+        # box-less callers with no agent selected — and it reads back exactly the
+        # three ``box.*`` scalars in ``_BOX_SCALAR_FIELDS``. A persona bundle
+        # spells only ``agent.<node>.*`` leaves (endpoint / model /
+        # secret_path.<VAR> / env.<VAR>), so it could not touch a ``box.*`` scalar
+        # even if an agent were known here. Nothing to thread, and no seam to
+        # thread it from.
     )
 
     resolved: dict[str, object] = {}

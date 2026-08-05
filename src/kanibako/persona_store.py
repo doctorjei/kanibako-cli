@@ -17,11 +17,16 @@ sync, never file sync — DESIGN §2b).  Store PRESENCE decides persona-vs-plain
 (DESIGN §4): everything here returns a clean "not a persona" ``None`` on a
 miss so callers fall through to normal agent handling.
 
-Two halves live here:
+Three parts live here:
 
 * **discovery + resolve** (pure reads): locate an entry and resolve its
   ``.secret_path`` token pointer.  Harness-config extraction lives on the
   Target plugins (:meth:`kanibako.targets.base.Target.read_persona_settings`).
+* **the LIVE bundle** (:class:`PersonaBundle` / :func:`read_persona_bundle`):
+  one read of the store rendered into the harness-neutral values ONE launch
+  resolves against, threaded into ``build_launch_snapshot`` as an in-memory
+  level.  Nothing here is persisted — the store is a live resolution input,
+  so a launch leaves ``agents/<node>/settings.yaml`` byte-identical.
 * **import mapping** (the settings sync): :func:`build_candidate` turns a
   located entry into an IN-MEMORY candidate :class:`AgentConfig` (current
   agent-file values + the store's endpoint/model/token-pointer applied), and
@@ -42,8 +47,10 @@ the ``secret_path`` keyspace category it feeds).
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from kanibako.settings.agent_config import (
@@ -211,6 +218,149 @@ def resolve_secret_path(entry: PersonaEntry) -> SecretPathResult:
 
 
 # --------------------------------------------------------------------------
+# The LIVE bundle: one store read -> the values ONE launch resolves against.
+# --------------------------------------------------------------------------
+
+
+class PersonaBundle(NamedTuple):
+    """The harness-NEUTRAL persona values for ONE launch — LIVE, never persisted.
+
+    Everything :func:`read_persona_bundle` got out of the store in a single
+    read, in the form the launch consumes it: the behavior scalars, the
+    passthrough env block, and the RESOLVED token pointer.  It is a VALUE for
+    one launch, not a cached view — nothing here is written to any file, and
+    a launch that reads it leaves ``agents/<node>/settings.yaml``
+    byte-identical.  :meth:`to_persona_values` renders it into the mapping
+    ``build_launch_snapshot(persona_values=…)`` takes.
+
+    * *endpoint* / *model* — the harness config's alternate base URL and model
+      id (``None`` when the config names none).
+    * *auth_env* — the env var the bearer token is exported as; names the
+      ``secret_path.<auth_env>`` entry the token pointer lands in.
+    * *env* — the passthrough env block, already stripped of the two
+      single-source vars (base URL / token) by the reader.
+    * *env_dropped* — NAMES the reader skipped as undeliverable (a non-string
+      config value), for a caller that wants to warn.  Never silent.
+    * *token_path* — the resolved ABSOLUTE host token path, or ``None`` when
+      the ``.secret_path`` pointer did not resolve.
+    * *token_error* — why it did not resolve (set iff *token_path* is
+      ``None``); a SOFT condition — the rest of the bundle is still usable,
+      matching :func:`build_candidate`'s warn-and-keep-going shape.
+    * *reject_reason* — set iff the located entry yielded NO usable values at
+      all; the bundle then contributes NOTHING (:meth:`to_persona_values`
+      returns ``{}``).
+
+    ⚑ *reject_reason* MERGES the two non-success arms of
+    :class:`~kanibako.targets.base.PersonaReadOutcome` (an unusable config, and
+    a harness with no persona reader at all).  Deliberate: to a launch both mean
+    "an entry EXISTS but yielded no values", which is exactly the one condition
+    :func:`build_candidate` reports today.  The reason text still names which it
+    was, so nothing is lost — only the caller's need to branch is.
+    """
+
+    endpoint: str | None = None
+    model: str | None = None
+    auth_env: str | None = None
+    # Defaults are IMMUTABLE by construction: a bare ``{}`` on a NamedTuple
+    # field is ONE object shared by every instance.
+    env: Mapping[str, str] = MappingProxyType({})
+    env_dropped: tuple[str, ...] = ()
+    token_path: Path | None = None
+    token_error: str | None = None
+    reject_reason: str | None = None
+
+    def to_persona_values(self) -> dict[str, str]:
+        """Render this bundle as the UN-DISCRIMINATED persona-values mapping.
+
+        The shape ``build_launch_snapshot(persona_values=…)`` takes: the bare
+        behavior names ``endpoint`` / ``model``, plus ``secret_path.<auth_env>``
+        and one ``env.<VAR>`` per passthrough var.  The keys are deliberately
+        NOT discriminated onto an agent — the store knows a persona, not a
+        cascade; ``settings_launch._persona_partial`` wraps them under the
+        active agent slot.  A bundle carrying *reject_reason* renders ``{}``.
+
+        ⚑ EMPTINESS IS HANDLED PER VALUE CLASS, and the asymmetry is the point:
+
+        * *endpoint* / *model* / the token path are OMITTED when absent or
+          empty.  This mapping is a cascade LEVEL, so emitting ``""`` would not
+          mean "unset" — it would OVERRIDE ``agent.default`` and every rung
+          below with emptiness, turning a store that names no model into a
+          store that names the empty model.
+        * an ``env.<VAR>`` value passes through VERBATIM, empty string
+          INCLUDED.  ``"FOO": ""`` in a persona config is a user deliberately
+          exporting an empty var, and the reader already ruled it deliverable
+          by putting it in the passthrough set rather than in *env_dropped*.
+          Dropping it here would be an invisible loss of exactly the kind this
+          passthrough exists to end.  (An empty var NAME is still skipped: no
+          env var can be named ``""``, so it is undeliverable, not empty.)
+        """
+        if self.reject_reason is not None:
+            return {}
+        values: dict[str, str] = {}
+        if self.endpoint:
+            values["endpoint"] = self.endpoint
+        if self.model:
+            values["model"] = self.model
+        if self.auth_env and self.token_path is not None:
+            values[f"secret_path.{self.auth_env}"] = str(self.token_path)
+        for name, val in self.env.items():
+            if name:
+                values[f"env.{name}"] = val
+        return values
+
+
+def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
+    """Read the persona store ONCE and return the LIVE values for a launch.
+
+    ``None`` means *ref* is NOT a store persona — a bare agent, or a
+    ``<pid>+<hid>`` with no store entry (:func:`locate_entry`'s clean miss,
+    store PRESENCE deciding persona-vs-plain per DESIGN §4).  It is the
+    "nothing to do" signal, and it is DISTINCT from a located entry that
+    yielded nothing: that returns a bundle carrying ``reject_reason``, because
+    an entry EXISTS and the user may need to hear why it did not take.
+
+    Pure read.  No probe, no network, no write; the token file itself is never
+    opened (only its pointer is resolved — usability is the launch gate's job).
+
+    NEVER RAISES, with ONE deliberate exception: a MALFORMED *ref* raises
+    :class:`~kanibako.errors.ConfigError` out of ``parse_agent_ref``, exactly as
+    it does for every other ref consumer (a bad ref is a user error, not a
+    store miss).  Everything downstream of a successfully located entry is
+    fail-soft, so this is safe to call from the credential-lifecycle paths
+    (``stop`` / creds-watch), where a raise would break an unrelated operation.
+    """
+    entry = locate_entry(ref)
+    if entry is None:
+        return None
+    try:
+        outcome = target.read_persona_settings(entry.config_dir)
+    except Exception as exc:  # noqa: BLE001 - third-party plugin, see contract
+        # The Target contract says this never raises; a THIRD-PARTY plugin can
+        # still break it, and this seam rides paths that must not fail closed.
+        # Reported, never swallowed silently.
+        return PersonaBundle(reject_reason=(
+            f"persona store entry for '{entry.node}': the {entry.harness} "
+            f"config reader failed ({exc.__class__.__name__}: {exc})"
+        ))
+    if outcome.settings is None:
+        return PersonaBundle(reject_reason=outcome.reject_reason or (
+            f"persona store entry for '{entry.node}' has no usable "
+            f"{entry.harness} config under {entry.config_dir}"
+        ))
+    settings = outcome.settings
+    token = resolve_secret_path(entry)
+    return PersonaBundle(
+        endpoint=settings.endpoint,
+        model=settings.model,
+        auth_env=settings.auth_env,
+        env=settings.env,
+        env_dropped=settings.env_dropped,
+        token_path=token.path,
+        token_error=token.error,
+    )
+
+
+# --------------------------------------------------------------------------
 # Import mapping (DESIGN §2b/§3): store entry -> agent-scope settings sync.
 # --------------------------------------------------------------------------
 
@@ -291,7 +441,9 @@ def build_candidate(
     here: the caller verifies the candidate (Phase 3 S9) and commits via
     :func:`persist_candidate` only on PASS.
     """
-    settings = target.read_persona_settings(entry.config_dir)
+    # NOTE: the outcome's ``reject_reason`` is deliberately NOT consumed yet —
+    # unwrapping keeps this caller byte-identical; a later step reports it.
+    settings = target.read_persona_settings(entry.config_dir).settings
     if settings is None:
         return ImportResult(None, (
             f"persona store entry for '{entry.node}' has no usable "

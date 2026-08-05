@@ -25,8 +25,11 @@ from kanibako.targets.assembly import BindingSourceError, descriptor_mounts
 from kanibako.targets.base import AgentInstall
 
 
-# Claude crab default state: model=opus (generate_agent_config).  ``access`` is
-# UNSET here — the launch reader defaults it to the ``full`` tier (R-41).
+# Claude's RESOLVED default state: model=opus, which comes from the ``model``
+# setting descriptor's default (the behavior floor) — NOT from
+# ``generate_agent_config``, whose state is empty under the file-purity
+# invariant.  ``access`` is UNSET here — the launch reader defaults it to the
+# ``full`` tier (R-41).
 DEFAULT_STATE = {"model": "opus"}
 
 

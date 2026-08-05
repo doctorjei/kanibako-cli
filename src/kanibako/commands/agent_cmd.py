@@ -608,7 +608,10 @@ def run_reauth(args: argparse.Namespace) -> int:
     # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
     from kanibako.settings.agent_config import agent_settings_path, load_agent_config
-    from kanibako.commands.start import _resolve_box_launch_decisions
+    from kanibako.commands.start import (
+        _persona_values_for,
+        _resolve_box_launch_decisions,
+    )
     agent_cfg_path = agent_settings_path(std.agents, agent_name)
     reauth_agent_cfg = (
         load_agent_config(agent_cfg_path) if agent_cfg_path.exists() else None
@@ -621,6 +624,12 @@ def run_reauth(args: argparse.Namespace) -> int:
         agent_cfg=reauth_agent_cfg,
         system_settings_path=std.settings,
         agent_cfg_path=agent_cfg_path,
+        # The persona store's LIVE tier — the SAME one a launch resolves against.
+        # ``suppress_oauth`` below is ``active_endpoint is not None``, so this is
+        # the reauth path's half of the cred fork: a persona endpoint that did not
+        # reach this resolve would let a reauth sync the host Anthropic token into
+        # a box pointed at a third-party endpoint. ``None`` for a bare agent.
+        persona_values=_persona_values_for(agent_name, target),
         # ⚑ REQUIRED (P7): reauth must resolve the SAME per-agent credential dir the
         # launch delivers from (``@workset.auth.path/@system.agent``); without the
         # §1A selection level it would collapse to the workset auth ROOT.

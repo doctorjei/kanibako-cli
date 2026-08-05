@@ -5161,6 +5161,47 @@ class TestPreflightCodexPersona:
             assert err is not None and "no model configured" in err
             assert "system set" in err and ".model=" in err
 
+    def test_the_model_gate_reads_the_declaration_not_a_hardwired_rule(self, tmp_path,
+                                                                       monkeypatch):
+        # A missing model is NOT automatically invalid — absence means "this persona
+        # needs none" unless the HARNESS vetoes via persona.model_required. Codex
+        # vetoes (its config-file delivery cannot express "no model"), so the gate
+        # above fires; drop the veto and the SAME input must stop producing that
+        # error. Pins that this path reads the descriptor, as the ENV path does,
+        # rather than hardwiring the rule. (Mutation: restore the hardwired
+        # ``if not model`` and this goes RED.)
+        import dataclasses
+        import kanibako.commands.start as start_mod
+        from kanibako.commands.start import _persona_wiring, _preflight_persona_load
+
+        vetoless = dataclasses.replace(
+            _persona_wiring(self._codex()), model_required=False,
+        )
+        assert vetoless.endpoint_delivery == "config_file"
+        monkeypatch.setattr(start_mod, "_persona_wiring", lambda target: vetoless)
+
+        key = tmp_path / "navkey"
+        key.write_text("nv-secret\n")
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
+        endpoint, err, adopted, provider = _preflight_persona_load(
+            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            target=self._codex(), keyspace_model=None,
+        )
+        # Still refused — but on the DESCRIPTOR, not the missing model: a
+        # config-file harness cannot deliver "no model" (an omitted key falls
+        # through to codex's own moving default), so it must never ship
+        # ``model = ""`` NOR silently omit it.
+        assert endpoint is None and provider is None
+        assert err is not None
+        assert "model_required" in err
+        assert "no model configured" not in err
+
+    def test_codex_declares_the_model_veto(self):
+        # The declaration the gate above reads. Codex vetoes; without this the
+        # gate would let a model-less persona through to the provider block.
+        from kanibako.commands.start import _persona_wiring
+        assert _persona_wiring(self._codex()).model_required is True
+
     def test_no_endpoint_config_file_error_no_hostdir(self, tmp_path, monkeypatch):
         # No keyspace endpoint → hard error worded for config-file (no host-dir /
         # settings.json reference), and NO B3 host-dir adoption is attempted.
@@ -6121,7 +6162,13 @@ class TestReconcilePersonaStore:
             self.verify_calls: list = []
 
         def read_persona_settings(self, config_dir):
-            return self.settings
+            from kanibako.targets.base import PersonaReadOutcome
+
+            # ``settings = None`` scripts a present-but-UNUSABLE store config,
+            # which now carries a named reason alongside the empty settings.
+            if self.settings is None:
+                return PersonaReadOutcome(None, "scripted reject: unusable config")
+            return PersonaReadOutcome(self.settings, None)
 
         def verify_persona(self, endpoint, token_path, model, *, timeout=5.0):
             self.verify_calls.append((endpoint, token_path, model))
@@ -6511,3 +6558,305 @@ class TestRetiredBehaviorRefusalWiring:
                 agent_doc={"self": {"auto_approve": False}},
             )
         assert "the system settings file" in str(exc.value)
+
+
+class TestPersonaLiveTierWiring:
+    """The persona store as a LIVE resolution input (never a persisted one).
+
+    Phase C wiring: ``_persona_values_for`` reads the store ONCE and the value
+    rides ``build_launch_snapshot(persona_values=…)`` into every resolve that
+    must see it.  What is asserted here is the SEAM — that a value present only
+    in the store reaches the resolved launch snapshot, and that the DISPLAY
+    resolves the same value the launch does.
+
+    ⚑ These launches are byte-identical to before the tier existed for every
+    value the agent FILE also carries (the file rung sits ABOVE the store rung
+    and holds the same values while the verified swap still persists them).  The
+    genuinely NEW capability is the ``env`` passthrough, which no file carries —
+    which is exactly why the regression pin below uses a made-up env var.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _NODE = "navigator℘claude"
+
+    def _store(self, tmp_home, *, env=None, model="gemma4", config=None):
+        """Lay down $XDG_CONFIG_HOME/personas/navigator/claude/settings.json."""
+        import json
+
+        persona_dir = tmp_home / "config" / "personas" / "navigator"
+        (persona_dir / "claude").mkdir(parents=True)
+        if config is None:
+            block = {
+                "ANTHROPIC_BASE_URL": self._ENDPOINT,
+                "ANTHROPIC_AUTH_TOKEN": "sk-never-read",
+            }
+            block.update(env or {})
+            doc: dict = {"env": block}
+            if model:
+                doc["model"] = model
+            config = json.dumps(doc)
+        (persona_dir / "claude" / "settings.json").write_text(config)
+        (persona_dir / ".secret_path").write_text("./token\n")
+        return persona_dir
+
+    def _target(self):
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        return ClaudeTarget()
+
+    def _proj(self, std):
+        """The same MagicMock box the other snapshot tests resolve against."""
+        from kanibako.settings.paths import ProjectGroup
+
+        proj = MagicMock()
+        proj.group = ProjectGroup(
+            name="default", root=std.data, is_default=True,
+            local_shared_base=std.data,
+        )
+        proj.mode = BoxMode.primary
+        proj.project_path = std.data
+        proj.enable_vault = False
+        proj.name = "navigatorbox"
+        return proj
+
+    def _resolve(self, std, *, target, persona_values):
+        from kanibako.commands.start import _resolve_launch_snapshot
+
+        return _resolve_launch_snapshot(
+            std=std,
+            proj=self._proj(std),
+            agent_name=self._NODE,
+            system_settings_path=None,
+            agent_cfg_path=None,
+            desc=None,
+            install=None,
+            target=target,
+            agent_cfg=None,
+            persona_values=persona_values,
+            include_base_families=False,
+        )
+
+    def _snapshot(self, std, *, target, persona_values):
+        snap, _rec = self._resolve(
+            std, target=target, persona_values=persona_values,
+        )
+        return snap
+
+    def _active(self, snapshot):
+        """The resolved ``agent.<node>`` subtree, or ``{}``."""
+        node = dict.get(snapshot, "agent") or {}
+        return dict.get(node, self._NODE) or {}
+
+    # --- the regression pin: env passthrough ---------------------------------
+
+    def test_a_store_env_var_reaches_the_resolved_launch_snapshot(
+        self, std, config_file, tmp_home,
+    ):
+        """A made-up var, in NO settings file, resolves as agent.<node>.env.<VAR>.
+
+        This is the capability the whole build exists for: the store's env block
+        is delivered LIVE, without a persist step to carry it.
+        """
+        from kanibako.commands.start import _persona_values_for
+
+        self._store(tmp_home, env={"SOME_NEW_VAR": "brand-new"})
+        target = self._target()
+        snap = self._snapshot(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        env = dict.get(self._active(snap), "env") or {}
+        assert dict.get(env, "SOME_NEW_VAR") == "brand-new"
+
+    def test_the_store_secret_path_reaches_the_resolved_launch_snapshot(
+        self, std, config_file, tmp_home,
+    ):
+        from kanibako.commands.start import _persona_values_for
+
+        persona_dir = self._store(tmp_home)
+        target = self._target()
+        snap = self._snapshot(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        secrets = dict.get(self._active(snap), "secret_path") or {}
+        assert dict.get(secrets, "ANTHROPIC_AUTH_TOKEN") == str(persona_dir / "token")
+
+    def test_the_tier_reaches_DELIVERY_not_just_the_snapshot(
+        self, std, config_file, tmp_home,
+    ):
+        """The reconcile emits the token MOUNT and the env var from the store.
+
+        The snapshot assertions above prove the value resolved; this proves it
+        is actually DELIVERED — ``secret_path`` is a MOUNT category and ``env``
+        an ENV one, so a store-only value reaching ``reconcile_categories``
+        is the whole point of routing it through the tier rather than a file.
+        """
+        from kanibako.commands.start import _persona_values_for
+
+        persona_dir = self._store(tmp_home, env={"SOME_NEW_VAR": "brand-new"})
+        target = self._target()
+        _snap, rec = self._resolve(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        secret_mounts = [
+            m for m in rec.mounts if m.category == "secret_path"
+        ]
+        assert [str(m.host_src) for m in secret_mounts] == [
+            str(persona_dir / "token")
+        ]
+        # For an ``env`` entry the VAR name is ``box_dest`` and its VALUE rides
+        # ``options`` (env carries no path / mount flags) — see CategoryEntry.
+        assert [
+            (e.box_dest, e.options) for e in rec.envs if e.category == "env"
+        ] == [("SOME_NEW_VAR", "brand-new")]
+
+    # --- display == launch ---------------------------------------------------
+
+    def test_display_resolves_the_same_endpoint_and_model_as_the_launch(
+        self, std, config_file, tmp_home,
+    ):
+        """``--effective`` and the launch DECISIONS read one tier, one value.
+
+        Neither call is handed the store values: the display resolves them
+        internally and the launch decisions get them from the launch's single
+        read, and the two must agree.  ``model`` is the sharp end — the harness
+        default is ``opus``, so a display that missed the tier would report
+        ``opus`` while the launch shipped ``gemma4``.
+        """
+        from kanibako.commands.start import (
+            _effective_behavior_for_display,
+            _persona_values_for,
+            _resolve_box_launch_decisions,
+        )
+
+        self._store(tmp_home)
+        target = self._target()
+        agent_cfg = target.generate_agent_config()   # first use: state is EMPTY
+
+        _auth, endpoint, model = _resolve_box_launch_decisions(
+            std=std,
+            proj=self._proj(std),
+            target=target,
+            agent_name=self._NODE,
+            agent_cfg=agent_cfg,
+            system_settings_path=None,
+            agent_cfg_path=None,
+            selection_level=None,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        display = _effective_behavior_for_display(
+            target, agent_cfg, None,
+            system_settings_path=None,
+            node_name=self._NODE,
+        )
+
+        assert endpoint == self._ENDPOINT
+        assert model == "gemma4"
+        assert display["endpoint"] == endpoint
+        assert display["model"] == model
+
+    def test_without_the_store_the_display_falls_back_to_the_harness_default(
+        self, std, config_file, tmp_home,
+    ):
+        """The control for the test above: no store entry, no tier, ``opus``."""
+        from kanibako.commands.start import _effective_behavior_for_display
+
+        target = self._target()
+        display = _effective_behavior_for_display(
+            target, target.generate_agent_config(), None,
+            system_settings_path=None,
+            node_name=self._NODE,
+        )
+        assert display["model"] == "opus"
+        assert not display.get("endpoint")
+
+    # --- the reject arm contributes NOTHING ----------------------------------
+
+    def test_a_rejected_store_contributes_nothing_and_does_not_crash(
+        self, std, config_file, tmp_home,
+    ):
+        """No tier, no EMPTY-STRING override of the rungs below, no exception."""
+        from kanibako.commands.start import (
+            _effective_behavior_for_display,
+            _persona_values_for,
+        )
+
+        self._store(tmp_home, config="{ not json")
+        target = self._target()
+        assert _persona_values_for(self._NODE, target) is None
+
+        snap = self._snapshot(std, target=target, persona_values=None)
+        active = self._active(snap)
+        assert not dict.get(active, "env")
+        assert not dict.get(active, "secret_path")
+        # The lower rungs still resolve — emptiness never overrode them.
+        display = _effective_behavior_for_display(
+            target, target.generate_agent_config(), None,
+            system_settings_path=None,
+            node_name=self._NODE,
+        )
+        assert display["model"] == "opus"
+
+    def test_a_rejected_store_still_warns_and_continues_as_before(
+        self, std, config_file, tmp_home, capsys,
+    ):
+        """Phase C adds no second warning: the reconcile still owns the report.
+
+        ``_persona_values_for`` is deliberately silent so a launch does not print
+        every store complaint twice — the reconcile below is the one that speaks,
+        exactly as it did before the tier existed.
+        """
+        from kanibako.commands.start import (
+            _persona_values_for,
+            _reconcile_persona_store,
+        )
+        from kanibako.log import get_logger
+        from kanibako.settings.agent_config import AgentConfig
+
+        self._store(tmp_home, config="{ not json")
+        target = self._target()
+
+        assert _persona_values_for(self._NODE, target) is None
+        assert capsys.readouterr().err == ""      # the tier read says nothing
+
+        cfg = AgentConfig(state={"endpoint": "https://old.example"})
+        out, synced = _reconcile_persona_store(
+            std.agents, self._NODE, target, cfg, get_logger("test"),
+        )
+        assert out is cfg and synced is False     # last-known-good kept
+        assert "unusable" in capsys.readouterr().err
+
+    # --- a bare launch is untouched ------------------------------------------
+
+    def test_a_bare_launch_reads_no_store_and_adds_no_tier(
+        self, std, config_file, tmp_home,
+    ):
+        """Byte-identical: a bare agent never even opens the store."""
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        reads: list = []
+
+        class _CountingTarget(ClaudeTarget):
+            def read_persona_settings(self, config_dir):
+                reads.append(config_dir)
+                return super().read_persona_settings(config_dir)
+
+        # A store entry for a DIFFERENT (persona) node exists; the bare launch
+        # must not notice it.
+        self._store(tmp_home)
+        target = _CountingTarget()
+
+        assert _persona_values_for("claude", target) is None
+        assert reads == []
+
+        snap = self._snapshot(std, target=target, persona_values=None)
+        assert not dict.get(self._active(snap), "env")
+
+    def test_no_target_means_no_store_read(self, std, config_file, tmp_home):
+        from kanibako.commands.start import _persona_values_for
+
+        self._store(tmp_home)
+        assert _persona_values_for(self._NODE, None) is None

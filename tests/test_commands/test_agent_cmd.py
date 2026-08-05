@@ -777,7 +777,16 @@ class TestRunReauth:
             # directory than the box reads. The resolver takes it as a REQUIRED
             # keyword precisely so this cannot be dropped silently again.
             "selection_level",
+            # The persona store's LIVE tier. reauth computes ``suppress_oauth``
+            # from the endpoint this resolver returns, so the tier that carries
+            # a persona's endpoint has to reach it here too — otherwise a reauth
+            # on a custom-endpoint box could sync the host Anthropic token into a
+            # box pointed at a third-party endpoint. ``None`` for a bare agent
+            # (this test's ``claude``), so the value changes nothing here; what
+            # is pinned is that the kwarg is PASSED.
+            "persona_values",
         }
+        assert mock_resolve.call_args.kwargs["persona_values"] is None
         # …and it carries the RESOLVED selection, not a placeholder.
         assert mock_resolve.call_args.kwargs["selection_level"] == {
             "system.agent": "claude",

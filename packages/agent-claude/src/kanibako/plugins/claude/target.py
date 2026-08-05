@@ -20,6 +20,7 @@ from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
     CredFileSpec,
+    PersonaReadOutcome,
     PersonaSettings,
     PluginDescriptor,
     Target,
@@ -250,7 +251,7 @@ class ClaudeTarget(Target):
     def credential_check_path(self, home: Path) -> Path | None:
         return home / ".claude" / ".credentials.json"
 
-    def read_persona_settings(self, config_dir: Path) -> PersonaSettings | None:
+    def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
         """Extract persona values from a rendered claude ``settings.json``.
 
         The persona-grata store renders a claude persona as a harness-native
@@ -258,32 +259,69 @@ class ClaudeTarget(Target):
         endpoint and whose top-level ``model`` (when present) names the model —
         the same shape the launch-time B3 host-dir adopt reads.  The bearer
         token var is claude's FIXED ``ANTHROPIC_AUTH_TOKEN`` (the harness does
-        not self-name it, unlike codex's ``env_key``).
+        not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
+        block is carried through verbatim as
+        :attr:`~kanibako.targets.base.PersonaSettings.env` — the two
+        single-source vars are excluded (they ride the endpoint field and the
+        secret-path bind), and a non-string value is not deliverable as an env
+        value, so its NAME is reported in ``env_dropped`` rather than dropped
+        in silence.
 
-        FAIL-SOFT (base-class contract): absent / unreadable / malformed JSON,
+        FAIL-SOFT (base-class contract): absent / unreadable, malformed JSON,
         a non-object document, a non-object ``env``, or a missing/empty
         ``ANTHROPIC_BASE_URL`` (a claude persona config without an endpoint is
-        unusable) → ``None``.  Pure read; never touches the token.
+        unusable) each return an outcome NAMING that cause and the file.  Pure
+        read; never touches the token.
         """
         settings = config_dir / "settings.json"
         try:
-            data = json.loads(settings.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
+            raw = settings.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            # UnicodeDecodeError is a ValueError, but it is an UNREADABLE-file
+            # problem, not a syntax one — keep it out of the JSON-parse arm.
+            return PersonaReadOutcome(None, (
+                f"claude persona config {settings} is absent or unreadable ({exc})"
+            ))
+        try:
+            data = json.loads(raw)
+        except ValueError as exc:
+            return PersonaReadOutcome(None, (
+                f"claude persona config {settings} is not valid JSON ({exc})"
+            ))
         if not isinstance(data, dict):
-            return None
+            return PersonaReadOutcome(None, (
+                f"claude persona config {settings} is not a JSON object"
+            ))
         env = data.get("env")
         if not isinstance(env, dict):
-            return None
+            return PersonaReadOutcome(None, (
+                f"claude persona config {settings} has no 'env' object"
+            ))
         base_url = env.get(_PERSONA_BASE_URL_VAR)
         if not isinstance(base_url, str) or not base_url:
-            return None
+            return PersonaReadOutcome(None, (
+                f"claude persona config {settings} names no "
+                f"env.{_PERSONA_BASE_URL_VAR} endpoint"
+            ))
         model = data.get("model")
         if not isinstance(model, str) or not model:
             model = None
-        return PersonaSettings(
-            endpoint=base_url, model=model, auth_env=_PERSONA_TOKEN_VAR,
-        )
+        single_source = (_PERSONA_BASE_URL_VAR, _PERSONA_TOKEN_VAR)
+        passthrough = {
+            k: v for k, v in env.items()
+            if isinstance(v, str) and k not in single_source
+        }
+        dropped = tuple(sorted(
+            k for k, v in env.items()
+            if not isinstance(v, str) and k not in single_source
+        ))
+        return PersonaReadOutcome(PersonaSettings(
+            endpoint=base_url,
+            model=model,
+            auth_env=_PERSONA_TOKEN_VAR,
+            env=passthrough,
+            env_dropped=dropped,
+        ), None)
 
     def verify_persona(
         self,
@@ -373,12 +411,20 @@ class ClaudeTarget(Target):
         )
 
     def generate_agent_config(self) -> AgentConfig:
-        """Return default Claude Code crab configuration."""
+        """Return default Claude Code agent configuration.
+
+        ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
+        settings file holds USER INTENT only, and defaults come from the
+        descriptor floor (:meth:`setting_descriptors` — ``model`` defaults to
+        ``opus``).  Seeding that same value into the file would pin every
+        install ABOVE the floor, so a later change to the default could never
+        reach an existing box.
+        """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(
             name="Claude Code",
-            state={"model": "opus"},
+            state={},
         )
 
     def default_common(self) -> dict[str, BindDefault]:

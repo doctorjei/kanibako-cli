@@ -1045,6 +1045,7 @@ def build_launch_snapshot(
     default_categories: Mapping[str, object] | None = None,
     agent_partial: KeyStore | None = None,
     agent_state: Mapping[str, str] | None = None,
+    persona_values: Mapping[str, str] | None = None,
     auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
     meta_identity: Mapping[str, object] | None = None,
@@ -1067,6 +1068,18 @@ def build_launch_snapshot(
     *default_categories* are the already-scope-qualified category default tables
     (``{"box.bindings.rw.home": (h, d, o), ...}``) unioned across every mount
     family.
+
+    *persona_values* are the PERSONA STORE's rendered values for the ACTIVE agent
+    (``endpoint`` / ``model`` / ``secret_path.<VAR>`` / ``env.<VAR>``), collected
+    ONCE per launch by the caller and threaded in as an IN-MEMORY level because they
+    are NEVER persisted to any settings file — the store's rendered host config is a
+    LIVE resolution input, so a launch leaves ``agents/<node>/settings.yaml``
+    byte-identical. Threading (rather than riding a file) is forced by the rebuild
+    count: ``_resolve_launch_snapshot`` re-reads the files several times per launch,
+    and a never-written layer has no file to be read from. The keys arrive
+    UN-DISCRIMINATED (the store knows a persona, not a cascade) and are discriminated
+    onto *agent_name* here, by :func:`_persona_partial`. ``None`` (the default) means
+    NO persona tier at all — the snapshot is byte-identical to a pre-persona build.
 
     *auth_chain* is the auth 3-tier SHARING chain floor fragment built by
     :func:`auth_chain_floor` per box mode — the spec's @-ref / literal ``auth.*``
@@ -1240,6 +1253,9 @@ def build_launch_snapshot(
     #                      slot, at the AGENT-FILE rung (above the empty assemble
     #                      agent.<active> level, below workset): the OLD
     #                      ``LevelView("agent", agent_cfg.state)`` precedence.
+    #   persona_values   — the persona STORE's live values, wrapped under the active
+    #                      slot, BELOW the per-agent FILE (both its flat state rung
+    #                      and its agent.<active> tables) and ABOVE agent.default.
     #   agent_partial    — 7a descriptor DEFAULT delivery, the LEAST-specific agent
     #                      rung (just below agent.default) so any
     #                      agent.<active>/workset/box repoint wins.
@@ -1267,6 +1283,7 @@ def build_launch_snapshot(
     #                      the RESOLVED ``system.agent`` (P7) plus the ephemeral
     #                      key-shadowing flag values (P8). GUARDED just below.
     state_partial = _agent_state_partial(agent_name, agent_state)
+    persona_partial = _persona_partial(agent_name, persona_values)
     # box.agent.* CATEGORY fold (spec §2b / §0): the box's same-scope
     # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7). It existed to give a box's
     # SETTABLE ``box.agent.<category>`` tweak box-precedence inside the active
@@ -1324,6 +1341,30 @@ def build_launch_snapshot(
     if state_partial is not None:
         levels.append(state_partial)                    # per-agent FILE behavior
     levels.append(base_levels[2])                       # agent.<active> (file tables)
+    if persona_partial is not None:
+        # persona store — LIVE, never persisted. Sits BELOW the per-agent FILE (both
+        # its flat ``[agent]`` state rung, spliced just above, and its discriminated
+        # ``agent.<active>`` tables at base_levels[2]) and ABOVE ``agent.default``.
+        # The ordering is semantically FORCED, not a preference: the agent file
+        # stores ONLY non-default values, so an ``agent.<active>.<key>`` present in
+        # it can only be a DELIBERATE user edit — and a user edit must outrank a
+        # value the store re-renders on every launch. Below the file, above the
+        # defaults: write the file once to pin a value, write nothing to stay
+        # persona-driven.
+        #
+        # ⚑ CONSEQUENCE, recorded deliberately (the same class of note the pref
+        # overlays carry above): the placement relative to ``base_levels[3]`` is
+        # UNOBSERVABLE in the merge. This partial spells ``agent.<active>.*`` and
+        # that level spells ``agent.default.*`` — DISJOINT names (§2d keeps the two
+        # agent slots distinct), so they never contend by name and moving this
+        # append below that one breaks no test. Persona-beats-``agent.default`` is
+        # real all the same, it is just decided ELSEWHERE: by ``effective_behavior``'s
+        # §2d active-over-default pick, which takes the active slot unconditionally.
+        # The nearest level this DOES contend with — and must beat — is
+        # ``agent_partial``, the 7a descriptor default, which does spell the active
+        # slot and is appended below ``agent.default``. Spelled at this rung anyway
+        # because that is the rung the ordering was ruled at.
+        levels.append(persona_partial)                  # persona store (live)
     levels.append(base_levels[3])                       # agent.default
     if agent_partial is not None:
         levels.append(agent_partial)                    # 7a descriptor default
@@ -1699,6 +1740,50 @@ def _agent_state_partial(
     partial["agent"] = agent_node
     return partial
 
+
+def _persona_partial(
+    agent_name: str, persona_values: Mapping[str, str] | None
+) -> KeyStore | None:
+    """Wrap the PERSONA STORE's live values under the active slot —
+    ``{agent: {<agent_name>: {...}}}`` — or ``None`` if there is nothing to add.
+
+    The store hands over UN-DISCRIMINATED keys (it knows a persona, not a cascade):
+    the bare behavior names ``endpoint`` / ``model``, and the two open categories
+    ``secret_path.<VAR>`` / ``env.<VAR>``. This discriminates them onto *agent_name*,
+    the §2d / §0 form, so they merge by name at the persona rung.
+
+    ⚑ DELIBERATE DIVERGENCE from the sibling ``dotted_partial`` / ``_insert_dotted``
+    route, which this must NOT use: those split a key on EVERY dot and explode it
+    into a nested subtree. A ``<VAR>`` here is arbitrary user-supplied text out of a
+    JSON file, so a var spelled ``FOO.BAR`` would silently become the subtree
+    ``env.FOO.BAR`` instead of the ONE leaf the user wrote, and would then never be
+    exported. So: split on the FIRST dot ONLY. A bare key is a leaf directly under
+    the active-agent node; a ``<category>.<VAR>`` key puts ``<VAR>`` in as a LITERAL
+    leaf key under that category node, however it is spelled.
+
+    No value is bind-shaped (``env`` / ``secret_path`` are not bind categories), so
+    every leaf is stored verbatim.
+    """
+    if not persona_values:
+        return None
+    active_node = KeyStore()
+    for key, val in persona_values.items():
+        category, sep, var = key.partition(".")  # FIRST dot only — see above.
+        if not sep:
+            active_node[key] = val
+            continue
+        # UNBOUND dict.get (S3): never the bound ``node.get`` — a category named
+        # ``get`` would shadow the method into a crash.
+        node = dict.get(active_node, category)
+        if not isinstance(node, KeyStore):
+            node = KeyStore()
+            active_node[category] = node
+        node[var] = val
+    agent_node = KeyStore()
+    agent_node[agent_name] = active_node
+    partial = KeyStore()
+    partial["agent"] = agent_node
+    return partial
 
 
 # --------------------------------------------------------------------------- #

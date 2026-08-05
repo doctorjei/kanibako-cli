@@ -565,11 +565,20 @@ class TestGenerateAgentConfig:
         t = ClaudeTarget()
         cfg = t.generate_agent_config()
         assert cfg.name == "Claude Code"
-        # The default crab state carries model only; ``access`` is UNSET (the
-        # launch reader defaults it to the ``full`` tier).
-        assert cfg.state == {"model": "opus"}
+        # FILE PURITY: the generated agent settings file carries USER INTENT
+        # only, so state is EMPTY.  ``model`` comes from the descriptor floor
+        # (setting_descriptors -> default "opus") and ``access`` is UNSET (the
+        # launch reader defaults it to the ``full`` tier); seeding either would
+        # pin the install above the floor and freeze the default forever.
+        assert cfg.state == {}
         assert cfg.run_args == []
         assert cfg.env == {}
+
+    def test_model_default_comes_from_the_descriptor_floor(self):
+        t = ClaudeTarget()
+        assert "model" not in t.generate_agent_config().state
+        model = next(d for d in t.setting_descriptors() if d.key == "model")
+        assert model.default == "opus"
 
     def test_is_crab_config_instance(self):
         from kanibako.settings.agent_config import AgentConfig

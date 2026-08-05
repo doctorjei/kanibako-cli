@@ -2328,7 +2328,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
             # REPORTED rather than raised — this display is the M-7 detection
             # recipe ("resolve the snapshot and look for duplicate dests"), so
             # dying on the very fault it exists to surface would be backwards.
-            from kanibako.commands.start import _resolve_launch_snapshot
+            from kanibako.commands.start import (
+                _persona_values_for,
+                _resolve_launch_snapshot,
+            )
             from kanibako.errors import KanibakoError
             try:
                 category_snapshot, _reconciled = _resolve_launch_snapshot(
@@ -2337,6 +2340,14 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     agent_cfg_path=agent_cfg_path,
                     desc=None, install=None,
                     target=target, agent_cfg=agent_cfg,
+                    # The SAME persona-store tier the launch resolves against —
+                    # required for the promise the comment above makes. The store
+                    # supplies ``secret_path.<VAR>``, a PATH-DELIVERY category:
+                    # without the tier this view would list a persona box's mounts
+                    # MINUS the token the launch actually mounts (and minus its
+                    # ``env`` passthrough). Tolerant + ``None`` for a bare agent,
+                    # so a store-less box renders exactly as before.
+                    persona_values=_persona_values_for(agent_id, target),
                     # A DISPLAY verb must not write to disk: the core table's
                     # vault create-if-missing is a LAUNCH guarantee, not a
                     # read one. The binds are emitted either way.
