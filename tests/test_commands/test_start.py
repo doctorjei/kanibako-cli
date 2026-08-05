@@ -17,6 +17,7 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
+from kanibako.targets.base import PersonaProbeOutcome
 
 
 def _sel(node: str, source: str = "settings"):
@@ -6990,29 +6991,39 @@ class TestPersonaPreflightBundle:
       does not actually mount.
     * a ``reject_reason`` is a HARD ERROR (no last-known-good exists to keep),
       while ``no_reader`` is NOT — the whole reason D0 split them.
-    * the PER-LAUNCH verify probe hard-errors on a positive auth reject and only
-      WARNS when it cannot tell.  It is opt-in (``probe=True``) so the create
-      path's separate warn-only probe is not unified into it.
+    * the PER-LAUNCH verify probe hard-errors on a positive auth reject, WARNS
+      when it probed and could not tell (``INCONCLUSIVE``), and is SILENT when no
+      probe was possible at all (``NOT_APPLICABLE``).  It is opt-in
+      (``probe=True``) so the create path's separate warn-only probe is not
+      unified into it.
     """
 
     _ENDPOINT = "https://api.navigator.example/v1"
     _NODE = "navigator℘claude"
 
     class _Target:
-        """Duck-typed claude-shaped target with a scripted verify verdict."""
+        """Duck-typed claude-shaped target with a scripted probe OUTCOME.
+
+        *outcome* is a :class:`~kanibako.targets.base.PersonaProbeOutcome` (or an
+        Exception to raise, for the never-raise contract).
+        """
 
         name = "claude"
         descriptor = None
 
-        def __init__(self, verdict=None):
-            self.verdict = verdict
+        def __init__(self, outcome=None):
+            from kanibako.targets.base import PersonaProbeOutcome
+
+            self.outcome = (
+                PersonaProbeOutcome.passed() if outcome is None else outcome
+            )
             self.calls: list = []
 
         def verify_persona(self, endpoint, token_path, model, *, timeout=5.0):
             self.calls.append((endpoint, token_path, model))
-            if isinstance(self.verdict, Exception):
-                raise self.verdict
-            return self.verdict
+            if isinstance(self.outcome, Exception):
+                raise self.outcome
+            return self.outcome
 
     def _token(self, tmp_path, name="tok"):
         p = tmp_path / name
@@ -7033,7 +7044,7 @@ class TestPersonaPreflightBundle:
             self._NODE, agent_cfg,
             self._ENDPOINT if endpoint is None else endpoint,
             get_logger("test"),
-            target=target if target is not None else self._Target(verdict=True),
+            target=target if target is not None else self._Target(),
             keyspace_model=model, bundle=bundle, probe=probe,
         )
 
@@ -7065,7 +7076,7 @@ class TestPersonaPreflightBundle:
 
         file_tok = self._token(tmp_path, "file-tok")
         store_tok = self._token(tmp_path, "store-tok")
-        target = self._Target(verdict=True)
+        target = self._Target()
         _ep, err, _a, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(file_tok)}),
             bundle=PersonaBundle(
@@ -7161,7 +7172,7 @@ class TestPersonaPreflightBundle:
     # --- the per-launch probe -------------------------------------------------
 
     def test_a_rejected_token_is_a_hard_error(self, tmp_path):
-        target = self._Target(verdict=False)
+        target = self._Target(outcome=PersonaProbeOutcome.rejected())
         _ep, err, _a, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=True, target=target,
@@ -7169,20 +7180,135 @@ class TestPersonaPreflightBundle:
         assert err is not None
         assert "rejected the token" in err
 
-    def test_an_unverifiable_probe_warns_and_proceeds(self, tmp_path, capsys):
-        """DESIGN §5b: a blip is not a config error; the box surfaces a real 401."""
-        target = self._Target(verdict=None)
+    def test_an_INCONCLUSIVE_probe_warns_and_proceeds(self, tmp_path, capsys):
+        """DESIGN §5b: a blip is not a config error; the box surfaces a real 401.
+
+        ⚑ This is the ONE arm the warning was written for, and the fix that
+        silenced the false warnings must not silence it.  The reason rides into
+        the message so the user is told WHAT went unanswered.
+        """
+        target = self._Target(
+            outcome=PersonaProbeOutcome.inconclusive("the endpoint imploded"),
+        )
         ep, err, _a, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=True, target=target,
         )
         assert err is None and ep == self._ENDPOINT
+        err_out = capsys.readouterr().err
+        assert "could not verify" in err_out
+        assert "the endpoint imploded" in err_out
+
+    def test_a_NOT_APPLICABLE_probe_is_SILENT_and_proceeds(self, tmp_path, capsys):
+        """⚑ The defect this arm exists to kill.
+
+        NOT_APPLICABLE names a VALID configuration nobody can act on.  Warning on
+        it — which a single collapsed ``None`` forced — printed "could not verify
+        the endpoint" on EVERY launch, forever, for a harness that simply has no
+        probe.  It belongs in the log.
+        """
+        target = self._Target(
+            outcome=PersonaProbeOutcome.not_applicable(
+                "the goose harness implements no persona verify probe",
+            ),
+        )
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target,
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert capsys.readouterr().err == ""
+
+    def test_a_goose_persona_launches_without_a_warning(self, tmp_path, capsys):
+        """End to end on the REAL target: goose inherits the base no-op probe.
+
+        Goose personas are keyspace-only by design and will never have a probe,
+        so the launch must be silent about it — not warn on every start.
+        """
+        from kanibako.plugins.goose.target import GooseTarget
+
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"OPENAI_API_KEY": str(self._token(tmp_path))}),
+            probe=True, target=GooseTarget(),
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert capsys.readouterr().err == ""
+
+    def test_a_model_less_persona_IS_probed_and_a_reject_still_hard_errors(
+        self, tmp_path,
+    ):
+        """⚑ The regression the "no model = never probe" shortcut would create.
+
+        A persona naming no model is VALID (claude declares
+        ``model_required: false``), and its endpoint may need no model — so it is
+        probed with the field omitted.  If it were skipped instead, a DEAD token
+        would sail past this gate and 401 inside the box.
+        """
+        target = self._Target(outcome=PersonaProbeOutcome.rejected())
+        _ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target, model=None,
+        )
+        assert err is not None
+        assert "rejected the token" in err
+        assert target.calls and target.calls[0][2] is None   # probed, no model
+
+    def test_a_model_less_persona_that_PASSES_launches_silently(
+        self, tmp_path, capsys,
+    ):
+        """The endpoint accepted a request naming no model: it needs none."""
+        target = self._Target()
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target, model=None,
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert capsys.readouterr().err == ""
+
+    def test_a_model_required_answer_is_silent_and_the_launch_PROCEEDS(
+        self, tmp_path, capsys,
+    ):
+        """The endpoint DOES want a model this persona lacks.
+
+        Nothing was learned about the token and the harness may still supply its
+        own default at runtime — so it neither blocks nor nags.
+        """
+        target = self._Target(
+            outcome=PersonaProbeOutcome.not_applicable(
+                "the endpoint requires a model in the request (HTTP 400) and "
+                "the persona names none",
+            ),
+        )
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target, model=None,
+        )
+        assert err is None and ep == self._ENDPOINT
+        assert capsys.readouterr().err == ""
+
+    def test_an_UNREACHABLE_endpoint_still_warns(self, tmp_path, capsys):
+        """The real signal, through the REAL claude probe against a closed port."""
+        import socket
+
+        from kanibako.plugins.claude.target import ClaudeTarget
+
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()  # closed port -> connection refused
+
+        ep, err, _a, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=ClaudeTarget(),
+            endpoint=f"http://127.0.0.1:{port}",
+        )
+        assert err is None and ep == f"http://127.0.0.1:{port}"
         assert "could not verify" in capsys.readouterr().err
 
     def test_a_passing_probe_is_silent(self, tmp_path, capsys):
         ep, err, _a, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
-            probe=True, target=self._Target(verdict=True),
+            probe=True, target=self._Target(),
         )
         assert err is None and ep == self._ENDPOINT
         assert capsys.readouterr().err == ""
@@ -7191,12 +7317,13 @@ class TestPersonaPreflightBundle:
         self, tmp_path, capsys,
     ):
         """A third-party plugin bug must not kill a launch."""
-        target = self._Target(verdict=RuntimeError("misbehaving plugin probe"))
+        target = self._Target(outcome=RuntimeError("misbehaving plugin probe"))
         ep, err, _a, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=True, target=target,
         )
-        assert err is None and ep == self._ENDPOINT   # treated as UNVERIFIABLE
+        # Treated as INCONCLUSIVE: a plugin bug IS an anomaly worth surfacing.
+        assert err is None and ep == self._ENDPOINT
         assert "could not verify" in capsys.readouterr().err
 
     def test_the_probe_is_OPT_IN_so_create_does_not_inherit_it(self, tmp_path):
@@ -7206,7 +7333,7 @@ class TestPersonaPreflightBundle:
         ``probe=False``; if the hard error leaked into them, a create with a
         rejected token would be refused instead of warned about.
         """
-        target = self._Target(verdict=False)
+        target = self._Target(outcome=PersonaProbeOutcome.rejected())
         _ep, err, _a, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=False, target=target,
@@ -7216,7 +7343,7 @@ class TestPersonaPreflightBundle:
 
     def test_no_probe_runs_when_the_token_gate_already_failed(self, tmp_path):
         """The probe is the LAST question — never asked of a token that failed."""
-        target = self._Target(verdict=True)
+        target = self._Target()
         _ep, err, _a, _p = self._run(self._cfg(), probe=True, target=target)
         assert err is not None
         assert target.calls == []

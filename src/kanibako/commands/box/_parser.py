@@ -587,7 +587,9 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
     """
     from kanibako.agent_ref import display_agent_ref
     from kanibako.errors import ConfigError
+    from kanibako.log import get_logger
     from kanibako.persona_store import locate_entry, read_persona_bundle
+    from kanibako.targets.base import PersonaProbeOutcome, PersonaProbeVerdict
 
     try:
         entry = locate_entry(agent_ref)
@@ -620,27 +622,41 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
             f"({bundle.token_error}); the store contributes no token.",
             file=sys.stderr,
         )
-    # WARN-ONLY first-ever probe (see the docstring).
+    # WARN-ONLY first-ever probe (see the docstring).  ⚑ WARN-ONLY applies to
+    # the two ANSWERED non-PASS verdicts; ``NOT_APPLICABLE`` means nothing was
+    # learned about the token and nothing will be for this input (a harness with
+    # no probe, an unreadable token, an endpoint that requires a model this
+    # persona does not name) — a valid configuration nobody can act on, so it
+    # goes to the log, exactly as on the launch path
+    # (:func:`~kanibako.commands.start._persona_probe_error`).  ⚑ A persona that
+    # simply names no model is still PROBED (model field omitted), so a dead
+    # token still warns here.
     if bundle.token_path is not None:
         try:
-            verdict = target.verify_persona(
+            outcome = target.verify_persona(
                 bundle.endpoint, bundle.token_path, bundle.model,
             )
         except Exception:
-            verdict = None  # probe contract is never-raise; hold plugins to it
-        if verdict is False:
+            # Probe contract is never-raise; hold plugins to it. A plugin bug IS
+            # an anomaly, so it warns rather than going quiet.
+            outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
+        if outcome.verdict is PersonaProbeVerdict.REJECTED:
             print(
                 f"Warning: the persona endpoint rejected the token for "
                 f"'{display}'; creating anyway — fix the token in the store "
                 f"before starting.",
                 file=sys.stderr,
             )
-        elif verdict is None:
+        elif outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
             print(
                 f"Warning: could not verify the persona endpoint for "
-                f"'{display}' (unreachable, or no probe was possible); "
-                f"creating unverified.",
+                f"'{display}' ({outcome.reason}); creating unverified.",
                 file=sys.stderr,
+            )
+        elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE:
+            get_logger(__name__).debug(
+                "persona '%s': no verify probe was possible (%s); "
+                "creating unprobed", display, outcome.reason,
             )
     print(
         f"Recognised persona '{display}' in the persona store; its values are "
