@@ -195,13 +195,43 @@ def _build_access_realization(
     typo'd row must fail loudly at descriptor load instead of silently declaring
     nothing (which would read, at launch, as "this harness cannot do that").
 
+    ⚑ The BLOCK's own fields get the same discipline the ROWS already get
+    (:func:`_build_access_row`), for the same reason.  An unknown top-level field
+    is REFUSED rather than ignored: the block is read field by field, so a typo'd
+    name is simply never read.  And an ENV-channel block with no ``env_var`` is
+    REFUSED: ``assemble_env`` emits a tier row only when the variable is named
+    (``ar.channel is Channel.ENV and ar.env_var``), so ``env_ver:`` for
+    ``env_var:`` would leave the harness's permission variable UNSET while the
+    launch reports the requested tier — and on this channel the unset default is
+    the PERMISSIVE one (goose: no ``GOOSE_MODE`` ⇒ ``auto`` ⇒ full bypass).  That
+    is the same silent substitution the empty-ENV-row rule above refuses, reached
+    one level up.
+
     *source* names the defaults file in every refusal (see
     :func:`_build_access_row`).
     """
     if not raw:
         return None
     where = f" ({source})" if source else ""
+    unknown_fields = set(raw) - {"channel", "env_var", "tiers", "setting_key"}
+    if unknown_fields:
+        raise SettingsError(
+            f"access_realization{where} declares unknown field(s) "
+            f"{sorted(unknown_fields)}; the block carries only 'channel', "
+            f"'env_var' (ENV channel), 'tiers' and 'setting_key'."
+        )
     channel = Channel(raw["channel"])
+    env_var = raw.get("env_var", "")
+    if channel is Channel.ENV and not env_var:
+        raise SettingsError(
+            f"access_realization{where} declares \"channel: 'env'\" but names no "
+            f"'env_var': every tier row would be assembled and then SKIPPED, "
+            f"leaving the harness's permission variable UNSET — which on this "
+            f"channel is the harness's own default, and that default is the "
+            f"PERMISSIVE one (goose: no 'GOOSE_MODE' ⇒ 'auto'). The launch would "
+            f"still report the requested tier. An 'env' channel realization must "
+            f"name its 'env_var'."
+        )
     tiers_raw = raw.get("tiers") or {}
     if not isinstance(tiers_raw, dict):
         raise SettingsError(
@@ -223,7 +253,7 @@ def _build_access_realization(
     }
     return AccessRealization(
         channel=channel,
-        env_var=raw.get("env_var", ""),
+        env_var=env_var,
         restricted=rows.get("restricted"),
         editing=rows.get("editing"),
         full=rows.get("full"),
@@ -231,12 +261,45 @@ def _build_access_realization(
     )
 
 
-def _build_setting_arg(entry: dict[str, Any]) -> SettingArg:
+def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg:
+    """Build ONE :class:`SettingArg` from a declarative ``settings:`` entry.
+
+    Same load-time discipline as :func:`_build_access_realization`, and for the
+    same reason.  An unknown top-level field is REFUSED rather than ignored (the
+    entry is read field by field, so a typo'd name is never read), and an
+    ENV-channel entry that names no ``env_var`` is REFUSED because
+    ``assemble_env`` emits only when the variable is named (``s.channel is
+    Channel.ENV and s.env_var``): the value would be resolved through the whole
+    cascade and then dropped, silently.  For claude's ``endpoint`` that means a
+    persona launching against the harness's DEFAULT endpoint while every
+    preflight reports the configured one.
+
+    *source* names the defaults file in the refusal, so a plugin author is
+    pointed at the file to fix (see :func:`_build_access_row`).
+    """
+    where = f" ({source})" if source else ""
+    named = entry.get("setting_key", "<unnamed>")
+    unknown = set(entry) - {"setting_key", "channel", "flag", "env_var"}
+    if unknown:
+        raise SettingsError(
+            f"settings entry {named!r}{where} declares unknown field(s) "
+            f"{sorted(unknown)}; a setting arg carries only 'setting_key', "
+            f"'channel', 'flag' (FLAG channel) and 'env_var' (ENV channel)."
+        )
+    channel = Channel(entry["channel"])
+    env_var = entry.get("env_var", "")
+    if channel is Channel.ENV and not env_var:
+        raise SettingsError(
+            f"settings entry {named!r}{where} declares \"channel: 'env'\" but "
+            f"names no 'env_var': the value would be resolved and then SKIPPED, "
+            f"so the setting silently never reaches the box while the launch "
+            f"reports it. An 'env' channel setting must name its 'env_var'."
+        )
     return SettingArg(
         setting_key=entry["setting_key"],
-        channel=Channel(entry["channel"]),
+        channel=channel,
         flag=tuple(entry.get("flag", ())),
-        env_var=entry.get("env_var", ""),
+        env_var=env_var,
     )
 
 
@@ -317,7 +380,9 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         access_realization=_build_access_realization(
             desc.get("access_realization"), source=filename,
         ),
-        settings=tuple(_build_setting_arg(s) for s in desc.get("settings", [])),
+        settings=tuple(
+            _build_setting_arg(s, source=filename) for s in desc.get("settings", [])
+        ),
         persona=_build_persona(desc.get("persona")),
         container_env={
             k: _expand(v) for k, v in desc.get("container_env", {}).items()
