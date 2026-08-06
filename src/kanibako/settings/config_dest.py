@@ -62,6 +62,7 @@ def _agent_node_route(
     *tail*, which is exactly the shape a rule takes just before one copy drifts:
     the inline copy in ``_set_category_value`` had already dropped BOTH guards,
     so ``set`` wrote node refs that ``get`` and ``reset`` then refused to touch.
+    (That inline copy is gone with the bind write route it served — R-9.)
 
     ``default`` is the RESERVED any-agent tier name (``read_agent_settings``: "no
     real agent may be named default") — the launch never reads an
@@ -90,11 +91,14 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
     """The GUARD PAIR every per-node route enforces, or ``None`` when *node* is
     routable.
 
-    Split out from :func:`_agent_node_route` for the one caller that supplies its
-    own destination file (the category repoint, whose node file the command
-    handler already resolved) and therefore needs the guards WITHOUT the path
-    lookup.  It takes the guards rather than re-deriving them, which is the
-    entire point: this is the pair the inline copy dropped.
+    Split out from :func:`_agent_node_route` for a caller that supplied its own
+    destination file — the ``agent.<node>.bindings.*`` category repoint, whose node
+    file the command handler had already resolved — and therefore needed the guards
+    WITHOUT the path lookup.  ⚑ That caller is GONE: R-9 retired the bind CLI write
+    route, and the refusal now runs before any node is parsed.  The split is kept
+    because the guard PAIR is the rule, and a rule spelled once cannot drift back
+    into the two-of-four-steps copy that let ``set`` write node refs ``get`` and
+    ``reset`` then refused to touch.
     """
     if node == AGENT_DEFAULT_SUB:
         return NodeRouteRefusal("reserved")
@@ -146,18 +150,21 @@ def _node_bind_target(
     canonical: str, agents_root: "Path | None",
 ) -> "tuple[Path, tuple[str, ...], str] | None":
     """Resolve a canonical per-node DESCRIPTOR bind key
-    ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0) to its FILE read/reset
-    location — the get/reset symmetry twin of the set path (which routes through
-    ``_set_category_value`` → ``repoint_host_src``).
+    ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0) to its FILE READ location.
+
+    ⚑ READ-ONLY since R-9. It was the get/reset twin of a ``config set`` repoint;
+    that write route is retired and the verbs refuse the key by name, so the ONE
+    caller left is ``config_interface.get_config_value``. The read survives because
+    the key does: still declared, still hand-authored in this very file, still
+    delivered at launch — and hand-editing it is the cure the refusal prescribes.
 
     Returns ``(path, sections, leaf)`` via the file-shape SoT
     :func:`agent_config.agent_file_route`: the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (*path*), and the nested table the bind write
-    targets — ``self.<node>.bindings.<ro|rw>.<name>`` split into ``(sections, leaf)``
-    (the SAME route the set path passes to ``repoint_host_src`` as ``dest_parts``),
-    so get/reset read/remove precisely where set wrote (the shape ``_agent_partial``
-    reads back at launch). The node appears BOTH in the dir path AND in the nested
-    key — that is the launch read shape, not a bug.
+    ``agents/<node>/settings.yaml`` (*path*), and the nested table holding the bind
+    — ``self.<node>.bindings.<ro|rw>.<name>`` split into ``(sections, leaf)``, the
+    shape ``settings_assemble._agent_partial`` reads back at launch. The node appears
+    BOTH in the dir path AND in the nested key — that is the launch read shape, not
+    a bug.
 
     Returns ``None`` when *canonical* is not a node bind, *agents_root* was not
     threaded (the per-node store is global under ``config.agents`` — only reachable

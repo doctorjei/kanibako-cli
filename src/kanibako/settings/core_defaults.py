@@ -54,7 +54,7 @@ def packaged_data_dir(*parts: str) -> Traversable:
 CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
 # The set-time FLOOR-registry placeholder host_src (F10). ``core_default_bind_keys``
-# / ``agent_representation.agent_default_bind_keys`` emit their bind tuples with THIS
+# emits its bind tuples with THIS
 # sentinel in element 0 because the set-time repoint DISCARDS the old host_src
 # (``settings_configset.repoint_host_src`` uses only ``base[1:]`` = box_dest+options).
 # It is NEVER a launch value — the registry is folded ONLY into the set-time
@@ -746,11 +746,13 @@ def rom_agent_default_categories(
 
     Emitted by CORE from the RESOLVED *target*, beside the five core canon binds —
     NOT by the plugin, and NOT through the agent-scope descriptor route.  That
-    choice is the whole design: an ``agent.<node>.bindings.ro.rom`` key would ride
-    ``agent_default_bind_keys`` into the set-time floor and make the bible's agent
-    chapter the SOLE repointable page of an otherwise unrepointable book, and it
-    would discriminate on the NODE (a persona) while the content is a property of
-    the HARNESS PACKAGE.  As a box-scoped INTERNAL bind there is no discriminator
+    choice is the whole design: an ``agent.<node>.bindings.ro.rom`` key would have
+    ridden the per-node descriptor floor into the set-time cascade and made the
+    bible's agent chapter the SOLE repointable page of an otherwise unrepointable
+    book, and it would discriminate on the NODE (a persona) while the content is a
+    property of the HARNESS PACKAGE.  (R-9 has since retired the bind CLI write
+    route at every scope, so no page of the book is repointable from the CLI — the
+    asymmetry the choice avoided cannot arise at all now.)  As a box-scoped INTERNAL bind there is no discriminator
     at all, which is spec §2d's *"storage is varied, binding is not"* verbatim.
 
     ⚑ bible/agent = per-HARNESS (packaged, one per plugin).  handbook/agent =

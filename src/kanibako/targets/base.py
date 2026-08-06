@@ -97,9 +97,19 @@ class Binding:
     a detection field (LAUNCHER/INSTALL_DIR/BINARY) or literal_src (LITERAL).  AGENT_CRITICAL bindings
     keep source-exists safe-fail + bind-as-is inode-pin + core dest-symlink clearing; AGENT shares are
     best-effort (a missing/suppressed share is fine).
+
+    ⚑ THAT OVERRIDE IS NOW YAML-ONLY.  R-9 (disk-store rework step 1) retired the
+    ``config set`` / ``config reset`` route for ``agent.<name>.bindings.{ro,rw}.<key>``
+    at every scope — an accepted loss, backlog DS-BL1.  The key is NOT retired: it is
+    still declared, still read by the launch cascade, still readable via ``config
+    get``.  A user (or a plugin's docs) repoints a binding by hand-editing
+    ``agents/<node>/settings.yaml``; there is no CLI verb to point them at, so do not
+    document one.  ⚑ This type itself is UNCHANGED and stays (it is published plugin
+    surface, re-exported through the ``agent_defaults`` shim).
     """
 
     key: str                          # stable override key -> agent.<name>.bindings.{ro,rw}.<key>
+                                      # (a settings-file key since R-9; no CLI route)
     origin: HostSrcOrigin
     box_dest: str
     kind: BindKind

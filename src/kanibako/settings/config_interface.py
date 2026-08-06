@@ -43,7 +43,6 @@ from kanibako.settings.config_dest import (
     _write_dest,
     _read_dest,
     noun_settings_file,
-    check_agent_node,
     _node_bind_target,
     _node_secret_target,
     _persona_agent_target,
@@ -83,10 +82,10 @@ from kanibako.settings.config_keys import (
     box_agent_redirect_key,
     box_agent_retired_error,
     is_access_key,
+    agent_node_bind_retired_error,
     scope_bind_retired_error,
     scope_env_var_error,
     is_system_path_key,
-    parse_agent_node_bind_key,
     system_key_refusal,
     resolve_key,
     ConfigLevel,
@@ -230,18 +229,29 @@ def _pref_value_error(
         if access_err is not None:
             return access_err
 
-    # ⚑ THREE regexes, because "is this target bind-shaped?" is not the same
-    # question as "is this target CLI-settable?". R-9 took the scope-level
-    # ``bindings.{ro,rw}`` arms out of ``BIND_KEY_RE`` — they are no longer a
+    # ⚑ FOUR terms, because "is this target bind-shaped?" is not the same
+    # question as "is this target CLI-settable?". R-9 took the ``bindings.{ro,rw}``
+    # arms out of ``BIND_KEY_RE`` at EVERY scope — they are no longer a
     # ``config set`` route — but their VALUE is still a structured tuple, so a
-    # scalar written at ``pref.box.bindings.ro.<name>`` is still wrong and must
-    # still be refused HERE. Dropping the third term would have opened exactly the
-    # hole this guard exists to close, on the very keys that lost their direct
-    # route (spec §2h: a pref's value is legal iff it is legal at its target).
+    # scalar written at ``pref.box.bindings.ro.<name>`` or
+    # ``pref.agent.claude.bindings.ro.<name>`` is still wrong and must still be
+    # refused HERE. Dropping either retirement term would open exactly the hole this
+    # guard exists to close, on the very keys that lost their direct route (spec
+    # §2h: a pref's value is legal iff it is legal at its target). ⚑ ``pref`` is
+    # NOT a retired route — a box may still REQUEST a bind change — so the retired
+    # spellings must keep being recognised here even though the verbs refuse them.
+    #
+    # ⚑ Of the two retirement terms only the AGENT one is currently REACHABLE: the
+    # §2h allowlist refuses ``pref.<file-scope>.…`` several steps earlier, so
+    # ``SCOPE_BIND_KEY_RE`` here is belt-and-braces. Kept anyway — this is a
+    # value-shape rule about a target, and a rule that reads "which targets are
+    # bind-shaped" must not silently depend on which targets a different rule
+    # happens to admit today.
     if (
         BIND_KEY_RE.match(target) is not None
         or MASK_KEY_RE.match(target) is not None
         or SCOPE_BIND_KEY_RE.match(target) is not None
+        or _is_agent_node_bind_key(target)
     ):
         return (
             f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
@@ -449,11 +459,12 @@ def _category_set_lookups(
     # the tool then refuses is worse than no hint.
     #
     # Anchored for BOTH the agent the command targets AND the agent the EDITED KEY
-    # names. The second is not redundancy: the per-node routing that supplies
-    # *agent_name* covers ``agent.<node>.bindings.*`` only, so an agent-scope
-    # ``common`` / ``caches`` / ``seeded`` set arrives here with no agent name at all
-    # — and the store root a value needs is the one its own key names, whichever
-    # agent the surrounding command happens to be about.
+    # names. The second is not redundancy: no handler routes an agent name for a
+    # category set any more (the per-node routing that used to supply *agent_name*
+    # covered ``agent.<node>.bindings.*``, and R-9 retired that write route), so an
+    # agent-scope ``common`` / ``caches`` / ``seeded`` set arrives here with no agent
+    # name at all — and the store root a value needs is the one its own key names,
+    # whichever agent the surrounding command happens to be about.
     #
     # With no agent in play at either seam the key stays absent, so an
     # ``@meta.agent.*`` source is correctly a DANGLING ref rather than a
@@ -478,17 +489,22 @@ def _category_set_lookups(
     # (base is least-specific), so an already-file-set bind repoints from the file
     # (no regression).
     #
-    # ⚑ WHICH registry actually reaches here has CHANGED. The LIVE one is
-    # ``agent_representation.agent_default_bind_keys`` (the per-node descriptor
-    # floor), threaded by ``system_cmd`` for ``agent.<node>.bindings.*``. The
+    # ⚑⚑ NO REGISTRY REACHES HERE WITH A USABLE ENTRY ANY MORE, and that is worth
+    # saying plainly rather than leaving to be rediscovered. R-9 retired BOTH bind
+    # CLI write routes. The descriptor half (``agent_representation.
+    # agent_default_bind_keys``, threaded by ``system_cmd`` for
+    # ``agent.<node>.bindings.*``) is GONE with the route it served. The
     # ``core_defaults.core_default_bind_keys`` half — the CORE box mounts
     # ``box.bindings.{ro,rw}.<key>``, still threaded by the box and workset
-    # handlers — is INERT since R-9 retired the scope-level bind route: no
-    # ``box.bindings.*`` key reaches ``_set_category_value`` any more, and the
-    # remaining scope categories (``caches``/``seeded``/``common``/``synced``) are
-    # not in that registry. It is left threaded rather than unpicked here because
-    # the producer and its callers belong to a later step of the same rework; do
-    # NOT read its presence as evidence that the scope-bind repoint still works.
+    # handlers — is INERT: no ``box.bindings.*`` key reaches
+    # ``_set_category_value`` any more, and the remaining scope categories
+    # (``caches``/``seeded``/``common``/``synced``) are not in that registry.
+    #
+    # The fold is left standing rather than unpicked here because removing it means
+    # removing a PARAMETER from three public entry points and the three handlers
+    # that thread it — one decision, taken once, in the step that owns those
+    # callers. Until then: do NOT read this code's presence as evidence that a
+    # bind repoint still works from the CLI. It does not.
     if default_categories:
         for reg_key, reg_val in default_categories.items():
             if reg_val == "":
@@ -632,6 +648,16 @@ def _set_category_value(
     probe resolves the edited value against the FULL launch cascade (Jei (b),
     2026-06-29) — a cross-scope ``@``-ref no longer false-blocks — and the F10
     must-exist lookup sees the same full cascade.
+
+    ⚑ WHAT REACHES HERE, exactly: ``caches`` / ``seeded`` / ``common`` / ``synced``,
+    at ``system`` / ``workset`` / ``box`` and at ``agent.<node>``. NO bindings key
+    of any scope does — R-9 retired both bind write routes and the verbs refuse
+    them in their preamble. The per-node NODE GUARDS this function used to run
+    (reserved ``agent.default`` / malformed ref) went with them: they existed for
+    ``agent.<node>.bindings.*``, the only family that ever reached here with a node
+    to check, and the refusal now happens before any node is parsed. The other
+    agent-scope categories are unrouted at the destination layer (the preserved-
+    broken arm named in ``config_dest._write_dest``) and never had them.
     """
     from kanibako.settings.settings_configset import (
         ConfigSetError,
@@ -640,29 +666,6 @@ def _set_category_value(
         repoint_host_src,
         validate_config_set,
     )
-
-    # NODE GUARDS for the per-node agent bind route (``agent.<node>.bindings.*``) —
-    # the SAME two refusals its three siblings enforce (``_persona_agent_target``,
-    # ``_node_bind_target``, ``_node_secret_target``): the RESERVED any-agent tier is
-    # not a persona node, and a MALFORMED ref is not a node at all. This route
-    # (``dest_parts`` below) computed the file route inline and skipped both, so SET
-    # wrote values ``get``/``reset`` then refused to read or remove — a write the CLI
-    # cannot undo, and (for the reserved name) an ``agents/default/`` dir the launch
-    # never reads as a node. Checked FIRST, before the cascade/value validation:
-    # whether the KEY exists precedes whether its VALUE is good, so the refusal is
-    # deterministic instead of racing a must-exist error.
-    _node_parse = parse_agent_node_bind_key(canonical)
-    if _node_parse is not None:
-        _refusal = check_agent_node(_node_parse[0])
-        if _refusal is not None:
-            if _refusal.reason == "reserved":
-                return (
-                    f"Error: 'default' is the reserved any-agent tier, not a persona "
-                    f"node; a per-node descriptor bind must name a real agent node "
-                    f"(e.g. 'agent.<persona>+<harness>.{_node_parse[1]}."
-                    f"{_node_parse[2]}')."
-                )
-            return f"Error: {_refusal.detail}"
 
     def _host_exists(raw: str) -> bool:
         # A plain literal host path; ``~`` is home-relative. (A token-bearing
@@ -703,23 +706,16 @@ def _set_category_value(
             else [bind.host, bind.box, bind.opts]
         )
 
-    # A per-node agent bind (``agent.<node>.bindings.*``) is stored in the per-agent
-    # file under its ``self`` table (``self.<node>.bindings.*``), NOT the canonical
-    # ``agent`` token — resolve that FILE route through the shape SoT so the write
-    # lands exactly where ``_agent_partial`` / ``_node_bind_target`` read it. Every
-    # other scope bind (box/workset/system) writes at its canonical split (dest=None).
-    dest_parts: "tuple[str, ...] | None" = None
-    if _node_parse is not None:
-        node, _cat, _name = _node_parse  # _cat = full "bindings.ro"/"bindings.rw"
-        from kanibako.settings.agent_config import agent_file_route
-
-        secs, leaf = agent_file_route(f"{_cat}.{_name}", node)
-        dest_parts = (*secs, leaf)
-
+    # ⚑ ``dest_parts`` is deliberately NOT supplied. Its one caller was the per-node
+    # agent bind (``agent.<node>.bindings.*``), which is stored under the node
+    # file's ``self`` table rather than at the key's canonical split — R-9 retired
+    # that write route, so every key that still reaches here writes at its canonical
+    # split, which is ``repoint_host_src``'s default. The parameter is left on that
+    # function (it is pure and key-agnostic) rather than removed here.
     try:
         repoint_host_src(
             config_path, canonical, value,
-            cascade_bind=cascade_tuple, dest_parts=dest_parts,
+            cascade_bind=cascade_tuple,
         )
     except ConfigSetError as exc:
         return f"Error: {exc}"
@@ -839,14 +835,21 @@ def get_config_value(
 
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
     # read the RAW tuple STORED at ``agent.<node>.bindings.<ro|rw>.<name>`` in the
-    # node's OWN settings file ``agents/<node>/settings.yaml`` (the get/set/reset
-    # symmetry twin — get reads exactly where ``repoint_host_src`` wrote). Checked
-    # BEFORE the persona branch: a bind literally NAMED after a state leaf
+    # node's OWN settings file ``agents/<node>/settings.yaml``. Checked BEFORE the
+    # persona branch: a bind literally NAMED after a state leaf
     # (``agent.<node>.bindings.ro.model``) would otherwise be mis-captured by the
     # persona form (``model`` is a state leaf). A plain get is stored-at-noun — the
     # RESOLVED/effective bind (descriptor floor + this override) is the ``show
     # --effective`` cascade view, not this (matching persona get: stored-at-noun
     # only). A missing agents_root (box/workset scope) / malformed node → ``None``.
+    #
+    # ⚑ THE READ SURVIVED THE WRITE (R-9), on purpose and exactly as its file-scope
+    # twin below does. The set/reset route is retired, but the key is still declared,
+    # still hand-authored in that node file, and still delivered at launch — and
+    # hand-editing that file is precisely the cure the refusal prescribes. A get that
+    # answered "(not set)" for a bind the launch is actually mounting would be a
+    # silent lie, and would make the prescribed cure unverifiable. Refuse the write,
+    # keep the read honest.
     if _is_agent_node_bind_key(canonical):
         bind_target = _node_bind_target(canonical, agents_root)
         if bind_target is None:
@@ -935,7 +938,8 @@ def get_config_value(
     # uses ``noun_file`` — and kanibako_config.yaml is in NO cascade level, so that
     # set is a SILENT NO-OP WRITE (the agent tier reads the ``self:`` table of
     # ``agents/<node>/settings.yaml``). The per-node BIND form is routed EARLIER
-    # (``_is_agent_node_bind_key``, the node file) and is symmetric.
+    # (``_is_agent_node_bind_key``, the node file) and is READ-ONLY since R-9 — so
+    # for it the symmetry question no longer arises: there is no write to agree with.
     # Checked BEFORE the ``system.*`` file-only branch because a SYSTEM-scope
     # category key (``system.caches.*``) only LOOKS like a ``system.*`` config
     # key — categories are gettable at every scope (mirrors the set/reset
@@ -1042,11 +1046,11 @@ def set_config_value(
     (F10 / item-0) — LAUNCH-ONLY bind KEYS with STATIC box_dest+options and a
     placeholder host_src — folded into the category set-time cascade so a source-only
     repoint of a floor bind is no longer refused as "nowhere in the cascade".
-    Only consulted on the category path. ⚑ Since R-9 the only registry that still
-    DOES anything here is the per-node descriptor floor
-    (``agent_representation.agent_default_bind_keys``); the core box-bind registry
-    the box/workset handlers still thread is inert — see the fold site in
-    :func:`_category_set_lookups`.
+    Only consulted on the category path. ⚑ Since R-9 retired both bind CLI write
+    routes NO threaded registry can still affect an outcome here: the descriptor
+    floor went with the route it served, and the core box-bind registry the
+    box/workset handlers still thread is inert. Kept, and said out loud, at the
+    fold site in :func:`_category_set_lookups`.
 
     *command_scope* is the scope the ``config set`` was issued at (block B4). It
     drives the §0 directional-write guard (``_scope_direction_error``): a write is
@@ -1121,16 +1125,21 @@ def set_config_value(
     if env_var_err is not None:
         return env_var_err
 
-    # {system,workset,box}.bindings.{ro,rw}.<name> — the RETIRED scope-level bind
-    # route (R-9, disk-store rework step 1). Refused with the cure BEFORE any
+    # The two RETIRED bind CLI write routes (R-9, disk-store rework step 1) —
+    # ``{system,workset,box}.bindings.{ro,rw}.<name>`` and
+    # ``agent.<node>.bindings.{ro,rw}.<name>``. Refused with the cure BEFORE any
     # write machinery, ``--null`` and the E3 probe included, for the same reason
     # the bare ``env.<VAR>`` spelling is: a retired spelling must be REFUSED BY
     # NAME, never degraded to "unknown config key" (spec §0) and never quietly
-    # accepted. The keys themselves are NOT retired — only this route — so the
-    # message points at the settings file, and ``config get`` still reads them.
+    # accepted. The keys themselves are NOT retired — only these routes — so each
+    # message points at the settings file that actually holds the tuple, and
+    # ``config get`` still reads both.
     scope_bind_err = scope_bind_retired_error(canonical, verb="set")
     if scope_bind_err is not None:
         return scope_bind_err
+    node_bind_err = agent_node_bind_retired_error(canonical, verb="set")
+    if node_bind_err is not None:
+        return node_bind_err
 
     # ``--null`` ROUTE COVERAGE. The RULE is uniform — ``--null <key>`` writes an
     # explicit present-``None`` at that key — but the CATEGORY write MECHANISM
@@ -1151,7 +1160,7 @@ def set_config_value(
     # Everything else lands through a nested YAML write, which carries ``None``
     # natively — so ``pref.*``, ``box.agent.*`` and the routed scalars all work.
     if value is None:
-        if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
+        if _is_path_category_key(canonical):
             return (
                 f"Error: --null is not yet supported for the category key "
                 f"'{canonical}' (a config set of a category is a source-only "
@@ -1255,32 +1264,14 @@ def set_config_value(
     # supplied only by the system scope (the global ``config.agents`` store);
     # absent it, the write is refused (the directional guard already refuses this
     # key from box/workset — an UPWARD agent-scope write).
-    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR delivery bind
-    # (item-0): a SOURCE-ONLY repoint of the descriptor bind (claude launcher/share)
-    # on the agent's OWN settings file. Routed to the CATEGORY path (NOT the persona
-    # verbatim-scalar branch below — else it would write a malformed source-only bind
-    # with no box_dest) so ``repoint_host_src`` writes the RAW tuple
-    # ``[<new_src>, <descriptor box_dest>, <opts>]``. Checked BEFORE
-    # ``_is_persona_agent_key`` because a bind literally NAMED ``model`` /
-    # ``endpoint`` (``agent.<node>.bindings.ro.model``) would otherwise be captured by
-    # the persona branch (``model`` is a state leaf). The §0 directional guard already
-    # ran above: system ⊃ agent so a system-scope write is DOWNWARD (allowed); a box/
-    # workset write is UPWARD (refused). The command scope (system) supplies
-    # ``config_path`` = the node file + the descriptor floor registry
-    # (``agent_representation.agent_default_bind_keys``) as ``default_categories`` so
-    # the must-exist gate sees the launch-only descriptor floor.
-    if _is_agent_node_bind_key(canonical):
-        # Narrowed by the --null route guard above (a repoint has no null form).
-        assert value is not None
-        return _set_category_value(
-            canonical, value, config_path=config_path,
-            system_path=cascade_system_path,
-            agent_path=cascade_agent_path,
-            workset_path=cascade_workset_path,
-            box_path=cascade_box_path,
-            agent_name=cascade_agent_name,
-            default_categories=default_categories,
-        )
+    # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more.
+    # It was a SOURCE-ONLY repoint of the descriptor delivery bind, routed to the
+    # category path against a detect-free descriptor floor; R-9 retired the route
+    # and it is refused BY NAME in the preamble above. Its absence is deliberate,
+    # not an oversight to "restore" — and the ordering note that used to live here
+    # (checked before ``_is_persona_agent_key`` so a bind NAMED ``model`` is not
+    # captured as the persona state leaf) now belongs to the preamble refusal, which
+    # runs before every branch and so cannot be out-ordered.
 
     # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a). A
     # SCALAR path write to the node's OWN settings file at the DISCRIMINATED
@@ -1518,12 +1509,13 @@ def reset_config_value(
     F7 "where cheap"). They are additive and consulted ONLY for that message; a
     caller that omits them still gets the correct cleared-only form.
 
-    *default_categories* is the caller's context-light FLOOR registry (item 3) — the
-    launch-only descriptor bind KEYS (``agent.<node>.bindings.{ro,rw}.<name>`` from
-    ``agent_representation.agent_default_bind_keys``) with STATIC box_dest+options.
-    Consulted ONLY on the per-node bind reset path so the honest cleared-message can
-    name the reverted-to FLOOR value; a caller that omits it keeps the cleared-only
-    form.
+    *default_categories* is the caller's context-light FLOOR registry (item 3) —
+    launch-only bind KEYS with STATIC box_dest+options — consulted so the honest
+    cleared-message can name the reverted-to FLOOR value. ⚑ Since R-9 retired both
+    bind reset routes NO reachable branch can still find an entry in it: the
+    per-node registry it was written for is gone with that route, and the core
+    box-bind registry holds ``box.bindings.*`` keys that no longer arrive. See
+    ``config_keys._floor_bind_display``.
     """
     canonical = resolve_key(key)
 
@@ -1579,13 +1571,16 @@ def reset_config_value(
     if env_var_err is not None:
         return env_var_err
 
-    # The RETIRED scope-level bind route (R-9) — refused symmetrically with set (a
-    # reset is a WRITE). "No override for …" would be a lie in both directions: it
-    # implies the spelling could have been written from the CLI, and a hand-authored
-    # tuple at that key may well exist in the settings file, untouched.
+    # The two RETIRED bind routes (R-9) — refused symmetrically with set (a reset is
+    # a WRITE). "No override for …" would be a lie in both directions: it implies the
+    # spelling could have been written from the CLI, and a hand-authored tuple at
+    # that key may well exist in the settings file, untouched.
     scope_bind_err = scope_bind_retired_error(canonical, verb="reset")
     if scope_bind_err is not None:
         return scope_bind_err
+    node_bind_err = agent_node_bind_retired_error(canonical, verb="reset")
+    if node_bind_err is not None:
+        return node_bind_err
 
     # pref.<target-key> — remove the REQUEST from this noun's settings file
     # (symmetric with the set/get branches: reset clears exactly where set wrote).
@@ -1595,29 +1590,12 @@ def reset_config_value(
             return f"Cleared {canonical}"
         return f"No override for {canonical}"
 
-    # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind (item-0):
-    # remove the source-only repoint from the node's OWN settings file
-    # ``agents/<node>/settings.yaml`` (the get/set/reset symmetry twin — reset
-    # removes exactly where set wrote). Checked BEFORE the persona branch (a bind
-    # NAMED after a state leaf must route here). The §0 directional guard already
-    # ran: agent.* is settable/resettable only DOWNWARD from system, so a box/
-    # workset reset was refused above — reaching here means SYSTEM scope, where
-    # ``agents_root`` is threaded. After removal the bind reverts to the descriptor
-    # FLOOR; when the caller threads that floor registry (``default_categories`` =
-    # ``agent_default_bind_keys(node)``) the honest cleared-message names the
-    # reverted-to floor value (item 3), else the cleared-only form.
-    if _is_agent_node_bind_key(canonical):
-        bind_target = _node_bind_target(canonical, agents_root)
-        if bind_target is None:
-            return (
-                f"Error: '{key}' is a per-node descriptor bind and is only "
-                f"resettable at the system scope."
-            )
-        path, sections, leaf = bind_target
-        if remove_nested_key(path, sections, leaf):
-            floor = _floor_bind_display(canonical, default_categories)
-            return _honest_reset_message(canonical, command_scope, floor)
-        return f"No override for {canonical}"
+    # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more —
+    # it removed the source-only repoint from the node's own settings file, and R-9
+    # retired that route. It is refused BY NAME in the preamble above, symmetrically
+    # with set. Deliberate absence, not an oversight: a reset that reported "No
+    # override" for a hand-authored bind sitting in the node file would be the same
+    # double lie the preamble refusal exists to avoid.
 
     # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a):
     # remove the stored pointer from the node's OWN settings file (symmetric with

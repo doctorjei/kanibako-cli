@@ -24,12 +24,13 @@ fires).
 
 from __future__ import annotations
 
+import pytest
 import argparse
 from pathlib import Path
 
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
 from kanibako.settings.config import load_config, read_system_agent
-from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import load_std_paths
 
@@ -471,98 +472,99 @@ class TestSystemPersonaAgentKeys:
         assert data == {"self": {"endpoint": "https://ep"}}
 
 
-class TestSystemAgentNodeBindRepoint:
-    """item-0: ``system config set agent.<node>.bindings.{ro,rw}.<name> /new`` — a
-    SOURCE-ONLY repoint of the descriptor delivery bind (claude launcher/share),
-    written RAW to the node's OWN ``agents/<node>/settings.yaml`` (the SAME file the
-    persona keys write to), end-to-end through the ``system`` verbs."""
+class TestSystemAgentNodeBindWriteRouteRetired:
+    """R-9 — through the REAL ``system config`` CLI, not the engine: the per-node
+    descriptor bind write route is refused, and the refusal reaches the user's
+    terminal naming the key they typed.
+
+    This class REPLACES ``TestSystemAgentNodeBindRepoint``, which pinned the
+    opposite end-to-end behaviour (``system config set
+    agent.<node>.bindings.{ro,rw}.<name> /new`` writing a RAW tuple into
+    ``agents/<node>/settings.yaml``). That surface is an ACCEPTED LOSS, boarded as
+    DS-BL1. The end-to-end value of the tests is unchanged: they prove the refusal
+    is what the USER meets at the CLI, not just what the engine returns."""
+
+    KEY = "agent.claude.bindings.ro.launcher"
 
     def _file(self, std, node="claude"):
         return std.agents / node / "settings.yaml"
 
-    def test_repoint_launcher_writes_raw_tuple(self, config_file, tmp_home):
-        # The descriptor floor supplies the launcher box_dest/opts; the repoint swaps
-        # ONLY the host source (was refused/mis-routed before item-0).
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-
-        rc = _set("agent.claude.bindings.ro.launcher=/newsrc")
-        assert rc == 0
-        std = _std(config_file)
-        _, dest, opts = agent_default_bind_keys("claude")[
-            "agent.claude.bindings.ro.launcher"
-        ]
-        assert load_doc(self._file(std))["self"]["claude"]["bindings"]["ro"][
-            "launcher"
-        ] == ["/newsrc", dest, opts]
-
-    def test_repoint_works_for_uninstalled_agent(self, config_file, tmp_home):
-        # Fork 3: the registry is descriptor-only (no detect), so the repoint
-        # validates + writes even though NO claude binary is installed in this
-        # isolated tmp_home — the box_dest still comes from the descriptor.
-        rc = _set("agent.claude.bindings.ro.share=/newshare")
-        assert rc == 0
-        std = _std(config_file)
-        tup = load_doc(self._file(std))["self"]["claude"]["bindings"]["ro"]["share"]
-        assert tup[0] == "/newshare"
-        assert tup[1].endswith("/.local/share/claude")  # descriptor box_dest
-
-    def test_unknown_bind_name_refused(self, config_file, tmp_home, capsys):
-        rc = _set("agent.claude.bindings.ro.nonexistent=/x")
-        assert rc == 1
-        assert "nonexistent" in capsys.readouterr().err
-
-    def test_bind_named_model_routes_to_repoint_not_persona(
+    def test_set_exits_nonzero_and_names_the_key_on_stderr(
         self, config_file, tmp_home, capsys,
     ):
-        # COLLISION: a bind NAMED ``model`` is a category repoint (refused here as
-        # not-in-descriptor), NOT the persona scalar ``model`` (which would write a
-        # verbatim string). The refusal proves it took the category path.
+        rc = _set(f"{self.KEY}=/newsrc")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert self.KEY in err, err
+        assert "RETIRED" in err, err
+
+    def test_no_node_directory_is_created_for_a_refused_write(
+        self, config_file, tmp_home, capsys,
+    ):
+        """⚑ The handler used to ``mkdir`` the node dir BEFORE handing the key to
+        the engine. With the write refused, that would leave an
+        ``agents/<node>/`` directory behind for an operation that did nothing —
+        which is why the routing block was removed rather than left inert."""
+        rc = _set(f"{self.KEY}=/newsrc")
+        assert rc == 1
+        std = _std(config_file)
+        assert not (std.agents / "claude").exists()
+        # ...and nothing leaked into the CONFIG file either.
+        assert "agent" not in load_doc(config_file)
+
+    def test_reset_exits_nonzero_and_keeps_the_tuple(
+        self, config_file, tmp_home, capsys,
+    ):
+        std = _std(config_file)
+        node_file = self._file(std)
+        node_file.parent.mkdir(parents=True, exist_ok=True)
+        seeded = {"self": {"claude": {"bindings": {"ro": {
+            "launcher": ["/old/src", "/box/launcher", "ro"]}}}}}
+        dump_doc(node_file, seeded)
+        rc = _reset(self.KEY)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert self.KEY in err and "RETIRED" in err, err
+        assert load_doc(node_file) == seeded
+
+    def test_bind_named_model_is_still_claimed_as_a_bind(
+        self, config_file, tmp_home, capsys,
+    ):
+        """COLLISION: a bind NAMED ``model`` must meet the bind RETIREMENT, not the
+        persona scalar branch — which would have written the verbatim string
+        ``/x`` into ``self.model``. The preamble refusal runs before every branch,
+        so this is the ordering guarantee it inherits."""
         rc = _set("agent.claude.bindings.ro.model=/x")
         assert rc == 1
         err = capsys.readouterr().err
-        assert "must already exist in the cascade" in err or "model" in err
+        assert "RETIRED" in err, err
         # And the persona-scalar model still writes verbatim (unchanged path).
         assert _set("agent.claude.model=opus") == 0
         std = _std(config_file)
         assert load_doc(self._file(std))["self"]["model"] == "opus"
 
-    def test_set_then_get_reads_back_the_repoint(
+    def test_get_still_reads_a_hand_authored_bind(
         self, config_file, tmp_home, capsys,
     ):
-        # Step B Phase 3: the read-back half — a repoint SET is now visible via GET
-        # (was "(not set)" before). The stored tuple is echoed stored-at-noun.
-        assert _set("agent.claude.bindings.ro.launcher=/newsrc") == 0
+        """The read survives — the refusal tells the user to edit the node settings
+        file, and this is how they check that the edit took."""
+        std = _std(config_file)
+        node_file = self._file(std)
+        node_file.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
+            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}}})
         capsys.readouterr()
-        rc = _get("agent.claude.bindings.ro.launcher")
+        rc = _get(self.KEY)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "agent.claude.bindings.ro.launcher=" in out
-        assert "/newsrc" in out
+        assert "(not set)" not in out, out
+        assert "/newsrc" in out, out
 
-    def test_get_unset_repoint_is_not_set(self, config_file, tmp_home, capsys):
-        rc = _get("agent.claude.bindings.ro.launcher")
+    def test_get_unset_bind_is_not_set(self, config_file, tmp_home, capsys):
+        rc = _get(self.KEY)
         assert rc == 0
         assert "(not set)" in capsys.readouterr().out
 
-    def test_reset_repoint_removes_and_reports_floor(
-        self, config_file, tmp_home, capsys,
-    ):
-        # Step B Phase 3: a repoint RESET removes the override from the node file
-        # (was "Error: unknown config key" before) and — item 3 — names the
-        # reverted-to descriptor destination without the set-time placeholder.
-        from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
-
-        _set("agent.claude.bindings.ro.launcher=/newsrc")
-        capsys.readouterr()
-        rc = _reset("agent.claude.bindings.ro.launcher")
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Cleared agent.claude.bindings.ro.launcher" in out
-        assert "effective is now" in out
-        assert FLOOR_PLACEHOLDER_SRC not in out
-        std = _std(config_file)
-        # The override is gone; the now-empty tables are pruned (sparse file).
-        assert load_doc(self._file(std)) == {}
 
 
 class TestRelativeCategorySourceRefusedEndToEnd:
@@ -802,32 +804,36 @@ class TestRetiredScopeBindRoute:
         assert "/old/src" in out, out
 
 
-class TestSystemAgentNodeBindSeamRefuses:
-    """F3 — the ``system set`` seam refuses a bad node instead of falling back.
+class TestSystemAgentNodeBindSeamSuperseded:
+    """F3's ``system set`` node-routing seam is GONE, and what replaced it refuses
+    EARLIER and just as loudly.
 
-    It swallowed ``canonicalize_agent_ref``'s ``ConfigError`` and left the write
-    pointed at the kanibako_config.yaml CONFIG file, and it let the RESERVED
+    The seam swallowed ``canonicalize_agent_ref``'s ``ConfigError`` and left the
+    write pointed at the kanibako_config.yaml CONFIG file, and it let the RESERVED
     ``default`` node through as far as ``mkdir`` — creating an ``agents/default/``
-    dir for a key the launch never reads as a node."""
+    dir for a key the launch never reads as a node. R-9 retired the whole write
+    route, so the handler no longer parses a node at all and the engine refuses in
+    its preamble. The PROPERTIES those tests protected are unchanged and are what
+    is pinned here: nonzero exit, nothing written to either store, no stray node
+    directory. Only the message changed — it names the retirement, not the node.
+    """
 
-    def test_reserved_default_node_refused(self, config_file, tmp_home, capsys):
-        rc = _set("agent.default.bindings.ro.share=/x")
-        assert rc == 1
-        assert "reserved" in capsys.readouterr().err
-        std = _std(config_file)
-        assert not (std.agents / "default").exists()
-        assert "agent" not in load_doc(config_file)
-
-    def test_malformed_node_refused(self, config_file, tmp_home, capsys):
-        rc = _set("agent.a+b+c.bindings.ro.share=/x")
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "agent.default.bindings.ro.share",   # the RESERVED any-agent tier
+            "agent.a+b+c.bindings.ro.share",     # a MALFORMED node ref
+            "agent.claude.bindings.ro.share",    # a GOOD node
+        ],
+    )
+    def test_every_node_shape_is_refused_and_writes_nothing(
+        self, config_file, tmp_home, capsys, key,
+    ):
+        rc = _set(f"{key}=/x")
         assert rc == 1
         err = capsys.readouterr().err
-        assert err.startswith("Error:")
-        # The refusal NAMES the real defect — the ref.  Swallowing the parse error
-        # and falling back to the config file left the user with the cascade's
-        # "key must already exist" complaint about a key that could never exist,
-        # which sends them off to seed a bind instead of fixing the node.
-        assert "agent ref" in err
-        # The malformed node's table did NOT land in the CONFIG file.
+        assert err.startswith("Error:"), err
+        assert "RETIRED" in err, err
+        # Neither store was written, and no node directory was created.
         assert "agent" not in load_doc(config_file)
         assert list(_std(config_file).agents.glob("*")) == []

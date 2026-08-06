@@ -242,6 +242,12 @@ def _rooted_form_hint(key: str) -> str:
     (spec §2a), so a relative source there gets the bare refusal — suggesting a
     rooted form for them would be inventing a root the keyspace does not have.
 
+    ⚑ Since R-9 a ``bindings.{ro,rw}`` key gets no hint for a SECOND reason as well:
+    ``BIND_KEY_RE`` no longer matches the arms at any scope, so the match fails
+    before the ABSTRACT test is reached. Same answer, different mechanism — which
+    matters when picking a test key here, because a bindings key would now prove
+    "no hint" VACUOUSLY. Use ``synced`` to exercise the concrete-category rule.
+
     ⚑ THE ROOT IS PER SCOPE, and reading it off the spec's own table is the point:
     §2a gives ``@config.data`` for system, ``@meta.agent.<a>.path`` for
     agent, ``@meta.workset.path`` for workset and ``@meta.box.path`` for box. A
@@ -464,18 +470,19 @@ def repoint_host_src(
     result, already normalized to a plain 2-/3-element sequence of RAW strings
     (pre-expansion — the merge stores files' tuples verbatim).
 
-    ⚑ WHICH KEYS STILL ARRIVE HERE: the four scope categories (``caches`` /
-    ``seeded`` / ``common`` / ``synced``) at ``system``/``workset``/``box``, and
-    every ``agent.<node>.<category>.<name>`` including the two ``bindings`` arms.
-    ``{system,workset,box}.bindings.{ro,rw}.<name>`` does NOT — R-9 retired that
-    CLI route and the verbs refuse it by name before any write machinery runs.
+    ⚑ WHICH KEYS STILL ARRIVE HERE: the four SETTABLE categories (``caches`` /
+    ``seeded`` / ``common`` / ``synced``), at ``system``/``workset``/``box`` AND at
+    ``agent.<node>``. NO ``bindings.{ro,rw}`` key of any scope does — R-9 retired
+    both bind CLI routes and the verbs refuse them by name before any write
+    machinery runs.
     """
     data = load_doc(scope_path)
     # *dest_parts*, when supplied, is the FILE location to walk/write (sections +
-    # leaf), overriding the default "split the canonical key". The per-agent file
-    # stores its own keys under ``self`` (not the canonical ``agent`` token), so the
-    # caller passes the SoT-resolved file route (agent_config.agent_file_route); the
-    # canonical *key* is still used for the cascade must-exist semantics + messages.
+    # leaf), overriding the default "split the canonical key". ⚑ NO CALLER SUPPLIES
+    # IT TODAY: its one user was the per-agent bind repoint, which had to write under
+    # the node file's ``self`` table rather than at the key's canonical split, and
+    # R-9 retired that route. The parameter stays because this function is pure and
+    # key-agnostic — it takes an arbitrary dotted path and edits the YAML at it.
     parts = list(dest_parts) if dest_parts is not None else key.split(".")
     leaf_name = parts[-1]
 
