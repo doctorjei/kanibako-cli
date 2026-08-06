@@ -54,8 +54,8 @@ migration code.** Four released config surfaces are removed outright
 - **A box can opt out of an agent entirely.** `kanibako box set --null pref.system.agent`
   gives a plain-shell box *even when a host-wide default is set*: no agent binds, no
   credentials delivered, no agent template layer, no `KANIBAKO_AGENT` stamp — and `stop`
-  writes nothing back for it. Previously the default always re-supplied an agent, so
-  this state was unreachable.
+  writes nothing back for it. The state itself was reachable in 1.7.2 via the `no_agent`
+  pseudo-agent (`--agent no_agent` / `box.agent_name`); what is new is this spelling.
 - **The canon books — one root for everything a box reads.** The in-box instruction tree
   is now four books under `~/canon/`, entered at `~/canon/COLLECTION.md`:
   - `bible/` — packaged core guidance as per-scope chapters (`general/`, `workset/`,
@@ -142,8 +142,8 @@ migration code.** Four released config surfaces are removed outright
     `system.agent` with prefs applied, and the resolved selection is installed at the top
     precedence level *whatever chose it* (a pref, `--agent`, or the single-installed
     autopick), so the snapshot's `system.agent` equals the agent that actually runs and
-    everything derived from it derives from the truth. Previously a flag overriding a
-    pref left the snapshot asserting the pref had won.
+    everything derived from it derives from the truth. (Prefs are new in 1.8.0; the state
+    being contrasted here is an earlier point in this release, not anything 1.7.2 shipped.)
   - **A box that still carries `box.agent_name` REFUSES TO LAUNCH**, naming the key, the
     file and the one-line fix. It is not migrated automatically and it is not ignored:
     guessing would launch a *different* agent and seed that agent's credentials into the
@@ -177,9 +177,10 @@ migration code.** Four released config surfaces are removed outright
   silently.
 - **BREAKING: contested mount destinations are resolved by an explicit collision table,
   and a working configuration can start failing.** Reconciliation used to resolve a
-  contested destination by a fixed rank (seed < cache < binding < common < synced <
-  masks), which was wrong in both directions at once: a `common` entry silently beat a
-  user's real binding while a `caches` entry silently lost to one. Now:
+  contested destination by a fixed rank (seed < cache < binding < shared < synced <
+  masks — `shared` being the category this release renames to `common`), which was wrong
+  in both directions at once: that entry silently beat a user's real binding while a
+  `caches` entry silently lost to one. Now:
   - two concrete bindings at one destination **refuse the launch**, with a message that
     says the rule changed and prints the exact suppress-then-add YAML;
   - an abstraction (`common`/`caches`/`seeded`) extending onto a destination an explicit
@@ -243,8 +244,10 @@ migration code.** Four released config surfaces are removed outright
   sync wrote there still OUTRANKS the live store** — delete persona values you did not write
   yourself, or edits to the store will silently do nothing (see `MIGRATION.md` §2.15). A broken
   store config is now a hard error naming the cause instead of a silent fall back to stale values,
-  and a token the endpoint rejects (401/403) refuses the launch — every persona `start` now probes,
-  including a reattach to a running box. An unreachable endpoint only warns.
+  and a token the endpoint rejects (401/403) refuses the launch. An unreachable endpoint only warns.
+  ⚑ A `start` that merely **reattaches to an already-running box does not probe** — the box's agent
+  is already running and authenticated, and a rejected verdict would otherwise refuse to reattach a
+  user to a working box.
 - **A persona's whole `env` block now reaches the box.** The reader took exactly three values
   (endpoint, model, token var) and discarded the rest of a persona `settings.json`'s `env`; every
   string-valued entry is now exported inside the container, minus `ANTHROPIC_BASE_URL` and
@@ -252,8 +255,8 @@ migration code.** Four released config surfaces are removed outright
   dropped in silence. Review those blocks before upgrading. Claude personas only.
 - **A generated agent settings file no longer carries a model default** (was `model: opus` for
   claude, `gpt-5.5` for codex). A stored default outranks the defaults floor, pinning every seeded
-  install to whatever was current when it was made. Not persona-only: `kanibako agent <agent> model`
-  on a fresh install now reports `(not set)` where it reported `opus` — resolution is unchanged, the
+  install to whatever was current when it was made. Not persona-only: `kanibako agent get <agent>
+  model` on a fresh install now reports `(not set)` where it reported `opus` — resolution is unchanged, the
   file simply no longer restates what the floor supplies. Existing files are untouched. ⚑ One real
   change: a fresh CODEX-persona box whose store names no model now refuses at the pre-flight
   instead of silently running against `gpt-5.5`.
@@ -313,7 +316,10 @@ migration code.** Four released config surfaces are removed outright
   genuinely honoured against a live box: `--attach`, `--detach`, `--print-container`, `--warm-only`,
   `--entrypoint`, and `-e`/`--env` whenever the invocation starts a second process in the box that
   will apply it (`--entrypoint`, or `kanibako shell --persistent` at a box that is running an
-  agent) — env is refused only where nothing would consume it. ⚑ **Check scripts that
+  agent) — env is refused only where nothing would consume it. ⚑ **Known defect, not yet fixed:
+  `--detach` is answered before either exec arm, so `start --detach --entrypoint <cmd> -e K=V` at a
+  running box accepts both flags, applies neither, and exits 0.** Plain `--detach -e` is correctly
+  refused; only the pairing slips through. ⚑ **Check scripts that
   pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` §2.17).
 - **BREAKING: a launch no longer rebuilds a box whose directory has been deleted — it refuses.**
   If a box's registration survives but its box directory is gone, `kanibako start` used to
@@ -322,7 +328,7 @@ migration code.** Four released config surfaces are removed outright
   the filesystem, names the box and the missing directory, and prints the one command that
   rebuilds it: `kanibako create <workspace>` for a default-mode box, `kanibako workset
   disconnect <workset> <box> && kanibako workset connect <workset> <workspace>` for a workset
-  member. Unaffected: `create`, `restore`, and the first launch of a box added with `workset
+  member. Unaffected: `create`, `box extract`, and the first launch of a box added with `workset
   connect` (connect registers the box without seeding it, so that launch is a genuine
   materialisation). ⚑ **Check anything that deletes box directories and relies on the next
   `start` to put them back** (`MIGRATION.md` §2.18).
@@ -350,7 +356,9 @@ migration code.** Four released config surfaces are removed outright
   `info` to key on.
 
 - **The `orphaned project data` hint is gone.** It required a launch to be materialising a primary
-  box, which the explicit create gate has refused since v1.7.0, so it could no longer fire. Orphan
+  box, keyed on the box directory — which is exactly what the refusal added in this release (above)
+  now rejects first, so the hint could no longer fire. ⚑ Not the v1.7.0 create gate: that one keys
+  on *registration*, and a registered box whose directory was deleted still passed it. Orphan
   reporting remains on `kanibako box list`, which names `box remap` / `box rm`.
 
 - **Reattaching to a running box no longer runs the whole launch preamble.** `kanibako start`
@@ -388,7 +396,9 @@ migration code.** Four released config surfaces are removed outright
   to the front on every subcommand whose positionals could be split; a `--` still ends
   flag parsing, and no previously-working invocation changed meaning across a
   thirty-thousand-case differential fuzz.
-- **`kanibako agent set --null <key>` performed a silent read.** The flag was advertised
+- **`kanibako agent set --null <key>` performed a silent read.** ⚑ Nothing to do on upgrade:
+  `agent set` had no `--null` flag at all in 1.7.2, and this was already fixed by `v1.8.0-rc1`,
+  so no released version ever behaved this way. The flag was advertised
   on the parser but never consulted, so the command fell through to its get path: it
   printed the current value and exited 0 without writing anything. It is now an explicit
   refusal naming both cures — `agent reset <agent> <key>` to clear the agent's own value,
