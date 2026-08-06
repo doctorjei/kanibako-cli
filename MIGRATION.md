@@ -151,7 +151,14 @@ inside boxes. In order of likely impact:
     the thing to check. The other mount categories (`caches`, `seeded`, `common`, `synced`) are
     untouched and still settable at every scope.
 
-18. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+18. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
+    host:guest` is now `workset share add WS host:guest`, and `workset share rm WS NAME` is now
+    `workset share rm WS DEST` — the box destination, exactly as `share list` prints it. **Your
+    existing workset files keep working**; this is a command-line change, not a data change. Scripts
+    that call `workset share` are the thing to check, and so is anything that parses `share list`,
+    whose columns are now `DEST / MODE / SOURCE`.
+
+19. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -909,6 +916,41 @@ value first — that still works, and it tells you which entry you are editing.
 their `config set` route at every scope, including the source-only repoint. If you are unsure
 whether a script of yours is affected, the test is whether the key contains `bindings.ro` or
 `bindings.rw`.
+
+---
+
+### 2.21 `workset share`: the destination identifies a share, not a name
+
+**What changed.**
+
+```
+# before                                    # now
+workset share add WS NAME host:guest        workset share add WS host:guest
+workset share rm  WS NAME                   workset share rm  WS DEST
+```
+
+`rm` takes the **box destination**, typed exactly as `share list` prints it. The raw listing's
+columns change from `NAME / MODE / BIND(host:dest)` to **`DEST / MODE / SOURCE`**, and the messages
+follow it: `Added rw share 'data'` → `Added rw share at '/home/agent/data'`, and the error
+`no share 'x'` → `no share at 'x'`. `share list --effective` output is unchanged.
+
+**Your existing worksets keep working.** This changes the command line, not what is stored. You do
+not need to edit, migrate or re-create anything.
+
+**Why the name went.** It never identified anything. Two shares at one destination were already an
+error, and that error was always decided on the **destination** — never on the name. So the name was
+a label that could not change any outcome, while making it possible to write two entries that looked
+distinct and were not. Making the destination the identity turns a rule that was enforced by hand
+into one the data structure enforces by construction.
+
+**Re-adding is how you repoint.** `share add` at a destination that already has a share replaces its
+source, and says `Updated` rather than `Added`. There is no separate edit verb.
+
+**One thing that did NOT change, so you are not surprised by it.** A destination is unique *within
+one mode*. Adding the same destination `--mode rw` and then `--mode ro` still puts one destination in
+both arms, which is a launch-time collision — the same outcome as before, when it took two different
+names to produce it. The share help text used to claim two shares could never target one
+destination; that claim was wrong before this change and has been corrected.
 
 ---
 
