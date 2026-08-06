@@ -19,6 +19,18 @@ from kanibako.commands.start import (
     _unbuilt_box_error,
 )
 
+# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — not even to set up a case.
+# These tests drive the REAL ``run_create``, which materialises the J-7 canon skeleton
+# and then makes it root-owned + 555 via ``podman unshare``.  Where that works (CI
+# runners, bifrost) a bare ``rmtree`` of the box dir dies with EACCES partway through;
+# where it does not (this project's dev box, broken ``newuidmap``) the protect pass
+# short-circuits and the same line passes.  That asymmetry is the whole bug — it is why
+# the three tests below were green here and red in CI, and it is the SAME failure
+# ``test_commands/test_box_register.py`` already carries a note about.  ``remove_box_tree``
+# is the sanctioned escalating deleter the product's own lifecycle verbs use, so the
+# test tree carries no second, driftable copy of the escalation.
+from kanibako.runtime.container import remove_box_tree
+
 
 def _launch(project_dir, **over):
     """Minimal ``_run_container`` launch (foreground start) for a target."""
@@ -198,13 +210,18 @@ class TestLaunchRefusesUnbuiltBox:
     A registered box whose directory has been deleted used to be re-materialised
     by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
     box, and leaves the filesystem untouched.
+
+    ⚑ EVERY test in this class takes ``protected_canon``.  Removing the box dir is
+    the SETUP for all three, and on an unprotected host that removal is trivial —
+    so without the fixture the local run cannot see the failure CI sees.  The
+    fixture reproduces the MODE half (555/444) deterministically; ownership still
+    only exists on CI/bifrost, so this makes the local run meaningful, not an
+    oracle.
     """
 
     def test_registered_box_with_missing_dir_refuses_and_builds_nothing(
-        self, config_file, tmp_home, credentials_dir, capsys
+        self, config_file, tmp_home, credentials_dir, capsys, protected_canon
     ):
-        import shutil
-
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.paths import load_primary_boxes
 
@@ -215,7 +232,7 @@ class TestLaunchRefusesUnbuiltBox:
         capsys.readouterr()
 
         # The box dir goes; the registration survives.  That IS the case.
-        shutil.rmtree(box_dir)
+        assert remove_box_tree(box_dir), "the box tree must actually be gone"
         assert load_primary_boxes(std.primary_workset).get("project") == str(
             tmp_home / "project"
         )
@@ -235,20 +252,18 @@ class TestLaunchRefusesUnbuiltBox:
         )
 
     def test_the_cure_the_refusal_names_actually_works(
-        self, config_file, tmp_home, credentials_dir, capsys
+        self, config_file, tmp_home, credentials_dir, capsys, protected_canon
     ):
         """The B9 standard: a cure that does not work is worse than no cure.
 
         The message names ``kanibako create <workspace>``; run exactly that and
         the box must come back and pass the launch gate.
         """
-        import shutil
-
         from kanibako.commands.box._parser import run_create
 
         config, std = _std(config_file)
         assert run_create(_create_args(tmp_home / "project")) == 0
-        shutil.rmtree(std.boxes / "project")
+        assert remove_box_tree(std.boxes / "project")
         capsys.readouterr()
 
         assert _launch(None) == 1
@@ -261,16 +276,14 @@ class TestLaunchRefusesUnbuiltBox:
         assert _resolve_existing_box(std, config, None) is not None
 
     def test_shell_and_named_target_route_through_the_same_gate(
-        self, config_file, tmp_home, credentials_dir, capsys
+        self, config_file, tmp_home, credentials_dir, capsys, protected_canon
     ):
         """``kanibako shell`` and a bare-NAME target hit the one chokepoint too."""
-        import shutil
-
         from kanibako.commands.box._parser import run_create
 
         _config, std = _std(config_file)
         assert run_create(_create_args(tmp_home / "project")) == 0
-        shutil.rmtree(std.boxes / "project")
+        assert remove_box_tree(std.boxes / "project")
         capsys.readouterr()
 
         assert _launch(None, box_shell_mode=True) == 1
@@ -324,8 +337,6 @@ class TestUnbuiltBoxErrorMessage:
     ):
         """``create`` refuses inside a workset member ("already initialized"), so
         the named-box cure is ``workset disconnect`` + ``workset connect``."""
-        import shutil
-
         from kanibako.project.workset import add_project, create_workset
         from kanibako.settings.paths import resolve_box_target
 
@@ -338,7 +349,9 @@ class TestUnbuiltBoxErrorMessage:
         proj = resolve_box_target(
             std, config, str(src), initialize=False, register=True, warn=False,
         )
-        shutil.rmtree(proj.metadata_path)
+        # A box METADATA tree: ``connect`` never seeds, so there is no skeleton here
+        # today — but it is still a box tree, and the same rule applies to all of them.
+        assert remove_box_tree(proj.metadata_path)
 
         msg = _unbuilt_box_error(proj)
         assert msg is not None
