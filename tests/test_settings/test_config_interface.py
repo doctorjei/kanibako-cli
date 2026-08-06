@@ -488,6 +488,53 @@ class TestEnvKeys:
         )
         assert "No override" in msg
 
+    @pytest.mark.parametrize("verb", ["set", "reset", "read"])
+    def test_the_agent_command_scope_never_cures_toward_a_bare_agent_key(
+        self, verb,
+    ):
+        """N-1. The cure is derived from the command scope, and the AGENT scope
+        is DISCRIMINATED (spec §0): ``agent.env.<VAR>`` is not a key at all —
+        ``ENV_KEY_RE`` spells the agent scope ``agent.<node>`` and refuses the
+        bare form. A cure naming it would hand the user a second illegal
+        spelling to replace the first.
+        """
+        from kanibako.settings.config_keys import bare_env_retired_error
+        from kanibako.settings.settings_categories import ENV_KEY_RE
+
+        msg = bare_env_retired_error(
+            "env.FOO", verb=verb, command_scope=ConfigLevel.agent,
+        )
+        assert msg is not None and msg.startswith("Error:"), msg
+        # The illegal spelling must not appear anywhere in the message …
+        assert "'agent.env.FOO'" not in msg, msg
+        assert "agent.env.FOO" not in msg, msg
+        # … and the cure that IS named must be the discriminated family.
+        assert "agent.<agent>.env.FOO" in msg, msg
+        # Ground truth for both halves, read off the keyspace itself rather
+        # than restated here: bare is not a key, discriminated is.
+        assert ENV_KEY_RE.match("agent.env.FOO") is None
+        assert ENV_KEY_RE.match("agent.myagent.env.FOO") is not None
+
+    @pytest.mark.parametrize(
+        "level,cure",
+        [
+            (None, "box.env.FOO"),
+            (ConfigLevel.box, "box.env.FOO"),
+            (ConfigLevel.workset, "workset.env.FOO"),
+            (ConfigLevel.system, "system.env.FOO"),
+        ],
+    )
+    def test_the_other_scopes_still_cure_toward_their_own_scoped_key(
+        self, level, cure,
+    ):
+        """The agent carve-out must not disturb the three CONFIG nouns."""
+        from kanibako.settings.config_keys import bare_env_retired_error
+
+        msg = bare_env_retired_error(
+            "env.FOO", verb="set", command_scope=level,
+        )
+        assert msg is not None and f"'{cure}'" in msg, msg
+
 
 # ---------------------------------------------------------------------------
 # Target settings (model, continue_mode, autonomous)
