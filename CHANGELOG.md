@@ -335,6 +335,24 @@ migration code.** Four released config surfaces are removed outright
 
 ### Fixed
 
+- **`kanibako box info` named a cure that has not worked since v1.7.0.** For a directory with no
+  box data it printed `Start a session with 'kanibako start', or create with:` — but the explicit
+  create gate means a launch never materialises a box; it errors and points at `create`. The same
+  branch also collapsed two different states, so a **registered** box whose directory had been
+  deleted was told it *"has not been used with kanibako yet"* — false, and offering a cure that was
+  correct only by accident for a primary box and **absent entirely** for a named one. `info` now
+  defers that case to the launch refusal's own message, whose cure is already mode-dependent
+  (`create` for a primary box, `workset disconnect` + `workset connect` for a named one), so `info`
+  and a launch can never name different cures. The registered-box message now goes to stderr, where
+  a refusal belongs; the exit code is unchanged (this branch has always exited 1). ⚑ **Standalone
+  boxes are outside this fix's reach:** for them the box directory *is* the project root, so the
+  refusal this defers to cannot trigger, and a standalone box in the broken state has no name for
+  `info` to key on.
+
+- **The `orphaned project data` hint is gone.** It required a launch to be materialising a primary
+  box, which the explicit create gate has refused since v1.7.0, so it could no longer fire. Orphan
+  reporting remains on `kanibako box list`, which names `box remap` / `box rm`.
+
 - **Reattaching to a running box no longer runs the whole launch preamble.** `kanibako start`
   against a box that is already up reattaches to it — but it used to first resolve the rig
   (**building or pulling an image**), settle the shadowing-flag persist, cache the image's login
