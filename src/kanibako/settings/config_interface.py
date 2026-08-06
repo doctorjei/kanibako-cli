@@ -23,7 +23,7 @@ import sys
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from kanibako.settings.config import (
     load_config,
@@ -55,7 +55,6 @@ from kanibako.settings.config_keys import (
     _agent_scope_node,
     _coerce_value,
     _dot_to_flat,
-    _floor_bind_display,
     _is_agent_node_bind_key,
     _is_agent_node_secret_key,
     _is_agent_setting,
@@ -168,7 +167,6 @@ def _pref_value_error(
     workset_path: Path | None,
     box_path: Path | None,
     agent_name: str,
-    default_categories: "Mapping[str, object] | None",
 ) -> str | None:
     """Validate a pref's VALUE against the shape + resolution of its TARGET key.
 
@@ -284,7 +282,6 @@ def _pref_value_error(
         workset_path=workset_path,
         box_path=box_path,
         agent_name=agent_name,
-        default_categories=default_categories,
     )
     defect = resolves(target, value)
     if defect is not None:
@@ -428,7 +425,6 @@ def _category_set_lookups(
     workset_path: Path | None = None,
     box_path: Path | None = None,
     agent_name: str = "",
-    default_categories: "Mapping[str, object] | None" = None,
 ):
     """Build the set-time lookups for a category ``config set`` at *config_path*
     (the COMMAND-scope file): the E3 RESOLUTION probe (Q9, spec §2a) AND the
@@ -511,39 +507,22 @@ def _category_set_lookups(
 
     ctx = _set_time_ctx(config=config_foundation)
 
-    # F10 / item-0: fold the caller's context-light default-category FLOOR registry
-    # into the SAME base floor so a source-only repoint of a LAUNCH-ONLY floor bind
-    # sees the key in the SET-TIME cascade. Such binds live only in the launch floor
-    # (host-probed per box/mode), so before this fold the F10 must-exist gate refused
-    # a repoint of them ("nowhere in the cascade"). The registry carries the STATIC
-    # box_dest + options with a PLACEHOLDER host_src — exactly what the repoint needs
-    # (``repoint_host_src`` keeps the box_dest and options, discarding the
-    # placeholder). The keys are ALREADY fully scope-qualified, so this is a DIRECT
-    # union. A scope FILE tuple at the same key still OVERRIDES this floor via merge
-    # (base is least-specific), so an already-file-set bind repoints from the file
-    # (no regression).
+    # ⚑ THERE IS NO SET-TIME FLOOR-REGISTRY FOLD HERE ANY MORE, and its absence is
+    # deliberate. A ``default_categories`` registry (the CORE box mounts, and before
+    # them the per-node descriptor binds) used to be folded into *floor* so a
+    # source-only repoint of a LAUNCH-ONLY bind would pass the F10
+    # must-exist-in-the-cascade gate. R-9 retired BOTH bind CLI write routes, which
+    # left the fold unable to change any outcome: no ``bindings.*`` key of any scope
+    # reaches this function, and the categories that still do
+    # (``caches``/``seeded``/``common``/``synced``) were never in that registry. The
+    # whole thread — the parameter on five functions, both producers, and the three
+    # handler call sites — was removed together rather than left inert.
     #
-    # ⚑⚑ NO REGISTRY REACHES HERE WITH A USABLE ENTRY ANY MORE, and that is worth
-    # saying plainly rather than leaving to be rediscovered. R-9 retired BOTH bind
-    # CLI write routes. The descriptor half (``agent_representation.
-    # agent_default_bind_keys``, threaded by ``system_cmd`` for
-    # ``agent.<node>.bindings.*``) is GONE with the route it served. The
-    # ``core_defaults.core_default_bind_keys`` half — the CORE box mounts
-    # ``box.bindings.{ro,rw}.<key>``, still threaded by the box and workset
-    # handlers — is INERT: no ``box.bindings.*`` key reaches
-    # ``_set_category_value`` any more, and the remaining scope categories
-    # (``caches``/``seeded``/``common``/``synced``) are not in that registry.
-    #
-    # The fold is left standing rather than unpicked here because removing it means
-    # removing a PARAMETER from three public entry points and the three handlers
-    # that thread it — one decision, taken once, in the step that owns those
-    # callers. Until then: do NOT read this code's presence as evidence that a
-    # bind repoint still works from the CLI. It does not.
-    if default_categories:
-        for reg_key, reg_val in default_categories.items():
-            if reg_val == "":
-                continue
-            floor[reg_key] = reg_val
+    # ⚑ Do NOT restore it to "fix" a refused bind repoint: that surface is a KNOWN,
+    # ACCEPTED LOSS of R-9 (boarded as DS-BL1), and the cure the refusal prescribes
+    # is hand-editing the settings file. The LAUNCH-time floor fold in
+    # ``settings_launch.build_launch_snapshot`` is a DIFFERENT, LIVE mechanism and is
+    # untouched by this.
 
     # Place the COMMAND-scope file (config_path) into its TRUE precedence slot by the
     # edited key's scope token — a box.* set lands in the box slot, workset.* in the
@@ -664,7 +643,6 @@ def _set_category_value(
     workset_path: Path | None = None,
     box_path: Path | None = None,
     agent_name: str = "",
-    default_categories: "Mapping[str, object] | None" = None,
 ) -> str:
     """Validate + RAW-repoint a path-tuple category key (S24/S25, spec §2a).
 
@@ -716,7 +694,6 @@ def _set_category_value(
         workset_path=workset_path,
         box_path=box_path,
         agent_name=agent_name,
-        default_categories=default_categories,
     )
     verdict = validate_config_set(
         canonical,
@@ -1049,7 +1026,6 @@ def set_config_value(
     cascade_agent_name: str = "",
     command_scope: ConfigLevel | None = None,
     agents_root: Path | None = None,
-    default_categories: "Mapping[str, object] | None" = None,
 ) -> str:
     """Write a config value to the appropriate store.
 
@@ -1076,14 +1052,11 @@ def set_config_value(
     exactly as it would at launch. They are additive and only consulted on the
     category path; absent, the command-scope file is still placed in its true slot.
 
-    *default_categories* is the caller's context-light set-time FLOOR registry
-    (F10 / item-0) — LAUNCH-ONLY bind KEYS with STATIC box_dest+options and a
-    placeholder host_src — folded into the category set-time cascade so a source-only
-    repoint of a floor bind is no longer refused as "nowhere in the cascade".
-    Only consulted on the category path. ⚑ Since R-9 retired both bind CLI write
-    routes NO threaded registry can still affect an outcome here: the descriptor
-    floor went with the route it served, and the core box-bind registry the
-    box/workset handlers still thread is inert. Kept, and said out loud, at the
+    ⚑ There is NO ``default_categories`` set-time FLOOR registry parameter any more.
+    It threaded a context-light table of LAUNCH-ONLY bind keys into the category
+    cascade so a source-only repoint of a floor bind would pass the F10 must-exist
+    gate; R-9 retired both bind CLI write routes and left it unable to change any
+    outcome, so the whole thread was removed. See the absence note at the former
     fold site in :func:`_category_set_lookups`.
 
     *command_scope* is the scope the ``config set`` was issued at (block B4). It
@@ -1245,7 +1218,6 @@ def set_config_value(
             workset_path=cascade_workset_path,
             box_path=cascade_box_path,
             agent_name=cascade_agent_name,
-            default_categories=default_categories,
         )
         scalar_verdict = validate_config_set(
             canonical, value, is_category=False, resolves=_resolves,
@@ -1272,7 +1244,6 @@ def set_config_value(
             workset_path=cascade_workset_path,
             box_path=cascade_box_path,
             agent_name=cascade_agent_name,
-            default_categories=default_categories,
         )
         if value_err is not None:
             return value_err
@@ -1458,7 +1429,6 @@ def set_config_value(
             workset_path=cascade_workset_path,
             box_path=cascade_box_path,
             agent_name=cascade_agent_name,
-            default_categories=default_categories,
         )
 
     # STRUCTURAL system.* path-tier keys (the SYSTEM_PATH_DEFAULTS family) —
@@ -1516,7 +1486,6 @@ def reset_config_value(
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
     agents_root: Path | None = None,
-    default_categories: "Mapping[str, object] | None" = None,
 ) -> str:
     """Remove an override for a single key.  Returns confirmation message.
 
@@ -1543,13 +1512,11 @@ def reset_config_value(
     F7 "where cheap"). They are additive and consulted ONLY for that message; a
     caller that omits them still gets the correct cleared-only form.
 
-    *default_categories* is the caller's context-light FLOOR registry (item 3) —
-    launch-only bind KEYS with STATIC box_dest+options — consulted so the honest
-    cleared-message can name the reverted-to FLOOR value. ⚑ Since R-9 retired both
-    bind reset routes NO reachable branch can still find an entry in it: the
-    per-node registry it was written for is gone with that route, and the core
-    box-bind registry holds ``box.bindings.*`` keys that no longer arrive. See
-    ``config_keys._floor_bind_display``.
+    ⚑ There is NO ``default_categories`` FLOOR registry parameter any more. It was
+    consulted so the honest cleared-message could name a reverted-to FLOOR bind
+    value; R-9 retired both bind reset routes, so no reachable branch could find an
+    entry in it, and the whole thread — including
+    ``config_keys._floor_bind_display`` — was removed.
     """
     canonical = resolve_key(key)
 
@@ -1713,15 +1680,13 @@ def reset_config_value(
     # ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling was refused by name
     # in the preamble (R-9) and never arrives.
     #
-    # The honest cleared-message (Bug 2) names the reverted-to FLOOR value when the
-    # caller threads a floor registry: the bind reverts to the launch descriptor
-    # floor, so ``_floor_bind_display`` reports its static box_dest+options (the
-    # host_src is a set-time placeholder, re-resolved at launch — never printed). A
-    # key with no floor entry (a user ``box.caches.foo``, or a caller that omits the
-    # registry) → ``None`` → the cleared-only form, same information as the old
-    # plain "Reset" but via the honest formatter. ⚑ In practice the floor arm is
-    # now reached only by the PER-NODE bind reset above: the core box-bind registry
-    # holds ``box.bindings.*`` keys only, and those no longer reach this branch.
+    # The message is the CLEARED-ONLY honest form — the same information as the old
+    # plain "Reset", via the honest formatter. It used to be able to name a
+    # reverted-to FLOOR bind value from a threaded registry; R-9 retired both bind
+    # reset routes, so no key that reaches this branch could ever have a floor entry,
+    # and the registry (with ``_floor_bind_display``) was removed rather than left to
+    # be rediscovered as dead. The four scope categories that DO arrive here
+    # (``caches``/``seeded``/``common``/``synced``) were never in it.
     if _is_path_category_key(canonical):
         # Removed from the file the category SET branch WRITES — literally the
         # same call, so set and reset can no longer name different files even in
@@ -1730,8 +1695,7 @@ def reset_config_value(
         # wrote nor where get reads.
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
-            floor = _floor_bind_display(canonical, default_categories)
-            return _honest_reset_message(canonical, command_scope, floor)
+            return _honest_reset_message(canonical, command_scope)
         return f"No override for {canonical}"
 
     # STRUCTURAL system.* path-tier keys — FILE-ONLY (see set_config_value).

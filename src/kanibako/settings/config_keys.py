@@ -46,12 +46,10 @@ from __future__ import annotations
 import re
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
-from typing import Mapping
 
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
 from kanibako.settings.config import coerce_bool
-from kanibako.settings.config_io import render_stored_scalar
 from kanibako.settings.settings_keyspace import (
     ACCESS_DEFAULT,
     ACCESS_TIERS,
@@ -837,45 +835,15 @@ def _node_secret_display_key(canonical: str) -> str:
     node, var = parsed
     return f"agent.{display_agent_ref(node)}.secret_path.{var}"
 
-def _floor_bind_display(
-    canonical: str, default_categories: "Mapping[str, object] | None",
-) -> "tuple[str, str] | None":
-    """The reverted-to descriptor FLOOR ``(value, tier)`` a reset of a floor bind
-    lands on (item 3), or ``None`` when no registry is threaded / no floor entry.
+# ⚑ ``_floor_bind_display`` USED TO LIVE HERE. It rendered the reverted-to
+# descriptor FLOOR ``(value, tier)`` for a reset of a launch-only bind, reading the
+# ``default_categories`` registry the set path folded. R-9 retired both bind CLI
+# write routes, so no key that reaches a reset branch could have a floor entry, and
+# the whole set-time floor thread — this function, the parameter on five
+# ``config_interface`` entry points, ``core_defaults.core_default_bind_keys`` and its
+# placeholder sentinel, and the three handler call sites — was deleted together.
+# Resets now always take the cleared-only honest form on the category branch.
 
-    *default_categories* is the SAME context-light floor registry the set path folds
-    (``core_defaults.core_default_bind_keys``). Its element-0
-    host_src is a SET-TIME SENTINEL (``core_defaults.FLOOR_PLACEHOLDER_SRC``) — the
-    real host source is re-resolved at LAUNCH (``detect()``), so it is NEVER printed
-    as a value (evidence-honesty: the exact fabricate-a-value lie the honest-reset
-    fix targets). We report the STATIC part that actually reverts — the descriptor
-    destination [+ options] — and name the tier so the user knows the host source is
-    launch-resolved. A non-tuple / absent / placeholder-only entry → ``None`` (keep
-    the cleared-only form).
-
-    ⚑ NO CALLER CAN CURRENTLY REACH A HIT. R-9 retired both bind reset routes, and
-    the only registry still threaded (``core_default_bind_keys``) holds
-    ``box.bindings.*`` keys, which no longer arrive at a reset branch. This is left
-    in place, and said out loud, because unpicking the whole set-time floor fold is
-    one decision that belongs to the same rework step as its producers — not a
-    silent deletion made from a reachability hunch.
-    """
-    from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
-
-    if not default_categories:
-        return None
-    val = default_categories.get(canonical)
-    if not isinstance(val, (list, tuple)) or len(val) < 2:
-        return None
-    parts = list(val)
-    if parts and parts[0] == FLOOR_PLACEHOLDER_SRC:
-        parts = parts[1:]  # drop the set-time sentinel — it is not a launch value
-    if not parts:
-        return None
-    rendered = render_stored_scalar(parts)
-    if rendered is None:
-        return None
-    return (rendered, "descriptor floor; host re-resolved at launch")
 
 def _is_bare_env_key(key: str) -> bool:
     """The RETIRED bare docker-``.env`` spelling ``env.<VAR>`` (R-39, spec §2a).

@@ -2119,28 +2119,47 @@ class TestRepointFromCascade:
     # ⚑ ``test_reset_core_bind_names_reverted_to_floor`` USED TO LIVE HERE. It
     # drove the honest "effective is now <floor>" clause through a CORE bind reset
     # (``box.bindings.rw.home`` with ``core_default_bind_keys`` threaded). R-9
-    # retired that route, so the case is unreachable — the reset now refuses
-    # before ``_floor_bind_display`` is ever consulted, which
+    # retired that route, so the case became unreachable — the reset refuses before
+    # any floor is consulted, which
     # ``TestScopeBindRouteRetired.test_reset_is_refused_symmetrically`` pins.
     #
-    # The BEHAVIOUR it covered is NOT lost: the identical floor-naming clause is
-    # exercised on the surviving per-node route by
-    # ``TestAgentNodeBindGetReset.test_reset_reports_reverted_to_floor_destination``
-    # (plus its registry mutation-proof twin). Deleted here rather than duplicated
-    # there — one copy of a rule, at the one place it still runs.
+    # ⚑⚑ THE NOTE THAT USED TO SIT HERE WAS FALSE IN BOTH DIRECTIONS, and it is
+    # worth spelling out because it is exactly the drift this pass exists to stop.
+    # It claimed the floor-naming clause was still exercised on "the surviving
+    # per-node route" by
+    # ``TestAgentNodeBindGetReset.test_reset_reports_reverted_to_floor_destination``.
+    # There was no surviving per-node route — R-9 retired that write route by the
+    # SAME ruling that retired the scope-level one — and that test no longer
+    # existed: it was deleted with its class one commit after the note was written,
+    # so the note read as "a live test still guards this" while naming nothing.
+    #
+    # THE FLOOR-SPECIFIC ARM HAS NO LIVE ROUTE AND DIES HERE, in P6b, together with
+    # ``config_keys._floor_bind_display``, the set-time floor registry
+    # (``core_defaults.core_default_bind_keys``) and the ``default_categories``
+    # parameter on five ``config_interface`` entry points. A category reset now
+    # always takes the cleared-only form, pinned directly below.
+    #
+    # ⚑ THE GENERIC CLAUSE IS NOT LOST WITH IT. The honest "it is now <value>
+    # (<tier>)" message on the SCALAR reset path is still pinned by
+    # ``TestF7HonestResetMessage.test_reset_message_shows_effective_value_and_source_tier``
+    # (this file). Only the BIND-FLOOR source of that clause is gone; the formatter
+    # and its message shape are untouched.
 
-    def test_reset_non_core_category_key_stays_cleared_only(self, tmp_path):
-        """Bug 2 — a NON-core category key reset (registry threaded but the key is
-        absent from it) has no floor to name → the cleared-only honest form (the
-        same information as the old plain "Reset", never a fabricated value)."""
-        from kanibako.settings.core_defaults import core_default_bind_keys
+    def test_reset_category_key_is_cleared_only(self, tmp_path):
+        """A category key reset takes the cleared-only honest form — the same
+        information as the old plain "Reset", never a fabricated value.
 
+        ⚑ This used to be the NON-core half of a pair: it threaded the floor
+        registry and proved a key ABSENT from it got no floor clause, while a core
+        bind got one. Both the registry and the floor clause are gone (R-9 retired
+        every bind write route, so no key that reaches this branch could ever have a
+        floor entry), leaving one form for every category key.
+        """
         box_f = tmp_path / "box-settings.yaml"
         dump_doc(box_f, {"box": {"caches": {"foo": ["/src", "/dest"]}}})
         msg = reset_config_value(
             "box.caches.foo",
             config_path=box_f, command_scope=ConfigLevel.box,
-            default_categories=dict(core_default_bind_keys()),
         )
         assert msg == (
             "Cleared box.caches.foo set on the box scope; "
@@ -3311,52 +3330,24 @@ class TestSetTimeCtxUsesHostXdgMap:
 
 
 # ---------------------------------------------------------------------------
-# F10 — expose the launch-only CORE box-mount floor to config-set (Phase 1)
+# ⚑ ``TestF10CoreFloorRegistry`` USED TO LIVE HERE (F10 — expose the launch-only
+# CORE box-mount floor to config-set). It pinned the SHAPE of
+# ``core_defaults.core_default_bind_keys``: the context-light SET-TIME floor
+# registry of core box-mount entries with a placeholder host_src, folded into the
+# category set-time cascade so a source-only repoint of a launch-only bind would
+# pass the must-exist gate.
+#
+# R-9 retired every bind CLI write route, which made the registry unable to change
+# an outcome; it was kept only because it still reached ``dotted_partial`` and so
+# had to keep emitting a live shape. The whole thread — the producer, its
+# ``FLOOR_PLACEHOLDER_SRC`` sentinel, the ``default_categories`` parameter on five
+# ``config_interface`` entry points, ``config_keys._floor_bind_display`` and the
+# three handler call sites — was then deleted in one subtractive pass, and these
+# tests went with their subject. Nothing about the LAUNCH floor is affected: its
+# producers (``core_default_categories`` and siblings) are host-probed, feed
+# ``build_launch_snapshot``, and are pinned by ``test_defaults_golden.py`` /
+# ``test_categories_live.py``.
 # ---------------------------------------------------------------------------
-
-class TestF10CoreFloorRegistry:
-    """``core_defaults.core_default_bind_keys`` — the context-light set-time floor
-    registry (F10): the CORE box-mount ENTRIES with STATIC dest+options and a
-    placeholder host_src, built WITHOUT any proj/std probe.
-
-    ⚑ The registry is INERT (R-9 retired the route it fed) but still THREADED
-    through ``dotted_partial`` by three call sites, so its SHAPE is still
-    load-bearing: it is dest-keyed like every other floor producer (R-3/R-5), with
-    R-11-normalized destinations. Emitting the retired ``box.bindings.rw.<name>``
-    spelling would make every ``box config set`` raise. It dies as a whole with the
-    ``default_categories`` parameter, in its own subtractive pass — not here.
-    """
-
-    def test_emits_the_launch_core_entries_host_free(self):
-        from kanibako.settings.core_defaults import core_default_bind_keys, FLOOR_PLACEHOLDER_SRC
-
-        reg = core_default_bind_keys()
-        # The SAME arms + destinations the launch core floor emits — home +
-        # workspace + vault ro/rw, keyed by NORMALIZED box dest (R-10/R-11: the
-        # entry name is gone and ``~`` is expanded, so ``~`` is ``/home/agent``).
-        assert set(reg) == {"box.bindings.ro", "box.bindings.rw"}
-        assert set(reg["box.bindings.rw"]) == {
-            "/home/agent", "/home/agent/workspace", "/home/agent/vault/rw",
-        }
-        assert set(reg["box.bindings.ro"]) == {"/home/agent/vault/ro"}
-        # options are the STATIC declarative literals; host_src is the discarded
-        # placeholder (mutation: swap FLOOR_PLACEHOLDER_SRC to a proj-probed path
-        # and this equality goes RED — proving it is host-FREE).
-        assert reg["box.bindings.ro"]["/home/agent/vault/ro"] == (
-            FLOOR_PLACEHOLDER_SRC, "ro",
-        )
-        assert reg["box.bindings.rw"]["/home/agent"] == (
-            FLOOR_PLACEHOLDER_SRC, "Z,U",
-        )
-
-    def test_vault_entries_present_regardless_of_enable_vault(self):
-        # The gate is about the ENTRY existing at set-time, not the runtime host
-        # value: both vault binds are exposed even though launch may disable vault.
-        from kanibako.settings.core_defaults import core_default_bind_keys
-
-        reg = core_default_bind_keys()
-        assert "/home/agent/vault/ro" in reg["box.bindings.ro"]
-        assert "/home/agent/vault/rw" in reg["box.bindings.rw"]
 
 
 class TestScopeBindRouteRetired:
@@ -3371,14 +3362,11 @@ class TestScopeBindRouteRetired:
 
     What must hold instead: the refusal is LOUD, NAMES THE KEY, and WRITES
     NOTHING — spec §0 refuses, never silently accepts and never fabricates.
-    ⚑ The registry stays threaded in these calls on purpose: the refusal must not
-    depend on the caller omitting it.
+    ⚑ These calls used to thread the floor registry on purpose, so the refusal
+    could not be an artefact of the caller omitting it. The registry and its
+    parameter are gone, so there is nothing left to omit — the refusal fires in the
+    verb PREAMBLE, before any cascade is assembled at all.
     """
-
-    def _reg(self):
-        from kanibako.settings.core_defaults import core_default_bind_keys
-
-        return dict(core_default_bind_keys())
 
     @pytest.mark.parametrize(
         "key",
@@ -3394,7 +3382,7 @@ class TestScopeBindRouteRetired:
         msg = set_config_value(
             key, "/newsrc",
             config_path=box, command_scope=ConfigLevel.system,
-            cascade_box_path=box, default_categories=self._reg(),
+            cascade_box_path=box,
         )
         assert msg.startswith("Error:"), msg
         # §0: the error NAMES the offending key — not a generic "unknown key".
@@ -3411,7 +3399,6 @@ class TestScopeBindRouteRetired:
         msg = reset_config_value(
             "box.bindings.ro.vault",
             config_path=box, command_scope=ConfigLevel.box,
-            default_categories=self._reg(),
         )
         assert msg.startswith("Error:"), msg
         assert "box.bindings.ro.vault" in msg
@@ -3439,7 +3426,7 @@ class TestScopeBindRouteRetired:
         msg = set_config_value(
             "box.bindings.rw.home", None,
             config_path=box, command_scope=ConfigLevel.box,
-            cascade_box_path=box, default_categories=self._reg(),
+            cascade_box_path=box,
         )
         assert "RETIRED" in msg, msg
         assert "--null is not yet supported" not in msg, msg
@@ -3961,8 +3948,6 @@ class TestCoreBindGetReset:
     def test_the_write_verbs_refuse_and_leave_the_file_alone(self, tmp_path):
         """The other half of the same round-trip: set and reset both refuse, and
         the hand-authored tuple the get above reads is still there afterwards."""
-        from kanibako.settings.core_defaults import core_default_bind_keys
-
         box_f = tmp_path / "box.yaml"
         seeded = {"box": {"bindings": {"ro": {
             "vault_ro": ["/old", "/vault/ro", "ro"]}}}}
@@ -3971,7 +3956,6 @@ class TestCoreBindGetReset:
             "box.bindings.ro.vault_ro", "/newvault",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_box_path=box_f,
-            default_categories=dict(core_default_bind_keys()),
         )
         reset_msg = reset_config_value(
             "box.bindings.ro.vault_ro", config_path=box_f,
@@ -5094,13 +5078,21 @@ class TestCategorySetAgentNodeGuardsSuperseded:
         return tmp_path / "agents"
 
     def _set(self, tmp_path, key):
-        """Set *key* with the key PRESENT in the set-time cascade (a floor entry),
-        so a must-exist complaint cannot be what refuses — isolating the retirement
-        as the only thing left that can."""
+        """Set *key* and expect the RETIREMENT refusal.
+
+        ⚑ This used to seed the key into the set-time cascade via a
+        ``default_categories`` floor entry, so that a must-exist complaint could not
+        be what refused — isolating the retirement as the only thing left that
+        could. That parameter is gone with the set-time floor thread, and the
+        isolation is now STRUCTURAL rather than arranged: the retirement fires in
+        the verb PREAMBLE, before any cascade is assembled, so no must-exist check
+        runs at all. The tests below still assert ``RETIRED`` by name, which is what
+        distinguishes this refusal from any other (see the M1 mutation note on
+        ``TestScopeBindRouteRetired.test_reset_is_refused_symmetrically``).
+        """
         return set_config_value(
             key, "/x", config_path=tmp_path / "settings.yaml",
             command_scope=ConfigLevel.system, agents_root=self._agents(tmp_path),
-            default_categories={key: ["/floor/src", "/box/dest", "ro"]},
         )
 
     @pytest.mark.parametrize(

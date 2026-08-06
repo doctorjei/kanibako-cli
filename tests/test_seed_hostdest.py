@@ -339,14 +339,40 @@ class TestCanonDefaultCategories:
             f"box.bindings.ro.{GUEST_HOME}/canon/handbook/box",
         }
 
-    def test_the_canon_binds_are_not_config_set_repointable(self):
-        """Decision 3: they live in their OWN ``canon:`` section, so they never enter
-        the set-time floor registry (which mirrors ``core:`` only) — exactly like the
-        channel / helper / kani_pkg / images_conf binds. The user's repoint route is
-        the ``<scope>.canon`` KEY, and two spellings for one repoint is the shape
-        convention 0 forbids."""
-        floor = core_defaults.core_default_bind_keys()
-        assert not any("canon_hb" in k for k in floor), floor
+    def test_the_canon_binds_are_not_config_set_repointable(self, tmp_path):
+        """Decision 3: the user's repoint route is the ``<scope>.canon`` KEY, never
+        the handbook bind, because two spellings for one repoint is the shape
+        convention 0 forbids.
+
+        ⚑⚑ RE-DERIVED, because the old form went VACUOUS AND THEN UNBUILDABLE. It
+        asserted that no key of ``core_defaults.core_default_bind_keys()`` contained
+        the substring ``canon_hb`` — already tautological once R-10 retired the
+        ``canon_hb_*`` NAMES (no key of any producer could contain it), and the
+        registry itself is now gone with the set-time floor thread. Pin the LIVE
+        pair instead: the bind spelling is REFUSED and the ``canon`` key WORKS. Both
+        halves are needed — a refusal with no working alternative would just be a
+        removed feature.
+        """
+        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+
+        box_f = tmp_path / "box-settings.yaml"
+        dest = f"{GUEST_HOME}/canon/handbook/box"
+        refused = set_config_value(
+            f"box.bindings.ro.{dest}", "/elsewhere",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_box_path=box_f,
+        )
+        assert refused.startswith("Error:"), refused
+        assert "RETIRED" in refused, refused
+        assert not box_f.exists()  # a refused write creates nothing
+
+        ok = set_config_value(
+            "box.canon", "/my/contribution/root",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_box_path=box_f,
+        )
+        assert not ok.startswith("Error:"), ok
 
 
 class TestHandbookMountOrdering:
