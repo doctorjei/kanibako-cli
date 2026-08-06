@@ -89,20 +89,76 @@ def vault_mask_default() -> list[str]:
     return [str(m) for m in masks]
 
 
+#: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}``.
+#: The OUTER key is the TERMINAL arm key (R-5) and the INNER key is the normalized
+#: box DESTINATION (R-11); the value is the RAW tuple the floor parser turns into a
+#: :class:`~kanibako.settings.settings_store.BindEntry`. Floor tables are raw — they
+#: are parsed by ``settings_assemble.dotted_partial``, never here.
+BindArmTable = dict[str, dict[str, tuple[str, ...]]]
+
+
+def _add_bind(
+    binds: dict[str, Any],
+    category: str,
+    box_dest: str,
+    host_src: str,
+    options: str | None = None,
+    *,
+    scope: str = "box",
+) -> None:
+    """Install ONE dest-keyed entry into the ``<scope>.<category>`` arm of *binds*.
+
+    The single constructor every floor producer in this module goes through, so
+    the arm key, the R-11 destination normalization and the act-once refusal are
+    written ONCE rather than at ten call sites (disk-store rework R-3/R-6/R-11).
+
+    * *category* is the ARMED category (``bindings.ro`` / ``bindings.rw``); the arm
+      is the WHOLE key and the destination is NOT part of it.
+    * *box_dest* becomes the map KEY, normalized by
+      :func:`~kanibako.settings.settings_resolve.normalize_bind_dest` — ⚑ the DEST
+      only. *host_src* is stored exactly as given: a source is resolved on its own
+      later (spec §2a), and canonicalizing it would bake this machine's home into
+      a value other machines read.
+    * *options* omitted → a 1-element entry, meaning "use the category default".
+
+    Two entries at ONE destination inside ONE arm RAISES: bindings are strictly
+    act-once, so this cannot be a legitimate overlay, and under dest-keying the
+    second would otherwise just replace the first in the dict with nothing
+    downstream able to see the loss. (Two entries at one dest in DIFFERENT arms or
+    different categories are still two different keys and still reach the
+    resolved-``box_dest`` collision table in ``settings_categories`` — that check
+    is untouched, design §2b-CAVEAT.)
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    arm_key = f"{scope}.{category}"
+    arm = binds.setdefault(arm_key, {})
+    dest = normalize_bind_dest(str(box_dest))
+    if dest in arm:
+        raise ValueError(
+            f"{arm_key} declares two floor bindings at one destination "
+            f"{dest!r} ({arm[dest][0]!r} and {host_src!r}); bindings are "
+            f"act-once and a dest-keyed arm admits one entry per destination."
+        )
+    arm[dest] = (host_src,) if options is None else (host_src, str(options))
+
+
 def channel_default_categories(
     std: StandardPaths, proj: ProjectPaths
-) -> dict[str, tuple[str, str]]:
+) -> BindArmTable:
     """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f).
 
-    Maps ``box.bindings.rw.<key>`` → a STRUCTURED ``(host_src, box_dest)`` pair
-    for every channel surfaced into THIS box.  The box-side destinations and the
+    Fills the TERMINAL ``box.bindings.rw`` arm with ONE ``box_dest -> (host_src,)``
+    entry per channel surfaced into THIS box.  The box-side destinations and the
     structure come from the declarative file; the host SOURCES are runtime-probed
-    here and injected into each keyed entry (the file names them symbolically).
+    here and injected into each entry (the file names them symbolically).
 
-    Per spec §2a a binding value is a STRUCTURED PAIR (a YAML list / Python
-    tuple), NOT a colon-joined string — so no escaping of a literal ``:`` in the
-    host path is needed; :func:`~kanibako.settings.settings_resolve.unpack_bind` consumes
-    the pair directly.
+    Per spec §2a a binding is STRUCTURED, never a colon-joined string — so no
+    escaping of a literal ``:`` in the host path is needed. Under dest-keying
+    (R-3/R-5) the DESTINATION is the map key and the value is the 1-or-2 element
+    ``(host_src[, options])`` tuple that
+    :func:`~kanibako.settings.settings_resolve.unpack_bind_entry` consumes; these
+    channel entries omit options, taking the category default.
 
     ALL MODES (system scope): the five system channel type roots
     (common/chat/share/mailboxes) plus this box's own inbox double-bind (the SAME
@@ -132,7 +188,7 @@ def channel_default_categories(
         sources["workset_chat"] = str(wch.chat)
         sources["workset_share"] = str(wch.share)
 
-    binds: dict[str, tuple[str, str]] = {}
+    binds: BindArmTable = {}
     for entry in _load_doc().get("channels", []):
         source = entry["source"]
         if source not in sources:
@@ -144,33 +200,32 @@ def channel_default_categories(
         # (byte-identical, JC-B2-4).  The ``source`` gate above still applies (so a
         # workset-scoped meta_ref entry on a standalone box is still omitted).
         host_src = entry.get("meta_ref", sources[source])
-        binds[f"box.bindings.rw.{entry['key']}"] = (
-            host_src,
-            str(entry["box_dest"]),
-        )
+        _add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
     return binds
 
 
 def core_default_categories(
     std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str,
     guarantee_create: bool = True,
-) -> dict[str, tuple[str, str, str]]:
+) -> BindArmTable:
     """Build the core box mounts as ``default_categories`` (step 3).
 
-    Maps ``box.bindings.{ro,rw}.<key>`` → a STRUCTURED 3-TUPLE
-    ``(host_src, box_dest, options)`` for every CORE box mount (home + workspace +
-    vault).  These are the box's own home/workspace/vault binds — TODAY's hardwired
+    Fills the TERMINAL ``box.bindings.ro`` / ``box.bindings.rw`` arms with one
+    ``box_dest -> (host_src, options)`` entry per CORE box mount (home + workspace
+    + vault).  These are the box's own home/workspace/vault binds — TODAY's hardwired
     podman ``-v`` routed through the category resolver so nothing is bound into a
     box except through the keyspace.  The box-side destinations, per-entry mount
-    options, and category come from the declarative file (``core:`` list); the host
-    SOURCES are runtime-probed from *proj* here and injected into each keyed entry.
+    options, and armed category come from the declarative file (``core:`` list); the
+    host SOURCES are runtime-probed from *proj* here and injected into each entry.
 
-    Per spec §2a a binding value is a STRUCTURED TUPLE (a YAML list / Python
-    tuple), NOT a colon-joined string — the per-entry mount OPTIONS are its
-    OPTIONAL 3rd slot, consumed by :func:`~kanibako.settings.settings_resolve.unpack_bind`
-    (a 3-element value OVERRIDES the category default for that entry, so e.g. the
-    ``ro`` vault bind keeps ``ro`` and the ``Z,U`` binds keep ``Z,U`` regardless of
-    the category's own default).
+    Per spec §2a a binding is STRUCTURED, never a colon-joined string.  Under
+    dest-keying (R-3/R-5) the DESTINATION is the map key — R-11-absolutized by
+    :func:`_add_bind`, so the file's ``~`` is stored as ``/home/agent/...`` — and
+    the per-entry mount OPTIONS are the value's OPTIONAL 2nd slot, consumed by
+    :func:`~kanibako.settings.settings_resolve.unpack_bind_entry` (present options
+    OVERRIDE the category default for that entry, so e.g. the ``ro`` vault bind
+    keeps ``ro`` and the ``Z,U`` binds keep ``Z,U`` regardless of the category's
+    own default).
 
     home + workspace are UNCONDITIONAL (every box mode).  The vault binds
     (``scope: vault`` in the file) are UNIVERSAL UNLESS DISABLED: emitted whenever
@@ -192,7 +247,7 @@ def core_default_categories(
         "vault_rw_path": proj.vault_rw_path,
     }
 
-    binds: dict[str, tuple[str, str, str]] = {}
+    binds: BindArmTable = {}
     for entry in _load_doc().get("core", []):
         # Vault binds are UNIVERSAL unless explicitly disabled: when vault is
         # enabled, ensure the probed source dir exists (create-if-missing) so the
@@ -232,59 +287,63 @@ def core_default_categories(
             host_src = mode_ref[mode]
         else:
             host_src = entry.get("meta_ref", sources[entry["source"]])
-        binds[f"box.{category}.{entry['key']}"] = (
-            host_src,
-            str(entry["box_dest"]),
+        _add_bind(
+            binds, category, str(entry["box_dest"]), host_src,
             str(entry["options"]),
         )
     return binds
 
 
-def core_default_bind_keys() -> dict[str, tuple[str, str, str]]:
+def core_default_bind_keys() -> BindArmTable:
     """The CORE box bind KEYS as a context-light set-time floor registry (F10).
 
-    Mirrors :func:`core_default_categories`'s KEY set — ``box.bindings.{ro,rw}.
-    <key>`` for home + workspace + vault (ro and rw) — with the STATIC ``box_dest``
-    + per-entry ``options`` read straight from the same declarative ``core:`` doc,
-    but with a PLACEHOLDER host_src (:data:`FLOOR_PLACEHOLDER_SRC`) in element 0.
+    ⚑⚑ **INERT since P1/P2 (2026-08-06d).** Nothing CONSUMES these keys any more:
+    R-9 retired the scope-level and agent-node bind CLI write routes, so the
+    set/reset category branch this registry existed to feed is unreachable. It is
+    still THREADED — ``commands/box/_parser.py`` (twice) and
+    ``commands/workset_cmd.py`` still pass it as ``default_categories`` — and the
+    whole thread (this function, the parameter, the fold body,
+    ``config_keys._floor_bind_display`` and the three call sites) is scheduled to
+    die together in ONE subtractive edit. Until it does, it still reaches
+    ``settings_assemble.dotted_partial``, so it MUST emit the current shape: an
+    inert producer that emits a RETIRED shape is not harmless, it is a loud crash
+    on every ``box config set``.
+
+    Mirrors :func:`core_default_categories`'s ENTRY set — the ``box.bindings.ro`` /
+    ``box.bindings.rw`` arms for home + workspace + vault (ro and rw), dest-keyed
+    (R-3/R-5/R-11) — with the per-entry ``options`` read straight from the same
+    declarative ``core:`` doc, but with a PLACEHOLDER host_src
+    (:data:`FLOOR_PLACEHOLDER_SRC`) as the entry's source.
 
     HOST-FREE (the F10 de-risk): it takes NO :class:`~kanibako.settings.paths.ProjectPaths`
     / :class:`~kanibako.settings.paths.StandardPaths` and does NO runtime probe or
-    create-if-missing — the ONLY thing the set-time must-exist gate needs from the
-    floor is ``base[1:]`` (box_dest + options), which are pure declarative literals
-    (``settings_configset.repoint_host_src`` discards element 0). So this exposes
-    EXACTLY the launch core-floor keys to ``config set`` so a source-only repoint of
-    a core bind (``box set box.bindings.rw.home /new``) is no longer refused
-    as "nowhere in the cascade".
+    create-if-missing — the box_dest and options are pure declarative literals, and
+    the host_src was always the discarded placeholder.
 
-    Vault keys are ALWAYS emitted (both ``ro`` and ``rw``), regardless of whether
-    vault would be ENABLED at launch: the gate is about the KEY existing in the
+    Vault entries are ALWAYS emitted (both ``ro`` and ``rw``), regardless of whether
+    vault would be ENABLED at launch: the gate was about the KEY existing in the
     set-time cascade, not the runtime host value. box_dest/options are byte-identical
-    to the launch builder (same file, same fields); host_src is the discarded
-    placeholder.
+    to the launch builder (same file, same fields).
     """
-    binds: dict[str, tuple[str, str, str]] = {}
+    binds: BindArmTable = {}
     for entry in _load_doc().get("core", []):
-        key = f"box.{entry['category']}.{entry['key']}"
-        binds[key] = (
-            FLOOR_PLACEHOLDER_SRC,
-            str(entry["box_dest"]),
-            str(entry["options"]),
+        _add_bind(
+            binds, str(entry["category"]), str(entry["box_dest"]),
+            FLOOR_PLACEHOLDER_SRC, str(entry["options"]),
         )
     return binds
 
 
-def kani_default_categories() -> dict[str, tuple[str, str, str]]:
+def kani_default_categories() -> BindArmTable:
     """Build the kanibako CLI binds as ``default_categories`` (Phase B).
 
-    Maps ``box.bindings.ro.<key>`` → a STRUCTURED 3-TUPLE
-    ``(host_src, box_dest, options)`` for the in-box kanibako package + entry
-    script — TODAY's hardwired ``_kanibako_mounts`` ``-v`` list routed through the
-    category resolver so nothing is bound into a box except through the keyspace.
-    The box-side destinations + options come from the declarative file (``kani:``
-    list); the host SOURCES are import-resolved here and injected into each keyed
-    entry (the file names them SYMBOLICALLY).  Both binds are UNCONDITIONAL
-    (every box mode).
+    Fills the TERMINAL ``box.bindings.ro`` arm with one ``box_dest -> (host_src,
+    options)`` entry for the in-box kanibako package + entry script — TODAY's
+    hardwired ``_kanibako_mounts`` ``-v`` list routed through the category resolver
+    so nothing is bound into a box except through the keyspace.  The box-side
+    destinations + options come from the declarative file (``kani:`` list); the
+    host SOURCES are import-resolved here and injected into each entry (the file
+    names them SYMBOLICALLY).  Both binds are UNCONDITIONAL (every box mode).
     """
     import importlib.resources
 
@@ -306,12 +365,11 @@ def kani_default_categories() -> dict[str, tuple[str, str, str]]:
         "secret_export": str(secrets_path),
     }
 
-    binds: dict[str, tuple[str, str, str]] = {}
+    binds: BindArmTable = {}
     for entry in _load_doc().get("kani", []):
         category = entry["category"]
-        binds[f"box.{category}.{entry['key']}"] = (
-            sources[entry["source"]],
-            str(entry["box_dest"]),
+        _add_bind(
+            binds, category, str(entry["box_dest"]), sources[entry["source"]],
             str(entry["options"]),
         )
     return binds
@@ -344,7 +402,8 @@ def _kickoff_entry() -> dict[str, Any]:
         raise RuntimeError(
             f"{CORE_DEFAULTS_FILENAME} must declare EXACTLY ONE 'kickoff:' entry "
             f"(got {entries!r}) — the directive-chain entry slot (spec §2c "
-            "box.bindings.ro.kickoff) is declared there and read back by both the "
+            "box.bindings.ro[~/.config/kanibako/kickoff.md]) is declared there and "
+            "read back by both the "
             "bind emitter and the KANIBAKO_DIRECTIVE_SEED env var."
         )
     return entries[0]
@@ -378,12 +437,12 @@ def kickoff_guest_dest() -> str:
 
 def kickoff_default_categories(
     descriptor: "PluginDescriptor | None" = None,
-) -> dict[str, tuple[str, str, str]]:
+) -> BindArmTable:
     """Build the core KICKOFF bind as ``default_categories`` (spec §2c, P-5).
 
-    ::
+    One entry in the terminal ``box.bindings.ro`` arm, keyed by destination::
 
-        box.bindings.ro.kickoff = (<packaged global/KICKOFF.md>, ~/.config/kanibako/kickoff.md, ro)
+        /home/agent/.config/kanibako/kickoff.md = (<packaged global/KICKOFF.md>, ro)
 
     The directive-chain ENTRY SLOT: the flattener reads this file at box start,
     follows its ``@~/canon/COLLECTION.md`` import to full depth, and writes the flat
@@ -441,17 +500,17 @@ def kickoff_default_categories(
     if not src.is_file():
         raise RuntimeError(
             f"the packaged kickoff loader is missing at {src} — it is the entry "
-            "point of the whole directive chain (spec §2c box.bindings.ro.kickoff), "
+            "point of the whole directive chain (spec §2c "
+            "box.bindings.ro[~/.config/kanibako/kickoff.md]), "
             "so a box launched without it would run with NO directives at all. This "
             "is a PACKAGING defect; refusing to launch."
         )
-    return {
-        f"box.{entry['category']}.{entry['key']}": (
-            str(src),
-            str(entry["box_dest"]),
-            str(entry["options"]),
-        ),
-    }
+    binds: BindArmTable = {}
+    _add_bind(
+        binds, str(entry["category"]), str(entry["box_dest"]), str(src),
+        str(entry["options"]),
+    )
+    return binds
 
 
 # The packaged rom root — the READ-ONLY built-in CANON content (the BIBLE, plus the
@@ -594,19 +653,21 @@ def assert_canon_bind_seed_disjoint(
         )
 
 
-def rom_default_categories() -> dict[str, tuple[str, str, str]]:
+def rom_default_categories() -> BindArmTable:
     """Build the FIVE read-only packaged-CANON binds as ``default_categories``.
 
-    ::
+    All five are ENTRIES of the ONE terminal ``box.bindings.ro`` arm, keyed by
+    DESTINATION (R-3/R-5/R-11 — the ``canon_*`` names below are gone from the data
+    and survive here only as prose labels)::
 
-        canon_collection     = (<rom>/COLLECTION.md,         ~/canon/COLLECTION.md,         ro)
-        canon_bible_contents = (<rom>/bible/ROM_CONTENTS.md, ~/canon/bible/ROM_CONTENTS.md, ro)
-        canon_bible_general  = (<rom>/bible/general,         ~/canon/bible/general,         ro)
-        canon_bible_workset  = (<rom>/bible/workset,         ~/canon/bible/workset,         ro)
-        canon_bible_box      = (<rom>/bible/box,             ~/canon/bible/box,             ro)
+        /home/agent/canon/COLLECTION.md          = (<rom>/COLLECTION.md,         ro)
+        /home/agent/canon/bible/ROM_CONTENTS.md  = (<rom>/bible/ROM_CONTENTS.md, ro)
+        /home/agent/canon/bible/general          = (<rom>/bible/general,         ro)
+        /home/agent/canon/bible/workset          = (<rom>/bible/workset,         ro)
+        /home/agent/canon/bible/box              = (<rom>/bible/box,             ro)
 
-    (all under ``box.bindings.ro.``; the sixth canon bind, ``canon_bible_agent``, is
-    the plugin's chapter — see :func:`rom_agent_default_categories`.)
+    (The sixth canon bind, the plugin's ``~/canon/bible/agent`` chapter, is
+    emitted separately — see :func:`rom_agent_default_categories`.)
 
     All INTERNAL/generated binds, not user keys: they are absent from every set-time
     floor registry (:func:`core_default_bind_keys` covers home/workspace/vault only),
@@ -729,24 +790,26 @@ def rom_default_categories() -> dict[str, tuple[str, str, str]]:
             (rel for rel, _ in templates.walk_shipped_files(home_template_root)),
         )
 
-    return {
-        f"box.bindings.ro.{key}": (str(rom_root / rel), _canon_dest(rel), "ro")
-        for key, rel, _is_dir in binds
-    }
+    out: BindArmTable = {}
+    for _key, rel, _is_dir in binds:
+        _add_bind(
+            out, "bindings.ro", _canon_dest(rel), str(rom_root / rel), "ro",
+        )
+    return out
 
 
 def rom_agent_default_categories(
     target: "Target",
-) -> dict[str, tuple[str, str, str]]:
+) -> BindArmTable:
     """Build the PLUGIN's bible chapter bind — the SIXTH canon bind (spec §2c).
 
-    ::
+    One entry in the terminal ``box.bindings.ro`` arm, keyed by destination::
 
-        box.bindings.ro.canon_bible_agent = (<plugin pkg>/data/rom, ~/canon/bible/agent, ro)
+        /home/agent/canon/bible/agent = (<plugin pkg>/data/rom, ro)
 
     Emitted by CORE from the RESOLVED *target*, beside the five core canon binds —
     NOT by the plugin, and NOT through the agent-scope descriptor route.  That
-    choice is the whole design: an ``agent.<node>.bindings.ro.rom`` key would have
+    choice is the whole design: an ``agent.<node>.bindings.ro`` entry would have
     ridden the per-node descriptor floor into the set-time cascade and made the
     bible's agent chapter the SOLE repointable page of an otherwise unrepointable
     book, and it would discriminate on the NODE (a persona) while the content is a
@@ -780,13 +843,12 @@ def rom_agent_default_categories(
         return {}
     if not (rom_root / PLUGIN_CHAPTER_MARKER_REL).is_file():
         return {}
-    return {
-        "box.bindings.ro.canon_bible_agent": (
-            str(rom_root),
-            _canon_dest(f"{ROM_BIBLE_REL}/{BIBLE_AGENT_CHAPTER}"),
-            "ro",
-        ),
-    }
+    out: BindArmTable = {}
+    _add_bind(
+        out, "bindings.ro",
+        _canon_dest(f"{ROM_BIBLE_REL}/{BIBLE_AGENT_CHAPTER}"), str(rom_root), "ro",
+    )
+    return out
 
 
 # ===========================================================================
@@ -810,8 +872,16 @@ def canon_optional_bind_keys() -> frozenset[str]:
     restated: a row that gains or loses ``optional: true`` moves both the
     declaration and this set at once.
     """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    # ⚑ H6 — RE-DERIVED FROM THE DESTINATION (R-10/R-11). The emitted
+    # ``CategoryEntry.key`` is now ``box.<category>.<box_dest>``, because a
+    # dest-keyed arm's map key IS the destination; matching on ``entry['key']``
+    # here would silently never hit, and a missing workset chapter would go back
+    # to warning on every launch of almost every box. Normalized with the SAME
+    # function the producer uses, so the two spellings cannot drift.
     return frozenset(
-        f"box.{entry['category']}.{entry['key']}"
+        f"box.{entry['category']}.{normalize_bind_dest(str(entry['box_dest']))}"
         for entry in _load_doc().get("canon", [])
         if entry.get("optional")
     )
@@ -822,8 +892,9 @@ def canon_default_categories(
 ) -> dict[str, object]:
     """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
 
-    Returns a MIXED table — the five ``box.bindings.ro.canon_hb_*`` bind tuples PLUS
-    the agent-scope SCALAR keys their ``@``-refs resolve against.  Mixing the two is
+    Returns a MIXED table — the terminal ``box.bindings.ro`` arm holding the five
+    ``~/canon/handbook/*`` chapter entries PLUS the agent-scope SCALAR keys their
+    ``@``-refs resolve against.  Mixing the two is
     the established shape (:func:`kanibako.launch.templates.template_seed_defaults` does the
     same for the seed layers and their source keys): both land in the SAME snapshot
     floor, the scalar resolves the ref, and a user override of the scalar wins by
@@ -881,9 +952,8 @@ def canon_default_categories(
             if not agent_name:
                 continue  # NO-AGENT box: no agent tier at all, so no chapter bind.
             ref = ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
-        out[f"box.{entry['category']}.{entry['key']}"] = (
-            ref,
-            str(entry["box_dest"]),
+        _add_bind(
+            out, str(entry["category"]), str(entry["box_dest"]), ref,
             str(entry["options"]),
         )
     return out
@@ -1193,19 +1263,21 @@ def helper_default_categories(
     box_state_kanibako: str,
     socket_path: Path,
     log_path: Path,
-) -> dict[str, tuple[str, str, str]]:
+) -> BindArmTable:
     """Build the helper hub binds as ``default_categories`` (Phase B).
 
-    Maps ``box.bindings.{rw,ro}.<key>`` → a STRUCTURED 3-TUPLE
-    ``(host_src, box_dest, options)`` for the live helper unix SOCKET + the
-    per-box helper message LOG — TODAY's hardwired ``_HMount`` appends inside the
-    ``helpers_enabled`` block routed through the category resolver.
+    Fills the TERMINAL ``box.bindings.rw`` / ``box.bindings.ro`` arms with one
+    ``box_dest -> (host_src, options)`` entry for the live helper unix SOCKET and
+    the per-box helper message LOG respectively — TODAY's hardwired ``_HMount``
+    appends inside the ``helpers_enabled`` block routed through the category
+    resolver.
 
     Both box-side destinations are DYNAMIC: derived from the box's
     ``box_state_home(container_env)`` (passed in as *box_state_kanibako*, an
     absolute box path) — so the loader injects BOTH the probed host source AND the
-    runtime-derived box destination at the seam (the file carries only the keys +
-    options).  The host SOURCES (*socket_path* / *log_path*) are runtime-probed and
+    runtime-derived box destination at the seam (the file carries only the symbolic
+    source names + options).  ⚑ Under dest-keying that runtime-derived destination
+    is the arm's MAP KEY, which is why the declarative file cannot carry it.  The host SOURCES (*socket_path* / *log_path*) are runtime-probed and
     GATED on ``.exists()`` here, reproducing the old skip-if-missing appends: a
     missing socket/log simply omits its key.
 
@@ -1220,7 +1292,7 @@ def helper_default_categories(
         "helper_log": (log_path, f"{base}/helpers.jsonl"),
     }
 
-    binds: dict[str, tuple[str, str, str]] = {}
+    binds: BindArmTable = {}
     for entry in _load_doc().get("helpers", []):
         src_path, box_dest = sources[entry["source"]]
         # Skip-if-missing gate (parity with the old `.exists()`-guarded appends).
@@ -1241,11 +1313,7 @@ def helper_default_categories(
         # hashed for the AF_UNIX sun_path limit (JC-B2b-3) — so it keeps its probed
         # literal host_src (the ``.exists()`` gate above is unchanged either way).
         host_src = entry.get("meta_ref", str(src_path))
-        binds[f"box.{category}.{entry['key']}"] = (
-            host_src,
-            box_dest,
-            str(entry["options"]),
-        )
+        _add_bind(binds, category, box_dest, host_src, str(entry["options"]))
     return binds
 
 
@@ -1253,18 +1321,19 @@ def image_default_categories(
     *,
     graph_root: Path | None,
     storage_conf_path: Path,
-) -> dict[str, tuple[str, str, str] | str]:
+) -> dict[str, object]:
     """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
 
-    Maps ``box.bindings.ro.<key>`` → a STRUCTURED 3-TUPLE
-    ``(host_src, box_dest, options)`` for the host image graph root + the GENERATED
-    ``storage.conf``, routed through the category resolver (the sole route; the
-    old hardwired Mounts are gone).  The box-side destinations + options come from
-    the declarative file (``images:`` list); the host SOURCES (the runtime-probed
+    Returns a MIXED table: the TERMINAL ``box.bindings.ro`` arm carrying one
+    ``box_dest -> (host_src, options)`` entry for the host image graph root and one
+    for the GENERATED ``storage.conf``, routed through the category resolver (the
+    sole route; the old hardwired Mounts are gone), PLUS the ``box.images_store``
+    floor SCALAR below.  The box-side destinations + options come from the
+    declarative file (``images:`` list); the host SOURCES (the runtime-probed
     *graph_root* and the already-GENERATED *storage_conf_path*) are injected here.
 
-    ⚑ B3 (spec §2b / §2c, D-M8): the store bind ``box.bindings.ro.images`` is
-    ROUTED THROUGH THE USER KEY — its shipped host_src is the @-ref
+    ⚑ B3 (spec §2b / §2c, D-M8): the store bind — the arm's
+    ``/var/lib/shared-images`` entry — is ROUTED THROUGH THE USER KEY — its shipped host_src is the @-ref
     ``@box.images_store`` (the file's ``meta_ref``, helper_log parity), and the
     runtime-probed *graph_root* enters the keyspace HERE as that key's DEFAULT: a
     floor scalar in the returned table.  The floor is the least-specific cascade
@@ -1285,7 +1354,7 @@ def image_default_categories(
         "images_conf": str(storage_conf_path),
     }
 
-    binds: dict[str, tuple[str, str, str] | str] = {}
+    binds: dict[str, object] = {}
     if graph_root is not None:
         sources["images_store"] = str(graph_root)
         # The USER KEY behind the store bind: the probe lands as the DEFAULT of
@@ -1302,9 +1371,8 @@ def image_default_categories(
         host_src = entry.get("meta_ref")
         if host_src is None:
             host_src = sources[entry["source"]]
-        binds[f"box.{category}.{entry['key']}"] = (
-            host_src,
-            str(entry["box_dest"]),
+        _add_bind(
+            binds, category, str(entry["box_dest"]), host_src,
             str(entry["options"]),
         )
     return binds

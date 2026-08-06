@@ -8,9 +8,11 @@ NOT a parallel descriptor mount route.
 
 It is item-0's hard half: each :class:`~kanibako.targets.base.Binding` in a
 :class:`~kanibako.targets.base.PluginDescriptor` becomes an
-``agent.<name>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf under
-the descriptor's OWN agent name ``<name>`` (``install.name``; S27) — the §2d
-``agent.<agent>.bindings.*`` key form, NOT a bare ``agent`` token (§0) —
+``agent.<name>.bindings.{ro,rw}`` DEST-KEYED entry ``box_dest -> BindEntry(src,
+opts)`` under the descriptor's OWN agent name ``<name>`` (``install.name``; S27) —
+the §2d ``agent.<agent>.bindings.{ro,rw}`` key form, which is TERMINAL (R-5: the
+arm is the WHOLE key and the destinations inside it are NOT key segments), and
+never a bare ``agent`` token (§0) —
 mirroring :func:`~kanibako.targets.assembly.resolve_binding_source`'s
 origin→host_src resolution.
 
@@ -43,16 +45,23 @@ For each :class:`Binding` in ``descriptor.bindings`` (order preserved):
 
 * **host_src** = ``resolve_binding_source(binding, install, override="")`` (the
   origin-resolved ``LAUNCHER`` / ``INSTALL_DIR`` / ``BINARY`` / ``LITERAL`` path),
-  stored as ``str(host_src)`` (``Bind.host`` is ``str``, S1).
-* **box_dest** = ``binding.box_dest`` VERBATIM (see above).
+  stored as ``str(host_src)`` (``BindEntry.src`` is ``str``, S1) and — ⚑ R-11 —
+  NEVER canonicalized: a source is a HOST path and resolves on its own.
+* **box_dest** = the MAP KEY, ``binding.box_dest`` normalized by
+  :func:`~kanibako.settings.settings_resolve.normalize_bind_dest` (R-11: a dest is
+  a GUEST path, so ``~`` expands to the fixed guest home and ``~``/``~/`` are one
+  destination). It is no longer part of the value.
 * **opts** = ``"ro"`` if ``binding.ro`` else ``None``. ``None`` (NOT ``""``) means
-  "no per-entry mount-options override" — ``Bind.opts`` defaults to ``None`` (S1)
-  and reconcile falls back to the category default for an rw bind. This is the
-  ``Bind`` convention, distinct from ``descriptor_mounts``'s ``""`` (an argv-mount
+  "no per-entry mount-options override" — ``BindEntry.opts`` defaults to ``None``
+  (S1) and reconcile falls back to the category default for an rw bind. This is the
+  bind convention, distinct from ``descriptor_mounts``'s ``""`` (an argv-mount
   detail, not the stored shape).
 * **key path** = the descriptor's OWN agent name ``<name>`` (``install.name``;
-  S27): ``agent.<name>.bindings.ro.<key>`` or ``agent.<name>.bindings.rw.<key>``
-  per ``binding.ro``. The agent NAME is IN the key path (the §2d
+  S27): ``agent.<name>.bindings.ro`` or ``agent.<name>.bindings.rw`` per
+  ``binding.ro``, with ``box_dest`` as the entry key INSIDE that arm.
+  ⚑ ``binding.key`` is NOT used here any more (R-10 dropped the entry name from
+  the keyspace); it remains the descriptor's own stable identifier and what
+  ``critical`` names. The agent NAME is IN the key path (the §2d
   ``agent.<agent>.*`` form, NOT a bare ``agent`` token, §0), so this partial
   merges BY NAME with 2a's discriminated ``agent.<active-name>.*`` level and any
   higher-scope ``agent.<name>.*`` override (S8 / block 2b).
@@ -63,14 +72,15 @@ When ``resolve_binding_source`` returns ``None`` (an unresolvable origin — e.g
 a ``LITERAL`` binding with no ``literal_src``, or a detection field the install
 left unset), the entry is **OMITTED**. This mirrors the AGENT best-effort skip in
 :func:`~kanibako.targets.assembly.descriptor_mounts` and keeps the tier-2 typed
-accessor honest: ``bindings`` exposes ``Mapping[str, Bind]`` (NOT ``Bind | None``)
+accessor honest: ``bindings`` exposes ``Mapping[str, BindEntry]`` (NOT
+``BindEntry | None``)
 ONLY because build omits absent/None binds (design §5/§6e) — emitting a
 ``None``-host bind would be a lie a consumer crashes on.
 
 Authority: spec ``settings-keyspace-1.8.0.md`` §2d
 (``agent.<agent>.bindings.{ro,rw}.<key>`` — the ONLY agent key form; §0
 forbids a bare ``agent.<key>``) / §2a (binding REPRESENTATION);
-``~/vault/rw/keystore-design.md`` §2 (binds are ``Bind``) / §6a (raw refs). SEAMS
+``~/vault/rw/keystore-design.md`` §2 (binds are structured) / §6a (raw refs). SEAMS
 S1/S2/S3/S7/S8/S9 + S26/S27.
 """
 
@@ -78,7 +88,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kanibako.settings.settings_store import Bind, KeyStore
+from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
+from kanibako.settings.settings_store import BindEntry, KeyStore
 from kanibako.targets.assembly import resolve_binding_source
 
 if TYPE_CHECKING:
@@ -95,7 +106,7 @@ def agent_default_partial(
     Returns a :class:`~kanibako.settings.settings_store.KeyStore` partial rooted at
     ``agent.<node>`` where ``<node>`` is the ACTIVE node-name (*node_name*), holding
     each resolvable :class:`~kanibako.targets.base.Binding` as a
-    ``agent.<node>.bindings.{ro,rw}.<key> = Bind(host_src, box_dest, opts)`` leaf —
+    ``agent.<node>.bindings.{ro,rw}`` entry ``box_dest -> BindEntry(src, opts)`` —
     mirroring :func:`~kanibako.targets.assembly.resolve_binding_source` with NO
     override and NO existence check (S26). See the module docstring for the full
     rules and the None-origin OMIT contract.
@@ -125,20 +136,38 @@ def agent_default_partial(
     # an absent-vs-present-empty distinction the merge need not carry).
     ro_binds = KeyStore()
     rw_binds = KeyStore()
+    # The ACTIVE NODE name — computed here rather than after the loop only so the
+    # act-once refusal below can name the agent it is talking about.
+    name = node_name if node_name is not None else install.name
 
     for binding in descriptor.bindings:
         src = resolve_binding_source(binding, install, override="")
         if src is None:
             # None-origin → OMIT (S27); matches the AGENT best-effort skip and
-            # keeps tier-2 `Mapping[str, Bind]` honest (design §5/§6e).
+            # keeps tier-2 `Mapping[str, BindEntry]` honest (design §5/§6e).
             continue
         opts = "ro" if binding.ro else None
-        bind = Bind(str(src), binding.box_dest, opts)
-        # `binding.key` is the stable override key; place it under ro/rw by `ro`.
-        if binding.ro:
-            ro_binds[binding.key] = bind
-        else:
-            rw_binds[binding.key] = bind
+        # ⚑ DEST-KEYED (R-3/R-6/R-10/R-11): the arm's map key is the NORMALIZED box
+        # DESTINATION and `binding.key` is NOT part of it. The descriptor keeps its
+        # `key` — it is still the plugin's stable identifier and still what
+        # `critical` names (targets/base.py) — it simply stopped being a settings
+        # key segment. ⚑ Only `box_dest` is normalized; `src` is a HOST path and is
+        # carried exactly as resolved.
+        arm = ro_binds if binding.ro else rw_binds
+        dest = normalize_bind_dest(binding.box_dest)
+        if dict.__contains__(arm, dest):
+            # Two descriptor bindings at ONE destination in ONE arm: act-once, so
+            # this cannot be an overlay. Under dest-keying the second would just
+            # replace the first with nothing downstream able to see the loss, so it
+            # is named here instead — the descriptor is the plugin's, and the
+            # plugin author is who has to fix it.
+            raise SettingsError(
+                f"agent {name}: descriptor bindings {binding.key!r} and an "
+                f"earlier binding both target {dest!r} in the "
+                f"{'ro' if binding.ro else 'rw'} arm; bindings are act-once and a "
+                f"dest-keyed arm admits one entry per destination."
+            )
+        arm[dest] = BindEntry(str(src), opts)
 
     bindings = KeyStore()
     if dict.__len__(ro_binds):
@@ -154,7 +183,6 @@ def agent_default_partial(
     # ``agent.<active>.*`` level and any higher-scope ``agent.<node>.*`` override
     # (block 2b), including a user-set ``agent.<node>.bindings.*`` repoint on a
     # scope file.
-    name = node_name if node_name is not None else install.name
     agent_sub = KeyStore()
     if dict.__len__(bindings):
         agent_sub["bindings"] = bindings

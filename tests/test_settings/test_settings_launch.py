@@ -21,7 +21,7 @@ from kanibako.settings.settings_launch import (
     snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
-from kanibako.settings.settings_store import Bind, KeyStore
+from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
 
 def _ctx() -> ResolveCtx:
@@ -63,13 +63,15 @@ def test_category_default_table_folds_into_snapshot():
         workset_path=None,
         box_path=None,
         default_categories={
-            "box.bindings.rw.home": ("/h/home", "/home/agent", "Z,U"),
+            # DEST-KEYED arm (R-5): the floor key ENDS at the arm and its value is
+            # the whole ``{box_dest: (src[, opts])}`` map.
+            "box.bindings.rw": {"/home/agent": ("/h/home", "Z,U")},
             "box.env.FOO": "bar",
         },
     )
-    bind = snap.box.bindings.rw.home
-    assert isinstance(bind, Bind)
-    assert bind == Bind("/h/home", "/home/agent", "Z,U")
+    bind = getattr(snap.box.bindings.rw, "/home/agent")
+    assert isinstance(bind, BindEntry)
+    assert bind == BindEntry("/h/home", "Z,U")
     assert snap.box.env.FOO == "bar"
 
 
@@ -83,12 +85,12 @@ def test_empty_string_default_suppression_dropped():
         agent_path=None,
         workset_path=None,
         box_path=None,
-        default_categories={"box.bindings.rw.home": ""},
+        default_categories={"box.bindings.rw": {"/home/agent": ""}},
     )
     box = snap.box if "box" in snap else KeyStore()
     bindings = box.bindings if "bindings" in box else KeyStore()
     rw = bindings.rw if "rw" in bindings else KeyStore()
-    assert "home" not in rw
+    assert "/home/agent" not in rw
 
 
 def test_agent_partial_inserted():
@@ -127,11 +129,14 @@ def test_agent_partial_surfaces_flat_secret_path():
     assert _agent_partial(raw, sub_key="default") == KeyStore()
 
 
-def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
-    # A user-settable ``agent.<name>.bindings.{ro,rw}.<key>`` written on a scope
+def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
+    # A user-settable ``agent.<name>.bindings.{ro,rw}`` ENTRY written on a scope
     # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY
-    # cascade — the plural-key route that REPLACED the retired singular
-    # ``agent.<name>.binding.<key>`` override bridge. Exercises the FULL emit path
+    # cascade — the plural-arm route that REPLACED the retired singular
+    # ``agent.<name>.binding.<key>`` override bridge. ⚑ The entry is matched BY
+    # DESTINATION, not by the descriptor's ``binding.key`` (R-10 dropped the name
+    # from the keyspace; the arm is a terminal dest-keyed map, R-5). Exercises the
+    # FULL emit path
     # (build_launch_snapshot → snapshot_category_entries → reconcile_categories →
     # agent_delivery_mounts), so it proves the repoint reaches the emitted Mount.
     from kanibako.settings.agent_representation import agent_default_partial
@@ -159,17 +164,22 @@ def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
     # 7a delivers the descriptor default under agent.claude.bindings.ro.share.
     partial = agent_default_partial(desc, install, node_name="claude")
 
-    # The user repoint: the agent-scope FILE sets the SAME discriminated plural key
-    # to a DIFFERENT existing host source (the settable-tier equivalent of a
-    # ``config set agent agent.claude.bindings.ro.share=[…]``). The agent file sits
-    # ABOVE the 7a descriptor-default rung, so it wins the host source by name.
+    # The user repoint: the agent-scope FILE sets an entry at the SAME box
+    # DESTINATION with a DIFFERENT existing host source. The agent file sits ABOVE
+    # the 7a descriptor-default rung, so it wins the host source at that dest.
+    # ⚑ The entry is ONE element — ``[src]``. Under dest-keying the destination is
+    # the map KEY and the value is ``[src[, options]]``, so the retired
+    # ``{"share": [src, "/box/share"]}`` spelling would parse as an entry named
+    # ``share`` whose OPTIONS are ``/box/share`` (R-9's accepted loss: both shapes
+    # are 2-element lists, so only the reader's context tells them apart) and BOTH
+    # entries would mount.
     repoint = tmp_path / "user-repoint"
     repoint.mkdir()
     agent_file = tmp_path / "agent-settings.yaml"
     dump_doc(
         agent_file,
         {"self": {"claude": {"bindings": {"ro": {
-            "share": [str(repoint), "/box/share"]}}}}},
+            "/box/share": [str(repoint)]}}}}},
     )
 
     snap = build_launch_snapshot(
@@ -179,10 +189,13 @@ def test_settings_file_repoints_delivery_bind_by_plural_key(tmp_path: Path):
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     rec = reconcile_categories(entries)
-    mounts = agent_delivery_mounts(rec.mounts, critical_keys=frozenset({"share"}))
+    # ⚑ critical_keys are DESTINATIONS now, not descriptor key names (H6).
+    mounts = agent_delivery_mounts(
+        rec.mounts, critical_keys=frozenset({"/box/share"}),
+    )
 
     sources = {str(m.source) for m in mounts}
-    # The file-set plural key repoints the emitted delivery Mount's source.
+    # The file-set arm entry repoints the emitted delivery Mount's source.
     assert str(repoint) in sources
     # MUTATION guard (non-vacuous): the descriptor origin (install_dir) is REPLACED,
     # not carried alongside — if the repoint were ignored the emit would still carry
@@ -1624,15 +1637,16 @@ def test_workspace_bind_routes_through_meta_box_workspace():
     snap = _identity_snapshot(
         project_path="/code/droste",
         default_categories={
-            "box.bindings.rw.workspace": ("@meta.box.workspace", "~/workspace", "Z,U"),
+            "box.bindings.rw": {"~/workspace": ("@meta.box.workspace", "Z,U")},
         },
     )
-    bind = _meta_node(snap, "box", "bindings", "rw", "workspace")
-    assert isinstance(bind, Bind)
+    # The DEST is now the map KEY, canonicalized by R-11 (``~/workspace`` →
+    # ``/home/agent/workspace``); the entry carries (src, opts) only.
+    bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/workspace")
+    assert isinstance(bind, BindEntry)
     # The @meta.box.workspace ref resolved to str(proj.project_path) — byte-identical
     # to the old `source: project_path` injection.
-    assert bind.host == "/code/droste"
-    assert bind.box == "~/workspace"
+    assert bind.src == "/code/droste"
     assert bind.opts == "Z,U"
 
 
@@ -1642,13 +1656,12 @@ def test_inbox_bind_routes_through_meta_box_inbox():
     snap = _identity_snapshot(
         inbox="/data/channels/mailboxes/__PRIMARY__/droste",
         default_categories={
-            "box.bindings.rw.inbox": ("@meta.box.inbox", "~/channels/inbox"),
+            "box.bindings.rw": {"~/channels/inbox": ("@meta.box.inbox",)},
         },
     )
-    bind = _meta_node(snap, "box", "bindings", "rw", "inbox")
-    assert isinstance(bind, Bind)
-    assert bind.host == "/data/channels/mailboxes/__PRIMARY__/droste"
-    assert bind.box == "~/channels/inbox"
+    bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/channels/inbox")
+    assert isinstance(bind, BindEntry)
+    assert bind.src == "/data/channels/mailboxes/__PRIMARY__/droste"
 
 
 def test_meta_box_view_reads_b2_fields_typed():
@@ -1691,8 +1704,10 @@ def test_routed_bind_equivalence_vs_literal_injection():
     routed = _identity_snapshot(
         project_path=project_path, inbox=inbox,
         default_categories={
-            "box.bindings.rw.workspace": ("@meta.box.workspace", "~/workspace", "Z,U"),
-            "box.bindings.rw.inbox": ("@meta.box.inbox", "~/channels/inbox"),
+            "box.bindings.rw": {
+                "~/workspace": ("@meta.box.workspace", "Z,U"),
+                "~/channels/inbox": ("@meta.box.inbox",),
+            },
         },
     )
     # OLD: literal proj-attr source (pre-B2 form).
@@ -1700,14 +1715,17 @@ def test_routed_bind_equivalence_vs_literal_injection():
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories={
-            "box.bindings.rw.workspace": (project_path, "~/workspace", "Z,U"),
-            "box.bindings.rw.inbox": (inbox, "~/channels/inbox"),
+            "box.bindings.rw": {
+                "~/workspace": (project_path, "Z,U"),
+                "~/channels/inbox": (inbox,),
+            },
         },
     )
-    for key in ("workspace", "inbox"):
+    # Keyed by the CANONICALIZED destination (R-11) on both sides.
+    for key in ("/home/agent/workspace", "/home/agent/channels/inbox"):
         rb = _meta_node(routed, "box", "bindings", "rw", key)
         lb = _meta_node(literal, "box", "bindings", "rw", key)
-        assert (rb.host, rb.box, rb.opts) == (lb.host, lb.box, lb.opts), key
+        assert (rb.src, rb.opts) == (lb.src, lb.opts), key
 
 
 # --------------------------------------------------------------------------- #
@@ -2244,7 +2262,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     # WHOLE-VALUE ref (-> the host "/home"). Confirmed pre-guard.
     for mode in ("primary", "standalone"):
         floor: dict[str, object] = {
-            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
+            "box.bindings.rw": {"~": ("@meta.box.path/home", "Z,U")},
             "meta.box.name": "mybox",
             "meta.workset.path": "/data/ws",
         }
@@ -2279,7 +2297,7 @@ def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
 
     for name in ("", None):
         floor: dict[str, object] = {
-            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
+            "box.bindings.rw": {"~": ("@meta.box.path/home", "Z,U")},
             "meta.box.name": name,
             "meta.workset.path": "/data/ws",
         }
@@ -2614,12 +2632,13 @@ class TestPrefRecomputeNotDelta:
             box={
                 "pref": {"agent": {"claude": {"template": "/custom/tpl"}}},
                 "box": {"bindings": {"rw": {
-                    "probe": ["@agent.claude.template/sub", "~/probe"],
+                    "~/probe": ["@agent.claude.template/sub"],
                 }}},
             },
         )
         assert snap.agent.claude.template == "/custom/tpl"
-        assert snap.box.bindings.rw.probe.host == "/custom/tpl/sub"
+        probe = getattr(snap.box.bindings.rw, "/home/agent/probe")
+        assert probe.src == "/custom/tpl/sub"
 
     def test_a_key_derived_from_a_prefd_system_agent_updates(self, tmp_path):
         """The P7-critical key: ``@system.agent`` resolves to the REQUESTED
@@ -2629,12 +2648,13 @@ class TestPrefRecomputeNotDelta:
             box={
                 "pref": {"system": {"agent": "goose"}},
                 "box": {"bindings": {"rw": {
-                    "probe": ["/src/@system.agent", "~/probe"],
+                    "~/probe": ["/src/@system.agent"],
                 }}},
             },
         )
         assert snap.system.agent == "goose"
-        assert snap.box.bindings.rw.probe.host == "/src/goose"
+        probe = getattr(snap.box.bindings.rw, "/home/agent/probe")
+        assert probe.src == "/src/goose"
 
     def test_a_pref_need_not_be_a_literal(self, tmp_path):
         """§2h — the value is installed as an ordinary (possibly
@@ -3214,7 +3234,7 @@ class TestPersonaTierIsInertWhenEmpty:
                 {"pref": {"agent": {"claude": {"access": "full"}}}},
             ),
             behavior_floor={"model": "opus", "allow_helpers": "true"},
-            default_categories={"box.bindings.rw.home": ("/h/home", "~/", "Z,U")},
+            default_categories={"box.bindings.rw": {"~/": ("/h/home", "Z,U")}},
             agent_state={"endpoint": "stored-endpoint"},
             valid_agents=_PREF_AGENTS,
             **persona_kw,

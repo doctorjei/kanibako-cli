@@ -876,27 +876,19 @@ def run_share_add(args: argparse.Namespace) -> int:
     overwrites its source (this is how a binding is "updated"; bindings are live
     bind mounts and no content sync exists).
 
-    ⚑⚑ **THE STORED VALUE IS STILL THE 2-ELEMENT ``[host_src, box_dest]`` PAIR**,
-    even though the key is now the destination — so the destination appears twice.
-    That redundancy is DELIBERATE and TRANSIENT, and it is not an oversight:
+    ⚑⚑ **THE STORED VALUE IS THE 1-ELEMENT ``[host_src]`` ENTRY** (R-3/R-6,
+    ``settings_store.BindEntry``): the destination is the KEY and appears exactly
+    once. P4′ deliberately left it as the 2-element ``[host_src, box_dest]`` pair —
+    the destination written twice — because the reader could not flip alone: the
+    floor producers still emitted name-keyed entries into the SAME merged arm, and
+    a merged arm must be HOMOGENEOUS. P6 flipped the reader, the floor and this
+    writer together, which is what made the deferred "drop element 2" safe.
 
-    * The dest-keyed VALUE shape is ``[src[, options]]`` (R-3/R-6,
-      ``settings_store.BindEntry``), but **nothing reads it yet.** Every settings
-      FILE still loads through ``settings_assemble._parse_node`` with
-      ``dest_keyed=False``, which unpacks a leaf as ``[host_src, box_dest[, opts]]``.
-    * Writing ``[src]`` here today therefore does not "diverge silently" — it
-      **breaks loudly and immediately**: ``unpack_bind`` refuses a 1-element list,
-      so every launch in the working set, and ``share list`` itself, would die with
-      *"Binding category value must have 2 or 3 elements"*. Writing ``[src, opts]``
-      is worse — it parses, with ``opts`` silently read as the DESTINATION.
-    * The reader cannot flip alone either: the floor producers
-      (``core_defaults``) still emit name-keyed entries into the SAME merged arm,
-      and a merged arm must be homogeneous. Reader and floor flip together — that
-      is P6, and this value flip belongs with them. By then it is a pure "drop
-      element 2" over keys that are ALREADY destinations.
-
-    So this phase moves the IDENTITY (R-10, a user-facing CLI change) and P6 moves
-    the SHAPE (R-3). Do not "finish the job" here in isolation.
+    ⚑ The stored DESTINATION is canonicalized (R-11): a leading ``~`` expands to the
+    fixed guest home, so ``~/x`` and ``/home/agent/x`` are one entry rather than two
+    at one destination. ⚑⚑ The stored ``host_src`` is NOT — its ``~`` is the
+    INVOKING USER's home, and a workset file is read by other users on other
+    machines (spec §2a "the destination is canonicalized; the source is not").
 
     ⚑ A BARE-RELATIVE host source is ABSOLUTISED AGAINST THE WORKSET ROOT HERE, at
     WRITE time (spec §2a: a stored source must fully resolve on its own).
@@ -919,7 +911,10 @@ def run_share_add(args: argparse.Namespace) -> int:
     """
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.settings_resolve import split_bind
+    from kanibako.settings.settings_resolve import (
+        normalize_bind_dest,
+        split_bind,
+    )
 
     bind = args.bind
     # Parse the ``host_src:guest_dest`` grammar through the CANONICAL escape-aware
@@ -967,13 +962,17 @@ def run_share_add(args: argparse.Namespace) -> int:
     subtree = data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
         args.mode, {}
     )
+    # R-11: the key is the DESTINATION, so it is canonicalized before it is used
+    # as one — otherwise ``~/x`` and ``/home/agent/x`` are two entries at one place
+    # and ``share rm`` can only remove the spelling the user happens to retype.
+    guest_dest = normalize_bind_dest(guest_dest)
     existed = guest_dest in subtree
     # CLI-INPUT edge: the ``host_src:guest_dest`` grammar (mirroring podman -v) is
     # parsed HERE and STORED in the structured form (spec §2a — a YAML list, NOT a
     # colon-joined string). Storage stays pure structured; the colon form is only
-    # the user-facing input/display grammar. The KEY is the destination (R-10);
-    # for why the value still repeats it, see this function's docstring.
-    subtree[guest_dest] = [host_src, guest_dest]
+    # the user-facing input/display grammar. The KEY is the destination (R-10) and
+    # the value is the 1-element dest-keyed entry (R-6) — see the docstring.
+    subtree[guest_dest] = [host_src]
     dump_doc(ws_config, data)
 
     verb = "Updated" if existed else "Added"
@@ -1010,6 +1009,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
     ``_workset_raw_shares`` prescribes actually spellable.
     """
     from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_resolve import normalize_bind_dest
 
     ws, _ = _resolve_share_workset(args.workset)
     if ws is None:
@@ -1018,10 +1018,15 @@ def run_share_remove(args: argparse.Namespace) -> int:
     ws_config = _workset_config_path(ws)
     data = _load_share_doc(ws_config)
     path_tree = data.get("workset", {}).get("bindings", {})
+    # R-11 again, on the LOOKUP side: ``share add`` stored a canonical destination,
+    # so a user who types the ``~`` spelling of the same place must still find it.
+    # Canonicalizing the ARGUMENT (rather than every stored key) is the right half:
+    # the stored keys are already canonical by construction.
+    dest = normalize_bind_dest(args.dest)
 
     def _present(mode: str) -> bool:
         sub = path_tree.get(mode, {})
-        return isinstance(sub, dict) and args.dest in sub
+        return isinstance(sub, dict) and dest in sub
 
     if args.mode is not None:
         modes = [args.mode] if _present(args.mode) else []
@@ -1046,11 +1051,11 @@ def run_share_remove(args: argparse.Namespace) -> int:
         return 1
 
     mode = modes[0]
-    del path_tree[mode][args.dest]
+    del path_tree[mode][dest]
     dump_doc(ws_config, data)
 
     print(
-        f"Removed {mode} share at '{args.dest}' from working set '{ws.name}'."
+        f"Removed {mode} share at '{dest}' from working set '{ws.name}'."
     )
     print(_NEXT_LAUNCH_REMINDER)
     return 0
@@ -1114,17 +1119,28 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     walks its ``workset.bindings.{ro,rw}`` subtree. The raw value is the structured
     ``Bind`` (``@``-refs / ``$XDG`` / ``~`` UNRESOLVED, per §0). Missing file → {}.
 
-    ⚑ **REFUSES A RETIRED NAME-KEYED ENTRY** (R-10). Under dest-keying the dict key
-    IS the destination, so an entry whose key differs from its own stored
-    destination is the retired ``{name: [src, dest]}`` shape. There is no honest
-    way to DISPLAY one — the DEST column would print a name, and the ``share rm``
-    argument it advertises would be a name too — so it is named and refused rather
+    ⚑ **REFUSES A RETIRED NAME-KEYED ENTRY** (R-10), now on the KEY. P4′ could
+    compare the key against the value's own stored destination; P6 dropped that
+    element (R-6), so the test is instead whether the key is SPELLABLE as a
+    destination at all — absolute, or leading ``~``/``$``/``@`` (spec §2a
+    self-resolving). A bare leaf like ``docs`` is a NAME, and there is no honest
+    way to DISPLAY one: the DEST column would print a name and the ``share rm``
+    argument it advertises would be a name too. So it is named and refused rather
     than silently mis-rendered (Code Convention 0; disk-store R-8's posture).
     Raises :class:`SettingsError`; ``run_share_list`` reports it.
+
+    ⚑⚑ **KNOWN, RULED GAP — a retired 2-element ``[src, dest]`` under a
+    DESTINATION-shaped key is UNDETECTABLE here** and reads as
+    ``BindEntry(src, opts=dest)``. That is the arity trap the spec names outright
+    ("the retired 2-element ``(host_src, box_dest)`` and the current 2-element
+    ``(host_src, options)`` have the SAME ARITY"), and it is accepted because R-4
+    rules NO MIGRATION: nobody has such a file. Do not invent a mount-options
+    grammar here to close it — that would be a new refusal nobody ruled.
     """
+    from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.settings_assemble import assemble_levels
-    from kanibako.settings.settings_store import Bind, KeyStore, _MISSING
+    from kanibako.settings.settings_store import BindEntry, KeyStore, _MISSING
 
     # assemble_levels returns [box, workset, agent.<active>, agent.default,
     # system, base]; index 1 is the workset partial (the only file we pass).
@@ -1147,24 +1163,24 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
             continue
         for dest in dict.keys(mode_node):
             leaf = dict.__getitem__(mode_node, dest)
-            # Render the Bind back to its on-disk pair shape for the display.
-            if isinstance(leaf, Bind):
-                if leaf.box != dest:
+            # Render the BindEntry back to its on-disk shape for the display.
+            if isinstance(leaf, BindEntry):
+                if not is_self_resolving(dest):
                     raise SettingsError(
-                        f"workset.bindings.{mode} has an entry keyed '{dest}' "
-                        f"whose destination is '{leaf.box}'. A binding is keyed "
-                        f"by its box DESTINATION and has no entry name (spec §2a; "
-                        f"the name was dropped 2026-08-06c), so '{dest}' is the "
-                        f"RETIRED name-keyed shape. Fix it: "
-                        f"`kanibako workset share rm <workset> {dest} --mode "
-                        f"{mode}` then `kanibako workset share add <workset> "
-                        f"{leaf.host}:{leaf.box} --mode {mode}` — or re-key the "
-                        f"entry to '{leaf.box}' in the settings file."
+                        f"workset.bindings.{mode} has an entry keyed '{dest}', "
+                        f"which is not a box DESTINATION: a destination is "
+                        f"absolute or begins with '~' / '$' / '@' (spec §2a). A "
+                        f"binding is keyed BY its destination and has no entry "
+                        f"name (the name was dropped 2026-08-06c), so '{dest}' is "
+                        f"the RETIRED name-keyed shape. Fix it: "
+                        f"`kanibako workset share rm <workset> {dest} "
+                        f"--mode {mode}` then `kanibako workset share add "
+                        f"<workset> {leaf.src}:<box_dest> --mode {mode}` — or "
+                        f"re-key the entry to its destination in the settings "
+                        f"file."
                     )
                 out[(mode, dest)] = (
-                    [leaf.host, leaf.box, leaf.opts]
-                    if leaf.opts is not None
-                    else [leaf.host, leaf.box]
+                    [leaf.src, leaf.opts] if leaf.opts is not None else [leaf.src]
                 )
             else:
                 out[(mode, dest)] = leaf

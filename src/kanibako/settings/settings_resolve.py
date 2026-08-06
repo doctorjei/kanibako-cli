@@ -309,6 +309,49 @@ def unpack_bind_entry(value: object) -> tuple[str, str | None]:
     )
 
 
+def normalize_bind_dest(dest: str) -> str:
+    """Canonicalize a binding DESTINATION — the map key of a dest-keyed arm (R-11).
+
+    ⚑⚑ **DESTINATIONS ONLY. NEVER CALL THIS ON A ``host_src``.** The asymmetry is
+    the whole ruling (spec §2a, "THE DESTINATION IS CANONICALIZED; THE SOURCE IS
+    NOT"): a dest is a GUEST path and the guest home is FIXED MACHINERY
+    (:data:`GUEST_HOME`, not a settings key), so expanding it yields the same
+    absolute path on every host, forever. A ``host_src``'s ``~`` is the INVOKING
+    USER's home — absolutizing THAT would bake one machine's ``/home/<user>`` into
+    a settings file shared across users and machines (§0 "files store entries
+    UNRESOLVED").
+
+    Two normalizations, both of them identity-preserving for an already-canonical
+    dest (this function is IDEMPOTENT, and is applied at every producer AND again
+    on read, deliberately):
+
+    * a LEADING ``~`` expands to :data:`GUEST_HOME` (``~`` → ``/home/agent``,
+      ``~/x`` → ``/home/agent/x``). A ``~`` anywhere else is literal, exactly as
+      :func:`expand_expr` treats it;
+    * a TRAILING ``/`` is dropped (never from a bare ``/``). This half is not
+      cosmetic: ``~`` and ``~/`` were the two spellings that, under dest-keying,
+      became two dict entries at ONE destination — the collision that triggered
+      R-11 in the first place.
+
+    ⚑ Everything else is carried VERBATIM, including an ``@``-ref or ``$var``
+    destination. Those cannot be absolutized here — they resolve later, in
+    ``settings_expand`` — so a dest-keyed arm is unique in the UNRESOLVED namespace
+    only and the RESOLVED-``box_dest`` collision check in ``settings_categories``
+    stays (design §2b-CAVEAT). Nothing is REFUSED here either: a non-absolute
+    literal dest is a spec violation, but refusing it is not R-11's job and a
+    refusal keyed on "does not start with /" would fire on every legitimate
+    ``@``-ref dest.
+    """
+    out = dest
+    if out == "~":
+        return GUEST_HOME
+    if out.startswith("~/"):
+        out = GUEST_HOME + out[1:]
+    if len(out) > 1 and out.endswith("/"):
+        out = out.rstrip("/") or "/"
+    return out
+
+
 def match_var(expr: str, i: int) -> tuple[str, int]:
     """Parse the ``$VAR`` / ``${VAR}`` reference starting at index *i* (the ``$``).
 

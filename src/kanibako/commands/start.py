@@ -3643,10 +3643,21 @@ def _run_container(
         binary_mnts: list = []
         if target and install and desc is not None:
             from kanibako.settings.settings_launch import agent_delivery_mounts
+            from kanibako.settings.settings_resolve import normalize_bind_dest
             from kanibako.targets.base import BindScope
 
+            # ⚑ H6, THIRD SET: keyed by normalized box DESTINATION, not by
+            # ``binding.key``. ``agent_delivery_mounts`` matches these against the
+            # reconciled entry's ``name``, and under dest-keying that name IS the
+            # arm's map key — the destination (R-10 dropped the entry name from the
+            # keyspace entirely). Matching on ``b.key`` here would never hit, so
+            # EVERY delivery bind would silently fall to the best-effort branch and
+            # a missing agent binary/launcher would reach podman as a crun crash
+            # instead of the clean exit-1 safe-fail. Normalized with the SAME
+            # function ``agent_representation`` keys the arm with, so the two
+            # spellings cannot drift.
             critical_keys = frozenset(
-                b.key for b in desc.bindings
+                normalize_bind_dest(b.box_dest) for b in desc.bindings
                 if b.scope is BindScope.AGENT_CRITICAL
             )
             try:
@@ -6102,6 +6113,81 @@ def _launch_snapshot_inputs(
     )
 
 
+#: The floor keys whose value is a TERMINAL dest-keyed bindings map (R-5): any key
+#: whose last two segments are ``bindings`` + an arm. Everything else in the floor
+#: is a scalar or a name-keyed category table.
+_BIND_ARM_TAIL: frozenset[tuple[str, str]] = frozenset(
+    {("bindings", "ro"), ("bindings", "rw")}
+)
+
+
+def _is_bind_arm_key(key: str) -> bool:
+    """True iff *key* is a terminal ``<scope>.bindings.{ro,rw}`` arm key."""
+    parts = key.split(".")
+    return len(parts) >= 3 and (parts[-2], parts[-1]) in _BIND_ARM_TAIL
+
+
+def _merge_default_categories(
+    table: dict[str, object],
+    incoming: "Mapping[str, object]",
+    *,
+    family: str,
+    origins: dict[tuple[str, str], str],
+) -> None:
+    """Fold ONE family's default-categories table into the aggregate floor *table*.
+
+    ⚑⚑ **THIS EXISTS BECAUSE ``dict.update`` STOPPED BEING SAFE HERE (H5).** While a
+    bindings arm was NAME-keyed, every family owned distinct
+    ``box.bindings.ro.<name>`` keys and a plain union was well-defined. Under
+    dest-keying the arm is ONE terminal key holding the whole map (R-5), and about
+    eight of the families below contribute to ``box.bindings.ro`` — so an
+    ``.update()`` would replace the map wholesale and delete every earlier family's
+    entries, silently and with nothing downstream able to notice.
+
+    Two branches, and the split is deliberate:
+
+    * a **bindings ARM key** merges ENTRY BY ENTRY;
+    * **everything else** is LAST-WINS, exactly as before. ⚑⚑ Do NOT generalize this
+      into a deep merge for every value. Two call sites — ``extra_default_categories``
+      and ``resolved_sys`` — are LATE INJECTIONS that are supposed to override, and a
+      deep merge would quietly stop them from doing so.
+
+    A destination already claimed in the SAME arm RAISES, naming both families
+    (*origins* carries who claimed it). Bindings are strictly act-once, so this can
+    never be a legitimate overlay: it is either two families genuinely fighting over
+    one mountpoint — which the reconciler's resolved-``box_dest`` grouping would
+    already be erroring on today — or a real duplicate that dest-keying has finally
+    made visible. Silencing it by last-wins would hand back exactly the data loss
+    this function was written to prevent. (Two entries at one dest in DIFFERENT arms
+    or DIFFERENT categories are still different keys, still both emitted, and still
+    reach the collision table in ``settings_categories`` — untouched here.)
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+
+    for key, value in incoming.items():
+        if not _is_bind_arm_key(key) or not isinstance(value, dict):
+            table[key] = value
+            continue
+        existing = table.get(key)
+        if not isinstance(existing, dict):
+            merged: dict[str, object] = {}
+            table[key] = merged
+        else:
+            merged = existing
+        for dest, entry in value.items():
+            prior = origins.get((key, dest))
+            if prior is not None:
+                raise SettingsError(
+                    f"launch floor: the {prior} and {family} default families "
+                    f"both bind {dest!r} under {key}. A bindings arm is keyed by "
+                    f"box DESTINATION and bindings are act-once, so one arm "
+                    f"admits one entry per destination — the second would "
+                    f"silently replace the first."
+                )
+            origins[(key, dest)] = family
+            merged[dest] = entry
+
+
 def _resolve_launch_snapshot(
     *,
     std,
@@ -6214,15 +6300,34 @@ def _resolve_launch_snapshot(
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
 
-    # Aggregate every runtime default-categories table into ONE dict.  Keys are
-    # disjoint across families (each uses its own ``<scope>.<category>.<key>``
-    # namespace), so a plain union is well-defined.
+    # Aggregate every runtime default-categories table into ONE dict.
+    #
+    # ⚑⚑ NOT a plain ``dict.update`` union, and the reason is load-bearing. This
+    # block's comment USED to say "keys are disjoint across families (each uses its
+    # own ``<scope>.<category>.<key>`` namespace), so a plain union is
+    # well-defined." That was true only while a bindings arm was NAME-keyed, giving
+    # each family its own ``box.bindings.ro.<name>`` keys. Under dest-keying the
+    # arm is a TERMINAL key (R-5) — so ~8 of these families all write the SAME key
+    # ``box.bindings.ro``, whose value is the whole map, and ``.update()`` would
+    # REPLACE it: the 4th family would silently delete the first three families'
+    # entire ro arm, with no error anywhere. Every union below therefore goes
+    # through :func:`_merge_default_categories`, which merges a bindings arm ENTRY
+    # BY ENTRY and leaves every other value alone.
     default_categories: dict[str, object] = {}
+    # Provenance for the act-once refusal: ``(arm key, dest) -> family label``, so a
+    # same-destination clash can name BOTH contributing families rather than just
+    # the destination.
+    cat_origins: dict[tuple[str, str], str] = {}
     if include_base_families:
-        default_categories.update(_core_default_categories(
-            std, proj, guarantee_create=guarantee_create,
-        ))
-        default_categories.update(core_defaults.kani_default_categories())
+        _merge_default_categories(
+            default_categories, _core_default_categories(
+                std, proj, guarantee_create=guarantee_create,
+            ), family="core", origins=cat_origins,
+        )
+        _merge_default_categories(
+            default_categories, core_defaults.kani_default_categories(),
+            family="kani", origins=cat_origins,
+        )
         # The KICKOFF LOADER (spec §2c ``box.bindings.ro.kickoff``, P-5): the
         # directive-chain ENTRY SLOT, core-owned since C-CANON R2 and delivered
         # beside the kani binds it is INTERNAL company to.
@@ -6233,35 +6338,47 @@ def _resolve_launch_snapshot(
         # but ``box show --effective`` resolves the launch with ``desc=None``
         # and a real ``target``, and a display that shows a kickoff bind the launch
         # would not emit is exactly the drift that call site's own comment forbids.
-        default_categories.update(core_defaults.kickoff_default_categories(
-            desc if desc is not None
-            else (target.descriptor if target is not None else None)
-        ))
+        _merge_default_categories(
+            default_categories, core_defaults.kickoff_default_categories(
+                desc if desc is not None
+                else (target.descriptor if target is not None else None)
+            ), family="kickoff", origins=cat_origins,
+        )
         # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
         # COLLECTION.md index and the bible's ROM_CONTENTS.md as FILE binds, plus one
         # whole-directory bind per packaged chapter (general/workset/box).  Each
         # lands on a mountpoint the box-create skeleton already made, so nothing
         # nests and no mountpoint has to live inside a bind source.
-        default_categories.update(core_defaults.rom_default_categories())
+        _merge_default_categories(
+            default_categories, core_defaults.rom_default_categories(),
+            family="rom", origins=cat_origins,
+        )
         # The HANDBOOK: five READ-ONLY SIBLING binds (spec §2c) sourced from the four
         # ``<scope>.canon`` KEYS, plus the agent-scope ``canon`` floor those refs
         # resolve against. Unlike the rom, these are HOST content the user owns and
         # may repoint — through the keys, which is the spelling §2c blesses.
-        default_categories.update(
-            core_defaults.canon_default_categories(std, agent_name or None)
+        _merge_default_categories(
+            default_categories,
+            core_defaults.canon_default_categories(std, agent_name or None),
+            family="canon", origins=cat_origins,
         )
-        default_categories.update(_channel_default_categories(std, proj))
+        _merge_default_categories(
+            default_categories, _channel_default_categories(std, proj),
+            family="channels", origins=cat_origins,
+        )
         if target is not None:
             # ⚑ Re-keyed to the ACTIVE NODE (P7): a plugin declares its commons
             # against its own HARNESS name, but the §2d pick reads
             # ``agent.<node>`` — so a PERSONA saw none of them (no
             # ``~/.claude/plugins``, no cache) while the symlink shim maintained
             # links nothing consumed. Identity for a bare agent.
-            default_categories.update(agent_common_for_node(
-                target.default_common(),
-                node_name=agent_name,
-                harness=target.name,
-            ))
+            _merge_default_categories(
+                default_categories, agent_common_for_node(
+                    target.default_common(),
+                    node_name=agent_name,
+                    harness=target.name,
+                ), family="agent common", origins=cat_origins,
+            )
             # The plugin's BIBLE CHAPTER (spec §2c ``canon_bible_agent``), emitted
             # by CORE from the RESOLVED target beside the five core canon binds —
             # gated on the plugin actually shipping one.  A SIBLING of them (J-7),
@@ -6270,10 +6387,15 @@ def _resolve_launch_snapshot(
             # INTERNAL bind, not an agent key — so the bible's agent chapter stays as
             # unrepointable as the rest of the book, and the bind follows the
             # resolved target however the agent was selected.
-            default_categories.update(
-                core_defaults.rom_agent_default_categories(target)
+            _merge_default_categories(
+                default_categories,
+                core_defaults.rom_agent_default_categories(target),
+                family="agent rom chapter", origins=cat_origins,
             )
-            default_categories.update(target.default_seeds())
+            _merge_default_categories(
+                default_categories, target.default_seeds(),
+                family="agent seeds", origins=cat_origins,
+            )
             # PLUGIN-declared @-ref-sourced agent binds (spec §2d): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the
             # plugin builds each key DISCRIMINATED (``agent.<agent>.bindings.*``) and
@@ -6281,40 +6403,57 @@ def _resolve_launch_snapshot(
             # floor.  Currently empty for all first-party plugins (the former
             # ``@system.instructions`` instructions bind was retired — the guide now
             # ships via the RO bundle + launch-flatten).
-            default_categories.update(target.default_category_binds())
+            _merge_default_categories(
+                default_categories, target.default_category_binds(),
+                family="agent category binds", origins=cat_origins,
+            )
     # A NARROW caller (``include_base_families=False``) may inject ONLY its own
     # declared default-category table — e.g. ``_apply_init_seeds`` passing just
     # ``target.default_seeds()`` — so the seed/synced COPY resolve flows through
     # the SAME ``build_launch_snapshot`` pipeline (single-route, 7c) WITHOUT
     # pulling in the unrelated core/channel/share families. This mirrors the old
     # narrow ``_resolve_launch_categories`` agent-level ``defaults=`` injection.
+    # ⚑ A DELIBERATE LATE INJECTION — it must keep LAST-WINS. It carries no
+    # ``bindings`` arm (a narrow caller passes its own seed/synced table), so the
+    # helper's default branch is exactly today's ``.update``. ⚑⚑ Do NOT "simplify"
+    # :func:`_merge_default_categories` into a deep merge for every value: this
+    # site and ``resolved_sys`` below are overrides BY DESIGN, and deep-merging
+    # them would silently stop them from overriding.
     if extra_default_categories:
-        default_categories.update(extra_default_categories)
+        _merge_default_categories(
+            default_categories, extra_default_categories,
+            family="narrow injection", origins=cat_origins,
+        )
     if (
         box_state_kanibako is not None
         and socket_path is not None
         and log_path is not None
     ):
-        default_categories.update(
-            core_defaults.helper_default_categories(
+        _merge_default_categories(
+            default_categories, core_defaults.helper_default_categories(
                 box_state_kanibako=box_state_kanibako,
                 socket_path=socket_path,
                 log_path=log_path,
-            )
+            ), family="helpers", origins=cat_origins,
         )
     # 11a: *storage_conf_path* alone gates the image table — *graph_root* may be
     # ``None`` (probe failed), in which case the table carries the binds but NO
     # ``box.images_store`` floor default (a set tier value, or nothing, decides).
     if storage_conf_path is not None:
-        default_categories.update(
-            core_defaults.image_default_categories(
+        _merge_default_categories(
+            default_categories, core_defaults.image_default_categories(
                 graph_root=graph_root,
                 storage_conf_path=storage_conf_path,
-            )
+            ), family="images", origins=cat_origins,
         )
     # Fold the resolved system.* tier into the floor so @-refs in category values
     # resolve from the snapshot itself (replicating the old ``_lookup`` map).
-    default_categories.update(resolved_sys)
+    # ⚑ The SECOND deliberate last-wins injection (see ``extra_default_categories``
+    # above): resolved ``system.*`` SCALARS, no ``bindings`` arm among them.
+    _merge_default_categories(
+        default_categories, resolved_sys,
+        family="resolved system tier", origins=cat_origins,
+    )
 
     agent_partial = (
         agent_default_partial(desc, install, node_name=agent_name)
@@ -7276,7 +7415,7 @@ def _apply_synced_copies(
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 
 
-def _channel_default_categories(std, proj) -> dict[str, tuple[str, str]]:
+def _channel_default_categories(std, proj) -> "core_defaults.BindArmTable":
     """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f).
 
     Thin reader over :func:`kanibako.settings.core_defaults.channel_default_categories`:
@@ -7323,7 +7462,7 @@ def _seed_channel_files(std, proj) -> None:
 
 def _core_default_categories(
     std, proj, *, guarantee_create: bool = True,
-) -> dict[str, tuple[str, str, str]]:
+) -> "core_defaults.BindArmTable":
     """Build the core box mounts as ``default_categories`` (step 3).
 
     Thin reader over :func:`kanibako.settings.core_defaults.core_default_categories`: the

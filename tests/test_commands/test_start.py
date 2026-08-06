@@ -5867,6 +5867,131 @@ class TestPersonaLoadOrErrorUnmasked:
 # _agent_critical_dests: enumerate AGENT_CRITICAL mountpoints across plugins
 # ---------------------------------------------------------------------------
 
+class TestMergeDefaultCategoriesFoldsArmsPerEntry:
+    """H5 — the aggregate launch floor accumulates bindings ENTRY BY ENTRY.
+
+    THE silent-data-loss defect the disk-store rework exists to prevent (design
+    §4, H5 — *"CLOBBERS SILENTLY. HIGHEST RISK IN THE ARC."*). While a bindings
+    arm was NAME-keyed, every floor family owned distinct
+    ``box.bindings.ro.<name>`` keys, so ``_resolve_launch_snapshot`` could union
+    its fourteen family tables with a plain ``dict.update``. Under R-5 the arm is
+    ONE TERMINAL key whose value is the entire ``{box_dest: (src[, opts])}`` map
+    and about eight families write it — so an ``update`` replaces the map
+    wholesale and every earlier family's binds disappear with no error raised, no
+    warning logged and nothing downstream able to tell.
+
+    ⚑ THREE families, not two. Two families only prove the last writer does not
+    win outright. Three prove the fold ACCUMULATES — which is the property
+    ``update`` breaks in precisely the way that hides, because the survivor is
+    still a well-formed arm holding plausible binds and only the COUNT betrays it.
+    """
+
+    @staticmethod
+    def _fold(*families):
+        """Fold ``(family, table)`` pairs exactly as ``_resolve_launch_snapshot``
+        does — one shared ``table`` and one shared ``origins`` ledger."""
+        from kanibako.commands.start import _merge_default_categories
+
+        table: dict[str, object] = {}
+        origins: dict[tuple[str, str], str] = {}
+        for family, incoming in families:
+            _merge_default_categories(
+                table, incoming, family=family, origins=origins,
+            )
+        return table
+
+    def test_three_families_at_one_arm_all_survive(self):
+        table = self._fold(
+            ("core", {"box.bindings.ro": {
+                "/home/agent/canon": ("/host/canon", "ro"),
+            }}),
+            ("kani", {"box.bindings.ro": {
+                "/opt/kanibako": ("/host/pkg", "ro"),
+            }}),
+            ("helpers", {"box.bindings.ro": {
+                "/home/agent/.local/state/kanibako/helpers.jsonl": (
+                    "/host/log", "ro",
+                ),
+            }}),
+        )
+        # All THREE, not just the last writer's.
+        assert table["box.bindings.ro"] == {
+            "/home/agent/canon": ("/host/canon", "ro"),
+            "/opt/kanibako": ("/host/pkg", "ro"),
+            "/home/agent/.local/state/kanibako/helpers.jsonl": (
+                "/host/log", "ro",
+            ),
+        }
+
+    def test_the_two_arms_accumulate_independently(self):
+        """``ro`` and ``rw`` are different keys and never merge into each other.
+
+        The real floor interleaves them — ``core_default_categories`` writes both,
+        ``helper_default_categories`` writes both — so a fold that keyed on
+        ``bindings`` rather than on the ARM would cross-contaminate the two.
+        """
+        table = self._fold(
+            ("core", {
+                "box.bindings.rw": {"/home/agent": ("/host/home", "Z,U")},
+                "box.bindings.ro": {"/home/agent/vault/ro": ("/host/vro", "ro")},
+            }),
+            ("helpers", {
+                "box.bindings.rw": {"/state/helper.sock": ("/host/sock", "")},
+                "box.bindings.ro": {"/state/helpers.jsonl": ("/host/log", "ro")},
+            }),
+        )
+        assert table["box.bindings.rw"] == {
+            "/home/agent": ("/host/home", "Z,U"),
+            "/state/helper.sock": ("/host/sock", ""),
+        }
+        assert table["box.bindings.ro"] == {
+            "/home/agent/vault/ro": ("/host/vro", "ro"),
+            "/state/helpers.jsonl": ("/host/log", "ro"),
+        }
+
+    def test_a_second_family_at_one_destination_raises_naming_both(self):
+        """Act-once, made structural: one arm admits one entry per destination.
+
+        Under dest-keying a second entry at a claimed dest would simply overwrite
+        the first in the dict, so the refusal IS the guard (R-8). The message must
+        name both contributing families — the arm key alone would not tell a user
+        which two defaults are fighting.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            self._fold(
+                ("core", {"box.bindings.ro": {"/home/agent/x": ("/host/a", "ro")}}),
+                ("kani", {"box.bindings.ro": {"/home/agent/x": ("/host/b", "ro")}}),
+            )
+        msg = str(excinfo.value)
+        assert "core" in msg and "kani" in msg
+        assert "/home/agent/x" in msg
+        assert "box.bindings.ro" in msg
+
+    def test_a_non_bindings_value_is_still_last_wins(self):
+        """⚑ The fold is NOT a deep merge, deliberately.
+
+        Two of ``_resolve_launch_snapshot``'s fourteen call sites —
+        ``extra_default_categories`` and the resolved ``system.*`` tier — are LATE
+        INJECTIONS that are SUPPOSED to override. Generalizing the per-entry merge
+        to every value would quietly stop them doing so, which is why the branch
+        keys strictly on a bindings arm.
+        """
+        table = self._fold(
+            ("core", {
+                "box.images_store": "/probed/graph",
+                "agent.claude.common.plugins": ("/store/a", "/g/p"),
+            }),
+            ("late", {
+                "box.images_store": "/injected/graph",
+                "agent.claude.common.plugins": ("/store/b", "/g/p"),
+            }),
+        )
+        assert table["box.images_store"] == "/injected/graph"
+        assert table["agent.claude.common.plugins"] == ("/store/b", "/g/p")
+
+
 class TestAgentCriticalDests:
     """`_agent_critical_dests` maps every plugin's AGENT_CRITICAL binds to
     (shell_dir-relative-path, kind) pairs for the hygiene reaper."""

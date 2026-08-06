@@ -3316,34 +3316,47 @@ class TestSetTimeCtxUsesHostXdgMap:
 
 class TestF10CoreFloorRegistry:
     """``core_defaults.core_default_bind_keys`` — the context-light set-time floor
-    registry (F10): the CORE box-mount KEYS with STATIC box_dest+options and a
-    placeholder host_src, built WITHOUT any proj/std probe."""
+    registry (F10): the CORE box-mount ENTRIES with STATIC dest+options and a
+    placeholder host_src, built WITHOUT any proj/std probe.
 
-    def test_emits_the_launch_core_keys_host_free(self):
+    ⚑ The registry is INERT (R-9 retired the route it fed) but still THREADED
+    through ``dotted_partial`` by three call sites, so its SHAPE is still
+    load-bearing: it is dest-keyed like every other floor producer (R-3/R-5), with
+    R-11-normalized destinations. Emitting the retired ``box.bindings.rw.<name>``
+    spelling would make every ``box config set`` raise. It dies as a whole with the
+    ``default_categories`` parameter, in its own subtractive pass — not here.
+    """
+
+    def test_emits_the_launch_core_entries_host_free(self):
         from kanibako.settings.core_defaults import core_default_bind_keys, FLOOR_PLACEHOLDER_SRC
 
         reg = core_default_bind_keys()
-        # The SAME keys the launch core floor emits — home + workspace + vault ro/rw.
-        assert set(reg) == {
-            "box.bindings.rw.home",
-            "box.bindings.rw.workspace",
-            "box.bindings.ro.vault",
-            "box.bindings.rw.vault",
+        # The SAME arms + destinations the launch core floor emits — home +
+        # workspace + vault ro/rw, keyed by NORMALIZED box dest (R-10/R-11: the
+        # entry name is gone and ``~`` is expanded, so ``~`` is ``/home/agent``).
+        assert set(reg) == {"box.bindings.ro", "box.bindings.rw"}
+        assert set(reg["box.bindings.rw"]) == {
+            "/home/agent", "/home/agent/workspace", "/home/agent/vault/rw",
         }
-        # box_dest + options are the STATIC declarative literals; host_src is the
-        # discarded placeholder (mutation: swap FLOOR_PLACEHOLDER_SRC to a proj-
-        # probed path and this equality goes RED — proving it is host-FREE).
-        assert reg["box.bindings.ro.vault"] == (FLOOR_PLACEHOLDER_SRC, "~/vault/ro", "ro")
-        assert reg["box.bindings.rw.home"] == (FLOOR_PLACEHOLDER_SRC, "~", "Z,U")
+        assert set(reg["box.bindings.ro"]) == {"/home/agent/vault/ro"}
+        # options are the STATIC declarative literals; host_src is the discarded
+        # placeholder (mutation: swap FLOOR_PLACEHOLDER_SRC to a proj-probed path
+        # and this equality goes RED — proving it is host-FREE).
+        assert reg["box.bindings.ro"]["/home/agent/vault/ro"] == (
+            FLOOR_PLACEHOLDER_SRC, "ro",
+        )
+        assert reg["box.bindings.rw"]["/home/agent"] == (
+            FLOOR_PLACEHOLDER_SRC, "Z,U",
+        )
 
-    def test_vault_keys_present_regardless_of_enable_vault(self):
-        # The gate is about the KEY existing at set-time, not the runtime host value:
-        # both vault binds are exposed even though launch may disable vault.
+    def test_vault_entries_present_regardless_of_enable_vault(self):
+        # The gate is about the ENTRY existing at set-time, not the runtime host
+        # value: both vault binds are exposed even though launch may disable vault.
         from kanibako.settings.core_defaults import core_default_bind_keys
 
         reg = core_default_bind_keys()
-        assert "box.bindings.ro.vault" in reg
-        assert "box.bindings.rw.vault" in reg
+        assert "/home/agent/vault/ro" in reg["box.bindings.ro"]
+        assert "/home/agent/vault/rw" in reg["box.bindings.rw"]
 
 
 class TestScopeBindRouteRetired:
@@ -3476,22 +3489,29 @@ class TestCoreFloorStillMergesAtLaunch:
         from kanibako.settings.settings_assemble import assemble_levels
         from kanibako.settings.settings_merge import merge
 
+        # ⚑ DEST-KEYED on BOTH sides (R-3/R-5): the box file's arm and the floor's
+        # arm are the SAME terminal key ``box.bindings.rw``, and the entry they
+        # contend over is identified by its DESTINATION. The floor writes ``~`` and
+        # the file writes ``~/``; R-11 normalizes both to ``/home/agent``, so they
+        # land on ONE entry and the merge really does have a contest to decide.
+        # Before R-11 those were two entries and the "override" would have been two
+        # binds at one mountpoint instead.
         box = tmp_path / "box.yaml"
-        dump_doc(box, {"box": {"bindings": {"rw": {"home": [
-            "/BOXWIN", "~", "Z,U",
-        ]}}}})
-        floor = {"box.bindings.rw.home": ("/FLOOR", "~", "Z,U")}
+        dump_doc(box, {"box": {"bindings": {"rw": {
+            "~/": ["/BOXWIN", "Z,U"],
+        }}}})
+        floor = {"box.bindings.rw": {"~": ("/FLOOR", "Z,U")}}
         snap = merge(assemble_levels(agent_name="", box_path=box, floor=floor))
         node = snap
-        for seg in ("box", "bindings", "rw", "home"):
+        for seg in ("box", "bindings", "rw", "/home/agent"):
             node = dict.get(node, seg)
-        assert node.host == "/BOXWIN"  # box beats the base floor
+        assert node.src == "/BOXWIN"  # box beats the base floor
         # And with NO box file the floor value is the fallback (proves reachability).
         snap2 = merge(assemble_levels(agent_name="", floor=floor))
         n2 = snap2
-        for seg in ("box", "bindings", "rw", "home"):
+        for seg in ("box", "bindings", "rw", "/home/agent"):
             n2 = dict.get(n2, seg)
-        assert n2.host == "/FLOOR"
+        assert n2.src == "/FLOOR"
 
 
 # ---------------------------------------------------------------------------
@@ -3757,9 +3777,13 @@ class TestAgentNodeBindWriteRouteRetired:
         partial = agent_default_partial(desc, install, node_name="claude")
 
         # Authored the ONLY way left: directly in the node's settings file.
+        # ⚑ DEST-KEYED (R-5/R-10): the arm is a flat map from box DESTINATION to
+        # ``[src[, options]]``. The retired ``{"launcher": [src, dest, opts]}``
+        # spelling is refused by arity now, which is what makes the two shapes
+        # distinguishable at all — a 2-element list is NOT (R-9's accepted loss).
         node = tmp_path / "settings.yaml"
         dump_doc(node, {"self": {"claude": {"bindings": {"ro": {
-            "launcher": ["/REPOINT", "/box/launcher", "ro"]}}}}})
+            "/box/launcher": ["/REPOINT", "ro"]}}}}})
 
         snap = build_launch_snapshot(
             agent_name="claude",
@@ -3767,7 +3791,7 @@ class TestAgentNodeBindWriteRouteRetired:
             system_path=None, agent_path=node, workset_path=None, box_path=None,
             agent_partial=partial,
         )
-        assert snap.agent.claude.bindings.ro.launcher.host == "/REPOINT"
+        assert snap.agent.claude.bindings.ro["/box/launcher"].src == "/REPOINT"
 
 
 def _bind_launch_ctx():

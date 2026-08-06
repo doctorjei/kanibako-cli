@@ -269,13 +269,22 @@ class TestCoreKickoffBind:
     """
 
     def test_packaged_source_and_declared_slot(self):
-        """The emitter delivers the packaged loader RO at the declared slot."""
+        """The emitter delivers the packaged loader RO at the declared slot.
+
+        ⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6): the emitter returns the
+        ONE terminal ``box.bindings.ro`` arm, and the slot — which used to be the
+        tuple's 2nd element — is the arm's single map KEY, R-11-absolutized from
+        the declarative file's ``~`` spelling. The declaration is still checked
+        against ``kickoff_box_dest()``, which keeps the ``~`` form because it is
+        also what the ``KANIBAKO_DIRECTIVE_SEED`` env var carries into the box.
+        """
         cats = core_defaults.kickoff_default_categories(None)
-        assert set(cats) == {"box.bindings.ro.kickoff"}
-        src, dest, opts = cats["box.bindings.ro.kickoff"]
+        assert set(cats) == {"box.bindings.ro"}
+        (dest, (src, opts)), = cats["box.bindings.ro"].items()
         assert Path(src).is_file(), "the packaged kickoff loader must ship"
         assert Path(src).name == "KICKOFF.md"
-        assert dest == core_defaults.kickoff_box_dest() == "~/.config/kanibako/kickoff.md"
+        assert dest == core_defaults.kickoff_guest_dest() == _KICKOFF_DEST
+        assert core_defaults.kickoff_box_dest() == "~/.config/kanibako/kickoff.md"
         assert opts == "ro"
 
     def test_the_slot_has_exactly_one_spelling(self):
@@ -293,8 +302,8 @@ class TestCoreKickoffBind:
         permanent per-launch ``unresolved import`` warning and nothing else.
         """
         src = Path(core_defaults.kickoff_default_categories(None)[
-            "box.bindings.ro.kickoff"
-        ][0])
+            "box.bindings.ro"
+        ][_KICKOFF_DEST][0])
         import_lines = [
             ln.strip()
             for ln in src.read_text().splitlines()
@@ -333,9 +342,15 @@ class TestCoreKickoffBind:
         elsewhere = replace(desc, bindings=(
             replace(desc.bindings[0], box_dest=f"{GUEST_HOME}/.config/kanibako/other.md"),
         ))
+        # ⚑ Re-derived: "the kickoff is still emitted" is now "the arm still holds
+        # the kickoff's DEST" — asserting only the arm key would pass on an EMPTY
+        # arm, which is exactly the suppression this negative arm must rule out.
         assert set(core_defaults.kickoff_default_categories(elsewhere)) == {
-            "box.bindings.ro.kickoff"
+            "box.bindings.ro"
         }
+        assert set(
+            core_defaults.kickoff_default_categories(elsewhere)["box.bindings.ro"]
+        ) == {_KICKOFF_DEST}
 
     def test_missing_packaged_loader_raises_rather_than_launching_empty(self, tmp_path):
         """FAIL-CLOSED: a box with no kickoff has no directive chain AT ALL (the

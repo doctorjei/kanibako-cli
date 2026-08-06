@@ -153,10 +153,13 @@ inside boxes. In order of likely impact:
 
 18. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
     host:guest` is now `workset share add WS host:guest`, and `workset share rm WS NAME` is now
-    `workset share rm WS DEST` — the box destination, exactly as `share list` prints it. **Your
-    existing workset files keep working**; this is a command-line change, not a data change. Scripts
-    that call `workset share` are the thing to check, and so is anything that parses `share list`,
-    whose columns are now `DEST / MODE / SOURCE`.
+    `workset share rm WS DEST` — the box destination, exactly as `share list` prints it. ⚑ **The
+    stored shape changed too, and an old entry is silently MISREAD rather than rejected** — a
+    two-element value now means `[source, options]`, so an old `name: [src, dest]` mounts at the share
+    NAME with the destination passed as mount options. **Re-add each existing share** (one command
+    each), or edit the workset file to key on the destination. Scripts that call `workset share` are
+    the thing to check, and so is anything that parses `share list`, whose columns are now
+    `DEST / MODE / SOURCE`.
 
 19. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
@@ -934,8 +937,31 @@ columns change from `NAME / MODE / BIND(host:dest)` to **`DEST / MODE / SOURCE`*
 follow it: `Added rw share 'data'` → `Added rw share at '/home/agent/data'`, and the error
 `no share 'x'` → `no share at 'x'`. `share list --effective` output is unchanged.
 
-**Your existing worksets keep working.** This changes the command line, not what is stored. You do
-not need to edit, migrate or re-create anything.
+**⚑ ACTION REQUIRED IF YOU HAVE EXISTING WORKSET SHARES — re-add them.** The stored shape changed
+too, and an old entry is **not** rejected: it is silently misread. A share written by an earlier
+version looks like
+
+```yaml
+workset:
+  bindings:
+    rw:
+      mydata: [/host/data, /home/agent/data]   # name -> [source, destination]
+```
+
+and now parses as **destination `mydata`** with `/home/agent/data` read as **mount options**, because
+the destination is the key and a two-element value means `[source, options]`. Both shapes are legally
+two elements, so nothing can tell them apart.
+
+**The fix takes one command per share** — re-add it, which rewrites the entry in the new shape:
+
+```
+kanibako workset share list <WS>                 # see what you have
+kanibako workset share add  <WS> /host/data:/home/agent/data --mode rw
+```
+
+Or edit the workset settings file by hand: key on the destination and drop it from the value —
+`{/home/agent/data: [/host/data]}`. **If `share list` shows a DEST column containing something that
+is not a path, that entry is an old one and needs re-adding.**
 
 **Why the name went.** It never identified anything. Two shares at one destination were already an
 error, and that error was always decided on the **destination** — never on the name. So the name was

@@ -71,6 +71,9 @@ from kanibako.settings.settings_resolve import (
     match_var as match_var,
 )
 from kanibako.settings.settings_resolve import (
+    normalize_bind_dest as normalize_bind_dest,
+)
+from kanibako.settings.settings_resolve import (
     resolve_value as resolve_value,
 )
 from kanibako.settings.settings_resolve import (

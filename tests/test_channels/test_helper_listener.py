@@ -670,13 +670,16 @@ class TestHelperDefaultCategories:
             socket_path=sock,
             log_path=log,
         )
-        sock_val = cats["box.bindings.rw.helper_sock"]
-        assert sock_val == (
-            str(sock),
-            "/home/agent/.local/state/kanibako/helper.sock",
-            "",
-        )
-        assert sock_val[2] == ""  # explicit empty options, not Z/U/z
+        # ⚑ Re-derived for dest-keying (R-3/R-5, P6): the socket's DEST is the
+        # terminal arm's map key and the value is ``(host_src, options)``, so the
+        # empty-options slot moved from index 2 to index 1. The property pinned is
+        # unchanged — an EXPLICIT ``""``, never Z/U/z, and never absent (an absent
+        # slot would take the ``rw`` category default, which IS ``Z,U``).
+        sock_val = cats["box.bindings.rw"][
+            "/home/agent/.local/state/kanibako/helper.sock"
+        ]
+        assert sock_val == (str(sock), "")
+        assert len(sock_val) == 2 and sock_val[1] == ""
 
     def test_log_routes_ro(self, tmp_path):
         from kanibako.settings import core_defaults
@@ -692,11 +695,13 @@ class TestHelperDefaultCategories:
         # the ``.jsonl`` suffix out of the ref name, which the greedy bare form
         # would swallow.  The .exists() gate still keys off the probed log; only the
         # emitted host_src is the @-ref chain.
-        assert cats["box.bindings.ro.helper_log"] == (
-            "@workset.logs/@{meta.box.name}.jsonl",
-            "/home/agent/.local/state/kanibako/helpers.jsonl",
-            "ro",
-        )
+        # ⚑ Re-derived for dest-keying: the dest is the map key now.
+        assert cats["box.bindings.ro"] == {
+            "/home/agent/.local/state/kanibako/helpers.jsonl": (
+                "@workset.logs/@{meta.box.name}.jsonl",
+                "ro",
+            ),
+        }
 
     def test_missing_socket_is_omitted(self, tmp_path):
         # .exists() skip-if-missing gate (parity with the old guarded appends):
@@ -710,8 +715,14 @@ class TestHelperDefaultCategories:
             socket_path=tmp_path / "nonexistent.sock",
             log_path=log,
         )
-        assert "box.bindings.rw.helper_sock" not in cats
-        assert "box.bindings.ro.helper_log" in cats
+        # ⚑ Re-derived: the ``helper_sock`` NAME is retired (R-10), so the old
+        # ``"box.bindings.rw.helper_sock" not in cats`` would now pass VACUOUSLY.
+        # A skipped socket leaves no ``rw`` arm at all — the socket is the only
+        # thing this producer puts there — and the log's dest must still be present.
+        assert "box.bindings.rw" not in cats
+        assert "/home/agent/.local/state/kanibako/helpers.jsonl" in (
+            cats["box.bindings.ro"]
+        )
 
     def test_emitted_mount_options_empty_through_reconcile(self, tmp_path):
         # End-to-end through the resolver: the helper_sock entry survives reconcile
@@ -760,8 +771,13 @@ class TestHelperDefaultCategories:
         )
         entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
         reconciled = reconcile_categories(entries, deliver_creds=True)
+        # ⚑ Re-derived for dest-keying (R-3/R-10): a bindings entry's ``name`` IS
+        # its box destination — the ``helper_sock`` name no longer exists anywhere,
+        # so selecting by it would raise ``StopIteration`` rather than fail an
+        # assertion.
         sock_mount = next(
-            e for e in reconciled.mounts if e.name == "helper_sock"
+            e for e in reconciled.mounts
+            if e.name == "/home/agent/.local/state/kanibako/helper.sock"
         )
         assert sock_mount.options == ""
         assert sock_mount.box_dest == (
@@ -769,5 +785,8 @@ class TestHelperDefaultCategories:
         )
         # And the log bind's @-ref chain resolves back to the probed log path —
         # the formula and the .exists()-gated literal must agree (PHASE R).
-        log_mount = next(e for e in reconciled.mounts if e.name == "helper_log")
+        log_mount = next(
+            e for e in reconciled.mounts
+            if e.name == "/home/agent/.local/state/kanibako/helpers.jsonl"
+        )
         assert log_mount.host_src == str(log)

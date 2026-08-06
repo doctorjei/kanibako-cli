@@ -124,6 +124,19 @@ _BIND_CATEGORIES: frozenset[str] = frozenset(
     {"bindings", "caches", "seeded", "common", "synced"}
 )
 
+# ⚑ The ONE bind-shaped category that is DEST-KEYED (disk-store rework R-3/R-6).
+# The other four members of :data:`_BIND_CATEGORIES` stay NAME-keyed
+# ``{name: [source, destination[, opts]]}`` — the arc is bindings-only, and
+# ``caches``/``seeded``/``common``/``synced`` have their own, later steps
+# (design §2c/§2d). ⚑⚑ This is why the reader flip is PER-CATEGORY and not a
+# blanket ``dest_keyed=True`` on the file partial: a blanket flip would read a
+# ``seeded`` leaf ``[src, dest]`` as ``(src, opts)`` and silently reinterpret
+# every copy's DESTINATION as mount options — the exact arity trap
+# :class:`~kanibako.settings.settings_store.BindEntry` documents.
+_DEST_KEYED_CATEGORY = "bindings"
+#: The two arms a dest-keyed ``bindings`` node carries; each holds a ``BindMap``.
+_BIND_ARMS: tuple[str, str] = ("ro", "rw")
+
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
 _AGENT_DEFAULT_SUB = "default"
 
@@ -521,7 +534,9 @@ def _drop_upward_scopes(
     return {k: v for k, v in raw.items() if str(k) not in drop_set}
 
 
-def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool = False) -> Any:
+def _parse_node(
+    value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
+) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
     *in_binds* is True while descending the subtree of a bind-shaped category
@@ -541,18 +556,37 @@ def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool = False) -> Any:
 
     ⚑⚑ Both shapes admit a 2-element list with OPPOSITE meanings, so the choice
     is made by this CONTEXT FLAG — passed down from the caller that knows which
-    node it is reading — and NEVER by inspecting the leaf's arity. During the
-    P5→P8 bridge no production caller passes ``dest_keyed=True``; the public
-    entry point for the new shape is :func:`parse_bind_map`, which P6/P7 wire in.
+    node it is reading — and NEVER by inspecting the leaf's arity.
+
+    *at_bindings* says "the dict I am about to descend is the ``bindings``
+    category node, so its keys are ARMS (``ro``/``rw``) and each arm's value is a
+    ``BindMap``". It is set by this function itself when it walks past a
+    ``bindings`` token, which is what wires user settings FILES onto the dest-keyed
+    route (P6) — ``_file_partial`` needs no flag of its own, because the shape is a
+    property of the CATEGORY, not of the caller. ⚑ It is deliberately NOT set for a
+    ``bindings`` token encountered while already ``in_binds``: inside a bind
+    category the keys are names/destinations, and a user with a ``caches`` entry
+    literally named ``bindings`` must not have it re-read as a category.
     """
     if isinstance(value, dict):
         store = KeyStore()
         for key, sub in value.items():
             key_s = str(key)
+            if at_bindings and key_s in _BIND_ARMS:
+                # An ARM (``bindings.ro`` / ``.rw``) — a TERMINAL dest-keyed map
+                # (R-5). A non-dict here is a malformed arm; leave it to the
+                # legacy leaf path so ``settings_launch._assert_declared_categories``
+                # still produces the arm-shape message that names the key.
+                if isinstance(sub, dict):
+                    store[key_s] = parse_bind_map(sub)
+                    continue
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in _BIND_CATEGORIES
             store[key_s] = _parse_node(
-                sub, in_binds=descend_binds, dest_keyed=dest_keyed
+                sub,
+                in_binds=descend_binds,
+                dest_keyed=dest_keyed,
+                at_bindings=(not in_binds and key_s == _DEST_KEYED_CATEGORY),
             )
         return store
     if in_binds and isinstance(value, (list, tuple)):
@@ -583,18 +617,40 @@ def parse_bind_map(raw: Any) -> KeyStore:
     :class:`SettingsError`; so does a malformed entry (see
     :func:`~kanibako.settings.settings_resolve.unpack_bind_entry`).
 
-    ⚑ ADDITIVE during the P5→P8 bridge: nothing in the production load path calls
-    this yet (the live arms are still name-keyed and go through
-    :func:`_parse_node` with ``dest_keyed=False``). P6/P7 wire it in.
+    ⚑ **THIS IS THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ** (R-11): every
+    key goes through
+    :func:`~kanibako.settings.settings_resolve.normalize_bind_dest`, so ``~`` and
+    ``~/`` are ONE entry and not two colliding at one destination. Producers
+    normalize too — they must, because the floor merge in ``commands.start`` dedupes
+    on these keys BEFORE anything is parsed — and the function is idempotent, so
+    doing it in both places costs nothing and neither place is load-bearing alone.
+    ⚑ The VALUE is never canonicalized: a ``host_src`` stays exactly as authored.
+
+    ⚑ A nested MAPPING entry is REFUSED by name: under dest-keying an arm's value
+    is a flat ``{dest: [src[, opts]]}``, so a sub-table is the retired
+    ``{name: {…}}`` shape (spec §2a "STALE SHAPES ARE REFUSED LOUDLY"). A
+    3-element list is refused one level down, by ``unpack_bind_entry``.
     """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
     if not isinstance(raw, dict):
         raise SettingsError(
             f"A dest-keyed bindings arm must be a mapping "
             f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
         )
-    parsed = _parse_node(raw, in_binds=True, dest_keyed=True)
-    assert isinstance(parsed, KeyStore)
-    return parsed
+    store = KeyStore()
+    for key, sub in raw.items():
+        dest = normalize_bind_dest(str(key))
+        if isinstance(sub, dict):
+            raise SettingsError(
+                f"Binding entry {str(key)!r} holds a sub-table, which is the "
+                f"RETIRED name-keyed shape {{name: {{...}}}}. A bindings arm is a "
+                f"FLAT map keyed by box DESTINATION whose value is "
+                f"[src[, options]] (spec §2a); the entry name was dropped "
+                f"2026-08-06c. Re-key the entry to its destination."
+            )
+        store[dest] = _parse_node(sub, in_binds=True, dest_keyed=True)
+    return store
 
 
 def _file_partial(raw: dict) -> KeyStore:
@@ -602,7 +658,12 @@ def _file_partial(raw: dict) -> KeyStore:
 
     *raw* is the parsed file (``load_doc`` output). The full scope-ROOTED tree is
     mirrored into a nested :class:`KeyStore` with the SCOPE TOKEN KEPT (§0:
-    namespace orthogonal to cascade) — binds parsed to :class:`Bind`, refs raw.
+    namespace orthogonal to cascade) — refs raw. A ``bindings`` arm is read as a
+    DEST-KEYED :data:`~kanibako.settings.settings_store.BindMap` of
+    :class:`~kanibako.settings.settings_store.BindEntry` leaves (R-5/R-6); the
+    other bind-shaped categories are still name-keyed and parse to :class:`Bind`.
+    ⚑ Neither shape is chosen here — :func:`_parse_node` derives it from the
+    CATEGORY token it walks past, so there is no flag for a caller to get wrong.
     An empty / non-dict file → an empty :class:`KeyStore`. This is the rule for
     every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the
     agent tier uses :func:`_agent_partial`.
@@ -692,10 +753,32 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
     """Insert *value* at the dotted-path *dotted* into *store*, exploding to nested
     :class:`KeyStore` nodes (S7). The terminal leaf is parsed: a value under a
     bind-shaped category segment becomes a :class:`Bind`; otherwise verbatim.
+
+    ⚑ **The ``bindings`` arms are the exception (R-5/R-6).** A floor key ENDS at the
+    arm — ``box.bindings.ro`` — and its value is a whole dest-keyed ``BindMap``,
+    parsed by :func:`parse_bind_map`. A floor key that goes DEEPER
+    (``box.bindings.ro.<name>``) is the retired name-keyed producer shape and is
+    REFUSED here, loudly and by name. That refusal is not decoration: the deeper
+    spelling is exactly what every floor producer emitted before P6, it still
+    type-checks all the way to launch, and the ``<name>`` segment would land as a
+    sibling of real destinations inside the arm — a name sitting where a path
+    belongs, which nothing downstream can tell apart. It also catches a
+    third-party plugin's ``default_category_binds()`` still returning the old
+    shape (spec §2d; empty for all first-party plugins today).
     """
     parts = dotted.split(".")
     # A leaf is bind-shaped iff any ancestor segment is a bind category.
     in_binds = any(p in _BIND_CATEGORIES for p in parts[:-1])
+    at_arm = len(parts) >= 2 and parts[-2] == _DEST_KEYED_CATEGORY
+    if in_binds and _DEST_KEYED_CATEGORY in parts[:-1] and not at_arm:
+        arm_key = ".".join(parts[: parts.index(_DEST_KEYED_CATEGORY) + 2])
+        raise SettingsError(
+            f"Default-category key {dotted!r} names a binding by ENTRY NAME, "
+            f"which is the RETIRED shape: a bindings arm is a TERMINAL key "
+            f"({arm_key}) whose value is the whole map "
+            f"{{box_dest: [src[, options]]}} (spec §2a, R-5/R-10 — the entry "
+            f"name was dropped 2026-08-06c). Emit the arm, not the entry."
+        )
     node: KeyStore = store
     for part in parts[:-1]:
         # UNBOUND dict.get (S3): never the bound ``node.get`` — a leaf named
@@ -706,7 +789,10 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
             existing = KeyStore()
             node[part] = existing
         node = existing
-    node[parts[-1]] = _parse_node(value, in_binds=in_binds)
+    if at_arm and parts[-1] in _BIND_ARMS and isinstance(value, dict):
+        node[parts[-1]] = parse_bind_map(value)
+    else:
+        node[parts[-1]] = _parse_node(value, in_binds=in_binds)
 
 
 def assemble_levels(

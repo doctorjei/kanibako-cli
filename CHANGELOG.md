@@ -118,8 +118,11 @@ migration code.** Four released config surfaces are removed outright
   exactly as `share list` prints it. The raw `share list` columns change from `NAME / MODE /
   BIND(host:dest)` to **`DEST / MODE / SOURCE`**, and the messages follow (`Added rw share 'data'`
   → `Added rw share at '/home/agent/data'`; `no share 'x'` → `no share at 'x'`). Re-running `add`
-  at a destination that already has a share replaces its source. ⚑ **Existing workset files keep
-  working** — this changes the command line, not what is already on disk. The name never
+  at a destination that already has a share replaces its source. ⚑ **An existing share written by an
+  earlier version must be re-added**: the stored shape changed with it, and an old `name: [src,
+  dest]` entry is silently MISREAD rather than rejected (a two-element value now means `[source,
+  options]`), so it would mount at the share NAME with the destination passed as options. `share
+  list` makes them obvious — the DEST column shows something that is not a path. The name never
   distinguished two shares in the first place: two shares at one destination were already an error,
   decided on the destination and never on the name, so the name was a label that could not affect
   any outcome. `--effective` output is unchanged.
