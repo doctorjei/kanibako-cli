@@ -475,3 +475,128 @@ class TestAccessRowChannelDiscipline:
         assert d.access_realization is not None
         assert d.access_realization.editing is None
         assert d.access_realization.renders("editing") is False
+
+
+class TestEnvChannelBlocksMustNameTheirVariable:
+    """F-5 — the SAME discipline the tier ROWS get, applied to the BLOCK's fields.
+
+    The rows above are checked against their channel; the block declaring that
+    channel was not.  ``env_var=raw.get("env_var", "")`` accepted an ENV-channel
+    realization that named no variable, and ``assemble_env`` emits a row only
+    when one is named (``ar.channel is Channel.ENV and ar.env_var``).  So a plain
+    typo — ``env_ver:`` for ``env_var:`` — produced a descriptor that loads, a
+    launch whose un-rendered-tier gate passes (the ROWS all exist), and a box
+    with ``GOOSE_MODE`` UNSET, i.e. goose's ``auto`` default, while the launch
+    reports ``restricted``.  A silent, security-relevant downgrade from one
+    transposed letter.
+
+    ``settings:`` entries carry the identical hole (``assemble_env`` skips on
+    ``and s.env_var``); there the dropped value is claude's ``endpoint``, so a
+    persona runs against the harness's DEFAULT endpoint while every preflight
+    reports the configured one.
+
+    The FLAG-channel cases in the class above are the pin that this refusal is
+    not too broad — a FLAG block legitimately names no ``env_var`` and must keep
+    loading.
+
+    ⚑ The ORIGINATING typo (``env_ver:``) is caught by BOTH guards, and the
+    unknown-field one fires FIRST.  So the two ``without_env_var`` tests below
+    OMIT the field entirely rather than misspelling it: written with the typo
+    they pass with the ``env_var`` guard deleted, pinning nothing.  Each test
+    here exercises exactly one guard.
+    """
+
+    def _descriptor(self, declfile, block: str):
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  access_realization:\n" + block
+        )
+        return agent_defaults.load_descriptor(package, filename)
+
+    def test_env_channel_access_realization_without_env_var_is_refused(self, declfile):
+        """(Mutation: restore ``env_var=raw.get("env_var", "")`` with no check →
+        the descriptor loads, every row is skipped at assembly, the box runs
+        permissive under the ``restricted`` name → RED here.)"""
+        with pytest.raises(SettingsError) as exc:
+            self._descriptor(
+                declfile,
+                "    channel: env\n"              # ...and no env_var at all
+                "    tiers:\n"
+                "      restricted: {env_value: approve}\n"
+                "      full: {env_value: auto}\n",
+            )
+        msg = str(exc.value)
+        assert "env_var" in msg                  # names the field
+        assert "env" in msg                      # ...and the channel
+        assert "probe-defaults.yaml" in msg      # ...and the file to fix
+
+    def test_env_channel_setting_arg_without_env_var_is_refused(self, declfile):
+        """The second instance, in ``_build_setting_arg``.
+
+        (Mutation: drop the guard → ``endpoint`` loads with ``env_var=""``,
+        ``assemble_env`` skips it, and a persona silently talks to the default
+        endpoint → RED here.)"""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: endpoint\n"
+            "      channel: env\n"               # ...and no env_var at all
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        msg = str(exc.value)
+        assert "endpoint" in msg                 # names the entry
+        assert "env_var" in msg                  # ...and the field
+        assert filename in msg                   # ...and the file to fix
+
+    def test_unknown_field_in_the_access_block_is_refused(self, declfile):
+        """An unrecognized block field is REFUSED, not silently unread.
+
+        (Mutation: drop the guard → ``env_ver:`` above would be accepted as an
+        unread extra even once the ENV check exists on some OTHER spelling, and
+        every future field typo degrades to silence → RED here.)"""
+        with pytest.raises(SettingsError) as exc:
+            self._descriptor(
+                declfile,
+                "    channel: flag\n"
+                "    setting_kye: access\n"       # the typo
+                "    tiers:\n"
+                "      full: {flag: [\"--bypass\"]}\n",
+            )
+        msg = str(exc.value)
+        assert "setting_kye" in msg              # names the offending field
+        assert "probe-defaults.yaml" in msg      # ...and the file to fix
+
+    def test_unknown_field_in_a_settings_entry_is_refused(self, declfile):
+        """The ``settings:`` half of the same rule (not in the named three; it
+        pins the other branch of the guard added with them)."""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: model\n"
+            "      channel: flag\n"
+            "      flga: [\"--model\"]\n"         # the typo
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        msg = str(exc.value)
+        assert "flga" in msg
+        assert "model" in msg
+        assert filename in msg
+
+    def test_a_flag_channel_setting_arg_needs_no_env_var(self, declfile):
+        """The refusal is CHANNEL-scoped: claude's ``model`` flag arg still loads."""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: model\n"
+            "      channel: flag\n"
+            "      flag: [\"--model\"]\n"
+        )
+        d = agent_defaults.load_descriptor(package, filename)
+        assert d.settings[0].flag == ("--model",)
+        assert d.settings[0].env_var == ""
