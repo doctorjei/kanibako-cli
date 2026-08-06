@@ -133,7 +133,16 @@ inside boxes. In order of likely impact:
     box.<key>=<value>` from a directory that is **not** a box now errors instead of writing a
     settings file for a box that does not exist.
 
-16. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+16. **Your `env` files are no longer read, silently** — and the bare `env.<VAR>` key is refused
+    (§2.19). The three docker-style `env` files (`<data>/env`, the workset one, the per-box one)
+    were dropped; every `VAR=value` line in them stops reaching your boxes. v1.7.2 seeded
+    `COLORTERM=truecolor` into `<data>/env` on first run, so **essentially every pre-existing
+    install has one of these files**. A launch that finds a non-empty one now prints a notice
+    naming the file and the per-tier cure. Move each var with
+    `kanibako system set system.env.<VAR>=<value>` (or the `workset`/`box` equivalent), then
+    delete the file.
+
+17. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -197,7 +206,8 @@ Notes:
 - The new on-disk shape of a request is a **nested table** in the box/workset `settings.yaml`
   (`pref: {system: {agent: <name>}}`) — never a dotted literal; `config set` writes it for you.
   Suppression ("this box runs no agent") has its own spelling: `kanibako box set --null
-  pref.system.agent`. `--null` writes a real YAML `null`; `--reset` instead *removes* the entry.
+  pref.system.agent`. `--null` writes a real YAML `null`; the sibling `reset` VERB
+  (`kanibako box reset <box> <key>`) instead *removes* the entry. ⚑ There is no `--reset` flag.
 - A stale `box: {agent_name: ""}` row may also sit in `~/.config/kanibako_config.yaml` — old
   versions wrote it into every freshly-initialised host. Nothing ever read it there; it is
   inert and safe to delete for tidiness. It does **not** trigger the refusal (verified).
@@ -650,8 +660,8 @@ value that DIFFERS is now, by definition, a deliberate user override: keep it if
 floor, so every install seeded that way stayed pinned to the value current when it was created, even
 after the plugin's default moved on. New agent settings files no longer carry it.
 
-⚑ **This is not persona-only** — it applies to bare agents too. **`kanibako agent <agent> model` on
-a fresh install now reports `(not set)` where 1.7.2 reported `opus`.** Nothing about resolution
+⚑ **This is not persona-only** — it applies to bare agents too. **`kanibako agent get <agent> model`
+on a fresh install now reports `(not set)` where 1.7.2 reported `opus`.** Nothing about resolution
 changed; `agent get` reads the file and the file no longer states a value the floor already
 supplies.
 
@@ -691,7 +701,7 @@ by name, with a nonzero exit**, where most of them were previously accepted and 
 | Flag | Previously | Now |
 |---|---|---|
 | `--rig`/`--image`, `--browser`, `--share-images`, `--no-helpers`, `--no-auto-auth` | silently ignored (`--image` was even recorded, then ignored) | error |
-| `-e`/`--env` | silently ignored | error — *unless* it reaches a second process in the box, which does apply it: `--entrypoint`, or `kanibako shell --persistent` at a box that is running an agent |
+| `-e`/`--env` | silently ignored | error — *unless* it reaches a second process in the box, which does apply it: `--entrypoint`, or `kanibako shell --persistent` at a box that is running an agent. ⚑ **Known defect:** paired with `--detach` it is still accepted and still dropped (see below) |
 | `-N`, `-C`, `-R`, `-M`, `-A`, `-S` | **silently ignored** — `kanibako start -N <running box>` reattached to the OLD conversation | error |
 | `--persistent`, `--ephemeral` (typed explicitly) | reattached / hit a generic error | error, leaving the running session untouched |
 | `--entrypoint` | silently ignored; you got the agent session instead | **runs the command as a second process in the box** |
@@ -700,6 +710,14 @@ by name, with a nonzero exit**, where most of them were previously accepted and 
 ⚑ **If you script `kanibako start` with flags, check whether the box may already be running.** A
 script that passed `-N` (or `--rig`) to a live box was silently getting something other than what it
 asked for; it now gets a clear failure instead.
+
+⚑⚑ **One known defect survives this change, and it is the pairing.** At a box that is already
+running, `--detach` is answered before either exec arm, so
+`kanibako start --detach --entrypoint <cmd> -e VAR=x <live box>` **accepts both flags, applies
+neither, and exits 0** — the same accepted-then-silently-dropped shape the rest of this table
+removes. `--warm-only` has it too, since it forces `--detach`. Plain `--detach -e` (no
+`--entrypoint`) *is* correctly refused; only the combination slips through. Until it is fixed,
+do not rely on `-e` or `--entrypoint` reaching a live box in a detached invocation.
 
 **The cure, and the new flag:** `kanibako --restart [box]` stops the box and starts it again with
 your flags in force. It is the one thing that bypasses these refusals — passing it *is* the
@@ -748,7 +766,7 @@ the right one for the box you are launching.
 put them back — they now need the explicit rebuild command. A dedicated `repair` verb is planned;
 when it lands it replaces the `Rebuild it:` line and nothing else about this error changes.
 
-**Unaffected**, because they materialise a box legitimately: `kanibako create`, `kanibako restore`,
+**Unaffected**, because they materialise a box legitimately: `kanibako create`, `kanibako box extract`,
 and the **first launch of a box added with `workset connect`** — connect registers the box and
 creates its directory but deliberately never seeds it, so that first `start` is the box's real
 materialisation and still works exactly as before.
@@ -770,6 +788,80 @@ for this directory, and a setting has to belong to a box.
 **What you must do:** if you have a stray `<data>/<workset>/boxes/__unregistered__/` directory
 from before the upgrade, delete it — nothing reads it. Any values you meant to set are still
 unset; re-run the command with the box named.
+
+### 2.19 The `env` family: the `env` FILES are gone and `env.<VAR>` is refused
+
+Three things moved together, and they had to — any two without the third leaves the env family
+unusable.
+
+**1. The three `env` FILES are no longer read at all.** v1.7.2 layered `<data>/env`, the
+workset's `env` and the box's `env` into every container environment. v1.8.0 does not read
+them: the whole reader is deleted. Nothing about the files changed — they simply reach nothing.
+
+⚑ **This is the one that can bite you.** v1.7.2 wrote `COLORTERM=truecolor` into `<data>/env`
+on first run, so **essentially every pre-existing install has such a file**, and anything you
+ever added to one with `kanibako <noun> set env.FOO=…` reached your box yesterday and does not
+today. So that it cannot pass unannounced, a launch that finds a non-empty legacy file prints:
+
+```
+Notice: these env files are NO LONGER READ — values in them do not reach the box.
+  /home/you/.local/share/kanibako/env
+    move values with: kanibako system set system.env.<VAR>=<value>
+  Delete the file(s) once migrated to silence this notice.
+```
+
+There is no new persisted state — the file's *existence* is the signal, so the notice
+self-clears the moment you migrate or delete the file, and never appears on a box created after
+the upgrade. The `COLORTERM` line is *ours*, not yours; migrating or deleting it is safe.
+
+**2. The bare `env.<VAR>` spelling is RETIRED and refuses by name.** It was an undiscriminated
+variant that meant something *different* from the key of the same name: it wrote a file, not a
+setting. `kanibako box set <box> env.EDITOR=vim` now errors with the cure:
+
+```
+Error: 'env.EDITOR' cannot be set — the bare env.<VAR> spelling is RETIRED (the env family is
+scoped, spec §2a). Use 'box.env.EDITOR', which is stored in the box settings file and exported
+into the box at launch. The docker .env files the bare spelling wrote are no longer read at all.
+```
+
+**3. `<scope>.env.<VAR>` is now reachable from the config verbs** — `box.env.FOO`,
+`workset.env.FOO`, `system.env.FOO`, at `set`, `get` and `reset`. The key was already declared
+and its launch-side delivery already worked; only the verbs were missing, so it used to error as
+an unknown key. The per-agent form is `kanibako agent set <agent> env.FOO=bar` (the agent noun
+takes the tail under an already-named agent, and is not affected by the refusal above).
+
+**What you must do.** For each of the three files, move every `VAR=value` line to the matching
+key and delete the file:
+
+```console
+$ kanibako system set system.env.<VAR>=<value>            # <data>/env
+$ kanibako workset set <workset> workset.env.<VAR>=<value>  # <workset>/env
+$ kanibako box set <path> box.env.<VAR>=<value>             # <box>/env
+```
+
+⚑ **A `$VAR` in an env VALUE is refused at set time.** These values go through kanibako's
+expansion grammar, which knows only `$AGENT`, `$WORKSET` and `$XDG_*` — and a `config set` has
+no live agent or workset, so in practice only `$XDG_*` resolves. A shell variable your `env`
+file carried happily is now an error, and the message names it:
+
+```console
+$ kanibako box set <box> box.env.MY_PATH='$HOME/bin'
+Error: 'box.env.MY_PATH': Unknown variable: $HOME
+$ kanibako box set <box> box.env.MY_PATH='$AGENT/bin'
+Error: 'box.env.MY_PATH': Variable $AGENT is not set in this context.
+```
+
+**The cure is to escape the `$`**: `\$` stores the backslash form in the settings file and
+kanibako unescapes it to the plain literal `$HOME/bin`, which becomes the variable's value
+verbatim — kanibako never substitutes it.
+
+```console
+$ kanibako box set <box> box.env.MY_PATH='\$HOME/bin'
+Set box.env.MY_PATH=\$HOME/bin
+```
+
+An `@`-reference is validated the same way (`box.env.X=@meta.nope.key/x` is refused as a
+dangling reference), and a lone unescaped `$` is refused as a malformed value.
 
 ---
 
