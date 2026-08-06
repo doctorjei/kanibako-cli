@@ -120,9 +120,11 @@ migration code.** Four released config surfaces are removed outright
   → `Added rw share at '/home/agent/data'`; `no share 'x'` → `no share at 'x'`). Re-running `add`
   at a destination that already has a share replaces its source. ⚑ **An existing share written by an
   earlier version must be re-added**: the stored shape changed with it, and an old `name: [src,
-  dest]` entry is silently MISREAD rather than rejected (a two-element value now means `[source,
-  options]`), so it would mount at the share NAME with the destination passed as options. `share
-  list` makes them obvious — the DEST column shows something that is not a path. The name never
+  dest]` entry is MISREAD rather than rejected (a two-element value now means `[source, options]`),
+  so the share name is read as the destination and the real destination as mount options. Nothing
+  is mounted in the wrong place — the launch fails at the container runtime, which will not accept a
+  path as a mount option — but it fails without naming the cause, which is why re-adding is the
+  cure. `kanibako workset share list` refuses such a file outright, naming the offending entry. The name never
   distinguished two shares in the first place: two shares at one destination were already an error,
   decided on the destination and never on the name, so the name was a label that could not affect
   any outcome. `--effective` output is unchanged.

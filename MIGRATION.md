@@ -154,9 +154,11 @@ inside boxes. In order of likely impact:
 18. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
     host:guest` is now `workset share add WS host:guest`, and `workset share rm WS NAME` is now
     `workset share rm WS DEST` — the box destination, exactly as `share list` prints it. ⚑ **The
-    stored shape changed too, and an old entry is silently MISREAD rather than rejected** — a
-    two-element value now means `[source, options]`, so an old `name: [src, dest]` mounts at the share
-    NAME with the destination passed as mount options. **Re-add each existing share** (one command
+    stored shape changed too, and an old entry is MISREAD rather than rejected** — a two-element
+    value now means `[source, options]`, so an old `name: [src, dest]` is read as a share at the
+    NAME with the destination taken for mount options. Nothing lands in the wrong place: the launch
+    fails at the container runtime rather than mounting, but it fails without naming the cause.
+    **Re-add each existing share** (one command
     each), or edit the workset file to key on the destination. Scripts that call `workset share` are
     the thing to check, and so is anything that parses `share list`, whose columns are now
     `DEST / MODE / SOURCE`.
@@ -938,7 +940,7 @@ follow it: `Added rw share 'data'` → `Added rw share at '/home/agent/data'`, a
 `no share 'x'` → `no share at 'x'`. `share list --effective` output is unchanged.
 
 **⚑ ACTION REQUIRED IF YOU HAVE EXISTING WORKSET SHARES — re-add them.** The stored shape changed
-too, and an old entry is **not** rejected: it is silently misread. A share written by an earlier
+too, and at launch an old entry is **not** rejected: it is misread. A share written by an earlier
 version looks like
 
 ```yaml
@@ -952,6 +954,10 @@ and now parses as **destination `mydata`** with `/home/agent/data` read as **mou
 the destination is the key and a two-element value means `[source, options]`. Both shapes are legally
 two elements, so nothing can tell them apart.
 
+Nothing gets mounted somewhere unexpected: a path is not a valid mount option, so the launch fails
+at the container runtime instead. But it fails *without naming this as the cause*, which is why the
+entry has to be rewritten rather than left to be discovered.
+
 **The fix takes one command per share** — re-add it, which rewrites the entry in the new shape:
 
 ```
@@ -960,8 +966,9 @@ kanibako workset share add  <WS> /host/data:/home/agent/data --mode rw
 ```
 
 Or edit the workset settings file by hand: key on the destination and drop it from the value —
-`{/home/agent/data: [/host/data]}`. **If `share list` shows a DEST column containing something that
-is not a path, that entry is an old one and needs re-adding.**
+`{/home/agent/data: [/host/data]}`. **`share list` will not print an old entry at all** — it refuses
+the file and names the offending entry, because a share whose key is a bare name has no honest
+destination to show in the `DEST` column. That refusal is how you find them.
 
 **Why the name went.** It never identified anything. Two shares at one destination were already an
 error, and that error was always decided on the **destination** — never on the name. So the name was
