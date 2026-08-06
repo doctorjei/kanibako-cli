@@ -7901,6 +7901,158 @@ class TestRunningBoxOverrideGate(_RunningBoxDriver):
         assert m.runtime.exec.call_args.kwargs.get("env") == {"FOO": "bar"}
 
 
+class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
+    """2026-08-06 F-1 — ``kanibako start --detach --entrypoint X -e FOO=bar
+    <live box>`` SILENTLY DISCARDED BOTH FLAGS AND RETURNED 0.
+
+    Cause: the ``-e`` gate accepted whenever a door that would apply it looked
+    open (``entrypoint is not None``, or ``box_shell_mode`` + the live agent
+    stamp) while a THIRD value — ``detach`` — closed both of those doors ~400
+    lines later and returned 0 before either exec arm was reached.  Plain
+    ``--detach -e`` (no entrypoint) was correctly refused, so the defect lived
+    only in the PAIRING.
+
+    Cure (ruled: the DOOR TABLE): the four exits of the running-box regime are
+    resolved ONCE into ``running_door``, from TYPED values, ahead of the gate.
+    The gate then asks the table "does the chosen door apply this?" instead of
+    re-deriving the answer from a subset of the deciding values.
+
+    ⚑ The gate's own stated principle is "refuse a per-run flag only when
+    nothing would apply it".  Through the ``detach`` door NOTHING RUNS — the box
+    is already up, we say so and return — so ``--entrypoint`` and ``-e`` must
+    both be REFUSED BY NAME here, exactly as the rest of this gate refuses.
+    """
+
+    def test_detach_plus_entrypoint_at_a_live_box_is_refused(
+        self, start_mocks, capsys,
+    ):
+        """⚑ THE HALF THAT WAS RC 0 AND SILENT."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, entrypoint="/bin/echo",
+                             extra_args=["hi"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--entrypoint" in err
+        assert "already running" in err
+        assert "kanibako --restart testproject" in err
+        # Nothing ran, and the neutral detach short-circuit never spoke.
+        m.runtime.exec.assert_not_called()
+        m.runtime.run.assert_not_called()
+        assert "Box 'testproject' is already running." not in err
+
+    def test_detach_plus_env_at_a_live_box_is_refused(self, start_mocks, capsys):
+        """The half that was ALREADY correct — kept as a REGRESSION GUARD on the
+        door table: an env gate keyed on the wrong door set (say ``!= "attach"``)
+        would let this through."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, cli_env=["FOO=bar"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "-e/--env" in err
+        m.runtime.exec.assert_not_called()
+        m.runtime.run.assert_not_called()
+
+    def test_detach_plus_both_names_both_flags(self, start_mocks, capsys):
+        """⚑ THE REPORTED INVOCATION, end to end.  One error, both names."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, entrypoint="/bin/echo",
+                             extra_args=["hi"], cli_env=["FOO=bar"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--entrypoint" in err
+        assert "-e/--env" in err
+        m.runtime.exec.assert_not_called()
+        m.runtime.run.assert_not_called()
+
+    def test_warm_only_at_a_live_box_refuses_the_same_pair(
+        self, start_mocks, capsys,
+    ):
+        """``--warm-only`` forces ``detach=True``, so it reaches the identical
+        door and must refuse identically."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, warm_only=True,
+                             entrypoint="/bin/echo", cli_env=["FOO=bar"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--entrypoint" in err
+        assert "-e/--env" in err
+        m.runtime.exec.assert_not_called()
+
+    def test_warm_only_through_run_start_reaches_the_same_refusal(
+        self, start_mocks, capsys,
+    ):
+        """The same case through the REAL flag plumbing rather than a hand-set
+        ``detach=True``: ``run_start`` is what forces detach for ``--warm-only``,
+        so this pins that the forcing and the refusal actually meet."""
+        ns = argparse.Namespace(
+            project=None, box=None, agent_args=[], entrypoint="/bin/echo",
+            image=None, new_session=False, continue_session=False,
+            resume_session=False, autonomous=False, secure=False, model=None,
+            env=["FOO=bar"], no_helpers=False, no_auto_auth=False,
+            browser=False, share_images=False, persistent=False,
+            ephemeral=False, detach=None, warm_only=True, agent=None,
+            restart=False,
+        )
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._bootstrap_available", return_value=True,
+        ):
+            self._running(m)
+            rc = run_start(ns)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "--entrypoint" in err
+        assert "-e/--env" in err
+        m.runtime.exec.assert_not_called()
+
+    # ---- the CONTROLS that make the refusals meaningful -------------------
+
+    def test_a_fresh_detached_launch_still_delivers_cli_env(self, start_mocks):
+        """⚑ THE POSITIVE CONTROL, AND THE WHOLE REASON THE LIVE-BOX BEHAVIOUR
+        WAS WRONG.  On a FRESH detached launch a container is actually created
+        and ``-e`` reaches it (``_assemble_launch_env`` -> ``runtime.run(env=)``).
+        A live box under ``--detach`` creates nothing, so accepting the same flag
+        there contradicted this."""
+        with start_mocks() as m:
+            assert m.runtime.is_running.return_value is False
+            rc = self._start(detach=True, cli_env=["FOO=bar"])
+        assert rc == 0
+        assert m.runtime.run.call_args.kwargs.get("env", {}).get("FOO") == "bar"
+
+    def test_entrypoint_without_detach_at_a_live_box_still_execs(
+        self, start_mocks,
+    ):
+        """The door-table control: remove ``--detach`` and the SAME invocation
+        takes the ``entrypoint`` door, where both flags are honoured.  The
+        refusals above pin ``detach``, not ``--entrypoint``/``-e``."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(entrypoint="/bin/echo", extra_args=["hi"],
+                             cli_env=["FOO=bar"])
+        assert rc == 0
+        call = m.runtime.exec.call_args
+        assert call.args[1] == ["/bin/echo", "hi"]
+        assert call.kwargs.get("env") == {"FOO": "bar"}
+
+    def test_plain_detach_at_a_live_box_is_still_the_neutral_return(
+        self, start_mocks, capsys,
+    ):
+        """The other control: with NO per-run flag typed, the ``detach`` door is
+        unchanged — the ratified short-circuit, rc 0, nothing refused."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, warm_only=True, print_container=True)
+            out = capsys.readouterr()
+        assert rc == 0
+        assert "Box 'testproject' is already running." in out.err
+        assert "cannot be applied" not in out.err
+        assert out.out.strip().splitlines()[-1] == "kanibako-testproject"
+        m.runtime.exec.assert_not_called()
+
+
 class TestRestartFlag(_RunningBoxDriver):
     """``--restart`` = stop, then start fresh with this invocation's flags.  It
     is the cure the override gate names, and it bypasses both the gate and the

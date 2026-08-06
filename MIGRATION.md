@@ -711,13 +711,12 @@ by name, with a nonzero exit**, where most of them were previously accepted and 
 script that passed `-N` (or `--rig`) to a live box was silently getting something other than what it
 asked for; it now gets a clear failure instead.
 
-⚑⚑ **One known defect survives this change, and it is the pairing.** At a box that is already
-running, `--detach` is answered before either exec arm, so
-`kanibako start --detach --entrypoint <cmd> -e VAR=x <live box>` **accepts both flags, applies
-neither, and exits 0** — the same accepted-then-silently-dropped shape the rest of this table
-removes. `--warm-only` has it too, since it forces `--detach`. Plain `--detach -e` (no
-`--entrypoint`) *is* correctly refused; only the combination slips through. Until it is fixed,
-do not rely on `-e` or `--entrypoint` reaching a live box in a detached invocation.
+⚑⚑ **`--detach` and `--warm-only` refuse the per-run flags too.** At a box that is already running,
+a detached invocation runs nothing — the box is already up, so kanibako says so and exits. A
+`--entrypoint` or `-e` passed alongside it is therefore **refused by name**, where 1.7.2 accepted
+both and silently dropped them at rc 0. If you have a script doing
+`kanibako start --detach --entrypoint <cmd> -e VAR=x <box>` and believing the command ran, it never
+did; drop `--detach` to actually run it as a second process in the box.
 
 **The cure, and the new flag:** `kanibako --restart [box]` stops the box and starts it again with
 your flags in force. It is the one thing that bypasses these refusals — passing it *is* the
