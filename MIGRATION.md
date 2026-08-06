@@ -142,7 +142,16 @@ inside boxes. In order of likely impact:
     `kanibako system set system.env.<VAR>=<value>` (or the `workset`/`box` equivalent), then
     delete the file.
 
-17. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+17. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
+    instead** (§2.20). `kanibako box set box.bindings.rw.home=/newhome` and `kanibako system set
+    agent.claude.bindings.ro.launcher=/newsrc` both used to work; both now refuse, naming the key
+    and the file to edit. **Nothing you have already configured stops working** — the keys are
+    still declared, still read at launch, and `config get` still reads them back. Only the write
+    verb is gone, and there is no CLI replacement. If a script of yours repoints a bind, that is
+    the thing to check. The other mount categories (`caches`, `seeded`, `common`, `synced`) are
+    untouched and still settable at every scope.
+
+18. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -864,6 +873,45 @@ dangling reference), and a lone unescaped `$` is refused as a malformed value.
 
 ---
 
+### 2.20 Bind entries are edited in the settings file, not with `config set`
+
+**What changed.** Two CLI routes are retired:
+
+```
+kanibako box set     box.bindings.rw.home=/newhome                # was: "Set … host source to …"
+kanibako system set  agent.claude.bindings.ro.launcher=/newsrc    # was: exit 0
+```
+
+Both now refuse, naming the key and pointing at the settings file. `config reset` refuses the same
+keys symmetrically — a reset is a write.
+
+**What did NOT change, and this is the part worth reading.** The keys are **not** retired:
+
+- they are still declared keys;
+- they are still read by the launch cascade, so **every binding you already have keeps mounting**;
+- they are still authored by hand in the settings YAML;
+- **`config get` still reads them.** A binding you set is never reported as `(not set)`.
+
+Only the *write verb* is gone.
+
+**Why there is no replacement command.** A `bindings.{ro,rw}` arm is becoming a single key whose
+value is a map keyed by the mount **destination**, and the destinations inside that map are values,
+not key segments. So there is no per-entry key for `set` to name — not a route that moved, a route
+that no longer has anything to address. Rather than invent a spelling that would have to be retired
+again, the refusal names the real surface: the file.
+
+**The cure.** Edit the settings file for the scope you want, and re-launch the box. For a box-scope
+bind that is the box's own settings file; for an agent-node bind it is
+`agents/<node>/settings.yaml`. Use `kanibako box get <key>` (or `system get`) to read the current
+value first — that still works, and it tells you which entry you are editing.
+
+**What is unaffected.** The other mount categories — `caches`, `seeded`, `common`, `synced` — keep
+their `config set` route at every scope, including the source-only repoint. If you are unsure
+whether a script of yours is affected, the test is whether the key contains `bindings.ro` or
+`bindings.rw`.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -917,6 +965,15 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    still open plugin-package work (the base-side applier already branches on `dest_space`).
 5. **Build hygiene:** `rm -rf build/ packages/*/build` before any local wheel build — stale
    `build/lib/` trees ship deleted files (CI builds clean; local builds do not).
+6. **`Binding.key`'s user override is now settings-file-only — the type is UNCHANGED.**
+   `kanibako.targets.base.Binding` keeps its shape, its fields and its place in the plugin API;
+   nothing to port. What changed is the *documentation you give your users*: the override key
+   `agent.<name>.bindings.{ro,rw}.<key>` is no longer settable with `kanibako system set` (§2.20).
+   It is still a real key — still declared, still beating your descriptor's own source at launch,
+   still readable with `config get` — so the mechanism your `Binding` relies on is intact. ⚑ If your
+   plugin's README or error strings tell a user to run `kanibako system set agent.<you>.bindings…`,
+   that instruction now fails; point them at `agents/<node>/settings.yaml` instead. There is no CLI
+   verb to substitute, so do not invent one.
 
 ### 3.1 Core module paths moved (package-ification) — shims ship for one release
 

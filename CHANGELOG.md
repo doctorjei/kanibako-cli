@@ -468,6 +468,18 @@ migration code.** Four released config surfaces are removed outright
 
 ### Removed
 
+- **BREAKING: the `config set` / `config reset` route for bind entries** —
+  `{system,workset,box}.bindings.{ro,rw}.<name>` and `agent.<node>.bindings.{ro,rw}.<key>`
+  are both refused from the CLI. `kanibako box set box.bindings.rw.home=/newhome` and
+  `kanibako system set agent.claude.bindings.ro.launcher=/newsrc` used to succeed; they now
+  print a refusal naming the key and the settings file to edit. ⚑ **The keys themselves are
+  NOT removed** — they are still declared, still read at launch, still written by hand in the
+  settings YAML, and **`config get` still reads them**, so a binding you set is never reported
+  as `(not set)`. There is no replacement CLI spelling: a bindings arm is becoming a single
+  key whose value is a map keyed by mount *destination*, and the destinations inside that map
+  are values rather than keys, so there is no per-entry key left for `set` to name. The other
+  mount categories (`caches`, `seeded`, `common`, `synced`) are unaffected and still settable
+  at every scope.
 - **BREAKING: `box.agent_name` and `system.default_agent`** — replaced by
   `pref.system.agent` and `system.agent`; both are refused by name at launch (above).
 - **BREAKING: the `shared` mount category** — renamed `common`, no alias. A leftover
