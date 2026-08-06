@@ -985,7 +985,7 @@ All kanibako config/settings files are YAML.
 | `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-box (`false`) |
 | `enable_vault` | `true` | Enable vault directories |
 | `env.*` | | Persistent environment variables (`<scope>.env.<VAR>`) |
-| `<scope>.bindings.ro.*` / `.rw.*` | | Scoped bind-mounts (`host_src:box_dest`) |
+| `<scope>.bindings.ro` / `.rw` | | Scoped bind-mounts. ⚑ **Settings-file only** — one key per arm, holding a map keyed by box destination. There is no `.<name>` sub-key and no `config set` route; `config get` reads it |
 | `<scope>.caches.*` | | Scoped cache mounts (`host_src:box_dest`) |
 | `<scope>.seeded.*` | | Copy-once seeds applied at box init |
 
