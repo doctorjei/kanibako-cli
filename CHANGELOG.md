@@ -112,6 +112,17 @@ migration code.** Four released config surfaces are removed outright
   floating, so an upstream release could change the verdict on source nobody had
   touched; a local green now predicts CI again, and adopting a new tool version is a
   deliberate commit of its own.
+- **BREAKING: `workset share add` / `rm` lose their NAME argument — a share is identified by its
+  destination.** `workset share add WS NAME host:guest` becomes `workset share add WS host:guest`,
+  and `workset share rm WS NAME` becomes `workset share rm WS DEST`, taking the box destination
+  exactly as `share list` prints it. The raw `share list` columns change from `NAME / MODE /
+  BIND(host:dest)` to **`DEST / MODE / SOURCE`**, and the messages follow (`Added rw share 'data'`
+  → `Added rw share at '/home/agent/data'`; `no share 'x'` → `no share at 'x'`). Re-running `add`
+  at a destination that already has a share replaces its source. ⚑ **Existing workset files keep
+  working** — this changes the command line, not what is already on disk. The name never
+  distinguished two shares in the first place: two shares at one destination were already an error,
+  decided on the destination and never on the name, so the name was a label that could not affect
+  any outcome. `--effective` output is unchanged.
 - **`kanibako --restart [box]` — stop a box and start it again in one step.** The cure named
   by the new running-box flag refusals (below): it stops the box, then launches it fresh with
   the invocation's flags in force, so `kanibako --restart -N mybox` does what
