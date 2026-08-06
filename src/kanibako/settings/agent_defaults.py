@@ -274,6 +274,26 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
     persona launching against the harness's DEFAULT endpoint while every
     preflight reports the configured one.
 
+    ⚑ The FLAG channel gets the SAME rule, and its failure is WORSE than a drop.
+    ``assemble_argv`` emits ``flag + [value]`` unconditionally, so an entry whose
+    ``flag`` is absent or empty extends by NOTHING and then appends the value —
+    the value lands as a BARE POSITIONAL.  For claude that positional is the
+    initial PROMPT (``claude [options] [command] [prompt]``, verified against the
+    installed binary), so a malformed descriptor turns a setting's value into the
+    text the agent is asked to act on; for a harness whose bare positional is a
+    SUBCOMMAND (goose: ``goose [COMMAND]``) it is instead a hard launch failure
+    with an unrelated-looking message.  Either way the entry never does what it
+    declares.  The typo route (``flga:``) is already covered by the unknown-field
+    guard above; this covers the OMISSION route, which that guard cannot see.
+
+    ⚑ Do NOT read this rule across onto :class:`AccessTierRow`, whose empty
+    ``flag`` is MEANINGFUL and must stay legal: a tier row emits its flag and
+    NOTHING ELSE, so ``()`` there is the documented "emit nothing, deliberately"
+    realization (claude/codex ``restricted``).  A :class:`SettingArg` always
+    appends its value, so for IT an empty flag has no such reading — there is no
+    way to spell "emit nothing" with a setting arg, only ways to misplace the
+    value.
+
     *source* names the defaults file in the refusal, so a plugin author is
     pointed at the file to fix (see :func:`_build_access_row`).
     """
@@ -295,10 +315,20 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
             f"so the setting silently never reaches the box while the launch "
             f"reports it. An 'env' channel setting must name its 'env_var'."
         )
+    flag = tuple(entry.get("flag", ()))
+    if channel is Channel.FLAG and not flag:
+        raise SettingsError(
+            f"settings entry {named!r}{where} declares \"channel: 'flag'\" but "
+            f"names no 'flag': assembly emits 'flag + [value]', so an empty "
+            f"'flag' appends the VALUE ON ITS OWN as a BARE POSITIONAL. For "
+            f"claude that positional is the initial PROMPT, so the setting's "
+            f"value would become the text the agent is asked to act on. A "
+            f"'flag' channel setting must name its 'flag'."
+        )
     return SettingArg(
         setting_key=entry["setting_key"],
         channel=channel,
-        flag=tuple(entry.get("flag", ())),
+        flag=flag,
         env_var=env_var,
     )
 

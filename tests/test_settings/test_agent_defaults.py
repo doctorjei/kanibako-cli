@@ -600,3 +600,105 @@ class TestEnvChannelBlocksMustNameTheirVariable:
         d = agent_defaults.load_descriptor(package, filename)
         assert d.settings[0].flag == ("--model",)
         assert d.settings[0].env_var == ""
+
+
+class TestFlagChannelSettingsMustNameTheirFlag:
+    """The FLAG-channel twin of the rule above, on the OMISSION route.
+
+    ``assemble_argv`` emits ``flag + [value]`` for a FLAG setting.  With no
+    ``flag`` the extend contributes nothing and the append puts the VALUE on the
+    argv ALONE — a BARE POSITIONAL.  For claude that positional is the initial
+    PROMPT (``claude [options] [command] [prompt]``, verified against the
+    installed binary), so a malformed descriptor turns a setting's value into
+    the text the agent is asked to act on; for a harness whose bare positional
+    is a SUBCOMMAND (``goose [COMMAND]``) it is a hard launch failure with an
+    unrelated-looking message.  Worse than the ENV twin, whose failure is only a
+    silent drop.
+
+    ⚑ The TYPO route (``flga:``) is already closed by the unknown-field guard —
+    ``test_unknown_field_in_a_settings_entry_is_refused`` above pins it, and a
+    test written in that shape would pass with THIS guard deleted, pinning
+    nothing.  So both tests below spell the OMISSION: ``flag`` wholly absent,
+    and ``flag: []`` present-but-empty.  Each exercises exactly one guard.
+
+    ⚑ This rule does NOT extend to ``AccessTierRow``, whose empty ``flag`` is
+    the documented "emit nothing, deliberately" realization (claude/codex
+    ``restricted``) and must keep loading — a tier row emits its flag and
+    nothing else, so ``()`` there is meaningful; a setting arg always appends
+    its value, so for IT an empty flag has no such reading.
+    """
+
+    def test_flag_channel_setting_arg_without_flag_is_refused(self, declfile):
+        """``flag`` wholly absent.
+
+        (Mutation: drop the guard → the entry loads with ``flag=()`` and
+        ``assemble_argv`` appends the model value as claude's prompt → RED.)"""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: model\n"
+            "      channel: flag\n"                # ...and no flag at all
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        msg = str(exc.value)
+        assert "model" in msg                      # names the entry
+        assert "flag" in msg                       # ...and the field
+        assert filename in msg                     # ...and the file to fix
+
+    def test_flag_channel_setting_arg_with_an_empty_flag_is_refused(self, declfile):
+        """``flag: []`` — present but empty, which assembles identically.
+
+        (Mutation: drop the guard → same bare positional as above → RED.)"""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: model\n"
+            "      channel: flag\n"
+            "      flag: []\n"                     # ...declared, and empty
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        assert "flag" in str(exc.value)
+        assert "model" in str(exc.value)
+
+    def test_an_env_channel_setting_arg_needs_no_flag(self, declfile):
+        """NOT-TOO-BROAD control, the mirror of the ``needs_no_env_var`` one.
+
+        claude's shipped ``endpoint`` entry is exactly this shape: ENV channel,
+        no ``flag``.  A guard that asked for ``flag`` unconditionally would
+        refuse every shipped goose setting and claude's endpoint with it."""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: endpoint\n"
+            "      channel: env\n"
+            "      env_var: \"ANTHROPIC_BASE_URL\"\n"
+        )
+        d = agent_defaults.load_descriptor(package, filename)
+        assert d.settings[0].env_var == "ANTHROPIC_BASE_URL"
+        assert d.settings[0].flag == ()
+
+    def test_an_empty_access_tier_row_flag_still_loads(self, declfile):
+        """NOT-TOO-BROAD control #2: the rule stops at ``SettingArg``.
+
+        claude's ``restricted`` row is ``{}`` — emit nothing, deliberately — and
+        must keep loading.  This is the pin that a future reader does not
+        "restore symmetry" by extending the refusal onto the tier rows."""
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  access_realization:\n"
+            "    channel: flag\n"
+            "    setting_key: access\n"
+            "    tiers:\n"
+            "      restricted: {}\n"
+            "      full: {flag: [\"--bypass\"]}\n"
+        )
+        d = agent_defaults.load_descriptor(package, filename)
+        assert d.access_realization is not None
+        assert d.access_realization.restricted is not None
+        assert d.access_realization.restricted.flag == ()

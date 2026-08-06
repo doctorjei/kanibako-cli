@@ -286,9 +286,21 @@ def assemble_argv(
        claude/codex ``restricted`` realization — their own default already
        prompts); a MISSING row RAISES (:func:`access_row` — the un-rendered-tier
        rule), so no tier can ever fall through to a different tier's emission.
-    4. For each FLAG-channel :class:`SettingArg` whose value in *setting_values*
-       is truthy: ``flag + [value]``.
+    4. For each FLAG-channel :class:`SettingArg` WITH A ``flag`` whose value in
+       *setting_values* is truthy: ``flag + [value]``.
     5. *extra_args*, appended last.
+
+    ⚑ The ``and s.flag`` in step 4 is the exact twin of :func:`assemble_env`'s
+    ``and s.env_var``, and exists for a sharper reason.  Without it a flagless
+    FLAG entry extends by ``()`` and then appends the value, so the value lands
+    as a BARE POSITIONAL — for claude, the initial PROMPT.  A setting's value
+    silently becoming the text the agent is asked to act on is far worse than
+    the value going undelivered, so the emission is withheld.  The DECLARATION
+    itself is refused one level up, at descriptor load
+    (:func:`~kanibako.settings.agent_defaults._build_setting_arg`), which is
+    where a plugin author gets told the file and the field; this guard is the
+    containment for a :class:`PluginDescriptor` hand-built in code, which never
+    passes through that loader.
 
     *access* is the tier this LAUNCH runs at (``-S``/``-A``-folded — see
     :func:`effective_access`); *agent* names the agent in the refusal message.
@@ -309,7 +321,7 @@ def assemble_argv(
             argv.extend(row.flag)
 
     for s in descriptor.settings:
-        if s.channel is Channel.FLAG:
+        if s.channel is Channel.FLAG and s.flag:
             value = setting_values.get(s.setting_key)
             if value:
                 argv.extend(s.flag)
