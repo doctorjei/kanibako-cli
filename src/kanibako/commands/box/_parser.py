@@ -2004,9 +2004,25 @@ def run_info(args: argparse.Namespace) -> int:
     if not has_data:
         print(f"No project data found for: {proj.project_path}")
         print()
+        # "No box directory" collapses TWO states that need different words.
+        # A box with a name is REGISTERED: its directory is gone, which is not
+        # an unused directory — it is exactly what a launch refuses (MBR-6), and
+        # its cure is MODE-DEPENDENT (``create`` for a PRIMARY box, ``workset
+        # disconnect`` + ``connect`` for a NAMED one).  Defer to that refusal's
+        # own message rather than restating it, so ``info`` and a launch can
+        # never name different cures.
+        from kanibako.commands.start import _unbuilt_box_error
+        unbuilt = _unbuilt_box_error(proj) if proj.name else None
+        if unbuilt is not None:
+            print(unbuilt, file=sys.stderr)
+            return 1
         if proj.group is not None and proj.group.is_default:
+            # ⚑ NOT "start a session with 'kanibako start'": since the v1.7.0
+            # explicit-create gate a launch NEVER materialises a box — it errors
+            # and points at ``create``.  Naming ``start`` here described
+            # behaviour we do not have.
             print("This directory has not been used with kanibako yet.")
-            print("Start a session with 'kanibako start', or create with:")
+            print("A launch will not create a box for it — create it with:")
             print("  kanibako box create")
         else:
             print("This directory has not been initialized.")

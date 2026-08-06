@@ -377,31 +377,9 @@ class TestStandaloneLaunch:
         assert rc == 0
         m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
-    def test_start_standalone_no_orphan_hint(self, start_mocks, tmp_path, capsys):
-        """No orphan hint printed for standalone projects."""
-        from kanibako.commands.start import _run_container
-
-        project = tmp_path / "myproject"
-        project.mkdir()
-        (project / ".kanibako").mkdir()
-
-        with start_mocks() as m:
-            proj = self._make_standalone_proj(project)
-            proj.is_new = True  # new project, but standalone
-            m.resolve_any_project.return_value = proj
-
-            with patch("kanibako.settings.paths.iter_projects") as m_iter:
-                orphan_path = MagicMock()
-                orphan_path.is_dir.return_value = False
-                m_iter.return_value = [(MagicMock(), orphan_path)]
-                _run_container(
-                    project_dir=str(project), entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-
-        captured = capsys.readouterr()
-        assert "orphaned" not in captured.err
+    # ``test_start_standalone_no_orphan_hint`` removed with the launch-path
+    # orphan hint itself (MBR-6 residual 2) — see the note in
+    # ``tests/test_commands/test_start_extended.py``.
 
 
 class TestWorksetLaunch:
@@ -572,29 +550,6 @@ class TestWorksetLaunch:
         assert rc == 0
         m.resolve_any_project.assert_called()  # explicit-create gate probes existence, then resolves
 
-    def test_start_workset_no_orphan_hint(self, start_mocks, tmp_path, capsys):
-        """No orphan hint printed for workset projects."""
-        from kanibako.commands.start import _run_container
-
-        ws_root = tmp_path / "my-workset"
-        ws_root.mkdir()
-        workspace = ws_root / "workspaces" / "myproj"
-        workspace.mkdir(parents=True)
-
-        with start_mocks() as m:
-            proj = self._make_workset_proj(ws_root, "myproj")
-            proj.is_new = True  # new project, but workset
-            m.resolve_any_project.return_value = proj
-
-            with patch("kanibako.settings.paths.iter_projects") as m_iter:
-                orphan_path = MagicMock()
-                orphan_path.is_dir.return_value = False
-                m_iter.return_value = [(MagicMock(), orphan_path)]
-                _run_container(
-                    project_dir=str(workspace), entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-
-        captured = capsys.readouterr()
-        assert "orphaned" not in captured.err
+    # ``test_start_workset_no_orphan_hint`` removed with the launch-path orphan
+    # hint itself (MBR-6 residual 2) — see the note in
+    # ``tests/test_commands/test_start_extended.py``.

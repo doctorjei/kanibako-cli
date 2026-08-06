@@ -835,6 +835,52 @@ class TestBoxInfo:
         assert rc == 1
         out = capsys.readouterr().out
         assert "No project data found" in out
+        # The cure names ``create`` and ONLY ``create``.  Offering "start a
+        # session with 'kanibako start'" was false from v1.7.0 on: the
+        # explicit-create gate makes a launch refuse instead of materialising.
+        assert "kanibako box create" in out
+        assert "kanibako start" not in out
+
+    def test_info_registered_box_with_missing_dir_names_the_real_cure(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A REGISTERED box whose box dir is gone is not an "unused directory".
+
+        ``box info`` must say what the launch gate says (``_unbuilt_box_error``),
+        not "this directory has not been used with kanibako yet".
+        """
+        from kanibako.commands.box import run_info
+
+        # ⚑ A BOX tree is removed through ``remove_box_tree``, never a bare
+        # ``shutil.rmtree`` (the rule `cfc7257` set for the MBR-6 tests, and the
+        # note at the top of ``tests/test_explicit_create.py``).  This case
+        # builds its box with ``resolve_project``, not ``run_create``, so there
+        # is no root-owned canon skeleton here and no ``protected_canon``
+        # fixture to take — but the deleter is still the one sanctioned route,
+        # so the test tree grows no second pattern to copy.
+        from kanibako.runtime.container import remove_box_tree
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(
+            std, config, project_dir=project_dir, initialize=True,
+        )
+        assert proj.name
+        assert remove_box_tree(proj.metadata_path), "the box tree must be gone"
+
+        args = argparse.Namespace(path=project_dir)
+        with patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            rc = run_info(args)
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "has not been used with kanibako yet" not in captured.out
+        assert "is registered, but its box directory is gone" in captured.err
+        # PRIMARY box ⇒ the ``create`` cure (a NAMED box gets the workset one).
+        assert f"kanibako create {project_dir}" in captured.err
 
     def test_info_lock_status(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_info

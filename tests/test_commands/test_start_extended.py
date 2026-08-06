@@ -806,37 +806,16 @@ class TestLegacyEnvFileNotice:
 
 
 # ---------------------------------------------------------------------------
-# Orphan detection hint (Item 1)
+# Orphan detection hint (Item 1) — REMOVED (MBR-6 residual 2).
+#
+# The launch-path hint was gated on ``proj.is_new`` AND ``group.is_default``,
+# and no launch can reach that pair any more: for a PRIMARY box ``is_new`` means
+# "the box DIRECTORY did not exist", which the MBR-6 refusal now rejects before
+# the materialising resolve.  (NAMED boxes DO still launch with ``is_new`` set —
+# ``workset connect`` leaves the home unseeded — but the hint never applied to
+# them.)  The tests here forced ``proj.is_new`` on a mocked ``proj``, so they
+# stayed green over a hint that could no longer fire; they went with it.
 # ---------------------------------------------------------------------------
-
-class TestOrphanDetectionHint:
-    def test_orphan_hint_on_new_project(self, start_mocks, capsys):
-        with start_mocks() as m:
-            m.proj.is_new = True
-            with patch("kanibako.settings.paths.iter_projects") as m_iter:
-                orphan_path = MagicMock()
-                orphan_path.is_dir.return_value = False
-                m_iter.return_value = [(MagicMock(), orphan_path)]
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            captured = capsys.readouterr()
-            assert "orphaned" in captured.err
-
-    def test_no_orphan_hint_on_existing_project(self, start_mocks, capsys):
-        with start_mocks() as m:
-            m.proj.is_new = False
-            with patch("kanibako.settings.paths.iter_projects") as m_iter:
-                m_iter.return_value = []
-                _run_container(
-                    project_dir=None, entrypoint=None, image_override=None,
-                    new_session=False, safe_mode=False, resume_mode=False,
-                    extra_args=[],
-                )
-            captured = capsys.readouterr()
-            assert "orphaned" not in captured.err
 
 
 # ---------------------------------------------------------------------------
