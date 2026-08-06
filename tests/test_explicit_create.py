@@ -381,3 +381,130 @@ class TestNoBoxErrorMessage:
             f"Error: no box at {tmp_path}. To create a new box, "
             "run 'kanibako create'"
         )
+
+
+# ---------------------------------------------------------------------------
+# BROKEN STANDALONE: registered, but its ``box_data/`` is gone
+# ---------------------------------------------------------------------------
+
+class TestBrokenStandaloneNoBoxError:
+    """A standalone box whose ``box_data/`` was deleted resolves NAMELESS, so the
+    explicit-create gate answers it — and the generic message's copy-pasteable
+    suggestion is built from the user's own spec.  For a bare standalone NAME that
+    yields ``kanibako create <name>``, and running THAT mkdirs a directory
+    literally named ``<name>`` in the CWD and puts a PRIMARY box in it.  These pin
+    the replacement (Director ruling D-1/A2, 2026-08-06) and, negatively, the
+    floor: the damaging form must never appear.
+    """
+
+    def _broken(self, config_file, tmp_home):
+        """Create a REAL standalone box, then delete its ``box_data/``.
+
+        Returns ``(std, box_name, root)``.  Deletion goes through
+        ``remove_box_tree`` — the canon skeleton under ``box_data/home`` is
+        root-owned + 555 where ``podman unshare`` works.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+
+        root = (tmp_home / "sa-proj").resolve()
+        root.mkdir()
+        ns = argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True,
+            name=None, image=None, agent=None, allow_home=False,
+        )
+        assert run_create(ns) == 0
+        _config, std = _std(config_file)
+        name = registry_store.standalone_name_for_root(std.registry, root)
+        assert name, "standalone create must have registered a name"
+        assert remove_box_tree(root / "box_data")
+        return std, name, root
+
+    def test_by_name_names_the_ruled_cure(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        std, name, root = self._broken(config_file, tmp_home)
+        msg = _no_box_error(name, std)
+        # THE FLOOR, asserted negatively: the suggestion that mkdirs ./<name>.
+        assert f"kanibako create {name}" not in msg
+        assert "no box at" not in msg
+        assert f"box '{name}' is registered as a standalone box at {root}" in msg
+        assert f"its box data ({root / 'box_data'}) is gone" in msg
+        assert "A launch will not rebuild it" in msg
+
+    def test_cure_is_one_line_and_keeps_the_name(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``--name`` is load-bearing (it preserves the kuid / channel address)
+        and both commands must be on ONE line so the pair cannot be
+        half-followed — the ``rm`` is what FREES the name the ``create`` asks
+        for."""
+        std, name, root = self._broken(config_file, tmp_home)
+        msg = _no_box_error(name, std)
+        (cure,) = [ln for ln in msg.splitlines() if "Rebuild it:" in ln]
+        assert (
+            f"kanibako box rm {name} && kanibako create --standalone "
+            f"--name {name} {root}"
+        ) in cure
+        assert "your workspace/ and vault/ are not touched" in msg
+
+    def test_by_path_names_the_ruled_cure(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The ROOT-PATH form (``kanibako start <root>``) gets the SAME message.
+        Its own milder defect was suggesting ``create <root>`` with no
+        ``--standalone``, which would have made a PRIMARY box at that root."""
+        std, name, root = self._broken(config_file, tmp_home)
+        assert _no_box_error(str(root), std) == _no_box_error(name, std)
+        assert "--standalone" in _no_box_error(str(root), std)
+
+    def test_intact_standalone_never_takes_the_branch(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """⚑ The ``box_data/`` clause is load-bearing.  With a LIVE box tree on
+        disk, ``box rm`` DOES park a deregistered entry and delete things — so the
+        branch must not fire, and the suggestion must never be reachable in that
+        state."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+
+        root = (tmp_home / "sa-proj").resolve()
+        root.mkdir()
+        ns = argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True,
+            name=None, image=None, agent=None, allow_home=False,
+        )
+        assert run_create(ns) == 0
+        _config, std = _std(config_file)
+        name = registry_store.standalone_name_for_root(std.registry, root)
+        assert (root / "box_data").is_dir()
+
+        msg = _no_box_error(name, std)
+        assert "is registered as a standalone box" not in msg
+        assert "kanibako box rm" not in msg
+        assert msg == _no_box_error(name)
+
+    def test_unregistered_name_is_unchanged(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """D-2 regression pin: a token naming NO standalone box keeps the generic
+        message verbatim, ``std`` or not.  The generic bare-name suggestion is a
+        separate, still-boarded question and this pass does not touch it."""
+        _config, std = _std(config_file)
+        assert _no_box_error("ghostbox", std) == (
+            "Error: no box at ghostbox. To create a new box, "
+            "run 'kanibako create ghostbox'"
+        )
+        assert _no_box_error(None, std) == _no_box_error(None)
+
+    def test_launch_at_broken_standalone_prints_the_cure(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """End-to-end through the real launch gate — the seam the fix has to
+        reach, not just the helper."""
+        std, name, root = self._broken(config_file, tmp_home)
+        capsys.readouterr()
+        assert _launch(name) == 1
+        err = capsys.readouterr().err
+        assert f"kanibako create {name}" not in err
+        assert f"kanibako box rm {name} && kanibako create --standalone" in err

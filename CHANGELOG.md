@@ -357,6 +357,23 @@ migration code.** Four released config surfaces are removed outright
   refusal this defers to cannot trigger, and a standalone box in the broken state has no name for
   `info` to key on.
 
+- **A broken standalone box was told to run a command that damaged the user's directory.** When a
+  standalone box's `box_data/` is deleted the registry entry survives but the box resolves nameless,
+  so a launch fell through to the generic "no box here" message — whose suggestion is built from the
+  user's own spec. For a bare standalone name that produced `kanibako create <name>`, and running it
+  created a directory *literally named* `<name>` in the current directory with a primary box inside.
+  Two grammars, one token: `start` resolves a bare token as a name, `create` resolves it as a path.
+  A launch at a broken standalone box now names the box, its root, the missing `box_data/`, and the
+  actual two-step rebuild — `kanibako box rm <name> && kanibako create --standalone --name <name>
+  <root>`. ⚑ `--name` preserves the box's kuid, channel address and every stored reference to it;
+  the `rm` is safe here precisely because `box_data/` is already gone, so it drops the registry
+  entry and touches nothing on disk.
+- **`kanibako create` rebuilt part of a box and then refused, reporting that nothing had happened.**
+  With the box directory present but its `home/` deleted, the resolver re-created and bootstrapped
+  the home — and, for a standalone box, re-created the workspace directory — before `create` errored
+  with `already initialized`. The message was false: a bare home with no seed, no canon skeleton, no
+  agent config and no credentials had just been written. The refusal now happens before anything is
+  materialised. Affects primary and standalone boxes alike.
 - **The `orphaned project data` hint is gone.** It required a launch to be materialising a primary
   box, keyed on the box directory — which is exactly what the refusal added in this release (above)
   now rejects first, so the hint could no longer fire. ⚑ Not the v1.7.0 create gate: that one keys

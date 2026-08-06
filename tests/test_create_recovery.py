@@ -31,6 +31,12 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode, load_primary_boxes
 
+# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — ``run_create`` materialises
+# the J-7 canon skeleton root-owned + 555, so a bare ``rmtree`` dies with EACCES where
+# ``podman unshare`` works and silently passes where it does not.  That asymmetry is
+# what makes a local green vacuous; ``remove_box_tree`` is the sanctioned deleter.
+from kanibako.runtime.container import remove_box_tree
+
 
 def _primary_names(std):
     """Return the PRIMARY box membership (the sole store since projects retired)."""
@@ -372,11 +378,18 @@ class TestRunCreateJournalLifecycle:
         assert journal.pending_create(std.journal, box_key) is not None
 
     def test_already_initialized_without_entry_errors(
-        self, config_file, tmp_home, credentials_dir, monkeypatch
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys
     ):
         """A genuinely complete box (registered, NO pending entry) re-created
         errors 'already initialized' (rc=1) — recovery only triggers on an
-        actual pending entry, not on every existing box."""
+        actual pending entry, not on every existing box.
+
+        ⚑ AND IT LEAVES THE DISK ALONE.  This is the PRIMARY twin of the
+        standalone defect: ``resolve_project``'s ``if initialize:`` arm
+        re-bootstraps a missing ``home/`` before returning, so the refusal used to
+        print "already initialized" about a box whose home it had just re-created.
+        The home is deleted between the two calls exactly so that shows up.
+        """
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
@@ -393,8 +406,104 @@ class TestRunCreateJournalLifecycle:
         std = load_std_paths(config)
         assert journal.read_journal(std.journal) == {}
 
+        home = std.boxes / "project" / "home"
+        assert home.is_dir()
+        assert remove_box_tree(home)
+
+        capsys.readouterr()
         rc2 = run_create(_create_args(tmp_home / "project"))
         assert rc2 == 1
+        # ⚑ FULL message: the path now comes off the PROBE, and must still be the
+        # resolved workspace the materialising resolve would have reported.
+        assert capsys.readouterr().err.strip() == (
+            f"Error: project already initialized in {(tmp_home / 'project').resolve()}"
+        )
+        assert not home.exists()
+
+    def test_create_standalone_refusal_leaves_disk_untouched(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """FULL-TREE snapshot equality across a refused standalone re-create.
+
+        The strongest form of "nothing happened": every path under the root is
+        enumerated before and after the refused ``create`` and the two lists must
+        match.  Home and workspace are deleted first so the resolver's recovery
+        arms (``_bootstrap_shell`` + the ``workspace/`` mkdir) have something to
+        re-create if the refusal is still downstream of them.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "sa-proj"
+        root.mkdir()
+        assert run_create(_create_args(root, standalone=True)) == 0
+
+        assert remove_box_tree(root / "box_data" / "home")
+        assert remove_box_tree(root / "workspace")
+        before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+
+        assert run_create(_create_args(root, standalone=True)) == 1
+        after = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+        assert after == before
+
+    def test_unregistered_placeholder_dir_does_not_block_create(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """A brand-new PRIMARY create still succeeds — the predicate the refusal
+        now reads must be FALSE for a box that does not exist yet.
+
+        ⚑ Pins the ``std.boxes/__unregistered__`` coupling.  A brand-new primary
+        box has no registered name, so ``_resolve_local_dir`` returns the
+        ``__unregistered__`` PLACEHOLDER as ``metadata_path`` — and
+        ``box_tree_materialized`` asks whether ``metadata_path`` is a dir.  The
+        placeholder is never materialised, which is why the create proceeds; this
+        asserts both halves (rc 0, and the placeholder is not on disk).  ⚑ Note
+        the coupling is INHERITED, not introduced: ``resolve_project``'s own
+        ``is_new`` gate reads the same path, so a placeholder dir that DID exist
+        refused the create before this change too (pinned below).
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        std = load_std_paths(load_config(config_file))
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        assert not (std.boxes / "__unregistered__").exists()
+
+    def test_unregistered_placeholder_coupling_is_unchanged(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys
+    ):
+        """CHARACTERISATION, not an endorsement: a pre-existing
+        ``std.boxes/__unregistered__`` dir makes a brand-new PRIMARY create refuse
+        "already initialized".
+
+        That was true BEFORE the refusal was hoisted (``resolve_project`` gates
+        ``is_new`` on the same placeholder path) and is true after — the hoist
+        moves WHEN the refusal prints, not WHAT it decides.  Pinned so the
+        coupling cannot silently change under a future edit to either gate.  It is
+        a latent defect in its own right and is NOT fixed here.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        std = load_std_paths(load_config(config_file))
+        (std.boxes / "__unregistered__").mkdir(parents=True)
+
+        capsys.readouterr()
+        assert run_create(_create_args(tmp_home / "project")) == 1
+        assert "already initialized" in capsys.readouterr().err
 
 
 class TestRunCreateCrossKindName:

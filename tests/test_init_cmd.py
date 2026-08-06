@@ -8,6 +8,14 @@ from unittest.mock import patch
 from kanibako.cli import _SUBCOMMANDS, build_parser
 from kanibako.commands.box._parser import run_create
 
+# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — these tests drive the REAL
+# ``run_create``, which materialises the J-7 canon skeleton and then makes it
+# root-owned + 555 via ``podman unshare``.  Where that works a bare ``rmtree`` dies
+# with EACCES partway through; where it does not (this project's dev box) the same
+# line passes — the asymmetry is the whole bug.  ``remove_box_tree`` is the sanctioned
+# escalating deleter the product's own lifecycle verbs use.
+from kanibako.runtime.container import remove_box_tree
+
 
 # ---------------------------------------------------------------------------
 # Parser tests
@@ -238,15 +246,39 @@ class TestRunCreate:
     def test_create_already_exists_fails(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
+        """Re-``create`` at an initialized standalone box refuses AND LEAVES THE
+        DISK ALONE.
+
+        ⚑ The filesystem assertions are the point.  The refusal says "already
+        initialized", i.e. *nothing happened* — so prove nothing happened.  The
+        materialising resolve used to run FIRST and re-bootstrap a missing home
+        (``resolve_standalone_project``'s ``if initialize:`` recovery arm) and
+        re-mkdir a missing ``workspace/``, and only THEN print the refusal.  Both
+        are deleted here precisely so that partial mutation would show up.
+        """
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
-        run_create(args)
+        assert run_create(args) == 0
+
+        root = project_dir.resolve()
+        home = root / "box_data" / "home"
+        workspace = root / "workspace"
+        assert home.is_dir() and workspace.is_dir()
+        assert remove_box_tree(home)
+        assert remove_box_tree(workspace)
 
         capsys.readouterr()
         rc = run_create(args)
         assert rc == 1
         captured = capsys.readouterr()
-        assert "already initialized" in captured.err
+        # ⚑ The FULL message, not a substring: the refusal now reads its path off
+        # the non-materialising PROBE, and that path must still be the resolved
+        # workspace the materialising resolve would have reported.
+        assert captured.err.strip() == (
+            f"Error: project already initialized in {workspace}"
+        )
+        assert not home.exists()
+        assert not workspace.exists()
 
     def test_create_local_mode(
         self, config_file, credentials_dir, project_dir, capsys,

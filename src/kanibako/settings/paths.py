@@ -256,6 +256,35 @@ class ProjectPaths:
     group: ProjectGroup | None = field(default=None)
 
 
+def box_tree_materialized(proj: ProjectPaths) -> bool:
+    """True when the box tree a ``create`` would materialize is ALREADY on disk.
+
+    The MODE-AWARE analogue of ``is_new``, computable from a NON-materialising
+    probe (``initialize=False``) — which is the whole point: ``is_new`` is only
+    set inside the ``initialize=True`` branch that does the mutation, so a caller
+    that wants to REFUSE before mutating cannot ask ``is_new`` and has to ask
+    this instead.
+
+    * PRIMARY / NAMED — the box dir IS ``metadata_path``, and
+      :func:`resolve_project` gates ``is_new`` on exactly that dir, so with
+      ``initialize=True`` this is precisely ``not is_new``.
+    * STANDALONE — ``metadata_path`` is the USER'S OWN project root, which always
+      exists (it is their runtime dir), so it says nothing.  The marker is
+      ``<root>/box_data`` — the same dir :func:`resolve_standalone_project` gates
+      ``is_new`` on.
+
+    ⚑ For a BRAND-NEW primary box ``_resolve_local_dir`` misses and
+    ``metadata_path`` is the ``__unregistered__`` placeholder, which does not
+    exist ⇒ False ⇒ the create proceeds.  That coupling is inherited from
+    ``resolve_project``'s own ``is_new`` gate, not introduced here.
+
+    The mode split is NOT restated here — :func:`box_metadata_dir` already owns
+    it, and it lands on exactly the two dirs the two resolvers gate ``is_new``
+    on.  One derivation, not a second copy that can drift.
+    """
+    return box_metadata_dir(proj.mode, proj.metadata_path).is_dir()
+
+
 def _standalone_settings_files(root: Path) -> tuple[Path, Path]:
     """The STANDALONE ``(box_tier, workset_tier)`` pair — BOTH always real paths.
 
