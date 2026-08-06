@@ -99,11 +99,16 @@ from typing import Any
 from kanibako.settings.config import settings_base_path
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_prefs import refuse_pref_table
-from kanibako.settings.settings_resolve import SettingsError, unpack_bind
+from kanibako.settings.settings_resolve import (
+    SettingsError,
+    unpack_bind,
+    unpack_bind_entry,
+)
 from kanibako.settings.settings_store import (
     BINDING_DERIVATIONS_NODE,
     SCOPE_CONTAINMENT,
     Bind,
+    BindEntry,
     KeyStore,
 )
 
@@ -516,32 +521,80 @@ def _drop_upward_scopes(
     return {k: v for k, v in raw.items() if str(k) not in drop_set}
 
 
-def _parse_node(value: Any, *, in_binds: bool) -> Any:
+def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool = False) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
     *in_binds* is True while descending the subtree of a bind-shaped category
     (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` / ``shared`` / ``synced``) —
-    where a list/tuple LEAF is a structured ``[host_src, box_dest[, opts]]`` pair
-    parsed to a :class:`Bind` (S9). Refs inside the bind stay RAW (spec §0). A
-    plain ``dict`` descends (the per-name dict UNDER the category); any other
-    leaf (scalar / ``None`` / a genuine ``list[str]``) is stored verbatim.
+    where a list/tuple LEAF is a structured pair parsed to a bind value (S9).
+    Refs inside the bind stay RAW (spec §0). A plain ``dict`` descends (the
+    per-entry dict UNDER the category); any other leaf (scalar / ``None`` / a
+    genuine ``list[str]``) is stored verbatim.
+
+    *dest_keyed* selects WHICH bind shape a leaf under a bind category has, and
+    is the ONLY thing that decides it (disk-store rework R-3/R-6):
+
+    * ``False`` (today's live shape) — the arm is NAME-keyed, a leaf is
+      ``[host_src, box_dest[, opts]]`` → :class:`Bind`;
+    * ``True`` (the dest-keyed rework) — the arm is DEST-keyed, the key IS the
+      destination and a leaf is ``[src[, opts]]`` → :class:`BindEntry`.
+
+    ⚑⚑ Both shapes admit a 2-element list with OPPOSITE meanings, so the choice
+    is made by this CONTEXT FLAG — passed down from the caller that knows which
+    node it is reading — and NEVER by inspecting the leaf's arity. During the
+    P5→P8 bridge no production caller passes ``dest_keyed=True``; the public
+    entry point for the new shape is :func:`parse_bind_map`, which P6/P7 wire in.
     """
     if isinstance(value, dict):
         store = KeyStore()
         for key, sub in value.items():
             key_s = str(key)
-            # Entering a bind-shaped category: its named entries below are binds.
+            # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in _BIND_CATEGORIES
-            store[key_s] = _parse_node(sub, in_binds=descend_binds)
+            store[key_s] = _parse_node(
+                sub, in_binds=descend_binds, dest_keyed=dest_keyed
+            )
         return store
     if in_binds and isinstance(value, (list, tuple)):
-        # A structured bind leaf — parse to Bind, refs left RAW (S9). A malformed
-        # arity raises SettingsError (the structured shape is load-bearing).
+        # A structured bind leaf — refs left RAW (S9). A malformed arity raises
+        # SettingsError (the structured shape is load-bearing).
+        if dest_keyed:
+            src, entry_opts = unpack_bind_entry(value)
+            return BindEntry(src, entry_opts)
         host, box, opts = unpack_bind(value)
         return Bind(host, box, opts)
     # Scalar / None / genuine list[str] — stored verbatim (KeyStore wraps None and
     # scalars as-is; a list is not descended).
     return value
+
+
+def parse_bind_map(raw: Any) -> KeyStore:
+    """Parse a raw DEST-KEYED bindings arm into a :class:`KeyStore` of :class:`BindEntry`.
+
+    *raw* is the mapping stored at a terminal ``<scope>.bindings.ro`` /
+    ``.rw`` key after the rework (R-5): ``{box_dest: [src[, opts]]}``. Returns
+    the arm as a nested :class:`KeyStore` node — NOT an opaque dict leaf — so it
+    merges PER-ENTRY across cascade levels through the generic node recursion
+    (the ``masks`` precedent), instead of a box-level arm wiping an inherited
+    workset entry wholesale.
+
+    A ``None`` entry value is preserved VERBATIM (the per-entry reset that the
+    merge classifies as an OMIT, design §3). A non-mapping *raw* raises
+    :class:`SettingsError`; so does a malformed entry (see
+    :func:`~kanibako.settings.settings_resolve.unpack_bind_entry`).
+
+    ⚑ ADDITIVE during the P5→P8 bridge: nothing in the production load path calls
+    this yet (the live arms are still name-keyed and go through
+    :func:`_parse_node` with ``dest_keyed=False``). P6/P7 wire it in.
+    """
+    if not isinstance(raw, dict):
+        raise SettingsError(
+            f"A dest-keyed bindings arm must be a mapping "
+            f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
+        )
+    parsed = _parse_node(raw, in_binds=True, dest_keyed=True)
+    assert isinstance(parsed, KeyStore)
+    return parsed
 
 
 def _file_partial(raw: dict) -> KeyStore:

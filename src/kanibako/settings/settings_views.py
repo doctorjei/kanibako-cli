@@ -17,7 +17,10 @@ Three tiers (design §5)
 2. **Typed CATEGORY accessors** — each §2a category has DYNAMIC keys but ONE
    known value type, so it is a typed read-only mapping:
    :func:`bind_category` → ``Mapping[str, Bind]`` for ``bindings.{ro,rw}`` /
-   ``caches`` / ``seeded`` / ``common`` / ``synced``; :func:`env_view` →
+   ``caches`` / ``seeded`` / ``common`` / ``synced``; :func:`bind_map` →
+   ``Mapping[box_dest, BindEntry]``, the DEST-KEYED successor for the reworked
+   ``bindings.{ro,rw}`` arms (R-5/R-6 — additive, no production reader yet;
+   see :class:`~kanibako.settings.settings_store.BindEntry`); :func:`env_view` →
    ``Mapping[str, scalar]`` for ``env``; :func:`masks_set` → ``set[box_dest]``
    for the resolved ``masks`` (design §6f).
 3. **Raw attribute / ``[]`` access** returning the full union — already on
@@ -71,11 +74,13 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar
 
-from kanibako.settings.settings_store import Bind, KeyStore
+from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
 __all__ = [
     "ViewError",
     "bind_category",
+    "bind_map",
+    "bind_maps",
     "bindings",
     "derived_bindings",
     "env_view",
@@ -165,6 +170,62 @@ class _BindCategoryView(Mapping[str, Bind]):
         return f"{type(self).__name__}({self._label!r}, {dict.__len__(self._node)} binds)"
 
 
+class _BindMapView(Mapping[str, BindEntry]):
+    """A read-only ``Mapping[box_dest, BindEntry]`` lens over a DEST-KEYED arm.
+
+    The dest-keyed successor of :class:`_BindCategoryView` (R-5/R-6): same lens
+    contract, but the mapping KEY is the destination and the value carries only
+    ``(src, opts)``. Wraps an EXISTING :class:`KeyStore` node WITHOUT copying;
+    every value is asserted to be a real :class:`BindEntry` on read (the S22
+    coupling — build dropped present-``None`` entries, so a ``None`` here is a
+    build breach → :class:`ViewError`).
+
+    ⚑ The check is ``isinstance(value, BindEntry)``, which is FALSE for a legacy
+    3-tuple :class:`Bind` even though both are tuples — so a stale name-keyed arm
+    handed to this lens is REFUSED at read rather than mis-read (the P5→P8 bridge
+    keeps both shapes alive; nothing may tell them apart by arity).
+
+    Read-only (``Mapping``, not ``MutableMapping``); all container ops use the
+    UNBOUND ``dict`` methods (S3).
+    """
+
+    __slots__ = ("_node", "_label")
+
+    def __init__(self, node: KeyStore, *, label: str) -> None:
+        self._node = node
+        self._label = label
+
+    def __getitem__(self, key: str) -> BindEntry:
+        if not dict.__contains__(self._node, key):
+            raise KeyError(key)
+        value = dict.__getitem__(self._node, key)
+        return self._checked(key, value)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(dict.keys(self._node))
+
+    def __len__(self) -> int:
+        return dict.__len__(self._node)
+
+    def __contains__(self, key: object) -> bool:
+        return dict.__contains__(self._node, key)
+
+    def _checked(self, key: str, value: Any) -> BindEntry:
+        if not isinstance(value, BindEntry):
+            raise ViewError(
+                f"{self._label}[{key!r}] is {type(value).__name__}, expected "
+                f"BindEntry (present-None entries are omitted at build, design "
+                f"§3/§6e/S22; a legacy 3-tuple Bind is NOT a BindEntry)"
+            )
+        return value
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}({self._label!r}, "
+            f"{dict.__len__(self._node)} entries)"
+        )
+
+
 class _EnvView(Mapping[str, "str | int | float | bool"]):
     """A read-only ``Mapping[str, scalar]`` lens over an ``env`` NODE.
 
@@ -246,6 +307,43 @@ def bindings(node: KeyStore, *, label: str = "bindings") -> tuple[
     return (
         bind_category(_sub_or_empty(node, "ro"), label=f"{label}.ro"),
         bind_category(_sub_or_empty(node, "rw"), label=f"{label}.rw"),
+    )
+
+
+def bind_map(node: KeyStore, *, label: str = "bindings") -> Mapping[str, BindEntry]:
+    """A typed ``Mapping[box_dest, BindEntry]`` lens over a DEST-KEYED arm (tier-2).
+
+    The dest-keyed successor of :func:`bind_category` (R-5/R-6). *node* is the
+    :class:`KeyStore` the terminal ``<scope>.bindings.ro`` / ``.rw`` key holds —
+    ``{box_dest: BindEntry(src, opts)}``. The returned mapping is READ-ONLY and
+    does NOT copy the node. A ``None`` / mistyped leaf — including a legacy
+    3-tuple :class:`Bind` — RAISES :class:`ViewError` (S22), never type-launders.
+
+    *label* names the node in error messages; no behavioral effect. Per-scope
+    (S21) — it does NOT aggregate one dest across scopes (that is reconcile,
+    design §6g).
+
+    ⚑ ADDITIVE during the P5→P8 bridge: the live arms are still name-keyed, so
+    every production reader is still :func:`bind_category` / :func:`bindings`.
+    """
+    _require_node(node, label)
+    return _BindMapView(node, label=label)
+
+
+def bind_maps(node: KeyStore, *, label: str = "bindings") -> tuple[
+    Mapping[str, BindEntry], Mapping[str, BindEntry]
+]:
+    """Split a whole DEST-KEYED ``bindings`` NODE into its ``(ro, rw)`` lenses.
+
+    The dest-keyed counterpart of :func:`bindings`: *node* holds the ``ro``
+    and/or ``rw`` arms (R-5 — the arm is still its own key segment; only the
+    entries below it are dest-keyed). A mode ABSENT from the node yields an EMPTY
+    mapping (§3/§6e), never an error. Per-scope (S21).
+    """
+    _require_node(node, label)
+    return (
+        bind_map(_sub_or_empty(node, "ro"), label=f"{label}.ro"),
+        bind_map(_sub_or_empty(node, "rw"), label=f"{label}.rw"),
     )
 
 

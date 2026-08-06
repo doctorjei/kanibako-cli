@@ -20,10 +20,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.settings.settings_assemble import assemble_levels
+from kanibako.settings.settings_assemble import assemble_levels, parse_bind_map
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings.settings_store import _MISSING, Bind, BindEntry, KeyStore
 
 # Index of each level in the returned MOST-SPECIFIC-FIRST list (S8).
 BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM, BASE = range(6)
@@ -1213,3 +1213,61 @@ class TestRefuseRetiredBehaviorKeys:
         )
         levels = assemble_levels(agent_name="claude", system_path=path)
         assert levels is not None
+
+
+# --------------------------------------------------------------------------- #
+# parse_bind_map — the DEST-KEYED arm parser (R-5/R-6), ADDITIVE in P5         #
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_bind_map_keys_on_dest_and_yields_bind_entries() -> None:
+    node = parse_bind_map({"~/.claude": ["/h/claude"], "~/v": ["/h/v", "ro"]})
+    assert isinstance(node, KeyStore)
+    assert set(dict.keys(node)) == {"~/.claude", "~/v"}
+    assert type(dict.__getitem__(node, "~/.claude")) is BindEntry
+    assert dict.__getitem__(node, "~/.claude") == BindEntry("/h/claude")
+    assert dict.__getitem__(node, "~/v") == BindEntry("/h/v", "ro")
+
+
+def test_parse_bind_map_leaves_refs_and_vars_raw() -> None:
+    # Assembly never expands (S9/spec §0 — files store UNRESOLVED). That holds for
+    # the destination too, which is now a KEY.
+    node = parse_bind_map({"@meta.box.path/home": ["@config.data/seed"]})
+    assert set(dict.keys(node)) == {"@meta.box.path/home"}
+    assert dict.__getitem__(node, "@meta.box.path/home") == BindEntry(
+        "@config.data/seed"
+    )
+
+
+def test_parse_bind_map_preserves_a_present_none_entry() -> None:
+    # A per-entry reset stays a present-``None`` leaf for the merge to classify as
+    # an OMIT (§3) — it must NOT be parsed away or rejected here.
+    node = parse_bind_map({"~/a": ["/h/a"], "~/b": None})
+    assert dict.__getitem__(node, "~/b") is None
+
+
+def test_parse_bind_map_refuses_a_non_mapping_arm() -> None:
+    with pytest.raises(SettingsError) as exc:
+        parse_bind_map([["/h/a", "~/a"]])
+    assert "must be a mapping" in str(exc.value)
+
+
+def test_parse_bind_map_refuses_a_stale_three_element_entry() -> None:
+    # A NAME-keyed arm fed to the dest-keyed parser: the 3-element value is the one
+    # arity that CANNOT be a dest-keyed entry, so it is caught loudly.
+    with pytest.raises(SettingsError):
+        parse_bind_map({"home": ["/h/src", "~/home", "ro"]})
+
+
+def test_the_live_name_keyed_path_still_parses_to_bind(tmp_path: Path) -> None:
+    # ⚑ P5 is a BRIDGE: adding the dest-keyed parser must not change what the
+    # PRODUCTION load path produces. A settings file's bindings arm is still
+    # name-keyed and still yields a 3-field ``Bind``.
+    path = _write(
+        tmp_path / "box.yaml",
+        {"box": {"bindings": {"rw": {"home": ["/h/src", "~/home"]}}}},
+    )
+    levels = assemble_levels(agent_name="claude", box_path=path)
+    entry = levels[BOX]["box"]["bindings"]["rw"]["home"]
+    assert type(entry) is Bind
+    assert entry == Bind("/h/src", "~/home")

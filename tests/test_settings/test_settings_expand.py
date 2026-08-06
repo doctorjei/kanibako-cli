@@ -25,7 +25,7 @@ import pytest
 
 from kanibako.settings.settings_expand import _is_whole_value_ref, expand
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
-from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings.settings_store import _MISSING, Bind, BindEntry, KeyStore
 
 HOST_HOME = "/home/u"
 
@@ -870,3 +870,120 @@ class TestPrefReferencesAreRefused:
         expanded, errors = expand(snap, _ctx(), collect_errors=True)
         assert "box.shell" in errors
         assert "not resolvable" in errors["box.shell"]
+
+
+# --------------------------------------------------------------------------- #
+# DEST-KEYED entries (BindEntry) — the destination is the KEY (R-5/R-6)       #
+# --------------------------------------------------------------------------- #
+
+
+def _arm(entries: dict) -> KeyStore:
+    return KeyStore({"box": {"root": "/data/box", "bindings": {"rw": entries}}})
+
+
+def test_bind_entry_src_expands_host_side() -> None:
+    snap = _arm({"~/a": BindEntry("$XDG_DATA_HOME/seed")})
+    out = expand(snap, _ctx())
+    entry = _probe(out, "box", "bindings", "rw", "~/a")
+    assert entry == BindEntry("/home/u/.local/share/seed")
+    assert type(entry) is BindEntry
+
+
+def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
+    # The destination moved from the VALUE to the KEY, so the key now carries the
+    # box_dest rule: ``@``-refs resolve; ``$XDG``/``~`` stay RAW for the box side
+    # (S17). Both halves of that rule are asserted on ONE arm.
+    snap = _arm(
+        {
+            "@box.root/home": BindEntry("/h/home"),
+            "~/.claude": BindEntry("/h/claude"),
+            "$XDG_STATE_HOME/k": BindEntry("/h/k"),
+        }
+    )
+    out = expand(snap, _ctx())
+    arm = _probe(out, "box", "bindings", "rw")
+    assert isinstance(arm, KeyStore)
+    assert set(dict.keys(arm)) == {
+        "/data/box/home",  # @-ref expanded
+        "~/.claude",  # ~ deferred, RAW
+        "$XDG_STATE_HOME/k",  # $VAR deferred, RAW
+    }
+
+
+def test_bind_entry_opts_carried_verbatim() -> None:
+    snap = _arm({"~/a": BindEntry("@box.root/s", "ro")})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "~/a") == BindEntry("/data/box/s", "ro")
+
+
+def test_bind_entry_whole_value_src_absent_drops_the_entry() -> None:
+    # Same 3-state rule as the name-keyed Bind: an absent whole-value src means the
+    # binding cannot point anywhere, so the entry is DROPPED (§6b/§3).
+    snap = _arm({"~/a": BindEntry("@box.nope"), "~/b": BindEntry("/h/b")})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "~/a") is _MISSING
+    assert _probe(out, "box", "bindings", "rw", "~/b") == BindEntry("/h/b")
+
+
+def test_bind_entry_whole_value_src_present_none_yields_none() -> None:
+    snap = KeyStore(
+        {"box": {"nil": None, "bindings": {"rw": {"~/a": BindEntry("@box.nil")}}}}
+    )
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "~/a") is None
+
+
+def test_bind_entry_whole_value_dest_key_to_absent_raises() -> None:
+    # A destination cannot resolve to no path — the same loud refusal the
+    # name-keyed ``box_dest`` gets, moved to the key.
+    snap = _arm({"@box.nope": BindEntry("/h/a")})
+    with pytest.raises(SettingsError) as exc:
+        expand(snap, _ctx())
+    assert "destination cannot" in str(exc.value)
+
+
+def test_two_dest_keys_resolving_to_one_destination_raise() -> None:
+    # ⚑ Files store UNRESOLVED, so dest-keying is unique in the UNRESOLVED
+    # namespace only (design §2b-CAVEAT). Expansion can collapse two distinct
+    # stored keys onto one destination; installing the second would SILENTLY
+    # delete the first, and no downstream check could ever see the loss.
+    snap = _arm({"@box.root/a": BindEntry("/h/1"), "/data/box/a": BindEntry("/h/2")})
+    with pytest.raises(SettingsError) as exc:
+        expand(snap, _ctx())
+    assert "same destination" in str(exc.value)
+
+
+def test_non_bind_entry_keys_are_never_expanded() -> None:
+    # The key-expansion branch is gated on the VALUE's TYPE. An ordinary keyspace
+    # node whose key merely LOOKS like a token must be carried through verbatim.
+    snap = KeyStore({"box": {"env": {"$HOME": "x", "@a": "y"}}})
+    out = expand(snap, _ctx())
+    env = _probe(out, "box", "env")
+    assert isinstance(env, KeyStore)
+    assert set(dict.keys(env)) == {"$HOME", "@a"}
+
+
+def test_bind_and_bind_entry_expand_side_by_side() -> None:
+    # ⚑ The P5 bridge: both shapes are live at once and each keeps its own rule —
+    # the Bind's dest is in its VALUE, the BindEntry's is its KEY.
+    snap = KeyStore(
+        {
+            "box": {
+                "root": "/data/box",
+                "bindings": {
+                    "ro": {"legacy": Bind("/h/l", "@box.root/l")},
+                    "rw": {"@box.root/n": BindEntry("/h/n")},
+                },
+            }
+        }
+    )
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "ro", "legacy") == Bind("/h/l", "/data/box/l")
+    assert _probe(out, "box", "bindings", "rw", "/data/box/n") == BindEntry("/h/n")
+
+
+def test_lenient_mode_records_a_bind_entry_defect_against_its_leaf() -> None:
+    snap = _arm({"~/a": BindEntry("@box.nope/x"), "~/b": BindEntry("/h/b")})
+    out, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "box.bindings.rw.~/a" in errors
+    assert _probe(out, "box", "bindings", "rw", "~/b") == BindEntry("/h/b")

@@ -19,6 +19,7 @@ from kanibako.settings.settings_resolve import (
     resolve_value,
     split_bind,
     unpack_bind,
+    unpack_bind_entry,
 )
 
 HOST_HOME = "/home/u"
@@ -737,3 +738,56 @@ def test_resolve_most_specific_default_wins() -> None:
     assert res.value == "wsdefault"
     assert res.level == "workset"
     assert res.is_default is True
+
+
+# --------------------------------------------------------------------------- #
+# unpack_bind_entry — the DEST-KEYED entry unpacker (R-3/R-6)                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_unpack_bind_entry_one_element_defaults_options() -> None:
+    # 1 element = source only; the caller falls back to the category default.
+    assert unpack_bind_entry(["/host/src"]) == ("/host/src", None)
+    assert unpack_bind_entry(("/host/src",)) == ("/host/src", None)
+
+
+def test_unpack_bind_entry_two_elements_carry_options() -> None:
+    assert unpack_bind_entry(["/host/src", "ro"]) == ("/host/src", "ro")
+
+
+def test_unpack_bind_entry_narrows_scalars_to_str() -> None:
+    # A YAML scalar may parse as int/etc.; both halves are narrowed.
+    assert unpack_bind_entry([123, 0]) == ("123", "0")
+
+
+def test_unpack_bind_entry_refuses_a_bare_scalar() -> None:
+    # ⚑ The ruled shape is 1-or-2 ELEMENTS — the exact transposition of the
+    # name-keyed 2-or-3 rule. A bare ``{dest: src}`` would be a SECOND spelling of
+    # the 1-element entry, which is the duplicate-form confusion CONVENTIONS §0
+    # opens with, so it is refused rather than quietly accepted.
+    with pytest.raises(SettingsError):
+        unpack_bind_entry("/host/src")
+
+
+def test_unpack_bind_entry_refuses_wrong_arity() -> None:
+    with pytest.raises(SettingsError) as exc:
+        unpack_bind_entry([])
+    assert "1 or 2" in str(exc.value)
+    with pytest.raises(SettingsError) as exc:
+        # A stale NAME-keyed 3-tuple handed to the dest-keyed unpacker.
+        unpack_bind_entry(["/host/src", "/box/dest", "ro"])
+    assert "1 or 2" in str(exc.value)
+    # The message must say WHERE the destination went, or the error reads as a
+    # typo rather than a shape change.
+    assert "DESTINATION is the map key" in str(exc.value)
+
+
+def test_the_two_unpackers_read_one_2_element_list_oppositely() -> None:
+    # ⚑⚑ THE ARITY TRAP, pinned. The SAME raw value is legal to BOTH unpackers and
+    # means opposite things: name-keyed ``[a, b]`` is (host, box); dest-keyed
+    # ``[a, b]`` is (src, opts). Nothing may pick the unpacker by looking at the
+    # value — the CALLER picks it from the node the value came from.
+    raw = ["/left", "/right"]
+    assert unpack_bind(raw) == ("/left", "/right", None)
+    assert unpack_bind_entry(raw) == ("/left", "/right")
+    # i.e. "/right" is a DESTINATION to one and MOUNT OPTIONS to the other.

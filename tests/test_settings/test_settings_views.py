@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings.settings_store import Bind, KeyStore
+from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 from kanibako.settings.settings_views import (
     FiniteView,
     MetaView,
@@ -29,6 +29,8 @@ from kanibako.settings.settings_views import (
     as_path,
     as_str,
     bind_category,
+    bind_map,
+    bind_maps,
     bindings,
     env_view,
     masks_set,
@@ -370,3 +372,66 @@ def test_accessors_reject_non_node(bad: object) -> None:
     for fn in (bind_category, env_view, masks_set):
         with pytest.raises(ViewError):
             fn(bad)  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# bind_map / bind_maps — the DEST-KEYED tier-2 lens (R-5/R-6), ADDITIVE in P5  #
+# --------------------------------------------------------------------------- #
+
+
+def test_bind_map_is_a_readonly_dest_keyed_mapping() -> None:
+    node = KeyStore({"~/.claude": BindEntry("/h/c"), "~/v": BindEntry("/h/v", "ro")})
+    view = bind_map(node, label="box.bindings.rw")
+    assert isinstance(view, Mapping)
+    assert not isinstance(view, dict)
+    assert len(view) == 2
+    assert set(view) == {"~/.claude", "~/v"}
+    assert view["~/v"] == BindEntry("/h/v", "ro")
+    assert "~/.claude" in view
+    with pytest.raises(KeyError):
+        view["nope"]
+    assert not hasattr(view, "__setitem__")
+
+
+def test_bind_map_does_not_copy_the_node() -> None:
+    node = KeyStore({"~/a": BindEntry("/h/a")})
+    view = bind_map(node)
+    node["~/b"] = BindEntry("/h/b")
+    assert set(view) == {"~/a", "~/b"}
+
+
+def test_bind_map_refuses_a_none_leaf() -> None:
+    view = bind_map(KeyStore({"~/a": None}))
+    with pytest.raises(ViewError):
+        view["~/a"]
+
+
+def test_bind_map_refuses_a_legacy_three_tuple_bind() -> None:
+    # ⚑ THE ARITY TRAP at the read surface. A stale NAME-keyed arm handed to the
+    # dest-keyed lens is REFUSED, not mis-read — the check is ``isinstance(...,
+    # BindEntry)``, which is False for a ``Bind`` even though both are tuples.
+    view = bind_map(KeyStore({"home": Bind("/h/src", "~/home")}), label="stale")
+    with pytest.raises(ViewError) as exc:
+        view["home"]
+    assert "BindEntry" in str(exc.value)
+
+
+def test_bind_category_refuses_a_bind_entry_symmetrically() -> None:
+    # And the converse: the still-live NAME-keyed lens must not silently accept a
+    # dest-keyed entry either. Neither shape can leak into the other's reader.
+    view = bind_category(KeyStore({"~/a": BindEntry("/h/a")}), label="mixed")
+    with pytest.raises(ViewError):
+        view["~/a"]
+
+
+def test_bind_maps_splits_ro_and_rw_and_empties_an_absent_arm() -> None:
+    node = KeyStore({"rw": {"~/a": BindEntry("/h/a")}})
+    ro, rw = bind_maps(node, label="box.bindings")
+    assert dict(ro) == {}
+    assert dict(rw) == {"~/a": BindEntry("/h/a")}
+
+
+def test_bind_map_rejects_a_non_node() -> None:
+    for bad in ("scalar", 3, None, BindEntry("/h/a")):
+        with pytest.raises(ViewError):
+            bind_map(bad)  # type: ignore[arg-type]

@@ -18,11 +18,17 @@ Storage model (design §2)
 -------------------------
 * ``KeyStore = dict[str, StoreValue]`` — a real ``dict`` subclass, so every
   dict capability is preserved, with attribute access layered on top.
-* ``StoreValue = KeyStore | Bind | str | int | float | bool | list[str] | None``
-  — ``list[str]`` is for genuinely list-valued scalar keys; ``masks`` is a
-  nested ``KeyStore`` of ``bool | None`` leaves, NOT a bare list.
+* ``StoreValue = KeyStore | Bind | BindEntry | str | int | float | bool |
+  list[str] | None`` — ``list[str]`` is for genuinely list-valued scalar keys;
+  ``masks`` is a nested ``KeyStore`` of ``bool | None`` leaves, NOT a bare list.
 * ``Bind`` is a typed ``NamedTuple(host, box, opts=None)`` — the
   ``(host_src, box_dest[, opts])`` binding value. NEVER a colon-joined string.
+* ``BindEntry`` is the typed ``NamedTuple(src, opts=None)`` of the DEST-KEYED
+  rework (R-6): the destination moves out of the value and becomes the key of a
+  ``BindMap``. ⚑ Both bind types are live during the P5→P8 bridge and their
+  2-element forms mean OPPOSITE things — see :class:`BindEntry` for the two
+  rules (discriminate by TYPE in value space, by NODE in raw space) that make
+  that safe. ``BindEntry`` will be RENAMED to ``Bind`` in P8.
 * Access is attribute-style with a ``[]`` fallback for non-identifier / dynamic
   keys (``agent.<name>``, ``env.<VAR>``, hyphens, dots, Python keywords). Both
   surfaces return the SAME :data:`StoreValue` union.
@@ -80,6 +86,7 @@ so the custom ``__getattribute__`` interception of block 1 is no longer needed.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Final, NamedTuple, Union
 
 
@@ -160,9 +167,141 @@ class Bind(NamedTuple):
     opts: str | None = None
 
 
+class BindEntry(NamedTuple):
+    """A DEST-KEYED binding entry: ``(src[, opts])`` — the destination is the KEY.
+
+    Disk-store rework R-3/R-6: a bindings arm becomes
+    ``dict[dest -> (src, opts)]`` (:data:`BindMap`) instead of
+    ``dict[name -> (src, dest, opts)]``. The destination is no longer part of the
+    VALUE — it is the mapping KEY — and the name is dropped entirely (R-10: a
+    name has no functional purpose, because bindings are strictly act-once so a
+    name never distinguishes two entries at one dest).
+
+    ``opts`` is the optional per-entry mount-options override; ``None`` means
+    "fall back to the category's default options", exactly as a 2-element
+    :class:`Bind` means today.
+
+    ⚑ **TEMPORARY NAME.** R-6's final name for this type is ``Bind``. The rename
+    (and the deletion of the legacy 3-tuple :class:`Bind` above) happens in P8 of
+    the bindings arc. Two bind names coexisting P5→P8 is the deliberate, bounded
+    cost of the bridge — do NOT rename early.
+
+    ⚑⚑ **THE ARITY TRAP — how the two are told apart.** A legacy :class:`Bind`
+    is legally 2 OR 3 elements and its 2-element form means ``(host, box)``; a
+    :class:`BindEntry` 2-element form means ``(src, opts)``. **Same arity,
+    opposite meaning.** Nothing in this codebase may disambiguate them by LENGTH.
+    Two rules, both mandatory:
+
+    * **In value space, discriminate by TYPE.** :class:`Bind` and
+      :class:`BindEntry` are distinct ``NamedTuple`` classes (neither is a
+      subclass of the other), so ``isinstance(v, Bind)`` is False for a
+      ``BindEntry`` and vice versa. Every consumer branch tests ``isinstance``,
+      never ``len``.
+    * **In RAW space (a YAML list / a floor value), discriminate by NODE.** A raw
+      ``[a, b]`` carries no type, so the parse route is chosen by the CALLER from
+      the node it came from — a name-keyed bind node parses via
+      ``settings_resolve.unpack_bind``, a dest-keyed node via
+      ``settings_resolve.unpack_bind_entry``. The shape is never sniffed off the
+      list itself.
+    """
+
+    src: str
+    opts: str | None = None
+
+
+#: A dest-keyed bindings arm: ``{box_dest -> BindEntry}`` (R-6). This is the
+#: value shape of the TERMINAL keys ``<scope>.bindings.ro`` / ``.rw`` (R-5) —
+#: ⚑ the inner keys are NOT part of the keyspace.
+#:
+#: ⚑ Note this alias is a plain ``dict`` and is deliberately NOT a member of
+#: :data:`StoreValue`: inside a :class:`KeyStore` a ``BindMap`` materialises as a
+#: nested ``KeyStore`` NODE whose leaves are :class:`BindEntry` (``_wrap`` wraps
+#: every plain dict), exactly as ``masks`` materialises as a nested node of
+#: ``bool | None`` leaves rather than an opaque dict leaf. That is load-bearing,
+#: not incidental: it is what makes a bindings arm merge PER-ENTRY across cascade
+#: levels through the generic node recursion, instead of a box-level arm wiping
+#: an inherited workset entry wholesale. The alias exists for the CONVERTER and
+#: view signatures, which speak in plain mappings.
+BindMap = dict[str, BindEntry]
+
+
+def bindmap_from_named(mapping: Mapping[str, Bind]) -> BindMap:
+    """Convert a NAME-keyed ``{name: Bind}`` arm to a DEST-keyed :data:`BindMap`.
+
+    The bridge converter (implementation plan §3): P5 adds it, P6 uses it at the
+    producer boundary, P7 deletes it. ``Bind(host, box, opts)`` becomes
+    ``box -> BindEntry(host, opts)`` — the name is DROPPED (R-10) and the
+    destination becomes the identity.
+
+    Two names at ONE destination is already an error everywhere downstream
+    (bindings are strictly act-once), and dest-keying makes it structural — so
+    rather than let the second entry silently win the dict, this RAISES
+    :class:`ValueError` naming the destination and both names. ⚑ Uniqueness here
+    is in the UNRESOLVED namespace only (files store unresolved): ``@meta.box.path/home``
+    and a literal spelling of that same path are two different keys that resolve
+    to one destination, so this does NOT replace the resolved-``box_dest``
+    collision check in ``settings_categories`` (design §2b-CAVEAT).
+
+    :class:`ValueError` (not ``SettingsError``) because this module is the
+    settings-stack LEAF and imports nothing from the stack.
+    """
+    out: BindMap = {}
+    seen: dict[str, str] = {}
+    for name, bind in mapping.items():
+        dest = bind.box
+        if dest in out:
+            raise ValueError(
+                f"two bindings target the same destination {dest!r} "
+                f"({seen[dest]!r} and {name!r}); a dest-keyed BindMap admits one "
+                f"entry per destination (bindings are act-once)"
+            )
+        seen[dest] = name
+        out[dest] = BindEntry(bind.host, bind.opts)
+    return out
+
+
+def named_from_bindmap(
+    bindmap: Mapping[str, BindEntry],
+    *,
+    names: Mapping[str, str] | None = None,
+) -> dict[str, Bind]:
+    """Convert a DEST-keyed :data:`BindMap` back to a NAME-keyed ``{name: Bind}``.
+
+    The other half of the bridge (implementation plan §3), used where a
+    still-name-keyed consumer has to be fed during P6. ``dest -> BindEntry(src,
+    opts)`` becomes ``name -> Bind(src, dest, opts)``.
+
+    ⚑ The name is NOT recoverable from a :data:`BindMap` — R-10 dropped it. When
+    the caller still has the old names it passes *names* (a ``{dest: name}``
+    mapping) and they are restored; any destination absent from *names* uses the
+    DESTINATION ITSELF as its name. That degenerate spelling is deliberate: it
+    keeps ``bindmap_from_named(named_from_bindmap(m)) == m`` exactly, and a name
+    that IS the dest cannot be mistaken for a meaningful one.
+
+    Raises :class:`ValueError` if *names* would map two destinations onto one
+    name (that would silently drop a binding).
+    """
+    lookup: Mapping[str, str] = {} if names is None else names
+    out: dict[str, Bind] = {}
+    for dest, entry in bindmap.items():
+        name = lookup.get(dest, dest)
+        if name in out:
+            raise ValueError(
+                f"name {name!r} maps to two destinations; the supplied name table "
+                f"would drop a binding"
+            )
+        out[name] = Bind(entry.src, dest, entry.opts)
+    return out
+
+
 # The value space a KeyStore leaf or node may hold (design §2). ``_MISSING`` is
 # deliberately NOT a member: it is an absence marker, never a stored value.
-StoreValue = Union["KeyStore", Bind, str, int, float, bool, list[str], None]
+# ``BindEntry`` (the dest-keyed pair, R-6) joins ``Bind`` (the legacy 3-tuple)
+# for the P5→P8 bridge window; ``BindMap`` itself is NOT a member — see its
+# docstring (it materialises as a nested ``KeyStore`` node of ``BindEntry``).
+StoreValue = Union[
+    "KeyStore", Bind, BindEntry, str, int, float, bool, list[str], None
+]
 
 
 #: The scope CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT

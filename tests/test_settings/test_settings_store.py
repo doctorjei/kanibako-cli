@@ -24,9 +24,12 @@ from kanibako.settings.settings_store import (
     _MISSING,
     _RESERVED_KEY_NAMES,
     Bind,
+    BindEntry,
     KeyStore,
     ReservedKeyError,
     StoreValue,
+    bindmap_from_named,
+    named_from_bindmap,
 )
 
 
@@ -461,3 +464,100 @@ def test_keystore_is_a_dict_subclass() -> None:
 def test_storevalue_alias_is_importable() -> None:
     # Public surface sanity: the union alias is exported.
     assert StoreValue is not None
+
+
+# --------------------------------------------------------------------------- #
+# BindEntry / BindMap — the DEST-KEYED shape (R-5/R-6) and the P5→P8 bridge    #
+# --------------------------------------------------------------------------- #
+
+
+def test_bind_entry_one_element_defaults_opts_none() -> None:
+    e = BindEntry("/host/src")
+    assert e.src == "/host/src"
+    assert e.opts is None
+    assert tuple(e) == ("/host/src", None)
+
+
+def test_bind_entry_carries_explicit_opts() -> None:
+    e = BindEntry("/host/src", "ro")
+    assert (e.src, e.opts) == ("/host/src", "ro")
+
+
+def test_bind_and_bind_entry_are_mutually_exclusive_types() -> None:
+    # ⚑ THE ARITY TRAP. Both shapes admit a 2-element tuple with OPPOSITE
+    # meanings, so every consumer discriminates by TYPE. Neither NamedTuple is a
+    # subclass of the other, so ``isinstance`` separates them exactly — this is
+    # the property the whole bridge rests on.
+    assert not isinstance(BindEntry("/a"), Bind)
+    assert not isinstance(Bind("/a", "/b"), BindEntry)
+    # And a 2-element value of each shape is NOT equal to the other's, because
+    # ``Bind`` always materialises 3 elements (opts defaults into the tuple).
+    assert BindEntry("/a", "/b") != Bind("/a", "/b")
+
+
+def test_bind_entry_round_trips_through_a_keystore() -> None:
+    store = KeyStore({"box": {"bindings": {"rw": {"~/.claude": BindEntry("/h/c")}}}})
+    entry = store["box"]["bindings"]["rw"]["~/.claude"]
+    assert type(entry) is BindEntry
+    assert entry == BindEntry("/h/c")
+
+
+def test_bindmap_materialises_as_a_node_not_an_opaque_leaf() -> None:
+    # ⚑ Load-bearing (see the ``BindMap`` docstring): a plain dict assigned into a
+    # KeyStore is WRAPPED into a nested KeyStore node, so a dest-keyed arm merges
+    # PER ENTRY through the generic node recursion rather than wholesale.
+    store = KeyStore()
+    store["arm"] = {"~/a": BindEntry("/h/a"), "~/b": BindEntry("/h/b", "ro")}
+    arm = store["arm"]
+    assert isinstance(arm, KeyStore)
+    assert set(dict.keys(arm)) == {"~/a", "~/b"}
+    assert type(dict.__getitem__(arm, "~/b")) is BindEntry
+
+
+def test_bindmap_from_named_drops_the_name_and_keys_on_dest() -> None:
+    named = {"home": Bind("/h/src", "~/home"), "vault": Bind("/v", "@box.c/v", "ro")}
+    assert bindmap_from_named(named) == {
+        "~/home": BindEntry("/h/src"),
+        "@box.c/v": BindEntry("/v", "ro"),
+    }
+
+
+def test_bindmap_from_named_refuses_two_names_at_one_dest() -> None:
+    named = {"a": Bind("/1", "~/same"), "b": Bind("/2", "~/same")}
+    with pytest.raises(ValueError) as exc:
+        bindmap_from_named(named)
+    # The message must NAME the destination and both losing/winning names.
+    assert "~/same" in str(exc.value)
+    assert "'a'" in str(exc.value) and "'b'" in str(exc.value)
+
+
+def test_named_from_bindmap_uses_the_dest_as_the_degenerate_name() -> None:
+    bindmap = {"~/home": BindEntry("/h/src"), "~/v": BindEntry("/v", "ro")}
+    assert named_from_bindmap(bindmap) == {
+        "~/home": Bind("/h/src", "~/home"),
+        "~/v": Bind("/v", "~/v", "ro"),
+    }
+
+
+def test_named_from_bindmap_restores_supplied_names() -> None:
+    bindmap = {"~/home": BindEntry("/h/src")}
+    assert named_from_bindmap(bindmap, names={"~/home": "home"}) == {
+        "home": Bind("/h/src", "~/home")
+    }
+
+
+def test_named_from_bindmap_refuses_a_name_table_that_would_drop_a_binding() -> None:
+    bindmap = {"~/a": BindEntry("/1"), "~/b": BindEntry("/2")}
+    with pytest.raises(ValueError):
+        named_from_bindmap(bindmap, names={"~/a": "dup", "~/b": "dup"})
+
+
+def test_converters_round_trip_both_directions() -> None:
+    named = {"home": Bind("/h", "~/home"), "cred": Bind("/c", "~/.claude", "ro")}
+    bindmap = bindmap_from_named(named)
+    # dest-keyed -> name-keyed -> dest-keyed is the IDENTITY (the degenerate
+    # dest-as-name spelling is exactly what makes this hold).
+    assert bindmap_from_named(named_from_bindmap(bindmap)) == bindmap
+    # With the name table, the original name-keyed arm comes back verbatim.
+    names = {bind.box: name for name, bind in named.items()}
+    assert named_from_bindmap(bindmap, names=names) == named
