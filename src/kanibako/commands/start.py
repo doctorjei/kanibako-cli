@@ -2119,21 +2119,21 @@ def _run_container(
         # BEFORE it can verdict (F7).  An already-named (existing) box is untouched.
         _name_new_box_probe(std, proj)
 
-    def _orphan_hint() -> None:
-        # Hint about orphaned project data when initializing a new project.
-        if proj.is_new and proj.group is not None and proj.group.is_default:
-            from kanibako.settings.paths import iter_projects
-            for _settings, _ppath in iter_projects(std, config):
-                if _ppath is not None and not _ppath.is_dir():
-                    print(
-                        "hint: orphaned project data detected — "
-                        "run 'kanibako box list' or use 'kanibako box remap' "
-                        "if you moved a project.",
-                        file=sys.stderr,
-                    )
-                    break
-
-    _orphan_hint()
+    # The "orphaned project data" hint that used to fire here is GONE (MBR-6
+    # residual 2): no launch can reach the state it was gated on, which was
+    # ``proj.is_new`` AND ``group.is_default`` — i.e. a PRIMARY box being
+    # materialised by this launch.
+    #
+    # ⚑ ``is_new`` alone does NOT imply that, and a launch can still set it: the
+    # NAMED resolver keys ``is_new`` on the HOME (``shell_path``), so a box that
+    # ``workset connect`` registered without seeding legitimately materialises on
+    # its FIRST launch.  The hint never applied to those (``is_default`` is False
+    # for NAMED, and ``group`` is None for STANDALONE).  For a PRIMARY box the
+    # resolver keys ``is_new`` on the box DIRECTORY instead — and that is exactly
+    # what the MBR-6 refusal above rejects, on the probe, before this line.
+    #
+    # Orphan reporting lives on ``kanibako box list`` (which names ``box
+    # remap``/``box rm``); a create-time hint, if wanted, belongs on ``create``.
 
     # Load merged config (global + workset + project). The box scalars resolve
     # through the KEYSPACE inside the loader (B6); the two flags ride its §1A
@@ -2859,13 +2859,14 @@ def _run_container(
 
     # Loadability resolved → materialise the DEFERRED box now (the explicit-persona
     # path resolved paths only above; mkdir the box + set ``is_new`` here, then
-    # replay the two ``is_new``-gated steps the deferred probe skipped).  A non-
-    # deferred launch already materialised at 791 — this is a no-op for it.
+    # replay the one ``is_new``-gated step the deferred probe skipped — the
+    # flag-persist seam below).  A non-deferred launch already materialised at
+    # 791 — this is a no-op for it.  (There were TWO such steps until MBR-6
+    # residual 2 removed the orphan hint; see its note at the probe.)
     if _defer_box:
         proj = resolve_box_target(
             std, config, project_dir, initialize=True, register=False,
         )
-        _orphan_hint()
         # REBIND every proj-derived local (Editor ADD-c): the deferred probe
         # resolved paths against the placeholder ``boxes/__unregistered__``
         # metadata_path (a brand-NEW box has no name/dir yet), so ``project_toml``/
