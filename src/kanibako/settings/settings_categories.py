@@ -119,13 +119,40 @@ ENV: Final[Delivery] = "ENV"
 SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 
 # The bind-shaped categories (one ``{scope}.<category>.<name>`` key per entry,
-# value is a ``host_src:guest_dest`` expression).  ``masks`` (a list) and
-# ``env`` (a scalar) have bespoke key shapes handled separately below.
+# value is a 2-/3-element ``[host_src, box_dest[, options]]`` tuple).  ``masks``
+# (a keyed list) and ``env`` (a scalar) have bespoke key shapes handled
+# separately below.
+#
+# ⚑ TWO TUPLES, NOT ONE — they answer different questions, and conflating them is
+# what this split exists to prevent:
+#
+# * :data:`SETTABLE_BIND_CATEGORIES` — which bind-shaped categories a SCOPE
+#   (``system`` / ``workset`` / ``box``) may still name in a ``config set`` /
+#   ``config reset`` key.
+# * ``_BIND_CATEGORIES`` — every bind-shaped category, i.e. which keys carry the
+#   tuple VALUE SHAPE.  ``bindings.{ro,rw}`` stay in it: they are still declared
+#   keys, still authored in YAML, still delivered at launch.
+#
+# The two diverged when the SCOPE-level CLI route for
+# ``{system,workset,box}.bindings.{ro,rw}.<name>`` was RETIRED (disk-store rework
+# step 1, ruling R-9 — an accepted user-surface loss, tracked as DS-BL1).  Those
+# keys are becoming a TERMINAL dest-keyed map whose inner keys are NOT part of
+# the keyspace, so there is no dotted key left for the CLI to name.  The retired
+# spelling stays RECOGNISED — :data:`SCOPE_BIND_KEY_RE` — so the verbs refuse it
+# BY NAME (``config_keys.scope_bind_retired_error``) instead of degrading to
+# "unknown config key"; the closed keyspace (spec §0) refuses, never accepts
+# quietly.
+#
+# ⚑ The AGENT-scope route ``agent.<node>.bindings.{ro,rw}.<name>`` is UNAFFECTED
+# and still matches :data:`BIND_KEY_RE`; it is retired in its own step.
 #
 # NOTE the regex order: ``bindings.ro`` / ``bindings.rw`` must precede a bare
 # ``bindings`` (there is none) and ``seeded``/``common``/``synced`` are distinct
 # tokens.  Listed longest-first so the alternation is unambiguous.
-_BIND_CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
+SETTABLE_BIND_CATEGORIES: Final[tuple[str, ...]] = (
+    "caches", "seeded", "common", "synced",
+)
+_BIND_CATEGORIES = ("bindings.ro", "bindings.rw", *SETTABLE_BIND_CATEGORIES)
 
 # The ABSTRACT categories — the three that let an author write a bare LEAF, rooted
 # at DECLARATION under ``<scope-root>/<category>/`` (spec §2a). The rest
@@ -170,9 +197,33 @@ _DELIVERY: dict[str, Delivery] = {
 # CLOSED (spec §0), an undeclared key is not a key, so these patterns must REFUSE
 # it rather than quietly accept it. Do not "helpfully" widen this back.
 _AGENT_SCOPE = r"agent\.[^.]+"
+_FILE_SCOPE_ALT = "system|workset|box"
 _CATEGORY_ALT = "|".join(c.replace(".", r"\.") for c in _BIND_CATEGORIES)
+# The categories a SCOPE may no longer name — derived as the DIFFERENCE, so
+# "settable at a scope" has exactly one definition (the tuple above) and the two
+# regexes below cannot drift apart.
+_RETIRED_SCOPE_ALT = "|".join(
+    c.replace(".", r"\.")
+    for c in _BIND_CATEGORIES
+    if c not in SETTABLE_BIND_CATEGORIES
+)
+#: ``{system,workset,box}.bindings.{ro,rw}.<name>`` — the RETIRED scope-level bind
+#: route (R-9). It exists ONLY to be RECOGNISED and refused by name: the verbs call
+#: ``config_keys.scope_bind_retired_error`` on it, and the ``pref`` value guard uses
+#: it to keep refusing a scalar written at a bind-shaped target. It deliberately
+#: does NOT cover ``agent.<node>.bindings.*`` (a separate, still-live route).
+SCOPE_BIND_KEY_RE = re.compile(
+    rf"^(?P<scope>{_FILE_SCOPE_ALT})"
+    rf"\.(?P<category>{_RETIRED_SCOPE_ALT})\.(?P<name>.+)$"
+)
+# The CLI-settable bind-shaped key shape. The leading negative lookahead is the
+# retirement: a scope-level ``bindings.{ro,rw}`` key is NOT matched here, so it
+# claims no ``config set`` route and no destination slot. Every other combination
+# — the four scope categories, and EVERY agent-scope category including
+# ``bindings.{ro,rw}`` — is untouched.
 BIND_KEY_RE = re.compile(
-    rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})"
+    rf"^(?!(?:{_FILE_SCOPE_ALT})\.(?:{_RETIRED_SCOPE_ALT})\.)"
+    rf"(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
     rf"\.(?P<category>{_CATEGORY_ALT})\.(?P<name>.+)$"
 )
 # ``{scope}.masks`` — value-less category (a list of box_dest paths). The KEY has

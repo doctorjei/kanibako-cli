@@ -65,6 +65,7 @@ from kanibako.settings.config_keys import (
     _is_path_category_key,
     _is_persona_agent_key,
     _is_pref_key,
+    _is_scope_bind_key,
     _is_scope_env_key,
     _is_scope_secret_key,
     _config_key_refusal,
@@ -82,6 +83,7 @@ from kanibako.settings.config_keys import (
     box_agent_redirect_key,
     box_agent_retired_error,
     is_access_key,
+    scope_bind_retired_error,
     scope_env_var_error,
     is_system_path_key,
     parse_agent_node_bind_key,
@@ -193,7 +195,11 @@ def _pref_value_error(
     is the §3 terminal every category and scalar leaf accepts, and it is §2h's
     ONLY suppression channel.
     """
-    from kanibako.settings.settings_categories import BIND_KEY_RE, MASK_KEY_RE
+    from kanibako.settings.settings_categories import (
+        BIND_KEY_RE,
+        MASK_KEY_RE,
+        SCOPE_BIND_KEY_RE,
+    )
 
     target = canonical[len(PREF_ROOT) + 1:]
     if value is None:
@@ -224,7 +230,19 @@ def _pref_value_error(
         if access_err is not None:
             return access_err
 
-    if BIND_KEY_RE.match(target) is not None or MASK_KEY_RE.match(target) is not None:
+    # ⚑ THREE regexes, because "is this target bind-shaped?" is not the same
+    # question as "is this target CLI-settable?". R-9 took the scope-level
+    # ``bindings.{ro,rw}`` arms out of ``BIND_KEY_RE`` — they are no longer a
+    # ``config set`` route — but their VALUE is still a structured tuple, so a
+    # scalar written at ``pref.box.bindings.ro.<name>`` is still wrong and must
+    # still be refused HERE. Dropping the third term would have opened exactly the
+    # hole this guard exists to close, on the very keys that lost their direct
+    # route (spec §2h: a pref's value is legal iff it is legal at its target).
+    if (
+        BIND_KEY_RE.match(target) is not None
+        or MASK_KEY_RE.match(target) is not None
+        or SCOPE_BIND_KEY_RE.match(target) is not None
+    ):
         return (
             f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
             f"category entry — a binding is a pair [host_src, box_dest], never a "
@@ -450,20 +468,27 @@ def _category_set_lookups(
 
     # F10 / item-0: fold the caller's context-light default-category FLOOR registry
     # into the SAME base floor so a source-only repoint of a LAUNCH-ONLY floor bind
-    # (the CORE box mounts — ``box.bindings.{ro,rw}.<key>``) sees the key in the
-    # SET-TIME cascade. Those binds live only in the launch floor
-    # (``core_default_categories``, host-probed per box/mode), so before this fold
-    # the F10 must-exist gate refused a repoint of them ("nowhere in the cascade").
-    # The registry (``core_defaults.core_default_bind_keys``) carries the STATIC
+    # sees the key in the SET-TIME cascade. Such binds live only in the launch floor
+    # (host-probed per box/mode), so before this fold the F10 must-exist gate refused
+    # a repoint of them ("nowhere in the cascade"). The registry carries the STATIC
     # box_dest + options with a PLACEHOLDER host_src — exactly what the repoint needs
-    # (``repoint_host_src`` keeps only ``base[1:]``, discarding the placeholder). The
-    # keys are ALREADY fully scope-qualified (``box.*``), so this is a DIRECT union
-    # (no agent-scope discrimination needed — agent-scope default tables are built
-    # DISCRIMINATED by the declaring plugin, and this bindings-only registry emits
-    # only ``box.*`` keys anyway). A scope FILE tuple at the same key still OVERRIDES this floor via merge
+    # (``repoint_host_src`` keeps the box_dest and options, discarding the
+    # placeholder). The keys are ALREADY fully scope-qualified, so this is a DIRECT
+    # union. A scope FILE tuple at the same key still OVERRIDES this floor via merge
     # (base is least-specific), so an already-file-set bind repoints from the file
-    # (no regression), and a box-scope written tuple wins at launch by reconcile
-    # precedence (box beats the base floor).
+    # (no regression).
+    #
+    # ⚑ WHICH registry actually reaches here has CHANGED. The LIVE one is
+    # ``agent_representation.agent_default_bind_keys`` (the per-node descriptor
+    # floor), threaded by ``system_cmd`` for ``agent.<node>.bindings.*``. The
+    # ``core_defaults.core_default_bind_keys`` half — the CORE box mounts
+    # ``box.bindings.{ro,rw}.<key>``, still threaded by the box and workset
+    # handlers — is INERT since R-9 retired the scope-level bind route: no
+    # ``box.bindings.*`` key reaches ``_set_category_value`` any more, and the
+    # remaining scope categories (``caches``/``seeded``/``common``/``synced``) are
+    # not in that registry. It is left threaded rather than unpicked here because
+    # the producer and its callers belong to a later step of the same rework; do
+    # NOT read its presence as evidence that the scope-bind repoint still works.
     if default_categories:
         for reg_key, reg_val in default_categories.items():
             if reg_val == "":
@@ -893,8 +918,10 @@ def get_config_value(
     if _is_box_agent_key(canonical):
         return None
 
-    # Path-TUPLE category keys (``<scope>.bindings.{ro,rw}.<name>`` / ``caches`` /
-    # ``seeded`` / ``shared`` / ``synced``) — the get/set/reset symmetry twin of the
+    # Path-TUPLE category keys (``<scope>.caches`` / ``seeded`` / ``common`` /
+    # ``synced``, every ``agent.<node>.<category>.<name>``, and — READ-ONLY — the
+    # retired ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling) — the
+    # get/set/reset symmetry twin of the
     # category SET branch (F10, spec §2a). Read the RAW tuple STORED at the nested
     # dotted path in the NOUN's settings file (== the box file at box scope, the
     # system settings file at SYSTEM) — for a FILE-scope key (``system``/``workset``/
@@ -910,11 +937,19 @@ def get_config_value(
     # ``agents/<node>/settings.yaml``). The per-node BIND form is routed EARLIER
     # (``_is_agent_node_bind_key``, the node file) and is symmetric.
     # Checked BEFORE the ``system.*`` file-only branch because a SYSTEM-scope
-    # category key (``system.bindings.*``) only LOOKS like a ``system.*`` config
-    # key — categories are settable/gettable at every scope (mirrors the set/reset
+    # category key (``system.caches.*``) only LOOKS like a ``system.*`` config
+    # key — categories are gettable at every scope (mirrors the set/reset
     # order). A plain get is stored-at-noun; the resolved-with-floor bind is the
     # ``show --effective`` cascade view. Absent → ``None`` ("(not set)").
-    if _is_path_category_key(canonical):
+    #
+    # ⚑ The retired scope-bind spelling is READ HERE ON PURPOSE (R-9). Its WRITE
+    # verbs refuse it in their preamble, but the key is still declared and still
+    # authored by hand in the settings YAML — which is precisely the surface the
+    # refusal's cure names. A get that answered "(not set)" for a bind the launch
+    # is actually mounting would make that cure unusable and would be the F6 lie
+    # in a new place. This is a deliberate ASYMMETRY, not the drift kind: refuse
+    # the write, keep the read honest.
+    if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
         # Through the SAME rule site the write side uses — which is what makes
         # ``_read_dest``'s one documented divergence from ``_write_dest`` (this
         # family, at agent scope) a fact about running code rather than a claim
@@ -1004,11 +1039,14 @@ def set_config_value(
     category path; absent, the command-scope file is still placed in its true slot.
 
     *default_categories* is the caller's context-light set-time FLOOR registry
-    (F10 / item-0) — the LAUNCH-ONLY core-bind KEYS (``box.bindings.{ro,rw}.<key>``
-    from ``core_defaults.core_default_bind_keys``) with STATIC box_dest+options and a
+    (F10 / item-0) — LAUNCH-ONLY bind KEYS with STATIC box_dest+options and a
     placeholder host_src — folded into the category set-time cascade so a source-only
-    repoint of a core floor bind is no longer refused as "nowhere in the cascade".
-    Only consulted on the category path; the box handler builds and threads it.
+    repoint of a floor bind is no longer refused as "nowhere in the cascade".
+    Only consulted on the category path. ⚑ Since R-9 the only registry that still
+    DOES anything here is the per-node descriptor floor
+    (``agent_representation.agent_default_bind_keys``); the core box-bind registry
+    the box/workset handlers still thread is inert — see the fold site in
+    :func:`_category_set_lookups`.
 
     *command_scope* is the scope the ``config set`` was issued at (block B4). It
     drives the §0 directional-write guard (``_scope_direction_error``): a write is
@@ -1082,6 +1120,17 @@ def set_config_value(
     env_var_err = scope_env_var_error(canonical)
     if env_var_err is not None:
         return env_var_err
+
+    # {system,workset,box}.bindings.{ro,rw}.<name> — the RETIRED scope-level bind
+    # route (R-9, disk-store rework step 1). Refused with the cure BEFORE any
+    # write machinery, ``--null`` and the E3 probe included, for the same reason
+    # the bare ``env.<VAR>`` spelling is: a retired spelling must be REFUSED BY
+    # NAME, never degraded to "unknown config key" (spec §0) and never quietly
+    # accepted. The keys themselves are NOT retired — only this route — so the
+    # message points at the settings file, and ``config get`` still reads them.
+    scope_bind_err = scope_bind_retired_error(canonical, verb="set")
+    if scope_bind_err is not None:
+        return scope_bind_err
 
     # ``--null`` ROUTE COVERAGE. The RULE is uniform — ``--null <key>`` writes an
     # explicit present-``None`` at that key — but the CATEGORY write MECHANISM
@@ -1317,26 +1366,34 @@ def set_config_value(
     # properly instead of smuggling a box-scope key into it. So this branch
     # REFUSES and names the cure; nothing is written.
     #
-    # It is still checked BEFORE the path-category branch, because
-    # ``box.agent.bindings.ro.X`` matches the category regex too and would
-    # otherwise be accepted as an ordinary box-scope category write — the refusal
-    # must claim the whole retired spelling, not just its scalar half.
+    # It is checked BEFORE the path-category branch so the refusal claims the WHOLE
+    # retired spelling — every ``box.agent.*`` tail, not just its scalar half.
+    # ⚑ The older note here claimed ``box.agent.bindings.ro.X`` "matches the
+    # category regex too". It does not, and did not: ``BIND_KEY_RE`` reads the
+    # segment after the scope as the CATEGORY, and ``agent`` is not one. The
+    # ordering is still right — it is just belt-and-braces, not a live collision.
     if _is_box_agent_key(canonical):
         return box_agent_retired_error(
             canonical, verb="set", active_agent=cascade_agent_name or None,
         )
 
-    # Path-TUPLE category keys (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
-    # ``shared`` / ``synced``) — the source-only RAW repoint (S24/S25, spec §2a,
-    # design §6d). Checked BEFORE the ``system.*`` file-only refusal because a
-    # SYSTEM-scope category key (``system.caches.x`` / ``system.bindings.*``) only
-    # LOOKS like a ``system.*`` config key — categories are settable at every
+    # Path-TUPLE category keys — the source-only RAW repoint (S24/S25, spec §2a,
+    # design §6d). WHAT REACHES HERE, exactly: ``caches`` / ``seeded`` / ``common``
+    # / ``synced`` at ``system``/``workset``/``box``, and ALL SIX categories at the
+    # discriminated ``agent.<node>`` scope. Checked BEFORE the ``system.*``
+    # file-only refusal because a SYSTEM-scope category key (``system.caches.x``)
+    # only LOOKS like a ``system.*`` config key — categories are settable at every
     # scope (spec §2a). ``config set <key> <value>`` validates the RAW value at
     # set time (``validate_config_set``) then swaps ONLY ``host_src`` in the
     # existing tuple at the COMMAND-scope file (``repoint_host_src``), preserving
     # ``box_dest`` + options RAW. Source-only: it REPOINTS an existing bind, never
-    # creates one. ``env`` (scalar) was handled above; ``masks`` is YAML-only
-    # (spec §2a) — not a tuple, so a repoint is refused as non-category.
+    # creates one.
+    #
+    # NOT here, and each for its own reason: ``env`` (scalar) was handled above;
+    # ``masks`` is YAML-only (spec §2a) — not a tuple, so a repoint is refused as
+    # non-category; and ``{system,workset,box}.bindings.{ro,rw}.<name>`` was
+    # REFUSED BY NAME in the preamble (R-9), so its absence from this branch is
+    # deliberate, not an oversight to "restore".
     if _is_path_category_key(canonical):
         # Narrowed by the --null route guard above (a repoint has no null form).
         assert value is not None
@@ -1522,6 +1579,14 @@ def reset_config_value(
     if env_var_err is not None:
         return env_var_err
 
+    # The RETIRED scope-level bind route (R-9) — refused symmetrically with set (a
+    # reset is a WRITE). "No override for …" would be a lie in both directions: it
+    # implies the spelling could have been written from the CLI, and a hand-authored
+    # tuple at that key may well exist in the settings file, untouched.
+    scope_bind_err = scope_bind_retired_error(canonical, verb="reset")
+    if scope_bind_err is not None:
+        return scope_bind_err
+
     # pref.<target-key> — remove the REQUEST from this noun's settings file
     # (symmetric with the set/get branches: reset clears exactly where set wrote).
     if _is_pref_key(canonical):
@@ -1631,14 +1696,20 @@ def reset_config_value(
     # the next assemble. Before this branch a category key fell through to the routing
     # table and mis-reported "unknown config key".
     #
+    # ⚑ WHAT REACHES HERE mirrors the set branch exactly: the four scope
+    # categories, plus every ``agent.<node>.<category>.<name>``. The retired
+    # ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling was refused by name
+    # in the preamble (R-9) and never arrives.
+    #
     # The honest cleared-message (Bug 2) names the reverted-to FLOOR value when the
-    # caller threads the context-light core-bind registry (``default_categories`` =
-    # ``core_default_bind_keys()``): a CORE bind (``box.bindings.{ro,rw}.<key>``)
-    # reverts to the launch descriptor floor, so ``_floor_bind_display`` reports its
-    # static box_dest+options (the host_src is a set-time placeholder, re-resolved at
-    # launch — never printed). A NON-core category key (a user ``box.caches.foo``, or
-    # a caller that omits the registry) → ``None`` → the cleared-only form, same
-    # information as the old plain "Reset" but via the honest formatter.
+    # caller threads a floor registry: the bind reverts to the launch descriptor
+    # floor, so ``_floor_bind_display`` reports its static box_dest+options (the
+    # host_src is a set-time placeholder, re-resolved at launch — never printed). A
+    # key with no floor entry (a user ``box.caches.foo``, or a caller that omits the
+    # registry) → ``None`` → the cleared-only form, same information as the old
+    # plain "Reset" but via the honest formatter. ⚑ In practice the floor arm is
+    # now reached only by the PER-NODE bind reset above: the core box-bind registry
+    # holds ``box.bindings.*`` keys only, and those no longer reach this branch.
     if _is_path_category_key(canonical):
         # Removed from the file the category SET branch WRITES — literally the
         # same call, so set and reset can no longer name different files even in
