@@ -7,6 +7,7 @@ descriptors inline and use tmp_path for real bind sources.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -448,6 +449,57 @@ def test_argv_model_absent_when_value_falsy() -> None:
     )
     # start mode = empty fragment, no model -> empty argv.
     assert argv == []
+
+
+def test_argv_flagless_flag_setting_never_becomes_a_bare_positional() -> None:
+    """A FLAG SettingArg with an EMPTY ``flag`` emits NOTHING — never the value alone.
+
+    The twin of ``assemble_env``'s ``and s.env_var`` guard.  ``assemble_argv``
+    emits ``flag + [value]``; with ``flag=()`` the extend contributes nothing and
+    the append puts the VALUE on the argv by itself — a BARE POSITIONAL, which
+    for claude (``claude [options] [command] [prompt]``) is the initial PROMPT.
+    A setting's value silently becoming the text the agent is asked to act on is
+    strictly worse than the value going undelivered, so nothing is emitted.
+
+    The DECLARATION is refused at descriptor load (``_build_setting_arg``); this
+    pins the containment for a PluginDescriptor hand-built in code, which never
+    passes through that loader — which is exactly why the descriptor here is
+    built inline rather than through ``load_descriptor``.
+
+    (Mutation: drop ``and s.flag`` from the FLAG branch → argv becomes
+    ``["opus"]`` and claude launches with "opus" as its prompt → RED here.)
+    """
+    d = dataclasses.replace(
+        _claude_descriptor(),
+        settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=()),),
+    )
+    argv = assemble_argv(
+        d,
+        mode_fragment=d.mode["start"],
+        access="restricted",
+        setting_values={"model": "opus"},
+        extra_args=[],
+    )
+    assert argv == []
+    assert "opus" not in argv
+
+
+def test_argv_flag_setting_with_no_env_var_still_emits() -> None:
+    """NOT-TOO-BROAD control: a well-formed FLAG entry declares no ``env_var``.
+
+    The shipped claude/codex ``model`` args are exactly this shape.  A guard that
+    reached for ``env_var`` on this channel would silence them.
+    """
+    d = _claude_descriptor()
+    assert d.settings[0].env_var == ""           # the shape under test
+    argv = assemble_argv(
+        d,
+        mode_fragment=d.mode["start"],
+        access="restricted",
+        setting_values={"model": "opus"},
+        extra_args=[],
+    )
+    assert argv == ["--model", "opus"]
 
 
 def test_argv_start_mode_empty_fragment() -> None:
