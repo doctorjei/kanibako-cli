@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from kanibako.persona_store import PersonaBundle
@@ -2286,6 +2286,66 @@ def _run_container(
 
     is_agent_mode = entrypoint is None and not box_shell_mode
 
+    # ── THE DOOR TABLE for the ALREADY-RUNNING regime ────────────────────────
+    # The reattach regime below (``if reattach_running:``, ~400 lines down) has
+    # exactly FOUR exits, and every value that decides WHICH ONE a launch takes
+    # is settled by this line.  So resolve it ONCE, here, into a named value —
+    # and let the override gate immediately below AND the regime itself both
+    # READ that answer instead of each re-deriving it from its own subset of the
+    # deciding inputs.
+    #
+    #   "detach"      ``--detach``/``--warm-only``: the box is already Up, which
+    #                 is the whole request → report and return 0.  ⚑ NOTHING
+    #                 RUNS through this door, so it can carry no per-run flag.
+    #   "box-shell"   ``kanibako shell`` at a live box that IS RUNNING AN AGENT →
+    #                 resolve a shell off the LIVE container's image and exec it
+    #                 as a second process.
+    #   "entrypoint"  an explicit ``--entrypoint`` → the same exec, with the
+    #                 program the user named.
+    #   "attach"      everything else → ``_bootstrap_attach`` (``tmux attach``),
+    #                 whose exec takes NO ``env=`` and no program of ours.
+    #
+    # ⚑ ``stored_agent`` — the LIVE box's ``KANIBAKO_AGENT`` stamp — is
+    # LOAD-BEARING in the "box-shell" row, not a redundant narrowing of
+    # ``box_shell_mode``: a live NO-AGENT box's PID-1 tmux session IS the user's
+    # own shell, so it must keep reattaching (exec'ing a fresh shell would strand
+    # it).  Such a box therefore takes the "attach" door, where a ``-e`` would be
+    # silently discarded — which is exactly why the gate below must refuse one.
+    #
+    # ⚑ WHY A TABLE AND NOT ANOTHER PREDICATE TERM.  The gate below asks "will a
+    # consumer apply this flag?"  It used to answer by reading TWO of the three
+    # values that pick the door (``entrypoint``, and ``box_shell_mode`` +
+    # ``stored_agent``) while a THIRD (``detach``) closed both of them ~400 lines
+    # later — so ``start --detach --entrypoint X -e FOO=bar <live box>`` was
+    # ACCEPTED and then silently discarded, rc 0, the exact failure class the
+    # gate exists to end.  A gate that reads the RESOLVED DOOR cannot disagree
+    # with the regime that walks through it, however either one grows.
+    #
+    # ⚑ IT READS TYPED VALUES, AND IT MUST STAY HERE TO DO SO.  ``entrypoint`` is
+    # rebound repeatedly further down (the two box-shell resolves, the agent
+    # default, the detached-launch box shell), as are ``no_helpers`` and
+    # ``explicit_agent``.  This block sits ABOVE every one of those, so the
+    # question it answers is the question the USER asked.  Same shape as
+    # ``is_agent_mode`` just above: freeze the typed question once, read it many
+    # times.  ``typed_entrypoint`` keeps that frozen answer under its own name
+    # (the ``cascade_access``/``launch_access`` shape used further down) so the
+    # regime never has to trust that no rebinding slipped in between.
+    typed_entrypoint = entrypoint
+    running_door: Literal["detach", "box-shell", "entrypoint", "attach"] | None
+    running_door = None
+    if reattach_running:
+        if detach:
+            running_door = "detach"
+        elif box_shell_mode and typed_entrypoint is None and stored_agent:
+            running_door = "box-shell"
+        elif typed_entrypoint is not None:
+            running_door = "entrypoint"
+        else:
+            running_door = "attach"
+    # The doors that land on the one ``runtime.exec(..., env=...)`` — i.e. the
+    # ones that WILL apply a per-run ``-e``.  Every other door drops it.
+    _DOORS_APPLYING_ENV = ("box-shell", "entrypoint")
+
     # ── OVERRIDE GATE for an ALREADY-RUNNING box ─────────────────────────────
     # Jei's test (2026-08-05): "could this setting work without restarting the
     # box and without making a mangled / corrupted / unexpected state?"  For the
@@ -2324,16 +2384,21 @@ def _run_container(
     # False for the very case that must be refused.
     #
     # DELIBERATELY NOT GATED: ``--attach``/``--detach``/``--print-container``/
-    # ``--warm-only`` (all meaningful against a live box); ``--entrypoint``
-    # (routed to an exec — a second process in the box — on the fast path
-    # below); and ``-e/--env`` whenever something below WILL consume it.  That
-    # is the whole principle for env: refuse it only when nothing would apply
-    # it.  There are TWO doors into the one ``runtime.exec`` that passes
-    # ``env=`` — an explicit ``--entrypoint``, and the box-shell resolve a
-    # ``kanibako shell`` gets at a live AGENT box.  The second door is not
-    # readable from ``entrypoint`` here: it sets it ~360 lines BELOW this gate,
-    # so it is named by its own inputs instead (``box_shell_mode`` and the live
-    # box's ``stored_agent`` stamp).
+    # ``--warm-only`` — all meaningful against a live box in their own right.
+    #
+    # ``--entrypoint`` and ``-e/--env`` are the two PER-RUN flags, and they are
+    # gated BY THE DOOR resolved above, on one principle: refuse a per-run flag
+    # only when the door this launch will actually take would not apply it.
+    #   * "entrypoint" / "box-shell" — both land on the one ``runtime.exec`` that
+    #     passes ``env=``, so both flags ride through and neither is refused.
+    #   * "detach" — NOTHING RUNS: the box is already Up, we say so and return 0.
+    #     So a typed ``--entrypoint`` AND a ``-e`` are both refused BY NAME here,
+    #     rather than accepted and dropped.  (The FRESH-launch path's separate
+    #     decision to drop ``--entrypoint`` under ``--detach`` is unrelated and
+    #     unchanged — there a container is actually created.)
+    #   * "attach" — ``_bootstrap_attach``'s exec takes no ``env=``, so ``-e`` is
+    #     refused.  A typed ``--entrypoint`` can never reach this door (it would
+    #     have selected "entrypoint"), so there is nothing to say about it here.
     if box_running:
         _rejected: list[str] = []
         # Session shape.  Scoped to an AGENT launch: ``kanibako shell`` and
@@ -2347,17 +2412,12 @@ def _run_container(
         if reattach_running:
             if image_override:
                 _rejected.append("--rig/--image")
-            if cli_env and entrypoint is None and not (
-                box_shell_mode and stored_agent
-            ):
-                # ⚑ ``stored_agent`` is LOAD-BEARING here, not a redundant
-                # narrowing of ``box_shell_mode``: the box-shell exec arm below
-                # fires only at a box carrying a ``KANIBAKO_AGENT`` stamp.
-                # Without one the reattach falls through to
-                # ``_bootstrap_attach``, whose exec takes NO ``env`` — so
-                # relaxing this to ``not box_shell_mode`` would ACCEPT ``-e`` at
-                # a live no-agent box and then silently discard it, which is the
-                # exact class of failure this gate exists to end.
+            # ⚑ A typed ``--entrypoint`` survives only the "entrypoint" door; the
+            # "box-shell" and "attach" doors are unreachable with one typed, so
+            # "detach" is the only door that can swallow it.
+            if typed_entrypoint is not None and running_door == "detach":
+                _rejected.append("--entrypoint")
+            if cli_env and running_door not in _DOORS_APPLYING_ENV:
                 _rejected.append("-e/--env")
             if no_helpers:
                 _rejected.append("--no-helpers")
@@ -2691,7 +2751,11 @@ def _run_container(
     #     exists to warn about.
     if reattach_running:
         container_name = container_name_for(proj)
-        if detach:
+        # ⚑ EVERY ARM BELOW BRANCHES ON ``running_door``, never on the values
+        # that decided it.  That is the whole point of the table: the override
+        # gate above and this regime read ONE answer, so the gate can never
+        # accept a flag that the door taken here would drop.
+        if running_door == "detach":
             # Detach = "ensure the box is Up in the background".  It already
             # is, so there is nothing to attach — report and return without
             # touching the running session.  We do NOT claim it is a
@@ -2708,7 +2772,13 @@ def _run_container(
             if print_container:
                 print(container_name)
             return 0
-        if box_shell_mode and entrypoint is None and stored_agent:
+        # ``exec_program``: the SECOND PROCESS this launch puts into the live
+        # box.  It is its OWN name rather than a rebinding of ``entrypoint`` —
+        # the ``cascade_access``/``launch_access`` shape — so the typed value the
+        # gate above keyed on stays readable to the end of this regime, and the
+        # two exec doors below converge without either overwriting an input.
+        exec_program: str | None = None
+        if running_door == "box-shell":
             # ``kanibako shell`` (interactive, no agent) at a live box that is
             # RUNNING AN AGENT: the user asked for a SHELL, so resolve one here
             # and let the exec arm below run it.  The launch path's resolve
@@ -2720,20 +2790,15 @@ def _run_container(
             # refuse this: its session-shape arm is scoped to an AGENT launch,
             # and a shell is something we can just do.
             #
-            # ⚑ THE DISCRIMINATOR IS ``stored_agent`` — the LIVE box's
-            # ``KANIBAKO_AGENT`` stamp — NOT what this invocation asked for.
-            # Those are two different facts, and only the stamp answers "what is
-            # the box running?".  A live NO-AGENT box has PID-1 ``tmux
-            # new-session -s kanibako -- <box shell>``, so ITS tmux session IS
-            # the user's own shell: for that box the fall-through hands them
-            # back the shell they left running, which is exactly what they want.
-            # Firing here would exec a BRAND-NEW shell and strand that session
-            # (a running build would become unreachable through ``shell``).
+            # ⚑ Why a live NO-AGENT box does NOT come through this door (it takes
+            # "attach" instead), and why that is right rather than a degrade for
+            # its own sake: see the ``stored_agent`` note in the door table above.
             # ⚑ Accepted degrade: a pre-stamp legacy agent box (see the
-            # fast-source note above) carries no stamp, so it keeps today's
-            # behaviour — the original bug persists there rather than a live
-            # session being stranded, and such boxes clear on their next
-            # restart.  Degrading to the status quo is the safe direction.
+            # fast-source note above) carries no stamp, so it takes "attach" too
+            # and keeps today's behaviour — the original bug persists there
+            # rather than a live session being stranded, and such boxes clear on
+            # their next restart.  Degrading to the status quo is the safe
+            # direction.
             #
             # ⚑ THE IMAGE TIER IS READ OFF THE RUNNING CONTAINER'S OWN IMAGE —
             # ``.ImageName``, the reference it was CREATED from — never off the
@@ -2746,12 +2811,12 @@ def _run_container(
             # off the wrong image is not.
             from kanibako.launch.shells import resolve_box_shell
             live_image = runtime.container_image(container_name)
-            entrypoint, _live_shell_src = resolve_box_shell(
+            exec_program, _live_shell_src = resolve_box_shell(
                 merged, std,
                 runtime=runtime if live_image else None,
                 image=live_image,
             )
-        if entrypoint is not None:
+        elif running_door == "entrypoint":
             # An explicit ``--entrypoint`` against a live box is a SECOND
             # PROCESS entering it, not a reattach — the one case Jei marked
             # FEASIBLE (2026-08-05).  Route it to the very same ``runtime.exec``
@@ -2760,20 +2825,20 @@ def _run_container(
             # the bootstrap session instead, because ``start`` defaults
             # ``persistent=True`` whenever the bootstrap program is present — so
             # an ``--entrypoint`` launch reaches the reattach, which never looks
-            # at it.  ``--detach`` is answered first (above): it means "ensure
-            # the box is Up", which needs no process at all.
-            #
-            # The box-shell resolve above is the SECOND way in here: a shell in a
-            # live AGENT box is likewise a second process, and gets the identical
-            # exec.
-            # ⚑ Per-run ``-e`` is applied through BOTH doors: the override gate
-            # cannot read this resolve's ``entrypoint`` (it runs ~360 lines
-            # earlier), so it names the box-shell door by its own inputs and
-            # lets ``-e`` through for it too.  A box-shell reattach at a box with
-            # NO agent stamp never reaches this arm, and there ``-e`` is still
-            # refused — nothing downstream of it would apply one.
+            # at it.  ``--detach`` takes precedence in the door table: it means
+            # "ensure the box is Up", which needs no process at all, so an
+            # ``--entrypoint`` typed alongside it is REFUSED by the gate above
+            # rather than silently swallowed here.
+            exec_program = typed_entrypoint
+        if exec_program is not None:
+            # The two exec doors converge: a resolved box shell and an explicit
+            # ``--entrypoint`` are both "a second process in the live box" and
+            # get the identical exec.  ⚑ Per-run ``-e`` is applied through BOTH,
+            # which is precisely what the gate above authorised by consulting
+            # ``running_door`` — the gate and this arm read the SAME answer, so
+            # neither can accept what the other would drop.
             return runtime.exec(
-                container_name, [entrypoint] + (extra_args or []),
+                container_name, [exec_program] + (extra_args or []),
                 env=_parse_cli_env(cli_env),
             )
         # Heads-up to STDERR (never stdout — must not pollute the tmux/agent

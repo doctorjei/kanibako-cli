@@ -316,10 +316,12 @@ migration code.** Four released config surfaces are removed outright
   genuinely honoured against a live box: `--attach`, `--detach`, `--print-container`, `--warm-only`,
   `--entrypoint`, and `-e`/`--env` whenever the invocation starts a second process in the box that
   will apply it (`--entrypoint`, or `kanibako shell --persistent` at a box that is running an
-  agent) — env is refused only where nothing would consume it. ⚑ **Known defect, not yet fixed:
-  `--detach` is answered before either exec arm, so `start --detach --entrypoint <cmd> -e K=V` at a
-  running box accepts both flags, applies neither, and exits 0.** Plain `--detach -e` is correctly
-  refused; only the pairing slips through. ⚑ **Check scripts that
+  agent) — env is refused only where nothing would consume it. ⚑ **`--detach` and `--warm-only` are
+  not such a door:** nothing runs, so a `--entrypoint` or `-e` passed with either is now refused by
+  name. It used to be accepted and dropped at rc 0 — the gate read the flags that pick the exec arm
+  while `--detach` closed both of them further down. The refusal is now driven by *which* of the
+  running-box regime's exits a launch will take, resolved once, so the gate and the regime cannot
+  disagree. ⚑ **Check scripts that
   pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` §2.17).
 - **BREAKING: a launch no longer rebuilds a box whose directory has been deleted — it refuses.**
   If a box's registration survives but its box directory is gone, `kanibako start` used to
