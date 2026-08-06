@@ -24,6 +24,7 @@ from kanibako.settings.paths import (
     BoxMode,
     _box_settings_files,
     _standalone_settings_files,
+    box_tree_materialized,
     box_workset_settings_paths,
     check_primary_box_name_free,
     iter_projects,
@@ -770,6 +771,11 @@ def run_create(args: argparse.Namespace) -> int:
             name_override=getattr(args, "name", None),
             register=False,
         )
+    # ALREADY-INITIALIZED, read off the PROBE — captured BEFORE
+    # ``_name_new_box_probe`` below, which mutates ``_probe.name``.  The refusal
+    # itself is deferred to just past the persona pre-flight so error ORDERING is
+    # unchanged; only the MUTATION it used to trail now happens after it.
+    _already = box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
     # PERSONA-GRATA STORE CHECK (create trigger): an explicit --agent persona
     # ref whose store entry exists is READ NOW, BEFORE the verdict below, so a
@@ -790,6 +796,34 @@ def run_create(args: argparse.Namespace) -> int:
     )
     if _persona_err is not None:
         print(_persona_err, file=sys.stderr)
+        return 1
+
+    # ALREADY-INITIALIZED REFUSAL — HOISTED ABOVE THE MATERIALISING RESOLVE.
+    #
+    # It used to sit AFTER that resolve, reading ``proj.is_new``.  But the resolve
+    # runs with ``initialize=True``, and its recovery arms re-create a missing home
+    # (``resolve_project``) and a missing home + workspace
+    # (``resolve_standalone_project``) BEFORE returning — so a box whose home had
+    # been deleted got it silently bootstrapped and was THEN told "already
+    # initialized", a message that was false at the moment it was printed.  Asking
+    # the NON-materialising probe instead makes the message TRUE: nothing has been
+    # written when it prints.  (Standalone AND primary — both resolvers have the
+    # shape.)  Message and exit code are unchanged.
+    #
+    # J1 interrupted-create RECOVERY is unchanged and still takes precedence: a box
+    # that already exists but carries a pending create journal entry is a
+    # half-completed create (crash between seed-start and the registry write), and
+    # is COMPLETED by replay below rather than refused.  The journal entry (not
+    # ``is_new``) drives completion — that is the central J1 fix, restoring the HARD
+    # INVARIANT "registered ==> no pending entry" for PRIMARY and STANDALONE.
+    # ``_pending_create_entry`` keys on the box dir, which the probe resolves
+    # identically to the materialising call (same inputs, ``initialize`` aside).
+    is_recovery = _already and _pending_create_entry(std, _probe) is not None
+    if _already and not is_recovery:
+        print(
+            f"Error: project already initialized in {_probe.project_path}",
+            file=sys.stderr,
+        )
         return 1
 
     # Loadability resolved → MATERIALISE the box for real.
@@ -816,22 +850,6 @@ def run_create(args: argparse.Namespace) -> int:
             name_override=getattr(args, "name", None),
             register=False,
         )
-
-    # J1 interrupted-create RECOVERY: a box that resolves NOT-new but carries a
-    # pending create journal entry is a half-completed create (crash between
-    # seed-start and the registry write).  COMPLETE it by replay (seed
-    # create-if-absent -> register-if-absent -> clear-entry) instead of bailing
-    # "already initialized".  A box that is NOT new AND has no pending entry is
-    # genuinely already initialized → the original error.  This is the central
-    # J1 fix: the journal entry (not is_new) drives completion, restoring the
-    # HARD INVARIANT "registered ==> no pending entry" for PRIMARY and STANDALONE.
-    is_recovery = (not proj.is_new) and _pending_create_entry(std, proj) is not None
-    if not proj.is_new and not is_recovery:
-        print(
-            f"Error: project already initialized in {proj.project_path}",
-            file=sys.stderr,
-        )
-        return 1
 
     # Persist image + standalone .gitignore only on a FRESH create — a recovery
     # re-create reuses the half-built box's already-written meta (the on-disk

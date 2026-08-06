@@ -946,14 +946,101 @@ def _resolve_existing_box(
     return proj if proj.name else None
 
 
-def _no_box_error(project_dir: str | None) -> str:
+def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None:
+    """The BROKEN-STANDALONE refusal for *project_dir*, or ``None``.
+
+    A standalone box lives entirely inside the user's own directory: the root is
+    theirs, and ``box_data/`` is the only thing kanibako puts there.  When
+    ``box_data/`` is deleted the REGISTRY entry survives, but
+    ``resolve_standalone_project`` can no longer read an identity out of the tree,
+    so the box resolves NAMELESS and the explicit-create gate reads it as "no box
+    at all" — the one state ``_unbuilt_box_error`` structurally cannot see
+    (a standalone box's ``metadata_path`` IS the user's project root, which is
+    still there).  Without this branch that state falls through to the generic
+    "no box" message, whose suggestion is built from the user's own spec — so a
+    bare standalone NAME produces ``kanibako create <name>``, and running THAT
+    creates a directory literally named ``<name>`` in the CWD with a PRIMARY box
+    in it (``commands/box/_parser.py`` uses the spec as a path).  Two grammars,
+    one token: ``start`` resolves a bare token in the NAME grammar, ``create``
+    resolves it in the PATH grammar.
+
+    ⚑ The ``box_data/`` clause is LOAD-BEARING, not a convenience.  It guarantees
+    the branch can never fire while a live box tree is on disk, which is exactly
+    what makes the suggested ``box rm`` safe to name: with ``box_data/`` gone,
+    ``_rm_standalone``'s deregistered-park arm is gated OFF (its ``metadata_dir
+    .is_dir()`` test fails), so the ``rm`` drops the registry entry and touches
+    NOTHING on disk.  Widening the gate would turn the suggestion into the
+    destructive parking variant.
+
+    ⚑ ``--name`` is LOAD-BEARING in the cure: ``validate_standalone_name`` /
+    ``resolve_standalone_name`` accept a verbatim canonical ``<kuid>_<leaf>`` and
+    return it AS-IS, so re-creating with the old name preserves the box's kuid,
+    its channel address and every stored reference to it.  Omit it and the box
+    comes back under a NEW kuid.  Both commands are on ONE ``&&`` line so the
+    pair cannot be half-followed (the ``rm`` also FREES the name the ``create``
+    then asks for — without it the ``create`` refuses).
+
+    ⚑ The CURE LINE is the part a future ``repair`` verb replaces (tasks.md
+    MBR-6), exactly as in :func:`_unbuilt_box_error`, whose three-part shape
+    (``Error:`` / *why we won't* / ``Rebuild it:``) this deliberately reuses so
+    standalone stops being the one mode that answers differently.
+    """
+    from kanibako.project import registry_store
+    from kanibako.settings.paths import BoxMode, box_metadata_dir
+
+    entries = registry_store.load_standalone(std.registry)
+    name = project_dir if project_dir in entries else None
+    if name is None:
+        # Not a registered NAME — try the ROOT PATH grammar (``start <root>``).
+        candidate = Path(project_dir)
+        if candidate.exists():
+            name = registry_store.standalone_name_for_root(
+                std.registry, candidate.resolve(),
+            )
+    if name is None:
+        return None
+    root = Path(entries[name])
+    # ONE derivation of "where a standalone box's metadata lives" — the same
+    # helper the resolvers and the lifecycle verbs use; no second ``box_data``
+    # literal to drift.
+    box_data = box_metadata_dir(BoxMode.standalone, root)
+    if box_data.is_dir():
+        return None
+    q_name = shlex.quote(name)
+    q_root = shlex.quote(str(root))
+    return (
+        f"Error: box '{name}' is registered as a standalone box at {root}, but "
+        f"its box data ({box_data}) is gone.\n"
+        "  A launch will not rebuild it — rebuilding a box is a repair, and a "
+        "repair has to be asked for by name.\n"
+        f"  Rebuild it:  kanibako box rm {q_name} && kanibako create "
+        f"--standalone --name {q_name} {q_root}\n"
+        "  (box_data/ is already gone, so 'box rm' only drops the registry "
+        "entry — your workspace/ and vault/ are not touched, and --name keeps "
+        "the box's identity and channel address.)"
+    )
+
+
+def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> str:
     """The launch-time "no box; run create" error for an ABSENT box target.
 
     ``<path>`` is the resolved target we looked for a box at; the suggested
     ``create`` carries the user's own spec so it is copy-pasteable — an explicit
     ``kanibako create <spec>`` when they named a project, a bare ``kanibako
     create`` from inside the project dir (no spec).
+
+    ⚑ ONE EXCEPTION, and it is the reason *std* is a parameter: a REGISTERED
+    STANDALONE box whose ``box_data/`` is gone also lands here (it resolves
+    nameless), and for it the copy-pasteable suggestion is actively HARMFUL —
+    see :func:`_broken_standalone_error`, which owns that message.  *std* is
+    optional so the unit tests that only exercise the generic shape, and any
+    caller with no resolved paths in hand, keep calling this unchanged; with no
+    *std* the branch is simply not consulted.
     """
+    if project_dir and std is not None:
+        broken = _broken_standalone_error(std, project_dir)
+        if broken is not None:
+            return broken
     if project_dir:
         # A path that resolves on disk shows its resolved dir; a bare NAME (no
         # such path) shows the spec verbatim — either way copy-pasteable.
@@ -2094,7 +2181,7 @@ def _run_container(
     # an EXISTING box is UNCHANGED — the probe passes and the flow continues.
     _existing = _resolve_existing_box(std, config, project_dir)
     if _existing is None:
-        print(_no_box_error(project_dir), file=sys.stderr)
+        print(_no_box_error(project_dir, std), file=sys.stderr)
         return 1
 
     # MBR-6 (Jei 2026-08-02f, "no, a launch should not silently rebuild
