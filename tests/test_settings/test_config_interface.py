@@ -3444,20 +3444,24 @@ class TestScopeBindRouteRetired:
         assert not msg.startswith("Error:"), msg
         assert load_doc(box)["box"]["synced"]["x"] == ["/newsrc", "/dest"]
 
-    def test_the_agent_node_bind_route_is_untouched(self):
-        """⚑ The ``agent.<node>.bindings.*`` route is a SEPARATE retirement (P2).
-        It must still be claimed by the category predicate here — a change that
-        took it out with the scope route would be out of scope, and silent."""
+    def test_the_two_retirements_keep_their_own_recognisers(self):
+        """The agent-scope route is retired TOO (the second R-9 step), but by its
+        OWN recogniser — the node-splitting parser, not this one. Pin the split so
+        neither predicate quietly grows to cover the other's keys."""
         from kanibako.settings.config_keys import (
+            _is_agent_node_bind_key,
             _is_path_category_key,
             _is_scope_bind_key,
         )
 
-        assert _is_path_category_key("agent.claude.bindings.ro.launcher")
-        assert not _is_scope_bind_key("agent.claude.bindings.ro.launcher")
-        # ...and the scope form is the mirror image.
+        # Neither retired form is a settable category key any more.
+        assert not _is_path_category_key("agent.claude.bindings.ro.launcher")
         assert not _is_path_category_key("box.bindings.ro.vault")
+        # ...and each is claimed by exactly ONE recogniser.
         assert _is_scope_bind_key("box.bindings.ro.vault")
+        assert not _is_agent_node_bind_key("box.bindings.ro.vault")
+        assert _is_agent_node_bind_key("agent.claude.bindings.ro.launcher")
+        assert not _is_scope_bind_key("agent.claude.bindings.ro.launcher")
 
 
 class TestCoreFloorStillMergesAtLaunch:
@@ -3498,7 +3502,12 @@ class TestAgentNodeBindRouting:
     """The ``agent.<node>.bindings.{ro,rw}.<name>`` predicate + its routing order:
     it is a per-node DESCRIPTOR bind (item-0), NOT a persona scalar, NOT a box.agent
     mirror. (There is no bare ``agent.bindings.*`` form to distinguish it from — the
-    agent tier is DISCRIMINATED, spec §2d / §0.)"""
+    agent tier is DISCRIMINATED, spec §2d / §0.)
+
+    ⚑ Since R-9 the predicate's job is RECOGNISE-TO-REFUSE plus routing the
+    surviving ``config get``; it is no longer a set route. What it must still match
+    is unchanged, which is exactly why these rows are kept.
+    """
 
     def test_predicate_matches_node_bind_only(self):
         from kanibako.settings.config_keys import (
@@ -3511,11 +3520,28 @@ class TestAgentNodeBindRouting:
         k = "agent.claude.bindings.ro.launcher"
         assert _is_agent_node_bind_key(k)
         assert not _is_box_agent_key(k)
-        # BIND_KEY_RE ALSO matches it — a discriminated node bind is a well-formed
-        # category key. Both predicates fire; the node-bind is checked FIRST in every
-        # dispatch, so routing is unambiguous.
-        assert _is_path_category_key(k)
+        # ⚑ BIND_KEY_RE no longer matches it. It used to (a discriminated node bind
+        # was a well-formed category key) and the node-bind was checked first to
+        # disambiguate; R-9 took the arms out of BIND_KEY_RE at every scope, so the
+        # node-bind predicate is now the ONLY one that claims this key.
+        assert not _is_path_category_key(k)
         assert not _is_persona_agent_key(k)  # launcher is not a state leaf
+
+    def test_the_node_regex_covers_exactly_the_retired_categories(self):
+        """⚑ ``_AGENT_NODE_BIND_RE`` spells the retired arms LITERALLY (it has to,
+        to split the node non-greedily around them) instead of importing the
+        alternation. Pin it against the single source, so adding or removing a
+        retired category cannot leave this parser behind."""
+        from kanibako.settings.config_keys import _is_agent_node_bind_key
+        from kanibako.settings.settings_categories import (
+            RETIRED_BIND_CATEGORIES,
+            SETTABLE_BIND_CATEGORIES,
+        )
+
+        for cat in RETIRED_BIND_CATEGORIES:
+            assert _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
+        for cat in SETTABLE_BIND_CATEGORIES:
+            assert not _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
 
     def test_bind_named_model_is_a_bind_not_a_persona_scalar(self):
         # COLLISION: a bind literally NAMED ``model`` — the ``bindings.ro`` segment
@@ -3553,7 +3579,9 @@ class TestAgentNodeBindRouting:
         )
         assert not _is_agent_node_bind_key("agent.bindings.ro.foo")
         assert not _is_path_category_key("agent.bindings.ro.foo")
-        assert _is_path_category_key("agent.claude.bindings.ro.foo")
+        # A DISCRIMINATED bindings key is a node bind (retired route), not a
+        # category key; a discriminated SETTABLE category still is one.
+        assert _is_agent_node_bind_key("agent.claude.bindings.ro.foo")
         assert _is_path_category_key("agent.default.caches.foo")
 
     def test_resolve_key_canonicalizes_node_plus_form(self):
@@ -3570,69 +3598,145 @@ class TestAgentNodeBindRouting:
         )
 
 
-class TestAgentNodeBindRepoint:
-    """A source-only repoint of a per-node descriptor bind writes the RAW tuple to
-    the node file, sourcing box_dest/opts from the descriptor floor registry."""
+class TestAgentNodeBindWriteRouteRetired:
+    """R-9 (second step) — the per-node descriptor bind CLI WRITE route
+    ``agent.<node>.bindings.{ro,rw}.<name>`` is RETIRED.
 
-    def _reg(self):
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-        return agent_default_bind_keys("claude")
+    This class REPLACES ``TestAgentNodeBindRepoint``, which pinned the opposite
+    behaviour: a source-only repoint that wrote the RAW tuple into the node file,
+    sourcing box_dest/opts from a detect-free descriptor floor registry. That
+    surface is a KNOWN, ACCEPTED LOSS with no replacement spelling (R-9), boarded
+    for review as DS-BL1. It is NOT a regression to restore.
 
-    def test_repoint_writes_raw_tuple_to_node_file(self, tmp_path):
+    What must hold instead: the refusal is LOUD, NAMES THE KEY, and WRITES NOTHING
+    — spec §0 refuses, never silently accepts and never fabricates.
+    """
+
+    @pytest.mark.parametrize(
+        "key,shown",
+        [
+            ("agent.claude.bindings.ro.launcher",
+             "agent.claude.bindings.ro.launcher"),
+            ("agent.claude.bindings.rw.plugins",
+             "agent.claude.bindings.rw.plugins"),
+            # A persona node: the message hands the key back in its USER-FACING
+            # ``+`` spelling, never the ``℘`` canonical one.
+            ("agent.navigator℘claude.bindings.ro.launcher",
+             "agent.navigator+claude.bindings.ro.launcher"),
+            # A bind literally NAMED after a persona state leaf: the refusal must
+            # claim it as a BIND, not fall through to the persona scalar branch and
+            # write "/newsrc" into ``self.model``.
+            ("agent.claude.bindings.ro.model",
+             "agent.claude.bindings.ro.model"),
+        ],
+    )
+    def test_set_is_refused_and_names_the_key(self, tmp_path, key, shown):
         node = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "agent.claude.bindings.ro.launcher", "/newsrc",
+            key, "/newsrc",
             config_path=node, command_scope=ConfigLevel.system,
             cascade_agent_path=node, cascade_agent_name="claude",
-            default_categories=self._reg(),
         )
-        assert msg.startswith(
-            "Set agent.claude.bindings.ro.launcher host source to /newsrc"
-        ), msg
-        # RAW tuple: new host_src, descriptor box_dest + opts BYTE-RAW from the floor,
-        # nested at self.<node>.bindings.ro.launcher (the shape _agent_partial reads).
-        reg = self._reg()
-        _, dest, opts = reg["agent.claude.bindings.ro.launcher"]
-        assert load_doc(node)["self"]["claude"]["bindings"]["ro"]["launcher"] == [
-            "/newsrc", dest, opts,
-        ]
+        assert msg.startswith("Error:"), msg
+        # §0: the error NAMES the offending key — not a generic "unknown key".
+        assert shown in msg, msg
+        # ⚑ "RETIRED" is NOT decoration — it is the ONLY token this refusal
+        # produces that a fall-through error does not. Without the preamble guard a
+        # set of this key lands on the routing table's "unknown config key: <key>",
+        # which also starts with "Error:", also names the key, and also writes
+        # nothing. Pin the RIGHT error, not merely an error. (P1 shipped a vacuous
+        # assertion of exactly this shape and its mutation run caught it.)
+        assert "RETIRED" in msg, msg
+        # Nothing was written: a refused write creates no file.
+        assert not node.exists()
 
-    def test_repoint_without_registry_is_refused(self, tmp_path):
-        # Mutation-proof the registry is load-bearing: drop default_categories and the
-        # SAME repoint is refused (nowhere in the cascade — the descriptor floor is
-        # launch-only). RED if the floor leaked in from elsewhere.
+    def test_reset_is_refused_symmetrically(self, tmp_path):
+        """A reset is a WRITE. "No override for …" would be a lie twice over: it
+        implies the spelling was CLI-writable, and a hand-authored tuple is sitting
+        right there in the node file."""
+        agents = tmp_path / "agents"
+        (agents / "claude").mkdir(parents=True)
+        node_file = agents / "claude" / "settings.yaml"
+        seeded = {"self": {"claude": {"bindings": {"ro": {
+            "launcher": ["/old", "/box/launcher", "ro"]}}}}}
+        dump_doc(node_file, seeded)
+        msg = reset_config_value(
+            "agent.claude.bindings.ro.launcher",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "agent.claude.bindings.ro.launcher" in msg, msg
+        assert "RETIRED" in msg, msg
+        assert "No override" not in msg, msg
+        # The hand-authored tuple survives the refusal untouched.
+        assert load_doc(node_file) == seeded
+
+    def test_null_is_refused_by_the_retirement_not_the_category_guard(self, tmp_path):
+        """``--null`` on the retired spelling gets the RETIREMENT message, not the
+        "category has no null form" one. A user who typed a route that no longer
+        exists must be told THAT, not handed a rule about a route they cannot
+        reach."""
         node = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "agent.claude.bindings.ro.launcher", "/newsrc",
+            "agent.claude.bindings.rw.plugins", None,
             config_path=node, command_scope=ConfigLevel.system,
-            cascade_agent_path=node, cascade_agent_name="claude",
         )
-        assert msg.startswith("Error:") and "must already exist in the cascade" in msg
+        assert "RETIRED" in msg, msg
+        assert "--null is not yet supported" not in msg, msg
 
-    def test_unknown_bind_name_still_refused(self, tmp_path):
-        node = tmp_path / "settings.yaml"
+    def test_the_cure_names_the_node_file_not_a_command(self, tmp_path):
+        """R-9 accepted the loss, so the message must NOT prescribe a CLI verb that
+        does not exist. It names the file the launch actually reads — and for this
+        route that is the NODE's own file, not a scope table."""
         msg = set_config_value(
-            "agent.claude.bindings.ro.nonexistent", "/x",
-            config_path=node, command_scope=ConfigLevel.system,
-            cascade_agent_path=node, cascade_agent_name="claude",
-            default_categories=self._reg(),
+            "agent.navigator℘claude.bindings.ro.launcher", "/newsrc",
+            config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.system,
         )
-        assert msg.startswith("Error:") and "nonexistent" in msg
+        assert "agents/navigator+claude/settings.yaml" in msg, msg
+        assert "self.navigator+claude.bindings.ro" in msg, msg
+        # ⚑ ``℘`` is a keyspace-INTERNAL separator and must NEVER reach a message —
+        # including the ``config get`` the message hands back for the user to run.
+        assert "℘" not in msg, msg
+        # The read is the one verb still offered, and it really works.
+        assert "config get" in msg, msg
 
-    def test_box_scope_repoint_is_refused_upward(self, tmp_path):
-        # Directional guard (unchanged): agent.* from box scope is UPWARD → refused.
+    def test_the_plus_form_is_refused_too(self, tmp_path):
+        """The user types ``+``; ``resolve_key`` canonicalizes before the refusal,
+        so the guard must fire on the spelling the user actually typed."""
+        msg = set_config_value(
+            "agent.navigator+claude.bindings.ro.launcher", "/newsrc",
+            config_path=tmp_path / "settings.yaml",
+            command_scope=ConfigLevel.system,
+        )
+        assert "RETIRED" in msg, msg
+
+    def test_box_scope_repoint_is_still_refused_upward_first(self, tmp_path):
+        """The §0 directional guard runs BEFORE the retirement (it is the scope
+        rule, and it was already the answer at box scope). Unchanged by R-9."""
         box = tmp_path / "box.yaml"
         msg = set_config_value(
             "agent.claude.bindings.ro.launcher", "/new",
             config_path=box, command_scope=ConfigLevel.box,
-            default_categories=self._reg(),
         )
         assert msg.startswith("Error:") and "cannot be set" in msg
         assert not box.exists()  # nothing written
 
-    def test_written_tuple_overrides_descriptor_floor_at_launch(self, tmp_path):
-        # (unit) the node-file tuple beats the descriptor default (agent_default_
-        # partial) at launch — the agent-file rung out-precedes the descriptor rung.
+    def test_the_still_settable_agent_categories_are_untouched(self, tmp_path):
+        """The retirement is SURGICAL: it removes two tokens, at the agent scope as
+        at the file scopes, and nothing else. RED if the regex change over-reached
+        onto ``common`` / ``caches`` / ``seeded`` / ``synced``."""
+        from kanibako.settings.config_keys import _is_path_category_key
+
+        for cat in ("common", "caches", "seeded", "synced"):
+            assert _is_path_category_key(f"agent.claude.{cat}.x"), cat
+
+    def test_written_tuple_still_overrides_descriptor_floor_at_launch(self, tmp_path):
+        """⚑ THE CURE ACTUALLY WORKS. The route died; the KEY did not. A tuple
+        hand-authored in the node file — the only way left to write one, and exactly
+        what the refusal prescribes — still beats the descriptor default at launch.
+        Without this, the refusal would be pointing users at a dead end."""
         from kanibako.settings.agent_representation import agent_default_partial
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_launch import build_launch_snapshot
@@ -3652,7 +3756,7 @@ class TestAgentNodeBindRepoint:
         desc = PluginDescriptor(command=("claude",), bindings=(binding,), mode={})
         partial = agent_default_partial(desc, install, node_name="claude")
 
-        # The exact shape our config-set write produces in the node file.
+        # Authored the ONLY way left: directly in the node's settings file.
         node = tmp_path / "settings.yaml"
         dump_doc(node, {"self": {"claude": {"bindings": {"ro": {
             "launcher": ["/REPOINT", "/box/launcher", "ro"]}}}}})
@@ -3675,18 +3779,20 @@ def _bind_launch_ctx():
 
 
 # ---------------------------------------------------------------------------
-# Step B Phase 3 — get/reset read-back symmetry for repointed binds
+# What remains of the per-node bind verb surface after R-9: the READ
 # ---------------------------------------------------------------------------
 
-class TestAgentNodeBindGetReset:
-    """The get/set/reset symmetry for a per-node DESCRIPTOR bind
-    ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0): what a repoint SET wrote is
-    read back by GET and removed by RESET, all against the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (the previously-missing read-back half)."""
+class TestAgentNodeBindGetSurvives:
+    """⚑ THE READ SURVIVED THE WRITE, for the agent scope exactly as for the file
+    scopes (``TestCoreBindGetReset`` below).
 
-    def _reg(self):
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-        return agent_default_bind_keys("claude")
+    The set/reset route is retired, but the key is still DECLARED, still authored
+    by hand in ``agents/<node>/settings.yaml``, and still delivered at launch — and
+    hand-editing that file is exactly the cure the refusal prescribes. So ``config
+    get`` must keep returning the stored tuple. A get that answered "(not set)" for
+    a bind the launch is actually mounting would be a silent lie, and would make the
+    prescribed cure unverifiable.
+    """
 
     def _agents_root(self, tmp_path):
         # A node file under an agents root: agents/<node>/settings.yaml.
@@ -3694,24 +3800,45 @@ class TestAgentNodeBindGetReset:
         (root / "claude").mkdir(parents=True)
         return root
 
-    def test_set_then_get_reads_back_the_stored_tuple(self, tmp_path):
+    def test_get_reads_a_hand_authored_bind_after_the_route_retired(self, tmp_path):
         agents = self._agents_root(tmp_path)
         node_file = agents / "claude" / "settings.yaml"
-        reg = self._reg()
-        set_config_value(
-            "agent.claude.bindings.ro.launcher", "/newsrc",
-            config_path=node_file, command_scope=ConfigLevel.system,
-            cascade_agent_path=node_file, cascade_agent_name="claude",
-            default_categories=reg,
-        )
-        # GET reads back the RAW tuple STORED at the node file (stored-at-noun).
+        # Authored the ONLY way left: directly in the node's settings file.
+        dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
+            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}}})
         val = get_config_value(
             "agent.claude.bindings.ro.launcher",
             global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
         )
-        _, dest, opts = reg["agent.claude.bindings.ro.launcher"]
-        assert val == str(["/newsrc", dest, opts])
-        assert "/newsrc" in val
+        assert val == str(["/newsrc", "/box/launcher", "ro"])
+
+    def test_the_write_verbs_refuse_and_leave_the_file_alone(self, tmp_path):
+        """The other half of the same round-trip: set and reset both refuse, and the
+        hand-authored tuple the get above reads is still there afterwards."""
+        agents = self._agents_root(tmp_path)
+        node_file = agents / "claude" / "settings.yaml"
+        seeded = {"self": {"claude": {"bindings": {"ro": {
+            "launcher": ["/old", "/box/launcher", "ro"]}}}}}
+        dump_doc(node_file, seeded)
+        set_msg = set_config_value(
+            "agent.claude.bindings.ro.launcher", "/newsrc",
+            config_path=node_file, command_scope=ConfigLevel.system,
+            cascade_agent_path=node_file, cascade_agent_name="claude",
+            agents_root=agents,
+        )
+        reset_msg = reset_config_value(
+            "agent.claude.bindings.ro.launcher",
+            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
+            agents_root=agents,
+        )
+        assert set_msg.startswith("Error:") and "RETIRED" in set_msg, set_msg
+        assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
+        assert load_doc(node_file) == seeded
+        # ...and the read is unaffected by either refusal.
+        assert get_config_value(
+            "agent.claude.bindings.ro.launcher",
+            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
+        ) == str(["/old", "/box/launcher", "ro"])
 
     def test_get_unset_node_bind_is_not_set(self, tmp_path):
         # An unset bind → None ("(not set)"), non-crashing (mutation: RED if the get
@@ -3731,89 +3858,11 @@ class TestAgentNodeBindGetReset:
         )
         assert val is None
 
-    def test_reset_removes_the_override_and_get_reverts(self, tmp_path):
-        agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "settings.yaml"
-        reg = self._reg()
-        set_config_value(
-            "agent.claude.bindings.ro.launcher", "/newsrc",
-            config_path=node_file, command_scope=ConfigLevel.system,
-            cascade_agent_path=node_file, cascade_agent_name="claude",
-            default_categories=reg,
-        )
-        msg = reset_config_value(
-            "agent.claude.bindings.ro.launcher",
-            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
-            agents_root=agents,
-        )
-        assert msg.startswith("Cleared agent.claude.bindings.ro.launcher")
-        # The override is GONE from the node file; GET reverts to "(not set)".
-        assert load_doc(node_file) == {}
-        assert get_config_value(
-            "agent.claude.bindings.ro.launcher",
-            global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
-        ) is None
-
-    def test_reset_reports_reverted_to_floor_destination(self, tmp_path):
-        # item 3 — with the floor registry threaded, the honest cleared-message
-        # names the reverted-to descriptor destination [+ opts], NEVER the set-time
-        # placeholder host_src (evidence-honesty).
-        from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
-
-        agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "settings.yaml"
-        reg = self._reg()
-        set_config_value(
-            "agent.claude.bindings.ro.launcher", "/newsrc",
-            config_path=node_file, command_scope=ConfigLevel.system,
-            cascade_agent_path=node_file, cascade_agent_name="claude",
-            default_categories=reg,
-        )
-        msg = reset_config_value(
-            "agent.claude.bindings.ro.launcher",
-            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
-            agents_root=agents, default_categories=reg,
-        )
-        _, dest, _opts = reg["agent.claude.bindings.ro.launcher"]
-        assert "effective is now" in msg
-        assert dest in msg
-        assert FLOOR_PLACEHOLDER_SRC not in msg  # the sentinel is never printed
-
-    def test_reset_without_registry_keeps_cleared_only_form(self, tmp_path):
-        # Mutation-proof the registry is load-bearing for item 3: drop
-        # default_categories and the message has NO "effective is now" clause.
-        agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "settings.yaml"
-        set_config_value(
-            "agent.claude.bindings.ro.launcher", "/newsrc",
-            config_path=node_file, command_scope=ConfigLevel.system,
-            cascade_agent_path=node_file, cascade_agent_name="claude",
-            default_categories=self._reg(),
-        )
-        msg = reset_config_value(
-            "agent.claude.bindings.ro.launcher",
-            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
-            agents_root=agents,
-        )
-        assert msg.startswith("Cleared agent.claude.bindings.ro.launcher")
-        assert "effective is now" not in msg
-
-    def test_reset_unset_node_bind_reports_no_override(self, tmp_path):
-        agents = self._agents_root(tmp_path)
-        msg = reset_config_value(
-            "agent.claude.bindings.ro.launcher",
-            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
-            agents_root=agents, default_categories=self._reg(),
-        )
-        assert msg == "No override for agent.claude.bindings.ro.launcher"
-
-    def test_get_reset_bind_named_after_state_leaf_routes_to_bind(self, tmp_path):
+    def test_get_bind_named_after_state_leaf_routes_to_bind(self, tmp_path):
         # Collision: a bind literally NAMED ``model`` must route to the node-bind
-        # get/reset path (the bindings.ro segment), NOT the persona ``model`` scalar.
+        # get path (the bindings.ro segment), NOT the persona ``model`` scalar.
         agents = self._agents_root(tmp_path)
         node_file = agents / "claude" / "settings.yaml"
-        # Seed the file with a bind at the descriptor-shaped location so a repoint
-        # (which must-exist in the cascade) is not needed to prove routing.
         dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
             "model": ["/hostmodel", "/box/model", "ro"]}}}}})
         val = get_config_value(
@@ -3822,24 +3871,20 @@ class TestAgentNodeBindGetReset:
         )
         assert val == str(["/hostmodel", "/box/model", "ro"])
         # The PERSONA scalar ``agent.claude.model`` is a DIFFERENT key (flat slot),
-        # unaffected by the bind write.
+        # unaffected by the bind entry.
         assert get_config_value(
             "agent.claude.model",
             global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
         ) is None
-        # Reset routes to the bind, removing the nested tuple (not the flat scalar).
-        reset_config_value(
-            "agent.claude.bindings.ro.model",
-            config_path=tmp_path / "cfg.yaml", command_scope=ConfigLevel.system,
-            agents_root=agents,
-        )
-        assert load_doc(node_file) == {}
 
 
 class TestPersonaScalarGetResetUnchanged:
-    """The Phase-3 node-bind get/reset branches must NOT divert a persona SCALAR
-    key (``agent.<node>.model`` / ``.endpoint``) — it still routes stored-at-noun to
-    the flat ``agent:`` slot (byte-unchanged collision guard)."""
+    """Neither the surviving node-bind GET branch nor the node-bind write REFUSAL
+    may divert a persona SCALAR key (``agent.<node>.model`` / ``.endpoint``) — it
+    still routes stored-at-noun to the flat ``agent:`` slot (byte-unchanged
+    collision guard). ⚑ Load-bearing after R-9: the refusal runs in the set
+    PREAMBLE, ahead of every branch, so an over-wide guard here would take the
+    persona scalars with it and there would be no later branch to save them."""
 
     def test_persona_model_get_reset_unchanged(self, tmp_path):
         agents = tmp_path / "agents"
@@ -4104,7 +4149,6 @@ class TestSetDispatchCoverage:
         from kanibako.settings.config_keys import _has_dedicated_route
 
         for key in (
-            "agent.claude.bindings.ro.launcher",  # per-node descriptor bind
             "agent.claude.secret_path.TOK",       # per-node secret
             "box.secret_path.TOK",                # scope secret
             "box.env.FOO",                        # scope env
@@ -4124,7 +4168,15 @@ class TestSetDispatchCoverage:
         # not a dispatch branch — a term for it here would be a second spelling
         # of the refusal. ``box.env.FOO`` moved the OTHER way, into the claimed
         # list above, when the scoped arm got its route.
-        for key in ("run_args", "env.FOO", "nonsense.key"):
+        #
+        # ⚑ The two RETIRED bind routes (R-9) are in the same position, and they
+        # moved OUT of the claimed list above when their branches were deleted:
+        # both are refused in the preamble and neither reaches a dispatch branch.
+        for key in (
+            "run_args", "env.FOO", "nonsense.key",
+            "agent.claude.bindings.ro.launcher",
+            "box.bindings.ro.vault",
+        ):
             assert not _has_dedicated_route(key), key
 
     def test_the_probe_is_off_for_the_category_and_unclaimed_families(self):
@@ -4132,6 +4184,9 @@ class TestSetDispatchCoverage:
 
         # ``env.FOO`` is off because NOTHING claims it any more (R-39), not
         # because of a docker-family exclusion — that exclusion is gone.
+        # ``agent.claude.bindings.ro.launcher`` is off because NOTHING claims it
+        # any more (R-9's second step), the same way ``env.FOO`` is — not because
+        # of a category exclusion, which is why its term was deleted.
         for off in ("env.FOO", "box.common.plugins",
                     "agent.claude.bindings.ro.launcher", "run_args"):
             assert not _probes_at_set_time(off), off
@@ -4588,6 +4643,27 @@ class TestPrefValueValidation:
         assert "--null" in msg          # the suppression spelling is offered
         assert not f.exists()
 
+    def test_a_scalar_at_a_RETIRED_bind_target_is_still_refused(self, tmp_path):
+        """⚑ ``pref`` is NOT a retired route — a box may still REQUEST a change to
+        an agent bind it can no longer set directly — so the shape check must keep
+        firing on the retired spelling. That key left ``BIND_KEY_RE`` when its CLI
+        route died (R-9), which is exactly how this hole would open: the guard would
+        stop recognising the very key that lost its direct route, and the LAUNCH
+        would die naming a key the user never wrote.
+
+        ⚑ The AGENT form is the one pinned here because it is the only bind target
+        that REACHES this check: the §2h allowlist refuses ``pref.<scope>.…`` for a
+        file scope several steps earlier ("only 'system.agent' and
+        'agent.<agent>.<key>' may be requested")."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.bindings.ro.launcher", "just-a-string",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "STRUCTURED" in msg, msg
+        assert not f.exists()
+
     def test_an_unresolvable_scalar_value_is_refused(self, tmp_path):
         """The E3 probe must run AT THE TARGET: probing at the pref path is a
         no-op because expand skips the pref subtree, so `@typo` used to be
@@ -4925,14 +5001,20 @@ class TestSystemScopeCategoryFileRouting:
         assert "caches" not in load_doc(f).get("box", {})
 
 
-class TestCategorySetAgentNodeGuards:
-    """F3 — the inline agent-node route inside ``_set_category_value`` enforces
-    the SAME two node guards its three siblings do (``_persona_agent_target`` /
-    ``_node_bind_target`` / ``_node_secret_target``): the reserved any-agent tier
-    is not a persona node, and a malformed ref is not a node at all.
+class TestCategorySetAgentNodeGuardsSuperseded:
+    """F3's inline agent-node guards inside ``_set_category_value`` are GONE, and
+    what replaced them is STRICTLY EARLIER.
 
-    Without them SET wrote keys that GET and RESET then refused — a value the
-    CLI could neither read back nor remove.
+    They enforced the pair every per-node route enforces (the reserved any-agent
+    tier is not a persona node; a malformed ref is not a node at all) for the ONE
+    family that reached that function with a node to check —
+    ``agent.<node>.bindings.*``. R-9 retired that write route, so the refusal now
+    happens in the verb PREAMBLE, before a node is parsed at all. Nothing is
+    written for EITHER bad node, which is the property the guards existed to
+    protect; the message just names the retirement rather than the node.
+
+    ⚑ The guard pair itself is NOT deleted — ``config_dest.check_agent_node`` still
+    backs the persona and per-node-secret routes.
     """
 
     def _agents(self, tmp_path):
@@ -4940,34 +5022,37 @@ class TestCategorySetAgentNodeGuards:
 
     def _set(self, tmp_path, key):
         """Set *key* with the key PRESENT in the set-time cascade (a floor entry),
-        so the must-exist gate cannot be what refuses — isolating the node guard
-        as the only thing left that can.  Without the key in the cascade both
-        refusals look identical from the outside, and pre-guard the write went
-        through whenever the key WAS there."""
+        so a must-exist complaint cannot be what refuses — isolating the retirement
+        as the only thing left that can."""
         return set_config_value(
             key, "/x", config_path=tmp_path / "settings.yaml",
             command_scope=ConfigLevel.system, agents_root=self._agents(tmp_path),
             default_categories={key: ["/floor/src", "/box/dest", "ro"]},
         )
 
-    def test_reserved_default_node_refused_and_writes_nothing(self, tmp_path):
-        msg = self._set(tmp_path, "agent.default.bindings.ro.share")
-        assert msg.startswith("Error:")
-        assert "reserved" in msg
-        assert not (tmp_path / "settings.yaml").exists()
-
-    def test_malformed_node_refused_and_writes_nothing(self, tmp_path):
-        msg = self._set(tmp_path, "agent.a+b+c.bindings.ro.share")
-        assert msg.startswith("Error:")
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "agent.default.bindings.ro.share",   # the RESERVED any-agent tier
+            "agent.a+b+c.bindings.ro.share",     # a MALFORMED node ref
+            "agent.navigator+claude.bindings.ro.share",   # a GOOD node
+        ],
+    )
+    def test_every_node_shape_is_refused_by_the_retirement_and_writes_nothing(
+        self, tmp_path, key,
+    ):
+        msg = self._set(tmp_path, key)
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg, msg
         assert not (tmp_path / "settings.yaml").exists()
 
     @pytest.mark.parametrize(
         "key",
         ["agent.default.bindings.ro.share", "agent.a+b+c.bindings.ro.share"],
     )
-    def test_get_and_reset_refuse_the_same_two_nodes(self, tmp_path, key):
-        """The other half of the asymmetry, pinned so the three verbs stay in
-        agreement about which nodes exist."""
+    def test_get_and_reset_still_refuse_the_same_two_nodes(self, tmp_path, key):
+        """The read half is unchanged: a get of an unroutable node is still
+        ``None``, and a reset is still an error (now the retirement's)."""
         f = tmp_path / "settings.yaml"
         assert get_config_value(
             key, global_config_path=f, system_settings_path=f,
@@ -4978,14 +5063,11 @@ class TestCategorySetAgentNodeGuards:
             agents_root=self._agents(tmp_path),
         ).startswith("Error:")
 
-    def test_a_well_formed_node_is_not_over_refused(self, tmp_path):
-        """The guard rejects the NODE, never the value: a well-formed node falls
-        through to the ordinary cascade check (a different, value-level error)."""
-        msg = set_config_value(
-            "agent.navigator+claude.bindings.ro.nonexistent", "/x",
-            config_path=tmp_path / "settings.yaml",
-            command_scope=ConfigLevel.system, agents_root=self._agents(tmp_path),
-        )
-        assert msg.startswith("Error:")
-        assert "reserved" not in msg
-        assert "must already exist" in msg
+    def test_the_guard_pair_still_backs_the_sibling_secret_route(self, tmp_path):
+        """RED if the guards were deleted rather than out-ordered: the per-node
+        SECRET route is still live and still enforces both."""
+        from kanibako.settings.config_dest import check_agent_node
+
+        assert check_agent_node("default").reason == "reserved"
+        assert check_agent_node("a+b+c").reason == "malformed"
+        assert check_agent_node("navigator℘claude") is None

@@ -393,122 +393,22 @@ def test_node_name_none_falls_back_to_install_name() -> None:
 
 
 # ---------------------------------------------------------------------------
-# item-0 — agent_default_bind_keys: the DETECT-FREE per-node descriptor bind
-# KEY registry (the set-time floor sibling of core_default_bind_keys).
+# item-0 — ``agent_default_bind_keys`` and its ``TestAgentDefaultBindKeys`` suite
+# are GONE (R-9, disk-store rework step 1).
+#
+# The registry existed for ONE consumer: the ``config set`` set-time floor, so a
+# source-only repoint of ``agent.<node>.bindings.{ro,rw}.<key>`` would not be
+# refused as "nowhere in the cascade". That CLI write route is retired — an
+# accepted loss, backlog DS-BL1 — so the registry had no consumer left and was
+# deleted with it.
+#
+# ⚑ NOTHING ABOUT LAUNCH CHANGED, and the tests that prove it are ABOVE, untouched:
+# ``agent_default_partial`` is the launch representation, and a hand-authored
+# override in ``agents/<node>/settings.yaml`` still beats it by cascade merge
+# (pinned by ``test_config_interface.TestAgentNodeBindWriteRouteRetired::
+# test_written_tuple_still_overrides_descriptor_floor_at_launch``). Do not read the
+# absence of these tests as a delivery path having gone untested.
 # ---------------------------------------------------------------------------
-
-
-class TestAgentDefaultBindKeys:
-    """``agent_default_bind_keys(node)`` — the context-light set-time floor registry
-    (item-0): the SAME ``agent.<node>.bindings.{ro,rw}.<key>`` KEYS the launch
-    descriptor floor delivers, with STATIC box_dest + options and a placeholder
-    host_src, built WITHOUT ``detect()`` (descriptor-only)."""
-
-    def test_emits_descriptor_keys_placeholder_host(self):
-        # The real claude descriptor delivers share + launcher (both ro). The
-        # registry emits them keyed under the node with a placeholder host_src and
-        # the descriptor's OWN box_dest/opts. NO detect() (resolve_target by harness).
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-        from kanibako.agent_ref import harness_of
-        from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
-        from kanibako.targets import resolve_target
-
-        reg = agent_default_bind_keys("claude")
-        # SAME keys the launch floor (agent_default_partial) delivers, keyed by node.
-        assert "agent.claude.bindings.ro.launcher" in reg
-        assert "agent.claude.bindings.ro.share" in reg
-
-        # box_dest/opts are the STATIC descriptor literals; host_src is the discarded
-        # placeholder (mutation: a probed host path here would break this equality).
-        desc = resolve_target(harness_of("claude"), None).descriptor
-        by_key = {b.key: b for b in desc.bindings}
-        assert reg["agent.claude.bindings.ro.launcher"] == (
-            FLOOR_PLACEHOLDER_SRC, by_key["launcher"].box_dest, "ro",
-        )
-
-    def test_keyed_under_the_given_node_name(self):
-        # A PERSONA node keys the registry under the composite node (the SAME slot
-        # the launch floor uses), not the bare harness — so the repoint key matches.
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-
-        reg = agent_default_bind_keys("navigator℘claude")
-        assert "agent.navigator℘claude.bindings.ro.launcher" in reg
-        assert not any(k.startswith("agent.claude.") for k in reg)
-
-    def test_detect_free_never_calls_detect(self, monkeypatch):
-        # Fork 3: the registry is descriptor-only — it must build even for an
-        # UNINSTALLED agent. Guard: patch the claude target's detect() to explode;
-        # the registry still builds (proving no detect() call on the resolve path).
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-        from kanibako.targets import resolve_target
-        from kanibako.agent_ref import harness_of
-
-        cls = type(resolve_target(harness_of("claude"), None))
-        monkeypatch.setattr(
-            cls, "detect",
-            lambda self: (_ for _ in ()).throw(AssertionError("detect() called")),
-        )
-        reg = agent_default_bind_keys("claude")
-        assert "agent.claude.bindings.ro.launcher" in reg
-
-    def test_unknown_harness_yields_empty(self):
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-
-        assert agent_default_bind_keys("no_such_harness_xyz") == {}
-
-    def test_declarative_none_literal_omitted_matches_launch(self, monkeypatch):
-        # A LITERAL binding with literal_src=None resolves to None at launch, so
-        # agent_default_partial OMITs it (S27) — and it does so PURELY DECLARATIVELY
-        # (no `install` needed). The detect-free registry must omit it too, else
-        # `config set` would expose a key launch drops. A resolvable binding survives.
-        import kanibako.targets as targets_mod
-        from kanibako.settings.agent_representation import (
-            agent_default_bind_keys,
-            agent_default_partial,
-        )
-
-        d = _descriptor(
-            _binding(
-                key="good", origin=HostSrcOrigin.LITERAL,
-                literal_src=Path("/host/good"), box_dest="/g",
-            ),
-            _binding(
-                key="ghost", origin=HostSrcOrigin.LITERAL,
-                literal_src=None, box_dest="/b",
-            ),
-        )
-
-        class _FakeTarget:
-            descriptor = d
-
-        monkeypatch.setattr(
-            targets_mod, "resolve_target",
-            lambda harness, project_path=None: _FakeTarget(),
-        )
-
-        reg = agent_default_bind_keys("claude")
-        assert "agent.claude.bindings.ro.good" in reg          # resolvable → kept
-        assert "agent.claude.bindings.ro.ghost" not in reg     # None-literal → OMIT
-
-        # The registry key set MATCHES which keys the launch floor emits for the SAME
-        # descriptor (both bindings are LITERAL → install-independent, so any install).
-        partial = agent_default_partial(d, INSTALL, node_name="claude")
-        ro = _get(partial, "agent", "claude", "bindings", "ro")
-        launch_keys = {
-            f"agent.claude.bindings.ro.{k}" for k in dict.keys(ro)
-        } if isinstance(ro, dict) else set()
-        assert set(reg.keys()) == launch_keys == {"agent.claude.bindings.ro.good"}
-
-    def test_install_dependent_none_origin_still_emitted(self):
-        # The install-DEPENDENT None-origin cases (LAUNCHER/BINARY/INSTALL_DIR with the
-        # install.<field> unset) can't be evaluated detect-free and repointing them
-        # SUPPLIES the missing source, so they stay emitted. claude's real descriptor
-        # is exactly these origins (INSTALL_DIR share + LAUNCHER launcher): unchanged.
-        from kanibako.settings.agent_representation import agent_default_bind_keys
-
-        reg = agent_default_bind_keys("claude")
-        assert "agent.claude.bindings.ro.launcher" in reg
-        assert "agent.claude.bindings.ro.share" in reg
 
 
 # ---------------------------------------------------------------------------

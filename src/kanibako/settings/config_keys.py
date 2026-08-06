@@ -550,6 +550,12 @@ def resolve_key(raw: str) -> str:
     (``agent.<node>.bindings.ro.model``) would otherwise be mis-parsed by
     :func:`_parse_persona_agent_key` (``model`` is a state leaf). The ``bindings.
     {ro,rw}`` category segment + the bind name are preserved verbatim.
+
+    ⚑ That arm outlives R-9's retirement of the bind CLI WRITE route, and both
+    surviving readers need it: ``config get`` targets the canonical ``agents/<node>/``
+    slot, and the write verbs' refusal quotes the CANONICAL key. Dropping it would
+    make a ``+``-form bind key fall through to the persona branch and get re-rooted
+    as the wrong key on its way to the wrong message.
     """
     bind = parse_agent_node_bind_key(raw)
     if bind is not None:
@@ -712,8 +718,9 @@ def access_value_error(canonical: str, value: str) -> str | None:
     )
 
 # ---------------------------------------------------------------------------
-# Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``
-# repointed (source-only) on the agent's OWN settings file, via the CATEGORY path.
+# Per-node DESCRIPTOR bind keys (item-0) — ``agent.<node>.bindings.{ro,rw}.<name>``.
+# ⮕ The CLI WRITE route is RETIRED (R-9); the key stays declared, hand-authorable
+# in the node's settings file, delivered at launch, and READABLE via ``config get``.
 # ---------------------------------------------------------------------------
 
 # ``agent.<node>.bindings.{ro,rw}.<name>`` — the per-node descriptor delivery bind
@@ -723,10 +730,22 @@ def access_value_error(canonical: str, value: str) -> str | None:
 # persona state leaf ``agent.<node>.model`` by the ``bindings.{ro,rw}`` segment).
 # NOTE: the agent tier is DISCRIMINATED — ``agent.<node>`` is the ONLY agent form
 # (§2d / §0); an undiscriminated ``agent.<category>`` is not a key and
-# ``BIND_KEY_RE`` refuses it. ``BIND_KEY_RE`` DOES match this node form (it is a
-# well-formed category key), so both predicates fire — every dispatch checks the
-# node-bind FIRST. This does not match the ``box.agent.bindings.*`` box-mirror form
-# (a ``box`` top-token).
+# ``BIND_KEY_RE`` refuses it.
+#
+# ⚑ THIS IS THE RETIRED-ROUTE RECOGNISER for the agent scope, the exact counterpart
+# of ``settings_categories.SCOPE_BIND_KEY_RE`` for the file scopes. Since R-9's
+# second step ``BIND_KEY_RE`` no longer matches this form either, so this parser is
+# now the ONLY thing that reads it as a key — which is precisely why it must keep
+# existing: ``config get`` still reads the key, ``resolve_key`` still canonicalizes
+# its node segment, and the write verbs refuse it BY NAME off this same match.
+#
+# ⚑ It spells the retired arms LITERALLY rather than importing the alternation,
+# because the node group has to be split non-greedily around them. The literal is
+# pinned against ``settings_categories.RETIRED_BIND_CATEGORIES`` by
+# ``test_config_interface.TestAgentNodeBindRouting`` so the two cannot drift.
+#
+# This does not match the ``box.agent.bindings.*`` box-mirror form (a ``box``
+# top-token).
 _AGENT_NODE_BIND_RE = re.compile(
     r"^agent\.(?P<node>.+?)\.(?P<cat>bindings\.(?:ro|rw))\.(?P<name>.+)$"
 )
@@ -750,7 +769,24 @@ def parse_agent_node_bind_key(key: str) -> "tuple[str, str, str] | None":
 
 def _is_agent_node_bind_key(key: str) -> bool:
     """True iff *key* is a per-node descriptor bind ``agent.<node>.bindings.*`` key
-    (item-0). Checked BEFORE :func:`_is_persona_agent_key` in the routing dispatch."""
+    (item-0).
+
+    ⮕ **R-9 RETIRED THIS ROUTE'S CLI WRITE HALF** (disk-store rework step 1, the
+    agent-scope step). The two ``bindings`` arms are becoming a TERMINAL key whose
+    VALUE is a dest-keyed map, and *the inner map's keys are not part of the
+    keyspace*, so there is no dotted key left for ``config set`` / ``config reset``
+    to name. The key itself is NOT retired: still declared, still authored in
+    ``agents/<node>/settings.yaml``, still delivered at launch, still READ by
+    ``config get``. Only the CLI write route is gone — a KNOWN, ACCEPTED loss
+    (backlog DS-BL1).
+
+    So this predicate now has three jobs, all live: recognise the retired spelling
+    so the write verbs refuse it BY NAME with a cure
+    (:func:`agent_node_bind_retired_error`) instead of degrading to "unknown config
+    key" (spec §0 refuses loudly, never quietly); route the surviving ``config
+    get``; and keep the key out of the persona branch. Checked BEFORE
+    :func:`_is_persona_agent_key` in every dispatch.
+    """
     return parse_agent_node_bind_key(key) is not None
 
 # ``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a, 2026-
@@ -808,7 +844,7 @@ def _floor_bind_display(
     lands on (item 3), or ``None`` when no registry is threaded / no floor entry.
 
     *default_categories* is the SAME context-light floor registry the set path folds
-    (``agent_representation.agent_default_bind_keys`` for a node bind). Its element-0
+    (``core_defaults.core_default_bind_keys``). Its element-0
     host_src is a SET-TIME SENTINEL (``core_defaults.FLOOR_PLACEHOLDER_SRC``) — the
     real host source is re-resolved at LAUNCH (``detect()``), so it is NEVER printed
     as a value (evidence-honesty: the exact fabricate-a-value lie the honest-reset
@@ -816,6 +852,13 @@ def _floor_bind_display(
     destination [+ options] — and name the tier so the user knows the host source is
     launch-resolved. A non-tuple / absent / placeholder-only entry → ``None`` (keep
     the cleared-only form).
+
+    ⚑ NO CALLER CAN CURRENTLY REACH A HIT. R-9 retired both bind reset routes, and
+    the only registry still threaded (``core_default_bind_keys``) holds
+    ``box.bindings.*`` keys, which no longer arrive at a reset branch. This is left
+    in place, and said out loud, because unpicking the whole set-time floor fold is
+    one decision that belongs to the same rework step as its producers — not a
+    silent deletion made from a reachability hunch.
     """
     from kanibako.settings.core_defaults import FLOOR_PLACEHOLDER_SRC
 
@@ -1119,6 +1162,11 @@ def _agent_scope_node(key: str) -> str:
     Reads the scope token the category regex already parses, so the discriminator is
     split the one canonical way (a persona node carries no dot, so the first two
     segments are the whole scope).
+
+    ⚑ Since R-9 a ``bindings.{ro,rw}`` key returns ``""`` at EVERY scope, agent
+    included — ``BIND_KEY_RE`` no longer matches the arms at all. That is correct
+    rather than a gap: the sole caller anchors the agent STORE-ROOT for a category
+    SET, and no bindings key reaches a set any more.
     """
     from kanibako.settings.settings_categories import BIND_KEY_RE
 
@@ -1144,9 +1192,14 @@ def is_known_key(arg: str) -> bool:
     if _is_pref_key(arg):
         return True
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind key
-    # (item-0): a settable key (recognised on the +form too, before canonicalization)
-    # so get/show + the project-name heuristic treat it as a KEY. Checked BEFORE the
-    # persona form so a bind named after a state leaf is recognised as the bind.
+    # (item-0), whose CLI WRITE route is RETIRED (R-9). Kept KEY-SHAPED for the same
+    # reason as the file-scope spelling below and the bare ``env.<VAR>`` one: the
+    # positional-vs-key disambiguator must read it as a key so the verbs can refuse
+    # it with the cure (``agent_node_bind_retired_error``) rather than mistake it for
+    # a project name. It is also still READABLE (``config get``), which on its own
+    # makes it a key here. Recognised on the +form too, before canonicalization, and
+    # checked BEFORE the persona form so a bind named after a state leaf is
+    # recognised as the bind.
     if _is_agent_node_bind_key(arg):
         return True
     # agent.<node>.secret_path.<VAR> — the per-node SECRET category (spec §2a): a
@@ -1423,21 +1476,47 @@ def _is_scope_bind_key(key: str) -> bool:
     with a cure (:func:`scope_bind_retired_error`) instead of degrading to
     "unknown config key" — spec §0 refuses loudly, never quietly.
 
-    ⚑ It does NOT cover ``agent.<node>.bindings.{ro,rw}.<name>``
-    (:func:`_is_agent_node_bind_key`), which is a separate, still-live route.
+    ⚑ It does NOT cover ``agent.<node>.bindings.{ro,rw}.<name>``. That route is
+    retired too (:func:`agent_node_bind_retired_error`), but its node segment needs
+    a non-greedy split + ``℘``-canonicalization, so it has its own parser:
+    :func:`_is_agent_node_bind_key`.
     """
     return _scope_bind_match(key) is not None
 
 
-def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
-    """The refusal + cure for a RETIRED scope-level bind WRITE (R-9), or ``None``
-    when *canonical* is not one.
+def _bind_route_retired_message(
+    display_key: str, *, verb: str, route: str, cure: str,
+) -> str:
+    """THE refusal text for a retired bind CLI write route (R-9) — ONE wording for
+    both scopes, so the two doors cannot drift into two stories about one ruling.
+
+    *display_key* is the key as the USER should see and retype it — for the agent
+    form that is the ``+`` spelling, never the ``℘`` canonical one, because the
+    message ends by handing the key back in a ``config get`` the user is meant to
+    run. *route* is the retired SPELLING as a shape (``'box.bindings.ro.<name>'``);
+    *cure* is the one sentence that differs between them — WHICH file to hand-edit,
+    because the file genuinely differs (a scope settings file vs the node's own
+    ``agents/<node>/settings.yaml``).
 
     ⚑ The cure is HONEST about the loss. There is no equivalent CLI spelling to
     redirect to — that is precisely what R-9 accepted — so the message names the
     settings FILE as the surface, which is real and reachable (the launch cascade
     reads that tuple today, exactly as written). Prescribing a command that does
     not exist would be worse than naming the loss.
+    """
+    return (
+        f"Error: '{display_key}' cannot be {verb} from the CLI — the "
+        f"'{route}' route is RETIRED (the two bindings arms are "
+        f"a single terminal key keyed by DESTINATION, so a per-name key no longer "
+        f"exists). {cure} Reading it back with "
+        f"'config get {display_key}' still works."
+    )
+
+
+def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
+    """The refusal + cure for a RETIRED file-scope bind WRITE
+    (``{system,workset,box}.bindings.{ro,rw}.<name>``, R-9), or ``None`` when
+    *canonical* is not one.
 
     *verb* is the op word for the message (``"set"`` / ``"reset"``). Gates itself
     — ``None`` for every other key — so every verb door applies it uniformly.
@@ -1446,13 +1525,50 @@ def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     if m is None:
         return None
     scope, category = m.group("scope"), m.group("category")
-    return (
-        f"Error: '{canonical}' cannot be {verb} from the CLI — the scope-level "
-        f"'{scope}.{category}.<name>' route is RETIRED (the two bindings arms are "
-        f"a single terminal key keyed by DESTINATION, so a per-name key no longer "
-        f"exists). Edit the '{scope}:' table of the {scope} settings file "
-        f"directly; the launch reads it from there. Reading it back with "
-        f"'config get {canonical}' still works."
+    return _bind_route_retired_message(
+        canonical,
+        verb=verb,
+        route=f"{scope}.{category}.<name>",
+        cure=(
+            f"Edit the '{scope}:' table of the {scope} settings file "
+            f"directly; the launch reads it from there."
+        ),
+    )
+
+
+def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
+    """The refusal + cure for a RETIRED per-node descriptor bind WRITE
+    (``agent.<node>.bindings.{ro,rw}.<name>``, R-9), or ``None`` when *canonical*
+    is not one.
+
+    The SIBLING of :func:`scope_bind_retired_error` — same ruling, same wording,
+    one different cure: the tuple lives in the NODE's own settings file
+    ``agents/<node>/settings.yaml``, under the ``self.<node>.bindings.<arm>``
+    table (the shape ``settings_assemble._agent_partial`` reads into the launch
+    cascade), not in a scope table. Naming the scope file here would send a user
+    to edit a file the launch never reads for this key.
+
+    The node is rendered in its USER-FACING ``+`` spelling
+    (:func:`display_agent_ref`) — ``℘`` is a keyspace-internal separator and must
+    never reach a message.
+
+    *verb* is the op word (``"set"`` / ``"reset"``). Gates itself — ``None`` for
+    every other key — so every verb door applies it uniformly.
+    """
+    parsed = parse_agent_node_bind_key(canonical)
+    if parsed is None:
+        return None
+    node, category, name = parsed
+    shown_node = display_agent_ref(node)
+    return _bind_route_retired_message(
+        f"agent.{shown_node}.{category}.{name}",
+        verb=verb,
+        route=f"agent.<node>.{category}.<name>",
+        cure=(
+            f"Edit the 'self.{shown_node}.{category}' table of that "
+            f"agent's own settings file (agents/{shown_node}/"
+            f"settings.yaml) directly; the launch reads it from there."
+        ),
     )
 
 
@@ -1462,13 +1578,13 @@ def _is_path_category_key(key: str) -> bool:
     The source-only RAW repoint (spec §2a / design §6d / S24) applies to the
     bind-shaped categories — a 2-/3-element ``[host_src, box_dest[, options]]``
     tuple — and, since R-9, only to those still reachable by a dotted key:
+    ``caches`` / ``seeded`` / ``common`` / ``synced``, at ``system`` / ``workset``
+    / ``box`` AND at the discriminated ``agent.<node>`` scope.
 
-    * at ``system`` / ``workset`` / ``box``: ``caches`` / ``seeded`` / ``common``
-      / ``synced``. **The two ``bindings.{ro,rw}`` arms are NOT matched here any
-      more** — their scope-level CLI route is retired, recognised instead by
-      :func:`_is_scope_bind_key` and refused by name.
-    * at the discriminated ``agent.<node>`` scope: all six, ``bindings.{ro,rw}``
-      included — that route is untouched by R-9.
+    **The two ``bindings.{ro,rw}`` arms are NOT matched here at ANY scope.** Their
+    CLI write route is retired (R-9, both steps); they are recognised instead by
+    :func:`_is_scope_bind_key` (file scopes) / :func:`_is_agent_node_bind_key`
+    (agent scope) and refused by name.
 
     ``env`` (scalar) is NOT matched here — the live ``<scope>.env.<VAR>`` arm is
     routed by the earlier :func:`_is_scope_env_key` branch as a plain scalar
@@ -1488,7 +1604,11 @@ def _has_dedicated_route(canonical: str) -> bool:
     ``TestSetDispatchCoverage`` fails if they drift.  PREAMBLE guards are NOT
     terms: a key refused before the dispatch (the bare-agent scalars at box/
     workset; the retired bare ``env.<VAR>``, R-39) never reaches the probe this
-    feeds, so a term for it here would be a second spelling of the refusal.
+    feeds, so a term for it here would be a second spelling of the refusal. The
+    two RETIRED bind routes (R-9) are in exactly that position: neither
+    ``{system,workset,box}.bindings.{ro,rw}.<name>`` nor
+    ``agent.<node>.bindings.{ro,rw}.<name>`` has a term here, because both are
+    refused in the verb preamble and never reach the dispatch.
 
     Its ONE job is to keep :func:`_probes_at_set_time` off keys nothing handles,
     so an unknown key still reaches the routing table at the bottom of the
@@ -1498,7 +1618,6 @@ def _has_dedicated_route(canonical: str) -> bool:
     """
     return (
         _is_pref_key(canonical)
-        or _is_agent_node_bind_key(canonical)
         or _is_agent_node_secret_key(canonical)
         or _is_scope_secret_key(canonical)
         or _is_scope_env_key(canonical)
@@ -1527,10 +1646,11 @@ def _probes_at_set_time(canonical: str) -> bool:
     * **Keys nothing claims.** They must reach the routing table and be reported
       as an unknown KEY (see :func:`_has_dedicated_route`).
 
-    The RETIRED scope-level bind route ``{system,workset,box}.bindings.{ro,rw}
-    .<name>`` (R-9) is in the SAME position as the bare env spelling: refused in
-    the verb preamble (:func:`scope_bind_retired_error`), so it never reaches
-    this predicate and needs no exclusion term of its own.
+    The two RETIRED bind routes (R-9) — ``{system,workset,box}.bindings.{ro,rw}
+    .<name>`` and ``agent.<node>.bindings.{ro,rw}.<name>`` — are in the SAME
+    position as the bare env spelling: refused in the verb preamble
+    (:func:`scope_bind_retired_error` / :func:`agent_node_bind_retired_error`), so
+    neither reaches this predicate and neither needs an exclusion term of its own.
 
     The docker ``.env`` family (bare ``env.<VAR>``, written VERBATIM to a file
     the expander never saw) WAS the third exclusion. R-39 retired the spelling:
@@ -1551,7 +1671,7 @@ def _probes_at_set_time(canonical: str) -> bool:
     :func:`_is_bare_env_key`: that would drag the live scoped keys into the
     retired spelling's refusal.
     """
-    if _is_path_category_key(canonical) or _is_agent_node_bind_key(canonical):
+    if _is_path_category_key(canonical):
         return False
     if _is_pref_key(canonical):
         # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and must not run

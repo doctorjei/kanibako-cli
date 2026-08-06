@@ -255,15 +255,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
     std = load_std_paths(load_config(cf))
     ssp = std.settings
 
-    from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.agent_ref import canonicalize_agent_ref
-    from kanibako.settings.agent_representation import agent_default_bind_keys
     from kanibako.settings.config_keys import (
-        AGENT_DEFAULT_SUB,
         ConfigLevel,
         bare_env_retired_error,
         is_known_key,
-        parse_agent_node_bind_key,
     )
     from kanibako.settings.config_interface import (
         ConfigAction,
@@ -274,7 +269,6 @@ def _run_system_config(args: argparse.Namespace) -> int:
         set_config_value,
         show_config,
     )
-    from kanibako.errors import ConfigError
 
     key_value = getattr(args, "key_value", None)
     action, key, value = parse_config_arg(
@@ -301,22 +295,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
             return 1
         # Ensure the system settings dir exists for SETTINGS removals.
         ssp.parent.mkdir(parents=True, exist_ok=True)
-        # item-0 (per-node DESCRIPTOR bind reset, item 3): a system-scope
-        # ``agent.<node>.bindings.{ro,rw}.<name>`` reset removes the repoint from
-        # the node's OWN settings file, reverting the bind to the descriptor FLOOR.
-        # Thread that detect-free per-node floor registry (``agent_default_bind_
-        # keys``) so the honest cleared-message names the reverted-to floor value
-        # (symmetric with the set handler's ``default_categories`` build).
-        reset_default_categories = None
-        reset_bind_parse = parse_agent_node_bind_key(key)
-        if reset_bind_parse is not None:
-            node_raw, _rcat, _rname = reset_bind_parse
-            try:
-                reset_node = canonicalize_agent_ref(node_raw)
-            except ConfigError:
-                reset_node = None
-            if reset_node is not None:
-                reset_default_categories = agent_default_bind_keys(reset_node)
+        # ⚑ NO per-node bind floor registry is threaded any more. It existed so a
+        # reset of ``agent.<node>.bindings.{ro,rw}.<name>`` could name the descriptor
+        # FLOOR it reverted to; R-9 retired that reset route (the engine refuses the
+        # key by name), so there is nothing left for the registry to describe.
         # Thread the system SETTINGS file as the cascade's system tier so the
         # honest cleared-message can name the now-effective value + source tier
         # (item 1). A system-scope regular settings key was removed FROM ssp, so
@@ -326,7 +308,6 @@ def _run_system_config(args: argparse.Namespace) -> int:
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
             agents_root=std.agents,
-            default_categories=reset_default_categories,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
@@ -396,46 +377,15 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # Ensure the system settings dir exists for SETTINGS writes.
         ssp.parent.mkdir(parents=True, exist_ok=True)
 
-        # item-0 (per-node DESCRIPTOR bind repoint): a system-scope
-        # ``agent.<node>.bindings.{ro,rw}.<name>`` set SOURCE-ONLY repoints the
-        # descriptor delivery bind (claude launcher/share) on the node's OWN settings
-        # file. The write target is ``agents/<node>/settings.yaml`` (NOT the
-        # kanibako_config.yaml CONFIG file), the SAME file the per-persona agent keys
-        # write to; and the DESCRIPTOR floor registry (detect-free, per-node) is
-        # threaded as ``default_categories`` so the must-exist gate sees the
-        # launch-only descriptor floor. The node is resolved by HARNESS with NO
-        # detect(), so this validates even for an uninstalled agent (Fork 3).
-        set_config_path = cf
-        set_default_categories = None
-        set_cascade_agent_path = None
-        set_cascade_agent_name = ""
-        bind_parse = parse_agent_node_bind_key(key)
-        if bind_parse is not None:
-            node_raw, _cat, _name = bind_parse
-            # A MALFORMED ref is REFUSED here, naming the ref. Swallowing the parse
-            # error and leaving ``set_config_path = cf`` (the old behavior) aimed the
-            # write at the kanibako_config.yaml CONFIG file — where a malformed node's
-            # table actually landed — and reported the cascade's "key must already
-            # exist" complaint about a key that could never exist, sending the user off
-            # to seed a bind instead of fixing the node.
-            try:
-                node = canonicalize_agent_ref(node_raw)
-            except ConfigError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
-                return 1
-            # The RESERVED any-agent tier is not a node: do NOT route it, and in
-            # particular do not mkdir an ``agents/default/`` the launch never reads.
-            # The refusal itself belongs to the engine's node guard
-            # (``_set_category_value``), which owns that message for every caller —
-            # duplicating the text here would be a second copy to drift.
-            if node != AGENT_DEFAULT_SUB:
-                node_file = agent_settings_path(std.agents, node)
-                node_file.parent.mkdir(parents=True, exist_ok=True)
-                set_config_path = node_file
-                set_default_categories = agent_default_bind_keys(node)
-                set_cascade_agent_path = node_file
-                set_cascade_agent_name = node
-
+        # ⚑ THE PER-NODE BIND ROUTING BLOCK IS GONE (R-9). A system-scope
+        # ``agent.<node>.bindings.{ro,rw}.<name>`` set used to be re-aimed at the
+        # node's OWN ``agents/<node>/settings.yaml`` (mkdir included) and handed the
+        # detect-free descriptor floor registry so the must-exist gate would pass.
+        # That write route is retired: the engine refuses the key BY NAME in its
+        # preamble, before any destination is resolved. Removing the block here is
+        # part of the retirement, not an oversight — leaving it would have mkdir'd an
+        # ``agents/<node>/`` directory for a write that is then refused.
+        #
         # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
         # 2026-06-29): the system is the command scope, whose settings file is ssp —
         # the SAME file the launch cascade's system tier reads (start.py) and the same
@@ -443,15 +393,12 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # here while a system category set wrote to cf, so the must-exist probe agreed
         # with neither the launch nor reset; both halves now name ssp.
         msg = set_config_value(
-            key, value, config_path=set_config_path,
+            key, value, config_path=cf,
             is_system=True,
             system_settings_path=ssp,
             cascade_system_path=ssp,
-            cascade_agent_path=set_cascade_agent_path,
-            cascade_agent_name=set_cascade_agent_name,
             command_scope=ConfigLevel.system,
             agents_root=std.agents,
-            default_categories=set_default_categories,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

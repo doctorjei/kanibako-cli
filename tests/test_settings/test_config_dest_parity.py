@@ -513,23 +513,34 @@ class TestPerNodeAgentDest:
             ConfigLevel.system, "agent.claude.secret_path.TOKEN",
         ) == "/host/tok"
 
-    def test_node_descriptor_bind(self, bench):
+    def test_node_descriptor_bind_keeps_its_read_and_loses_its_write(self, bench):
+        """R-9 — ``agent.<node>.bindings.{ro,rw}.<name>`` keeps a READ slot in the
+        node's own file and loses its WRITE route. The asymmetry is deliberate and
+        is what the parity bench exists to make visible rather than accidental.
+        (This test asserted the repoint WROTE, until the route was retired.)"""
         node_file = bench.agents / "claude" / "settings.yaml"
         node_file.parent.mkdir(parents=True, exist_ok=True)
         bench.seed(
             node_file, ("self", "claude", "bindings", "ro"), "launcher",
             list(_TUPLE),
         )
+        # The READ finds the hand-authored tuple in the node file.
+        got = bench.get(
+            ConfigLevel.system, "agent.claude.bindings.ro.launcher",
+        ) or ""
+        assert _TUPLE[0] in got, got
+
         before = bench.snapshot()
-        msg = bench.set(
+        set_msg = bench.set(
             ConfigLevel.system, "agent.claude.bindings.ro.launcher", str(bench.tmp),
         )
-        assert not msg.startswith("Error:"), msg
-        changed = bench.changed(before)
-        assert set(changed) == {"agent:claude"}, changed
-        assert changed["agent:claude"]["self"]["claude"]["bindings"]["ro"][
-            "launcher"
-        ] == [str(bench.tmp), _TUPLE[1], _TUPLE[2]]
+        reset_msg = bench.reset(
+            ConfigLevel.system, "agent.claude.bindings.ro.launcher",
+        )
+        assert set_msg.startswith("Error:") and "RETIRED" in set_msg, set_msg
+        assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
+        # ⚑ The bench's whole point: NO file moved. RED if a refusal still wrote.
+        assert bench.changed(before) == {}, bench.changed(before)
 
     @pytest.mark.parametrize("key", [
         "agent.claude.model",

@@ -25,20 +25,21 @@ preserved verbatim, NEVER an expanded literal (S12).
 
 ⚑⚑ READ BEFORE COPYING A KEY OUT OF THIS FILE. Many fixtures here spell
 ``box.bindings.rw.<name>`` / ``workset.bindings.ro.<name>``. **That is NOT a
-settable key any more** — R-9 retired the scope-level bind CLI route, and
-``config set``/``reset`` refuse it by name (see
-``config_keys.scope_bind_retired_error``). The spellings survive here because
+settable key any more, and neither is ``agent.<node>.bindings.{ro,rw}.<name>``**
+— R-9 retired the bind CLI write route at EVERY scope, and ``config set``/``reset``
+refuse both by name (``config_keys.scope_bind_retired_error`` /
+``config_keys.agent_node_bind_retired_error``). The spellings survive here because
 BOTH functions under test are PURE and KEY-AGNOSTIC: ``validate_config_set``
 uses the key as a message label, and ``repoint_host_src`` takes an arbitrary
 dotted path and edits the YAML at it — neither consults the keyspace, and a
-``bindings.{ro,rw}`` NESTED PATH is still live (the surviving
-``agent.<node>.bindings.*`` route writes exactly that shape).
+``bindings.{ro,rw}`` NESTED PATH is still live in the settings FILES the launch
+reads, which is the shape these fixtures exercise.
 
-The ONE place the key is genuinely interpreted is ``_rooted_form_hint``, and
-that test uses agent-scope bind keys on purpose — see
-``test_concrete_category_gets_no_rooted_hint``, which explains why the old
-spelling would have passed VACUOUSLY. Do not read any other key in this file as
-evidence that a scope-level bind is settable.
+The ONE place the key is genuinely interpreted is ``_rooted_form_hint``, and that
+test now uses ``synced`` at every scope on purpose — see
+``test_concrete_category_gets_no_rooted_hint``, which explains why a bindings
+spelling would pass VACUOUSLY. Do not read any other key in this file as evidence
+that a bind is settable from the CLI.
 """
 
 from __future__ import annotations
@@ -824,25 +825,24 @@ class TestRelativeCategorySourceRefused:
     @pytest.mark.parametrize(
         "key",
         [
-            "agent.claude.bindings.rw.home",
-            "agent.claude.bindings.ro.d",
             "agent.c.synced.s",
             "box.synced.s",
             "workset.synced.d",
         ],
     )
     def test_concrete_category_gets_no_rooted_hint(self, key) -> None:
-        """``bindings.{ro,rw}`` and ``synced`` take NO root at any scope (spec §2a),
-        so there is no rooted form to suggest — suggesting one would be a lie.
+        """``synced`` takes NO root at any scope (spec §2a), so there is no rooted
+        form to suggest — suggesting one would be a lie.
 
-        ⚑ THE BIND ROWS ARE AGENT-SCOPED ON PURPOSE. They read
-        ``box.bindings.rw.home`` / ``workset.bindings.ro.d`` before R-9 retired the
-        scope-level bind route. Left that way the test would still have PASSED —
-        and would have been VACUOUS: ``_rooted_form_hint`` matches on
-        ``BIND_KEY_RE``, which no longer matches a scope bind at all, so "no rooted
-        hint" would have been proved by the key not being a category key rather
-        than by ``bindings`` not being ABSTRACT. The agent-scope spelling still
-        matches, so the assertion still tests the rule it names."""
+        ⚑ EVERY ROW IS ``synced``, AND THAT IS THE POINT. The rows read
+        ``box.bindings.rw.home`` / ``workset.bindings.ro.d`` until R-9's first step,
+        then ``agent.claude.bindings.{rw,ro}.*`` until its second. Each time, left in
+        place, the test would still have PASSED — and would have been VACUOUS:
+        ``_rooted_form_hint`` matches on ``BIND_KEY_RE``, which no longer matches a
+        bindings key at ANY scope, so "no rooted hint" would have been proved by the
+        key not being a category key rather than by the category not being ABSTRACT.
+        ``synced`` is the surviving CONCRETE category and still matches, so the
+        assertion still tests the rule it names. Do not reintroduce a bindings row."""
         v = _validate(key, "sub/dir", is_category=True)
         assert isinstance(v, Error)
         assert "rooted form" not in v.message
