@@ -53,7 +53,7 @@ testable; ``settings_prefs.default_valid_agents`` is the one production supplier
 from __future__ import annotations
 
 import re
-from typing import Collection, Final
+from typing import Collection, Final, Sequence
 
 from kanibako.settings.settings_store import _RESERVED_KEY_NAMES as _STORE_RESERVED
 
@@ -193,12 +193,49 @@ ACCESS_DEFAULT: Final[str] = "full"
 # The §2a CATEGORIES — parametric over every scope
 # ---------------------------------------------------------------------------
 
-#: The bind-shaped categories: ``<scope>.<category>.<name>``, ``<name>`` FREE.
-#: ⚑ The free ``<name>`` IS the "VALIDITY, not EXISTENCE" clause (§2h):
-#: a NEW name inside a parametric family is exactly what a user may add.
+#: The bind-shaped categories. ⚑ **TWO SHAPES — do not conflate them.**
+#:
+#: * The DOTLESS members (``caches`` / ``seeded`` / ``common`` / ``synced``) are
+#:   NAME-KEYED and expand: ``<scope>.<category>.<name>``, ``<name>`` FREE. That
+#:   free ``<name>`` IS the "VALIDITY, not EXISTENCE" clause (§2h) — a NEW name
+#:   inside a parametric family is exactly what a user may add.
+#: * ``bindings.ro`` / ``bindings.rw`` are **DEST-KEYED and TERMINAL** since
+#:   2026-08-06c (R-5/R-10): the ARM is the whole of the key and its VALUE is a
+#:   map keyed by box destination. A destination is DATA, never a key segment, so
+#:   ``<scope>.bindings.<arm>.<name>`` is NOT a key. They are listed here for the
+#:   record; every consumer filters them out with ``if "." not in c`` and the
+#:   terminal arms are matched through :data:`TERMINAL_CATEGORY_TAILS` instead.
 BIND_CATEGORIES: Final[frozenset[str]] = frozenset({
     "bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced",
 })
+
+#: The DEST-KEYED **TERMINAL** category keys (spec §2a), as the segment tail that
+#: ENDS a key. A key may end here and nothing may follow: the value is a map whose
+#: keys are box DESTINATIONS — data, not keyspace.
+#:
+#: ⚑ ONE definition, two consumers: :func:`_category_reason` (what is a key) and
+#: ``settings_prefs._flatten_pref_node`` (where a ``pref:`` subtree walk STOPS).
+#: They must agree — a walker that descended past a terminal key would manufacture
+#: targets this validator then refuses, reporting the wrong fault.
+TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({
+    ("masks",),
+    ("bindings", "ro"),
+    ("bindings", "rw"),
+})
+
+
+def is_terminal_category_tail(tail: Sequence[str]) -> bool:
+    """Does *tail* END at a DEST-KEYED TERMINAL category key? (spec §2a)
+
+    *tail* is a key's segments (a full key or any suffix of one). True for
+    ``(…, "masks")`` and ``(…, "bindings", "ro"|"rw")`` — the keys whose VALUE is
+    a destination-keyed map. See :data:`TERMINAL_CATEGORY_TAILS`.
+    """
+    segments = tuple(tail)
+    for cat in TERMINAL_CATEGORY_TAILS:
+        if len(segments) >= len(cat) and segments[-len(cat):] == cat:
+            return True
+    return False
 
 # (There is deliberately no CATEGORY_SCOPES constant. The scope dispatch in
 # :func:`key_validity` is an explicit if-chain on the head token, and the
@@ -334,6 +371,8 @@ def _category_reason(
     # ``<scope>.masks``; entries live INSIDE it as a dict[box_dest -> bool|None],
     # and a box_dest is a PATH, not a key segment, so a dotted tail under masks is
     # a value address rather than a key. Accept the bare form only.
+    # ⚑ This and the ``bindings.{ro,rw}`` branch below are the TWO terminal
+    # dest-keyed categories; they are enumerated in :data:`TERMINAL_CATEGORY_TAILS`.
     if head == "masks":
         if len(rest) == 1:
             return None
@@ -358,16 +397,32 @@ def _category_reason(
             )
         return leaf_name_reason(var)
 
-    # bindings.{ro,rw}.<name> — the arm is REQUIRED (spec §2d: an
-    # ARM-LESS binding is not a declared key).
+    # bindings.{ro,rw} — DEST-KEYED and TERMINAL (spec §2a; R-5/R-10,
+    # 2026-08-06c), the same shape as ``masks`` above. TWO independent rules:
+    #
+    # 1. The ARM is REQUIRED (§2d: an ARM-LESS binding is not a declared key) —
+    #    ``bindings`` alone names the arm ROOT, not a key.
+    # 2. The ARM is the WHOLE of the key. Entries live INSIDE its value as a
+    #    dict[box_dest -> [src[, options]]], and a box_dest is a PATH, so a tail
+    #    under an arm is a VALUE address rather than a key. There is no entry
+    #    NAME at all any more (R-10: the destination IS the identity).
     if head == "bindings":
-        if len(rest) < 3 or rest[1] not in ("ro", "rw"):
+        if len(rest) < 2 or rest[1] not in ("ro", "rw"):
             return (
                 f"'{prefix}.{'.'.join(rest)}' is not a key: bindings are declared "
-                f"per ARM — '{prefix}.bindings.ro.<name>' / "
-                f"'{prefix}.bindings.rw.<name>' (spec §2a / §2d L960-964)"
+                f"per ARM — '{prefix}.bindings.ro' / "
+                f"'{prefix}.bindings.rw' (spec §2a / §2d)"
             )
-        return leaf_name_reason(rest[-1])
+        if len(rest) == 2:
+            return None
+        return (
+            f"'{prefix}.bindings.{rest[1]}.{'.'.join(rest[2:])}' is not a key: "
+            f"'{prefix}.bindings.{rest[1]}' is a TERMINAL dest-keyed key whose "
+            f"entries are box destinations inside its value, not key segments. "
+            f"Bindings have no entry NAME — write the entry in the settings FILE "
+            f"under '{prefix}.bindings.{rest[1]}', keyed by its destination "
+            f"(spec §2a)"
+        )
 
     # The remaining leaf categories: caches / seeded / common / synced.
     if head in {c for c in BIND_CATEGORIES if "." not in c}:

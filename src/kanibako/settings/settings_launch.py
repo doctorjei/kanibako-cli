@@ -2216,9 +2216,21 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     ``caches``/``seeded``/``common``/``synced`` leaf categories. ``env``, ``masks``
     and ``secret_path`` keep their pre-existing SILENT SKIP of a non-``KeyStore``
     node: they were outside the boundary approved for this change, and widening
-    them is a decision (their shapes differ — ``masks`` is keyed-by-dest, ``env`` /
-    ``secret_path`` are scalar-valued), not an omission to fix in passing. Tracked
-    for P5 with the rest of the undeclared-shape sweep.
+    them is a decision, not an omission to fix in passing. Tracked for the
+    undeclared-shape sweep.
+
+    ⚑ The old wording justified the ``masks`` skip by "their shapes differ —
+    ``masks`` is keyed-by-dest". **That reason DIED with the disk-store rework**:
+    ``bindings.{ro,rw}`` are dest-keyed terminal keys too (R-5/R-10), so masks and
+    the two arms now have the SAME shape and the skip is a pure coverage boundary,
+    not a shape distinction. Only ``env`` / ``secret_path`` (scalar-valued) still
+    differ in shape. Stated rather than quietly left, because a justification that
+    has gone false reads as a rule.
+
+    What the arm check still asserts is UNCHANGED by the reshape: a bindings arm's
+    value must be a MAP node. Before, a map of names; now, a map of destinations.
+    A scalar / :class:`Bind` / list sitting at ``<scope>.bindings.ro`` is an
+    undeclared shape either way.
     """
     bindings = dict.get(node, "bindings", _MISSING)
     if bindings is not _MISSING:
@@ -2227,9 +2239,11 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
             if name not in ("ro", "rw"):
                 raise SettingsError(
                     f"{key_prefix}.bindings.{name} is an ARM-LESS binding, which is "
-                    f"not a declared key; bindings are declared per arm — "
-                    f"{key_prefix}.bindings.ro.{name} / "
-                    f"{key_prefix}.bindings.rw.{name} (spec §2d L906-910)"
+                    f"not a declared key; bindings are declared per arm and the arm "
+                    f"is the WHOLE key — {key_prefix}.bindings.ro / "
+                    f"{key_prefix}.bindings.rw, each a TERMINAL map keyed by box "
+                    f"destination (spec §2a / §2d). Move the entry under one of the "
+                    f"two arms, keyed by its destination"
                 )
         for mode in ("ro", "rw"):
             mode_node = dict.get(bindings, mode, _MISSING)

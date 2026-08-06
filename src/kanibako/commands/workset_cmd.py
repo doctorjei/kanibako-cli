@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -232,10 +231,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Shares are live bind mounts decided at container creation, so they\n"
             "take effect on the NEXT box launch (a running box is unaffected).\n"
             "There is no content sync: 'updating' a share means re-running\n"
-            "'share add' with a new bind, which overwrites the mapping.\n\n"
-            "  workset share add myws data /host/data:/home/agent/data\n"
-            "  workset share add myws docs /host/docs:/srv/docs --mode ro\n"
-            "  workset share rm myws data\n"
+            "'share add' with the same DESTINATION, which overwrites its source.\n\n"
+            "A share is identified by its box DESTINATION — there is no share\n"
+            "name. Nothing may be mounted twice at one destination, so a\n"
+            "destination names at most one share (adding at a destination that\n"
+            "already exists in the OTHER mode is still a launch-time conflict).\n\n"
+            "  workset share add myws /host/data:/home/agent/data\n"
+            "  workset share add myws /host/docs:/srv/docs --mode ro\n"
+            "  workset share rm myws /home/agent/data\n"
             "  workset share list myws\n"
             "  workset share list myws --effective\n"
         ),
@@ -243,14 +246,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     share_sub = share_p.add_subparsers(dest="share_command", metavar="COMMAND")
 
-    # share add WORKSET NAME BIND [--mode {ro,rw}]
+    # share add WORKSET BIND [--mode {ro,rw}]
     share_add_p = share_sub.add_parser(
         "add",
         help="Add (or overwrite) a shared directory",
         description=(
-            "Add a shared directory to a working set. Re-running 'add' with the "
-            "same NAME overwrites the existing mapping (this is how you 'update' "
-            "a share). BIND is 'host_src:guest_dest'. The host source must "
+            "Add a shared directory to a working set. BIND is "
+            "'host_src:guest_dest'; the guest DESTINATION identifies the share, so "
+            "re-running 'add' with the same destination overwrites its source "
+            "(this is how you 'update' a share). The host source must "
             "resolve on its own — give an absolute path, '~/…', '$VAR' or an "
             "'@'-reference. A plain relative path is resolved against the working "
             "set root WHEN THE SHARE IS ADDED and stored absolute; it is not "
@@ -259,7 +263,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     share_add_p.add_argument("workset", help="Name of the working set")
-    share_add_p.add_argument("name", help="Share name (identifier: [A-Za-z0-9._-]+)")
     share_add_p.add_argument(
         "bind", metavar="BIND", help="Bind mapping 'host_src:guest_dest'",
     )
@@ -269,22 +272,27 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     share_add_p.set_defaults(func=run_share_add)
 
-    # share rm WORKSET NAME [--mode {ro,rw}]
+    # share rm WORKSET DEST [--mode {ro,rw}]
     share_rm_p = share_sub.add_parser(
         "rm",
         aliases=["remove"],
         help="Remove a shared directory",
         description=(
-            "Remove a shared directory from a working set. With no --mode, the "
-            "share is removed from whichever mode (ro/rw) contains it; --mode is "
-            "required when the same NAME exists in both."
+            "Remove a shared directory from a working set, BY ITS BOX "
+            "DESTINATION — exactly as 'share list' prints it in the DEST column. "
+            "With no --mode, the share is removed from whichever mode (ro/rw) "
+            "contains it; --mode is required when the same destination exists in "
+            "both."
         ),
     )
     share_rm_p.add_argument("workset", help="Name of the working set")
-    share_rm_p.add_argument("name", help="Share name to remove")
+    share_rm_p.add_argument(
+        "dest", metavar="DEST",
+        help="Box destination of the share to remove (see 'share list')",
+    )
     share_rm_p.add_argument(
         "--mode", choices=["ro", "rw"], default=None,
-        help="Disambiguate when NAME exists in both ro and rw",
+        help="Disambiguate when DEST exists in both ro and rw",
     )
     share_rm_p.set_defaults(func=run_share_remove)
 
@@ -795,9 +803,20 @@ def _run_workset_config(args: argparse.Namespace) -> int:
 # workset share add | rm | list
 # ---------------------------------------------------------------------------
 
-# Share names are identifiers; the resolver lets a name contain dots, but the
-# user-facing surface keeps them simple/unambiguous.
-_SHARE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# ⚑ ``_SHARE_NAME_RE`` (``^[A-Za-z0-9._-]+$``) was RETIRED here, 2026-08-06c
+# (R-10: a binding has no entry NAME — the box DESTINATION is the identity).
+# It was NOT converted into a destination validator, deliberately:
+#
+# * its character class excludes ``/``, so it cannot describe a path at all —
+#   "converting" it would mean writing a different rule, i.e. inventing a NEW
+#   refusal on a surface that has never validated the destination;
+# * the destination's real rule IS ruled, and it is R-11 — a dest is normalized
+#   to an ABSOLUTE guest path (``~`` expanded, the SOURCE never) — which lands
+#   with the floor producers, not here. A weaker second rule now would be two
+#   rules for one thing, which is the drift Code Convention 0 opens with.
+#
+# What still guards ``share add`` is the BIND GRAMMAR in :func:`run_share_add`:
+# exactly one unescaped ':', both halves non-empty. That is unchanged.
 
 # Reminder printed after a mutation: bind mounts are fixed at creation time.
 _NEXT_LAUNCH_REMINDER = (
@@ -806,16 +825,22 @@ _NEXT_LAUNCH_REMINDER = (
 )
 
 
-def _bind_display(value: object) -> str:
-    """Render a STORED structured bind value as the user-facing input grammar.
+def _share_source_display(value: object) -> str:
+    """Render a stored binding entry's HOST SOURCE for the raw listing.
 
-    Storage is a structured ``[host_src, box_dest[, options]]`` list (spec §2a);
-    the raw-listing BIND column echoes the ``host_src:box_dest[:options]`` form a
-    user would type at ``workset share add`` (mirroring podman ``-v``). A
-    non-list legacy scalar falls back to ``str``.
+    The entry's box destination is the dict KEY (R-10) and is printed in its own
+    DEST column, so this renders only the other half: the host source, plus any
+    per-entry mount options in brackets. Storage is a structured list (spec §2a,
+    never a colon-joined string); a non-list legacy scalar falls back to ``str``.
     """
     if isinstance(value, (list, tuple)):
-        return ":".join(str(part) for part in value)
+        if not value:
+            return ""
+        src = str(value[0])
+        # Element 1 is the stored destination (already the DEST column); anything
+        # beyond it is the per-entry options override.
+        extra = [str(p) for p in value[2:] if str(p)]
+        return f"{src}  [{', '.join(extra)}]" if extra else src
     return str(value)
 
 
@@ -844,10 +869,34 @@ def _load_share_doc(ws_config: Path) -> dict:
 def run_share_add(args: argparse.Namespace) -> int:
     """Add (or overwrite) a workset-scoped shared directory.
 
-    Writes ``workset.bindings.{mode}.{name} = [host_src, guest_dest]`` into the
-    working set's ``settings.yaml``. Re-running with the same name overwrites the
-    mapping (this is how a binding is "updated"; bindings are live bind mounts and
-    no content sync exists).
+    Writes the entry into the working set's ``settings.yaml`` under
+    ``workset.bindings.{mode}``, **KEYED BY ITS BOX DESTINATION** (R-10: a binding
+    has no entry name — bindings are strictly act-once, so a name never
+    distinguishes two entries at one dest). Re-running with the same destination
+    overwrites its source (this is how a binding is "updated"; bindings are live
+    bind mounts and no content sync exists).
+
+    ⚑⚑ **THE STORED VALUE IS STILL THE 2-ELEMENT ``[host_src, box_dest]`` PAIR**,
+    even though the key is now the destination — so the destination appears twice.
+    That redundancy is DELIBERATE and TRANSIENT, and it is not an oversight:
+
+    * The dest-keyed VALUE shape is ``[src[, options]]`` (R-3/R-6,
+      ``settings_store.BindEntry``), but **nothing reads it yet.** Every settings
+      FILE still loads through ``settings_assemble._parse_node`` with
+      ``dest_keyed=False``, which unpacks a leaf as ``[host_src, box_dest[, opts]]``.
+    * Writing ``[src]`` here today therefore does not "diverge silently" — it
+      **breaks loudly and immediately**: ``unpack_bind`` refuses a 1-element list,
+      so every launch in the working set, and ``share list`` itself, would die with
+      *"Binding category value must have 2 or 3 elements"*. Writing ``[src, opts]``
+      is worse — it parses, with ``opts`` silently read as the DESTINATION.
+    * The reader cannot flip alone either: the floor producers
+      (``core_defaults``) still emit name-keyed entries into the SAME merged arm,
+      and a merged arm must be homogeneous. Reader and floor flip together — that
+      is P6, and this value flip belongs with them. By then it is a pure "drop
+      element 2" over keys that are ALREADY destinations.
+
+    So this phase moves the IDENTITY (R-10, a user-facing CLI change) and P6 moves
+    the SHAPE (R-3). Do not "finish the job" here in isolation.
 
     ⚑ A BARE-RELATIVE host source is ABSOLUTISED AGAINST THE WORKSET ROOT HERE, at
     WRITE time (spec §2a: a stored source must fully resolve on its own).
@@ -871,15 +920,6 @@ def run_share_add(args: argparse.Namespace) -> int:
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_resolve import split_bind
-
-    name = args.name
-    if not _SHARE_NAME_RE.match(name):
-        print(
-            f"Error: invalid share name '{name}' "
-            "(allowed characters: letters, digits, '.', '_', '-').",
-            file=sys.stderr,
-        )
-        return 1
 
     bind = args.bind
     # Parse the ``host_src:guest_dest`` grammar through the CANONICAL escape-aware
@@ -927,17 +967,19 @@ def run_share_add(args: argparse.Namespace) -> int:
     subtree = data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
         args.mode, {}
     )
-    existed = name in subtree
+    existed = guest_dest in subtree
     # CLI-INPUT edge: the ``host_src:guest_dest`` grammar (mirroring podman -v) is
     # parsed HERE and STORED in the structured form (spec §2a — a YAML list, NOT a
     # colon-joined string). Storage stays pure structured; the colon form is only
-    # the user-facing input/display grammar.
-    subtree[name] = [host_src, guest_dest]
+    # the user-facing input/display grammar. The KEY is the destination (R-10);
+    # for why the value still repeats it, see this function's docstring.
+    subtree[guest_dest] = [host_src, guest_dest]
     dump_doc(ws_config, data)
 
     verb = "Updated" if existed else "Added"
     print(
-        f"{verb} {args.mode} share '{name}' for working set '{ws.name}': {bind}"
+        f"{verb} {args.mode} share at '{guest_dest}' for working set "
+        f"'{ws.name}': {bind}"
     )
     if host_src != typed_host_src:
         # Say what was actually stored: the value is no longer the string the user
@@ -954,8 +996,18 @@ def run_share_add(args: argparse.Namespace) -> int:
 def run_share_remove(args: argparse.Namespace) -> int:
     """Remove a workset-scoped shared directory from the working set config.
 
-    With ``--mode`` omitted, removes from whichever mode (ro/rw) contains the
-    name; errors if the name exists in both (ambiguous) or in neither (missing).
+    The share is named BY ITS BOX DESTINATION (R-10) — the stored dict key, which
+    is exactly what ``share list`` prints in its DEST column. With ``--mode``
+    omitted, removes from whichever mode (ro/rw) contains that destination; errors
+    if it exists in both (ambiguous) or in neither (missing).
+
+    ⚑ The destination is matched VERBATIM against the stored key — no colon
+    grammar, so a literal ':' in a destination is typed plainly here even though
+    ``share add`` needs it escaped as ``\\:`` (there, the ':' is the separator).
+
+    ⚑ A key left over from the RETIRED name-keyed shape is removable by that name:
+    this deletes whatever key the user gives, which is what makes the cure
+    ``_workset_raw_shares`` prescribes actually spellable.
     """
     from kanibako.settings.config_io import dump_doc
 
@@ -969,7 +1021,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
 
     def _present(mode: str) -> bool:
         sub = path_tree.get(mode, {})
-        return isinstance(sub, dict) and args.name in sub
+        return isinstance(sub, dict) and args.dest in sub
 
     if args.mode is not None:
         modes = [args.mode] if _present(args.mode) else []
@@ -979,7 +1031,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
     if not modes:
         scope = f" ({args.mode})" if args.mode else ""
         print(
-            f"Error: no share '{args.name}'{scope} configured for "
+            f"Error: no share at '{args.dest}'{scope} configured for "
             f"working set '{ws.name}'.",
             file=sys.stderr,
         )
@@ -987,18 +1039,18 @@ def run_share_remove(args: argparse.Namespace) -> int:
 
     if len(modes) > 1:
         print(
-            f"Error: share '{args.name}' exists in both ro and rw for "
+            f"Error: a share at '{args.dest}' exists in both ro and rw for "
             f"working set '{ws.name}'; pass --mode to disambiguate.",
             file=sys.stderr,
         )
         return 1
 
     mode = modes[0]
-    del path_tree[mode][args.name]
+    del path_tree[mode][args.dest]
     dump_doc(ws_config, data)
 
     print(
-        f"Removed {mode} share '{args.name}' from working set '{ws.name}'."
+        f"Removed {mode} share at '{args.dest}' from working set '{ws.name}'."
     )
     print(_NEXT_LAUNCH_REMINDER)
     return 0
@@ -1007,19 +1059,30 @@ def run_share_remove(args: argparse.Namespace) -> int:
 def run_share_list(args: argparse.Namespace) -> int:
     """List a working set's shared directories.
 
-    Default: print the working set's own configured bindings (raw NAME/MODE →
-    bind). With ``--effective``: resolve through the KeyStore snapshot pipeline
+    Default: print the working set's own configured bindings (raw DEST/MODE →
+    SOURCE). With ``--effective``: resolve through the KeyStore snapshot pipeline
     (``assemble_levels → merge → expand → snapshot_category_entries``, scoped to
     the workset file) — the SAME resolver a launch uses — and print the final
     mounts. Single-route (7c): no second ``resolve_shares`` / ``read_bindings``
     resolver path, and (P3) no root-join on either side to keep in step.
+
+    The DEST column is the share's IDENTITY (R-10) and is exactly the argument
+    ``share rm`` takes.
     """
+    from kanibako.settings.settings_resolve import SettingsError
+
     ws, std = _resolve_share_workset(args.workset)
     if ws is None:
         return 1
 
     ws_config = _workset_config_path(ws)
-    raw_shares = _workset_raw_shares(ws_config)
+    try:
+        raw_shares = _workset_raw_shares(ws_config)
+    except SettingsError as e:
+        # A malformed bindings table (bad arity, a retired name-keyed entry, …).
+        # Report it rather than letting a traceback out of a listing command.
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     if not raw_shares:
         print(f"No bindings configured for working set '{ws.name}'.")
@@ -1028,29 +1091,38 @@ def run_share_list(args: argparse.Namespace) -> int:
     if getattr(args, "effective", False):
         return _print_effective_shares(ws, std, ws_config)
 
-    # Raw view: NAME, MODE, BIND (pre-resolution, from the workset file).
+    # Raw view: DEST, MODE, SOURCE (pre-resolution, from the workset file).
     rows: list[tuple[str, str, str]] = [
-        (name, mode, _bind_display(value))
-        for (mode, name), value in raw_shares.items()
+        (dest, mode, _share_source_display(value))
+        for (mode, dest), value in raw_shares.items()
     ]
     rows.sort(key=lambda r: (r[1], r[0]))
 
     print(f"Shares for working set '{ws.name}':")
-    print(f"  {'NAME':<20} {'MODE':<4}  {'BIND'}")
-    for name, mode, bind in rows:
-        print(f"  {name:<20} {mode:<4}  {bind}")
+    print(f"  {'DEST':<36} {'MODE':<4}  {'SOURCE'}")
+    for dest, mode, source in rows:
+        print(f"  {dest:<36} {mode:<4}  {source}")
     return 0
 
 
 def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
-    """Read the workset file's ``workset.bindings.{ro,rw}.{name}`` leaves as a
-    ``{(mode, name): raw_value}`` map for the RAW display view.
+    """Read the workset file's ``workset.bindings.{ro,rw}`` entries as a
+    ``{(mode, box_dest): raw_value}`` map for the RAW display view.
 
     Reads the workset partial through the committed ``assemble_levels`` (the SAME
     file reader the launch snapshot uses — single-route, no ``read_bindings``), then
     walks its ``workset.bindings.{ro,rw}`` subtree. The raw value is the structured
     ``Bind`` (``@``-refs / ``$XDG`` / ``~`` UNRESOLVED, per §0). Missing file → {}.
+
+    ⚑ **REFUSES A RETIRED NAME-KEYED ENTRY** (R-10). Under dest-keying the dict key
+    IS the destination, so an entry whose key differs from its own stored
+    destination is the retired ``{name: [src, dest]}`` shape. There is no honest
+    way to DISPLAY one — the DEST column would print a name, and the ``share rm``
+    argument it advertises would be a name too — so it is named and refused rather
+    than silently mis-rendered (Code Convention 0; disk-store R-8's posture).
+    Raises :class:`SettingsError`; ``run_share_list`` reports it.
     """
+    from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_store import Bind, KeyStore, _MISSING
 
@@ -1073,17 +1145,29 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
         mode_node = dict.get(bindings, mode, _MISSING)
         if not isinstance(mode_node, KeyStore):
             continue
-        for name in dict.keys(mode_node):
-            leaf = dict.__getitem__(mode_node, name)
-            # Render the Bind back to its on-disk pair shape for _bind_display.
+        for dest in dict.keys(mode_node):
+            leaf = dict.__getitem__(mode_node, dest)
+            # Render the Bind back to its on-disk pair shape for the display.
             if isinstance(leaf, Bind):
-                out[(mode, name)] = (
+                if leaf.box != dest:
+                    raise SettingsError(
+                        f"workset.bindings.{mode} has an entry keyed '{dest}' "
+                        f"whose destination is '{leaf.box}'. A binding is keyed "
+                        f"by its box DESTINATION and has no entry name (spec §2a; "
+                        f"the name was dropped 2026-08-06c), so '{dest}' is the "
+                        f"RETIRED name-keyed shape. Fix it: "
+                        f"`kanibako workset share rm <workset> {dest} --mode "
+                        f"{mode}` then `kanibako workset share add <workset> "
+                        f"{leaf.host}:{leaf.box} --mode {mode}` — or re-key the "
+                        f"entry to '{leaf.box}' in the settings file."
+                    )
+                out[(mode, dest)] = (
                     [leaf.host, leaf.box, leaf.opts]
                     if leaf.opts is not None
                     else [leaf.host, leaf.box]
                 )
             else:
-                out[(mode, name)] = leaf
+                out[(mode, dest)] = leaf
     return out
 
 

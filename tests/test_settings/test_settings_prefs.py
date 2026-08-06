@@ -55,7 +55,7 @@ def write(path, doc):
     ("system.agent", "system.cache", False),
     ("system.agent", "system.agent.x", False),      # `*`-free pattern is exact
     ("agent.*.**", "agent.claude.model", True),
-    ("agent.*.**", "agent.claude.bindings.rw.x", True),
+    ("agent.*.**", "agent.claude.bindings.rw", True),
     ("agent.*.**", "agent.claude", False),          # `**` is ONE-or-more
     ("agent.*.**", "agent.claude.", False),         # the malformed trailing dot
     ("agent.*.**", "box.claude.model", False),
@@ -73,7 +73,13 @@ def test_glob_convention(pattern, key, expected):
 def test_filter1_accepts_a_new_name_in_a_parametric_family():
     """INVERT: make filter 1 test EXISTENCE -> this reddens.
     spec §2h."""
-    assert key_reason("agent.claude.bindings.rw.boooooo", valid_agents=AGENTS) is None
+    assert key_reason("agent.claude.common.boooooo", valid_agents=AGENTS) is None
+    # ⚑ NOT bindings — the arms are TERMINAL and dest-keyed (R-5/R-10), so only
+    # the BARE arm is a valid target and there is no free <name> under it.
+    assert key_reason("agent.claude.bindings.rw", valid_agents=AGENTS) is None
+    assert key_reason(
+        "agent.claude.bindings.rw.boooooo", valid_agents=AGENTS,
+    ) is not None
 
 
 def test_filter1_rejects_fabrication():
@@ -90,7 +96,7 @@ def test_filter2_accepts_the_two_allowlist_entries():
     assert allowlist_reason("system.agent", valid_agents=AGENTS) is None
     assert allowlist_reason("agent.claude.model", valid_agents=AGENTS) is None
     assert allowlist_reason(
-        "agent.claude.bindings.rw.x", valid_agents=AGENTS,
+        "agent.claude.bindings.rw", valid_agents=AGENTS,
     ) is None
 
 
@@ -366,6 +372,118 @@ def test_a_dotted_leaf_inside_the_pref_table_is_an_error(tmp_path):
 
 def test_prefs_from_partial_on_a_non_pref_store():
     assert prefs_from_partial(KeyStore(), level="box") == []
+
+
+# ---------------------------------------------------------------------------
+# ⚑ THE WALK STOPS AT A TERMINAL DEST-KEYED CATEGORY (§4(e), disk-store R-5/R-10)
+#
+# Before this, `_flatten_pref_node` recursed into EVERY nested KeyStore, so a
+# pref over `masks` or a bindings arm was walked one level too far: the walker
+# reached the DESTINATIONS, which are DATA, and either manufactured a target that
+# is not a key (`pref.agent.claude.bindings.rw./home/agent/x`) or — for the
+# overwhelmingly common case of a dest containing a dot — tripped the DOTTED-KEY
+# raise and reported a spelling fault the user never committed.
+# ---------------------------------------------------------------------------
+
+def test_a_pref_over_a_bindings_arm_is_ONE_request_carrying_the_whole_map(tmp_path):
+    """R-5 — the arm is the request; the destinations are its VALUE.
+
+    ⚑ MUTATION: drop `and not is_terminal_category_tail(child)` from
+    `_flatten_pref_node` -> the walker descends into the arm, the dotted dest
+    `~/.claude` trips the DOTTED-key raise, and this test dies on the raise.
+    Nothing else in this file asserts a target ENDING at a bindings arm.
+    """
+    box = write(
+        tmp_path / "box.yaml",
+        {"pref": {"agent": {"claude": {"bindings": {"rw": {
+            "~/.claude": ["/host/claude", "~/.claude"],
+            "/home/agent/data": ["/host/data", "/home/agent/data"],
+        }}}}}},
+    )
+    (p,) = collect_prefs(None, box)
+    assert p.target == "agent.claude.bindings.rw"
+    # The VALUE is the whole map, carried as the nested node the merge folds
+    # PER-ENTRY (the masks precedent) — not flattened into per-dest requests.
+    assert isinstance(p.value, KeyStore)
+    assert set(dict.keys(p.value)) == {"~/.claude", "/home/agent/data"}
+
+
+def test_a_pref_over_masks_is_ONE_request_too(tmp_path):
+    """masks is the SAME shape and was ALWAYS latently broken here — zero masks
+    coverage existed in this file before P4'. One rule, both categories."""
+    box = write(
+        tmp_path / "box.yaml",
+        {"pref": {"agent": {"claude": {"masks": {
+            "~/.ssh": True, "/home/agent/x": None,
+        }}}}},
+    )
+    (p,) = collect_prefs(None, box)
+    assert p.target == "agent.claude.masks"
+    assert isinstance(p.value, KeyStore)
+    assert dict.get(p.value, "~/.ssh") is True
+    # A present-None entry survives VERBATIM — it is the per-entry unmask, and
+    # this layer classifies nothing (§2h).
+    assert "/home/agent/x" in dict.keys(p.value)
+    assert dict.get(p.value, "/home/agent/x") is None
+
+
+def test_the_terminal_stop_makes_the_request_VALIDATE_instead_of_crashing(tmp_path):
+    """The point of the fix, end to end: a pref over a bindings arm now reaches
+    the THREE FILTERS and gets a real verdict.
+
+    Previously `pref.box.bindings.rw` (a genuinely un-requestable target) died in
+    the WALKER with "uses a DOTTED key inside the 'pref:' table" — a message about
+    a spelling the user did not use, hiding the actual fault. Now it is refused by
+    the allowlist and the structural tier, which is the truth.
+    """
+    box = write(
+        tmp_path / "box.yaml",
+        {"pref": {"box": {"bindings": {"rw": {"~/.claude": ["/h", "~/.claude"]}}}}},
+    )
+    (p,) = collect_prefs(None, box)
+    assert p.target == "box.bindings.rw"
+    with pytest.raises(SettingsError) as exc:
+        apply_prefs([p], valid_agents=AGENTS)
+    msg = str(exc.value)
+    assert "DOTTED" not in msg, msg
+    assert "not requestable" in msg
+    assert "resolves at or after the box level" in msg
+
+
+def test_the_dotted_key_raise_still_fires_everywhere_else(tmp_path):
+    """The terminal stop is NARROW: it does not weaken D5's one-spelling rule.
+
+    ⚑ MUTATION: widen the stop to every KeyStore -> nothing here changes, but
+    `test_a_dotted_leaf_inside_the_pref_table_is_an_error` and this test both
+    stay green only because the guard is on the RECURSION, not on the raise.
+    """
+    box = write(
+        tmp_path / "box.yaml",
+        {"pref": {"agent": {"claude": {"common.plugins": ["/s", "~/d"]}}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+        collect_prefs(None, box)
+    assert "DOTTED key" in str(exc.value)
+
+
+def test_a_bindings_arm_pref_installs_the_map_AT_the_arm(tmp_path):
+    """`pref_overlay` must land the map at the arm key, not explode it — that is
+    what lets `settings_merge` fold it PER-ENTRY against inherited levels."""
+    box = write(
+        tmp_path / "box.yaml",
+        {"pref": {"agent": {"claude": {"bindings": {"ro": {
+            "~/.claude/x": ["/host/x", "~/.claude/x"],
+        }}}}}},
+    )
+    (p,) = collect_prefs(None, box)
+    overlay = pref_overlay([p])
+    arm = dict.get(dict.get(dict.get(
+        dict.get(overlay, "agent"), "claude"), "bindings"), "ro")
+    assert isinstance(arm, KeyStore)
+    assert "~/.claude/x" in dict.keys(arm)
+    # The entry arrived through the SAME parse the target key uses, so it is a
+    # real Bind — the D5 property, preserved across the terminal stop.
+    assert isinstance(dict.get(arm, "~/.claude/x"), Bind)
 
 
 # ---------------------------------------------------------------------------
