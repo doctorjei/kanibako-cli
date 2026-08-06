@@ -300,9 +300,9 @@ kickoff:
 #
 # `@agent.<active>.canon` is NOT spellable statically — the discriminator is the
 # ACTIVE AGENT NODE, known only at the seam — so the loader interpolates it (and
-# omits the whole entry for a NO-AGENT box).  These keys are deliberately ABSENT
-# from `core_default_bind_keys()`, i.e. not `config set`-repointable, exactly like
-# the channel / helper / kani_pkg / images_conf binds: the user's repoint route is
+# omits the whole entry for a NO-AGENT box).  These keys are not `config set`-
+# repointable (R-9 retired the `bindings.{ro,rw}` write route at every scope),
+# exactly like the channel / helper / kani_pkg / images_conf binds: the user's repoint route is
 # the `<scope>.canon` KEY, and shipping two spellings for one repoint is the shape
 # convention 0 forbids.
 #

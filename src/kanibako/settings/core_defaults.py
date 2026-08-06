@@ -53,16 +53,15 @@ def packaged_data_dir(*parts: str) -> Traversable:
 # Filename of the shipped system/core defaults (in kanibako.data).
 CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
-# The set-time FLOOR-registry placeholder host_src (F10). ``core_default_bind_keys``
-# emits its bind tuples with THIS
-# sentinel in element 0 because the set-time repoint DISCARDS the old host_src
-# (``settings_configset.repoint_host_src`` uses only ``base[1:]`` = box_dest+options).
-# It is NEVER a launch value — the registry is folded ONLY into the set-time
-# ``_category_set_lookups`` floor, never into the launch ``build_launch_snapshot``
-# (which uses the real, host-probed ``core_default_categories`` /
-# ``agent_default_partial``). A plain literal (not an ``@``-ref) so a stray lenient
-# expand of a non-edited key never records a spurious dangling-ref defect.
-FLOOR_PLACEHOLDER_SRC = "__floor_placeholder__"
+# ⚑ ``FLOOR_PLACEHOLDER_SRC`` and ``core_default_bind_keys`` USED TO LIVE HERE. They
+# built a context-light SET-TIME floor registry (F10): the core box-mount bind keys
+# with static box_dest+options and a placeholder host_src, folded into
+# ``config_interface._category_set_lookups`` so a source-only repoint of a
+# launch-only bind would pass the must-exist-in-the-cascade gate. R-9 retired both
+# bind CLI write routes and the registry could no longer change any outcome, so the
+# whole thread was deleted in one subtractive pass. The LAUNCH floor producers below
+# (``core_default_categories`` and its siblings) are a DIFFERENT, LIVE mechanism:
+# they are host-probed, feed ``build_launch_snapshot``, and never used the sentinel.
 
 
 def _load_doc() -> dict[str, Any]:
@@ -294,46 +293,6 @@ def core_default_categories(
     return binds
 
 
-def core_default_bind_keys() -> BindArmTable:
-    """The CORE box bind KEYS as a context-light set-time floor registry (F10).
-
-    ⚑⚑ **INERT since P1/P2 (2026-08-06d).** Nothing CONSUMES these keys any more:
-    R-9 retired the scope-level and agent-node bind CLI write routes, so the
-    set/reset category branch this registry existed to feed is unreachable. It is
-    still THREADED — ``commands/box/_parser.py`` (twice) and
-    ``commands/workset_cmd.py`` still pass it as ``default_categories`` — and the
-    whole thread (this function, the parameter, the fold body,
-    ``config_keys._floor_bind_display`` and the three call sites) is scheduled to
-    die together in ONE subtractive edit. Until it does, it still reaches
-    ``settings_assemble.dotted_partial``, so it MUST emit the current shape: an
-    inert producer that emits a RETIRED shape is not harmless, it is a loud crash
-    on every ``box config set``.
-
-    Mirrors :func:`core_default_categories`'s ENTRY set — the ``box.bindings.ro`` /
-    ``box.bindings.rw`` arms for home + workspace + vault (ro and rw), dest-keyed
-    (R-3/R-5/R-11) — with the per-entry ``options`` read straight from the same
-    declarative ``core:`` doc, but with a PLACEHOLDER host_src
-    (:data:`FLOOR_PLACEHOLDER_SRC`) as the entry's source.
-
-    HOST-FREE (the F10 de-risk): it takes NO :class:`~kanibako.settings.paths.ProjectPaths`
-    / :class:`~kanibako.settings.paths.StandardPaths` and does NO runtime probe or
-    create-if-missing — the box_dest and options are pure declarative literals, and
-    the host_src was always the discarded placeholder.
-
-    Vault entries are ALWAYS emitted (both ``ro`` and ``rw``), regardless of whether
-    vault would be ENABLED at launch: the gate was about the KEY existing in the
-    set-time cascade, not the runtime host value. box_dest/options are byte-identical
-    to the launch builder (same file, same fields).
-    """
-    binds: BindArmTable = {}
-    for entry in _load_doc().get("core", []):
-        _add_bind(
-            binds, str(entry["category"]), str(entry["box_dest"]),
-            FLOOR_PLACEHOLDER_SRC, str(entry["options"]),
-        )
-    return binds
-
-
 def kani_default_categories() -> BindArmTable:
     """Build the kanibako CLI binds as ``default_categories`` (Phase B).
 
@@ -447,8 +406,8 @@ def kickoff_default_categories(
     The directive-chain ENTRY SLOT: the flattener reads this file at box start,
     follows its ``@~/canon/COLLECTION.md`` import to full depth, and writes the flat
     result into the harness's native instruction slot.  INTERNAL, like ``kani_pkg``
-    and ``images_conf``: absent from every set-time floor registry, so ``config set``
-    refuses it; not repointable (spec §0's test — a user has nothing to configure
+    and ``images_conf``: ``config set`` refuses it (R-9 retired the ``bindings.
+    {ro,rw}`` write route at every scope); not repointable (spec §0's test — a user has nothing to configure
     here, the file is generated content at a fixed location, and repointing it would
     redirect the entire directive chain).
 
@@ -669,10 +628,10 @@ def rom_default_categories() -> BindArmTable:
     (The sixth canon bind, the plugin's ``~/canon/bible/agent`` chapter, is
     emitted separately — see :func:`rom_agent_default_categories`.)
 
-    All INTERNAL/generated binds, not user keys: they are absent from every set-time
-    floor registry (:func:`core_default_bind_keys` covers home/workspace/vault only),
-    so ``config set`` refuses them exactly as it does ``kani_pkg`` and
-    ``images_conf``.  Spec §0's test — *"could a user reasonably want to override
+    All INTERNAL/generated binds, not user keys: ``config set`` refuses them exactly
+    as it does ``kani_pkg`` and ``images_conf`` — as of R-9 it refuses EVERY
+    ``bindings.{ro,rw}`` spelling at every scope, so the rule no longer turns on any
+    per-entry registry membership.  Spec §0's test — *"could a user reasonably want to override
     it?"* — answers itself here: the one book a user cannot edit is also the one they
     cannot repoint, and ``COLLECTION.md`` is the INDEX that defines the canon's shape
     and load order, so a repointable index would mean no guaranteed structure.
