@@ -210,29 +210,38 @@ class TestStandaloneChannelMounts:
 
 
 class TestChannelDefaultCategories:
-    """The raw default_categories dict (pre-resolution) per mode."""
+    """The raw default_categories dict (pre-resolution) per mode.
+
+    ⚑ The table is DEST-KEYED (R-3/R-5/R-10): ONE terminal ``box.bindings.rw`` key
+    whose value is the whole ``{box_dest: (src,)}`` map. The per-channel ``key``
+    from ``core-defaults.yaml`` is no longer a settings key segment at all, so the
+    identity asserted here is the DESTINATION — R-11-normalized, hence
+    ``/home/agent/...`` and not the file's authored ``~/...``.
+    """
 
     def test_primary_keys(self, primary_proj, std):
         cats = _channel_default_categories(std, primary_proj)
-        assert set(cats) == {
-            "box.bindings.rw.global_common",
-            "box.bindings.rw.global_chat",
-            "box.bindings.rw.global_share",
-            "box.bindings.rw.mailboxes",
-            "box.bindings.rw.inbox",
-            "box.bindings.rw.workset_common",
-            "box.bindings.rw.workset_chat",
-            "box.bindings.rw.workset_share",
+        assert set(cats) == {"box.bindings.rw"}
+        assert set(cats["box.bindings.rw"]) == {
+            "/home/agent/channels/common",
+            "/home/agent/channels/chat",
+            "/home/agent/channels/share",
+            "/home/agent/channels/mailboxes",
+            "/home/agent/channels/inbox",
+            "/home/agent/channels/workset/common",
+            "/home/agent/channels/workset/chat",
+            "/home/agent/channels/workset/share",
         }
 
     def test_standalone_keys_omit_workset(self, standalone_proj, std):
         cats = _channel_default_categories(std, standalone_proj)
-        assert set(cats) == {
-            "box.bindings.rw.global_common",
-            "box.bindings.rw.global_chat",
-            "box.bindings.rw.global_share",
-            "box.bindings.rw.mailboxes",
-            "box.bindings.rw.inbox",
+        assert set(cats) == {"box.bindings.rw"}
+        assert set(cats["box.bindings.rw"]) == {
+            "/home/agent/channels/common",
+            "/home/agent/channels/chat",
+            "/home/agent/channels/share",
+            "/home/agent/channels/mailboxes",
+            "/home/agent/channels/inbox",
         }
 
 
@@ -294,10 +303,13 @@ class TestWorksetChannelFloorLeaf:
         floor = _workset_anchor(std, primary_proj)
         installed = {k for k in floor if k.startswith("workset.channels.")}
         cats = _channel_default_categories(std, primary_proj)
+        # Dest-keyed arms: the sources live INSIDE each arm's map, one level down,
+        # and an entry is ``(src,)`` — the destination is the key, not element 1.
         referenced = {
-            src.lstrip("@")
-            for src, _dest in cats.values()
-            if str(src).startswith("@workset.channels.")
+            str(entry[0]).lstrip("@")
+            for arm in cats.values()
+            for entry in arm.values()
+            if str(entry[0]).startswith("@workset.channels.")
         }
         assert referenced, "expected @workset.channels.* routed binds"
         assert referenced <= installed, (

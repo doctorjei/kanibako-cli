@@ -31,7 +31,7 @@ from kanibako.settings.settings_prefs import (
     validate_pref,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.settings_store import Bind, KeyStore
+from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
 AGENTS = AgentNames({"claude", "codex", "goose"})
 
@@ -405,7 +405,14 @@ def test_a_pref_over_a_bindings_arm_is_ONE_request_carrying_the_whole_map(tmp_pa
     # The VALUE is the whole map, carried as the nested node the merge folds
     # PER-ENTRY (the masks precedent) — not flattened into per-dest requests.
     assert isinstance(p.value, KeyStore)
-    assert set(dict.keys(p.value)) == {"~/.claude", "/home/agent/data"}
+    # ⚑ The file spells one dest ``~/.claude`` and it reads back ABSOLUTIZED: R-11
+    # canonicalizes a binding DESTINATION at the reader as well as the producer,
+    # so ``~`` and ``~/`` cannot become two entries at one destination. That the
+    # normalization happens to the DESTINATIONS rather than to the target is the
+    # same fact this test pins from the other side — they are DATA, not key
+    # segments. (``masks`` below is deliberately NOT normalized: R-11 is bindings
+    # only until Jei rules DS-BL7.)
+    assert set(dict.keys(p.value)) == {"/home/agent/.claude", "/home/agent/data"}
 
 
 def test_a_pref_over_masks_is_ONE_request_too(tmp_path):
@@ -469,10 +476,17 @@ def test_the_dotted_key_raise_still_fires_everywhere_else(tmp_path):
 def test_a_bindings_arm_pref_installs_the_map_AT_the_arm(tmp_path):
     """`pref_overlay` must land the map at the arm key, not explode it — that is
     what lets `settings_merge` fold it PER-ENTRY against inherited levels."""
+    # ⚑ The VALUE is ``[src[, options]]`` — the DESTINATION is the map key and is
+    # NOT repeated inside it (R-3/R-5). The pre-P6 fixture spelled
+    # ``["/host/x", "~/.claude/x"]``, which still has two elements and so parses
+    # CLEANLY as ``(src, opts)`` with the destination becoming mount options —
+    # the arity hazard ``unpack_bind_entry``'s docstring warns about, silently
+    # wrong rather than refused. That is why the fixture is re-derived here rather
+    # than left to "still pass".
     box = write(
         tmp_path / "box.yaml",
         {"pref": {"agent": {"claude": {"bindings": {"ro": {
-            "~/.claude/x": ["/host/x", "~/.claude/x"],
+            "~/.claude/x": ["/host/x", "ro"],
         }}}}}},
     )
     (p,) = collect_prefs(None, box)
@@ -480,10 +494,21 @@ def test_a_bindings_arm_pref_installs_the_map_AT_the_arm(tmp_path):
     arm = dict.get(dict.get(dict.get(
         dict.get(overlay, "agent"), "claude"), "bindings"), "ro")
     assert isinstance(arm, KeyStore)
-    assert "~/.claude/x" in dict.keys(arm)
+    # ⚑ The file spells the dest ``~/.claude/x``; R-11 absolutizes a binding
+    # destination on read, so the map lands keyed by the canonical form. The
+    # overlay must carry that same canonicalization, or a pref would land at a
+    # destination the floor spells differently and silently fail to override it.
+    assert "/home/agent/.claude/x" in dict.keys(arm)
+    assert "~/.claude/x" not in dict.keys(arm)
     # The entry arrived through the SAME parse the target key uses, so it is a
-    # real Bind — the D5 property, preserved across the terminal stop.
-    assert isinstance(dict.get(arm, "~/.claude/x"), Bind)
+    # real BindEntry — the D5 property, preserved across the terminal stop.
+    # ⚑ ``BindEntry``, not ``Bind``: a DEST-KEYED arm's leaf is the 2-element
+    # ``(src, opts)`` pair (R-6). ``Bind`` remains the name-keyed 3-element type
+    # the other categories still use, which is exactly why the two must never be
+    # told apart by arity.
+    entry = dict.get(arm, "/home/agent/.claude/x")
+    assert isinstance(entry, BindEntry)
+    assert (entry.src, entry.opts) == ("/host/x", "ro")
 
 
 # ---------------------------------------------------------------------------

@@ -47,7 +47,7 @@ THE TWO DELIVERY LAYERS
      first-party plugins DO, so this manifest requires it of each; and
    * the KICKOFF loader → ``~/.config/kanibako/kickoff.md``. ⚑ TWO SOURCES COEXIST
      this release: core's packaged ``data/global/KICKOFF.md``
-     (``box.bindings.ro.kickoff``, spec §2c / P-5) and each plugin's
+     (``box.bindings.ro[~/.config/kanibako/kickoff.md]``, spec §2c / P-5) and each plugin's
      ``data/KICKOFF.md`` descriptor ``managed_pointer`` bind, whose deletion is
      deferred one release. Core YIELDS while a plugin supplies one, so exactly one
      file reaches the slot; the manifest checks BOTH sources ship and that the
@@ -237,24 +237,25 @@ _GUIDE_REL_IN_ROM = ROM_GUIDE_REL  # a file INSIDE the general chapter, not its 
 _CANON_BOX_ROOT = f"{GUEST_HOME}/canon"
 _BIBLE_AGENT_BOX_DEST = f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{BIBLE_AGENT_CHAPTER}"
 
-# key -> (rom-relative SOURCE, guest DEST, source is a directory)
-_CANON_BINDS: dict[str, tuple[str, str, bool]] = {
-    "box.bindings.ro.canon_collection": (
-        _COLLECTION_REL_IN_ROM, f"{_CANON_BOX_ROOT}/{_COLLECTION_REL_IN_ROM}", False,
-    ),
-    "box.bindings.ro.canon_bible_contents": (
-        _CONTENTS_REL_IN_ROM, f"{_CANON_BOX_ROOT}/{_CONTENTS_REL_IN_ROM}", False,
-    ),
+# ⚑ DEST-KEYED (disk-store R-3/R-5/R-10). The canon producers return ONE terminal
+# arm key whose value is ``{box_dest: (src, options)}``; the ``canon_*`` NAMES that
+# used to spell these keys are no longer part of the keyspace, so the manifest is
+# indexed by the guest DESTINATION — which R-11 also makes absolute, hence
+# ``{GUEST_HOME}/...`` here rather than the authored ``~/...``.
+_ARM = "box.bindings.ro"
+
+# guest DEST -> (rom-relative SOURCE, source is a directory)
+_CANON_BINDS: dict[str, tuple[str, bool]] = {
+    f"{_CANON_BOX_ROOT}/{_COLLECTION_REL_IN_ROM}": (_COLLECTION_REL_IN_ROM, False),
+    f"{_CANON_BOX_ROOT}/{_CONTENTS_REL_IN_ROM}": (_CONTENTS_REL_IN_ROM, False),
     **{
-        f"box.bindings.ro.canon_bible_{chapter}": (
-            f"{_BIBLE_REL_IN_ROM}/{chapter}",
-            f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{chapter}",
-            True,
+        f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{chapter}": (
+            f"{_BIBLE_REL_IN_ROM}/{chapter}", True,
         )
         for chapter in ROM_BIBLE_CHAPTERS
     },
 }
-_CANON_BIND_KEYS = {k: v[1] for k, v in _CANON_BINDS.items()}
+_GENERAL_BOX_DEST = f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/general"
 
 # The plugin chapter's gate marker, relative to a plugin's ``data/rom`` root.
 _CHAPTER_MARKER = PLUGIN_CHAPTER_MARKER_REL
@@ -427,20 +428,19 @@ class TestRomBindManifest:
         """The manifest of canon binds: exactly these keys, each with a real
         packaged host SOURCE, each reconciling RO at its declared guest dest."""
         cats, rec = self._reconcile_rom()
-        assert set(cats) == set(_CANON_BIND_KEYS), cats
+        assert set(cats) == {_ARM}, cats
+        assert set(cats[_ARM]) == set(_CANON_BINDS), cats
 
         by_dest = {m.box_dest: m for m in rec.mounts}
         missing: list[str] = []
-        for key, box_dest in _CANON_BIND_KEYS.items():
-            host_src, dest, options = cats[key]
+        for box_dest in _CANON_BINDS:
+            host_src, options = cats[_ARM][box_dest]
             if not Path(host_src).exists():
-                missing.append(f"{key}: source {host_src}")
-            assert options == "ro", key
-            # The declared dest is the ``~``-spelling of the guest path.
-            assert dest == box_dest.replace(GUEST_HOME, "~", 1), key
-            assert box_dest in by_dest, f"{key} not reconciled at {box_dest}"
-            assert by_dest[box_dest].category == "bindings.ro", key
-            assert by_dest[box_dest].options == "ro", key
+                missing.append(f"{box_dest}: source {host_src}")
+            assert options == "ro", box_dest
+            assert box_dest in by_dest, f"not reconciled at {box_dest}"
+            assert by_dest[box_dest].category == "bindings.ro", box_dest
+            assert by_dest[box_dest].options == "ro", box_dest
         assert not missing, f"packaged canon SOURCE missing for: {missing}"
 
     def test_index_and_contents_are_file_binds_and_chapters_are_directory_binds(self):
@@ -449,9 +449,9 @@ class TestRomBindManifest:
         Neither book ROOT is ever bound — ``~/canon`` holds the SEEDED
         notebook/workbook, and ``~/canon/bible`` is R1's retired whole-dir bind."""
         cats, _rec = self._reconcile_rom()
-        for key, (_rel, _dest, is_dir) in _CANON_BINDS.items():
-            assert Path(cats[key][0]).is_dir() == is_dir, key
-        dests = set(_CANON_BIND_KEYS.values())
+        for box_dest, (_rel, is_dir) in _CANON_BINDS.items():
+            assert Path(cats[_ARM][box_dest][0]).is_dir() == is_dir, box_dest
+        dests = set(_CANON_BINDS)
         assert f"{GUEST_HOME}/canon" not in dests
         assert f"{GUEST_HOME}/canon/{_BIBLE_REL_IN_ROM}" not in dests
 
@@ -466,8 +466,7 @@ class TestRomBindManifest:
         the assertion that catches a guide that stops shipping.
         """
         cats, rec = self._reconcile_rom()
-        general_key = "box.bindings.ro.canon_bible_general"
-        general_src = Path(cats[general_key][0])
+        general_src = Path(cats[_ARM][_GENERAL_BOX_DEST][0])
         rom_root = _packaged_shared_bundle()
         assert rom_root is not None
         assert general_src == rom_root / f"{_BIBLE_REL_IN_ROM}/general"
@@ -477,7 +476,7 @@ class TestRomBindManifest:
         assert guide.is_relative_to(general_src), "the guide must ride its chapter"
 
         by_dest = {m.box_dest: m for m in rec.mounts}
-        general_dest = _CANON_BIND_KEYS[general_key]
+        general_dest = _GENERAL_BOX_DEST
         assert general_dest in by_dest
         assert general_dest == f"{GUEST_HOME}/canon/bible/general"
         # No separate mount for the guide: it arrives with its chapter.
@@ -507,10 +506,10 @@ class TestRomBindManifest:
                 continue
 
             cats = core_defaults.rom_agent_default_categories(target)
-            assert set(cats) == {"box.bindings.ro.canon_bible_agent"}, agent
-            src, dest, opts = cats["box.bindings.ro.canon_bible_agent"]
+            assert set(cats) == {_ARM}, agent
+            assert set(cats[_ARM]) == {_BIBLE_AGENT_BOX_DEST}, agent
+            src, opts = cats[_ARM][_BIBLE_AGENT_BOX_DEST]
             assert Path(src) == root
-            assert dest == _BIBLE_AGENT_BOX_DEST.replace(GUEST_HOME, "~", 1)
             assert opts == "ro"
             assert _BIBLE_AGENT_BOX_DEST == f"{GUEST_HOME}/canon/bible/agent"
         assert not missing, f"packaged plugin bible chapter missing for: {missing}"
@@ -526,7 +525,7 @@ class TestKickoffLoaderManifest:
     first-party harness (their KICKOFF.md sources + shared kickoff slot).
 
     ⚑ Plus the CORE row (P-5 / C-CANON R2): the base now ships the kickoff CONTENT
-    at ``data/global/KICKOFF.md`` and emits ``box.bindings.ro.kickoff``, YIELDING
+    at ``data/global/KICKOFF.md`` and emits its ``box.bindings.ro`` entry at that dest, YIELDING
     while a plugin still supplies one. Both sources are manifest rows for as long as
     both exist — a delivery manifest that tracked only the live one would go silent
     exactly when the follow-up release flips which one that is.
@@ -535,10 +534,10 @@ class TestKickoffLoaderManifest:
     def test_core_kickoff_source_ships_and_declares_the_slot(self):
         """(a) the packaged core loader exists, (b) it declares the same slot."""
         cats = core_defaults.kickoff_default_categories(None)
-        assert set(cats) == {"box.bindings.ro.kickoff"}
-        src, dest, opts = cats["box.bindings.ro.kickoff"]
+        assert set(cats) == {_ARM}
+        assert set(cats[_ARM]) == {_KICKOFF_BOX_DEST}
+        src, opts = cats[_ARM][_KICKOFF_BOX_DEST]
         assert Path(src).is_file(), f"packaged core kickoff SOURCE missing: {src}"
-        assert dest == _KICKOFF_BOX_DEST.replace(GUEST_HOME, "~", 1)
         assert opts == "ro"
 
     @pytest.mark.parametrize("agent", _BIND_AGENTS)

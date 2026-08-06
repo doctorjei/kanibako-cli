@@ -72,13 +72,21 @@ class TestKanibakoMounts:
         hardwired = _kanibako_mounts()
         cats = core_defaults.kani_default_categories()
 
-        assert cats["box.bindings.ro.kani_pkg"] == (
-            str(hardwired[0].source), "/opt/kanibako/kanibako", "ro",
+        # ⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6): the two binds are
+        # ENTRIES of the ONE terminal ``box.bindings.ro`` arm keyed by their
+        # destinations, and R-11 absolutizes the declarative file's ``~`` at the
+        # producer rather than leaving it for the resolver. The byte-for-byte
+        # source/dest/options agreement this test exists to lock is unchanged —
+        # only where the destination is written down moved.
+        arm = cats["box.bindings.ro"]
+        assert arm["/opt/kanibako/kanibako"] == (str(hardwired[0].source), "ro")
+        assert arm["/home/agent/.local/bin/kanibako"] == (
+            str(hardwired[1].source), "ro",
         )
-        # box_dest carries ~ (expanded by the resolver) — same /home/agent dest.
-        assert cats["box.bindings.ro.kani_bin"] == (
-            str(hardwired[1].source), "~/.local/bin/kanibako", "ro",
-        )
+        # The destinations agree as LITERAL equals now — the hardwired list has
+        # always spelled them absolute, and R-11 brings the routed side to match.
+        for mount in hardwired:
+            assert arm[mount.destination] == (str(mount.source), mount.options)
 
 
 class TestSecretExportBind:
@@ -98,16 +106,22 @@ class TestSecretExportBind:
         return Path(str(ref))
 
     def test_bind_emitted_with_dest_options_and_real_source(self):
-        """`kani_default_categories()` emits `box.bindings.ro.secret_export`
-        pointing at a REAL regular-file host source, dest `/etc/profile.d/…`, ro."""
+        """`kani_default_categories()` binds the snippet at `/etc/profile.d/…`, ro,
+        from a REAL regular-file host source.
+
+        ⚑ Re-derived for dest-keying (R-3/R-5): the ``secret_export`` NAME is
+        retired (R-10) and the destination IS the identity, so what pins the bind's
+        existence is its dest being present in the terminal ``box.bindings.ro``
+        arm.
+        """
         from pathlib import Path
 
         from kanibako.settings import core_defaults
 
-        cats = core_defaults.kani_default_categories()
-        assert "box.bindings.ro.secret_export" in cats
-        src, dest, opts = cats["box.bindings.ro.secret_export"]
-        assert dest == "/etc/profile.d/kanibako-secrets.sh"
+        dest = "/etc/profile.d/kanibako-secrets.sh"
+        arm = core_defaults.kani_default_categories()["box.bindings.ro"]
+        assert dest in arm
+        src, opts = arm[dest]
         assert opts == "ro"
         assert Path(src).is_file()
         # The resolved source IS the packaged snippet.

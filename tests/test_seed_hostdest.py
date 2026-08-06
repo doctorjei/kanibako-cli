@@ -188,7 +188,7 @@ class TestReconcileGroupsOnTheSpace:
         copy = _entry(box_dest=shared)
         mount = _entry(
             category="bindings.ro", box_dest=shared, delivery="MOUNT",
-            options="ro", key="box.bindings.ro.n", scope="box",
+            options="ro", key=f"box.bindings.ro.{shared}", scope="box",
         )
         rec = reconcile_categories([copy, mount])
         assert rec.copies == []
@@ -207,7 +207,12 @@ class TestOptionalBindEmission:
         entry = _entry(
             category="bindings.ro", scope="box", box_dest=f"{GUEST_HOME}/canon/x",
             host_src="/definitely/not/here", delivery="MOUNT", options="ro",
-            name="canon_hb_box", key="box.bindings.ro.canon_hb_box",
+            # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and
+            # the key is the arm plus that dest. The retired ``canon_hb_box``
+            # spelling is kept out of even a hand-built fixture — a stale form in a
+            # test reads as precedent (CONVENTIONS §0).
+            name=f"{GUEST_HOME}/canon/x",
+            key=f"box.bindings.ro.{GUEST_HOME}/canon/x",
             optional=optional,
         )
         rec = reconcile_categories([entry])
@@ -238,32 +243,55 @@ class _Std:
 
 class TestCanonDefaultCategories:
     def test_declares_the_five_sibling_binds(self, tmp_path):
+        """⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6).
+
+        The five binds are now ENTRIES of the ONE terminal ``box.bindings.ro``
+        arm, keyed by their absolutized guest DESTINATIONS — the ``canon_hb_*``
+        names are retired outright (R-10), so the destination is what identifies a
+        chapter and the assertion is re-derived onto it rather than weakened.
+        """
         cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
-        assert {k for k in cats if k.startswith("box.")} == {
-            "box.bindings.ro.canon_hb_contents",
-            "box.bindings.ro.canon_hb_general",
-            "box.bindings.ro.canon_hb_agent",
-            "box.bindings.ro.canon_hb_workset",
-            "box.bindings.ro.canon_hb_box",
+        assert {k for k in cats if k.startswith("box.")} == {"box.bindings.ro"}
+        assert set(cats["box.bindings.ro"]) == {
+            f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
+            f"{GUEST_HOME}/canon/handbook/general",
+            f"{GUEST_HOME}/canon/handbook/agent",
+            f"{GUEST_HOME}/canon/handbook/workset",
+            f"{GUEST_HOME}/canon/handbook/box",
         }
-        # The retired whole-dir spelling must never come back (J-7).
-        assert "box.bindings.ro.canon_handbook" not in cats
+        # The retired whole-dir spelling must never come back (J-7). Under
+        # dest-keying that is no longer a NAME that could reappear — it is the
+        # handbook ROOT, and a bind there is what would swallow the five siblings.
+        assert f"{GUEST_HOME}/canon/handbook" not in cats["box.bindings.ro"]
 
     def test_sources_are_the_scope_canon_keys(self, tmp_path):
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
-        assert cats["box.bindings.ro.canon_hb_workset"][0] == (
+        arm = core_defaults.canon_default_categories(
+            _Std(tmp_path), "claude",
+        )["box.bindings.ro"]
+        # Slot 0 is still the host_src; only the destination moved out of the tuple.
+        assert arm[f"{GUEST_HOME}/canon/handbook/workset"][0] == (
             "@workset.canon/handbook"
         )
-        assert cats["box.bindings.ro.canon_hb_box"][0] == "@box.canon/handbook"
-        assert cats["box.bindings.ro.canon_hb_general"][0] == (
+        assert arm[f"{GUEST_HOME}/canon/handbook/box"][0] == "@box.canon/handbook"
+        assert arm[f"{GUEST_HOME}/canon/handbook/general"][0] == (
             "@system.canon/handbook/general"
         )
 
     def test_the_guest_dests_carry_no_agent_segment(self, tmp_path):
         """§2d "storage is varied, binding is not": the agent chapter is stored per
-        agent node but always ARRIVES at ``~/canon/handbook/agent``."""
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
-        assert cats["box.bindings.ro.canon_hb_agent"][1] == "~/canon/handbook/agent"
+        agent node but always ARRIVES at ``~/canon/handbook/agent``.
+
+        ⚑ Re-derived: the destination is the arm's map KEY now (with the ``~``
+        absolutized by R-11), so this is a property of the KEY — and the whole arm
+        can be swept for a leaked node segment rather than one entry checked.
+        """
+        arm = core_defaults.canon_default_categories(
+            _Std(tmp_path), "raiju℘claude",
+        )["box.bindings.ro"]
+        assert f"{GUEST_HOME}/canon/handbook/agent" in arm
+        assert not [
+            d for d in arm if "raiju" in d or "claude" in d or "℘" in d
+        ], arm
 
     def test_a_node_without_its_own_canon_falls_back_to_the_default_tier(
         self, tmp_path,
@@ -286,14 +314,29 @@ class TestCanonDefaultCategories:
         """A dangling embedded ref would coerce to ``""`` and yield the degenerate
         host path ``/handbook`` (§6b) — so the entry is OMITTED, not emptied."""
         cats = core_defaults.canon_default_categories(_Std(tmp_path), None)
-        assert "box.bindings.ro.canon_hb_agent" not in cats
+        # ⚑⚑ Re-derived because the old form went VACUOUS, not merely stale: with
+        # the ``canon_hb_agent`` NAME retired (R-10) there is no
+        # ``box.bindings.ro.canon_hb_agent`` key for ANY box, so the assertion
+        # passed whether or not the chapter was emitted. The live property is the
+        # absence of the chapter's DESTINATION from the arm.
+        assert f"{GUEST_HOME}/canon/handbook/agent" not in cats["box.bindings.ro"]
+        # ...and the four non-agent chapters are still there, so this is proving an
+        # omission rather than an empty table.
+        assert len(cats["box.bindings.ro"]) == 4
         assert not any(k.startswith("agent.") for k in cats)
 
     def test_only_the_three_chapters_are_optional(self):
+        """H6 — the optional set holds FULL declared keys, now DEST-spelled.
+
+        ``settings_launch._emit_bind`` matches this frozenset against the key it
+        builds for each entry, so re-spelling the producer without re-spelling this
+        set would silently make every chapter non-optional (a missing workset or
+        box handbook would start warning on every launch).
+        """
         assert core_defaults.canon_optional_bind_keys() == {
-            "box.bindings.ro.canon_hb_agent",
-            "box.bindings.ro.canon_hb_workset",
-            "box.bindings.ro.canon_hb_box",
+            f"box.bindings.ro.{GUEST_HOME}/canon/handbook/agent",
+            f"box.bindings.ro.{GUEST_HOME}/canon/handbook/workset",
+            f"box.bindings.ro.{GUEST_HOME}/canon/handbook/box",
         }
 
     def test_the_canon_binds_are_not_config_set_repointable(self):
@@ -312,14 +355,19 @@ class TestHandbookMountOrdering:
         siblings rather than nested, so ordering is no longer load-bearing for
         correctness — but the ordering itself is still what a future non-sibling
         layout would depend on, and it is free to pin."""
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
-        binds = {k: v for k, v in cats.items() if k.startswith("box.")}
+        arm = core_defaults.canon_default_categories(
+            _Std(tmp_path), "claude",
+        )["box.bindings.ro"]
         # Give every source a real dir/file so nothing is dropped at emission.
-        resolved = {}
-        for key, (_ref, dest, opts) in binds.items():
-            src = tmp_path / "src" / key.rsplit(".", 1)[-1]
+        # ⚑ Re-derived for dest-keying: the floor entry is ``dest -> (src, opts)``,
+        # so the per-entry stand-in dir is named from the DESTINATION's last
+        # segment (the five are siblings, so those are unique) rather than from a
+        # retired ``canon_hb_*`` key tail.
+        resolved: dict = {"box.bindings.ro": {}}
+        for dest, (_ref, opts) in arm.items():
+            src = tmp_path / "src" / dest.rsplit("/", 1)[-1]
             src.mkdir(parents=True, exist_ok=True)
-            resolved[key] = (str(src), dest, opts)
+            resolved["box.bindings.ro"][dest] = (str(src), opts)
         snap = build_launch_snapshot(
             agent_name="claude", ctx=_ctx(),
             system_path=None, agent_path=None, workset_path=None, box_path=None,

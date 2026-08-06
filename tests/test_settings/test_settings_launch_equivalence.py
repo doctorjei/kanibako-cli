@@ -83,16 +83,58 @@ def _entry_set(rec: ReconciledCategories) -> dict:
 
 # A representative category config exercising: rw/ro binds, an agent-scope common
 # with a self-resolving ``@``-ref source, a box-side ``~`` dest, an embedded
-# ``@``-ref host_src, a mask, an env var, and a per-entry options override (3rd
-# tuple slot). NO bare-relative source — see the module docstring.
+# ``@``-ref host_src, a mask, an env var, and a per-entry options override. NO
+# bare-relative source — see the module docstring.
+#
+# ⚑ THE TWO SIDES ARE SPELLED DIFFERENTLY ON PURPOSE, and the difference is exactly
+# one ruling. The LIVE floor is dest-keyed (R-3/R-5): ``box.bindings.{ro,rw}`` is a
+# TERMINAL key whose value is the whole ``{box_dest: (src[, options])}`` map, and
+# the entry NAME is gone (R-10). The FROZEN oracle predates all of that and is
+# quarantined in the retired name-keyed ``<scope>.<category>.<name> = (src, dest
+# [, options])`` shape forever — it is a drift tripwire, not an authority, so it is
+# NOT migrated. Keeping both tables written out, rather than deriving one from the
+# other, is what keeps the comparison a real one instead of a tautology.
 def _default_categories(agent: str) -> dict:
-    """The production-shaped default table: agent-scope keys are DISCRIMINATED.
+    """The LIVE production-shaped default table: dest-keyed arms, agent-scope keys
+    DISCRIMINATED.
 
     A plugin builds its own ``agent.<agent>.<category>.<name>`` keys (there is no
     bare ``agent.<category>`` anywhere), so the table is agent-specific.
+    ``common`` is NOT dest-keyed — this arc is bindings-only — so it keeps the
+    name-keyed pair.
     """
     return {
-        "box.bindings.rw.home": ("/h/home", "~/", "Z,U"),
+        # ⚑ ``~/`` is deliberate: R-11 normalizes a dest, so this key IS
+        # ``/home/agent`` and matches the oracle's ``~`` below. Before R-11 the two
+        # spellings expanded to ``/home/agent/`` and ``/home/agent`` — two dict
+        # entries at ONE destination, which is the collision R-11 was ruled to end.
+        "box.bindings.rw": {
+            "~/": ("/h/home", "Z,U"),
+            "/home/agent/x": ("@system.data/x",),  # @-ref host_src, no options
+        },
+        "box.bindings.ro": {
+            "/opt/kanibako": ("/opt/k", "ro"),
+        },
+        f"agent.{agent}.common.plugins": (
+            f"@system.agents/{agent}/common/plugins", "~/.claude/plugins",
+        ),
+        "box.masks": ["/home/agent/secret"],
+        "box.env.FOO": "bar",
+    }
+
+
+def _legacy_default_categories(agent: str) -> dict:
+    """The SAME configuration in the FROZEN oracle's retired name-keyed shape.
+
+    ⚑ Do NOT "modernize" this table — the oracle it feeds is quarantined and only
+    speaks this shape. The one spelling that had to move is the home dest: the
+    oracle expands ``~/`` to ``/home/agent/`` (trailing slash intact, it has no
+    dest normalization), so it is spelled ``~`` here — the spelling on which the
+    pre-R-11 and post-R-11 destinations agree. That is the whole of the divergence
+    between the two tables.
+    """
+    return {
+        "box.bindings.rw.home": ("/h/home", "~", "Z,U"),
         "box.bindings.ro.kani": ("/opt/k", "/opt/kanibako", "ro"),
         f"agent.{agent}.common.plugins": (
             f"@system.agents/{agent}/common/plugins", "~/.claude/plugins",
@@ -126,7 +168,10 @@ def test_snapshot_path_matches_legacy_path(agent, workset):
         prefix = f"agent.{agent}."
         return f"agent.{key[len(prefix):]}" if key.startswith(prefix) else key
 
-    legacy_cats = {_undiscriminate(k): v for k, v in cats.items()}
+    legacy_cats = {
+        _undiscriminate(k): v
+        for k, v in _legacy_default_categories(agent).items()
+    }
 
     # --- FROZEN BASELINE path: the retired by-name resolver over a single
     # AGENT-level LevelView whose defaults carry the tables + the resolved
@@ -230,6 +275,7 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
     orphan at agent.<harness>.* and vanish from the emit."""
     from kanibako.settings.agent_representation import agent_default_partial
     from kanibako.settings.settings_launch import agent_delivery_mounts
+    from kanibako.settings.settings_resolve import normalize_bind_dest
     from kanibako.targets.base import BindScope
 
     active = node_name if node_name is not None else agent
@@ -242,8 +288,15 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
     rec = reconcile_categories(
         snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
     )
+    # ⚑ Mirrors ``commands.start`` EXACTLY, and that is the point: the critical set
+    # is keyed by NORMALIZED BOX DEST, because a dest-keyed arm's entry name IS the
+    # destination (R-10/H6). Building it from ``bd.key`` matches nothing, so every
+    # AGENT_CRITICAL bind silently drops to the best-effort branch and the
+    # must-exist exit-1 stops firing — which is precisely what
+    # ``test_delivery_critical_missing_exit1_parity`` below detects.
     critical = frozenset(
-        bd.key for bd in desc.bindings if bd.scope is BindScope.AGENT_CRITICAL
+        normalize_bind_dest(bd.box_dest) for bd in desc.bindings
+        if bd.scope is BindScope.AGENT_CRITICAL
     )
     return agent_delivery_mounts(rec.mounts, critical_keys=critical)
 
@@ -359,10 +412,28 @@ def test_delivery_critical_missing_exit1_parity(agent, tmp_path):
 def test_depth_order_preserved_across_families():
     # Nested dests must keep depth-order (shallow first) so podman's last-wins
     # resolves the deepest mount on top — the Editor's depth-order condition.
+    #
+    # ⚑ The ASSERTION below is UNCHANGED by the dest-key flip, and that is the
+    # finding worth recording: the emitted mount order was NEVER the by-name emit
+    # order. ``reconcile_categories`` re-sorts the winners by
+    # ``(_path_depth(box_dest), box_dest)`` (``settings_categories.py`` — the
+    # depth-sort), so the upstream ``(order, category, name)`` emit key only ever
+    # broke ties BETWEEN ENTRIES AT ONE DEST — which is now unrepresentable inside
+    # an arm anyway. The retired fixture's names (``deep`` < ``home`` < ``ws``)
+    # would have emitted the deepest FIRST; the dest keys below are already in
+    # depth order. So the flip makes the depth-order property hold twice over
+    # instead of once, and changes no expectation.
+    #
+    # ⚑ The arm is written DEEPEST-FIRST on purpose. A dict preserves insertion
+    # order and the arm is walked in that order, so an emit that merely echoed its
+    # input would fail this assert — the test proves the depth-SORT, not the
+    # fixture's own layout.
     cats = {
-        "box.bindings.rw.home": ("/h", "/home/agent", "Z,U"),
-        "box.bindings.rw.ws": ("/h/ws", "/home/agent/workspace", "Z,U"),
-        "box.bindings.rw.deep": ("/h/d", "/home/agent/workspace/sub", "Z,U"),
+        "box.bindings.rw": {
+            "/home/agent/workspace/sub": ("/h/d", "Z,U"),
+            "/home/agent": ("/h", "Z,U"),
+            "/home/agent/workspace": ("/h/ws", "Z,U"),
+        },
     }
     ctx = _ctx("claude", None)
     snap = build_launch_snapshot(

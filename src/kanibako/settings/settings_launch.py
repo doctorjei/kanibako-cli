@@ -89,7 +89,13 @@ from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
-from kanibako.settings.settings_store import _MISSING, SCOPE_CONTAINMENT, Bind, KeyStore
+from kanibako.settings.settings_store import (
+    _MISSING,
+    SCOPE_CONTAINMENT,
+    Bind,
+    BindEntry,
+    KeyStore,
+)
 
 
 # The category tokens that hold bind-shaped (``Bind``) leaves in the snapshot's
@@ -1187,6 +1193,15 @@ def build_launch_snapshot(
             ):
                 floor[key] = {str(dest): True for dest in val}
                 continue
+            # bindings arms are DEST-KEYED and TERMINAL (R-5), so the whole arm is
+            # ONE floor key and the ""-suppression above can now only reach the arm
+            # as a whole. Apply it PER ENTRY as well, or the reshape would silently
+            # coarsen the smallest suppressible unit from a binding to an arm — a
+            # behaviour change nobody ruled. (No shipped default uses ``""``; this
+            # keeps the latent path exactly as wide as it was.)
+            if key.endswith((".bindings.ro", ".bindings.rw")) and isinstance(val, dict):
+                floor[key] = {d: v for d, v in val.items() if v != ""}
+                continue
             floor[key] = val
 
     # Auth 3-tier SHARING chain: the @-ref / literal ``auth.*`` chain keys (spec
@@ -1967,6 +1982,13 @@ def agent_delivery_mounts(
     * **AGENT_CRITICAL** (``name`` in *critical_keys*): the host_src MUST exist,
       else :class:`~kanibako.targets.assembly.BindingSourceError` is raised — the
       clean exit-1 safe-fail (must-exist), preserved from ``descriptor_mounts``.
+      ⚑ *critical_keys* holds NORMALIZED BOX DESTINATIONS, not ``binding.key``
+      names: a bindings arm is dest-keyed (R-10), so ``e.name`` IS the destination.
+      A caller that still passes descriptor key names matches NOTHING and every
+      critical bind silently degrades to the best-effort branch below — build the
+      set with
+      :func:`~kanibako.settings.settings_resolve.normalize_bind_dest`, which is
+      what keyed the arm in the first place.
     * **AGENT** (best-effort): a missing host_src is SKIPPED (a missing/suppressed
       agent share is fine) — matching ``descriptor_mounts``' AGENT branch.
 
@@ -2336,6 +2358,17 @@ def _emit_scope_node(
             category = f"bindings.{mode}"
             for name in dict.keys(mode_node):
                 bind = dict.__getitem__(mode_node, name)
+                # ⚑ THE BRIDGE BOUNDARY (plan §3). The arm is DEST-KEYED as of P6,
+                # so ``name`` IS the (expanded) box destination and the leaf is a
+                # 2-element ``BindEntry(src, opts)``. ``_emit_bind`` and everything
+                # under it still speak the 3-element ``Bind``, so the destination is
+                # folded back into the value HERE and nowhere else. P7 flips
+                # ``_emit_bind`` itself and this conversion goes away.
+                # ⚑⚑ A non-``BindEntry`` leaf is NOT converted — it falls through to
+                # ``_emit_bind``'s own loud refusal, which names the key. Laundering
+                # a stale shape into a Bind here is precisely what R-8 forbids.
+                if isinstance(bind, BindEntry):
+                    bind = Bind(bind.src, name, bind.opts)
                 _emit_bind(
                     collected, order, scope, category, name, bind, box_dest_fn,
                     key=f"{decl_scope_fn(category, name)}.{category}.{name}",

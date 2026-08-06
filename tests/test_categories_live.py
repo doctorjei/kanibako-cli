@@ -86,14 +86,20 @@ class TestB2bHomeVaultByteIdentity:
             workset_anchor_floor,
         )
 
+        # ⚑ DEST-KEYED (R-3/R-5/R-11): one terminal arm key per mode, whose value
+        # is ``{box_dest: (src[, options])}`` with the dest already absolutized.
         floor = {
-            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
-            "box.bindings.ro.vault": (
-                "@workset.vault_ro/@meta.box.name", "~/vault/ro", "ro",
-            ),
-            "box.bindings.rw.vault": (
-                "@workset.vault_rw/@meta.box.name", "~/vault/rw", "Z,U",
-            ),
+            "box.bindings.rw": {
+                "/home/agent": ("@meta.box.path/home", "Z,U"),
+                "/home/agent/vault/rw": (
+                    "@workset.vault_rw/@meta.box.name", "Z,U",
+                ),
+            },
+            "box.bindings.ro": {
+                "/home/agent/vault/ro": (
+                    "@workset.vault_ro/@meta.box.name", "ro",
+                ),
+            },
         }
         # The anchors are @-ref FORMULAS rooted at meta.workset.path, so the workset
         # root is what pins the resolved values (= @config.primary_workset at launch).
@@ -129,9 +135,13 @@ class TestB2bHomeVaultByteIdentity:
         )
 
         floor = {
-            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
-            "box.bindings.ro.vault": ("@workset.vault_ro", "~/vault/ro", "ro"),
-            "box.bindings.rw.vault": ("@workset.vault_rw", "~/vault/rw", "Z,U"),
+            "box.bindings.rw": {
+                "/home/agent": ("@meta.box.path/home", "Z,U"),
+                "/home/agent/vault/rw": ("@workset.vault_rw", "Z,U"),
+            },
+            "box.bindings.ro": {
+                "/home/agent/vault/ro": ("@workset.vault_ro", "ro"),
+            },
         }
         # meta.workset.path = @meta.runtime.ws_root = <root> (the standalone launch
         # passes str(proj.metadata_path) = the project ROOT as ws_root_literal).
@@ -164,7 +174,7 @@ class TestB2bHomeVaultByteIdentity:
         )
 
         floor = {
-            "box.bindings.rw.home": ("@meta.box.path/home", "~", "Z,U"),
+            "box.bindings.rw": {"/home/agent": ("@meta.box.path/home", "Z,U")},
         }
         floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
         floor.update(workset_anchor_floor(
@@ -177,9 +187,12 @@ class TestB2bHomeVaultByteIdentity:
         ctx = make_ctx(
             workset_name=None, config={"config.primary_workset": "/data/pw"},
         )
-        # A box settings FILE setting box.bindings.rw.home to a custom host path.
+        # A box settings FILE repointing the SAME destination to a custom host
+        # path. ⚑ The file spells the dest ``~`` and the floor spells it
+        # ``/home/agent``; R-11 canonicalizes both, so they are ONE entry and the
+        # cascade really has an override to decide — not two binds at one place.
         box_overrides = {
-            "box": {"bindings": {"rw": {"home": ["/custom/home", "~"]}}},
+            "box": {"bindings": {"rw": {"~": ["/custom/home"]}}},
         }
         import yaml
         import tempfile
@@ -350,6 +363,31 @@ def _probe_cases(tmp_path):
     )
 
 
+def _merge_floor(floor: dict, table) -> None:
+    """Fold ONE producer's ``default_categories`` *table* into *floor*, H5-safely.
+
+    ⚑ A plain ``dict.update`` is WRONG here, and silently so. A bindings arm is
+    TERMINAL and DEST-KEYED (R-5/R-3), so every producer that binds anything
+    returns the SAME key — ``box.bindings.ro`` / ``box.bindings.rw`` — holding the
+    WHOLE map, and a second ``update`` replaces the first producer's entire arm
+    with nothing downstream able to notice. That is H5, the highest-risk breakage
+    in the disk-store arc, in miniature inside a test fixture: the probe below
+    folds ``core_default_categories`` (home + workspace + vault) and then
+    ``helper_default_categories`` (the helper socket), and BOTH contribute to
+    ``box.bindings.rw`` — so the ``update`` this replaces deleted the home and
+    workspace binds outright, and the P1 gate failed with a bare ``KeyError``.
+
+    Bindings arms merge ENTRY BY ENTRY; every other key is last-wins, matching
+    ``commands.start._merge_default_categories``. Precedent in this tree:
+    ``_merged_canon_cats`` in ``tests/test_canon_delivery.py``.
+    """
+    for key, value in table.items():
+        if key.endswith((".bindings.ro", ".bindings.rw")) and isinstance(value, dict):
+            floor.setdefault(key, {}).update(value)
+        else:
+            floor[key] = value
+
+
 def _probe_snapshot(mode, proj, ws_root, helper_log):
     """Build the LIVE launch snapshot for *proj* from the REAL shipped defaults."""
     from kanibako.settings import core_defaults
@@ -367,23 +405,24 @@ def _probe_snapshot(mode, proj, ws_root, helper_log):
         xdg={"XDG_DATA_HOME": "/data", "XDG_STATE_HOME": "/state"},
         config={"config.primary_workset": ws_root},
     )
-    floor = dict(core_defaults.core_default_categories(
+    floor: dict = {}
+    _merge_floor(floor, core_defaults.core_default_categories(
         None, proj, enable_vault=True, mode=mode,
     ))
-    floor.update(core_defaults.helper_default_categories(
+    _merge_floor(floor, core_defaults.helper_default_categories(
         box_state_kanibako="/home/agent/.local/state/kanibako",
         socket_path=helper_log,  # any existing path; the socket bind is not asserted
         log_path=helper_log,
     ))
-    floor.update(meta_runtime_floor(
+    _merge_floor(floor, meta_runtime_floor(
         mode=mode, ws_name="__X__",
         ws_root_literal=None if mode == "primary" else ws_root,
     ))
-    floor.update(meta_identity_floor(
+    _merge_floor(floor, meta_identity_floor(
         box_name=proj.name, project_path=str(proj.project_path),
         inbox="/i", share_global="/sg", share_workset=None,
     ))
-    floor.update(workset_anchor_floor(mode=mode))
+    _merge_floor(floor, workset_anchor_floor(mode=mode))
     snap = build_launch_snapshot(
         agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
         workset_path=None, box_path=None, default_categories=floor,
@@ -429,8 +468,15 @@ class TestP1BoxRootAnchor:
         """The DUPLICATION is retired at the source, not merely at resolution.
 
         ``core-defaults.yaml`` used to carry a 3-arm per-mode map for the home
-        host_src. Asserting the emitted tuple is EQUAL across modes is what stops a
+        host_src. Asserting the emitted entry is EQUAL across modes is what stops a
         future per-mode arm from creeping back in.
+
+        ⚑ Re-derived for dest-keying (R-3/R-5/R-11). The arm is now ONE terminal
+        key whose value is ``{box_dest: (host_src[, options])}``, so the box
+        DESTINATION moved out of the tuple and became the map key — and
+        mode-independence is therefore a property of the whole ENTRY, key and
+        value together. The dest reads ``/home/agent`` rather than the file's
+        ``~`` because R-11 absolutizes a destination at the producer.
         """
         from kanibako.settings import core_defaults
 
@@ -440,14 +486,18 @@ class TestP1BoxRootAnchor:
             vault_ro_path = Path("/h/vro")
             vault_rw_path = Path("/h/vrw")
 
-        emitted = {
+        arms = {
             mode: core_defaults.core_default_categories(
                 None, _P(), enable_vault=False, mode=mode,
-            )["box.bindings.rw.home"]
+            )["box.bindings.rw"]
             for mode in ("primary", "named", "standalone")
         }
-        assert emitted["primary"] == ("@meta.box.path/home", "~", "Z,U")
-        assert len(set(emitted.values())) == 1, emitted
+        for mode, arm in arms.items():
+            assert arm["/home/agent"] == ("@meta.box.path/home", "Z,U"), mode
+        # The WHOLE arm is mode-invariant, not just the home entry — a per-mode
+        # dest would now be a per-mode map KEY, which comparing tuples alone
+        # would no longer catch.
+        assert len({tuple(sorted(a.items())) for a in arms.values()}) == 1, arms
 
     def test_helper_log_bind_is_the_spec_formula_and_mode_independent(self, tmp_path):
         """The helper-log host_src IS the spec's row, spelled once for all modes.
@@ -476,12 +526,17 @@ class TestP1BoxRootAnchor:
             box_state_kanibako="/home/agent/.local/state/kanibako",
             socket_path=log,  # any existing path; only the log row is asserted.
             log_path=log,
-        )["box.bindings.ro.helper_log"]
-        assert emitted == (
-            "@workset.logs/@{meta.box.name}.jsonl",
-            "/home/agent/.local/state/kanibako/helpers.jsonl",
-            "ro",
-        )
+        )["box.bindings.ro"]
+        # ⚑ Re-derived for dest-keying: the destination is the map KEY now, so
+        # asserting the WHOLE ``ro`` arm pins the same two facts the old 3-tuple
+        # did — the spec's braced formula as the host_src, at exactly that dest —
+        # and additionally that the helper contributes nothing else to the arm.
+        assert emitted == {
+            "/home/agent/.local/state/kanibako/helpers.jsonl": (
+                "@workset.logs/@{meta.box.name}.jsonl",
+                "ro",
+            ),
+        }
         # ONE ROW FOR ALL MODES is structural, not a coincidence of three equal
         # arms: the builder takes no ``mode`` at all, so there is nowhere for a
         # per-mode arm to live. ``workset.logs`` carries the whole variation.
@@ -534,8 +589,10 @@ class TestB3ImagesStoreKey:
     Spec §2b (``box.images_store``) + §2c ALL PROJECTS row ``images`` (D-M8): the
     runtime-probed podman graphroot is the KEY'S DEFAULT, the bind's host_src is
     the @-ref ``@box.images_store``, and a cascade-tier repoint of the key MOVES
-    the mount.  The rider is pinned too: the bind entry is ``images`` — the bind
-    row and the scalar key no longer share a name.
+    the mount.  The B3 rider — that the bind row and the scalar key must not share
+    a name — is now carried STRUCTURALLY: under dest-keying (R-5) a bind row has no
+    name at all, so what is pinned below is that the arm is TERMINAL and the one
+    ``images_store`` left in the table is the SCALAR key.
     """
 
     def test_images_bind_is_the_at_ref_and_the_probe_is_the_key_default(self):
@@ -544,10 +601,16 @@ class TestB3ImagesStoreKey:
         Spelled, not just resolved (helper_log precedent): the host_src IS
         ``@box.images_store``, so the mount follows the KEY rather than a probed
         literal that happens to match.  The probe enters the keyspace in the SAME
-        table, as the key's floor-scalar default.  And the RENAME is structural:
-        the old ``box.bindings.ro.images_store`` spelling must not come back — an
-        undeclared bind row sharing the scalar's name was the confusion the B3
-        rider retired.
+        table, as the key's floor-scalar default.
+
+        ⚑ Re-derived for dest-keying (R-3/R-5/R-11): the bind's destination is the
+        map KEY of the terminal ``box.bindings.ro`` arm, not the tuple's 2nd slot,
+        and ``~/.config/containers/storage.conf`` is stored absolutized. The B3
+        rider is re-derived rather than dropped — the old
+        ``box.bindings.ro.images_store`` spelling cannot come back because NO
+        ``box.bindings.ro.<name>`` key can, so the assertion that pins the rider is
+        now that the arm is terminal and ``images_store`` survives only as the
+        scalar.
         """
         from kanibako.settings import core_defaults
 
@@ -555,19 +618,17 @@ class TestB3ImagesStoreKey:
             graph_root=Path("/host/graph"),
             storage_conf_path=Path("/host/staging/storage.conf"),
         )
-        assert emitted["box.bindings.ro.images"] == (
-            "@box.images_store",
-            "/var/lib/shared-images",
-            "ro",
-        )
+        arm = emitted["box.bindings.ro"]
+        assert arm["/var/lib/shared-images"] == ("@box.images_store", "ro")
         # The probed graphroot IS the user key's default, entering here.
         assert emitted["box.images_store"] == "/host/graph"
-        # The rider: the bind row no longer shares the scalar key's name.
-        assert "box.bindings.ro.images_store" not in emitted
-        # images_conf stays an INTERNAL bind (NOT a key) and keeps its name.
-        assert emitted["box.bindings.ro.images_conf"] == (
+        # The rider, structurally: the arm is TERMINAL (no per-name key survives),
+        # and the only ``images_store`` in the table is the scalar key.
+        assert not [k for k in emitted if k.startswith("box.bindings.ro.")]
+        assert [k for k in emitted if "images_store" in k] == ["box.images_store"]
+        # images_conf stays an INTERNAL bind (NOT a key); its identity is its dest.
+        assert arm["/home/agent/.config/containers/storage.conf"] == (
             "/host/staging/storage.conf",
-            "~/.config/containers/storage.conf",
             "ro",
         )
 
@@ -642,6 +703,9 @@ class TestB3ImagesStoreKey:
         The probe feeds ONLY the key's default, so ``graph_root=None`` leaves the
         key unset in the table — the bind is still spelled as the @-ref (nothing
         falls back to a probed literal) and the INTERNAL conf bind is unaffected.
+
+        ⚑ Re-derived for dest-keying: both binds are entries of the terminal
+        ``box.bindings.ro`` arm, keyed by their R-11-absolutized destinations.
         """
         from kanibako.settings import core_defaults
 
@@ -650,14 +714,10 @@ class TestB3ImagesStoreKey:
             storage_conf_path=Path("/host/staging/storage.conf"),
         )
         assert "box.images_store" not in emitted
-        assert emitted["box.bindings.ro.images"] == (
-            "@box.images_store",
-            "/var/lib/shared-images",
-            "ro",
-        )
-        assert emitted["box.bindings.ro.images_conf"] == (
+        arm = emitted["box.bindings.ro"]
+        assert arm["/var/lib/shared-images"] == ("@box.images_store", "ro")
+        assert arm["/home/agent/.config/containers/storage.conf"] == (
             "/host/staging/storage.conf",
-            "~/.config/containers/storage.conf",
             "ro",
         )
 
@@ -872,20 +932,31 @@ class TestDeclarationKeyIsDiscriminated:
         assert by_name["build"].key == "agent.claude.caches.build"
 
     def test_no_emitted_key_uses_the_bare_agent_form(self):
+        # ⚑ The bindings entry is re-spelled for dest-keying (R-3/R-5): the arm is
+        # ONE terminal key holding ``{box_dest: (host_src,)}``. It is here as the
+        # non-agent CONTROL, so what it must keep contributing is a box-scope
+        # entry — its leaf spelling was never the point.
         for entry in self._entries({
             "agent.claude.common.plugins": ("/store/plugins", "/g/plugins"),
             "agent.default.seeded.template": ("/store/tpl", "~"),
             "agent.claude.env.FOO": "bar",
             "agent.claude.secret_path.TOK": "/secrets/tok",
-            "box.bindings.rw.home": ("/boxes/b/home", "~"),
+            "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
         }).values():
             assert not entry.key.startswith("agent.common")
             assert not entry.key.startswith("agent.seeded")
             assert not entry.key.startswith("agent.env")
             assert not entry.key.startswith("agent.secret_path")
         # And the non-agent scopes are spelled with their bare token, as always.
-        by_name = self._entries({"box.bindings.rw.home": ("/boxes/b/home", "~")})
-        assert by_name["home"].key == "box.bindings.rw.home"
+        # ⚑ Re-derived: a dest-keyed arm makes the entry's NAME the box
+        # DESTINATION, so the fact still pinned is the SCOPE token — bare ``box``,
+        # never discriminated — not the retired ``…bindings.rw.home`` leaf.
+        by_name = self._entries({
+            "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
+        })
+        entry = by_name["/home/agent"]
+        assert entry.scope == "box"
+        assert entry.key.startswith("box.bindings.rw.")
 
 
 class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
@@ -931,7 +1002,16 @@ class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
 
     def test_the_emitted_binds_are_identical_either_way(self, tmp_path):
         """The flag gates the SIDE EFFECT, not the result — otherwise the
-        display would be showing a different box than the launch mounts."""
+        display would be showing a different box than the launch mounts.
+
+        ⚑ Re-derived for dest-keying (R-3/R-5): the builder returns terminal ARM
+        keys whose values are ``{box_dest: (host_src[, options])}``, so the
+        comparison walks one level deeper. The destination — which used to ride in
+        the tuple and be covered by ``v[1:]`` — is now the inner map KEY, and is
+        compared as such; ``v[1:]`` is left comparing the OPTIONS. Between them the
+        two assertions still cover everything except slot 0, the host source, which
+        is the only thing the differing tmp root may move.
+        """
         from kanibako.settings import core_defaults
 
         read = core_defaults.core_default_categories(
@@ -942,9 +1022,13 @@ class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
             None, self._P(tmp_path / "l"), enable_vault=True,
             mode="standalone",
         )
-        # Same keys, same shapes; only the tmp root differs in the sources.
+        # Same arms, same DESTINATIONS, same options; only the sources differ.
         assert set(read) == set(launch)
-        assert [v[1:] for v in read.values()] == [v[1:] for v in launch.values()]
+        for arm in read:
+            assert list(read[arm]) == list(launch[arm]), arm
+            assert [v[1:] for v in read[arm].values()] == [
+                v[1:] for v in launch[arm].values()
+            ], arm
 
 
 class TestEffectiveBlockAgainstARealAgentPlugin:

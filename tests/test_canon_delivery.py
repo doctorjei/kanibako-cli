@@ -63,32 +63,29 @@ from kanibako.launch.templates import (
 
 _AGENTS = ("claude", "codex", "goose")
 
-# The COMPLETE set of canon binds core emits, by key and by guest dest.  ⚑ FIVE from
-# the packaged rom + ONE gated plugin chapter; there is NO ``canon_bible`` whole-dir
-# key any more (RETIRED by J-7 — an undeclared key from the spec edit forward).
-_CORE_KEYS = {
-    "box.bindings.ro.canon_collection": "~/canon/COLLECTION.md",
-    "box.bindings.ro.canon_bible_contents": "~/canon/bible/ROM_CONTENTS.md",
-    "box.bindings.ro.canon_bible_general": "~/canon/bible/general",
-    "box.bindings.ro.canon_bible_workset": "~/canon/bible/workset",
-    "box.bindings.ro.canon_bible_box": "~/canon/bible/box",
+# ⚑ DEST-KEYED (disk-store R-3/R-5/R-10/R-11). ``rom_default_categories`` returns
+# ONE terminal arm key whose value is ``{box_dest: (src, options)}``. The per-bind
+# NAMES that used to spell ``box.bindings.ro.canon_bible_general`` are gone from the
+# keyspace entirely — the DESTINATION is the identity — and R-11 expands ``~`` on
+# the key, so every dest below is absolute.
+_ARM = "box.bindings.ro"
+
+# The COMPLETE set of canon binds core emits: guest DEST -> rom-root-relative
+# SOURCE.  ⚑ FIVE from the packaged rom + ONE gated plugin chapter; there is NO
+# whole-dir ``~/canon/bible`` bind any more (RETIRED by J-7).
+_CORE_DESTS = {
+    f"{GUEST_HOME}/canon/COLLECTION.md": ROM_COLLECTION_REL,
+    f"{GUEST_HOME}/canon/bible/ROM_CONTENTS.md": ROM_CONTENTS_REL,
+    f"{GUEST_HOME}/canon/bible/general": f"{ROM_BIBLE_REL}/general",
+    f"{GUEST_HOME}/canon/bible/workset": f"{ROM_BIBLE_REL}/workset",
+    f"{GUEST_HOME}/canon/bible/box": f"{ROM_BIBLE_REL}/box",
 }
 # The two FILE binds (file-onto-file, over the skeleton's 0-byte mountpoints).
-_FILE_KEYS = {
-    "box.bindings.ro.canon_collection",
-    "box.bindings.ro.canon_bible_contents",
+_FILE_DESTS = {
+    f"{GUEST_HOME}/canon/COLLECTION.md",
+    f"{GUEST_HOME}/canon/bible/ROM_CONTENTS.md",
 }
-_BIBLE_AGENT_KEY = "box.bindings.ro.canon_bible_agent"
-_BIBLE_AGENT_DEST = "~/canon/bible/agent"
-
-# Sources, rom-root-relative, in the same order as ``_CORE_KEYS``.
-_CORE_SOURCES = {
-    "box.bindings.ro.canon_collection": ROM_COLLECTION_REL,
-    "box.bindings.ro.canon_bible_contents": ROM_CONTENTS_REL,
-    "box.bindings.ro.canon_bible_general": f"{ROM_BIBLE_REL}/general",
-    "box.bindings.ro.canon_bible_workset": f"{ROM_BIBLE_REL}/workset",
-    "box.bindings.ro.canon_bible_box": f"{ROM_BIBLE_REL}/box",
-}
+_BIBLE_AGENT_DEST = f"{GUEST_HOME}/canon/bible/agent"
 
 
 def _ctx() -> ResolveCtx:
@@ -102,6 +99,25 @@ def _ctx() -> ResolveCtx:
 
 def _packaged_rom_root() -> Path:
     return Path(str(core_defaults.packaged_data_dir(*ROM_ROOT_PARTS)))
+
+
+def _merged_canon_cats(chapter: Path) -> dict:
+    """The five core canon binds PLUS the gated plugin chapter, merged.
+
+    ⚑ A plain ``dict.update`` of the two tables is now WRONG and silently so: both
+    return the SAME terminal arm key ``box.bindings.ro``, so the second would
+    replace all five core entries with the one chapter entry. That is H5 — the
+    clobber ``commands.start._merge_default_categories`` exists to prevent — in
+    miniature, and the reason this helper exists rather than an inline ``update``.
+    """
+    merged: dict = {}
+    for table in (
+        core_defaults.rom_default_categories(),
+        core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)),
+    ):
+        for arm, entries in table.items():
+            merged.setdefault(arm, {}).update(entries)
+    return merged
 
 
 def _reconcile(cats: dict) -> object:
@@ -177,62 +193,71 @@ class _ChapterTarget:
 class TestCanonBinds:
     def test_emits_exactly_the_five_declared_siblings(self):
         cats = core_defaults.rom_default_categories()
-        assert set(cats) == set(_CORE_KEYS), cats
-        assert {dest for _, dest, _ in cats.values()} == set(_CORE_KEYS.values())
-        assert all(opt == "ro" for _, _, opt in cats.values())
+        assert set(cats) == {_ARM}, cats
+        assert set(cats[_ARM]) == set(_CORE_DESTS), cats
+        assert all(opt == "ro" for _src, opt in cats[_ARM].values())
 
     def test_keys_are_the_spec_names_and_emission_is_deterministic(self):
         """Stable SPEC names — not the retired content-derived ``rom_<slug>_<hash>``
         family, and not R1's retired whole-dir ``canon_bible``."""
         first = core_defaults.rom_default_categories()
         assert first == core_defaults.rom_default_categories()
-        assert "box.bindings.ro.canon_bible" not in first, (
-            "canon_bible is RETIRED (J-7) — an undeclared key, not a bind"
+        # ⚑ Since R-10 there are no bind NAMES left to be stable, so what this
+        # pins moved to the DESTINATIONS: no whole-dir ``~/canon/bible`` entry
+        # (RETIRED by J-7), and no content-derived ``rom_<slug>_<hash>`` segment
+        # anywhere in a dest.
+        assert f"{GUEST_HOME}/canon/bible" not in first[_ARM], (
+            "the whole-dir bible bind is RETIRED (J-7) — not a bind at all"
         )
-        assert not any("rom_" in k.rsplit(".", 1)[-1] for k in first), first
+        assert not any("rom_" in d for d in first[_ARM]), first
 
     def test_each_key_lands_at_its_declared_dest(self):
         cats = core_defaults.rom_default_categories()
-        for key, dest in _CORE_KEYS.items():
-            assert cats[key][1] == dest, key
+        rom = _packaged_rom_root()
+        for dest, rel in _CORE_DESTS.items():
+            # The dest IS the key, so "lands at its declared dest" is now the
+            # statement that the declared dest is PRESENT and carries the source
+            # declared for it — the two halves the retired name used to join.
+            assert dest in cats[_ARM], dest
+            assert Path(cats[_ARM][dest][0]) == rom / rel, dest
 
     def test_file_binds_are_files_and_chapter_binds_are_directories(self):
         """The shapes are load-bearing: a file bind mounts file-onto-file over the
         skeleton's 0-byte mountpoint; a chapter bind replaces a whole directory."""
         cats = core_defaults.rom_default_categories()
-        for key, (src, _dest, _opt) in cats.items():
-            if key in _FILE_KEYS:
-                assert Path(src).is_file(), key
+        for dest, (src, _opt) in cats[_ARM].items():
+            if dest in _FILE_DESTS:
+                assert Path(src).is_file(), dest
             else:
-                assert Path(src).is_dir(), key
+                assert Path(src).is_dir(), dest
 
     def test_neither_canon_root_nor_bible_root_is_ever_bound(self):
         """⚑ THE SIBLING CONTRACT. ``~/canon`` must never be bound (it holds the
         SEEDED notebook/workbook), and neither must ``~/canon/bible`` — re-introducing
         that whole-dir bind is exactly the R1 model J-7 retired, and it would put the
         agent chapter's mountpoint back inside a bind source."""
-        dests = {dest for _, dest, _ in core_defaults.rom_default_categories().values()}
-        assert "~/canon" not in dests
-        assert "~/canon/bible" not in dests
-        assert "~" not in dests
+        dests = set(core_defaults.rom_default_categories()[_ARM])
+        assert f"{GUEST_HOME}/canon" not in dests
+        assert f"{GUEST_HOME}/canon/bible" not in dests
+        assert GUEST_HOME not in dests
 
     def test_sources_are_the_packaged_canon_never_a_copy(self):
         cats = core_defaults.rom_default_categories()
         rom = _packaged_rom_root()
-        for key, rel in _CORE_SOURCES.items():
-            assert Path(cats[key][0]) == rom / rel, key
+        for dest, rel in _CORE_DESTS.items():
+            assert Path(cats[_ARM][dest][0]) == rom / rel, dest
         # The guide has NO bind of its own — it rides the ``general`` chapter's.
         guide = rom / ROM_GUIDE_REL
         assert guide.is_file()
-        assert guide.is_relative_to(Path(cats["box.bindings.ro.canon_bible_general"][0]))
+        general_src = cats[_ARM][f"{GUEST_HOME}/canon/bible/general"][0]
+        assert guide.is_relative_to(Path(general_src))
 
     def test_reconciles_to_ro_mounts_at_every_guest_slot(self):
         rec = _reconcile(core_defaults.rom_default_categories())
         by_dest = {m.box_dest: m for m in rec.mounts}
-        for dest in _CORE_KEYS.values():
-            guest = dest.replace("~", GUEST_HOME, 1)
-            assert guest in by_dest, f"{guest} not reconciled"
-            m = by_dest[guest]
+        for dest in _CORE_DESTS:
+            assert dest in by_dest, f"{dest} not reconciled"
+            m = by_dest[dest]
             assert m.scope == "box"
             assert m.category == "bindings.ro"
             assert m.options == "ro"
@@ -264,9 +289,9 @@ class TestFailClosed:
     def test_fake_rom_fixture_is_itself_valid(self, fake_rom):
         """Guard the guard: the complete fake tree must PASS, or every removal case
         below would pass vacuously."""
-        assert set(core_defaults.rom_default_categories()) == set(_CORE_KEYS)
+        assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
 
-    @pytest.mark.parametrize("rel", sorted(set(_CORE_SOURCES.values())))
+    @pytest.mark.parametrize("rel", sorted(set(_CORE_DESTS.values())))
     def test_raises_when_any_emitted_source_is_missing(self, fake_rom, rel: str):
         """⚑ EVERY emitted bind's source is a required member. A missing one would
         otherwise be DROPPED by ``_emit_category_mounts`` with only a per-launch
@@ -284,7 +309,7 @@ class TestFailClosed:
         one into site-packages). J-7 removed the nesting, so that placeholder must NOT
         ship — and its absence must NOT raise. The fixture never creates it."""
         assert not (fake_rom / ROM_BIBLE_REL / BIBLE_AGENT_CHAPTER).exists()
-        assert set(core_defaults.rom_default_categories()) == set(_CORE_KEYS)
+        assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
 
     def test_absent_rom_root_is_a_no_rom_install(self, tmp_path, monkeypatch):
         real = core_defaults.packaged_data_dir
@@ -483,10 +508,10 @@ class TestPluginChapterBind:
         )
 
         cats = core_defaults.rom_agent_default_categories(target)
-        assert set(cats) == {_BIBLE_AGENT_KEY}, cats
-        src, dest, opts = cats[_BIBLE_AGENT_KEY]
+        assert set(cats) == {_ARM}, cats
+        assert set(cats[_ARM]) == {_BIBLE_AGENT_DEST}, cats
+        src, opts = cats[_ARM][_BIBLE_AGENT_DEST]
         assert Path(src) == root, "the plugin's data/rom IS the chapter root (D3)"
-        assert dest == _BIBLE_AGENT_DEST
         assert opts == "ro"
 
     def test_the_three_shipped_chapters_are_byte_identical(self):
@@ -526,10 +551,13 @@ class TestPluginChapterBind:
         (chapter / "directives" / "ROM_AGENT.md").write_text("# harness chapter\n")
 
         cats = core_defaults.rom_agent_default_categories(_ChapterTarget(chapter))
-        assert set(cats) == {_BIBLE_AGENT_KEY}
-        src, dest, opts = cats[_BIBLE_AGENT_KEY]
+        assert set(cats) == {_ARM}
+        # ⚑ The dest carries NO agent segment — asserted as the arm's ONLY key,
+        # which is stronger than the retired ``dest ==`` check: under dest-keying
+        # a wrong dest cannot hide behind a right name.
+        assert set(cats[_ARM]) == {_BIBLE_AGENT_DEST}
+        src, opts = cats[_ARM][_BIBLE_AGENT_DEST]
         assert Path(src) == chapter, "the plugin's data/rom IS the chapter root"
-        assert dest == _BIBLE_AGENT_DEST, "the dest carries NO agent segment"
         assert opts == "ro"
 
     def test_no_bind_when_the_chapter_marker_is_absent(self, tmp_path):
@@ -557,11 +585,10 @@ class TestSiblingAssembly:
         (chapter / "directives").mkdir(parents=True)
         (chapter / "directives" / "ROM_AGENT.md").write_text("")
 
-        cats = dict(core_defaults.rom_default_categories())
-        cats.update(core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)))
-        assert len(cats) == 6
+        cats = _merged_canon_cats(chapter)
+        assert len(cats[_ARM]) == 6
 
-        dests = sorted(dest for _, dest, _ in cats.values())
+        dests = sorted(cats[_ARM])
         for a in dests:
             for b in dests:
                 assert a == b or not b.startswith(f"{a}/"), (
@@ -573,9 +600,7 @@ class TestSiblingAssembly:
         (chapter / "directives").mkdir(parents=True)
         (chapter / "directives" / "ROM_AGENT.md").write_text("")
 
-        cats = dict(core_defaults.rom_default_categories())
-        cats.update(core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)))
-        rec = _reconcile(cats)
+        rec = _reconcile(_merged_canon_cats(chapter))
         assert not rec.warnings, rec.warnings
         assert f"{GUEST_HOME}/canon/bible/agent" in {m.box_dest for m in rec.mounts}
 
@@ -640,10 +665,9 @@ class TestLaunchWiring:
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, _WiringTarget())
 
-        for dest in _CORE_KEYS.values():
-            guest = dest.replace("~", GUEST_HOME, 1)
-            assert guest in by_dest, sorted(by_dest)
-            assert by_dest[guest].options == "ro"
+        for dest in _CORE_DESTS:
+            assert dest in by_dest, sorted(by_dest)
+            assert by_dest[dest].options == "ro"
         # ⚑ Neither book ROOT is mounted: ~/canon holds the SEEDED notebook/workbook,
         # and ~/canon/bible is the retired whole-dir bind.
         assert f"{GUEST_HOME}/canon" not in by_dest
@@ -695,8 +719,8 @@ class TestLaunchWiring:
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, None)
 
-        for dest in _CORE_KEYS.values():
-            assert dest.replace("~", GUEST_HOME, 1) in by_dest
+        for dest in _CORE_DESTS:
+            assert dest in by_dest
         assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
 
 
@@ -747,11 +771,11 @@ class TestCanonSkeleton:
         the skeleton. A dest with none is a mountpoint podman creates itself — which
         under the retired nested model meant mkdir-ing into site-packages, the exact
         failure J-7 exists to remove."""
-        cats = dict(core_defaults.rom_default_categories())
-        cats[_BIBLE_AGENT_KEY] = ("/x", _BIBLE_AGENT_DEST, "ro")
+        cats = core_defaults.rom_default_categories()
+        dests = set(cats[_ARM]) | {_BIBLE_AGENT_DEST}
         skeleton = {rel for rel, _ in core_defaults.canon_skeleton_rels()}
-        for _src, dest, _opt in cats.values():
-            assert dest.removeprefix("~/") in skeleton, dest
+        for dest in dests:
+            assert dest.removeprefix(f"{GUEST_HOME}/") in skeleton, dest
 
     def test_creates_the_handbook_mountpoints_too(self, tmp_path, fake_runtime):
         """⚑ The handbook BINDS are the seeds half's (they need ``<scope>.canon``

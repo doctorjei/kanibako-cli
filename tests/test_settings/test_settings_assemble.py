@@ -566,11 +566,12 @@ def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
     # An agent-tier bind key keeps the §2d form agent.<active-name>.bindings.*.
     agent = _write(
         tmp_path / "agent.yaml",
-        {"self": {"claude": {"bindings": {"ro": {"share": ["/h/s", "/g/s"]}}}}},
+        {"self": {"claude": {"bindings": {"ro": {"/g/s": ["/h/s"]}}}}},
     )
     active = assemble_levels(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
-    bind = active["agent"]["claude"]["bindings"]["ro"]["share"]
-    assert bind == Bind("/h/s", "/g/s", None)
+    # DEST-KEYED (R-5/R-6): the arm is keyed by destination, the entry is (src[, opts]).
+    bind = active["agent"]["claude"]["bindings"]["ro"]["/g/s"]
+    assert bind == BindEntry("/h/s", None)
 
 
 def test_per_agent_independence_other_agent_under_own_name(tmp_path: Path) -> None:
@@ -611,9 +612,11 @@ def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
         tmp_path / "box.yaml",
         {
             "box": {
+                # bindings are DEST-KEYED (1-or-2 element entries); the other four
+                # bind categories are still NAME-keyed 2-or-3 element tuples.
                 "bindings": {
-                    "rw": {"home": ["/host/home", "~/"]},
-                    "ro": {"sock": ["/h/s", "/g/s", "z"]},
+                    "rw": {"~/": ["/host/home"]},
+                    "ro": {"/g/s": ["/h/s", "z"]},
                 },
                 "caches": {"c": ["/h/c", "/g/c"]},
                 "seeded": {"t": ["/h/t", "/g/t"]},
@@ -623,10 +626,12 @@ def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
         },
     )
     box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
-    rw_home = box_scope["bindings"]["rw"]["home"]
-    assert rw_home == Bind("/host/home", "~/", None)
-    assert isinstance(rw_home, Bind)
-    assert box_scope["bindings"]["ro"]["sock"] == Bind("/h/s", "/g/s", "z")
+    # R-11: the stored ``~/`` dest is canonicalized to the absolute guest home, so
+    # ``~``, ``~/`` and ``/home/agent`` are ONE key rather than three.
+    rw_home = box_scope["bindings"]["rw"]["/home/agent"]
+    assert rw_home == BindEntry("/host/home", None)
+    assert isinstance(rw_home, BindEntry)
+    assert box_scope["bindings"]["ro"]["/g/s"] == BindEntry("/h/s", "z")
     for cat, name in [("caches", "c"), ("seeded", "t"), ("common", "p"), ("synced", "cred")]:
         assert isinstance(box_scope[cat][name], Bind)
 
@@ -634,20 +639,22 @@ def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
 def test_refs_left_raw_inside_bind(tmp_path: Path) -> None:
     box = _write(
         tmp_path / "box.yaml",
-        {"box": {"bindings": {"rw": {"vault": ["@workset.vault_rw/x", "$XDG_STATE_HOME/v"]}}}},
+        {"box": {"bindings": {"rw": {"$XDG_STATE_HOME/v": ["@workset.vault_rw/x"]}}}},
     )
     box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
-    bind = box_scope["bindings"]["rw"]["vault"]
-    # NOT expanded — tokens preserved verbatim (S9 / spec §0).
-    assert bind.host == "@workset.vault_rw/x"
-    assert bind.box == "$XDG_STATE_HOME/v"
+    node = box_scope["bindings"]["rw"]
+    # NOT expanded — tokens preserved verbatim (S9 / spec §0), on BOTH sides: the
+    # ``$XDG`` dest KEY is carried through too (R-11 expands a leading ``~`` only).
+    assert list(dict.keys(node)) == ["$XDG_STATE_HOME/v"]
+    assert node["$XDG_STATE_HOME/v"].src == "@workset.vault_rw/x"
 
 
 def test_malformed_bind_arity_raises(tmp_path: Path) -> None:
     box = _write(
         tmp_path / "box.yaml",
-        {"box": {"bindings": {"rw": {"bad": ["only-one"]}}}},
+        {"box": {"bindings": {"rw": {"/g/bad": ["a", "b", "c"]}}}},
     )
+    # A 3-element entry is the RETIRED name-keyed shape (spec §2a, R-8).
     with pytest.raises(SettingsError):
         assemble_levels(agent_name="claude", box_path=box)
 
@@ -746,10 +753,11 @@ def test_floor_lands_on_base_level() -> None:
 def test_floor_dotted_keys_explode_to_nested() -> None:
     levels = assemble_levels(
         agent_name="claude",
-        floor={"box.bindings.rw.home": ["/h/home", "~/"]},
+        floor={"box.bindings.rw": {"~/": ["/h/home"]}},
     )
-    bind = levels[BASE]["box"]["bindings"]["rw"]["home"]
-    assert bind == Bind("/h/home", "~/", None)
+    # The floor key ENDS at the arm (R-5); the dest is the map key, canonicalized.
+    bind = levels[BASE]["box"]["bindings"]["rw"]["/home/agent"]
+    assert bind == BindEntry("/h/home", None)
 
 
 def test_base_file_set_value_beats_floor_at_same_key(tmp_path: Path) -> None:
@@ -803,7 +811,7 @@ def test_partial_holds_behavior_and_category_together(tmp_path: Path) -> None:
         {
             "box": {
                 "image": "ghcr.io/x:latest",  # behavior leaf
-                "bindings": {"rw": {"home": ["/h", "~/"]}},  # category subtree
+                "bindings": {"rw": {"~/": ["/h"]}},  # category subtree
                 "masks": {"/secret": True},
             }
         },
@@ -811,7 +819,7 @@ def test_partial_holds_behavior_and_category_together(tmp_path: Path) -> None:
     box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
     assert dict.get(box_scope, "image", _MISSING) == "ghcr.io/x:latest"
     assert isinstance(box_scope["bindings"], KeyStore)
-    assert isinstance(box_scope["bindings"]["rw"]["home"], Bind)
+    assert isinstance(box_scope["bindings"]["rw"]["/home/agent"], BindEntry)
     assert isinstance(box_scope["masks"], KeyStore)
 
 
@@ -1223,10 +1231,11 @@ class TestRefuseRetiredBehaviorKeys:
 def test_parse_bind_map_keys_on_dest_and_yields_bind_entries() -> None:
     node = parse_bind_map({"~/.claude": ["/h/claude"], "~/v": ["/h/v", "ro"]})
     assert isinstance(node, KeyStore)
-    assert set(dict.keys(node)) == {"~/.claude", "~/v"}
-    assert type(dict.__getitem__(node, "~/.claude")) is BindEntry
-    assert dict.__getitem__(node, "~/.claude") == BindEntry("/h/claude")
-    assert dict.__getitem__(node, "~/v") == BindEntry("/h/v", "ro")
+    # R-11: the DEST key is canonicalized on read (the value never is).
+    assert set(dict.keys(node)) == {"/home/agent/.claude", "/home/agent/v"}
+    assert type(dict.__getitem__(node, "/home/agent/.claude")) is BindEntry
+    assert dict.__getitem__(node, "/home/agent/.claude") == BindEntry("/h/claude")
+    assert dict.__getitem__(node, "/home/agent/v") == BindEntry("/h/v", "ro")
 
 
 def test_parse_bind_map_leaves_refs_and_vars_raw() -> None:
@@ -1243,7 +1252,7 @@ def test_parse_bind_map_preserves_a_present_none_entry() -> None:
     # A per-entry reset stays a present-``None`` leaf for the merge to classify as
     # an OMIT (§3) — it must NOT be parsed away or rejected here.
     node = parse_bind_map({"~/a": ["/h/a"], "~/b": None})
-    assert dict.__getitem__(node, "~/b") is None
+    assert dict.__getitem__(node, "/home/agent/b") is None
 
 
 def test_parse_bind_map_refuses_a_non_mapping_arm() -> None:
@@ -1259,15 +1268,52 @@ def test_parse_bind_map_refuses_a_stale_three_element_entry() -> None:
         parse_bind_map({"home": ["/h/src", "~/home", "ro"]})
 
 
-def test_the_live_name_keyed_path_still_parses_to_bind(tmp_path: Path) -> None:
-    # ⚑ P5 is a BRIDGE: adding the dest-keyed parser must not change what the
-    # PRODUCTION load path produces. A settings file's bindings arm is still
-    # name-keyed and still yields a 3-field ``Bind``.
+def test_the_file_path_now_parses_bindings_to_bind_entry(tmp_path: Path) -> None:
+    # ⚑ P6 flipped the FILE reader: a settings file's bindings arm is DEST-keyed and
+    # yields a 2-field ``BindEntry``. (P5 pinned the opposite; the flip is the
+    # phase.) The user files had to flip WITH the floor — a merged arm must be
+    # homogeneous, because a single arm node holds entries from both.
     path = _write(
         tmp_path / "box.yaml",
-        {"box": {"bindings": {"rw": {"home": ["/h/src", "~/home"]}}}},
+        {"box": {"bindings": {"rw": {"~/home": ["/h/src"]}}}},
     )
     levels = assemble_levels(agent_name="claude", box_path=path)
-    entry = levels[BOX]["box"]["bindings"]["rw"]["home"]
-    assert type(entry) is Bind
-    assert entry == Bind("/h/src", "~/home")
+    entry = levels[BOX]["box"]["bindings"]["rw"]["/home/agent/home"]
+    assert type(entry) is BindEntry
+    assert entry == BindEntry("/h/src")
+
+
+def test_the_other_bind_categories_stay_name_keyed(tmp_path: Path) -> None:
+    # ⚑⚑ THE FLIP IS PER-CATEGORY. ``caches``/``seeded``/``common``/``synced`` are
+    # OUT OF SCOPE for this arc and keep the name-keyed 3-tuple. A blanket
+    # ``dest_keyed=True`` on the file reader would read ``["/h/t", "/g/t"]`` as
+    # ``(src, opts)`` and silently turn every copy's DESTINATION into mount options.
+    path = _write(
+        tmp_path / "box.yaml",
+        {"box": {"seeded": {"t": ["/h/t", "/g/t"]}, "caches": {"c": ["/h/c", "/g/c"]}}},
+    )
+    box_scope = assemble_levels(agent_name="claude", box_path=path)[BOX]["box"]
+    assert box_scope["seeded"]["t"] == Bind("/h/t", "/g/t", None)
+    assert box_scope["caches"]["c"] == Bind("/h/c", "/g/c", None)
+
+
+def test_a_floor_key_deeper_than_the_arm_is_refused() -> None:
+    # The RETIRED producer spelling. It still type-checks all the way to launch, and
+    # the ``<name>`` segment would land inside the arm as a sibling of real
+    # destinations — a name where a path belongs, which nothing downstream can tell
+    # apart. So the floor refuses it by name (R-5/R-10).
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(
+            agent_name="claude",
+            floor={"box.bindings.rw.home": ["/h/home", "~/"]},
+        )
+    assert "box.bindings.rw" in str(exc.value)
+    assert "ENTRY NAME" in str(exc.value)
+
+
+def test_a_name_keyed_sub_table_under_an_arm_is_refused() -> None:
+    # The FILE-side twin of the above: a sub-table under an arm is the retired
+    # ``{name: {...}}`` shape (spec §2a "STALE SHAPES ARE REFUSED LOUDLY").
+    with pytest.raises(SettingsError) as exc:
+        parse_bind_map({"home": {"src": "/h"}})
+    assert "sub-table" in str(exc.value)

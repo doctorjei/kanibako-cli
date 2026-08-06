@@ -1164,37 +1164,69 @@ class _FakeProj:
             self.vault_rw_path.mkdir()
 
 
-class TestCoreDefaultCategories:
-    """core_defaults.core_default_categories emits the structured core binds."""
+def _as_frozen_name_keyed(live):
+    """Adapt a LIVE dest-keyed floor table to the FROZEN oracle's name-keyed shape.
 
-    def test_home_and_workspace_structured_triples(self, tmp_path):
+    ⚑⚑ QUARANTINE ADAPTER. Do NOT copy it out of this file, and do NOT "fix" the
+    oracle to understand dest-keying instead — the oracle is a frozen snapshot of
+    the RETIRED by-name resolver and staying frozen is the whole point of it.
+
+    The live floor producers went DEST-KEYED in P6 (R-3/R-5): a bindings arm is ONE
+    terminal key whose value is ``{box_dest: (host_src[, options])}``. The two tests
+    below feed the REAL producer's output in for realism, but what they assert is
+    the ORACLE's per-entry options handling and the LIVE ``reconcile_categories``
+    depth sort — neither of which is about the floor's key shape. So the conversion
+    back to the retired ``(src, dest, opts)`` triple happens HERE, at the boundary,
+    under a SYNTHETIC name: the real names were dropped outright by R-10 and there
+    is nothing left to reconstruct them from.
+    """
+    out: dict[str, object] = {}
+    for key, value in live.items():
+        if key.endswith((".bindings.ro", ".bindings.rw")) and isinstance(value, dict):
+            for i, (dest, entry) in enumerate(value.items()):
+                out[f"{key}.n{i}"] = (entry[0], dest, *entry[1:])
+            continue
+        out[key] = value
+    return out
+
+
+class TestCoreDefaultCategories:
+    """core_defaults.core_default_categories emits the structured core binds.
+
+    ⚑ These drive the LIVE producer, not the frozen oracle, so they were
+    re-derived for dest-keying in P6 (R-3/R-5/R-11): the box DESTINATION is the
+    arm's map key — absolutized from the declarative file's ``~`` — and the value
+    is the 2-element ``(host_src, options)``.
+    """
+
+    def test_home_and_workspace_structured_pairs(self, tmp_path):
         from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
         binds = core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
         )
-        # home: rw bind, dest ~ , options Z,U (the structured 3-tuple's 3rd slot).
+        # home: rw bind at /home/agent, options Z,U (the entry's 2nd slot).
         # The home host_src is the MODE-INDEPENDENT @meta.box.path/home REF (spec §2c
         # ALL PROJECTS), resolved at launch-expand to str(proj.shell_path).  The
         # per-mode variation lives in meta.box.path, not here.
-        assert binds["box.bindings.rw.home"] == (
+        assert binds["box.bindings.rw"]["/home/agent"] == (
             "@meta.box.path/home",
-            "~",
             "Z,U",
         )
-        # workspace: rw bind, dest ~/workspace, options Z,U.  B2: the host_src is the
-        # @meta.box.workspace REF (routed through the materialized identity anchor,
-        # spec §2c L476); it resolves to str(proj.project_path) at launch-expand.
-        assert binds["box.bindings.rw.workspace"] == (
+        # workspace: rw bind at /home/agent/workspace, options Z,U.  B2: the host_src
+        # is the @meta.box.workspace REF (routed through the materialized identity
+        # anchor, spec §2c L476); it resolves to str(proj.project_path) at expand.
+        assert binds["box.bindings.rw"]["/home/agent/workspace"] == (
             "@meta.box.workspace",
-            "~/workspace",
             "Z,U",
         )
-        # Every value is a structured 3-tuple (spec §2a), never a colon-string.
-        for v in binds.values():
-            assert isinstance(v, tuple) and len(v) == 3
-            assert ":" not in v[1]
+        # Every entry is STRUCTURED (spec §2a), never a colon-string — asserted one
+        # level down now, since the destination is the key rather than a slot.
+        for arm in binds.values():
+            for dest, v in arm.items():
+                assert isinstance(v, tuple) and len(v) == 2
+                assert ":" not in dest
 
     def test_home_is_mode_independent_and_vault_roots_at_workset(self, tmp_path):
         """The home DECLARATION is one line for every mode; vault roots at @workset.*.
@@ -1215,18 +1247,23 @@ class TestCoreDefaultCategories:
         primary = core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
         )
-        assert binds["box.bindings.rw.home"] == ("@meta.box.path/home", "~", "Z,U")
-        # ONE declaration: byte-equal to the primary arm.
-        assert binds["box.bindings.rw.home"] == primary["box.bindings.rw.home"]
-        assert binds["box.bindings.ro.vault"] == (
-            "@workset.vault_ro", "~/vault/ro", "ro",
+        assert binds["box.bindings.rw"]["/home/agent"] == (
+            "@meta.box.path/home", "Z,U",
         )
-        assert binds["box.bindings.rw.vault"] == (
-            "@workset.vault_rw", "~/vault/rw", "Z,U",
+        # ONE declaration: byte-equal to the primary arm — and now that the dest is
+        # the KEY, "byte-equal" covers the destination as well as the value.
+        assert binds["box.bindings.rw"]["/home/agent"] == (
+            primary["box.bindings.rw"]["/home/agent"]
+        )
+        assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
+            "@workset.vault_ro", "ro",
+        )
+        assert binds["box.bindings.rw"]["/home/agent/vault/rw"] == (
+            "@workset.vault_rw", "Z,U",
         )
         # The vault BIND is still per-mode — primary/named carry the box-name leaf.
-        assert primary["box.bindings.ro.vault"] == (
-            "@workset.vault_ro/@meta.box.name", "~/vault/ro", "ro",
+        assert primary["box.bindings.ro"]["/home/agent/vault/ro"] == (
+            "@workset.vault_ro/@meta.box.name", "ro",
         )
 
     def test_vault_keys_present_when_enabled_and_dirs_exist(self, tmp_path):
@@ -1238,14 +1275,12 @@ class TestCoreDefaultCategories:
         )
         # B2b: PRIMARY vault host_src routes through @workset.vault_{ro,rw}/
         # @meta.box.name (spec §2c L442/445), resolved at launch to the proj vault.
-        assert binds["box.bindings.ro.vault"] == (
+        assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
             "@workset.vault_ro/@meta.box.name",
-            "~/vault/ro",
             "ro",
         )
-        assert binds["box.bindings.rw.vault"] == (
+        assert binds["box.bindings.rw"]["/home/agent/vault/rw"] == (
             "@workset.vault_rw/@meta.box.name",
-            "~/vault/rw",
             "Z,U",
         )
 
@@ -1256,11 +1291,17 @@ class TestCoreDefaultCategories:
         binds = core_defaults.core_default_categories(
             None, proj, enable_vault=False, mode="primary",
         )
-        assert "box.bindings.ro.vault" not in binds
-        assert "box.bindings.rw.vault" not in binds
-        # home + workspace stay unconditional.
-        assert "box.bindings.rw.home" in binds
-        assert "box.bindings.rw.workspace" in binds
+        # ⚑⚑ Re-derived because the old form went VACUOUS, not merely stale: the
+        # ``vault`` NAME is retired (R-10), so ``"box.bindings.ro.vault" not in
+        # binds`` would now pass even with the vault binds emitted. Absence is the
+        # absence of the vault DESTINATIONS — and since the vault ro bind is the
+        # only core entry in the ``ro`` arm, a disabled vault drops the whole arm.
+        assert "box.bindings.ro" not in binds
+        assert "/home/agent/vault/rw" not in binds["box.bindings.rw"]
+        # home + workspace stay unconditional, and are ALL that remains.
+        assert set(binds["box.bindings.rw"]) == {
+            "/home/agent", "/home/agent/workspace",
+        }
 
     def test_vault_emitted_and_source_created_when_missing(self, tmp_path):
         """Vault is UNIVERSAL unless disabled: a missing source is CREATED and the
@@ -1279,37 +1320,41 @@ class TestCoreDefaultCategories:
         )
 
         # The bind is emitted even though the source did not exist (host_src = @-ref).
-        assert binds["box.bindings.ro.vault"] == (
+        assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
             "@workset.vault_ro/@meta.box.name",
-            "~/vault/ro",
             "ro",
         )
-        assert binds["box.bindings.rw.vault"] == (
+        assert binds["box.bindings.rw"]["/home/agent/vault/rw"] == (
             "@workset.vault_rw/@meta.box.name",
-            "~/vault/rw",
             "Z,U",
         )
         # ...and the missing source dirs were created (create-if-missing) — the gate
         # still keys off the PROBED proj vault source, independent of the @-ref.
         assert proj.vault_ro_path.is_dir()
         assert proj.vault_rw_path.is_dir()
-        assert "box.bindings.rw.home" in binds
-        assert "box.bindings.rw.workspace" in binds
+        assert "/home/agent" in binds["box.bindings.rw"]
+        assert "/home/agent/workspace" in binds["box.bindings.rw"]
 
     def test_options_flow_through_resolver_to_entry(self, tmp_path):
-        """The 3rd-slot options survive flawed_oracle_categories as the entry options.
+        """The per-entry options survive flawed_oracle_categories as the entry options.
 
-        Injected as AGENT-level defaults, the structured triples resolve to
+        Injected as AGENT-level defaults, the structured entries resolve to
         CategoryEntry with the per-entry options override applied (so vault_ro keeps
         ``ro`` and the rw binds keep ``Z,U``) — proving the options slot flows
         end-to-end to the emitted Mount.
+
+        ⚑ The live producer is DEST-KEYED as of P6 and the oracle is FROZEN
+        name-keyed, so the table is adapted at the boundary by
+        :func:`_as_frozen_name_keyed` rather than the oracle being taught the new
+        shape. What is asserted — the resolved dests and their options — is
+        untouched by that adaptation.
         """
         from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
-        defaults = core_defaults.core_default_categories(
+        defaults = _as_frozen_name_keyed(core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
-        )
+        ))
         ctx = make_ctx()
         # workspace routes through @meta.box.workspace; home through the RO box
         # root @meta.box.path; vault through @workset.vault_*/@meta.box.name
@@ -1340,13 +1385,18 @@ class TestCoreDefaultCategories:
         assert by_dest["/home/agent/vault/rw"].options == "Z,U"
 
     def test_home_and_workspace_depth_order_keeps_both(self, tmp_path):
-        """reconcile depth-sort keeps BOTH the nested home + workspace binds."""
+        """reconcile depth-sort keeps BOTH the nested home + workspace binds.
+
+        ⚑ Adapted at the boundary (see :func:`_as_frozen_name_keyed`): the depth
+        sort under test is ``reconcile_categories``' and keys on the RESOLVED
+        ``box_dest``, which the adaptation preserves exactly.
+        """
         from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=True)
-        defaults = core_defaults.core_default_categories(
+        defaults = _as_frozen_name_keyed(core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
-        )
+        ))
         ctx = make_ctx()
         # workspace via @meta.box.workspace; home via the RO box root
         # @meta.box.path; vault via @workset.vault_*/@meta.box.name (PRIMARY).
