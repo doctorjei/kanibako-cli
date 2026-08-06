@@ -60,7 +60,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Collection, Final, Iterable, Sequence
 
-from kanibako.settings.settings_keyspace import is_valid_agent_segment, key_validity
+from kanibako.settings.settings_keyspace import (
+    is_terminal_category_tail,
+    is_valid_agent_segment,
+    key_validity,
+)
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.settings_store import KeyStore, StoreValue, insert_dotted
 
@@ -214,6 +218,24 @@ def _flatten_pref_node(
     raw ``list`` and never become a :class:`~kanibako.settings.settings_store.Bind` — the
     same request behaving differently depending on how it was spelled. One form,
     enforced (§0 convention 0).
+
+    ⚑⚑ **THE WALK STOPS AT A TERMINAL DEST-KEYED CATEGORY** —
+    ``<scope>.masks`` and ``<scope>.bindings.{ro,rw}``
+    (:func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`). Those
+    keys' VALUES are maps keyed by box DESTINATION, and a destination is DATA, not
+    a key segment (spec §2a; disk-store R-5/R-10). Descending into one would
+    manufacture a target that is not a key —
+    ``pref.agent.claude.bindings.rw./home/agent/x`` — and, because a real
+    destination contains dots, it would trip the dotted-key raise ABOVE first and
+    report a SPELLING fault the user did not commit. So the arm itself is the
+    request: one :class:`PrefRequest` carrying the WHOLE map, which
+    :func:`pref_overlay` installs at the arm and ``settings_merge`` then merges
+    PER-ENTRY across levels (the ``masks`` three-state precedent). That is exactly
+    what makes the spec's per-entry suppression spelling
+    ``pref.<scope>.bindings.ro: {<dest>: null}`` work.
+
+    The dotted-key raise is UNCHANGED for every other node: only these terminal
+    keys stop the walk, and they stop it before their data keys are ever read.
     """
     out: list[PrefRequest] = []
     for name in dict.keys(node):
@@ -229,10 +251,11 @@ def _flatten_pref_node(
             )
         value = dict.__getitem__(node, name)
         child = (*prefix, name)
-        if isinstance(value, KeyStore):
+        if isinstance(value, KeyStore) and not is_terminal_category_tail(child):
             out.extend(_flatten_pref_node(value, child, level=level, path=path))
             continue
-        # A LEAF — including present-None, "" and the COPY-disable sentinel.
+        # A LEAF — including present-None, "" and the COPY-disable sentinel — or
+        # a TERMINAL dest-keyed category node, carried WHOLE (see above).
         out.append(
             PrefRequest(
                 target=".".join(child), value=value, level=level, source=path,
@@ -314,9 +337,16 @@ def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any:
 def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
     """FILTER 1 — is the target a VALID key? (spec §2h)
 
-    ⚑ VALIDITY, not EXISTENCE. ``agent.claude.bindings.rw.boooooo`` is legal: a
+    ⚑ VALIDITY, not EXISTENCE. ``agent.claude.common.boooooo`` is legal: a
     new name inside a parametric family is exactly what a user may want to add.
     An existence test would permit only modifying keys that already hold a value.
+
+    ⚑ The example used to be ``agent.claude.bindings.rw.boooooo``, and that is no
+    longer a key: ``bindings.{ro,rw}`` went TERMINAL and DEST-KEYED (spec §2a;
+    R-5/R-10), so only the BARE ARM ``agent.claude.bindings.rw`` is a valid pref
+    target and the destinations live inside its value. The name-keyed families
+    (``common`` / ``caches`` / ``seeded`` / ``synced`` / ``env`` / ``secret_path``)
+    still carry the free ``<name>``, which is what this clause is about.
     """
     return key_validity(
         target,

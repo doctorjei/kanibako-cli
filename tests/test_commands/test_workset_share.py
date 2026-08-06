@@ -15,10 +15,18 @@ from kanibako.project.workset import create_workset
 
 
 def read_bindings(path):
-    """Test helper: read the on-disk ``workset.bindings.{ro,rw}.{name}`` leaves as
-    a ``{dotted_key: raw_value}`` map — verifying what the share add/rm commands
-    WROTE. (The product ``config.read_bindings`` reader was retired in block 7c; this
-    local reader keeps these write-assertions on the structured on-disk shape.)"""
+    """Test helper: read the on-disk ``workset.bindings.{ro,rw}`` entries as a
+    ``{(mode, entry_key): raw_value}`` map — verifying what the share add/rm
+    commands WROTE. (The product ``config.read_bindings`` reader was retired in
+    block 7c; this local reader keeps these write-assertions on the structured
+    on-disk shape.)
+
+    ⚑ The entry key is the box DESTINATION since 2026-08-06c (R-10) — a binding
+    has no entry name. Keyed as a TUPLE rather than a dotted string precisely
+    because ``workset.bindings.rw.<dest>`` is no longer a KEY: a destination is
+    data inside the arm's value, and spelling it as a dotted key here would
+    reintroduce the retired shape in the test's own vocabulary.
+    """
     from kanibako.settings.config_io import load_doc
 
     if path is None or not path.exists():
@@ -30,12 +38,12 @@ def read_bindings(path):
     binds = ws.get("bindings")
     if not isinstance(binds, dict):
         return {}
-    out: dict[str, object] = {}
+    out: dict[tuple[str, str], object] = {}
     for mode in ("ro", "rw"):
         node = binds.get(mode)
         if isinstance(node, dict):
-            for name, val in node.items():
-                out[f"workset.bindings.{mode}.{name}"] = val
+            for entry_key, val in node.items():
+                out[(mode, entry_key)] = val
     return out
 
 
@@ -46,12 +54,12 @@ def workset(config_file, tmp_home, std):
     return create_workset("myws", ws_root, std)
 
 
-def _add_args(workset="myws", name="data", bind="/host/data:/home/agent/data", mode="rw"):
-    return argparse.Namespace(workset=workset, name=name, bind=bind, mode=mode)
+def _add_args(workset="myws", bind="/host/data:/home/agent/data", mode="rw"):
+    return argparse.Namespace(workset=workset, bind=bind, mode=mode)
 
 
-def _rm_args(workset="myws", name="data", mode=None):
-    return argparse.Namespace(workset=workset, name=name, mode=mode)
+def _rm_args(workset="myws", dest="/home/agent/data", mode=None):
+    return argparse.Namespace(workset=workset, dest=dest, mode=mode)
 
 
 def _list_args(workset="myws", effective=False):
@@ -59,33 +67,64 @@ def _list_args(workset="myws", effective=False):
 
 
 class TestShareAdd:
-    def test_add_rw_writes_key(self, config_file, tmp_home, workset, capsys):
+    def test_add_rw_is_keyed_by_the_destination(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """⚑ R-10 — the DESTINATION is the entry key; there is no share NAME.
+
+        MUTATION: write ``subtree[host_src]`` (or restore a ``name`` positional
+        and write ``subtree[name]``) in ``run_share_add`` -> the entry key is no
+        longer the destination and this dies on the dict comparison. It is the
+        KEY that is asserted, not just the value, so a value-only regression
+        cannot keep it green.
+        """
         rc = run_share_add(_add_args(mode="rw"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        # Storage is STRUCTURED (spec §2a): a [host_src, box_dest] list, NOT a
-        # colon-joined string (the colon form is only the CLI input grammar).
+        # Storage is STRUCTURED (spec §2a): a list, NOT a colon-joined string
+        # (the colon form is only the CLI input grammar).
+        # ⚑ The value STILL repeats the destination: the dest-keyed VALUE shape
+        # ([src[, opts]]) lands in P6 WITH the reader, because `unpack_bind`
+        # refuses a 1-element list today. See `run_share_add`'s docstring.
         assert bindings == {
-            "workset.bindings.rw.data": ["/host/data", "/home/agent/data"]
+            ("rw", "/home/agent/data"): ["/host/data", "/home/agent/data"]
         }
         out = capsys.readouterr().out
-        assert "Added rw share 'data'" in out
+        assert "Added rw share at '/home/agent/data'" in out
         assert "next box launch" in out
 
     def test_add_ro_writes_key(self, config_file, tmp_home, workset):
-        rc = run_share_add(_add_args(name="docs", bind="/host/docs:/srv/docs", mode="ro"))
+        rc = run_share_add(_add_args(bind="/host/docs:/srv/docs", mode="ro"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        assert bindings == {"workset.bindings.ro.docs": ["/host/docs", "/srv/docs"]}
+        assert bindings == {("ro", "/srv/docs"): ["/host/docs", "/srv/docs"]}
 
-    def test_add_overwrite_updates(self, config_file, tmp_home, workset, capsys):
+    def test_add_overwrite_is_keyed_on_the_destination(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """Re-adding at the SAME destination updates its source — that is the
+        'update' path now that the name is gone (R-10)."""
         run_share_add(_add_args(bind="/host/a:/g"))
         capsys.readouterr()
         rc = run_share_add(_add_args(bind="/host/b:/g"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        assert bindings == {"workset.bindings.rw.data": ["/host/b", "/g"]}
-        assert "Updated rw share 'data'" in capsys.readouterr().out
+        assert bindings == {("rw", "/g"): ["/host/b", "/g"]}
+        assert "Updated rw share at '/g'" in capsys.readouterr().out
+
+    def test_add_two_different_destinations_coexist(
+        self, config_file, tmp_home, workset
+    ):
+        """The flip side: one SOURCE at two destinations is two entries. Under
+        the retired name-keying the second `add` needed a second NAME to invent;
+        now the destinations distinguish themselves."""
+        run_share_add(_add_args(bind="/host/a:/g1"))
+        run_share_add(_add_args(bind="/host/a:/g2"))
+        bindings = read_bindings(workset.root / "settings.yaml")
+        assert bindings == {
+            ("rw", "/g1"): ["/host/a", "/g1"],
+            ("rw", "/g2"): ["/host/a", "/g2"],
+        }
 
     def test_add_relative_is_absolutised_at_write(
         self, config_file, tmp_home, workset, capsys
@@ -104,7 +143,7 @@ class TestShareAdd:
         rc = run_share_add(_add_args(bind="sub/dir:/home/agent/data"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        assert bindings["workset.bindings.rw.data"] == [
+        assert bindings[("rw", "/home/agent/data")] == [
             str(workset.root / "sub" / "dir"), "/home/agent/data",
         ]
         # The user is TOLD the path was rewritten (a silent rewrite of a path the
@@ -123,7 +162,7 @@ class TestShareAdd:
         rc = run_share_add(_add_args(bind=f"{src}:/home/agent/data"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        assert bindings["workset.bindings.rw.data"] == [src, "/home/agent/data"]
+        assert bindings[("rw", "/home/agent/data")] == [src, "/home/agent/data"]
 
     def test_add_relative_on_default_workset_is_refused(
         self, config_file, tmp_home, capsys
@@ -148,7 +187,7 @@ class TestShareAdd:
         rc = run_share_add(_add_args(workset="default", bind="/abs/h:/g"))
         assert rc == 0
         bindings = read_bindings(std.primary_workset / "settings.yaml")
-        assert bindings["workset.bindings.rw.data"] == ["/abs/h", "/g"]
+        assert bindings[("rw", "/g")] == ["/abs/h", "/g"]
 
     @pytest.mark.parametrize("bind", ["nocolon", ":/dest", "/src:", "a:b:c"])
     def test_add_rejects_bad_bind(self, config_file, tmp_home, workset, bind, capsys):
@@ -167,7 +206,7 @@ class TestShareAdd:
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
         assert bindings == {
-            "workset.bindings.rw.data": ["/host/pa:th", "/guest/dest"]
+            ("rw", "/guest/dest"): ["/host/pa:th", "/guest/dest"]
         }
 
     def test_add_escaped_colon_only_no_separator_rejected(
@@ -180,11 +219,24 @@ class TestShareAdd:
         assert rc == 1
         assert "invalid bind" in capsys.readouterr().err
 
-    @pytest.mark.parametrize("name", ["bad name", "has/slash", "with:colon", ""])
-    def test_add_rejects_bad_name(self, config_file, tmp_home, workset, name, capsys):
-        rc = run_share_add(_add_args(name=name))
-        assert rc == 1
-        assert "invalid share name" in capsys.readouterr().err
+    @pytest.mark.parametrize("dest", ["/has/slash", "~/tilde/dir", "relative/dir"])
+    def test_add_accepts_any_destination_the_bind_grammar_admits(
+        self, config_file, tmp_home, workset, dest
+    ):
+        """``_SHARE_NAME_RE`` is RETIRED and was NOT reborn as a destination
+        validator (R-10). Its class excluded '/', so it could not describe a path;
+        and the destination's real rule is R-11 (absolutize the guest dest), which
+        lands with the floor producers. A weaker second rule here would be two
+        rules for one thing.
+
+        What still guards ``add`` is the BIND GRAMMAR, pinned by
+        ``test_add_rejects_bad_bind``: exactly one unescaped ':', both halves
+        non-empty.
+        """
+        rc = run_share_add(_add_args(bind=f"/host/src:{dest}"))
+        assert rc == 0
+        bindings = read_bindings(workset.root / "settings.yaml")
+        assert ("rw", dest) in bindings
 
     def test_add_unknown_workset(self, config_file, tmp_home, capsys):
         rc = run_share_add(_add_args(workset="nope"))
@@ -193,32 +245,47 @@ class TestShareAdd:
 
 
 class TestShareRemove:
-    def test_rm_removes(self, config_file, tmp_home, workset, capsys):
+    def test_rm_removes_by_destination(self, config_file, tmp_home, workset, capsys):
         run_share_add(_add_args())
         capsys.readouterr()
-        rc = run_share_remove(_rm_args())
+        rc = run_share_remove(_rm_args(dest="/home/agent/data"))
         assert rc == 0
         assert read_bindings(workset.root / "settings.yaml") == {}
         out = capsys.readouterr().out
-        assert "Removed rw share 'data'" in out
+        assert "Removed rw share at '/home/agent/data'" in out
         assert "next box launch" in out
 
     def test_rm_with_explicit_mode(self, config_file, tmp_home, workset):
         run_share_add(_add_args(mode="ro", bind="/h:/g"))
-        rc = run_share_remove(_rm_args(mode="ro"))
+        rc = run_share_remove(_rm_args(dest="/g", mode="ro"))
         assert rc == 0
         assert read_bindings(workset.root / "settings.yaml") == {}
 
     def test_rm_missing_returns_1(self, config_file, tmp_home, workset, capsys):
-        rc = run_share_remove(_rm_args(name="ghost"))
+        rc = run_share_remove(_rm_args(dest="/ghost"))
         assert rc == 1
-        assert "no share 'ghost'" in capsys.readouterr().err
+        assert "no share at '/ghost'" in capsys.readouterr().err
+
+    def test_rm_by_the_old_share_NAME_no_longer_finds_it(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """R-10 is a CLEAN BREAK: the identity moved, so the old spelling misses.
+
+        ⚑ MUTATION: key ``run_share_add``'s write on anything but the destination
+        and this flips to rc 0 for the wrong reason — which is why the companion
+        ``test_add_rw_is_keyed_by_the_destination`` asserts the key positively.
+        """
+        run_share_add(_add_args(bind="/host/data:/home/agent/data"))
+        capsys.readouterr()
+        rc = run_share_remove(_rm_args(dest="data"))
+        assert rc == 1
+        assert "no share at 'data'" in capsys.readouterr().err
 
     def test_rm_ambiguous_without_mode_returns_1(self, config_file, tmp_home, workset, capsys):
-        run_share_add(_add_args(mode="rw", bind="/h:/g1"))
-        run_share_add(_add_args(mode="ro", bind="/h:/g2"))
+        run_share_add(_add_args(mode="rw", bind="/h:/g"))
+        run_share_add(_add_args(mode="ro", bind="/h:/g"))
         capsys.readouterr()
-        rc = run_share_remove(_rm_args(mode=None))
+        rc = run_share_remove(_rm_args(dest="/g", mode=None))
         assert rc == 1
         err = capsys.readouterr().err
         assert "both ro and rw" in err
@@ -226,18 +293,41 @@ class TestShareRemove:
         assert len(read_bindings(workset.root / "settings.yaml")) == 2
 
     def test_rm_ambiguous_with_mode_removes_one(self, config_file, tmp_home, workset):
-        run_share_add(_add_args(mode="rw", bind="/h:/g1"))
-        run_share_add(_add_args(mode="ro", bind="/h:/g2"))
-        rc = run_share_remove(_rm_args(mode="rw"))
+        run_share_add(_add_args(mode="rw", bind="/h1:/g"))
+        run_share_add(_add_args(mode="ro", bind="/h2:/g"))
+        rc = run_share_remove(_rm_args(dest="/g", mode="rw"))
         assert rc == 0
         bindings = read_bindings(workset.root / "settings.yaml")
-        assert bindings == {"workset.bindings.ro.data": ["/h", "/g2"]}
+        assert bindings == {("ro", "/g"): ["/h2", "/g"]}
 
     def test_rm_wrong_mode_returns_1(self, config_file, tmp_home, workset, capsys):
         run_share_add(_add_args(mode="rw"))
-        rc = run_share_remove(_rm_args(mode="ro"))
+        rc = run_share_remove(_rm_args(dest="/home/agent/data", mode="ro"))
         assert rc == 1
         assert "(ro)" in capsys.readouterr().err
+
+    def test_rm_can_still_delete_a_retired_name_keyed_entry(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """The cure ``_workset_raw_shares`` prescribes must be spellable: ``rm``
+        deletes whatever entry key it is given, so a legacy name-keyed leftover
+        can be removed by its name."""
+        _write_legacy_named_entry(workset, "data", "/host/data", "/home/agent/data")
+        rc = run_share_remove(_rm_args(dest="data"))
+        assert rc == 0
+        assert read_bindings(workset.root / "settings.yaml") == {}
+
+
+def _write_legacy_named_entry(workset, name, src, dest, mode="rw"):
+    """Hand-author the RETIRED name-keyed shape: entry key != its destination."""
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    path = workset.root / "settings.yaml"
+    data = load_doc(path) if path.exists() else {}
+    data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
+        mode, {}
+    )[name] = [src, dest]
+    dump_doc(path, data)
 
 
 class TestShareList:
@@ -246,16 +336,65 @@ class TestShareList:
         assert rc == 0
         assert "No bindings configured" in capsys.readouterr().out
 
-    def test_list_raw(self, config_file, tmp_home, workset, capsys):
-        run_share_add(_add_args(name="data", bind="/host/data:/home/agent/data", mode="rw"))
-        run_share_add(_add_args(name="docs", bind="/host/docs:/srv/docs", mode="ro"))
+    def test_list_raw_columns_are_dest_mode_source(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """The DEST column is the share's IDENTITY and is exactly what ``rm``
+        takes — so it is the DEST that is printed, not a name and not the old
+        colon-joined ``host:dest`` echo (which repeated the dest column)."""
+        run_share_add(_add_args(bind="/host/data:/home/agent/data", mode="rw"))
+        run_share_add(_add_args(bind="/host/docs:/srv/docs", mode="ro"))
         capsys.readouterr()
         rc = run_share_list(_list_args())
         assert rc == 0
         out = capsys.readouterr().out
-        assert "data" in out and "/host/data:/home/agent/data" in out
-        assert "docs" in out and "/host/docs:/srv/docs" in out
+        assert "DEST" in out and "SOURCE" in out and "NAME" not in out
+        assert "/home/agent/data" in out and "/host/data" in out
+        assert "/srv/docs" in out and "/host/docs" in out
         assert "rw" in out and "ro" in out
+        # The retired display grammar is GONE — the dest is a column, not a
+        # suffix on the source.
+        assert "/host/data:/home/agent/data" not in out
+
+    def test_list_refuses_a_retired_name_keyed_entry(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """⚑ R-10 CONFORMANCE REFUSAL, and the reason it is a REFUSAL rather than
+        a display fallback: under dest-keying the entry key IS the destination, so
+        an entry whose key differs from its own stored dest cannot be shown
+        honestly — the DEST column would print a NAME, and the ``rm`` argument it
+        advertises would be a name too.
+
+        ⚑ MUTATION: delete the ``if leaf.box != dest: raise`` block in
+        ``_workset_raw_shares`` -> rc becomes 0 and the listing prints
+        ``data`` in the DEST column. This test dies, and it is the ONLY place
+        that token ("RETIRED name-keyed shape") is emitted — nothing else in the
+        suite reaches this code path, so it cannot pass for another reason.
+        """
+        _write_legacy_named_entry(workset, "data", "/host/data", "/home/agent/data")
+        rc = run_share_list(_list_args())
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "RETIRED name-keyed shape" in err
+        assert "keyed 'data'" in err
+        assert "destination is '/home/agent/data'" in err
+        # The cure is spellable, and it names BOTH halves the user needs.
+        assert "workset share rm" in err and "workset share add" in err
+
+    def test_list_reports_a_malformed_entry_instead_of_a_traceback(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """``_workset_raw_shares`` goes through the real file reader, so a bad
+        arity raises. A listing command must report it, not traceback."""
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(
+            workset.root / "settings.yaml",
+            {"workset": {"bindings": {"rw": {"/g": ["only-one-element"]}}}},
+        )
+        rc = run_share_list(_list_args())
+        assert rc == 1
+        assert "Error:" in capsys.readouterr().err
 
     def test_list_effective_absolute_passthrough(self, config_file, tmp_home, workset, capsys):
         run_share_add(_add_args(bind="/abs/host:/home/agent/data", mode="rw"))
@@ -283,7 +422,7 @@ class TestShareList:
         assert expected in out
 
     def test_list_effective_ro_mode(self, config_file, tmp_home, workset, capsys):
-        run_share_add(_add_args(name="docs", bind="/abs/docs:/srv/docs", mode="ro"))
+        run_share_add(_add_args(bind="/abs/docs:/srv/docs", mode="ro"))
         capsys.readouterr()
         rc = run_share_list(_list_args(effective=True))
         assert rc == 0

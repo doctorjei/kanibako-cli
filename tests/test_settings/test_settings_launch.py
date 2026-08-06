@@ -2406,7 +2406,9 @@ class TestCategoryRootRefusal:
             }}}})
         msg = str(e.value)
         assert "agent.claude.bindings.mydir" in msg
-        assert "agent.claude.bindings.ro.mydir" in msg
+        # The prescribed arms carry the DISCRIMINATOR — the point of this test.
+        # (They are the bare arms since R-5: the arm is the whole key.)
+        assert "agent.claude.bindings.ro" in msg
         assert "agent.bindings" not in msg
 
     def test_a_NON_ACTIVE_agent_tier_is_still_checked(self):
@@ -2435,18 +2437,29 @@ class TestCategoryRootRefusal:
             self._entries({"box": {"seeded": None}})
 
     def test_arm_less_binding_errors(self):
-        """A ``bindings`` child outside ``{ro, rw}`` is an arm-less bind."""
+        """A ``bindings`` child outside ``{ro, rw}`` is an arm-less bind.
+
+        ⚑ The CURE the message prescribes changed with R-5/R-10: the arm IS the
+        key now, so it points at ``box.bindings.ro`` / ``box.bindings.rw`` and
+        says to re-key the entry by its destination — it must NOT prescribe the
+        retired ``box.bindings.ro.mydir``, which is no longer a key at all.
+        """
         with pytest.raises(_SettingsError) as e:
             self._entries({"box": {"bindings": {
                 "mydir": Bind("/h", "/b", None),
             }}})
         msg = str(e.value)
         assert "box.bindings.mydir" in msg
-        assert "box.bindings.ro.mydir" in msg and "box.bindings.rw.mydir" in msg
+        assert "box.bindings.ro" in msg and "box.bindings.rw" in msg
+        assert "keyed by its destination" in msg
+        assert "box.bindings.ro.mydir" not in msg
 
     def test_value_at_an_arm_root_errors(self):
-        """A value AT an arm (``bindings.ro = "/x"``) is the same defect one level
-        down — declaration is per NAME under the arm.
+        """A value AT an arm (``bindings.ro = "/x"``) is an undeclared shape: the
+        arm's value must be a MAP node.
+
+        ⚑ Under R-5 that is a map of DESTINATIONS rather than of names, but the
+        assertion is unchanged — a scalar there was wrong before and is wrong now.
 
         ⚑ Slightly WIDER than the boundary the P3 plan spelled out (which named the
         category root and the arm-less child).  Left silent it would be the one

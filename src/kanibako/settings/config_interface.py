@@ -199,6 +199,7 @@ def _pref_value_error(
         MASK_KEY_RE,
         SCOPE_BIND_KEY_RE,
     )
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
     target = canonical[len(PREF_ROOT) + 1:]
     if value is None:
@@ -247,11 +248,21 @@ def _pref_value_error(
     # value-shape rule about a target, and a rule that reads "which targets are
     # bind-shaped" must not silently depend on which targets a different rule
     # happens to admit today.
+    # ⚑ FIFTH TERM, added with the P4′ terminalization (R-5/R-10): the BARE
+    # ``<scope>.bindings.{ro,rw}`` arm. Once the arm went TERMINAL it became the
+    # ONLY bindings target a pref can name — and none of the four terms above
+    # match it (they all require a trailing ``.<name>``), so without this a
+    # scalar at ``pref.agent.claude.bindings.ro`` would be WRITTEN and the launch
+    # would refuse it later. ``masks`` has had this guard all along
+    # (``MASK_KEY_RE`` matches the bare key); the two dest-keyed categories now
+    # have the same shape and get it from ONE predicate rather than a second
+    # regex that could drift from the keyspace's own answer.
     if (
         BIND_KEY_RE.match(target) is not None
         or MASK_KEY_RE.match(target) is not None
         or SCOPE_BIND_KEY_RE.match(target) is not None
         or _is_agent_node_bind_key(target)
+        or is_terminal_category_tail(target.split("."))
     ):
         return (
             f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
@@ -291,12 +302,35 @@ def _yaml_skeleton(target: str) -> list[str]:
 
     A user refused a CLI spelling needs the spelling that DOES work; printing the
     dotted key they just typed would only repeat what failed.
+
+    ⚑ THE LEAF LINE DEPENDS ON THE CATEGORY, and getting it wrong hands the user a
+    shape that will be refused again:
+
+    * a NAME-KEYED category entry (``common`` / ``caches`` / ``seeded`` /
+      ``synced``) takes the bind PAIR ``[<host_src>, <box_dest>]``;
+    * a TERMINAL DEST-KEYED key (``masks``, ``bindings.{ro,rw}`` — R-5/R-10) takes
+      a MAP, because the key ends AT the category and the destinations live inside
+      its value. Printing the pair form there was already wrong for ``masks``
+      before this arc; it became wrong for the bindings arms too.
     """
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+
     parts = target.split(".")
+    if is_terminal_category_tail(parts):
+        # ⚑ The bindings entry VALUE still repeats the destination: the dest-keyed
+        # value shape ([<host_src>]) lands with the READER in P6, and today a
+        # 1-element entry is refused by ``unpack_bind``. See
+        # ``commands.workset_cmd.run_share_add``'s docstring for the full argument.
+        leaf = (
+            "{<box_dest>: true}" if parts[-1] == "masks"
+            else "{<box_dest>: [<host_src>, <box_dest>]}"
+        )
+    else:
+        leaf = "[<host_src>, <box_dest>]"
     lines = []
     for i, seg in enumerate(parts):
         lines.append("  " * (i + 1) + f"{seg}:" if i < len(parts) - 1
-                     else "  " * (i + 1) + f"{seg}: [<host_src>, <box_dest>]")
+                     else "  " * (i + 1) + f"{seg}: {leaf}")
     return lines
 
 

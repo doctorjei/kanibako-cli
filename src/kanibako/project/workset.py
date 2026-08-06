@@ -339,9 +339,12 @@ def _write_workset_toml(ws: Workset) -> None:
     """Persist *ws*'s identity into ``workset.meta`` of the root settings.yaml.
 
     Reads the existing file first so the workset's cascade settings (box/agent/
-    workset.bindings tables, written by ``workset config``/``workset share``) are
-    preserved across an identity update — only the ``workset.meta`` table is
-    replaced.
+    workset.bindings tables) are preserved across an identity update — only the
+    ``workset.meta`` table is replaced. Those tables are written by
+    ``workset config`` and, for the two ``workset.bindings.{ro,rw}`` arms
+    specifically, by ``workset share`` — the arms are YAML-only since the bind
+    ``config set`` route was retired (2026-08-06c), so ``share`` and hand-editing
+    are the two ways in.
     """
     existing = load_doc(ws.toml_path) if ws.toml_path.is_file() else {}
     if not isinstance(existing, dict):

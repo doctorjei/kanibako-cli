@@ -4643,13 +4643,26 @@ class TestPrefValueValidation:
         assert "--null" in msg          # the suppression spelling is offered
         assert not f.exists()
 
-    def test_a_scalar_at_a_RETIRED_bind_target_is_still_refused(self, tmp_path):
+    def test_a_scalar_at_a_TERMINAL_bind_arm_is_still_refused(self, tmp_path):
         """⚑ ``pref`` is NOT a retired route — a box may still REQUEST a change to
         an agent bind it can no longer set directly — so the shape check must keep
-        firing on the retired spelling. That key left ``BIND_KEY_RE`` when its CLI
+        firing on a bindings target. That key left ``BIND_KEY_RE`` when its CLI
         route died (R-9), which is exactly how this hole would open: the guard would
         stop recognising the very key that lost its direct route, and the LAUNCH
         would die naming a key the user never wrote.
+
+        ⚑ REWRITTEN AT P4′. The target used to be
+        ``pref.agent.claude.bindings.ro.launcher``; under R-5/R-10 that is no
+        longer a KEY (see the twin below), so the bind-shaped target a pref can
+        actually name is the BARE ARM — and none of the four pre-existing terms in
+        ``_pref_value_error`` match it, because they all require a trailing
+        ``.<name>``. This is the FIFTH term.
+
+        ⚑ MUTATION: delete ``or is_terminal_category_tail(target.split("."))``
+        from ``_pref_value_error`` -> the scalar falls through to the E3 scalar
+        probe, is ACCEPTED, the file is written, and both the ``STRUCTURED``
+        assertion and ``not f.exists()`` die. Nothing else refuses this target:
+        the four regex terms are pinned absent by ``test_..._is_not_a_key`` below.
 
         ⚑ The AGENT form is the one pinned here because it is the only bind target
         that REACHES this check: the §2h allowlist refuses ``pref.<scope>.…`` for a
@@ -4657,11 +4670,47 @@ class TestPrefValueValidation:
         'agent.<agent>.<key>' may be requested")."""
         f = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "pref.agent.claude.bindings.ro.launcher", "just-a-string",
+            "pref.agent.claude.bindings.ro", "just-a-string",
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:"), msg
         assert "STRUCTURED" in msg, msg
+        # The skeleton must offer the MAP form — the arm is dest-keyed, so the
+        # bare pair would be a shape that gets refused all over again.
+        assert "{<box_dest>:" in msg, msg
+        assert not f.exists()
+
+    def test_the_none_of_the_four_regex_terms_match_the_bare_arm(self):
+        """The discriminator for the test above: it is NOT green by accident.
+
+        If any pre-existing term matched the bare arm, the fifth term would be
+        dead weight and its mutation proof vacuous.
+        """
+        from kanibako.settings.settings_categories import (
+            BIND_KEY_RE,
+            MASK_KEY_RE,
+            SCOPE_BIND_KEY_RE,
+        )
+        from kanibako.settings.config_keys import _is_agent_node_bind_key
+
+        for target in ("agent.claude.bindings.ro", "box.bindings.rw"):
+            assert BIND_KEY_RE.match(target) is None, target
+            assert MASK_KEY_RE.match(target) is None, target
+            assert SCOPE_BIND_KEY_RE.match(target) is None, target
+            assert not _is_agent_node_bind_key(target), target
+
+    def test_a_name_under_a_bind_arm_is_not_a_key_at_all(self, tmp_path):
+        """R-5/R-10 — the retired spelling is refused EARLIER and for a DIFFERENT
+        reason: it is not a key, so no value shape applies to it. The message must
+        say so rather than talking about tuple shape."""
+        f = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "pref.agent.claude.bindings.ro.launcher", "just-a-string",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "TERMINAL" in msg, msg
+        assert "not a declared key" in msg, msg
         assert not f.exists()
 
     def test_an_unresolvable_scalar_value_is_refused(self, tmp_path):

@@ -49,8 +49,8 @@ def reason(key: str) -> str:
     "agent.claude.canon",
     "agent.default.access",
     "agent.navigator℘claude.model",
-    "agent.claude.bindings.ro.share",
-    "agent.claude.bindings.rw.thing",
+    "agent.claude.bindings.ro",
+    "agent.claude.bindings.rw",
     "agent.claude.common.plugins",
     "agent.claude.caches.transform",
     "agent.claude.seeded.template",
@@ -70,10 +70,12 @@ def test_new_name_in_a_parametric_family_is_legal():
     add via a pref. An EXISTENCE test would permit only modifying keys that
     already hold a value, which is the reading Jei rejected.
     """
-    assert valid("agent.claude.bindings.rw.boooooo")
     assert valid("agent.claude.common.brand_new_thing")
     assert valid("box.caches.never_seen_before")
-    assert valid("pref.agent.claude.bindings.rw.boooooo")
+    assert valid("pref.agent.claude.common.brand_new_thing")
+    # ⚑ NOT bindings: the two arms went TERMINAL and DEST-KEYED (R-5/R-10), so
+    # there is no free <name> under them at all — see the terminal tests below.
+    assert not valid("agent.claude.bindings.rw.boooooo")
 
 
 def test_fabrication_is_still_rejected():
@@ -94,6 +96,91 @@ def test_arm_less_binding_is_not_a_key():
     r = reason("agent.claude.bindings.thing")
     assert "per ARM" in r
     assert not valid("box.bindings.thing")
+    # The bare category root is not a key either.
+    assert "per ARM" in reason("box.bindings")
+
+
+# ---------------------------------------------------------------------------
+# TERMINAL, DEST-KEYED categories (spec §2a; disk-store R-5/R-10, 2026-08-06c)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("key", [
+    "box.bindings.ro", "box.bindings.rw",
+    "system.bindings.ro", "workset.bindings.rw",
+    "agent.default.bindings.ro", "agent.claude.bindings.rw",
+])
+def test_a_bindings_arm_is_a_key_on_its_own(key):
+    """R-5 — the ARM is the whole of the key; its VALUE is the dest-keyed map."""
+    assert valid(key), reason(key)
+
+
+@pytest.mark.parametrize("key", [
+    "box.bindings.ro.vault",
+    "box.bindings.rw.home",
+    "workset.bindings.rw.data",
+    "agent.claude.bindings.ro.launcher",
+    "agent.default.bindings.rw.thing",
+    # A real destination — dots, slashes and all. It is DATA, never a key.
+    "box.bindings.ro.~/.claude/settings.json",
+    # ⚑ THE NON-VACUITY CASE. Under the pre-P4' parser this tail was ALREADY
+    # refused — by ``leaf_name_reason``, as a RESERVED dict-method name. So it is
+    # refused before AND after, and only the REASON tells the two apart. Without
+    # the message assertions below, this row would survive the mutation and the
+    # proof would be worthless (the exact failure mode this arc has already hit
+    # once). See the mutation note in the docstring.
+    "box.bindings.ro.get",
+])
+def test_a_name_or_dest_under_a_bindings_arm_is_not_a_key(key):
+    """⚑ THE R-5/R-10 REFUSAL. Nothing may follow ``bindings.{ro,rw}``.
+
+    Two things are asserted, and the SECOND is what makes this test non-vacuous:
+    the key is refused AND the reason says why — that the arm is TERMINAL and the
+    entries are destinations inside its VALUE. Without the discriminator this
+    would also pass under the old parser, which refused several of these for a
+    completely different reason (``leaf_name_reason``, wrong arm token, …).
+
+    ⚑ MUTATION: delete the ``if len(rest) == 2: return None`` / terminal-tail
+    refusal pair in ``settings_keyspace._category_reason`` and restore
+    ``len(rest) < 3`` — every key here becomes VALID and this test dies. Nothing
+    else in the suite emits the word TERMINAL for a bindings key.
+    """
+    r = reason(key)
+    assert "TERMINAL" in r, r
+    assert "destinations inside its value" in r, r
+    assert "no entry NAME" in r or "no entry name" in r.lower(), r
+
+
+def test_the_two_terminal_categories_are_declared_in_one_place():
+    """``masks`` and the two bindings arms are the SAME shape, and the parser and
+    the pref walker must agree on which keys they are — see
+    ``settings_prefs._flatten_pref_node``. One constant, two consumers."""
+    from kanibako.settings.settings_keyspace import (
+        TERMINAL_CATEGORY_TAILS,
+        is_terminal_category_tail,
+    )
+
+    assert TERMINAL_CATEGORY_TAILS == frozenset({
+        ("masks",), ("bindings", "ro"), ("bindings", "rw"),
+    })
+    assert is_terminal_category_tail(("box", "masks"))
+    assert is_terminal_category_tail(("agent", "claude", "bindings", "rw"))
+    assert is_terminal_category_tail(("bindings", "ro"))
+    # NOT terminal: a name-keyed category, a bare arm root, an arm-shaped tail
+    # that is not a bindings arm, and the empty tail.
+    assert not is_terminal_category_tail(("box", "common"))
+    assert not is_terminal_category_tail(("box", "bindings"))
+    assert not is_terminal_category_tail(("box", "masks", "ro"))
+    assert not is_terminal_category_tail(("ro",))
+    assert not is_terminal_category_tail(())
+
+
+def test_masks_and_bindings_arms_refuse_a_tail_the_same_way():
+    """Two dest-keyed categories, ONE story (Code Convention 0). Both say the
+    entries are destinations inside the VALUE, not key segments."""
+    for key in ("box.masks./some/path", "box.bindings.ro./some/path"):
+        r = reason(key)
+        assert "not a key" in r
+        assert "destinations" in r or "box destinations" in r
 
 
 def test_reserved_leaf_names_rejected():
@@ -139,7 +226,7 @@ def test_non_active_agent_is_valid():
     "workset.channels.common", "workset.channels.chat",
     "workset.channels.broadcast", "workset.channels.share",
     "workset.channels.mailboxes", "workset.channels.share_global",
-    "box.bindings.rw.home", "box.bindings.ro.vault", "box.masks",
+    "box.bindings.rw", "box.bindings.ro", "box.masks",
     "box.env.MYVAR", "box.secret_path.TOKEN",
 ])
 def test_supporting_surface_is_valid(key):
