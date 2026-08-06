@@ -90,7 +90,7 @@ from kanibako.settings.settings_resolve import (
     expand_expr,
     match_ref,
 )
-from kanibako.settings.settings_store import Bind, KeyStore, StoreValue
+from kanibako.settings.settings_store import Bind, BindEntry, KeyStore, StoreValue
 
 
 class _Absent:
@@ -212,6 +212,11 @@ def expand(
       ``@``-refs but leaves ``$XDG``/``~`` RAW (deferred box-side, S17). If a
       whole-value ``host_src`` ``@``-ref resolves absent/None, the WHOLE Bind is
       dropped / carried as that terminal (§3 — a bind/category consumer OMITs it).
+    * **BindEntry** (the dest-keyed shape, R-5/R-6) → ``src`` expanded exactly as
+      ``Bind.host_src``, with the SAME 3-state rule; the destination is the node
+      KEY, so it is expanded on the walk (``_expand_dest_key``) in the same
+      ``$XDG``/``~``-deferred space ``box_dest`` uses. Two stored dests that
+      resolve to ONE destination RAISE rather than silently clobbering.
     * **non-str scalar** (``int`` / ``float`` / ``bool`` / ``None`` / ``list``) →
       carried verbatim (no token to expand).
 
@@ -309,17 +314,68 @@ class _Expander:
                 # Record it against the OWNING leaf path and OMIT the leaf; every
                 # clean leaf still resolves. STRICT mode never enters this branch.
                 try:
+                    out_key = self._expand_dest_key(key, value, chain=child_path)
                     resolved = self._expand_leaf(value, path=child_path)
                 except (_LenientDefect, SettingsError) as exc:
                     reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
                     self.errors[".".join(child_path)] = reason
                     continue
             else:
+                out_key = self._expand_dest_key(key, value, chain=child_path)
                 resolved = self._expand_leaf(value, path=child_path)
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
-            out[key] = resolved
+            if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
+                # Two DIFFERENT stored dests expanded to ONE destination (files
+                # store UNRESOLVED, so ``@meta.box.path/home`` and a literal
+                # spelling of that same path are two distinct keys that resolve to
+                # one place — design §2b-CAVEAT). Installing the second would
+                # silently DELETE the first, which is a data loss no downstream
+                # check can see, because only one entry would ever reach it.
+                # Raised rather than recorded even in LENIENT mode: the fault is
+                # the PAIR, so there is no single owning leaf to attribute it to.
+                raise SettingsError(
+                    f"Two bindings under {'.'.join(path) or '<root>'} resolve to "
+                    f"the same destination {out_key!r}; the second entry "
+                    f"({key!r}) would silently replace the first."
+                )
+            out[out_key] = resolved
         return out
+
+    def _expand_dest_key(
+        self, key: str, value: StoreValue, *, chain: tuple[str, ...]
+    ) -> str:
+        """The OUTPUT key for *value* — identity, EXCEPT under a dest-keyed arm.
+
+        For every value shape but :class:`BindEntry` a node key is a plain
+        keyspace token and is carried through verbatim. A :class:`BindEntry`
+        lives in a DEST-KEYED bindings arm (R-5/R-6), where the destination has
+        moved out of the value and become the mapping KEY — so the key, not the
+        value, is the box-side path EXPRESSION and it expands exactly as
+        ``Bind.box`` does: ``@``-refs resolved, ``$XDG``/``~`` left RAW for the
+        box side (``space="defer"``, S17).
+
+        ⚑ Discrimination is by TYPE (``isinstance(value, BindEntry)``), never by
+        the key's spelling or the value's arity — a legacy :class:`Bind` and a
+        :class:`BindEntry` are both 2-element-legal with opposite meanings.
+
+        A whole-value ``@``-ref destination that resolves absent / present-``None``
+        RAISES, for the same reason the name-keyed :meth:`_expand_bind` does: a
+        destination cannot resolve to no path, and an empty dest is a mount
+        foot-gun rather than a legitimate omission.
+        """
+        if not isinstance(value, BindEntry):
+            return key
+        dest = self._expand_str(key, space="defer", chain=(".".join(chain),))
+        if dest is _ABSENT or dest is None:
+            state = "absent" if dest is _ABSENT else "present-None"
+            raise SettingsError(
+                f"Binding destination is a whole-value @-reference to an "
+                f"{state} config key ({key!r}); a box destination cannot "
+                f"resolve to no path."
+            )
+        assert isinstance(dest, str)
+        return dest
 
     def _expand_leaf(
         self, value: StoreValue, *, path: tuple[str, ...]
@@ -335,6 +391,8 @@ class _Expander:
         chain = (".".join(path),)
         if isinstance(value, Bind):
             return self._expand_bind(value, chain=chain)
+        if isinstance(value, BindEntry):
+            return self._expand_bind_entry(value, chain=chain)
         if isinstance(value, str):
             return self._expand_str(value, space="host", chain=chain)
         # int / float / bool / None / list[str] — no token to expand, carried
@@ -373,6 +431,28 @@ class _Expander:
         assert isinstance(host, str)
         assert isinstance(box, str)
         return Bind(host, box, bind.opts)
+
+    def _expand_bind_entry(
+        self, entry: BindEntry, *, chain: tuple[str, ...]
+    ) -> StoreValue | _Absent:
+        """Expand a :class:`BindEntry`: ``src`` fully host-side; ``opts`` verbatim.
+
+        The dest-keyed counterpart of :meth:`_expand_bind`. It expands ONE half,
+        because the other half — the destination — is the mapping KEY and is
+        expanded by :meth:`_expand_dest_key` on the node walk (R-5/R-6).
+
+        The 3-state rule is unchanged from the name-keyed shape: if ``src`` is a
+        whole-value ``@``-ref that resolves absent, the WHOLE entry is
+        :data:`_ABSENT` (drop it — the binding cannot point anywhere); a
+        present-``None`` ``src`` yields ``None`` (the §3 bind/category OMIT
+        terminal). ``opts`` never holds tokens and is carried verbatim.
+        """
+        src = self._expand_str(entry.src, space="host", chain=chain)
+        if src is _ABSENT or src is None:
+            # Whole-value src ref absent/None → the entry inherits that 3-state.
+            return src
+        assert isinstance(src, str)
+        return BindEntry(src, entry.opts)
 
     def _expand_str(
         self,
@@ -472,6 +552,10 @@ class _Expander:
             )
         elif isinstance(raw, Bind):
             resolved = self._expand_bind(raw, chain=chain)
+        elif isinstance(raw, BindEntry):
+            # A ref landing ON a dest-keyed entry resolves the entry alone; its
+            # destination is the KEY, which is not reachable through a value ref.
+            resolved = self._expand_bind_entry(raw, chain=chain)
         elif isinstance(raw, str):
             resolved = self._expand_str(raw, space="host", chain=chain)
         else:
@@ -574,4 +658,8 @@ class _Expander:
             # An embedded ref to a whole Bind is degenerate, but be total: a Bind
             # has no single string form, so substitute its host (the source path).
             return resolved.host
+        if isinstance(resolved, BindEntry):
+            # Same degenerate case for the dest-keyed shape: substitute the src
+            # (the source path) — the destination is the key, not part of the value.
+            return resolved.src
         return str(resolved)

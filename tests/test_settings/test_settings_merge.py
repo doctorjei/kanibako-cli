@@ -26,7 +26,7 @@ from __future__ import annotations
 import copy
 
 from kanibako.settings.settings_merge import merge
-from kanibako.settings.settings_store import _MISSING, Bind, KeyStore
+from kanibako.settings.settings_store import _MISSING, Bind, BindEntry, KeyStore
 
 
 # --------------------------------------------------------------------------- #
@@ -459,3 +459,104 @@ class TestPrefSubtreeIsNotClassified:
         box = KeyStore({"box": {"common": {"pref": None}}})
         snap = merge([box])
         assert "pref" not in dict.keys(snap["box"]["common"])
+
+
+# --------------------------------------------------------------------------- #
+# DEST-KEYED bindings (BindMap) — the merge is VERIFY-ONLY for the P5 bridge   #
+# --------------------------------------------------------------------------- #
+#
+# ⚑ ``settings_merge`` is NOT edited by the dest-keyed rework (implementation
+# plan §5(d)): ``_resolve_present_none`` classifies by PATH SEGMENT (an ancestor
+# named ``bindings``), never by the value's shape, and the per-entry union is the
+# generic ``_merge_nodes`` recursion over KeyStore nodes. These tests PIN that —
+# they are the evidence for the "no change needed" claim, so the claim cannot
+# quietly stop being true.
+#
+# The property under test is the one the whole reshape rests on (design §2b-RESOLVED):
+# a dest-keyed arm merges PER ENTRY across levels. A box-level binding at one
+# destination must NOT wipe a workset-level binding at a DIFFERENT destination.
+
+
+def test_bindmap_merges_per_entry_across_levels() -> None:
+    # The BindMap analogue of ``test_masks_three_state_generic_merge``: a box arm
+    # and a workset arm at DIFFERENT dests both survive; the box entry does NOT
+    # replace the arm wholesale.
+    box = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/h/a")}}}})
+    ws = KeyStore({"box": {"bindings": {"rw": {"~/c": BindEntry("/w/c", "ro")}}}})
+    snap = merge([box, ws])
+    assert _probe(snap, "box", "bindings", "rw", "~/a") == BindEntry("/h/a")
+    # ⚑ THE assertion: the inherited workset entry SURVIVES the box-level arm.
+    assert _probe(snap, "box", "bindings", "rw", "~/c") == BindEntry("/w/c", "ro")
+
+
+def test_bindmap_same_dest_most_specific_wins() -> None:
+    # At the SAME destination the more specific level wins the whole entry
+    # (including its opts) — a leaf win, not a field-wise blend.
+    box = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/box/a")}}}})
+    ws = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/ws/a", "ro")}}}})
+    snap = merge([box, ws])
+    assert _probe(snap, "box", "bindings", "rw", "~/a") == BindEntry("/box/a")
+
+
+def test_bindmap_present_none_unsets_just_that_dest() -> None:
+    # A present-``None`` entry OMITs exactly ONE destination (§3 bind-entry reset,
+    # classified by the ``bindings`` ancestor segment) and leaves its siblings —
+    # at this level AND at the level below — completely alone.
+    box = KeyStore(
+        {"box": {"bindings": {"rw": {"~/a": BindEntry("/h/a"), "~/b": None}}}}
+    )
+    ws = KeyStore(
+        {
+            "box": {
+                "bindings": {
+                    "rw": {"~/b": BindEntry("/w/b"), "~/c": BindEntry("/w/c")}
+                }
+            }
+        }
+    )
+    snap = merge([box, ws])
+    assert _probe(snap, "box", "bindings", "rw", "~/a") == BindEntry("/h/a")
+    assert _probe(snap, "box", "bindings", "rw", "~/b") is _MISSING  # unset
+    assert _probe(snap, "box", "bindings", "rw", "~/c") == BindEntry("/w/c")
+
+
+def test_bindmap_entries_keep_their_type_through_the_merge() -> None:
+    # Tuple equality would pass for a plain ``("/h/a",)``; the merge must carry the
+    # TYPED value through untouched, because every consumer discriminates the two
+    # bind shapes by ``isinstance``, never by arity.
+    box = KeyStore({"box": {"bindings": {"ro": {"~/a": BindEntry("/h/a", "z")}}}})
+    snap = merge([box])
+    entry = _probe(snap, "box", "bindings", "ro", "~/a")
+    assert type(entry) is BindEntry
+    assert entry.src == "/h/a" and entry.opts == "z"
+
+
+def test_bindmap_dotted_dest_is_one_key_not_a_path() -> None:
+    # A destination legitimately contains dots (``~/.claude/settings.json``). It is
+    # a single mapping KEY, never split into keyspace segments — so a sibling dest
+    # sharing a prefix is an independent entry and neither shadows the other.
+    box = KeyStore(
+        {
+            "box": {
+                "bindings": {
+                    "rw": {"~/.claude/settings.json": BindEntry("/h/settings.json")}
+                }
+            }
+        }
+    )
+    ws = KeyStore(
+        {"box": {"bindings": {"rw": {"~/.claude": BindEntry("/h/claude")}}}}
+    )
+    snap = merge([box, ws])
+    arm = _probe(snap, "box", "bindings", "rw")
+    assert isinstance(arm, KeyStore)
+    assert set(dict.keys(arm)) == {"~/.claude/settings.json", "~/.claude"}
+
+
+def test_bindmap_root_reset_still_omits_the_whole_arm() -> None:
+    # The whole-category-root reset is unchanged by the reshape: ``bindings = None``
+    # drops the category, dest-keyed entries and all.
+    box = KeyStore({"box": {"bindings": None}})
+    ws = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/w/a")}}}})
+    snap = merge([box, ws])
+    assert _probe(snap, "box", "bindings") is _MISSING

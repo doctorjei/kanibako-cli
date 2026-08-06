@@ -262,6 +262,53 @@ def unpack_bind(value: object) -> tuple[str, str, str | None]:
     )
 
 
+def unpack_bind_entry(value: object) -> tuple[str, str | None]:
+    """Unpack a DEST-KEYED binding entry leaf into ``(src, options)``.
+
+    The dest-keyed sibling of :func:`unpack_bind` (disk-store rework R-3/R-6).
+    Where a name-keyed arm stores ``{name: [host_src, box_dest[, opts]]}``, a
+    dest-keyed arm stores ``{box_dest: [src[, opts]]}`` — the destination is the
+    mapping KEY, so the VALUE carries one element fewer:
+
+    * **1 element** ``[src]`` → ``(src, None)``; the caller falls back to the
+      category-default mount options.
+    * **2 elements** ``[src, options]`` → ``(src, options)``; the explicit
+      options string OVERRIDES the category default for this entry only.
+
+    Each element is narrowed to ``str`` (a YAML scalar may parse as ``int``/etc.).
+    A non-list/tuple value, or a list/tuple of the wrong arity, raises
+    :class:`SettingsError`. ⚑ A BARE scalar (``{dest: src}``) is deliberately NOT
+    accepted: the ruled shape is 1-or-2 ELEMENTS, the exact transposition of
+    today's 2-or-3 rule, and admitting a second spelling of the same entry is
+    precisely the duplicate-form confusion CONVENTIONS §0 opens with.
+
+    ⚑⚑ **This function is NOT interchangeable with :func:`unpack_bind`, and the
+    two must never be chosen by ARITY.** Both accept a 2-element list, and the
+    meanings are opposite — ``[a, b]`` is ``(host, box)`` here and ``(src,
+    opts)`` there. The caller picks the unpacker from the NODE the value came
+    from (a name-keyed bind node vs a dest-keyed arm), never from the value's
+    shape; see :class:`~kanibako.settings.settings_store.BindEntry` for the full
+    rule. During the P5→P8 bridge both node shapes exist, so both unpackers are
+    live; P8 deletes :func:`unpack_bind` and its shape.
+    """
+    if not isinstance(value, (list, tuple)):
+        raise SettingsError(
+            f"Dest-keyed binding entry must be a structured entry "
+            f"[src[, options]], got {type(value).__name__}: {value!r}."
+        )
+    if len(value) == 1:
+        (src,) = value
+        return str(src), None
+    if len(value) == 2:
+        src, options = value
+        return str(src), str(options)
+    raise SettingsError(
+        f"Dest-keyed binding entry must have 1 or 2 elements "
+        f"[src[, options]], got {len(value)}: {value!r}. (The DESTINATION is the "
+        f"map key, not part of the entry.)"
+    )
+
+
 def match_var(expr: str, i: int) -> tuple[str, int]:
     """Parse the ``$VAR`` / ``${VAR}`` reference starting at index *i* (the ``$``).
 

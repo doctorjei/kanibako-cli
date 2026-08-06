@@ -79,6 +79,9 @@ from kanibako.settings.settings_resolve import (
 from kanibako.settings.settings_resolve import (
     unpack_bind as unpack_bind,
 )
+from kanibako.settings.settings_resolve import (
+    unpack_bind_entry as unpack_bind_entry,
+)
 
 # ⚑ Stage 1 of the two-stage retirement (Jei, 2026-08-01): v1.8.0 KEEPS this
 # alias but SAYS SO; the next release deletes it and plugin discovery refuses an
