@@ -295,6 +295,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         _is_agent_setting,
         _is_path_category_key,
         _is_pref_key,
+        _is_scope_bind_key,
         _is_scope_env_key,
         _is_scope_secret_key,
         _KEY_ROUTES,
@@ -319,7 +320,17 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         return (parts[0], "env"), parts[2], _NOUN
     if _is_agent_setting(canonical):
         return ("agent", "default"), canonical, _NOUN
-    if _is_path_category_key(canonical):
+    # The two arms share ONE slot rule because they are one storage shape: a
+    # category tuple at the nested dotted path in the scope's settings file.
+    #
+    # ⚑ The second arm is READ-ONLY. R-9 retired the CLI *write* route for
+    # ``{system,workset,box}.bindings.{ro,rw}.<name>``, and the write verbs refuse
+    # it in their preamble before any destination is resolved — but the key is
+    # still DECLARED and still authored in YAML, so ``config get`` must keep
+    # reading the value the launch actually uses. Dropping the slot instead would
+    # have made a set key read back "(not set)": a silent lie, and the exact
+    # get/set-asymmetry class of bug this rule site exists to prevent.
+    if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
         tail = canonical.split(".")
         return tuple(tail[:-1]), tail[-1], _CATEGORY
     route = _KEY_ROUTES.get(_route_key(canonical))

@@ -301,12 +301,19 @@ class TestBoxConfigSet:
         captured = capsys.readouterr()
         assert "pref.agent.claude.model" in captured.out
 
-    def test_set_core_bind_repoint_end_to_end(
+    def test_set_core_bind_repoint_is_refused_end_to_end(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        # F10 (Phase 1): the box handler threads the CORE floor registry, so a
-        # source-only repoint of a launch-only core bind now VALIDATES + writes the
-        # RAW tuple (was refused "nowhere in the cascade" before Step B).
+        """R-9 — through the REAL ``box config set`` handler (registry threading
+        and all), the scope-level core-bind repoint is REFUSED.
+
+        This test used to assert the opposite (F10 Phase 1: the box handler
+        threads the CORE floor registry, so the repoint validated and wrote the
+        RAW tuple). That surface is an ACCEPTED LOSS, boarded as DS-BL1 — Jei:
+        *"unfortunate, but this is going to have to be a cost we'll pay."* The
+        end-to-end value of the test is unchanged: it proves the refusal is what
+        the USER meets at the CLI, not just what the engine returns.
+        """
         from kanibako.commands.box._parser import run_set
         from kanibako.settings.config_io import load_doc
 
@@ -321,14 +328,14 @@ class TestBoxConfigSet:
             force=False,
         )
         rc = run_set(args)
-        assert rc == 0
+        assert rc == 1
         captured = capsys.readouterr()
-        assert "Set box.bindings.rw.home host source to /newhome" in captured.out
-        # RAW tuple in the box file: new host_src, dest+options byte-raw from floor.
+        # NAMES the key the user typed, and says what happened to it (spec §0).
+        assert "box.bindings.rw.home" in captured.err, captured.err
+        assert "RETIRED" in captured.err, captured.err
+        # Nothing was written into the box settings file.
         project_toml = proj.metadata_path / "settings.yaml"
-        assert load_doc(project_toml)["box"]["bindings"]["rw"]["home"] == [
-            "/newhome", "~", "Z,U",
-        ]
+        assert "bindings" not in load_doc(project_toml).get("box", {})
 
 
 class TestBoxConfigReset:

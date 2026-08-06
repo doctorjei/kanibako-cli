@@ -1751,14 +1751,14 @@ class TestCategoryConfigSet:
 
     def test_ok_repoint_preserves_dest_and_opts_raw(self, tmp_path):
         f = self._seed(
-            tmp_path, ["box", "bindings", "ro", "vault"],
+            tmp_path, ["box", "synced", "vault"],
             ["/old/src", "/home/agent/vault", "ro"],
         )
-        msg = set_config_value("box.bindings.ro.vault", "/tmp", config_path=f)
+        msg = set_config_value("box.synced.vault", "/tmp", config_path=f)
         assert not msg.startswith("Error:")
         assert "Warning" not in msg
         # host_src swapped; box_dest + options PRESERVED RAW (structured list).
-        assert load_doc(f)["box"]["bindings"]["ro"]["vault"] == [
+        assert load_doc(f)["box"]["synced"]["vault"] == [
             "/tmp", "/home/agent/vault", "ro",
         ]
 
@@ -1776,57 +1776,57 @@ class TestCategoryConfigSet:
 
     def test_error_colon_src_dest_notation_refused(self, tmp_path):
         f = self._seed(
-            tmp_path, ["box", "bindings", "ro", "vault"],
+            tmp_path, ["box", "synced", "vault"],
             ["/old", "/home/agent/vault", "ro"],
         )
-        msg = set_config_value("box.bindings.ro.vault", "/a:/b", config_path=f)
+        msg = set_config_value("box.synced.vault", "/a:/b", config_path=f)
         assert msg.startswith("Error:")
         assert ":" in msg  # the src:dest refusal message
         # the file is NOT poisoned by a refused write
-        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "/old"
+        assert load_doc(f)["box"]["synced"]["vault"][0] == "/old"
 
     def test_error_dangling_ref_is_hard_error(self, tmp_path):
         f = self._seed(
-            tmp_path, ["box", "bindings", "ro", "vault"],
+            tmp_path, ["box", "synced", "vault"],
             ["/old", "/home/agent/vault", "ro"],
         )
         msg = set_config_value(
-            "box.bindings.ro.vault", "@nope.not.a.key/x", config_path=f,
+            "box.synced.vault", "@nope.not.a.key/x", config_path=f,
         )
         assert msg.startswith("Error:")
         assert "dangling" in msg
-        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "/old"
+        assert load_doc(f)["box"]["synced"]["vault"][0] == "/old"
 
     def test_ok_system_ref_stored_raw_never_expanded(self, tmp_path):
         f = self._seed(
-            tmp_path, ["box", "bindings", "ro", "vault"],
+            tmp_path, ["box", "synced", "vault"],
             ["/old", "/home/agent/vault", "ro"],
         )
         msg = set_config_value(
-            "box.bindings.ro.vault", "@config.data/foo", config_path=f,
+            "box.synced.vault", "@config.data/foo", config_path=f,
         )
         assert not msg.startswith("Error:")
         # stored RAW — the @-ref is NOT resolved to a literal (§0 files unresolved).
-        assert load_doc(f)["box"]["bindings"]["ro"]["vault"][0] == "@config.data/foo"
+        assert load_doc(f)["box"]["synced"]["vault"][0] == "@config.data/foo"
 
     def test_error_key_must_already_exist(self, tmp_path):
         f = self._seed(
-            tmp_path, ["box", "bindings", "ro", "vault"],
+            tmp_path, ["box", "synced", "vault"],
             ["/old", "/home/agent/vault", "ro"],
         )
         msg = set_config_value(
-            "box.bindings.rw.absent", "/x", config_path=f,
+            "box.synced.absent", "/x", config_path=f,
         )
         assert msg.startswith("Error:")
         assert "must already exist" in msg
 
     def test_error_unknown_var_is_hard_error(self, tmp_path):
         f = self._seed(
-            tmp_path, ["box", "bindings", "ro", "vault"],
+            tmp_path, ["box", "synced", "vault"],
             ["/old", "/home/agent/vault", "ro"],
         )
         msg = set_config_value(
-            "box.bindings.ro.vault", "$NOPE_UNKNOWN_VAR_XYZ/x", config_path=f,
+            "box.synced.vault", "$NOPE_UNKNOWN_VAR_XYZ/x", config_path=f,
         )
         assert msg.startswith("Error:")
         assert "unknown variable" in msg.lower()
@@ -1857,10 +1857,20 @@ class TestCategoryConfigSet:
 
     def test_category_key_is_known(self):
         """`is_known_key` recognizes category keys (D1 — get/set symmetry)."""
-        assert is_known_key("box.bindings.rw.home")
         assert is_known_key("system.caches.x")
         assert is_known_key("workset.common.plugins")
+        assert is_known_key("box.synced.x")
         assert not is_known_key("some-project-name")
+
+    def test_the_retired_scope_bind_spelling_is_still_key_shaped(self):
+        """⚑ ``True`` here for a DIFFERENT REASON since R-9. This is the
+        positional-vs-key disambiguator: if the retired spelling stopped reading
+        as a key, the verbs would take it for a PROJECT NAME and the user would
+        get a project error instead of the retirement message that tells them
+        what happened. (It is also still readable.) Same recognise-to-refuse role
+        the bare ``env.<VAR>`` spelling has."""
+        assert is_known_key("box.bindings.rw.home")
+        assert is_known_key("system.bindings.ro.helper")
 
 
 # ---------------------------------------------------------------------------
@@ -1897,12 +1907,12 @@ class TestCrossScopeCascadeConfigSet:
         """A box-scope set whose value @-refs a key set ONLY at the workset scope
         is ALLOWED (the false-block the first cut produced is GONE)."""
         box_f = self._seed_box(
-            tmp_path, ["box", "bindings", "ro", "foo"],
+            tmp_path, ["box", "synced", "foo"],
             ["/old", "/home/agent/foo", "ro"],
         )
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
         msg = set_config_value(
-            "box.bindings.ro.foo", "@workset.vault_ro/bar",
+            "box.synced.foo", "@workset.vault_ro/bar",
             config_path=box_f,
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
@@ -1910,7 +1920,7 @@ class TestCrossScopeCascadeConfigSet:
         # ALLOWED: @workset.vault_ro is visible in the full cascade -> resolves.
         assert not msg.startswith("Error:"), msg
         # stored RAW (the @-ref, NOT a literal — §0 files unresolved).
-        assert load_doc(box_f)["box"]["bindings"]["ro"]["foo"][0] == (
+        assert load_doc(box_f)["box"]["synced"]["foo"][0] == (
             "@workset.vault_ro/bar"
         )
 
@@ -1919,11 +1929,11 @@ class TestCrossScopeCascadeConfigSet:
         is dangling -> BLOCKED. Proves the prior test's pass is the cascade's
         doing (the workset key really is the only thing that resolves it)."""
         box_f = self._seed_box(
-            tmp_path, ["box", "bindings", "ro", "foo"],
+            tmp_path, ["box", "synced", "foo"],
             ["/old", "/home/agent/foo", "ro"],
         )
         msg = set_config_value(
-            "box.bindings.ro.foo", "@workset.vault_ro/bar",
+            "box.synced.foo", "@workset.vault_ro/bar",
             config_path=box_f,
             cascade_box_path=box_f,
         )
@@ -1935,12 +1945,12 @@ class TestCrossScopeCascadeConfigSet:
         """A value @-ref to a key set NOWHERE in the cascade still BLOCKS, naming
         the dangling target (E3 upstream rule holds over the full cascade)."""
         box_f = self._seed_box(
-            tmp_path, ["box", "bindings", "ro", "foo"],
+            tmp_path, ["box", "synced", "foo"],
             ["/old", "/home/agent/foo", "ro"],
         )
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
         msg = set_config_value(
-            "box.bindings.ro.foo", "@workset.nope_absent/bar",
+            "box.synced.foo", "@workset.nope_absent/bar",
             config_path=box_f,
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
@@ -1986,8 +1996,8 @@ class TestRepointFromCascade:
     def _seed_system(self, tmp_path):
         """A system-scope settings file holding the only vault bind tuple."""
         f = tmp_path / "global-settings.yaml"
-        dump_doc(f, {"box": {"bindings": {"rw": {"vault": [
-            "@config.data/vault", "$XDG_DATA_HOME/vault", "z"]}}}})
+        dump_doc(f, {"box": {"synced": {"vault": [
+            "@config.data/vault", "$XDG_DATA_HOME/vault", "z"]}}})
         return f
 
     def test_box_set_repoints_bind_from_higher_scope(self, tmp_path):
@@ -1999,33 +2009,33 @@ class TestRepointFromCascade:
         sys_f = self._seed_system(tmp_path)
         box_f = tmp_path / "box-settings.yaml"  # does not exist yet
         msg = set_config_value(
-            "box.bindings.rw.vault", "$XDG_DATA_HOME/mine",
+            "box.synced.vault", "$XDG_DATA_HOME/mine",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_system_path=sys_f, cascade_box_path=box_f,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(box_f)["box"]["bindings"]["rw"]["vault"] == [
+        assert load_doc(box_f)["box"]["synced"]["vault"] == [
             "$XDG_DATA_HOME/mine", "$XDG_DATA_HOME/vault", "z",
         ]
-        assert load_doc(sys_f)["box"]["bindings"]["rw"]["vault"] == [
+        assert load_doc(sys_f)["box"]["synced"]["vault"] == [
             "@config.data/vault", "$XDG_DATA_HOME/vault", "z",
         ]
 
     def test_workset_downward_repoint_from_cascade(self, tmp_path):
-        """`workset set box.bindings.rw.<name>` with the bind set only at the
+        """`workset set box.synced.<name>` with the bind set only at the
         system scope writes the full raw tuple into the WORKSET file (the
         downward path the containment relaxation made user-visible)."""
         sys_f = self._seed_system(tmp_path)
         ws_f = tmp_path / "ws-settings.yaml"
         dump_doc(ws_f, {"workset": {"foo": "bar"}})
         msg = set_config_value(
-            "box.bindings.rw.vault", "$XDG_DATA_HOME/team",
+            "box.synced.vault", "$XDG_DATA_HOME/team",
             config_path=ws_f, command_scope=ConfigLevel.workset,
             cascade_system_path=sys_f, cascade_workset_path=ws_f,
         )
         assert not msg.startswith("Error:"), msg
         doc = load_doc(ws_f)
-        assert doc["box"]["bindings"]["rw"]["vault"] == [
+        assert doc["box"]["synced"]["vault"] == [
             "$XDG_DATA_HOME/team", "$XDG_DATA_HOME/vault", "z",
         ]
         assert doc["workset"]["foo"] == "bar"  # sibling content untouched
@@ -2035,7 +2045,7 @@ class TestRepointFromCascade:
         sys_f = self._seed_system(tmp_path)
         box_f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
-            "box.bindings.rw.absent", "$XDG_DATA_HOME/x",
+            "box.synced.absent", "$XDG_DATA_HOME/x",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_system_path=sys_f, cascade_box_path=box_f,
         )
@@ -2048,15 +2058,15 @@ class TestRepointFromCascade:
         OWN dest/opts are preserved, not a higher scope's."""
         sys_f = self._seed_system(tmp_path)
         box_f = tmp_path / "box-settings.yaml"
-        dump_doc(box_f, {"box": {"bindings": {"rw": {"vault": [
-            "/old", "/box-own-dest"]}}}})
+        dump_doc(box_f, {"box": {"synced": {"vault": [
+            "/old", "/box-own-dest"]}}})
         msg = set_config_value(
-            "box.bindings.rw.vault", "/tmp",
+            "box.synced.vault", "/tmp",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_system_path=sys_f, cascade_box_path=box_f,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(box_f)["box"]["bindings"]["rw"]["vault"] == [
+        assert load_doc(box_f)["box"]["synced"]["vault"] == [
             "/tmp", "/box-own-dest",
         ]
 
@@ -2068,12 +2078,12 @@ class TestRepointFromCascade:
         sys_f = self._seed_system(tmp_path)
         box_f = tmp_path / "box-settings.yaml"
         set_config_value(
-            "box.bindings.rw.vault", "/tmp",
+            "box.synced.vault", "/tmp",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_system_path=sys_f, cascade_box_path=box_f,
         )
         msg = reset_config_value(
-            "box.bindings.rw.vault",
+            "box.synced.vault",
             config_path=box_f, command_scope=ConfigLevel.box,
         )
         # Bug 2: the honest cleared-message form. No floor registry is threaded on
@@ -2081,67 +2091,43 @@ class TestRepointFromCascade:
         # clause (same information as the old plain "Reset", via the honest
         # formatter).
         assert msg == (
-            "Cleared box.bindings.rw.vault set on the box scope; "
+            "Cleared box.synced.vault set on the box scope; "
             "it now falls back through the cascade."
         )
         doc = load_doc(box_f)
-        assert "vault" not in doc.get("box", {}).get("bindings", {}).get("rw", {})
+        assert "vault" not in doc.get("box", {}).get("synced", {})
         # ROUNDTRIP: with the override gone the cascade tuple is the base again —
         # a fresh repoint sources dest/opts from the SYSTEM tuple once more.
         msg2 = set_config_value(
-            "box.bindings.rw.vault", "$XDG_DATA_HOME/again",
+            "box.synced.vault", "$XDG_DATA_HOME/again",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_system_path=sys_f, cascade_box_path=box_f,
         )
         assert not msg2.startswith("Error:"), msg2
-        assert load_doc(box_f)["box"]["bindings"]["rw"]["vault"] == [
+        assert load_doc(box_f)["box"]["synced"]["vault"] == [
             "$XDG_DATA_HOME/again", "$XDG_DATA_HOME/vault", "z",
         ]
 
     def test_reset_category_key_without_override_reports_none(self, tmp_path):
         box_f = tmp_path / "box-settings.yaml"
         msg = reset_config_value(
-            "box.bindings.rw.vault",
+            "box.synced.vault",
             config_path=box_f, command_scope=ConfigLevel.box,
         )
-        assert msg == "No override for box.bindings.rw.vault"
+        assert msg == "No override for box.synced.vault"
 
-    def test_reset_core_bind_names_reverted_to_floor(self, tmp_path):
-        """Bug 2 — a CORE bind reset (``box.bindings.rw.home``) with the core-bind
-        floor registry threaded NAMES the reverted-to descriptor floor
-        (dest [+ opts]); the set-time placeholder host_src is NEVER printed."""
-        from kanibako.settings.core_defaults import (
-            FLOOR_PLACEHOLDER_SRC,
-            core_default_bind_keys,
-        )
-
-        box_f = tmp_path / "box-settings.yaml"
-        reg = dict(core_default_bind_keys())
-        # The core bind ``home`` lives only in the launch floor; thread the core
-        # registry into the SET so the must-exist gate passes (the real box handler
-        # does exactly this) — the write lands in the box file.
-        set_msg = set_config_value(
-            "box.bindings.rw.home", "/newhome",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_box_path=box_f, default_categories=reg,
-        )
-        assert not set_msg.startswith("Error:"), set_msg
-        msg = reset_config_value(
-            "box.bindings.rw.home",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            default_categories=reg,
-        )
-        # The reverted-to floor's static box_dest is named; the sentinel is not.
-        _placeholder, dest, opts = reg["box.bindings.rw.home"]
-        assert "effective is now" in msg, msg
-        assert dest in msg, msg
-        assert opts in msg, msg
-        assert FLOOR_PLACEHOLDER_SRC not in msg, msg
-        assert "descriptor floor" in msg, msg
-        # The override is really gone.
-        assert "home" not in (
-            load_doc(box_f).get("box", {}).get("bindings", {}).get("rw", {})
-        )
+    # ⚑ ``test_reset_core_bind_names_reverted_to_floor`` USED TO LIVE HERE. It
+    # drove the honest "effective is now <floor>" clause through a CORE bind reset
+    # (``box.bindings.rw.home`` with ``core_default_bind_keys`` threaded). R-9
+    # retired that route, so the case is unreachable — the reset now refuses
+    # before ``_floor_bind_display`` is ever consulted, which
+    # ``TestScopeBindRouteRetired.test_reset_is_refused_symmetrically`` pins.
+    #
+    # The BEHAVIOUR it covered is NOT lost: the identical floor-naming clause is
+    # exercised on the surviving per-node route by
+    # ``TestAgentNodeBindGetReset.test_reset_reports_reverted_to_floor_destination``
+    # (plus its registry mutation-proof twin). Deleted here rather than duplicated
+    # there — one copy of a rule, at the one place it still runs.
 
     def test_reset_non_core_category_key_stays_cleared_only(self, tmp_path):
         """Bug 2 — a NON-core category key reset (registry threaded but the key is
@@ -2523,7 +2509,7 @@ class TestScopeDirectionGuard:
     # --- downward CATEGORY writes: guard passes, must-exist still bites -----
 
     def test_downward_category_key_still_must_exist(self, tmp_path):
-        """A downward category repoint (``workset set box.bindings.rw.X``) now
+        """A downward category repoint (``workset set box.synced.X``) now
         passes the direction guard, but the source-only MUST-EXIST rule is
         unrelaxed: a key NO scope in the cascade sets refuses via
         ConfigSetError and writes NOTHING. (The F10 fix broadened the lookup
@@ -2532,7 +2518,7 @@ class TestScopeDirectionGuard:
         f = tmp_path / "ws-settings.yaml"
         dump_doc(f, {"workset": {"foo": "bar"}})  # file exists, key absent
         msg = set_config_value(
-            "box.bindings.rw.newmount", str(tmp_path),
+            "box.synced.newmount", str(tmp_path),
             config_path=f, cascade_workset_path=f,
             command_scope=ConfigLevel.workset,
         )
@@ -3360,79 +3346,125 @@ class TestF10CoreFloorRegistry:
         assert "box.bindings.rw.vault" in reg
 
 
-class TestF10CoreFloorRepoint:
-    """A source-only repoint of a launch-only CORE bind (``box.bindings.{ro,rw}.
-    <key>``) validates + writes RAW once the floor registry is threaded — it was
-    REFUSED as "nowhere in the cascade" before (Step B / F10)."""
+class TestScopeBindRouteRetired:
+    """R-9 — the SCOPE-level bind CLI route
+    ``{system,workset,box}.bindings.{ro,rw}.<name>`` is RETIRED.
+
+    This class REPLACES ``TestF10CoreFloorRepoint``, which pinned the opposite
+    behaviour: a source-only repoint of a launch-only CORE bind, enabled by
+    threading the floor registry. That surface is a KNOWN, ACCEPTED LOSS (Jei:
+    *"unfortunate, but this is going to have to be a cost we'll pay"*), boarded
+    for review as DS-BL1. It is NOT a regression to restore.
+
+    What must hold instead: the refusal is LOUD, NAMES THE KEY, and WRITES
+    NOTHING — spec §0 refuses, never silently accepts and never fabricates.
+    ⚑ The registry stays threaded in these calls on purpose: the refusal must not
+    depend on the caller omitting it.
+    """
 
     def _reg(self):
         from kanibako.settings.core_defaults import core_default_bind_keys
 
         return dict(core_default_bind_keys())
 
-    def test_repoint_core_bind_writes_raw_tuple(self, tmp_path):
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "box.bindings.ro.vault",
+            "box.bindings.rw.home",
+            "system.bindings.ro.helper",
+            "workset.bindings.rw.share",
+        ],
+    )
+    def test_set_is_refused_and_names_the_key(self, tmp_path, key):
         box = tmp_path / "box.yaml"
         msg = set_config_value(
-            "box.bindings.ro.vault", "/newsrc",
-            config_path=box, command_scope=ConfigLevel.box,
+            key, "/newsrc",
+            config_path=box, command_scope=ConfigLevel.system,
             cascade_box_path=box, default_categories=self._reg(),
         )
-        # Validated + wrote (was refused before) — the confirm line, warn allowed.
-        assert msg.startswith("Set box.bindings.ro.vault host source to /newsrc"), msg
-        # RAW tuple: new host_src, dest + options BYTE-RAW from the floor.
-        assert load_doc(box)["box"]["bindings"]["ro"]["vault"] == [
-            "/newsrc", "~/vault/ro", "ro",
-        ]
+        assert msg.startswith("Error:"), msg
+        # §0: the error NAMES the offending key — not a generic "unknown key".
+        assert key in msg, msg
+        assert "RETIRED" in msg, msg
+        # Nothing was written: a refused write creates no file.
+        assert not box.exists()
 
-    def test_repoint_without_registry_is_refused(self, tmp_path):
-        # Mutation-proof the registry is load-bearing: drop default_categories and
-        # the SAME set is refused (the pre-Step-B behavior). RED if the fold leaked
-        # the floor in from elsewhere.
-        box = tmp_path / "box.yaml"
-        msg = set_config_value(
-            "box.bindings.ro.vault", "/newsrc",
-            config_path=box, command_scope=ConfigLevel.box,
-            cascade_box_path=box,
-        )
-        assert msg.startswith("Error:") and "must already exist in the cascade" in msg
-
-    def test_unknown_bind_name_still_refused(self, tmp_path):
-        # A genuinely-unknown bind name is NOT in the registry → still refused even
-        # with the registry threaded (the gate creates nothing).
-        box = tmp_path / "box.yaml"
-        msg = set_config_value(
-            "box.bindings.ro.nonexistent", "/x",
-            config_path=box, command_scope=ConfigLevel.box,
-            cascade_box_path=box, default_categories=self._reg(),
-        )
-        assert msg.startswith("Error:") and "nonexistent" in msg
-
-    def test_rw_bind_options_preserved(self, tmp_path):
-        box = tmp_path / "box.yaml"
-        set_config_value(
-            "box.bindings.rw.home", "/newhome",
-            config_path=box, command_scope=ConfigLevel.box,
-            cascade_box_path=box, default_categories=self._reg(),
-        )
-        # Z,U options + ~ dest carried through byte-raw from the floor.
-        assert load_doc(box)["box"]["bindings"]["rw"]["home"] == ["/newhome", "~", "Z,U"]
-
-    def test_already_file_set_bind_repoints_from_file_not_floor(self, tmp_path):
-        # No regression: when the box FILE already sets the key, the repoint sources
-        # box_dest/options from the FILE tuple (the cascade winner at box scope), NOT
-        # the floor default — proving the floor is only a FALLBACK.
+    def test_reset_is_refused_symmetrically(self, tmp_path):
         box = tmp_path / "box.yaml"
         dump_doc(box, {"box": {"bindings": {"ro": {"vault": [
             "/old", "/custom/dest", "ro",
         ]}}}})
-        set_config_value(
-            "box.bindings.ro.vault", "/new2",
+        msg = reset_config_value(
+            "box.bindings.ro.vault",
+            config_path=box, command_scope=ConfigLevel.box,
+            default_categories=self._reg(),
+        )
+        assert msg.startswith("Error:"), msg
+        assert "box.bindings.ro.vault" in msg
+        # ⚑ "RETIRED" is NOT decoration. Without it this assertion survived a
+        # mutation that deleted the refusal entirely: the reset then fell through
+        # to the routing table and returned "unknown config key: box.bindings.ro
+        # .vault" — which starts with "Error:", names the key, and writes nothing,
+        # so every other assertion here still passed. Pin the RIGHT error, not
+        # merely an error. (Found by the M1 mutation run, not by inspection.)
+        assert "RETIRED" in msg, msg
+        # ⚑ NOT "No override for …": that would be a lie twice over — it implies
+        # the spelling was CLI-writable, and a hand-authored tuple is sitting
+        # right there. Prove the reset did not remove it.
+        assert "No override" not in msg, msg
+        assert load_doc(box)["box"]["bindings"]["ro"]["vault"] == [
+            "/old", "/custom/dest", "ro",
+        ]
+
+    def test_null_is_refused_by_the_retirement_not_the_category_guard(self, tmp_path):
+        """``--null`` on the retired spelling gets the RETIREMENT message, not the
+        "category has no null form" one. Ordering matters: a user who typed a key
+        that no longer exists must be told THAT, not handed a rule about a route
+        they cannot reach."""
+        box = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.bindings.rw.home", None,
             config_path=box, command_scope=ConfigLevel.box,
             cascade_box_path=box, default_categories=self._reg(),
         )
-        assert load_doc(box)["box"]["bindings"]["ro"]["vault"] == [
-            "/new2", "/custom/dest", "ro",
-        ]
+        assert "RETIRED" in msg, msg
+        assert "--null is not yet supported" not in msg, msg
+
+    def test_the_still_settable_categories_are_untouched(self, tmp_path):
+        """The retirement is SURGICAL: it removes two tokens at three scopes and
+        nothing else. RED if the regex change over-reached."""
+        box = tmp_path / "box.yaml"
+        dump_doc(box, {"box": {"synced": {"x": ["/old", "/dest"]}}})
+        msg = set_config_value(
+            "box.synced.x", "/newsrc",
+            config_path=box, command_scope=ConfigLevel.box,
+            cascade_box_path=box,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(box)["box"]["synced"]["x"] == ["/newsrc", "/dest"]
+
+    def test_the_agent_node_bind_route_is_untouched(self):
+        """⚑ The ``agent.<node>.bindings.*`` route is a SEPARATE retirement (P2).
+        It must still be claimed by the category predicate here — a change that
+        took it out with the scope route would be out of scope, and silent."""
+        from kanibako.settings.config_keys import (
+            _is_path_category_key,
+            _is_scope_bind_key,
+        )
+
+        assert _is_path_category_key("agent.claude.bindings.ro.launcher")
+        assert not _is_scope_bind_key("agent.claude.bindings.ro.launcher")
+        # ...and the scope form is the mirror image.
+        assert not _is_path_category_key("box.bindings.ro.vault")
+        assert _is_scope_bind_key("box.bindings.ro.vault")
+
+
+class TestCoreFloorStillMergesAtLaunch:
+    """The floor registry itself is UNAFFECTED by R-9: only the CLI route died.
+    A box-scope tuple still beats the base floor when the launch cascade merges,
+    which is what makes hand-editing the settings file — the cure the refusal
+    prescribes — actually work."""
 
     def test_written_box_tuple_overrides_floor_at_launch(self, tmp_path):
         # Take-effect (reconcile precedence): a box-scope written tuple sits at the
@@ -3835,45 +3867,55 @@ class TestPersonaScalarGetResetUnchanged:
 
 
 class TestCoreBindGetReset:
-    """item 4 — the CORE/path-category bind (``box.bindings.{ro,rw}.<name>``)
-    get/set/reset round-trip at box scope reads/removes the box settings file."""
+    """item 4 — what remains of the CORE bind
+    (``{system,workset,box}.bindings.{ro,rw}.<name>``) verb surface after R-9.
 
-    def test_core_bind_set_get_reset_round_trip(self, tmp_path):
-        from kanibako.settings.core_defaults import core_default_bind_keys
+    ⚑ THE READ SURVIVED THE WRITE. The set/reset route is retired, but the key is
+    still DECLARED, still authored by hand in the settings YAML, and still
+    delivered at launch — and hand-editing that file is exactly the cure the
+    refusal prescribes. So ``config get`` must keep returning the stored tuple. A
+    get that answered "(not set)" for a bind the launch is actually mounting
+    would be a silent lie, and would make the prescribed cure unverifiable.
+    """
 
+    def test_get_reads_a_hand_authored_bind_after_the_route_retired(self, tmp_path):
         box_f = tmp_path / "box.yaml"
-        # Seed an existing tuple so the source-only repoint has a bind to repoint.
+        # Authored the ONLY way left: directly in the settings file.
         dump_doc(box_f, {"box": {"bindings": {"ro": {
-            "vault_ro": ["/old", "/vault/ro", "ro"]}}}})
-        set_config_value(
-            "box.bindings.ro.vault_ro", "/newvault",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_box_path=box_f,
-            default_categories=dict(core_default_bind_keys()),
-        )
-        # GET reads back the repointed tuple (was previously unread — get lacked a
-        # path-category branch and returned None; RED before the Phase-3 fix).
+            "vault_ro": ["/newvault", "/vault/ro", "ro"]}}}})
         val = get_config_value(
             "box.bindings.ro.vault_ro",
             global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
         )
         assert val == str(["/newvault", "/vault/ro", "ro"])
-        # RESET removes the box-scope tuple. Bug 2: no floor registry threaded on
-        # this call → the honest cleared-only form (same info as the old plain
-        # "Reset", via the honest formatter).
-        msg = reset_config_value(
+
+    def test_the_write_verbs_refuse_and_leave_the_file_alone(self, tmp_path):
+        """The other half of the same round-trip: set and reset both refuse, and
+        the hand-authored tuple the get above reads is still there afterwards."""
+        from kanibako.settings.core_defaults import core_default_bind_keys
+
+        box_f = tmp_path / "box.yaml"
+        seeded = {"box": {"bindings": {"ro": {
+            "vault_ro": ["/old", "/vault/ro", "ro"]}}}}
+        dump_doc(box_f, seeded)
+        set_msg = set_config_value(
+            "box.bindings.ro.vault_ro", "/newvault",
+            config_path=box_f, command_scope=ConfigLevel.box,
+            cascade_box_path=box_f,
+            default_categories=dict(core_default_bind_keys()),
+        )
+        reset_msg = reset_config_value(
             "box.bindings.ro.vault_ro", config_path=box_f,
             command_scope=ConfigLevel.box,
         )
-        assert msg == (
-            "Cleared box.bindings.ro.vault_ro set on the box scope; "
-            "it now falls back through the cascade."
-        )
-        assert load_doc(box_f) == {}
+        assert set_msg.startswith("Error:") and "RETIRED" in set_msg, set_msg
+        assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
+        assert load_doc(box_f) == seeded
+        # ...and the read is unaffected by either refusal.
         assert get_config_value(
             "box.bindings.ro.vault_ro",
             global_config_path=tmp_path / "cfg.yaml", project_toml=box_f,
-        ) is None
+        ) == str(["/old", "/vault/ro", "ro"])
 
     def test_core_bind_get_unset_is_none(self, tmp_path):
         box_f = tmp_path / "box.yaml"
@@ -4775,11 +4817,16 @@ class TestSystemScopeCategoryFileRouting:
     settings file — the same file the launch cascade's system tier reads.
     """
 
-    KEY = "system.bindings.ro.helper"
+    # ⚑ The VEHICLE is ``synced``, not a binding. This class is about WHICH FILE a
+    # system-scope category key lands in, and any bind-shaped category proves that
+    # equally; ``system.bindings.ro.<name>`` used to play the part but its CLI route
+    # is RETIRED (R-9), so it can no longer reach the destination rule at all.
+    # ``synced`` is the closest stand-in: also CONCRETE (no declaration root).
+    KEY = "system.synced.helper"
     SEEDED = ["/old/src", "/home/agent/helper", "ro"]
 
     def _seed(self, path):
-        dump_doc(path, {"system": {"bindings": {"ro": {"helper": list(self.SEEDED)}}}})
+        dump_doc(path, {"system": {"synced": {"helper": list(self.SEEDED)}}})
 
     def _set(self, cf, ssp, value):
         return set_config_value(
@@ -4803,7 +4850,7 @@ class TestSystemScopeCategoryFileRouting:
         assert not msg.startswith("Error:"), msg
         assert "Warning" not in msg
         # host_src swapped IN THE SETTINGS FILE; box_dest + options preserved RAW.
-        assert load_doc(ssp)["system"]["bindings"]["ro"]["helper"] == [
+        assert load_doc(ssp)["system"]["synced"]["helper"] == [
             str(new_src), "/home/agent/helper", "ro",
         ]
         # The CONFIG file was never touched (it holds STRUCTURAL config only).
@@ -4859,7 +4906,7 @@ class TestSystemScopeCategoryFileRouting:
         msg = self._set(cf, ssp, str(tmp_path))
         assert msg.startswith("Error:")
         assert "must already exist" in msg
-        assert load_doc(cf)["system"]["bindings"]["ro"]["helper"] == self.SEEDED
+        assert load_doc(cf)["system"]["synced"]["helper"] == self.SEEDED
         assert not ssp.exists()
 
     def test_box_scope_category_routing_is_unchanged(self, tmp_path):

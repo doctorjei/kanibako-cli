@@ -1170,11 +1170,20 @@ def is_known_key(arg: str) -> bool:
     # treat it as a KEY, never a project name).
     if _is_box_agent_key(arg):
         return True
-    # Category keys (``<scope>.bindings.{ro,rw}.<name>`` / ``caches`` / ``seeded``
-    # / ``shared`` / ``synced``) are settable via ``config set`` (the source-only
-    # RAW repoint). Recognize them here too so the get/show paths + the
-    # project-name heuristic treat a category key as a KEY, never a project name
-    # — the same get-validated/set-unguarded symmetry the H1 fix established.
+    # {system,workset,box}.bindings.{ro,rw}.<name> — the RETIRED scope-level bind
+    # route (R-9). Kept KEY-SHAPED for the same reason as the bare ``env.<VAR>``
+    # spelling: the positional-vs-key disambiguator must read it as a key so the
+    # verbs can refuse it with the cure (``scope_bind_retired_error``) rather than
+    # mistake it for a project name. It is also still READABLE (``config get``),
+    # which on its own makes it a key here.
+    if _is_scope_bind_key(arg):
+        return True
+    # Category keys (``<scope>.caches`` / ``seeded`` / ``common`` / ``synced``,
+    # plus every ``agent.<node>.<category>.<name>``) are settable via
+    # ``config set`` (the source-only RAW repoint). Recognize them here too so the
+    # get/show paths + the project-name heuristic treat a category key as a KEY,
+    # never a project name — the same get-validated/set-unguarded symmetry the H1
+    # fix established.
     return _is_path_category_key(arg)
 
 def is_system_path_key(key: str) -> bool:
@@ -1389,16 +1398,82 @@ def _pref_sections_leaf(canonical: str) -> "tuple[tuple[str, ...], str]":
     parts = canonical.split(".")
     return tuple(parts[:-1]), parts[-1]
 
+def _scope_bind_match(key: str) -> "re.Match[str] | None":
+    """The :data:`SCOPE_BIND_KEY_RE` match for *key* — the ONE parse site, so the
+    predicate below and the message it feeds can never disagree about what they
+    matched."""
+    from kanibako.settings.settings_categories import SCOPE_BIND_KEY_RE
+
+    return SCOPE_BIND_KEY_RE.match(key)
+
+
+def _is_scope_bind_key(key: str) -> bool:
+    """The RETIRED SCOPE-level bind route ``{system,workset,box}.bindings.{ro,rw}.<name>``.
+
+    ⮕ **R-9 RETIRED THE SCOPE-LEVEL CLI ROUTE** (disk-store rework step 1). The
+    two ``bindings`` arms are becoming a TERMINAL key whose VALUE is a dest-keyed
+    map, and *the inner map's keys are not part of the keyspace* — so there is no
+    dotted key left for ``config set`` / ``config reset`` to name. The keys
+    themselves are NOT retired: they are still declared, still authored in the
+    settings YAML, still delivered at launch. Only the CLI route is gone, and it
+    is a KNOWN, ACCEPTED loss (backlog DS-BL1).
+
+    Like :func:`_is_bare_env_key` and :func:`_is_box_agent_key`, this predicate
+    exists to RECOGNISE the retired spelling so the write verbs refuse it BY NAME
+    with a cure (:func:`scope_bind_retired_error`) instead of degrading to
+    "unknown config key" — spec §0 refuses loudly, never quietly.
+
+    ⚑ It does NOT cover ``agent.<node>.bindings.{ro,rw}.<name>``
+    (:func:`_is_agent_node_bind_key`), which is a separate, still-live route.
+    """
+    return _scope_bind_match(key) is not None
+
+
+def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
+    """The refusal + cure for a RETIRED scope-level bind WRITE (R-9), or ``None``
+    when *canonical* is not one.
+
+    ⚑ The cure is HONEST about the loss. There is no equivalent CLI spelling to
+    redirect to — that is precisely what R-9 accepted — so the message names the
+    settings FILE as the surface, which is real and reachable (the launch cascade
+    reads that tuple today, exactly as written). Prescribing a command that does
+    not exist would be worse than naming the loss.
+
+    *verb* is the op word for the message (``"set"`` / ``"reset"``). Gates itself
+    — ``None`` for every other key — so every verb door applies it uniformly.
+    """
+    m = _scope_bind_match(canonical)
+    if m is None:
+        return None
+    scope, category = m.group("scope"), m.group("category")
+    return (
+        f"Error: '{canonical}' cannot be {verb} from the CLI — the scope-level "
+        f"'{scope}.{category}.<name>' route is RETIRED (the two bindings arms are "
+        f"a single terminal key keyed by DESTINATION, so a per-name key no longer "
+        f"exists). Edit the '{scope}:' table of the {scope} settings file "
+        f"directly; the launch reads it from there. Reading it back with "
+        f"'config get {canonical}' still works."
+    )
+
+
 def _is_path_category_key(key: str) -> bool:
     """True iff *key* is a PATH-TUPLE category key settable via ``config set``.
 
     The source-only RAW repoint (spec §2a / design §6d / S24) applies to the
-    bind-shaped categories ONLY — ``bindings.{ro,rw}`` / ``caches`` / ``seeded`` /
-    ``common`` / ``synced`` (a 2-/3-element ``[host_src, box_dest[, options]]``
-    tuple). ``env`` (scalar) is NOT matched here — the live ``<scope>.env.<VAR>``
-    arm is routed by the earlier :func:`_is_scope_env_key` branch as a plain
-    scalar write, and the bare spelling is refused before dispatch (R-39);
-    ``masks`` (a keyed list) is YAML-only (spec §2a) and is NOT matched here.
+    bind-shaped categories — a 2-/3-element ``[host_src, box_dest[, options]]``
+    tuple — and, since R-9, only to those still reachable by a dotted key:
+
+    * at ``system`` / ``workset`` / ``box``: ``caches`` / ``seeded`` / ``common``
+      / ``synced``. **The two ``bindings.{ro,rw}`` arms are NOT matched here any
+      more** — their scope-level CLI route is retired, recognised instead by
+      :func:`_is_scope_bind_key` and refused by name.
+    * at the discriminated ``agent.<node>`` scope: all six, ``bindings.{ro,rw}``
+      included — that route is untouched by R-9.
+
+    ``env`` (scalar) is NOT matched here — the live ``<scope>.env.<VAR>`` arm is
+    routed by the earlier :func:`_is_scope_env_key` branch as a plain scalar
+    write, and the bare spelling is refused before dispatch (R-39); ``masks``
+    (a keyed list) is YAML-only (spec §2a) and is NOT matched here.
     """
     from kanibako.settings.settings_categories import BIND_KEY_RE
 
@@ -1451,6 +1526,11 @@ def _probes_at_set_time(canonical: str) -> bool:
       self-resolving rules; probing twice would only duplicate the diagnosis.
     * **Keys nothing claims.** They must reach the routing table and be reported
       as an unknown KEY (see :func:`_has_dedicated_route`).
+
+    The RETIRED scope-level bind route ``{system,workset,box}.bindings.{ro,rw}
+    .<name>`` (R-9) is in the SAME position as the bare env spelling: refused in
+    the verb preamble (:func:`scope_bind_retired_error`), so it never reaches
+    this predicate and needs no exclusion term of its own.
 
     The docker ``.env`` family (bare ``env.<VAR>``, written VERBATIM to a file
     the expander never saw) WAS the third exclusion. R-39 retired the spelling:

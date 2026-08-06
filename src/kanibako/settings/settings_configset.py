@@ -463,6 +463,12 @@ def repoint_host_src(
     only, and does NOT re-validate. *cascade_bind* is the caller's cascade lookup
     result, already normalized to a plain 2-/3-element sequence of RAW strings
     (pre-expansion — the merge stores files' tuples verbatim).
+
+    ⚑ WHICH KEYS STILL ARRIVE HERE: the four scope categories (``caches`` /
+    ``seeded`` / ``common`` / ``synced``) at ``system``/``workset``/``box``, and
+    every ``agent.<node>.<category>.<name>`` including the two ``bindings`` arms.
+    ``{system,workset,box}.bindings.{ro,rw}.<name>`` does NOT — R-9 retired that
+    CLI route and the verbs refuse it by name before any write machinery runs.
     """
     data = load_doc(scope_path)
     # *dest_parts*, when supplied, is the FILE location to walk/write (sections +
@@ -510,7 +516,7 @@ def repoint_host_src(
             f"is source-only and repoints an existing bind; it never creates one."
         )
 
-    # Swap element 0 (host_src), PRESERVE box_dest + any options RAW. Store as a
+    # Swap host_src, PRESERVE box_dest + any options RAW. Store as a
     # plain list (the §2a YAML representation; round-trips through config_io),
     # creating the file's intermediate tables as needed (a cascade-sourced tuple
     # lands in a file that may not have them yet). An intermediate that exists but
@@ -527,5 +533,26 @@ def repoint_host_src(
                 f"not a mapping (got {type(nxt).__name__}: {nxt!r})."
             )
         wnode = nxt
-    wnode[leaf_name] = [new_host_src, *list(base[1:])]
+
+    # ⚑ NAME THE ELEMENTS — do NOT go back to ``[new_host_src, *base[1:]]``.
+    # That positional spelling is arity-safe and MEANING-BLIND: the arity gate
+    # above accepts any 2-or-3 element tuple, so a value whose second element is
+    # not a box_dest is carried through silently and re-stored as one. The
+    # bindings rework introduces exactly such a shape (a 2-element ``(src, opts)``
+    # pair — same arity, different meaning), and R-8 says a stale shape must be
+    # REFUSED, never quietly reinterpreted.
+    #
+    # ⚑⚑ BE PRECISE ABOUT WHAT THIS BUYS, because it is easy to over-read: naming
+    # the elements does NOT make the stale shape raise. Fed a dest-keyed
+    # ``[src, opts]`` this still passes the gate, binds ``box_dest = opts``, and
+    # writes the same bytes the positional spelling would. What it buys is that
+    # the assumption is now WRITTEN DOWN AT THE SITE and greppable, so the author
+    # who flips the shape cannot walk past it. **The runtime refusal is R-8's and
+    # it lands in P8**, where this arity gate (``2 <= len <= 3``, above) must be
+    # tightened in the same edit — this comment is a marker for that step, not a
+    # substitute for it. See implementation plan §5(a): this is the arc's named
+    # prime silent-breakage site.
+    box_dest = base[1]
+    options = list(base[2:])  # zero or one element — options are optional
+    wnode[leaf_name] = [new_host_src, box_dest, *options]
     dump_doc(scope_path, data)

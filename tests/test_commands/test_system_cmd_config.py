@@ -674,11 +674,16 @@ class TestSystemCategoryFileRouting:
     and single-key ``reset`` used the kanibako_config.yaml CONFIG file while
     ``get`` (and ``reset --all``'s scope-table sweep) used the settings file."""
 
-    KEY = "system.bindings.ro.helper"
+    # ⚑ VEHICLE CHANGE: this was ``system.bindings.ro.helper`` until R-9 retired
+    # the scope-level bind CLI route. The class is about WHICH FILE a system-scope
+    # category key lands in; ``synced`` is the surviving CONCRETE category and
+    # proves the same rule. The retired spelling is covered by
+    # ``TestRetiredScopeBindRoute`` below.
+    KEY = "system.synced.helper"
 
     def _seed(self, path):
         write_nested_key(
-            path, ("system", "bindings", "ro"), "helper",
+            path, ("system", "synced"), "helper",
             ["/old/src", "/home/agent/helper", "ro"],
         )
 
@@ -691,11 +696,11 @@ class TestSystemCategoryFileRouting:
         assert _set(f"{self.KEY}={new_src}") == 0, capsys.readouterr().err
 
         # SET → the settings file, box_dest + options preserved RAW.
-        assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
+        assert load_doc(std.settings)["system"]["synced"]["helper"] == [
             new_src, "/home/agent/helper", "ro",
         ]
         # ...and NOT the CONFIG file (which holds structural config only).
-        assert "bindings" not in load_doc(config_file).get("system", {})
+        assert "synced" not in load_doc(config_file).get("system", {})
 
         # GET → reads back what SET wrote (was "(not set)").
         capsys.readouterr()
@@ -717,7 +722,7 @@ class TestSystemCategoryFileRouting:
         assert _set(f"{self.KEY}={tmp_home}") == 0
         assert _reset(all_keys=True) == 0
         assert "system" not in load_doc(std.settings)
-        assert "bindings" not in load_doc(config_file).get("system", {})
+        assert "synced" not in load_doc(config_file).get("system", {})
         capsys.readouterr()
         assert _get(self.KEY) == 0
         assert "(not set)" in capsys.readouterr().out
@@ -736,10 +741,65 @@ class TestSystemCategoryFileRouting:
         assert rc == 1
         assert "must already exist" in capsys.readouterr().err
         # Neither store was written.
-        assert load_doc(config_file)["system"]["bindings"]["ro"]["helper"] == [
+        assert load_doc(config_file)["system"]["synced"]["helper"] == [
             "/old/src", "/home/agent/helper", "ro",
         ]
-        assert "bindings" not in load_doc(std.settings).get("system", {})
+        assert "synced" not in load_doc(std.settings).get("system", {})
+
+
+class TestRetiredScopeBindRoute:
+    """R-9 — through the REAL ``system config`` CLI, not the engine: the
+    scope-level bind route is refused, and the refusal reaches the user's
+    terminal naming the key they typed."""
+
+    KEY = "system.bindings.ro.helper"
+
+    def _seed(self, path):
+        write_nested_key(
+            path, ("system", "bindings", "ro"), "helper",
+            ["/old/src", "/home/agent/helper", "ro"],
+        )
+
+    def test_set_exits_nonzero_and_names_the_key_on_stderr(
+        self, config_file, tmp_home, capsys,
+    ):
+        std = _std(config_file)
+        self._seed(std.settings)
+        rc = _set(f"{self.KEY}={tmp_home}")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert self.KEY in err, err
+        assert "RETIRED" in err, err
+        # The hand-authored tuple is untouched by the refusal.
+        assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
+            "/old/src", "/home/agent/helper", "ro",
+        ]
+
+    def test_reset_exits_nonzero_and_keeps_the_tuple(
+        self, config_file, tmp_home, capsys,
+    ):
+        std = _std(config_file)
+        self._seed(std.settings)
+        rc = _reset(self.KEY)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert self.KEY in err and "RETIRED" in err, err
+        assert load_doc(std.settings)["system"]["bindings"]["ro"]["helper"] == [
+            "/old/src", "/home/agent/helper", "ro",
+        ]
+
+    def test_get_still_prints_the_stored_tuple(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The read survives — the refusal tells the user to edit the settings
+        file, and this is how they check that the edit took."""
+        std = _std(config_file)
+        self._seed(std.settings)
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        out = capsys.readouterr().out
+        assert "(not set)" not in out, out
+        assert "/old/src" in out, out
 
 
 class TestSystemAgentNodeBindSeamRefuses:

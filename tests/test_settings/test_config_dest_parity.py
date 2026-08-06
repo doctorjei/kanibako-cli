@@ -344,8 +344,12 @@ class TestScopeSecretDest:
 
 class TestCategoryDest:
 
+    # ⚑ ``box.bindings.ro.vault`` was the box row here until R-9 retired the
+    # scope-level bind CLI route; ``box.synced.vault`` replaces it (also CONCRETE,
+    # still settable). The retired spelling's own destination behaviour — the READ
+    # slot it keeps — is pinned by ``TestRetiredScopeBindDest`` below.
     @pytest.mark.parametrize("scope,key,dest", [
-        (ConfigLevel.box, "box.bindings.ro.vault", "box"),
+        (ConfigLevel.box, "box.synced.vault", "box"),
         (ConfigLevel.workset, "workset.caches.pip", "ws"),
         (ConfigLevel.system, "system.caches.pip", "ssp"),
     ])
@@ -365,7 +369,7 @@ class TestCategoryDest:
         assert node[parts[-1]] == [str(bench.tmp), _TUPLE[1], _TUPLE[2]]
 
     @pytest.mark.parametrize("scope,key,dest", [
-        (ConfigLevel.box, "box.bindings.ro.vault", "box"),
+        (ConfigLevel.box, "box.synced.vault", "box"),
         (ConfigLevel.system, "system.caches.pip", "ssp"),
     ])
     def test_reset_removes_from_the_same_file(self, bench, scope, key, dest):
@@ -381,6 +385,27 @@ class TestCategoryDest:
         bench.seed(bench.cf, ("system", "caches"), "pip", ["/cf", "/d"])
         bench.seed(bench.ssp, ("system", "caches"), "pip", ["/ssp", "/d"])
         assert "/ssp" in (bench.get(ConfigLevel.system, "system.caches.pip") or "")
+
+
+class TestRetiredScopeBindDest:
+    """R-9 — ``{system,workset,box}.bindings.{ro,rw}.<name>`` keeps a READ slot and
+    loses its WRITE route. The asymmetry is deliberate and is what the parity
+    bench exists to make visible rather than accidental."""
+
+    def test_get_still_finds_the_noun_settings_file(self, bench):
+        bench.seed(bench.box, ("box", "bindings", "ro"), "vault", list(_TUPLE))
+        got = bench.get(ConfigLevel.box, "box.bindings.ro.vault") or ""
+        assert _TUPLE[0] in got, got
+
+    def test_set_and_reset_refuse_and_touch_no_file(self, bench):
+        bench.seed(bench.box, ("box", "bindings", "ro"), "vault", list(_TUPLE))
+        before = bench.snapshot()
+        set_msg = bench.set(ConfigLevel.box, "box.bindings.ro.vault", str(bench.tmp))
+        reset_msg = bench.reset(ConfigLevel.box, "box.bindings.ro.vault")
+        assert set_msg.startswith("Error:") and "RETIRED" in set_msg, set_msg
+        assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
+        # ⚑ The bench's whole point: NO file moved. RED if a refusal still wrote.
+        assert bench.changed(before) == {}, bench.changed(before)
 
 
 # ---------------------------------------------------------------------------
