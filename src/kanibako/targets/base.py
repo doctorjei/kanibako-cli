@@ -816,7 +816,7 @@ class Target(ABC):
         return _AgentConfig(name=self.display_name)
 
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Translate crab-state values into CLI args and env vars.
+        """Translate agent-state values into CLI args and env vars.
 
         Returns ``(cli_args, env_vars)``.  Base implementation ignores all
         state keys.  Subclasses override to handle known keys.

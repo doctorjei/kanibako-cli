@@ -907,7 +907,10 @@ def bare_env_retired_error(
     quotes the user's spelling. That key is REAL and REACHABLE: this same change
     routed ``<scope>.env.<VAR>`` through get / set / reset
     (:func:`_is_scope_env_key`), so the cure is an instruction the user can
-    follow verbatim, not a pointer at an unimplemented key.
+    follow verbatim, not a pointer at an unimplemented key. The one scope that
+    cannot be named verbatim is ``agent``: it is DISCRIMINATED, so the cure
+    carries an explicit ``<agent>`` placeholder rather than the illegal bare
+    ``agent.env.<VAR>`` (see the guard below).
 
     ⚑ The docker ``.env`` FILES the bare spelling used to write are RETIRED
     OUTRIGHT (Jei's 2026-08-02 RQ-1 re-ruling; the ratified manifest records the
@@ -922,11 +925,28 @@ def bare_env_retired_error(
     if not _is_bare_env_key(key):
         return None
     var = key[len("env."):]
-    scope = command_scope.value if command_scope is not None else "box"
+    # ⚑ The AGENT scope is DISCRIMINATED (spec §0) — ``agent.env.<VAR>`` is NOT a
+    # key. ``ENV_KEY_RE``/``BIND_KEY_RE`` (settings_categories) spell the agent
+    # scope ``agent.<node>`` and REFUSE the bare ``agent.`` form outright, so
+    # ``command_scope.value`` would hand the user a SECOND illegal spelling to
+    # replace the first — a cure that cannot be followed. The agent arm names the
+    # discriminated form with an explicit ``<agent>`` placeholder instead.
+    #
+    # (The ``agent`` NOUN's own verbs never reach here: ``agent set <node>
+    # env.FOO=bar`` passes a key TAIL under an already-named node, which
+    # ``agent_file_route`` writes to the DECLARED ``agent.<node>.env.FOO``. This
+    # arm exists so the GENERIC engine cannot emit the illegal spelling if an
+    # agent-scope caller is ever wired into it.)
+    if command_scope is ConfigLevel.agent:
+        cure = f"agent.<agent>.env.{var}"
+        store = "agent"
+    else:
+        store = command_scope.value if command_scope is not None else "box"
+        cure = f"{store}.env.{var}"
     return (
         f"Error: '{key}' cannot be {verb} — the bare env.<VAR> spelling is "
-        f"RETIRED (the env family is scoped, spec §2a). Use '{scope}.env.{var}', "
-        f"which is stored in the {scope} settings file and exported into the box "
+        f"RETIRED (the env family is scoped, spec §2a). Use '{cure}', "
+        f"which is stored in the {store} settings file and exported into the box "
         f"at launch. The docker .env files the bare spelling wrote are no longer "
         f"read at all."
     )
