@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from kanibako.settings.config import KanibakoConfig
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
+    from kanibako.settings.settings_store import KeyStore
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -1603,7 +1604,6 @@ def _assemble_image_sharing_mounts(
             detect_graph_root,
             write_storage_conf,
         )
-        from kanibako.settings.settings_store import KeyStore
 
         graph_root = detect_graph_root(runtime.cmd)
         staging = proj.metadata_path / ".image-sharing"
@@ -1633,11 +1633,9 @@ def _assemble_image_sharing_mounts(
         )
         # The RESOLVED store (probed default OR a set tier value) gates the
         # emit — read off the snapshot, the PRIMARY SOURCE, with the UNBOUND
-        # dict.get protocol (S3; the config._resolve_box_scalars walk).
-        node: object = _img_snap
-        for seg in ("box", "images_store"):
-            node = dict.get(node, seg) if isinstance(node, KeyStore) else None
-        resolved_store = node if isinstance(node, str) and node else None
+        # dict.get protocol (S3; the config._resolve_box_scalars walk), spelled
+        # ONCE for the whole module in :func:`_snapshot_scalar`.
+        resolved_store = _snapshot_scalar(_img_snap, "box.images_store")
         if resolved_store is not None:
             img_mounts = _emit_category_mounts(_img_rec, label="images")
             extra_mounts.extend(img_mounts)
@@ -6734,7 +6732,7 @@ def _seed_box_home(
     The SINGLE seed implementation, shared by `box create` (`run_create`) and the
     `start` auto-create path.  Runs ATOMICALLY-after registration (the caller
     gates on the just-registered signal, ``proj.is_new``); it is NEVER run on a
-    relaunch of an existing box.  Two ordered, create-if-absent steps (so a
+    relaunch of an existing box.  THREE ordered, create-if-absent steps (so a
     re-create into a leftover dir never clobbers user content):
 
     1. the descriptor's one-time credential seed (descriptor-bearing targets
@@ -6746,6 +6744,18 @@ def _seed_box_home(
        ``seeded`` keys resolved off the committed snapshot in
        :func:`_apply_init_seeds`, which stages the ``~``-targeted layers in scope
        order there.
+    3. the box's own HANDBOOK CHAPTER — a HOST-side template copy, NOT a seed and
+       NOT a ``seeded`` category entry (Jei, 2026-08-07g: the handbook templates
+       *"do not DIRECTLY interact with the box itself … They are HOST templates,
+       not GUEST templates"*).  A SIBLING of step 2, deliberately outside it: it
+       fills ``@box.canon/handbook``, which no guest ever sees — the RO
+       ``canon_hb_box`` BIND is what delivers it at ``~/canon/handbook/box``, and
+       that bind is an ordinary key, so single-route is intact.
+       ⚑ TRANSITIONAL (phase H1): the three ``<scope>.seeded.handbook`` layers are
+       STILL declared and still applied by step 2.  Both routes are create-if-
+       absent over the same layers in the same order, so they compose and land
+       identical bytes; step 2's handbook arm is removed in H2, once this route is
+       proven to deliver.
 
     The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
     per-launch mechanisms and are NOT part of this one-time seed.
@@ -6756,11 +6766,89 @@ def _seed_box_home(
             project_home=proj.shell_path,
             suppress_oauth=suppress_oauth,
         )
-    _apply_init_seeds(
+    snapshot = _apply_init_seeds(
         std=std, proj=proj, agent_name=agent_id, target=target,
         global_config_path=system_settings_path, agent_config_path=agent_cfg_path,
         logger=logger, deliver_creds=auth_src.creds_shared,
     )
+    _install_box_handbook(
+        proj=proj, snapshot=snapshot, agent_id=agent_id, logger=logger,
+    )
+
+
+def _snapshot_scalar(snapshot: "KeyStore", dotted: str) -> str | None:
+    """The resolved non-empty STRING leaf at *dotted*, or ``None``.
+
+    The UNBOUND read protocol (S3) against the PRIMARY SOURCE — the built snapshot —
+    spelled ONCE for every caller here that needs a resolved scalar rather than a
+    category winner.  A missing node, a non-``KeyStore`` intermediate, a non-string
+    leaf and an empty string all read as ``None``: an unset key is absent, never a
+    fabricated default.
+    """
+    from kanibako.settings.settings_store import KeyStore
+
+    node: object = snapshot
+    for seg in dotted.split("."):
+        node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+    return node if isinstance(node, str) and node else None
+
+
+def _install_box_handbook(
+    *, proj, snapshot: "KeyStore", agent_id: str, logger,
+) -> None:
+    """Fill the new box's OWN handbook chapter from the three HOST template layers.
+
+    Step 3 of :func:`_seed_box_home`, and the seam that turns KEYS into paths: the
+    dest (``box.canon``) and the three layer roots
+    (:func:`~kanibako.launch.templates.handbook_layer_source_keys` —
+    ``system.template`` / ``agent.<a>.template`` / ``workset.template``) are read
+    RESOLVED off the snapshot :func:`_apply_init_seeds` just built, and passed in as
+    parameters.  Resolving them HERE rather than inside the copier is the
+    pass-non-settings-as-parameters rule, and reusing THAT snapshot rather than
+    building a second one is why the copy cannot disagree with the seed about what a
+    repointed ``workset.template`` means.
+
+    ⚑ THE ONE DEST POLICY on this path is :func:`_host_copy_dest`, right here, for
+    the SAME reason the seeded host arm uses it — §2a enforcement point 2, a
+    ``box.canon`` repointed outside the box store is SKIPPED with a warning rather
+    than written, and rather than raised (a mis-declared key must not cost the user
+    the box).  A ``box.canon`` repointed INSIDE the box store is therefore ACCEPTED,
+    exactly as the ``seeded`` route accepts it; the copier applies no second,
+    stricter dest check of its own (see :func:`install_box_handbook_template` —
+    "NO DEST WHITELIST HERE").
+    """
+    from kanibako.launch.templates import (
+        handbook_layer_source_keys,
+        install_box_handbook_template,
+    )
+
+    box_canon = _snapshot_scalar(snapshot, "box.canon")
+    if box_canon is None:
+        logger.warning(
+            "handbook template: box.canon did not resolve; the box's own "
+            "handbook chapter was not filled",
+        )
+        return
+    box_root = Path(proj.shell_path).parent
+    dest = _host_copy_dest(
+        f"{box_canon}/handbook", box_root,
+        label="handbook template", name="@box.canon/handbook", logger=logger,
+    )
+    if dest is None:
+        return
+    roots: list[Path] = []
+    for key in handbook_layer_source_keys(proj, agent_id or None):
+        root = _snapshot_scalar(snapshot, key)
+        if root is None:
+            # An unresolved SOURCE key is a dropped layer, not a failed create —
+            # the same shape as the skip-if-absent a layer dir gets on disk.
+            logger.warning(
+                "handbook template: source key %s did not resolve; layer skipped",
+                key,
+            )
+            continue
+        roots.append(Path(root))
+    install_box_handbook_template(dest, roots)
 
 
 def persona_create_verdict(
@@ -7173,8 +7261,14 @@ def _apply_init_seeds(
     agent_config_path,
     logger,
     deliver_creds: bool = True,
-) -> None:
+) -> "KeyStore":
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
+
+    RETURNS the expanded launch snapshot this resolve built, so the caller's SIBLING
+    ordered steps (:func:`_seed_box_home` step 3, the HOST-side handbook template
+    copy) read resolved keys off the SAME snapshot instead of building a second one
+    — two builds could disagree about a repointed ``workset.template``, and this
+    function already runs the one resolve that has the answer.
 
     ADDITIVE: with no seed config and no target default seeds, copies nothing.
     Routes the category config through the reconcile model
@@ -7227,7 +7321,7 @@ def _apply_init_seeds(
     # template layer keys (NOT the unrelated core/channel/share families). The
     # agent-binding inputs (``desc``/``install``) are omitted — they feed only
     # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
-    _snapshot, reconciled = _resolve_launch_snapshot(
+    snapshot, reconciled = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -7300,6 +7394,7 @@ def _apply_init_seeds(
             label="seed", name=seed.name, host_src=seed.host_src,
             logger=logger, if_absent=True,
         )
+    return snapshot
 
 
 def _apply_synced_copies(

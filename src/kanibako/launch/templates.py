@@ -748,6 +748,144 @@ def install_workset_template(std: StandardPaths, workset_path: Path) -> None:
     (workset_path / "canon" / "handbook").mkdir(parents=True, exist_ok=True)
 
 
+# ---------------------------------------------------------------------------
+# ⚑⚑⚑ QUARANTINE — A NAMED SPECIAL CASE.  DO NOT COPY THIS SHAPE.
+#
+# Everything between here and ``install_packaged_templates`` is the BOX HANDBOOK
+# host-template copy, and it is a DELIBERATE, RULED EXCEPTION to the live model.
+#
+#   THE LIVE MODEL for a host template is the SINGLE-SOURCE copy immediately
+#   above — ``install_workset_template``: one mould, one ``copy_tree``, one
+#   whitelist.  A new host template follows THAT.
+#
+#   THIS ONE stages THREE ordered layers.  Jei, 2026-08-07g, ruling on the
+#   handbook specifically: *"Yes, handbook copy keeps all three layers. It is a
+#   special case."*  It is the ONE place the single-source shape does not reach,
+#   and he named that himself.  ⚑ It is NOT a pattern, NOT a precedent, and must
+#   not be imitated for any other host template.
+#
+# WHY IT IS HERE AT ALL — the HOST/GUEST criterion (his ruling, verbatim): *"we
+# should NOT be copying the handbook templates as if they are 'box' templates -
+# they are system level templates that happen to be generated on behalf of a box,
+# but crucially, they do not DIRECTLY interact with the box itself. That's the key.
+# They are HOST templates, not GUEST templates."*  The box-HOME templates land in
+# the very directory the guest sees at ``~`` ⇒ GUEST, and they stay in the
+# ``seeded`` category.  The handbook templates fill a HOST location that a separate
+# RO bind (``canon_hb_box``: ``@box.canon/handbook`` -> ``~/canon/handbook/box``)
+# later reads ⇒ HOST, so they leave the category and are copied here instead.
+#
+# ⚑⚑ SINGLE-ROUTE IS INTACT, NOT BENT.  Single-route governs what enters A BOX.  A
+# host template never enters one; what enters is the RO BIND, which remains an
+# ordinary settings key.  Bespoke host-side copy + keyed bind = single route.
+#
+# ⚑⚑ AND THE THREE LAYERS ARE NOT REDUNDANT WITH THE CHAPTER BINDS — measured, so
+# that nobody "simplifies" them to one source.  The five ``canon_hb_*`` binds read
+# each scope's OWN canon store (``@system.canon/handbook``,
+# ``@agent.<active>.canon/handbook``, ``@workset.canon/handbook``).  These three
+# layers read each scope's TEMPLATE subdir (``<scope>.template/box/canon/handbook``)
+# — *what that scope wants in a NEW BOX's own chapter*.  DIFFERENT TREES.
+# Collapsing to one source would silently DROP the agent's and the workset's
+# contributions to the box chapter.
+# ---------------------------------------------------------------------------
+
+
+def handbook_layer_source_keys(
+    proj: ProjectPaths, agent_id: str | None
+) -> tuple[str, ...]:
+    """The ORDERED dotted SOURCE keys whose values root the three handbook layers.
+
+    ``system.template`` -> ``agent.<a>.template`` -> ``workset.template``, lowest
+    layer first, gated exactly as the box-home layers are gated (no agent bound ->
+    no agent layer; STANDALONE has no workset tier -> no workset layer).
+
+    ⚑ DERIVED FROM :func:`template_seed_defaults`, not restated beside it, and that
+    is the whole point of the function: the per-agent / per-workset SOURCE scalars
+    are declared THERE, so the gate that decides whether a layer exists is read from
+    the one table rather than re-implemented here where it could drift.
+    ``system.template`` is not in that table because it is already floor-
+    materialized (a ``system.*`` settings-tier path), so it is named directly.
+
+    ⚑ THESE STAY KEYS.  They are separate declared SOURCE keys — NOT ``seeded``
+    entries — and they carry the user's repoint route (``config set
+    workset.template`` reroutes this copy, pinned by the repoint tests).  The
+    handbook copy leaving the ``seeded`` category does not make its sources any less
+    keyed: the caller resolves these off the launch snapshot and passes the resolved
+    roots in.  Nothing here hardcodes a path.
+    """
+    defs = template_seed_defaults(proj, agent_id)
+    keys = ["system.template"]
+    agent_key = f"agent.{agent_id}.template" if agent_id else None
+    if agent_key is not None and agent_key in defs:
+        keys.append(agent_key)
+    if "workset.template" in defs:
+        keys.append("workset.template")
+    return tuple(keys)
+
+
+def install_box_handbook_template(
+    dest: Path, layer_roots: Iterable[Path],
+) -> None:
+    """Fill a NEW box's OWN handbook chapter from the three host template layers.
+
+    ⚑⚑⚑ **THE SPECIAL CASE.  READ THE QUARANTINE BLOCK ABOVE BEFORE COPYING ANY OF
+    THIS.**  The live host-template shape is :func:`install_workset_template`
+    (single source); three ordered layers here are a RULED exception to it.
+
+    *dest* is the resolved ``@box.canon/handbook`` — the box store's CONTRIBUTION
+    root, which lives OUTSIDE the box home and is the SOURCE of the RO
+    ``canon_hb_box`` bind.  *layer_roots* are the RESOLVED ``<scope>.template``
+    roots in apply order (system -> agent -> workset), each of which contributes its
+    ``box/canon/handbook`` subtree.
+
+    ⚑ THE ROOTS ARE PARAMETERS, DELIBERATELY.  They are settings keys
+    (:func:`handbook_layer_source_keys`) and are resolved at the seam that already
+    holds the launch snapshot; this function neither re-resolves them nor keeps
+    module state, so nothing here can disagree with what the snapshot said.
+
+    SEED-ONCE / CREATE-IF-ABSENT: the layers are merged per-file last-wins in a temp
+    dir and then copied in CREATE-IF-ABSENT (:func:`stage_layers`), so a re-create
+    into a leftover box store never overwrites a chapter the user has edited.  That
+    failsafe answers a shipped data-loss bug; it is not refactorable away.
+    SKIP-IF-ABSENT: a layer whose ``box/canon/handbook`` dir does not exist is
+    skipped (an unpopulated ``@workset.template`` is the normal case).
+
+    GUARANTEE-CREATE, and it is a real (intended) behaviour change, so it is stated
+    rather than left to be discovered: the ``mkdir`` below is UNCONDITIONAL, so
+    ``@box.canon/handbook`` exists after every create even when all three layers are
+    empty or absent.  The RO ``canon_hb_box`` bind is declared ``optional: true``,
+    i.e. omitted when its source is missing — so it now ALWAYS mounts, and a user who
+    has emptied all three handbook template subtrees gets an EMPTY read-only mount
+    where the bind used to be dropped.  :func:`install_workset_template` guarantee-
+    creates its own ``canon/handbook`` the same way for the same reason (the chapter
+    is a place the user is expected to fill later, not an artefact of the template).
+
+    ⚑ NO DEST WHITELIST HERE, and that is deliberate — do not "restore" one.  There
+    is ONE dest policy on this path: ``_host_copy_dest``'s warn-and-skip at the
+    caller.  A ``scope="box"`` :data:`SCOPE_WHITELISTS` check would be a SECOND
+    SPELLING OF THE SAME CONDITION (CONVENTIONS §0), because it could only ever fire
+    on the DEST: the dest is key-fixed at ``@box.canon/handbook`` and
+    :func:`stage_layers` builds its relative paths by ``rglob`` UNDER the staged tree,
+    so layer CONTENT cannot reach a non-whitelisted top-level entry of the box store
+    no matter what a template ships.  Two checks on one condition, disagreeing about
+    severity (raise vs skip), is worse than one.
+    ⚑ This is where it differs from :func:`install_workset_template`, whose whitelist
+    guards something real: that mould lands at ``<workset_path>`` — for a STANDALONE
+    project, the user's OWN directory — where template CONTENT could plant a
+    ``settings.yaml`` or a ``registry.yaml``.  Its whitelist is not an oversight
+    missing here; the two copies simply have different attack surfaces.
+
+    NO PRE-FLIGHT TWIN, decided explicitly (contrast :func:`check_workset_template`).
+    ``workset create`` needs one because :func:`install_workset_template` can REFUSE
+    part-way, leaving a REGISTERED workset only ``workset rm`` can clean up.  This
+    copy has no refusal to pre-flight: the one dest policy is warn-and-skip, so a
+    misdeclared ``box.canon`` costs the box its handbook chapter and nothing else,
+    and the box is left well-formed.  A second validator would be a second copy of
+    rules with nothing to prevent, free to drift.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    stage_layers(dest, [Path(root) / _SEED_SRC_HANDBOOK for root in layer_roots])
+
+
 def install_packaged_templates(
     std: StandardPaths, agent_names: list[str], refresh: bool = False,
 ) -> None:

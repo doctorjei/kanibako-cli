@@ -18,6 +18,8 @@ from kanibako.launch.templates import (
     _packaged_base_template,
     _packaged_manifest_entries,
     copy_resource_tree_if_absent,
+    handbook_layer_source_keys,
+    install_box_handbook_template,
     install_packaged_templates,
     packaged_templates_digest,
     plan_template_refresh,
@@ -467,6 +469,429 @@ class TestLayeredHomeSeed:
             _seed(std, primary_proj)
         assert not (escape / "handbook").exists()
         assert any("outside the box store" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# The BOX HANDBOOK HOST-TEMPLATE copy (phase H1) — Jei's 2026-08-07g ruling: the
+# handbook templates are HOST templates, not GUEST templates, so they are copied
+# beside the workset mould rather than delivered through the ``seeded`` category.
+#
+# ⚑ PHASE H1 IS ADDITIVE: the three ``<scope>.seeded.handbook`` layers are STILL
+# declared and still applied by ``_apply_init_seeds``.  The tests below that drive
+# the seam therefore WIPE the seeded route's output before invoking this one, so
+# what they observe is this route and not its twin.  H2 removes the twin.
+# ---------------------------------------------------------------------------
+
+def _handbook_dir(proj):
+    """``@box.canon/handbook`` at its DEFAULT resolution — a sibling of the home."""
+    return proj.shell_path.parent / "canon" / "handbook"
+
+
+def _tree(root):
+    """``{relative path: bytes}`` for every file under *root* (missing -> ``{}``)."""
+    if not root.is_dir():
+        return {}
+    return {
+        str(p.relative_to(root)): p.read_bytes()
+        for p in sorted(root.rglob("*")) if p.is_file()
+    }
+
+
+def _seed_and_isolate_handbook(std, proj, *, agent="claude"):
+    """Run the real seed, WIPE the seeded route's handbook output, return the
+    snapshot — so the caller's ``_install_box_handbook`` runs against a clean dest
+    and nothing it observes can have come from the still-live ``seeded`` layers."""
+    from kanibako.commands.start import _apply_init_seeds
+
+    snapshot = _apply_init_seeds(
+        std=std,
+        proj=proj,
+        agent_name=agent,
+        target=_FakeTarget() if agent else None,
+        global_config_path=std.settings,
+        agent_config_path=std.agents / "claude" / "settings.yaml",
+        logger=logging.getLogger("test-seed"),
+    )
+    shutil.rmtree(_handbook_dir(proj), ignore_errors=True)
+    return snapshot
+
+
+def _install_handbook(std, proj, *, agent="claude", logger=None):
+    """Drive step 3 alone, off the snapshot the seed resolve built."""
+    from kanibako.commands.start import _install_box_handbook
+
+    snapshot = _seed_and_isolate_handbook(std, proj, agent=agent)
+    _install_box_handbook(
+        proj=proj, snapshot=snapshot, agent_id=agent,
+        logger=logger or logging.getLogger("test-handbook"),
+    )
+
+
+def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
+    """Drive the WHOLE create-time seed — all three ordered steps of the real
+    ``_seed_box_home``, which is what ``box create`` calls."""
+    from types import SimpleNamespace
+
+    from kanibako.commands.start import _seed_box_home
+
+    _seed_box_home(
+        std=std,
+        proj=proj,
+        target=_FakeTarget() if agent else None,
+        desc=None,
+        agent_id=agent,
+        agent_cfg_path=std.agents / "claude" / "settings.yaml",
+        system_settings_path=std.settings,
+        auth_src=SimpleNamespace(creds_shared=deliver_creds),
+        logger=logging.getLogger("test-seed"),
+    )
+
+
+class TestHandbookLayerSourceKeys:
+    """``handbook_layer_source_keys`` names the ORDERED source KEYS — derived from
+    ``template_seed_defaults`` so the layer gate cannot drift between the two."""
+
+    def test_three_keys_in_apply_order(self, primary_proj):
+        assert handbook_layer_source_keys(primary_proj, "claude") == (
+            "system.template", "agent.claude.template", "workset.template",
+        )
+
+    def test_no_agent_omits_the_agent_layer(self, primary_proj):
+        assert handbook_layer_source_keys(primary_proj, None) == (
+            "system.template", "workset.template",
+        )
+
+    def test_standalone_omits_the_workset_layer(self, standalone_proj):
+        assert handbook_layer_source_keys(standalone_proj, "claude") == (
+            "system.template", "agent.claude.template",
+        )
+
+    def test_every_key_is_one_template_seed_defaults_declares(self, primary_proj):
+        """THE DRIFT PIN.  ``system.template`` is floor-materialized (a ``system.*``
+        settings-tier path) and so is not in the table; every OTHER key must be a
+        SOURCE scalar the table declares — never a path this module invented."""
+        defs = template_seed_defaults(primary_proj, "claude")
+        keys = handbook_layer_source_keys(primary_proj, "claude")
+        assert keys[0] == "system.template"
+        assert "system.template" not in defs
+        for key in keys[1:]:
+            assert key in defs, key
+            # A SOURCE scalar (an ``@``-ref string), NOT a seeded (src, dest) tuple.
+            assert isinstance(defs[key], str)
+
+
+class TestInstallBoxHandbookTemplate:
+    """The copier itself, driven directly: three ordered layers, create-if-absent,
+    skip-if-absent, guarantee-create — and NO dest whitelist of its own."""
+
+    def _roots(self, tmp_path, spec):
+        """Build ``<root>/box/canon/handbook/<rel>`` trees; ``None`` = no dir."""
+        roots = []
+        for name, files in spec:
+            root = tmp_path / name
+            roots.append(root)
+            if files is None:
+                continue
+            d = root / "box" / "canon" / "handbook"
+            d.mkdir(parents=True)
+            for rel, content in files.items():
+                p = d / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(content)
+        return roots
+
+    def _box(self, tmp_path):
+        """The DEST alone — ``@box.canon/handbook`` at its default resolution.
+
+        The copier takes no box root: there is ONE dest policy on this path and it
+        lives at the caller (``start._host_copy_dest``).  See
+        ``install_box_handbook_template``'s "NO DEST WHITELIST HERE".
+        """
+        box_root = tmp_path / "boxes" / "mybox"
+        (box_root / "home").mkdir(parents=True)
+        return box_root / "canon" / "handbook"
+
+    def test_all_three_layers_land(self, tmp_path):
+        dest = self._box(tmp_path)
+        roots = self._roots(tmp_path, [
+            ("sys", {"a.md": "sys", "shared.md": "sys"}),
+            ("agent", {"b.md": "agent", "shared.md": "agent"}),
+            ("ws", {"c/deep.md": "ws", "shared.md": "ws"}),
+        ])
+        install_box_handbook_template(dest, roots)
+        assert (dest / "a.md").read_text() == "sys"
+        assert (dest / "b.md").read_text() == "agent"
+        assert (dest / "c" / "deep.md").read_text() == "ws"
+
+    def test_order_last_wins_per_file(self, tmp_path):
+        dest = self._box(tmp_path)
+        roots = self._roots(tmp_path, [
+            ("sys", {"shared.md": "sys"}),
+            ("agent", {"shared.md": "agent"}),
+            ("ws", {"shared.md": "ws"}),
+        ])
+        install_box_handbook_template(dest, roots)
+        assert (dest / "shared.md").read_text() == "ws"
+
+    def test_agent_overlays_system_when_workset_is_silent(self, tmp_path):
+        dest = self._box(tmp_path)
+        roots = self._roots(tmp_path, [
+            ("sys", {"shared.md": "sys"}),
+            ("agent", {"shared.md": "agent"}),
+            ("ws", {}),
+        ])
+        install_box_handbook_template(dest, roots)
+        assert (dest / "shared.md").read_text() == "agent"
+
+    def test_absent_layer_dir_is_skipped(self, tmp_path):
+        """An unpopulated ``@workset.template`` is the NORMAL case — the layer is
+        skipped and the others still land (no crash, no empty-dir sentinel)."""
+        dest = self._box(tmp_path)
+        roots = self._roots(tmp_path, [
+            ("sys", {"a.md": "sys"}),
+            ("agent", None),
+            ("ws", None),
+        ])
+        install_box_handbook_template(dest, roots)
+        assert (dest / "a.md").read_text() == "sys"
+        assert sorted(p.name for p in dest.rglob("*")) == ["a.md"]
+
+    def test_all_layers_absent_still_guarantee_creates_the_dest(self, tmp_path):
+        """GUARANTEE-CREATE, and the consequence is intended: because the dir always
+        exists after create, the ``optional: true`` RO bind ``canon_hb_box`` ALWAYS
+        mounts — a user who has emptied all three template subtrees gets an EMPTY
+        read-only mount where the bind used to be omitted.
+        ``install_workset_template`` guarantee-creates its chapter the same way."""
+        dest = self._box(tmp_path)
+        roots = self._roots(tmp_path, [("sys", None), ("agent", None)])
+        install_box_handbook_template(dest, roots)
+        assert dest.is_dir()
+        assert list(dest.rglob("*")) == []
+
+    def test_existing_dest_file_is_never_clobbered(self, tmp_path):
+        """CREATE-IF-ABSENT, the failsafe against the shipped re-seed data-loss bug:
+        a chapter file the user has edited survives a re-create into a leftover box
+        store, even when EVERY layer ships that same file."""
+        dest = self._box(tmp_path)
+        dest.mkdir(parents=True)
+        (dest / "shared.md").write_text("USER OWNED")
+        roots = self._roots(tmp_path, [
+            ("sys", {"shared.md": "sys", "new.md": "sys"}),
+            ("agent", {"shared.md": "agent"}),
+        ])
+        install_box_handbook_template(dest, roots)
+        assert (dest / "shared.md").read_text() == "USER OWNED"
+        # ...and the copy is still ADDITIVE around it.
+        assert (dest / "new.md").read_text() == "sys"
+
+    def test_the_copier_applies_no_dest_whitelist_of_its_own(self, tmp_path):
+        """⚑ THE ANTI-RESTORATION PIN.  There is ONE dest policy on this path —
+        ``start._host_copy_dest``'s warn-and-skip at the caller — and the copier
+        deliberately adds no ``scope="box"`` :data:`SCOPE_WHITELISTS` check of its
+        own.  A dest inside the box store but OUTSIDE ``canon/handbook`` is COPIED,
+        not refused: the whitelist could only ever fire on the dest (which is
+        key-fixed, and already checked with the opposite severity), never on layer
+        CONTENT, because ``stage_layers`` builds its relative paths by ``rglob``
+        under the staged tree.  Two spellings of one condition (CONVENTIONS §0).
+        If this test starts failing, a whitelist has been "restored" — read the
+        function docstring before changing it back."""
+        box_root = tmp_path / "boxes" / "mybox"
+        (box_root / "home").mkdir(parents=True)
+        roots = self._roots(tmp_path, [("sys", {"a.md": "sys"})])
+        repointed = box_root / "canon2" / "handbook"  # NOT ``canon/handbook``.
+        install_box_handbook_template(repointed, roots)
+        assert (repointed / "a.md").read_text() == "sys"
+
+    def test_layer_content_cannot_escape_the_dest_subtree(self, tmp_path):
+        """And the reason no content whitelist is owed: ``stage_layers`` relativises
+        every entry UNDER each layer root, so a layer that ships a top-level name the
+        box whitelist would deny (``settings.yaml``, ``registry.yaml``) still lands
+        INSIDE the dest — it cannot reach a sibling entry of the box store."""
+        dest = self._box(tmp_path)
+        box_root = dest.parent.parent
+        roots = self._roots(tmp_path, [
+            ("sys", {"settings.yaml": "x", "registry.yaml": "y"}),
+        ])
+        install_box_handbook_template(dest, roots)
+        assert (dest / "settings.yaml").read_text() == "x"
+        assert not (box_root / "settings.yaml").exists()
+        assert not (box_root / "registry.yaml").exists()
+
+
+class TestBoxHandbookHostCopyThroughTheSeam:
+    """The ``_seed_box_home`` step-3 seam: KEYS in, resolved paths out."""
+
+    def _populate(self, std):
+        install_packaged_templates(std, ["claude"])
+        for root, marker in (
+            (std.template, "sys"),
+            (std.agents / "claude" / "template", "agent"),
+            (std.primary_workset / "template", "workset"),
+        ):
+            d = root / "box" / "canon" / "handbook"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"{marker}-only.md").write_text(marker)
+            (d / "shared.md").write_text(marker)
+
+    def test_the_copy_fills_box_canon_handbook_from_all_three_layers(
+        self, std, config, primary_proj,
+    ):
+        self._populate(std)
+        _install_handbook(std, primary_proj)
+        hb = _handbook_dir(primary_proj)
+        assert (hb / "sys-only.md").read_text() == "sys"
+        assert (hb / "agent-only.md").read_text() == "agent"
+        assert (hb / "workset-only.md").read_text() == "workset"
+        assert (hb / "shared.md").read_text() == "workset"
+        # The packaged box chapter rides the system layer.
+        assert (hb / "directives" / "SYS_BOX.md").is_file()
+
+    def test_it_lands_on_the_host_store_and_never_in_the_box_home(
+        self, std, config, primary_proj,
+    ):
+        """It is a HOST template: nothing it writes may appear under the box home,
+        which is the directory the guest actually sees at ``~``."""
+        self._populate(std)
+        _install_handbook(std, primary_proj)
+        assert _handbook_dir(primary_proj).parent != primary_proj.shell_path
+        assert not list(primary_proj.shell_path.rglob("sys-only.md"))
+
+    def test_a_no_agent_box_gets_system_and_workset_only(
+        self, std, config, primary_proj,
+    ):
+        """⚑ END-TO-END CONFIRMATION, NOT THE PIN.  ``agent-only.md`` is absent here
+        for TWO independent reasons (the key list omits the agent layer, AND the
+        no-agent snapshot never declares ``agent.<a>.template`` for it to resolve),
+        so this negative does not discriminate on its own — it survives a mutation
+        that puts the agent key back.  The DISCRIMINATING pin is
+        ``TestHandbookLayerSourceKeys.test_no_agent_omits_the_agent_layer``."""
+        self._populate(std)
+        _install_handbook(std, primary_proj, agent="")
+        hb = _handbook_dir(primary_proj)
+        assert (hb / "sys-only.md").is_file()
+        assert (hb / "workset-only.md").is_file()
+        assert not (hb / "agent-only.md").exists()
+        assert (hb / "shared.md").read_text() == "workset"
+
+    def test_workset_template_repoint_reroutes_the_copy(
+        self, std, config, primary_proj, tmp_path,
+    ):
+        """MUTATION PROOF that the sources are KEYS: setting ``workset.template`` in
+        the workset settings file reroutes layer 3.  Nothing here reads a path this
+        module chose."""
+        self._populate(std)
+        custom = tmp_path / "custom-tpl" / "box" / "canon" / "handbook"
+        custom.mkdir(parents=True)
+        (custom / "CUSTOM.md").write_text("custom")
+
+        wsf = std.primary_workset / "settings.yaml"
+        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+        doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
+        wsf.write_text(yaml.safe_dump(doc))
+
+        _install_handbook(std, primary_proj)
+        hb = _handbook_dir(primary_proj)
+        assert (hb / "CUSTOM.md").read_text() == "custom"
+        # The DEFAULT workset template dir is no longer read.
+        assert not (hb / "workset-only.md").exists()
+
+    def _set_box_canon(self, std, value):
+        """Repoint ``box.canon`` in the workset settings file — the user's route."""
+        wsf = std.primary_workset / "settings.yaml"
+        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+        doc.setdefault("box", {})["canon"] = str(value)
+        wsf.write_text(yaml.safe_dump(doc))
+
+    def test_an_escaping_box_canon_is_skipped_with_a_warning(
+        self, std, config, primary_proj, caplog, tmp_path,
+    ):
+        """§2a enforcement point 2, and the ONE dest policy on this path: a
+        ``box.canon`` outside the box store is refused by SKIPPING with a warning,
+        not by raising — a mis-declared key must not cost the user the box.
+
+        ⚑ Driven through the WHOLE ``_seed_box_home``, not step 3 alone, because
+        "does not cost the user the box" is the claim: create must still complete and
+        the box's other seeds must still be on disk afterwards."""
+        self._populate(std)
+        escape = tmp_path / "ESCAPED"
+        self._set_box_canon(std, escape)
+        with caplog.at_level(logging.WARNING):
+            _seed_box(std, primary_proj)     # steps 1-3, as ``box create`` runs
+        # Nothing was written outside the box store...
+        assert not escape.exists()
+        assert not (escape / "handbook").exists()
+        # ...the skip was LOUD...
+        assert any(
+            "handbook template" in r.getMessage()
+            and "outside the box store" in r.getMessage()
+            for r in caplog.records
+        )
+        # ...and the create still succeeded: the box HOME seed landed regardless.
+        assert (
+            primary_proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+        ).is_file()
+
+    def test_a_box_canon_repointed_inside_the_box_store_still_creates(
+        self, std, config, primary_proj,
+    ):
+        """⚑ THE REGRESSION THIS FIX EXISTS TO PREVENT.  ``box.canon`` repointed to
+        another entry INSIDE the box store is a legal, accepted configuration: the
+        one dest policy (``_host_copy_dest``) checks CONTAINMENT only, so ``box
+        create`` SUCCEEDS and the chapter lands at the repointed dest.
+
+        A ``scope="box"`` whitelist on the copier would have RAISED here —
+        ``canon2`` is not in ``SCOPE_WHITELISTS["box"]`` — killing a create the
+        ``seeded`` route has always allowed.  That is why there is only one check.
+
+        TWO passes, because under H1 both routes are live: the first is the WHOLE
+        ``_seed_box_home`` (the "create succeeds" claim), the second wipes the dest
+        and drives step 3 alone (so what refills it can only be THIS route)."""
+        from kanibako.commands.start import _install_box_handbook
+
+        self._populate(std)
+        box_root = primary_proj.shell_path.parent
+        self._set_box_canon(std, box_root / "canon2")
+        hb = box_root / "canon2" / "handbook"
+
+        _seed_box(std, primary_proj)         # steps 1-3; must NOT raise
+        assert (hb / "sys-only.md").read_text() == "sys"
+        assert (hb / "workset-only.md").read_text() == "workset"
+        # The create completed: the box home seed landed too.
+        assert (
+            primary_proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+        ).is_file()
+
+        # Step 3 ALONE also accepts the repointed dest.
+        snapshot = _seed_and_isolate_handbook(std, primary_proj)
+        shutil.rmtree(hb, ignore_errors=True)
+        _install_box_handbook(
+            proj=primary_proj, snapshot=snapshot, agent_id="claude",
+            logger=logging.getLogger("test-handbook"),
+        )
+        assert (hb / "sys-only.md").read_text() == "sys"
+
+    def test_box_create_is_byte_identical_with_and_without_the_new_call(
+        self, std, config, tmp_home,
+    ):
+        """⚑ THE H1 COMPOSITION CHECK.  Both routes are live this phase; they are
+        create-if-absent over the same layers in the same order, so a box created
+        WITH step 3 has a byte-for-byte identical ``@box.canon/handbook`` to one
+        created without it."""
+        self._populate(std)
+        one = tmp_home / "proj-seed-only"
+        one.mkdir()
+        two = tmp_home / "proj-both-routes"
+        two.mkdir()
+        seed_only = resolve_project(std, config, str(one), initialize=True)
+        both = resolve_project(std, config, str(two), initialize=True)
+
+        _seed(std, seed_only)          # step 2 alone (the ``seeded`` route)
+        _seed_box(std, both)           # steps 1-3, exactly as ``box create`` runs
+
+        before = _tree(_handbook_dir(seed_only))
+        after = _tree(_handbook_dir(both))
+        assert before, "the seeded route delivered nothing — the check is vacuous"
+        assert after == before
 
 
 # ---------------------------------------------------------------------------
