@@ -10,7 +10,7 @@ from kanibako.settings.agent_defaults import load_category_binds, load_descripto
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
-    BindDefault,
+    CategoryBindDefaults,
     CredFileSpec,
     PluginDescriptor,
     Target,
@@ -62,7 +62,7 @@ class GooseTarget(Target):
     def descriptor(self) -> PluginDescriptor | None:
         return _GOOSE_DESCRIPTOR
 
-    def default_category_binds(self) -> dict[str, BindDefault]:
+    def default_category_binds(self) -> CategoryBindDefaults:
         """Declare goose's AGENT-scope ``@``-ref-sourced category binds.
 
         Read from ``goose-defaults.yaml`` (via the loader).  Currently EMPTY: the

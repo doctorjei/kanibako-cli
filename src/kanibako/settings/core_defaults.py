@@ -96,7 +96,7 @@ def vault_mask_default() -> list[str]:
 BindArmTable = dict[str, dict[str, tuple[str, ...]]]
 
 
-def _add_bind(
+def add_bind(
     binds: dict[str, Any],
     category: str,
     box_dest: str,
@@ -107,7 +107,8 @@ def _add_bind(
 ) -> None:
     """Install ONE dest-keyed entry into the ``<scope>.<category>`` arm of *binds*.
 
-    The single constructor every floor producer in this module goes through, so
+    The single constructor every floor producer — in this module and in the
+    plugin loader (:mod:`kanibako.settings.agent_defaults`) — goes through, so
     the arm key, the R-11 destination normalization and the act-once refusal are
     written ONCE rather than at ten call sites (disk-store rework R-3/R-6/R-11).
 
@@ -199,7 +200,7 @@ def channel_default_categories(
         # (byte-identical, JC-B2-4).  The ``source`` gate above still applies (so a
         # workset-scoped meta_ref entry on a standalone box is still omitted).
         host_src = entry.get("meta_ref", sources[source])
-        _add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
+        add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
     return binds
 
 
@@ -219,7 +220,7 @@ def core_default_categories(
 
     Per spec §2a a binding is STRUCTURED, never a colon-joined string.  Under
     dest-keying (R-3/R-5) the DESTINATION is the map key — R-11-absolutized by
-    :func:`_add_bind`, so the file's ``~`` is stored as ``/home/agent/...`` — and
+    :func:`add_bind`, so the file's ``~`` is stored as ``/home/agent/...`` — and
     the per-entry mount OPTIONS are the value's OPTIONAL 2nd slot, consumed by
     :func:`~kanibako.settings.settings_resolve.unpack_bind_entry` (present options
     OVERRIDE the category default for that entry, so e.g. the ``ro`` vault bind
@@ -286,7 +287,7 @@ def core_default_categories(
             host_src = mode_ref[mode]
         else:
             host_src = entry.get("meta_ref", sources[entry["source"]])
-        _add_bind(
+        add_bind(
             binds, category, str(entry["box_dest"]), host_src,
             str(entry["options"]),
         )
@@ -327,7 +328,7 @@ def kani_default_categories() -> BindArmTable:
     binds: BindArmTable = {}
     for entry in _load_doc().get("kani", []):
         category = entry["category"]
-        _add_bind(
+        add_bind(
             binds, category, str(entry["box_dest"]), sources[entry["source"]],
             str(entry["options"]),
         )
@@ -465,7 +466,7 @@ def kickoff_default_categories(
             "is a PACKAGING defect; refusing to launch."
         )
     binds: BindArmTable = {}
-    _add_bind(
+    add_bind(
         binds, str(entry["category"]), str(entry["box_dest"]), str(src),
         str(entry["options"]),
     )
@@ -751,7 +752,7 @@ def rom_default_categories() -> BindArmTable:
 
     out: BindArmTable = {}
     for _key, rel, _is_dir in binds:
-        _add_bind(
+        add_bind(
             out, "bindings.ro", _canon_dest(rel), str(rom_root / rel), "ro",
         )
     return out
@@ -803,7 +804,7 @@ def rom_agent_default_categories(
     if not (rom_root / PLUGIN_CHAPTER_MARKER_REL).is_file():
         return {}
     out: BindArmTable = {}
-    _add_bind(
+    add_bind(
         out, "bindings.ro",
         _canon_dest(f"{ROM_BIBLE_REL}/{BIBLE_AGENT_CHAPTER}"), str(rom_root), "ro",
     )
@@ -911,7 +912,7 @@ def canon_default_categories(
             if not agent_name:
                 continue  # NO-AGENT box: no agent tier at all, so no chapter bind.
             ref = ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
-        _add_bind(
+        add_bind(
             out, str(entry["category"]), str(entry["box_dest"]), ref,
             str(entry["options"]),
         )
@@ -1272,7 +1273,7 @@ def helper_default_categories(
         # hashed for the AF_UNIX sun_path limit (JC-B2b-3) — so it keeps its probed
         # literal host_src (the ``.exists()`` gate above is unchanged either way).
         host_src = entry.get("meta_ref", str(src_path))
-        _add_bind(binds, category, box_dest, host_src, str(entry["options"]))
+        add_bind(binds, category, box_dest, host_src, str(entry["options"]))
     return binds
 
 
@@ -1330,7 +1331,7 @@ def image_default_categories(
         host_src = entry.get("meta_ref")
         if host_src is None:
             host_src = sources[entry["source"]]
-        _add_bind(
+        add_bind(
             binds, category, str(entry["box_dest"]), host_src,
             str(entry["options"]),
         )

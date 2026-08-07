@@ -86,7 +86,6 @@ so the custom ``__getattribute__`` interception of block 1 is no longer needed.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any, Final, NamedTuple, Union
 
 
@@ -220,78 +219,9 @@ class BindEntry(NamedTuple):
 #: ``bool | None`` leaves rather than an opaque dict leaf. That is load-bearing,
 #: not incidental: it is what makes a bindings arm merge PER-ENTRY across cascade
 #: levels through the generic node recursion, instead of a box-level arm wiping
-#: an inherited workset entry wholesale. The alias exists for the CONVERTER and
-#: view signatures, which speak in plain mappings.
+#: an inherited workset entry wholesale. The alias exists for the view and
+#: producer signatures, which speak in plain mappings.
 BindMap = dict[str, BindEntry]
-
-
-def bindmap_from_named(mapping: Mapping[str, Bind]) -> BindMap:
-    """Convert a NAME-keyed ``{name: Bind}`` arm to a DEST-keyed :data:`BindMap`.
-
-    The bridge converter (implementation plan §3): P5 adds it, P6 uses it at the
-    producer boundary, P7 deletes it. ``Bind(host, box, opts)`` becomes
-    ``box -> BindEntry(host, opts)`` — the name is DROPPED (R-10) and the
-    destination becomes the identity.
-
-    Two names at ONE destination is already an error everywhere downstream
-    (bindings are strictly act-once), and dest-keying makes it structural — so
-    rather than let the second entry silently win the dict, this RAISES
-    :class:`ValueError` naming the destination and both names. ⚑ Uniqueness here
-    is in the UNRESOLVED namespace only (files store unresolved): ``@meta.box.path/home``
-    and a literal spelling of that same path are two different keys that resolve
-    to one destination, so this does NOT replace the resolved-``box_dest``
-    collision check in ``settings_categories`` (design §2b-CAVEAT).
-
-    :class:`ValueError` (not ``SettingsError``) because this module is the
-    settings-stack LEAF and imports nothing from the stack.
-    """
-    out: BindMap = {}
-    seen: dict[str, str] = {}
-    for name, bind in mapping.items():
-        dest = bind.box
-        if dest in out:
-            raise ValueError(
-                f"two bindings target the same destination {dest!r} "
-                f"({seen[dest]!r} and {name!r}); a dest-keyed BindMap admits one "
-                f"entry per destination (bindings are act-once)"
-            )
-        seen[dest] = name
-        out[dest] = BindEntry(bind.host, bind.opts)
-    return out
-
-
-def named_from_bindmap(
-    bindmap: Mapping[str, BindEntry],
-    *,
-    names: Mapping[str, str] | None = None,
-) -> dict[str, Bind]:
-    """Convert a DEST-keyed :data:`BindMap` back to a NAME-keyed ``{name: Bind}``.
-
-    The other half of the bridge (implementation plan §3), used where a
-    still-name-keyed consumer has to be fed during P6. ``dest -> BindEntry(src,
-    opts)`` becomes ``name -> Bind(src, dest, opts)``.
-
-    ⚑ The name is NOT recoverable from a :data:`BindMap` — R-10 dropped it. When
-    the caller still has the old names it passes *names* (a ``{dest: name}``
-    mapping) and they are restored; any destination absent from *names* uses the
-    DESTINATION ITSELF as its name. That degenerate spelling is deliberate: it
-    keeps ``bindmap_from_named(named_from_bindmap(m)) == m`` exactly, and a name
-    that IS the dest cannot be mistaken for a meaningful one.
-
-    Raises :class:`ValueError` if *names* would map two destinations onto one
-    name (that would silently drop a binding).
-    """
-    lookup: Mapping[str, str] = {} if names is None else names
-    out: dict[str, Bind] = {}
-    for dest, entry in bindmap.items():
-        name = lookup.get(dest, dest)
-        if name in out:
-            raise ValueError(
-                f"name {name!r} maps to two destinations; the supplied name table "
-                f"would drop a binding"
-            )
-        out[name] = Bind(entry.src, dest, entry.opts)
-    return out
 
 
 # The value space a KeyStore leaf or node may hold (design §2). ``_MISSING`` is

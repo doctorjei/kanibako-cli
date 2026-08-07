@@ -28,8 +28,6 @@ from kanibako.settings.settings_store import (
     KeyStore,
     ReservedKeyError,
     StoreValue,
-    bindmap_from_named,
-    named_from_bindmap,
 )
 
 
@@ -514,50 +512,3 @@ def test_bindmap_materialises_as_a_node_not_an_opaque_leaf() -> None:
     assert type(dict.__getitem__(arm, "~/b")) is BindEntry
 
 
-def test_bindmap_from_named_drops_the_name_and_keys_on_dest() -> None:
-    named = {"home": Bind("/h/src", "~/home"), "vault": Bind("/v", "@box.c/v", "ro")}
-    assert bindmap_from_named(named) == {
-        "~/home": BindEntry("/h/src"),
-        "@box.c/v": BindEntry("/v", "ro"),
-    }
-
-
-def test_bindmap_from_named_refuses_two_names_at_one_dest() -> None:
-    named = {"a": Bind("/1", "~/same"), "b": Bind("/2", "~/same")}
-    with pytest.raises(ValueError) as exc:
-        bindmap_from_named(named)
-    # The message must NAME the destination and both losing/winning names.
-    assert "~/same" in str(exc.value)
-    assert "'a'" in str(exc.value) and "'b'" in str(exc.value)
-
-
-def test_named_from_bindmap_uses_the_dest_as_the_degenerate_name() -> None:
-    bindmap = {"~/home": BindEntry("/h/src"), "~/v": BindEntry("/v", "ro")}
-    assert named_from_bindmap(bindmap) == {
-        "~/home": Bind("/h/src", "~/home"),
-        "~/v": Bind("/v", "~/v", "ro"),
-    }
-
-
-def test_named_from_bindmap_restores_supplied_names() -> None:
-    bindmap = {"~/home": BindEntry("/h/src")}
-    assert named_from_bindmap(bindmap, names={"~/home": "home"}) == {
-        "home": Bind("/h/src", "~/home")
-    }
-
-
-def test_named_from_bindmap_refuses_a_name_table_that_would_drop_a_binding() -> None:
-    bindmap = {"~/a": BindEntry("/1"), "~/b": BindEntry("/2")}
-    with pytest.raises(ValueError):
-        named_from_bindmap(bindmap, names={"~/a": "dup", "~/b": "dup"})
-
-
-def test_converters_round_trip_both_directions() -> None:
-    named = {"home": Bind("/h", "~/home"), "cred": Bind("/c", "~/.claude", "ro")}
-    bindmap = bindmap_from_named(named)
-    # dest-keyed -> name-keyed -> dest-keyed is the IDENTITY (the degenerate
-    # dest-as-name spelling is exactly what makes this hold).
-    assert bindmap_from_named(named_from_bindmap(bindmap)) == bindmap
-    # With the name table, the original name-keyed arm comes back verbatim.
-    names = {bind.box: name for name, bind in named.items()}
-    assert named_from_bindmap(bindmap, names=names) == named

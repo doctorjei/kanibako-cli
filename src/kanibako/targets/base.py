@@ -21,7 +21,28 @@ if TYPE_CHECKING:
 # 3-element ``(host_src, box_dest[, options])`` tuple — NOT a colon-joined
 # string. Emitted by ``default_common()`` / ``default_seeds()`` and consumed by
 # :func:`kanibako.settings.settings_resolve.unpack_bind` through the category resolver.
+#
+# ⚑ This is the NAME-KEYED shape, and it stays that way: ``common`` / ``seeds``
+# are declared ``<scope>.<category>.<name>`` families whose key carries the entry
+# NAME. It is NOT the shape of a ``bindings.{ro,rw}`` arm — see :data:`BindArm`.
 BindDefault = tuple[str, str] | tuple[str, str, str]
+
+# ONE DEST-KEYED bindings ARM (spec §2a; disk-store rework R-5/R-10/R-11): the map
+# stored AT a TERMINAL ``<scope>.bindings.ro`` / ``.rw`` key. The box DESTINATION is
+# the map KEY (normalized by
+# :func:`kanibako.settings.settings_resolve.normalize_bind_dest`) and the value is
+# the 1- or 2-element ``(host_src[, options])`` entry that
+# :func:`kanibako.settings.settings_resolve.unpack_bind_entry` consumes. The entry
+# NAME was dropped 2026-08-06c: a destination is DATA, never a key segment.
+#
+# ⚑ ``kanibako.settings.core_defaults.BindArmTable`` is the CORE-side floor table —
+# ``dict[str, BindArm]``, arm key → arm. This alias is one arm, not the table.
+BindArm = dict[str, tuple[str, ...]]
+
+# What :meth:`Target.default_category_binds` returns: a mixed table. A
+# ``bindings.{ro,rw}`` arm key maps to a whole :data:`BindArm`; each of the four
+# still-name-keyed bind categories maps to a single :data:`BindDefault`.
+CategoryBindDefaults = dict[str, BindArm | BindDefault]
 
 
 @dataclass(frozen=True)
@@ -782,17 +803,46 @@ class Target(ABC):
             return None
         return path if path.is_dir() else None
 
-    def default_category_binds(self) -> dict[str, BindDefault]:
+    def default_category_binds(self) -> CategoryBindDefaults:
         """Declare default AGENT-scope ``@``-ref-sourced category binds.
 
-        Returns a mapping of DISCRIMINATED scoped category keys
-        (``agent.<agent>.bindings.ro.<name>``) to
-        STRUCTURED bind tuples ``(meta_ref, box_dest[, "ro"])`` (spec §2a) whose
-        HOST SOURCE is an ``@``-ref STRING resolved by the launch category cascade —
-        the AGENT-scope mirror of :mod:`kanibako.settings.core_defaults`'s ``meta_ref`` bind
-        shape.  These are injected as the AGENT level's declared defaults
-        (``default_categories``) alongside :meth:`default_common`; a user can
-        override or suppress (terminal "") any of them at a more-specific level.
+        ⚑⚑ **THIRD-PARTY PLUGIN CONTRACT — THE SHAPE CHANGED 2026-08-06c (R-5/R-10).**
+        A ``bindings.{ro,rw}`` entry is no longer keyed by NAME.  A plugin that
+        still returns ``agent.<agent>.bindings.ro.<name>`` → ``(meta_ref, box_dest
+        [, "ro"])`` is REFUSED by name at
+        :func:`kanibako.settings.settings_assemble._insert_dotted` when the launch
+        floor is assembled; it is not silently ignored.  There is no shim and no
+        deprecation window.
+
+        Returns a MIXED table (:data:`CategoryBindDefaults`) of DISCRIMINATED
+        scoped category keys — *agent* is the declaring plugin's own name, and the
+        agent tier is DISCRIMINATED (spec §2d / §0: there is NO bare
+        ``agent.<key>``).  Two shapes, chosen by the CATEGORY:
+
+        * a **``bindings.ro`` / ``bindings.rw`` arm** is a TERMINAL key —
+          ``agent.<agent>.bindings.ro`` — whose whole VALUE is a
+          :data:`BindArm`, i.e. ``{box_dest: (meta_ref[, "ro"])}``.  ⚑ **The box
+          DESTINATION is the KEY** and the entry name is GONE (R-10): a destination
+          is DATA, never a key segment.  Each destination must be normalized with
+          :func:`kanibako.settings.settings_resolve.normalize_bind_dest` (R-11) —
+          the launch floor merge in ``commands.start`` dedupes on these keys BEFORE
+          anything parses them, so an un-normalized ``~/x`` and a ``/home/agent/x``
+          would collide at one mountpoint as two surviving entries.  Bindings are
+          act-once: one arm admits ONE entry per destination.
+        * each of the four still-name-keyed bind categories (``common``,
+          ``caches``, ``seeded``, ``synced``) keeps
+          ``agent.<agent>.<category>.<name>`` → a :data:`BindDefault` tuple
+          ``(meta_ref, box_dest[, options])``.  Those are declared
+          ``<scope>.<category>.<name>`` families and are unaffected.
+
+        The HOST SOURCE stays a raw ``@``-ref STRING; the launch category cascade
+        folds this table into the floor and ``expand`` resolves the ref — so a
+        plugin declares a bind to a shared source with NO per-harness path
+        knowledge in core (spec §2d).  These are injected as the AGENT level's
+        declared defaults (``default_categories``) alongside :meth:`default_common`;
+        a user can override or suppress (terminal "") any of them at a
+        more-specific level.  ⚑ Under dest-keying a user overrides an entry BY ITS
+        DESTINATION, since that is now the key.
 
         A plugin owns its own harness-slot ``box_dest`` while an ``@``-ref source
         keeps core agent-agnostic.  (The former per-agent instructions bind was
@@ -802,6 +852,11 @@ class Target(ABC):
         INTERNAL ``canon_bible_agent`` bind core emits from :meth:`rom_root`, kept
         out of the agent keyspace precisely so it stays unrepointable like the rest
         of the book.)  The default returns ``{}`` (no category binds).
+
+        A plugin that ships its declarations in its ``<agent>-defaults.yaml``
+        ``category_binds:`` section gets the arm shape for free from
+        :func:`kanibako.settings.agent_defaults.load_category_binds`, which is what
+        all three first-party plugins call.
         """
         return {}
 

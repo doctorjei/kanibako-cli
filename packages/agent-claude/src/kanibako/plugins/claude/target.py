@@ -19,6 +19,7 @@ from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
     BindDefault,
+    CategoryBindDefaults,
     CredFileSpec,
     PersonaProbeOutcome,
     PersonaReadOutcome,
@@ -473,7 +474,7 @@ class ClaudeTarget(Target):
         """
         return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
-    def default_category_binds(self) -> dict[str, BindDefault]:
+    def default_category_binds(self) -> CategoryBindDefaults:
         """Declare claude's AGENT-scope ``@``-ref-sourced category binds.
 
         Read from ``claude-defaults.yaml`` (via the loader).  Currently EMPTY: the

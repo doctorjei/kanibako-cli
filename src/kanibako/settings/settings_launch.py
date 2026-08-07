@@ -2347,6 +2347,11 @@ def _emit_scope_node(
     discriminated key. By the time a node reaches here every category token it
     carries is a ``KeyStore``, and the ``isinstance`` skips below are unreachable
     guards rather than the silent drops they were before P3.
+
+    ⚑ The two bind LEAF-TYPE rulings below are a different thing from those skips:
+    they are where the dest-keyed and name-keyed shapes are told apart, and they
+    RAISE (naming the key and the shape expected) rather than skip. ``_emit_bind``
+    itself holds no leaf type at all — see its docstring.
     """
     # bindings.{ro,rw}
     bindings = dict.get(scope_node, "bindings", _MISSING)
@@ -2356,22 +2361,28 @@ def _emit_scope_node(
             if not isinstance(mode_node, KeyStore):
                 continue
             category = f"bindings.{mode}"
-            for name in dict.keys(mode_node):
-                bind = dict.__getitem__(mode_node, name)
-                # ⚑ THE BRIDGE BOUNDARY (plan §3). The arm is DEST-KEYED as of P6,
-                # so ``name`` IS the (expanded) box destination and the leaf is a
-                # 2-element ``BindEntry(src, opts)``. ``_emit_bind`` and everything
-                # under it still speak the 3-element ``Bind``, so the destination is
-                # folded back into the value HERE and nowhere else. P7 flips
-                # ``_emit_bind`` itself and this conversion goes away.
-                # ⚑⚑ A non-``BindEntry`` leaf is NOT converted — it falls through to
-                # ``_emit_bind``'s own loud refusal, which names the key. Laundering
-                # a stale shape into a Bind here is precisely what R-8 forbids.
-                if isinstance(bind, BindEntry):
-                    bind = Bind(bind.src, name, bind.opts)
+            for dest in dict.keys(mode_node):
+                entry = dict.__getitem__(mode_node, dest)
+                key = f"{decl_scope_fn(category, dest)}.{category}.{dest}"
+                # ⚑ THE DEST-KEYED TYPE SEAM (R-5/R-6). The arm KEY *is* the
+                # (unresolved) box destination and the leaf is a 2-element
+                # ``BindEntry(src, opts)`` that carries no destination at all.
+                # The type is ruled in HERE, at the seam that knows the shape,
+                # and the destination handed to ``_emit_bind`` below is the arm
+                # key — never a value field. That is what makes
+                # "mount at the destination stored in the value" UNREPRESENTABLE
+                # rather than merely guarded against (R-8).
+                if not isinstance(entry, BindEntry):
+                    raise SettingsError(
+                        f"category {key} is {type(entry).__name__}, expected a "
+                        f"BindEntry (a bindings arm is dest-keyed: the arm key is "
+                        f"the destination; present-None binds are omitted at "
+                        f"build, §3/§6e)"
+                    )
                 _emit_bind(
-                    collected, order, scope, category, name, bind, box_dest_fn,
-                    key=f"{decl_scope_fn(category, name)}.{category}.{name}",
+                    collected, order, scope, category, dest,
+                    entry.src, dest, entry.opts, box_dest_fn,
+                    key=key,
                     optional_keys=optional_keys, host_dest_keys=host_dest_keys,
                 )
 
@@ -2382,9 +2393,22 @@ def _emit_scope_node(
             continue
         for name in dict.keys(cat_node):
             bind = dict.__getitem__(cat_node, name)
+            key = f"{decl_scope_fn(category, name)}.{category}.{name}"
+            # ⚑ THE NAME-KEYED TYPE SEAM. These four categories are still keyed
+            # by NAME and their leaves are the 3-element ``Bind(host, box, opts)``
+            # that carries its own destination; they are OUT OF SCOPE for the
+            # dest-keying rework. A ``BindEntry`` here has no destination to
+            # deliver, so it is refused by key rather than half-emitted.
+            if not isinstance(bind, Bind):
+                raise SettingsError(
+                    f"category {key} is {type(bind).__name__}, "
+                    f"expected a Bind (present-None binds are omitted at "
+                    f"build, §3/§6e)"
+                )
             _emit_bind(
-                collected, order, scope, category, name, bind, box_dest_fn,
-                key=f"{decl_scope_fn(category, name)}.{category}.{name}",
+                collected, order, scope, category, name,
+                bind.host, bind.box, bind.opts, box_dest_fn,
+                key=key,
                 optional_keys=optional_keys, host_dest_keys=host_dest_keys,
             )
 
@@ -2470,26 +2494,37 @@ def _emit_bind(
     scope: str,
     category: str,
     name: str,
-    bind: object,
+    host_src: str,
+    box_dest_raw: str,
+    opts: str | None,
     box_dest_fn,
     *,
     key: str,
     optional_keys: frozenset[str] = frozenset(),
     host_dest_keys: frozenset[str] = frozenset(),
 ) -> None:
-    """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY) for *bind*.
+    """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY).
 
-    *bind* is the expanded :class:`Bind` leaf (host already resolved). A
-    present-``None`` / mistyped leaf cannot reach here — the merge OMITs a
-    present-None bind (§3/§6e) and the views' S22 contract holds — so a non-Bind
-    leaf is a build-invariant breach; raise loudly (never type-launder).
-    The host_src is used AS-IS — a stored source resolves on its own (spec §2a
-    ) and NOTHING is prefixed here; *box_dest_fn* resolves box-side.
+    ⚑ This function takes PRIMITIVES, not a bind object, and that is the point
+    (P7 ruling). It serves BOTH the dest-keyed ``bindings.{ro,rw}`` arms — where
+    the destination is the ARM KEY and the leaf is a 2-element
+    :class:`~kanibako.settings.settings_store.BindEntry` — and the four
+    still-name-keyed leaf categories, whose 3-element
+    :class:`~kanibako.settings.settings_store.Bind` carries its own destination.
+    Two leaf shapes, one emitter: so the SHAPE is ruled in by each caller, at the
+    seam that knows which shape it holds, and by the time anything gets here
+    there is only ONE unpacked triple and no second place a destination could
+    come from. A leaf type check inside here would put two shapes in one function
+    (CONVENTIONS §0) and would leave "take the dest from the value" expressible.
+
+    *host_src* is used AS-IS — a stored source resolves on its own (spec §2a) and
+    NOTHING is prefixed here. *box_dest_raw* is the UNRESOLVED destination;
+    *box_dest_fn* resolves it box-side. *opts* is the per-entry options override
+    (``None`` ⇒ the category default).
 
     *key* is the DISCRIMINATED declaration key the caller built from
     ``decl_scope_fn`` — carried on the entry for the collision messages and the
-    ``binding_derivations.*`` materialisation, and used here so even the
-    malformed-leaf raise names the key the user actually wrote.
+    ``binding_derivations.*`` materialisation.
 
     *optional_keys* / *host_dest_keys* are matched on that same *key*. A HOST-space
     dest is taken VERBATIM — it is already an absolute host path (``_expand_bind``
@@ -2505,23 +2540,17 @@ def _emit_bind(
     knows the box store root. A second, weaker check here would be a hard launch
     error where the applier gives a skip plus a message naming the key.
     """
-    if not isinstance(bind, Bind):
-        raise SettingsError(
-            f"category {key} is {type(bind).__name__}, "
-            f"expected a Bind (present-None binds are omitted at build, §3/§6e)"
-        )
     delivery = _DELIVERY[category]
-    host_src = bind.host
     dest_space = "host" if key in host_dest_keys else "guest"
-    box_dest = bind.box if dest_space == "host" else box_dest_fn(bind.box)
+    box_dest = box_dest_raw if dest_space == "host" else box_dest_fn(box_dest_raw)
     if delivery == "MOUNT":
-        # opts: the per-entry override (bind.opts) wins; else the category default.
+        # opts: the per-entry override wins; else the category default.
         # For an agent DELIVERY bind this matches OLD descriptor_mounts EXACTLY for
         # an ro bind (opts "ro" → "ro"). ⚑ LATENT EDGE (unreachable for shipped
         # agents — every descriptor binding is ro): an rw descriptor binding would
         # get the category default ``Z,U`` here vs descriptor_mounts' ``""`` — a
         # benign relabel-add, but flagged. No shipped plugin declares an rw bind.
-        options = bind.opts if bind.opts is not None else _bind_options(category)
+        options = opts if opts is not None else _bind_options(category)
     else:
         options = ""
     sort_key = (order, category, name)
