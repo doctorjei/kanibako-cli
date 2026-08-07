@@ -258,8 +258,10 @@ def test_workset_anchor_user_override_wins_over_floor(tmp_path: Path):
 
 
 def test_adapter_emits_bind_entry_with_box_side_resolution():
+    # DEST-KEYED arm (R-6): the arm KEY is the destination, the leaf is a
+    # 2-element BindEntry(src, opts) that carries no destination at all.
     snap = KeyStore(
-        {"box": {"bindings": {"rw": {"home": Bind("/h/home", "~/", "Z,U")}}}}
+        {"box": {"bindings": {"rw": {"~/": BindEntry("/h/home", "Z,U")}}}}
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     assert len(entries) == 1
@@ -367,12 +369,58 @@ def test_adapter_bind_with_none_leaf_raises():
         snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
 
 
+class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
+    """P7 — the emit boundary takes PRIMITIVES, so each caller rules in its shape.
+
+    ⚑ THE FAILURE THESE EXIST TO PREVENT is not a crash, it is a MOUNT AT THE
+    WRONG DESTINATION. Before P7 the shared emitter's only guard was
+    ``isinstance(bind, Bind)``, so a stale 3-element ``Bind`` sitting in a
+    DEST-KEYED ``bindings`` arm was ACCEPTED and its destination was taken from
+    the VALUE — silently ignoring the arm key that IS the destination (R-6/R-8).
+    The cure is structural (the emitter holds no leaf type at all), and these two
+    tests are what proves the structure is actually load-bearing rather than
+    incidental: each shape is refused where the OTHER one lives, by KEY.
+    """
+
+    @staticmethod
+    def _entries(raw):
+        return snapshot_category_entries(
+            KeyStore(raw), active_agent="claude", box_ctx=_ctx(),
+        )
+
+    @pytest.mark.parametrize("mode", ["ro", "rw"])
+    def test_a_three_element_bind_in_a_dest_keyed_arm_is_refused(self, mode):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._entries({"box": {"bindings": {mode: {
+                "/box/home": Bind("/h/home", "/somewhere/else", None),
+            }}}})
+        text = str(exc.value)
+        assert f"box.bindings.{mode}./box/home" in text   # names the KEY
+        assert "BindEntry" in text                        # names the shape wanted
+        assert "Bind" in text                             # names the shape found
+
+    @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
+    def test_a_two_element_bind_entry_in_a_name_keyed_category_is_refused(
+        self, category,
+    ):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._entries({"box": {category: {"thing": BindEntry("/h/thing")}}})
+        text = str(exc.value)
+        assert f"box.{category}.thing" in text             # names the KEY
+        assert "BindEntry" in text                         # names the shape found
+        assert "expected a Bind " in text                  # names the shape wanted
+
+
 def test_adapter_feeds_reconcile_unchanged():
     # End-to-end: adapter entries flow into reconcile_categories cleanly.
     snap = KeyStore(
         {"box": {"bindings": {"rw": {
-            "home": Bind("/h/home", "/home/agent", "Z,U"),
-            "ws": Bind("/h/ws", "/home/agent/workspace", "Z,U"),
+            "/home/agent": BindEntry("/h/home", "Z,U"),
+            "/home/agent/workspace": BindEntry("/h/ws", "Z,U"),
         }}}}
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
@@ -2501,10 +2549,12 @@ class TestCategoryRootRefusal:
     def test_a_valid_declaration_still_emits(self):
         """Control: the refusal does not eat well-formed declarations."""
         entries = self._entries({"box": {"bindings": {"rw": {
-            "home": Bind("/h/home", "/box/home", None),
+            "/box/home": BindEntry("/h/home", None),
         }}}})
+        # ⚑ Dest-keyed (R-6): the entry's ``name`` IS its destination — there is
+        # no separate name to carry any more.
         assert [(e.scope, e.category, e.name) for e in entries] == [
-            ("box", "bindings.rw", "home"),
+            ("box", "bindings.rw", "/box/home"),
         ]
 
 

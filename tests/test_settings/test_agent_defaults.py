@@ -149,12 +149,34 @@ class TestLoadCommonRooting:
 
 class TestCategoryBindsTakeNoRoot:
     """``bindings.{ro,rw}`` take NO root at any scope (spec §2a), so a bare
-    relative source there is a plugin DEFECT — refused, not silently rooted."""
+    relative source there is a plugin DEFECT — refused, not silently rooted.
 
-    def test_relative_category_bind_is_refused(self, declfile):
+    ⚑ The refusal is the SAME for both shapes ``category_binds:`` can emit (the
+    dest-keyed arm and the four name-keyed families), so it is exercised on both:
+    it is a property of the SOURCE, not of the key shape.
+    """
+
+    def test_relative_arm_bind_is_refused(self, declfile):
+        """An arm entry is identified by its DESTINATION now, so the refusal
+        names the arm key and the dest — there is no entry name left to name."""
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
+            "    meta_ref: some/relative/path\n"
+            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_category_binds(package, filename, "claude")
+        msg = str(e.value)
+        assert "agent.claude.bindings.ro" in msg
+        assert "/home/agent/.guide" in msg
+        assert "some/relative/path" in msg
+        assert filename in msg
+
+    def test_relative_name_keyed_bind_is_refused(self, declfile):
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: caches\n"
             "    key: guide\n"
             "    meta_ref: some/relative/path\n"
             "    box_dest: \"$GUEST_HOME/.guide\"\n"
@@ -162,7 +184,7 @@ class TestCategoryBindsTakeNoRoot:
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
         msg = str(e.value)
-        assert "agent.claude.bindings.ro.guide" in msg
+        assert "agent.claude.caches.guide" in msg
         assert "some/relative/path" in msg
         assert filename in msg
 
@@ -170,9 +192,17 @@ class TestCategoryBindsTakeNoRoot:
         "src", ["/abs", "~/x", "$XDG_DATA_HOME/x", "@system.channelroot/x"],
     )
     def test_self_resolving_category_bind_is_accepted(self, declfile, src):
+        """A source that resolves on its own is stored VERBATIM.
+
+        ⚑ VEHICLED ON ``caches`` DELIBERATELY. This test is about the SOURCE, and
+        ``caches`` is one of the four categories that stay NAME-KEYED — so it keeps
+        pinning ``@``-ref/absolute/``$var`` source handling without also pinning the
+        bindings arm shape, which moved 2026-08-06c and is pinned by
+        ``TestCategoryBindsAreDestKeyed`` below.
+        """
         package, filename = declfile(
             "category_binds:\n"
-            "  - category: bindings.ro\n"
+            "  - category: caches\n"
             "    key: guide\n"
             f"    meta_ref: \"{src}\"\n"
             "    box_dest: \"$GUEST_HOME/.guide\"\n"
@@ -180,8 +210,193 @@ class TestCategoryBindsTakeNoRoot:
         )
         binds = agent_defaults.load_category_binds(package, filename, "claude")
         assert binds == {
-            "agent.claude.bindings.ro.guide": (src, "/home/agent/.guide", "ro"),
+            "agent.claude.caches.guide": (src, "/home/agent/.guide", "ro"),
         }
+
+
+class TestCategoryBindsAreDestKeyed:
+    """A ``bindings.{ro,rw}`` declaration lands in the TERMINAL ARM key, keyed by
+    box DESTINATION (spec §2a; disk-store rework R-5/R-10/R-11).
+
+    This is the PUBLISHED third-party plugin contract. The retired shape
+    (``agent.<a>.bindings.ro.<name>`` → ``(src, dest[, "ro"])``) is what
+    ``settings_assemble._insert_dotted`` refuses by name at floor assembly, so a
+    producer that still emits it produces a table nothing can consume.
+    """
+
+    def test_arm_is_terminal_and_dest_keyed(self, declfile):
+        """The re-pin of the old name-keyed assertion.
+
+        (Mutation: emit ``agent.claude.bindings.ro.guide`` -> (src, dest, "ro")
+        — the pre-2026-08-06c output — → RED.)"""
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/x\"\n"
+            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    ro: true\n"
+        )
+        binds = agent_defaults.load_category_binds(package, filename, "claude")
+        assert binds == {
+            "agent.claude.bindings.ro": {
+                "/home/agent/.guide": ("@system.channelroot/x", "ro"),
+            },
+        }
+
+    def test_absent_ro_omits_the_option(self, declfile):
+        """No ``ro:`` → a ONE-element entry, meaning "use the category default".
+
+        (Mutation: always append an options element → the entry becomes 2-element
+        → RED.)"""
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: bindings.rw\n"
+            "    meta_ref: \"@system.channelroot/x\"\n"
+            "    box_dest: \"$GUEST_HOME/.rwslot\"\n"
+        )
+        binds = agent_defaults.load_category_binds(package, filename, "claude")
+        assert binds == {
+            "agent.claude.bindings.rw": {
+                "/home/agent/.rwslot": ("@system.channelroot/x",),
+            },
+        }
+
+    def test_entries_group_into_one_arm_per_category(self, declfile):
+        """All entries of ONE arm live under ONE key — the arm is TERMINAL, so a
+        second entry EXTENDS the map rather than adding a sibling key.
+
+        (Mutation: emit one key per entry → four keys instead of two → RED.)"""
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/a\"\n"
+            "    box_dest: \"$GUEST_HOME/.a\"\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/b\"\n"
+            "    box_dest: \"$GUEST_HOME/.b\"\n"
+            "    ro: true\n"
+            "  - category: bindings.rw\n"
+            "    meta_ref: \"@system.channelroot/c\"\n"
+            "    box_dest: \"$GUEST_HOME/.c\"\n"
+            "  - category: caches\n"
+            "    key: cch\n"
+            "    meta_ref: \"@system.channelroot/d\"\n"
+            "    box_dest: \"$GUEST_HOME/.d\"\n"
+        )
+        binds = agent_defaults.load_category_binds(package, filename, "goose")
+        assert binds == {
+            "agent.goose.bindings.ro": {
+                "/home/agent/.a": ("@system.channelroot/a",),
+                "/home/agent/.b": ("@system.channelroot/b", "ro"),
+            },
+            "agent.goose.bindings.rw": {
+                "/home/agent/.c": ("@system.channelroot/c",),
+            },
+            "agent.goose.caches.cch": (
+                "@system.channelroot/d", "/home/agent/.d",
+            ),
+        }
+
+    @pytest.mark.parametrize(
+        ("declared", "key"),
+        [
+            ("~/slot", "/home/agent/slot"),
+            ("~/slot/", "/home/agent/slot"),
+            ("~", "/home/agent"),
+            ("/home/agent/slot/", "/home/agent/slot"),
+        ],
+    )
+    def test_destination_is_normalized(self, declfile, declared, key):
+        """R-11 — a PRODUCER must normalize, because the floor merge in
+        ``commands.start`` dedupes on these keys BEFORE anything parses them.
+
+        (Mutation: drop the ``normalize_bind_dest`` call in the arm constructor →
+        the key stays ``~/slot`` / keeps its trailing slash → RED.)"""
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/x\"\n"
+            f"    box_dest: \"{declared}\"\n"
+        )
+        binds = agent_defaults.load_category_binds(package, filename, "claude")
+        assert list(binds["agent.claude.bindings.ro"]) == [key]
+
+    def test_two_entries_at_one_destination_are_refused(self, declfile):
+        """Bindings are ACT-ONCE: a dest-keyed arm admits one entry per dest, and
+        the second would otherwise just replace the first in the dict.
+
+        ⚑ The two spellings here normalize to the SAME dest — which is precisely
+        the collision R-11 exists to make visible.
+
+        (Mutation: ``arm[dest] = ...`` without the ``if dest in arm`` guard →
+        last-wins, no error → RED.)"""
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/first\"\n"
+            "    box_dest: \"~/slot\"\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/second\"\n"
+            "    box_dest: \"$GUEST_HOME/slot/\"\n"
+        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_category_binds(package, filename, "claude")
+        msg = str(e.value)
+        assert filename in msg
+        assert "/home/agent/slot" in msg
+        assert "agent.claude.bindings.ro" in msg
+
+    @pytest.mark.parametrize("category", ["bindings.ro", "bindings.rw"])
+    def test_leftover_entry_name_is_refused(self, declfile, category):
+        """A ``key:`` under a bindings category is REFUSED, not ignored.
+
+        Ignoring it is the worst of the three outcomes: a plugin written against
+        the retired contract would keep LOADING while binding under a key it never
+        declared.
+
+        (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
+        name is silently discarded → RED.)"""
+        package, filename = declfile(
+            "category_binds:\n"
+            f"  - category: {category}\n"
+            "    key: guide\n"
+            "    meta_ref: \"@system.channelroot/x\"\n"
+            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_category_binds(package, filename, "claude")
+        msg = str(e.value)
+        assert filename in msg
+        assert f"agent.claude.{category}" in msg
+        assert "guide" in msg
+        assert "RETIRED" in msg
+
+    def test_no_category_binds_block_yields_empty(self, declfile):
+        package, filename = declfile("descriptor: {}\n")
+        assert agent_defaults.load_category_binds(package, filename, "goose") == {}
+
+    def test_emitted_arm_survives_floor_assembly(self, declfile):
+        """END-TO-END: what this loader emits must be what the floor assembler
+        ACCEPTS — the defect S-1 named was a first-party producer emitting exactly
+        what a first-party assembler refuses.
+
+        (Mutation: emit the retired ``…bindings.ro.<name>`` key →
+        ``_insert_dotted`` raises "names a binding by ENTRY NAME" → RED.)"""
+        from kanibako.settings.settings_assemble import dotted_partial
+
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: bindings.ro\n"
+            "    meta_ref: \"@system.channelroot/x\"\n"
+            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    ro: true\n"
+        )
+        floor = dict(agent_defaults.load_category_binds(package, filename, "claude"))
+        level = dotted_partial(floor)
+        arm = level["agent"]["claude"]["bindings"]["ro"]
+        assert list(arm) == ["/home/agent/.guide"]
+        entry = arm["/home/agent/.guide"]
+        assert (entry.src, entry.opts) == ("@system.channelroot/x", "ro")
 
 
 class TestLayoutSingleSource:

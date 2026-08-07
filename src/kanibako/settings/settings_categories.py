@@ -29,9 +29,9 @@ Available at every scope ``{system, agent, workset, box}``:
 ================ ===================================== ============= =========
 category         key shape                              host_src      delivery
 ================ ===================================== ============= =========
-``masks``        ``{scope}.masks``  (list[box_dest])    ``None``      MOUNT
-``bindings.ro``  ``{scope}.bindings.ro.{name}``         bind          MOUNT
-``bindings.rw``  ``{scope}.bindings.rw.{name}``         bind          MOUNT
+``masks``        ``{scope}.masks``  (TERMINAL)          ``None``      MOUNT
+``bindings.ro``  ``{scope}.bindings.ro``  (TERMINAL)    entry         MOUNT
+``bindings.rw``  ``{scope}.bindings.rw``  (TERMINAL)    entry         MOUNT
 ``caches``       ``{scope}.caches.{name}``              bind          MOUNT
 ``seeded``       ``{scope}.seeded.{name}``              bind          COPY
 ``common``       ``{scope}.common.{name}``              bind          MOUNT
@@ -40,11 +40,21 @@ category         key shape                              host_src      delivery
 ``secret_path``  ``{scope}.secret_path.{VAR}`` (path)   host path     MOUNT
 ================ ===================================== ============= =========
 
-A "bind" value is a STRUCTURED pair/tuple ``[host_src, box_dest[, options]]``
-unpacked by the engine's :func:`~kanibako.settings.settings_resolve.unpack_bind` (spec
-§2a — never a colon-joined string).  ``masks`` carries a list of guest paths to
-tmpfs-hide (no host source); ``env`` carries a scalar value for ``{VAR}`` (no
-host source, no guest *path* — its ``box_dest`` field is the VAR name).
+⚑ ``masks`` and ``bindings.{ro,rw}`` are TERMINAL keys (R-5): the whole arm is
+ONE key and the inner names are NOT part of the keyspace. A ``bindings`` arm is
+DEST-KEYED (R-6) — its inner key IS the box destination and its "entry" value is
+the 2-element ``[host_src[, options]]`` unpacked by
+:func:`~kanibako.settings.settings_resolve.unpack_bind_entry`. ``masks`` is keyed
+by box destination too, its value carrying only presence (a masked dest).
+
+The four abstract categories are still keyed by NAME, and a "bind" value there is
+the 3-element ``[host_src, box_dest[, options]]`` unpacked by
+:func:`~kanibako.settings.settings_resolve.unpack_bind` (spec §2a — never a
+colon-joined string). ⚑ The two unpackers are NOT interchangeable: both accept a
+2-element list and the two mean OPPOSITE things, so the route is chosen from the
+NODE the value came from, never sniffed off the value. ``env`` carries a scalar
+value for ``{VAR}`` (no host source, no guest *path* — its ``box_dest`` field is
+the VAR name).
 
 ``secret_path`` (spec §2a SECRET category, 2026-07-06) is SCALAR-valued like
 ``env`` (a host PATH to secret material, e.g. a 0600 bearer-token file), but

@@ -737,9 +737,15 @@ def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
     *floor* is the target's declared ``{key: default}`` behavior defaults plus
     default-categories (mirrors what ``start.py`` gathers today). Its keys are the
     same SCOPE-QUALIFIED logical keys as the files use (flat dotted, e.g.
-    ``"box.bindings.rw.home"`` / ``"agent.access"``); dotted keys are
+    ``"box.caches.pip"`` / ``"agent.access"``); dotted keys are
     EXPLODED to the nested keyspace (S7) so the floor merges uniformly with the
-    other partials. Bind-shaped values are parsed to :class:`Bind`.
+    other partials. A name-keyed bind value is parsed to :class:`Bind`.
+
+    ⚑ **The example used to be ``"box.bindings.rw.home"``, which
+    :func:`_insert_dotted` below now REFUSES BY NAME** (R-5: a ``bindings`` arm is
+    TERMINAL — the key stops at ``"box.bindings.rw"`` and its whole value is a
+    dest-keyed map parsed to :class:`BindEntry` leaves). Do not reintroduce that
+    spelling as an example: it documented the one shape this function rejects.
     """
     store = KeyStore()
     if not floor:

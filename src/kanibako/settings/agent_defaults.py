@@ -44,7 +44,11 @@ from kanibako.settings.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
-from kanibako.settings.settings_keyspace import ACCESS_TIERS
+from kanibako.settings.core_defaults import add_bind
+from kanibako.settings.settings_keyspace import (
+    ACCESS_TIERS,
+    is_terminal_category_tail,
+)
 from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
     AccessRealization,
@@ -54,6 +58,7 @@ from kanibako.targets.base import (
     Binding,
     BindScope,
     Cadence,
+    CategoryBindDefaults,
     Channel,
     CredFileSpec,
     HostSrcOrigin,
@@ -427,55 +432,123 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
 
 def load_category_binds(
     package: str, filename: str, agent: str
-) -> dict[str, BindDefault]:
+) -> CategoryBindDefaults:
     """Build a plugin's AGENT-scope ``@``-ref-sourced category BINDS from its file.
 
     Each entry in the file's ``category_binds:`` section declares one agent-scope
     category default whose HOST SOURCE is an ``@``-ref (``meta_ref``) — the mirror
-    of :mod:`kanibako.settings.core_defaults`'s ``meta_ref`` bind shape, at AGENT scope.  It
-    returns a mapping of the DISCRIMINATED scoped category key
-    ``agent.<agent>.<category>.<key>`` → a STRUCTURED bind tuple ``(meta_ref,
-    box_dest[, "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).  *agent* is
-    the declaring plugin's own name; the agent tier is DISCRIMINATED (§2d / §0 —
-    there is NO bare ``agent.<key>``), so the key is built discriminated HERE rather
-    than re-rooted downstream.
+    of :mod:`kanibako.settings.core_defaults`'s ``meta_ref`` bind shape, at AGENT
+    scope.  *agent* is the declaring plugin's own name; the agent tier is
+    DISCRIMINATED (spec §2d / §0 — there is NO bare ``agent.<key>``), so every key
+    is built discriminated HERE rather than re-rooted downstream.  ``start.py``
+    folds this table into ``default_categories`` alongside :func:`load_common`.
+
+    ⚑⚑ **TWO SHAPES, CHOSEN BY THE CATEGORY — and the bindings one FLIPPED
+    2026-08-06c (R-5/R-10/R-11).**
+
+    * A **``bindings.ro`` / ``bindings.rw``** entry lands in the TERMINAL ARM key
+      ``agent.<agent>.<category>``, whose whole value is a dest-keyed
+      :data:`~kanibako.targets.base.BindArm` — ``{box_dest: (meta_ref[, "ro"])}``.
+      The box DESTINATION is the KEY and the entry NAME is GONE.  All ENTRIES of
+      one arm live under ONE key, so the file's rows are GROUPED by category here
+      rather than emitted one key apiece.
+    * The four NAME-KEYED bind categories (``common`` / ``caches`` / ``seeded`` /
+      ``synced``) are declared ``<scope>.<category>.<name>`` families and are
+      UNCHANGED: ``agent.<agent>.<category>.<key>`` → the 2- or 3-element
+      :data:`~kanibako.targets.base.BindDefault` tuple ``(meta_ref, box_dest[,
+      "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).
+
+    The arm is built through :func:`kanibako.settings.core_defaults.add_bind`, the
+    SAME constructor every core floor producer goes through — so the arm key
+    spelling, the R-11 destination normalization and the act-once refusal are
+    written ONCE for core and for plugins rather than re-typed here.  ⚑ Normalizing
+    the destination is NOT cosmetic: ``commands.start``'s floor merge dedupes on
+    these keys BEFORE anything parses them, so ``~/x`` and ``/home/agent/x`` left
+    unnormalized would survive as two entries at one mountpoint.
+
+    A ``key:`` under a ``bindings`` category is **REFUSED**, not ignored.  Dropping
+    it silently would let a plugin written against the retired contract keep
+    loading while quietly producing a DIFFERENT key than it declared — the worst of
+    the three outcomes.  (The same retired spelling arriving as a dotted floor key
+    is refused a second time, by name, in
+    :func:`kanibako.settings.settings_assemble._insert_dotted`.)
 
     The value's element 0 is the RAW ``@``-ref STRING (e.g. a ``"@system.*"``
     source key); the launch category cascade folds it into the floor and ``expand``
     resolves it to the referenced path — so a plugin declares a bind to a shared
     source WITHOUT any per-harness path knowledge in core (spec §2d).
-    ``start.py`` unions this table into ``default_categories`` alongside
-    :func:`load_common`.
 
-    ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression (``$GUEST_HOME`` is
-    expanded here; a leading ``~`` is left for the box-side ``box_dest`` resolve in
-    :func:`~kanibako.settings.settings_launch.snapshot_category_entries`).  ``ro: true`` emits
-    the explicit ``"ro"`` mount option (element 2); otherwise a 2-tuple is emitted
-    and reconcile falls back to the category default.  Returns ``{}`` when the file
-    declares no category binds.
+    ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression.  ``$GUEST_HOME`` is
+    expanded here; a leading ``~`` survives that expansion, and for an ARM entry it
+    is then canonicalized to the guest home by ``normalize_bind_dest`` — a dest is
+    a GUEST path, so it resolves the same on every host (R-11).  A NAME-KEYED
+    entry's ``box_dest`` is a VALUE, not a key, and keeps its ``~`` for the
+    box-side resolve in
+    :func:`~kanibako.settings.settings_launch.snapshot_category_entries`.
+    ``ro: true`` emits the explicit ``"ro"`` mount option; otherwise the option is
+    omitted and reconcile falls back to the category default.  Returns ``{}`` when
+    the file declares no category binds.
 
     ⚑ NO ROOT IS SUPPLIED HERE, and a bare-relative ``meta_ref`` is REFUSED.  This
     section declares CONCRETE ``bindings.{ro,rw}`` entries, which take no root at
     any scope (spec §2a's DECLARATION-ROOT table covers the ABSTRACT categories
     only) — so a relative source is a plugin DEFECT that would silently resolve
-    against the process CWD, not a shorthand.  The refusal names the file and key.
+    against the process CWD, not a shorthand.  The refusal names the file and, for
+    an arm entry, the DESTINATION that now identifies it.
     """
-    binds: dict[str, BindDefault] = {}
+    # ⚑ The ONE dest-keyed arm constructor (disk-store rework R-3/R-6/R-11), reused
+    # rather than re-typed: core's floor producers and a plugin's declarations must
+    # emit ONE shape, and a second hand-rolled copy here is exactly how the two
+    # would drift.
+    binds: CategoryBindDefaults = {}
     for entry in _load_doc(package, filename).get("category_binds", []):
-        key = f"agent.{agent}.{entry['category']}.{entry['key']}"
+        category = str(entry["category"])
+        segments = tuple(category.split("."))
+        is_arm = segments[0] == "bindings" and is_terminal_category_tail(segments)
         box_dest = _expand(entry["box_dest"])
         host_src = entry["meta_ref"]
+        options = "ro" if entry.get("ro", False) else None
+
+        if is_arm:
+            arm_key = f"agent.{agent}.{category}"
+            if "key" in entry:
+                raise SettingsError(
+                    f"{filename}: category_bind under {arm_key!r} declares an "
+                    f"entry name 'key: {entry['key']}', which is the RETIRED "
+                    f"name-keyed shape. A bindings arm is a TERMINAL key whose "
+                    f"value is keyed by box DESTINATION ({box_dest!r} here); the "
+                    f"entry name was dropped 2026-08-06c (spec §2a, R-5/R-10). "
+                    f"Delete the 'key:' line — left in place this entry would "
+                    f"load but bind under a different key than it names."
+                )
+            ident = f"{arm_key!r} entry at {box_dest!r}"
+        else:
+            ident = repr(f"agent.{agent}.{category}.{entry['key']}")
+
         if not is_self_resolving(host_src):
             raise SettingsError(
-                f"{filename}: category_bind {key!r} declares a bare-relative "
+                f"{filename}: category_bind {ident} declares a bare-relative "
                 f"host source {host_src!r}; a source must fully resolve on its "
                 "own (absolute, ~, $var or an @-ref) — bindings take no root at "
                 "any scope (spec §2a L474-486)"
             )
-        if entry.get("ro", False):
-            binds[key] = (host_src, box_dest, "ro")
+
+        if is_arm:
+            try:
+                add_bind(
+                    binds, category, box_dest, host_src, options,
+                    scope=f"agent.{agent}",
+                )
+            except ValueError as exc:
+                # ``add_bind`` owns the act-once invariant and names the arm and
+                # the destination; only the FILE is missing from its message.
+                raise SettingsError(f"{filename}: {exc}") from exc
+        elif options is not None:
+            binds[f"agent.{agent}.{category}.{entry['key']}"] = (
+                host_src, box_dest, options,
+            )
         else:
-            binds[key] = (host_src, box_dest)
+            binds[f"agent.{agent}.{category}.{entry['key']}"] = (host_src, box_dest)
     return binds
 
 
