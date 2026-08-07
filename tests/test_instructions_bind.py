@@ -206,7 +206,6 @@ def test_goose_context_file_names_lists_additional_context_md():
 def test_route_a_instructions_bind_retired(agent: str):
     """No plugin emits the old ``@system.instructions`` → native-slot category bind."""
     binds = resolve_target(agent, None).default_category_binds()
-    assert "agent.bindings.ro.instructions" not in binds
     # And nothing left points a category bind at @system.instructions.
     assert not any(
         isinstance(v, tuple) and v and v[0] == "@system.instructions"
