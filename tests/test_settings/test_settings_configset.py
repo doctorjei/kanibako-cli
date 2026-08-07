@@ -29,14 +29,20 @@ settable key any more, and neither is ``agent.<node>.bindings.{ro,rw}.<name>``**
 — R-9 retired the bind CLI write route at EVERY scope, and ``config set``/``reset``
 refuse both by name (``config_keys.scope_bind_retired_error`` /
 ``config_keys.agent_node_bind_retired_error``). The spellings survive here because
-BOTH functions under test are PURE and KEY-AGNOSTIC: ``validate_config_set``
-uses the key as a message label, and ``repoint_host_src`` takes an arbitrary
-dotted path and edits the YAML at it — neither consults the keyspace, and a
-``bindings.{ro,rw}`` NESTED PATH is still live in the settings FILES the launch
-reads, which is the shape these fixtures exercise.
+BOTH functions under test are PURE: ``validate_config_set`` uses the key as a
+message label only, and ``repoint_host_src`` takes an arbitrary dotted path and
+edits the YAML at it — a ``bindings.{ro,rw}`` NESTED PATH is still live in the
+settings FILES the launch reads, which is the shape these fixtures exercise.
 
-The ONE place the key is genuinely interpreted is ``_rooted_form_hint``, and that
-test now uses ``synced`` at every scope on purpose — see
+⚑ ``repoint_host_src`` is NO LONGER fully key-agnostic (R-8/P8): it reads the
+key's CATEGORY to refuse a STALE 3-element value under a dest-keyed ``bindings``
+arm — see ``TestStaleBindShapeRefused``. So a bindings spelling in a fixture is
+now load-bearing where the tuple has three elements, and two 3-element fixtures
+were re-keyed to ``caches``/``common`` for exactly that reason. Everything else
+about the function is still key-agnostic.
+
+The other place the key is genuinely interpreted is ``_rooted_form_hint``, and
+that test now uses ``synced`` at every scope on purpose — see
 ``test_concrete_category_gets_no_rooted_hint``, which explains why a bindings
 spelling would pass VACUOUSLY. Do not read any other key in this file as evidence
 that a bind is settable from the CLI.
@@ -405,13 +411,19 @@ def test_repoint_swaps_host_keeps_dest_2tuple(tmp_path: Path) -> None:
 
 
 def test_repoint_keeps_options_3tuple(tmp_path: Path) -> None:
+    # ⚑ ``caches``, NOT ``bindings`` — re-keyed with R-8's arity refusal (P8). The
+    # three-element ``[host_src, box_dest, options]`` form is STILL LIVE for the
+    # four NAME-keyed SETTABLE categories, which are also the only ones a caller
+    # routes here; under a dest-keyed ``bindings`` arm the same tuple is now
+    # REFUSED (see TestStaleBindShapeRefused). Same behaviour under test, on the
+    # category that actually still has it.
     f = _write_scope(
         tmp_path / "box.yaml",
-        {"box": {"bindings": {"rw": {"sock": ["/old/sock", "~/x.sock", "z"]}}}},
+        {"box": {"caches": {"sock": ["/old/sock", "~/x.sock", "z"]}}},
     )
-    repoint_host_src(f, "box.bindings.rw.sock", "/new/sock")
+    repoint_host_src(f, "box.caches.sock", "/new/sock")
     out = yaml.safe_load(f.read_text())
-    assert out["box"]["bindings"]["rw"]["sock"] == ["/new/sock", "~/x.sock", "z"]
+    assert out["box"]["caches"]["sock"] == ["/new/sock", "~/x.sock", "z"]
 
 
 def test_repoint_stores_raw_ref_not_expanded(tmp_path: Path) -> None:
@@ -515,15 +527,19 @@ def test_repoint_cascade_fallback_writes_full_tuple_creating_tables(
     # the file's intermediate tables created (F10, spec §2a must-exist-in-the-
     # CASCADE). This test FAILS if the lookup reverts to scope-file-only
     # (mutation proof: without cascade_bind support this raises).
+    #
+    # ⚑ ``common``, NOT ``bindings`` — same reason as
+    # ``test_repoint_keeps_options_3tuple``: a 3-element cascade tuple is live for
+    # a NAME-keyed category and REFUSED under a dest-keyed bindings arm (R-8/P8).
     f = _write_scope(tmp_path / "box.yaml", {"box": {"image": "x"}})
     repoint_host_src(
         f,
-        "box.bindings.rw.vault",
+        "box.common.vault",
         "~/mine",
         cascade_bind=["@config.data/vault", "$XDG_DATA_HOME/vault", "z"],
     )
     out = yaml.safe_load(f.read_text())
-    assert out["box"]["bindings"]["rw"]["vault"] == [
+    assert out["box"]["common"]["vault"] == [
         "~/mine", "$XDG_DATA_HOME/vault", "z",
     ]
     assert out["box"]["image"] == "x"  # sibling content untouched
@@ -585,6 +601,104 @@ def test_repoint_non_mapping_intermediate_refuses(tmp_path: Path) -> None:
             f, "box.bindings.rw.h", "/new", cascade_bind=["/o", "/d"],
         )
     assert yaml.safe_load(f.read_text()) == {"box": {"bindings": "oops"}}
+
+
+# --------------------------------------------------------------------------- #
+# R-8 (P8) — a STALE 3-element value under a dest-keyed bindings arm is REFUSED #
+# --------------------------------------------------------------------------- #
+
+
+class TestStaleBindShapeRefused:
+    """R-8's runtime refusal: ``bindings.{ro,rw}`` arms are dest-keyed TERMINAL
+    keys (R-5/R-6) whose entries are ``[host_src[, options]]``, so a 3-element
+    ``[host_src, box_dest, options]`` value under one is unambiguously the RETIRED
+    name-keyed shape. It RAISES, naming the arm and the stale tuple, instead of
+    rewriting element 1 back as a ``box_dest``.
+
+    ⚑⚑ SCOPE, AND IT IS A RULING (Jei, 2026-08-06e): the 3-ELEMENT case ONLY.
+    ``test_two_element_bindings_value_is_still_accepted`` PINS the boundary — a
+    stored ``[src, box_dest]`` and a live ``[src, options]`` are both legally
+    2 elements and indistinguishable, the heuristic refusal was offered as option
+    B and DECLINED in favour of option A (docs only, DS-BL8/8a). A future writer
+    who makes that test go red is building the thing that was declined; changing
+    it needs a FRESH ruling.
+
+    ⚑ No ``bindings`` key of any scope reaches ``repoint_host_src`` in product
+    (R-9 retired both CLI write routes) — this is defence in depth on a pure,
+    key-agnostic function, exercised directly the way the function is called.
+    """
+
+    def test_stale_3element_file_tuple_raises(self, tmp_path: Path) -> None:
+        f = _write_scope(
+            tmp_path / "box.yaml",
+            {"box": {"bindings": {"rw": {"sock": ["/old", "~/x.sock", "z"]}}}},
+        )
+        with pytest.raises(ConfigSetError) as exc:
+            repoint_host_src(f, "box.bindings.rw.sock", "/new/sock")
+        # Names the stale SHAPE, the KEY and the ARM (refuse by name).
+        assert "STALE 3-element" in str(exc.value)
+        assert "box.bindings.rw.sock" in str(exc.value)
+        assert "box.bindings.rw" in str(exc.value)
+        # And nothing was written — a refused repoint never poisons the file.
+        assert yaml.safe_load(f.read_text()) == {
+            "box": {"bindings": {"rw": {"sock": ["/old", "~/x.sock", "z"]}}}
+        }
+
+    def test_stale_3element_cascade_tuple_raises(self, tmp_path: Path) -> None:
+        f = _write_scope(tmp_path / "box.yaml", {})
+        with pytest.raises(ConfigSetError, match="STALE 3-element"):
+            repoint_host_src(
+                f,
+                "workset.bindings.ro.log",
+                "/new",
+                cascade_bind=["/old", "~/log", "ro"],
+            )
+        assert yaml.safe_load(f.read_text()) == {}  # nothing written
+
+    def test_stale_3element_agent_node_arm_raises(self, tmp_path: Path) -> None:
+        # The agent-scope spelling has its OWN parser (the node segment splits
+        # non-greedily), so it needs its own coverage: a regex-only guard would
+        # silently miss ``agent.<node>.bindings.*``.
+        f = _write_scope(
+            tmp_path / "agent.yaml",
+            {"agent": {"claude": {"bindings": {"ro": {"x": ["/o", "~/x", "z"]}}}}},
+        )
+        with pytest.raises(ConfigSetError) as exc:
+            repoint_host_src(f, "agent.claude.bindings.ro.x", "/new")
+        assert "agent.claude.bindings.ro" in str(exc.value)
+
+    def test_two_element_bindings_value_is_still_accepted(
+        self, tmp_path: Path
+    ) -> None:
+        # ⚑ THE RULED BOUNDARY — see the class docstring. A 2-element value under a
+        # bindings arm is NOT refused: element 1 is carried through as a box_dest
+        # exactly as before. This test exists to go RED if anyone extends the
+        # refusal to the 2-element case without a fresh ruling.
+        f = _write_scope(
+            tmp_path / "box.yaml",
+            {"box": {"bindings": {"rw": {"home": ["/old", "~/"]}}}},
+        )
+        repoint_host_src(f, "box.bindings.rw.home", "/new")
+        assert yaml.safe_load(f.read_text())["box"]["bindings"]["rw"]["home"] == [
+            "/new", "~/",
+        ]
+
+    @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
+    def test_3element_settable_category_is_untouched(
+        self, tmp_path: Path, category: str
+    ) -> None:
+        # The refusal is bindings-ONLY. The four NAME-keyed SETTABLE categories
+        # keep the live 3-element form (and they are the only ones that actually
+        # route here) — an over-broad gate would break every options-bearing
+        # cache/seed/common/synced repoint.
+        f = _write_scope(
+            tmp_path / "box.yaml",
+            {"box": {category: {"x": ["/old", "~/x", "z"]}}},
+        )
+        repoint_host_src(f, f"box.{category}.x", "/new")
+        assert yaml.safe_load(f.read_text())["box"][category]["x"] == [
+            "/new", "~/x", "z",
+        ]
 
 
 # --------------------------------------------------------------------------- #

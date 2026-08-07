@@ -26,7 +26,10 @@ THIS — this module does NOT touch ``cli.py`` or the live setter):
    ALREADY EXIST in the cascade") — swaps element 0 (``host_src``) for the user's
    VERBATIM raw input, PRESERVES ``box_dest`` + any options (elements 1/2), and
    writes the FULL raw tuple to the COMMAND-scope file via the existing YAML I/O
-   (``config_io``). It refuses ONLY when the key exists NOWHERE in the cascade.
+   (``config_io``). It refuses when the key exists NOWHERE in the cascade, when
+   the backing value is not a category tuple at all, when a file intermediate is
+   not a mapping, and — R-8/P8 — when a ``bindings.{ro,rw}`` key's value is the
+   STALE 3-element shape (:func:`_refuse_stale_bind_shape`).
    The stored form is RAW — ``@``-refs / ``$XDG`` / ``~`` are NEVER expanded to a
    literal (S12/S24).
 
@@ -77,7 +80,11 @@ from pathlib import Path
 from typing import Callable, Sequence, Union
 
 from kanibako.settings.agent_config import is_self_resolving
-from kanibako.settings.config_keys import KEY_TYPES, _coerce_value
+from kanibako.settings.config_keys import (
+    KEY_TYPES,
+    _coerce_value,
+    parse_agent_node_bind_key,
+)
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.settings_resolve import (
     SettingsError,
@@ -163,11 +170,12 @@ class ConfigSetError(Exception):
 
     The write-path counterpart to an :class:`Error` verdict: a key that exists
     NOWHERE in the cascade (source-only repoints an existing bind, never creates
-    one — S24/F10), a stored value that is not a category tuple, or a file
-    intermediate that is not a mapping. Validation (:func:`validate_config_set`)
-    returns a verdict; the write raises, because reaching the write with an
-    un-creatable / non-category key is a caller contract breach, not user input
-    to soft-report.
+    one — S24/F10), a stored value that is not a category tuple, a STALE
+    3-element value under a dest-keyed ``bindings`` arm (R-8 — see
+    :func:`_refuse_stale_bind_shape`), or a file intermediate that is not a
+    mapping. Validation (:func:`validate_config_set`) returns a verdict; the
+    write raises, because reaching the write with an un-creatable / non-category
+    key is a caller contract breach, not user input to soft-report.
     """
 
 
@@ -436,6 +444,74 @@ def validate_config_set(
 # --------------------------------------------------------------------------- #
 
 
+def _bindings_arm_of(key: str) -> str:
+    """The dest-keyed ``bindings.{ro,rw}`` ARM *key* names an entry inside, or
+    ``""`` when *key* names no bindings entry at all.
+
+    Recognition REUSES the two existing retired-spelling parsers rather than a
+    third copy of the grammar — :data:`~kanibako.settings.settings_categories.SCOPE_BIND_KEY_RE`
+    for ``{system,workset,box}.bindings.{ro,rw}.<name>`` and
+    :func:`~kanibako.settings.config_keys.parse_agent_node_bind_key` for
+    ``agent.<node>.bindings.{ro,rw}.<name>`` (which splits the node segment
+    non-greedily, so it cannot be folded into the regex). Those two are exactly
+    the pair ``config set``/``reset`` already refuse by name (R-9); this reads the
+    same two spellings for a different question — WHICH ARM a value belongs to,
+    so the refusal below can name it. ``settings_categories`` is imported inside
+    the function, matching :func:`_rooted_form_hint`'s deferral in this module.
+
+    ⚑ It answers about the KEY, never the file location: *dest_parts* moves where
+    :func:`repoint_host_src` WRITES, but the value SHAPE follows the key's category.
+    """
+    from kanibako.settings.settings_categories import SCOPE_BIND_KEY_RE
+
+    m = SCOPE_BIND_KEY_RE.match(key)
+    if m is not None:
+        return f"{m.group('scope')}.{m.group('category')}"
+    parsed = parse_agent_node_bind_key(key)
+    if parsed is not None:
+        node_raw, category, _name = parsed
+        return f"agent.{node_raw}.{category}"
+    return ""
+
+
+def _refuse_stale_bind_shape(
+    key: str, arm: str, value: "Sequence[str]", origin: str
+) -> None:
+    """R-8: refuse a STALE 3-element bind value under a dest-keyed arm, by name.
+
+    A ``bindings.{ro,rw}`` arm is a TERMINAL key holding ``{box_dest: [host_src[,
+    options]]}`` (R-5/R-6): the destination is the map KEY, so an ENTRY value is
+    1- or 2-element and a 3-element ``[host_src, box_dest, options]`` is
+    unambiguously the RETIRED name-keyed shape. Carrying it through would write
+    element 1 back as a ``box_dest`` — a mount at a destination no longer read
+    from the value — so it is REFUSED, naming both the stale shape and the key
+    (spec §0: refuse loudly, never quietly reinterpret).
+
+    *arm* is :func:`_bindings_arm_of`'s answer (``""`` ⇒ nothing to check: the four
+    SETTABLE categories ``caches``/``seeded``/``common``/``synced`` are still
+    NAME-keyed and their 3-element form is LIVE — this arc is bindings-only).
+    *origin* labels where the value came from, matching the sibling arity messages.
+
+    ⚑⚑ THREE-ELEMENT ONLY, AND THAT IS A RULING (Jei, 2026-08-06e), not an
+    oversight to tidy up later. A stored ``[src, box_dest]`` and a live
+    ``[src, options]`` are BOTH legally 2 elements and cannot be told apart; the
+    heuristic refusal ("refuse when element 1 looks like a path") was offered as
+    option B and DECLINED in favour of option A — DOCS ONLY, no runtime refusal
+    (DS-BL8/8a). Do NOT extend this to the 2-element case; that needs a FRESH
+    ruling, and R-8 does not reach it by inference.
+    """
+    if not arm or len(value) != 3:
+        return
+    raise ConfigSetError(
+        f"config set cannot repoint '{key}': {origin} is a STALE 3-element "
+        f"[host_src, box_dest, options] bind — the retired name-keyed shape "
+        f"(got {list(value)!r}). '{arm}' is a dest-keyed TERMINAL arm "
+        f"{{box_dest: [host_src[, options]]}} whose entries carry NO box_dest "
+        f"(R-5/R-6); rewriting element 1 as one would mount at a destination the "
+        f"arm no longer reads from the value. Refusing rather than reinterpreting."
+    )
+
+
 def repoint_host_src(
     scope_path: Path,
     key: str,
@@ -474,7 +550,17 @@ def repoint_host_src(
     ``seeded`` / ``common`` / ``synced``), at ``system``/``workset``/``box`` AND at
     ``agent.<node>``. NO ``bindings.{ro,rw}`` key of any scope does — R-9 retired
     both bind CLI routes and the verbs refuse them by name before any write
-    machinery runs.
+    machinery runs. Those four are still NAME-keyed, so their 2-/3-element
+    ``[host_src, box_dest[, options]]`` form is LIVE and the arity bracket keeps
+    accepting it.
+
+    ⚑⚑ R-8, P8 — a ``bindings.{ro,rw}`` key that DOES reach here (this function is
+    pure and key-agnostic; only its callers are gated) is checked against the
+    dest-keyed shape by :func:`_refuse_stale_bind_shape`: a 3-element value is the
+    retired name-keyed shape and RAISES, naming the arm and the stale tuple. It is
+    the 3-element case ONLY — the 2-element residual is a ruled, documented accept
+    (see the ``NAME THE ELEMENTS`` note at the write). This is defence in depth,
+    not a live route.
     """
     data = load_doc(scope_path)
     # *dest_parts*, when supplied, is the FILE location to walk/write (sections +
@@ -499,6 +585,12 @@ def repoint_host_src(
             break
         node = node[seg]
 
+    # R-8's arity refusal (P8). Computed ONCE from the KEY, then applied to
+    # whichever tuple actually backs the write — the arity gates below still
+    # bracket 2..3 because that IS the live shape for the four name-keyed
+    # SETTABLE categories, which are the only ones a caller routes here today.
+    arm = _bindings_arm_of(key)
+
     if isinstance(node, dict) and leaf_name in node:
         existing = node[leaf_name]
         if not isinstance(existing, (list, tuple)) or not (2 <= len(existing) <= 3):
@@ -507,6 +599,7 @@ def repoint_host_src(
                 f"category tuple [host_src, box_dest[, options]] "
                 f"(got {type(existing).__name__}: {existing!r})."
             )
+        _refuse_stale_bind_shape(key, arm, list(existing), "its stored value")
         base: "Sequence[str]" = list(existing)
     elif cascade_bind is not None:
         if not (2 <= len(cascade_bind) <= 3):
@@ -515,6 +608,7 @@ def repoint_host_src(
                 f"category tuple [host_src, box_dest[, options]] "
                 f"(got {list(cascade_bind)!r})."
             )
+        _refuse_stale_bind_shape(key, arm, list(cascade_bind), "the cascade tuple")
         base = list(cascade_bind)
     else:
         raise ConfigSetError(
@@ -545,20 +639,30 @@ def repoint_host_src(
     # That positional spelling is arity-safe and MEANING-BLIND: the arity gate
     # above accepts any 2-or-3 element tuple, so a value whose second element is
     # not a box_dest is carried through silently and re-stored as one. The
-    # bindings rework introduces exactly such a shape (a 2-element ``(src, opts)``
+    # bindings rework introduced exactly such a shape (a 2-element ``(src, opts)``
     # pair — same arity, different meaning), and R-8 says a stale shape must be
     # REFUSED, never quietly reinterpreted.
     #
-    # ⚑⚑ BE PRECISE ABOUT WHAT THIS BUYS, because it is easy to over-read: naming
-    # the elements does NOT make the stale shape raise. Fed a dest-keyed
-    # ``[src, opts]`` this still passes the gate, binds ``box_dest = opts``, and
-    # writes the same bytes the positional spelling would. What it buys is that
-    # the assumption is now WRITTEN DOWN AT THE SITE and greppable, so the author
-    # who flips the shape cannot walk past it. **The runtime refusal is R-8's and
-    # it lands in P8**, where this arity gate (``2 <= len <= 3``, above) must be
-    # tightened in the same edit — this comment is a marker for that step, not a
-    # substitute for it. See implementation plan §5(a): this is the arc's named
-    # prime silent-breakage site.
+    # ⚑⚑ BE PRECISE ABOUT WHAT THE NAMING BUYS, because it is easy to over-read:
+    # naming the elements does NOT make any shape raise. What it buys is that the
+    # assumption is WRITTEN DOWN AT THE SITE and greppable, so the author who
+    # flips a shape cannot walk past it. The RUNTIME refusal is a separate thing
+    # and it is ``_refuse_stale_bind_shape`` above (R-8, landed in P8) — reached
+    # from both arity gates.
+    #
+    # ⚑⚑⚑ WHAT IS STILL CARRIED THROUGH HERE, AND WHY THAT IS A RULING. The
+    # refusal covers the 3-ELEMENT value under a ``bindings`` arm ONLY. Fed a
+    # dest-keyed 2-element ``[src, opts]`` under such an arm, this code STILL
+    # passes the gate, binds ``box_dest = opts`` and writes the same bytes the
+    # positional spelling would. That is DELIBERATE: a stored ``[src, box_dest]``
+    # and a live ``[src, options]`` are indistinguishable at 2 elements, the
+    # heuristic refusal was offered as option B and DECLINED (option A — docs
+    # only, DS-BL8/8a, Jei 2026-08-06e). Do not "finish the job" here; changing it
+    # needs a fresh ruling. Implementation plan §5(a) named this the arc's prime
+    # silent-breakage site — the arity half is now closed, the 2-element half is
+    # an accepted, documented residual. It is unreachable in product besides: no
+    # ``bindings`` key of any scope routes here (R-9 — see this function's
+    # docstring), so the refusal is defence in depth on a pure, key-agnostic edit.
     box_dest = base[1]
     options = list(base[2:])  # zero or one element — options are optional
     wnode[leaf_name] = [new_host_src, box_dest, *options]
