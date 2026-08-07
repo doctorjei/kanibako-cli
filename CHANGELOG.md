@@ -356,6 +356,23 @@ migration code.** Four released config surfaces are removed outright
   settings file for a box that does not exist, which nothing ever reads. It now refuses, naming
   the directory and the two ways forward: name the box (`kanibako box set <box>
   <key>=<value>`) or make one (`kanibako create`).
+- **BREAKING (plugin authors): `Target.default_category_binds()` declares a bindings ARM keyed by
+  destination, not one key per entry name.** A `bindings.{ro,rw}` default used to be
+  `agent.<agent>.bindings.ro.<name>` → `(meta_ref, box_dest[, "ro"])`. It is now the *terminal*
+  key `agent.<agent>.bindings.ro`, whose whole value is `{box_dest: (meta_ref[, "ro"])}` — the
+  destination is the key and the entry name is gone. The four name-keyed bind categories
+  (`common`, `caches`, `seeded`, `synced`) are **unchanged**. A plugin still returning the old
+  dotted key is **refused by name** when the launch floor is assembled, not silently ignored;
+  there is no shim and no deprecation window. ⚑ The declared return type widened to
+  `CategoryBindDefaults`, and `dict` is invariant in its value type, so an override still
+  annotated `dict[str, BindDefault]` fails **type checking** even if it declares no bindings at
+  all — the three first-party plugins each needed the annotation moved. Plugins that build the
+  table from their `<agent>-defaults.yaml` `category_binds:` section get the new shape for free,
+  but a `key:` line under a `bindings` category is now refused rather than ignored. Destinations
+  must be normalised (`normalize_bind_dest`): arm keys merge as strings but resolve to paths, so an
+  unnormalised `~/x` neither matches nor is matched by an override written `/home/agent/x` — the
+  two survive as separate entries and then collide at launch as two bindings on one destination.
+  See `MIGRATION.md` §3 item 7.
 
 ### Fixed
 

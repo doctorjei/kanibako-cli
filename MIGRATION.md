@@ -1049,6 +1049,66 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    plugin's README or error strings tell a user to run `kanibako system set agent.<you>.bindings…`,
    that instruction now fails; point them at `agents/<node>/settings.yaml` instead. There is no CLI
    verb to substitute, so do not invent one.
+7. **BREAKING: `Target.default_category_binds()` declares a bindings ARM keyed by DESTINATION.**
+   The bindings half of that table changed shape. **Before** — one key per entry, carrying the
+   entry NAME:
+
+   ```python
+   def default_category_binds(self) -> dict[str, BindDefault]:
+       return {
+           f"agent.{self.name}.bindings.ro.launcher":
+               ("@system.cache/launcher", "~/.local/bin/launcher", "ro"),
+       }
+   ```
+
+   **After** — the arm is a TERMINAL key whose whole value is a map keyed by the box destination:
+
+   ```python
+   from kanibako.settings.settings_resolve import normalize_bind_dest
+   from kanibako.targets.base import CategoryBindDefaults
+
+   def default_category_binds(self) -> CategoryBindDefaults:
+       return {
+           f"agent.{self.name}.bindings.ro": {
+               normalize_bind_dest("~/.local/bin/launcher"):
+                   ("@system.cache/launcher", "ro"),
+           },
+       }
+   ```
+
+   Four things to carry across:
+
+   - **The entry name is gone**, and all entries of one arm live under **one** key — so build the
+     map, don't emit a key apiece. A destination is data, not a key segment.
+   - **Normalise every destination** with `normalize_bind_dest` (it is idempotent, and it is for
+     destinations *only* — never call it on a `host_src`). This is not cosmetic. The arm key is
+     matched as a **string** when tables merge, but it is resolved to a real path later, so an
+     unnormalised `~/x` is a different key from `/home/agent/x` and the same destination. Two
+     consequences: an override written at the canonical spelling — by a user, or by another scope —
+     does **not** replace your entry, it becomes a *second* one; and both then resolve to one
+     destination at launch, where bindings are act-once and two of them is a hard
+     `CategoryCollisionError` ("Two bindings target the same box destination"). You get a named
+     launch failure, not a silent double mount — but you get it from the user's machine, not yours.
+   - **The four name-keyed bind categories are unaffected.** `common`, `caches`, `seeded` and
+     `synced` are still `agent.<agent>.<category>.<name>` → `(meta_ref, box_dest[, options])`.
+     That is why the return type is a mixed table.
+   - **A user now overrides one of your entries by its DESTINATION**, since that is the key. If
+     your docs tell users how to repoint a bind you declare, the spelling changed.
+
+   **If you do nothing:** the old dotted key is **refused by name** when the launch floor is
+   assembled — it is not silently ignored, and there is no shim. ⚑ You may hit it at *type-check*
+   time first: `dict` is invariant in its value type, so an override still annotated
+   `dict[str, BindDefault]` is incompatible with the widened base return type **even if it declares
+   no bindings at all**. All three first-party plugins needed the annotation moved for exactly this
+   reason; nothing about their runtime output changed.
+
+   **If you declare binds in your `<agent>-defaults.yaml` `category_binds:` section** (what all
+   three first-party plugins do, via `kanibako.settings.agent_defaults.load_category_binds`), you
+   get the arm shape for free — with one edit: **delete the `key:` line** from any row whose
+   `category` is `bindings.ro` / `bindings.rw`. It is now refused, naming the file, the arm key and
+   the destination. It is refused rather than dropped on purpose: ignoring it would let a plugin
+   written against the retired contract keep loading while producing a different key than it
+   declared. Rows for the other four categories keep their `key:`.
 
 ### 3.1 Core module paths moved (package-ification) — shims ship for one release
 
