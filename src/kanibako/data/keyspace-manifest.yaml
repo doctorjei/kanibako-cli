@@ -474,10 +474,12 @@ policy:
   seed_whitelists_spec: "§2a (seed whitelists, ruled Jei 2026-07-30; R-24 — data
                          into the manifest, defences stay code)"
 
-  # SEEDED-SEEDS (R-24) — the HOST STORE is itself seeded from the PACKAGES:
+  # OUT-OF-BOX TEMPLATES (R-24) — the HOST STORES are stamped from the PACKAGES:
   # the step before the box seed, filling the store the box layers copy from.
-  # ONE mechanism (the same layered create-if-absent copy), fired at FOUR
-  # lifecycle moments:
+  # ONE mechanism (the same layered create-if-absent copy), fired at FIVE
+  # lifecycle moments. ⚑ ONLY the box-HOME row is a KEY SET (the §2a `seeded`
+  # category); every other row — including the box's own handbook chapter — is an
+  # out-of-box TEMPLATE copy with NO keys at all, never addressed by the keyspace.
   seeded_seeds_moments:
     - moment: "install / setup"
       from: "core package"
@@ -490,20 +492,23 @@ policy:
       into: ["<workset_path>"]
     - moment: "box create"
       from: "the three */template/box/home layers"
-      into: ["<box_dir>/home"]              # the §2a seeded keys
-    # ⚑ <box_dir>/canon/handbook is NOT in the box-create row, and its absence is
-    # the 2026-08-07g ruling: the three */template/box/canon/handbook layers are
-    # HOST templates, not GUEST templates, so they left the `seeded` category
-    # (no `seeded` entry names that dest now) and are copied host-side at create by
-    # launch.templates.install_box_handbook_template. The dir is still filled at box
-    # create, and @box.canon/handbook is still the SOURCE of the ro
-    # box.bindings.ro[~/canon/handbook/box] bind — that bind is untouched and is
+      into: ["<box_dir>/home"]              # the §2a seeded KEYS
+    - moment: "box create"
+      from: "the three */template/box/canon/handbook layers"
+      into: ["<box_dir>/canon/handbook"]    # an out-of-box TEMPLATE — NO key
+    # ⚑ The box-handbook row is listed and is explicitly KEYLESS — that is the
+    # 2026-08-07g ruling: those three layers are HOST templates, not GUEST
+    # templates, so they left the `seeded` category (no `seeded` entry names that
+    # dest now) and are copied host-side at create by
+    # launch.templates.install_box_handbook_template, exactly as the agent and
+    # workset rows above are copied. @box.canon/handbook remains the SOURCE of the
+    # ro box.bindings.ro[~/canon/handbook/box] bind — that bind is untouched and is
     # still an ordinary key.
   # Create-if-absent per FILE, never overwrite — once a file exists it belongs
   # to whoever owns that store; a package upgrade must not silently revert their
   # edits. Report a skip ONLY where the packaged file DIFFERS from the one on
   # disk. The whitelists and the (code-side) traversal defences apply here too.
-  seeded_seeds_moments_spec: "§2a (SEEDED-SEEDS, four lifecycle moments; R-24)"
+  seeded_seeds_moments_spec: "§2a (OUT-OF-BOX TEMPLATES, five lifecycle moments; R-24)"
 
   # Set-time validation: full resolution in error-collecting/lenient mode.
   set_validation:
