@@ -4270,6 +4270,16 @@ class TestEffectiveCategoryBlock:
         )
         return buf.getvalue()
 
+    @pytest.mark.skip(
+        reason="Asserts the ABSTRACT half of the `--effective` block renders the "
+               "declaration and its binding_derivations line ADJACENTLY. That "
+               "half is DISABLED while "
+               "settings_categories.effective_bindings_and_template_sources is a "
+               "deliberate stub, so the block prints a notice instead of pairs. "
+               "To be REWRITTEN against that function once the collapse function "
+               "lands — NOT deleted: the adjacency, and the deferred `~` vs "
+               "resolved guest dest it contrasts, are the point of the display."
+    )
     def test_declaration_and_derived_binding_print_adjacently(self, tmp_path):
         lines = self._render(tmp_path).splitlines()
         decl = next(
@@ -4284,6 +4294,17 @@ class TestEffectiveCategoryBlock:
         assert "~/.claude/plugins" in lines[decl]
         assert "/home/agent/.claude/plugins" in lines[decl + 1]
 
+    @pytest.mark.skip(
+        reason="Asserts the ABSTRACT half of the `--effective` block states each "
+               "derivation's DELIVERY ((copy) vs (mount)). That half is DISABLED "
+               "while settings_categories.effective_bindings_and_template_sources "
+               "is a deliberate stub, so the block prints a notice instead of "
+               "pairs. To be REWRITTEN against that function once the collapse "
+               "function lands — NOT deleted: `seeded` deriving a COPY rather "
+               "than a mount is exactly what the rewrite may not quietly drop "
+               "(config_display._declaration_delivery is retained, caller-less, "
+               "for the same reason)."
+    )
     def test_the_derivation_line_states_its_DELIVERY(self, tmp_path):
         """N2 — ``seeded`` derives a COPY, not a mount (spec §0), and the two are
         not interchangeable: a mount is live and shadows the dest, a copy runs

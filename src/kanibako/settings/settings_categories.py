@@ -109,10 +109,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, Literal, Mapping
+from typing import TYPE_CHECKING, Any, Final, Literal, Mapping
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from kanibako.settings.settings_store import Bind
+    from kanibako.settings.settings_store import Bind, KeyStore
 
 # Delivery tags.
 Delivery = Literal["COPY", "MOUNT", "ENV"]
@@ -914,3 +914,61 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
             opts=e.options or None,
         )
     return out
+
+
+#: The message the stub below raises with. Kept as ONE string so the disabled
+#: consumer can PRINT the reason instead of restating it — a second copy of this
+#: sentence is a second thing to drift.
+_EFFECTIVE_DELIVERY_STUB_REASON: Final[str] = (
+    "the effective binding / template-source calculation is deliberately "
+    "unimplemented pending the collapse function; the '--effective' "
+    "binding-derivations display is disabled until it lands"
+)
+
+
+def effective_bindings_and_template_sources(snapshot: "KeyStore") -> Any:
+    """The EFFECTIVE bindings and template sources of *snapshot* — **STUB**.
+
+    ⚑ **DELIBERATELY UNIMPLEMENTED.** It raises :class:`NotImplementedError`
+    (:data:`_EFFECTIVE_DELIVERY_STUB_REASON`), and its one consumer today — the
+    ``binding_derivations`` half of the ``--effective`` block in
+    :mod:`kanibako.settings.config_display` — is DISABLED rather than left to
+    print something it can no longer stand behind.  Do not grow a partial
+    implementation here: a stub that quietly acquires a body is worse than an
+    honest hole, because nothing announces the day it started being believed.
+
+    THE SINGLE SOURCE
+        This is the ONE place the effective bindings and the effective template
+        sources are calculated.  Anything that needs either — the launch, the
+        display, ``workset show`` — reads it from here.  A caller that recomputes
+        its own answer is a second opinion about what the box sees, which is the
+        failure the ``--effective`` output exists to DETECT, not to commit.
+
+    BUILT ON THE COLLAPSE FUNCTION
+        The body will be written against the forthcoming *collapse* function
+        (author: Jei), which is being built separately and which this reuses
+        rather than reimplements.  That is why the body is empty and not merely
+        rough: the primitive it stands on does not exist yet.
+
+    NOTE — the two halves DO NOT share a shape, and that is not an accident.
+        Bindings **COLLAPSE**: a destination can be occupied by exactly one
+        winner, so the answer is a per-dest pick and the losers are gone
+        (visible, if at all, as an explanation of why).  Template sources
+        **LAYER**: the seed is ordered and every layer contributes, later over
+        earlier, so the answer is a SEQUENCE and dropping a member loses content.
+        One question, two arities — which is precisely why they are computed
+        together, by one function, instead of being conflated by a caller that
+        assumed they behaved alike.
+
+        ⚑ Nothing beyond that distinction is decided here.  Which entry wins a
+        dest, how layers are ordered, what the return VALUE looks like — those
+        are the collapse function's contract and are OPEN.  In particular the
+        return is annotated ``Any`` ON PURPOSE: a container chosen now would
+        encode a merge semantics, and merge semantics is a CHOICE, not a
+        property of the container.
+
+    *snapshot* is the resolved settings snapshot every other reader already
+    holds; the argument is here so the seam is real and callable, not because
+    the input set is settled either.
+    """
+    raise NotImplementedError(_EFFECTIVE_DELIVERY_STUB_REASON)

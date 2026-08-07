@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kanibako.settings.settings_categories import reconcile_categories
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
@@ -1104,6 +1106,18 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         for entry in abstract:
             assert derived[entry.key].box == entry.box_dest
 
+    @pytest.mark.skip(
+        reason="Asserts the ABSTRACT half of the `--effective` block renders the "
+               "declaration/derivation PAIR. That half is DISABLED while "
+               "settings_categories.effective_bindings_and_template_sources is a "
+               "deliberate stub, so the block prints a notice instead of pairs. "
+               "To be REWRITTEN against that function once the collapse function "
+               "lands — NOT deleted: the property it pins (a REAL plugin's own "
+               "declarations survive the derivation and come out DISCRIMINATED) "
+               "has no other renderer-side test. Its sibling "
+               "test_the_plugins_own_declarations_derive_discriminated_keys still "
+               "pins the same chain up to the display."
+    )
     def test_the_block_renders_the_pair_for_a_real_declaration(self):
         import io
 
@@ -1142,7 +1156,14 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
     _DECL_KEY = "agent.claude.common.plugins"
 
     @staticmethod
-    def _snapshot(tmp_path):
+    def _snapshot(tmp_path, *, install_derivations: bool = True):
+        """Assemble the snapshot from the forged box file.
+
+        *install_derivations* gates the LAUNCH SEAM's write only — set it False
+        to see the assembly result ALONE, which is where the drop happens and so
+        the only place "the forged table never entered the merge" can be read
+        without the seam's own write sitting on top of the answer.
+        """
         import yaml
 
         from kanibako.commands.start import _install_derived_bindings
@@ -1189,8 +1210,29 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         entries = snapshot_category_entries(
             snap, active_agent="claude", box_ctx=ctx,
         )
-        _install_derived_bindings(snap, derive_binding_keys(entries))
+        if install_derivations:
+            _install_derived_bindings(snap, derive_binding_keys(entries))
         return snap, box_file
+
+    @staticmethod
+    def _leaves(node, prefix=""):
+        """Every leaf of *node* as ``(dotted_key, value)`` — RAW, no lens.
+
+        Deliberately NOT ``derived_bindings``: that lens turns a non-``Bind``
+        leaf into a ``ViewError``, so through it a forged leaf can only ever be
+        seen as an exception. This walk SEES the leaf, whatever it is.
+        """
+        from kanibako.settings.settings_store import KeyStore
+
+        for key in dict.keys(node):
+            value = dict.__getitem__(node, key)
+            dotted = f"{prefix}.{key}" if prefix else str(key)
+            if isinstance(value, KeyStore):
+                yield from TestForgedDerivationsTableNeverEntersTheMerge._leaves(
+                    value, dotted,
+                )
+            else:
+                yield dotted, value
 
     def test_lens_returns_exactly_the_real_derivations(self, tmp_path, caplog):
         from kanibako.settings.settings_store import KeyStore
@@ -1213,16 +1255,64 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         # The colliding key carries the REAL host source, not the forged one.
         assert derived[self._DECL_KEY].host == "/store/plugins"
 
-    def test_effective_display_renders_without_viewerror(self, tmp_path):
-        import io
+    def test_the_forged_table_never_enters_the_assembled_snapshot(self, tmp_path):
+        """R-8 REGRESSION TRIPWIRE — read off the SNAPSHOT, not the display.
 
-        from kanibako.settings.config_display import _print_category_block
+        Was ``test_effective_display_renders_without_viewerror``. The PROPERTY
+        is the one this class is named for: a file-borne forged
+        ``binding_derivations:`` table is DROPPED at assembly
+        (``settings_assemble._drop_upward_scopes``) and never enters the merge.
+        "``--effective`` renders without ``ViewError``" was only the VEHICLE for
+        observing it, and that vehicle is out of service while
+        ``settings_categories.effective_bindings_and_template_sources`` is a
+        deliberate stub — so the property is asserted DIRECTLY and the tripwire
+        keeps firing. It is NOT restored to the display when the stub lands: a
+        renderer is a downstream witness, and this guard should not depend on
+        one.
 
+        Complements ``test_lens_returns_exactly_the_real_derivations``, which
+        reads through ``derived_bindings``: that LENS converts a forged non-Bind
+        leaf into a ``ViewError``, so through it the fault is only ever visible
+        as an exception, and only inside the one node. This walks the RAW node —
+        where a forged leaf is simply THERE — and then sweeps the WHOLE
+        snapshot, because "never enters the merge" is a claim about the snapshot,
+        not about one subtree of it.
+        """
+        from kanibako.settings.settings_store import Bind, KeyStore
+
+        # 1. The ASSEMBLY result alone, with the launch seam's write withheld:
+        #    the reserved node is ABSENT. Nothing but the seam may create it, so
+        #    a surviving forged table has nowhere to hide behind a real one.
+        pre_seam, box_file = self._snapshot(tmp_path, install_derivations=False)
+        assert dict.get(pre_seam, "binding_derivations") is None, (
+            "the forged table SURVIVED assembly — the R-8 drop is not firing"
+        )
+        assert box_file.exists()  # the forged file really was read
+
+        # 2. With the seam's write, the node holds EXACTLY that write. The RAW
+        #    walk (not the lens) is what makes the junk leaf assertable.
         snap, _ = self._snapshot(tmp_path)
-        buf = io.StringIO()
-        _print_category_block(snap, None, buf)  # pre-fix: raised ViewError
-        text = buf.getvalue()
-        # The real declaration/derivation pair renders; no phantom lines.
-        assert f"    binding_derivations.{self._DECL_KEY} = " in text
-        assert "/forged" not in text
-        assert "junk" not in text
+        node = dict.get(snap, "binding_derivations")
+        assert isinstance(node, KeyStore)
+        raw = dict(self._leaves(node))
+        assert set(raw) == {self._DECL_KEY}, (
+            f"forged leaves reached the derivations node: "
+            f"{sorted(set(raw) - {self._DECL_KEY})}"
+        )
+        bind = raw[self._DECL_KEY]
+        assert isinstance(bind, Bind)
+        # The colliding key is the SEAM's Bind, not the forged pair: the REAL
+        # host source, and the RESOLVED guest dest the seam materialises (the
+        # forged pair was ``/forged/src`` -> ``~/forged``).
+        assert bind.host == "/store/plugins"
+        assert bind.box == "/home/agent/.claude/plugins"
+
+        # 3. And nothing forged landed ANYWHERE ELSE in the snapshot either —
+        #    the drop is at assembly, before the merge, so no scope table may
+        #    carry the table's contents under some other prefix.
+        strays = [
+            (key, value) for key, value in self._leaves(snap)
+            if "forged" in repr(value) or "zebra-not-a-bind" in repr(value)
+            or "junk" in key
+        ]
+        assert not strays, f"forged content reached the snapshot: {strays}"

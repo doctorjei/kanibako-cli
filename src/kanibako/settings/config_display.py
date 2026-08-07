@@ -185,18 +185,21 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
 def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
-    Every CONCRETE binding is listed with the destination it occupies, and every
-    ABSTRACT declaration (``common`` / ``caches`` / ``seeded``) is listed with the
-    ``binding_derivations.<declaration-key>`` binding it produces indented
-    beneath it — so a reader can see the declaration AND the mount it becomes,
-    which is the whole point of materialising the derivation.
+    Every CONCRETE binding is listed with the destination it occupies, read off
+    the SAME snapshot the launch resolved.  Nothing is re-derived here.
 
-    Both halves are read off the SAME snapshot: the declaration at its own key,
-    the derivation at ``binding_derivations.<that key>`` (the reserved internal
-    node, R-8 — not a key).  Nothing is re-derived here.
+    ⚑ The ABSTRACT half is TEMPORARILY DISABLED.  It used to list every
+    ``common`` / ``caches`` / ``seeded`` declaration with the
+    ``binding_derivations.<declaration-key>`` binding it produces indented
+    beneath it; that calculation now belongs to the single-source stub
+    :func:`kanibako.settings.settings_categories.effective_bindings_and_template_sources`,
+    which is deliberately unimplemented, so the section prints a NOTICE instead
+    of pairs.  See the block below for why a notice rather than silence.
     """
+    from kanibako.settings.settings_categories import (
+        effective_bindings_and_template_sources,
+    )
     from kanibako.settings.settings_store import Bind, KeyStore
-    from kanibako.settings.settings_views import derived_bindings
 
     print("", file=out)
     if error is not None:
@@ -234,25 +237,45 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
                             file=out,
                         )
 
-    # ABSTRACT declarations, each with the binding it derives.
+    # ABSTRACT declarations, each with the binding it derives — DISABLED.
     #
-    # ⚑ The derivation line carries its DELIVERY. ``seeded`` derives a COPY, not
-    # a mount (spec §0), and the two are not interchangeable at all: a mount is
-    # live and shadows the dest, while a copy runs once at create and is then the
-    # box's own file. A reader who cannot tell them apart cannot answer the
-    # question this display exists for — WHY is this here, and what happens if I
-    # change it.
-    derived_node = _leaf("binding_derivations")
-    if isinstance(derived_node, KeyStore):
-        for decl_key, bind in sorted(derived_bindings(derived_node).items()):
-            declaration = _leaf(decl_key)
-            if isinstance(declaration, Bind):
-                print(f"  {decl_key} = {_pair(declaration)}", file=out)
-            kind = "copy" if _declaration_delivery(decl_key) == "COPY" else "mount"
-            print(
-                f"    binding_derivations.{decl_key} = {_pair(bind)}  ({kind})",
-                file=out,
-            )
+    # This half routes through the ONE function that owns the calculation, and
+    # that function is a deliberate STUB pending the collapse function. Three
+    # outcomes were available and only this one is honest:
+    #
+    #   * print the pairs anyway (the old ``derived_bindings`` read) — that is
+    #     the SILENTLY WRONG outcome: a second opinion about what the box sees,
+    #     which is the failure this display exists to detect;
+    #   * print nothing — reads as "this box declares no ``common`` / ``caches``
+    #     / ``seeded`` entries", which for most boxes is false;
+    #   * let ``NotImplementedError`` out — a traceback for a section that is
+    #     merely turned off, and it would take the CONCRETE half down with it.
+    #
+    # So: call it, catch the refusal, and SAY SO, quoting the stub's own reason
+    # rather than restating it here.
+    #
+    # ⚑ The PRODUCING route is untouched — ``settings_categories.derive_binding_keys``
+    # still materialises the derivations and ``start._install_derived_bindings``
+    # still installs them on the snapshot; only this READ is disabled.
+    # ``_declaration_delivery`` below therefore has no caller for the moment and
+    # is retained ON PURPOSE for the rewrite: it is this renderer's one copy of
+    # the COPY/MOUNT distinction, and ``seeded`` deriving a COPY rather than a
+    # mount is not a detail the rewrite may quietly drop.
+    try:
+        effective_bindings_and_template_sources(snapshot)
+    except NotImplementedError as exc:
+        print("  (binding derivations temporarily unavailable)", file=out)
+        print(f"    {exc}", file=out)
+        return
+    # The stub RAISES today, so this is unreachable. It is here for the day it
+    # stops raising: an implemented calculation with an un-rewritten renderer
+    # would otherwise fall straight through and print NOTHING, which is exactly
+    # the silently-wrong outcome the branch above refuses.
+    print(
+        "  (binding derivations: this renderer is not yet wired to "
+        "effective_bindings_and_template_sources)",
+        file=out,
+    )
 
 
 def _declaration_delivery(decl_key: str) -> str:
