@@ -64,7 +64,14 @@ migration code.** Four released config surfaces are removed outright
   - `handbook/` — host-side guidance, assembled from each scope's own contribution:
     `general` from the system store, and `agent` / `workset` / `box` chapters from the
     agent store, the workset, and the box store's `canon/handbook`. Read-only in-box;
-    edit it host-side. Per-scope chapters are skip-if-absent.
+    edit it host-side. Per-scope chapters are skip-if-absent. The **box** chapter is
+    started at `create` from the three template roots' `box/canon/handbook/` subtrees
+    (system, then agent, then workset; later overlays earlier, per file,
+    create-if-absent), copied host-side into `box.canon`'s `handbook/` — the same
+    directory the read-only chapter bind then reads. Repoint the sources with
+    `system.template` / `agent.<agent>.template` / `workset.template` and the
+    destination with `box.canon`; there is no separate seed key for it
+    (MIGRATION.md §2.5(c)).
   - `notebook/` and `workbook/` — box-owned and writable: box directives/procedures, and
     box working state (devnotes, tasks, plans). Seeded once at `create`.
 

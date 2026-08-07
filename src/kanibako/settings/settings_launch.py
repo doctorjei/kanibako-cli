@@ -773,9 +773,13 @@ def workset_anchor_floor(
       ) · ``@meta.box.path`` (standalone, §2c).
     * ``workset.canon`` / ``box.canon`` — the per-scope CANON CONTRIBUTION roots,
       UNIFORM in every mode (§2c ALL PROJECTS / §2b). Their ``handbook/`` subtrees
-      are the sources of the skip-if-absent ``canon_hb_{workset,box}`` binds AND the
-      dests of the §2a handbook seed layers — "the seed writes precisely what the
-      bind reads, spelled once", so repointing the key moves both.
+      are the sources of the skip-if-absent ``canon_hb_{workset,box}`` binds, so
+      repointing either key moves that scope's handbook chapter. ⚑ NEITHER is a
+      seed dest: no seed layer ever targeted ``workset.canon``, and the retired
+      handbook layers that targeted ``@box.canon/handbook`` are gone as of
+      2026-08-07g. The box chapter is filled HOST-side at create by
+      ``launch.templates.install_box_handbook_template`` and delivered by the
+      ``canon_hb_box`` bind.
     * ``meta.box.path`` — the RO BOX ROOT: ``@workset.boxes/@meta.box.name``
       (primary/named, §2c) · ``@workset.boxes`` (standalone, §2c). The
       standalone form is the EMPTY LEAF: a BARE whole-value @-ref, so the resolver
@@ -2063,8 +2067,11 @@ def snapshot_category_entries(
     DECLARATION facts the snapshot cannot carry (a bind tuple has two path slots and
     no room for a third meaning), and they are supplied by the ONE launch aggregation
     site: ``canon_optional_bind_keys()`` for the skip-if-absent handbook chapters,
-    the ``*.seeded.{template,handbook}`` key names for the §2a seed layers whose
-    dests are HOST paths. ⚑ Neither is a heuristic on the VALUE — see
+    and ``templates.seed_keys_of()`` — the ``*.seeded.template`` key names — for the
+    §2a seed layers whose dests are HOST paths. ⚑ There is NO ``seeded.handbook``
+    key: those layers left the category on 2026-08-07g, so the ONE host seed dest
+    the discriminator selects for is ``@meta.box.path/home``. ⚑ Neither is a
+    heuristic on the VALUE — see
     ``CategoryEntry.dest_space`` for why a prefix test on the dest string cannot be
     made correct.
     """

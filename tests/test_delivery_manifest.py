@@ -104,7 +104,16 @@ from kanibako.launch.templates import (
 
 @dataclass(frozen=True)
 class SeedFile:
-    """One file the create-time seed must deposit in the box STORE.
+    """One file ``box create`` must deposit in the box STORE.
+
+    ⚑ "SEED" IS THE PHASE, NOT THE MECHANISM — two mechanisms fill this manifest and
+    the distinction is Jei's 2026-08-07g ruling: the ``home/...`` rows arrive through
+    the ``seeded`` CATEGORY (spec §2a layers 1-3), the ``canon/handbook/...`` row
+    through the HOST-side template copy that replaced the retired handbook layers
+    (``launch.templates.install_box_handbook_template``).  Both run at create, both
+    are create-if-absent, and this manifest deliberately does not care which — it
+    asserts what a created box HAS.  Which is also why the driver below runs the
+    whole ``_seed_box_home`` rather than the seed step alone.
 
     ``rel`` is the path within the packaged SOURCE subtree that a layer copies from;
     ``dest`` is the box-store-relative path it must land at. ⚑ THE TWO ARE NO LONGER
@@ -128,13 +137,16 @@ class SeedFile:
 # base layer  = data/global/template/box   (the packaged BOX mould)
 # agent layer = plugins/claude/data/base   (the claude AGENT-STORE payload)
 #
-# ⚑ TWO DESTINATIONS, both HOST paths under the box store (spec §2a):
-#   home/...            → delivered at ``~`` by the rw home bind (the box's own,
-#                         agent-writable notebook + workbook).
-#   canon/handbook/...  → ``@box.canon/handbook``, a SIBLING of home, bound RO back
-#                         into the box at ``~/canon/handbook/box``. It is NOT under
-#                         the home: a guest-spelled dest would land inside the home
-#                         bind and the RO mount would silently shadow it.
+# ⚑ TWO DESTINATIONS, both HOST paths under the box store, filled by two different
+# mechanisms (see ``SeedFile``):
+#   home/...            → the ``seeded`` category (spec §2a). Delivered at ``~`` by
+#                         the rw home bind (the box's own, agent-writable notebook +
+#                         workbook).
+#   canon/handbook/...  → ``@box.canon/handbook``, a SIBLING of home, filled by the
+#                         host-side handbook template copy and bound RO back into the
+#                         box at ``~/canon/handbook/box``. It is NOT under the home: a
+#                         guest-spelled dest would land inside the home bind and the
+#                         RO mount would silently shadow it.
 #
 # ⚑ There is deliberately no ``playbook/`` row any more: that tree became the canon
 # HANDBOOK, which is BOUND from a host store and never seeded (M-10).
@@ -152,7 +164,8 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
              "home/canon/workbook/devnotes.md"),
     SeedFile("base", "box/home/canon/workbook/tasks.md",
              "home/canon/workbook/tasks.md"),
-    # ---- base: the box's HANDBOOK CHAPTER — lands OUTSIDE the home ----
+    # ---- base: the box's HANDBOOK CHAPTER — lands OUTSIDE the home, and by the
+    # ---- HOST-template copy rather than the ``seeded`` category (2026-08-07g) ----
     SeedFile("base", "box/canon/handbook/directives/SYS_BOX.md",
              "canon/handbook/directives/SYS_BOX.md"),
     # ---- claude agent store payload (harness config stubs) ----
@@ -298,22 +311,31 @@ class TestSeededManifest:
     def _seed_primary_claude_box(self, std, config, project_dir) -> Path:
         """Create + seed a primary claude box; return its box STORE root.
 
-        ⚑ The STORE, not the home: the seed now has TWO destinations and only one of
+        ⚑ The STORE, not the home: create fills TWO destinations and only one of
         them is under the home.
+
+        ⚑ Drives the WHOLE ``_seed_box_home`` — all three ordered steps, exactly as
+        ``box create`` does — NOT ``_apply_init_seeds`` alone.  Since 2026-08-07g the
+        handbook chapter is filled by step 3 (a host template copy) rather than by
+        the ``seeded`` category, so a driver that stopped at step 2 would be
+        asserting delivery for a route that no longer delivers it.
         """
-        from kanibako.commands.start import _apply_init_seeds
+        from types import SimpleNamespace
+
+        from kanibako.commands.start import _seed_box_home
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         install_packaged_templates(std, ["claude"])
-        _apply_init_seeds(
+        _seed_box_home(
             std=std,
             proj=proj,
-            agent_name="claude",
             target=_FakeTarget(),
-            global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
+            desc=None,
+            agent_id="claude",
+            agent_cfg_path=std.agents / "claude" / "settings.yaml",
+            system_settings_path=std.settings,
+            auth_src=SimpleNamespace(creds_shared=True),
             logger=logging.getLogger("test-delivery-manifest"),
-            deliver_creds=True,
         )
         return proj.shell_path.parent
 

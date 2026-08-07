@@ -183,7 +183,7 @@ def standalone_proj(std, config, project_dir, credentials_dir):
 
 
 class TestTemplateSeedDefaults:
-    """``template_seed_defaults`` declares the SIX §2a layers as ordinary keystore
+    """``template_seed_defaults`` declares the THREE §2a layers as ordinary keystore
     ``seeded`` keys (+ their ``@``-ref SOURCE keys), gated per mode / agent."""
 
     def test_system_layer_always_present(self, primary_proj):
@@ -193,23 +193,20 @@ class TestTemplateSeedDefaults:
             "@system.template/box/home", "@meta.box.path/home",
         )
 
-    def test_system_handbook_layer_targets_box_canon(self, primary_proj):
-        """Layer 4's DEST is the KEY ``@box.canon/handbook`` — exactly the SOURCE of
-        the ro ``canon_hb_box`` bind, so repointing ``box.canon`` moves both."""
-        defs = template_seed_defaults(primary_proj, "claude")
-        assert defs["system.seeded.handbook"] == (
-            "@system.template/box/canon/handbook", "@box.canon/handbook",
-        )
+    def test_the_only_seed_dest_is_the_box_home(self, primary_proj):
+        """⚑ THE H2 PIN. Every declared seed dest is ``@meta.box.path/home`` — a
+        HOST path — and NOTHING targets ``@box.canon/handbook`` any more.
 
-    def test_every_seed_dest_is_host_spelled(self, primary_proj):
-        """No seed dest is guest-spelled. A ``~``-rooted handbook dest would sit
-        INSIDE the rw home bind, so the copy would land in ``<box_dir>/home/...``
-        and the ro mount would silently shadow it."""
+        The handbook layers left the category on 2026-08-07g (HOST templates, not
+        GUEST templates), so no declared ``seeded`` entry names the handbook dest any
+        more.  Asserted as an EQUALITY on the whole dest set rather than as a ``not
+        in``: a bare absence assertion would stay green if the layers came back under
+        any other name.
+        """
         defs = template_seed_defaults(primary_proj, "claude")
         dests = [v[1] for k, v in defs.items() if ".seeded." in k]
         assert dests, defs
-        assert all(d.startswith("@meta.box.path") or d.startswith("@box.canon")
-                   for d in dests), dests
+        assert set(dests) == {"@meta.box.path/home"}, dests
 
     def test_agent_layer_sources_harness_store(self, primary_proj):
         """Layer 2: agent.<node>.seeded.template reads @agent.<node>.template,
@@ -219,9 +216,6 @@ class TestTemplateSeedDefaults:
         assert defs["agent.claude.template"] == "@config.agents/claude/template"
         assert defs["agent.claude.seeded.template"] == (
             "@agent.claude.template/box/home", "@meta.box.path/home",
-        )
-        assert defs["agent.claude.seeded.handbook"] == (
-            "@agent.claude.template/box/canon/handbook", "@box.canon/handbook",
         )
 
     def test_no_agent_omits_agent_layer(self, primary_proj):
@@ -242,7 +236,6 @@ class TestTemplateSeedDefaults:
     def test_named_includes_workset_layer(self, named_proj):
         defs = template_seed_defaults(named_proj, "claude")
         assert "workset.seeded.template" in defs
-        assert "workset.seeded.handbook" in defs
 
     def test_standalone_omits_workset_layer(self, standalone_proj):
         """STANDALONE has no workset tier -> no workset.template source/layer
@@ -250,21 +243,25 @@ class TestTemplateSeedDefaults:
         defs = template_seed_defaults(standalone_proj, "claude")
         assert "workset.template" not in defs
         assert "workset.seeded.template" not in defs
-        assert "workset.seeded.handbook" not in defs
         # base + agent layers still present.
         assert "system.seeded.template" in defs
         assert "agent.claude.seeded.template" in defs
 
     def test_seed_keys_of_selects_exactly_the_seeded_keys(self, primary_proj):
         """The HOST-space key set is DERIVED from the table, never restated — a
-        seventh layer cannot be added in one place and forgotten in the other."""
+        fourth layer cannot be added in one place and forgotten in the other.
+
+        ⚑ ``seed_keys_of`` SURVIVED H2 and is still load-bearing: the home dest is
+        spelled ``@meta.box.path/home``, a HOST path, so the discriminator has the
+        same job it always had — only the number of host dests fell from two to one.
+        """
         from kanibako.launch.templates import seed_keys_of
 
         defs = template_seed_defaults(primary_proj, "claude")
         assert seed_keys_of(defs) == {
-            "system.seeded.template", "system.seeded.handbook",
-            "agent.claude.seeded.template", "agent.claude.seeded.handbook",
-            "workset.seeded.template", "workset.seeded.handbook",
+            "system.seeded.template",
+            "agent.claude.seeded.template",
+            "workset.seeded.template",
         }
 
 
@@ -336,33 +333,32 @@ class TestLayeredHomeSeed:
         # Workset layer.
         assert (home / "workset-only.txt").read_text() == "workset"
 
-    def test_handbook_layer_lands_on_the_host_not_the_home(
+    def test_the_seed_route_no_longer_writes_the_handbook_chapter(
         self, std, config, primary_proj,
     ):
-        """⚑⚑ THE §0.1 REGRESSION. The handbook seed's dest is a HOST path under the
-        box store; it must land at ``<box_dir>/canon/handbook`` and must NOT be
-        translated back under the box home. On a host whose user home is
-        ``/home/agent`` the two are textually indistinguishable, which is exactly how
-        this failed silently before ``dest_space``."""
+        """⚑⚑ THE H2 CUT, end to end. ``_apply_init_seeds`` ALONE must leave
+        ``@box.canon/handbook`` untouched: the three handbook layers left the
+        ``seeded`` category (2026-08-07g), so the only route that fills the chapter
+        is step 3's host-side copy.
+
+        MUTATION-PROVED, and it had to be: this is a negative about a route, and the
+        packaged system template really does ship ``box/canon/handbook/directives/
+        SYS_BOX.md``, so the source exists and the assertion discriminates.  Putting
+        the handbook entry back into ``templates._layer()`` makes it FAIL.
+        ``TestBoxHandbookHostCopyThroughTheSeam`` pins that the chapter still
+        ARRIVES, so this is not proving delivery was dropped."""
         install_packaged_templates(std, ["claude"])
+        # The source the retired layer 4 read is really shipped and really there.
+        assert (
+            std.template / "box" / "canon" / "handbook" / "directives" / "SYS_BOX.md"
+        ).is_file()
         _seed(std, primary_proj)
         box_root = primary_proj.shell_path.parent
-        landed = box_root / "canon" / "handbook" / "directives" / "SYS_BOX.md"
-        assert landed.is_file(), sorted(box_root.rglob("*"))
-        # ...and nowhere inside the box HOME.
+        assert not (box_root / "canon" / "handbook").exists(), sorted(
+            box_root.rglob("*"),
+        )
+        # ...and nothing leaked into the box HOME either.
         assert not list(primary_proj.shell_path.rglob("SYS_BOX.md"))
-
-    def test_handbook_seed_dest_equals_the_bind_source(
-        self, std, config, primary_proj,
-    ):
-        """"The seed writes precisely what the bind reads, spelled once": the seeded
-        dir IS ``@box.canon/handbook``, the source of the ro ``canon_hb_box`` bind."""
-        install_packaged_templates(std, ["claude"])
-        _seed(std, primary_proj)
-        box_canon_handbook = primary_proj.shell_path.parent / "canon" / "handbook"
-        assert box_canon_handbook.is_dir()
-        # And it is a SIBLING of home, never inside it (§0.3: @box.canon ≠ ~/canon).
-        assert box_canon_handbook.parent != primary_proj.shell_path
 
     def test_layer_order_last_wins_per_file(self, std, config, primary_proj):
         """base -> agent -> workset: the highest layer to ship a file wins."""
@@ -454,32 +450,29 @@ class TestLayeredHomeSeed:
         # The default workset dir is NOT used once the key is repointed.
         assert not (home / "DEFAULT.txt").exists()
 
-    def test_box_canon_seed_refuses_an_escaping_dest(
-        self, std, config, primary_proj, caplog,
-    ):
-        """§2a enforcement point 2: a settings-declared seed whose HOST dest escapes
-        the box store is SKIPPED with a warning, not written."""
-        install_packaged_templates(std, ["claude"])
-        escape = std.data / "ESCAPED"
-        wsf = std.primary_workset / "settings.yaml"
-        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
-        doc.setdefault("box", {})["canon"] = str(escape)
-        wsf.write_text(yaml.safe_dump(doc))
-        with caplog.at_level(logging.WARNING):
-            _seed(std, primary_proj)
-        assert not (escape / "handbook").exists()
-        assert any("outside the box store" in r.message for r in caplog.records)
+    # ⚑ The escaping-HOST-dest refusal (§2a enforcement point 2) was pinned here
+    # against a ``box.canon`` repointed out of the box store, back when the handbook
+    # trio made ``box.canon`` a seed dest.  It no longer is, and its deletion was
+    # FORCED rather than hygienic: with no handbook seed dest NOTHING escapes, so no
+    # warning is emitted and its ``assert any("outside the box store" in r.message
+    # ...)`` would FAIL outright.  Only its FIRST assertion (that the escaped dir was
+    # not written) would have gone vacuous.  The live pins are
+    # ``TestBoxHandbookHostCopyThroughTheSeam.test_an_escaping_box_canon_is_skipped
+    # _with_a_warning`` (the same claim, on the route that now owns the dest) and
+    # ``test_seed_hostdest.TestHostCopyDest`` (the containment check itself).
 
 
 # ---------------------------------------------------------------------------
-# The BOX HANDBOOK HOST-TEMPLATE copy (phase H1) — Jei's 2026-08-07g ruling: the
-# handbook templates are HOST templates, not GUEST templates, so they are copied
-# beside the workset mould rather than delivered through the ``seeded`` category.
+# The BOX HANDBOOK HOST-TEMPLATE copy — Jei's 2026-08-07g ruling: the handbook
+# templates are HOST templates, not GUEST templates, so they are copied beside the
+# workset mould rather than delivered through the ``seeded`` category.
 #
-# ⚑ PHASE H1 IS ADDITIVE: the three ``<scope>.seeded.handbook`` layers are STILL
-# declared and still applied by ``_apply_init_seeds``.  The tests below that drive
-# the seam therefore WIPE the seeded route's output before invoking this one, so
-# what they observe is this route and not its twin.  H2 removes the twin.
+# ⚑ THE TWIN IS GONE (phase H2).  The three ``<scope>.seeded.handbook`` layers are
+# no longer declared and ``_apply_init_seeds`` no longer touches
+# ``@box.canon/handbook``, so this is the ONE route that fills the box's chapter and
+# the tests below observe it directly — no wipe, no isolation.  That the seeded
+# route no longer writes there is pinned by
+# ``TestLayeredHomeSeed.test_the_seed_route_no_longer_writes_the_handbook_chapter``.
 # ---------------------------------------------------------------------------
 
 def _handbook_dir(proj):
@@ -497,13 +490,16 @@ def _tree(root):
     }
 
 
-def _seed_and_isolate_handbook(std, proj, *, agent="claude"):
-    """Run the real seed, WIPE the seeded route's handbook output, return the
-    snapshot — so the caller's ``_install_box_handbook`` runs against a clean dest
-    and nothing it observes can have come from the still-live ``seeded`` layers."""
+def _seed_snapshot(std, proj, *, agent="claude"):
+    """Run step 2 (the real seed) and return the snapshot it built — which is what
+    ``_install_box_handbook`` reads its dest and layer roots off.
+
+    No wipe is needed: since H2 the ``seeded`` route writes nothing at
+    ``@box.canon/handbook``, so anything the caller then observes there came from
+    step 3."""
     from kanibako.commands.start import _apply_init_seeds
 
-    snapshot = _apply_init_seeds(
+    return _apply_init_seeds(
         std=std,
         proj=proj,
         agent_name=agent,
@@ -512,15 +508,13 @@ def _seed_and_isolate_handbook(std, proj, *, agent="claude"):
         agent_config_path=std.agents / "claude" / "settings.yaml",
         logger=logging.getLogger("test-seed"),
     )
-    shutil.rmtree(_handbook_dir(proj), ignore_errors=True)
-    return snapshot
 
 
 def _install_handbook(std, proj, *, agent="claude", logger=None):
     """Drive step 3 alone, off the snapshot the seed resolve built."""
     from kanibako.commands.start import _install_box_handbook
 
-    snapshot = _seed_and_isolate_handbook(std, proj, agent=agent)
+    snapshot = _seed_snapshot(std, proj, agent=agent)
     _install_box_handbook(
         proj=proj, snapshot=snapshot, agent_id=agent,
         logger=logger or logging.getLogger("test-handbook"),
@@ -841,11 +835,13 @@ class TestBoxHandbookHostCopyThroughTheSeam:
 
         A ``scope="box"`` whitelist on the copier would have RAISED here —
         ``canon2`` is not in ``SCOPE_WHITELISTS["box"]`` — killing a create the
-        ``seeded`` route has always allowed.  That is why there is only one check.
+        retired ``seeded`` route always allowed.  That is why there is only one
+        check.
 
-        TWO passes, because under H1 both routes are live: the first is the WHOLE
-        ``_seed_box_home`` (the "create succeeds" claim), the second wipes the dest
-        and drives step 3 alone (so what refills it can only be THIS route)."""
+        TWO passes, and they claim different things: the first is the WHOLE
+        ``_seed_box_home`` ("create succeeds and the chapter lands"), the second
+        wipes the dest and drives step 3 alone (so what REFILLS it is unambiguously
+        this route, not an artefact of an earlier step)."""
         from kanibako.commands.start import _install_box_handbook
 
         self._populate(std)
@@ -862,7 +858,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         ).is_file()
 
         # Step 3 ALONE also accepts the repointed dest.
-        snapshot = _seed_and_isolate_handbook(std, primary_proj)
+        snapshot = _seed_snapshot(std, primary_proj)
         shutil.rmtree(hb, ignore_errors=True)
         _install_box_handbook(
             proj=primary_proj, snapshot=snapshot, agent_id="claude",
@@ -870,28 +866,39 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         )
         assert (hb / "sys-only.md").read_text() == "sys"
 
-    def test_box_create_is_byte_identical_with_and_without_the_new_call(
+    def test_box_create_still_delivers_the_whole_chapter_by_this_route_alone(
         self, std, config, tmp_home,
     ):
-        """⚑ THE H1 COMPOSITION CHECK.  Both routes are live this phase; they are
-        create-if-absent over the same layers in the same order, so a box created
-        WITH step 3 has a byte-for-byte identical ``@box.canon/handbook`` to one
-        created without it."""
+        """⚑⚑ THE H2 DELIVERY CHECK, and the point of the phase: with the ``seeded``
+        handbook layers GONE, a box created the way ``box create`` creates one still
+        has its full three-layer ``@box.canon/handbook`` — delivered by this route
+        alone.
+
+        Both halves are asserted against the SAME populated store, so neither is
+        vacuous: step 2 alone leaves the dest ABSENT, and the whole
+        ``_seed_box_home`` fills it with every layer's marker plus the packaged box
+        chapter.  A one-sided check would pass if the copy silently stopped running
+        (nothing would be there to compare) or if a twin route came back."""
         self._populate(std)
         one = tmp_home / "proj-seed-only"
         one.mkdir()
-        two = tmp_home / "proj-both-routes"
+        two = tmp_home / "proj-real-create"
         two.mkdir()
         seed_only = resolve_project(std, config, str(one), initialize=True)
-        both = resolve_project(std, config, str(two), initialize=True)
+        created = resolve_project(std, config, str(two), initialize=True)
 
         _seed(std, seed_only)          # step 2 alone (the ``seeded`` route)
-        _seed_box(std, both)           # steps 1-3, exactly as ``box create`` runs
+        _seed_box(std, created)        # steps 1-3, exactly as ``box create`` runs
 
-        before = _tree(_handbook_dir(seed_only))
-        after = _tree(_handbook_dir(both))
-        assert before, "the seeded route delivered nothing — the check is vacuous"
-        assert after == before
+        # The retired route delivers NOTHING to the chapter...
+        assert _tree(_handbook_dir(seed_only)) == {}
+        # ...and the real create delivers ALL THREE layers, last-wins per file.
+        after = _tree(_handbook_dir(created))
+        assert after.get("sys-only.md") == b"sys"
+        assert after.get("agent-only.md") == b"agent"
+        assert after.get("workset-only.md") == b"workset"
+        assert after.get("shared.md") == b"workset"
+        assert "directives/SYS_BOX.md" in after, sorted(after)
 
 
 # ---------------------------------------------------------------------------

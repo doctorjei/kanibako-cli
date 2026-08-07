@@ -48,6 +48,34 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               tuple_dest_space is unchanged — it was already per-CATEGORY."
       code_state: "DOC-ONLY when written: no .py had landed. The spec is the
                    authority; code that still spells the retired shape is WRONG."
+    - date: "2026-08-07g"
+      what: "The THREE box-HANDBOOK seed layers (§2a layers 4-6, every one at
+             @box.canon/handbook) LEAVE the `seeded` category. Their
+             category_default_entries rows are DELETED at all three scopes, the
+             SEEDED-SEEDS box-create moment drops <box_dir>/canon/handbook, and the
+             notes that called @box.canon/handbook a seed dest are corrected. The
+             box's handbook chapter is now filled by a HOST-side copy at create
+             (launch.templates.install_box_handbook_template), modelled on
+             install_workset_template and KEEPING ALL THREE LAYERS as a named
+             SPECIAL CASE."
+      authority: "Jei 2026-08-07g: the handbook templates \"do not DIRECTLY
+                  interact with the box itself ... They are HOST templates, not
+                  GUEST templates\"; ratified spec §2a (three layers) and its
+                  SEEDED-SEEDS table; plan
+                  plans/2026-08-07g-handbook-host-template-move-PLAN.md"
+      scope: "The handbook half of `seeded` ONLY. The box-HOME layers 1-3 are
+              UNCHANGED and still `seeded` (the home IS what the guest sees at ~),
+              and so is their HOST dest_space discriminator. The ro
+              box.bindings.ro[~/canon/handbook/box] bind is UNTOUCHED: it still
+              reads @box.canon/handbook and is still an ordinary key — a host
+              template never enters a box, the BIND does, so single route COMPOSES.
+              The three layer SOURCES stay the ordinary keys
+              {system, agent.<agent>, workset}.template, so the user's repoint
+              route is unchanged. The box seed WHITELIST still allows
+              canon/handbook/ (ratified spec, unchanged): it governs the packaged
+              -> @system.template/box install, which still stages that subtree."
+      code_state: "Code + tests landed with this amendment (phases H1/H2). The spec
+                   half was Jei's and was ratified first."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -461,8 +489,16 @@ policy:
       from: "global/template/workset"
       into: ["<workset_path>"]
     - moment: "box create"
-      from: "the three */template/box/* layers"
-      into: ["<box_dir>/home", "<box_dir>/canon/handbook"]
+      from: "the three */template/box/home layers"
+      into: ["<box_dir>/home"]              # the §2a seeded keys
+    # ⚑ <box_dir>/canon/handbook is NOT in the box-create row, and its absence is
+    # the 2026-08-07g ruling: the three */template/box/canon/handbook layers are
+    # HOST templates, not GUEST templates, so they left the `seeded` category
+    # (no `seeded` entry names that dest now) and are copied host-side at create by
+    # launch.templates.install_box_handbook_template. The dir is still filled at box
+    # create, and @box.canon/handbook is still the SOURCE of the ro
+    # box.bindings.ro[~/canon/handbook/box] bind — that bind is untouched and is
+    # still an ordinary key.
   # Create-if-absent per FILE, never overwrite — once a file exists it belongs
   # to whoever owns that store; a package upgrade must not silently revert their
   # edits. Report a skip ONLY where the packaged file DIFFERS from the one on
@@ -766,8 +802,9 @@ keys:
            Holding the ROOT leaves room for further template subtrees without
            new keys — same indirection as <scope>.canon. ⮕ The box-home seed is
            box/home (@system.template/box/home, §2a layer 1), NOT the root and
-           NOT box/ — box/ is the box TEMPLATE root, holding home/ beside
-           canon/handbook/ (§2a layers 4-6)."
+           NOT box/ — box/ is the box TEMPLATE root, holding home/ (the §2a seed
+           source) beside canon/handbook/, which is the box HANDBOOK HOST TEMPLATE:
+           a host-side copy at create since 2026-08-07g, not a seed layer."
     spec: "§2g (R-1)"
   system.canon:
     scope: system
@@ -1044,9 +1081,11 @@ keys:
     note: "the BOX's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies the
            handbook's BOX chapter, bound at ~/canon/handbook/box/. Resolves in
            EVERY mode now that meta.box.path is uniform (§2c), standalone
-           included. Also the dest of the §2a handbook seed layers (the seed
-           writes precisely what the handbook-box bind — the box.bindings.ro entry at
-           ~/canon/handbook/box — reads, spelled once)."
+           included. ⚑ NOT a seed dest: the §2a handbook seed layers were RETIRED
+           2026-08-07g (HOST templates, not GUEST templates). @box.canon/handbook is
+           filled at create by the host-side box-handbook template copy and read by
+           the box.bindings.ro entry at ~/canon/handbook/box — repointing box.canon
+           still moves both, spelled once."
     spec: "§2b (R-9)"
   box.shell:
     scope: box
@@ -1582,8 +1621,10 @@ bind_default_entries:
       user_key: true
       optional: skip_if_absent
       default: "(@box.canon/handbook)"
-      note: "repoint route = box.canon (R-9); also the dest of the §2a handbook seed
-             layers — the seed writes precisely what this bind reads, spelled once"
+      note: "repoint route = box.canon (R-9); the SOURCE is filled at box create by
+             the host-side box-handbook template copy (NOT a seed layer — those were
+             retired 2026-08-07g), so repointing box.canon moves the fill and this
+             bind together, spelled once"
       spec: "§2c (CANON books; R-10)"
     "~/.config/kanibako/kickoff.md":
       user_key: false
@@ -1780,7 +1821,22 @@ bind_default_entries:
 ## rows keyed by NAME (`{system, agent.<agent>, workset}.seeded.{template,
 ## handbook}`, R-14). The names are GONE (the destination is the identity), but the
 ## rows are kept because their `note:` fields carry the SPEC'S OWN LAYER NUMBERS
-## (§2a layers 1-6) and reasons nothing else records.
+## (§2a layers 1-3) and reasons nothing else records.
+##
+## ⚑⚑ AND THEN THERE WERE THREE. The `handbook` half (layers 4-6, all at
+## `@box.canon/handbook`) was RETIRED 2026-08-07g on Jei's ruling: the handbook
+## templates *"do not DIRECTLY interact with the box itself … They are HOST
+## templates, not GUEST templates"*, so they left the `seeded` category entirely.
+## The ratified §2a declares THREE layers, and the keyspace declares NO `seeded`
+## entry at `@box.canon/handbook` at any scope. (`<scope>.seeded.handbook` is not a
+## key for the separate, older reason recorded above: since 2026-08-07f the name
+## segment is not keyspace at all.) What fills the box's handbook chapter now is
+## `launch.templates.install_box_handbook_template`, a
+## host-side copy at create modelled on `install_workset_template`; its three layer
+## SOURCES are still the ordinary keys `{system, agent.<agent>, workset}.template`,
+## so the user's repoint route is unchanged. Single-route composes: a host template
+## never enters a box — the ro `box.bindings.ro[~/canon/handbook/box]` bind does,
+## and that bind is untouched.
 ## ⚑ EVERY `note:` BELOW IS PRESERVED VERBATIM from its pre-demotion row.
 ##
 ## `user_key:` semantics are UNCHANGED and still real:
@@ -1801,7 +1857,7 @@ bind_default_entries:
 ##
 ## ⚑⚑ THE THREE SCOPES ARE THREE DISTINCT TERMINAL KEYS AND DO NOT COLLIDE.
 ## `system.seeded`, `agent.<agent>.seeded` and `workset.seeded` each hold the same
-## TWO destinations; nothing unions them, so all six layers still apply, in order.
+## ONE destination; nothing unions them, so all three layers still apply, in order.
 ## Cascade merge (six FILE levels) and realization (four SCOPE tokens) are
 ## ORTHOGONAL axes — collapsing the layers to one winner is only reachable by
 ## conflating them. The ordered later-wins-PER-FILE overlay of §2a is unchanged.
@@ -1821,10 +1877,10 @@ category_default_entries:
   parametric_keys:
     "agent.<agent>.seeded": [agent]
 
-  ## ---- THE SIX SEED LAYERS (R-14, dest-keyed 2026-08-07f) -----------------
-  ## COPIES, not mounts: dests are HOST paths (§0 / R-20). Ordered layers,
+  ## ---- THE THREE SEED LAYERS (R-14, dest-keyed 2026-08-07f) ---------------
+  ## COPIES, not mounts: the dest is a HOST path (§0 / R-20). Ordered layers,
   ## later-wins per file, SEED-ONCE at create (§2a / §5). The layer numbers
-  ## in the notes are the spec's own (§2a layers 1-6).
+  ## in the notes are the spec's own (§2a layers 1-3).
   system.seeded:
     "@meta.box.path/home":
       user_key: true
@@ -1832,13 +1888,6 @@ category_default_entries:
       note: "layer 1 — base BOX template (global); source = the box/home subtree of
              the system template ROOT (R-1: system.template, NOT the root itself)"
       spec: "§2a (seed layer 1; R-14)"
-    "@box.canon/handbook":
-      user_key: true
-      default: "(@system.template/box/canon/handbook)"
-      note: "layer 4 — seeds the box's CANON CONTRIBUTION (outside home, then bound
-             RO by the box.bindings.ro entry at ~/canon/handbook/box); dest is the
-             KEY @box.canon, spelled once"
-      spec: "§2a (seed layer 4; R-14)"
   agent.<agent>.seeded:               # parametric in <agent> — see parametric_keys above
     "@meta.box.path/home":
       user_key: true
@@ -1846,11 +1895,6 @@ category_default_entries:
       note: "layer 2 — per-agent (agent = persona + harness); template holds
              settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
       spec: "§2a (seed layer 2; R-14) / §2d"
-    "@box.canon/handbook":
-      user_key: true
-      default: "(@agent.<agent>.template/box/canon/handbook)"
-      note: "layer 5 — per-agent handbook contribution"
-      spec: "§2a (seed layer 5; R-14)"
   workset.seeded:
     "@meta.box.path/home":
       user_key: true
@@ -1859,12 +1903,6 @@ category_default_entries:
       note: "layer 3 — per-workset; the layer is SKIPPED when the source dir is
              absent (cf. workset.template)"
       spec: "§2a (seed layer 3; R-14)"
-    "@box.canon/handbook":
-      user_key: true
-      optional: skip_if_absent
-      default: "(@workset.template/box/canon/handbook)"
-      note: "layer 6 — per-workset handbook contribution (skip-if-absent)"
-      spec: "§2a (seed layer 6; R-14)"
 
 ## ---------------------------------------------------------------------------
 ## PREF — requests (§2h; R-7 / R-7a / R-7b). NOT a key list: the family is

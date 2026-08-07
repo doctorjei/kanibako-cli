@@ -194,10 +194,11 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.template",
     # Per-workset CANON CONTRIBUTION root (spec §2c ALL PROJECTS). Same shape and
     # same reason as ``workset.template`` above: a NORMAL settable STRING-path key
-    # (default ``@meta.workset.path/canon``) that TWO things read — the ro
-    # ``canon_hb_workset`` bind's source AND the ``workset.seeded.handbook`` dest —
-    # so repointing it moves the workset's handbook chapter and the seed that fills
-    # it together. Routed to the ``workset:`` nested slot.
+    # (default ``@meta.workset.path/canon``) read by the ro ``canon_hb_workset``
+    # bind as its SOURCE, so repointing it moves the workset's handbook chapter.
+    # ⚑ It is NOT a seed dest — no seed layer ever targeted it (the retired
+    # handbook layers targeted ``@box.canon/handbook``, and they are gone as of
+    # 2026-08-07g). Routed to the ``workset:`` nested slot.
     "workset.canon",
     # Per-BOX canon contribution root (spec §2b). ⚑ ``@box.canon`` is NOT ``~/canon``:
     # it is ``<box_dir>/canon`` on the HOST, whose ``handbook/`` is ONE CHAPTER bound
