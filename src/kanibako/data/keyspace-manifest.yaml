@@ -27,6 +27,27 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               (reclassifying seeded is a LATER step of the same arc)."
       code_state: "DOC-ONLY when written: no .py had landed. The spec is the
                    authority; code that still spells the retired shape is WRONG."
+    - date: "2026-08-07f"
+      what: "caches / seeded / common / synced go DEST-KEYED and TERMINAL; the
+             entry `name` segment is dropped (R-10 extended to all four);
+             cli_set source_only -> false on all four (DS-BL1 answered (a)); the
+             six seeded.<name> layer rows and the three plugin synced.<name> rows
+             DEMOTED to category_default_entries; bind_shape DELETED (no members
+             left) and the four fold into bindmap_shape. Step 2 of the disk-store
+             arc."
+      authority: "Jei 2026-08-07f (\"lets retool common cache, seeded, synced, and
+                  others necessary to dest-key\" + \"fir synced : yes, this too\")
+                  and 2026-08-07g (\"DS-BL1 - a)\"); plan
+                  plans/2026-08-07f-four-category-dest-key-PLAN.md"
+      scope: "The four bind-shaped NAME-KEYED categories ONLY. This is a KEY-SHAPE
+              change and NOT a delivery change: `seeded` and `synced` remain
+              COPIES (kind: copy is unchanged) and `caches`/`common` remain mounts.
+              `env.<VAR>` and `secret_path.<VAR>` are <VAR>-parametric SCALARS and
+              are UNTOUCHED; they remain the only name-parametric category
+              families. category_layers (abstract/derived) is unchanged, and
+              tuple_dest_space is unchanged — it was already per-CATEGORY."
+      code_state: "DOC-ONLY when written: no .py had landed. The spec is the
+                   authority; code that still spells the retired shape is WRONG."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -140,10 +161,12 @@ policy:
   tuple_direction: source_then_destination
   tuple_dest_space:
     mounts: guest               # bindings.ro · bindings.rw · caches · common
-                                # (masks AND bindings.{ro,rw} are dest-KEYED — the
-                                #  dest is the dict KEY, not a tuple element; it is
-                                #  a guest path all the same. caches/common keep the
-                                #  name-keyed (src, dest[, opts]) tuple.)
+                                # (EVERY bind-shaped category is dest-KEYED since
+                                #  2026-08-07f — masks and bindings.{ro,rw} from
+                                #  2026-08-06c, caches/common/seeded/synced from
+                                #  2026-08-07f. The dest is the dict KEY, not a
+                                #  tuple element; the SPACE rule below is unchanged
+                                #  by that and is per-CATEGORY, not per-key.)
     copies: host                # seeded · synced
   tuple_direction_spec: "§0 (Tuple direction; R-20, ruled 2026-07-30)"
 
@@ -162,8 +185,10 @@ policy:
                                 #   NOTHING MAY BE HERE. Different shape (dest-
                                 #   keyed 3-state), different conflict rule.
     common: abstract            # ROOTED declarations (declaration_roots below)
-    caches: abstract            #   that EXTEND bindings.rw. Still real, declared,
-    seeded: abstract            #   settable keys; seeded derives a COPY, not a mount.
+    caches: abstract            #   that EXTEND bindings.rw. Still real, declared
+    seeded: abstract            #   keys — TERMINAL and dest-keyed since 2026-08-07f,
+                                #   and YAML-only (cli_set: false); seeded derives a
+                                #   COPY, not a mount.
     synced: derived             # derives a binding PLUS extra lifecycle (file
                                 #   COPY, credential-delivery gate, inode-swap
                                 #   writeback); takes NO root — both sides fully spelled.
@@ -175,11 +200,11 @@ policy:
   category_layers_spec: "§0 (TWO LAYERS; R-19)"
 
   # CATEGORY COLLISIONS (R-19) — keyed on the resolved `box_dest`, NEVER on an
-  # entry name. For the NAME-KEYED categories (caches/seeded/common/synced)
-  # different names at one dest collide and one name at two dests does not.
-  # ⚑ bindings.{ro,rw} have NO entry name since 2026-08-06c (R-10): they are
-  # dest-keyed maps, so a same-spelling duplicate inside ONE arm at ONE level is
-  # now structurally impossible. The resolved-box_dest check below is NOT thereby
+  # entry name. ⚑ THERE ARE NO ENTRY NAMES LEFT in any bind-shaped category:
+  # bindings.{ro,rw} lost theirs 2026-08-06c (R-10) and caches/seeded/common/
+  # synced lost theirs 2026-08-07f. All six are dest-keyed maps, so a
+  # same-spelling duplicate inside ONE map at ONE level is now structurally
+  # impossible. The resolved-box_dest check below is NOT thereby
   # removed and MUST STAY — files store entries UNRESOLVED
   # (policy.files_store_unresolved), so `@meta.box.path/home` and a literal
   # spelling of that same path are two distinct dict keys resolving to ONE
@@ -347,7 +372,10 @@ policy:
     applies_to: [common, caches, seeded]   # synced takes NO root; bindings take NO root
     rooted_at: declaration_load            # REQUIRED
     assembly_prepend: forbidden            # `scope_roots` — no longer exists
-    subdir_pattern: "<scope-root>/<category>/<name>"
+    # ⚑ The trailing segment is the AUTHOR'S RELATIVE host_src, NOT an entry name
+    # (entry names are gone since 2026-08-07f). `key` and `host_src` were always
+    # INDEPENDENT; dropping the key segment does not touch source derivation.
+    subdir_pattern: "<scope-root>/<category>/<relative_host_src>"
     roots:
       system: "@config.data"
       agent: "@meta.agent.<agent>.path"    # = @config.agents/<agent>
@@ -462,10 +490,14 @@ policy:
 ## ---------------------------------------------------------------------------
 ## CATEGORIES — the unified primitive (§2a). Available at EVERY scope, so they are
 ## declared ONCE here rather than enumerated scope×category (would be 4×9 entries).
-## TWO SHAPES, do not conflate: the NAME-KEYED categories (caches, common, seeded,
-## synced, secret_path) expand to `<scope>.<category>.<name>`. `masks` and
-## `bindings.{ro,rw}` are DEST-KEYED and do NOT expand — the key ends at the
-## category (at the ro/rw ARM for bindings); see those entries below.
+## TWO SHAPES, do not conflate. (1) The <VAR>-PARAMETRIC SCALAR categories
+## (env, secret_path) expand to `<scope>.<category>.<VAR>`. (2) EVERY BIND-SHAPED
+## category — masks, bindings.ro, bindings.rw, caches, seeded, common, synced — is
+## DEST-KEYED and does NOT expand: the key ends at the category (at the ro/rw ARM
+## for bindings) and its value is a map whose keys are DESTINATIONS, which are DATA
+## and never keyspace segments. The four that were name-keyed (caches, seeded,
+## common, synced) joined shape (2) on 2026-08-07f; there is no name-keyed
+## bind-shaped category left.
 ## ---------------------------------------------------------------------------
 categories:
   scopes: [system, agent.default, agent.active, workset, box]
@@ -488,43 +520,69 @@ categories:
     mount_options: "ro"
     cli_set: false              # YAML only — a terminal dict, exactly like masks.
                                 #   The former `source_only` name-keyed repoint is a
-                                #   KNOWN, ACCEPTED LOSS (R-9; backlog DS-BL1).
+                                #   KNOWN, ACCEPTED LOSS (R-9; DS-BL1 answered (a),
+                                #   Jei 2026-08-07g — accept the loss UNIFORMLY
+                                #   across all six bind-shaped categories).
     default: {}
-    spec: "§2a (REPRESENTATION (1); dest-keyed 2026-08-06c, R-5/R-6/R-9/R-10)"
+    spec: "§2a (REPRESENTATION; dest-keyed 2026-08-06c, R-5/R-6/R-9/R-10)"
   bindings.rw:
     value: bindmap
     terminal_key: true
     dest_keyed: true
     mount_options: "Z,U"
-    cli_set: false
+    cli_set: false              # see bindings.ro above (DS-BL1 (a))
     default: {}
-    spec: "§2a (REPRESENTATION (1); dest-keyed 2026-08-06c, R-5/R-6/R-9/R-10)"
+    spec: "§2a (REPRESENTATION; dest-keyed 2026-08-06c, R-5/R-6/R-9/R-10)"
+  # ⚑ DEST-KEYED + TERMINAL since 2026-08-07f. The CATEGORY is the whole of the
+  # key; the inner dict's keys are DATA, not keyspace segments, so
+  # `<scope>.<category>.<name>` is NOT a key for any of the four below and is
+  # refused (unknown_key). There is no entry `name` — the DESTINATION is the
+  # identity. ⚑⚑ THIS IS A KEY-SHAPE CHANGE ONLY: `kind: copy` on seeded and
+  # synced is UNCHANGED — they were copies before and are copies after.
   caches:
-    value: bind
+    value: bindmap              # dict[box_dest -> [host_src] | [host_src, options]]
+    terminal_key: true          # the value is the whole map; inner keys are data
+    dest_keyed: true
     mount_options: "Z,U"
-    cli_set: source_only
+    cli_set: false              # YAML only — a terminal dict, exactly like masks.
+                                #   The former `source_only` name-keyed repoint is a
+                                #   KNOWN, ACCEPTED LOSS (R-9; DS-BL1 answered (a),
+                                #   Jei 2026-08-07g — accept the loss UNIFORMLY
+                                #   across all six bind-shaped categories).
+    default: {}
     note: "GLOBAL at system, per-agent at agent.<agent>; absorbed the old scalar `transform`"
-    spec: "§2a / §2d"
+    spec: "§2a / §2d (dest-keyed 2026-08-07f)"
   seeded:
-    value: bind
-    kind: copy                  # one-time copy at init, NOT a mount
-    cli_set: source_only
-    spec: "§2a"
+    value: bindmap
+    terminal_key: true
+    dest_keyed: true
+    kind: copy                  # one-time copy at init, NOT a mount — UNCHANGED by
+                                #   the 2026-08-07f key-shape move
+    cli_set: false              # see caches above (DS-BL1 (a))
+    default: {}
+    spec: "§2a (dest-keyed 2026-08-07f)"
   common:
-    value: bind
+    value: bindmap
+    terminal_key: true
+    dest_keyed: true
     mount_options: "Z,U"
-    cli_set: source_only
+    cli_set: false              # see caches above (DS-BL1 (a))
+    default: {}
     note: "RENAMED from `shared` (2026-07-29; R-5). Category `common` vs channel
            type-root `common` is unambiguous — the `channels.` segment is the
-           discriminator. Host dirs move to agents/<agent>/common/<name>:
+           discriminator. Host dirs move to agents/<agent>/common/<host_src>:
            migration M-3."
-    spec: "§2a (R-5; migration M-3)"
+    spec: "§2a (R-5; migration M-3; dest-keyed 2026-08-07f)"
   synced:
-    value: bind
-    kind: copy                  # two-way synced by the agent plugin; mtime-gated
-    cli_set: source_only
+    value: bindmap
+    terminal_key: true
+    dest_keyed: true
+    kind: copy                  # two-way synced by the agent plugin; mtime-gated —
+                                #   UNCHANGED by the 2026-08-07f key-shape move
+    cli_set: false              # see caches above (DS-BL1 (a))
+    default: {}
     suppressed_when: "box shares no credentials (auth tier private)"
-    spec: "§2a (D-M4; auth-level redesign 2026-07-01)"
+    spec: "§2a (D-M4; auth-level redesign 2026-07-01; dest-keyed 2026-08-07f)"
   env:
     value: scalar               # env.<VAR>
     parametric: [VAR]
@@ -541,23 +599,40 @@ categories:
     spec: "§2a (2026-07-06, Jei)"
 
 # The entry VALUE shape is load-bearing (§2a REPRESENTATION): a YAML list / Python
-# tuple, NEVER a colon-joined "host:box" string. THERE ARE TWO SHAPES — do not
-# conflate them.
+# tuple, NEVER a colon-joined "host:box" string. THERE IS NOW ONE BIND SHAPE.
 #
-# (1) bindings.{ro,rw} — DEST-KEYED (2026-08-06c). The dest is the dict KEY.
-#     1 element = (host_src); 2 elements = (host_src, options) overriding the
-#     category default.
+# bindings.{ro,rw} — DEST-KEYED 2026-08-06c — plus caches / seeded / common /
+# synced, which joined the SAME shape on 2026-08-07f. The dest is the dict KEY.
+# 1 element = (host_src). The SECOND element is arity-legal for every category
+# here, but what it MEANS is per-DELIVERY and only the MOUNT categories have an
+# answer — see second_element below.
 bindmap_shape:
-  applies_to: [bindings.ro, bindings.rw]
+  applies_to: [bindings.ro, bindings.rw, caches, seeded, common, synced]
   form: dict_of_list            # dict[box_dest -> list]
   key_is: box_dest              # DATA, never a keyspace segment
   min_elements: 1
   max_elements: 2
+  # ⚑ ONE SHAPE, TWO DELIVERIES — the arity is uniform, the MEANING is not.
+  second_element:
+    mounts: options             # bindings.ro / bindings.rw / caches / common:
+                                #   the options string OVERRIDES the category
+                                #   default (mount_options) for THIS entry only.
+    copies: reserved            # seeded / synced: a COPY has no mount to carry
+                                #   options, so the category has NO default for
+                                #   the slot and the slot has NO meaning today.
+                                #   RESERVED DELIBERATELY, not vestigial —
+                                #   Jei 2026-08-07g, asked what opts means for a
+                                #   copy: "Right now, nothing; but it's a good
+                                #   placeholder that we might need in the
+                                #   future." The spec declines to rule it
+                                #   (§2a REPRESENTATION, the 1-element bullet);
+                                #   this node MUST NOT rule it either.
   colon_string: forbidden
   # ⚑ REFUSE STALE SHAPES LOUDLY (R-8; Code Convention 0) — never a silent accept.
-  # A 3-element entry, or a name-keyed sub-dict under an arm, is the RETIRED
-  # `name -> (host_src, box_dest[, options])` form: ERROR naming the arm and the
-  # offending entry. This validation is LOAD-BEARING because the retired 2-element
+  # A 3-element entry, or a name-keyed sub-dict under a category (or under a
+  # bindings ARM), is the RETIRED
+  # `name -> (host_src, box_dest[, options])` form: ERROR naming the category and
+  # the offending entry. This validation is LOAD-BEARING because the retired 2-element
   # (host_src, box_dest) and the current 2-element (host_src, options) have the
   # SAME ARITY, so a stale value would otherwise be read with its DESTINATION
   # silently reinterpreted as mount OPTIONS. No migration, no compat window (R-4).
@@ -566,17 +641,17 @@ bindmap_shape:
   # does not wipe inherited entries; a present-None entry unsets that dest; a
   # present-None at the ARM omits the whole category.
   merge: per_entry
-  spec: "§2a (REPRESENTATION (1) — do NOT re-derive; R-5/R-6/R-8)"
+  spec: "§2a (REPRESENTATION — do NOT re-derive; R-5/R-6/R-8; extended to all six
+         bind-shaped categories 2026-08-07f)"
 #
-# (2) caches / seeded / common / synced — NAME-KEYED (UNCHANGED). 2 elements =
-#     (host_src, box_dest); 3 elements = (host_src, box_dest, options).
-bind_shape:
-  applies_to: [caches, seeded, common, synced]
-  form: list
-  min_elements: 2
-  max_elements: 3
-  colon_string: forbidden
-  spec: "§2a (REPRESENTATION (2) — do NOT re-derive)"
+# ⚑ `bind_shape` IS DELETED, NOT RETIRED-IN-PLACE (2026-08-07f). It declared the
+# NAME-KEYED `name -> (host_src, box_dest[, options])` form for caches / seeded /
+# common / synced; all four moved to `bindmap_shape` above, so the node had no
+# members left, and a node whose `applies_to` is empty declares nothing. The
+# retired SPELLING is recorded where every other retired spelling is recorded —
+# not_keys.illegal_shapes `<scope>.{caches,common,seeded,synced}.<name>` — and the
+# retired VALUE form is refused by bindmap_shape.refuse_stale above. One record,
+# in the place that already exists for it.
 
 ## ---------------------------------------------------------------------------
 ## KEYS
@@ -1110,7 +1185,8 @@ keys:
     set: cli+file
     default: {}
     note: "binary-transform SETTINGS consumed by the plugin's transform pipeline
-           (the INPUT; agent.<agent>.caches.transform is the OUTPUT cache)"
+           (the INPUT; the transform ENTRY of agent.<agent>.caches is the OUTPUT
+           cache — an entry of a terminal dest-keyed key, not a key of its own)"
     spec: "§2d (added 2026-07-14)"
   agent.default.canon:
     scope: agent
@@ -1612,7 +1688,7 @@ bind_default_entries:
             RULE: a binding DEST is normalized to an ABSOLUTE guest path (`~`
             expanded), so both spellings ARE one entry; the SRC is NEVER
             canonicalized (a host `~` is the invoking user's home). See spec §2a
-            REPRESENTATION (1), 'THE DESTINATION IS CANONICALIZED; THE SOURCE IS
+            REPRESENTATION, 'A MOUNT DESTINATION IS CANONICALIZED; THE SOURCE IS
             NOT'."
       spec: "§2c (ALL PROJECTS)"
     "~/workspace":
@@ -1685,78 +1761,110 @@ bind_default_entries:
       spec: "§2c (ALL WORKSETS)"
 
 ## ---------------------------------------------------------------------------
-## DECLARED INSTANCES (R-10, R-14; R-16 rode to `keys:`) — the NAMED instances of
-## parametric category families that the SPEC ITSELF names. Enumerated because
-## the `user_key:` property is real, machine-checkable, spec-stated and
-## INEXPRESSIBLE in a bare family pattern — and `config show` needs it (R-10).
-## ONLY spec-named instances appear here; any other name inside a declared
-## family remains legal by the family pattern (§0: closed but NOT flat).
+## CATEGORY DEFAULT ENTRIES (dest-keyed; ruled 2026-08-07f — same class as the
+## 2026-08-06c bindings demotion above)
 ##
-## ⚑ SINCE 2026-08-06c THIS BLOCK HOLDS ONLY THE SIX SEED LAYERS. The 30 named
-## `box.bindings.{ro,rw}.<name>` rows that used to lead it are gone as KEYS —
-## bindings are dest-keyed terminal keys (R-5/R-10) and their default entries are
-## DEMOTED to `bind_default_entries:` above. Do not re-add a named binding row
-## here; a name-keyed binding key is refused by the closed keyspace.
+## ⚑ THESE ARE NOT KEYS. `system.seeded`, `agent.<agent>.seeded` and
+## `workset.seeded` are TERMINAL keys (see `categories:` above); the rows below
+## are the DOCUMENTED DEFAULT ENTRIES of those three maps, indexed by their
+## DESTINATION. A destination is DATA — never a keyspace segment — so
+## `<scope>.seeded.<name>` is NOT a key and MUST be refused (policy.unknown_key).
 ##
-## `user_key:` semantics (R-10 — "user_key: false where the spec says so"):
-##   true  — an ORDINARY settable declared key instance: it has a settable
-##           default (`default:`), participates in the set-time floor, and is
-##           user-repointable through the ordinary config verbs.
-##   false — INTERNAL / generated (spec: "not a user key, not repointable"):
-##           the delivery still routes through the single binding route, but the
-##           name is NOT user-addressable — config set/get REFUSE it; `config
-##           show` displays it as internal (`value:`, not `default:`).
-## Field convention: user_key true ⇒ `default:` (the out-of-box value of a
-## settable key); user_key false ⇒ `value:` (fixed, generated — nothing to set).
-## Tuples are spelled exactly as the spec spells them: (host_src, box_dest);
-## dests are GUEST paths for mounts, HOST paths for copies (§0 / R-20).
+## ⚑ `declared_instances:` IS DELETED (2026-08-07f), not left empty. It held ONLY
+## these six rows after the 2026-08-06c bindings demotion; with entry names gone
+## from every bind-shaped category there is no NAMED category instance left for it
+## to hold, and the <VAR>-parametric families (env, secret_path) were never in it.
+## Its `user_key:` semantics are carried forward verbatim below, unchanged.
+##
+## DEMOTED, NOT DELETED: until 2026-08-07f these were six `declared_instances`
+## rows keyed by NAME (`{system, agent.<agent>, workset}.seeded.{template,
+## handbook}`, R-14). The names are GONE (the destination is the identity), but the
+## rows are kept because their `note:` fields carry the SPEC'S OWN LAYER NUMBERS
+## (§2a layers 1-6) and reasons nothing else records.
+## ⚑ EVERY `note:` BELOW IS PRESERVED VERBATIM from its pre-demotion row.
+##
+## `user_key:` semantics are UNCHANGED and still real:
+##   true  — an ORDINARY user-facing entry with a settable default (`default:`)
+##           that participates in the set-time floor. ⚑ It is no longer
+##           REPOINTABLE FROM THE CLI: every bind-shaped category is YAML-only
+##           since 2026-08-07f (categories.seeded.cli_set: false; DS-BL1 (a), a
+##           KNOWN ACCEPTED LOSS).
+##   false — INTERNAL / generated: the delivery still routes through the single
+##           binding route, but nothing about it is user-addressable.
+## Field convention: user_key true ⇒ `default:`; user_key false ⇒ `value:`.
+## Entry values are spelled as the spec spells them: `(host_src)`. ⚑ NO entry
+## below carries a second element, and none could mean anything by it — `seeded`
+## is a COPY, so there is no mount to carry options and the slot is RESERVED with
+## no meaning today (bindmap_shape.second_element). ⚑ Dests here are HOST paths —
+## `seeded` is a COPY category (§0 / R-20 / policy.tuple_dest_space), and the
+## 2026-08-07f key-shape move did NOT change that.
+##
+## ⚑⚑ THE THREE SCOPES ARE THREE DISTINCT TERMINAL KEYS AND DO NOT COLLIDE.
+## `system.seeded`, `agent.<agent>.seeded` and `workset.seeded` each hold the same
+## TWO destinations; nothing unions them, so all six layers still apply, in order.
+## Cascade merge (six FILE levels) and realization (four SCOPE tokens) are
+## ORTHOGONAL axes — collapsing the layers to one winner is only reachable by
+## conflating them. The ordered later-wins-PER-FILE overlay of §2a is unchanged.
 ## ---------------------------------------------------------------------------
-declared_instances:
+category_default_entries:
 
-  ## ---- THE SIX SEED LAYERS — `{system, agent.<agent>, workset}.seeded.
-  ## {template,handbook}` (R-14; same class as R-10) -------------------------
+  ## ⚑ METADATA ABOUT THE KEYS BELOW — DELIBERATELY NOT A CHILD OF ONE.
+  ## EVERY child of a key below is a DESTINATION (these maps are indexed by their
+  ## DESTINATION), so a metadata field parked among them would put TWO SHAPES in
+  ## ONE MAP — one child whose value is a list of parameter names, the rest entry
+  ## mappings — which is the ambiguity Code Convention 0 forbids. It is recorded
+  ## here instead, keyed by the KEY it describes, in the same `[<param>]` spelling
+  ## the `keys:` table uses for its own `parametric:` field.
+  ## `<agent>` in a key name below is therefore a PLACEHOLDER: the row stands for
+  ## one terminal key per installed agent, not for a key literally spelled
+  ## `agent.<agent>.seeded`.
+  parametric_keys:
+    "agent.<agent>.seeded": [agent]
+
+  ## ---- THE SIX SEED LAYERS (R-14, dest-keyed 2026-08-07f) -----------------
   ## COPIES, not mounts: dests are HOST paths (§0 / R-20). Ordered layers,
   ## later-wins per file, SEED-ONCE at create (§2a / §5). The layer numbers
-  ## below are the spec's own (§2a layers 1-6).
-  system.seeded.template:
-    user_key: true
-    default: "(@system.template/box/home, @meta.box.path/home)"
-    note: "layer 1 — base BOX template (global); source = the box/home subtree of
-           the system template ROOT (R-1: system.template, NOT the root itself)"
-    spec: "§2a (seed layer 1; R-14)"
-  agent.<agent>.seeded.template:
-    parametric: [agent]
-    user_key: true
-    default: "(@agent.<agent>.template/box/home, @meta.box.path/home)"
-    note: "layer 2 — per-agent (agent = persona + harness); template holds
-           settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
-    spec: "§2a (seed layer 2; R-14) / §2d"
-  workset.seeded.template:
-    user_key: true
-    optional: skip_if_absent
-    default: "(@workset.template/box/home, @meta.box.path/home)"
-    note: "layer 3 — per-workset; the layer is SKIPPED when the source dir is
-           absent (cf. workset.template)"
-    spec: "§2a (seed layer 3; R-14)"
-  system.seeded.handbook:
-    user_key: true
-    default: "(@system.template/box/canon/handbook, @box.canon/handbook)"
-    note: "layer 4 — seeds the box's CANON CONTRIBUTION (outside home, then bound
-           RO by the box.bindings.ro entry at ~/canon/handbook/box); dest is the
-           KEY @box.canon, spelled once"
-    spec: "§2a (seed layer 4; R-14)"
-  agent.<agent>.seeded.handbook:
-    parametric: [agent]
-    user_key: true
-    default: "(@agent.<agent>.template/box/canon/handbook, @box.canon/handbook)"
-    note: "layer 5 — per-agent handbook contribution"
-    spec: "§2a (seed layer 5; R-14)"
-  workset.seeded.handbook:
-    user_key: true
-    optional: skip_if_absent
-    default: "(@workset.template/box/canon/handbook, @box.canon/handbook)"
-    note: "layer 6 — per-workset handbook contribution (skip-if-absent)"
-    spec: "§2a (seed layer 6; R-14)"
+  ## in the notes are the spec's own (§2a layers 1-6).
+  system.seeded:
+    "@meta.box.path/home":
+      user_key: true
+      default: "(@system.template/box/home)"
+      note: "layer 1 — base BOX template (global); source = the box/home subtree of
+             the system template ROOT (R-1: system.template, NOT the root itself)"
+      spec: "§2a (seed layer 1; R-14)"
+    "@box.canon/handbook":
+      user_key: true
+      default: "(@system.template/box/canon/handbook)"
+      note: "layer 4 — seeds the box's CANON CONTRIBUTION (outside home, then bound
+             RO by the box.bindings.ro entry at ~/canon/handbook/box); dest is the
+             KEY @box.canon, spelled once"
+      spec: "§2a (seed layer 4; R-14)"
+  agent.<agent>.seeded:               # parametric in <agent> — see parametric_keys above
+    "@meta.box.path/home":
+      user_key: true
+      default: "(@agent.<agent>.template/box/home)"
+      note: "layer 2 — per-agent (agent = persona + harness); template holds
+             settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
+      spec: "§2a (seed layer 2; R-14) / §2d"
+    "@box.canon/handbook":
+      user_key: true
+      default: "(@agent.<agent>.template/box/canon/handbook)"
+      note: "layer 5 — per-agent handbook contribution"
+      spec: "§2a (seed layer 5; R-14)"
+  workset.seeded:
+    "@meta.box.path/home":
+      user_key: true
+      optional: skip_if_absent
+      default: "(@workset.template/box/home)"
+      note: "layer 3 — per-workset; the layer is SKIPPED when the source dir is
+             absent (cf. workset.template)"
+      spec: "§2a (seed layer 3; R-14)"
+    "@box.canon/handbook":
+      user_key: true
+      optional: skip_if_absent
+      default: "(@workset.template/box/canon/handbook)"
+      note: "layer 6 — per-workset handbook contribution (skip-if-absent)"
+      spec: "§2a (seed layer 6; R-14)"
 
 ## ---------------------------------------------------------------------------
 ## PREF — requests (§2h; R-7 / R-7a / R-7b). NOT a key list: the family is
@@ -1798,12 +1906,17 @@ pref:
                                   #   PARAMETRIC FAMILY (§0: closed but not flat).
                                   #   VALIDITY, not EXISTENCE: a NEW name inside
                                   #   a family is legal
-                                  #   (pref.agent.claude.env.BOOOOO). ⚑ NOT
-                                  #   bindings: each arm is ONE TERMINAL key
-                                  #   since 2026-08-06c, so
-                                  #   pref.<...>.bindings.rw.<anything> is
-                                  #   INVALID — only the bare arm is a target;
-                                  #   fabrication still errors
+                                  #   (pref.agent.claude.env.BOOOOO). ⚑ NOT the
+                                  #   BIND-SHAPED categories: bindings.{ro,rw}
+                                  #   and masks since 2026-08-06c, and caches /
+                                  #   seeded / common / synced since
+                                  #   2026-08-07f, are each ONE TERMINAL key, so
+                                  #   pref.<...>.bindings.rw.<anything> and
+                                  #   pref.<...>.seeded.<anything> alike are
+                                  #   INVALID — only the bare key is a target.
+                                  #   The dotted form is a FAMILY only for
+                                  #   env.<VAR> and secret_path.<VAR>.
+                                  #   Fabrication still errors
                                   #   (pref.agent.zippity.wibble matches no
                                   #   family → §0 error).
     - allowlist                   # requestable in principle (the table above)
@@ -1856,8 +1969,14 @@ pref:
   # on the target key and is classified by the ORDINARY present-None rule:
   # OMIT for a bind / category / masks leaf (no mount / unmask), KEPT None for
   # a scalar leaf (consumer default) — so pref.system.agent: null requests the
-  # NO-AGENT plain-shell box, and pref.agent.<agent>.<category>.<name>: null is
-  # the box's ONLY channel to drop something its agent declares. The pref layer
+  # NO-AGENT plain-shell box. The box's ONLY channel to drop something its agent
+  # declares is still the pref, but since 2026-08-07f EVERY bind-shaped category
+  # is dest-keyed, so the null moves INSIDE the value for all six:
+  # `pref.agent.<agent>.<category>: {<box_dest>: null}` drops one destination and
+  # `pref.agent.<agent>.<category>: null` omits the whole category. The dotted
+  # `pref.agent.<agent>.<category>.<name>` spelling is INVALID for a bind-shaped
+  # category; it survives only for the <VAR>-parametric env / secret_path. The
+  # POWER is unchanged; only the spelling is. The pref layer
   # MUST NOT interpret emptiness AT ALL: present-None, terminal "", and the
   # COPY-disable sentinel all forward untouched (it must not become a FOURTH
   # place deciding what "empty" means).
@@ -1938,7 +2057,26 @@ not_keys:
              re-interpreted as a dest. Applies at every scope, both arms, and to
              the pref form `pref.agent.<agent>.bindings.<ro|rw>.<name>`.
              Its default entries live at bind_default_entries."
-      spec: "§2a (REPRESENTATION (1)) / §0 (closed keyspace)"
+      spec: "§2a (REPRESENTATION) / §0 (closed keyspace)"
+    "<scope>.<caches|common|seeded|synced>.<name>":
+      status: illegal_shape
+      note: "RETIRED 2026-08-07f. Each of the four is now a TERMINAL key whose
+             value is a BindMap keyed by box_dest; the inner dict's keys are DATA,
+             not keyspace segments, so NOTHING may follow the category in a key.
+             This was a LEGAL, DECLARED shape until that date — the six spec-named
+             seed layers plus the three plugin credential instances plus every
+             plugin-declared common/caches entry — so it is recorded here rather
+             than merely deleted: code that still spells it must be REFUSED
+             LOUDLY, naming the key, never silently re-interpreted as a dest.
+             Applies at every scope, all four categories, and to the pref form
+             `pref.agent.<agent>.<category>.<name>`. ⚑ This retires the KEY SHAPE
+             only: `seeded` and `synced` are still COPIES (categories.*.kind).
+             The retired VALUE form (the 3-element
+             `name -> (host_src, box_dest[, options])` list, and a name-keyed
+             sub-dict under the category) is refused by bindmap_shape.refuse_stale.
+             The spec-named default entries live at category_default_entries;
+             the plugin-declared ones at plugin_contributed."
+      spec: "§2a (REPRESENTATION) / §0 (closed keyspace)"
     "agent.secret_path.<VAR>":
       status: illegal_shape
       note: "R-40 (RATIFIED as recommended): settings_categories.SECRET_KEY_RE
@@ -1974,8 +2112,11 @@ not_keys:
     "system.channels.commons": "-> system.channels.common (R-6; guest-path
                                 migration M-9)"
     "workset.channels.commons": "-> workset.channels.common (R-6; migration M-9)"
-    "<scope>.shared.<name>":   "-> <scope>.common.<name> (R-5, category renamed
-                                2026-07-29; host dirs migration M-3)"
+    "<scope>.shared.<name>":   "-> an ENTRY of the terminal key <scope>.common
+                                (R-5, category renamed 2026-07-29; host dirs
+                                migration M-3). ⚑ The successor is NOT
+                                `<scope>.common.<name>`: entry names are gone
+                                since 2026-08-07f — see illegal_shapes"
     "box.vault_enabled":       "-> box.enable_vault (2026-07-04)"
     "box.mode":                "-> meta.box.mode (RO identity anchor; mode is identity)"
     "env_file":                "-> secret_path.<VAR>, promoted to a §2a category (2026-07-06)"
@@ -1984,7 +2125,11 @@ not_keys:
     "box.group_auth":          "-> box.auth.{global,workset}_enabled (2026-07-01)"
     "group_auth_on":           "-> box.auth.{global,workset}_enabled (2026-07-01)"
     "box.bootstrap_program":   "-> agent.default.bootstrap (multiplexer is agent-tier)"
-    "agent.<agent>.transform": "-> agent.<agent>.caches.transform (FOLDED, 2026-06-27)"
+    "agent.<agent>.transform": "-> the transform ENTRY of the terminal key
+                                agent.<agent>.caches (FOLDED, 2026-06-27; the
+                                entry NAME `transform` is gone with 2026-08-07f
+                                dest-keying — the entry is addressed by its
+                                destination)"
     "agent.<agent>.mode":      "-> meta.agent.<agent>.mode (non-editable key, Jei 2026-07-28)"
     "agent.<agent>.exec":      "-> meta.agent.<agent>.exec (non-editable key, Jei 2026-07-28)"
     "agent.default.auto_approve": "-> agent.default.access (R-41, 2026-08-01; values map
@@ -2128,34 +2273,49 @@ plugin_contributed:
   shape_spec: "§0 (universal vs agent-specific) / §2d (R-37)"
 
   # R-15 (RATIFIED, follows R-10): the spec-NAMED plugin `synced` credential
-  # instances live HERE, not in the core declared_instances list — they are
-  # PLUGIN-declared (each is materialised from its plugin's cred_files
-  # descriptor entries). Same entry semantics as declared_instances.
-  declared_instances:
-    agent.claude.synced.credentials:
-      user_key: true
-      default: "(~/.claude/.credentials.json, @meta.box.path/home/.claude/.credentials.json)"
-      note: "SYNC, mtime-gate, FILTERED (transform_cred merges claudeAiOauth).
-             COPY dest = HOST path under the box store (§0 / R-20). Suppressed
-             when the box shares no credentials (auth tier private, D-M4)."
-      spec: "§2d (claude; R-15)"
-    agent.codex.synced.auth:
-      user_key: true
-      default: "(~/.codex/auth.json, @meta.box.path/home/.codex/auth.json)"
-      note: "SYNC, mtime-gate, filtered=False (Q2: allowlist iff install-bound
-             fields)"
-      spec: "§2d (codex; R-15)"
-    agent.goose.synced.secrets:
-      user_key: true
-      default: "(~/.config/goose/secrets.yaml, @meta.box.path/home/.config/goose/secrets.yaml)"
-      note: "SYNC, mtime-gate, chmod 0600"
-      spec: "§2d (goose; R-15)"
+  # entries live HERE, not in the core table — they are PLUGIN-declared (each is
+  # materialised from its plugin's cred_files descriptor entries).
+  # ⚑ DEMOTED 2026-08-07f, same class as the core seed layers: `agent.<a>.synced`
+  # is a TERMINAL key and these are its DEFAULT ENTRIES, indexed by DESTINATION.
+  # `agent.claude.synced.credentials` and its two siblings are NOT keys — the
+  # retired names are kept in the row headings ONLY as `was:` provenance.
+  # ⚑ Dests are HOST paths: `synced` is and remains a COPY category (§0 / R-20).
+  category_default_entries:
+    agent.claude.synced:
+      "@meta.box.path/home/.claude/.credentials.json":
+        was: "agent.claude.synced.credentials (name retired 2026-08-07f)"
+        user_key: true
+        default: "(~/.claude/.credentials.json)"
+        note: "SYNC, mtime-gate, FILTERED (transform_cred merges claudeAiOauth).
+               COPY dest = HOST path under the box store (§0 / R-20). Suppressed
+               when the box shares no credentials (auth tier private, D-M4)."
+        spec: "§2d (claude; R-15)"
+    agent.codex.synced:
+      "@meta.box.path/home/.codex/auth.json":
+        was: "agent.codex.synced.auth (name retired 2026-08-07f)"
+        user_key: true
+        default: "(~/.codex/auth.json)"
+        note: "SYNC, mtime-gate, filtered=False (Q2: allowlist iff install-bound
+               fields)"
+        spec: "§2d (codex; R-15)"
+    agent.goose.synced:
+      "@meta.box.path/home/.config/goose/secrets.yaml":
+        was: "agent.goose.synced.secrets (name retired 2026-08-07f)"
+        user_key: true
+        default: "(~/.config/goose/secrets.yaml)"
+        note: "SYNC, mtime-gate, chmod 0600"
+        spec: "§2d (goose; R-15)"
 
   # MEMBER CENSUS — INFORMATIVE ONLY, a point-in-time record (2026-08-01, the
   # shipped descriptors at manifest HEAD 63ea33c). The AUTHORITATIVE member
   # list is ALWAYS the installed descriptors (that is R-37's whole point);
   # this census exists so a reader knows what class of thing descriptors
   # contribute, and MUST NOT be used as a validation source.
+  # ⚑ The dotted `synced.credentials` / `common.{plugins,cache}` / `caches.transform`
+  # spellings below are the PRE-2026-08-07f entry NAMES, kept because the census is
+  # a point-in-time record of what each plugin contributes. They are NOT keys: each
+  # is an ENTRY of the terminal dest-keyed category key. Do not read a key spelling
+  # off this census.
   member_census:
     claude: "synced.credentials · common.{plugins,cache} · binary binds
              {share, launcher} (agent_critical) + managed_pointer (kickoff seed)
