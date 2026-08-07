@@ -361,6 +361,119 @@ def test_adapter_masks_and_env():
     assert envs[0].box_dest == "FOO" and envs[0].options == "bar"
 
 
+class TestAMasksListInTheFloorReachesTheEmit:
+    """The ``masks`` LIST→keyed-dict BRIDGE in the floor fold, end to end.
+
+    ⚑ WHY THIS EXISTS AS A DIRECT TEST. ``masks`` is declared as a real
+    ``list[box_dest]`` (spec §2a — the shipped/floor form, e.g.
+    ``core_defaults.vault_mask_default()``), while the KeyStore model is a keyed
+    ``dict[box_dest → bool]`` (S5/§6f) and the adapter's masks emit only walks a
+    ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
+    ``default_categories`` fold (``settings_launch.py``, the ``masks BRIDGE``
+    branch). Delete that branch and the list stays a ``list``, the emit's
+    ``isinstance(masks, KeyStore)`` guard skips it, and EVERY floor-declared mask
+    disappears — SILENTLY, with no error and no mount.
+
+    ⚑ THE ASSERTION IS THE EMITTED OUTPUT, deliberately: ``test_adapter_masks_and_env``
+    above pins the adapter when it is HANDED the keyed dict, so it is green with the
+    bridge deleted. Only a test that starts from the LIST covers the bridge.
+
+    MUTATION-PROOF (RUN, not inferred from the shape): neutering the bridge branch
+    turns FIVE of the six tests below RED. The one that stays green is
+    ``test_an_already_keyed_masks_floor_passes_through_unbridged`` — by
+    construction, since it never hands the fold a list.
+    """
+
+    @staticmethod
+    def _emit(cats):
+        ctx = _ctx()
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            default_categories=cats,
+        )
+        return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+
+    @classmethod
+    def _tmpfs_masks(cls, cats):
+        """The EFFECTIVE mask destinations, built exactly as the launch does —
+        ``[e.box_dest for e in reconciled.mounts if e.category == "masks"]``
+        (``commands/start.py``, the ``tmpfs_masks`` split feeding
+        ``runtime.run(tmpfs_masks=...)``)."""
+        rec = reconcile_categories(cls._emit(cats))
+        return [e.box_dest for e in rec.mounts if e.category == "masks"]
+
+    def test_a_box_masks_list_becomes_masked_destinations(self):
+        entries = self._emit({"box.masks": ["/home/agent/secret", "~/other"]})
+        masks = [e for e in entries if e.category == "masks"]
+        assert [e.box_dest for e in masks] == ["/home/agent/other", "/home/agent/secret"]
+        assert all(e.scope == "box" for e in masks)
+        # A mask is a value-LESS mount: no host source, ro tmpfs shadow.
+        assert all(e.host_src is None and e.options == "ro" for e in masks)
+        # The reported KEY keeps the dest AS WRITTEN (``~/other``) — the key names
+        # what the user can edit; only the emitted box_dest is guest-expanded.
+        assert {e.key for e in masks} == {
+            "box.masks./home/agent/secret", "box.masks.~/other",
+        }
+        # ...and they survive reconcile as the launch's tmpfs mask list.
+        assert self._tmpfs_masks({"box.masks": ["/home/agent/secret", "~/other"]}) == [
+            "/home/agent/other", "/home/agent/secret",
+        ]
+
+    def test_a_masks_tuple_is_bridged_like_a_list(self):
+        # The bridge accepts ``(list, tuple)``: a YAML list loads as a list, but a
+        # defaults table may hand over a frozen tuple. Both are the same declaration.
+        assert self._tmpfs_masks({"box.masks": ("/t/one", "/t/two")}) == [
+            "/t/one", "/t/two",
+        ]
+
+    def test_an_agent_scope_masks_list_is_bridged_under_the_active_node(self):
+        # The bridge keys off the ``.masks`` TAIL, not the ``box`` scope, so a
+        # DISCRIMINATED agent-scope declaration bridges too (spec §0 — there is no
+        # bare ``agent.masks``).
+        entries = self._emit({"agent.claude.masks": ["/home/agent/agentmask"]})
+        masks = [e for e in entries if e.category == "masks"]
+        assert len(masks) == 1
+        assert masks[0].box_dest == "/home/agent/agentmask"
+        # The emitted precedence scope is the bare ``agent`` token; the KEY carries
+        # the discriminated node the user actually writes.
+        assert masks[0].scope == "agent"
+        assert masks[0].key == "agent.claude.masks./home/agent/agentmask"
+
+    def test_an_already_keyed_masks_floor_passes_through_unbridged(self):
+        # The bridge is shape-gated (``isinstance(val, (list, tuple))``), so the
+        # keyed form a settings FILE carries is left exactly as it is — no
+        # double-conversion into ``{"/keyed": True}`` keyed by a bool.
+        assert self._tmpfs_masks({"box.masks": {"/keyed": True}}) == ["/keyed"]
+
+    def test_a_whole_arm_empty_string_suppresses_only_its_own_masks_default(self):
+        # ``masks`` is a TERMINAL dest-keyed key (R-5), so the floor fold's
+        # ""-suppression lands on the WHOLE arm: that scope's masks default is
+        # disabled (absent ≡ no default) and another scope's is untouched.
+        assert self._tmpfs_masks(
+            {"box.masks": "", "system.masks": ["/keep"]}
+        ) == ["/keep"]
+
+    def test_the_bindings_per_entry_suppression_still_applies_beside_masks(self):
+        # The masks bridge and the bindings-arm PER-ENTRY ""-suppression are two
+        # branches of the SAME floor-fold loop, each ending in ``continue``. Pinning
+        # them together is what proves neither short-circuits the other: the mask is
+        # bridged AND the suppressed binding entry is dropped while its sibling
+        # survives. (``test_empty_string_default_suppression_dropped`` above pins the
+        # per-entry suppression on its own, at the snapshot rather than the emit.)
+        entries = self._emit({
+            "box.masks": ["/m/one"],
+            "box.bindings.rw": {
+                "/home/agent": ("/h/home", "Z,U"),
+                "/home/agent/drop": "",
+            },
+        })
+        assert [(e.category, e.box_dest) for e in entries] == [
+            ("bindings.rw", "/home/agent"),
+            ("masks", "/m/one"),
+        ]
+
+
 def test_adapter_bind_with_none_leaf_raises():
     from kanibako.settings.settings_resolve import SettingsError
 
