@@ -462,9 +462,14 @@ def load_category_binds(
     SAME constructor every core floor producer goes through — so the arm key
     spelling, the R-11 destination normalization and the act-once refusal are
     written ONCE for core and for plugins rather than re-typed here.  ⚑ Normalizing
-    the destination is NOT cosmetic: ``commands.start``'s floor merge dedupes on
-    these keys BEFORE anything parses them, so ``~/x`` and ``/home/agent/x`` left
-    unnormalized would survive as two entries at one mountpoint.
+    the destination is NOT cosmetic, though not for the obvious reason: two
+    spellings do NOT reach podman as two mounts. ``commands.start``'s floor merge
+    dedupes on these keys BEFORE anything parses them, so ``~/x`` and
+    ``/home/agent/x`` survive it as two entries; both then resolve to the same
+    guest dest and ``reconcile_categories`` raises ``binding_vs_binding``. The
+    cost is the FAILED OVERRIDE that precedes the error: a value written at the
+    canonical spelling does not REPLACE an unnormalized entry, it becomes a
+    SECOND one.
 
     A ``key:`` under a ``bindings`` category is **REFUSED**, not ignored.  Dropping
     it silently would let a plugin written against the retired contract keep
