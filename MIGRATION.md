@@ -455,6 +455,38 @@ Agent-level and workset-level template dirs restructure the same way: the seed s
 setup` self-heals the store **layout** (create-if-absent, never rewriting your files), but any
 content you placed at the old flat paths needs the same hand-move as above.
 
+**(c) The box's own handbook chapter has one repoint route: `<scope>.template`.** Beside
+`box/home/`, each template root has a `box/canon/handbook/` subtree, and `box create` copies all
+three of them — system, then agent, then workset, later overlaying earlier, per file — into the
+new box's `canon/handbook` directory, which is then bound read-only into the box at
+`~/canon/handbook/box`. Nothing about that changed; what changed is **how you repoint it**:
+
+- **To change what a new box's handbook chapter starts with**, edit
+  `<data>/global/template/box/canon/handbook/`, `<data>/agents/<agent>/template/box/canon/handbook/`
+  or `<workset>/template/box/canon/handbook/` — or move the whole root by setting
+  `system.template`, `agent.<agent>.template` or `workset.template`. These are ordinary settable
+  keys and are the only route.
+- **To change where the chapter is written and read**, set `box.canon`; the copy and the bind both
+  follow it, as before.
+- **The copy is no longer a `seeded` entry, so the cascade cannot reroute it.** kanibako used to
+  declare three `seeded` entries for the handbook (`system.seeded.handbook`,
+  `agent.<agent>.seeded.handbook`, `workset.seeded.handbook`, all writing
+  `@box.canon/handbook`); an override of one in a settings file repointed that layer's *source*.
+  Those entries are **gone**, and so is that override route. The handbook templates are *host*
+  templates — they fill a host directory that a separate read-only bind later delivers — so they
+  are copied host-side at create rather than routed through the box's seed category.
+- **DELETE any leftover `handbook:` entry under a `seeded:` table in your settings files** —
+  do not merely stop relying on it. It no longer names the handbook layer, but neither does
+  it go inert: it still parses as an ordinary *user-declared* `seeded` copy, and its
+  destination is now read as a **box-side** path instead of a host one. Either way the copy
+  is mishandled silently — it is dropped with a `skipping` warning, or, on a host whose own
+  user home is `/home/agent` (the same path the box uses), it is written *underneath* the
+  box home, where the read-only `~/canon/handbook/box` mount hides it while `create` reports
+  success. Delete the entry and repoint `<scope>.template` instead.
+
+This affects nobody upgrading from **v1.7.2**, which had neither those entries nor the box
+handbook chapter; it is written down because the `1.8.0rc1` prerelease declared them.
+
 ### 2.6 The kickoff transition — why upgrade order matters to YOU
 
 The "kickoff" is the file that boots a box's whole instruction chain

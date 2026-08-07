@@ -854,14 +854,18 @@ class TestAgentConfigFirstUse:
             m.target.generate_agent_config.assert_not_called()
 
     def test_template_layers_applied_for_new_box(self, start_mocks):
-        """A new box seeds the ordered layers once per DEST — through the
-        keystore-routed ``_apply_init_seeds`` (Q1), which stages each destination's
-        three layers via ``templates.stage_layers``.
+        """A new box stages three ordered layers into each of TWO host destinations,
+        by TWO routes (``templates.stage_layers`` is the shared mechanism):
 
-        ⚑ TWO destinations now, both HOST paths under the box STORE (spec §2a): the
-        box home, and ``@box.canon/handbook`` — which is a SIBLING of the home, not
-        a path inside it. A handbook layer staged under the home would be shadowed
-        by the RO chapter mount and silently invisible."""
+        * the box HOME — the keystore-routed ``seeded`` category (spec §2a layers
+          1-3), applied by ``_apply_init_seeds`` (Q1);
+        * ``@box.canon/handbook`` — the HOST-side handbook template copy
+          (``_install_box_handbook``, step 3), which since 2026-08-07g is the only
+          route that fills it — no ``seeded`` entry names that dest any more.
+
+        Both dests are HOST paths under the box STORE, and the handbook one is a
+        SIBLING of the home, not a path inside it: a handbook layer staged under the
+        home would be shadowed by the RO chapter mount and silently invisible."""
         import kanibako.launch.templates
         with start_mocks() as m:
             # B7 seed-at-create / membership model: the one-time home seed is

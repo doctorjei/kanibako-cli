@@ -6751,11 +6751,11 @@ def _seed_box_home(
        fills ``@box.canon/handbook``, which no guest ever sees — the RO
        ``canon_hb_box`` BIND is what delivers it at ``~/canon/handbook/box``, and
        that bind is an ordinary key, so single-route is intact.
-       ⚑ TRANSITIONAL (phase H1): the three ``<scope>.seeded.handbook`` layers are
-       STILL declared and still applied by step 2.  Both routes are create-if-
-       absent over the same layers in the same order, so they compose and land
-       identical bytes; step 2's handbook arm is removed in H2, once this route is
-       proven to deliver.
+       ⚑ THIS IS THE ONLY ROUTE THAT FILLS THE BOX HANDBOOK CHAPTER.  Step 2 does
+       NOT: the three handbook seed layers went out with the ruling, so nothing
+       declares a ``seeded`` entry at ``@box.canon/handbook`` any more and a box
+       created without step 3 gets an EMPTY chapter.  This is not a redundant
+       second copy — do not "simplify" it away by folding it back into step 2.
 
     The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
     per-launch mechanisms and are NOT part of this one-time seed.
@@ -7289,14 +7289,20 @@ def _apply_init_seeds(
     The credential gate (D-M4) is applied during reconcile: a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
 
-    ⚑⚑ TWO DESTINATION NAMESPACES.  The six §2a seed keys resolve to absolute HOST
-    paths under the box store (``@meta.box.path/home``, ``@box.canon/handbook``); a
-    user-declared ``<scope>.seeded.<name>`` stays GUEST-space and is translated by
+    ⚑⚑ TWO DESTINATION NAMESPACES.  The three §2a seed keys resolve to an absolute
+    HOST path under the box store (``@meta.box.path/home``); a user-declared
+    ``<scope>.seeded.<name>`` stays GUEST-space and is translated by
     ``container._guest_dest_to_host`` exactly as before.  The two are textually
     indistinguishable — on a host whose user home is ``/home/agent`` a host store
     path STARTS WITH the guest home prefix — so the entry carries its space and this
     function branches on it.  Translating a host dest would silently write the box's
-    handbook chapter somewhere nothing reads, and report success.
+    seeded template layers somewhere nothing reads, and report success.
+
+    ⚑ THE BOX HANDBOOK CHAPTER IS NOT SEEDED HERE, and looking for it in this
+    function is the wrong place: the three handbook seed layers were retired
+    2026-08-07g (HOST templates, not GUEST templates), so no declared ``seeded``
+    entry names that dest.  ``@box.canon/handbook`` is filled by the SIBLING step 3,
+    :func:`_install_box_handbook`, off the snapshot returned above.
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
     from kanibako.launch.templates import (
@@ -7342,9 +7348,10 @@ def _apply_init_seeds(
 
     # Group the seeded COPY winners by (dest_space, resolved dest), PRESERVING the
     # reconcile apply order (system -> agent -> workset -> box) within each dest — so
-    # a dest targeted by multiple layers (the template trio at the box home, the
-    # handbook trio at @box.canon/handbook) is staged in that order, later overlaying
-    # earlier.  ⚑ The SPACE is part of the key for the same reason it is in
+    # a dest targeted by multiple layers (the template trio at the box home) is
+    # staged in that order, later overlaying earlier.  A USER-declared seeded entry
+    # can share a dest the same way; the grouping is not special to the trio.
+    # ⚑ The SPACE is part of the key for the same reason it is in
     # ``reconcile_categories``: the two namespaces can produce the same STRING.
     by_dest: dict[tuple[str, str], list] = {}
     for seed in reconciled.copies:
@@ -7373,9 +7380,9 @@ def _apply_init_seeds(
         if dest is None:
             continue
         if len(group) > 1:
-            # A LAYERED dest (the ``seeded.template`` trio at the box home, the
-            # ``seeded.handbook`` trio at @box.canon/handbook): stage the layer
-            # sources IN ORDER (per-file last-wins) then seed create-if-absent.
+            # A LAYERED dest (the ``seeded.template`` trio at the box home): stage
+            # the layer sources IN ORDER (per-file last-wins) then seed
+            # create-if-absent.
             # ``stage_layers`` skips any absent-dir source (skip-if-absent — e.g. an
             # unpopulated @workset.template).
             for e in group:

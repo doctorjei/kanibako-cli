@@ -8,12 +8,12 @@ that nothing else would catch:
 
 1. **The ``/home/agent`` host-home collision.**  A HOST store path and a GUEST box
    path are textually indistinguishable, and on a host whose user home IS
-   ``/home/agent`` they can collide outright.  Fed to the guest translator, the box's
-   handbook chapter is written somewhere nothing reads — and the copy REPORTS
-   SUCCESS.  ⚑ The dev box and the seadog LXC test envs are exactly such hosts;
-   bifrost (``kanibako``) is not, so the two environments we test in disagree about
-   which failure mode appears.  That is the worst possible property for a bug, and
-   the reason ``dest_space`` is a FIELD and not a heuristic.
+   ``/home/agent`` they can collide outright.  Fed to the guest translator, a host
+   dest is re-rooted under the box home — content written somewhere nothing reads,
+   and the copy REPORTS SUCCESS.  ⚑ The dev box and the seadog LXC test envs are
+   exactly such hosts; bifrost (``kanibako``) is not, so the two environments we
+   test in disagree about which failure mode appears.  That is the worst possible
+   property for a bug, and the reason ``dest_space`` is a FIELD and not a heuristic.
 2. **Reconcile grouping.**  Keyed on the bare dest, a host COPY and a guest MOUNT
    that share a dest STRING become one group and "every mount beats ``seeded``"
    silently eats the seed.
@@ -23,6 +23,14 @@ that nothing else would catch:
 4. **The handbook depth order and the agent-tier fallback**, both of which fail
    INVISIBLY: a depth-sort regression mounts the chapters before their parents, and a
    wrong agent tier means ``agent.default`` never fires.
+
+⚑ WHAT CARRIES A HOST DEST TODAY (2026-08-07g).  The ``seeded`` category's host arm
+is the box HOME trio (``@meta.box.path/home``).  ``@box.canon/handbook`` LEFT the
+category with Jei's HOST-templates ruling and is filled by
+``launch.templates.install_box_handbook_template``, which reaches the same
+``start._host_copy_dest`` containment check from the other side — so §1 below still
+covers both, and the discriminator (``CategoryEntry.dest_space`` /
+``templates.seed_keys_of``) is still live for the home trio.
 
 Host-side only; no podman.  The physical mount is the e2e's job.
 """
@@ -76,7 +84,8 @@ class TestHostCopyDest:
         box_root = Path(GUEST_HOME) / ".local/share/kanibako/boxes/demo"
         dest = _host_copy_dest(
             str(box_root / "canon" / "handbook"), box_root,
-            label="seed", name="handbook", logger=logging.getLogger("t"),
+            label="handbook template", name="@box.canon/handbook",
+            logger=logging.getLogger("t"),
         )
         assert dest == box_root / "canon" / "handbook"
         # Specifically: NOT re-rooted anywhere, and still under the box STORE.
@@ -109,7 +118,7 @@ class TestHostCopyDest:
 
 
 class TestSeedRoutesRoundTheGuestTranslator:
-    """End-to-end through the REAL seed seam: the six §2a keys never touch
+    """End-to-end through the REAL seed seam: the three §2a keys never touch
     ``_guest_dest_to_host``, so no amount of guest-translation weirdness can move
     them."""
 
@@ -146,10 +155,11 @@ class TestSeedRoutesRoundTheGuestTranslator:
             logger=logging.getLogger("t"), deliver_creds=True,
         )
         store = proj.shell_path.parent
-        assert (store / "canon" / "handbook" / "directives" / "SYS_BOX.md").is_file()
         assert (store / "home" / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
-        # The translator was never asked about a §2a seed dest.
-        assert not any("canon/handbook" in d or d.endswith("/home") for d in seen), seen
+        # The translator was never asked about a §2a seed dest.  ⚑ The spy RETURNS
+        # None, so a §2a dest routed through it would deliver NOTHING — the assert
+        # above is what makes this one non-vacuous.
+        assert not any(d.endswith("/home") for d in seen), seen
 
 
 # ===========================================================================
@@ -170,7 +180,7 @@ class TestReconcileGroupsOnTheSpace:
     def test_a_host_copy_and_a_guest_mount_sharing_a_dest_string_stay_two(self):
         """⚑ Keyed on the bare dest these collapse into ONE group and the copy-vs-
         mount rule silently drops the seed — the collision at the reconcile layer."""
-        shared = f"{GUEST_HOME}/.local/share/kanibako/boxes/demo/canon/handbook"
+        shared = f"{GUEST_HOME}/.local/share/kanibako/boxes/demo/home"
         copy = _entry(box_dest=shared, dest_space="host")
         mount = _entry(
             category="bindings.ro", box_dest=shared, dest_space="guest",

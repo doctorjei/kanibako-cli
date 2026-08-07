@@ -20,33 +20,40 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Layered box seed (spec §2a "Template seed (LAYERED, ordered)").
 #
-# The seed model layers three ordered sources into EACH of the box store's two
-# seeded destinations at creation (base -> agent -> workset; later overlays
-# earlier) — SIX keys in total:
+# The seed model layers three ordered sources into the box store's ONE seeded
+# destination at creation (base -> agent -> workset; later overlays earlier) —
+# THREE keys in total:
 #
 #   1 system.seeded.template   | (@system.template/box/home,                  @meta.box.path/home)
 #   2 agent.<a>.seeded.template| (@agent.<a>.template/box/home,               @meta.box.path/home)
 #   3 workset.seeded.template  | (@workset.template/box/home,                 @meta.box.path/home)
-#   4 system.seeded.handbook   | (@system.template/box/canon/handbook,        @box.canon/handbook)
-#   5 agent.<a>.seeded.handbook| (@agent.<a>.template/box/canon/handbook,     @box.canon/handbook)
-#   6 workset.seeded.handbook  | (@workset.template/box/canon/handbook,       @box.canon/handbook)
+#
+# ⚑⚑ THERE ARE NO HANDBOOK LAYERS HERE, AND THIS IS NOT AN OVERSIGHT.  Until
+# 2026-08-07g three more layers seeded ``@box.canon/handbook`` from each scope's
+# ``box/canon/handbook`` subtree.  Jei RULED them OUT of the category — *"they do
+# not DIRECTLY interact with the box itself … They are HOST templates, not GUEST
+# templates"* — and the ratified spec's §2a no longer declares them, so nothing in
+# the keyspace names a ``seeded`` entry at ``@box.canon/handbook``.  The box's own
+# handbook chapter is filled by :func:`install_box_handbook_template`, a HOST-side
+# copy at create; read the QUARANTINE block above that function before touching it.
+# The box HOME layers below stay in the category because the home IS what the guest
+# sees at ``~``.
 #
 # The layer SOURCES are NOT derived on disk here — they are ORDINARY keystore
 # ``seeded`` category keys resolved through the launch snapshot (ruled 2026-07-09
 # Q1: everything goes through the keystore + seeding, no bespoke template route).
 # :func:`template_seed_defaults` declares them as default-category entries; the
 # seed seam (``commands.start._apply_init_seeds``) resolves them off the committed
-# snapshot and applies each dest's layers IN ORDER via :func:`stage_layers`.
+# snapshot and applies the dest's layers IN ORDER via :func:`stage_layers`.
 #
-# ⚑⚑ EVERY DEST IS A **HOST** PATH (spec §2a, ruled: the tuple direction is
+# ⚑⚑ THE DEST IS A **HOST** PATH (spec §2a, ruled: the tuple direction is
 # ``(source, HOST destination)`` for COPY categories).  ``@meta.box.path/home`` is
 # the box store's home dir — the very directory the ``box.bindings.rw.home`` mount
-# then delivers at ``~`` — and ``@box.canon/handbook`` is the box's CONTRIBUTION
-# root, which lives OUTSIDE the home and is bound RO back into the box at
-# ``~/canon/handbook/box``.  Spelling the handbook dest guest-side would be a real
-# bug, not a style choice: ``~/canon/handbook/box`` sits inside the RW home bind, so
-# the copy would land in ``<box_dir>/home/...`` and the RO mount would SHADOW it —
-# two copies, the visible one read-only and a hidden writable one beneath.
+# then delivers at ``~``.  Being host-spelled is what makes the entry's
+# ``dest_space`` load-bearing rather than cosmetic: a box store under
+# ``/home/agent/.local/share/…`` starts with the GUEST home prefix, so the guest
+# translator would happily re-root it under the box home and report success.  The
+# entry therefore CARRIES its space; no prefix test could tell the two apart.
 #
 # ⚑ ``@box.canon`` IS NOT ``~/canon``.  See ``settings_categories.CategoryEntry``.
 #
@@ -55,18 +62,20 @@ if TYPE_CHECKING:
 # (skip-if-absent — the seeded category drops a layer whose source dir is absent).
 # ---------------------------------------------------------------------------
 
-#: The box store's HOST-side seed destinations, as ``@``-ref formulas (spec §2a).
-#: ⚑ ``@meta.box.path/home`` and ``@box.canon/handbook`` are the ONLY two — "SEED
-#: DESTINATIONS ARE ENUMERATED, NEVER A WHOLE-DIRECTORY COPY", because a wholesale
-#: ``template/box/* -> <box_dir>/*`` copy could plant ``<box_dir>/settings.yaml``,
-#: which IS ``meta.box.settings``, the LAST cascade level.
+#: The box store's HOST-side seed destination, as an ``@``-ref formula (spec §2a).
+#: ⚑ ``@meta.box.path/home`` is the ONLY one — "SEED DESTINATIONS ARE ENUMERATED,
+#: NEVER A WHOLE-DIRECTORY COPY", because a wholesale ``template/box/* ->
+#: <box_dir>/*`` copy could plant ``<box_dir>/settings.yaml``, which IS
+#: ``meta.box.settings``, the LAST cascade level.
 _SEED_DEST_HOME = "@meta.box.path/home"
-_SEED_DEST_HANDBOOK = "@box.canon/handbook"
 
 #: The per-layer SOURCE subpaths under each layer's ``template`` root.  The two-level
 #: ``box/`` is the declared WHITELIST BOUNDARY (J-2): everything under it is box
 #: ENDPOINT content and gets the box whitelist; ``home`` and ``canon/handbook`` are
-#: the box store's two allowed top-level entries, not decoration.
+#: the box store's two allowed top-level entries, not decoration.  ⚑ Only ``home``
+#: is a SEED source now — ``canon/handbook`` is read by the host-side
+#: :func:`install_box_handbook_template` copy (2026-08-07g), which is why the two
+#: constants no longer sit in the same table.
 _SEED_SRC_HOME = "box/home"
 _SEED_SRC_HANDBOOK = "box/canon/handbook"
 
@@ -81,26 +90,26 @@ AGENT_TEMPLATE_STORE_REL = "template"
 def template_seed_defaults(
     proj: ProjectPaths, agent_id: str | None
 ) -> dict[str, object]:
-    """Return the layered box-seed DEFAULT-category table (spec §2a — SIX keys).
+    """Return the layered box-seed DEFAULT-category table (spec §2a — THREE keys).
 
-    Three ordered layers × two enumerated destinations, as ORDINARY keystore keys,
+    Three ordered layers into ONE enumerated destination, as ORDINARY keystore keys,
     ready to fold into the seed-time snapshot's ``default_categories``
     (``commands.start._apply_init_seeds``) so they resolve + apply through the SAME
     single seeded-category route as every other seed — no bespoke template plumbing
     (Q1).  Each is a ``seeded`` COPY into a HOST path under the box store, sourced
     from an ``@``-ref SETTINGS key so the source stays user-repointable through the
-    cascade (setting ``workset.template`` / ``agent.<a>.template`` reroutes both of
-    that layer's seeds at once):
+    cascade (setting ``workset.template`` / ``agent.<a>.template`` reroutes that
+    layer):
 
-    * ``system.seeded.{template,handbook}`` — ALWAYS (Q4: no carve-out).
-    * ``agent.<a>.seeded.{template,handbook}`` — only when an agent is bound; the
+    * ``system.seeded.template`` — ALWAYS (Q4: no carve-out).
+    * ``agent.<a>.seeded.template`` — only when an agent is bound; the
       source key ``agent.<a>.template`` defaults to ``@config.agents/<harness>/
       template`` (spec §2a/§2d; ``<a>`` = the persona+harness node, Q2). Absent for a
       NO-AGENT box.
-    * ``workset.seeded.{template,handbook}`` — only for a PRIMARY/NAMED box (a
+    * ``workset.seeded.template`` — only for a PRIMARY/NAMED box (a
       workset tier exists); the source key ``workset.template`` defaults to
       ``@meta.workset.path/template`` (Q3, was ``<None>``). STANDALONE has no workset
-      tier, so both layers are OMITTED. Each layer is SKIPPED when its source dir is
+      tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is
       absent — the seeded category's ordinary missing-source semantics.
 
     The returned dict mixes the SEED tuple keys with their SOURCE scalar keys
@@ -111,9 +120,11 @@ def template_seed_defaults(
     settings-tier path), as are ``@meta.box.path`` and ``@box.canon``
     (``settings_launch.workset_anchor_floor``), so none is re-declared here.
 
-    ⚑ The handbook seed's DEST is the KEY ``@box.canon/handbook``, which is EXACTLY
-    the SOURCE of the RO ``canon_hb_box`` bind — "the seed writes precisely what the
-    bind reads, spelled once".  Repoint ``box.canon`` and both follow.
+    ⚑ The SOURCE keys are shared with the box HANDBOOK host-template copy
+    (:func:`handbook_layer_source_keys`), which reads the SAME three
+    ``<scope>.template`` scalars this table declares and is gated by them — that is
+    why the handbook layers leaving the ``seeded`` category (2026-08-07g) did not
+    make the box handbook any less repointable.
     """
     from kanibako.agent_ref import harness_of
     from kanibako.channels.channels import has_workset_channels
@@ -121,9 +132,6 @@ def template_seed_defaults(
     def _layer(source_root: str) -> dict[str, object]:
         return {
             "template": (f"{source_root}/{_SEED_SRC_HOME}", _SEED_DEST_HOME),
-            "handbook": (
-                f"{source_root}/{_SEED_SRC_HANDBOOK}", _SEED_DEST_HANDBOOK,
-            ),
         }
 
     defs: dict[str, object] = {
@@ -157,11 +165,17 @@ def seed_keys_of(defs: "dict[str, object]") -> frozenset[str]:
 
     The single source of the HOST-space key set the launch resolve needs
     (``settings_launch.snapshot_category_entries(host_dest_keys=…)``): every key this
-    module declares in the ``seeded`` category targets one of the two ENUMERATED
-    HOST destinations above, and nothing else in the table does.  Derived from the
-    table rather than restated so a seventh layer cannot be added in one place and
-    forgotten in the other — which would silently route its copy through the GUEST
-    translator and land it inside the box home (see ``CategoryEntry.dest_space``).
+    module declares in the ``seeded`` category targets the ONE ENUMERATED HOST
+    destination above (``@meta.box.path/home``), and nothing else in the table does.
+    Derived from the table rather than restated so a fourth layer cannot be added in
+    one place and forgotten in the other — which would silently route its copy
+    through the GUEST translator and land it inside the box home (see
+    ``CategoryEntry.dest_space``).
+
+    ⚑ STILL LIVE AND STILL NEEDED after the handbook layers left the category
+    (2026-08-07g).  The home dest is spelled ``@meta.box.path/home`` — a HOST path —
+    so the discriminator has exactly as much to do as before; only the number of
+    host destinations went from two to one.
 
     A USER-declared ``<scope>.seeded.<name>`` is NOT in here and stays GUEST-space,
     exactly as today.
@@ -374,8 +388,10 @@ def copy_tree(
     evaluated on each entry's path RELATIVE TO *dest_root* — so it is correct both for
     a whole-store copy (*dest* IS the store root) and for a copy into a subdirectory
     of one (the legacy plugin-payload arm).  It is OMITTED only where the dest is not
-    a scope store at all: the box SEED's two dests are key-fixed at ``home`` and
-    ``canon/handbook``, and the packaged handbook's dest is inside the canon root.
+    a scope store at all: the box SEED's dest is key-fixed at ``home``, the box
+    handbook host-template copy's is key-fixed at ``canon/handbook``
+    (:func:`install_box_handbook_template`), and the packaged handbook's dest is
+    inside the canon root.
 
     *dest_root* is BOTH the containment boundary and the whitelist's frame of
     reference (defaults to *dest*).
@@ -929,8 +945,9 @@ def install_packaged_templates(
         # the moment it is staged — which is the earliest point a planted
         # ``settings.yaml`` (= ``meta.box.settings``, the LAST cascade level) can be
         # REFUSED rather than carried forward. Unscoped, the deny-list would only be
-        # dead prose: nothing downstream re-checks it, because the box seed copies
-        # from ``box/home`` and ``box/canon/handbook`` directly.
+        # dead prose: nothing downstream re-checks it, because the two downstream
+        # copies (the box-home seed and the box-handbook host template) read
+        # ``box/home`` and ``box/canon/handbook`` directly.
         copy_tree(
             base_src / PACKAGED_BOX_TEMPLATE,
             std.template / PACKAGED_BOX_TEMPLATE,

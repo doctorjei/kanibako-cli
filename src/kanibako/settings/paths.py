@@ -98,8 +98,10 @@ class StandardPaths:
     # ``global/template`` at the same time).  Holding the ROOT rather than the
     # box-seed dir directly is what leaves room for further template subtrees
     # without new keys.  ⚑ The box-HOME seed is ``template/box/home``, NOT the root
-    # and NOT ``box/``: ``box/`` is the box TEMPLATE root, holding ``home/`` beside
-    # ``canon/handbook/`` (spec §2a layers 1-6).
+    # and NOT ``box/``: ``box/`` is the box TEMPLATE root, holding ``home/`` (spec
+    # §2a layers 1-3, the ``seeded`` category) beside ``canon/handbook/`` (the box
+    # handbook HOST template — not a seed since 2026-08-07g; see
+    # ``launch.templates.install_box_handbook_template``).
     template: Path
     # ``system.canon`` — the SYSTEM-level CANON CONTRIBUTION root (spec §2g).  Its
     # ``handbook/`` subtree supplies ``SYS_CONTENTS.md`` + the ``general`` chapter,

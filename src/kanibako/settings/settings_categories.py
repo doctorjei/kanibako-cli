@@ -360,12 +360,15 @@ class CategoryEntry:
       ``/home/agent/.claude``, translated to its host counterpart by
       ``container._guest_dest_to_host``.
     * ``"host"`` — an ABSOLUTE HOST path a COPY writes to directly, used by the
-      §2a seed layers whose dests are the keys ``@meta.box.path/home`` and
-      ``@box.canon/handbook``.
+      §2a seed layers, whose dest is the key ``@meta.box.path/home``.  (Until
+      2026-08-07g ``@box.canon/handbook`` was a second one; those layers left the
+      category — HOST templates, not GUEST templates — and the box handbook is now
+      filled by ``launch.templates.install_box_handbook_template``.  The
+      discriminator is unchanged and still LIVE: the home dest is host-spelled.)
 
     On a host whose user home IS ``/home/agent`` (this project's own dev box, and
     the seadog LXC test envs), a host dest such as
-    ``/home/agent/.local/share/kanibako/…/canon/handbook`` starts with the guest
+    ``/home/agent/.local/share/kanibako/…/boxes/demo/home`` starts with the guest
     home prefix, so the guest translator would map it BACK under the box home and
     the copy would land somewhere nothing reads — silently, reporting success.  The
     fix cannot be a smarter prefix test; the entry has to CARRY ITS SPACE.
