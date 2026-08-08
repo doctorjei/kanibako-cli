@@ -11,7 +11,6 @@ from pathlib import Path
 class HelperConnection:
     """Persistent connection to the HelperHub for messaging.
 
-    Use for helpers that need to send/receive messages over time.
     For one-shot commands (spawn/stop), use ``send_request()`` instead.
     """
 
@@ -27,9 +26,7 @@ class HelperConnection:
         if helper_num is not None:
             resp = self._request({"action": "register", "helper_num": helper_num})
             if resp.get("status") != "ok":
-                raise ConnectionError(
-                    f"Registration failed: {resp.get('message', 'unknown')}"
-                )
+                raise ConnectionError(f"Registration failed: {resp.get('message', 'unknown')}")
 
     def spawn(self, helper_num: int, model: str | None = None,
               helpers_dir: str | None = None) -> dict:
@@ -44,28 +41,19 @@ class HelperConnection:
     def stop(self, container_name: str, helper_num: int) -> dict:
         """Request the hub to stop a helper container."""
         return self._request({
-            "action": "stop",
-            "container_name": container_name,
-            "helper_num": helper_num,
+            "action": "stop", "container_name": container_name, "helper_num": helper_num,
         })
 
     def send(self, to: int, payload: dict) -> dict:
         """Send a message to a specific peer or parent."""
-        return self._request({
-            "action": "send", "to": to, "payload": payload,
-        })
+        return self._request({"action": "send", "to": to, "payload": payload})
 
     def broadcast(self, payload: dict) -> dict:
         """Broadcast a message to all connected helpers."""
-        return self._request({
-            "action": "broadcast", "payload": payload,
-        })
+        return self._request({"action": "broadcast", "payload": payload})
 
     def recv(self, timeout: float | None = None) -> dict | None:
-        """Receive an incoming message (blocking).
-
-        Returns the message dict or None on timeout/disconnect.
-        """
+        """Receive an incoming message (blocking); None on timeout/disconnect."""
         if self._sock is None:
             return None
         old_timeout = self._sock.gettimeout()
@@ -87,7 +75,7 @@ class HelperConnection:
             self._sock.settimeout(old_timeout)
 
     def close(self) -> None:
-        """Close the connection."""
+        """Close the connection; idempotent and never raises."""
         if self._sock:
             try:
                 self._sock.close()
@@ -101,7 +89,6 @@ class HelperConnection:
             raise ConnectionError("Not connected")
         with self._lock:
             self._sock.sendall(json.dumps(data).encode() + b"\n")
-            # Read response from buffer + socket
             while b"\n" not in self._recv_buf:
                 chunk = self._sock.recv(4096)
                 if not chunk:
@@ -112,10 +99,7 @@ class HelperConnection:
 
 
 def send_request(socket_path: Path, request: dict) -> dict:
-    """One-shot convenience: connect, send, read response, disconnect.
-
-    For spawn/stop commands that don't need a persistent connection.
-    """
+    """One-shot convenience for spawn/stop commands that need no persistent connection."""
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         s.connect(str(socket_path))
