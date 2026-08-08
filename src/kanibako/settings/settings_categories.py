@@ -128,48 +128,86 @@ ENV: Final[Delivery] = "ENV"
 #: ``{VAR}`` at agent start — kanibako only ever writes the mount PATH.
 SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 
-# The bind-shaped categories (one ``{scope}.<category>.<name>`` key per entry,
-# value is a 2-/3-element ``[host_src, box_dest[, options]]`` tuple).  ``masks``
-# (a keyed list) and ``env`` (a scalar) have bespoke key shapes handled
-# separately below.
+# The bind-shaped categories (value is a 2-/3-element
+# ``[host_src, box_dest[, options]]`` tuple).  ``masks`` (a keyed list) and ``env``
+# (a scalar) have bespoke key shapes handled separately below.
 #
-# ⚑ TWO TUPLES, NOT ONE — they answer different questions, and conflating them is
+# ⚑ FOUR TUPLES, AND EACH ANSWERS A DIFFERENT QUESTION.  Conflating any two is
 # what this split exists to prevent:
 #
-# * :data:`SETTABLE_BIND_CATEGORIES` — which bind-shaped categories may still be
-#   named in a ``config set`` / ``config reset`` key.  At EVERY scope: the file
-#   scopes (``system`` / ``workset`` / ``box``) AND the discriminated
-#   ``agent.<node>`` scope.
 # * ``_BIND_CATEGORIES`` — every bind-shaped category, i.e. which keys carry the
-#   tuple VALUE SHAPE.  ``bindings.{ro,rw}`` stay in it: they are still declared
-#   keys, still authored in YAML, still delivered at launch.
+#   tuple VALUE SHAPE.  All six are declared keys, authored in YAML, delivered at
+#   launch.  The other three tuples are ITS SUBSETS.
+# * ``_TERMINAL_BIND_CATEGORIES`` — the ones where the CATEGORY KEY IS THE WHOLE
+#   KEY: its value is a map keyed by box DESTINATION, and a destination is DATA, so
+#   ``<scope>.<category>.<name>`` is NOT a key at all (R-5/R-6).
+# * ``_NON_TERMINAL_BIND_CATEGORIES`` — the COMPLEMENT, derived: the ones that DO
+#   have a per-entry dotted key, so ``config get`` can read one at a dotted path,
+#   the positional-vs-key disambiguator must read the shape as a key, and the write
+#   verbs must be able to name one in a refusal.  ⚑ MEMBERSHIP MOVES, THE QUESTION
+#   DOES NOT: as each category goes dest-keyed it moves to the terminal tuple and
+#   drops out of this one automatically.  Nothing here asserts anything about WHICH
+#   categories those are.
+# * :data:`SETTABLE_BIND_CATEGORIES` — which bind-shaped categories may be named
+#   in a ``config set`` / ``config reset`` key.  **EMPTY.  All six are YAML-only.**
 #
-# The two diverged when the bind CLI WRITE route was RETIRED (disk-store rework
-# step 1, ruling R-9 — an accepted user-surface loss, tracked as DS-BL1).  Those
-# keys are becoming a TERMINAL dest-keyed map whose inner keys are NOT part of
-# the keyspace, so there is no dotted key left for the CLI to name.  The
-# retirement landed in two steps and is now COMPLETE — no scope may name a
-# ``bindings.{ro,rw}`` entry in a set/reset key:
+# ⚑⚑ THE CLI WRITE ROUTE IS RETIRED FOR ALL SIX (ruling DS-BL1 = (a), 2026-08-07g:
+# *"accept the loss uniformly"*).  ``bindings.{ro,rw}`` lost it first (R-9, two
+# steps) because their per-name key stopped existing; the other four lost it by
+# the uniform ruling rather than by shape, and it is a KNOWN, ACCEPTED
+# user-surface loss — a bind-shaped entry is authored in YAML, full stop.  Every
+# retired spelling stays RECOGNISED so the verbs refuse it BY NAME instead of
+# degrading to "unknown config key"; the closed keyspace (spec §0) refuses,
+# never accepts quietly.  All six stay READABLE via ``config get``:
 #
-# * ``{system,workset,box}.bindings.{ro,rw}.<name>`` — recognised by
+# * ``{system,workset,box}.<any-of-the-six>.<name>`` — recognised by
 #   :data:`SCOPE_BIND_KEY_RE`, refused by ``config_keys.scope_bind_retired_error``.
 # * ``agent.<node>.bindings.{ro,rw}.<name>`` — recognised by the node-splitting
 #   ``config_keys._AGENT_NODE_BIND_RE`` (which must also canonicalize the ``+``
 #   node segment, so it cannot be folded into the regex above), refused by
 #   ``config_keys.agent_node_bind_retired_error``.
-#
-# Both retired spellings stay RECOGNISED so the verbs refuse them BY NAME instead
-# of degrading to "unknown config key"; the closed keyspace (spec §0) refuses,
-# never accepts quietly.  Both stay READABLE via ``config get``.
+# * ``agent.<node>.<a NON-TERMINAL category>.<name>`` — recognised by
+#   :data:`BIND_KEY_RE` at the agent scope, refused by that same function.
 #
 # NOTE the regex order: ``bindings.ro`` / ``bindings.rw`` must precede a bare
 # ``bindings`` (there is none), and ``caches``/``seeded``/``common``/``synced`` are
 # distinct tokens.  Listed longest-first so every alternation built below is
 # unambiguous.
-SETTABLE_BIND_CATEGORIES: Final[tuple[str, ...]] = (
-    "caches", "seeded", "common", "synced",
+_BIND_CATEGORIES: Final[tuple[str, ...]] = (
+    "bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced",
 )
-_BIND_CATEGORIES = ("bindings.ro", "bindings.rw", *SETTABLE_BIND_CATEGORIES)
+#: The bind-shaped categories whose CATEGORY KEY IS TERMINAL — the whole of the
+#: key, with a destination-keyed map for a value (R-5/R-6).  No ``.<name>`` key
+#: exists under one, so no per-entry dotted spelling can be read, refused or set.
+#:
+#: ⚑ A MIRROR, NOT THE DEFINITION.  The keyspace validator owns that:
+#: ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` (which also lists ``masks`` — a
+#: terminal category, but not bind-shaped, so it is absent here).  It is spelled
+#: again rather than imported because this module is deliberately stdlib-only (see
+#: the module docstring), and the two are PINNED EQUAL by
+#: ``test_settings_keyspace.test_the_bind_shaped_terminal_mirror_cannot_drift`` so
+#: the mirror cannot drift.
+#: ⚑ THIS IS THE TUPLE THAT MOVES as the disk-store rework proceeds: each category
+#: that goes dest-keyed is added HERE (in the same pass that flips its parsing),
+#: and every derivation below follows.
+_TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = ("bindings.ro", "bindings.rw")
+#: The bind-shaped categories that still have a PER-ENTRY DOTTED KEY — derived as
+#: the complement of the terminal ones, so "terminal" has exactly one definition
+#: here and this can never disagree with it.
+_NON_TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
+    c for c in _BIND_CATEGORIES if c not in _TERMINAL_BIND_CATEGORIES
+)
+#: The bind-shaped categories a ``config set`` / ``config reset`` key may name.
+#: **EMPTY — DS-BL1 = (a): every bind-shaped category is YAML-only.**  It is kept
+#: as an EMPTY TUPLE rather than deleted because it is the ONE definition of
+#: "settable" that :data:`RETIRED_BIND_CATEGORIES` is derived from, so the two can
+#: never drift and re-admitting a category would be a one-line edit here (plus a
+#: visible spec edit — the keyspace is CLOSED).
+#: ⚑ NOTHING may build a regex ALTERNATION from this tuple: ``"|".join(())`` is
+#: the empty string, which yields a group that matches the EMPTY string and would
+#: accept ``system..foo``.  Every alternation below is built from a tuple that
+#: cannot be empty.
+SETTABLE_BIND_CATEGORIES: Final[tuple[str, ...]] = ()
 
 # The ABSTRACT categories — the three that let an author write a bare LEAF, rooted
 # at DECLARATION under ``<scope-root>/<category>/`` (spec §2a). The rest
@@ -215,41 +253,73 @@ _DELIVERY: dict[str, Delivery] = {
 # it rather than quietly accept it. Do not "helpfully" widen this back.
 _AGENT_SCOPE = r"agent\.[^.]+"
 _FILE_SCOPE_ALT = "system|workset|box"
-_SETTABLE_CATEGORY_ALT = "|".join(
-    c.replace(".", r"\.") for c in SETTABLE_BIND_CATEGORIES
+_NON_TERMINAL_CATEGORY_ALT = "|".join(
+    c.replace(".", r"\.") for c in _NON_TERMINAL_BIND_CATEGORIES
 )
 #: The categories NO scope may name in a set/reset key any more — derived as the
 #: DIFFERENCE from ``_BIND_CATEGORIES``, so "settable" has exactly one definition
-#: (the tuple above) and the two regexes below cannot drift apart.  Exported
-#: because ``config_keys`` pins its own node-splitting twin against it.
+#: (:data:`SETTABLE_BIND_CATEGORIES`) and the regexes below cannot drift apart.
+#: Since DS-BL1 = (a) that difference is ALL SIX.  Exported because
+#: ``config_keys`` pins its own node-splitting twin against it — ⚑ that twin
+#: covers the TERMINAL ``bindings`` ARMS ONLY and is pinned as a SUBSET, not an
+#: equality: a non-terminal category is refused at the agent scope through
+#: :data:`BIND_KEY_RE` instead, because routing them through the node parser would
+#: send their READ into ``agent_config.agent_file_route``, which has no shape for
+#: them (it would read the dotted leaf ``self."common.x"``).
 RETIRED_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
     c for c in _BIND_CATEGORIES if c not in SETTABLE_BIND_CATEGORIES
 )
 _RETIRED_CATEGORY_ALT = "|".join(
     c.replace(".", r"\.") for c in RETIRED_BIND_CATEGORIES
 )
-#: ``{system,workset,box}.bindings.{ro,rw}.<name>`` — the RETIRED FILE-scope bind
-#: route (R-9). It exists ONLY to be RECOGNISED and refused by name: the verbs call
-#: ``config_keys.scope_bind_retired_error`` on it, and the ``pref`` value guard uses
-#: it to keep refusing a scalar written at a bind-shaped target.
+#: ``{system,workset,box}.<bind-shaped category>.<name>`` — the RETIRED FILE-scope
+#: bind route.  It covers ALL SIX categories since DS-BL1 = (a) emptied
+#: :data:`SETTABLE_BIND_CATEGORIES` (it reads
+#: :data:`RETIRED_BIND_CATEGORIES`, so it widened by DERIVATION, not by an edit
+#: here).  It exists ONLY to be RECOGNISED and refused by name: the verbs call
+#: ``config_keys.scope_bind_retired_error`` on it, ``config get`` reads the tuple
+#: through the slot it routes, and the ``pref`` value guard uses it to keep
+#: refusing a scalar written at a bind-shaped target.
 #:
-#: ⚑ It deliberately does NOT cover ``agent.<node>.bindings.*``.  That form is
-#: retired too, but its node segment must be split NON-GREEDILY and canonicalized
-#: (``+`` -> ``℘``) before anything else can be done with it, so it has always had
-#: its own parser — ``config_keys._AGENT_NODE_BIND_RE`` — and that parser, not a
-#: second copy of this one, is what recognises it.
+#: ⚑ It deliberately does NOT cover the AGENT scope.  ``agent.<node>``'s node
+#: segment must be split NON-GREEDILY and canonicalized (``+`` -> ``℘``) before
+#: anything else can be done with it, so the agent-scope spellings have their own
+#: parsers — ``config_keys._AGENT_NODE_BIND_RE`` for the ``bindings`` arms and
+#: :data:`BIND_KEY_RE` for the NON-TERMINAL ones — and those, not a
+#: second copy of this one, are what recognise them.
 SCOPE_BIND_KEY_RE = re.compile(
     rf"^(?P<scope>{_FILE_SCOPE_ALT})"
     rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
 )
-# The CLI-settable bind-shaped key shape — the four SETTABLE categories, at any
-# scope. ``bindings.{ro,rw}`` are absent at EVERY scope (R-9, both steps): they
-# claim no ``config set`` route and no destination slot anywhere. The category
-# alternation is built from :data:`SETTABLE_BIND_CATEGORIES` directly, so the
-# retirement cannot be half-undone by editing one regex.
+# The PER-ENTRY bind-shaped key shape — a NON-TERMINAL bind category's
+# ``<scope>.<category>.<name>``, at any scope (the file scopes AND the
+# discriminated ``agent.<node>``).
+#
+# ⚑⚑ THIS IS NOT A "SETTABLE" SHAPE ANY MORE.  Under DS-BL1 = (a) nothing
+# bind-shaped is CLI-settable, so an alternation over
+# :data:`SETTABLE_BIND_CATEGORIES` would be EMPTY — a ``(?P<category>)`` group that
+# matches the empty string and accepts ``system..foo``.  What the three consumers of
+# this regex actually need is the per-ENTRY RECOGNITION shape: ``config get`` still
+# reads these keys at a dotted path, ``is_known_key`` must read them as keys rather
+# than project names, and the write verbs must refuse them BY NAME (spec §0) — none
+# of which is settability.  So it is built from the NON-TERMINAL complement; a
+# terminal arm is absent for the reason it always was — there is no per-entry
+# spelling of one at all.
+#
+# ⚑⚑⚑ IT FAILS CLOSED WHEN THE COMPLEMENT EMPTIES, and that is not hypothetical:
+# the disk-store rework converts these categories to dest-keyed a group at a time,
+# and when the last one lands ``_NON_TERMINAL_BIND_CATEGORIES`` is ``()``.  An empty
+# alternation would silently produce the degenerate ``system..foo``-accepting
+# pattern, so the empty case compiles a NEVER-MATCHING regex instead: no category has
+# a per-entry key, therefore nothing matches.  ⚑ The pass that empties the
+# complement OWES its consumers a read route for the new shape — this guard keeps
+# that a VISIBLE absence (every per-entry get answers "not a key") rather than a
+# silent widening.
 BIND_KEY_RE = re.compile(
     rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
-    rf"\.(?P<category>{_SETTABLE_CATEGORY_ALT})\.(?P<name>.+)$"
+    rf"\.(?P<category>{_NON_TERMINAL_CATEGORY_ALT})\.(?P<name>.+)$"
+    if _NON_TERMINAL_CATEGORY_ALT
+    else r"(?!)"  # matches nothing, ever
 )
 # ``{scope}.masks`` — value-less category (a list of box_dest paths). The KEY has
 # no per-entry name; entries are expanded per list element (name = the index).

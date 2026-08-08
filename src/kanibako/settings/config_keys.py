@@ -738,10 +738,24 @@ def access_value_error(canonical: str, value: str) -> str | None:
 # existing: ``config get`` still reads the key, ``resolve_key`` still canonicalizes
 # its node segment, and the write verbs refuse it BY NAME off this same match.
 #
-# ⚑ It spells the retired arms LITERALLY rather than importing the alternation,
+# ⚑ It spells the two arms LITERALLY rather than importing the alternation,
 # because the node group has to be split non-greedily around them. The literal is
-# pinned against ``settings_categories.RETIRED_BIND_CATEGORIES`` by
+# pinned as a SUBSET of ``settings_categories.RETIRED_BIND_CATEGORIES`` by
 # ``test_config_interface.TestAgentNodeBindRouting`` so the two cannot drift.
+#
+# ⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET, AND THE REASON IS A MEASUREMENT,
+# NOT AN OVERSIGHT. DS-BL1 = (a) retired the CLI write route for the four
+# NAME-KEYED categories too, so ``RETIRED_BIND_CATEGORIES`` is now all six — but
+# this parser does not just RECOGNISE a key, it also picks the READ route
+# (:func:`config_dest._node_bind_target` -> ``agent_config.agent_file_route``), and
+# that file-shape SoT has a nested table for ``bindings.<arm>.<name>`` and NONE for
+# ``common``/``caches``/``seeded``/``synced``: a widened parser would resolve
+# ``agent.claude.common.plugins`` to the DOTTED LEAF ``self."common.plugins"``,
+# a slot nothing writes, and the read would silently answer "(not set)".
+# The four are recognised (and refused) at the agent scope through
+# ``settings_categories.BIND_KEY_RE`` instead — see
+# :func:`agent_node_bind_retired_error`. Widening this parser is a STORAGE-SHAPE
+# change and belongs with the shape cutover, not with the route retirement.
 #
 # This does not match the ``box.agent.bindings.*`` box-mirror form (a ``box``
 # top-token).
@@ -792,8 +806,9 @@ def _is_agent_node_bind_key(key: str) -> bool:
 # 07-06). Like the descriptor bind key it is DISCRIMINATED (node in the key) and
 # stored UNDER the ``agent.<node>.secret_path`` sub-table in the node's OWN settings
 # file — the shape ``_agent_partial`` reads into the launch cascade — but the value
-# is a SCALAR host PATH, not a Bind tuple (so it routes via a plain scalar write, NOT
-# ``_set_category_value``/``repoint_host_src``). ``<node>`` is NON-greedy so the
+# is a SCALAR host PATH, not a Bind tuple (so it routes via a plain scalar write —
+# never the category write route, which no longer exists at all: DS-BL1 = (a)).
+# ``<node>`` is NON-greedy so the
 # FIRST ``.secret_path.`` splits node from VAR; VAR is the env-name shape (no dots).
 _AGENT_NODE_SECRET_RE = re.compile(
     r"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
@@ -1124,26 +1139,14 @@ def bare_agent_key_scope_error(
         f"'pref.agent.<agent>.{canonical}' (spec §2h)."
     )
 
-def _agent_scope_node(key: str) -> str:
-    """The agent NODE a discriminated agent-scope *key* names, else ``""``.
-
-    ``agent.claude.common.plugins`` -> ``claude``; ``box.bindings.rw.home`` -> ``""``.
-    Reads the scope token the category regex already parses, so the discriminator is
-    split the one canonical way (a persona node carries no dot, so the first two
-    segments are the whole scope).
-
-    ⚑ Since R-9 a ``bindings.{ro,rw}`` key returns ``""`` at EVERY scope, agent
-    included — ``BIND_KEY_RE`` no longer matches the arms at all. That is correct
-    rather than a gap: the sole caller anchors the agent STORE-ROOT for a category
-    SET, and no bindings key reaches a set any more.
-    """
-    from kanibako.settings.settings_categories import BIND_KEY_RE
-
-    m = BIND_KEY_RE.match(key)
-    if m is None:
-        return ""
-    scope = m.group("scope")
-    return scope.split(".", 1)[1] if scope.startswith("agent.") else ""
+#: ⚑ ``_agent_scope_node`` IS GONE (DS-BL1 = (a)). It answered "which agent NODE
+#: does this discriminated agent-scope CATEGORY key name?", and its sole caller
+#: (``config_interface._category_set_lookups``) used the answer to anchor the
+#: ``meta.agent.<a>.path`` store root so a category SET's rooted-source hint would
+#: itself resolve. No bind-shaped category reaches a set any more — the write verbs
+#: refuse all six by name — and every key that still reaches that function is a
+#: SCALAR, for which the predicate answered ``""`` by construction. Deleted rather
+#: than left to answer a question nobody asks.
 
 
 def is_known_key(arg: str) -> bool:
@@ -1161,7 +1164,10 @@ def is_known_key(arg: str) -> bool:
     if _is_pref_key(arg):
         return True
     # agent.<node>.bindings.{ro,rw}.<name> — the per-node DESCRIPTOR bind key
-    # (item-0), whose CLI WRITE route is RETIRED (R-9). Kept KEY-SHAPED for the same
+    # (item-0), whose CLI WRITE route is RETIRED (R-9). ⚑ The agent-scope spelling
+    # of the OTHER four bind-shaped categories is retired too (DS-BL1 = (a)) and is
+    # recognised by the final branch of this function, not here — this parser is the
+    # ``bindings`` arms only (see ``_AGENT_NODE_BIND_RE``). Kept KEY-SHAPED for the same
     # reason as the file-scope spelling below and the bare ``env.<VAR>`` one: the
     # positional-vs-key disambiguator must read it as a key so the verbs can refuse
     # it with the cure (``agent_node_bind_retired_error``) rather than mistake it for
@@ -1192,20 +1198,21 @@ def is_known_key(arg: str) -> bool:
     # treat it as a KEY, never a project name).
     if _is_box_agent_key(arg):
         return True
-    # {system,workset,box}.bindings.{ro,rw}.<name> — the RETIRED scope-level bind
-    # route (R-9). Kept KEY-SHAPED for the same reason as the bare ``env.<VAR>``
-    # spelling: the positional-vs-key disambiguator must read it as a key so the
-    # verbs can refuse it with the cure (``scope_bind_retired_error``) rather than
-    # mistake it for a project name. It is also still READABLE (``config get``),
-    # which on its own makes it a key here.
+    # {system,workset,box}.<bind-shaped category>.<name> — the RETIRED scope-level
+    # bind route (R-9 for the two ``bindings`` arms; DS-BL1 = (a) for ``caches`` /
+    # ``seeded`` / ``common`` / ``synced``, which this same predicate now covers
+    # because its regex reads ``RETIRED_BIND_CATEGORIES``). Kept KEY-SHAPED for the
+    # same reason as the bare ``env.<VAR>`` spelling: the positional-vs-key
+    # disambiguator must read it as a key so the verbs can refuse it with the cure
+    # (``scope_bind_retired_error``) rather than mistake it for a project name. It is
+    # also still READABLE (``config get``), which on its own makes it a key here.
     if _is_scope_bind_key(arg):
         return True
-    # Category keys (``<scope>.caches`` / ``seeded`` / ``common`` / ``synced``,
-    # plus every ``agent.<node>.<category>.<name>``) are settable via
-    # ``config set`` (the source-only RAW repoint). Recognize them here too so the
-    # get/show paths + the project-name heuristic treat a category key as a KEY,
-    # never a project name — the same get-validated/set-unguarded symmetry the H1
-    # fix established.
+    # agent.<node>.<category>.<name> for the four NAME-KEYED categories — the AGENT
+    # spelling of the branch above, and RETIRED the same way (DS-BL1 = (a); refused
+    # by ``agent_node_bind_retired_error``). Recognized here so the get/show paths +
+    # the project-name heuristic treat it as a KEY, never a project name — and
+    # because ``config get`` still reads the stored tuple.
     return _is_path_category_key(arg)
 
 def is_system_path_key(key: str) -> bool:
@@ -1374,7 +1381,11 @@ def _pref_write_site_error(
     scope = target.split(".", 1)[0]
     hint = (
         f" Set '{target}' directly at the {scope} scope instead."
-        if scope in ("system", "agent", "workset", "box") else ""
+        if scope in ("system", "agent", "workset", "box")
+        # ⚑ ...but NOT for a YAML-only target: there is no direct set to redirect to
+        # (:func:`has_no_cli_write_route`), and naming one would prescribe a command
+        # that refuses.
+        and not has_no_cli_write_route(target) else ""
     )
     return (
         f"Error: '{canonical}' cannot be {verb} from the {command_scope.value} "
@@ -1453,39 +1464,96 @@ def _is_scope_bind_key(key: str) -> bool:
     return _scope_bind_match(key) is not None
 
 
+def _retired_because(category: str) -> str:
+    """WHY a bind-shaped category has no CLI write route — the one clause that
+    differs BY CATEGORY rather than by scope, so neither door invents its own story.
+
+    Two reasons, and they are genuinely different facts:
+
+    * ``bindings.{ro,rw}`` — the SHAPE removed the key. The arm is a single TERMINAL
+      key holding a dest-keyed map, so a per-name dotted key does not exist to name
+      (R-5/R-6/R-9).
+    * ``caches`` / ``seeded`` / ``common`` / ``synced`` — the RULING removed the
+      route. Their per-name key still exists and ``config get`` still reads it;
+      DS-BL1 = (a) (Jei, 2026-08-07g) made every bind-shaped category YAML-only
+      *"uniformly"*, an accepted user-surface loss.
+
+    ⚑ Claiming the shape reason for all six would be a confidently wrong
+    explanation on four of them — a user told "the key no longer exists" would stop
+    looking for a key that ``config get`` reads back fine.
+    """
+    if category.startswith("bindings."):
+        return (
+            "the two bindings arms are a single terminal key keyed by DESTINATION, "
+            "so a per-name key no longer exists"
+        )
+    return (
+        "a bind-shaped category is authored in YAML only — the CLI has no write "
+        "route to one, an accepted loss tracked as DS-BL1"
+    )
+
+
+def has_no_cli_write_route(target: str) -> bool:
+    """True iff *target* has NO ``config set`` route at all, so a message must NOT
+    tell a user to "set it directly".
+
+    ⚑ THIS EXISTS BECAUSE A CURE THAT NAMES A NONEXISTENT COMMAND IS WORSE THAN NO
+    CURE. The ``pref`` refusals append "Set '<target>' directly at the <scope> scope
+    instead" for any scope-prefixed target, which is true for a SCALAR and false for
+    every YAML-only one: the bind-shaped categories (R-9 for the two ``bindings``
+    arms, DS-BL1 = (a) for the other four) and ``masks``.
+
+    Covers all four spellings a YAML-only target can take: the file-scope per-entry
+    key, the agent-scope per-entry key (both parsers), and a bare TERMINAL key
+    (``<scope>.bindings.<arm>`` / ``<scope>.masks``).
+    """
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+
+    return (
+        _is_scope_bind_key(target)
+        or _is_agent_node_bind_key(target)
+        or _is_path_category_key(target)
+        or is_terminal_category_tail(target.split("."))
+    )
+
+
 def _bind_route_retired_message(
-    display_key: str, *, verb: str, route: str, cure: str,
+    display_key: str, *, verb: str, route: str, why: str, cure: str,
 ) -> str:
-    """THE refusal text for a retired bind CLI write route (R-9) — ONE wording for
+    """THE refusal text for a retired bind-shaped CLI write route — ONE wording for
     both scopes, so the two doors cannot drift into two stories about one ruling.
 
     *display_key* is the key as the USER should see and retype it — for the agent
     form that is the ``+`` spelling, never the ``℘`` canonical one, because the
     message ends by handing the key back in a ``config get`` the user is meant to
     run. *route* is the retired SPELLING as a shape (``'box.bindings.ro.<name>'``);
-    *cure* is the one sentence that differs between them — WHICH file to hand-edit,
-    because the file genuinely differs (a scope settings file vs the node's own
+    *why* is :func:`_retired_because`'s per-CATEGORY clause; *cure* is the one
+    sentence that differs between the two scopes — WHICH file to hand-edit, because
+    the file genuinely differs (a scope settings file vs the node's own
     ``agents/<node>/settings.yaml``).
 
     ⚑ The cure is HONEST about the loss. There is no equivalent CLI spelling to
-    redirect to — that is precisely what R-9 accepted — so the message names the
-    settings FILE as the surface, which is real and reachable (the launch cascade
-    reads that tuple today, exactly as written). Prescribing a command that does
-    not exist would be worse than naming the loss.
+    redirect to — that is precisely what R-9 and DS-BL1 accepted — so the message
+    names the settings FILE as the surface, which is real and reachable (the launch
+    cascade reads that tuple today, exactly as written). Prescribing a command that
+    does not exist would be worse than naming the loss.
     """
     return (
         f"Error: '{display_key}' cannot be {verb} from the CLI — the "
-        f"'{route}' route is RETIRED (the two bindings arms are "
-        f"a single terminal key keyed by DESTINATION, so a per-name key no longer "
-        f"exists). {cure} Reading it back with "
+        f"'{route}' route is RETIRED ({why}). {cure} Reading it back with "
         f"'config get {display_key}' still works."
     )
 
 
 def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
-    """The refusal + cure for a RETIRED file-scope bind WRITE
-    (``{system,workset,box}.bindings.{ro,rw}.<name>``, R-9), or ``None`` when
+    """The refusal + cure for a RETIRED file-scope bind-shaped WRITE
+    (``{system,workset,box}.<bind-shaped category>.<name>``), or ``None`` when
     *canonical* is not one.
+
+    ⚑ It covers ALL SIX categories, and it widened WITHOUT AN EDIT HERE:
+    :data:`~kanibako.settings.settings_categories.SCOPE_BIND_KEY_RE` is built from
+    ``RETIRED_BIND_CATEGORIES``, which is derived as the difference from the
+    (now empty) ``SETTABLE_BIND_CATEGORIES`` — DS-BL1 = (a).
 
     *verb* is the op word for the message (``"set"`` / ``"reset"``). Gates itself
     — ``None`` for every other key — so every verb door applies it uniformly.
@@ -1498,6 +1566,7 @@ def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
         canonical,
         verb=verb,
         route=f"{scope}.{category}.<name>",
+        why=_retired_because(category),
         cure=(
             f"Edit the '{scope}:' table of the {scope} settings file "
             f"directly; the launch reads it from there."
@@ -1506,16 +1575,25 @@ def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
 
 
 def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
-    """The refusal + cure for a RETIRED per-node descriptor bind WRITE
-    (``agent.<node>.bindings.{ro,rw}.<name>``, R-9), or ``None`` when *canonical*
+    """The refusal + cure for a RETIRED AGENT-scope bind-shaped WRITE
+    (``agent.<node>.<bind-shaped category>.<name>``), or ``None`` when *canonical*
     is not one.
 
     The SIBLING of :func:`scope_bind_retired_error` — same ruling, same wording,
     one different cure: the tuple lives in the NODE's own settings file
-    ``agents/<node>/settings.yaml``, under the ``self.<node>.bindings.<arm>``
-    table (the shape ``settings_assemble._agent_partial`` reads into the launch
-    cascade), not in a scope table. Naming the scope file here would send a user
-    to edit a file the launch never reads for this key.
+    ``agents/<node>/settings.yaml``, under the ``self.<node>.<category>`` table
+    (the shape ``settings_assemble._agent_partial`` reads into the launch cascade,
+    re-rooting ``self.<node>`` to ``agent.<node>``), not in a scope table. Naming
+    the scope file here would send a user to edit a file the launch never reads for
+    this key.
+
+    ⚑ TWO PARSERS, ONE DOOR. The ``bindings.{ro,rw}`` arms come from
+    :func:`parse_agent_node_bind_key` (R-9, retired first); the four NAME-KEYED
+    categories come from ``settings_categories.BIND_KEY_RE`` restricted to the
+    agent scope (DS-BL1 = (a), 2026-08-07g — *"accept the loss uniformly"*). They
+    cannot both match: ``BIND_KEY_RE``'s alternation holds only the four. The split
+    is a fact about the READ routes, not about the refusal — see the comment on
+    ``_AGENT_NODE_BIND_RE`` for why the node parser is not simply widened.
 
     The node is rendered in its USER-FACING ``+`` spelling
     (:func:`display_agent_ref`) — ``℘`` is a keyspace-internal separator and must
@@ -1524,15 +1602,22 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     *verb* is the op word (``"set"`` / ``"reset"``). Gates itself — ``None`` for
     every other key — so every verb door applies it uniformly.
     """
+    from kanibako.settings.settings_categories import BIND_KEY_RE
+
     parsed = parse_agent_node_bind_key(canonical)
     if parsed is None:
-        return None
+        m = BIND_KEY_RE.match(canonical)
+        scope = m.group("scope") if m is not None else ""
+        if m is None or not scope.startswith("agent."):
+            return None
+        parsed = (scope.split(".", 1)[1], m.group("category"), m.group("name"))
     node, category, name = parsed
     shown_node = display_agent_ref(node)
     return _bind_route_retired_message(
         f"agent.{shown_node}.{category}.{name}",
         verb=verb,
         route=f"agent.<node>.{category}.<name>",
+        why=_retired_because(category),
         cure=(
             f"Edit the 'self.{shown_node}.{category}' table of that "
             f"agent's own settings file (agents/{shown_node}/"
@@ -1542,18 +1627,26 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
 
 
 def _is_path_category_key(key: str) -> bool:
-    """True iff *key* is a PATH-TUPLE category key settable via ``config set``.
+    """True iff *key* is a PER-NAME PATH-TUPLE category key — ``caches`` /
+    ``seeded`` / ``common`` / ``synced`` at ``system`` / ``workset`` / ``box`` AND
+    at the discriminated ``agent.<node>`` scope. A 2-/3-element
+    ``[host_src, box_dest[, options]]`` tuple.
 
-    The source-only RAW repoint (spec §2a / design §6d / S24) applies to the
-    bind-shaped categories — a 2-/3-element ``[host_src, box_dest[, options]]``
-    tuple — and, since R-9, only to those still reachable by a dotted key:
-    ``caches`` / ``seeded`` / ``common`` / ``synced``, at ``system`` / ``workset``
-    / ``box`` AND at the discriminated ``agent.<node>`` scope.
+    ⮕ **READ-ONLY SINCE DS-BL1 = (a)** (Jei, 2026-08-07g — *"accept the loss
+    uniformly"*). This USED to mean "settable via ``config set``" (the source-only
+    RAW repoint, S24); every bind-shaped category is now YAML-only, so the repoint
+    route is gone and the write verbs refuse these keys BY NAME in their preamble
+    (:func:`scope_bind_retired_error` at the file scopes,
+    :func:`agent_node_bind_retired_error` at the agent scope). What is left is
+    RECOGNITION: ``config get`` still reads the stored tuple at its dotted path, the
+    positional-vs-key disambiguator must read the shape as a KEY, and the
+    destination rule still owns the slot.
 
-    **The two ``bindings.{ro,rw}`` arms are NOT matched here at ANY scope.** Their
-    CLI write route is retired (R-9, both steps); they are recognised instead by
-    :func:`_is_scope_bind_key` (file scopes) / :func:`_is_agent_node_bind_key`
-    (agent scope) and refused by name.
+    **The two ``bindings.{ro,rw}`` arms are NOT matched here at ANY scope** — for a
+    different reason from the four, and the difference outlives the ruling: they are
+    TERMINAL keys holding a dest-keyed map, so no per-name dotted key exists to
+    match (R-5/R-6). They are recognised instead by :func:`_is_scope_bind_key`
+    (file scopes) / :func:`_is_agent_node_bind_key` (agent scope).
 
     ``env`` (scalar) is NOT matched here — the live ``<scope>.env.<VAR>`` arm is
     routed by the earlier :func:`_is_scope_env_key` branch as a plain scalar
@@ -1573,11 +1666,14 @@ def _has_dedicated_route(canonical: str) -> bool:
     ``TestSetDispatchCoverage`` fails if they drift.  PREAMBLE guards are NOT
     terms: a key refused before the dispatch (the bare-agent scalars at box/
     workset; the retired bare ``env.<VAR>``, R-39) never reaches the probe this
-    feeds, so a term for it here would be a second spelling of the refusal. The
-    two RETIRED bind routes (R-9) are in exactly that position: neither
-    ``{system,workset,box}.bindings.{ro,rw}.<name>`` nor
-    ``agent.<node>.bindings.{ro,rw}.<name>`` has a term here, because both are
-    refused in the verb preamble and never reach the dispatch.
+    feeds, so a term for it here would be a second spelling of the refusal. **Every
+    BIND-SHAPED category is now in exactly that position** — the two
+    ``bindings.{ro,rw}`` arms (R-9) and, since DS-BL1 = (a), ``caches`` /
+    ``seeded`` / ``common`` / ``synced`` as well, at every scope. None has a term
+    here: all are refused in the verb preamble and never reach the dispatch. ⚑ The
+    ``_is_path_category_key`` term that used to sit here went with the repoint
+    route it claimed; do NOT restore it "so categories are covered" — it would
+    report a route for a key nothing writes.
 
     Its ONE job is to keep :func:`_probes_at_set_time` off keys nothing handles,
     so an unknown key still reaches the routing table at the bottom of the
@@ -1593,7 +1689,6 @@ def _has_dedicated_route(canonical: str) -> bool:
         or _is_persona_agent_key(canonical)
         or _is_agent_setting(canonical)
         or _is_box_agent_key(canonical)
-        or _is_path_category_key(canonical)
         or is_system_path_key(canonical)
         or _route_key(canonical) in _KEY_ROUTES
     )
@@ -1609,17 +1704,18 @@ def _probes_at_set_time(canonical: str) -> bool:
 
     Excluded, and why:
 
-    * **The two CATEGORY paths.** They run their own probe with
-      ``is_category=True``, which additionally enforces the source-only and
-      self-resolving rules; probing twice would only duplicate the diagnosis.
     * **Keys nothing claims.** They must reach the routing table and be reported
       as an unknown KEY (see :func:`_has_dedicated_route`).
 
-    The two RETIRED bind routes (R-9) — ``{system,workset,box}.bindings.{ro,rw}
-    .<name>`` and ``agent.<node>.bindings.{ro,rw}.<name>`` — are in the SAME
-    position as the bare env spelling: refused in the verb preamble
-    (:func:`scope_bind_retired_error` / :func:`agent_node_bind_retired_error`), so
-    neither reaches this predicate and neither needs an exclusion term of its own.
+    Every RETIRED bind-shaped route is in the SAME position as the bare env
+    spelling: refused in the verb preamble (:func:`scope_bind_retired_error` /
+    :func:`agent_node_bind_retired_error`), so none reaches this predicate and none
+    needs an exclusion term of its own. ⚑ That now includes the FOUR name-keyed
+    categories (DS-BL1 = (a)), whose ``_is_path_category_key`` exclusion used to be
+    the first term here: it existed because the category path ran its OWN probe
+    with ``is_category=True``, and probing twice would duplicate the diagnosis.
+    There is no category path any more, so the exclusion went with it rather than
+    being left to look like a live rule.
 
     The docker ``.env`` family (bare ``env.<VAR>``, written VERBATIM to a file
     the expander never saw) WAS the third exclusion. R-39 retired the spelling:
@@ -1640,8 +1736,6 @@ def _probes_at_set_time(canonical: str) -> bool:
     :func:`_is_bare_env_key`: that would drag the live scoped keys into the
     retired spelling's refusal.
     """
-    if _is_path_category_key(canonical):
-        return False
     if _is_pref_key(canonical):
         # ⚑ The GENERIC probe is a NO-OP at a ``pref.*`` path and must not run
         # there: ``expand`` carries the ``pref`` subtree through unexpanded (spec

@@ -33,6 +33,26 @@ THIS — this module does NOT touch ``cli.py`` or the live setter):
    The stored form is RAW — ``@``-refs / ``$XDG`` / ``~`` are NEVER expanded to a
    literal (S12/S24).
 
+⚑⚑⚑ **HALF OF THIS MODULE HAS NO LIVE CALLER AS OF DS-BL1 = (a)** (Jei,
+2026-08-07g — *"accept the loss uniformly"*): every bind-shaped category is
+YAML-only, so ``config set``/``reset`` refuse all six BY NAME in the verb preamble
+and NOTHING routes a category write. Orphaned, MEASURED, and deliberately left in
+place for one follow-up pass rather than half-deleted here:
+
+* :func:`repoint_host_src` (with :func:`_bindings_arm_of`,
+  :func:`_refuse_stale_bind_shape`, :class:`ConfigSetError`) — its last caller was
+  ``config_interface._set_category_value``, deleted with the route.
+* :func:`validate_config_set`'s ``is_category=True`` arm (the ``:`` notation
+  refusal, the bare-relative refusal + :func:`_rooted_form_hint`, the
+  host-path :class:`Warn`) — the live caller passes ``is_category=False``.
+  ⚑ The SCALAR half is LIVE: ``config_interface.set_config_value`` runs it as the
+  E3 set-time probe for every routed scalar key.
+
+⚑ Deleting the orphans also deletes the R-8 three-element refusal
+(:func:`_refuse_stale_bind_shape`) and the test that pins Jei's DECLINED option B
+(the 2-element case) — a ruled behaviour, so the deletion wants his word, not a
+tidy-up. **Do not build anything new on the orphans; do not restore a caller.**
+
 B5 severity split (design §6d, RATIFIED by Jei 2026-06-27):
 
 * **Hard ERROR, refuse to write** (don't poison the file): malformed syntax or
@@ -244,6 +264,10 @@ def _scan_tokens(value: str) -> tuple[list[str], list[str]]:
 
 def _rooted_form_hint(key: str) -> str:
     """The rooted spelling to suggest for *key*, or ``""`` when there is none.
+
+    ⚑ NO LIVE CALLER: reached only from :func:`validate_config_set`'s
+    ``is_category=True`` arm, which lost its caller with the category write route
+    (DS-BL1 = (a) — see the module docstring).
 
     Only the ABSTRACT categories (``common``/``caches``/``seeded``) have a
     declaration root; ``bindings.{ro,rw}`` and ``synced`` take none at ANY scope
@@ -461,11 +485,22 @@ def _bindings_arm_of(key: str) -> str:
 
     ⚑ It answers about the KEY, never the file location: *dest_parts* moves where
     :func:`repoint_host_src` WRITES, but the value SHAPE follows the key's category.
+
+    ⚑⚑ THE TERMINAL FILTER IS LOAD-BEARING, AND IT IS NOT BELT-AND-BRACES.
+    ``SCOPE_BIND_KEY_RE`` matches ALL SIX bind-shaped categories since DS-BL1 = (a)
+    emptied ``SETTABLE_BIND_CATEGORIES`` (it reads ``RETIRED_BIND_CATEGORIES``), but
+    R-8 is about the DEST-KEYED shape, not about being retired: a 3-element tuple is
+    LIVE and correct for a NAME-KEYED category. Without the filter this would report
+    ``box.common`` as an arm and :func:`_refuse_stale_bind_shape` would refuse a
+    perfectly good ``[host_src, box_dest, options]``.
     """
-    from kanibako.settings.settings_categories import SCOPE_BIND_KEY_RE
+    from kanibako.settings.settings_categories import (
+        SCOPE_BIND_KEY_RE,
+        _TERMINAL_BIND_CATEGORIES,
+    )
 
     m = SCOPE_BIND_KEY_RE.match(key)
-    if m is not None:
+    if m is not None and m.group("category") in _TERMINAL_BIND_CATEGORIES:
         return f"{m.group('scope')}.{m.group('category')}"
     parsed = parse_agent_node_bind_key(key)
     if parsed is not None:
@@ -488,8 +523,10 @@ def _refuse_stale_bind_shape(
     (spec §0: refuse loudly, never quietly reinterpret).
 
     *arm* is :func:`_bindings_arm_of`'s answer (``""`` ⇒ nothing to check: the four
-    SETTABLE categories ``caches``/``seeded``/``common``/``synced`` are still
-    NAME-keyed and their 3-element form is LIVE — this arc is bindings-only).
+    NAME-KEYED categories ``caches``/``seeded``/``common``/``synced`` still carry a
+    per-name key and their 3-element form is LIVE — this arc is bindings-only; their
+    losing the CLI *write* route under DS-BL1 = (a) does not change their VALUE
+    shape, which the shape cutover (phase QB) is what changes).
     *origin* labels where the value came from, matching the sibling arity messages.
 
     ⚑⚑ THREE-ELEMENT ONLY, AND THAT IS A RULING (Jei, 2026-08-06e), not an
@@ -521,6 +558,13 @@ def repoint_host_src(
     dest_parts: "Sequence[str] | None" = None,
 ) -> None:
     """Repoint a category key's ``host_src`` in the COMMAND-scope file, RAW (S24).
+
+    ⚑⚑⚑ **NO LIVE CALLER SINCE DS-BL1 = (a).** Its one caller,
+    ``config_interface._set_category_value``, was deleted with the ``config set``
+    category route; every bind-shaped category is now YAML-only and the verbs refuse
+    all six by name. Retained pending one deliberate deletion pass — see the module
+    docstring for what goes with it (the R-8 refusal below is a RULED behaviour).
+    Unit-tested still, so it is provably intact rather than rotting.
 
     Finds the EXISTING raw tuple for dotted *key*: the tuple in *scope_path* (the
     command's scope file — ``box set`` → box file, ``workset set`` → workset

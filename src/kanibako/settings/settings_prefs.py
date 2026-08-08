@@ -401,7 +401,19 @@ def allowlist_reason(
     # by contract, ``config.*`` is hand-edited in the bootstrap file, and
     # ``pref.*`` is not a value scope at all — telling a user to "set it directly
     # at the meta scope" would send them somewhere that does not exist.
-    if scope in ("system", "agent", "workset", "box"):
+    #
+    # ⚑ SAME RULE, SECOND CLASS OF TARGET: a YAML-only key has no direct set either.
+    # The bind-shaped categories lost their CLI write route (R-9 for the two
+    # ``bindings`` arms, DS-BL1 = (a) for ``caches``/``seeded``/``common``/``synced``)
+    # and ``masks`` never had one, so the suggestion would prescribe a command that
+    # refuses. ONE predicate answers it for both message sites
+    # (``config_keys.has_no_cli_write_route``), deferred-imported to keep this
+    # module free of a module-scope edge back to the key registry.
+    from kanibako.settings.config_keys import has_no_cli_write_route
+
+    if scope in ("system", "agent", "workset", "box") and not has_no_cli_write_route(
+        target
+    ):
         return f"{base}. Set '{target}' directly at the {scope} scope instead"
     return base
 
