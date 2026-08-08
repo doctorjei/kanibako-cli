@@ -567,80 +567,28 @@ class TestSystemAgentNodeBindWriteRouteRetired:
 
 
 
-class TestRelativeCategorySourceRefusedEndToEnd:
-    """The bare-relative category refusal, and its hint, through the REAL setter.
-
-    Driven at SYSTEM scope because that is a scope from which an agent-scope
-    category key can legitimately be written (containment: system ⊃ agent), and
-    because ``system set`` routes an ``agent.<node>.*`` key through the validating
-    engine (``set_config_value`` → ``validate_config_set``).
-
-    ⚑ THE HINT MUST BE ACCEPTABLE. The refusal tells the user to spell the source as
-    ``@meta.agent.<agent>.path/<category>/<name>``; if the SET-TIME validation
-    snapshot did not materialize ``meta.agent.<a>.path``, that very value would come
-    straight back as an unresolvable ``@``-reference. A tool that refuses its own
-    suggestion is worse than one that suggests nothing — so the round trip (refuse,
-    read the hint, set the hinted value, succeed) is pinned end to end here, not
-    only at the pure-validator level.
-    """
-
-    _KEY = "agent.claude.common.plugins"
-    _HINTED = "@meta.agent.claude.path/common/plugins"
-
-    def test_relative_source_is_refused_with_a_per_scope_hint(
-        self, config_file, tmp_home, capsys,
-    ):
-        rc = _set(f"{self._KEY}=plugins")
-        out = capsys.readouterr()
-        msg = out.out + out.err
-        assert rc != 0, msg
-        assert "bare relative path" in msg
-        assert self._HINTED in msg
-
-    def test_the_hinted_value_is_ACCEPTED(self, config_file, tmp_home, capsys):
-        """The round trip: the exact string the refusal suggested sets cleanly.
-
-        The key is seeded first because ``config set`` is SOURCE-ONLY — it repoints
-        an existing bind and never creates one (F10 must-exist). That gate is a
-        separate, documented rule; what is under test here is that the SUGGESTED
-        VALUE resolves.
-
-        (Mutation: drop the ``meta_agent_path_floor`` contribution from
-        ``config_interface._category_set_lookups`` → the hinted value comes back as
-        ``dangling @-reference '@meta.agent.claude.path'`` → RED. That dead end is
-        what this pins.)
-        """
-        write_nested_key(
-            config_file, ("agent", "claude", "common"), "plugins",
-            ["/seed/src", "/home/agent/.claude/plugins"],
-        )
-        rc = _set(f"{self._KEY}={self._HINTED}")
-        out = capsys.readouterr()
-        msg = out.out + out.err
-        assert rc == 0, msg
-        assert "@-reference" not in msg
-        # Stored VERBATIM (§0 files store UNRESOLVED), box_dest preserved.
-        assert load_doc(config_file)["agent"]["claude"]["common"]["plugins"] == [
-            self._HINTED, "/home/agent/.claude/plugins",
-        ]
-
-    def test_a_relative_source_is_still_refused_when_the_key_EXISTS(
-        self, config_file, tmp_home, capsys,
-    ):
-        """Control: the refusal is about the VALUE, not about the must-exist gate —
-        it still fires on a key that is present in the cascade."""
-        write_nested_key(
-            config_file, ("agent", "claude", "common"), "plugins",
-            ["/seed/src", "/home/agent/.claude/plugins"],
-        )
-        rc = _set(f"{self._KEY}=plugins")
-        out = capsys.readouterr()
-        assert rc != 0
-        assert "bare relative path" in out.out + out.err
-        # And NOTHING was written — the stored tuple is untouched.
-        assert load_doc(config_file)["agent"]["claude"]["common"]["plugins"] == [
-            "/seed/src", "/home/agent/.claude/plugins",
-        ]
+# ---------------------------------------------------------------------------
+# ⚑⚑ ``TestRelativeCategorySourceRefusedEndToEnd`` LIVED HERE AND IS GONE
+# (DS-BL1 = (a), 2026-08-07g).
+#
+# It drove the bare-relative CATEGORY source refusal and its per-scope rooted hint
+# through the REAL setter at system scope (``agent.claude.common.plugins``), plus the
+# round trip that proved the SUGGESTED value is itself acceptable — a tool that
+# refuses its own suggestion being worse than one that suggests nothing.
+#
+# **There is no CLI category set any more**: the key is refused BY NAME in the verb
+# preamble, so ``validate_config_set``'s ``is_category=True`` arm — where the
+# relative-source rule and ``_rooted_form_hint`` live — is never reached from any
+# CLI door. Re-pointing these tests at a scalar would NOT preserve them: the rule
+# they pin is category-only by construction.
+#
+# ⚑ THE RULE'S UNIT COVERAGE SURVIVES in ``test_settings_configset.py``
+# (``test_bare_relative_category_source_is_refused`` and the rooted-hint rows), and
+# that validator arm is recorded there as ORPHANED — see the banner on
+# ``settings_configset``'s module docstring. The set-time
+# ``meta_agent_path_floor`` anchor those tests mutation-proved went with the arm's
+# caller: ``_category_set_lookups`` now anchors only the agent the COMMAND names.
+# ---------------------------------------------------------------------------
 
 
 class TestSystemSecretPathVerbSymmetry:
@@ -671,82 +619,68 @@ class TestSystemSecretPathVerbSymmetry:
 
 
 class TestSystemCategoryFileRouting:
-    """F2 — a SYSTEM-scope category key must live in ONE file: the system
-    SETTINGS file, which is what the launch cascade's system tier reads.  ``set``
-    and single-key ``reset`` used the kanibako_config.yaml CONFIG file while
-    ``get`` (and ``reset --all``'s scope-table sweep) used the settings file."""
+    """F2 — a SYSTEM-scope category key must live in ONE file: the system SETTINGS
+    file, which is what the launch cascade's system tier reads.
 
-    # ⚑ VEHICLE CHANGE: this was ``system.bindings.ro.helper`` until R-9 retired
-    # the scope-level bind CLI route. The class is about WHICH FILE a system-scope
-    # category key lands in; ``synced`` is the surviving CONCRETE category and
-    # proves the same rule. The retired spelling is covered by
-    # ``TestRetiredScopeBindRoute`` below.
+    ⚑⚑ THE SET HALF IS GONE (DS-BL1 = (a)), so the get/set disagreement this class
+    was built around cannot recur — one of its two sides no longer exists. What is
+    pinned now, through the REAL ``system config`` CLI: the surviving READ names the
+    settings file, a tuple parked in the CONFIG file is NOT read, and both write
+    verbs refuse by name without touching either store.
+
+    ⚑ The VEHICLE stays ``synced`` (CONCRETE — no declaration root), unchanged.
+    """
+
     KEY = "system.synced.helper"
+    SEEDED = ["/old/src", "/home/agent/helper", "ro"]
 
     def _seed(self, path):
-        write_nested_key(
-            path, ("system", "synced"), "helper",
-            ["/old/src", "/home/agent/helper", "ro"],
-        )
+        write_nested_key(path, ("system", "synced"), "helper", list(self.SEEDED))
 
-    def test_set_get_reset_all_name_the_settings_file(
+    def test_get_reads_the_settings_file_and_the_verbs_refuse(
         self, config_file, tmp_home, capsys,
     ):
         std = _std(config_file)
         self._seed(std.settings)
-        new_src = str(tmp_home)
-        assert _set(f"{self.KEY}={new_src}") == 0, capsys.readouterr().err
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert "/old/src" in capsys.readouterr().out
 
-        # SET → the settings file, box_dest + options preserved RAW.
-        assert load_doc(std.settings)["system"]["synced"]["helper"] == [
-            new_src, "/home/agent/helper", "ro",
-        ]
-        # ...and NOT the CONFIG file (which holds structural config only).
+        # SET and RESET both refuse BY NAME, and neither store changes.
+        assert _set(f"{self.KEY}={tmp_home}") != 0
+        assert "RETIRED" in capsys.readouterr().err
+        assert _reset(self.KEY) != 0
+        assert "RETIRED" in capsys.readouterr().err
+        assert load_doc(std.settings)["system"]["synced"]["helper"] == self.SEEDED
         assert "synced" not in load_doc(config_file).get("system", {})
 
-        # GET → reads back what SET wrote (was "(not set)").
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert new_src in capsys.readouterr().out
-
-        # RESET → clears the same store.
-        assert _reset(self.KEY) == 0
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert "(not set)" in capsys.readouterr().out
-
-    def test_reset_all_clears_a_category_set(self, config_file, tmp_home, capsys):
-        """``reset --all`` sweeps the SETTINGS file's scope tables only, so a
-        category write parked in the CONFIG file SURVIVED it — an override the
-        remove-everything verb could not remove."""
-        std = _std(config_file)
-        self._seed(std.settings)
-        assert _set(f"{self.KEY}={tmp_home}") == 0
-        assert _reset(all_keys=True) == 0
-        assert "system" not in load_doc(std.settings)
-        assert "synced" not in load_doc(config_file).get("system", {})
-        capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert "(not set)" in capsys.readouterr().out
-
-    def test_a_bind_only_in_the_config_file_is_not_the_cascade(
+    def test_a_tuple_only_in_the_config_file_is_not_read(
         self, config_file, tmp_home, capsys,
     ):
-        """The set-time must-exist probe must agree with the LAUNCH, whose system
-        tier is the settings file — so a bind that exists ONLY in
-        kanibako_config.yaml is nowhere in the cascade and cannot be repointed.
-        (It was accepted before, because set and its probe both pointed at the
-        config file: the CLI agreed with itself and with nothing else.)"""
+        """The control: the same key hand-written into kanibako_config.yaml reads
+        back "(not set)", because that file is in NO cascade level."""
         std = _std(config_file)
         self._seed(config_file)
-        rc = _set(f"{self.KEY}={tmp_home}")
-        assert rc == 1
-        assert "must already exist" in capsys.readouterr().err
-        # Neither store was written.
-        assert load_doc(config_file)["system"]["synced"]["helper"] == [
-            "/old/src", "/home/agent/helper", "ro",
-        ]
-        assert "synced" not in load_doc(std.settings).get("system", {})
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert "(not set)" in capsys.readouterr().out
+        assert not load_doc(std.settings).get("system", {}).get("synced")
+
+    def test_reset_all_still_sweeps_the_scope_table(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``reset --all`` clears the SETTINGS file's scope tables wholesale, so a
+        hand-authored category tuple goes with them — a DELIBERATE asymmetry with
+        the per-key reset above (a table sweep is not a per-key write, and it does
+        not consult the per-key retirement doors). Pre-existing; pinned so the
+        difference is recorded rather than surprising."""
+        std = _std(config_file)
+        self._seed(std.settings)
+        assert _reset(all_keys=True) == 0
+        assert "system" not in load_doc(std.settings)
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert "(not set)" in capsys.readouterr().out
 
 
 class TestRetiredScopeBindRoute:

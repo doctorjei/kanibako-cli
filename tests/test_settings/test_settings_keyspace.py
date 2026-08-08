@@ -174,6 +174,37 @@ def test_the_two_terminal_categories_are_declared_in_one_place():
     assert not is_terminal_category_tail(())
 
 
+def test_the_bind_shaped_terminal_mirror_cannot_drift():
+    """``settings_categories._TERMINAL_BIND_CATEGORIES`` is a MIRROR of the constant
+    above, spelled again because that module is deliberately stdlib-only (it imports
+    only stdlib + the expression engine, so it cannot import this one). Pin the two
+    equal on the BIND-SHAPED members, so a category that goes dest-keyed cannot be
+    declared terminal in one place and left per-entry-keyed in the other.
+
+    ⚑ ``masks`` is terminal but NOT bind-shaped, so it is deliberately absent from
+    the mirror — the comparison excludes it rather than pretending it is missing.
+    """
+    from kanibako.settings.settings_categories import (
+        _BIND_CATEGORIES,
+        _NON_TERMINAL_BIND_CATEGORIES,
+        _TERMINAL_BIND_CATEGORIES,
+    )
+    from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+
+    # The keyspace's terminal tails, restricted to the bind-shaped categories.
+    bind_shaped_terminal = {
+        cat for cat in _BIND_CATEGORIES
+        if tuple(cat.split(".")) in TERMINAL_CATEGORY_TAILS
+    }
+    assert set(_TERMINAL_BIND_CATEGORIES) == bind_shaped_terminal
+    # ...and the complement really is a complement (no member in both, none lost).
+    assert not set(_TERMINAL_BIND_CATEGORIES) & set(_NON_TERMINAL_BIND_CATEGORIES)
+    assert (
+        set(_TERMINAL_BIND_CATEGORIES) | set(_NON_TERMINAL_BIND_CATEGORIES)
+        == set(_BIND_CATEGORIES)
+    )
+
+
 def test_masks_and_bindings_arms_refuse_a_tail_the_same_way():
     """Two dest-keyed categories, ONE story (Code Convention 0). Both say the
     entries are destinations inside the VALUE, not key segments."""

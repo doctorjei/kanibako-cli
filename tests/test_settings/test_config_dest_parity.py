@@ -343,43 +343,33 @@ class TestScopeSecretDest:
 # ---------------------------------------------------------------------------
 
 class TestCategoryDest:
+    """The per-entry bind-shaped category families — now READ-ONLY at every scope.
 
-    # ⚑ ``box.bindings.ro.vault`` was the box row here until R-9 retired the
-    # scope-level bind CLI route; ``box.synced.vault`` replaces it (also CONCRETE,
-    # still settable). The retired spelling's own destination behaviour — the READ
-    # slot it keeps — is pinned by ``TestRetiredScopeBindDest`` below.
+    ⚑⚑ THE WRITE ROWS ARE GONE, ON A RULING. This class used to pin "set repoints in
+    the noun settings file" / "reset removes from the same file" for
+    ``box.synced.vault`` / ``workset.caches.pip`` / ``system.caches.pip``. DS-BL1 =
+    (a) (Jei, 2026-08-07g) retired the ``config set`` route for EVERY bind-shaped
+    category, so those verbs now refuse by name and touch nothing — pinned below
+    with the SAME bench (the point of the bench is that a refusal moves no file).
+    The surviving question is the READ slot, which is unchanged.
+    """
+
     @pytest.mark.parametrize("scope,key,dest", [
         (ConfigLevel.box, "box.synced.vault", "box"),
         (ConfigLevel.workset, "workset.caches.pip", "ws"),
         (ConfigLevel.system, "system.caches.pip", "ssp"),
     ])
-    def test_set_repoints_in_the_noun_settings_file(self, bench, scope, key, dest):
+    def test_set_and_reset_refuse_and_touch_no_file(self, bench, scope, key, dest):
         parts = key.split(".")
         target = {"box": bench.box, "ws": bench.ws, "ssp": bench.ssp}[dest]
         bench.seed(target, tuple(parts[:-1]), parts[-1], list(_TUPLE))
         before = bench.snapshot()
-        msg = bench.set(scope, key, str(bench.tmp))
-        assert not msg.startswith("Error:"), msg
-        changed = bench.changed(before)
-        assert set(changed) == {dest}, changed
-        node = changed[dest]
-        for seg in parts[:-1]:
-            node = node[seg]
-        # host_src swapped, box_dest + opts preserved RAW.
-        assert node[parts[-1]] == [str(bench.tmp), _TUPLE[1], _TUPLE[2]]
-
-    @pytest.mark.parametrize("scope,key,dest", [
-        (ConfigLevel.box, "box.synced.vault", "box"),
-        (ConfigLevel.system, "system.caches.pip", "ssp"),
-    ])
-    def test_reset_removes_from_the_same_file(self, bench, scope, key, dest):
-        parts = key.split(".")
-        target = {"box": bench.box, "ssp": bench.ssp}[dest]
-        bench.seed(target, tuple(parts[:-1]), parts[-1], list(_TUPLE))
-        before = bench.snapshot()
-        msg = bench.reset(scope, key)
-        assert msg.startswith("Cleared"), msg
-        assert set(bench.changed(before)) == {dest}
+        set_msg = bench.set(scope, key, str(bench.tmp))
+        reset_msg = bench.reset(scope, key)
+        assert set_msg.startswith("Error:") and "RETIRED" in set_msg, set_msg
+        assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
+        # ⚑ NO file moved — the bench's whole purpose. RED if a refusal still wrote.
+        assert bench.changed(before) == {}, bench.changed(before)
 
     def test_get_reads_the_noun_settings_file(self, bench):
         bench.seed(bench.cf, ("system", "caches"), "pip", ["/cf", "/d"])
@@ -413,68 +403,69 @@ class TestRetiredScopeBindDest:
 # ---------------------------------------------------------------------------
 
 class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
-    """A non-bind AGENT-scope category is routed by NO handler.
+    """⚑⚑⚑ THE PRESERVED-BROKEN DESTINATION IS UNREACHABLE FROM THE VERBS — it died
+    by its ROUTE being retired, not by being fixed.
 
-    ``config_interface`` states it outright: the write "lands in the command's
-    own file, which is in no cascade level — so today that set is a SILENT NO-OP
-    WRITE", and `3b67e61` recorded fixing it as ITS OWN future change rather
-    than doing it inside a behavior-preserving commit.
+    The defect: a non-bind AGENT-scope category was routed by NO handler, so ``set``
+    landed in the command's own Layer-1 CONFIG file (in no cascade level — a SILENT
+    NO-OP WRITE) while ``get`` read the NOUN's settings file. The two verbs
+    disagreed, and `3b67e61` recorded fixing it as its own future change rather than
+    doing it inside a behavior-preserving commit.
 
-    These two cases pin the broken destination ON PURPOSE.  The H2 consolidation
-    must reproduce it.  When the real fix lands (routing it to the node file),
-    THIS CLASS is the thing that must be edited — deliberately, in that commit,
-    with the fix's own rationale.  It must never change as a side effect.
+    DS-BL1 = (a) removed the write route for every bind-shaped category, so no
+    ``_CATEGORY`` slot reaches ``_write_dest`` any more and there is no write left to
+    disagree with the read. This class now pins BOTH halves of that statement, so
+    neither can change silently:
+
+    1. the VERBS refuse and move nothing (the write half is gone);
+    2. the ARM still exists in ``_write_dest`` as a function (kept with its
+       ``agent_scope_to_config`` flag and this bench's read/write parity, because
+       collapsing it merges the two wrappers — an OWED, separate pass).
+
+    ⚑ When that collapse lands, THIS CLASS is the thing to edit, deliberately, in
+    that commit. It must never change as a side effect.
     """
 
-    def test_set_lands_in_the_config_file_not_the_node_file(self, bench):
+    def test_the_verbs_refuse_and_move_nothing(self, bench):
         bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", list(_TUPLE))
         before = bench.snapshot()
-        msg = bench.set(ConfigLevel.system, "agent.claude.caches.pip", str(bench.tmp))
-        assert not msg.startswith("Error:"), msg
-        changed = bench.changed(before)
-        # The Layer-1 CONFIG file — which no cascade level reads.
-        assert set(changed) == {"cf"}, changed
-        assert changed["cf"]["agent"]["claude"]["caches"]["pip"][0] == str(bench.tmp)
-        # and NOT the node's own settings file.
+        set_msg = bench.set(
+            ConfigLevel.system, "agent.claude.caches.pip", str(bench.tmp),
+        )
+        reset_msg = bench.reset(ConfigLevel.system, "agent.claude.caches.pip")
+        assert set_msg.startswith("Error:") and "RETIRED" in set_msg, set_msg
+        assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
+        # The wrong file is not written, and neither is the node's own file.
+        assert bench.changed(before) == {}, bench.changed(before)
         assert not (bench.agents / "claude" / "settings.yaml").exists()
 
-    def test_reset_removes_from_the_same_wrong_file(self, bench):
-        bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", list(_TUPLE))
-        before = bench.snapshot()
-        msg = bench.reset(ConfigLevel.system, "agent.claude.caches.pip")
-        assert msg.startswith("Cleared"), msg
-        assert set(bench.changed(before)) == {"cf"}
+    def test_the_broken_arm_still_exists_at_the_function_level(self, bench):
+        """The arm itself, called directly — the read/write divergence the two
+        wrappers still carry. Unreachable through a verb; NOT yet deleted."""
+        from kanibako.settings.config_dest import _read_dest, _write_dest
 
-    def test_get_reads_the_OTHER_file_which_is_the_whole_defect(self, bench):
-        """The read arm — the half that makes the write arm a silent no-op.
+        key = "agent.claude.caches.pip"
+        w = _write_dest(
+            key, command_scope=ConfigLevel.system,
+            config_path=bench.cf, settings_path=bench.ssp,
+        )
+        r = _read_dest(
+            key, command_scope=ConfigLevel.system,
+            config_path=bench.cf, settings_path=bench.ssp,
+        )
+        assert w is not None and r is not None
+        assert w.file == bench.cf          # the file no cascade level reads
+        assert r.file == bench.ssp         # the noun's settings file
+        assert w.sections == r.sections == ("agent", "claude", "caches")
+        assert w.leaf == r.leaf == "pip"
 
-        ``set`` and ``reset`` aim at the config file (above); ``get`` reads the
-        NOUN'S SETTINGS FILE.  So the two verbs do not merely write somewhere
-        useless, they disagree with each other, and a user who sets this key then
-        reads it back is told "(not set)" while a value sits in a third file.
-
-        Seeding BOTH candidates with different values is what makes the assertion
-        name a file rather than a value: only the settings-file value can come
-        back.  This is the arm the write/reset cases could not pin, and it is the
-        one that has to keep behaving identically through the consolidation.
-        """
+    def test_get_reads_the_noun_settings_file(self, bench):
+        """The surviving arm. Seeding BOTH candidates with different values makes
+        the assertion name a FILE rather than a value: only the settings-file value
+        can come back."""
         bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", "FROM_CF")
         bench.seed(bench.ssp, ("agent", "claude", "caches"), "pip", "FROM_SSP")
         assert bench.get(ConfigLevel.system, "agent.claude.caches.pip") == "FROM_SSP"
-
-    def test_set_then_get_does_not_round_trip(self, bench):
-        """The user-visible shape of the defect, stated once so it cannot be lost.
-
-        If a future change makes this test fail, the destination was FIXED — which
-        is a welcome change and an intended one, but it must be made deliberately,
-        with its own rationale, and this class rewritten to match.  It must never
-        start passing as a side effect of a refactor.
-        """
-        bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", list(_TUPLE))
-        assert not bench.set(
-            ConfigLevel.system, "agent.claude.caches.pip", str(bench.tmp),
-        ).startswith("Error:")
-        assert bench.get(ConfigLevel.system, "agent.claude.caches.pip") is None
 
 
 # ---------------------------------------------------------------------------

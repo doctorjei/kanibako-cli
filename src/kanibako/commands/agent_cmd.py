@@ -410,8 +410,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # this" would leave the box REFUSING to launch (and, before R-41 made the
     # resolver exact, it would have run PERMISSIVE instead). The other three scopes route
     # through ``set_config_value``, which owns the closed-keyspace check and the
-    # per-route null refusals (env has no null; a category set is a source-only
-    # repoint); this verb has its own writer and none of that, so writing here
+    # per-route null refusals (the retired bare ``env.<VAR>``; every bind-shaped
+    # CATEGORY, whose write route DS-BL1 = (a) retired outright — so ``--null`` on one
+    # gets that refusal, not a null-mechanism one); this verb has its own writer and
+    # none of that, so writing here
     # would also put two disagreeing spellings of one idea in the tree. Agent-file
     # null semantics need the READER to change with them — a separate change that
     # owns launch consumption, not a CLI polish.

@@ -218,10 +218,15 @@ def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
       way as secret_path is a tracked follow-up (its cascade/repoint machinery needs a
       separate, careful pass).
 
-    Every reader/writer of the file (``agent set``/get/reset, the ``config_interface``
-    generic engine's per-node resolvers, and the bind ``repoint_host_src`` write)
-    routes through here, so ``self`` and the flat/nested split are defined ONCE — a
-    future rename touches this function alone.
+    Every reader/writer of the file (``agent set``/get/reset and the
+    ``config_interface`` generic engine's per-node resolvers) routes through here, so
+    ``self`` and the flat/nested split are defined ONCE — a future rename touches
+    this function alone.
+
+    ⚑ The bind ``repoint_host_src`` WRITE used to be in that list and is not any
+    more: DS-BL1 = (a) retired the CLI write route for every bind-shaped category, so
+    the only remaining traffic through the ``bindings.`` arm here is the READ
+    (``config get`` via ``config_dest._node_bind_target``).
     """
     if tail.startswith("secret_path."):
         return ("self", "secret_path"), tail[len("secret_path."):]

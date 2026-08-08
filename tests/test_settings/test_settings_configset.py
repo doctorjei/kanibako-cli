@@ -684,13 +684,20 @@ class TestStaleBindShapeRefused:
         ]
 
     @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
-    def test_3element_settable_category_is_untouched(
+    def test_3element_name_keyed_category_is_untouched(
         self, tmp_path: Path, category: str
     ) -> None:
-        # The refusal is bindings-ONLY. The four NAME-keyed SETTABLE categories
-        # keep the live 3-element form (and they are the only ones that actually
-        # route here) — an over-broad gate would break every options-bearing
-        # cache/seed/common/synced repoint.
+        # The refusal is DEST-KEYED-ONLY. The four NAME-keyed categories keep the
+        # live 3-element form — an over-broad gate would refuse every
+        # options-bearing cache/seed/common/synced tuple as "stale".
+        #
+        # ⚑⚑ THIS CAUGHT A REAL REGRESSION (DS-BL1 = (a) pass). ``_bindings_arm_of``
+        # recognised the arm with ``SCOPE_BIND_KEY_RE``, which widened to all six
+        # categories the moment ``SETTABLE_BIND_CATEGORIES`` emptied — so
+        # ``box.common.x`` started reporting an "arm" and its legal 3-element tuple
+        # was refused. The cure is a TERMINAL filter in ``_bindings_arm_of``: R-8 is
+        # about the dest-keyed SHAPE, not about being retired. Keep this row RED-able:
+        # drop that filter and all four of these fail.
         f = _write_scope(
             tmp_path / "box.yaml",
             {"box": {category: {"x": ["/old", "~/x", "z"]}}},

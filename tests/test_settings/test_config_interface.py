@@ -1736,7 +1736,21 @@ class TestSystemSettingsTierSplit:
 # ---------------------------------------------------------------------------
 
 class TestCategoryConfigSet:
-    """`config set <category-key> <value>` through the live CLI setter."""
+    """`config set <category-key>` through the live CLI setter — REFUSED BY NAME.
+
+    ⚑⚑ THIS CLASS USED TO PIN THE SOURCE-ONLY REPOINT (S24/S25): a category set
+    swapped ``host_src`` and preserved ``box_dest`` + options RAW, WARNed on a
+    not-yet-existent literal, and hard-ERRORed on the ``:`` notation / a dangling
+    ``@``-ref / an unknown ``$VAR`` / a key absent from the cascade. **DS-BL1 = (a)
+    (Jei, 2026-08-07g — "accept the loss uniformly") retired that route for EVERY
+    bind-shaped category**, so what is pinned here now is the REFUSAL: by name, with
+    a cure, in the verb preamble before any write machinery, at every scope, leaving
+    the stored tuple untouched.
+
+    ⚑ The repoint MECHANISM (``settings_configset.repoint_host_src``) is unaffected
+    and still unit-tested in ``test_settings_configset.py`` — it simply has no CLI
+    caller. Do not re-pin it through this door.
+    """
 
     def _seed(self, tmp_path, key_path, tuple_val):
         """Write an existing category bind tuple into a scope file; return path."""
@@ -1749,100 +1763,98 @@ class TestCategoryConfigSet:
         dump_doc(f, data)
         return f
 
-    def test_ok_repoint_preserves_dest_and_opts_raw(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "synced", "vault"],
-            ["/old/src", "/home/agent/vault", "ro"],
-        )
-        msg = set_config_value("box.synced.vault", "/tmp", config_path=f)
-        assert not msg.startswith("Error:")
-        assert "Warning" not in msg
-        # host_src swapped; box_dest + options PRESERVED RAW (structured list).
-        assert load_doc(f)["box"]["synced"]["vault"] == [
-            "/tmp", "/home/agent/vault", "ro",
-        ]
-
-    def test_warn_on_not_yet_existent_literal_proceeds(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "caches", "x"],
-            ["/old", "/home/agent/.cache/x"],
-        )
-        missing = str(tmp_path / "does" / "not" / "exist")
-        msg = set_config_value("box.caches.x", missing, config_path=f)
-        assert not msg.startswith("Error:")
-        assert "Warning" in msg  # WARN fired (host_exists obligation honored)
-        # ... and the write still PROCEEDED.
-        assert load_doc(f)["box"]["caches"]["x"][0] == missing
-
-    def test_error_colon_src_dest_notation_refused(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "synced", "vault"],
-            ["/old", "/home/agent/vault", "ro"],
-        )
-        msg = set_config_value("box.synced.vault", "/a:/b", config_path=f)
-        assert msg.startswith("Error:")
-        assert ":" in msg  # the src:dest refusal message
-        # the file is NOT poisoned by a refused write
-        assert load_doc(f)["box"]["synced"]["vault"][0] == "/old"
-
-    def test_error_dangling_ref_is_hard_error(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "synced", "vault"],
-            ["/old", "/home/agent/vault", "ro"],
-        )
+    @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
+    def test_every_bind_shaped_category_set_is_refused_by_name(
+        self, tmp_path, category,
+    ):
+        """All four, not one specimen: DS-BL1 = (a) is UNIFORM, and a per-category
+        exception would be exactly the split option (c) that was declined."""
+        f = self._seed(tmp_path, ["box", category, "x"], ["/old", "/dest"])
         msg = set_config_value(
-            "box.synced.vault", "@nope.not.a.key/x", config_path=f,
+            f"box.{category}.x", "/newsrc",
+            config_path=f, command_scope=ConfigLevel.box, cascade_box_path=f,
         )
-        assert msg.startswith("Error:")
-        assert "dangling" in msg
-        assert load_doc(f)["box"]["synced"]["vault"][0] == "/old"
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg, msg
+        assert f"box.{category}.<name>" in msg, msg          # names the SPELLING
+        assert "settings file" in msg, msg                    # names the CURE
+        assert f"config get box.{category}.x" in msg, msg     # the read still works
+        # ⚑ Refused BEFORE any write machinery — the stored tuple is byte-identical.
+        assert load_doc(f)["box"][category]["x"] == ["/old", "/dest"]
 
-    def test_ok_system_ref_stored_raw_never_expanded(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "synced", "vault"],
-            ["/old", "/home/agent/vault", "ro"],
+    def test_the_refusal_states_the_RULING_not_the_shape(self, tmp_path):
+        """Two retirements, two REASONS, and the message must not swap them. The
+        four kept their per-entry key and lost only the route (DS-BL1); the bindings
+        arms lost the KEY itself (R-5/R-6 — terminal, dest-keyed). Telling a
+        ``caches`` user "a per-name key no longer exists" would send them looking for
+        a key ``config get`` reads back fine."""
+        f = self._seed(tmp_path, ["box", "caches", "x"], ["/old", "/dest"])
+        cat = set_config_value(
+            "box.caches.x", "/newsrc",
+            config_path=f, command_scope=ConfigLevel.box, cascade_box_path=f,
         )
-        msg = set_config_value(
-            "box.synced.vault", "@config.data/foo", config_path=f,
-        )
-        assert not msg.startswith("Error:")
-        # stored RAW — the @-ref is NOT resolved to a literal (§0 files unresolved).
-        assert load_doc(f)["box"]["synced"]["vault"][0] == "@config.data/foo"
+        assert "authored in YAML only" in cat, cat
+        assert "per-name key no longer exists" not in cat, cat
 
-    def test_error_key_must_already_exist(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "synced", "vault"],
-            ["/old", "/home/agent/vault", "ro"],
+        arm = set_config_value(
+            "box.bindings.ro.x", "/newsrc",
+            config_path=f, command_scope=ConfigLevel.box, cascade_box_path=f,
         )
-        msg = set_config_value(
-            "box.synced.absent", "/x", config_path=f,
-        )
-        assert msg.startswith("Error:")
-        assert "must already exist" in msg
+        assert "per-name key no longer exists" in arm, arm
+        assert "authored in YAML only" not in arm, arm
 
-    def test_error_unknown_var_is_hard_error(self, tmp_path):
-        f = self._seed(
-            tmp_path, ["box", "synced", "vault"],
-            ["/old", "/home/agent/vault", "ro"],
-        )
+    def test_agent_scope_category_set_is_refused_through_its_own_door(self, tmp_path):
+        """The AGENT-scope spelling is refused too, and by the NODE door
+        (``agent_node_bind_retired_error``) — so the cure names the node's OWN
+        settings file, the file ``_agent_partial`` actually reads, not a scope
+        table."""
+        f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
-            "box.synced.vault", "$NOPE_UNKNOWN_VAR_XYZ/x", config_path=f,
+            "agent.claude.common.plugins", "/newsrc",
+            config_path=f, is_system=True, command_scope=ConfigLevel.system,
         )
-        assert msg.startswith("Error:")
-        assert "unknown variable" in msg.lower()
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg, msg
+        assert "agent.<node>.common.<name>" in msg, msg
+        assert "self.claude.common" in msg, msg
+        assert "agents/claude/settings.yaml" in msg, msg
+        assert not f.exists()  # a refused write creates nothing
 
-    def test_system_scope_category_repoint_not_refused(self, tmp_path):
-        """A system-scope category key reaches the set path (D2) — categories
-        exist at every scope, so it is NOT a structural-config refusal."""
-        f = self._seed(
-            tmp_path, ["system", "caches", "x"],
-            ["/old", "/home/agent/.cache/x"],
+    def test_reset_is_refused_symmetrically(self, tmp_path):
+        """A reset is a WRITE. "No override for …" would imply the spelling could
+        have been written from the CLI, while the hand-authored tuple sits in the
+        file untouched — the same double lie the bindings preamble already avoids."""
+        f = self._seed(tmp_path, ["box", "caches", "x"], ["/old", "/dest"])
+        msg = reset_config_value(
+            "box.caches.x", config_path=f, command_scope=ConfigLevel.box,
         )
+        assert msg.startswith("Error:"), msg
+        assert "RETIRED" in msg, msg
+        assert "No override" not in msg, msg
+        # NOT removed — a refused reset must not clear a hand-authored entry.
+        assert load_doc(f)["box"]["caches"]["x"] == ["/old", "/dest"]
+
+    def test_null_on_a_category_gets_the_retirement_too(self, tmp_path):
+        """``--null <scope>.<category>.<name>`` used to hit a bespoke "a repoint has
+        no null form" guard. That guard is GONE with the route; the retirement
+        refusal is earlier and better. RED if the null path found another door."""
+        f = self._seed(tmp_path, ["box", "caches", "x"], ["/old", "/dest"])
         msg = set_config_value(
-            "system.caches.x", "/tmp", config_path=f, is_system=True,
+            "box.caches.x", None,
+            config_path=f, command_scope=ConfigLevel.box, cascade_box_path=f,
         )
-        assert not msg.startswith("Error:")
-        assert load_doc(f)["system"]["caches"]["x"] == ["/tmp", "/home/agent/.cache/x"]
+        assert "RETIRED" in msg, msg
+        assert "--null is not yet supported" not in msg, msg
+
+    def test_the_read_survives_the_write(self, tmp_path):
+        """Refuse the write, keep the read honest: the cure the refusal prescribes
+        (hand-edit the YAML) is only verifiable if ``config get`` still reads it."""
+        f = self._seed(tmp_path, ["box", "caches", "x"], ["/src", "/dest"])
+        # (the reader stringifies a structured value for display)
+        assert get_config_value(
+            "box.caches.x", global_config_path=f, project_toml=f,
+            command_scope=ConfigLevel.box,
+        ) == str(["/src", "/dest"])
 
     def test_structural_system_key_still_refused(self, tmp_path):
         """A real structural system.* config key is still file-only refused.
@@ -1884,18 +1896,17 @@ class TestCategoryConfigSet:
 # ---------------------------------------------------------------------------
 
 class TestCrossScopeCascadeConfigSet:
-    """`config set` set-time E3 over the FULL launch cascade (not cmd-file only)."""
+    """`config set` set-time E3 over the FULL launch cascade (not cmd-file only).
 
-    def _seed_box(self, tmp_path, key_path, tuple_val):
-        """Write a box-scope category bind into the box settings file."""
-        f = tmp_path / "box-settings.yaml"
-        data: dict = {}
-        node = data
-        for seg in key_path[:-1]:
-            node = node.setdefault(seg, {})
-        node[key_path[-1]] = tuple_val
-        dump_doc(f, data)
-        return f
+    ⚑ THE VEHICLE CHANGED, THE MECHANISM DID NOT. These used to drive the probe
+    through a CATEGORY repoint (``box.synced.foo``); DS-BL1 = (a) retired that route,
+    so they now drive it through a routed SCALAR (``box.canon`` / ``workset.boxes``),
+    which is the surviving caller of the very same
+    ``_category_set_lookups`` → lenient-``expand`` seam (``set_config_value`` runs it
+    for every key ``_probes_at_set_time`` claims). What is pinned is unchanged: the
+    snapshot is the FULL cascade, so a cross-scope ``@``-ref RESOLVES instead of
+    false-blocking, and a genuinely dangling one still BLOCKS by name.
+    """
 
     def _seed_workset(self, tmp_path, leaf, value):
         """Write a workset-scope key into a workset settings file."""
@@ -1906,35 +1917,27 @@ class TestCrossScopeCascadeConfigSet:
     def test_cross_scope_ref_resolves_with_full_cascade(self, tmp_path):
         """A box-scope set whose value @-refs a key set ONLY at the workset scope
         is ALLOWED (the false-block the first cut produced is GONE)."""
-        box_f = self._seed_box(
-            tmp_path, ["box", "synced", "foo"],
-            ["/old", "/home/agent/foo", "ro"],
-        )
+        box_f = tmp_path / "box-settings.yaml"
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
         msg = set_config_value(
-            "box.synced.foo", "@workset.vault_ro/bar",
-            config_path=box_f,
+            "box.canon", "@workset.vault_ro/bar",
+            config_path=box_f, command_scope=ConfigLevel.box,
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
         )
         # ALLOWED: @workset.vault_ro is visible in the full cascade -> resolves.
         assert not msg.startswith("Error:"), msg
         # stored RAW (the @-ref, NOT a literal — §0 files unresolved).
-        assert load_doc(box_f)["box"]["synced"]["foo"][0] == (
-            "@workset.vault_ro/bar"
-        )
+        assert load_doc(box_f)["box"]["canon"] == "@workset.vault_ro/bar"
 
     def test_cross_scope_ref_false_blocked_without_workset_file(self, tmp_path):
         """Control: the SAME @workset.* ref with NO workset file in the cascade
         is dangling -> BLOCKED. Proves the prior test's pass is the cascade's
         doing (the workset key really is the only thing that resolves it)."""
-        box_f = self._seed_box(
-            tmp_path, ["box", "synced", "foo"],
-            ["/old", "/home/agent/foo", "ro"],
-        )
+        box_f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
-            "box.synced.foo", "@workset.vault_ro/bar",
-            config_path=box_f,
+            "box.canon", "@workset.vault_ro/bar",
+            config_path=box_f, command_scope=ConfigLevel.box,
             cascade_box_path=box_f,
         )
         assert msg.startswith("Error:"), msg
@@ -1944,14 +1947,11 @@ class TestCrossScopeCascadeConfigSet:
     def test_cross_scope_genuinely_dangling_still_blocks(self, tmp_path):
         """A value @-ref to a key set NOWHERE in the cascade still BLOCKS, naming
         the dangling target (E3 upstream rule holds over the full cascade)."""
-        box_f = self._seed_box(
-            tmp_path, ["box", "synced", "foo"],
-            ["/old", "/home/agent/foo", "ro"],
-        )
+        box_f = tmp_path / "box-settings.yaml"
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
         msg = set_config_value(
-            "box.synced.foo", "@workset.nope_absent/bar",
-            config_path=box_f,
+            "box.canon", "@workset.nope_absent/bar",
+            config_path=box_f, command_scope=ConfigLevel.box,
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
         )
@@ -1960,212 +1960,36 @@ class TestCrossScopeCascadeConfigSet:
         assert "workset.nope_absent" in msg
 
     def test_workset_scope_set_refs_system_floor_and_sibling(self, tmp_path):
-        """A workset-scope set referencing the config.* floor (@config.data) AND a
-        sibling workset key in the same file both resolve -> ALLOWED."""
-        # The workset file holds the sibling target + the edited key.
+        """A workset-scope set referencing a sibling workset key in the same file
+        resolves -> ALLOWED (the system.* floor is folded in by
+        ``_category_set_lookups`` regardless of cascade files)."""
         ws_f = tmp_path / "ws-settings.yaml"
-        dump_doc(ws_f, {
-            "workset": {
-                "vault_ro": "/srv/vault/ro",
-                "common": {"x": ["/old", "/home/agent/x"]},
-            },
-        })
-        # Reference BOTH the system.* floor and a sibling workset key. The system.*
-        # floor is folded in by _category_set_lookups regardless of cascade files.
+        dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro", "boxes": "/old"}})
         msg = set_config_value(
-            "workset.common.x", "@workset.vault_ro/sub",
-            config_path=ws_f,
+            "workset.boxes", "@workset.vault_ro/sub",
+            config_path=ws_f, command_scope=ConfigLevel.workset,
             cascade_workset_path=ws_f,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ws_f)["workset"]["common"]["x"][0] == "@workset.vault_ro/sub"
+        assert load_doc(ws_f)["workset"]["boxes"] == "@workset.vault_ro/sub"
 
 
 # ---------------------------------------------------------------------------
-# F10 — category repoint must-exist checks the CASCADE (Jei ruling 2026-07-02d,
-# reconfirming the 2026-06-27 walkthrough model). Spec §2a: "The key MUST
-# ALREADY EXIST in the cascade — the CLI can only REPOINT an existing bind,
-# never CREATE one." The baseline checked the COMMAND-scope FILE only.
+# ⚑⚑ ``TestRepointFromCascade`` LIVED HERE AND IS GONE (DS-BL1 = (a), 2026-08-07g).
+#
+# It drove F10 — spec §2a's "the key MUST ALREADY EXIST in the cascade; the CLI can
+# only REPOINT an existing bind, never CREATE one" — through the CLI: a box set
+# repointing a bind set only at the system scope, the downward workset write, the
+# nowhere-in-the-cascade refusal, the command-file-wins tuple, and the reset
+# symmetry. **There is no CLI category repoint any more**, so every one of those
+# cases is now the SAME refusal, pinned once in ``TestCategoryConfigSet``.
+#
+# ⚑ F10 ITSELF IS NOT UNTESTED. The rule lives in ``repoint_host_src`` and is
+# unit-tested directly in ``test_settings_configset.py``
+# (``test_repoint_cascade_fallback_*`` / ``test_repoint_missing_key_raises``), which
+# is where it belongs now that the function has no CLI caller. Do NOT re-add a
+# CLI-level copy: it could only pass by resurrecting the retired route.
 # ---------------------------------------------------------------------------
-
-class TestRepointFromCascade:
-    """`config set` repoints a bind set ANYWHERE in the set-time cascade; only a
-    key NO scope sets is refused. The write still lands in the COMMAND-scope
-    file (full raw tuple: user's host_src VERBATIM + cascade dest/opts RAW)."""
-
-    def _seed_system(self, tmp_path):
-        """A system-scope settings file holding the only vault bind tuple."""
-        f = tmp_path / "global-settings.yaml"
-        dump_doc(f, {"box": {"synced": {"vault": [
-            "@config.data/vault", "$XDG_DATA_HOME/vault", "z"]}}})
-        return f
-
-    def test_box_set_repoints_bind_from_higher_scope(self, tmp_path):
-        """The F10 probe: the bind is set ONLY at the system scope; `box set`
-        repoints it. FAILED on baseline ("must already exist at this scope").
-        dest + opts preserved BYTE-RAW from the cascade tuple; the new host_src
-        stored VERBATIM (unresolved, §0); the write lands in the BOX file; the
-        system file is untouched."""
-        sys_f = self._seed_system(tmp_path)
-        box_f = tmp_path / "box-settings.yaml"  # does not exist yet
-        msg = set_config_value(
-            "box.synced.vault", "$XDG_DATA_HOME/mine",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_system_path=sys_f, cascade_box_path=box_f,
-        )
-        assert not msg.startswith("Error:"), msg
-        assert load_doc(box_f)["box"]["synced"]["vault"] == [
-            "$XDG_DATA_HOME/mine", "$XDG_DATA_HOME/vault", "z",
-        ]
-        assert load_doc(sys_f)["box"]["synced"]["vault"] == [
-            "@config.data/vault", "$XDG_DATA_HOME/vault", "z",
-        ]
-
-    def test_workset_downward_repoint_from_cascade(self, tmp_path):
-        """`workset set box.synced.<name>` with the bind set only at the
-        system scope writes the full raw tuple into the WORKSET file (the
-        downward path the containment relaxation made user-visible)."""
-        sys_f = self._seed_system(tmp_path)
-        ws_f = tmp_path / "ws-settings.yaml"
-        dump_doc(ws_f, {"workset": {"foo": "bar"}})
-        msg = set_config_value(
-            "box.synced.vault", "$XDG_DATA_HOME/team",
-            config_path=ws_f, command_scope=ConfigLevel.workset,
-            cascade_system_path=sys_f, cascade_workset_path=ws_f,
-        )
-        assert not msg.startswith("Error:"), msg
-        doc = load_doc(ws_f)
-        assert doc["box"]["synced"]["vault"] == [
-            "$XDG_DATA_HOME/team", "$XDG_DATA_HOME/vault", "z",
-        ]
-        assert doc["workset"]["foo"] == "bar"  # sibling content untouched
-
-    def test_nowhere_in_cascade_still_refused(self, tmp_path):
-        """A key NO scope sets is still refused, and nothing is written."""
-        sys_f = self._seed_system(tmp_path)
-        box_f = tmp_path / "box-settings.yaml"
-        msg = set_config_value(
-            "box.synced.absent", "$XDG_DATA_HOME/x",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_system_path=sys_f, cascade_box_path=box_f,
-        )
-        assert msg.startswith("Error:"), msg
-        assert "must already exist" in msg
-        assert not box_f.exists()  # nothing created by the refused write
-
-    def test_command_file_tuple_still_wins_over_cascade(self, tmp_path):
-        """Same-scope repoint unchanged: when the command file sets the key its
-        OWN dest/opts are preserved, not a higher scope's."""
-        sys_f = self._seed_system(tmp_path)
-        box_f = tmp_path / "box-settings.yaml"
-        dump_doc(box_f, {"box": {"synced": {"vault": [
-            "/old", "/box-own-dest"]}}})
-        msg = set_config_value(
-            "box.synced.vault", "/tmp",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_system_path=sys_f, cascade_box_path=box_f,
-        )
-        assert not msg.startswith("Error:"), msg
-        assert load_doc(box_f)["box"]["synced"]["vault"] == [
-            "/tmp", "/box-own-dest",
-        ]
-
-    # --- reset symmetry (F10 step 3) ----------------------------------------
-
-    def test_reset_category_key_removes_command_scope_tuple(self, tmp_path):
-        """Reset removes the command-scope tuple (pruning emptied tables) so the
-        cascade's tuple resurfaces. FAILED on baseline ("unknown config key")."""
-        sys_f = self._seed_system(tmp_path)
-        box_f = tmp_path / "box-settings.yaml"
-        set_config_value(
-            "box.synced.vault", "/tmp",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_system_path=sys_f, cascade_box_path=box_f,
-        )
-        msg = reset_config_value(
-            "box.synced.vault",
-            config_path=box_f, command_scope=ConfigLevel.box,
-        )
-        # Bug 2: the honest cleared-message form. No floor registry is threaded on
-        # THIS call, so there is no reverted-to floor to name → the cleared-only
-        # clause (same information as the old plain "Reset", via the honest
-        # formatter).
-        assert msg == (
-            "Cleared box.synced.vault set on the box scope; "
-            "it now falls back through the cascade."
-        )
-        doc = load_doc(box_f)
-        assert "vault" not in doc.get("box", {}).get("synced", {})
-        # ROUNDTRIP: with the override gone the cascade tuple is the base again —
-        # a fresh repoint sources dest/opts from the SYSTEM tuple once more.
-        msg2 = set_config_value(
-            "box.synced.vault", "$XDG_DATA_HOME/again",
-            config_path=box_f, command_scope=ConfigLevel.box,
-            cascade_system_path=sys_f, cascade_box_path=box_f,
-        )
-        assert not msg2.startswith("Error:"), msg2
-        assert load_doc(box_f)["box"]["synced"]["vault"] == [
-            "$XDG_DATA_HOME/again", "$XDG_DATA_HOME/vault", "z",
-        ]
-
-    def test_reset_category_key_without_override_reports_none(self, tmp_path):
-        box_f = tmp_path / "box-settings.yaml"
-        msg = reset_config_value(
-            "box.synced.vault",
-            config_path=box_f, command_scope=ConfigLevel.box,
-        )
-        assert msg == "No override for box.synced.vault"
-
-    # ⚑ ``test_reset_core_bind_names_reverted_to_floor`` USED TO LIVE HERE. It
-    # drove the honest "effective is now <floor>" clause through a CORE bind reset
-    # (``box.bindings.rw.home`` with ``core_default_bind_keys`` threaded). R-9
-    # retired that route, so the case became unreachable — the reset refuses before
-    # any floor is consulted, which
-    # ``TestScopeBindRouteRetired.test_reset_is_refused_symmetrically`` pins.
-    #
-    # ⚑⚑ THE NOTE THAT USED TO SIT HERE WAS FALSE IN BOTH DIRECTIONS, and it is
-    # worth spelling out because it is exactly the drift this pass exists to stop.
-    # It claimed the floor-naming clause was still exercised on "the surviving
-    # per-node route" by
-    # ``TestAgentNodeBindGetReset.test_reset_reports_reverted_to_floor_destination``.
-    # There was no surviving per-node route — R-9 retired that write route by the
-    # SAME ruling that retired the scope-level one — and that test no longer
-    # existed: it was deleted with its class one commit after the note was written,
-    # so the note read as "a live test still guards this" while naming nothing.
-    #
-    # THE FLOOR-SPECIFIC ARM HAS NO LIVE ROUTE AND DIES HERE, in P6b, together with
-    # ``config_keys._floor_bind_display``, the set-time floor registry
-    # (``core_defaults.core_default_bind_keys``) and the ``default_categories``
-    # parameter on five ``config_interface`` entry points. A category reset now
-    # always takes the cleared-only form, pinned directly below.
-    #
-    # ⚑ THE GENERIC CLAUSE IS NOT LOST WITH IT. The honest "it is now <value>
-    # (<tier>)" message on the SCALAR reset path is still pinned by
-    # ``TestF7HonestResetMessage.test_reset_message_shows_effective_value_and_source_tier``
-    # (this file). Only the BIND-FLOOR source of that clause is gone; the formatter
-    # and its message shape are untouched.
-
-    def test_reset_category_key_is_cleared_only(self, tmp_path):
-        """A category key reset takes the cleared-only honest form — the same
-        information as the old plain "Reset", never a fabricated value.
-
-        ⚑ This used to be the NON-core half of a pair: it threaded the floor
-        registry and proved a key ABSENT from it got no floor clause, while a core
-        bind got one. Both the registry and the floor clause are gone (R-9 retired
-        every bind write route, so no key that reaches this branch could ever have a
-        floor entry), leaving one form for every category key.
-        """
-        box_f = tmp_path / "box-settings.yaml"
-        dump_doc(box_f, {"box": {"caches": {"foo": ["/src", "/dest"]}}})
-        msg = reset_config_value(
-            "box.caches.foo",
-            config_path=box_f, command_scope=ConfigLevel.box,
-        )
-        assert msg == (
-            "Cleared box.caches.foo set on the box scope; "
-            "it now falls back through the cascade."
-        )
-
 
 # ---------------------------------------------------------------------------
 # Scope-direction guard (block B4, spec §0 directional view/set + §2a)
@@ -2406,15 +2230,19 @@ class TestScopeDirectionGuard:
         assert not f.exists()
 
     def test_workset_scope_allows_workset_key(self, tmp_path):
+        # ⚑ VEHICLE: a routed workset SCALAR. This row is about the DIRECTION guard
+        # (own-namespace write is allowed), and it used to ride on a category
+        # repoint — a route DS-BL1 = (a) retired, so a category key here would now
+        # be refused for a reason that has nothing to do with direction.
         f = tmp_path / "ws-settings.yaml"
-        dump_doc(f, {"workset": {"common": {"x": ["/old", "/home/agent/x"]}}})
+        dump_doc(f, {"workset": {"boxes": "/old"}})
         msg = set_config_value(
-            "workset.common.x", "/new",
+            "workset.boxes", "/new",
             config_path=f, cascade_workset_path=f,
             command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(f)["workset"]["common"]["x"][0] == "/new"
+        assert load_doc(f)["workset"]["boxes"] == "/new"
 
     def test_system_config_key_refused_with_ruled_message(self, tmp_path):
         """Block B2: ``config.*`` foundation keys are NEVER CLI-settable — refused
@@ -2527,13 +2355,17 @@ class TestScopeDirectionGuard:
 
     # --- downward CATEGORY writes: guard passes, must-exist still bites -----
 
-    def test_downward_category_key_still_must_exist(self, tmp_path):
-        """A downward category repoint (``workset set box.synced.X``) now
-        passes the direction guard, but the source-only MUST-EXIST rule is
-        unrelaxed: a key NO scope in the cascade sets refuses via
-        ConfigSetError and writes NOTHING. (The F10 fix broadened the lookup
-        from exists-in-COMMAND-FILE to exists-in-CASCADE per spec §2a —
-        TestRepointFromCascade covers the hit cases; this pins the miss.)"""
+    def test_downward_category_key_is_refused_by_the_retirement_not_direction(
+        self, tmp_path,
+    ):
+        """A downward category write (``workset set box.synced.X``) PASSES the
+        direction guard (workset ⊃ box) and is then refused by the RETIREMENT.
+
+        ⚑ IT USED TO BE REFUSED BY THE SOURCE-ONLY MUST-EXIST RULE ("the key MUST
+        ALREADY EXIST in the cascade", F10) — DS-BL1 = (a) removed that route, so the
+        refusal now comes from a different rule and says so. The property this row
+        actually guards is unchanged and still worth pinning: the DIRECTION guard did
+        not fire, and NOTHING was written."""
         f = tmp_path / "ws-settings.yaml"
         dump_doc(f, {"workset": {"foo": "bar"}})  # file exists, key absent
         msg = set_config_value(
@@ -2542,7 +2374,9 @@ class TestScopeDirectionGuard:
             command_scope=ConfigLevel.workset,
         )
         assert msg.startswith("Error:"), msg
-        assert "must already exist" in msg
+        assert "RETIRED" in msg, msg
+        # NOT the direction refusal (that would be the wrong diagnosis).
+        assert "cannot be set from the workset scope" not in msg, msg
         # Nothing was created in the file.
         assert load_doc(f) == {"workset": {"foo": "bar"}}
 
@@ -3431,18 +3265,30 @@ class TestScopeBindRouteRetired:
         assert "RETIRED" in msg, msg
         assert "--null is not yet supported" not in msg, msg
 
-    def test_the_still_settable_categories_are_untouched(self, tmp_path):
-        """The retirement is SURGICAL: it removes two tokens at three scopes and
-        nothing else. RED if the regex change over-reached."""
+    def test_the_retirement_now_covers_every_bind_shaped_category(self, tmp_path):
+        """⚑ THIS ROW INVERTED, ON A RULING. It used to pin the retirement as
+        SURGICAL — two tokens at three scopes, with ``box.synced.x`` still settable
+        as the control. DS-BL1 = (a) (Jei, 2026-08-07g) made the loss UNIFORM, so the
+        control became a second retired spelling. What is pinned now is the same
+        no-over/under-reach property from the other side: the SAME door refuses the
+        arms and the other four, and it does NOT reach a neighbouring scalar."""
         box = tmp_path / "box.yaml"
-        dump_doc(box, {"box": {"synced": {"x": ["/old", "/dest"]}}})
-        msg = set_config_value(
-            "box.synced.x", "/newsrc",
-            config_path=box, command_scope=ConfigLevel.box,
-            cascade_box_path=box,
-        )
-        assert not msg.startswith("Error:"), msg
-        assert load_doc(box)["box"]["synced"]["x"] == ["/newsrc", "/dest"]
+        dump_doc(box, {"box": {"synced": {"x": ["/old", "/dest"]}}, })
+        for key in ("box.bindings.ro.x", "box.synced.x", "box.caches.x",
+                    "box.seeded.x", "box.common.x"):
+            msg = set_config_value(
+                key, "/newsrc",
+                config_path=box, command_scope=ConfigLevel.box,
+                cascade_box_path=box,
+            )
+            assert msg.startswith("Error:") and "RETIRED" in msg, (key, msg)
+        # ...and the value is untouched by any of them.
+        assert load_doc(box)["box"]["synced"]["x"] == ["/old", "/dest"]
+        # NOT over-reached: a scalar at the same scope still writes.
+        assert not set_config_value(
+            "box.shell", "/bin/zsh",
+            config_path=box, command_scope=ConfigLevel.box, cascade_box_path=box,
+        ).startswith("Error:")
 
     def test_the_two_retirements_keep_their_own_recognisers(self):
         """The agent-scope route is retired TOO (the second R-9 step), but by its
@@ -3534,21 +3380,47 @@ class TestAgentNodeBindRouting:
         assert not _is_path_category_key(k)
         assert not _is_persona_agent_key(k)  # launcher is not a state leaf
 
-    def test_the_node_regex_covers_exactly_the_retired_categories(self):
-        """⚑ ``_AGENT_NODE_BIND_RE`` spells the retired arms LITERALLY (it has to,
-        to split the node non-greedily around them) instead of importing the
-        alternation. Pin it against the single source, so adding or removing a
-        retired category cannot leave this parser behind."""
-        from kanibako.settings.config_keys import _is_agent_node_bind_key
+    def test_the_node_regex_is_pinned_to_the_terminal_arms_as_a_subset(self):
+        """⚑ ``_AGENT_NODE_BIND_RE`` spells the arms LITERALLY (it has to, to split
+        the node non-greedily around them) instead of importing an alternation, so it
+        must be pinned against the single source. **It is pinned as a SUBSET, not an
+        equality, and that is a MEASUREMENT, not laziness:**
+        ``RETIRED_BIND_CATEGORIES`` is now all six (DS-BL1 = (a)), but this parser
+        also picks the READ route — ``agent_config.agent_file_route`` — which has a
+        nested table for ``bindings.<arm>.<name>`` and NONE for the other four, so a
+        widened parser would resolve ``agent.claude.common.x`` to the dotted leaf
+        ``self."common.x"`` and the read would silently answer "(not set)".
+
+        The four are refused at the agent scope through ``BIND_KEY_RE`` instead —
+        the SAME door (``agent_node_bind_retired_error``), a different parser — which
+        the second half pins so neither half can quietly stop covering its share.
+        """
+        from kanibako.settings.config_keys import (
+            _is_agent_node_bind_key,
+            _is_path_category_key,
+            agent_node_bind_retired_error,
+        )
         from kanibako.settings.settings_categories import (
             RETIRED_BIND_CATEGORIES,
             SETTABLE_BIND_CATEGORIES,
+            _TERMINAL_BIND_CATEGORIES,
         )
 
-        for cat in RETIRED_BIND_CATEGORIES:
+        # SUBSET: the node parser covers exactly the TERMINAL arms...
+        for cat in _TERMINAL_BIND_CATEGORIES:
             assert _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
-        for cat in SETTABLE_BIND_CATEGORIES:
+        for cat in set(RETIRED_BIND_CATEGORIES) - set(_TERMINAL_BIND_CATEGORIES):
             assert not _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
+            # ...and the other retired categories are claimed by the per-entry
+            # recogniser, so the DOOR still covers all six at the agent scope.
+            assert _is_path_category_key(f"agent.claude.{cat}.x"), cat
+        for cat in RETIRED_BIND_CATEGORIES:
+            assert agent_node_bind_retired_error(
+                f"agent.claude.{cat}.x", verb="set",
+            ) is not None, cat
+        # ⚑ NOT tautological on an empty tuple: SETTABLE is empty by ruling, so
+        # assert THAT directly rather than looping over nothing.
+        assert SETTABLE_BIND_CATEGORIES == ()
 
     def test_bind_named_model_is_a_bind_not_a_persona_scalar(self):
         # COLLISION: a bind literally NAMED ``model`` — the ``bindings.ro`` segment
@@ -4163,7 +4035,6 @@ class TestSetDispatchCoverage:
             "agent.claude.model",                 # persona setting
             "model",                              # bare agent setting
             "box.agent.model",                    # box agent mirror
-            "box.common.plugins",                 # path category
             "system.cache",                       # system path tier
         ):
             assert _has_dedicated_route(key), key
@@ -4177,13 +4048,17 @@ class TestSetDispatchCoverage:
         # of the refusal. ``box.env.FOO`` moved the OTHER way, into the claimed
         # list above, when the scoped arm got its route.
         #
-        # ⚑ The two RETIRED bind routes (R-9) are in the same position, and they
-        # moved OUT of the claimed list above when their branches were deleted:
-        # both are refused in the preamble and neither reaches a dispatch branch.
+        # ⚑ EVERY retired bind-shaped route is in the same position, and each moved
+        # OUT of the claimed list above when its branch was deleted: the two
+        # ``bindings`` arms with R-9, and ``caches``/``seeded``/``common``/``synced``
+        # with DS-BL1 = (a). All are refused in the preamble; none reaches a
+        # dispatch branch.
         for key in (
             "run_args", "env.FOO", "nonsense.key",
             "agent.claude.bindings.ro.launcher",
             "box.bindings.ro.vault",
+            "box.common.plugins",
+            "agent.claude.caches.x",
         ):
             assert not _has_dedicated_route(key), key
 
@@ -4820,23 +4695,38 @@ class TestNullSpelling:
         doc = yaml.safe_load(f.read_text())
         assert doc["pref"]["agent"]["claude"]["common"]["plugins"] is None
 
-    def test_null_is_refused_where_the_write_mechanism_has_no_null(self, tmp_path):
-        """⚑ The specimen MOVED. The docker ``env.<VAR>`` arm ("the env file is a
-        plain string store with no null value") went with the spelling itself
-        (R-39 refuses it in the preamble, --null included), leaving the CATEGORY
-        source-only repoint as the one mechanism that cannot express a null.
-        """
+    def test_no_write_mechanism_refuses_null_on_its_own_any_more(self, tmp_path):
+        """⚑⚑ THE SPECIMEN RAN OUT. This row pinned the ONE mechanism that could not
+        express a null: first the docker ``env.<VAR>`` arm ("the env file is a plain
+        string store with no null value"), which went with the spelling itself (R-39,
+        ``--null`` included); then the CATEGORY source-only repoint, which went with
+        DS-BL1 = (a). **Both are now refused as RETIRED SPELLINGS in the verb
+        preamble, before ``--null`` is looked at at all**, so the bespoke
+        "not yet supported" guard is gone and every surviving write path carries
+        ``None`` natively through a nested YAML write.
+
+        What is pinned now is that absence, from both sides: the retired spelling
+        gets the RETIREMENT (not a null-mechanism lecture), and a live nested target
+        actually stores a null."""
         f = tmp_path / "settings.yaml"
         f.write_text(yaml.safe_dump({"box": {"common": {"plugins": ["/a", "~/b"]}}}))
         msg = set_config_value(
             "box.common.plugins", None,
             config_path=f, command_scope=ConfigLevel.box,
         )
-        assert "not yet supported" in msg
-        # B-6: name the CURE with the spelling the user can actually type —
-        # ``reset`` is a sibling VERB, and no parser defines a ``--reset`` flag.
-        assert "'reset pref.box.common.plugins'" in msg
-        assert "--reset" not in msg
+        assert "RETIRED" in msg, msg
+        assert "not yet supported" not in msg, msg
+        # ⚑ And the stored tuple is untouched: refused before any write.
+        assert yaml.safe_load(f.read_text())["box"]["common"]["plugins"] == [
+            "/a", "~/b",
+        ]
+        # The LIVE null route (the §2h request) still writes a real YAML null —
+        # so "nothing refuses --null" is not "nothing accepts it".
+        g = tmp_path / "pref.yaml"
+        assert set_config_value(
+            "pref.agent.claude.common.plugins", None,
+            config_path=g, command_scope=ConfigLevel.box,
+        ) == "Set pref.agent.claude.common.plugins=null"
 
     def test_null_on_the_retired_bare_env_gets_the_retirement_cure(self, tmp_path):
         """The R-39 refusal runs BEFORE the --null route guard, so a user who
@@ -4850,6 +4740,61 @@ class TestNullSpelling:
         assert msg.startswith("Error:"), msg
         assert "box.env.FOO" in msg
         assert "no null value" not in msg
+
+
+class TestPrefRefusalDoesNotPrescribeAMissingCommand:
+    """A pref refusal appends "Set '<target>' directly at the <scope> scope instead"
+    — TRUE for a scalar, and a LIE for a YAML-only target.
+
+    ⚑⚑ THIS WAS ALREADY WRONG FOR THE ``bindings`` ARMS SINCE R-9; DS-BL1 = (a)
+    widened it to ``caches``/``seeded``/``common``/``synced`` as well, which is what
+    made it worth fixing rather than inheriting. Both message sites now ask ONE
+    predicate (``config_keys.has_no_cli_write_route``): the write-site guard
+    (``_pref_write_site_error``) and the allowlist reason
+    (``settings_prefs.not_requestable_reason``).
+
+    ⚑ ``masks`` is in scope for the same reason and was never settable at all.
+    """
+
+    @pytest.mark.parametrize("target", [
+        "box.bindings.ro.vault", "box.common.x", "box.caches.x",
+        "box.seeded.x", "box.synced.x", "box.masks",
+    ])
+    def test_no_direct_set_is_prescribed_for_a_yaml_only_target(
+        self, tmp_path, target,
+    ):
+        f = tmp_path / "settings.yaml"
+        # SITE 1 — the write-site guard (a pref at a scope that may not hold one).
+        site1 = set_config_value(
+            f"pref.{target}", "v",
+            config_path=f, command_scope=ConfigLevel.system,
+        )
+        assert site1.startswith("Error:")
+        assert "directly at the" not in site1, site1
+        # SITE 2 — the §2h allowlist reason (a legal pref scope, illegal target).
+        site2 = set_config_value(
+            f"pref.{target}", "v",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert site2.startswith("Error:")
+        assert "directly at the" not in site2, site2
+
+    def test_a_scalar_target_still_gets_the_direct_set_hint(self, tmp_path):
+        """The control — RED if the suppression over-reached and swallowed the hint
+        wherever it is actually correct."""
+        f = tmp_path / "settings.yaml"
+        assert "Set 'agent.claude.model' directly at the agent scope" in (
+            set_config_value(
+                "pref.agent.claude.model", "opus",
+                config_path=f, command_scope=ConfigLevel.system,
+            )
+        )
+        assert "Set 'box.shell' directly at the box scope" in (
+            set_config_value(
+                "pref.box.shell", "/bin/zsh",
+                config_path=f, command_scope=ConfigLevel.box,
+            )
+        )
 
 
 class TestPrefGetRendersAllThreeEmptyIdioms:
@@ -4875,18 +4820,33 @@ class TestPrefGetRendersAllThreeEmptyIdioms:
         assert self._get(tmp_path, f, "pref.agent.claude.model") is None
 
 
-def test_a_reserved_leaf_on_the_DIRECT_category_route_returns_an_error(tmp_path):
-    """The pre-existing escape: ReservedKeyError is a KeyError and used to fly
-    out of set_config_value, whose contract is 'returns an error string, NEVER
-    raises' (the H1 rule). The pref route is caught earlier by the key validator,
-    so only the DIRECT route exercises the probe-seam catch."""
+def test_a_reserved_leaf_on_a_category_key_still_returns_an_error_not_a_raise(
+    tmp_path,
+):
+    """The H1 contract — ``set_config_value`` RETURNS an error string, NEVER raises —
+    on the key that used to break it.
+
+    ⚑ THE MECHANISM THAT ANSWERS CHANGED, AND SAYING SO IS THE POINT. The escape was
+    a ``ReservedKeyError`` (a ``KeyError``) flying out of the E3 probe when the
+    candidate edit wrote a RESERVED leaf name (``…common.get``) into a KeyStore; the
+    DIRECT category route was the only door that reached that seam (the pref route is
+    caught earlier by the key validator). DS-BL1 = (a) retired the direct category
+    route, so the key is now refused BY NAME in the preamble and never reaches the
+    probe at all — an earlier and better answer, but a DIFFERENT one, so this no
+    longer pins the probe-seam catch.
+
+    ⚑ The catch itself survives in ``_category_set_lookups`` for the scalar/pref
+    probe. It is currently unreachable through any spelling this suite can name; do
+    not delete it on the strength of that without measuring the pref path.
+    """
     f = tmp_path / "settings.yaml"
     msg = set_config_value(
         "agent.claude.common.get", "/x",
         config_path=f, command_scope=ConfigLevel.system,
     )
-    assert msg.startswith("Error:")
-    assert "reserved" in msg.lower()
+    assert msg.startswith("Error:")           # returned, not raised (H1)
+    assert "RETIRED" in msg, msg
+    assert not f.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -4962,32 +4922,29 @@ class TestSystemScopeSecretPathSymmetry:
 
 
 class TestSystemScopeCategoryFileRouting:
-    """F2 — a SYSTEM-scope category key's set/reset destination.
+    """F2 — WHICH FILE a SYSTEM-scope category key lives in.
 
-    ``set`` repointed the tuple in the kanibako_config.yaml CONFIG file while
+    The bug: ``set`` repointed the tuple in the kanibako_config.yaml CONFIG file while
     ``get`` read the system SETTINGS file, so a successful set read back as
-    "(not set)"; and because ``reset --all`` sweeps the SETTINGS file's scope
-    tables, the config-file write SURVIVED ``--all``.  Both verbs now name the
-    settings file — the same file the launch cascade's system tier reads.
+    "(not set)"; and because ``reset --all`` sweeps the SETTINGS file's scope tables,
+    the config-file write SURVIVED ``--all``.
+
+    ⚑⚑ THE SET HALF IS GONE, NOT FIXED-AND-KEPT. DS-BL1 = (a) retired the category
+    write route, so there is no ``set`` left to agree with ``get`` — the asymmetry
+    died with one of its two sides. What still matters, and is pinned here, is that
+    the surviving READ names the file the LAUNCH cascade's system tier actually reads
+    (``@config.settings``), never the bootstrap CONFIG file — because hand-editing
+    that settings file IS the cure every refusal now prescribes, and a get that read
+    the wrong file would make the cure unverifiable.
+
+    ⚑ The VEHICLE stays ``synced`` (also CONCRETE — no declaration root), unchanged.
     """
 
-    # ⚑ The VEHICLE is ``synced``, not a binding. This class is about WHICH FILE a
-    # system-scope category key lands in, and any bind-shaped category proves that
-    # equally; ``system.bindings.ro.<name>`` used to play the part but its CLI route
-    # is RETIRED (R-9), so it can no longer reach the destination rule at all.
-    # ``synced`` is the closest stand-in: also CONCRETE (no declaration root).
     KEY = "system.synced.helper"
     SEEDED = ["/old/src", "/home/agent/helper", "ro"]
 
     def _seed(self, path):
         dump_doc(path, {"system": {"synced": {"helper": list(self.SEEDED)}}})
-
-    def _set(self, cf, ssp, value):
-        return set_config_value(
-            self.KEY, value, config_path=cf, system_settings_path=ssp,
-            is_system=True, command_scope=ConfigLevel.system,
-            cascade_system_path=ssp,
-        )
 
     def _get(self, cf, ssp):
         return get_config_value(
@@ -4995,88 +4952,74 @@ class TestSystemScopeCategoryFileRouting:
             command_scope=ConfigLevel.system,
         )
 
-    def test_set_lands_in_the_settings_file_and_get_reads_it_back(self, tmp_path):
+    def test_get_reads_the_settings_file_the_launch_reads(self, tmp_path):
         cf, ssp = _system_scope_files(tmp_path)
         self._seed(ssp)
-        new_src = tmp_path / "newsrc"
-        new_src.mkdir()
-        msg = self._set(cf, ssp, str(new_src))
-        assert not msg.startswith("Error:"), msg
-        assert "Warning" not in msg
-        # host_src swapped IN THE SETTINGS FILE; box_dest + options preserved RAW.
-        assert load_doc(ssp)["system"]["synced"]["helper"] == [
-            str(new_src), "/home/agent/helper", "ro",
-        ]
-        # The CONFIG file was never touched (it holds STRUCTURAL config only).
+        assert self._get(cf, ssp) == str(self.SEEDED)
+        # The CONFIG file is not consulted, and not created.
         assert not cf.exists()
-        # get/set symmetry: the read finds exactly what the write stored.
-        assert str(new_src) in (self._get(cf, ssp) or "")
 
-    def test_single_reset_clears_what_set_wrote(self, tmp_path):
+    def test_a_tuple_only_in_the_config_file_is_not_read(self, tmp_path):
+        """The control that makes the row above mean something: the SAME key
+        hand-written into kanibako_config.yaml instead reads back "(not set)",
+        because that file is in NO cascade level. RED if the read ever falls back
+        to the config file "to be helpful"."""
         cf, ssp = _system_scope_files(tmp_path)
-        self._seed(ssp)
-        new_src = tmp_path / "newsrc"
-        new_src.mkdir()
-        assert not self._set(cf, ssp, str(new_src)).startswith("Error:")
-        msg = reset_config_value(
-            self.KEY, config_path=cf, system_settings_path=ssp,
-            command_scope=ConfigLevel.system, cascade_system_path=ssp,
-        )
-        assert msg.startswith("Cleared"), msg
+        self._seed(cf)
         assert self._get(cf, ssp) is None
-        # A second reset has nothing left to remove (it cleared the real store).
-        assert reset_config_value(
-            self.KEY, config_path=cf, system_settings_path=ssp,
-            command_scope=ConfigLevel.system,
-        ).startswith("No override")
+        assert not ssp.exists()
 
-    def test_reset_all_clears_a_category_set(self, tmp_path):
-        """The survives-``--all`` repro, INVERTED.  ``reset_all`` clears nested
-        scope tables from the SETTINGS file only, so a category write parked in
-        the CONFIG file was unreachable by ``--all`` — an override the user
-        could not remove with the verb whose whole job is removing overrides."""
+    def test_the_write_verbs_refuse_and_change_neither_file(self, tmp_path):
+        """Both verbs, both files: the refusal is by name and nothing is touched."""
         cf, ssp = _system_scope_files(tmp_path)
         self._seed(ssp)
-        new_src = tmp_path / "newsrc"
-        new_src.mkdir()
-        assert not self._set(cf, ssp, str(new_src)).startswith("Error:")
+        for msg in (
+            set_config_value(
+                self.KEY, str(tmp_path), config_path=cf, system_settings_path=ssp,
+                is_system=True, command_scope=ConfigLevel.system,
+                cascade_system_path=ssp,
+            ),
+            reset_config_value(
+                self.KEY, config_path=cf, system_settings_path=ssp,
+                command_scope=ConfigLevel.system, cascade_system_path=ssp,
+            ),
+        ):
+            assert msg.startswith("Error:") and "RETIRED" in msg, msg
+        assert load_doc(ssp)["system"]["synced"]["helper"] == self.SEEDED
+        assert not cf.exists()
+
+    def test_reset_all_still_sweeps_the_scope_table(self, tmp_path):
+        """``reset --all`` clears the SETTINGS file's nested scope tables wholesale,
+        so a hand-authored category tuple goes with them.
+
+        ⚑ DELIBERATE ASYMMETRY WITH THE PER-KEY RESET ABOVE, and it is pre-existing
+        rather than introduced here: ``--all`` is a table sweep ("remove every
+        override in this file"), not a per-key write, and it does not consult the
+        per-key retirement doors. Pinned so the difference is a recorded fact rather
+        than a surprise."""
+        cf, ssp = _system_scope_files(tmp_path)
+        self._seed(ssp)
         reset_all(
             config_path=cf, force=True, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
         assert "system" not in load_doc(ssp)
         assert self._get(cf, ssp) is None
-        # ...and the set parked NOTHING in the CONFIG file, which ``--all``'s
-        # scope-table sweep does not reach — that residue was the whole bug.
-        assert not cf.exists()
 
-    def test_a_bind_only_in_the_config_file_is_not_the_cascade(self, tmp_path):
-        """The must-exist probe must agree with the LAUNCH, whose system tier is
-        the settings file.  A bind that exists only in kanibako_config.yaml is
-        nowhere in that cascade, so repointing it is refused — and neither file
-        is written."""
-        cf, ssp = _system_scope_files(tmp_path)
-        self._seed(cf)
-        msg = self._set(cf, ssp, str(tmp_path))
-        assert msg.startswith("Error:")
-        assert "must already exist" in msg
-        assert load_doc(cf)["system"]["synced"]["helper"] == self.SEEDED
-        assert not ssp.exists()
-
-    def test_box_scope_category_routing_is_unchanged(self, tmp_path):
+    def test_box_scope_read_routing_is_unchanged(self, tmp_path):
         """``settings_dest`` IS ``config_path`` when no system settings file is
-        threaded, so box/workset set + reset are byte-identical to before."""
+        threaded, so a box/workset read is byte-identical to before — and the write
+        verbs refuse there too."""
         f = tmp_path / "settings.yaml"
         dump_doc(f, {"box": {"caches": {"x": ["/old", "/home/agent/.cache/x"]}}})
-        assert not set_config_value(
-            "box.caches.x", str(tmp_path), config_path=f,
+        assert get_config_value(
+            "box.caches.x", global_config_path=f, project_toml=f,
             command_scope=ConfigLevel.box,
-        ).startswith("Error:")
-        assert load_doc(f)["box"]["caches"]["x"][0] == str(tmp_path)
+        ) == str(["/old", "/home/agent/.cache/x"])
         assert reset_config_value(
             "box.caches.x", config_path=f, command_scope=ConfigLevel.box,
-        ).startswith("Cleared")
-        assert "caches" not in load_doc(f).get("box", {})
+        ).startswith("Error:")
+        assert load_doc(f)["box"]["caches"]["x"] == ["/old", "/home/agent/.cache/x"]
 
 
 class TestCategorySetAgentNodeGuardsSuperseded:

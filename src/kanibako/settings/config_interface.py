@@ -52,7 +52,6 @@ from kanibako.settings.config_keys import (
     _KEY_ROUTES,
     _SCOPE_WRITE_ALLOWED,
     _SETTINGS_SCOPE_TOKENS,
-    _agent_scope_node,
     _coerce_value,
     _dot_to_flat,
     _is_agent_node_bind_key,
@@ -228,19 +227,22 @@ def _pref_value_error(
         if access_err is not None:
             return access_err
 
-    # ⚑ FOUR terms, because "is this target bind-shaped?" is not the same
-    # question as "is this target CLI-settable?". R-9 took the ``bindings.{ro,rw}``
-    # arms out of ``BIND_KEY_RE`` at EVERY scope — they are no longer a
-    # ``config set`` route — but their VALUE is still a structured tuple, so a
-    # scalar written at ``pref.box.bindings.ro.<name>`` or
-    # ``pref.agent.claude.bindings.ro.<name>`` is still wrong and must still be
-    # refused HERE. Dropping either retirement term would open exactly the hole this
-    # guard exists to close, on the very keys that lost their direct route (spec
-    # §2h: a pref's value is legal iff it is legal at its target). ⚑ ``pref`` is
-    # NOT a retired route — a box may still REQUEST a bind change — so the retired
-    # spellings must keep being recognised here even though the verbs refuse them.
+    # ⚑ FOUR terms, because "is this target bind-shaped?" is not the same question as
+    # "is this target CLI-settable?" — and since DS-BL1 = (a) NOTHING bind-shaped is
+    # CLI-settable, so every term here is a retired spelling. R-9 took the
+    # ``bindings.{ro,rw}`` arms out of ``BIND_KEY_RE`` first (they are TERMINAL,
+    # dest-keyed: no per-name key exists to match); the other four kept their per-name
+    # key and lost only the write route. Either way their VALUE is still a structured
+    # tuple, so a scalar written at ``pref.box.bindings.ro.<name>``,
+    # ``pref.agent.claude.bindings.ro.<name>`` or ``pref.agent.claude.common.<name>``
+    # is still wrong and must still be refused HERE. Dropping any term would open
+    # exactly the hole this guard exists to close, on the very keys that lost their
+    # direct route (spec §2h: a pref's value is legal iff it is legal at its target).
+    # ⚑ ``pref`` is NOT a retired route — a box may still REQUEST a bind change — so
+    # the retired spellings must keep being recognised here even though the verbs
+    # refuse them.
     #
-    # ⚑ Of the two retirement terms only the AGENT one is currently REACHABLE: the
+    # ⚑ Of the two node/scope retirement terms only the AGENT one is currently REACHABLE: the
     # §2h allowlist refuses ``pref.<file-scope>.…`` several steps earlier, so
     # ``SCOPE_BIND_KEY_RE`` here is belt-and-braces. Kept anyway — this is a
     # value-shape rule about a target, and a rule that reads "which targets are
@@ -481,29 +483,22 @@ def _category_set_lookups(
     except Exception:
         config_foundation, floor = {}, {}
 
-    # The agent STORE-ROOT anchors (spec §2d), from the SAME builder the launch
-    # floor uses. Load-bearing for the bare-relative refusal: that error tells the
-    # user to spell an abstract-category source as
-    # ``@meta.agent.<a>.path/<category>/<name>``, and without this the very value the
-    # tool just recommended would be rejected here as a dangling @-reference. A hint
-    # the tool then refuses is worse than no hint.
-    #
-    # Anchored for BOTH the agent the command targets AND the agent the EDITED KEY
-    # names. The second is not redundancy: no handler routes an agent name for a
-    # category set any more (the per-node routing that used to supply *agent_name*
-    # covered ``agent.<node>.bindings.*``, and R-9 retired that write route), so an
-    # agent-scope ``common`` / ``caches`` / ``seeded`` set arrives here with no agent
-    # name at all — and the store root a value needs is the one its own key names,
-    # whichever agent the surrounding command happens to be about.
-    #
-    # With no agent in play at either seam the key stays absent, so an
-    # ``@meta.agent.*`` source is correctly a DANGLING ref rather than a
+    # The agent STORE-ROOT anchor (spec §2d), from the SAME builder the launch floor
+    # uses, so an ``@meta.agent.<a>.path/…`` value in the edited key resolves at
+    # set time exactly as it would at launch. With no agent in play the key stays
+    # absent, so such a source is correctly a DANGLING ref rather than a
     # silently-empty one.
+    #
+    # ⚑ THE SECOND ANCHOR IS GONE (DS-BL1 = (a)). It read the agent out of the
+    # EDITED KEY (``_agent_scope_node``) because an agent-scope CATEGORY set arrived
+    # here with no *agent_name* threaded, and the bare-relative refusal's rooted-form
+    # hint had to resolve. No bind-shaped category reaches a set any more — all six
+    # are refused by name in the verb preamble — so every key that reaches this
+    # function is a SCALAR, for which that predicate answered ``""`` anyway.
     from kanibako.settings.settings_launch import meta_agent_path_floor
 
-    for anchor_agent in (agent_name, _agent_scope_node(canonical)):
-        if anchor_agent:
-            floor.update(meta_agent_path_floor(anchor_agent))
+    if agent_name:
+        floor.update(meta_agent_path_floor(agent_name))
 
     ctx = _set_time_ctx(config=config_foundation)
 
@@ -633,108 +628,14 @@ def _set_leaf(store: "Any", parts: list, value: object) -> None:
     node[parts[-1]] = value
 
 
-def _set_category_value(
-    canonical: str,
-    value: str,
-    *,
-    config_path: Path,
-    system_path: Path | None = None,
-    agent_path: Path | None = None,
-    workset_path: Path | None = None,
-    box_path: Path | None = None,
-    agent_name: str = "",
-) -> str:
-    """Validate + RAW-repoint a path-tuple category key (S24/S25, spec §2a).
-
-    Runs ``validate_config_set`` (Error refuses, Warn proceeds-with-message, OK
-    silent) BEFORE the write, then ``repoint_host_src`` (swaps host_src, preserves
-    box_dest+opts RAW, key-MUST-exist-in-the-CASCADE — F10: the effective raw
-    cascade tuple from the SAME set-time merged snapshot the E3 probe uses backs
-    a repoint whose key the command's own file does not set yet; refused only
-    when NO scope sets it). The WARN message is surfaced to the user AND the set
-    proceeds. A ``ConfigSetError`` (key nowhere in the cascade / non-tuple value)
-    is returned as an ``Error:`` string (the CLI prints it to stderr + exit 1).
-
-    The cascade kwargs (*system_path* / *agent_path* / *workset_path* / *box_path* /
-    *agent_name*) are plumbed straight to :func:`_category_set_lookups` so the E3
-    probe resolves the edited value against the FULL launch cascade (Jei (b),
-    2026-06-29) — a cross-scope ``@``-ref no longer false-blocks — and the F10
-    must-exist lookup sees the same full cascade.
-
-    ⚑ WHAT REACHES HERE, exactly: ``caches`` / ``seeded`` / ``common`` / ``synced``,
-    at ``system`` / ``workset`` / ``box`` and at ``agent.<node>``. NO bindings key
-    of any scope does — R-9 retired both bind write routes and the verbs refuse
-    them in their preamble. The per-node NODE GUARDS this function used to run
-    (reserved ``agent.default`` / malformed ref) went with them: they existed for
-    ``agent.<node>.bindings.*``, the only family that ever reached here with a node
-    to check, and the refusal now happens before any node is parsed. The other
-    agent-scope categories are unrouted at the destination layer (the preserved-
-    broken arm named in ``config_dest._write_dest``) and never had them.
-    """
-    from kanibako.settings.settings_configset import (
-        ConfigSetError,
-        Error,
-        Warn,
-        repoint_host_src,
-        validate_config_set,
-    )
-
-    def _host_exists(raw: str) -> bool:
-        # A plain literal host path; ``~`` is home-relative. (A token-bearing
-        # value is not path-checked — validate_config_set only calls this for a
-        # literal host_src.)
-        from pathlib import Path as _Path
-        return _Path(raw).expanduser().exists()
-
-    resolves, raw_bind = _category_set_lookups(
-        config_path,
-        canonical=canonical,
-        system_path=system_path,
-        agent_path=agent_path,
-        workset_path=workset_path,
-        box_path=box_path,
-        agent_name=agent_name,
-    )
-    verdict = validate_config_set(
-        canonical,
-        value,
-        is_category=True,
-        resolves=resolves,
-        host_exists=_host_exists,
-    )
-    if isinstance(verdict, Error):
-        return f"Error: {verdict.message}"
-
-    # F10: the effective RAW cascade tuple (merge-precedence winner), normalized
-    # to the plain 2-/3-element list shape the writer stores — a 2-tuple bind has
-    # opts=None, which is ABSENT in the file form, never a stored null.
-    bind = raw_bind(canonical)
-    cascade_tuple: "list[str] | None" = None
-    if bind is not None:
-        cascade_tuple = (
-            [bind.host, bind.box]
-            if bind.opts is None
-            else [bind.host, bind.box, bind.opts]
-        )
-
-    # ⚑ ``dest_parts`` is deliberately NOT supplied. Its one caller was the per-node
-    # agent bind (``agent.<node>.bindings.*``), which is stored under the node
-    # file's ``self`` table rather than at the key's canonical split — R-9 retired
-    # that write route, so every key that still reaches here writes at its canonical
-    # split, which is ``repoint_host_src``'s default. The parameter is left on that
-    # function (it is pure and key-agnostic) rather than removed here.
-    try:
-        repoint_host_src(
-            config_path, canonical, value,
-            cascade_bind=cascade_tuple,
-        )
-    except ConfigSetError as exc:
-        return f"Error: {exc}"
-
-    confirm = f"Set {canonical} host source to {value}"
-    if isinstance(verdict, Warn):
-        return f"{confirm}\nWarning: {verdict.message}"
-    return confirm
+# ⚑ ``_set_category_value`` IS GONE (DS-BL1 = (a), Jei 2026-08-07g — *"accept the
+# loss uniformly"*). It was the glue for the source-only RAW category repoint
+# (S24/S25): validate the raw value, then swap element 0 of the existing tuple in
+# the command-scope file. Every bind-shaped category is now YAML-only, so the set
+# and reset branches it served are gone and the write verbs refuse all six BY NAME
+# in their preamble (spec §0 — refuse loudly, never degrade to "unknown key").
+# ⚑ Its callee ``settings_configset.repoint_host_src`` is thereby left with NO LIVE
+# CALLER; see the banner on that function.
 
 
 # ---------------------------------------------------------------------------
@@ -932,38 +833,35 @@ def get_config_value(
     if _is_box_agent_key(canonical):
         return None
 
-    # Path-TUPLE category keys (``<scope>.caches`` / ``seeded`` / ``common`` /
-    # ``synced``, every ``agent.<node>.<category>.<name>``, and — READ-ONLY — the
-    # retired ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling) — the
-    # get/set/reset symmetry twin of the
-    # category SET branch (F10, spec §2a). Read the RAW tuple STORED at the nested
-    # dotted path in the NOUN's settings file (== the box file at box scope, the
-    # system settings file at SYSTEM) — for a FILE-scope key (``system``/``workset``/
-    # ``box``) that is exactly where ``repoint_host_src`` wrote it, TRUE since the
-    # set/reset branches were routed through ``settings_dest`` (they wrote/removed a
-    # SYSTEM-scope tuple in the kanibako_config.yaml CONFIG file before, which this
-    # branch never read — a set that read back "(not set)"). The claim is NOT yet
-    # true for a non-bind AGENT-scope category (``agent.<node>.common.*`` /
-    # ``caches`` / ``seeded`` / ``synced``): set AND reset both use the caller's
-    # ``config_path`` (at the system handler, kanibako_config.yaml) while this read
-    # uses ``noun_file`` — and kanibako_config.yaml is in NO cascade level, so that
-    # set is a SILENT NO-OP WRITE (the agent tier reads the ``self:`` table of
-    # ``agents/<node>/settings.yaml``). The per-node BIND form is routed EARLIER
-    # (``_is_agent_node_bind_key``, the node file) and is READ-ONLY since R-9 — so
-    # for it the symmetry question no longer arises: there is no write to agree with.
-    # Checked BEFORE the ``system.*`` file-only branch because a SYSTEM-scope
-    # category key (``system.caches.*``) only LOOKS like a ``system.*`` config
-    # key — categories are gettable at every scope (mirrors the set/reset
-    # order). A plain get is stored-at-noun; the resolved-with-floor bind is the
-    # ``show --effective`` cascade view. Absent → ``None`` ("(not set)").
+    # Path-TUPLE category keys, ALL READ-ONLY (``<scope>.caches`` / ``seeded`` /
+    # ``common`` / ``synced``, every ``agent.<node>.<category>.<name>``, and the
+    # ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling). Read the RAW tuple
+    # STORED at the nested dotted path in the NOUN's settings file (== the box file at
+    # box scope, the system settings file at SYSTEM). Checked BEFORE the ``system.*``
+    # file-only branch because a SYSTEM-scope category key (``system.caches.*``) only
+    # LOOKS like a ``system.*`` config key — categories are gettable at every scope.
+    # A plain get is stored-at-noun; the resolved-with-floor bind is the ``show
+    # --effective`` cascade view. Absent → ``None`` ("(not set)").
     #
-    # ⚑ The retired scope-bind spelling is READ HERE ON PURPOSE (R-9). Its WRITE
-    # verbs refuse it in their preamble, but the key is still declared and still
-    # authored by hand in the settings YAML — which is precisely the surface the
-    # refusal's cure names. A get that answered "(not set)" for a bind the launch
-    # is actually mounting would make that cure unusable and would be the F6 lie
-    # in a new place. This is a deliberate ASYMMETRY, not the drift kind: refuse
-    # the write, keep the read honest.
+    # ⚑⚑ THERE IS NO WRITE TWIN LEFT TO BE SYMMETRIC WITH, and that is the whole
+    # shape of this branch now. DS-BL1 = (a) retired the CLI write route for every
+    # bind-shaped category at every scope (R-9 took the ``bindings`` arms first), so
+    # the set/reset branches this used to mirror are GONE and the verbs refuse those
+    # keys BY NAME in their preamble. The READ SURVIVES ON PURPOSE: the keys are
+    # still declared, still hand-authored in the settings YAML, still delivered at
+    # launch — and hand-editing that YAML is precisely the cure the refusal names. A
+    # get that answered "(not set)" for a tuple the launch is actually using would
+    # make the cure unverifiable and would be the F6 lie in a new place. Refuse the
+    # write, keep the read honest.
+    # ⚑ The old get/set-symmetry note here (a SYSTEM-scope set once wrote the
+    # kanibako_config.yaml CONFIG file this branch never read; an AGENT-scope
+    # category set was a SILENT NO-OP WRITE into a file in no cascade level) is
+    # RETIRED WITH THE WRITES, not fixed — there is no longer a write to disagree
+    # with. ⚑ The agent-scope read still routes through ``_read_dest`` here (the
+    # ``self:`` table of ``agents/<node>/settings.yaml`` is what the agent tier
+    # actually reads, and re-pointing this read at it is a STORAGE-SHAPE change,
+    # deliberately NOT part of the route retirement). The per-node BIND form is
+    # routed EARLIER (``_is_agent_node_bind_key``, the node file).
     if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
         # Through the SAME rule site the write side uses — which is what makes
         # ``_read_dest``'s one documented divergence from ``_write_dest`` (this
@@ -1148,16 +1046,19 @@ def set_config_value(
     if node_bind_err is not None:
         return node_bind_err
 
-    # ``--null`` ROUTE COVERAGE. The RULE is uniform — ``--null <key>`` writes an
-    # explicit present-``None`` at that key — but the CATEGORY write MECHANISM
-    # cannot express it, and silently doing something else would be worse than
-    # refusing:
-    #
-    # * the CATEGORY route is a SOURCE-ONLY REPOINT (``repoint_host_src``) — it
-    #   rewrites the host half of an EXISTING tuple and has no null form. Direct
-    #   category suppression is its own feature (write ``null`` in the settings
-    #   file); it is NOT part of this phase, and half-implementing it here would
-    #   put two spellings of one idea in the tree.
+    # ``--null`` ROUTE COVERAGE — ⚑ THE CATEGORY EXCEPTION IS GONE, AND IT IS THE
+    # REFUSAL ABOVE THAT ATE IT. The RULE is uniform (``--null <key>`` writes an
+    # explicit present-``None`` at that key) and the ONE mechanism that could not
+    # express it was the source-only category REPOINT: it rewrote the host half of an
+    # EXISTING tuple and had no null form, so ``--null <scope>.<category>.<name>`` was
+    # refused here with a cure. DS-BL1 = (a) retired that whole route, so every
+    # bind-shaped category — with or without ``--null`` — is now refused BY NAME in
+    # the preamble above, several steps earlier and with a better message. A guard
+    # here would be a second spelling of that refusal, reachable only if the preamble
+    # missed a spelling; the preamble is the place to fix that, not here.
+    # ⚑ Direct category SUPPRESSION is still its own unbuilt feature (write ``null``
+    # at the key in the settings file, or request it with ``--null pref.<key>``, spec
+    # §2h) — unchanged by this, and still not half-implemented here.
     #
     # (The docker ``env.<VAR>`` arm that also refused ``--null`` — "the env file
     # is a plain string store with no null value" — is GONE with the spelling
@@ -1166,17 +1067,6 @@ def set_config_value(
     #
     # Everything else lands through a nested YAML write, which carries ``None``
     # natively — so ``pref.*``, ``box.agent.*`` and the routed scalars all work.
-    if value is None:
-        if _is_path_category_key(canonical):
-            return (
-                f"Error: --null is not yet supported for the category key "
-                f"'{canonical}' (a config set of a category is a source-only "
-                f"repoint, which has no null form). Suppress the entry by "
-                f"writing 'null' at the key in the settings file, or request the "
-                f"suppression from a box/workset with "
-                f"'--null pref.{canonical}' (spec §2h) — which 'reset "
-                f"pref.{canonical}' undoes."
-            )
 
     # Write-time validation for the auth-critical ``access`` permission key
     # (Editor finding B; R-41 respelled the key and the guard followed it). It
@@ -1373,63 +1263,23 @@ def set_config_value(
             canonical, verb="set", active_agent=cascade_agent_name or None,
         )
 
-    # Path-TUPLE category keys — the source-only RAW repoint (S24/S25, spec §2a,
-    # design §6d). WHAT REACHES HERE, exactly: ``caches`` / ``seeded`` / ``common``
-    # / ``synced`` at ``system``/``workset``/``box``, and ALL SIX categories at the
-    # discriminated ``agent.<node>`` scope. Checked BEFORE the ``system.*``
-    # file-only refusal because a SYSTEM-scope category key (``system.caches.x``)
-    # only LOOKS like a ``system.*`` config key — categories are settable at every
-    # scope (spec §2a). ``config set <key> <value>`` validates the RAW value at
-    # set time (``validate_config_set``) then swaps ONLY ``host_src`` in the
-    # existing tuple at the COMMAND-scope file (``repoint_host_src``), preserving
-    # ``box_dest`` + options RAW. Source-only: it REPOINTS an existing bind, never
-    # creates one.
-    #
-    # NOT here, and each for its own reason: ``env`` (scalar) was handled above;
-    # ``masks`` is YAML-only (spec §2a) — not a tuple, so a repoint is refused as
-    # non-category; and ``{system,workset,box}.bindings.{ro,rw}.<name>`` was
-    # REFUSED BY NAME in the preamble (R-9), so its absence from this branch is
-    # deliberate, not an oversight to "restore".
-    if _is_path_category_key(canonical):
-        # Narrowed by the --null route guard above (a repoint has no null form).
-        assert value is not None
-        # A FILE-scope category (``system``/``workset``/``box``) writes the COMMAND
-        # scope's SETTINGS file (``settings_dest``) — the same destination the
-        # scope-prefixed SCALAR keys below use, and the file the launch cascade reads
-        # for that tier (at SYSTEM, ``@config.settings``). This branch passed
-        # ``config_path`` before: identical at box/workset (``settings_dest`` IS
-        # ``config_path`` there), but at SYSTEM ``config_path`` is the
-        # kanibako_config.yaml CONFIG file — so a system category set wrote where GET
-        # never looks, where the launch never reads, and where ``reset --all`` (which
-        # sweeps the settings file's scope tables) could not clear it.
-        #
-        # The AGENT scope keeps ``config_path`` — UNCHANGED, not endorsed. Its store
-        # is a PER-NODE file (``agents/<node>/settings.yaml``, the ``self:`` table the
-        # agent tier reads), and only the per-node BIND route reaches it (the branch
-        # above, via system_cmd's node-file threading). A non-bind agent category
-        # (``agent.<node>.common.*`` / ``caches`` / ``seeded`` / ``synced``) is routed
-        # by NO handler and lands in the command's own file, which is in no cascade
-        # level — so today that set is a SILENT NO-OP WRITE. ``settings_dest`` would
-        # not fix it either (it is not the node file), so this behavior-only fix
-        # leaves the broken case exactly as it found it rather than moving it to a
-        # second wrong file. Fixing it is its own change: route it to the node file.
-        # ⚑ Both arms now come from ``_write_dest``, which reproduces this exact
-        # split and says so at the rule site — the broken arm is preserved, not
-        # inherited by accident.
-        _cat_dest = _write_dest(
-            canonical, command_scope=command_scope,
-            config_path=config_path, settings_path=system_settings_path,
-        )
-        assert _cat_dest is not None  # a category key always has a slot
-        return _set_category_value(
-            canonical, value,
-            config_path=_cat_dest.file,
-            system_path=cascade_system_path,
-            agent_path=cascade_agent_path,
-            workset_path=cascade_workset_path,
-            box_path=cascade_box_path,
-            agent_name=cascade_agent_name,
-        )
+    # ⚑ THERE IS NO CATEGORY SET BRANCH ANY MORE (DS-BL1 = (a), Jei 2026-08-07g —
+    # *"accept the loss uniformly"*), and its absence is DELIBERATE. It ran the
+    # source-only RAW repoint (S24/S25, spec §2a / design §6d) for ``caches`` /
+    # ``seeded`` / ``common`` / ``synced`` at every scope: validate the raw value,
+    # then swap ONLY ``host_src`` in the existing tuple at the command-scope file.
+    # Every bind-shaped category is now YAML-only, so all six are REFUSED BY NAME in
+    # the preamble above (``scope_bind_retired_error`` at the file scopes,
+    # ``agent_node_bind_retired_error`` at the agent scope) and none reaches the
+    # dispatch. ``config get`` still READS them (the get branch is unchanged) —
+    # refuse the write, keep the read honest.
+    # ⚑ Do NOT "restore" this branch for the four: the loss is the ruling, not an
+    # oversight, and re-adding a write route would need a visible spec edit.
+    # ⚑ It also carried the ONE known-broken destination arm in the tree (an
+    # agent-scope category set landed in the command's own config file, which is in
+    # no cascade level — a SILENT NO-OP WRITE). That arm is gone with the branch; the
+    # ``_CATEGORY`` file rule it drove survives in ``config_dest`` for the READ, where
+    # it now only ever sees a FILE scope.
 
     # STRUCTURAL system.* path-tier keys (the SYSTEM_PATH_DEFAULTS family) —
     # FILE-ONLY: they live in kanibako_config.yaml's [system] table (the file
@@ -1668,35 +1518,15 @@ def reset_config_value(
             canonical, verb="reset", active_agent=cascade_agent_name or None,
         )
 
-    # Path-TUPLE category keys — reset symmetry with the category SET branch
-    # (F10, spec §2a): remove the COMMAND-scope override tuple from the SAME file
-    # the set wrote (see the dest rule below), pruning emptied tables, so the
-    # cascade's own tuple (a higher scope's or the launch floor's) resurfaces at
-    # the next assemble. Before this branch a category key fell through to the routing
-    # table and mis-reported "unknown config key".
-    #
-    # ⚑ WHAT REACHES HERE mirrors the set branch exactly: the four scope
-    # categories, plus every ``agent.<node>.<category>.<name>``. The retired
-    # ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling was refused by name
-    # in the preamble (R-9) and never arrives.
-    #
-    # The message is the CLEARED-ONLY honest form — the same information as the old
-    # plain "Reset", via the honest formatter. It used to be able to name a
-    # reverted-to FLOOR bind value from a threaded registry; R-9 retired both bind
-    # reset routes, so no key that reaches this branch could ever have a floor entry,
-    # and the registry (with ``_floor_bind_display``) was removed rather than left to
-    # be rediscovered as dead. The four scope categories that DO arrive here
-    # (``caches``/``seeded``/``common``/``synced``) were never in it.
-    if _is_path_category_key(canonical):
-        # Removed from the file the category SET branch WRITES — literally the
-        # same call, so set and reset can no longer name different files even in
-        # principle. It removed from ``config_path`` unconditionally before, which
-        # at SYSTEM is the kanibako_config.yaml CONFIG file: neither where set
-        # wrote nor where get reads.
-        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
-        if remove_nested_key(dest.file, dest.sections, dest.leaf):
-            return _honest_reset_message(canonical, command_scope)
-        return f"No override for {canonical}"
+    # ⚑ THERE IS NO CATEGORY RESET BRANCH ANY MORE (DS-BL1 = (a)), and it is gone
+    # for the same reason as its SET twin — symmetrically, which is the point. A
+    # reset is a WRITE: it removed the command-scope override tuple so the cascade's
+    # own tuple resurfaced. With the write route retired, every bind-shaped category
+    # is REFUSED BY NAME in the preamble above, and that refusal is the honest answer
+    # in both directions — "No override for …" would imply the spelling could have
+    # been written from the CLI, while a hand-authored tuple at that key may well sit
+    # in the settings file, untouched. (Exactly the double lie the ``bindings``
+    # preamble refusal already existed to avoid.)
 
     # STRUCTURAL system.* path-tier keys — FILE-ONLY (see set_config_value).
     # The CLI refuses to RESET them too (for symmetry); edit the config file

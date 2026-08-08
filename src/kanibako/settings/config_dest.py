@@ -330,13 +330,18 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     # The two arms share ONE slot rule because they are one storage shape: a
     # category tuple at the nested dotted path in the scope's settings file.
     #
-    # ⚑ The second arm is READ-ONLY. R-9 retired the CLI *write* route for
-    # ``{system,workset,box}.bindings.{ro,rw}.<name>``, and the write verbs refuse
-    # it in their preamble before any destination is resolved — but the key is
-    # still DECLARED and still authored in YAML, so ``config get`` must keep
-    # reading the value the launch actually uses. Dropping the slot instead would
-    # have made a set key read back "(not set)": a silent lie, and the exact
-    # get/set-asymmetry class of bug this rule site exists to prevent.
+    # ⚑⚑ BOTH ARMS ARE NOW READ-ONLY. R-9 retired the CLI *write* route for
+    # ``{system,workset,box}.bindings.{ro,rw}.<name>``; DS-BL1 = (a) (2026-08-07g)
+    # retired it for ``caches`` / ``seeded`` / ``common`` / ``synced`` at every scope
+    # as well. The write verbs refuse all six in their preamble before any
+    # destination is resolved — but the keys are still DECLARED and still authored in
+    # YAML, so ``config get`` must keep reading the value the launch actually uses.
+    # Dropping the slot instead would make a hand-authored key read back "(not set)":
+    # a silent lie, and the exact get/set-asymmetry class of bug this rule site
+    # exists to prevent.
+    # ⚑ CONSEQUENCE FOR :data:`_CATEGORY`, MEASURED: with no category WRITE left, no
+    # ``_CATEGORY`` slot can ever reach :func:`_write_dest`, so the deliberately
+    # broken agent-scope arm below is now UNREACHABLE — see its note there.
     if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
         tail = canonical.split(".")
         return tuple(tail[:-1]), tail[-1], _CATEGORY
@@ -388,15 +393,24 @@ def _write_dest(
 ) -> "DestRoute | None":
     """Where ``set`` writes and ``reset`` removes a FILE-scope key.
 
-    ⚑ AGENT-SCOPE CATEGORIES GO TO A FILE NOTHING READS, ON PURPOSE.  A non-bind
-    agent-scope category (``agent.<node>.common.*`` / ``caches`` / ``seeded`` /
-    ``synced``) is routed by NO handler: the write lands in the command's own
-    file, which is in no cascade level, so the set is a SILENT NO-OP.  That is
-    the state `3b67e61` found, deliberately left alone, and recorded as its own
-    future change — fixing it means routing the key to the node file, which is a
-    behavior change with its own rationale to write.  Consolidating the copies
-    must not smuggle that fix in, so the broken arm is reproduced here EXACTLY,
-    named, and pinned by ``tests/test_settings/test_config_dest_parity.py``.
+    ⚑⚑ THE AGENT-SCOPE CATEGORY ARM IS NOW UNREACHABLE FROM THE VERBS, AND THAT IS
+    HOW THE KNOWN-BROKEN DESTINATION DIED — by its route being retired, not by being
+    fixed.  It aimed a non-bind agent-scope category
+    (``agent.<node>.common.*`` / ``caches`` / ``seeded`` / ``synced``) at the
+    command's own file, which is in no cascade level, so the set was a SILENT NO-OP:
+    the state `3b67e61` found, deliberately left alone and named rather than
+    smuggled a fix into.  DS-BL1 = (a) retired the category write route entirely, so
+    NO ``_CATEGORY`` slot reaches this function any more (measured: every surviving
+    ``_write_dest`` caller passes a pref / persona / bare-agent / routed-scalar key,
+    and all six bind-shaped categories are refused in the verb preamble).
+
+    ⚑ The *arm* is kept — with :func:`_read_dest`'s counterpart and the
+    ``agent_scope_to_config`` flag — because collapsing it merges these two wrappers
+    into one function and reworks
+    ``tests/test_settings/test_config_dest_parity.py``, which exists to pin the
+    divergence.  That collapse is OWED and is a separate pass; it is recorded here so
+    it is not rediscovered as a mystery.  ⚑ Do NOT read the flag as a live rule about
+    where an agent-scope category is written: nothing writes one.
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,
@@ -419,6 +433,13 @@ def _read_dest(
     exactly that family — which is the very asymmetry the broken destination
     consists of, so the honest consolidation keeps two functions with one shared
     body rather than one function that quietly picks a side.
+
+    ⚑ THIS is the arm that is still LIVE: an agent-scope category key is READ here
+    (``config get agent.<node>.common.<name>``) even though nothing writes one any
+    more (DS-BL1 = (a) — see :func:`_write_dest`).  Re-pointing that read at the
+    node's own ``agents/<node>/settings.yaml`` — the file the agent tier actually
+    reads — is a STORAGE-SHAPE change and deliberately NOT part of the route
+    retirement.
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,
