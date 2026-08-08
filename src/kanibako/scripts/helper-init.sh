@@ -22,7 +22,13 @@ set -euo pipefail
 HELPER_NUM="${1:-unknown}"
 shift || true
 
-SOCKET_PATH="${XDG_STATE_HOME:-$HOME/.local/state}/kanibako/helper.sock"
+# PINNED — the hub socket lives under the fixed resolve-before-liveness root
+# ~/.kanibako/state/, never under $XDG_STATE_HOME: the mount destination is written
+# into the container runtime's arguments before this box exists, so the host cannot
+# ask the box where its XDG dirs are.  Single source of truth for the root:
+# settings_resolve.BOX_PINNED_ROOT_RELPATH (this literal is pinned to it by a test).
+# The box's own $XDG_STATE_HOME/kanibako is symlinked onto that dir after boot.
+SOCKET_PATH="$HOME/.kanibako/state/helper.sock"
 
 # Register with the hub via kanibako CLI (one-shot)
 if [ -S "$SOCKET_PATH" ] && command -v kanibako >/dev/null 2>&1; then

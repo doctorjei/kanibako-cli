@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -24,11 +25,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_fork(args: argparse.Namespace) -> int:
-    from kanibako.settings.paths import xdg
+    from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 
-    # Box-side socket dest is XDG_STATE_HOME-aware (honor-iff-absolute, else
-    # $HOME/.local/state) to match the dest mounted by start.py.
-    socket_path = xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "helper.sock"
+    # The socket lives under the FIXED pinned root, not $XDG_STATE_HOME — that is
+    # where the mount lands, because a mount dest is fixed host-side before the box
+    # is live.  This runs IN-BOX, so Path.home() is the box's own home.
+    socket_path = Path.home() / BOX_PINNED_STATE_RELPATH / "helper.sock"
     if not socket_path.exists():
         print(
             "Error: fork requires a running kanibako session with helpers enabled.",

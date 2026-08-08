@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
 from kanibako.channels.helpers import (
@@ -427,19 +430,68 @@ class TestBundledInitScript:
         assert "set -euo pipefail" in content
 
     def test_bundled_socket_path_matches_mount_dest(self):
-        # The hub socket is mounted at $XDG_STATE_HOME/kanibako/helper.sock
-        # (start.py / helper_listener.py derive the box-dest from the box's
-        # XDG_STATE_HOME via box_state_home). The script must check the SAME
-        # XDG-aware path so `kanibako helper register` runs and the helper
-        # joins the hub. The shared single derivation is
-        # ${XDG_STATE_HOME:-$HOME/.local/state} -> host and box agree.
+        # The hub socket is mounted under the FIXED pinned root, so the script must
+        # check exactly that path for `kanibako helper register` to run and the
+        # helper to join the hub. An ${XDG_STATE_HOME:-...} form here would re-open
+        # the host-vs-box guess the pin deleted, so its ABSENCE is asserted too --
+        # the script runs at ENTRYPOINT, before the post-boot XDG projection is
+        # guaranteed to have happened, so it must not depend on it.
         path = bundled_init_script()
         content = path.read_text()
-        assert (
-            'SOCKET_PATH="${XDG_STATE_HOME:-$HOME/.local/state}/kanibako/helper.sock"'
-            in content
+        assert 'SOCKET_PATH="$HOME/.kanibako/state/helper.sock"' in content
+        # No EXECUTABLE line may consult XDG (the comment explaining why is exempt:
+        # it is the prose, not the resolution).
+        code = [ln for ln in content.splitlines() if not ln.lstrip().startswith("#")]
+        assert not [ln for ln in code if "XDG_STATE_HOME" in ln]
+
+    def test_pinned_socket_dest_agrees_across_every_spelling(self):
+        """The declared MOUNT dest, the box shell, the in-box CLI and PID-1 all
+        spell one pinned path.
+
+        This is what the retired ``box_state_home`` derivation held together by
+        hand across four resolvers -- and it had already drifted (the dest honored
+        ``$XDG_STATE_HOME`` while ``start.py``'s matching mkdir was hardcoded at
+        ``.local/state``). With the dest pinned there is nothing left to derive,
+        but the spellings still have to AGREE, so the agreement is asserted
+        directly instead of being inferred from a shared function. Two of them
+        CANNOT import the constant -- bash, and stdlib-only PID-1 -- which is
+        exactly why this test exists rather than a shared import.
+        """
+        from kanibako.box_supervisor import PINNED_ROOT_RELPATH
+        from kanibako.commands.helper_cmd import _log_path, _socket_path
+        from kanibako.settings import core_defaults
+        from kanibako.settings.settings_resolve import (
+            BOX_PINNED_ROOT_RELPATH,
+            BOX_PINNED_STATE_RELPATH,
+            GUEST_HOME,
         )
-        assert "$HOME/.kanibako/helper.sock" not in content
+
+        # 1. PID-1's quarantined duplicate == the single source of truth.
+        assert PINNED_ROOT_RELPATH == BOX_PINNED_ROOT_RELPATH == ".kanibako"
+        assert BOX_PINNED_STATE_RELPATH == ".kanibako/state"
+
+        # 2. The DECLARED mount dests (what a launch actually mounts).
+        declared = {
+            e["key"]: e["box_dest"] for e in core_defaults._load_doc()["helpers"]
+        }
+        assert declared == {
+            "helper_sock": f"~/{BOX_PINNED_STATE_RELPATH}/helper.sock",
+            "helper_log": f"~/{BOX_PINNED_STATE_RELPATH}/helpers.jsonl",
+        }
+
+        # 3. The box-side SHELL literal, resolved with the box's HOME.
+        shell_line = 'SOCKET_PATH="$HOME/.kanibako/state/helper.sock"'
+        assert shell_line in bundled_init_script().read_text()
+        shell_dest = shell_line.split('"')[1].replace("$HOME", GUEST_HOME)
+
+        # 4. The in-box CLI readers, with HOME being the box's.
+        with patch.object(Path, "home", staticmethod(lambda: Path(GUEST_HOME))):
+            cli_sock, cli_log = str(_socket_path()), str(_log_path())
+
+        mount_sock = declared["helper_sock"].replace("~", GUEST_HOME, 1)
+        mount_log = declared["helper_log"].replace("~", GUEST_HOME, 1)
+        assert shell_dest == cli_sock == mount_sock
+        assert cli_log == mount_log
 
 
 class TestResolveInitScript:

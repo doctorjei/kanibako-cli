@@ -24,6 +24,7 @@ from kanibako.channels.helpers import (
     write_spawn_config,
 )
 from kanibako.settings.paths import xdg
+from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 
 
 def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
@@ -156,11 +157,15 @@ def _helpers_dir() -> Path:
 def _socket_path() -> Path:
     """Return the path to the helper hub socket.
 
-    Resolved against the box's ``$XDG_STATE_HOME`` (honor-iff-absolute, else
-    ``$HOME/.local/state``) so it matches the dest mounted by ``start.py`` and
-    the path ``helper-init.sh`` registers against.
+    Under the FIXED pinned root
+    (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_STATE_RELPATH`), NOT the
+    box's ``$XDG_STATE_HOME``: that is where the mount actually lands, because a
+    mount dest is fixed host-side before the box is live.  Read IN-BOX, so
+    ``Path.home()`` is the box's own home.  (``$XDG_STATE_HOME/kanibako`` is a
+    symlink onto this dir after boot, so reading through either works — this reads
+    the real thing, which is correct even if the projection was skipped.)
     """
-    return xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "helper.sock"
+    return Path.home() / BOX_PINNED_STATE_RELPATH / "helper.sock"
 
 
 def _check_helpers_enabled() -> bool:
@@ -556,11 +561,10 @@ def run_register(args: argparse.Namespace) -> int:
 def _log_path() -> Path:
     """Return the path to the helper message log file.
 
-    Resolved against the box's ``$XDG_STATE_HOME`` (honor-iff-absolute, else
-    ``$HOME/.local/state``) so it matches the ``helpers.jsonl`` dest mounted by
-    ``start.py``.
+    Under the FIXED pinned root — the ``helpers.jsonl`` dest ``core-defaults.yaml``
+    declares — NOT the box's ``$XDG_STATE_HOME``; see :func:`_socket_path`.
     """
-    return xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "helpers.jsonl"
+    return Path.home() / BOX_PINNED_STATE_RELPATH / "helpers.jsonl"
 
 
 def run_log(args: argparse.Namespace) -> int:

@@ -412,7 +412,6 @@ def _probe_snapshot(mode, proj, ws_root, helper_log):
         None, proj, enable_vault=True, mode=mode,
     ))
     _merge_floor(floor, core_defaults.helper_default_categories(
-        box_state_kanibako="/home/agent/.local/state/kanibako",
         socket_path=helper_log,  # any existing path; the socket bind is not asserted
         log_path=helper_log,
     ))
@@ -463,7 +462,7 @@ class TestP1BoxRootAnchor:
             by_dest = _probe_mounts(mode, proj, ws_root, hl)
             assert by_dest["/home/agent/vault/ro"] == str(proj.vault_ro_path), mode
             assert by_dest["/home/agent/vault/rw"] == str(proj.vault_rw_path), mode
-            log_dest = "/home/agent/.local/state/kanibako/helpers.jsonl"
+            log_dest = "/home/agent/.kanibako/state/helpers.jsonl"
             assert by_dest[log_dest] == str(hl), mode
 
     def test_home_bind_declaration_is_mode_independent(self):
@@ -525,7 +524,6 @@ class TestP1BoxRootAnchor:
         log = tmp_path / "b.jsonl"
         log.touch()
         emitted = core_defaults.helper_default_categories(
-            box_state_kanibako="/home/agent/.local/state/kanibako",
             socket_path=log,  # any existing path; only the log row is asserted.
             log_path=log,
         )["box.bindings.ro"]
@@ -534,7 +532,7 @@ class TestP1BoxRootAnchor:
         # did — the spec's braced formula as the host_src, at exactly that dest —
         # and additionally that the helper contributes nothing else to the arm.
         assert emitted == {
-            "/home/agent/.local/state/kanibako/helpers.jsonl": (
+            "/home/agent/.kanibako/state/helpers.jsonl": (
                 "@workset.logs/@{meta.box.name}.jsonl",
                 "ro",
             ),

@@ -588,9 +588,13 @@ class TestPreservation:
         assert binary.exists()
 
     def test_preserves_kanibako_dir(self, tmp_path):
-        """The helper IPC dir (.local/state/kanibako/) is not touched."""
+        """The helper IPC dir (.kanibako/state/) is not touched.
+
+        Hygiene deletes from an explicit ALLOW list, so the pinned root is safe by
+        construction rather than by exclusion -- this pins that it stays that way.
+        """
         sock_marker = _make_file(
-            tmp_path / ".local" / "state" / "kanibako" / "helper.sock", size=10
+            tmp_path / ".kanibako" / "state" / "helper.sock", size=10
         )
         cleanup_shell_dir(tmp_path)
         assert sock_marker.exists()

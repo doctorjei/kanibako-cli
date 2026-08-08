@@ -350,20 +350,29 @@ canon:
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
 # message LOG, routed through the category resolver instead of the hardwired
 # `_HMount` appends inside the `helpers_enabled` block.  Both box-side
-# destinations are DYNAMIC (derived from the box's `box_state_home(container_env)`
-# at launch) and injected at the seam; the host SOURCES (socket_path / log_path)
-# are runtime-probed and gated on `.exists()` at the seam too.
+# destinations are STATIC and DECLARED HERE, under the FIXED pinned root
+# `~/.kanibako/state/` — the resolve-before-liveness root (single source of truth:
+# `settings_resolve.BOX_PINNED_ROOT_RELPATH`).  They deliberately do NOT carry a
+# `$XDG_STATE_HOME` token: a mount destination is written into the container
+# runtime's arguments before the box is live, so honoring the box's XDG settings
+# host-side meant four resolvers kept in agreement by hand — and they had already
+# drifted (`start.py` derived the dest from `$XDG_STATE_HOME` while hardcoding the
+# matching `mkdir` at `~/.local/state`).  XDG compliance is restored AFTER boot by
+# `box_supervisor.project_pinned_xdg`, which symlinks `$XDG_STATE_HOME/kanibako`
+# onto this pinned dir.  Only the host SOURCES (socket_path / log_path) are
+# runtime-probed and injected at the seam, gated on `.exists()` there.
 #
 # ⚠ helper_sock options MUST be "" (empty) — it is a LIVE unix socket the hub
 # listens on; a Z/U relabel/chown would break the shared socket topology.  The
 # per-entry empty-options 3rd slot is exactly what makes this routable.
 helpers:
-  # Live helper unix socket → <box_state_kanibako>/helper.sock (rw, options="").
+  # Live helper unix socket → ~/.kanibako/state/helper.sock (rw, options="").
   - key: helper_sock
     category: bindings.rw
     source: helper_sock
+    box_dest: "~/.kanibako/state/helper.sock"
     options: ""
-  # Per-box helper message log → <box_state_kanibako>/helpers.jsonl (ro).
+  # Per-box helper message log → ~/.kanibako/state/helpers.jsonl (ro).
   # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS): @workset.logs/@{meta.box.name}.jsonl
   # — ONE row for every mode, because `workset.logs` carries the per-mode variation
   # (primary/named @meta.workset.path/logs · standalone @meta.box.path).
@@ -379,6 +388,7 @@ helpers:
     category: bindings.ro
     source: helper_log
     meta_ref: "@workset.logs/@{meta.box.name}.jsonl"
+    box_dest: "~/.kanibako/state/helpers.jsonl"
     options: "ro"
 
 # Image-sharing bind (Phase B, D-M8).  The host image store + the GENERATED

@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **New fixed box directory `~/.kanibako/`; the helper socket and message log moved into it.**
+  Inside a box they are now mounted at `~/.kanibako/state/helper.sock` and
+  `~/.kanibako/state/helpers.jsonl` instead of under `$XDG_STATE_HOME/kanibako/`. A mount
+  destination has to be concrete before the box is running, so honoring a box's XDG settings
+  host-side meant guessing at them in four separate places — and those places had already
+  drifted apart. `~/.kanibako/` is one fixed location for anything in that class.
+  **XDG still works:** once the box is up, `$XDG_STATE_HOME/kanibako` is symlinked onto
+  `~/.kanibako/state`, so the old path keeps resolving. ⚑ One exception, for boxes created
+  before this release: they already have a real `~/.local/state/kanibako` directory, which
+  kanibako will not delete — remove it inside the box once to get the symlink. See
+  [MIGRATION.md](MIGRATION.md) §2.22.
+
 ### Removed
 
 - **`config set` / `config reset` on every bind-shaped category.** `caches`, `seeded`, `common` and

@@ -214,11 +214,11 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="test")
-        sock = tmp_path / ".local" / "state" / "kanibako" / "helper.sock"
+        sock = tmp_path / ".kanibako" / "state" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
         with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.settings.paths.Path.home", return_value=tmp_path):
+             patch("kanibako.commands.fork_cmd.Path.home", return_value=tmp_path):
             mock_send.return_value = {
                 "status": "ok",
                 "path": "/home/user/proj.test",
@@ -235,11 +235,11 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="bad")
-        sock = tmp_path / ".local" / "state" / "kanibako" / "helper.sock"
+        sock = tmp_path / ".kanibako" / "state" / "helper.sock"
         sock.parent.mkdir(parents=True)
         sock.touch()
         with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.settings.paths.Path.home", return_value=tmp_path):
+             patch("kanibako.commands.fork_cmd.Path.home", return_value=tmp_path):
             mock_send.return_value = {
                 "status": "error",
                 "message": "destination already exists",
@@ -254,7 +254,7 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="nope")
-        with patch("kanibako.settings.paths.Path.home", return_value=tmp_path):
+        with patch("kanibako.commands.fork_cmd.Path.home", return_value=tmp_path):
             rc = run_fork(args)
         assert rc == 1
         err = capsys.readouterr().err

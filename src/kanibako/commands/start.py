@@ -49,10 +49,10 @@ from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
+from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
     _upgrade_shell,
-    box_state_home,
     box_workset_settings_paths,
     xdg,
     load_std_paths,
@@ -1850,26 +1850,28 @@ def _start_helper_hub(
     hub = HelperHub()
     hub.start(socket_path, helper_ctx, log=msg_log)
 
-    # Box-side socket + log dests are XDG_STATE_HOME-aware: derived from
-    # the BOX's container env (honor-iff-absolute, else
-    # ``$HOME/.local/state``), the single derivation shared with
-    # ``helper-init.sh`` (`${XDG_STATE_HOME:-$HOME/.local/state}`) and
-    # the in-box CLI (``xdg``) so host and box agree by construction.
-    box_state_kanibako = box_state_home(container_env) / "kanibako"
-
     # Mount the live helper socket + the per-box message log into the box,
     # routed through the category resolver (Phase B) instead of hardwired
-    # ``_HMount`` appends.  The runtime-derived box destinations
-    # (``<box_state_kanibako>/helper.sock`` / ``…/helpers.jsonl``) and the
-    # ``.exists()`` skip-if-missing gate are applied in the loader; the
-    # socket keeps options="" (a LIVE unix socket the hub listens on — a
-    # Z/U relabel/chown would break the shared socket topology).
-    kanibako_dir = proj.shell_path / ".local" / "state" / "kanibako"
+    # ``_HMount`` appends.  Both box destinations are DECLARED in
+    # ``core-defaults.yaml`` under the FIXED pinned root ``~/.kanibako/state/``
+    # (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`) —
+    # nothing is derived here, so there is no host-side guess at what the box
+    # would resolve ``$XDG_STATE_HOME`` to.  The ``.exists()`` skip-if-missing
+    # gate on the host sources is applied in the loader; the socket keeps
+    # options="" (a LIVE unix socket the hub listens on — a Z/U relabel/chown
+    # would break the shared socket topology).
+    #
+    # The mkdir guarantee-creates that SAME pinned dir inside the box home so
+    # both mountpoints have somewhere to land.  ⚑ This line and the dest used to
+    # disagree — the dest honored ``$XDG_STATE_HOME`` while this mkdir was
+    # hardcoded at ``.local/state`` — which is the drift the pin deletes; they
+    # now derive from one constant.
+    kanibako_dir = proj.shell_path / BOX_PINNED_STATE_RELPATH
     kanibako_dir.mkdir(parents=True, exist_ok=True)
     # Late, CONDITIONAL resolve through the same snapshot pipeline,
     # carrying ONLY the helper table (include_base_families=False) — its
-    # runtime-derived box_dests are disjoint from the main reconcile, so a
-    # separate reconcile is byte-for-byte equivalent.
+    # box_dests are disjoint from the main reconcile, so a separate
+    # reconcile is byte-for-byte equivalent.
     _hub_snap, _hub_rec = _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -1879,12 +1881,11 @@ def _start_helper_hub(
         desc=None,
         install=None,
         target=None,
-        box_state_kanibako=str(box_state_kanibako),
         socket_path=socket_path,
         log_path=log_path,
         deliver_creds=auth_src.creds_shared,
         include_base_families=False,
-        # No persona tier (audit): the HELPER table only, whose runtime-derived
+        # No persona tier (audit): the HELPER table only, whose pinned
         # box_dests are disjoint from anything a persona bundle can name.
     )
     helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
@@ -6198,7 +6199,6 @@ def _resolve_launch_snapshot(
     target=None,
     agent_cfg=None,
     persona_values: "Mapping[str, str] | None" = None,
-    box_state_kanibako: str | None = None,
     socket_path=None,
     log_path=None,
     graph_root=None,
@@ -6229,8 +6229,7 @@ def _resolve_launch_snapshot(
     The image + helper tables are CONDITIONAL: a table is included ONLY when its
     gate holds (image-sharing active → *storage_conf_path* given, *graph_root*
     only when the probe succeeded — it feeds ONLY the ``box.images_store``
-    default, ruled 11a; helpers enabled →
-    *box_state_kanibako*/*socket_path*/*log_path* given), so
+    default, ruled 11a; helpers enabled → *socket_path*/*log_path* given), so
     their binds do NOT appear otherwise — exactly as the per-family path emitted
     them only inside their conditional block.
 
@@ -6422,14 +6421,9 @@ def _resolve_launch_snapshot(
             default_categories, extra_default_categories,
             family="narrow injection", origins=cat_origins,
         )
-    if (
-        box_state_kanibako is not None
-        and socket_path is not None
-        and log_path is not None
-    ):
+    if socket_path is not None and log_path is not None:
         _merge_default_categories(
             default_categories, core_defaults.helper_default_categories(
-                box_state_kanibako=box_state_kanibako,
                 socket_path=socket_path,
                 log_path=log_path,
             ), family="helpers", origins=cat_origins,

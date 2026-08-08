@@ -52,7 +52,7 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable, MutableMapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -102,6 +102,109 @@ TAKEOVER_HEADS_UP = (
 #: literal (the entry script runs BEFORE kanibako is importable, and a YAML data
 #: file cannot reference a constant); keep those literals in sync with this value.
 KANIBAKO_PKG_MOUNT_ROOT = "/opt/kanibako"
+
+
+#: The FIXED box-side root for state that CANNOT resolve without a live box but MUST
+#: be placed BEFORE one exists — the mount and copy destinations the host writes into
+#: the container runtime's arguments (a copy runs at ``create``, with no container at
+#: all).  ``~/.kanibako/<facet>`` is the one answer for that whole class.
+#: ⚑ QUARANTINED DUPLICATE. The single source of truth is
+#: :data:`kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`, which this
+#: module deliberately does NOT import: PID-1 is stdlib-only by contract
+#: (``box_supervisor`` / ``box_lifecycle`` are pinned flat and invoked in-box by dotted
+#: literal), and widening its import surface into the settings package would put every
+#: launch's forward-compat probe — ``import kanibako.box_supervisor``, whose failure
+#: silently degrades the launch to the bare-shell keep-alive — at the mercy of that
+#: package importing cleanly.  A test pins the two literals together;
+#: ``scripts/helper-init.sh`` carries the third (bash can import neither).
+PINNED_ROOT_RELPATH = ".kanibako"
+
+#: The XDG facets served from the pinned root once the box is LIVE:
+#: ``(env var, XDG spec default suffix, facet dir under the pinned root)``.
+#: ⚑ ONE ROW TODAY, deliberately a TABLE: the pinned root is the fixed answer for the
+#: whole resolve-before-liveness class, so a second facet (cache, runtime, …) is a ROW
+#: here — never a second mechanism.
+XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("XDG_STATE_HOME", ".local/state", "state"),
+)
+
+
+def project_pinned_xdg(
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Serve the box's real XDG locations from the pinned root — the POST-BOOT half.
+
+    The host half pins a destination it can resolve without asking the box
+    (``~/.kanibako/state/…``).  This half restores XDG compliance now that there IS a
+    box to ask: for each row of :data:`XDG_PROJECTIONS` it points
+    ``$XDG_STATE_HOME/kanibako`` at ``~/.kanibako/state``, so a consumer that resolves
+    the XDG way finds the same files.  Returns the link paths created (``[]`` when
+    every row was already satisfied or skipped).
+
+    ⚑ A SYMLINK, not a bind mount.  A box runs with an EMPTY effective capability set,
+    so ``mount --bind`` in-box fails outright (*"must be superuser to use mount"*); a
+    symlink needs no privilege and every consumer resolves through it identically.
+
+    ⚑ ORDERING IS LOAD-BEARING — this must run AFTER every podman mount exists, and
+    PID-1 does by construction.  All three podman symlink traps (a SOURCE symlink
+    dereferenced to its target; a DESTINATION symlink followed to where it points; a
+    destination symlink into another bind mount getting shadowed by the directory
+    mount) are podman resolving a symlink AT MOUNT TIME.  Created here, after the
+    mounts, this one is invisible to all of them.  Created earlier — baked into the
+    image, or host-side into the box home — it would hit every one.  ⚑ Do not move
+    this call earlier, and do not create the link host-side.
+
+    Three things it will NOT do, each a deliberate refusal:
+
+    * **Never clobber.** If the XDG location already exists as a real directory or
+      file (a box upgraded from a release that mounted there), it is LEFT ALONE and
+      logged.  Removing it is a user's decision, not PID-1's.
+    * **Never re-point.** An existing symlink aimed somewhere else is left alone too.
+    * **Never raise.** This is PID-1: a failure here logs and the box comes up
+      normally, because the pinned path is the REAL location and everything kanibako
+      reads in-box spells it directly.  The projection is a convenience for everything
+      else.
+
+    Rows whose XDG location already resolves to the pinned dir are skipped — there is
+    nothing to project when the two are the same place.
+    """
+    base = Path.home() if home is None else home
+    env = os.environ if environ is None else environ
+    created: list[str] = []
+    for var, default_suffix, facet in XDG_PROJECTIONS:
+        pinned = base / PINNED_ROOT_RELPATH / facet
+        raw = env.get(var, "")
+        # XDG Base Directory spec: honor the var iff set AND absolute; a relative
+        # value is invalid and falls back to the spec default under $HOME.
+        xdg_base = Path(raw) if raw and os.path.isabs(raw) else base / default_suffix
+        link = xdg_base / "kanibako"
+        if os.path.normpath(link) == os.path.normpath(pinned):
+            continue
+        try:
+            pinned.mkdir(parents=True, exist_ok=True)
+            if link.is_symlink():
+                if os.path.realpath(link) != os.path.realpath(pinned):
+                    log.warning(
+                        "%s is a symlink to something else (%s); leaving it alone. "
+                        "kanibako state lives at %s.",
+                        link, os.path.realpath(link), pinned,
+                    )
+                continue
+            if link.exists():
+                log.warning(
+                    "%s already exists as a real path; leaving it alone. kanibako "
+                    "state lives at %s — remove %s to have it served there too.",
+                    link, pinned, link,
+                )
+                continue
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(pinned, target_is_directory=True)
+            created.append(str(link))
+            log.info("projected %s -> %s", link, pinned)
+        except OSError as exc:
+            log.warning("could not project %s onto %s: %s", link, pinned, exc)
+    return created
 
 
 def scrub_bootstrap_pythonpath(
@@ -1696,6 +1799,11 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = list(sys.argv[1:] if argv is None else argv)
     config = config_from_argv(args)
+    # Serve the box's XDG locations from the pinned root now that the box is LIVE.
+    # ⚑ This is the earliest point at which it is SAFE and the only one at which it is
+    # correct: every podman mount is already in place, so the link is invisible to
+    # mount-time symlink resolution.  See :func:`project_pinned_xdg`.
+    project_pinned_xdg()
     # Strip the host-package mount from PYTHONPATH before the loop spawns tmux / the
     # agent, so those children do not inherit our import path (see
     # :func:`scrub_bootstrap_pythonpath`).  Safe here: this process's own imports are
