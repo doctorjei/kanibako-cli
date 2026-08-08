@@ -515,9 +515,11 @@ What you will see, and what to avoid:
 
 `kanibako workset share add` documented that *"a relative host_src is resolved under the
 working set root"*. That launch-time join is gone: in v1.8.0 the command resolves a relative
-path **at write time** and stores it absolute (telling you when it rewrote what you typed), and
-`config set` on a bind category **refuses** a bare-relative source outright, printing the
-correctly rooted form to use instead.
+path **at write time** and stores it absolute (telling you when it rewrote what you typed).
+⚑ A bare-relative source can no longer reach a bind category through `config set` at all — that
+write route is gone for all six bind-shaped categories (§2.20), so the key itself is refused rather
+than the source shape. A bare-relative source authored **by hand** in the settings YAML is still a
+defect, and still resolves against the process CWD at launch — see the warning below.
 
 **Already-stored relative sources are NOT rewritten for you.** At launch they pass through
 as-is and resolve against whatever the process CWD happens to be — a plausibly
@@ -949,10 +951,33 @@ bind that is the box's own settings file; for an agent-node bind it is
 `agents/<node>/settings.yaml`. Use `kanibako box get <key>` (or `system get`) to read the current
 value first — that still works, and it tells you which entry you are editing.
 
-**What is unaffected.** The other mount categories — `caches`, `seeded`, `common`, `synced` — keep
-their `config set` route at every scope, including the source-only repoint. If you are unsure
-whether a script of yours is affected, the test is whether the key contains `bindings.ro` or
-`bindings.rw`.
+**⚑ This now covers EVERY bind-shaped category, not just the two arms.** `caches`, `seeded`,
+`common` and `synced` have lost their `config set` route as well — including the source-only
+repoint, which used to let you change an entry's host source without touching its destination.
+All six bind-shaped categories are **YAML-only**.
+
+```
+kanibako box set  box.caches.sock=/new/sock          # was: repointed the host source
+kanibako box set  agent.claude.common.plugins=/new   # was: repointed the host source
+```
+
+Both now refuse, naming the key and pointing at the settings file, exactly as the two arms do.
+`config reset` refuses them symmetrically.
+
+**The test for whether a script of yours is affected** is therefore *not* "does the key contain
+`bindings.ro`/`bindings.rw`" any more — it is **"is the key bind-shaped at all"**, i.e. does it name
+`bindings.ro`, `bindings.rw`, `caches`, `seeded`, `common` or `synced`. If it does, and the script
+*writes* it, the write now refuses.
+
+**What is genuinely unaffected, for all six.** Everything in the previous paragraph still holds:
+the keys are still declared, still read by the launch cascade so every existing entry keeps being
+delivered, still authored by hand in the settings YAML, and **`config get` still reads them**. Only
+the write verb is gone.
+
+**Why the repoint went too.** The same reason the arms lost theirs: these categories are becoming
+single keys whose value is a map keyed by the mount **destination**, so there is no per-entry key
+left for `set` to name. Keeping a write route for four categories while the other two refused would
+have meant two rules for one shape.
 
 ---
 
