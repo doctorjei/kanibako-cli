@@ -112,8 +112,15 @@ def add_bind(
     the arm key, the R-11 destination normalization and the act-once refusal are
     written ONCE rather than at ten call sites (disk-store rework R-3/R-6/R-11).
 
-    * *category* is the ARMED category (``bindings.ro`` / ``bindings.rw``); the arm
-      is the WHOLE key and the destination is NOT part of it.
+    * *category* is any TERMINAL bind-shaped category — the ARMED
+      ``bindings.ro`` / ``bindings.rw``, or (since 2026-08-08c) ``caches`` /
+      ``seeded`` / ``common`` / ``synced``. ``{scope}.{category}`` is the WHOLE
+      key and the destination is NOT part of it. ⚑ It works for all six because
+      it only ever JOINS the two, never parses them: a category with a dot in it
+      is an arm and one without is not, and nothing here needs to know which.
+      ⚑ ``seeded`` / ``synced`` are COPIES and stay copies — this constructor
+      writes an entry DOWN; what is DONE with it is the delivery table's answer
+      (``settings_categories._DELIVERY``), not this function's.
     * *box_dest* becomes the map KEY, normalized by
       :func:`~kanibako.settings.settings_resolve.normalize_bind_dest` — ⚑ the DEST
       only. *host_src* is stored exactly as given: a source is resolved on its own
@@ -121,10 +128,12 @@ def add_bind(
       a value other machines read.
     * *options* omitted → a 1-element entry, meaning "use the category default".
 
-    Two entries at ONE destination inside ONE arm RAISES: bindings are strictly
-    act-once, so this cannot be a legitimate overlay, and under dest-keying the
-    second would otherwise just replace the first in the dict with nothing
-    downstream able to see the loss. (Two entries at one dest in DIFFERENT arms or
+    Two entries at ONE destination inside ONE category map RAISES.  For a
+    ``bindings`` arm the reason is act-once: it cannot be a legitimate overlay.
+    For the other four the reason is the DEST-KEYED SHAPE itself — the second
+    entry would simply replace the first in the dict, with nothing downstream able
+    to see the loss, which is the unrepresentable-collision case R-8 says to refuse
+    LOUDLY rather than absorb.  (Two entries at one dest in DIFFERENT arms or
     different categories are still two different keys and still reach the
     resolved-``box_dest`` collision table in ``settings_categories`` — that check
     is untouched, design §2b-CAVEAT.)
@@ -136,9 +145,9 @@ def add_bind(
     dest = normalize_bind_dest(str(box_dest))
     if dest in arm:
         raise ValueError(
-            f"{arm_key} declares two floor bindings at one destination "
-            f"{dest!r} ({arm[dest][0]!r} and {host_src!r}); bindings are "
-            f"act-once and a dest-keyed arm admits one entry per destination."
+            f"{arm_key} declares two floor entries at one destination "
+            f"{dest!r} ({arm[dest][0]!r} and {host_src!r}); a dest-keyed "
+            f"category admits one entry per destination."
         )
     arm[dest] = (host_src,) if options is None else (host_src, str(options))
 

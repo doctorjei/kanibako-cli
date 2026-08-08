@@ -1782,26 +1782,75 @@ class TestCategoryConfigSet:
         # ⚑ Refused BEFORE any write machinery — the stored tuple is byte-identical.
         assert load_doc(f)["box"][category]["x"] == ["/old", "/dest"]
 
-    def test_the_refusal_states_the_RULING_not_the_shape(self, tmp_path):
-        """Two retirements, two REASONS, and the message must not swap them. The
-        four kept their per-entry key and lost only the route (DS-BL1); the bindings
-        arms lost the KEY itself (R-5/R-6 — terminal, dest-keyed). Telling a
-        ``caches`` user "a per-name key no longer exists" would send them looking for
-        a key ``config get`` reads back fine."""
-        f = self._seed(tmp_path, ["box", "caches", "x"], ["/old", "/dest"])
-        cat = set_config_value(
-            "box.caches.x", "/newsrc",
-            config_path=f, command_scope=ConfigLevel.box, cascade_box_path=f,
-        )
-        assert "authored in YAML only" in cat, cat
-        assert "per-name key no longer exists" not in cat, cat
+    def test_the_refusal_clause_follows_the_CATEGORY_not_the_door(self, tmp_path):
+        """⚑⚑ THE TWO REASONS HAVE CONVERGED, AND THIS TEST NO LONGER PINS THEM
+        APART ON TRUTH. It used to, under the name
+        ``test_the_refusal_states_the_RULING_not_the_shape``, and the justification
+        was: the four kept their per-entry key and lost only the ROUTE (DS-BL1),
+        while the ``bindings`` arms lost the KEY itself (R-5/R-6 — terminal,
+        dest-keyed), so telling a ``caches`` user "a per-name key no longer exists"
+        would send them hunting for a key ``config get`` read back fine.
 
-        arm = set_config_value(
-            "box.bindings.ro.x", "/newsrc",
-            config_path=f, command_scope=ConfigLevel.box, cascade_box_path=f,
-        )
-        assert "per-name key no longer exists" in arm, arm
-        assert "authored in YAML only" not in arm, arm
+        **That premise dissolved on 2026-08-08c.** All four went terminal and
+        dest-keyed too, so the SHAPE clause is now true of all six and neither clause
+        can mislead anybody. What survives of the split is PROVENANCE — which
+        retirement arrived first — not a live difference in what a user can do, and
+        ``config_keys._retired_because``'s own docstring says exactly that.
+
+        So the guarantee is REPLACED, not dropped, and re-posed on the property that
+        is still real: **the clause is selected by the CATEGORY alone.** It does not
+        vary by DOOR (file scope vs agent scope, two separate error builders) and it
+        does not vary by VERB — which is precisely what ``_retired_because`` exists
+        to guarantee, "so neither door invents its own story". All four combinations
+        are driven here, because a single-specimen check could not tell a per-category
+        clause from a per-door one.
+
+        ⚑ The distinctness half is kept for ONE reason, and it is no longer the old
+        one: while the two clauses are two strings, collapsing them into one is a
+        DELIBERATE, VISIBLE edit at this test rather than drift somewhere else.
+        """
+        stored = ["/old", "/dest"]
+        box_file = self._seed(tmp_path, ["box", "caches", "x"], list(stored))
+        agent_file = tmp_path / "kanibako_config.yaml"
+        SHAPE = "per-name key no longer exists"      # the bindings-arm clause
+        RULING = "authored in YAML only"             # the other four's clause
+
+        def file_door(key, verb):
+            if verb == "set":
+                return set_config_value(
+                    key, "/newsrc", config_path=box_file,
+                    command_scope=ConfigLevel.box, cascade_box_path=box_file,
+                )
+            return reset_config_value(
+                key, config_path=box_file, command_scope=ConfigLevel.box,
+            )
+
+        def agent_door(key, verb):
+            if verb == "set":
+                return set_config_value(
+                    key, "/newsrc", config_path=agent_file, is_system=True,
+                    command_scope=ConfigLevel.system,
+                )
+            return reset_config_value(
+                key, config_path=agent_file, command_scope=ConfigLevel.system,
+            )
+
+        doors = (("box.{}.x", file_door), ("agent.claude.{}.x", agent_door))
+        seen = 0
+        for verb in ("set", "reset"):
+            for spelling, door in doors:
+                four = door(spelling.format("caches"), verb)
+                arm = door(spelling.format("bindings.ro"), verb)
+                assert RULING in four and SHAPE not in four, (verb, four)
+                assert SHAPE in arm and RULING not in arm, (verb, arm)
+                seen += 1
+        # ⚑ NON-VACUITY: four combinations, not one specimen — the whole claim is
+        # that the clause is invariant across them.
+        assert seen == 4
+
+        # A refused write is a refused write at either door: nothing moved.
+        assert load_doc(box_file)["box"]["caches"]["x"] == stored
+        assert not agent_file.exists()
 
     def test_agent_scope_category_set_is_refused_through_its_own_door(self, tmp_path):
         """The AGENT-scope spelling is refused too, and by the NODE door
@@ -3365,55 +3414,76 @@ class TestAgentNodeBindRouting:
     def test_predicate_matches_node_bind_only(self):
         from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
+            _is_agent_scope_bind_key,
             _is_box_agent_key,
-            _is_path_category_key,
             _is_persona_agent_key,
         )
-        # A node bind key: node-bind True, and the others False (no mis-capture).
+        # A node bind key: node-bind True, and the neighbours False (no mis-capture).
         k = "agent.claude.bindings.ro.launcher"
         assert _is_agent_node_bind_key(k)
         assert not _is_box_agent_key(k)
-        # ⚑ BIND_KEY_RE no longer matches it. It used to (a discriminated node bind
-        # was a well-formed category key) and the node-bind was checked first to
-        # disambiguate; R-9 took the arms out of BIND_KEY_RE at every scope, so the
-        # node-bind predicate is now the ONLY one that claims this key.
-        assert not _is_path_category_key(k)
         assert not _is_persona_agent_key(k)  # launcher is not a state leaf
+        # ⚑ THIS LINE USED TO READ ``assert not _is_path_category_key(k)`` and it had
+        # gone VACUOUS: since 2026-08-08c ``BIND_KEY_RE``'s non-terminal complement
+        # is empty, so that predicate compiles ``(?!)`` and answers False for EVERY
+        # string — the assertion would have held for ``""``. The live neighbour is
+        # the agent-scope RECOGNISER, and it deliberately answers TRUE here: it is a
+        # SUPERSET of the node parser (recognition may be broad, resolution may
+        # not), and the narrow one is checked FIRST wherever both matter.
+        assert _is_agent_scope_bind_key(k)
 
-    def test_the_node_regex_is_pinned_to_the_terminal_arms_as_a_subset(self):
-        """⚑ ``_AGENT_NODE_BIND_RE`` spells the arms LITERALLY (it has to, to split
-        the node non-greedily around them) instead of importing an alternation, so it
-        must be pinned against the single source. **It is pinned as a SUBSET, not an
-        equality, and that is a MEASUREMENT, not laziness:**
-        ``RETIRED_BIND_CATEGORIES`` is now all six (DS-BL1 = (a)), but this parser
+    def test_the_node_regex_is_pinned_to_the_bindings_arms_as_a_proper_subset(self):
+        """⚑ ``_AGENT_NODE_BIND_RE`` spells the two ``bindings`` arms LITERALLY (it
+        has to, to split the node non-greedily around them) instead of importing an
+        alternation, so it must be pinned against the single source. **It is pinned
+        as a PROPER SUBSET, and that is a MEASUREMENT, not laziness:** this parser
         also picks the READ route — ``agent_config.agent_file_route`` — which has a
         nested table for ``bindings.<arm>.<name>`` and NONE for the other four, so a
         widened parser would resolve ``agent.claude.common.x`` to the dotted leaf
         ``self."common.x"`` and the read would silently answer "(not set)".
 
-        The four are refused at the agent scope through ``BIND_KEY_RE`` instead —
-        the SAME door (``agent_node_bind_retired_error``), a different parser — which
-        the second half pins so neither half can quietly stop covering its share.
+        ⚑⚑ THE ARMS ARE SPELLED OUT HERE ON PURPOSE, AND THAT IS THE FIX. This half
+        used to loop over ``_TERMINAL_BIND_CATEGORIES``, which was the two arms when
+        it was written and became ALL SIX on 2026-08-08c — so the test had inverted
+        into a DEMAND for exactly the widening the parser must never have, while its
+        second loop (``RETIRED − TERMINAL``) ran zero times and proved nothing. A pin
+        against a set whose membership MOVES is not a pin. The literal is what is
+        being guarded, so the literal is what is written.
+
+        The other four are refused at the agent scope through
+        ``_is_agent_scope_bind_key`` / ``AGENT_BIND_KEY_RE`` instead — the SAME door
+        (``agent_node_bind_retired_error``), a different parser — which the second
+        half pins, so neither half can quietly stop covering its share.
         """
         from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
-            _is_path_category_key,
+            _is_agent_scope_bind_key,
             agent_node_bind_retired_error,
         )
         from kanibako.settings.settings_categories import (
             RETIRED_BIND_CATEGORIES,
             SETTABLE_BIND_CATEGORIES,
-            _TERMINAL_BIND_CATEGORIES,
         )
 
-        # SUBSET: the node parser covers exactly the TERMINAL arms...
-        for cat in _TERMINAL_BIND_CATEGORIES:
+        arms = ("bindings.ro", "bindings.rw")
+        # PROPER subset: covered by the derived set, and STRICTLY smaller — which is
+        # what makes "the other four" below a non-empty set rather than a promise.
+        assert set(arms) < set(RETIRED_BIND_CATEGORIES)
+
+        # RESOLUTION — the node parser claims exactly the two arms...
+        for cat in arms:
             assert _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
-        for cat in set(RETIRED_BIND_CATEGORIES) - set(_TERMINAL_BIND_CATEGORIES):
+
+        others = sorted(set(RETIRED_BIND_CATEGORIES) - set(arms))
+        # ⚑ NON-VACUITY GUARD: this loop is the whole point of the second half, and
+        # its predecessor iterated ZERO times. Assert it has work before doing it.
+        assert others, "the complement is EMPTY — the loop below would prove nothing"
+        for cat in others:
             assert not _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
-            # ...and the other retired categories are claimed by the per-entry
+            # RECOGNITION — ...and the other four are claimed by the agent-scope
             # recogniser, so the DOOR still covers all six at the agent scope.
-            assert _is_path_category_key(f"agent.claude.{cat}.x"), cat
+            assert _is_agent_scope_bind_key(f"agent.claude.{cat}.x"), cat
+
         for cat in RETIRED_BIND_CATEGORIES:
             assert agent_node_bind_retired_error(
                 f"agent.claude.{cat}.x", verb="set",
@@ -3448,20 +3518,30 @@ class TestAgentNodeBindRouting:
         assert _is_box_agent_key("box.agent.bindings.ro.x")
 
     def test_bare_agent_category_is_not_a_node_bind(self):
-        # The BARE ``agent.bindings.*`` (no node) is NOT A KEY: the keyspace is
-        # CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0), so
-        # BOTH the node-bind regex and the ordinary category regex REFUSE it. A
-        # discriminated key takes the ordinary category path.
+        # The BARE ``agent.<category>.<name>`` (no node) is NOT A KEY: the keyspace
+        # is CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0), so
+        # BOTH the node-bind PARSER and the agent-scope RECOGNISER refuse it — and
+        # the recogniser's refusal is the load-bearing one, because a match there
+        # would hand an undeclared spelling a "route is RETIRED" message implying it
+        # had once been a key.
+        #
+        # ⚑ The second term used to be ``_is_path_category_key``; that predicate
+        # answers False for every string since 2026-08-08c, so this pair of
+        # assertions had gone vacuous on one side and false on the other.
         from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
-            _is_path_category_key,
+            _is_agent_scope_bind_key,
         )
         assert not _is_agent_node_bind_key("agent.bindings.ro.foo")
-        assert not _is_path_category_key("agent.bindings.ro.foo")
-        # A DISCRIMINATED bindings key is a node bind (retired route), not a
-        # category key; a discriminated SETTABLE category still is one.
+        assert not _is_agent_scope_bind_key("agent.bindings.ro.foo")
+        assert not _is_agent_scope_bind_key("agent.caches.foo")
+        # A DISCRIMINATED key is claimed: the ``bindings`` arms by BOTH (the node
+        # parser resolves, the recogniser is its deliberate superset), and the other
+        # four by the recogniser alone.
         assert _is_agent_node_bind_key("agent.claude.bindings.ro.foo")
-        assert _is_path_category_key("agent.default.caches.foo")
+        assert _is_agent_scope_bind_key("agent.claude.bindings.ro.foo")
+        assert not _is_agent_node_bind_key("agent.default.caches.foo")
+        assert _is_agent_scope_bind_key("agent.default.caches.foo")
 
     def test_resolve_key_canonicalizes_node_plus_form(self):
         from kanibako.settings.config_keys import resolve_key
@@ -3602,14 +3682,25 @@ class TestAgentNodeBindWriteRouteRetired:
         assert msg.startswith("Error:") and "cannot be set" in msg
         assert not box.exists()  # nothing written
 
-    def test_the_still_settable_agent_categories_are_untouched(self, tmp_path):
-        """The retirement is SURGICAL: it removes two tokens, at the agent scope as
-        at the file scopes, and nothing else. RED if the regex change over-reached
-        onto ``common`` / ``caches`` / ``seeded`` / ``synced``."""
-        from kanibako.settings.config_keys import _is_path_category_key
+    def test_the_other_four_agent_categories_are_still_recognised(self, tmp_path):
+        """The narrowing is SURGICAL: ``_AGENT_NODE_BIND_RE`` claims the two
+        ``bindings`` arms and nothing else, and the other four are still RECOGNISED
+        at the agent scope by ``_is_agent_scope_bind_key`` — so their refusal names
+        the key instead of degrading to "unknown config key" (spec §0) or, worse,
+        being mistaken for a project name.
+
+        ⚑ THIS TEST WAS CALLED ``test_the_still_settable_agent_categories_are_untouched``
+        and asserted ``_is_path_category_key``. Both halves of that name are now
+        false: nothing bind-shaped is settable (DS-BL1 = (a)) and that predicate
+        answers False for every string (its non-terminal complement emptied on
+        2026-08-08c), so the assertion had become a red that could only be reached by
+        widening the node parser — the one change it exists to forbid. The guarantee
+        is unchanged and re-posed on the live recogniser; only the term moved.
+        """
+        from kanibako.settings.config_keys import _is_agent_scope_bind_key
 
         for cat in ("common", "caches", "seeded", "synced"):
-            assert _is_path_category_key(f"agent.claude.{cat}.x"), cat
+            assert _is_agent_scope_bind_key(f"agent.claude.{cat}.x"), cat
 
     def test_written_tuple_still_overrides_descriptor_floor_at_launch(self, tmp_path):
         """⚑ THE CURE ACTUALLY WORKS. The route died; the KEY did not. A tuple
@@ -4085,6 +4176,26 @@ class TestSetDispatchCoverage:
 class TestEffectiveCategoryBlock:
     """T15 — the materialisation is observable end-to-end (D6, box scope)."""
 
+    # ⚑⚑ NOT RESPELLED FOR DEST-KEYING, AND THE GREEN BELOW IS NOT EVIDENCE.
+    # This fixture is hand-built and handed straight to ``show_config``, which
+    # renders whatever it is given and validates no key — so it survived the
+    # 2026-08-08c flip unchanged while having stopped meaning what it says. Three
+    # things in it are retired shapes: ``common``/``seeded`` are NAME-keyed here
+    # (``common["plugins"]``) where the keyspace now keys them by DESTINATION; the
+    # leaves are 3-element ``Bind`` where a dest-keyed leaf is a 2-element
+    # ``BindEntry``; and the ``CategoryEntry`` rows carry ``name="plugins"`` /
+    # ``key="agent.claude.common.plugins"`` where the emitter now stamps
+    # ``name`` = the dest and ``key`` = ``<scope>.<category>.<box_dest>``.
+    #
+    # It was left alone DELIBERATELY rather than guessed at: respelling it forces
+    # a decision about what the ``--effective`` DECLARATION line should print for
+    # a dest-keyed category — and in particular whether
+    # ``test_declaration_and_derived_binding_print_adjacently``'s stated contrast
+    # ("the declaration carries the deferred ``~``; the derivation carries the
+    # resolved guest dest") survives R-11 normalizing the destination AT THE
+    # PRODUCER. That is display semantics, gated on the same collapse function
+    # that has ``test_the_derivation_line_states_its_DELIVERY`` skipped, not a
+    # fixture respell. Decide it there, then fix this fixture in the same pass.
     @staticmethod
     def _snapshot():
         from kanibako.commands.start import _install_derived_bindings
@@ -4464,11 +4575,19 @@ class TestPrefIsKnownKey:
 
 class TestPrefShow:
     def test_show_lists_prefs_at_box_scope(self, tmp_path, capsys):
-        """§2h — 'config show lists prefs'."""
+        """§2h — 'config show lists prefs'.
+
+        ⚑ RE-POSED ON THE DESTINATION (2026-08-08c): the suppression request used
+        to name the entry ``plugins``. It stayed green through the dest-keying
+        flip because this listing is a plain nested walk that validates no key —
+        green was not evidence the spelling existed.
+        """
         f = tmp_path / "settings.yaml"
         f.write_text(yaml.safe_dump({
             "pref": {"system": {"agent": "goose"},
-                     "agent": {"claude": {"common": {"plugins": None}}}},
+                     "agent": {"claude": {"common": {
+                         "/home/agent/.claude/plugins": None,
+                     }}}},
         }))
         show_config(
             global_config_path=tmp_path / "g.yaml", config_path=f, effective=False,
@@ -4476,7 +4595,9 @@ class TestPrefShow:
         out = capsys.readouterr().out
         assert "pref.system.agent = goose" in out
         # A suppression REQUEST must be visible as such, not blank.
-        assert "pref.agent.claude.common.plugins = null" in out
+        assert (
+            "pref.agent.claude.common./home/agent/.claude/plugins = null" in out
+        )
 
     def test_effective_shows_request_and_result(self, tmp_path, capsys):
         """§2h — '--effective shows BOTH the request and the resulting value'."""
@@ -4502,12 +4623,24 @@ class TestPrefShow:
         assert "-> agent.claude.template = /ws/tpl/x" in out
 
     def test_effective_distinguishes_suppressed_from_unset(self, tmp_path, capsys):
+        """⚑ RE-POSED ON THE DESTINATION (2026-08-08c). The pref used to suppress
+        ``common.plugins`` — an entry NAME — and stayed green through the
+        dest-keying flip because ``show_config`` renders whatever snapshot it is
+        handed and validates no key. Green was not evidence the spelling existed.
+
+        The per-ENTRY suppression itself is unchanged and still expressible: a
+        present-None INSIDE the dest-keyed map is the per-entry omit, so the
+        request is now keyed by the DESTINATION and the reset hint names that
+        same spelling.
+        """
         from kanibako.settings.settings_store import KeyStore
 
         snap = KeyStore({
-            "pref": {"agent": {"claude": {"common": {"plugins": None},
-                                          "model": None}}},
-            # common.plugins was OMITTED by the merge (suppressed); model is a
+            "pref": {"agent": {"claude": {
+                "common": {"/home/agent/.claude/plugins": None},
+                "model": None,
+            }}},
+            # the common ENTRY was OMITTED by the merge (suppressed); model is a
             # scalar and was KEPT as None (unset).
             "agent": {"claude": {"common": KeyStore(), "model": None}},
         })
@@ -4522,7 +4655,9 @@ class TestPrefShow:
         # B-6: suppression has no verb of its own, so the message that reports a
         # suppression is where the user learns what UNDOES it — and WHERE, since
         # a reset at the wrong noun removes nothing.
-        assert "'reset pref.agent.claude.common.plugins'" in out
+        assert (
+            "'reset pref.agent.claude.common./home/agent/.claude/plugins'" in out
+        )
         assert "at the scope that set it" in out
 
 
@@ -4535,11 +4670,20 @@ class TestPrefValueValidation:
 
     def test_a_scalar_at_a_bind_shaped_target_is_refused(self, tmp_path):
         """Before this, the set was ACCEPTED and the LAUNCH died with 'category
-        agent.claude.common.x is str, expected a Bind' — naming a key the user
-        never wrote. INVERT: drop the shape check -> reddens."""
+        agent.claude.common is str, expected a Bind' — naming a key the user
+        never wrote. INVERT: drop the shape check -> reddens.
+
+        ⚑ THE TARGET IS THE BARE CATEGORY (2026-08-08c). ``common`` went TERMINAL
+        and DEST-KEYED with the other three, so ``pref.agent.claude.common.x`` is
+        no longer a key at all and would be refused a step EARLIER, by the target
+        validity check — which would prove nothing about the VALUE-shape guard
+        this test exists for. The bare category is the only ``common`` target a
+        pref can name, and it is claimed by ``is_terminal_category_tail``, the
+        same term that claims a ``bindings`` arm in the twin below.
+        """
         f = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "pref.agent.claude.common.x", "just-a-string",
+            "pref.agent.claude.common", "just-a-string",
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:")
@@ -4640,10 +4784,18 @@ class TestPrefValueValidation:
 
     def test_a_reserved_leaf_returns_an_error_and_never_raises(self, tmp_path):
         """set_config_value's contract is 'returns an error string, NEVER
-        raises'. ReservedKeyError is a KeyError and used to escape."""
+        raises'. ReservedKeyError is a KeyError and used to escape.
+
+        ⚑ THE SPECIMEN MOVED TO ``env`` (2026-08-08c). The row used to read
+        ``pref.agent.claude.common.get``; ``common`` is TERMINAL and dest-keyed
+        now, so ``get`` there is a DESTINATION — data inside the value — and the
+        reserved-NAME rule never reaches it. ``env.<VAR>`` is a surviving
+        name-keyed family, so a reserved leaf is still expressible and the
+        never-raises contract is still exercised rather than proved vacuously.
+        """
         f = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "pref.agent.claude.common.get", "x",
+            "pref.agent.claude.env.get", "x",
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:") and "RESERVED" in msg
@@ -4667,10 +4819,10 @@ class TestNullSpelling:
 
     def test_parse_config_arg_null_flag_yields_a_None_value(self):
         action, key, value = parse_config_arg(
-            "pref.agent.claude.common.plugins", set_null=True,
+            "pref.agent.claude.common", set_null=True,
         )
         assert action == ConfigAction.set
-        assert key == "pref.agent.claude.common.plugins"
+        assert key == "pref.agent.claude.common"
         assert value is None
 
     def test_the_string_null_is_NOT_magic(self, tmp_path):
@@ -4686,14 +4838,16 @@ class TestNullSpelling:
         ] == "null"
 
     def test_null_writes_a_real_yaml_null(self, tmp_path):
+        # ⚑ The suppression is spelled at the CATEGORY: ``common`` is TERMINAL and
+        # dest-keyed (2026-08-08c), so there is no per-entry key to null.
         f = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "pref.agent.claude.common.plugins", None,
+            "pref.agent.claude.common", None,
             config_path=f, command_scope=ConfigLevel.box,
         )
-        assert msg == "Set pref.agent.claude.common.plugins=null"
+        assert msg == "Set pref.agent.claude.common=null"
         doc = yaml.safe_load(f.read_text())
-        assert doc["pref"]["agent"]["claude"]["common"]["plugins"] is None
+        assert doc["pref"]["agent"]["claude"]["common"] is None
 
     def test_no_write_mechanism_refuses_null_on_its_own_any_more(self, tmp_path):
         """⚑⚑ THE SPECIMEN RAN OUT. This row pinned the ONE mechanism that could not
@@ -4724,9 +4878,9 @@ class TestNullSpelling:
         # so "nothing refuses --null" is not "nothing accepts it".
         g = tmp_path / "pref.yaml"
         assert set_config_value(
-            "pref.agent.claude.common.plugins", None,
+            "pref.agent.claude.common", None,
             config_path=g, command_scope=ConfigLevel.box,
-        ) == "Set pref.agent.claude.common.plugins=null"
+        ) == "Set pref.agent.claude.common=null"
 
     def test_null_on_the_retired_bare_env_gets_the_retirement_cure(self, tmp_path):
         """The R-39 refusal runs BEFORE the --null route guard, so a user who
@@ -4810,12 +4964,19 @@ class TestPrefGetRendersAllThreeEmptyIdioms:
     def test_present_none_terminal_empty_and_absent_are_distinguishable(
         self, tmp_path,
     ):
+        # ⚑ RE-POSED AT THE TERMINAL KEY (2026-08-08c). The present-None specimen
+        # used to be ``common: {plugins: None}``, read back as
+        # ``pref.agent.claude.common.plugins`` — a spelling that is no longer a
+        # key. It stayed green through the dest-keying flip because ``get`` walks
+        # the stored dotted path and validates nothing; green was not evidence.
+        # The whole-category suppression is the present-None a user can now write
+        # at a key with no destination in its tail.
         f = tmp_path / "settings.yaml"
         f.write_text(yaml.safe_dump({"pref": {"agent": {"claude": {
-            "common": {"plugins": None},
+            "common": None,
             "template": "",
         }}}}))
-        assert self._get(tmp_path, f, "pref.agent.claude.common.plugins") == "null"
+        assert self._get(tmp_path, f, "pref.agent.claude.common") == "null"
         assert self._get(tmp_path, f, "pref.agent.claude.template") == '""'
         assert self._get(tmp_path, f, "pref.agent.claude.model") is None
 

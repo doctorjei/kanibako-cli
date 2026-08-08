@@ -18,10 +18,11 @@ This module is the standing GUARDRAIL over that surface.  It does TWO things:
 1. **Specced-shape assertion** (catches a future re-flattening AT THE SOURCE):
    loads the system defaults file + each per-agent defaults file and asserts
    every value matches the SPECCED STRUCTURED shape from
-   ``settings-keyspace-1.8.0.md`` §2a:
-   ``bindings/caches/seeded/shared/synced`` = 2-/3-element lists/tuples,
+   ``settings-keyspace-1.8.0.md`` §2a: ``bindings``/``caches``/``seeded``/
+   ``common``/``synced`` are TERMINAL DEST-KEYED arms — ``{box_dest:
+   (host_src[, options])}``, so each ENTRY is a 1-/2-element list/tuple —
    ``masks`` = a real list, and NO colon/comma-string value anywhere in a binding
-   pair (the colon-string form is the divergence the flip reversed).
+   entry (the colon-string form is the divergence the flip reversed).
 
 2. **De-hardcoding lock** (a GREP-GUARD): asserts NO raw ``/home/agent`` literal
    survives in the COALESCED-DEFAULTS SURFACE (the shipped data files + their
@@ -68,10 +69,6 @@ _AGENT_DEFAULTS = (
     ("kanibako.plugins.codex", "codex-defaults.yaml"),
 )
 
-# The structured-binding category names (spec §2a): each is a dict[name -> pair]
-# where every pair is a 2-/3-element list/tuple — NEVER a colon-joined string.
-_PAIR_CATEGORIES = ("bindings", "caches", "seeded", "common", "synced")
-
 # The repo root — resolved once, in one place, so this file may live at any depth
 # under ``tests/`` (see ``tests/support/repo.py``).
 _REPO_ROOT = REPO_ROOT
@@ -93,32 +90,50 @@ def _load_yaml(package: str, filename: str) -> dict:
 # Helpers — structured-shape predicates
 # --------------------------------------------------------------------------- #
 
-def _assert_structured_pair(value: object, where: str) -> None:
-    """Assert *value* is a specced binding pair: a 2-/3-element list/tuple of str.
+def _assert_structured_entry(value: object, where: str) -> None:
+    """Assert *value* is a specced dest-keyed ENTRY: a 1-/2-element tuple of str.
 
-    Catches the reversed divergence: a colon-joined ``"host:box"`` string (or any
-    scalar) here means the structured representation was re-flattened at the
+    ⚑⚑ RE-DERIVED 2026-08-08c, and the arity is the whole point.  A dest-keyed
+    arm entry is ``(host_src,)`` — "use the category default options" — or
+    ``(host_src, options)``.  The RETIRED name-keyed entry was ``(host_src,
+    box_dest[, options])``, a 2-/3-element value.  ⚑ Those two overlap at TWO
+    elements, and that overlap is silent: a stale ``[host_src, box_dest]`` value
+    parses cleanly under the new shape with the DESTINATION sitting in the
+    OPTIONS slot.  For a COPY category (``seeded``/``synced``) options are never
+    read, so nothing ever complains.  Refusing the old arity here is what stops
+    that from passing.
+
+    Also catches the reversed divergence: a colon-joined ``"host:box"`` string (or
+    any scalar) here means the structured representation was re-flattened at the
     source.
     """
     assert isinstance(value, (list, tuple)), (
         f"{where}: binding value must be a structured list/tuple "
         f"(spec §2a), got {type(value).__name__}: {value!r}"
     )
-    assert len(value) in (2, 3), (
-        f"{where}: binding pair must have 2 or 3 elements "
-        f"(host_src, box_dest[, options]), got {len(value)}: {value!r}"
+    assert len(value) in (1, 2), (
+        f"{where}: a dest-keyed entry must have 1 or 2 elements "
+        f"(host_src[, options]), got {len(value)}: {value!r} — a 3-element value "
+        f"(or a 2-element one whose 2nd slot is a path) is the RETIRED "
+        f"name-keyed shape (host_src, box_dest[, options])"
     )
     for elem in value:
         assert isinstance(elem, str), (
             f"{where}: every binding element must be a str, got "
             f"{type(elem).__name__}: {elem!r}"
         )
-    # The host_src + box_dest elements must not themselves be colon/comma-joined
-    # (a re-flattened "host:box" element is the divergence §2a reversed); the
-    # optional 3rd element is the mount-OPTIONS string (e.g. "Z,U") where a comma
-    # is legitimate, so the joined-string guard applies to the path elements only.
-    for elem in value[:2]:
-        _assert_no_joined_string(elem, where)
+    # The host_src must not itself be colon/comma-joined (a re-flattened
+    # "host:box" element is the divergence §2a reversed).  The optional 2nd
+    # element is the mount-OPTIONS string (e.g. "Z,U") where a comma is
+    # legitimate, so the joined-string guard applies to the path element only.
+    _assert_no_joined_string(value[0], where)
+    # ...and the options slot must NOT look like a destination — that is the
+    # stale-fixture tell described above.
+    if len(value) == 2:
+        assert not value[1].startswith(("/", "~", "$GUEST_HOME")), (
+            f"{where}: 2nd slot {value[1]!r} looks like a box_dest, not mount "
+            f"options — the entry is still in the RETIRED name-keyed shape"
+        )
 
 
 def _assert_no_joined_string(elem: str, where: str) -> None:
@@ -320,29 +335,45 @@ class TestAgentDefaultsShape:
                 )
 
     def test_shares_are_structured_pairs(self):
-        """Any ``common`` block declares structured 2-/3-element bind pairs.
+        """Any ``common`` block declares a structured TERMINAL DEST-KEYED arm.
 
-        ``common`` is one of the spec §2a structured-pair categories.  Files that
-        declare no ``common`` entries (goose/codex) yield an empty map — also valid.
+        ``common`` is one of the spec §2a structured categories.  Files that
+        declare no ``common`` entries (goose/codex) yield an empty table — also
+        valid.
+
+        ⚑⚑ THERE IS NO ``key:`` ANY MORE, AND ITS ABSENCE IS THE POINT.
+        ``agent.<agent>.common`` is a TERMINAL key whose value is keyed by box
+        DESTINATION (2026-08-08c), so the entry NAME names nothing — the
+        DESTINATION is the identity.  ``load_common`` REFUSES a ``key:`` line
+        outright rather than ignoring it, so an author cannot half-migrate a file.
+        ⚑ Do not "restore" a ``key`` assertion here: it would pin the retired
+        name-keyed shape and would red against the loader's own refusal.
 
         ⚑ THE host_src ASSERTIONS ARE LOAD-BEARING, at BOTH levels.  Every generic
-        predicate here (2-/3-tuple, no ``:``, no ``,``, dest under ``$GUEST_HOME``)
-        is satisfied by an ``@``-ref just as it was by a bare leaf, so without an
-        explicit shape check this "golden" guard would silently stop guarding
-        ``host_src`` across P3's declaration-rooting flip.  The YAML level pins the
-        AUTHORED form (a bare leaf is what an author may write); the LOADED level
-        pins the STORED form (self-resolving, spec §2a).
+        predicate here (tuple arity, no ``:``, no ``,``, dest under
+        ``$GUEST_HOME``) is satisfied by an ``@``-ref just as it was by a bare
+        leaf, so without an explicit shape check this "golden" guard would
+        silently stop guarding ``host_src`` across P3's declaration-rooting flip.
+        The YAML level pins the AUTHORED form (a bare leaf is what an author may
+        write); the LOADED level pins the STORED form (self-resolving, spec §2a).
         """
         from kanibako.settings.agent_config import agent_category_root_ref, is_self_resolving
 
         for package, filename in _AGENT_DEFAULTS:
             doc = _load_yaml(package, filename)
             agent = filename.removesuffix("-defaults.yaml")
+            authored: dict[str, str] = {}
             for entry in doc.get("common", []):
                 assert isinstance(entry, dict), (
                     f"{filename}: common entry must be a mapping: {entry!r}"
                 )
-                assert "key" in entry and "host_src" in entry and "box_dest" in entry
+                assert "host_src" in entry and "box_dest" in entry, (
+                    f"{filename}: common entry needs host_src + box_dest: {entry!r}"
+                )
+                assert "key" not in entry, (
+                    f"{filename}: common entry declares a retired entry name "
+                    f"'key:' — the destination is the identity now: {entry!r}"
+                )
                 assert entry["box_dest"].startswith("$GUEST_HOME"), (
                     f"{filename}: common box_dest must be a $GUEST_HOME expression: "
                     f"{entry!r}"
@@ -351,37 +382,54 @@ class TestAgentDefaultsShape:
                     f"{filename}: common host_src must be a non-empty string: "
                     f"{entry!r}"
                 )
+                # Index the AUTHORED source by the destination the loader will key
+                # on, mirroring the loader's one-token $GUEST_HOME expansion.
+                authored[GUEST_HOME + entry["box_dest"][len("$GUEST_HOME"):]] = (
+                    entry["host_src"]
+                )
 
-            # And the LOADED entries are real 2-/3-tuples (BindDefault).
+            # And the LOADED table is {TERMINAL key -> dest-keyed arm}.
             common_binds = agent_defaults.load_common(package, filename, agent)
-            assert all(k.startswith(f"agent.{agent}.common.") for k in common_binds), (
-                f"{filename}: loaded common keys must be DISCRIMINATED: "
-                f"{list(common_binds)}"
-            )
             assert isinstance(common_binds, dict)
+            arm_key = f"agent.{agent}.common"
+            assert set(common_binds) <= {arm_key}, (
+                f"{filename}: loaded common must be the ONE discriminated TERMINAL "
+                f"key {arm_key!r}: {list(common_binds)}"
+            )
+            arm = common_binds.get(arm_key, {})
+            # No entry may be lost to the flip: a dest-keyed map silently REPLACES
+            # a duplicate key, so the count is what proves nothing was absorbed.
+            assert len(arm) == len(authored), (
+                f"{filename}: loaded common arm has {len(arm)} entries for "
+                f"{len(authored)} authored: {arm!r}"
+            )
             root_ref = agent_category_root_ref(agent, "common")
-            for key, pair in common_binds.items():
-                _assert_structured_pair(pair, f"{filename} common {key}")
-                assert pair[1].startswith(GUEST_HOME), (
-                    f"{filename}: loaded common {key} box_dest not under GUEST_HOME: "
-                    f"{pair!r}"
+            for box_dest, entry_val in arm.items():
+                _assert_structured_entry(entry_val, f"{filename} common {box_dest}")
+                # The DESTINATION is the map key now, and it is the thing that must
+                # be under GUEST_HOME (it used to be checked at slot 1 of the value,
+                # which is the mount-OPTIONS slot today).
+                assert box_dest.startswith(GUEST_HOME), (
+                    f"{filename}: loaded common box_dest {box_dest!r} not under "
+                    f"GUEST_HOME"
+                )
+                assert box_dest in authored, (
+                    f"{filename}: loaded common dest {box_dest!r} matches no "
+                    f"authored entry: {sorted(authored)}"
                 )
                 # The STORED source must resolve on its own — a bare relative leaf
                 # here would need a layer to prepend a root, which is exactly what
                 # spec §2a forbids.
-                assert is_self_resolving(pair[0]), (
-                    f"{filename}: loaded common {key} host_src {pair[0]!r} does not "
-                    "resolve on its own (spec §2a L474-486)"
+                assert is_self_resolving(entry_val[0]), (
+                    f"{filename}: loaded common {box_dest} host_src "
+                    f"{entry_val[0]!r} does not resolve on its own (spec §2a "
+                    f"L474-486)"
                 )
                 # A leaf the author wrote bare is rooted at the agent DECLARATION
                 # ROOT; an author-supplied self-resolving source is stored verbatim.
-                authored = next(
-                    e["host_src"] for e in doc.get("common", [])
-                    if f"agent.{agent}.common.{e['key']}" == key
-                )
+                src = authored[box_dest]
                 expected = (
-                    authored if is_self_resolving(authored)
-                    else f"{root_ref}/{authored}"
+                    src if is_self_resolving(src) else f"{root_ref}/{src}"
                 )
                 # ⚑ TAUTOLOGY WARNING — this comparison builds ``expected`` from
                 # the SAME helpers the loader uses, so it verifies the loader APPLIED
@@ -392,9 +440,9 @@ class TestAgentDefaultsShape:
                 # ``test_targets/test_claude.py::TestDefaultShares`` (the stored ref)
                 # and ``test_categories_live.py::TestDeclarationRoots::
                 # test_claude_commons_resolve_under_common_dir`` (the resolved mount).
-                assert pair[0] == expected, (
-                    f"{filename}: loaded common {key} host_src {pair[0]!r} != "
-                    f"{expected!r}"
+                assert entry_val[0] == expected, (
+                    f"{filename}: loaded common {box_dest} host_src "
+                    f"{entry_val[0]!r} != {expected!r}"
                 )
 
 

@@ -24,16 +24,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kanibako will not delete — remove it inside the box once to get the symlink. See
   [MIGRATION.md](MIGRATION.md) §2.22.
 
+- **Every bind-shaped category entry is now written keyed by its DESTINATION, and entry names are
+  gone.** `caches`, `seeded`, `common` and `synced` join `bindings.ro` / `bindings.rw`: the category
+  is a single key whose value is a map from box destination to `[host_src]`, so
+  `<scope>.<category>.<name>` is no longer a key at any scope. **This is a stored-format change —
+  every settings file, and every plugin that declares agent-scope defaults, has to be re-spelled.**
+  There is no shim and no deprecation window; a file still in the old shape is refused loudly,
+  naming the entry. `config get <scope>.<category>` now reads the whole map (it also reads
+  `<scope>.bindings.{ro,rw}` and `<scope>.masks`, which had silently answered `(not set)` since
+  they went dest-keyed). See [MIGRATION.md](MIGRATION.md) §2.23.
+  ⚑ `seeded` and `synced` are still **copies**, not mounts. Sharing a way of writing an entry down
+  says nothing about what is done with it.
+- **Seed and sync destinations are spelled guest-side.** The three template seed layers target
+  `~/` rather than a host path under the box store, and kanibako resolves that to the box store when
+  the copy runs. Nothing about *where the files land* changes; the spelling is now the same one
+  every other category uses. See [MIGRATION.md](MIGRATION.md) §2.23.
+
 ### Removed
 
 - **`config set` / `config reset` on every bind-shaped category.** `caches`, `seeded`, `common` and
   `synced` join `bindings.ro` / `bindings.rw` in refusing a write at every scope, including the
   source-only repoint that changed an entry's host source without touching its destination. All six
   are now **YAML-only**: edit the settings file for the scope you want and re-launch.
-  The keys are *not* retired — they are still declared, still read by the launch cascade so every
-  existing entry keeps being delivered, and **`config get` still reads them**. Only the write verb
-  is gone. See [MIGRATION.md](MIGRATION.md) §2.20.
-  Rationale: these categories are moving to a single key whose value is a map keyed by the mount
+  The categories are *not* retired — they are still declared, still read by the launch cascade so
+  every existing entry keeps being delivered, and **`config get` still reads them** (at the
+  category key; see the dest-key entry above). Only the write verb is gone.
+  See [MIGRATION.md](MIGRATION.md) §2.20.
+  Rationale: these categories are now a single key whose value is a map keyed by the mount
   destination, so there is no per-entry key left for `set` to name — and keeping the route for four
   categories while two refused would have been two rules for one shape.
 

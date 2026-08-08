@@ -53,47 +53,73 @@ class TestLoadCommonRooting:
     def test_load_common_emits_rooted_ref(self, declfile):
         """T2 — a bare leaf is STORED as the agent DECLARATION ROOT ref.
 
+        ⚑ ONE TERMINAL key ``agent.<a>.common`` holds BOTH rows, keyed by box
+        DESTINATION (2026-08-08c) — the entry name is gone.
+
         (Mutation: ``agent_category_dirname('common')`` -> "" → the ``/common/``
         segment vanishes → RED.)"""
+        package, filename = declfile(
+            "common:\n"
+            "  - host_src: plugins\n"
+            "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
+            "  - host_src: cache\n"
+            "    box_dest: \"$GUEST_HOME/.claude/cache\"\n"
+        )
+        common_binds = agent_defaults.load_common(package, filename, "claude")
+        assert common_binds == {
+            "agent.claude.common": {
+                "/home/agent/.claude/plugins": (
+                    "@meta.agent.claude.path/common/plugins",
+                ),
+                "/home/agent/.claude/cache": (
+                    "@meta.agent.claude.path/common/cache",
+                ),
+            },
+        }
+
+    def test_rooted_ref_is_built_from_host_src_not_dest(self, declfile):
+        """T3 — ``box_dest`` names the entry, ``host_src`` is the PATH leaf that
+        gets rooted, and the two are INDEPENDENT.
+
+        They are coincidentally related for claude's shipped rows; keeping them
+        independent is what lets an override repoint the SOURCE without moving
+        the destination.  (Mutation: build the ref from the ``box_dest`` leaf →
+        the source becomes ``…/common/p`` → RED.)"""
+        package, filename = declfile(
+            "common:\n"
+            "  - host_src: plugins\n"
+            "    box_dest: \"$GUEST_HOME/.claude/p\"\n"
+        )
+        common_binds = agent_defaults.load_common(package, filename, "claude")
+        assert list(common_binds) == ["agent.claude.common"]
+        arm = common_binds["agent.claude.common"]
+        assert list(arm) == ["/home/agent/.claude/p"]
+        assert arm["/home/agent/.claude/p"][0] == (
+            "@meta.agent.claude.path/common/plugins"
+        )
+
+    def test_leftover_entry_name_is_refused(self, declfile):
+        """A ``key:`` under ``common:`` is REFUSED, not ignored.
+
+        ``agent.<a>.common`` is TERMINAL and dest-keyed, so an entry name names
+        NOTHING; a plugin written against the retired contract must fail loudly
+        rather than keep loading under a shape it no longer declares.
+
+        (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
+        name is silently discarded → RED.)"""
         package, filename = declfile(
             "common:\n"
             "  - key: plugins\n"
             "    host_src: plugins\n"
             "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
-            "  - key: cache\n"
-            "    host_src: cache\n"
-            "    box_dest: \"$GUEST_HOME/.claude/cache\"\n"
         )
-        common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert common_binds == {
-            "agent.claude.common.plugins": (
-                "@meta.agent.claude.path/common/plugins",
-                "/home/agent/.claude/plugins",
-            ),
-            "agent.claude.common.cache": (
-                "@meta.agent.claude.path/common/cache",
-                "/home/agent/.claude/cache",
-            ),
-        }
-
-    def test_rooted_ref_is_built_from_host_src_not_key(self, declfile):
-        """T3 — ``key`` names the KEYSPACE entry, ``host_src`` is the PATH leaf.
-
-        They are coincidentally equal for claude's shipped rows; keeping them
-        independent is what lets an override repoint the source without renaming
-        the key.  (Mutation: build the ref from ``entry['key']`` → the source
-        becomes ``…/common/p`` → RED.)"""
-        package, filename = declfile(
-            "common:\n"
-            "  - key: p\n"
-            "    host_src: plugins\n"
-            "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
-        )
-        common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert list(common_binds) == ["agent.claude.common.p"]
-        assert common_binds["agent.claude.common.p"][0] == (
-            "@meta.agent.claude.path/common/plugins"
-        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_common(package, filename, "claude")
+        msg = str(e.value)
+        assert filename in msg
+        assert "agent.claude.common" in msg
+        assert "plugins" in msg
+        assert "RETIRED" in msg
 
     @pytest.mark.parametrize(
         "src",
@@ -107,28 +133,29 @@ class TestLoadCommonRooting:
         these gains an ``@meta.agent.*`` prefix → RED.)"""
         package, filename = declfile(
             "common:\n"
-            "  - key: thing\n"
-            f"    host_src: \"{src}\"\n"
+            f"  - host_src: \"{src}\"\n"
             "    box_dest: \"$GUEST_HOME/.thing\"\n"
         )
         common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert common_binds["agent.claude.common.thing"][0] == src
+        assert common_binds["agent.claude.common"]["/home/agent/.thing"][0] == src
 
     def test_options_are_preserved_on_a_rooted_entry(self, declfile):
-        """A 3-tuple (explicit mount options) roots its source the same way."""
+        """Explicit mount options ride as element 1 and root the source the same
+        way — under dest-keying the dest left the VALUE, so the entry is a
+        2-element ``(src, options)`` rather than the retired 3-element form."""
         package, filename = declfile(
             "common:\n"
-            "  - key: plugins\n"
-            "    host_src: plugins\n"
+            "  - host_src: plugins\n"
             "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
             "    options: ro\n"
         )
         common_binds = agent_defaults.load_common(package, filename, "claude")
-        assert common_binds["agent.claude.common.plugins"] == (
-            "@meta.agent.claude.path/common/plugins",
-            "/home/agent/.claude/plugins",
-            "ro",
-        )
+        assert common_binds["agent.claude.common"] == {
+            "/home/agent/.claude/plugins": (
+                "@meta.agent.claude.path/common/plugins",
+                "ro",
+            ),
+        }
 
     def test_no_common_block_yields_empty(self, declfile):
         package, filename = declfile("descriptor: {}\n")
@@ -139,21 +166,23 @@ class TestLoadCommonRooting:
         never share a store dir."""
         package, filename = declfile(
             "common:\n"
-            "  - key: k\n"
-            "    host_src: leaf\n"
+            "  - host_src: leaf\n"
             "    box_dest: \"$GUEST_HOME/.k\"\n"
         )
         got = agent_defaults.load_common(package, filename, "goose")
-        assert got["agent.goose.common.k"][0] == "@meta.agent.goose.path/common/leaf"
+        assert got["agent.goose.common"]["/home/agent/.k"][0] == (
+            "@meta.agent.goose.path/common/leaf"
+        )
 
 
 class TestCategoryBindsTakeNoRoot:
-    """``bindings.{ro,rw}`` take NO root at any scope (spec §2a), so a bare
-    relative source there is a plugin DEFECT — refused, not silently rooted.
+    """A ``category_binds:`` entry takes NO root at any scope (spec §2a), so a
+    bare relative source there is a plugin DEFECT — refused, not silently rooted.
 
-    ⚑ The refusal is the SAME for both shapes ``category_binds:`` can emit (the
-    dest-keyed arm and the four name-keyed families), so it is exercised on both:
-    it is a property of the SOURCE, not of the key shape.
+    ⚑ The refusal is a property of the SOURCE, not of the category, so it is
+    exercised on BOTH an ARMED category (``bindings.ro``) and a bare one
+    (``caches``).  Since 2026-08-08c the two have the same dest-keyed shape, but
+    they still reach ``add_bind`` by different-looking category spellings.
     """
 
     def test_relative_arm_bind_is_refused(self, declfile):
@@ -173,18 +202,20 @@ class TestCategoryBindsTakeNoRoot:
         assert "some/relative/path" in msg
         assert filename in msg
 
-    def test_relative_name_keyed_bind_is_refused(self, declfile):
+    def test_relative_bare_category_bind_is_refused(self, declfile):
+        """The same refusal on a NON-armed category, which names the terminal key
+        and the destination that identifies the entry."""
         package, filename = declfile(
             "category_binds:\n"
             "  - category: caches\n"
-            "    key: guide\n"
             "    meta_ref: some/relative/path\n"
             "    box_dest: \"$GUEST_HOME/.guide\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
         msg = str(e.value)
-        assert "agent.claude.caches.guide" in msg
+        assert "agent.claude.caches" in msg
+        assert "/home/agent/.guide" in msg
         assert "some/relative/path" in msg
         assert filename in msg
 
@@ -194,29 +225,31 @@ class TestCategoryBindsTakeNoRoot:
     def test_self_resolving_category_bind_is_accepted(self, declfile, src):
         """A source that resolves on its own is stored VERBATIM.
 
-        ⚑ VEHICLED ON ``caches`` DELIBERATELY. This test is about the SOURCE, and
-        ``caches`` is one of the four categories that stay NAME-KEYED — so it keeps
-        pinning ``@``-ref/absolute/``$var`` source handling without also pinning the
-        bindings arm shape, which moved 2026-08-06c and is pinned by
-        ``TestCategoryBindsAreDestKeyed`` below.
+        ⚑ VEHICLED ON ``caches`` DELIBERATELY. This test is about the SOURCE, so
+        it runs on a BARE category rather than on a ``bindings`` arm — the arm
+        shape is pinned by ``TestCategoryBindsAreDestKeyed`` below, and keeping
+        the two vehicles apart is what stops one edit from re-pinning both.
         """
         package, filename = declfile(
             "category_binds:\n"
             "  - category: caches\n"
-            "    key: guide\n"
             f"    meta_ref: \"{src}\"\n"
             "    box_dest: \"$GUEST_HOME/.guide\"\n"
             "    ro: true\n"
         )
         binds = agent_defaults.load_category_binds(package, filename, "claude")
         assert binds == {
-            "agent.claude.caches.guide": (src, "/home/agent/.guide", "ro"),
+            "agent.claude.caches": {"/home/agent/.guide": (src, "ro")},
         }
 
 
 class TestCategoryBindsAreDestKeyed:
-    """A ``bindings.{ro,rw}`` declaration lands in the TERMINAL ARM key, keyed by
-    box DESTINATION (spec §2a; disk-store rework R-5/R-10/R-11).
+    """EVERY ``category_binds:`` declaration lands in a TERMINAL category key,
+    keyed by box DESTINATION (spec §2a; disk-store rework R-5/R-10/R-11).
+
+    ``bindings.{ro,rw}`` flipped 2026-08-06c and ``caches`` / ``seeded`` /
+    ``common`` / ``synced`` followed 2026-08-08c, so there is now ONE shape and no
+    selection between two.
 
     This is the PUBLISHED third-party plugin contract. The retired shape
     (``agent.<a>.bindings.ro.<name>`` → ``(src, dest[, "ro"])``) is what
@@ -262,10 +295,11 @@ class TestCategoryBindsAreDestKeyed:
         }
 
     def test_entries_group_into_one_arm_per_category(self, declfile):
-        """All entries of ONE arm live under ONE key — the arm is TERMINAL, so a
-        second entry EXTENDS the map rather than adding a sibling key.
+        """All entries of ONE category live under ONE key — the category is
+        TERMINAL, so a second entry EXTENDS the map rather than adding a sibling
+        key.  ⚑ Exercised across an ARMED category and a bare one together.
 
-        (Mutation: emit one key per entry → four keys instead of two → RED.)"""
+        (Mutation: emit one key per entry → four keys instead of three → RED.)"""
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
@@ -279,7 +313,6 @@ class TestCategoryBindsAreDestKeyed:
             "    meta_ref: \"@system.channelroot/c\"\n"
             "    box_dest: \"$GUEST_HOME/.c\"\n"
             "  - category: caches\n"
-            "    key: cch\n"
             "    meta_ref: \"@system.channelroot/d\"\n"
             "    box_dest: \"$GUEST_HOME/.d\"\n"
         )
@@ -292,9 +325,9 @@ class TestCategoryBindsAreDestKeyed:
             "agent.goose.bindings.rw": {
                 "/home/agent/.c": ("@system.channelroot/c",),
             },
-            "agent.goose.caches.cch": (
-                "@system.channelroot/d", "/home/agent/.d",
-            ),
+            "agent.goose.caches": {
+                "/home/agent/.d": ("@system.channelroot/d",),
+            },
         }
 
     @pytest.mark.parametrize(
@@ -346,13 +379,18 @@ class TestCategoryBindsAreDestKeyed:
         assert "/home/agent/slot" in msg
         assert "agent.claude.bindings.ro" in msg
 
-    @pytest.mark.parametrize("category", ["bindings.ro", "bindings.rw"])
+    @pytest.mark.parametrize(
+        "category",
+        ["bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced"],
+    )
     def test_leftover_entry_name_is_refused(self, declfile, category):
-        """A ``key:`` under a bindings category is REFUSED, not ignored.
+        """A ``key:`` under ANY bind-shaped category is REFUSED, not ignored.
 
         Ignoring it is the worst of the three outcomes: a plugin written against
         the retired contract would keep LOADING while binding under a key it never
-        declared.
+        declared.  ⚑ All SIX categories, because all six are dest-keyed now — the
+        four that flipped 2026-08-08c are exactly the ones a third-party plugin
+        is most likely to still spell the retired way.
 
         (Mutation: drop the ``if "key" in entry`` raise → the entry loads and the
         name is silently discarded → RED.)"""

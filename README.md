@@ -759,9 +759,9 @@ tweakcc:
 - `tweakcc:` -- optional tweakcc integration for binary patching
   (see [docs/tweakcc.md](docs/tweakcc.md))
 
-Per-agent common dirs/caches are declared by the plugin (`agent.<agent>.common.*` /
-`agent.<agent>.caches.*`) and served from the per-agent store dir
-(`agents/<agent>/{common,caches}/<name>`).
+Per-agent common dirs/caches are declared by the plugin (`agent.<agent>.common` /
+`agent.<agent>.caches` — one key per category, holding a map keyed by box destination) and
+served from the per-agent store dir (`agents/<agent>/{common,caches}/<name>`).
 
 Manage agent settings via the CLI:
 
@@ -986,8 +986,10 @@ All kanibako config/settings files are YAML.
 | `enable_vault` | `true` | Enable vault directories |
 | `env.*` | | Persistent environment variables (`<scope>.env.<VAR>`) |
 | `<scope>.bindings.ro` / `.rw` | | Scoped bind-mounts. ⚑ **Settings-file only** — one key per arm, holding a map keyed by box destination. There is no `.<name>` sub-key and no `config set` route; `config get` reads it |
-| `<scope>.caches.*` | | Scoped cache mounts (`host_src:box_dest`) |
-| `<scope>.seeded.*` | | Copy-once seeds applied at box init |
+| `<scope>.caches` | | Scoped cache mounts — same shape: one key, `{box_dest: [host_src[, options]]}`, settings-file only |
+| `<scope>.common` | | Shared dirs mounted rw — same shape |
+| `<scope>.seeded` | | Copy-once seeds applied at box init — same shape; a COPY, not a mount |
+| `<scope>.synced` | | Per-launch mtime-gated copies — same shape; a COPY, not a mount |
 
 ### Global config file
 

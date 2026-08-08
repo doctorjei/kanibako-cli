@@ -326,7 +326,7 @@ def _ensure_initialized() -> None:
     # and is installed here into its ENUMERATED destinations (@system.template's box
     # + workset moulds, @system.canon/handbook, and every agent store under
     # @config.agents), create-if-absent so user edits survive an upgrade.  The
-    # layered seed-once apply (the three ``seeded.template`` keystore keys, staged by
+    # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
     # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
     # the box HOME moulds into each new box store at creation; the box handbook chapter
     # is a SEPARATE host-side copy (``templates.install_box_handbook_template``) and is

@@ -244,22 +244,69 @@ def agent_common_for_node(
 
     A BARE agent (``node_name == harness``) gets the IDENTITY back — byte-identical
     to the plugin's table, so nothing about a non-persona launch changes.
-    """
-    from kanibako.settings.agent_config import agent_category_root_ref
 
+    ⚑⚑ **THE TABLE IS DEST-KEYED (2026-08-08c), AND THE KEY TEST MOVED WITH IT.**
+    ``common`` is a TERMINAL key, so the table holds ONE entry
+    ``agent.<harness>.common -> {box_dest: (host_src[, opts])}`` and the re-key is
+    an EXACT match on that key, not a PREFIX match on ``agent.<harness>.common.``.
+    Getting that backwards is not a cosmetic slip: a trailing-dot prefix test can
+    never match the terminal key, so the whole function would silently no-op and a
+    persona box would lose ``~/.claude/plugins`` and ``~/.claude/cache`` again —
+    the exact bug this function exists to fix.
+    The re-root then walks the map's VALUES; the destinations (its keys) are
+    untouched, because a persona and its harness deliver to the SAME in-box path.
+    """
     if not node_name or node_name == harness:
         return dict(table)
-    harness_root = agent_category_root_ref(harness, "common") + "/"
-    node_root = agent_category_root_ref(node_name, "common") + "/"
-    prefix = f"agent.{harness}.common."
+    node_root = harness_common_root(node_name) + "/"
+    category_key = f"agent.{harness}.common"
+    new_category_key = f"agent.{node_name}.common"
     out: "dict[str, tuple]" = {}
     for key, value in table.items():
-        if not key.startswith(prefix):
+        if key != category_key or not isinstance(value, dict):
             out[key] = value  # not this harness's common — leave untouched.
             continue
-        new_key = f"agent.{node_name}.common.{key[len(prefix):]}"
-        host_src = value[0]
-        if isinstance(host_src, str) and host_src.startswith(harness_root):
-            host_src = node_root + host_src[len(harness_root):]
-        out[new_key] = (host_src, *value[1:])
+        rekeyed = {}
+        for dest, entry in value.items():
+            host_src = entry[0]
+            leaf = harness_common_leaf(host_src, harness)
+            if leaf is not None:
+                host_src = node_root + leaf
+            rekeyed[dest] = (host_src, *entry[1:])
+        out[new_category_key] = rekeyed
     return out
+
+
+def harness_common_root(node: str) -> str:
+    """The ``@``-ref declaration root of *node*'s agent-scope ``common`` store."""
+    from kanibako.settings.agent_config import agent_category_root_ref
+
+    return agent_category_root_ref(node, "common")
+
+
+def harness_common_leaf(host_src: object, harness: str) -> str | None:
+    """The store-dir LEAF *host_src* names under *harness*'s ``common`` root.
+
+    ``@meta.agent.claude.path/common/plugins`` → ``"plugins"`` for harness
+    ``claude``; anything else → ``None``.
+
+    ⚑ THE ONE PLACE THIS RULE IS WRITTEN, and it has two consumers that would
+    otherwise each invent it: :func:`agent_common_for_node`, which re-roots a
+    persona's inherited source, and ``commands.start.ensure_persona_share_symlinks``,
+    which needs the same dirname to lay the symlink shim. Before 2026-08-08c both
+    read it off the KEY (``agent.<a>.common.<leaf>``); dest-keying removed the
+    entry name, so the rooted ``host_src`` is the only remaining carrier.
+
+    ⚑ DELIBERATELY NARROW, and the narrowness IS the contract: only a source that
+    is EXACTLY the harness's declaration root for this category yields a leaf. An
+    absolute / ``~`` / ``$var`` / unrelated ``@``-ref source is the plugin saying
+    "this specific path", not "my store dir" (spec §2a — such a source is
+    self-resolving by the plugin's own choice), so it has no store leaf and gets
+    ``None``. A caller must treat ``None`` as "nothing to re-root / nothing to
+    shim", never as a parse failure.
+    """
+    root = harness_common_root(harness) + "/"
+    if not isinstance(host_src, str) or not host_src.startswith(root):
+        return None
+    leaf = host_src[len(root):]
+    return leaf or None

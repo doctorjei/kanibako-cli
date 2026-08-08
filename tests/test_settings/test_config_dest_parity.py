@@ -412,18 +412,41 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
     disagreed, and `3b67e61` recorded fixing it as its own future change rather than
     doing it inside a behavior-preserving commit.
 
-    DS-BL1 = (a) removed the write route for every bind-shaped category, so no
-    ``_CATEGORY`` slot reaches ``_write_dest`` any more and there is no write left to
-    disagree with the read. This class now pins BOTH halves of that statement, so
-    neither can change silently:
+    ⚑⚑ EDITED DELIBERATELY, 2026-08-08c, AND THAT IS THIS MODULE'S CHARTER, NOT AN
+    EXCEPTION TO IT. The charter forbids a refactor SILENTLY "fixing" these cases
+    and requires a change that fixes them to edit the case and say so. The behaviour
+    changed, so the cases changed, and this is the saying-so. ⚑ Note WHICH change:
+    **the arm was not repaired — the SPELLING these cases drove was retired out from
+    under it.**
+
+    DS-BL1 = (a) removed the CLI write route for every bind-shaped category, and the
+    2026-08-08c dest-keyed flip then removed the per-entry KEY itself. Three facts
+    hold now, and this class pins each so none can move silently:
 
     1. the VERBS refuse and move nothing (the write half is gone);
-    2. the ARM still exists in ``_write_dest`` as a function (kept with its
-       ``agent_scope_to_config`` flag and this bench's read/write parity, because
-       collapsing it merges the two wrappers — an OWED, separate pass).
+    2. the per-entry spelling ``agent.<node>.<category>.<name>`` REACHES NO SLOT AT
+       ALL — both wrappers answer ``None``, because ``_key_slot`` has no agent-scope
+       per-entry term and ``_is_path_category_key`` fails closed for every key. This
+       is the fact that CHANGED, and it is now pinned in its own case rather than
+       being the incidental input to the two below;
+    3. the ARM ITSELF STILL EXISTS in ``_write_dest``, with its
+       ``agent_scope_to_config`` flag and the read/write divergence intact —
+       MEASURED, not assumed. What reaches it now is the TERMINAL key
+       ``agent.<node>.<category>``, for which ``_write_dest`` still answers the
+       command's own config file while ``_read_dest`` answers the noun's settings
+       file. The divergence the class is named for is alive at a different spelling.
 
-    ⚑ When that collapse lands, THIS CLASS is the thing to edit, deliberately, in
-    that commit. It must never change as a side effect.
+    ⚑ SO ``_CATEGORY`` IS NOT DEAD, and nothing here should be read as saying it is.
+    ``_key_slot`` still returns it for EVERY terminal category key at every scope,
+    and for every FILE-scope per-entry spelling (``box.caches.x``, via
+    ``_is_scope_bind_key``). What died is the AGENT-scope per-entry spelling alone;
+    what is unreachable FROM THE VERBS is any route that carries a ``_CATEGORY`` slot
+    into ``_write_dest``.
+
+    ⚑⚑ WHEN THE OWED PASSES LAND, THIS CLASS IS THE THING TO EDIT, DELIBERATELY, IN
+    THAT COMMIT: the ``_write_dest``/``_read_dest`` collapse (which deletes the
+    divergence case 3 pins) and QA′ (which deletes ``config_dest._CATEGORY`` and
+    ``settings_configset.repoint_host_src``). It must never change as a side effect.
     """
 
     def test_the_verbs_refuse_and_move_nothing(self, bench):
@@ -439,12 +462,42 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
         assert bench.changed(before) == {}, bench.changed(before)
         assert not (bench.agents / "claude" / "settings.yaml").exists()
 
-    def test_the_broken_arm_still_exists_at_the_function_level(self, bench):
-        """The arm itself, called directly — the read/write divergence the two
-        wrappers still carry. Unreachable through a verb; NOT yet deleted."""
+    def test_the_per_entry_spelling_reaches_no_slot(self, bench):
+        """⚑ THE NEW FACT, PINNED IN ITS OWN CASE (2026-08-08c). The two cases below
+        used to drive ``agent.claude.caches.pip``; that spelling is not a key at any
+        scope any more, so it claims no slot and both wrappers answer ``None``. Kept
+        as an assertion rather than dropped, because "it returns None" is the
+        precise, checkable statement of what replaced the broken destination.
+
+        ⚑ NOT VACUOUS ON A TYPO: the ``None`` here would look identical for a
+        misspelled key, so the case below drives the TERMINAL spelling of the SAME
+        category and gets a real route back. The pair is what discriminates "this
+        spelling stopped being a key" from "nothing in this family routes".
+        """
         from kanibako.settings.config_dest import _read_dest, _write_dest
 
-        key = "agent.claude.caches.pip"
+        for cat in ("caches", "common", "seeded", "synced"):
+            key = f"agent.claude.{cat}.pip"
+            for wrapper in (_write_dest, _read_dest):
+                assert wrapper(
+                    key, command_scope=ConfigLevel.system,
+                    config_path=bench.cf, settings_path=bench.ssp,
+                ) is None, (wrapper.__name__, key)
+
+    def test_the_broken_arm_still_exists_at_the_function_level(self, bench):
+        """The arm itself, called directly — the read/write divergence the two
+        wrappers still carry. Unreachable through a verb; NOT yet deleted.
+
+        ⚑ THE KEY MOVED, THE ARM DID NOT. This drove the per-entry
+        ``agent.claude.caches.pip`` until that spelling stopped being a key; the
+        TERMINAL ``agent.claude.caches`` is what reaches the arm now (via
+        ``_key_slot``'s ``is_terminal_category_tail`` term), and it diverges exactly
+        as before — ``_write_dest`` at the command's own config file, which no
+        cascade level reads, and ``_read_dest`` at the noun's settings file.
+        """
+        from kanibako.settings.config_dest import _read_dest, _write_dest
+
+        key = "agent.claude.caches"
         w = _write_dest(
             key, command_scope=ConfigLevel.system,
             config_path=bench.cf, settings_path=bench.ssp,
@@ -456,16 +509,32 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
         assert w is not None and r is not None
         assert w.file == bench.cf          # the file no cascade level reads
         assert r.file == bench.ssp         # the noun's settings file
-        assert w.sections == r.sections == ("agent", "claude", "caches")
-        assert w.leaf == r.leaf == "pip"
+        assert w.sections == r.sections == ("agent", "claude")
+        assert w.leaf == r.leaf == "caches"
 
     def test_get_reads_the_noun_settings_file(self, bench):
         """The surviving arm. Seeding BOTH candidates with different values makes
         the assertion name a FILE rather than a value: only the settings-file value
-        can come back."""
-        bench.seed(bench.cf, ("agent", "claude", "caches"), "pip", "FROM_CF")
-        bench.seed(bench.ssp, ("agent", "claude", "caches"), "pip", "FROM_SSP")
-        assert bench.get(ConfigLevel.system, "agent.claude.caches.pip") == "FROM_SSP"
+        can come back.
+
+        ⚑ RE-POSED ON THE TERMINAL KEY for the same reason as the case above — the
+        per-entry spelling now reads ``None`` from either file, which would have
+        turned this into an assertion that no file wins.
+
+        ⚑⚑ AND THE FILE IT NAMES IS THE KNOWN-WRONG ONE, WHICH IS THE POINT OF A
+        CHARACTERIZATION ORACLE. ``config_dest._read_dest``'s own docstring measures
+        it: the agent tier is assembled from ``agents/<node>/settings.yaml``'s
+        ``self.<node>`` table, so a hand-authored value there reads back "(not set)"
+        while a stray ``agent.claude.caches`` in the system settings file wins —
+        exactly what this asserts. Re-pointing it is the OWED pass that moves
+        ``agent_config.agent_file_route``; when it lands, THIS case goes red and must
+        be edited to name the node file, deliberately, in that commit.
+        """
+        bench.seed(bench.cf, ("agent", "claude"), "caches", {"/box/c": ["FROM_CF"]})
+        bench.seed(bench.ssp, ("agent", "claude"), "caches", {"/box/c": ["FROM_SSP"]})
+        got = bench.get(ConfigLevel.system, "agent.claude.caches") or ""
+        assert "FROM_SSP" in got, got
+        assert "FROM_CF" not in got, got
 
 
 # ---------------------------------------------------------------------------

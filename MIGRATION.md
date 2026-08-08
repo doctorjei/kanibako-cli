@@ -940,11 +940,11 @@ keys symmetrically — a reset is a write.
 
 Only the *write verb* is gone.
 
-**Why there is no replacement command.** A `bindings.{ro,rw}` arm is becoming a single key whose
+**Why there is no replacement command.** A `bindings.{ro,rw}` arm **is** a single key whose
 value is a map keyed by the mount **destination**, and the destinations inside that map are values,
 not key segments. So there is no per-entry key for `set` to name — not a route that moved, a route
 that no longer has anything to address. Rather than invent a spelling that would have to be retired
-again, the refusal names the real surface: the file.
+again, the refusal names the real surface: the file. §2.23 covers the stored shape itself.
 
 **The cure.** Edit the settings file for the scope you want, and re-launch the box. For a box-scope
 bind that is the box's own settings file; for an agent-node bind it is
@@ -969,15 +969,16 @@ Both now refuse, naming the key and pointing at the settings file, exactly as th
 `bindings.ro`, `bindings.rw`, `caches`, `seeded`, `common` or `synced`. If it does, and the script
 *writes* it, the write now refuses.
 
-**What is genuinely unaffected, for all six.** Everything in the previous paragraph still holds:
-the keys are still declared, still read by the launch cascade so every existing entry keeps being
-delivered, still authored by hand in the settings YAML, and **`config get` still reads them**. Only
-the write verb is gone.
+**What is genuinely unaffected, for all six.** The categories are still declared, still read by the
+launch cascade so every entry keeps being delivered, still authored by hand in the settings YAML,
+and **still readable** — but ⚑ read them at the CATEGORY key now (`kanibako box get box.caches`),
+which returns the whole map. The per-entry spelling `box.caches.<name>` is not a key any more, so
+`get` no longer reads one either; §2.23 explains why and shows the file shape.
 
-**Why the repoint went too.** The same reason the arms lost theirs: these categories are becoming
-single keys whose value is a map keyed by the mount **destination**, so there is no per-entry key
-left for `set` to name. Keeping a write route for four categories while the other two refused would
-have meant two rules for one shape.
+**Why the repoint went too.** The same reason the arms lost theirs: these categories **are** single
+keys whose value is a map keyed by the mount **destination**, so there is no per-entry key left for
+`set` to name. Keeping a write route for four categories while the other two refused would have
+meant two rules for one shape.
 
 ---
 
@@ -1090,6 +1091,73 @@ box.
 
 ---
 
+### 2.23 Bind entries are keyed by DESTINATION; entry names are gone
+
+**What changed.** Every bind-shaped category — `bindings.ro`, `bindings.rw`, `caches`, `seeded`,
+`common`, `synced` — is now a **single key** whose value is a map from the box **destination** to
+`[host_src]`. The entry NAME no longer exists anywhere.
+
+```yaml
+# v1.7.x — name-keyed: the name is the key, the destination is inside the value
+box:
+  caches:
+    npm:  ["/host/npm-cache", "~/.npm"]
+    pip:  ["/host/pip-cache", "~/.cache/pip", "Z,U"]
+
+# v1.8.0 — dest-keyed: the destination IS the key
+box:
+  caches:
+    "~/.npm":       ["/host/npm-cache"]
+    "~/.cache/pip": ["/host/pip-cache", "Z,U"]
+```
+
+The value's optional second element is still the mount options, exactly as before.
+
+**⚑ You must edit your settings files. There is no shim.** v1.8.0 is a deliberate clean break, so
+kanibako does not read the old shape and does not rewrite it for you. A file still in the old shape
+is **refused loudly**, naming the entry and the category — it is not silently ignored, and it does
+not half-load.
+
+**Where to look.** Any settings YAML you have hand-written: the system settings file, a workset's,
+a box's, and `agents/<node>/settings.yaml`. Check for a `caches:`, `seeded:`, `common:` or `synced:`
+table whose sub-keys are names rather than paths. (`bindings.ro` / `bindings.rw` already moved to
+this shape earlier in v1.8.0 — see §2.20 and §2.21.)
+
+**Two entries that shared a destination cannot both survive.** The destination is now the identity,
+so a category cannot hold two entries at one path. If you had two names pointing at the same
+destination, keep the one you meant; kanibako refuses the pair rather than silently dropping one.
+(*Different* categories, or different scopes, at one destination are unaffected — those are
+different keys, and the collision table in §2.2 decides between them exactly as before.)
+
+**Reading a category.** `config get` reads the CATEGORY key and returns the whole map:
+
+```
+kanibako box get box.caches                # the map
+kanibako box get box.caches.npm            # NOT a key any more — refused, naming the category
+```
+
+This also fixes a gap: `box.bindings.ro`, `box.bindings.rw` and `box.masks` previously read back
+`(not set)` even when set, because nothing claimed the bare key. All seven now read.
+
+**Seed and sync destinations moved to guest spelling.** The three template seed layers
+(`system.seeded` / `agent.<agent>.seeded` / `workset.seeded`) target `~/` instead of a host path
+under the box store, and kanibako resolves that to the box store when the copy runs.
+**Nothing about where your files land changes.** If you had declared a `seeded` or `synced` entry
+with an absolute *host* destination, respell it as the guest path you actually want written.
+
+**⚑ `seeded` and `synced` are still COPIES.** They share a way of writing an entry down with
+`bindings`; that says nothing about what is done with it. A seed still copies once at `create` and
+never clobbers existing content, and a `synced` entry is still re-copied per launch behind its mtime
+gate.
+
+**Why.** A destination can be bound exactly once, so it is the thing that actually identifies an
+entry — while a name was free-floating: two names could claim one destination with nothing able to
+tell which was meant, and renaming an entry silently created a second one. Keying by destination
+makes the ambiguity **unrepresentable** rather than merely detected, and it makes one shape serve
+all six categories instead of two shapes that were 2-element-legal with opposite meanings.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -1152,8 +1220,8 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    plugin's README or error strings tell a user to run `kanibako system set agent.<you>.bindings…`,
    that instruction now fails; point them at `agents/<node>/settings.yaml` instead. There is no CLI
    verb to substitute, so do not invent one.
-7. **BREAKING: `Target.default_category_binds()` declares a bindings ARM keyed by DESTINATION.**
-   The bindings half of that table changed shape. **Before** — one key per entry, carrying the
+7. **BREAKING: `Target.default_category_binds()`, `default_common()` and `default_seeds()` declare
+   EVERY category keyed by DESTINATION.** **Before** — one key per entry, carrying the
    entry NAME:
 
    ```python
@@ -1164,7 +1232,9 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
        }
    ```
 
-   **After** — the arm is a TERMINAL key whose whole value is a map keyed by the box destination:
+   **After** — the category is a TERMINAL key whose whole value is a map keyed by the box
+   destination. `agent.<agent>.bindings.{ro,rw}` for an armed category, and plain
+   `agent.<agent>.{caches,seeded,common,synced}` for the rest:
 
    ```python
    from kanibako.settings.settings_resolve import normalize_bind_dest
@@ -1181,8 +1251,8 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
 
    Four things to carry across:
 
-   - **The entry name is gone**, and all entries of one arm live under **one** key — so build the
-     map, don't emit a key apiece. A destination is data, not a key segment.
+   - **The entry name is gone**, and all entries of one category live under **one** key — so build
+     the map, don't emit a key apiece. A destination is data, not a key segment.
    - **Normalise every destination** with `normalize_bind_dest` (it is idempotent, and it is for
      destinations *only* — never call it on a `host_src`). This is not cosmetic. The arm key is
      matched as a **string** when tables merge, but it is resolved to a real path later, so an
@@ -1192,26 +1262,33 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
      destination at launch, where bindings are act-once and two of them is a hard
      `CategoryCollisionError` ("Two bindings target the same box destination"). You get a named
      launch failure, not a silent double mount — but you get it from the user's machine, not yours.
-   - **The four name-keyed bind categories are unaffected.** `common`, `caches`, `seeded` and
-     `synced` are still `agent.<agent>.<category>.<name>` → `(meta_ref, box_dest[, options])`.
-     That is why the return type is a mixed table.
+   - **`common`, `caches`, `seeded` and `synced` moved the same way**, one segment shallower —
+     `agent.<agent>.common` → `{box_dest: (host_src[, options])}`. The `BindDefault` type alias
+     (the old `(host_src, box_dest[, options])` tuple) is **gone**; `CategoryBindDefaults` is now a
+     uniform `dict[str, BindArm]` and `default_common()` / `default_seeds()` return the same shape.
+     ⚑ `seeded` and `synced` are still COPIES — the shared shape is about how an entry is written
+     down, never about what is done with it.
+   - **`kanibako.settings.core_defaults.add_bind` builds the map for you**, for all six: it
+     normalises the destination and refuses a second entry at one destination. Use it rather than
+     hand-rolling a dict.
    - **A user now overrides one of your entries by its DESTINATION**, since that is the key. If
      your docs tell users how to repoint a bind you declare, the spelling changed.
 
    **If you do nothing:** the old dotted key is **refused by name** when the launch floor is
-   assembled — it is not silently ignored, and there is no shim. ⚑ You may hit it at *type-check*
-   time first: `dict` is invariant in its value type, so an override still annotated
-   `dict[str, BindDefault]` is incompatible with the widened base return type **even if it declares
-   no bindings at all**. All three first-party plugins needed the annotation moved for exactly this
-   reason; nothing about their runtime output changed.
+   assembled — it is not silently ignored, and there is no shim. ⚑ You will hit it at *import* time
+   first: `BindDefault` no longer exists in `kanibako.targets.base`, so an override still annotated
+   `dict[str, BindDefault]` fails to import **even if it declares no binds at all**. Change the
+   annotation to `CategoryBindDefaults` (or `dict[str, BindArm]`).
 
    **If you declare binds in your `<agent>-defaults.yaml` `category_binds:` section** (what all
    three first-party plugins do, via `kanibako.settings.agent_defaults.load_category_binds`), you
-   get the arm shape for free — with one edit: **delete the `key:` line** from any row whose
-   `category` is `bindings.ro` / `bindings.rw`. It is now refused, naming the file, the arm key and
-   the destination. It is refused rather than dropped on purpose: ignoring it would let a plugin
+   get the map shape for free — with one edit: **delete every `key:` line**, from `category_binds:`
+   rows and from `common:` rows alike. A `key:` is now refused, naming the file, the category key
+   and the destination. It is refused rather than dropped on purpose: ignoring it would let a plugin
    written against the retired contract keep loading while producing a different key than it
-   declared. Rows for the other four categories keep their `key:`.
+   declared. ⚑ A `common:` row's `host_src` keeps its old meaning — the store leaf that gets rooted
+   under `@meta.agent.<agent>.path/common/` — and it is now also what tells kanibako which store dir
+   a persona shares with its harness, a job the retired `key:` used to do.
 
 ### 3.1 Core module paths moved (package-ification) — shims ship for one release
 

@@ -56,6 +56,31 @@ def entry(
 
     The key is what the table's outcomes and messages are stated in terms of, so
     two entries at one dest must never share one — hence *name* is required.
+
+    ⚑⚑ **QUARANTINE — THESE KEY STRINGS ARE NOT THE LIVE SPELLING.** In
+    production the last segment of a declaration key IS the destination (R-10):
+    ``_emit_bind_map`` passes one map key as both ``name`` and the key tail, so a
+    real key reads ``box.bindings.rw.~/workspace``, never ``box.bindings.rw.vault``.
+    The synthetic entries below still carry a distinct NAME token. That is DRIFT
+    left by the 2026-08-08c dest-keying flip, not a design: ``reconcile_categories``
+    and ``derive_binding_keys`` are pure functions over these fields and never read
+    the ``name``/``box_dest`` relationship, so nothing here raised and nothing went
+    red. **Do not copy these key strings anywhere as examples of a real key.**
+
+    Two consequences worth knowing while reading this file, both recorded rather
+    than papered over:
+
+    * no case here exercises the LIVE shape of a collision, where the two
+      participants' keys end in the SAME segment and differ only by scope and/or
+      category;
+    * ``test_same_category_same_scope_also_warns`` drives two entries at one dest
+      in ONE category at ONE scope. Under dest-keying that is one key holding one
+      entry per destination, so the arrangement can no longer arise at all — the
+      reachable row-5 case is the DIFFERENT-category pair its sibling test covers.
+
+    Repairing this means re-basing ~20 key/remedy-text assertions and deciding
+    what replaces that dissolved case; it is tracked separately and deliberately
+    NOT folded into the pref-origin repair below.
     """
     delivery = _DELIVERY[category]
     scope_token = "agent" if scope.startswith("agent") else scope
@@ -713,10 +738,44 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
 # ---------------------------------------------------------------------------
 # A collision on a PREF-INSTALLED declaration must name the REQUEST
 # ---------------------------------------------------------------------------
+#
+# ⚑⚑ THE FIXTURES BELOW WERE REWRITTEN 2026-08-08c AND THE OLD ONES WERE GREEN.
+# They spelled the pref target per-NAME (``pref.agent.claude.common.newthing``)
+# and carried a 2-element value ``("/src", "~/workspace")``. Both dissolved when
+# ``common`` / ``caches`` / ``seeded`` / ``synced`` joined ``bindings.{ro,rw}``
+# and ``masks`` as TERMINAL dest-keyed keys:
+#
+# * ``key_reason`` now REFUSES ``agent.claude.common.<name>`` outright, so
+#   ``apply_prefs`` would never have let that request through — the test drove a
+#   ``PrefRequest`` no collector can produce;
+# * the flip PRESERVED ARITY. A 2-element bind used to mean ``(host, box)``; a
+#   ``BindEntry`` means ``(src, opts)``. ``"~/workspace"`` sat where OPTIONS
+#   belong and nothing raised, because these tests never read the value at all.
+#
+# THE OLD GREEN WAS NOT EVIDENCE. Neither test exercised the shape it named, and
+# the enrichment they nominally covered had in fact stopped firing for all seven
+# dest-keyed categories. The negative cases below exist because the obvious
+# repair — a prefix match on the target — is green against the positive cases and
+# MISATTRIBUTES against these.
+
+
+def _pref_map(**entries):
+    """A dest-keyed category VALUE, shaped as ``_file_partial`` would parse it.
+
+    A ``KeyStore`` node of ``dest -> BindEntry(src, opts)``. Written as a helper
+    because the destinations are paths (``~/plugins``) and cannot be keyword
+    names — the caller passes ``{dest: BindEntry(...)}`` through ``**``-unpacking
+    of a literal dict instead.
+    """
+    from kanibako.settings.settings_store import KeyStore
+
+    return KeyStore(entries)
+
 
 class TestPrefOriginEnrichment:
-    """A collision names the DECLARATION key. When a pref installed it, that key
-    is one the user never wrote and cannot write — so the message must also name
+    """A collision names the DECLARATION key plus the entry's DEST. When a pref
+    installed it, that key is one the user never wrote and cannot write — the
+    dest lives INSIDE the value the pref carries — so the message must also name
     the request, or it sends them looking for a key in none of their files."""
 
     def test_the_error_names_the_installing_pref(self, tmp_path):
@@ -726,28 +785,193 @@ class TestPrefOriginEnrichment:
         from kanibako.commands.start import _annotate_pref_origin
         from kanibako.errors import CategoryCollisionError
         from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_store import BindEntry
 
         src = Path(tmp_path) / "box.yaml"
         exc = CategoryCollisionError(
             "two declarations at /home/agent/workspace",
             kind="extension_onto_occupied",
             box_dest="/home/agent/workspace",
-            entries=(("agent.claude.common.newthing", "/src"),
-                     ("box.bindings.rw.workspace", "/proj")),
+            entries=(("agent.claude.common.~/workspace", "/src"),
+                     ("box.bindings.rw.~/workspace", "/proj")),
         )
         prefs = [PrefRequest(
-            target="agent.claude.common.newthing", value=("/src", "~/workspace"),
+            target="agent.claude.common",
+            value=_pref_map(**{"~/workspace": BindEntry("/src", None)}),
             level="box", source=src,
         )]
         out = _annotate_pref_origin(exc, prefs)
         text = str(out)
-        assert "agent.claude.common.newthing' was installed by" in text
-        assert "'pref.agent.claude.common.newthing'" in text
+        # The ENTRY key is named in full (target + dest); the REQUEST is named in
+        # the only spelling the user can write.
+        assert "agent.claude.common.~/workspace' was installed by" in text
+        assert "'pref.agent.claude.common'" in text
         assert "box settings file" in text
         assert str(src) in text
         assert "edit or remove that request" in text
         # The structured fields survive so downstream consumers still work.
         assert out.kind == exc.kind and out.box_dest == exc.box_dest
+
+    def test_a_pref_on_the_category_that_omits_the_dest_is_not_blamed(self, tmp_path):
+        """THE MISATTRIBUTION GUARD — a prefix match on the target passes the
+        test above and FAILS here.
+
+        The declaration key's category was pref-targeted, but this request never
+        mentions the colliding destination: that entry came from the agent
+        settings file, the launch floor, or another level entirely. Naming this
+        file would send the user to edit a line that has nothing to do with the
+        collision, which is worse than saying nothing.
+        """
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_store import BindEntry
+
+        exc = CategoryCollisionError(
+            "two declarations at /home/agent/workspace",
+            kind="extension_onto_occupied",
+            box_dest="/home/agent/workspace",
+            entries=(("agent.claude.common.~/workspace", "/src"),
+                     ("box.bindings.rw.~/workspace", "/proj")),
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.common",
+            value=_pref_map(**{"~/elsewhere": BindEntry("/other", None)}),
+            level="box", source=Path(tmp_path) / "box.yaml",
+        )]
+        assert _annotate_pref_origin(exc, prefs) is exc
+
+    def test_the_level_that_DECLARES_the_dest_wins_not_the_last_one(self, tmp_path):
+        """Two requests on ONE category from two levels are told apart by which
+        one declares the destination — not by overlay order.
+
+        Box prefs outrank workset prefs, so a bare last-wins pick over everything
+        targeting the category names the BOX file here. But the box request
+        declares a different destination; the colliding entry can only have come
+        from the workset one.
+        """
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_store import BindEntry
+
+        ws = Path(tmp_path) / "workset.yaml"
+        box = Path(tmp_path) / "box.yaml"
+        exc = CategoryCollisionError(
+            "two declarations at /home/agent/workspace",
+            kind="extension_onto_occupied",
+            box_dest="/home/agent/workspace",
+            entries=(("agent.claude.common.~/workspace", "/src"),
+                     ("box.bindings.rw.~/workspace", "/proj")),
+        )
+        # APPLICATION ORDER: workset first, box second (``collect_prefs``).
+        prefs = [
+            PrefRequest(
+                target="agent.claude.common",
+                value=_pref_map(**{"~/workspace": BindEntry("/src", None)}),
+                level="workset", source=ws,
+            ),
+            PrefRequest(
+                target="agent.claude.common",
+                value=_pref_map(**{"~/elsewhere": BindEntry("/other", None)}),
+                level="box", source=box,
+            ),
+        ]
+        text = str(_annotate_pref_origin(exc, prefs))
+        assert "workset settings file" in text
+        assert str(ws) in text
+        assert str(box) not in text
+
+    def test_when_both_levels_declare_the_dest_the_BOX_request_is_named(
+        self, tmp_path,
+    ):
+        """Last-wins is still the tie-break, because that is the overlay order:
+        ``BOX_PREFS`` sits above ``WORKSET_PREFS`` (spec §1A)."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_store import BindEntry
+
+        ws = Path(tmp_path) / "workset.yaml"
+        box = Path(tmp_path) / "box.yaml"
+        exc = CategoryCollisionError(
+            "two declarations at /home/agent/workspace",
+            kind="extension_onto_occupied",
+            box_dest="/home/agent/workspace",
+            entries=(("agent.claude.common.~/workspace", "/src"),),
+        )
+        prefs = [
+            PrefRequest(
+                target="agent.claude.common",
+                value=_pref_map(**{"~/workspace": BindEntry("/ws", None)}),
+                level="workset", source=ws,
+            ),
+            PrefRequest(
+                target="agent.claude.common",
+                value=_pref_map(**{"~/workspace": BindEntry("/box", None)}),
+                level="box", source=box,
+            ),
+        ]
+        text = str(_annotate_pref_origin(exc, prefs))
+        assert "box settings file" in text
+        assert str(box) in text
+        assert str(ws) not in text
+
+    def test_a_SUPPRESSING_null_entry_is_never_an_origin(self, tmp_path):
+        """Present-``None`` at a dest REMOVES the entry (§2h / §6e); it installs
+        nothing. A surviving entry at that dest is somebody else's, so blaming
+        the suppression would point at the one line that was trying to get rid
+        of it."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.settings_prefs import PrefRequest
+
+        exc = CategoryCollisionError(
+            "two declarations at /home/agent/workspace",
+            kind="extension_onto_occupied",
+            box_dest="/home/agent/workspace",
+            entries=(("agent.claude.common.~/workspace", "/src"),),
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.common",
+            value=_pref_map(**{"~/workspace": None}),
+            level="box", source=Path(tmp_path) / "box.yaml",
+        )]
+        assert _annotate_pref_origin(exc, prefs) is exc
+
+    def test_a_per_VAR_target_still_matches_the_key_EXACTLY(self, tmp_path):
+        """``env.<VAR>`` / ``secret_path.<VAR>`` did NOT go dest-keyed: ``<VAR>``
+        IS a key segment, so target and declaration key are the same string.
+        Pinned here because the dest-keyed repair must not disturb it."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.settings_prefs import PrefRequest
+
+        src = Path(tmp_path) / "box.yaml"
+        exc = CategoryCollisionError(
+            "two declarations at /run/secrets/TOK",
+            kind="binding_vs_binding",
+            box_dest=f"{SECRET_MOUNT_DIR}/TOK",
+            entries=(("agent.claude.secret_path.TOK", "/h/tok"),
+                     ("box.bindings.rw.~/tok", "/h/other")),
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.secret_path.TOK", value="/h/tok",
+            level="box", source=src,
+        )]
+        text = str(_annotate_pref_origin(exc, prefs))
+        assert "'agent.claude.secret_path.TOK' was installed by" in text
+        assert "'pref.agent.claude.secret_path.TOK'" in text
 
     def test_an_unrelated_collision_is_returned_unchanged(self):
         from kanibako.commands.start import _annotate_pref_origin
@@ -755,7 +979,7 @@ class TestPrefOriginEnrichment:
 
         exc = CategoryCollisionError(
             "boom", kind="binding_vs_binding", box_dest="/d",
-            entries=(("box.bindings.ro.a", "/s"),),
+            entries=(("box.bindings.ro.~/a", "/s"),),
         )
         assert _annotate_pref_origin(exc, []) is exc
 
@@ -763,9 +987,16 @@ class TestPrefOriginEnrichment:
 class TestPrefOriginOnTheAdapterRaise:
     """MUST-1(b) — a pref-installed key can also kill the launch through the
     category ADAPTER (a malformed shape), which raises a plain SettingsError
-    with no structured participants. That path must name the REQUEST too."""
+    with no structured participants. That path must name the REQUEST too.
 
-    def test_a_plain_settings_error_is_annotated_from_the_message(self, tmp_path):
+    ⚑ The adapter has TWO raises a pref can reach and they are COMPLEMENTARY,
+    which is why one matching rule covers both: ``_emit_bind_map`` fires per LEAF
+    and names ``<target>.<dest>`` (reachable only when the value IS a map), while
+    ``_assert_declared_categories`` fires at the CATEGORY ROOT and names the bare
+    ``<target>`` (reachable only when the value is NOT a map). One test each.
+    """
+
+    def test_a_malformed_LEAF_is_annotated_from_the_message(self, tmp_path):
         """INVERT: drop the message-matching branch -> reddens."""
         from pathlib import Path
 
@@ -775,20 +1006,68 @@ class TestPrefOriginOnTheAdapterRaise:
 
         src = Path(tmp_path) / "box.yaml"
         exc = SettingsError(
-            "category agent.claude.common.x is str, expected a Bind "
-            "(present-None binds are omitted at build, §3/§6e)"
+            "category agent.claude.common.~/plugins is str, expected a "
+            "BindEntry (common is dest-keyed: the map key is the destination; "
+            "present-None binds are omitted at build, §3/§6e)"
         )
         prefs = [PrefRequest(
-            target="agent.claude.common.x", value="just-a-string",
+            target="agent.claude.common",
+            value=_pref_map(**{"~/plugins": "just-a-string"}),
             level="box", source=src,
         )]
         out = _annotate_pref_origin(exc, prefs)
         text = str(out)
         assert isinstance(out, SettingsError)
-        assert "expected a Bind" in text                 # the original diagnosis
-        assert "'agent.claude.common.x' was installed by" in text
-        assert "'pref.agent.claude.common.x'" in text
+        assert "expected a BindEntry" in text            # the original diagnosis
+        assert "'agent.claude.common.~/plugins' was installed by" in text
+        assert "'pref.agent.claude.common'" in text
         assert str(src) in text
+
+    def test_a_CATEGORY_ROOT_raise_names_the_bare_target(self, tmp_path):
+        """``pref.agent.claude.common: "oops"`` installs a scalar where a
+        dest-keyed map belongs. There is no dest to name on either side, and the
+        bare target is what the adapter's own message carries."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_resolve import SettingsError
+
+        src = Path(tmp_path) / "box.yaml"
+        exc = SettingsError(
+            "agent.claude.common is a value at a CATEGORY ROOT (str: 'oops'), "
+            "which is not a declared key; declare it as a map keyed by box "
+            "destination, {box_dest: [src[, options]]} (spec §2a / §2d)"
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.common", value="oops", level="box", source=src,
+        )]
+        text = str(_annotate_pref_origin(exc, prefs))
+        assert "'agent.claude.common' was installed by" in text
+        assert "'pref.agent.claude.common'" in text
+        assert str(src) in text
+
+    def test_a_pref_that_omits_the_named_dest_is_not_blamed(self, tmp_path):
+        """The text branch's guard, mirroring the structured one. A bare
+        ``req.target in text`` substring test passes the LEAF case above and
+        fires here too — the message names ``agent.claude.common`` either way."""
+        from pathlib import Path
+
+        from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_store import BindEntry
+
+        from kanibako.settings.settings_resolve import SettingsError
+
+        exc = SettingsError(
+            "category agent.claude.common.~/plugins is str, expected a BindEntry"
+        )
+        prefs = [PrefRequest(
+            target="agent.claude.common",
+            value=_pref_map(**{"~/elsewhere": BindEntry("/other", None)}),
+            level="box", source=Path(tmp_path) / "box.yaml",
+        )]
+        assert _annotate_pref_origin(exc, prefs) is exc
 
     def test_an_unrelated_settings_error_is_returned_unchanged(self):
         from kanibako.commands.start import _annotate_pref_origin

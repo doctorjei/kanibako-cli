@@ -173,11 +173,15 @@ def _pref_value_error(
     A pref's key position says nothing about what value is legal there — the
     TARGET does. Two consequences, both of which bit before this existed:
 
-    * **A structured target rejects a scalar.** ``pref.agent.claude.common.x
-      just-a-string`` used to be accepted and then killed the LAUNCH with
-      "category agent.claude.common.x is str, expected a Bind" — naming a key the
-      user never wrote. The direct category route refuses a malformed value at
-      set time; the pref route must too, or it is a hole in the same wall.
+    * **A structured target rejects a scalar.** ``pref.agent.claude.common
+      just-a-string`` is accepted-then-fatal without this guard: it killed the
+      LAUNCH with "category agent.claude.common is str, expected a Bind" — naming a
+      key the user never wrote. ⚑ The per-name spelling this example used
+      (``pref.agent.claude.common.x``) is refused a filter EARLIER now — the four
+      categories went TERMINAL on 2026-08-08c, so the target is not a key at all —
+      and the DIRECT category set route it appealed to is gone with DS-BL1 = (a).
+      Neither retirement weakens the rule: the bare terminal target still takes a
+      structured value, and this is the only door left that checks it.
     * **The E3 resolution probe must run at the TARGET.** Probing at
       ``pref.<target>`` is a NO-OP by construction: ``expand`` carries the
       ``pref`` subtree through unexpanded (spec §2h), so no ``@``-ref in it
@@ -227,17 +231,20 @@ def _pref_value_error(
         if access_err is not None:
             return access_err
 
-    # ⚑ FOUR terms, because "is this target bind-shaped?" is not the same question as
-    # "is this target CLI-settable?" — and since DS-BL1 = (a) NOTHING bind-shaped is
-    # CLI-settable, so every term here is a retired spelling. R-9 took the
-    # ``bindings.{ro,rw}`` arms out of ``BIND_KEY_RE`` first (they are TERMINAL,
-    # dest-keyed: no per-name key exists to match); the other four kept their per-name
-    # key and lost only the write route. Either way their VALUE is still a structured
-    # tuple, so a scalar written at ``pref.box.bindings.ro.<name>``,
-    # ``pref.agent.claude.bindings.ro.<name>`` or ``pref.agent.claude.common.<name>``
-    # is still wrong and must still be refused HERE. Dropping any term would open
-    # exactly the hole this guard exists to close, on the very keys that lost their
-    # direct route (spec §2h: a pref's value is legal iff it is legal at its target).
+    # ⚑ SEVERAL terms, because "is this target bind-shaped?" is not the same question
+    # as "is this target CLI-settable?" — and since DS-BL1 = (a) NOTHING bind-shaped is
+    # CLI-settable, so every per-name term here is a retired spelling. Their VALUE is
+    # still a structured entry, so a scalar written at a bind-shaped target is still
+    # wrong and must still be refused HERE. Dropping any term would open exactly the
+    # hole this guard exists to close, on the very keys that lost their direct route
+    # (spec §2h: a pref's value is legal iff it is legal at its target).
+    # ⚑ ``BIND_KEY_RE`` NEVER MATCHES ANY MORE (2026-08-08c emptied the non-terminal
+    # complement and it compiles its fail-closed form). The term is KEPT, not
+    # deleted: it is the ONE place that asks "does a per-entry bind key exist at
+    # this scope", and it must keep asking through the regex rather than through a
+    # hardcoded False, so re-admitting one is an edit to the tuple and not to this
+    # guard. The per-entry AGENT-scope spelling it used to catch is now refused a
+    # step EARLIER, by ``_pref_target_error`` — the target is not a key at all.
     # ⚑ ``pref`` is NOT a retired route — a box may still REQUEST a bind change — so
     # the retired spellings must keep being recognised here even though the verbs
     # refuse them.
@@ -248,15 +255,16 @@ def _pref_value_error(
     # value-shape rule about a target, and a rule that reads "which targets are
     # bind-shaped" must not silently depend on which targets a different rule
     # happens to admit today.
-    # ⚑ FIFTH TERM, added with the P4′ terminalization (R-5/R-10): the BARE
-    # ``<scope>.bindings.{ro,rw}`` arm. Once the arm went TERMINAL it became the
-    # ONLY bindings target a pref can name — and none of the four terms above
-    # match it (they all require a trailing ``.<name>``), so without this a
-    # scalar at ``pref.agent.claude.bindings.ro`` would be WRITTEN and the launch
-    # would refuse it later. ``masks`` has had this guard all along
-    # (``MASK_KEY_RE`` matches the bare key); the two dest-keyed categories now
-    # have the same shape and get it from ONE predicate rather than a second
-    # regex that could drift from the keyspace's own answer.
+    # ⚑ THE TERMINAL-TAIL TERM, added with the P4′ terminalization (R-5/R-10) and
+    # now carrying the whole weight: the BARE ``<scope>.bindings.{ro,rw}`` arm and,
+    # since 2026-08-08c, the bare ``<scope>.{caches,seeded,common,synced}``. Those
+    # are the ONLY bind-shaped targets a pref can name — none of the per-name terms
+    # above match them (they all require a trailing ``.<name>``), so without this a
+    # scalar at ``pref.agent.claude.common`` would be WRITTEN and the launch would
+    # refuse it later. ``masks`` has had this guard all along (``MASK_KEY_RE``
+    # matches the bare key); every dest-keyed category now has the same shape and
+    # gets it from ONE predicate rather than a second regex that could drift from
+    # the keyspace's own answer.
     if (
         BIND_KEY_RE.match(target) is not None
         or MASK_KEY_RE.match(target) is not None
@@ -266,10 +274,11 @@ def _pref_value_error(
     ):
         return (
             f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
-            f"category entry — a binding is a pair [host_src, box_dest], never a "
-            f"scalar (spec §2a). Write the request in the settings file:\n"
+            f"category key — its value is a map keyed by box DESTINATION "
+            f"({{<box_dest>: [<host_src>]}}), never a scalar (spec §2a). Write the "
+            f"request in the settings file:\n"
             f"  pref:\n"
-            f"    {chr(10).join(_yaml_skeleton(target)).lstrip()}\n"
+            f"{chr(10).join('  ' + line for line in _yaml_skeleton(target))}\n"
             f"...or suppress the entry with: --null {canonical}\n"
             f"(that WRITES a suppression; 'reset {canonical}' undoes it)"
         )
@@ -305,24 +314,20 @@ def _yaml_skeleton(target: str) -> list[str]:
     ⚑ THE LEAF LINE DEPENDS ON THE CATEGORY, and getting it wrong hands the user a
     shape that will be refused again:
 
-    * a NAME-KEYED category entry (``common`` / ``caches`` / ``seeded`` /
-      ``synced``) takes the bind PAIR ``[<host_src>, <box_dest>]``;
-    * a TERMINAL DEST-KEYED key (``masks``, ``bindings.{ro,rw}`` — R-5/R-10) takes
-      a MAP, because the key ends AT the category and the destinations live inside
-      its value. Printing the pair form there was already wrong for ``masks``
-      before this arc; it became wrong for the bindings arms too.
+    EVERY bind-shaped category is a TERMINAL DEST-KEYED key now (``masks``,
+    ``bindings.{ro,rw}`` — R-5/R-10; ``caches`` / ``seeded`` / ``common`` /
+    ``synced`` — 2026-08-08c), so the leaf is always a MAP: the key ends AT the
+    category and the destinations live inside its value. The NAME-KEYED pair form
+    ``[<host_src>, <box_dest>]`` this used to print for the four is GONE — printing
+    it would hand the user a shape the reader now refuses by name.
     """
     from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
     parts = target.split(".")
     if is_terminal_category_tail(parts):
-        # ⚑ The bindings entry VALUE still repeats the destination: the dest-keyed
-        # value shape ([<host_src>]) lands with the READER in P6, and today a
-        # 1-element entry is refused by ``unpack_bind``. See
-        # ``commands.workset_cmd.run_share_add``'s docstring for the full argument.
         leaf = (
             "{<box_dest>: true}" if parts[-1] == "masks"
-            else "{<box_dest>: [<host_src>, <box_dest>]}"
+            else "{<box_dest>: [<host_src>]}"
         )
     else:
         leaf = "[<host_src>, <box_dest>]"
@@ -833,13 +838,15 @@ def get_config_value(
     if _is_box_agent_key(canonical):
         return None
 
-    # Path-TUPLE category keys, ALL READ-ONLY (``<scope>.caches`` / ``seeded`` /
-    # ``common`` / ``synced``, every ``agent.<node>.<category>.<name>``, and the
-    # ``{system,workset,box}.bindings.{ro,rw}.<name>`` spelling). Read the RAW tuple
-    # STORED at the nested dotted path in the NOUN's settings file (== the box file at
-    # box scope, the system settings file at SYSTEM). Checked BEFORE the ``system.*``
-    # file-only branch because a SYSTEM-scope category key (``system.caches.*``) only
-    # LOOKS like a ``system.*`` config key — categories are gettable at every scope.
+    # Category keys, ALL READ-ONLY: the DECLARED terminal keys (``<scope>.masks``,
+    # ``<scope>.bindings.{ro,rw}``, ``<scope>.{caches,seeded,common,synced}``, each
+    # holding a whole dest-keyed MAP since 2026-08-08c) plus the RETIRED per-name
+    # spellings still claimed so their read lands somewhere explicable. Read the RAW
+    # value STORED at the nested dotted path in the NOUN's settings file (== the box
+    # file at box scope, the system settings file at SYSTEM). Checked BEFORE the
+    # ``system.*`` file-only branch because a SYSTEM-scope category key
+    # (``system.caches``) only LOOKS like a ``system.*`` config key — categories are
+    # gettable at every scope.
     # A plain get is stored-at-noun; the resolved-with-floor bind is the ``show
     # --effective`` cascade view. Absent → ``None`` ("(not set)").
     #

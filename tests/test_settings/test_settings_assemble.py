@@ -4,7 +4,8 @@ Covers the brief's checklist: the 6-level count + MOST-SPECIFIC-FIRST order;
 ``agent.default`` vs ``agent.<active>`` land in the RIGHT separate levels (NOT
 pre-merged), each under its TRUE discriminated §2d key (``agent.default.<key>`` /
 ``agent.<active-name>.<key>`` — NO bare-``agent`` collapse, spec §0/§2d);
-binds become ``Bind`` with raw ``@``-refs / ``$vars``
+binds become ``BindEntry`` under a DEST-KEYED terminal category key — all six of
+them since 2026-08-08c — with raw ``@``-refs / ``$vars``
 / ``~`` preserved (NOT expanded); ``masks`` is the keyed ``dict[box_dest →
 bool|None]`` shape; absent files → empty ``KeyStore`` partials; the floor lands
 on ``base``, the cascade ends at ``box`` (no ``required`` cap); NO ``machine``
@@ -603,25 +604,29 @@ def test_per_agent_independence_other_agent_under_own_name(tmp_path: Path) -> No
 
 
 # --------------------------------------------------------------------------- #
-# Binds → Bind, refs RAW (S9 / spec §0)                                        #
+# Binds → BindEntry, dest-keyed in EVERY category, refs RAW (S9 / spec §0)     #
 # --------------------------------------------------------------------------- #
 
 
-def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
+def test_every_bind_shaped_category_parses_to_dest_keyed_bind_entries(
+    tmp_path: Path,
+) -> None:
+    # ⚑ ALL SIX bind-shaped categories are DEST-KEYED (1-or-2 element entries) as
+    # of 2026-08-08c: the ``bindings`` arms at the ARM, the other four at the
+    # CATEGORY TOKEN itself. The dest is GUEST-spelled in every one of them,
+    # copies (``seeded`` / ``synced``) included — one dest space, two deliveries.
     box = _write(
         tmp_path / "box.yaml",
         {
             "box": {
-                # bindings are DEST-KEYED (1-or-2 element entries); the other four
-                # bind categories are still NAME-keyed 2-or-3 element tuples.
                 "bindings": {
                     "rw": {"~/": ["/host/home"]},
                     "ro": {"/g/s": ["/h/s", "z"]},
                 },
-                "caches": {"c": ["/h/c", "/g/c"]},
-                "seeded": {"t": ["/h/t", "/g/t"]},
-                "common": {"p": ["/h/p", "/g/p"]},
-                "synced": {"cred": ["/h/cred", "/g/cred"]},
+                "caches": {"/g/c": ["/h/c"]},
+                "seeded": {"/g/t": ["/h/t"]},
+                "common": {"/g/p": ["/h/p"]},
+                "synced": {"/g/cred": ["/h/cred"]},
             }
         },
     )
@@ -632,8 +637,33 @@ def test_binds_become_Bind_two_and_three_tuple(tmp_path: Path) -> None:
     assert rw_home == BindEntry("/host/home", None)
     assert isinstance(rw_home, BindEntry)
     assert box_scope["bindings"]["ro"]["/g/s"] == BindEntry("/h/s", "z")
-    for cat, name in [("caches", "c"), ("seeded", "t"), ("common", "p"), ("synced", "cred")]:
-        assert isinstance(box_scope[cat][name], Bind)
+    for cat, dest, src in [
+        ("caches", "/g/c", "/h/c"),
+        ("seeded", "/g/t", "/h/t"),
+        ("common", "/g/p", "/h/p"),
+        ("synced", "/g/cred", "/h/cred"),
+    ]:
+        # ⚑ THE INVARIANT: the terminal value is a nested KeyStore, NOT an opaque
+        # dict leaf. If it were a leaf, the box file's whole map would REPLACE the
+        # workset file's whole map instead of merging entry-by-entry — see
+        # ``test_a_terminal_category_merges_per_entry_not_wholesale`` below.
+        assert isinstance(box_scope[cat], KeyStore)
+        assert box_scope[cat][dest] == BindEntry(src, None)
+        assert type(box_scope[cat][dest]) is BindEntry
+
+
+def test_a_terminal_category_merges_per_entry_not_wholesale(tmp_path: Path) -> None:
+    # The REASON the terminal value must parse to a nested KeyStore rather than an
+    # opaque dict. Two levels each declare ONE entry under ``box.common``; after
+    # the cascade merge BOTH survive. Parse the map as a leaf and the box level's
+    # single-entry map would wipe the workset's.
+    ws = _write(tmp_path / "ws.yaml", {"box": {"common": {"/g/ws": ["/h/ws"]}}})
+    box = _write(tmp_path / "box.yaml", {"box": {"common": {"/g/box": ["/h/box"]}}})
+    levels = assemble_levels(agent_name="claude", box_path=box, workset_path=ws)
+    merged = merge(levels)["box"]["common"]
+    assert set(dict.keys(merged)) == {"/g/ws", "/g/box"}
+    assert merged["/g/ws"] == BindEntry("/h/ws", None)
+    assert merged["/g/box"] == BindEntry("/h/box", None)
 
 
 def test_refs_left_raw_inside_bind(tmp_path: Path) -> None:
@@ -678,10 +708,11 @@ def test_masks_is_keyed_dict_three_state(tmp_path: Path) -> None:
 
 
 def test_masks_not_bind_parsed(tmp_path: Path) -> None:
-    # A masks leaf is bool/None, never a Bind — masks is NOT a bind category.
+    # A masks leaf is bool/None, never a bind — masks is dest-keyed like the six
+    # bind-shaped categories but is NOT one of them; neither bind shape may appear.
     box = _write(tmp_path / "box.yaml", {"box": {"masks": {"/x": True}}})
     masks = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]["masks"]
-    assert not isinstance(dict.get(masks, "/x"), Bind)
+    assert not isinstance(dict.get(masks, "/x"), (Bind, BindEntry))
 
 
 # --------------------------------------------------------------------------- #
@@ -1044,14 +1075,22 @@ class TestPrefTableWriteSiteAtAssembly:
 
     def test_a_bind_shaped_pref_value_is_parsed_as_a_bind(self, tmp_path) -> None:
         """The pref path mirrors its target's, so ``_parse_node``'s ancestor
-        test makes a bind-shaped request a real ``Bind`` — the property that
-        makes the NESTED-only spelling load-bearing (D5)."""
+        test makes a bind-shaped request a real bind value — the property that
+        makes the NESTED-only spelling load-bearing (D5).
+
+        ⚑ The request mirrors the TARGET's shape, and ``agent.claude.common`` is
+        now a TERMINAL dest-keyed key: the request therefore carries the same
+        ``{box_dest: [src[, opts]]}`` map and its entries are ``BindEntry``.
+        """
         box = _write(
             tmp_path / "box.yaml",
-            {"pref": {"agent": {"claude": {"common": {"x": ["/s", "~/d"]}}}}},
+            {"pref": {"agent": {"claude": {"common": {"~/d": ["/s"]}}}}},
         )
         levels = assemble_levels(agent_name="claude", box_path=box)
-        assert isinstance(levels[BOX].pref.agent.claude.common.x, Bind)
+        node = levels[BOX].pref.agent.claude.common
+        assert isinstance(node, KeyStore)
+        # R-11 canonicalizes the dest on read, in a pref exactly as in its target.
+        assert node["/home/agent/d"] == BindEntry("/s", None)
 
 
 # --------------------------------------------------------------------------- #
@@ -1283,18 +1322,47 @@ def test_the_file_path_now_parses_bindings_to_bind_entry(tmp_path: Path) -> None
     assert entry == BindEntry("/h/src")
 
 
-def test_the_other_bind_categories_stay_name_keyed(tmp_path: Path) -> None:
-    # ⚑⚑ THE FLIP IS PER-CATEGORY. ``caches``/``seeded``/``common``/``synced`` are
-    # OUT OF SCOPE for this arc and keep the name-keyed 3-tuple. A blanket
-    # ``dest_keyed=True`` on the file reader would read ``["/h/t", "/g/t"]`` as
-    # ``(src, opts)`` and silently turn every copy's DESTINATION into mount options.
+def test_the_other_four_categories_flipped_at_the_category_token(
+    tmp_path: Path,
+) -> None:
+    # ⚑⚑ THE FLIP IS NOW UNIVERSAL, but the DEPTH is not. A ``bindings`` arm is
+    # terminal at ``bindings.{ro,rw}``; ``caches``/``seeded``/``common``/``synced``
+    # are terminal ONE SEGMENT SHALLOWER — the category token itself. Reading them
+    # at the arm depth would descend one level too far and treat each DESTINATION
+    # as a category token.
+    # ⚑ ``seeded``/``synced`` are COPIES and remain copies: only the KEY SHAPE
+    # moved. Nothing here turns one into a mount.
     path = _write(
         tmp_path / "box.yaml",
-        {"box": {"seeded": {"t": ["/h/t", "/g/t"]}, "caches": {"c": ["/h/c", "/g/c"]}}},
+        {"box": {"seeded": {"/g/t": ["/h/t"]}, "caches": {"/g/c": ["/h/c", "z"]}}},
     )
     box_scope = assemble_levels(agent_name="claude", box_path=path)[BOX]["box"]
-    assert box_scope["seeded"]["t"] == Bind("/h/t", "/g/t", None)
-    assert box_scope["caches"]["c"] == Bind("/h/c", "/g/c", None)
+    assert type(box_scope["seeded"]["/g/t"]) is BindEntry
+    assert box_scope["seeded"]["/g/t"] == BindEntry("/h/t", None)
+    assert box_scope["caches"]["/g/c"] == BindEntry("/h/c", "z")
+
+
+def test_a_stale_name_keyed_entry_in_the_four_is_refused_loudly(
+    tmp_path: Path,
+) -> None:
+    # The stale ``{name: [src, dest, opts]}`` spelling is the one arity that cannot
+    # be a dest-keyed entry, so a settings file still carrying it FAILS by name
+    # rather than being re-read with the destination as mount options (spec §2a
+    # "STALE SHAPES ARE REFUSED LOUDLY").
+    path = _write(
+        tmp_path / "box.yaml",
+        {"box": {"seeded": {"t": ["/h/t", "/g/t", "ro"]}}},
+    )
+    with pytest.raises(SettingsError):
+        assemble_levels(agent_name="claude", box_path=path)
+    # And the retired sub-table form, at the category token depth.
+    nested = _write(
+        tmp_path / "box2.yaml",
+        {"box": {"common": {"p": {"src": "/h/p", "dest": "/g/p"}}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(agent_name="claude", box_path=nested)
+    assert "sub-table" in str(exc.value)
 
 
 def test_a_floor_key_deeper_than_the_arm_is_refused() -> None:

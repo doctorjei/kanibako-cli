@@ -53,7 +53,7 @@ from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
     AccessRealization,
     AccessTierRow,
-    BindDefault,
+    BindArm,
     BindKind,
     Binding,
     BindScope,
@@ -443,22 +443,18 @@ def load_category_binds(
     is built discriminated HERE rather than re-rooted downstream.  ``start.py``
     folds this table into ``default_categories`` alongside :func:`load_common`.
 
-    ⚑⚑ **TWO SHAPES, CHOSEN BY THE CATEGORY — and the bindings one FLIPPED
-    2026-08-06c (R-5/R-10/R-11).**
+    ⚑⚑ **ONE SHAPE FOR EVERY CATEGORY since 2026-08-08c** (the ``bindings`` arms
+    flipped first, 2026-08-06c — R-5/R-10/R-11).
 
-    * A **``bindings.ro`` / ``bindings.rw``** entry lands in the TERMINAL ARM key
-      ``agent.<agent>.<category>``, whose whole value is a dest-keyed
-      :data:`~kanibako.targets.base.BindArm` — ``{box_dest: (meta_ref[, "ro"])}``.
-      The box DESTINATION is the KEY and the entry NAME is GONE.  All ENTRIES of
-      one arm live under ONE key, so the file's rows are GROUPED by category here
-      rather than emitted one key apiece.
-    * The four NAME-KEYED bind categories (``common`` / ``caches`` / ``seeded`` /
-      ``synced``) are declared ``<scope>.<category>.<name>`` families and are
-      UNCHANGED: ``agent.<agent>.<category>.<key>`` → the 2- or 3-element
-      :data:`~kanibako.targets.base.BindDefault` tuple ``(meta_ref, box_dest[,
-      "ro"])`` (spec §2a — a tuple, NOT a colon-joined string).
+    Every entry lands in a TERMINAL key — ``agent.<agent>.bindings.{ro,rw}`` for an
+    ARMED category, ``agent.<agent>.<category>`` for ``common`` / ``caches`` /
+    ``seeded`` / ``synced`` — whose whole value is a dest-keyed
+    :data:`~kanibako.targets.base.BindArm`, ``{box_dest: (meta_ref[, "ro"])}``.
+    The box DESTINATION is the KEY and the entry NAME is GONE.  All ENTRIES of one
+    category live under ONE key, so the file's rows are GROUPED here rather than
+    emitted one key apiece.
 
-    The arm is built through :func:`kanibako.settings.core_defaults.add_bind`, the
+    Each map is built through :func:`kanibako.settings.core_defaults.add_bind`, the
     SAME constructor every core floor producer goes through — so the arm key
     spelling, the R-11 destination normalization and the act-once refusal are
     written ONCE for core and for plugins rather than re-typed here.  ⚑ Normalizing
@@ -471,7 +467,7 @@ def load_category_binds(
     canonical spelling does not REPLACE an unnormalized entry, it becomes a
     SECOND one.
 
-    A ``key:`` under a ``bindings`` category is **REFUSED**, not ignored.  Dropping
+    A ``key:`` on ANY category row is **REFUSED**, not ignored.  Dropping
     it silently would let a plugin written against the retired contract keep
     loading while quietly producing a DIFFERENT key than it declared — the worst of
     the three outcomes.  (The same retired spelling arriving as a dotted floor key
@@ -484,24 +480,28 @@ def load_category_binds(
     source WITHOUT any per-harness path knowledge in core (spec §2d).
 
     ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression.  ``$GUEST_HOME`` is
-    expanded here; a leading ``~`` survives that expansion, and for an ARM entry it
-    is then canonicalized to the guest home by ``normalize_bind_dest`` — a dest is
-    a GUEST path, so it resolves the same on every host (R-11).  A NAME-KEYED
-    entry's ``box_dest`` is a VALUE, not a key, and keeps its ``~`` for the
-    box-side resolve in
-    :func:`~kanibako.settings.settings_launch.snapshot_category_entries`.
+    expanded here; a leading ``~`` survives that expansion and is then
+    canonicalized to the guest home by ``normalize_bind_dest`` — a dest is a GUEST
+    path, so it resolves the same on every host (R-11).
     ``ro: true`` emits the explicit ``"ro"`` mount option; otherwise the option is
     omitted and reconcile falls back to the category default.  Returns ``{}`` when
     the file declares no category binds.
 
     ⚑ NO ROOT IS SUPPLIED HERE, and a bare-relative ``meta_ref`` is REFUSED.  This
-    section declares CONCRETE ``bindings.{ro,rw}`` entries, which take no root at
+    section declares CONCRETE entries, which take no root at
     any scope (spec §2a's DECLARATION-ROOT table covers the ABSTRACT categories
-    only) — so a relative source is a plugin DEFECT that would silently resolve
-    against the process CWD, not a shorthand.  The refusal names the file and, for
-    an arm entry, the DESTINATION that now identifies it.
+    only, and it applies at the AUTHORING seam — :func:`load_common` — not here)
+    — so a relative source is a plugin DEFECT that would silently resolve
+    against the process CWD, not a shorthand.  The refusal names the file and the
+    DESTINATION that identifies the entry.
+
+    ⚑ The declared *category* must be a TERMINAL category key
+    (:func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`).
+    Since 2026-08-08c that is every bind-shaped category, so the test no longer
+    SELECTS between two shapes — it REFUSES a category that is not one, which is
+    the closed-keyspace rule (spec §0) rather than a fallback.
     """
-    # ⚑ The ONE dest-keyed arm constructor (disk-store rework R-3/R-6/R-11), reused
+    # ⚑ The ONE dest-keyed map constructor (disk-store rework R-3/R-6/R-11), reused
     # rather than re-typed: core's floor producers and a plugin's declarations must
     # emit ONE shape, and a second hand-rolled copy here is exactly how the two
     # would drift.
@@ -509,26 +509,31 @@ def load_category_binds(
     for entry in _load_doc(package, filename).get("category_binds", []):
         category = str(entry["category"])
         segments = tuple(category.split("."))
-        is_arm = segments[0] == "bindings" and is_terminal_category_tail(segments)
+        if not is_terminal_category_tail(segments):
+            raise SettingsError(
+                f"{filename}: category_bind declares category {category!r}, "
+                f"which is not a declared §2a category key. A bindings entry is "
+                f"declared per ARM ('bindings.ro' / 'bindings.rw'); the other "
+                f"bind-shaped categories are 'caches' / 'seeded' / 'common' / "
+                f"'synced' (spec §0 — the keyspace is CLOSED)."
+            )
         box_dest = _expand(entry["box_dest"])
         host_src = entry["meta_ref"]
         options = "ro" if entry.get("ro", False) else None
 
-        if is_arm:
-            arm_key = f"agent.{agent}.{category}"
-            if "key" in entry:
-                raise SettingsError(
-                    f"{filename}: category_bind under {arm_key!r} declares an "
-                    f"entry name 'key: {entry['key']}', which is the RETIRED "
-                    f"name-keyed shape. A bindings arm is a TERMINAL key whose "
-                    f"value is keyed by box DESTINATION ({box_dest!r} here); the "
-                    f"entry name was dropped 2026-08-06c (spec §2a, R-5/R-10). "
-                    f"Delete the 'key:' line — left in place this entry would "
-                    f"load but bind under a different key than it names."
-                )
-            ident = f"{arm_key!r} entry at {box_dest!r}"
-        else:
-            ident = repr(f"agent.{agent}.{category}.{entry['key']}")
+        category_key = f"agent.{agent}.{category}"
+        if "key" in entry:
+            raise SettingsError(
+                f"{filename}: category_bind under {category_key!r} declares an "
+                f"entry name 'key: {entry['key']}', which is the RETIRED "
+                f"name-keyed shape. A bind-shaped category is a TERMINAL key "
+                f"whose value is keyed by box DESTINATION ({box_dest!r} here); "
+                f"the entry name was dropped (bindings 2026-08-06c, the other "
+                f"four 2026-08-08c; spec §2a, R-5/R-10). "
+                f"Delete the 'key:' line — left in place this entry would "
+                f"load but bind under a different key than it names."
+            )
+        ident = f"{category_key!r} entry at {box_dest!r}"
 
         if not is_self_resolving(host_src):
             raise SettingsError(
@@ -538,35 +543,30 @@ def load_category_binds(
                 "any scope (spec §2a L474-486)"
             )
 
-        if is_arm:
-            try:
-                add_bind(
-                    binds, category, box_dest, host_src, options,
-                    scope=f"agent.{agent}",
-                )
-            except ValueError as exc:
-                # ``add_bind`` owns the act-once invariant and names the arm and
-                # the destination; only the FILE is missing from its message.
-                raise SettingsError(f"{filename}: {exc}") from exc
-        elif options is not None:
-            binds[f"agent.{agent}.{category}.{entry['key']}"] = (
-                host_src, box_dest, options,
+        try:
+            add_bind(
+                binds, category, box_dest, host_src, options,
+                scope=f"agent.{agent}",
             )
-        else:
-            binds[f"agent.{agent}.{category}.{entry['key']}"] = (host_src, box_dest)
+        except ValueError as exc:
+            # ``add_bind`` owns the act-once invariant and names the category and
+            # the destination; only the FILE is missing from its message.
+            raise SettingsError(f"{filename}: {exc}") from exc
     return binds
 
 
-def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefault]:
-    """Build a plugin's AGENT-scope ``default_common`` map from its defaults file.
+def load_common(package: str, filename: str, agent: str) -> "dict[str, BindArm]":
+    """Build a plugin's AGENT-scope ``default_common`` table from its defaults file.
 
-    Each entry maps a DISCRIMINATED scoped category key
-    (``agent.<agent>.common.<name>``, built here from the file's bare ``key:`` leaf)
-    to a STRUCTURED bind pair ``(host_src, box_dest)`` (spec §2a — a tuple, NOT a
-    colon-joined string).  *agent* is the declaring plugin's own name; the agent tier
-    is DISCRIMINATED (§2d / §0 — there is NO bare ``agent.<key>``).
-    ``box_dest`` is a ``$GUEST_HOME`` expression expanded here.  Returns ``{}`` when
-    the file declares no ``common`` entries.
+    Returns the ONE discriminated TERMINAL key ``agent.<agent>.common`` mapped to
+    its whole dest-keyed :data:`~kanibako.targets.base.BindArm`
+    ``{box_dest: (host_src[, options])}`` (spec §2a — structured, NOT a
+    colon-joined string).  *agent* is the declaring plugin's own name; the agent
+    tier is DISCRIMINATED (§2d / §0 — there is NO bare ``agent.<key>``).
+    ``box_dest`` is a ``$GUEST_HOME`` expression expanded here and then normalized
+    by :func:`~kanibako.settings.core_defaults.add_bind`, because it is the KEY.
+    Returns ``{}`` when the file declares no ``common`` entries — an EMPTY table,
+    not a key holding an empty map.
 
     ROOTED AT DECLARATION (spec §2a).  An author writes a bare leaf
     (``plugins``); what is STORED is the full self-resolving
@@ -577,20 +577,35 @@ def load_common(package: str, filename: str, agent: str) -> dict[str, BindDefaul
     root_relative_source` owns that rule and
     :func:`~kanibako.settings.agent_config.agent_category_root_ref` owns the layout.
 
-    ⚑ ``key`` and ``host_src`` are INDEPENDENT.  ``key`` names the keyspace entry
-    (``agent.<a>.common.<key>``); ``host_src`` is the path leaf that gets rooted.
-    They are coincidentally equal for claude's two entries, but keeping them
-    separate is what lets a user's override repoint the source without renaming
-    the key.
+    ⚑ **THE ENTRY NAME IS GONE (2026-08-08c).**  ``common`` is a TERMINAL
+    dest-keyed key, so the file's former ``key:`` leaf names nothing and is
+    REFUSED rather than ignored — the same refusal, for the same reason, as
+    :func:`load_category_binds`.  What survives is the pairing the old ``key`` /
+    ``host_src`` independence existed to protect: ``host_src`` is still the path
+    leaf that gets rooted, and it is still independent of ``box_dest``, so a
+    user's override can repoint the source without moving the destination.
+    ⚑ The store DIRNAME a persona's symlink shim needs used to be read off the
+    key; it now comes off the rooted ``host_src`` — see
+    :func:`~kanibako.settings.agent_representation.harness_common_leaf`, the ONE
+    place that rule is written.
     """
     root_ref = agent_category_root_ref(agent, "common")
-    common_binds: dict[str, BindDefault] = {}
+    binds: "dict[str, BindArm]" = {}
     for entry in _load_doc(package, filename).get("common", []):
-        key = f"agent.{agent}.common.{entry['key']}"
+        if "key" in entry:
+            raise SettingsError(
+                f"{filename}: common entry declares an entry name "
+                f"'key: {entry['key']}', which is the RETIRED name-keyed shape. "
+                f"'agent.{agent}.common' is a TERMINAL key whose value is keyed "
+                f"by box DESTINATION; the entry name was dropped 2026-08-08c "
+                f"(spec §2a). Delete the 'key:' line."
+            )
         host_src = root_relative_source(entry["host_src"], root_ref)
-        options = entry.get("options")
-        if options is not None:
-            common_binds[key] = (host_src, _expand(entry["box_dest"]), options)
-        else:
-            common_binds[key] = (host_src, _expand(entry["box_dest"]))
-    return common_binds
+        try:
+            add_bind(
+                binds, "common", _expand(entry["box_dest"]), host_src,
+                entry.get("options"), scope=f"agent.{agent}",
+            )
+        except ValueError as exc:
+            raise SettingsError(f"{filename}: {exc}") from exc
+    return binds

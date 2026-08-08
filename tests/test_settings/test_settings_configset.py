@@ -35,11 +35,15 @@ edits the YAML at it — a ``bindings.{ro,rw}`` NESTED PATH is still live in the
 settings FILES the launch reads, which is the shape these fixtures exercise.
 
 ⚑ ``repoint_host_src`` is NO LONGER fully key-agnostic (R-8/P8): it reads the
-key's CATEGORY to refuse a STALE 3-element value under a dest-keyed ``bindings``
-arm — see ``TestStaleBindShapeRefused``. So a bindings spelling in a fixture is
-now load-bearing where the tuple has three elements, and two 3-element fixtures
-were re-keyed to ``caches``/``common`` for exactly that reason. Everything else
-about the function is still key-agnostic.
+key's CATEGORY to refuse a STALE 3-element value under a dest-keyed category —
+see ``TestStaleBindShapeRefused``. So ANY bind-shaped spelling in a fixture is
+load-bearing where the tuple has three elements. ⚑⚑ THAT NOW MEANS ALL SIX
+(2026-08-08c): ``caches``/``seeded``/``common``/``synced`` went TERMINAL and
+dest-keyed, so there is no category left at any scope whose 3-element
+``[host_src, box_dest, options]`` form is live. Two fixtures below were re-keyed
+to ``caches``/``common`` when only the ``bindings`` arms were dest-keyed, and
+that escape hatch is gone. Everything else about the function is still
+key-agnostic.
 
 The other place the key is genuinely interpreted is ``_rooted_form_hint``, and
 that test now uses ``synced`` at every scope on purpose — see
@@ -410,20 +414,37 @@ def test_repoint_swaps_host_keeps_dest_2tuple(tmp_path: Path) -> None:
     assert out["box"]["bindings"]["rw"]["home"] == ["/new/host/home", "~/"]
 
 
-def test_repoint_keeps_options_3tuple(tmp_path: Path) -> None:
-    # ⚑ ``caches``, NOT ``bindings`` — re-keyed with R-8's arity refusal (P8). The
-    # three-element ``[host_src, box_dest, options]`` form is STILL LIVE for the
-    # four NAME-keyed SETTABLE categories, which are also the only ones a caller
-    # routes here; under a dest-keyed ``bindings`` arm the same tuple is now
-    # REFUSED (see TestStaleBindShapeRefused). Same behaviour under test, on the
-    # category that actually still has it.
+def test_repoint_keeps_the_trailing_element(tmp_path: Path) -> None:
+    # ⚑⚑ RE-POSED AT 2 ELEMENTS (2026-08-08c), AND THE OLD SHAPE IS NOT COMING
+    # BACK. This row was ``test_repoint_keeps_options_3tuple`` and fed a
+    # ``[host_src, box_dest, options]`` triple, first under ``bindings`` and then
+    # re-keyed to ``caches`` to dodge R-8's arity refusal. That escape hatch is
+    # GONE: all six bind-shaped categories are TERMINAL and dest-keyed now, so
+    # there is no key at any scope whose 3-element form is live, and the triple
+    # is refused everywhere (see
+    # ``TestStaleBindShapeRefused.test_3element_value_under_the_other_four_is_refused_too``).
+    # What survives is the behaviour this row actually names: element 0 is
+    # swapped and everything after it is preserved BYTE-RAW.
+    #
+    # ⚑ OWED DELETION (QA′): ``repoint_host_src`` has had no caller since
+    # DS-BL1 = (a) and is ruled for deletion. Whoever deletes it must take this
+    # test and its siblings with it rather than puzzling over them.
     f = _write_scope(
         tmp_path / "box.yaml",
-        {"box": {"caches": {"sock": ["/old/sock", "~/x.sock", "z"]}}},
+        {"box": {"caches": {"/home/agent/x.sock": ["/old/sock", "z"]}}},
     )
-    repoint_host_src(f, "box.caches.sock", "/new/sock")
+    # ⚑ ``dest_parts`` IS REQUIRED, and that is a finding rather than a detail: a
+    # destination contains dots and slashes, so the default "split the canonical
+    # key" addressing cannot reach a dest-keyed entry at all
+    # (``"box.caches./home/agent/x.sock".split(".")`` shatters the dest). This is
+    # the ONLY way left to drive the function at a bind-shaped key, and it is the
+    # parameter whose docstring says it has no caller.
+    repoint_host_src(
+        f, "box.caches./home/agent/x.sock", "/new/sock",
+        dest_parts=["box", "caches", "/home/agent/x.sock"],
+    )
     out = yaml.safe_load(f.read_text())
-    assert out["box"]["caches"]["sock"] == ["/new/sock", "~/x.sock", "z"]
+    assert out["box"]["caches"]["/home/agent/x.sock"] == ["/new/sock", "z"]
 
 
 def test_repoint_stores_raw_ref_not_expanded(tmp_path: Path) -> None:
@@ -528,32 +549,49 @@ def test_repoint_cascade_fallback_writes_full_tuple_creating_tables(
     # CASCADE). This test FAILS if the lookup reverts to scope-file-only
     # (mutation proof: without cascade_bind support this raises).
     #
-    # ⚑ ``common``, NOT ``bindings`` — same reason as
-    # ``test_repoint_keeps_options_3tuple``: a 3-element cascade tuple is live for
-    # a NAME-keyed category and REFUSED under a dest-keyed bindings arm (R-8/P8).
+    # ⚑⚑ RE-POSED AT 2 ELEMENTS (2026-08-08c). The cascade tuple was a
+    # ``[host_src, box_dest, options]`` triple, re-keyed to ``common`` when only
+    # the ``bindings`` arms were dest-keyed. All six are dest-keyed now, so the
+    # triple is refused everywhere and the live cascade shape is
+    # ``[host_src[, options]]``. The coverage this row uniquely carries —
+    # a cascade-sourced tuple CREATING the file's intermediate tables, and sibling
+    # content left untouched — is unchanged by the arity.
+    #
+    # ⚑ OWED DELETION (QA′): ``repoint_host_src`` has had no caller since
+    # DS-BL1 = (a) and is ruled for deletion; take this row with it.
     f = _write_scope(tmp_path / "box.yaml", {"box": {"image": "x"}})
     repoint_host_src(
         f,
         "box.common.vault",
         "~/mine",
-        cascade_bind=["@config.data/vault", "$XDG_DATA_HOME/vault", "z"],
+        cascade_bind=["@config.data/vault", "z"],
     )
     out = yaml.safe_load(f.read_text())
-    assert out["box"]["common"]["vault"] == [
-        "~/mine", "$XDG_DATA_HOME/vault", "z",
-    ]
+    assert out["box"]["common"]["vault"] == ["~/mine", "z"]
     assert out["box"]["image"] == "x"  # sibling content untouched
 
 
 def test_repoint_cascade_fallback_2tuple_stays_2list(tmp_path: Path) -> None:
     # A 2-element cascade tuple writes a 2-list — no null 3rd (options) slot.
+    #
+    # ⚑⚑ THE SECOND ELEMENT IS NOW OPTIONS, AND THE GREEN WAS NOT EVIDENCE.
+    # This row read ``cascade_bind=["/old", "~/.cache/x"]`` — authored as
+    # ``[host_src, box_dest]``. Under dest-keying a 2-element entry is
+    # ``[host_src, options]``, so ``~/.cache/x`` had silently become a mount-option
+    # string sitting in the options slot. THE ARITY NEVER CHANGED, so nothing
+    # raised and the assertion held either way: the fixture stopped meaning what
+    # it said while the test stayed green. Respelled to a real options value.
+    #
+    # ⚑ This is the ONE ruled exception's twin, and they must not be confused:
+    # ``test_two_element_bindings_value_is_still_accepted`` KEEPS its
+    # ``[src, box_dest]`` fixture on purpose, because refusing the 2-element case
+    # was option B and Jei DECLINED it (DS-BL8/8a). That row pins the declined
+    # boundary; this one is just a fixture that went stale.
     f = _write_scope(tmp_path / "box.yaml", {})
     repoint_host_src(
-        f, "box.caches.x", "/new", cascade_bind=["/old", "~/.cache/x"],
+        f, "box.caches.x", "/new", cascade_bind=["/old", "ro"],
     )
-    assert yaml.safe_load(f.read_text())["box"]["caches"]["x"] == [
-        "/new", "~/.cache/x",
-    ]
+    assert yaml.safe_load(f.read_text())["box"]["caches"]["x"] == ["/new", "ro"]
 
 
 def test_repoint_cascade_fallback_into_missing_file(tmp_path: Path) -> None:
@@ -609,11 +647,14 @@ def test_repoint_non_mapping_intermediate_refuses(tmp_path: Path) -> None:
 
 
 class TestStaleBindShapeRefused:
-    """R-8's runtime refusal: ``bindings.{ro,rw}`` arms are dest-keyed TERMINAL
-    keys (R-5/R-6) whose entries are ``[host_src[, options]]``, so a 3-element
+    """R-8's runtime refusal: a dest-keyed TERMINAL category (R-5/R-6) holds
+    entries of the form ``[host_src[, options]]``, so a 3-element
     ``[host_src, box_dest, options]`` value under one is unambiguously the RETIRED
-    name-keyed shape. It RAISES, naming the arm and the stale tuple, instead of
-    rewriting element 1 back as a ``box_dest``.
+    name-keyed shape. It RAISES, naming the category and the stale tuple, instead
+    of rewriting element 1 back as a ``box_dest``.
+
+    ⚑ SINCE 2026-08-08c THAT IS ALL SIX bind-shaped categories, not just the two
+    ``bindings`` arms — see ``test_3element_value_under_the_other_four_is_refused_too``.
 
     ⚑⚑ SCOPE, AND IT IS A RULING (Jei, 2026-08-06e): the 3-ELEMENT case ONLY.
     ``test_two_element_bindings_value_is_still_accepted`` PINS the boundary — a
@@ -684,28 +725,35 @@ class TestStaleBindShapeRefused:
         ]
 
     @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
-    def test_3element_name_keyed_category_is_untouched(
+    def test_3element_value_under_the_other_four_is_refused_too(
         self, tmp_path: Path, category: str
     ) -> None:
-        # The refusal is DEST-KEYED-ONLY. The four NAME-keyed categories keep the
-        # live 3-element form — an over-broad gate would refuse every
-        # options-bearing cache/seed/common/synced tuple as "stale".
+        # ⚑⚑ THE REFUSAL NOW COVERS ALL SIX, AND IT WIDENED BY DERIVATION
+        # (2026-08-08c). ``caches``/``seeded``/``common``/``synced`` went TERMINAL
+        # and DEST-KEYED, so ``_bindings_arm_of``'s TERMINAL filter admits them and
+        # a 3-element ``[host_src, box_dest, options]`` is the retired name-keyed
+        # shape under EVERY bind-shaped category — there is no longer any category
+        # at any scope where that tuple is live.
         #
-        # ⚑⚑ THIS CAUGHT A REAL REGRESSION (DS-BL1 = (a) pass). ``_bindings_arm_of``
-        # recognised the arm with ``SCOPE_BIND_KEY_RE``, which widened to all six
-        # categories the moment ``SETTABLE_BIND_CATEGORIES`` emptied — so
-        # ``box.common.x`` started reporting an "arm" and its legal 3-element tuple
-        # was refused. The cure is a TERMINAL filter in ``_bindings_arm_of``: R-8 is
-        # about the dest-keyed SHAPE, not about being retired. Keep this row RED-able:
-        # drop that filter and all four of these fail.
+        # ⚑ THIS ROW ASSERTED THE OPPOSITE until this refactor
+        # (``…_name_keyed_category_is_untouched``), and the flip is the whole
+        # content of the change: R-8 is about the dest-keyed SHAPE, and the shape
+        # is now universal. Do NOT re-narrow the refusal to ``bindings`` — that
+        # would re-admit exactly the silent element-1-becomes-a-box_dest rewrite.
         f = _write_scope(
             tmp_path / "box.yaml",
             {"box": {category: {"x": ["/old", "~/x", "z"]}}},
         )
-        repoint_host_src(f, f"box.{category}.x", "/new")
-        assert yaml.safe_load(f.read_text())["box"][category]["x"] == [
-            "/new", "~/x", "z",
-        ]
+        with pytest.raises(ConfigSetError) as exc:
+            repoint_host_src(f, f"box.{category}.x", "/new")
+        # Names the stale SHAPE, the KEY and the CATEGORY (refuse by name).
+        assert "STALE 3-element" in str(exc.value)
+        assert f"box.{category}.x" in str(exc.value)
+        assert f"box.{category}" in str(exc.value)
+        # And nothing was written — a refused repoint never poisons the file.
+        assert yaml.safe_load(f.read_text()) == {
+            "box": {category: {"x": ["/old", "~/x", "z"]}}
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -916,58 +964,108 @@ class TestRelativeCategorySourceRefused:
         assert "plugins" in v.message
 
     @pytest.mark.parametrize(
-        ("key", "rooted"),
+        ("key", "value", "rooted"),
         [
-            ("agent.claude.common.plugins",
+            ("agent.claude.common", "plugins",
              "@meta.agent.claude.path/common/plugins"),
-            ("agent.navigator℘claude.caches.x",
+            ("agent.navigator℘claude.caches", "x",
              "@meta.agent.navigator℘claude.path/caches/x"),
-            ("workset.common.x", "@meta.workset.path/common/x"),
-            ("box.seeded.x", "@meta.box.path/seeded/x"),
-            ("system.caches.x", "@config.data/caches/x"),
+            ("workset.common", "x", "@meta.workset.path/common/x"),
+            ("box.seeded", "x", "@meta.box.path/seeded/x"),
+            ("system.caches", "x", "@config.data/caches/x"),
         ],
     )
-    def test_rooted_hint_is_per_scope(self, key, rooted) -> None:
+    def test_rooted_hint_is_per_scope(self, key, value, rooted) -> None:
         """⚑ The hint names the root of the scope the user actually typed.
 
         Spec §2a gives a DIFFERENT root per scope. A single agent-shaped
-        hint would tell someone editing ``workset.common.x`` to spell an
+        hint would tell someone editing ``workset.common`` to spell an
         ``@meta.agent.*`` root that has nothing to do with their key — a
         confidently wrong instruction, which is worse than saying nothing.
 
         The agent row names the agent the user typed (persona nodes included), so
         the suggestion is copy-pasteable rather than a ``<agent>`` placeholder.
+
+        ⚑⚑ THE KEYS ARE TERMINAL NOW, AND SO IS ``_rooted_form_hint``. The rows
+        used to be per-entry spellings (``agent.claude.common.plugins``), which the
+        2026-08-08c dest-keyed flip made not-keys-at-all; the hint was re-anchored
+        on ``settings_keyspace.is_terminal_category_tail`` and these rows follow it.
+
+        ⚑⚑⚑ EVERY EXPECTATION IS SPELLED OUT, and the *value* is now its own
+        parameter. This test derived it as ``key.rsplit('.', 1)[-1]`` — reading the
+        expectation out of the input, which is how it stopped being an oracle: with
+        the key and the value welded together it could only ever check that the
+        message echoed its own argument back. The right-hand column is a literal so
+        a wrong ROOT is a red, not a matching typo on both sides.
         """
-        value = key.rsplit(".", 1)[-1]
         v = _validate(key, value, is_category=True)
         assert isinstance(v, Error)
         assert rooted in v.message
 
+    def test_undiscriminated_agent_scope_gets_no_hint(self) -> None:
+        """``agent.<category>`` (no node) is NOT A KEY — the agent tier is
+        DISCRIMINATED (spec §0/§2d) — so there is no agent to name and no root to
+        build. ``@meta.agent..path`` would be a ref resolving to nothing, i.e. a
+        cure worse than the bare refusal.
+
+        ⚑ The refusal itself STILL FIRES: the bare-relative rule is about the VALUE,
+        so it is the HINT that must be absent, not the Error. Asserting both is what
+        separates "correctly hintless" from "silently accepted".
+        """
+        v = _validate("agent.common", "plugins", is_category=True)
+        assert isinstance(v, Error)
+        assert "bare relative path" in v.message
+        assert "rooted form" not in v.message
+        assert "@meta.agent" not in v.message
+
     @pytest.mark.parametrize(
-        "key",
+        ("concrete", "abstract", "rooted"),
         [
-            "agent.c.synced.s",
-            "box.synced.s",
-            "workset.synced.d",
+            ("agent.c.synced", "agent.c.caches", "@meta.agent.c.path/caches"),
+            ("box.synced", "box.caches", "@meta.box.path/caches"),
+            ("workset.synced", "workset.common", "@meta.workset.path/common"),
+            # ⚑ A ``bindings`` arm IS a legitimate row again, and the reason it was
+            # once forbidden is exactly why: the old warning was that a bindings key
+            # never reached the abstractness test at all, so its hintlessness proved
+            # the wrong thing. The hint is keyed on ``is_terminal_category_tail``
+            # now, which a bindings arm SATISFIES — it reaches the test and is
+            # rejected for being CONCRETE, which is the claim.
+            ("box.bindings.ro", "box.seeded", "@meta.box.path/seeded"),
         ],
     )
-    def test_concrete_category_gets_no_rooted_hint(self, key) -> None:
-        """``synced`` takes NO root at any scope (spec §2a), so there is no rooted
-        form to suggest — suggesting one would be a lie.
+    def test_concrete_category_gets_no_rooted_hint(
+        self, concrete, abstract, rooted,
+    ) -> None:
+        """``synced`` and ``bindings.{ro,rw}`` take NO root at any scope (spec §2a),
+        so there is no rooted form to suggest — suggesting one would be a lie.
 
-        ⚑ EVERY ROW IS ``synced``, AND THAT IS THE POINT. The rows read
-        ``box.bindings.rw.home`` / ``workset.bindings.ro.d`` until R-9's first step,
-        then ``agent.claude.bindings.{rw,ro}.*`` until its second. Each time, left in
-        place, the test would still have PASSED — and would have been VACUOUS:
-        ``_rooted_form_hint`` matches on ``BIND_KEY_RE``, which no longer matches a
-        bindings key at ANY scope, so "no rooted hint" would have been proved by the
-        key not being a category key rather than by the category not being ABSTRACT.
-        ``synced`` is the surviving CONCRETE category and still matches, so the
-        assertion still tests the rule it names. Do not reintroduce a bindings row."""
-        v = _validate(key, "sub/dir", is_category=True)
+        ⚑⚑ **EACH ROW HOLDS THE SCOPE FIXED AND VARIES ONLY THE CATEGORY.** That is
+        the re-anchoring this test has been owed twice. Twice its rows were spellings
+        the hint never even looked at, so "no rooted hint" was proved by the key not
+        reaching the abstractness test rather than by the category being CONCRETE —
+        vacuous both times, and its own docstring predicted the second one. Pairing
+        each concrete key with its ABSTRACT sibling at the SAME scope removes the
+        escape: the pair differs in exactly one thing, so a hint that stops
+        discriminating turns the second half red instead of passing quietly.
+
+        ⚑ THE VACUITY WITNESS IS GONE, DELIBERATELY, AND ITS INSTRUCTION IS WHY. It
+        pinned "``system.caches.x`` gets no hint either" as a defect to be red on
+        fix, and told its finder to delete it and restore a real discriminator once
+        ``_rooted_form_hint`` was re-anchored. The re-anchoring landed (2026-08-08c,
+        onto ``is_terminal_category_tail``) — but onto TERMINAL keys, so the
+        witness's per-entry probe went on answering "no hint" and the witness would
+        have survived its own trigger, silently, forever. Deleted on the record; the
+        discriminator it asked for is the ``abstract`` column.
+        """
+        v = _validate(concrete, "sub/dir", is_category=True)
         assert isinstance(v, Error)
-        assert "rooted form" not in v.message
-        assert "@meta." not in v.message
+        assert "rooted form" not in v.message, v.message
+        assert "@meta." not in v.message and "@config." not in v.message, v.message
+
+        # THE DISCRIMINATOR: same scope, ABSTRACT category — the hint DOES fire.
+        sibling = _validate(abstract, "sub/dir", is_category=True)
+        assert isinstance(sibling, Error)
+        assert f"{rooted}/sub/dir" in sibling.message, sibling.message
 
     @pytest.mark.parametrize(
         "value",

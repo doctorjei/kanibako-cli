@@ -128,6 +128,11 @@ XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (
     ("XDG_STATE_HOME", ".local/state", "state"),
 )
 
+#: The link's own basename under each projected XDG base — ``$XDG_STATE_HOME/kanibako``.
+#: Single-sourced because BOTH halves of the projection spell it: :func:`project_pinned_xdg`
+#: (the Python half) and :func:`xdg_projection_sh` (the shell half).
+XDG_LINK_NAME = "kanibako"
+
 
 def project_pinned_xdg(
     home: Path | None = None,
@@ -168,6 +173,14 @@ def project_pinned_xdg(
 
     Rows whose XDG location already resolves to the pinned dir are skipped — there is
     nothing to project when the two are the same place.
+
+    ⚑ This is the PYTHON half only, and it reaches a box ONLY when the supervisor is
+    PID-1 (a persistent AGENT box).  A bare keep-alive box, the forward-compat
+    fallback and a helper box run NO kanibako Python at PID-1 at all, so they are
+    served by :func:`xdg_projection_sh` — the shell twin, generated from this same
+    table.  The two are interchangeable and idempotent against each other: whichever
+    runs first creates the link, and the other then takes the "already a symlink"
+    skip.
     """
     base = Path.home() if home is None else home
     env = os.environ if environ is None else environ
@@ -178,7 +191,7 @@ def project_pinned_xdg(
         # XDG Base Directory spec: honor the var iff set AND absolute; a relative
         # value is invalid and falls back to the spec default under $HOME.
         xdg_base = Path(raw) if raw and os.path.isabs(raw) else base / default_suffix
-        link = xdg_base / "kanibako"
+        link = xdg_base / XDG_LINK_NAME
         if os.path.normpath(link) == os.path.normpath(pinned):
             continue
         try:
@@ -205,6 +218,75 @@ def project_pinned_xdg(
         except OSError as exc:
             log.warning("could not project %s onto %s: %s", link, pinned, exc)
     return created
+
+
+def xdg_projection_sh() -> str:
+    """The POSIX-``sh`` twin of :func:`project_pinned_xdg`, GENERATED from the table.
+
+    Not every box has a Python PID-1.  A bare keep-alive / shell box fronts
+    ``tmux new-session -- <box.shell>``; the forward-compat fallback
+    (``commands/start.py`` → :func:`_build_supervisor_pid1`) fronts that SAME shell
+    precisely BECAUSE ``import kanibako.box_supervisor`` failed; and a helper box
+    enters through ``scripts/helper-init.sh``, which is bash.  None of the three can
+    call :func:`project_pinned_xdg`, so the projection is emitted as SHELL — the one
+    language all three already speak.
+
+    ⚑ GENERATED, not a second hand-written rule.  Every literal comes from
+    :data:`XDG_PROJECTIONS`, :data:`PINNED_ROOT_RELPATH` and :data:`XDG_LINK_NAME`, so
+    a new facet ROW extends the shell exactly as it extends the Python — the table
+    stays the single mechanism its own comment promises.  ``scripts/helper-init.sh``
+    carries this text VERBATIM (bash can import nothing); a test pins the two.
+
+    Semantics are the Python function's, clause for clause: SKIP when the two paths
+    are the same place (before creating anything), never re-point an existing symlink,
+    never clobber an existing real path, never fail.  ⚑ Two deliberate divergences,
+    both narrowing:
+
+    * It does not LOG the two refusals — PID-1's stderr is ``podman logs``, and a
+      shell twin cannot reach :data:`log` anyway.  The ACTIONS are identical.
+    * The same-place guard compares the two paths as STRINGS where the Python
+      normalises them first.  Reaching that difference takes BOTH a non-normal
+      spelling of the XDG var (a trailing slash, a ``/./``) AND a future facet row for
+      which the guard can fire at all — today's ``state`` row cannot reach it from
+      either half, since ``$XDG_STATE_HOME/kanibako`` can never equal
+      ``~/.kanibako/state`` (``TestProjectPinnedXdg.test_same_path_is_skipped``
+      records the shape that would).  Even then the shell merely falls through to the
+      create attempt, where ``[ ! -e ]`` sees the pinned dir and declines the link: it
+      makes a directory the Python's skip would have left alone, and clobbers nothing.
+
+    Guaranteed rc 0 (it ends on ``unset``), so a caller may compose it ahead of a
+    ``&&``/``||`` chain — the forward-compat probe in ``_build_supervisor_pid1`` is
+    exactly such a chain, and a projection that changed its exit status would decide
+    which PID-1 the box gets.  It is also safe under ``set -e``: the only fallible
+    list ends in ``|| true``.
+    """
+    blocks: list[str] = []
+    for var, default_suffix, facet in XDG_PROJECTIONS:
+        blocks.append(
+            f'_kb_pin="$HOME/{PINNED_ROOT_RELPATH}/{facet}"\n'
+            f'_kb_xdg="${{{var}:-}}"\n'
+            # XDG Base Directory spec: honor the var iff set AND absolute (the
+            # `/*` arm); anything else falls back to the spec default under $HOME.
+            f'case "$_kb_xdg" in /*) ;; *) _kb_xdg="$HOME/{default_suffix}" ;; esac\n'
+            f'_kb_link="$_kb_xdg/{XDG_LINK_NAME}"\n'
+            # The NESTING mirrors the Python's statement order exactly, and each rung
+            # of it is observable: the same-place guard runs BEFORE anything is
+            # created (so that row makes no directory at all), the pinned dir is then
+            # made whether or not the link is, and only the LINK is withheld by the
+            # two refusals.  Flattening this into one condition would quietly stop
+            # creating the pinned dir on a box that declines the link.
+            # ⚑ `-L` before `-e`: `-e` is FALSE for a dangling symlink, so an
+            # `-e`-only guard would read an occupied slot as empty.
+            'if [ "$_kb_link" != "$_kb_pin" ]; then\n'
+            '    mkdir -p "$_kb_pin" 2>/dev/null || true\n'
+            '    if [ ! -L "$_kb_link" ] && [ ! -e "$_kb_link" ]; then\n'
+            '        mkdir -p "$_kb_xdg" 2>/dev/null '
+            '&& ln -s "$_kb_pin" "$_kb_link" 2>/dev/null || true\n'
+            '    fi\n'
+            'fi'
+        )
+    blocks.append("unset _kb_pin _kb_xdg _kb_link")
+    return "\n".join(blocks)
 
 
 def scrub_bootstrap_pythonpath(

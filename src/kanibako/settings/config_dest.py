@@ -309,6 +309,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         _pref_sections_leaf,
         _route_key,
     )
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
@@ -342,7 +343,30 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     # ⚑ CONSEQUENCE FOR :data:`_CATEGORY`, MEASURED: with no category WRITE left, no
     # ``_CATEGORY`` slot can ever reach :func:`_write_dest`, so the deliberately
     # broken agent-scope arm below is now UNREACHABLE — see its note there.
-    if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
+    #
+    # ⚑⚑ THREE TERMS, AND THE THIRD IS THE ONE THAT CARRIES THE LIVE KEYS
+    # (2026-08-08c). The slot RULE is the same for all of them — the value lives at
+    # the key's own nested path — which is why one branch serves three questions:
+    #
+    # * ``is_terminal_category_tail`` — the DECLARED keys: ``<scope>.masks``,
+    #   ``<scope>.bindings.{ro,rw}`` and ``<scope>.{caches,seeded,common,synced}``,
+    #   each holding a whole dest-keyed map. This term is what pays the debt the
+    #   terminalization opened: since P6 a hand-authored ``box.bindings.ro`` read
+    #   back "(not set)" because no term claimed the BARE key, and the four
+    #   would have joined it here. A declared key must be readable (spec §0).
+    # * ``_is_scope_bind_key`` — the RETIRED per-name FILE-scope spelling, kept
+    #   claimed so the read lands somewhere explicable rather than falling to the
+    #   unknown-key table.
+    # * ``_is_path_category_key`` — ⚑ now answers False for EVERY key: it is
+    #   ``BIND_KEY_RE``, whose non-terminal complement emptied in this same pass.
+    #   The term is left in place rather than quietly dropped because deleting the
+    #   predicate is a separate, ruled follow-up (QA′) with two other callers; it
+    #   is named here so a reader does not take it for a live route.
+    if (
+        _is_path_category_key(canonical)
+        or _is_scope_bind_key(canonical)
+        or is_terminal_category_tail(canonical.split("."))
+    ):
         tail = canonical.split(".")
         return tuple(tail[:-1]), tail[-1], _CATEGORY
     route = _KEY_ROUTES.get(_route_key(canonical))
@@ -434,12 +458,24 @@ def _read_dest(
     consists of, so the honest consolidation keeps two functions with one shared
     body rather than one function that quietly picks a side.
 
-    ⚑ THIS is the arm that is still LIVE: an agent-scope category key is READ here
-    (``config get agent.<node>.common.<name>``) even though nothing writes one any
-    more (DS-BL1 = (a) — see :func:`_write_dest`).  Re-pointing that read at the
-    node's own ``agents/<node>/settings.yaml`` — the file the agent tier actually
-    reads — is a STORAGE-SHAPE change and deliberately NOT part of the route
-    retirement.
+    ⚑ WHAT REACHES THAT ARM NOW IS THE TERMINAL KEY, NOT AN ENTRY.  It used to be
+    read for ``config get agent.<node>.common.<name>``; the 2026-08-08c shape flip
+    made that spelling not a key at all (``_is_path_category_key`` answers False for
+    every key), so the only agent-scope category keys that still route here are the
+    bare terminal ones — ``agent.<node>.{caches,seeded,common,synced}``,
+    ``agent.<node>.bindings.{ro,rw}``, ``agent.<node>.masks``.
+
+    ⚑⚑ AND FOR THOSE THE ARM IS WRONG, MEASURABLY: it answers the NOUN's settings
+    file, while the agent tier is assembled from ``agents/<node>/settings.yaml``'s
+    ``self.<node>`` table (``settings_assemble._agent_partial``).  So a
+    hand-authored ``self.claude.caches`` reads back "(not set)" while a stray
+    ``agent.claude.caches`` in the system settings file reads back instead.
+    Re-pointing it is a STORAGE-SHAPE change that moves
+    ``agent_config.agent_file_route`` — the per-agent file-shape SoT shared with the
+    ``agent`` noun's own verbs — and is deliberately NOT part of the route
+    retirement; it is OWED with the ``_write_dest``/``_read_dest`` collapse.  ⚑ Until
+    it lands, NO message may promise that ``config get <agent terminal key>`` works
+    (see ``config_keys.agent_node_bind_retired_error``).
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,

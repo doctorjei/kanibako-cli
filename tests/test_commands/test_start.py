@@ -1403,18 +1403,23 @@ class TestPersonaShareSymlinks:
         masking a real regression is worse than no fixture, so this one is
         cross-checked against the live plugin by
         ``test_fixture_shape_matches_the_live_plugin``.
+
+        ⚑ DEST-KEYED since 2026-08-08c: ``agent.claude.common`` is the ONE
+        TERMINAL key and its value is the whole ``{box_dest: (host_src,)}`` map —
+        the entry name is gone, so the store leaf the shim needs is read off the
+        ROOTED ``host_src`` (``harness_common_leaf``) rather than off the key.
         """
         from types import SimpleNamespace
         if common_binds is None:
             common_binds = {
-                "agent.claude.common.plugins": (
-                    "@meta.agent.claude.path/common/plugins",
-                    "/home/agent/.claude/plugins",
-                ),
-                "agent.claude.common.cache": (
-                    "@meta.agent.claude.path/common/cache",
-                    "/home/agent/.claude/cache",
-                ),
+                "agent.claude.common": {
+                    "/home/agent/.claude/plugins": (
+                        "@meta.agent.claude.path/common/plugins",
+                    ),
+                    "/home/agent/.claude/cache": (
+                        "@meta.agent.claude.path/common/cache",
+                    ),
+                },
             }
         return SimpleNamespace(
             name=self._HARNESS, default_common=lambda: common_binds
@@ -1442,12 +1447,19 @@ class TestPersonaShareSymlinks:
         old code would have created the literal directory
         ``agents/<node>/@meta.agent.claude.path/common/plugins`` — a garbage path —
         while every OTHER test in this class stayed green on a stale fixture that
-        still returned the bare leaf.  The leaf now comes from the KEY
-        (``agent.<a>.common.<leaf>``) and both sides are built from the SAME layout
-        helper the ref builder uses, so the two cannot drift.
+        still returned the bare leaf.
 
-        (Mutation: derive the leaf from ``host_src`` again → the ``@``-ref becomes
-        a path component → RED.)
+        ⚑ WHERE THE LEAF COMES FROM MOVED 2026-08-08c.  It used to be read off the
+        KEY (``agent.<a>.common.<leaf>``); dest-keying deleted the entry name, so
+        the rooted ``host_src`` is now the only carrier and
+        ``agent_representation.harness_common_leaf`` is the ONE place that rule is
+        written — it strips EXACTLY the harness's ``common`` declaration root and
+        answers ``None`` for anything else.  Both sides of the link are still built
+        from the same layout helper the ref builder uses, so shim and resolver
+        cannot drift.
+
+        (Mutation: join the WHOLE ``host_src`` instead of stripping the root → the
+        ``@``-ref becomes a path component → RED.)
         """
         from kanibako.commands.start import ensure_persona_share_symlinks
 
@@ -2785,7 +2797,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
+            f'self:\n  default:\n    seeded:\n      "~/foo": ["{src}"]\n'
         )
         self._call(
             tmp_path,
@@ -2803,7 +2815,7 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.claude.seeded.x": (str(src), "~/x")},
+            default_seeds=lambda: {"agent.claude.seeded": {"~/x": (str(src),)}},
         )
         self._call(tmp_path, proj=self._proj(shell), target=target)
         assert (shell / "x" / "x.txt").read_text() == "data"
@@ -2816,10 +2828,26 @@ class TestApplyInitSeeds:
         Director ruling (F8, 2026-07-02): the capability is spec-implied — a box
         may not set ``agent.<name>.*`` directly (an upward write, dropped at
         RESOLVE per spec §0 clause 4). ⮕ P7: the sanctioned route is now the §2h
-        REQUEST ``pref.agent.<a>.seeded.x: null`` (the ``box.agent.*`` mirror it
-        used to be is RETIRED, spec §2b). The pref installs present-None VERBATIM
-        as an ordinary cascade level, so it OMITs the target seed AT MERGE (the §3
-        type-split) — one route, no post-expand overlay, no collector raise.
+        REQUEST ``pref.agent.<a>.seeded[<dest>]: null`` (the ``box.agent.*``
+        mirror it used to be is RETIRED, spec §2b). The pref installs present-None
+        VERBATIM as an ordinary cascade level, so it OMITs the target seed AT
+        MERGE (the §3 type-split) — one route, no post-expand overlay, no
+        collector raise.
+
+        ⚑ GREEN IS EVIDENCE HERE AGAIN (2026-08-08d) — this note used to say it
+        was not, and the condition it named has now been met. The defect:
+        ``_apply_init_seeds`` folded the target's seeds and the template layers
+        with ``{**default_seeds, **template_seeds}``, and under dest-keying both
+        are the SAME terminal key ``agent.<a>.seeded``, so the plain ``**`` union
+        dropped the target's map WHOLESALE. The seed never existed to be
+        suppressed and this assertion held VACUOUSLY. That fold now goes through
+        ``_merge_default_categories``, which merges a terminal category map ENTRY
+        BY ENTRY.
+
+        ⚑⚑ THE NON-VACUITY IS PROVED BY THE SIBLING, not asserted:
+        ``test_target_default_seed_served`` runs the SAME target and the SAME
+        ``agent.<a>.seeded`` entry WITHOUT the pref and is green — so the seed
+        demonstrably ARRIVES, and the pref demonstrably REMOVES it.
         """
         from types import SimpleNamespace
         shell = self._shell(tmp_path)
@@ -2828,14 +2856,16 @@ class TestApplyInitSeeds:
         (src / "x.txt").write_text("data")
         target = SimpleNamespace(
             name="claude",
-            default_seeds=lambda: {"agent.claude.seeded.x": (str(src), "~/x")},
+            default_seeds=lambda: {"agent.claude.seeded": {"~/x": (str(src),)}},
         )
-        # The default seed ``agent.claude.seeded.x`` is DISCRIMINATED at source
-        # ``agent.claude.seeded.x`` (the discriminated §2d shape); the box
-        # suppresses it through its §2h REQUEST — the spec-legal box→agent tweak.
+        # The default seed lives in the DISCRIMINATED terminal key
+        # ``agent.claude.seeded`` (§2d), as the entry at destination ``~/x``; the
+        # box suppresses it through its §2h REQUEST — the spec-legal box→agent
+        # tweak.  ⚑ The request names the DESTINATION, because that is the entry's
+        # whole identity now (2026-08-08c) — there is no entry name to name.
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(
-            "pref:\n  agent:\n    claude:\n      seeded:\n        x: null\n"
+            'pref:\n  agent:\n    claude:\n      seeded:\n        "~/x": null\n'
         )
         self._call(
             tmp_path, proj=self._proj(shell), target=target,
@@ -2843,25 +2873,43 @@ class TestApplyInitSeeds:
         assert not (shell / "x").exists()
 
     def test_guest_home_dest_copies_contents_into_root(self, tmp_path):
-        """guest_dest of ~/ (== /home/agent) copies src contents into shell root."""
+        """guest_dest of ~/ (== /home/agent) copies src contents into shell root.
+
+        ⚑ MOVED TO THE BOX TIER for dest-keying (2026-08-08c), and the reason is
+        the mechanism, not a convenience.  The destination IS the entry's identity
+        now, and ``template_seed_defaults`` already declares
+        ``agent.<a>.seeded[~/]`` — so an ``agent.default`` entry at the SAME dest
+        is no longer a second seed, it is the same entry one cascade level down,
+        and the §2d active-over-default pick resolves it away before emission.  A
+        BOX-tier entry is a DIFFERENT SCOPE, so it survives the pick and reaches
+        reconcile, where copies overlay rather than shadow — which is the property
+        this test is actually about.
+        """
         shell = self._shell(tmp_path)
         src = tmp_path / "hsrc"
         src.mkdir()
         (src / "root_file.txt").write_text("top")
-        agent_cfg = tmp_path / "claude.yaml"
-        agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      home: ["{src}", "~/"]\n'
+        # P6c: the box-tier seed config lives at proj.metadata_path/settings.yaml.
+        (self._proj(shell).metadata_path / "settings.yaml").write_text(
+            f'box:\n  seeded:\n    "~/": ["{src}"]\n'
         )
-        self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
+        self._call(tmp_path, proj=self._proj(shell))
         assert (shell / "root_file.txt").read_text() == "top"
 
     def test_missing_host_src_skipped(self, tmp_path):
         """A seed whose host_src does not exist is skipped (no crash, no copy)."""
         shell = self._shell(tmp_path)
         missing = tmp_path / "does_not_exist"
+        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
+        # EVIDENCE FOR THIS CASE. The retired fixture read
+        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
+        # new reader silently took the NAME as the destination and the DEST as
+        # the mount options. Nothing raised and the assertion still held — for
+        # the wrong reason. ⚑ ``seeded`` is a COPY, where options are
+        # meaningless, so the misplaced dest was never even exercised.
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      gone: ["{missing}", "~/gone"]\n'
+            f'self:\n  default:\n    seeded:\n      "~/gone": ["{missing}"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
@@ -2888,11 +2936,16 @@ class TestApplyInitSeeds:
         (src / "playbook" / "devnotes.md").write_text("TEMPLATE")
         (src / "playbook" / "STARTUP.md").write_text("NEW")
 
-        agent_cfg = tmp_path / "claude.yaml"
-        agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      pb: ["{src}", "~/"]\n'
+        # ⚑ BOX TIER, for the same mechanical reason as
+        # ``test_guest_home_dest_copies_contents_into_root``: under dest-keying an
+        # ``agent.default`` entry at ``~/`` is the SAME entry as the agent-tier
+        # template layer already declared there, so the §2d pick resolves it away.
+        # A box-tier entry is a different SCOPE and survives to reconcile.
+        # P6c: the box-tier seed config lives at proj.metadata_path/settings.yaml.
+        (self._proj(shell).metadata_path / "settings.yaml").write_text(
+            f'box:\n  seeded:\n    "~/": ["{src}"]\n'
         )
-        self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
+        self._call(tmp_path, proj=self._proj(shell))
 
         # (a) the pre-existing edited file is NOT clobbered.
         assert (home_pb / "devnotes.md").read_text() == "USER EDIT"
@@ -2907,9 +2960,16 @@ class TestApplyInitSeeds:
 
         src = tmp_path / "note_src.md"
         src.write_text("TEMPLATE")
+        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
+        # EVIDENCE FOR THIS CASE. The retired fixture read
+        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
+        # new reader silently took the NAME as the destination and the DEST as
+        # the mount options. Nothing raised and the assertion still held — for
+        # the wrong reason. ⚑ ``seeded`` is a COPY, where options are
+        # meaningless, so the misplaced dest was never even exercised.
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      note: ["{src}", "~/note.md"]\n'
+            f'self:\n  default:\n    seeded:\n      "~/note.md": ["{src}"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -2925,7 +2985,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      foo: ["{src}", "~/foo"]\n'
+            f'self:\n  default:\n    seeded:\n      "~/foo": ["{src}"]\n'
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
@@ -2954,7 +3014,7 @@ class TestApplyInitSeeds:
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
             f'self:\n  default:\n    seeded:\n'
-            f'      ws: ["{src}", "~/workspace/sub"]\n'
+            f'      "~/workspace/sub": ["{src}"]\n'
         )
         self._call(tmp_path, proj=proj, agent_config_path=agent_cfg)
         assert (project / "sub" / "f.txt").read_text() == "seed-ws"
@@ -3045,7 +3105,7 @@ class TestApplySyncedCopies:
         src = tmp_path / "creds.txt"
         src.write_text("token")
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
+        ptoml.write_text(f'box:\n  synced:\n    "~/cred.txt": ["{src}"]\n')
         self._call(tmp_path, proj=self._proj(shell))
         assert (shell / "cred.txt").read_text() == "token"
 
@@ -3055,7 +3115,14 @@ class TestApplySyncedCopies:
         src = tmp_path / "creds.txt"
         src.write_text("token")
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
+        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
+        # EVIDENCE FOR THIS CASE. The retired fixture read
+        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
+        # new reader silently took the NAME as the destination and the DEST as
+        # the mount options. Nothing raised and the assertion still held — for
+        # the wrong reason. ⚑ ``synced`` is a COPY, where options are
+        # meaningless, so the misplaced dest was never even exercised.
+        ptoml.write_text(f'box:\n  synced:\n    "~/cred.txt": ["{src}"]\n')
         self._call(
             tmp_path, proj=self._proj(shell),
             deliver_creds=False,
@@ -3069,7 +3136,14 @@ class TestApplySyncedCopies:
         src = tmp_path / "creds.txt"
         src.write_text("old")
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    cred: ["{src}", "~/cred.txt"]\n')
+        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
+        # EVIDENCE FOR THIS CASE. The retired fixture read
+        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
+        # new reader silently took the NAME as the destination and the DEST as
+        # the mount options. Nothing raised and the assertion still held — for
+        # the wrong reason. ⚑ ``synced`` is a COPY, where options are
+        # meaningless, so the misplaced dest was never even exercised.
+        ptoml.write_text(f'box:\n  synced:\n    "~/cred.txt": ["{src}"]\n')
         dest = shell / "cred.txt"
         dest.write_text("newer")
         # Make dest strictly newer than src.
@@ -3084,7 +3158,14 @@ class TestApplySyncedCopies:
         shell = self._shell(tmp_path)
         missing = tmp_path / "nope"
         ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    gone: ["{missing}", "~/gone"]\n')
+        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
+        # EVIDENCE FOR THIS CASE. The retired fixture read
+        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
+        # new reader silently took the NAME as the destination and the DEST as
+        # the mount options. Nothing raised and the assertion still held — for
+        # the wrong reason. ⚑ ``synced`` is a COPY, where options are
+        # meaningless, so the misplaced dest was never even exercised.
+        ptoml.write_text(f'box:\n  synced:\n    "~/gone": ["{missing}"]\n')
         self._call(tmp_path, proj=self._proj(shell))
         assert list(shell.iterdir()) == []
 
@@ -3106,7 +3187,7 @@ class TestApplySyncedCopies:
         src.write_text("in-workspace")
         ptoml = tmp_path / "settings.yaml"
         ptoml.write_text(
-            f'box:\n  synced:\n    ws: ["{src}", "~/workspace/sub/f.txt"]\n'
+            f'box:\n  synced:\n    "~/workspace/sub/f.txt": ["{src}"]\n'
         )
         self._call(tmp_path, proj=proj)
         # Correct: lands under project_path.
@@ -5977,19 +6058,30 @@ class TestMergeDefaultCategoriesFoldsArmsPerEntry:
         INJECTIONS that are SUPPOSED to override. Generalizing the per-entry merge
         to every value would quietly stop them doing so, which is why the branch
         keys strictly on a bindings arm.
+
+        ⚑⚑ THE VEHICLE WAS RESPELLED 2026-08-08c AND THE OLD GREEN WAS NOT
+        EVIDENCE FOR IT. It used to be ``agent.claude.common.plugins`` -> a
+        ``(host_src, box_dest)`` pair — a key that dest-keying RETIRED, and a
+        shape ``settings_assemble`` now refuses by name. The fold does not
+        validate keys, so the assertion kept passing over a key the keyspace no
+        longer contains. Worse, ``agent.claude.common`` IS a bind-shaped category
+        key today, so a fixture spelled that way asserts last-wins over exactly
+        the kind of value that must NOT be last-wins. Both vehicles here are now
+        SCALARS (spec §2b ``box.images_store``, §2d ``agent.<a>.transform``),
+        which is what the rule is actually about.
         """
         table = self._fold(
             ("core", {
                 "box.images_store": "/probed/graph",
-                "agent.claude.common.plugins": ("/store/a", "/g/p"),
+                "agent.claude.transform": "tweakcc",
             }),
             ("late", {
                 "box.images_store": "/injected/graph",
-                "agent.claude.common.plugins": ("/store/b", "/g/p"),
+                "agent.claude.transform": "injected-transform",
             }),
         )
         assert table["box.images_store"] == "/injected/graph"
-        assert table["agent.claude.common.plugins"] == ("/store/b", "/g/p")
+        assert table["agent.claude.transform"] == "injected-transform"
 
 
 class TestAgentCriticalDests:

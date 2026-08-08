@@ -16,11 +16,14 @@ Three tiers (design §5)
    still resolves through ``resolve_value`` on the FOUNDATION path tier.
 2. **Typed CATEGORY accessors** — each §2a category has DYNAMIC keys but ONE
    known value type, so it is a typed read-only mapping:
-   :func:`bind_category` → ``Mapping[str, Bind]`` for ``bindings.{ro,rw}`` /
-   ``caches`` / ``seeded`` / ``common`` / ``synced``; :func:`bind_map` →
-   ``Mapping[box_dest, BindEntry]``, the DEST-KEYED successor for the reworked
-   ``bindings.{ro,rw}`` arms (R-5/R-6 — additive, no production reader yet;
-   see :class:`~kanibako.settings.settings_store.BindEntry`); :func:`env_view` →
+   :func:`bind_map` → ``Mapping[box_dest, BindEntry]`` for EVERY bind-shaped
+   category — the ``bindings.{ro,rw}`` arms and ``caches`` / ``seeded`` /
+   ``common`` / ``synced``, all dest-keyed terminal keys (R-5/R-6; the four
+   followed 2026-08-08c). ⚑ The NAME-keyed ``bind_category`` / ``bindings``
+   lenses were DELETED in that pass: they had no production caller and their
+   ``Mapping[str, Bind]`` contract was the retired shape, so leaving them would
+   have left a typed accessor promising a value the store can no longer hold.
+   :func:`env_view` →
    ``Mapping[str, scalar]`` for ``env``; :func:`masks_set` → ``set[box_dest]``
    for the resolved ``masks`` (design §6f).
 3. **Raw attribute / ``[]`` access** returning the full union — already on
@@ -78,10 +81,8 @@ from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
 __all__ = [
     "ViewError",
-    "bind_category",
     "bind_map",
     "bind_maps",
-    "bindings",
     "derived_bindings",
     "env_view",
     "masks_set",
@@ -118,63 +119,11 @@ class ViewError(Exception):
 # --------------------------------------------------------------------------- #
 
 
-class _BindCategoryView(Mapping[str, Bind]):
-    """A read-only ``Mapping[str, Bind]`` lens over a bind-category NODE.
-
-    Wraps an EXISTING category :class:`KeyStore` node (e.g.
-    ``store.box.bindings.rw`` or ``store.box.caches``) WITHOUT copying it — the
-    node stays the single source of truth (design §0). Every value is asserted
-    to be a real :class:`Bind` on read (the S22 coupling: build dropped
-    present-``None`` binds, so a ``None`` here is a build breach → :class:`ViewError`).
-
-    Read-only: there is no ``__setitem__`` (``Mapping``, not ``MutableMapping``),
-    so the lens cannot mutate the snapshot. All container ops use the UNBOUND
-    ``dict`` methods (S3) so a key named ``get`` / ``items`` cannot shadow them.
-    """
-
-    __slots__ = ("_node", "_label")
-
-    def __init__(self, node: KeyStore, *, label: str) -> None:
-        self._node = node
-        self._label = label
-
-    def __getitem__(self, key: str) -> Bind:
-        # Unbound dict probe (S3): a key named ``get`` must not crash the lookup.
-        if not dict.__contains__(self._node, key):
-            raise KeyError(key)
-        value = dict.__getitem__(self._node, key)
-        return self._checked(key, value)
-
-    def __iter__(self) -> Iterator[str]:
-        # dict.keys(node) — NOT node.keys() (S3).
-        return iter(dict.keys(self._node))
-
-    def __len__(self) -> int:
-        return dict.__len__(self._node)
-
-    def __contains__(self, key: object) -> bool:
-        return dict.__contains__(self._node, key)
-
-    def _checked(self, key: str, value: Any) -> Bind:
-        # S22: the typed contract is ``Bind``, not ``Bind | None``. Build omitted
-        # present-None binds, so anything else here is an upstream invariant
-        # breach — RAISE, never silently type-launder a None into the mapping.
-        if not isinstance(value, Bind):
-            raise ViewError(
-                f"{self._label}[{key!r}] is {type(value).__name__}, expected Bind "
-                f"(present-None binds are omitted at build, design §3/§6e/S22)"
-            )
-        return value
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({self._label!r}, {dict.__len__(self._node)} binds)"
-
-
 class _BindMapView(Mapping[str, BindEntry]):
     """A read-only ``Mapping[box_dest, BindEntry]`` lens over a DEST-KEYED arm.
 
-    The dest-keyed successor of :class:`_BindCategoryView` (R-5/R-6): same lens
-    contract, but the mapping KEY is the destination and the value carries only
+    The ONLY bind lens (R-5/R-6): the mapping KEY is the destination and the
+    value carries only
     ``(src, opts)``. Wraps an EXISTING :class:`KeyStore` node WITHOUT copying;
     every value is asserted to be a real :class:`BindEntry` on read (the S22
     coupling — build dropped present-``None`` entries, so a ``None`` here is a
@@ -270,52 +219,12 @@ class _EnvView(Mapping[str, "str | int | float | bool"]):
         return f"_EnvView({dict.__len__(self._node)} vars)"
 
 
-def bind_category(node: KeyStore, *, label: str = "bindings") -> Mapping[str, Bind]:
-    """A typed ``Mapping[str, Bind]`` lens over a bind-category NODE (tier-2, S21).
-
-    *node* is a category :class:`KeyStore` subtree whose leaves are all
-    :class:`Bind` — a ``caches`` / ``seeded`` / ``common`` / ``synced`` node, or
-    one of the ``bindings.ro`` / ``bindings.rw`` sub-nodes (see :func:`bindings`
-    for splitting a whole ``bindings`` node into its two modes). The returned
-    mapping is READ-ONLY and does NOT copy the node (the snapshot stays the
-    single source of truth). Every value is checked to be a real ``Bind`` on
-    read (S22): a ``None`` / mistyped leaf RAISES :class:`ViewError` (a build
-    breach), never type-launders.
-
-    *label* names the node in error messages (e.g. ``"box.bindings.rw"``); it
-    has no behavioral effect.
-
-    This is a PER-SCOPE lens — it does NOT aggregate the same dest across scopes
-    (that is reconcile, design §6g, out of scope).
-    """
-    _require_node(node, label)
-    return _BindCategoryView(node, label=label)
-
-
-def bindings(node: KeyStore, *, label: str = "bindings") -> tuple[
-    Mapping[str, Bind], Mapping[str, Bind]
-]:
-    """Split a whole ``bindings`` NODE into its ``(ro, rw)`` typed lenses.
-
-    *node* is a ``bindings`` :class:`KeyStore` subtree holding the ``ro`` and/or
-    ``rw`` sub-nodes (spec §2a: ``bindings.ro`` / ``bindings.rw``). Returns a
-    pair of read-only ``Mapping[str, Bind]`` lenses, one per mode. A mode ABSENT
-    from the node yields an EMPTY mapping (the build omits an absent / fully
-    reset category, §3/§6e), never an error. Per-scope (S21).
-    """
-    _require_node(node, label)
-    return (
-        bind_category(_sub_or_empty(node, "ro"), label=f"{label}.ro"),
-        bind_category(_sub_or_empty(node, "rw"), label=f"{label}.rw"),
-    )
-
-
 def bind_map(node: KeyStore, *, label: str = "bindings") -> Mapping[str, BindEntry]:
     """A typed ``Mapping[box_dest, BindEntry]`` lens over a DEST-KEYED arm (tier-2).
 
-    The dest-keyed successor of :func:`bind_category` (R-5/R-6). *node* is the
-    :class:`KeyStore` the terminal ``<scope>.bindings.ro`` / ``.rw`` key holds —
-    ``{box_dest: BindEntry(src, opts)}``. The returned mapping is READ-ONLY and
+    *node* is the :class:`KeyStore` a terminal bind-shaped key holds —
+    ``<scope>.bindings.{ro,rw}`` or ``<scope>.{caches,seeded,common,synced}`` —
+    i.e. ``{box_dest: BindEntry(src, opts)}``. The returned mapping is READ-ONLY and
     does NOT copy the node. A ``None`` / mistyped leaf — including a legacy
     3-tuple :class:`Bind` — RAISES :class:`ViewError` (S22), never type-launders.
 
@@ -323,8 +232,6 @@ def bind_map(node: KeyStore, *, label: str = "bindings") -> Mapping[str, BindEnt
     (S21) — it does NOT aggregate one dest across scopes (that is reconcile,
     design §6g).
 
-    ⚑ ADDITIVE during the P5→P8 bridge: the live arms are still name-keyed, so
-    every production reader is still :func:`bind_category` / :func:`bindings`.
     """
     _require_node(node, label)
     return _BindMapView(node, label=label)
@@ -360,7 +267,9 @@ def derived_bindings(
 
     Unlike the tier-2 lenses this returns a fresh dict rather than a live view:
     the node is PARAMETRIC over the whole key space below it
-    (``binding_derivations.agent.claude.common.plugins``), so the useful shape
+    (``binding_derivations.agent.claude.common.~/.claude/plugins`` — the
+    declaration key plus the entry's DEST, since the four went terminal and
+    dest-keyed on 2026-08-08c), so the useful shape
     is the FLAT declaration key, which no lens over one node can present. The
     Binds themselves are shared, not copied — they are immutable.
 

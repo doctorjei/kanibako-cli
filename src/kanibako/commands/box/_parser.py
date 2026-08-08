@@ -343,9 +343,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "  box set model=sonnet            set 'model' for cwd project\n"
             "  box set myproj model=sonnet     set 'model' for named project\n"
             "  box set box.env.MY_VAR=hello    set env var\n"
-            "  box set --null pref.agent.claude.common.plugins\n"
-            "                                  request that the agent's bind be\n"
-            "                                  SUPPRESSED for this box (spec §2h)\n"
+            "  box set --null pref.agent.claude.common\n"
+            "                                  request that the agent's common\n"
+            "                                  binds be SUPPRESSED for this box\n"
+            "                                  (spec §2h)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

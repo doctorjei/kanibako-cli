@@ -73,12 +73,18 @@ def test_glob_convention(pattern, key, expected):
 def test_filter1_accepts_a_new_name_in_a_parametric_family():
     """INVERT: make filter 1 test EXISTENCE -> this reddens.
     spec §2h."""
-    assert key_reason("agent.claude.common.boooooo", valid_agents=AGENTS) is None
-    # ⚑ NOT bindings — the arms are TERMINAL and dest-keyed (R-5/R-10), so only
-    # the BARE arm is a valid target and there is no free <name> under it.
+    assert key_reason("agent.claude.env.BOOOOOO", valid_agents=AGENTS) is None
+    # ⚑ NOT a bind-shaped category — all six are TERMINAL and dest-keyed
+    # (``bindings.{ro,rw}`` R-5/R-10; ``caches``/``seeded``/``common``/``synced``
+    # 2026-08-08c), so only the BARE category is a valid target and there is no
+    # free <name> under it. The destinations live INSIDE the value.
     assert key_reason("agent.claude.bindings.rw", valid_agents=AGENTS) is None
     assert key_reason(
         "agent.claude.bindings.rw.boooooo", valid_agents=AGENTS,
+    ) is not None
+    assert key_reason("agent.claude.common", valid_agents=AGENTS) is None
+    assert key_reason(
+        "agent.claude.common.boooooo", valid_agents=AGENTS,
     ) is not None
 
 
@@ -220,14 +226,22 @@ def test_values_are_installed_verbatim_including_none():
     """⚑ THE named hazard (spec §2h): `if value is None: continue` is
     the natural guard and silently implements the REJECTED reading, deleting a
     box's ONLY suppression channel with no error and no diff.
-    INVERT: add that guard -> this reddens."""
+    INVERT: add that guard -> this reddens.
+
+    ⚑ RE-POSED AT THE TERMINAL KEY (2026-08-08c). The request used to name
+    ``agent.claude.common.plugins``, which is no longer a key at all — and this
+    test STAYED GREEN through the flip, because ``pref_overlay`` installs at the
+    dotted path and performs NO key validation (that is ``validate_pref``'s job,
+    which this call deliberately bypasses). Green here was never evidence that the
+    spelling was legal, and must not be read as such.
+    """
     overlay = pref_overlay([
-        req("agent.claude.common.plugins", value=None),
+        req("agent.claude.common", value=None),
         req("system.agent", value="goose"),
     ])
-    node = overlay["agent"]["claude"]["common"]
-    assert "plugins" in dict.keys(node)
-    assert dict.__getitem__(node, "plugins") is None
+    node = overlay["agent"]["claude"]
+    assert "common" in dict.keys(node)
+    assert dict.__getitem__(node, "common") is None
     assert overlay["system"]["agent"] == "goose"
 
 
@@ -236,17 +250,42 @@ def test_the_pref_layer_interprets_no_emptiness_idiom(value):
     """spec §2h — present-None (tri-state omit), terminal "" (!= unset)
     and the COPY-disable sentinel "empty" all forward UNTOUCHED; otherwise the
     pref becomes a FOURTH place deciding what 'empty' means.
-    INVERT: any interpretation here -> reddens."""
-    overlay = pref_overlay([req("agent.claude.seeded.template", value=value)])
-    got = dict.__getitem__(overlay["agent"]["claude"]["seeded"], "template")
+    INVERT: any interpretation here -> reddens.
+
+    ⚑ RE-POSED AT THE TERMINAL KEY (2026-08-08c): ``agent.claude.seeded.template``
+    is no longer a key. It stayed green through the flip only because
+    ``pref_overlay`` does no key validation — see
+    ``test_values_are_installed_verbatim_including_none``.
+    ⚑⚑ ``seeded`` IS A COPY AND STAYS A COPY. Only the KEY SHAPE moved; nothing
+    here turns it into a mount.
+    """
+    overlay = pref_overlay([req("agent.claude.seeded", value=value)])
+    got = dict.__getitem__(overlay["agent"]["claude"], "seeded")
     assert got == value or (got is None and value is None)
 
 
 def test_bind_shaped_pref_value_installs_as_a_bind():
-    overlay = pref_overlay([
-        req("agent.claude.common.x", value=Bind("/src", "~/dst")),
-    ])
-    assert isinstance(overlay["agent"]["claude"]["common"]["x"], Bind)
+    """⚑⚑ THIS ROW PINNED A STRUCTURALLY IMPOSSIBLE SHAPE UNTIL 2026-08-08c.
+    It installed a 3-element ``Bind`` under ``agent.claude.common.x`` and asserted
+    it landed as a ``Bind`` — and it passed the whole way through the dest-keying
+    flip, because ``pref_overlay`` installs whatever object it is handed at
+    whatever dotted path it is given, validating NEITHER. Neither the key nor the
+    value type exists any more: ``common`` is TERMINAL, its value is the whole
+    dest-keyed map, and its leaf is a 2-element ``BindEntry``.
+
+    ⚑ ``Bind`` and ``BindEntry`` are BOTH legally 2 elements with OPPOSITE
+    meanings, so nothing may tell them apart by arity — which is exactly why this
+    row asserts the TYPE.
+    """
+    arm = KeyStore()
+    arm["/home/agent/dst"] = BindEntry("/src", None)
+    overlay = pref_overlay([req("agent.claude.common", value=arm)])
+    installed = overlay["agent"]["claude"]["common"]
+    assert isinstance(installed, KeyStore)
+    entry = dict.get(installed, "/home/agent/dst")
+    assert isinstance(entry, BindEntry)
+    assert not isinstance(entry, Bind)
+    assert (entry.src, entry.opts) == ("/src", None)
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +344,9 @@ def test_valid_prefs_are_accepted():
         [
             req("system.agent", "goose", "workset"),
             req("agent.claude.model", "opus", "box"),
-            req("agent.claude.common.plugins", None, "box"),
+            # ⚑ The CATEGORY is the target — ``common`` is TERMINAL and
+            # dest-keyed (2026-08-08c), so there is no per-entry key to request.
+            req("agent.claude.common", None, "box"),
         ],
         valid_agents=AGENTS,
     )
@@ -339,23 +380,34 @@ def test_collect_tolerates_absent_files_and_absent_tables(tmp_path):
 
 def test_collect_parses_a_bind_shaped_pref_as_a_bind(tmp_path):
     """The pref path mirrors the target path, so `_parse_node`'s ancestor test
-    makes a bind-shaped request a real Bind — the property D5 protects."""
+    makes a bind-shaped request a real bind — the property D5 protects.
+
+    ⚑ ``common`` is TERMINAL and DEST-KEYED since 2026-08-08c, so the request ends
+    AT the category and its value is the whole ``{box_dest: [src[, opts]]}`` map.
+    The leaf is a 2-element :class:`BindEntry` carrying NO destination — the
+    destination is the map key, and R-11 canonicalizes it on read.
+    """
     box = write(
         tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"common": {"x": ["/src", "~/dst"]}}}}},
+        {"pref": {"agent": {"claude": {"common": {"~/dst": ["/src"]}}}}},
     )
     (p,) = collect_prefs(None, box)
-    assert isinstance(p.value, Bind)
-    assert p.value.host == "/src" and p.value.box == "~/dst"
+    assert p.target == "agent.claude.common"
+    assert isinstance(p.value, KeyStore)
+    entry = dict.get(p.value, "/home/agent/dst")
+    assert isinstance(entry, BindEntry)
+    assert (entry.src, entry.opts) == ("/src", None)
 
 
 def test_collect_preserves_a_null_request(tmp_path):
+    """⚑ The null now lands on the CATEGORY, which is the whole key: a
+    dest-keyed category has no per-entry key to null from the pref table."""
     box = write(
         tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"common": {"plugins": None}}}}},
+        {"pref": {"agent": {"claude": {"common": None}}}},
     )
     (p,) = collect_prefs(None, box)
-    assert p.target == "agent.claude.common.plugins"
+    assert p.target == "agent.claude.common"
     assert p.value is None
 
 
@@ -563,7 +615,17 @@ class TestSuppressionEndToEnd:
     natural spelling wrote the STRING "null", which installs a *value* rather
     than a suppression — the mount survived and §2h's only suppression channel
     had no CLI spelling at all.
+
+    ⚑ THE SUPPRESSION IS NOW SPELLED AT THE CATEGORY (2026-08-08c). ``common`` is
+    a TERMINAL dest-keyed key, so `agent.claude.common` is the whole key and the
+    destinations are DATA inside its value; there is no `…common.plugins` pref to
+    write. The declaration's emitted key is `<scope>.common.<box_dest>`, which is
+    what the mount assertions below name.
     """
+
+    #: The key ``snapshot_category_entries`` stamps on the declared entry — the
+    #: category joined to its DESTINATION, canonicalized to the guest home (R-11).
+    MOUNT_KEY = "agent.claude.common./home/agent/.claude/plugins"
 
     def _entries(self, tmp_path, box_file):
         from kanibako.settings.settings_launch import (
@@ -581,7 +643,7 @@ class TestSuppressionEndToEnd:
             system_path=None, agent_path=None,
             workset_path=None, box_path=box_file,
             default_categories={
-                "agent.claude.common.plugins": ("/host/plugins", "~/.claude/plugins"),
+                "agent.claude.common": {"~/.claude/plugins": ("/host/plugins",)},
             },
             valid_agents=AGENTS,
         )
@@ -593,7 +655,7 @@ class TestSuppressionEndToEnd:
         box = tmp_path / "settings.yaml"
         box.write_text("box: {}\n")
         _snap, entries = self._entries(tmp_path, box)
-        assert any(e.key == "agent.claude.common.plugins" for e in entries)
+        assert any(e.key == self.MOUNT_KEY for e in entries)
 
     def test_set_null_through_the_real_writer_removes_the_mount(self, tmp_path):
         from kanibako.settings.config_keys import ConfigLevel
@@ -605,7 +667,7 @@ class TestSuppressionEndToEnd:
         box = tmp_path / "settings.yaml"
         # Exactly what the CLI does for `box set --null <key>`.
         action, key, value = parse_config_arg(
-            "pref.agent.claude.common.plugins", set_null=True,
+            "pref.agent.claude.common", set_null=True,
         )
         msg = set_config_value(
             key, value, config_path=box, command_scope=ConfigLevel.box,
@@ -614,10 +676,12 @@ class TestSuppressionEndToEnd:
 
         snap, entries = self._entries(tmp_path, box)
         # THE MOUNT IS GONE.
-        assert not any(e.key == "agent.claude.common.plugins" for e in entries)
+        assert not any(e.key == self.MOUNT_KEY for e in entries)
+        assert not any(e.category == "common" for e in entries)
         # ...and the REQUEST is still visible, so --effective can explain why.
-        node = snap["pref"]["agent"]["claude"]["common"]
-        assert dict.__getitem__(node, "plugins") is None
+        assert dict.__getitem__(
+            snap["pref"]["agent"]["claude"], "common",
+        ) is None
 
     def test_the_string_null_does_NOT_suppress(self, tmp_path):
         """The trap this flag exists to close: a verbatim "null" is a VALUE.
@@ -631,7 +695,7 @@ class TestSuppressionEndToEnd:
 
         box = tmp_path / "settings.yaml"
         msg = set_config_value(
-            "pref.agent.claude.common.plugins", "null",
+            "pref.agent.claude.common", "null",
             config_path=box, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:")

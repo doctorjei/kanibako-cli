@@ -486,26 +486,31 @@ class TestDefaultShares:
     """Part 3a: claude declares plugins + cache as AGENT-scope ``common`` entries.
 
     The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
-    in the box home bind, fresh per box); plugins + cache are now category
-    ``agent.claude.common.*`` defaults ROOTED AT DECLARATION under the agent store
-    root ``@meta.agent.claude.path`` (spec §2a).
+    in the box home bind, fresh per box); plugins + cache are now entries in the
+    ONE TERMINAL category key ``agent.claude.common``, ROOTED AT DECLARATION under
+    the agent store root ``@meta.agent.claude.path`` (spec §2a).
+
+    ⚑ ``common`` went DEST-KEYED 2026-08-08c: the box DESTINATION is the map key
+    and the entry NAME is gone, so a value is ``(host_src,)`` — the dest left the
+    tuple when it became the key.
     """
 
     def test_declares_plugins_and_cache(self):
         t = ClaudeTarget()
         common_binds = t.default_common()
-        # STRUCTURED form (spec §2a): each value is a (host_src, box_dest) tuple,
-        # NOT a colon-joined string.  The host_src is the STORED, fully
-        # self-resolving @-ref — no layer prepends a root later (§2a).
+        # STRUCTURED form (spec §2a): ONE terminal key whose value is the whole
+        # dest-keyed map {box_dest: (host_src,)}, NOT a colon-joined string and
+        # NOT a key per entry.  The host_src is the STORED, fully self-resolving
+        # @-ref — no layer prepends a root later (§2a).
         assert common_binds == {
-            "agent.claude.common.plugins": (
-                "@meta.agent.claude.path/common/plugins",
-                "/home/agent/.claude/plugins",
-            ),
-            "agent.claude.common.cache": (
-                "@meta.agent.claude.path/common/cache",
-                "/home/agent/.claude/cache",
-            ),
+            "agent.claude.common": {
+                "/home/agent/.claude/plugins": (
+                    "@meta.agent.claude.path/common/plugins",
+                ),
+                "/home/agent/.claude/cache": (
+                    "@meta.agent.claude.path/common/cache",
+                ),
+            },
         }
 
     def test_share_values_are_self_resolving_host_src(self):
@@ -515,14 +520,19 @@ class TestDefaultShares:
         which an ``@``-ref also satisfies — it would have passed VACUOUSLY over the
         new shape while guarding nothing.  Inverted: assert the anchored form
         positively, so a regression to a bare leaf is RED.
+
+        ⚑ The DESTINATION is now the map KEY, so the same walk asserts it there —
+        an ``@``-ref that leaked into the key position would be RED on the dest
+        check rather than passing unexamined.
         """
         from kanibako.settings.agent_config import is_self_resolving
 
-        t = ClaudeTarget()
-        for key, value in t.default_common().items():
-            host_src, box_dest = value
-            assert is_self_resolving(host_src), key
-            assert host_src.startswith("@meta.agent.claude.path/common/"), key
+        arm = ClaudeTarget().default_common()["agent.claude.common"]
+        assert arm  # not vacuous — claude ships two rows
+        for box_dest, value in arm.items():
+            host_src = value[0]
+            assert is_self_resolving(host_src), box_dest
+            assert host_src.startswith("@meta.agent.claude.path/common/"), box_dest
             assert box_dest.startswith("/home/agent/.claude/")
 
 
@@ -659,7 +669,8 @@ class TestDescriptor:
         d = ClaudeTarget().descriptor
         bindings = {b.key: b for b in d.bindings}
         # Part 3a: the ``plugins`` SHARED_STORE binding was removed; plugins (and
-        # cache) are now AGENT-scope ``shared`` category entries (default_common),
+        # cache) are now AGENT-scope ``common`` category entries (default_common;
+        # the category was RENAMED from ``shared`` in 1bb5bc6),
         # so only the two AGENT_CRITICAL delivery binds remain — plus the best-effort
         # kickoff-loader SEED (managed_pointer).
         assert set(bindings) == {"share", "launcher", "managed_pointer"}
