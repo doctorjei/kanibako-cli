@@ -316,7 +316,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         _pref_sections_leaf,
         _route_key,
     )
-    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
 
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
@@ -355,12 +355,22 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     # (2026-08-08c). The slot RULE is the same for all of them — the value lives at
     # the key's own nested path — which is why one branch serves three questions:
     #
-    # * ``is_terminal_category_tail`` — the DECLARED keys: ``<scope>.masks``,
+    # * ``is_terminal_category_key`` — the DECLARED keys: ``<scope>.masks``,
     #   ``<scope>.bindings.{ro,rw}`` and ``<scope>.{caches,seeded,common,synced}``,
     #   each holding a whole dest-keyed map. This term is what pays the debt the
     #   terminalization opened: since P6 a hand-authored ``box.bindings.ro`` read
     #   back "(not set)" because no term claimed the BARE key, and the four
     #   would have joined it here. A declared key must be readable (spec §0).
+    #   ⚑ THE WHOLE-KEY PREDICATE, NOT THE SUFFIX ONE (QC). The suffix test claimed
+    #   ``system.channels.common`` and ``workset.channels.common`` — CHANNEL
+    #   type-roots, ordinary path SCALARS — while their siblings ``…channels.chat``
+    #   / ``…channels.share`` fell through to ``_KEY_ROUTES``, so one family read by
+    #   two rules. MEASURED, both keep their read: ``system.channels.*`` is a
+    #   STRUCTURAL system path and ``get_config_value`` reads it from the config
+    #   file before this rule is consulted (which is why ``chat`` already read
+    #   fine with no slot at all), and ``workset.channels.common`` has a
+    #   ``_KEY_ROUTES`` entry giving the IDENTICAL ``(sections, leaf)`` — only the
+    #   family label changes, and CATEGORY and SCOPED pick the same file.
     # * ``_is_scope_bind_key`` — the RETIRED per-name FILE-scope spelling, kept
     #   claimed so the read lands somewhere explicable rather than falling to the
     #   unknown-key table.
@@ -372,7 +382,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     if (
         _is_path_category_key(canonical)
         or _is_scope_bind_key(canonical)
-        or is_terminal_category_tail(canonical.split("."))
+        or is_terminal_category_key(canonical)
     ):
         tail = canonical.split(".")
         return tuple(tail[:-1]), tail[-1], _CATEGORY

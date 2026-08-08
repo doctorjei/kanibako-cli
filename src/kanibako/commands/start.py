@@ -49,8 +49,7 @@ from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
-from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
-from kanibako.settings.settings_store import SCOPE_CONTAINMENT
+from kanibako.settings.settings_keyspace import is_terminal_category_key
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
@@ -6128,59 +6127,6 @@ def _launch_snapshot_inputs(
     )
 
 
-def _is_terminal_category_key(key: str) -> bool:
-    """True iff *key* is a TERMINAL dest-keyed category key (spec §2a).
-
-    ⚑⚑ **DERIVED, NEVER ENUMERATED HERE — TWICE OVER.** Both halves of the answer
-    come from a declaration this module does not own:
-
-    * WHICH tails end a dest-keyed map —
-      :data:`~kanibako.settings.settings_keyspace.TERMINAL_CATEGORY_TAILS`, the
-      keyspace validator's own list;
-    * WHERE such a tail may BEGIN —
-      :data:`~kanibako.settings.settings_store.SCOPE_CONTAINMENT`, the single
-      declaration of the four scopes a §2a category is parametric over.
-
-    A hand-copied literal lived here until 2026-08-08c and listed only the two
-    ``bindings`` arms; when ``caches``/``seeded``/``common``/``synced`` flipped to
-    terminal keys one segment SHALLOWER the literal silently stopped matching them,
-    and :func:`_merge_default_categories` — written precisely to stop a terminal map
-    being replaced wholesale — dropped all four into its last-wins branch. Deriving
-    both halves is what makes that class of drift unavailable.
-
-    ⚑⚑ **THE MATCH IS ON THE CATEGORY'S POSITION, NOT ON THE KEY'S SUFFIX**, and
-    that is the whole point of the shape. A suffix test answers True for
-    ``system.channels.common`` and ``workset.channels.common`` — the CHANNEL
-    type-roots, ordinary path SCALARS that merely end in a category token. Spec §2a
-    names the discriminator itself: *"the discriminator is the ``channels.``
-    segment, which the channel form always carries and the category form never
-    does, so no KEY is ambiguous"* — i.e. a category token is a category only where
-    the SCOPE ends. Requiring that position makes a dict-valued key ending in
-    ``common`` UNABLE to enter the entry-merge branch, rather than merely unlikely
-    to; the caller's ``dict`` test is then a value-shape guard (it keeps the
-    LIST-valued ``<scope>.masks`` whole) and no longer the thing standing between a
-    scalar leaf and a per-entry merge.
-
-    The scope is ONE segment, except the DISCRIMINATED agent tier (spec §0/§2d),
-    which is ``agent.<node>`` — two, never one, because a bare ``agent.<category>``
-    is not a key. Two is also the CEILING, which is why the prefix length can be
-    tested at all: ``.`` is reserved as the key-path separator, so
-    ``agent_ref.parse_agent_ref`` REFUSES a dotted persona or harness segment (it
-    carries ``_DOT_HINT`` for exactly that mistake) and no node can widen the
-    prefix past one segment.
-    """
-    parts = key.split(".")
-    for tail in TERMINAL_CATEGORY_TAILS:
-        if len(parts) <= len(tail) or tuple(parts[-len(tail):]) != tail:
-            continue
-        scope = parts[: -len(tail)]
-        if scope[0] not in SCOPE_CONTAINMENT:
-            return False
-        # The tail must begin exactly where the SCOPE ends.
-        return len(scope) == (2 if scope[0] == "agent" else 1)
-    return False
-
-
 def _merge_default_categories(
     table: dict[str, object],
     incoming: "Mapping[str, object]",
@@ -6205,8 +6151,10 @@ def _merge_default_categories(
     ``template_seed_defaults`` both write ``agent.<a>.seeded``;
     ``target.default_common()`` and ``target.default_category_binds()`` both fold
     into ``agent.<a>.common``. The membership test is
-    :func:`_is_terminal_category_key`, DERIVED from the keyspace's own declaration
-    so it cannot fall behind the next flip.
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` — the ONE
+    whole-key predicate, DERIVED from the keyspace's own declaration so it cannot
+    fall behind the next flip. ⚑ A private copy lived here until QC; it is the
+    KEYSPACE's answer, and a second copy is how the two would drift.
 
     Two branches, and the split is deliberate:
 
@@ -6219,8 +6167,8 @@ def _merge_default_categories(
       keeps the LIST-valued ``<scope>.masks`` on the last-wins branch where it
       belongs — **masks hold whole.** ⚑ It is NOT what excludes a scalar leaf that
       merely ends in a category token: ``system.channels.common`` fails
-      :func:`_is_terminal_category_key` itself, on POSITION, so no value of any
-      shape at that key can reach this branch.
+      :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` itself,
+      on POSITION, so no value of any shape at that key can reach this branch.
 
     A destination already claimed in the SAME key RAISES, naming both families
     (*origins* carries who claimed it). ⚑ **The refusal is STRUCTURAL and therefore
@@ -6244,7 +6192,7 @@ def _merge_default_categories(
     from kanibako.settings.settings_resolve import SettingsError
 
     for key, value in incoming.items():
-        if not _is_terminal_category_key(key) or not isinstance(value, dict):
+        if not is_terminal_category_key(key) or not isinstance(value, dict):
             table[key] = value
             continue
         existing = table.get(key)

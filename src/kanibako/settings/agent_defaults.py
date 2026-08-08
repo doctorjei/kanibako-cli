@@ -497,6 +497,10 @@ def load_category_binds(
 
     ⚑ The declared *category* must be a TERMINAL category key
     (:func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`).
+    ⚑ THE TAIL PREDICATE IS THE RIGHT ONE HERE and its whole-key twin
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` is NOT:
+    a declaration carries the BARE category token (``caches``, ``bindings.ro``),
+    never a scope-rooted key — the ``agent.<node>.`` prefix is added below.
     Since 2026-08-08c that is every bind-shaped category, so the test no longer
     SELECTS between two shapes — it REFUSES a category that is not one, which is
     the closed-keyspace rule (spec §0) rather than a fallback.

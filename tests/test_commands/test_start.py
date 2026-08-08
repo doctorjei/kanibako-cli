@@ -6085,7 +6085,13 @@ class TestMergeDefaultCategoriesFoldsArmsPerEntry:
 
 
 class TestTerminalCategoryKeyMatchesOnPosition:
-    """``_is_terminal_category_key`` answers on the category's POSITION.
+    """``is_terminal_category_key`` answers on the category's POSITION.
+
+    ⚑ THE PREDICATE'S OWN TESTS MOVED (QC) to
+    ``test_settings/test_settings_keyspace.py``, with the predicate: it is
+    ``settings_keyspace.is_terminal_category_key`` now, one definition for six call
+    sites, not a private copy here. What stays is what is about THIS CALLER — the
+    FOLD's two branches — because that is the behaviour the predicate is bought for.
 
     The predicate gates the entry-merge branch of ``_merge_default_categories``, so
     a False POSITIVE means a value that is not a dest-keyed map gets folded key by
@@ -6106,60 +6112,9 @@ class TestTerminalCategoryKeyMatchesOnPosition:
 
     @staticmethod
     def _pred(key):
-        from kanibako.commands.start import _is_terminal_category_key
+        from kanibako.settings.settings_keyspace import is_terminal_category_key
 
-        return _is_terminal_category_key(key)
-
-    def test_the_true_set_is_exactly_a_scope_plus_a_declared_tail(self):
-        """DERIVED on both axes — the enumeration is not written down here.
-
-        The categories come from ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` and
-        the scopes from ``settings_store.SCOPE_CONTAINMENT``, so a seventh category
-        or a fifth scope is covered by this test the day it is declared. That is
-        the property the last flip lacked: four separate defects came from lookups
-        keyed on a spelling that changed, each frozen where the declaration moved.
-        """
-        from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
-        from kanibako.settings.settings_store import SCOPE_CONTAINMENT
-
-        for tail in TERMINAL_CATEGORY_TAILS:
-            cat = ".".join(tail)
-            for scope in SCOPE_CONTAINMENT:
-                if scope == "agent":
-                    # The agent tier is DISCRIMINATED (spec §0/§2d): the key is
-                    # ``agent.<node>.<category>``, a BARE ``agent.<category>`` is
-                    # not a key at all, and one segment DEEPER than the node is
-                    # the false-positive class.
-                    assert self._pred(f"agent.claude.{cat}")
-                    assert self._pred(f"agent.default.{cat}")
-                    assert not self._pred(f"agent.{cat}")
-                    assert not self._pred(f"agent.claude.channels.{cat}")
-                    continue
-                assert self._pred(f"{scope}.{cat}")
-                # ONE SEGMENT DEEPER is never a category key, whatever the
-                # intervening token: that is the false-positive class.
-                assert not self._pred(f"{scope}.channels.{cat}")
-                assert not self._pred(f"{scope}.auth.{cat}")
-            # Unscoped, and the ``pref``/``meta`` mirrors, are out of this
-            # function's domain — the launch floor is keyed by SCOPE alone.
-            assert not self._pred(cat)
-            assert not self._pred(f"pref.box.{cat}")
-            assert not self._pred(f"meta.box.agent.{cat}")
-
-    def test_a_channels_type_root_fails_the_predicate_itself(self):
-        """The two enumerated false positives, excluded BY CONSTRUCTION.
-
-        Named rather than derived because these two are the whole reason the
-        predicate changed shape: both are ``type: path`` in the manifest, i.e.
-        SCALARS, and both answered True to the tail match. The sibling
-        ``<scope>.common`` MOUNT category — one word, the other sense (spec §2a
-        "ONE WORD, ``common``, for both senses") — must still answer True, or the
-        fix would have closed the hole by breaking the category.
-        """
-        assert not self._pred("system.channels.common")
-        assert not self._pred("workset.channels.common")
-        assert self._pred("system.common")
-        assert self._pred("workset.common")
+        return is_terminal_category_key(key)
 
     def test_a_dict_at_a_channels_type_root_stays_last_wins(self):
         """⚑ THE POINT OF THE CHANGE, stated as behaviour rather than as a claim.
@@ -6199,33 +6154,6 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         )
         assert table["box.masks"] == ["/home/agent/c"]
         assert self._pred("box.masks")
-
-    def test_a_persona_node_is_one_segment_and_the_grammar_enforces_it(self):
-        """The agent scope is EXACTLY two segments, and that is not an assumption.
-
-        ``agent_ref.parse_agent_ref`` admits only alphanumerics plus ``-``/``_`` in
-        a segment and carries ``_DOT_HINT`` — *"'.' is reserved as the settings
-        key-path separator and cannot appear in an agent name"* — so a persona node
-        cannot widen ``agent.<node>`` beyond two segments. The premise is asserted here
-        rather than trusted, because if the grammar ever admitted a dot this
-        predicate would start answering False for that box's agent-scope binds and
-        drop them into last-wins, silently deleting an earlier family's map.
-
-        (⚑ ``settings_categories.AGENT_BIND_KEY_RE``'s comment claims the opposite,
-        citing ``navigator.v2℘claude``. Its non-greedy node costs nothing, but the
-        prose is wrong against this grammar — reported, not edited: that module is
-        not this seam.)
-        """
-        from kanibako.agent_ref import canonicalize_agent_ref
-        from kanibako.errors import ConfigError
-
-        # The canonical node of a real persona ref is ONE segment...
-        assert canonicalize_agent_ref("navigator+claude") == "navigator℘claude"
-        assert self._pred("agent.navigator℘claude.seeded")
-        assert self._pred("agent.navigator℘claude.bindings.ro")
-        # ...and a dotted persona is refused at the grammar, not later.
-        with pytest.raises(ConfigError):
-            canonicalize_agent_ref("navigator.v2+claude")
 
 
 class TestAgentCriticalDests:

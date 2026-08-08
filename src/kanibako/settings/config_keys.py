@@ -1626,13 +1626,22 @@ def has_no_cli_write_route(target: str) -> bool:
     ``agent.<node>.{caches,seeded,common,synced}.<name>`` — and the pref refusal was
     appending "Set it directly at the agent scope instead", prescribing a command
     that refuses. That is exactly the failure this function exists to prevent.
+
+    ⚑ The terminal term is the WHOLE-KEY predicate (QC): *target* is a canonical
+    scope-rooted key, so the category must sit where the SCOPE ends. ⚑ THE STRUCTURAL
+    ``system.channels.*`` PATHS ARE NOT COVERED BY THIS FUNCTION AND NEVER WERE — the
+    suffix test claimed ``system.channels.common`` alone, by coincidence of spelling,
+    while its five siblings fell through. They are YAML-only for a DIFFERENT reason
+    (:func:`is_system_path_key`), and no pref can name one: §2h admits only
+    ``system.agent`` and ``agent.<agent>.**`` as targets. Adding that family here is
+    a separate call, not a silent widening of this one.
     """
-    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
 
     return (
         _is_scope_bind_key(target)
         or _is_agent_scope_bind_key(target)
-        or is_terminal_category_tail(target.split("."))
+        or is_terminal_category_key(target)
     )
 
 

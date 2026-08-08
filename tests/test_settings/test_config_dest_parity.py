@@ -559,6 +559,159 @@ class TestAgentScopeCategoryDestination:
         assert "FROM_CF" not in got, got
 
 
+
+# ---------------------------------------------------------------------------
+# 5b. THE CHANNEL TYPE-ROOTS — one family, one rule (QC)
+# ---------------------------------------------------------------------------
+
+#: The workset channel type-roots that have a ``_KEY_ROUTES`` entry. Spelled out
+#: rather than read from the table so the KNOWN GAP below is a real oracle: derive
+#: it from ``_KEY_ROUTES`` and the case would agree with the table by construction
+#: and could never go red.
+_ROUTED_WORKSET_CHANNELS = (
+    "workset.channels.common", "workset.channels.chat", "workset.channels.share",
+)
+
+
+class TestChannelTypeRootsRouteUNIFORMLY:
+    """⚑ A ``channels`` family must route by ONE rule, and until QC it did not.
+
+    ``_key_slot``'s category term asked ``is_terminal_category_tail`` — a SUFFIX
+    test — so ``<scope>.channels.common`` was claimed as a CATEGORY while its
+    siblings ``…chat`` / ``…share`` fell through to ``_KEY_ROUTES``. Both are
+    ``type: path`` SCALARS in the ratified manifest; only the spelling of the type
+    name differed. The term now asks ``is_terminal_category_key``, which requires
+    the category to sit where the SCOPE ends.
+
+    ⚑⚑ NO READ WAS TRADED FOR THE CONSISTENCY, and that is the case below, not an
+    assertion in prose. ``system.channels.*`` is a STRUCTURAL system path read from
+    the config file BEFORE the slot rule is consulted (which is exactly why ``chat``
+    always read fine with no slot at all), and ``workset.channels.common`` has a
+    ``_KEY_ROUTES`` entry naming the IDENTICAL ``(sections, leaf)`` — so only the
+    family LABEL moved, and ``_CATEGORY`` and ``_SCOPED`` pick the same file.
+
+    ⚑ THE CLASS NAME OVERSTATES BY ONE: three workset members route NOWHERE, and
+    never did. That is a separate, PRE-EXISTING gap, pinned in its own case under
+    this file's known-wrong charter rather than smuggled into a uniformity claim.
+    """
+
+    @staticmethod
+    def _families() -> dict[str, list[str]]:
+        """Every declared ``<scope>.channels.<type>`` key, grouped by scope.
+
+        DERIVED from the manifest so a channel type added later is covered without
+        an edit here — the property is about the FAMILY, not about ``common``.
+        """
+        import importlib.resources as res
+
+        import yaml
+
+        doc = yaml.safe_load(
+            res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
+        )
+        out: dict[str, list[str]] = {}
+        for key in doc["keys"]:
+            head, _, rest = str(key).partition(".channels.")
+            if rest and "." not in rest:
+                out.setdefault(head, []).append(str(key))
+        return out
+
+    def test_no_channel_type_root_claims_the_CATEGORY_family(self):
+        """⚑ RED BEFORE QC, at BOTH scopes: ``common`` alone answered ``_CATEGORY``.
+
+        Stated as "none of them", not as "all of them agree", because the family is
+        NOT internally uniform for a SECOND, unrelated reason — see
+        :meth:`test_the_unrouted_members_are_a_KNOWN_GAP_not_this_change`. What QC
+        settles is that a channel type-root is never mistaken for a CATEGORY.
+
+        ⚑ MUTATION: put ``is_terminal_category_tail(canonical.split("."))`` back in
+        ``_key_slot`` -> both ``common`` rows answer ``category`` and this dies.
+        """
+        from kanibako.settings.config_dest import _key_slot
+
+        families = self._families()
+        assert set(families) == {"system", "workset"}, families
+        for scope, members in families.items():
+            assert f"{scope}.channels.common" in members, members
+            kinds = {k: _key_slot(k) for k in members}
+            assert not any(v is not None and v[2] == "category" for v in kinds.values()), kinds
+
+    def test_common_now_routes_EXACTLY_like_its_chat_sibling(self):
+        """The two siblings that motivated the pass, pinned against each other.
+
+        ``common`` is the only channel TYPE whose name collides with a §2a category
+        token, so it was the only member the suffix test could claim. At the workset
+        scope the collision cost the label only (both are ``_SCOPED`` at the same
+        slot); at the system scope it cost a spurious slot for a key the read path
+        never consults. Either way the two must answer the same thing.
+        """
+        from kanibako.settings.config_dest import _key_slot
+
+        for scope in ("system", "workset"):
+            common = _key_slot(f"{scope}.channels.common")
+            chat = _key_slot(f"{scope}.channels.chat")
+            if common is None:
+                assert chat is None, (scope, common, chat)
+                continue
+            assert common[0] == chat[0] and common[2] == chat[2], (scope, common, chat)
+
+    def test_a_stored_value_still_reads_back(self, bench):
+        """⚑⚑ THE NO-REGRESSION ORACLE — a DECLARED key must be readable (spec §0).
+
+        This is the case the routing change could have broken: dropping a key out of
+        the category branch drops it into ``_KEY_ROUTES``, which answers ``None`` for
+        a key with no entry. It reads GREEN on both sides of QC BY DESIGN — its job
+        is to stay green, and it goes RED the moment a member loses its read.
+
+        ⚑ Covers every SYSTEM member (they are ``SYSTEM_PATH_DEFAULTS``, read from
+        the config file by a branch that runs BEFORE the slot rule — which is why
+        ``chat`` always read fine with no slot at all) and every ROUTED workset
+        member. The unrouted workset members are the known gap below.
+        """
+        for key in self._families()["system"]:
+            leaf = key.rsplit(".", 1)[1]
+            bench.seed(bench.cf, ("system", "channels"), leaf, f"/hosted/{leaf}")
+        for key in self._families()["system"]:
+            leaf = key.rsplit(".", 1)[1]
+            assert bench.get(ConfigLevel.system, key) == f"/hosted/{leaf}", key
+
+        for key in _ROUTED_WORKSET_CHANNELS:
+            leaf = key.rsplit(".", 1)[1]
+            bench.seed(bench.ws, ("workset", "channels"), leaf, f"/ws/{leaf}")
+        for key in _ROUTED_WORKSET_CHANNELS:
+            leaf = key.rsplit(".", 1)[1]
+            assert bench.get(ConfigLevel.workset, key) == f"/ws/{leaf}", key
+
+    def test_the_unrouted_members_are_a_KNOWN_GAP_not_this_change(self, bench):
+        """⚑⚑ KNOWN-WRONG, PINNED UNDER THIS FILE'S CHARTER — and NOT caused by QC.
+
+        ``workset.channels.{broadcast,mailboxes,share_global}`` are DECLARED in the
+        ratified manifest with ``set: cli+file``, and they have no ``_KEY_ROUTES``
+        entry, so a stored value reads back "(not set)". They answered ``None``
+        BEFORE this change too — ``broadcast`` is not a category token, so no suffix
+        test ever claimed them. This is a get/set-asymmetry on a declared key
+        (spec §0), REPORTED and left alone: adding a route is a routing decision, not
+        a consequence of making one predicate position-aware.
+
+        The case is here so the gap is visible and dated rather than folded into a
+        "the family is uniform" assertion that was never true. Fixing it makes this
+        RED, which is the correct signal to delete the case.
+        """
+        from kanibako.settings.config_dest import _key_slot
+
+        gap = sorted(set(self._families()["workset"]) - set(_ROUTED_WORKSET_CHANNELS))
+        assert gap == [
+            "workset.channels.broadcast",
+            "workset.channels.mailboxes",
+            "workset.channels.share_global",
+        ], gap
+        for key in gap:
+            leaf = key.rsplit(".", 1)[1]
+            bench.seed(bench.ws, ("workset", "channels"), leaf, f"/ws/{leaf}")
+            assert _key_slot(key) is None, key
+            assert bench.get(ConfigLevel.workset, key) is None, key
+
+
 # ---------------------------------------------------------------------------
 # 6. The per-node agent families — persona / node bind / node secret
 # ---------------------------------------------------------------------------

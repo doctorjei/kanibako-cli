@@ -208,7 +208,10 @@ def test_a_name_under_a_dest_keyed_category_is_not_a_key(key):
 def test_the_terminal_categories_are_declared_in_one_place():
     """ALL SEVEN dest-keyed categories are the SAME shape, and the parser and the
     pref walker must agree on which keys they are — see
-    ``settings_prefs._flatten_pref_node``. One constant, two consumers.
+    ``settings_prefs._flatten_pref_node``. ONE constant; the two predicates over it
+    (:func:`is_terminal_category_tail` here, :func:`is_terminal_category_key` in the
+    class below) differ only in WHERE the tail may sit, never in WHICH tails there
+    are.
 
     ⚑ The seven sit at TWO depths: a ``bindings`` ARM is terminal at
     ``bindings.{ro,rw}``, while ``masks`` and the four category tokens are
@@ -239,6 +242,193 @@ def test_the_terminal_categories_are_declared_in_one_place():
     assert not is_terminal_category_tail(("box", "common", "plugins"))
     assert not is_terminal_category_tail(("ro",))
     assert not is_terminal_category_tail(())
+
+
+class TestTerminalCategoryKeyMatchesOnPosition:
+    """``is_terminal_category_key`` answers on the category's POSITION.
+
+    ⚑⚑ THE WHOLE POINT IS THAT IT IS NOT :func:`is_terminal_category_tail`. That one
+    is a SUFFIX test, correct for a caller holding a TAIL and WRONG for a caller
+    holding a whole key: ``system.channels.common`` / ``workset.channels.common`` are
+    the CHANNEL type-roots (spec §2c/§2f/§2g), ordinary path SCALARS that merely END
+    in a category token, and the suffix test claims them while their siblings
+    ``…channels.chat`` / ``…channels.share`` fall through — one family, two rules.
+    Spec §2a names the discriminator itself: *"the discriminator is the ``channels.``
+    segment, which the channel form always carries and the category form never
+    does"* — a category token is a category only where the SCOPE ends.
+
+    ⚑ These tests came from ``test_commands/test_start.py`` (QC), where the predicate
+    was a private copy. They moved WITH it; what stayed there is the FOLD behaviour
+    that copy was bought for.
+    """
+
+    @staticmethod
+    def _pred(key):
+        from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+        return is_terminal_category_key(key)
+
+    def test_the_true_set_is_exactly_a_scope_plus_a_declared_tail(self):
+        """DERIVED on both axes — the enumeration is not written down here.
+
+        The categories come from ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` and
+        the scopes from ``settings_store.SCOPE_CONTAINMENT``, so a seventh category
+        or a fifth scope is covered by this test the day it is declared. That is
+        the property the last flip lacked: four separate defects came from lookups
+        keyed on a spelling that changed, each frozen where the declaration moved.
+        """
+        from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+        from kanibako.settings.settings_store import SCOPE_CONTAINMENT
+
+        for tail in TERMINAL_CATEGORY_TAILS:
+            cat = ".".join(tail)
+            for scope in SCOPE_CONTAINMENT:
+                if scope == "agent":
+                    # The agent tier is DISCRIMINATED (spec §0/§2d): the key is
+                    # ``agent.<node>.<category>``, a BARE ``agent.<category>`` is
+                    # not a key at all, and one segment DEEPER than the node is
+                    # the false-positive class.
+                    assert self._pred(f"agent.claude.{cat}")
+                    assert self._pred(f"agent.default.{cat}")
+                    assert not self._pred(f"agent.{cat}")
+                    assert not self._pred(f"agent.claude.channels.{cat}")
+                    continue
+                assert self._pred(f"{scope}.{cat}")
+                # ONE SEGMENT DEEPER is never a category key, whatever the
+                # intervening token: that is the false-positive class.
+                assert not self._pred(f"{scope}.channels.{cat}")
+                assert not self._pred(f"{scope}.auth.{cat}")
+            # Unscoped, and the ``pref``/``meta`` mirrors, are out of this
+            # function's domain — the launch floor is keyed by SCOPE alone.
+            assert not self._pred(cat)
+            assert not self._pred(f"pref.box.{cat}")
+            assert not self._pred(f"meta.box.agent.{cat}")
+
+    def test_a_channels_type_root_fails_the_predicate_itself(self):
+        """The two enumerated false positives, excluded BY CONSTRUCTION.
+
+        Named rather than derived because these two are the whole reason the
+        predicate changed shape: both are ``type: path`` in the manifest, i.e.
+        SCALARS, and both answered True to the tail match. The sibling
+        ``<scope>.common`` MOUNT category — one word, the other sense (spec §2a
+        "ONE WORD, ``common``, for both senses") — must still answer True, or the
+        fix would have closed the hole by breaking the category.
+        """
+        assert not self._pred("system.channels.common")
+        assert not self._pred("workset.channels.common")
+        assert self._pred("system.common")
+        assert self._pred("workset.common")
+
+    def test_a_persona_node_is_one_segment_and_the_grammar_enforces_it(self):
+        """The agent scope is EXACTLY two segments, and that is not an assumption.
+
+        ``agent_ref.parse_agent_ref`` admits only alphanumerics plus ``-``/``_`` in
+        a segment and carries ``_DOT_HINT`` — *"'.' is reserved as the settings
+        key-path separator and cannot appear in an agent name"* — so a persona node
+        cannot widen ``agent.<node>`` beyond two segments. The premise is asserted here
+        rather than trusted, because if the grammar ever admitted a dot this
+        predicate would start answering False for that box's agent-scope binds and
+        drop them into last-wins, silently deleting an earlier family's map.
+
+        (⚑ ``settings_categories.AGENT_BIND_KEY_RE``'s comment claims the opposite,
+        citing ``navigator.v2℘claude``. Its non-greedy node costs nothing, but the
+        prose is wrong against this grammar — reported, not edited: that module is
+        not this seam.)
+        """
+        from kanibako.agent_ref import canonicalize_agent_ref
+        from kanibako.errors import ConfigError
+
+        # The canonical node of a real persona ref is ONE segment...
+        assert canonicalize_agent_ref("navigator+claude") == "navigator℘claude"
+        assert self._pred("agent.navigator℘claude.seeded")
+        assert self._pred("agent.navigator℘claude.bindings.ro")
+        # ...and a dotted persona is refused at the grammar, not later.
+        with pytest.raises(ConfigError):
+            canonicalize_agent_ref("navigator.v2+claude")
+
+    def test_the_two_predicates_answer_DIFFERENT_questions(self):
+        """The pair is the point: same SET, different DOMAIN.
+
+        Both read :data:`TERMINAL_CATEGORY_TAILS`, so they can never disagree about
+        WHICH categories are terminal. They disagree about WHERE one may appear, and
+        the types say which question a call site is asking — segments for a tail, a
+        dotted string for a key. Deleting either and pointing its callers at the
+        other reintroduces one of the two defects.
+
+        ⚑ MUTATION: make ``is_terminal_category_key`` delegate to
+        ``is_terminal_category_tail(key.split("."))`` -> the ``channels`` rows below
+        flip and this dies. Make the tail predicate demand a scope -> the bare-tail
+        rows die, and ``agent_defaults.load_category_binds`` (which is handed a BARE
+        category token, never a key) starts refusing every plugin declaration.
+        """
+        from kanibako.settings.settings_keyspace import is_terminal_category_tail
+
+        # A whole key whose category sits where the SCOPE ends: BOTH say yes.
+        for key in ("box.masks", "system.bindings.rw", "agent.claude.caches",
+                    "workset.seeded", "box.common", "system.synced"):
+            assert is_terminal_category_tail(key.split(".")), key
+            assert self._pred(key), key
+        # A BARE tail — what a plugin declaration carries: only the TAIL test.
+        for tail in ("caches", "bindings.ro", "masks"):
+            assert is_terminal_category_tail(tail.split(".")), tail
+            assert not self._pred(tail), tail
+        # A scalar leaf that merely ENDS in a category token: only the tail test,
+        # and that is the defect.
+        for key in ("system.channels.common", "workset.channels.common"):
+            assert is_terminal_category_tail(key.split(".")), key
+            assert not self._pred(key), key
+
+    def test_the_channel_type_roots_classify_UNIFORMLY(self):
+        """One family, one answer — enumerated, not hand-listed.
+
+        ``common`` is the ONLY channel type whose name collides with a category
+        token, so under the suffix test exactly one member of each ``channels``
+        family answered differently from its siblings. Deriving the members from the
+        manifest means a channel type named after a future category is covered the
+        day it is declared.
+        """
+        import importlib.resources as res
+
+        import yaml
+
+        doc = yaml.safe_load(
+            res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
+        )
+        families: dict[str, list[str]] = {}
+        for key in doc["keys"]:
+            head, _, rest = str(key).partition(".channels.")
+            if rest and "." not in rest:
+                families.setdefault(head, []).append(str(key))
+        assert set(families) == {"system", "workset"}, families
+        for scope, members in families.items():
+            # Every member is a channel type-root, so every member is False.
+            assert not any(self._pred(k) for k in members), (scope, members)
+            # And the collision is real: without it this test proves nothing.
+            assert f"{scope}.channels.common" in members, members
+
+    def test_no_DECLARED_key_gains_the_category_family(self):
+        """The accepted set only ever SHRANK: nothing new was let in.
+
+        Enumerated over every spelling the ratified manifest declares — the corpus
+        that makes the claim checkable rather than asserted. ``ADDED`` must be empty
+        and the removals must be exactly the two channel type-roots.
+        """
+        import importlib.resources as res
+
+        import yaml
+
+        from kanibako.settings.settings_keyspace import is_terminal_category_tail
+
+        doc = yaml.safe_load(
+            res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
+        )
+        declared = {str(k) for k in doc["keys"]}
+        suffix = {k for k in declared if is_terminal_category_tail(k.split("."))}
+        position = {k for k in declared if self._pred(k)}
+        assert position - suffix == set()
+        assert suffix - position == {
+            "system.channels.common", "workset.channels.common",
+        }
 
 
 def test_the_bind_shaped_terminal_mirror_cannot_drift():
