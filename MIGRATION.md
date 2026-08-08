@@ -936,7 +936,9 @@ keys symmetrically — a reset is a write.
 - they are still declared keys;
 - they are still read by the launch cascade, so **every binding you already have keeps mounting**;
 - they are still authored by hand in the settings YAML;
-- **`config get` still reads them.** A binding you set is never reported as `(not set)`.
+- **`config get` still reads them** at the box and workset nouns, naming the subject
+  (`kanibako box get <box> box.bindings.ro`). ⚑ It is not a complete read surface — see the
+  known-limitation note in §2.23 before relying on it.
 
 Only the *write verb* is gone.
 
@@ -948,8 +950,9 @@ again, the refusal names the real surface: the file. §2.23 covers the stored sh
 
 **The cure.** Edit the settings file for the scope you want, and re-launch the box. For a box-scope
 bind that is the box's own settings file; for an agent-node bind it is
-`agents/<node>/settings.yaml`. Use `kanibako box get <key>` (or `system get`) to read the current
-value first — that still works, and it tells you which entry you are editing.
+`agents/<node>/settings.yaml`. For a box- or workset-scope bind you can read the current value
+first with `kanibako box get <box> <key>` — naming the subject, which is required. ⚑ There is no
+read-back for an agent-node bind, and the `system` noun refuses these keys outright; see §2.23.
 
 **⚑ This now covers EVERY bind-shaped category, not just the two arms.** `caches`, `seeded`,
 `common` and `synced` have lost their `config set` route as well — including the source-only
@@ -971,9 +974,10 @@ Both now refuse, naming the key and pointing at the settings file, exactly as th
 
 **What is genuinely unaffected, for all six.** The categories are still declared, still read by the
 launch cascade so every entry keeps being delivered, still authored by hand in the settings YAML,
-and **still readable** — but ⚑ read them at the CATEGORY key now (`kanibako box get box.caches`),
-which returns the whole map. The per-entry spelling `box.caches.<name>` is not a key any more, so
-`get` no longer reads one either; §2.23 explains why and shows the file shape.
+and **readable at the box and workset nouns** — but ⚑ read them at the CATEGORY key now
+(`kanibako box get <box> box.caches`), which returns the whole map. The per-entry spelling
+`box.caches.<name>` is not a key any more, so `get` no longer reads one either; §2.23 shows the
+file shape and records what the read surface still cannot do.
 
 **Why the repoint went too.** The same reason the arms lost theirs: these categories **are** single
 keys whose value is a map keyed by the mount **destination**, so there is no per-entry key left for
@@ -1129,15 +1133,37 @@ destination, keep the one you meant; kanibako refuses the pair rather than silen
 (*Different* categories, or different scopes, at one destination are unaffected — those are
 different keys, and the collision table in §2.2 decides between them exactly as before.)
 
-**Reading a category.** `config get` reads the CATEGORY key and returns the whole map:
+**Reading a category.** `config get` reads the CATEGORY key and returns the whole map — but you
+must **name the subject box or workset**. Given a single positional argument, kanibako reads
+`box.caches` as a *project name*, not as a key:
 
 ```
-kanibako box get box.caches                # the map
-kanibako box get box.caches.npm            # NOT a key any more — refused, naming the category
+kanibako box get <box> box.caches                  # the map
+kanibako workset get <workset> workset.caches      # the map
 ```
 
-This also fixes a gap: `box.bindings.ro`, `box.bindings.rw` and `box.masks` previously read back
-`(not set)` even when set, because nothing claimed the bare key. All seven now read.
+This closes a gap: `box.bindings.ro`, `box.bindings.rw` and `box.masks` previously read back
+`(not set)` even when set, because nothing claimed the bare key.
+
+**⚠️ Known limitation — a category key is not individually readable yet.** A dest-keyed category is
+*one key with many facets inside one value*, and kanibako has no settled surface for reading or
+writing one facet of such a key. A readable form is planned; its shape is not decided, so do not
+build a workflow on today's behaviour. Three things you will hit while making the edits above:
+
+- `kanibako system get box.caches` — and any category key under the `system` noun — refuses with
+  `Error: unknown config key`, even though the key is declared and the two nouns above read it.
+- `agents/<node>/settings.yaml` edits **cannot be read back at all** right now: `kanibako agent get
+  <node> agent.<node>.caches` answers `(not set)` whatever the file says.
+- `... get <subject> box.caches.<destination>` is **not** a key. It does not refuse; it prints
+  whatever happens to sit at that dotted path, which is `(not set)` for any destination containing
+  a `.` — and most guest paths do (`~/.cache/uv`).
+
+**So how do you check the edit you just made?** For a box or workset, use the two-positional read
+above to confirm the YAML parsed into the shape you meant — it *echoes* the stored map and does not
+validate it — and then run `kanibako box show <box> --effective` on a box the edit applies to.
+That resolves the real launch snapshot, so a malformed entry in the box, workset **or** system tier
+is refused there by name. For an agent node neither check is available today: read the file back
+yourself, and rely on the launch to refuse a bad entry.
 
 **Seed and sync destinations moved to guest spelling.** The three template seed layers
 (`system.seeded` / `agent.<agent>.seeded` / `workset.seeded`) target `~/` instead of a host path

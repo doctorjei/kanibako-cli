@@ -224,9 +224,10 @@ def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
     this function alone.
 
     ⚑ The bind ``repoint_host_src`` WRITE used to be in that list and is not any
-    more: DS-BL1 = (a) retired the CLI write route for every bind-shaped category, so
-    the only remaining traffic through the ``bindings.`` arm here is the READ
-    (``config get`` via ``config_dest._node_bind_target``).
+    more: DS-BL1 = (a) retired the CLI write route for every bind-shaped category
+    and QA′ (2026-08-08) deleted the function itself, so the only remaining traffic
+    through the ``bindings.`` arm here is the READ (``config get`` via
+    ``config_dest._node_bind_target``).
     """
     if tail.startswith("secret_path."):
         return ("self", "secret_path"), tail[len("secret_path."):]

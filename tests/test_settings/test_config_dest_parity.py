@@ -16,13 +16,24 @@ real files in ``tmp_path`` and asserts WHICH FILE CHANGED and WHAT nested path
 appeared in it.  Nothing here imports a private name; the whole module survives
 the refactor unedited.  Keep it that way.
 
-⚑ THIS FILE PINS BEHAVIOR, INCLUDING BEHAVIOR THAT IS KNOWN-WRONG.  Two cases
-below assert a destination that is *deliberately broken* (see
-``test_agent_scope_non_bind_category_*``).  They are not aspirational and they
-are not bugs in the test: preserving them across the refactor is an explicit
-requirement (playbook "H2 exemplar", `3b67e61`).  A future change that FIXES
-them must edit the case and say so; a refactor that silently "fixes" them has
-violated its charter.
+⚑ THIS FILE PINS BEHAVIOR, INCLUDING BEHAVIOR THAT IS KNOWN-WRONG.  Cases below
+assert destinations that are *deliberately broken*.  They are not aspirational and
+they are not bugs in the test: preserving them across a refactor is an explicit
+requirement (playbook "H2 exemplar", `3b67e61`).  A future change that FIXES one
+must edit the case and SAY SO; a refactor that silently "fixes" one has violated
+its charter.
+
+⚑⚑ THE CHARTER WAS EXERCISED ON 2026-08-08 (QA′), AND THIS IS THE SAYING-SO.  The
+known-broken agent-scope category WRITE arm — ``_write_dest`` aiming at the
+command's own config file while ``_read_dest`` answered the noun's settings file —
+was DELETED once DS-BL1 = (a) had made it unreachable from every verb.  So
+``TestAgentScopeCategoryDestination`` (renamed from
+``…IsDeliberatelyBroken``) no longer pins a divergence: its case 3 was re-posed to
+assert that the two wrappers now AGREE, which is a real oracle in the other
+direction — it goes red if anyone reintroduces a per-caller destination switch.
+⚑ The class's OTHER known-wrong pin — the agent-scope READ landing on the noun's
+settings file instead of ``agents/<node>/settings.yaml`` — is UNTOUCHED and still
+deliberately broken.  Only the write half moved.
 """
 
 from __future__ import annotations
@@ -399,12 +410,12 @@ class TestRetiredScopeBindDest:
 
 
 # ---------------------------------------------------------------------------
-# 5. ⚑ THE PRESERVED-BROKEN DESTINATION (agent-scope, non-bind category)
+# 5. ⚑ THE AGENT-SCOPE CATEGORY DESTINATION (write arm deleted; read still broken)
 # ---------------------------------------------------------------------------
 
-class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
-    """⚑⚑⚑ THE PRESERVED-BROKEN DESTINATION IS UNREACHABLE FROM THE VERBS — it died
-    by its ROUTE being retired, not by being fixed.
+class TestAgentScopeCategoryDestination:
+    """⚑⚑⚑ THE PRESERVED-BROKEN WRITE DESTINATION IS GONE — it died by its ROUTE
+    being retired and then being DELETED, never by being repaired.
 
     The defect: a non-bind AGENT-scope category was routed by NO handler, so ``set``
     landed in the command's own Layer-1 CONFIG file (in no cascade level — a SILENT
@@ -412,41 +423,40 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
     disagreed, and `3b67e61` recorded fixing it as its own future change rather than
     doing it inside a behavior-preserving commit.
 
-    ⚑⚑ EDITED DELIBERATELY, 2026-08-08c, AND THAT IS THIS MODULE'S CHARTER, NOT AN
-    EXCEPTION TO IT. The charter forbids a refactor SILENTLY "fixing" these cases
-    and requires a change that fixes them to edit the case and say so. The behaviour
-    changed, so the cases changed, and this is the saying-so. ⚑ Note WHICH change:
-    **the arm was not repaired — the SPELLING these cases drove was retired out from
-    under it.**
+    ⚑⚑ EDITED DELIBERATELY — TWICE — AND THAT IS THIS MODULE'S CHARTER, NOT AN
+    EXCEPTION TO IT. The charter forbids a refactor SILENTLY "fixing" these cases and
+    requires a change that fixes one to edit the case and SAY SO.
 
-    DS-BL1 = (a) removed the CLI write route for every bind-shaped category, and the
-    2026-08-08c dest-keyed flip then removed the per-entry KEY itself. Three facts
-    hold now, and this class pins each so none can move silently:
+    * **2026-08-08c** retired the per-entry SPELLING out from under the arm (the
+      dest-keyed flip), leaving the arm itself intact at the terminal spelling.
+    * **2026-08-08 (QA′)** DELETED the arm, on Jei's word, together with the
+      ``agent_scope_to_config`` flag. Nothing was repaired: DS-BL1 = (a) had already
+      made the route unreachable from every verb, so this removed dead machinery
+      that documented a bug.
+
+    Three facts hold now, and this class pins each so none can move silently:
 
     1. the VERBS refuse and move nothing (the write half is gone);
     2. the per-entry spelling ``agent.<node>.<category>.<name>`` REACHES NO SLOT AT
        ALL — both wrappers answer ``None``, because ``_key_slot`` has no agent-scope
-       per-entry term and ``_is_path_category_key`` fails closed for every key. This
-       is the fact that CHANGED, and it is now pinned in its own case rather than
-       being the incidental input to the two below;
-    3. the ARM ITSELF STILL EXISTS in ``_write_dest``, with its
-       ``agent_scope_to_config`` flag and the read/write divergence intact —
-       MEASURED, not assumed. What reaches it now is the TERMINAL key
-       ``agent.<node>.<category>``, for which ``_write_dest`` still answers the
-       command's own config file while ``_read_dest`` answers the noun's settings
-       file. The divergence the class is named for is alive at a different spelling.
+       per-entry term and ``_is_path_category_key`` fails closed for every key;
+    3. ``_write_dest`` and ``_read_dest`` now AGREE for the terminal key
+       ``agent.<node>.<category>``. Case 3 was re-posed from pinning the divergence
+       to pinning the agreement — a real oracle in the other direction, red if
+       anyone reintroduces a per-caller destination switch.
 
-    ⚑ SO ``_CATEGORY`` IS NOT DEAD, and nothing here should be read as saying it is.
-    ``_key_slot`` still returns it for EVERY terminal category key at every scope,
-    and for every FILE-scope per-entry spelling (``box.caches.x``, via
-    ``_is_scope_bind_key``). What died is the AGENT-scope per-entry spelling alone;
-    what is unreachable FROM THE VERBS is any route that carries a ``_CATEGORY`` slot
-    into ``_write_dest``.
+    ⚑ ``_CATEGORY`` IS NOT DEAD, and nothing here should be read as saying it is.
+    QA′ deleted the WRITE SLOT, not the constant: ``_key_slot`` still returns
+    ``_CATEGORY`` for EVERY terminal category key at every scope and for every
+    FILE-scope per-entry spelling (``box.caches.x``, via ``_is_scope_bind_key``). It
+    is the key's declared FAMILY; what it no longer does is change the destination.
 
-    ⚑⚑ WHEN THE OWED PASSES LAND, THIS CLASS IS THE THING TO EDIT, DELIBERATELY, IN
-    THAT COMMIT: the ``_write_dest``/``_read_dest`` collapse (which deletes the
-    divergence case 3 pins) and QA′ (which deletes ``config_dest._CATEGORY`` and
-    ``settings_configset.repoint_host_src``). It must never change as a side effect.
+    ⚑⚑ THE CLASS STILL PINS ONE KNOWN-WRONG BEHAVIOUR, AND QA′ DID NOT TOUCH IT:
+    ``test_get_reads_the_noun_settings_file`` asserts that the agent-scope terminal
+    READ lands on the noun's settings file rather than on
+    ``agents/<node>/settings.yaml``, which is the wrong file. Re-pointing it moves
+    ``agent_config.agent_file_route`` and is a separately-boarded pass; when it
+    lands, THAT case must be edited deliberately, in that commit.
     """
 
     def test_the_verbs_refuse_and_move_nothing(self, bench):
@@ -484,16 +494,25 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
                     config_path=bench.cf, settings_path=bench.ssp,
                 ) is None, (wrapper.__name__, key)
 
-    def test_the_broken_arm_still_exists_at_the_function_level(self, bench):
-        """The arm itself, called directly — the read/write divergence the two
-        wrappers still carry. Unreachable through a verb; NOT yet deleted.
+    def test_write_and_read_now_agree_at_the_function_level(self, bench):
+        """⚑ RE-POSED IN QA′ (2026-08-08), DELIBERATELY, PER THIS MODULE'S CHARTER.
 
-        ⚑ THE KEY MOVED, THE ARM DID NOT. This drove the per-entry
-        ``agent.claude.caches.pip`` until that spelling stopped being a key; the
-        TERMINAL ``agent.claude.caches`` is what reaches the arm now (via
-        ``_key_slot``'s ``is_terminal_category_tail`` term), and it diverges exactly
-        as before — ``_write_dest`` at the command's own config file, which no
-        cascade level reads, and ``_read_dest`` at the noun's settings file.
+        This case was ``test_the_broken_arm_still_exists_at_the_function_level`` and
+        asserted the DIVERGENCE: ``w.file == bench.cf`` (the command's own config
+        file, which no cascade level reads) against ``r.file == bench.ssp``. QA′
+        deleted the write arm that produced it, so the old assertion could only be
+        kept by rebuilding the bug.
+
+        ⚑⚑ IT IS NOT A WEAKENED ASSERTION — IT IS THE SAME CLAIM WITH THE SIGN
+        FLIPPED, AND IT STILL BITES. Agreement between the write route and the read
+        route is what this module exists to police; asserting ``w == r`` on the one
+        family that used to disagree goes RED the moment anyone reintroduces a
+        per-caller destination switch (an ``agent_scope_to_config``-shaped flag by
+        any name). Asserting only "no exception" would have been the weakening.
+
+        ⚑ WHAT IS *NOT* CLAIMED HERE: that the file they agree on is the RIGHT one.
+        It is not — see ``test_get_reads_the_noun_settings_file`` below, which pins
+        the still-broken read.
         """
         from kanibako.settings.config_dest import _read_dest, _write_dest
 
@@ -507,8 +526,11 @@ class TestAgentScopeNonBindCategoryIsDeliberatelyBroken:
             config_path=bench.cf, settings_path=bench.ssp,
         )
         assert w is not None and r is not None
-        assert w.file == bench.cf          # the file no cascade level reads
-        assert r.file == bench.ssp         # the noun's settings file
+        # THE POINT OF THE CASE: the two routes are the same route now.
+        assert w == r, (w, r)
+        # Named explicitly as well, so a future change that moves BOTH in lockstep
+        # still has to come through here and say why.
+        assert w.file == bench.ssp         # the noun's settings file
         assert w.sections == r.sections == ("agent", "claude")
         assert w.leaf == r.leaf == "caches"
 
