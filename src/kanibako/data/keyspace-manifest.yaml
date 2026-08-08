@@ -76,6 +76,64 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               -> @system.template/box install, which still stages that subtree."
       code_state: "Code + tests landed with this amendment (phases H1/H2). The spec
                    half was Jei's and was ratified first."
+    - date: "2026-08-08a"
+      what: "The box HOME bind LEAVES `bindings.rw` and becomes the RO DERIVED key
+             `meta.box.home` (= @meta.box.path/home). The spec's
+             box.bindings.rw[~/] row and this file's `~/` bind_default_entries row
+             are DELETED; a `meta.box.home` key is declared in their place. Home is
+             effectively pid 0 — the FOUNDATION bind, seeded into the collapse
+             before any other entry, so nothing can subsume it and there can only
+             ever be one bind at home, BY CONSTRUCTION rather than by a new rule."
+      authority: "Jei 2026-08-08b: \"Henceforth, we will consider the home (~) bind
+                  to be unique (as it is); it will not route through the
+                  bindings.rw structure. Instead, it will be, effectively, pid 0;
+                  it will bind before ANYTHING else\" ... \"'home' goes in on the
+                  ground floor. It's the base plate, the foundation\"; and, on the
+                  key itself, \"ok. we can add a key for home. meta.box.home?\" ->
+                  \"yes, thats fine re: home. and A9 is good.\" Delta record:
+                  reference/2026-08-08-collapse-spec-delta-PROPOSAL.md A9; design
+                  designs/grand-unification-collapse-DESIGN.md §0.2 / §2a."
+      scope: "The HOME entry ONLY. ⚑ MOUNT OPTIONS ARE SEAM MACHINERY, not part of
+              the key — meta.box.home is a path scalar like every other meta.* row,
+              and the options (`Z,U`) move to the seam UNCHANGED IN VALUE. The ~13
+              binds NESTED inside home are UNAFFECTED: they stay bindings.rw
+              entries and simply nest on the base plate. No other bind row moves."
+      code_state: "DOC-ONLY when written. The code follow-ups are NOT in this
+                   amendment and are named in A9 as downstream:
+                   data/core-defaults.yaml's `key: home` entry stops being
+                   `category: bindings.rw`; core_defaults.add_bind loses its home
+                   arm; settings_launch.py carries the foundation seam. The spec is
+                   the authority; code that still routes home through bindings.rw
+                   is WRONG."
+    - date: "2026-08-08b"
+      what: "COPY DESTS GO GUEST-SPELLED. policy.tuple_dest_space.copies flips
+             `host` -> `guest`; the §0 rule becomes ONE DEST SPACE, TWO DELIVERIES
+             for all six bind-shaped categories. The three seed-layer dest keys
+             (@meta.box.path/home) and the three plugin cred dest keys
+             (@meta.box.path/home/...) are respelled to their guest paths."
+      authority: "Jei 2026-08-08: \"Sorry, I mean guest dest-keyed\" and \"It's just
+                  a guest path; I know it lands host-side. And yes, I'll ratify the
+                  spec changes\"; plus the S-1 cut, \"cut 'it is a property of the
+                  CATEGORY, not of the key shape'. That's no longer true.\" Delta
+                  record: reference/2026-08-08-copy-dest-guest-respell-PROPOSAL.md
+                  §A/§C/§D; design designs/grand-unification-collapse-DESIGN.md §5."
+      scope: "SPELLING + RESOLUTION OWNERSHIP ONLY. `kind: copy` is UNCHANGED —
+              `seeded` and `synced` are COPIES and stay COPIES. ⚑⚑ COPIES STILL
+              LAND HOST-SIDE, and must: no guest exists at `create`. \"Copies write
+              into the guest\" is FALSE. What changed is that the dest is SPELLED
+              guest and RESOLVED to the host store WHEN THE COPY RUNS.
+              `masks` / `bindings.{ro,rw}` / `caches` / `common` were already guest
+              and are UNTOUCHED; the only edits touching them WIDEN a shared
+              sentence to cover all six. ⚑ The earlier ledger entries at
+              2026-08-07f (\"tuple_dest_space is unchanged\") and 2026-08-07g
+              (\"their HOST dest_space discriminator\") are LEFT AS WRITTEN: the
+              ledger is history and both were true when written."
+      code_state: "DOC-ONLY when written. NOT in this amendment and owed by the
+                   implementation pass: `dest_space`, `host_dest_keys` and
+                   `seed_keys_of` are DELETED (nothing left to discriminate), and
+                   seed_keys_of breaks MECHANICALLY at the key-shape flip. The spec
+                   is the authority; code that still spells a copy dest host-side
+                   is WRONG."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -181,11 +239,13 @@ policy:
   files_store_unresolved_spec: "§0"
 
   # TUPLE DIRECTION (R-20) — every pair is (source, destination), left→right.
-  # Destination SPACE differs by delivery kind: a mount's dest is a GUEST path
-  # (that is what a mount is for — a bind always carries an explicit in-box
-  # location); a COPY's dest is a HOST path under the box's storage, because a
-  # copy runs BEFORE any guest exists (the box seed happens at `create`), so it
-  # can only ever write host-side.
+  # ONE DEST SPACE, TWO DELIVERIES (2026-08-08): the destination is a GUEST path
+  # for EVERY bind-shaped category. For a MOUNT that is what a mount is for — a
+  # bind always carries an explicit in-box location. For a COPY the guest path is
+  # the SPELLING; the copy is RESOLVED to the host store WHEN IT RUNS. A copy runs
+  # BEFORE any guest exists (the box seed happens at `create`), so it can only ever
+  # write host-side — which is precisely why the resolution step exists.
+  # ⚑ "copies write into the guest" is FALSE. `kind: copy` is unchanged.
   tuple_direction: source_then_destination
   tuple_dest_space:
     mounts: guest               # bindings.ro · bindings.rw · caches · common
@@ -193,9 +253,10 @@ policy:
                                 #  2026-08-07f — masks and bindings.{ro,rw} from
                                 #  2026-08-06c, caches/common/seeded/synced from
                                 #  2026-08-07f. The dest is the dict KEY, not a
-                                #  tuple element; the SPACE rule below is unchanged
-                                #  by that and is per-CATEGORY, not per-key.)
-    copies: host                # seeded · synced
+                                #  tuple element.)
+    copies: guest               # seeded · synced — SPELLED guest, RESOLVED to the
+                                #  host store when the copy runs (2026-08-08; was
+                                #  `host` until then).
   tuple_direction_spec: "§0 (Tuple direction; R-20, ruled 2026-07-30)"
 
   # -------------------------------------------------------------------------
@@ -884,8 +945,8 @@ keys:
   # the meta.* block below): NOT all standalone sub-keys are <None> — the
   # blanket claim was false (spec §2e, corrected 2026-07-29). THE SPEC'S REASON
   # rides here: the per-mode variation lives in meta.box.path AND NOWHERE
-  # DOWNSTREAM, which is what lets the box HOME bind (the box.bindings.rw entry
-  # at `~/`) and every rooted box key be a SINGLE declaration for every mode. Standalone's SET values are
+  # DOWNSTREAM, which is what lets meta.box.home and every rooted box key be a
+  # SINGLE declaration for every mode. Standalone's SET values are
   # what give a lone box a real @meta.box.path to root against.
   workset.workspaces:
     scope: workset
@@ -1344,11 +1405,25 @@ keys:
            spells itself against (§2a table). STANDALONE is the EMPTY LEAF:
            workset.boxes IS the box root, so the value is a BARE whole-value ref
            (no join, no trailing separator). The per-mode variation lives HERE and
-           nowhere downstream, which is what lets the box HOME bind (the
-           box.bindings.rw entry at ~/) be a single
+           nowhere downstream, which is what lets meta.box.home be a single
            declaration for every mode. NOT settable: relocate box data one level up
            via the settable workset.boxes."
     spec: "§2c / §2a"
+  meta.box.home:
+    namespace: meta
+    set: never
+    origin: derived
+    value: "@meta.box.path/home"
+    note: "RO DERIVED box-home SOURCE — the pid-0 FOUNDATION bind's src_path,
+           seeded into the collapse before any other entry (§0). It does NOT route
+           through bindings.rw: home is the base plate, not one bind among many
+           (2026-08-08; the box.bindings.rw entry at `~/` is DELETED, see
+           bind_default_entries). UNIFORM in every mode, like meta.box.settings —
+           the per-mode variation lives in meta.box.path. Derived, never user-set;
+           being meta means it can't be set to a dangling @-ref. MOUNT OPTIONS ARE
+           SEAM MACHINERY, not part of the key: this is a path scalar like every
+           other meta.* row. Settable SOURCE = the chain under meta.box.path."
+    spec: "§2c (ALL PROJECTS)"
   meta.box.workspace:
     namespace: meta
     set: never
@@ -1532,9 +1607,13 @@ keys:
 ## (bindmap_shape). Dests here are GUEST paths (§0 / R-20 — mounts).
 ##
 ## ⚑⚑ A DEST SPELLING IS NOW AN IDENTITY. Two spellings of one path would be two
-## dict entries. The `~` vs `~/` flag on the home entry (below) was cosmetic under
-## name-keying and is not cosmetic now; it is SETTLED by R-11 — a dest is
-## normalized to an ABSOLUTE guest path, a src never is. See that entry's `see:`.
+## dict entries, which was cosmetic under name-keying and is not cosmetic now. It
+## is SETTLED by R-11 (Jei, 2026-08-06c) — a binding DEST is normalized to an
+## ABSOLUTE guest path (`~` expanded), so `~` and `~/` ARE one entry; the SRC is
+## NEVER canonicalized (a host `~` is the invoking user's home). See spec §2a
+## REPRESENTATION, "A MOUNT DESTINATION IS CANONICALIZED; THE SOURCE IS NOT".
+## (R-11 was recorded on the box HOME entry, which LEFT this map 2026-08-08 —
+## the rule is general and is restated here so it did not leave with it.)
 ## ---------------------------------------------------------------------------
 bind_default_entries:
 
@@ -1719,24 +1798,11 @@ bind_default_entries:
 
   box.bindings.rw:
 
-    "~/":
-      user_key: true
-      default: "(@meta.box.path/home)"
-      note: "the box HOME bind — ONE declaration for every mode: the per-mode
-             variation lives in meta.box.path and nowhere downstream (§2c ALL
-             PROJECTS). ⚑ core-defaults spells the dest `~` (deliberately, 'no
-             trailing slash'); the spec row spells `~/` — flagged, unresolved;
-             spec spelling carried here."
-      see: "⚑⚑ THAT FLAG IS SETTLED — R-11 (Jei, 2026-08-06c). Under dest-keying
-            the dest IS the entry's identity, so `~` and `~/` would be TWO
-            DIFFERENT ENTRIES resolving to ONE destination — a resolved-box_dest
-            COLLISION (category_collisions.keyed_on), not a spelling nit. THE
-            RULE: a binding DEST is normalized to an ABSOLUTE guest path (`~`
-            expanded), so both spellings ARE one entry; the SRC is NEVER
-            canonicalized (a host `~` is the invoking user's home). See spec §2a
-            REPRESENTATION, 'A MOUNT DESTINATION IS CANONICALIZED; THE SOURCE IS
-            NOT'."
-      spec: "§2c (ALL PROJECTS)"
+    ## ⚑ THE BOX HOME ENTRY IS GONE FROM THIS MAP (2026-08-08). Home LEFT
+    ## `bindings.rw` and is now the RO DERIVED key `meta.box.home` (see `keys:`
+    ## above) — the pid-0 FOUNDATION bind's source, seeded into the collapse
+    ## before any other entry. Do NOT re-add a `~/` entry here: a second bind at
+    ## home is a same-dest collision (category_collisions row 1).
     "~/workspace":
       user_key: true
       default: "(@meta.box.workspace)"
@@ -1856,9 +1922,10 @@ bind_default_entries:
 ## Entry values are spelled as the spec spells them: `(host_src)`. ⚑ NO entry
 ## below carries a second element, and none could mean anything by it — `seeded`
 ## is a COPY, so there is no mount to carry options and the slot is RESERVED with
-## no meaning today (bindmap_shape.second_element). ⚑ Dests here are HOST paths —
-## `seeded` is a COPY category (§0 / R-20 / policy.tuple_dest_space), and the
-## 2026-08-07f key-shape move did NOT change that.
+## no meaning today (bindmap_shape.second_element). ⚑ Dests here are GUEST paths,
+## RESOLVED to the host store when the copy runs (§0 / R-20 /
+## policy.tuple_dest_space, 2026-08-08). `seeded` is and remains a COPY category:
+## the respell changed the SPELLING and who resolves it, never the delivery.
 ##
 ## ⚑⚑ THE THREE SCOPES ARE THREE DISTINCT TERMINAL KEYS AND DO NOT COLLIDE.
 ## `system.seeded`, `agent.<agent>.seeded` and `workset.seeded` each hold the same
@@ -1883,25 +1950,26 @@ category_default_entries:
     "agent.<agent>.seeded": [agent]
 
   ## ---- THE THREE SEED LAYERS (R-14, dest-keyed 2026-08-07f) ---------------
-  ## COPIES, not mounts: the dest is a HOST path (§0 / R-20). Ordered layers,
-  ## later-wins per file, SEED-ONCE at create (§2a / §5). The layer numbers
-  ## in the notes are the spec's own (§2a layers 1-3).
+  ## COPIES, not mounts: the dest is a GUEST path, RESOLVED to the host store when
+  ## the copy runs (§0 / R-20; respelled 2026-08-08, was "@meta.box.path/home").
+  ## Ordered layers, later-wins per file, SEED-ONCE at create (§2a / §5). The layer
+  ## numbers in the notes are the spec's own (§2a layers 1-3).
   system.seeded:
-    "@meta.box.path/home":
+    "~/":
       user_key: true
       default: "(@system.template/box/home)"
       note: "layer 1 — base BOX template (global); source = the box/home subtree of
              the system template ROOT (R-1: system.template, NOT the root itself)"
       spec: "§2a (seed layer 1; R-14)"
   agent.<agent>.seeded:               # parametric in <agent> — see parametric_keys above
-    "@meta.box.path/home":
+    "~/":
       user_key: true
       default: "(@agent.<agent>.template/box/home)"
       note: "layer 2 — per-agent (agent = persona + harness); template holds
              settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
       spec: "§2a (seed layer 2; R-14) / §2d"
   workset.seeded:
-    "@meta.box.path/home":
+    "~/":
       user_key: true
       optional: skip_if_absent
       default: "(@workset.template/box/home)"
@@ -2322,31 +2390,40 @@ plugin_contributed:
   # is a TERMINAL key and these are its DEFAULT ENTRIES, indexed by DESTINATION.
   # `agent.claude.synced.credentials` and its two siblings are NOT keys — the
   # retired names are kept in the row headings ONLY as `was:` provenance.
-  # ⚑ Dests are HOST paths: `synced` is and remains a COPY category (§0 / R-20).
+  # ⚑ Dests are GUEST paths, RESOLVED to the host store when the copy runs (§0 /
+  # R-20; respelled 2026-08-08, were "@meta.box.path/home/..."). `synced` is and
+  # remains a COPY category — the respell changed the SPELLING, never the delivery.
+  # ⚑⚑ EACH ROW BELOW NOW READS `X | (X)` AND IS *NOT* AN IDENTITY ENTRY (contrast
+  # the genuine identity `caches` mounts at §2d, where dest == source host-side):
+  # the KEY's `~` is the GUEST home, element 0's `~` is the HOST user's home.
   category_default_entries:
     agent.claude.synced:
-      "@meta.box.path/home/.claude/.credentials.json":
+      "~/.claude/.credentials.json":
         was: "agent.claude.synced.credentials (name retired 2026-08-07f)"
         user_key: true
         default: "(~/.claude/.credentials.json)"
         note: "SYNC, mtime-gate, FILTERED (transform_cred merges claudeAiOauth).
-               COPY dest = HOST path under the box store (§0 / R-20). Suppressed
-               when the box shares no credentials (auth tier private, D-M4)."
+               COPY dest = GUEST path, resolved to the box store when the copy runs
+               (§0 / R-20). NOT an identity entry — the key's `~` is the GUEST
+               home, element 0's is the HOST user's. Suppressed when the box shares
+               no credentials (auth tier private, D-M4)."
         spec: "§2d (claude; R-15)"
     agent.codex.synced:
-      "@meta.box.path/home/.codex/auth.json":
+      "~/.codex/auth.json":
         was: "agent.codex.synced.auth (name retired 2026-08-07f)"
         user_key: true
         default: "(~/.codex/auth.json)"
         note: "SYNC, mtime-gate, filtered=False (Q2: allowlist iff install-bound
-               fields)"
+               fields). NOT an identity entry — the key's `~` is the GUEST home,
+               element 0's is the HOST user's."
         spec: "§2d (codex; R-15)"
     agent.goose.synced:
-      "@meta.box.path/home/.config/goose/secrets.yaml":
+      "~/.config/goose/secrets.yaml":
         was: "agent.goose.synced.secrets (name retired 2026-08-07f)"
         user_key: true
         default: "(~/.config/goose/secrets.yaml)"
-        note: "SYNC, mtime-gate, chmod 0600"
+        note: "SYNC, mtime-gate, chmod 0600. NOT an identity entry — the key's `~`
+               is the GUEST home, element 0's is the HOST user's."
         spec: "§2d (goose; R-15)"
 
   # MEMBER CENSUS — INFORMATIVE ONLY, a point-in-time record (2026-08-01, the
