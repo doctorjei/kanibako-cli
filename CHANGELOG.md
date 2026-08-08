@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The in-box helper client could hand a caller someone else's message.** `recv()` and the
+  request path shared a receive buffer and a socket timeout, but only the request path locked
+  them, so the concurrent send-and-receive the client is built for could return a peer's push
+  where a response belonged. Locking alone would not have been enough: the hub multiplexes
+  responses and peer pushes onto one socket, and a push is written by the sending box's own
+  thread, so it can arrive between a request going out and its answer coming back. The socket
+  now has a single owner that reads it and routes each message to the caller waiting for it.
+
 ### Changed
 
 - **New fixed box directory `~/.kanibako/`; the helper socket and message log moved into it.**
