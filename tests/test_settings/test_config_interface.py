@@ -4722,7 +4722,7 @@ class TestPrefValueValidation:
         no longer a key at all and would be refused a step EARLIER, by the target
         validity check — which would prove nothing about the VALUE-shape guard
         this test exists for. The bare category is the only ``common`` target a
-        pref can name, and it is claimed by ``is_terminal_category_tail``, the
+        pref can name, and it is claimed by ``is_terminal_category_key``, the
         same term that claims a ``bindings`` arm in the twin below.
         """
         f = tmp_path / "settings.yaml"
@@ -4750,7 +4750,7 @@ class TestPrefValueValidation:
         ``_pref_value_error`` match it, because they all require a trailing
         ``.<name>``. This is the FIFTH term.
 
-        ⚑ MUTATION: delete ``or is_terminal_category_tail(target.split("."))``
+        ⚑ MUTATION: delete ``or is_terminal_category_key(target)``
         from ``_pref_value_error`` -> the scalar falls through to the E3 scalar
         probe, is ACCEPTED, the file is written, and both the ``STRUCTURED``
         assertion and ``not f.exists()`` die. Nothing else refuses this target:

@@ -55,7 +55,10 @@ from __future__ import annotations
 import re
 from typing import Collection, Final, Sequence
 
-from kanibako.settings.settings_store import _RESERVED_KEY_NAMES as _STORE_RESERVED
+from kanibako.settings.settings_store import (
+    SCOPE_CONTAINMENT,
+    _RESERVED_KEY_NAMES as _STORE_RESERVED,
+)
 
 # ---------------------------------------------------------------------------
 # The keyspace version stamp
@@ -219,10 +222,14 @@ BIND_CATEGORIES: Final[frozenset[str]] = frozenset({
 #: ENDS a key. A key may end here and nothing may follow: the value is a map whose
 #: keys are box DESTINATIONS — data, not keyspace.
 #:
-#: ⚑ ONE definition, two consumers: :func:`_category_reason` (what is a key) and
-#: ``settings_prefs._flatten_pref_node`` (where a ``pref:`` subtree walk STOPS).
-#: They must agree — a walker that descended past a terminal key would manufacture
-#: targets this validator then refuses, reporting the wrong fault.
+#: ⚑ ONE definition. Two predicates read it — :func:`is_terminal_category_tail`
+#: (a SUFFIX test, for a caller holding a tail) and :func:`is_terminal_category_key`
+#: (a POSITION test, for a caller holding a whole key) — and they must agree on the
+#: SET even though they disagree on where it may appear. Consumers: what is a key
+#: (:func:`_category_reason`), where a ``pref:`` subtree walk STOPS
+#: (``settings_prefs._flatten_pref_node``), and every full-key site that must not
+#: mistake a scalar leaf for a category. A walker that descended past a terminal key
+#: would manufacture targets this validator then refuses, reporting the wrong fault.
 #: ⚑ ALL SEVEN since 2026-08-08c: ``masks`` plus every bind-shaped category.
 #: ``caches`` / ``seeded`` / ``common`` / ``synced`` are terminal ONE SEGMENT
 #: SHALLOWER than a ``bindings`` arm — the category token itself ends the key.
@@ -249,6 +256,40 @@ def is_terminal_category_tail(tail: Sequence[str]) -> bool:
     for cat in TERMINAL_CATEGORY_TAILS:
         if len(segments) >= len(cat) and segments[-len(cat):] == cat:
             return True
+    return False
+
+
+def is_terminal_category_key(key: str) -> bool:
+    """Is *key* — a WHOLE canonical key — a DEST-KEYED TERMINAL category key? (spec §2a)
+
+    ⚑⚑ NOT :func:`is_terminal_category_tail` HANDED A KEY. That one is a SUFFIX
+    test, so it answers True for ``system.channels.common`` — an ordinary path
+    SCALAR that merely ENDS in a category token — while its sibling
+    ``system.channels.chat`` answers False, routing two members of one family
+    differently. This one requires the tail to begin exactly where the SCOPE ends,
+    which is the position spec §2a puts a category in: *"the discriminator is the
+    ``channels.`` segment, which the channel form always carries and the category
+    form never does, so no KEY is ambiguous."* The two take different TYPES —
+    segments for the tail, a dotted string for the key — so which question a call
+    site asks is visible at the call.
+
+    ⚑ BOTH AXES ARE DERIVED, NEVER ENUMERATED HERE: which tails from
+    :data:`TERMINAL_CATEGORY_TAILS`; where a scope may END from
+    :data:`~kanibako.settings.settings_store.SCOPE_CONTAINMENT`. A scope is ONE
+    segment except the DISCRIMINATED agent tier ``agent.<node>`` (spec §0/§2d),
+    which is two — and two is the CEILING, because ``.`` is the key-path separator
+    and ``agent_ref.parse_agent_ref`` REFUSES a dotted node. ``pref.*`` is False by
+    construction: ``pref`` is not a scope.
+    """
+    parts = key.split(".")
+    for cat in TERMINAL_CATEGORY_TAILS:
+        if len(parts) <= len(cat) or tuple(parts[-len(cat):]) != cat:
+            continue
+        scope = parts[: -len(cat)]
+        if scope[0] not in SCOPE_CONTAINMENT:
+            return False
+        # The tail must begin exactly where the SCOPE ends.
+        return len(scope) == (2 if scope[0] == "agent" else 1)
     return False
 
 # (There is deliberately no CATEGORY_SCOPES constant. The scope dispatch in
@@ -303,7 +344,8 @@ _DUNDER_RE: Final = re.compile(r"^__.*__$")
 
 #: ``env.<VAR>`` / ``secret_path.<VAR>`` variable-name shape (spec §2a; mirrors
 #: ``settings_categories.SECRET_VAR_RE`` — kept as its own compiled copy so this
-#: module imports nothing from the settings stack).
+#: module's only settings-stack import stays ``settings_store``, the leaf that
+#: imports nothing itself).
 _VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # ---------------------------------------------------------------------------

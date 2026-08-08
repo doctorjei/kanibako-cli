@@ -200,7 +200,7 @@ def _pref_value_error(
         MASK_KEY_RE,
         SCOPE_BIND_KEY_RE,
     )
-    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
 
     target = canonical[len(PREF_ROOT) + 1:]
     if value is None:
@@ -265,12 +265,16 @@ def _pref_value_error(
     # matches the bare key); every dest-keyed category now has the same shape and
     # gets it from ONE predicate rather than a second regex that could drift from
     # the keyspace's own answer.
+    # ⚑ THE WHOLE-KEY PREDICATE (QC): a pref TARGET is a canonical scope-rooted key,
+    # so the category must sit where the SCOPE ends. The suffix test also claimed a
+    # scalar leaf ending in a category token, which would have refused a scalar
+    # value at a SCALAR key with a message telling the user it is a dest-keyed map.
     if (
         BIND_KEY_RE.match(target) is not None
         or MASK_KEY_RE.match(target) is not None
         or SCOPE_BIND_KEY_RE.match(target) is not None
         or _is_agent_node_bind_key(target)
-        or is_terminal_category_tail(target.split("."))
+        or is_terminal_category_key(target)
     ):
         return (
             f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
@@ -320,11 +324,15 @@ def _yaml_skeleton(target: str) -> list[str]:
     category and the destinations live inside its value. The NAME-KEYED pair form
     ``[<host_src>, <box_dest>]`` this used to print for the four is GONE — printing
     it would hand the user a shape the reader now refuses by name.
+
+    ⚑ The test is the WHOLE-KEY predicate (QC): *target* is a canonical scope-rooted
+    key, and a scalar leaf that merely ends in a category token must not be handed a
+    dest-keyed skeleton.
     """
-    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
 
     parts = target.split(".")
-    if is_terminal_category_tail(parts):
+    if is_terminal_category_key(target):
         leaf = (
             "{<box_dest>: true}" if parts[-1] == "masks"
             else "{<box_dest>: [<host_src>]}"

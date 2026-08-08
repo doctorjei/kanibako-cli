@@ -61,6 +61,7 @@ from pathlib import Path
 from typing import Any, Collection, Final, Iterable, Sequence
 
 from kanibako.settings.settings_keyspace import (
+    is_terminal_category_key,
     is_terminal_category_tail,
     is_valid_agent_segment,
     key_validity,
@@ -769,14 +770,19 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
     file path.
 
     ⚑ The terminal-category test gates on the KEYSPACE
-    (:func:`is_terminal_category_tail`), not on "the value happens to be a dict" —
+    (:func:`is_terminal_category_key`), not on "the value happens to be a dict" —
     only a terminal category's value is a dest-keyed map, and deriving the set
     from the keyspace is what stops this falling behind the next flip. A terminal
     target whose value is NOT a map (a malformed ``pref.agent.claude.common:
     "oops"``) yields the bare target, which is exactly what the adapter's own
     error names.
+
+    ⚑ THE WHOLE-KEY PREDICATE, NOT THE SUFFIX ONE (QC). ``req.target`` is a canonical
+    scope-rooted key, so a category token counts only where the SCOPE ends. Under the
+    suffix test a dict at a scalar leaf ending in a category token would have been
+    expanded into per-destination entry keys that are not keys.
     """
-    if not is_terminal_category_tail(req.target.split(".")):
+    if not is_terminal_category_key(req.target):
         return (req.target,)
     value = req.value
     if not isinstance(value, dict):
