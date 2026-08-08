@@ -67,9 +67,60 @@ class ConfigLevel(Enum):
     agent = "agent"
     system = "system"
 
-# Keys recognized by the unified config interface.
-# This set drives the "known-key heuristic": if a positional arg matches one
-# of these, it's treated as a GET request rather than a project name.
+# ---------------------------------------------------------------------------
+# ⚑⚑⚑ QUARANTINE — THIS SET IS NOT THE MODEL OF WHAT A KEY IS.
+# ---------------------------------------------------------------------------
+#
+# It is a HAND-MAINTAINED list answering exactly one question: "does this
+# positional argument LOOK like a config key rather than a project name?"  It is
+# not the closed keyspace (that authority is ``settings_keyspace`` — see the
+# module docstring), it is not DERIVED from anything, and nothing keeps it in
+# step with the declarations.
+#
+# ⚑ SO IT IS INCOMPLETE, AND THE INCOMPLETENESS IS DELIBERATE. Every bind-shaped
+# category — ``<scope>.bindings.ro`` / ``bindings.rw`` / ``caches`` / ``common``
+# / ``seeded`` / ``synced`` — is a DECLARED TERMINAL key whose value is a
+# dest-keyed map, and none of the six is listed below, so ``is_known_key``
+# answers ``False`` for all of them at every scope. ``<scope>.masks`` answers
+# ``False`` too (it is a LIST, not a map — a different shape, the same status).
+# All seven are MULTI-FACETED: one key, many facets inside one value.
+#
+# ⚑ JEI'S RULING (2026-08-08) — the reason nothing below changes:
+#
+#     "I don't think it makes sense to be able to read out or write to an
+#     individual key that is multi-faceted.  So, don't kill the code, but
+#     quarantine it.  We will make a way for it to be readable, but for now
+#     consider it a 'promise' whose form is unknown (and put it on the backlog).
+#     That goes for all of the bindings, which now have values of dict() at
+#     their keys."
+#
+# Read out of that, for anyone standing here:
+#
+# * Reading or writing ONE FACET of a multi-faceted key IS NOT SUPPORTED. The
+#   facet's dest is DATA inside the value, not a key — and there is no settled
+#   surface for the whole map either.
+# * A readable form is a PROMISE WHOSE SHAPE IS UNDECIDED, on the backlog.
+#   Guessing that shape now is precisely what the ruling refuses.
+# * ⚑⚑ DO NOT "FIX" THIS BY DERIVING THE PREDICATE from the declaration SoT.
+#   Derivation would make ``system get box.caches`` start answering, and would
+#   thereby BUILD the surface the ruling has not chosen. It was proposed and
+#   DECLINED.
+#
+# The visible cost, recorded here so nobody re-discovers it as a bug: ``kanibako
+# system get box.caches`` prints "unknown config key" for a key that IS declared,
+# and the one-positional ``kanibako box get box.caches`` is read as a PROJECT
+# NAME.  Both messages are wrong, both are KNOWN to be wrong, and the cure is the
+# promised surface — never a wider list below.  (The scope nouns' two-positional
+# reads, ``kanibako box get <box> box.caches`` and its workset/agent siblings,
+# are not gated by this set and do return the map today.  That is where the
+# behaviour currently lives; it is an accident of which door checks this set, not
+# the chosen design, so do not build on it either.)
+#
+# ⚑ THIS BLOCK IS THE QUARANTINE. It travels with the set — do not copy the
+# hand-maintained pattern anywhere else, and do not split it from the data.
+# ---------------------------------------------------------------------------
+# The set itself: if a positional arg matches one of these, it is treated as a
+# GET request rather than a project name.
 KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # Agent flags
     "model",
@@ -1150,7 +1201,16 @@ def bare_agent_key_scope_error(
 
 
 def is_known_key(arg: str) -> bool:
-    """Return True if *arg* looks like a config key (not a project name)."""
+    """Return True if *arg* looks like a config key (not a project name).
+
+    ⚑ IT ANSWERS ``False`` FOR SEVEN DECLARED KEYS AT EVERY SCOPE, ON PURPOSE —
+    the six bind-shaped category terminals and ``<scope>.masks``. Read the
+    QUARANTINE block above :data:`KNOWN_CONFIG_KEYS` before treating that as a
+    bug: an individual read/write of a multi-faceted key is NOT SUPPORTED, the
+    readable form is a promise whose shape is undecided (Jei, 2026-08-08), and
+    DERIVING this predicate from the declaration SoT — the obvious fix — was
+    proposed and DECLINED because it would build that undecided surface.
+    """
     if arg in KNOWN_CONFIG_KEYS:
         return True
     # Bare env.<VAR> — RETIRED (R-39) but still KEY-SHAPED on purpose: the verbs
@@ -1820,9 +1880,10 @@ def _probes_at_set_time(canonical: str) -> bool:
     / ``common`` / ``synced`` (DS-BL1 = (a); name-keyed at the time, terminal since
     2026-08-08c), whose ``_is_path_category_key`` exclusion used to be
     the first term here: it existed because the category path ran its OWN probe
-    with ``is_category=True``, and probing twice would duplicate the diagnosis.
-    There is no category path any more, so the exclusion went with it rather than
-    being left to look like a live rule.
+    through ``validate_config_set``'s category arm, and probing twice would
+    duplicate the diagnosis. There is no category path any more (and QA′ deleted
+    that arm), so the exclusion went with it rather than being left to look like a
+    live rule.
 
     The docker ``.env`` family (bare ``env.<VAR>``, written VERBATIM to a file
     the expander never saw) WAS the third exclusion. R-39 retired the spelling:

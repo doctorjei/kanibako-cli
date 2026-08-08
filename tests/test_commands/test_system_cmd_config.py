@@ -578,16 +578,27 @@ class TestSystemAgentNodeBindWriteRouteRetired:
 #
 # **There is no CLI category set any more**: the key is refused BY NAME in the verb
 # preamble, so ``validate_config_set``'s ``is_category=True`` arm — where the
-# relative-source rule and ``_rooted_form_hint`` live — is never reached from any
+# relative-source rule and ``_rooted_form_hint`` lived — was never reached from any
 # CLI door. Re-pointing these tests at a scalar would NOT preserve them: the rule
 # they pin is category-only by construction.
 #
-# ⚑ THE RULE'S UNIT COVERAGE SURVIVES in ``test_settings_configset.py``
-# (``test_bare_relative_category_source_is_refused`` and the rooted-hint rows), and
-# that validator arm is recorded there as ORPHANED — see the banner on
-# ``settings_configset``'s module docstring. The set-time
-# ``meta_agent_path_floor`` anchor those tests mutation-proved went with the arm's
-# caller: ``_category_set_lookups`` now anchors only the agent the COMMAND names.
+# ⚑⚑ AND THE RULE ITSELF IS NOW GONE, NOT JUST ITS END-TO-END DOOR. This block used
+# to say the unit coverage SURVIVED in ``test_settings_configset.py``; QA′
+# (2026-08-08, on Jei's word) deleted the whole ``is_category`` arm — the
+# relative-source refusal, ``_rooted_form_hint``'s per-scope cure, the ``:``
+# notation refusal and the ``Warn`` severity — as an orphan of the retired route.
+# Those unit rows went with it; the graveyard block at the foot of
+# ``test_settings_configset.py`` names them.
+#
+# ⚑ SO NOTHING CHECKS A BARE-RELATIVE CATEGORY SOURCE ANY MORE, AT ANY LAYER. That
+# is not a regression this pass caused: a source authored directly in YAML was never
+# checked by that validator either, before or after, because ``config set`` was the
+# only door it guarded. Closing the gap needs a DECLARATION-time check, not this
+# arm restored.
+#
+# ⚑ The set-time ``meta_agent_path_floor`` anchor those tests mutation-proved went
+# with the arm's caller: ``_category_set_lookups`` now anchors only the agent the
+# COMMAND names.
 # ---------------------------------------------------------------------------
 
 

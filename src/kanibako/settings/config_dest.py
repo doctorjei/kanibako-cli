@@ -273,20 +273,27 @@ def noun_settings_file(
 
 #: Which FILE rule a family follows.  ``NOUN`` = always the noun's settings file;
 #: ``SCOPED`` = the key's own scope token picks between the settings file and the
-#: command's config file; ``CATEGORY`` = ``SCOPED`` plus the one arm below that is
-#: deliberately broken.  This is a per-FAMILY fact, not a per-caller option: the
-#: pref request, the non-agent secret pointer, the non-agent env var and the
+#: command's config file; ``CATEGORY`` = the bind-shaped category families, which
+#: follow the ``SCOPED`` rule.  This is a per-FAMILY fact, not a per-caller option:
+#: the pref request, the non-agent secret pointer, the non-agent env var and the
 #: bare agent key are settings
 #: by construction and have no config-file form, while a category or routed key
 #: can land in either.  It reads as a field here and becomes a field on the
 #: KeyKind descriptor later — the same fact, declared once.
 #:
-#: ⚑ CATEGORY is distinguished from SCOPED for exactly one reason: the broken
-#: agent-scope destination belongs to the CATEGORY family alone.  Keying that arm
-#: on the scope token by itself would silently extend it to any future routed
-#: ``agent.*`` key (there are none today, so this is inert — which is precisely
-#: what would make it a quiet surprise later).  The rule that is known-wrong is
-#: the last one that should catch more than it names.
+#: ⚑⚑ CATEGORY AND SCOPED NOW PICK THE SAME FILE, AND THAT IS THE REPAIR, NOT AN
+#: OVERSIGHT.  ``CATEGORY`` was distinguished for exactly one reason: it carried the
+#: deliberately-broken agent-scope WRITE arm (an ``agent.<node>.<category>`` set
+#: aimed at the command's own config file, which is in no cascade level — a SILENT
+#: NO-OP write).  DS-BL1 = (a) retired the category write route, leaving the arm
+#: unreachable from every verb, and QA′ (2026-08-08, on Jei's word) deleted it.
+#:
+#: ⚑ THE TERM IS KEPT ANYWAY, DELIBERATELY, AND IT IS NOT DEAD DATA.  ``_key_slot``
+#: still answers ``CATEGORY`` for every TERMINAL category key at every scope and for
+#: every FILE-scope per-entry spelling — it is the declared FAMILY of the key, which
+#: is the fact this triple exists to carry into the KeyKind descriptor.  What it no
+#: longer does is change the destination.  Collapsing it into ``SCOPED`` would throw
+#: away a family distinction to save a string compare that no longer happens.
 _NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
 
 
@@ -381,9 +388,9 @@ def _dest(
     command_scope: "object | None",
     config_path: "Path | None",
     settings_path: "Path | None",
-    agent_scope_to_config: bool,
 ) -> "DestRoute | None":
-    """The shared body of :func:`_write_dest` / :func:`_read_dest`.
+    """The destination rule — the shared body of :func:`_write_dest` /
+    :func:`_read_dest`.
 
     *command_scope* is accepted and deliberately unused for the file choice: the
     scope a command was issued at does not pick the file, the noun's own file
@@ -391,6 +398,14 @@ def _dest(
     HAS the scope — the H2 design's explicit-scope requirement — for the refusal
     and descriptor work that consumes this route, instead of inferring the scope
     from a path being non-``None`` the way the copies did.
+
+    ⚑ THERE IS NO ``agent_scope_to_config`` PARAMETER ANY MORE, AND ITS ABSENCE IS
+    THE POINT: read and write now answer IDENTICALLY for every key. The flag was
+    the deliberately-broken agent-scope category WRITE arm (see the note on
+    :data:`_CATEGORY`), deleted in QA′ once DS-BL1 = (a) had made it unreachable
+    from every verb. Do not reintroduce a per-caller destination switch here —
+    "set writes where get cannot read" is the exact bug class this module exists
+    to prevent, and a flag is how it got in.
     """
     slot = _key_slot(canonical)
     if slot is None:
@@ -399,8 +414,6 @@ def _dest(
     if rule == _NOUN:
         return DestRoute(noun_settings_file(config_path, settings_path), sections, leaf)
     key_scope = canonical.split(".", 1)[0]
-    if agent_scope_to_config and rule == _CATEGORY and key_scope == "agent":
-        return DestRoute(config_path, sections, leaf)
     from kanibako.settings.config_keys import _SETTINGS_SCOPE_TOKENS
 
     if key_scope in _SETTINGS_SCOPE_TOKENS:
@@ -417,28 +430,27 @@ def _write_dest(
 ) -> "DestRoute | None":
     """Where ``set`` writes and ``reset`` removes a FILE-scope key.
 
-    ⚑⚑ THE AGENT-SCOPE CATEGORY ARM IS NOW UNREACHABLE FROM THE VERBS, AND THAT IS
-    HOW THE KNOWN-BROKEN DESTINATION DIED — by its route being retired, not by being
-    fixed.  It aimed a non-bind agent-scope category
-    (``agent.<node>.common.*`` / ``caches`` / ``seeded`` / ``synced``) at the
-    command's own file, which is in no cascade level, so the set was a SILENT NO-OP:
-    the state `3b67e61` found, deliberately left alone and named rather than
-    smuggled a fix into.  DS-BL1 = (a) retired the category write route entirely, so
-    NO ``_CATEGORY`` slot reaches this function any more (measured: every surviving
-    ``_write_dest`` caller passes a pref / persona / bare-agent / routed-scalar key,
-    and all six bind-shaped categories are refused in the verb preamble).
+    ⚑⚑ THE KNOWN-BROKEN AGENT-SCOPE CATEGORY ARM IS GONE (QA′, 2026-08-08).  It
+    aimed a non-bind agent-scope category (``agent.<node>.{common,caches,seeded,
+    synced}``) at the command's own file, which is in no cascade level, so the set
+    was a SILENT NO-OP: the state `3b67e61` found, deliberately left alone and named
+    rather than smuggled a fix into.  It died by its ROUTE being retired, not by
+    being repaired — DS-BL1 = (a) retired the category write route, after which NO
+    ``_CATEGORY`` slot could reach this function (MEASURED end-to-end: ``set`` and
+    ``reset`` fall through to the routing table and answer "unknown config key" for
+    every agent-scope terminal category key, and all six bind-shaped categories are
+    refused BY NAME in the verb preamble at the file scopes).  With no reachable
+    caller the arm was deleted rather than left as a flag that documents a bug.
 
-    ⚑ The *arm* is kept — with :func:`_read_dest`'s counterpart and the
-    ``agent_scope_to_config`` flag — because collapsing it merges these two wrappers
-    into one function and reworks
-    ``tests/test_settings/test_config_dest_parity.py``, which exists to pin the
-    divergence.  That collapse is OWED and is a separate pass; it is recorded here so
-    it is not rediscovered as a mystery.  ⚑ Do NOT read the flag as a live rule about
-    where an agent-scope category is written: nothing writes one.
+    ⚑ SO THIS IS NOW BYTE-IDENTICAL TO :func:`_read_dest`, AND BOTH NAMES ARE KEPT
+    ON PURPOSE.  Agreement between the write route and the read route is this
+    module's whole reason to exist; two names that provably resolve the same way
+    state that at every call site.  Merging them is a naming decision, not a
+    behavioural one, and it is a separate pass.
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,
-        settings_path=settings_path, agent_scope_to_config=True,
+        settings_path=settings_path,
     )
 
 
@@ -451,33 +463,33 @@ def _read_dest(
 ) -> "DestRoute | None":
     """Where a plain ``get`` reads a FILE-scope key: the value STORED at this noun.
 
-    Identical to :func:`_write_dest` but for the one arm above: the read side has
-    always used the noun's settings file for an agent-scope category, while the
-    write side aims at the command's own file.  The two therefore disagree for
-    exactly that family — which is the very asymmetry the broken destination
-    consists of, so the honest consolidation keeps two functions with one shared
-    body rather than one function that quietly picks a side.
+    ⚑ IDENTICAL TO :func:`_write_dest` SINCE QA′ — the one arm they disagreed on is
+    deleted.  The read side had always used the noun's settings file for an
+    agent-scope category while the write side aimed at the command's own file; that
+    asymmetry WAS the broken destination, and removing the write half is what closed
+    it.  The two names are kept because the AGREEMENT is the contract (see
+    :func:`_write_dest`).
 
-    ⚑ WHAT REACHES THAT ARM NOW IS THE TERMINAL KEY, NOT AN ENTRY.  It used to be
+    ⚑ WHAT REACHES THE AGENT-SCOPE CATEGORY ROUTE NOW IS THE TERMINAL KEY, NOT AN
+    ENTRY.  It used to be
     read for ``config get agent.<node>.common.<name>``; the 2026-08-08c shape flip
     made that spelling not a key at all (``_is_path_category_key`` answers False for
     every key), so the only agent-scope category keys that still route here are the
     bare terminal ones — ``agent.<node>.{caches,seeded,common,synced}``,
     ``agent.<node>.bindings.{ro,rw}``, ``agent.<node>.masks``.
 
-    ⚑⚑ AND FOR THOSE THE ARM IS WRONG, MEASURABLY: it answers the NOUN's settings
-    file, while the agent tier is assembled from ``agents/<node>/settings.yaml``'s
-    ``self.<node>`` table (``settings_assemble._agent_partial``).  So a
-    hand-authored ``self.claude.caches`` reads back "(not set)" while a stray
-    ``agent.claude.caches`` in the system settings file reads back instead.
-    Re-pointing it is a STORAGE-SHAPE change that moves
-    ``agent_config.agent_file_route`` — the per-agent file-shape SoT shared with the
-    ``agent`` noun's own verbs — and is deliberately NOT part of the route
-    retirement; it is OWED with the ``_write_dest``/``_read_dest`` collapse.  ⚑ Until
+    ⚑⚑ AND FOR THOSE THE ROUTE IS WRONG, MEASURABLY — THIS IS THE HALF QA′ DID NOT
+    TOUCH.  It answers the NOUN's settings file, while the agent tier is assembled
+    from ``agents/<node>/settings.yaml``'s ``self.<node>`` table
+    (``settings_assemble._agent_partial``).  So a hand-authored ``self.claude.caches``
+    reads back "(not set)" while a stray ``agent.claude.caches`` in the system
+    settings file reads back instead.  Re-pointing it is a STORAGE-SHAPE change that
+    moves ``agent_config.agent_file_route`` — the per-agent file-shape SoT shared
+    with the ``agent`` noun's own verbs — and is a separately-boarded pass.  ⚑ Until
     it lands, NO message may promise that ``config get <agent terminal key>`` works
     (see ``config_keys.agent_node_bind_retired_error``).
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,
-        settings_path=settings_path, agent_scope_to_config=False,
+        settings_path=settings_path,
     )

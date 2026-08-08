@@ -639,8 +639,11 @@ def _set_leaf(store: "Any", parts: list, value: object) -> None:
 # the command-scope file. Every bind-shaped category is now YAML-only, so the set
 # and reset branches it served are gone and the write verbs refuse all six BY NAME
 # in their preamble (spec §0 — refuse loudly, never degrade to "unknown key").
-# ⚑ Its callee ``settings_configset.repoint_host_src`` is thereby left with NO LIVE
-# CALLER; see the banner on that function.
+# ⚑ Its callee ``settings_configset.repoint_host_src`` was thereby left with no live
+# caller and is now DELETED TOO (QA′, 2026-08-08), along with R-8's three-element
+# stale-shape refusal and ``validate_config_set``'s ``is_category`` arm. Do not
+# reach for either name: see the banner on ``settings_configset``'s module
+# docstring for what went and what a rebuild would owe.
 
 
 # ---------------------------------------------------------------------------
@@ -1117,7 +1120,7 @@ def set_config_value(
             agent_name=cascade_agent_name,
         )
         scalar_verdict = validate_config_set(
-            canonical, value, is_category=False, resolves=_resolves,
+            canonical, value, resolves=_resolves,
         )
         if isinstance(scalar_verdict, _SetError):
             return f"Error: {scalar_verdict.message}"
@@ -1284,9 +1287,12 @@ def set_config_value(
     # oversight, and re-adding a write route would need a visible spec edit.
     # ⚑ It also carried the ONE known-broken destination arm in the tree (an
     # agent-scope category set landed in the command's own config file, which is in
-    # no cascade level — a SILENT NO-OP WRITE). That arm is gone with the branch; the
-    # ``_CATEGORY`` file rule it drove survives in ``config_dest`` for the READ, where
-    # it now only ever sees a FILE scope.
+    # no cascade level — a SILENT NO-OP WRITE). Retiring this branch made that arm
+    # unreachable and QA′ then DELETED it, so ``config_dest._write_dest`` and
+    # ``_read_dest`` now answer identically for every key. The ``_CATEGORY`` file
+    # rule itself SURVIVES in ``config_dest`` as the key's declared FAMILY — it is
+    # still answered for agent-scope terminal keys on the READ side, which is a
+    # separate, still-open defect documented on ``config_dest._read_dest``.
 
     # STRUCTURAL system.* path-tier keys (the SYSTEM_PATH_DEFAULTS family) —
     # FILE-ONLY: they live in kanibako_config.yaml's [system] table (the file

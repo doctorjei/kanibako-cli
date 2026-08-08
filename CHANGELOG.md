@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they went dest-keyed). See [MIGRATION.md](MIGRATION.md) §2.23.
   ⚑ `seeded` and `synced` are still **copies**, not mounts. Sharing a way of writing an entry down
   says nothing about what is done with it.
+
+  **⚠️ Known limitation.** A dest-keyed category is one key with many facets inside one value, and
+  there is no settled surface yet for reading or writing *one facet* of such a key. The category
+  read above works at the `box` and `workset` nouns when you name the subject
+  (`kanibako box get <box> box.caches`); it is **not** available at the `system` noun, which still
+  refuses every category key with `Error: unknown config key`, and an `agents/<node>/settings.yaml`
+  entry cannot be read back at all. A readable form is planned and its shape is not decided, so
+  treat today's behaviour as provisional. See [MIGRATION.md](MIGRATION.md) §2.23 for how to verify
+  an edit meanwhile.
 - **Seed and sync destinations are spelled guest-side.** The three template seed layers target
   `~/` rather than a host path under the box store, and kanibako resolves that to the box store when
   the copy runs. Nothing about *where the files land* changes; the spelling is now the same one

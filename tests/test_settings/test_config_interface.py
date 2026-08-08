@@ -143,6 +143,39 @@ class TestIsKnownKey:
         assert is_known_key("my-project") is False
         assert is_known_key("foobar") is False
 
+    def test_multifaceted_terminals_answer_false_quarantined(self):
+        """⚑ PINS THE QUARANTINE, NOT A DESIRED BEHAVIOUR (Jei, 2026-08-08).
+
+        The six bind-shaped category TERMINALS and ``<scope>.masks`` are DECLARED
+        keys whose values are multi-faceted (a dest-keyed map; a list for
+        ``masks``).  ``is_known_key`` is a HAND-MAINTAINED set and answers
+        ``False`` for every one of them, so the system noun's ``get`` refuses a
+        key that exists.  Jei ruled QUARANTINE rather than fix: an individual
+        read/write of a multi-faceted key is not supported, and the readable form
+        is a promise whose shape is undecided.
+
+        ⚑⚑ THIS TEST EXISTS TO STOP THE OBVIOUS FIX. Deriving ``is_known_key``
+        from the declaration SoT would flip these to ``True`` and thereby build
+        the surface the ruling has not chosen — it was proposed and DECLINED.
+        When the promised form lands, DELETE this test with the quarantine block
+        above ``config_keys.KNOWN_CONFIG_KEYS``; do not silently retune it.
+        """
+        for scope in ("system", "workset", "box"):
+            for category in (
+                "bindings.ro", "bindings.rw", "caches",
+                "common", "seeded", "synced", "masks",
+            ):
+                key = f"{scope}.{category}"
+                assert is_known_key(key) is False, key
+        # The AGENT-scope terminal spelling is in the same state.
+        assert is_known_key("agent.claude.caches") is False
+        assert is_known_key("agent.claude.bindings.ro") is False
+        # ⚑ The PER-ENTRY spellings stay recognised — they are refused BY NAME
+        # (spec §0 refuses loudly), which requires the disambiguator to read them
+        # as keys.  Only the terminals are quarantined.
+        assert is_known_key("box.caches.npm") is True
+        assert is_known_key("agent.claude.caches.npm") is True
+
 
 # ---------------------------------------------------------------------------
 # get / set / reset for regular config keys
@@ -1747,9 +1780,13 @@ class TestCategoryConfigSet:
     a cure, in the verb preamble before any write machinery, at every scope, leaving
     the stored tuple untouched.
 
-    ⚑ The repoint MECHANISM (``settings_configset.repoint_host_src``) is unaffected
-    and still unit-tested in ``test_settings_configset.py`` — it simply has no CLI
-    caller. Do not re-pin it through this door.
+    ⚑ The repoint MECHANISM (``settings_configset.repoint_host_src``) survived this
+    pass with no CLI caller and was DELETED in QA′ (2026-08-08, on Jei's word),
+    together with R-8's three-element stale-shape refusal and the test pinning the
+    DECLINED 2-element option — see the graveyard block in
+    ``test_settings_configset.py``. Nothing here changed: this class pins the
+    REFUSAL, which is upstream of any write machinery. Do not re-pin a repoint
+    through this door; there is no longer anything to pin.
     """
 
     def _seed(self, tmp_path, key_path, tuple_val):
@@ -2033,11 +2070,18 @@ class TestCrossScopeCascadeConfigSet:
 # symmetry. **There is no CLI category repoint any more**, so every one of those
 # cases is now the SAME refusal, pinned once in ``TestCategoryConfigSet``.
 #
-# ⚑ F10 ITSELF IS NOT UNTESTED. The rule lives in ``repoint_host_src`` and is
-# unit-tested directly in ``test_settings_configset.py``
-# (``test_repoint_cascade_fallback_*`` / ``test_repoint_missing_key_raises``), which
-# is where it belongs now that the function has no CLI caller. Do NOT re-add a
-# CLI-level copy: it could only pass by resurrecting the retired route.
+# ⚑⚑ F10 IS NOW UNTESTED, AND SAYING SO IS THE POINT. When this block was written
+# the rule still lived in ``repoint_host_src`` and was unit-tested directly in
+# ``test_settings_configset.py`` (``test_repoint_cascade_fallback_*`` /
+# ``test_repoint_missing_key_raises``). QA′ (2026-08-08, on Jei's word) deleted that
+# function as an orphan, so those cases went too and F10 has NO implementation and
+# NO test anywhere in the tree.
+#
+# ⚑ THAT IS CORRECT, NOT A GAP TO PATCH: F10 is a rule about what ``config set`` may
+# do to a category, and ``config set`` may not touch a category at all. There is
+# nothing left for the rule to constrain. Do NOT re-add a CLI-level copy — it could
+# only pass by resurrecting the retired route. If a category write route is ever
+# rebuilt, F10 comes back WITH it, spec §2a and all.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------

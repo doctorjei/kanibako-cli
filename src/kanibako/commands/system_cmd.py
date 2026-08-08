@@ -350,6 +350,16 @@ def _run_system_config(args: argparse.Namespace) -> int:
             if is_system_path_key(key):
                 print(system_key_refusal(key), file=sys.stderr)
                 return 1
+            # ⚑ THIS MESSAGE IS WRONG FOR SEVEN DECLARED KEYS AND THAT IS
+            # QUARANTINED, NOT UNNOTICED. The six bind-shaped category terminals
+            # (``<scope>.{bindings.ro,bindings.rw,caches,common,seeded,synced}``)
+            # and ``<scope>.masks`` are DECLARED, are read fine by
+            # ``get_config_value``, and still answer False above — so this prints
+            # "unknown config key" for a key that exists. Reading one facet of a
+            # multi-faceted key is NOT SUPPORTED and the readable form is an
+            # undecided promise (Jei, 2026-08-08); the wording is his call and the
+            # cure is that surface, NOT a wider ``is_known_key``. Full statement:
+            # the QUARANTINE block above ``config_keys.KNOWN_CONFIG_KEYS``.
             print(f"Error: unknown config key: {key}", file=sys.stderr)
             return 1
         val = get_config_value(
