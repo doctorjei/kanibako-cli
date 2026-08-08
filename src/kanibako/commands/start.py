@@ -49,7 +49,8 @@ from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
-from kanibako.settings.settings_keyspace import is_terminal_category_tail
+from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+from kanibako.settings.settings_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
@@ -6130,23 +6131,54 @@ def _launch_snapshot_inputs(
 def _is_terminal_category_key(key: str) -> bool:
     """True iff *key* is a TERMINAL dest-keyed category key (spec §2a).
 
-    ⚑⚑ **DERIVED, NEVER ENUMERATED HERE.** This asks the keyspace validator's own
-    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`, which
-    reads :data:`~kanibako.settings.settings_keyspace.TERMINAL_CATEGORY_TAILS` —
-    the ONE declaration of what ends a key with a destination-keyed map for a
-    value. A hand-copied literal lived here until 2026-08-08c and listed only the
-    two ``bindings`` arms; when ``caches``/``seeded``/``common``/``synced`` flipped
-    to terminal keys one segment SHALLOWER the literal silently stopped matching
-    them, and :func:`_merge_default_categories` — written precisely to stop a
-    terminal map being replaced wholesale — dropped all four into its last-wins
-    branch. Deriving the set is what makes that class of drift unavailable.
+    ⚑⚑ **DERIVED, NEVER ENUMERATED HERE — TWICE OVER.** Both halves of the answer
+    come from a declaration this module does not own:
 
-    ⚑ A tail match is NECESSARY, not sufficient: ``system.channels.common`` ends in
-    a category token and is an ordinary path SCALAR. The caller therefore pairs
-    this with a ``dict`` value test, which is what actually distinguishes a
-    dest-keyed map from a scalar leaf that happens to share a final segment.
+    * WHICH tails end a dest-keyed map —
+      :data:`~kanibako.settings.settings_keyspace.TERMINAL_CATEGORY_TAILS`, the
+      keyspace validator's own list;
+    * WHERE such a tail may BEGIN —
+      :data:`~kanibako.settings.settings_store.SCOPE_CONTAINMENT`, the single
+      declaration of the four scopes a §2a category is parametric over.
+
+    A hand-copied literal lived here until 2026-08-08c and listed only the two
+    ``bindings`` arms; when ``caches``/``seeded``/``common``/``synced`` flipped to
+    terminal keys one segment SHALLOWER the literal silently stopped matching them,
+    and :func:`_merge_default_categories` — written precisely to stop a terminal map
+    being replaced wholesale — dropped all four into its last-wins branch. Deriving
+    both halves is what makes that class of drift unavailable.
+
+    ⚑⚑ **THE MATCH IS ON THE CATEGORY'S POSITION, NOT ON THE KEY'S SUFFIX**, and
+    that is the whole point of the shape. A suffix test answers True for
+    ``system.channels.common`` and ``workset.channels.common`` — the CHANNEL
+    type-roots, ordinary path SCALARS that merely end in a category token. Spec §2a
+    names the discriminator itself: *"the discriminator is the ``channels.``
+    segment, which the channel form always carries and the category form never
+    does, so no KEY is ambiguous"* — i.e. a category token is a category only where
+    the SCOPE ends. Requiring that position makes a dict-valued key ending in
+    ``common`` UNABLE to enter the entry-merge branch, rather than merely unlikely
+    to; the caller's ``dict`` test is then a value-shape guard (it keeps the
+    LIST-valued ``<scope>.masks`` whole) and no longer the thing standing between a
+    scalar leaf and a per-entry merge.
+
+    The scope is ONE segment, except the DISCRIMINATED agent tier (spec §0/§2d),
+    which is ``agent.<node>`` — two, never one, because a bare ``agent.<category>``
+    is not a key. Two is also the CEILING, which is why the prefix length can be
+    tested at all: ``.`` is reserved as the key-path separator, so
+    ``agent_ref.parse_agent_ref`` REFUSES a dotted persona or harness segment (it
+    carries ``_DOT_HINT`` for exactly that mistake) and no node can widen the
+    prefix past one segment.
     """
-    return is_terminal_category_tail(key.split("."))
+    parts = key.split(".")
+    for tail in TERMINAL_CATEGORY_TAILS:
+        if len(parts) <= len(tail) or tuple(parts[-len(tail):]) != tail:
+            continue
+        scope = parts[: -len(tail)]
+        if scope[0] not in SCOPE_CONTAINMENT:
+            return False
+        # The tail must begin exactly where the SCOPE ends.
+        return len(scope) == (2 if scope[0] == "agent" else 1)
+    return False
 
 
 def _merge_default_categories(
@@ -6183,10 +6215,12 @@ def _merge_default_categories(
     * **everything else** is LAST-WINS, exactly as before. ⚑⚑ Do NOT generalize this
       into a deep merge for every value. Two call sites — ``extra_default_categories``
       and ``resolved_sys`` — are LATE INJECTIONS that are supposed to override, and a
-      deep merge would quietly stop them from doing so. The ``dict`` test is also
-      what keeps a scalar leaf that merely ENDS in a category token
-      (``system.channels.common``) and the LIST-valued ``<scope>.masks`` on the
-      last-wins branch where they belong.
+      deep merge would quietly stop them from doing so. The ``dict`` test is what
+      keeps the LIST-valued ``<scope>.masks`` on the last-wins branch where it
+      belongs — **masks hold whole.** ⚑ It is NOT what excludes a scalar leaf that
+      merely ends in a category token: ``system.channels.common`` fails
+      :func:`_is_terminal_category_key` itself, on POSITION, so no value of any
+      shape at that key can reach this branch.
 
     A destination already claimed in the SAME key RAISES, naming both families
     (*origins* carries who claimed it). ⚑ **The refusal is STRUCTURAL and therefore
