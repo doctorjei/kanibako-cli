@@ -155,15 +155,19 @@ descriptor:
 # `agents/claude/common/{plugins,cache}`.  An already-self-resolving host_src
 # (absolute / ~ / $var / @-ref) is stored verbatim instead (§2a).
 # box_dest is a $GUEST_HOME expression (kanibako owns the HOST layout only — the
-# guest dest is always spelled out).  `key` is the bare LEAF name — the loader
-# builds the discriminated `agent.<agent>.common.<key>` (there is no bare
-# `agent.<category>`); `key` and `host_src` are INDEPENDENT (see load_common).
+# guest dest is always spelled out) and it is the ENTRY'S IDENTITY: the loader
+# emits ONE discriminated TERMINAL key `agent.claude.common` whose value is the
+# whole map `{box_dest: (host_src,)}`.
+# ⚑ THERE IS NO `key:` FIELD ANY MORE (dropped 2026-08-08c; the `bindings` arms
+# went the same way 2026-08-06c).  The destination names the entry, so a `key:`
+# line would name nothing — the loader REFUSES one rather than ignoring it.
+# `host_src` and `box_dest` remain INDEPENDENT: `host_src` is the store leaf that
+# gets rooted (and, being rooted, is what tells the persona symlink shim which
+# store dir to share), `box_dest` is where it lands in the box.
 common:
-  - key: plugins
-    host_src: plugins
+  - host_src: plugins
     box_dest: "$GUEST_HOME/.claude/plugins"
-  - key: cache
-    host_src: cache
+  - host_src: cache
     box_dest: "$GUEST_HOME/.claude/cache"
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →

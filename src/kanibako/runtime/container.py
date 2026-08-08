@@ -935,7 +935,7 @@ def _guest_dest_to_host(
       ``None``.  The base home bind is not a stub to pre-create, and the shadow
       scan skips the base roots explicitly.
     * ``True`` (the seed/synced COPY callers): the bare home root maps to
-      *shell_path* so a ``~``-targeted copy (the ``seeded.template`` trio) stages
+      *shell_path* so a ``~``-targeted copy (the ``seeded[~/]`` trio) stages
       straight into the box HOME.
 
     Both COPY callers gain the ``/workspace`` split for free by routing here: a

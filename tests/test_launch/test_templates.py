@@ -155,7 +155,10 @@ class TestStageLayers:
 
 
 # ---------------------------------------------------------------------------
-# The layered ``seeded.template`` DEFAULT-category table (spec §2a; Q1-Q4).
+# The layered ``seeded`` DEFAULT-category table (spec §2a; Q1-Q4).  ⚑ ``seeded`` is
+# a TERMINAL DEST-KEYED key since 2026-08-08c: ``<scope>.seeded`` holds the whole
+# ``{box_dest: (host_src[, options])}`` map and the entry NAME (``.template``) is
+# gone — the destination is the identity.
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -189,79 +192,98 @@ class TestTemplateSeedDefaults:
     def test_system_layer_always_present(self, primary_proj):
         defs = template_seed_defaults(primary_proj, "claude")
         # Layer 1 (base) rides the seed system with NO carve-out (Q4).
-        assert defs["system.seeded.template"] == (
-            "@system.template/box/home", "@meta.box.path/home",
-        )
+        # ⚑ DEST-KEYED and TERMINAL (2026-08-08c): ``system.seeded`` IS the key and
+        # its value is the whole ``{box_dest: (src,)}`` map. There is no entry name.
+        assert defs["system.seeded"] == {
+            "~/": ("@system.template/box/home",),
+        }
 
     def test_the_only_seed_dest_is_the_box_home(self, primary_proj):
-        """⚑ THE H2 PIN. Every declared seed dest is ``@meta.box.path/home`` — a
-        HOST path — and NOTHING targets ``@box.canon/handbook`` any more.
+        """⚑ THE H2 PIN, RESPELLED. Every declared seed dest is the GUEST home
+        ``~/`` and NOTHING targets ``@box.canon/handbook`` any more.
 
         The handbook layers left the category on 2026-08-07g (HOST templates, not
         GUEST templates), so no declared ``seeded`` entry names the handbook dest any
         more.  Asserted as an EQUALITY on the whole dest set rather than as a ``not
         in``: a bare absence assertion would stay green if the layers came back under
-        any other name.
+        any other name — and, since the dests are now the map KEYS, the same equality
+        also catches a fourth layer added at a dest of its own.
+
+        ⚑ It ALSO pins the 2026-08-08c RESPELL: the dest used to be the absolute
+        HOST path ``@meta.box.path/home``, which needed a per-entry space
+        discriminator to stop the guest translator re-rooting it (see
+        ``settings_categories.CategoryEntry``). A host-spelled dest coming back
+        makes this RED, which is the point — the discriminator that made one safe
+        is gone.
         """
         defs = template_seed_defaults(primary_proj, "claude")
-        dests = [v[1] for k, v in defs.items() if ".seeded." in k]
+        dests = [
+            dest for key, value in defs.items() if key.endswith(".seeded")
+            for dest in value
+        ]
         assert dests, defs
-        assert set(dests) == {"@meta.box.path/home"}, dests
+        assert set(dests) == {"~/"}, dests
 
     def test_agent_layer_sources_harness_store(self, primary_proj):
-        """Layer 2: agent.<node>.seeded.template reads @agent.<node>.template,
-        which defaults to @config.agents/<harness>/template (Q2: node = persona+
+        """Layer 2: agent.<node>.seeded reads @agent.<node>.template, which
+        defaults to @config.agents/<harness>/template (Q2: node = persona+
         harness; the SOURCE dir is the harness store)."""
         defs = template_seed_defaults(primary_proj, "claude")
         assert defs["agent.claude.template"] == "@config.agents/claude/template"
-        assert defs["agent.claude.seeded.template"] == (
-            "@agent.claude.template/box/home", "@meta.box.path/home",
-        )
+        assert defs["agent.claude.seeded"] == {
+            "~/": ("@agent.claude.template/box/home",),
+        }
 
     def test_no_agent_omits_agent_layer(self, primary_proj):
         defs = template_seed_defaults(primary_proj, None)
         assert not any(k.startswith("agent.") for k in defs)
         # system + workset layers still declared.
-        assert "system.seeded.template" in defs
-        assert "workset.seeded.template" in defs
+        assert "system.seeded" in defs
+        assert "workset.seeded" in defs
 
     def test_workset_layer_default_points_at_workset_template(self, primary_proj):
         """Layer 3 default = @meta.workset.path/template (Q3, was <None>)."""
         defs = template_seed_defaults(primary_proj, "claude")
         assert defs["workset.template"] == "@meta.workset.path/template"
-        assert defs["workset.seeded.template"] == (
-            "@workset.template/box/home", "@meta.box.path/home",
-        )
+        assert defs["workset.seeded"] == {
+            "~/": ("@workset.template/box/home",),
+        }
 
     def test_named_includes_workset_layer(self, named_proj):
         defs = template_seed_defaults(named_proj, "claude")
-        assert "workset.seeded.template" in defs
+        assert "workset.seeded" in defs
 
     def test_standalone_omits_workset_layer(self, standalone_proj):
         """STANDALONE has no workset tier -> no workset.template source/layer
         (spec §2c workset.template <None>)."""
         defs = template_seed_defaults(standalone_proj, "claude")
         assert "workset.template" not in defs
-        assert "workset.seeded.template" not in defs
+        assert "workset.seeded" not in defs
         # base + agent layers still present.
-        assert "system.seeded.template" in defs
-        assert "agent.claude.seeded.template" in defs
+        assert "system.seeded" in defs
+        assert "agent.claude.seeded" in defs
 
-    def test_seed_keys_of_selects_exactly_the_seeded_keys(self, primary_proj):
-        """The HOST-space key set is DERIVED from the table, never restated — a
-        fourth layer cannot be added in one place and forgotten in the other.
+    def test_exactly_three_seed_layer_keys_are_declared(self, primary_proj):
+        """The seed LAYER SET is pinned as an equality — a fourth layer cannot be
+        added without this test naming it.
 
-        ⚑ ``seed_keys_of`` SURVIVED H2 and is still load-bearing: the home dest is
-        spelled ``@meta.box.path/home``, a HOST path, so the discriminator has the
-        same job it always had — only the number of host dests fell from two to one.
+        ⚑ THIS REPLACES ``test_seed_keys_of_selects_exactly_the_seeded_keys``.
+        That test derived a HOST-space key set via ``templates.seed_keys_of``, which
+        was DELETED with the 2026-08-08c respell (every dest is guest-spelled now, so
+        there is no second namespace to select). Its anti-drift half, however, did NOT
+        dissolve, and is restored here.
+
+        ⚑⚑ IT IS NOT SUBSUMED BY ``test_the_only_seed_dest_is_the_box_home``, and the
+        difference is the whole reason this exists: that test asserts the set of
+        DESTS is ``{"~/"}``, so a FOURTH layer added at the same ``~/`` dest leaves it
+        GREEN. Only an equality on the KEYS catches one. (A layer DROPPED is caught by
+        the per-layer tests above, which assert each key's value individually.)
         """
-        from kanibako.launch.templates import seed_keys_of
-
         defs = template_seed_defaults(primary_proj, "claude")
-        assert seed_keys_of(defs) == {
-            "system.seeded.template",
-            "agent.claude.seeded.template",
-            "workset.seeded.template",
+        assert {k for k in defs if k.endswith(".seeded")} == {
+            "system.seeded",
+            "agent.claude.seeded",
+            "workset.seeded",
         }
 
 
@@ -1124,7 +1146,7 @@ class TestLegacyPluginPayloadArm:
         defs = template_seed_defaults(primary_proj, "claude")
         # Layer 2's SOURCE, with its @-ref head resolved the way the cascade does:
         #   @agent.claude.template -> @config.agents/claude/<store rel>
-        source = defs["agent.claude.seeded.template"][0]
+        source = defs["agent.claude.seeded"]["~/"][0]
         store_ref = defs["agent.claude.template"]
         assert source.startswith("@agent.claude.template/")
         resolved = source.replace("@agent.claude.template", store_ref, 1)

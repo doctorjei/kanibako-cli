@@ -228,7 +228,7 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
 
     ⚑ **The ``pref`` subtree is EXEMPT — no classification at all.** A pref is a
     REQUEST, not a value (spec §2h), and the request's own path mirrors its
-    TARGET's, so ``pref.agent.claude.common.plugins`` carries ``common`` among
+    TARGET's, so ``pref.agent.claude.common.<box_dest>`` carries ``common`` among
     its ancestors and the category rule below would OMIT it — deleting the
     RECORD of a ``null`` request from the snapshot while the request itself was
     applied, so ``config show`` / ``--effective`` could not show it. It is also
@@ -237,14 +237,23 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     terminal ``""``, the COPY-disable sentinel) and the pref layer must not
     become a fourth place deciding what "empty" means. The classification the
     spec DOES want happens at the INSTALLED target key, where the path is
-    ``agent.claude.common.plugins`` and the ordinary rule below applies.
+    ``agent.claude.common.<box_dest>`` and the ordinary rule below applies. (⚑ The
+    trailing segment is a DESTINATION, not a name — the four categories went
+    TERMINAL and dest-keyed on 2026-08-08c, so ``.plugins``, which this note used
+    to spell, is no longer a key segment anywhere.)
 
     *path* is the full segment trail to the leaf. A leaf is a category leaf when
     EITHER an ANCESTOR segment is a bind category / ``masks`` (an ENTRY reset like
-    ``bindings.rw.foo = None`` / ``masks./p = None`` — the same "any ancestor is a
-    category" test 2a's ``_insert_dotted`` uses) OR the leaf's OWN segment IS a
-    category (a whole-CATEGORY-ROOT reset like ``bindings = None`` / ``caches =
-    None`` / ``masks = None``). The root case keeps the §5 tier-2 coupling honest:
+    ``bindings.rw[/p] = None`` / ``common[~/x] = None`` / ``masks./p = None`` — the
+    same "any ancestor is a category" test 2a's ``_insert_dotted`` uses) OR the
+    leaf's OWN segment IS a category (a whole-CATEGORY-ROOT reset like
+    ``bindings = None`` / ``caches = None`` / ``masks = None``).
+
+    ⚑ BOTH RESET SPELLINGS SURVIVED THE 2026-08-08c DEST-KEY RETOOL WITH NO EDIT
+    HERE, and that is the frozenset doing its job: ``_BIND_CATEGORIES`` already
+    held all five tokens, and the ancestor test never cared whether the segment
+    below a category was a NAME or a DESTINATION. The path shape changed; the
+    classification did not. The root case keeps the §5 tier-2 coupling honest:
     a category accessor promises ``Mapping`` / ``set``, so a present-``None`` at the
     category root must OMIT (drop the whole category), never KEEP a bare ``None``
     where a mapping is contracted. Design §3 spells the ENTRY case; the ROOT case is

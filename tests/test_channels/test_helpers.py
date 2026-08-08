@@ -439,10 +439,25 @@ class TestBundledInitScript:
         path = bundled_init_script()
         content = path.read_text()
         assert 'SOCKET_PATH="$HOME/.kanibako/state/helper.sock"' in content
-        # No EXECUTABLE line may consult XDG (the comment explaining why is exempt:
-        # it is the prose, not the resolution).
+        # No EXECUTABLE line may RESOLVE anything from XDG (the comment explaining
+        # why is exempt: it is the prose, not the resolution).
+        #
+        # ⚑ This was a flat "XDG_STATE_HOME appears on no executable line at all",
+        # which was a sound PROXY only while the script had no reason to mention the
+        # variable.  The script now also RUNS the projection, whose whole job is to
+        # read $XDG_STATE_HOME and point it AT the pinned dir -- the opposite of
+        # deriving the socket from it.  So the proxy is replaced by the thing it was
+        # standing in for: the projection's own lines are the ONLY ones allowed to
+        # name the variable, and they are verbatim-pinned to the generator by
+        # TestXdgProjectionSh.test_helper_init_carries_the_snippet_verbatim.  A
+        # ${XDG_STATE_HOME:-...} creeping into SOCKET_PATH still fails here.
+        from kanibako.box_supervisor import xdg_projection_sh
+
         code = [ln for ln in content.splitlines() if not ln.lstrip().startswith("#")]
-        assert not [ln for ln in code if "XDG_STATE_HOME" in ln]
+        xdg_lines = [ln for ln in code if "XDG_STATE_HOME" in ln]
+        projection = xdg_projection_sh().splitlines()
+        assert xdg_lines, "the projection block went missing from helper-init.sh"
+        assert [ln for ln in xdg_lines if ln not in projection] == []
 
     def test_pinned_socket_dest_agrees_across_every_spelling(self):
         """The declared MOUNT dest, the box shell, the in-box CLI and PID-1 all

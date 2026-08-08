@@ -30,6 +30,27 @@ shift || true
 # The box's own $XDG_STATE_HOME/kanibako is symlinked onto that dir after boot.
 SOCKET_PATH="$HOME/.kanibako/state/helper.sock"
 
+# POST-LIVENESS XDG PROJECTION — serve $XDG_STATE_HOME/kanibako from the pinned dir
+# now that there IS a box to ask.  A helper box's PID-1 is this script, not the
+# kanibako supervisor, so nothing else would run the projection here.
+#
+# ⚑ VERBATIM COPY of box_supervisor.xdg_projection_sh() — bash can import nothing, so
+# this is the same third-copy arrangement as SOCKET_PATH above; a test pins the two.
+# Edit the GENERATOR, never this block.  Skips when the two paths are already the
+# same, never re-points a symlink, never clobbers a real path (a pre-v1.8.0 box has a
+# real directory there — MIGRATION.md §2.22), never fails.  Idempotent.
+_kb_pin="$HOME/.kanibako/state"
+_kb_xdg="${XDG_STATE_HOME:-}"
+case "$_kb_xdg" in /*) ;; *) _kb_xdg="$HOME/.local/state" ;; esac
+_kb_link="$_kb_xdg/kanibako"
+if [ "$_kb_link" != "$_kb_pin" ]; then
+    mkdir -p "$_kb_pin" 2>/dev/null || true
+    if [ ! -L "$_kb_link" ] && [ ! -e "$_kb_link" ]; then
+        mkdir -p "$_kb_xdg" 2>/dev/null && ln -s "$_kb_pin" "$_kb_link" 2>/dev/null || true
+    fi
+fi
+unset _kb_pin _kb_xdg _kb_link
+
 # Register with the hub via kanibako CLI (one-shot)
 if [ -S "$SOCKET_PATH" ] && command -v kanibako >/dev/null 2>&1; then
     kanibako helper register "$HELPER_NUM" 2>/dev/null || true

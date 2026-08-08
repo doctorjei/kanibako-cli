@@ -2216,3 +2216,222 @@ class TestProjectPinnedXdg:
     def test_projection_table_has_one_row_and_names_state(self):
         """The table shape is the point: a second facet is a ROW, not a mechanism."""
         assert bs.XDG_PROJECTIONS == (("XDG_STATE_HOME", ".local/state", "state"),)
+
+
+# --------------------------------------------------------------------------- #
+# THE SHELL TWIN (xdg_projection_sh)                                          #
+# --------------------------------------------------------------------------- #
+#
+# The Python half above runs ONLY where the supervisor is PID-1. A bare keep-alive
+# box, the forward-compat fallback (which fires BECAUSE the import failed) and a
+# helper box run no kanibako Python at PID-1 at all. So the same table also emits
+# shell, and these tests hold the two halves to the SAME behaviour by running each
+# against a real temporary HOME and comparing the resulting tree -- not by comparing
+# their source text, which would pass while the shell did nothing.
+
+
+def _run_projection_sh(home, env_extra=None, *, strict=True):
+    """Execute the generated snippet against *home*; return the CompletedProcess.
+
+    ``set -eu`` by default because helper-init.sh runs under ``set -euo pipefail`` --
+    a snippet that tripped either option would abort a helper's entrypoint before it
+    ever registered with the hub, which is exactly the class of new failure this
+    projection must not introduce.
+    """
+    env = {"HOME": str(home), "PATH": _os.environ.get("PATH", "/usr/bin:/bin")}
+    env.update(env_extra or {})
+    script = bs.xdg_projection_sh()
+    if strict:
+        script = "set -eu\n" + script
+    return subprocess.run(
+        ["sh", "-c", script], env=env, capture_output=True, text=True, check=False,
+    )
+
+
+class TestXdgProjectionSh:
+    def test_default_xdg_gets_the_same_symlink_the_python_half_makes(self, tmp_path):
+        proc = _run_projection_sh(tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        link = tmp_path / ".local" / "state" / "kanibako"
+        assert link.is_symlink()
+        assert link.resolve() == (tmp_path / ".kanibako" / "state").resolve()
+
+    def test_pinned_dir_is_created_so_the_link_is_never_dangling(self, tmp_path):
+        _run_projection_sh(tmp_path)
+        assert (tmp_path / ".kanibako" / "state").is_dir()
+
+    def test_absolute_xdg_state_home_is_honored(self, tmp_path):
+        elsewhere = tmp_path / "srv" / "state"
+        proc = _run_projection_sh(
+            tmp_path, {"XDG_STATE_HOME": str(elsewhere)},
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert (elsewhere / "kanibako").resolve() == (
+            tmp_path / ".kanibako" / "state"
+        ).resolve()
+        assert not (tmp_path / ".local" / "state" / "kanibako").exists()
+
+    def test_relative_xdg_state_home_is_ignored_per_spec(self, tmp_path):
+        _run_projection_sh(tmp_path, {"XDG_STATE_HOME": "relative/state"})
+        assert (tmp_path / ".local" / "state" / "kanibako").is_symlink()
+
+    def test_second_run_is_a_no_op(self, tmp_path):
+        _run_projection_sh(tmp_path)
+        link = tmp_path / ".local" / "state" / "kanibako"
+        before = _os.readlink(link)
+        proc = _run_projection_sh(tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        assert _os.readlink(link) == before
+
+    def test_existing_real_directory_is_never_clobbered(self, tmp_path):
+        """The MIGRATION.md §2.22 shape: a pre-v1.8.0 box has a REAL directory
+        there, holding real files. Removing it is the user's call, never ours."""
+        link = tmp_path / ".local" / "state" / "kanibako"
+        link.mkdir(parents=True)
+        (link / "leftover.jsonl").write_text("keep me\n")
+        proc = _run_projection_sh(tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        assert not link.is_symlink()
+        assert (link / "leftover.jsonl").read_text() == "keep me\n"
+
+    def test_a_refused_link_still_leaves_the_pinned_dir_made(self, tmp_path):
+        """Parity with the Python half, whose `pinned.mkdir` runs BEFORE the two
+        refusals -- so a box that declines the link still has the real location. The
+        shell nests its guards rather than flattening them for exactly this."""
+        link = tmp_path / ".local" / "state" / "kanibako"
+        link.mkdir(parents=True)
+        _run_projection_sh(tmp_path)
+        assert (tmp_path / ".kanibako" / "state").is_dir()
+        assert not link.is_symlink()
+
+    def test_foreign_symlink_is_not_repointed(self, tmp_path):
+        other = tmp_path / "other"
+        other.mkdir()
+        link = tmp_path / ".local" / "state" / "kanibako"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(other)
+        _run_projection_sh(tmp_path)
+        assert link.resolve() == other.resolve()
+
+    def test_dangling_symlink_is_left_alone_too(self, tmp_path):
+        """`-L` is tested BEFORE `-e` precisely for this: `-e` is false for a
+        dangling link, so an `-e`-only guard would treat the slot as empty."""
+        link = tmp_path / ".local" / "state" / "kanibako"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(tmp_path / "gone")
+        proc = _run_projection_sh(tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        assert _os.readlink(link) == str(tmp_path / "gone")
+
+    def test_same_path_is_skipped_and_nothing_is_created(self, tmp_path, monkeypatch):
+        """The Python half's guard, in shell: substitute a facet named `kanibako`
+        (see TestProjectPinnedXdg.test_same_path_is_skipped for why the shipped row
+        cannot reach it) and point the XDG var at the pinned root."""
+        monkeypatch.setattr(
+            bs, "XDG_PROJECTIONS", (("XDG_STATE_HOME", ".local/state", "kanibako"),),
+        )
+        proc = _run_projection_sh(
+            tmp_path, {"XDG_STATE_HOME": str(tmp_path / ".kanibako")},
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert not (tmp_path / ".kanibako").exists()
+
+    def test_unwritable_home_exits_zero_rather_than_failing(self, tmp_path):
+        """The forward-compat contract: this snippet is composed AHEAD of the
+        `probe && exec supervisor || exec fallback` chain, so a non-zero exit here
+        would not merely skip a convenience -- it would pick a different PID-1."""
+        home = tmp_path / "home"
+        home.mkdir()
+        home.chmod(0o500)
+        try:
+            proc = _run_projection_sh(home)
+            assert proc.returncode == 0, proc.stderr
+            assert not (home / ".local").exists()
+            assert not (home / ".kanibako").exists()
+        finally:
+            home.chmod(0o700)
+
+    def test_it_is_generated_from_the_table_not_hand_written(self, monkeypatch):
+        """A second facet must extend the SHELL as it extends the Python -- that is
+        the whole claim of the table's `never a second mechanism` comment."""
+        monkeypatch.setattr(
+            bs,
+            "XDG_PROJECTIONS",
+            (
+                ("XDG_STATE_HOME", ".local/state", "state"),
+                ("XDG_CACHE_HOME", ".cache", "cache"),
+            ),
+        )
+        script = bs.xdg_projection_sh()
+        assert '_kb_pin="$HOME/.kanibako/cache"' in script
+        assert '_kb_xdg="${XDG_CACHE_HOME:-}"' in script
+        assert script.count("_kb_link=") == 2
+
+    @pytest.mark.parametrize(
+        "scenario",
+        ["virgin", "already_projected", "real_dir_present", "foreign_symlink",
+         "dangling_symlink", "absolute_xdg", "relative_xdg"],
+    )
+    def test_the_two_halves_produce_an_IDENTICAL_tree(self, tmp_path, scenario):
+        """The docstring's claim -- `interchangeable and idempotent against each
+        other` -- asserted directly rather than inferred from matching prose.
+
+        Each half runs against its OWN fresh home prepared identically, and the
+        resulting trees (paths, kinds, and symlink TARGETS rewritten home-relative)
+        must match exactly. This is the test that fails if the generator drifts off
+        the Python in a way both halves' own tests happen to tolerate.
+        """
+        env = {}
+        if scenario == "absolute_xdg":
+            env = {"XDG_STATE_HOME": "$HOME/srv/state"}
+        elif scenario == "relative_xdg":
+            env = {"XDG_STATE_HOME": "relative/state"}
+
+        def prepare(home):
+            link = home / ".local" / "state" / "kanibako"
+            if scenario == "already_projected":
+                link.parent.mkdir(parents=True)
+                link.symlink_to(home / ".kanibako" / "state")
+            elif scenario == "real_dir_present":
+                link.mkdir(parents=True)
+                (link / "leftover.jsonl").write_text("keep me\n")
+            elif scenario == "foreign_symlink":
+                (home / "other").mkdir(parents=True)
+                link.parent.mkdir(parents=True)
+                link.symlink_to(home / "other")
+            elif scenario == "dangling_symlink":
+                link.parent.mkdir(parents=True)
+                link.symlink_to(home / "gone")
+
+        def tree(home):
+            out = []
+            for p in sorted(home.rglob("*")):
+                rel = p.relative_to(home).as_posix()
+                if p.is_symlink():
+                    target = _os.readlink(p).replace(str(home), "$HOME")
+                    out.append(f"link {rel} -> {target}")
+                else:
+                    out.append(f"{'dir ' if p.is_dir() else 'file'} {rel}")
+            return out
+
+        py_home = tmp_path / "py"
+        sh_home = tmp_path / "sh"
+        for home in (py_home, sh_home):
+            home.mkdir()
+            prepare(home)
+
+        py_env = {k: v.replace("$HOME", str(py_home)) for k, v in env.items()}
+        bs.project_pinned_xdg(home=py_home, environ=py_env)
+        _run_projection_sh(
+            sh_home, {k: v.replace("$HOME", str(sh_home)) for k, v in env.items()},
+        )
+        assert tree(sh_home) == tree(py_home)
+
+    def test_helper_init_carries_the_snippet_verbatim(self):
+        """helper-init.sh is bash and can import nothing, so it holds a COPY -- the
+        same arrangement as its SOCKET_PATH literal. This is the pin that keeps the
+        copy from drifting off the generator."""
+        script = (
+            _Path(bs.__file__).parent / "scripts" / "helper-init.sh"
+        ).read_text()
+        assert bs.xdg_projection_sh() in script

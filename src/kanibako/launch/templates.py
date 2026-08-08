@@ -24,9 +24,9 @@ if TYPE_CHECKING:
 # destination at creation (base -> agent -> workset; later overlays earlier) —
 # THREE keys in total:
 #
-#   1 system.seeded.template   | (@system.template/box/home,                  @meta.box.path/home)
-#   2 agent.<a>.seeded.template| (@agent.<a>.template/box/home,               @meta.box.path/home)
-#   3 workset.seeded.template  | (@workset.template/box/home,                 @meta.box.path/home)
+#   1 system.seeded[~/]        | (@system.template/box/home)
+#   2 agent.<a>.seeded[~/]      | (@agent.<a>.template/box/home)
+#   3 workset.seeded[~/]        | (@workset.template/box/home)
 #
 # ⚑⚑ THERE ARE NO HANDBOOK LAYERS HERE, AND THIS IS NOT AN OVERSIGHT.  Until
 # 2026-08-07g three more layers seeded ``@box.canon/handbook`` from each scope's
@@ -46,14 +46,16 @@ if TYPE_CHECKING:
 # seed seam (``commands.start._apply_init_seeds``) resolves them off the committed
 # snapshot and applies the dest's layers IN ORDER via :func:`stage_layers`.
 #
-# ⚑⚑ THE DEST IS A **HOST** PATH (spec §2a, ruled: the tuple direction is
-# ``(source, HOST destination)`` for COPY categories).  ``@meta.box.path/home`` is
-# the box store's home dir — the very directory the ``box.bindings.rw.home`` mount
-# then delivers at ``~``.  Being host-spelled is what makes the entry's
-# ``dest_space`` load-bearing rather than cosmetic: a box store under
-# ``/home/agent/.local/share/…`` starts with the GUEST home prefix, so the guest
-# translator would happily re-root it under the box home and report success.  The
-# entry therefore CARRIES its space; no prefix test could tell the two apart.
+# ⚑⚑ THE DEST IS THE **GUEST** HOME ``~/`` (spec §0 "ONE DEST SPACE, TWO
+# DELIVERIES"; §2a's seed table spells it ``seeded[~/]``).  A COPY's guest dest is
+# the SPELLING; it is RESOLVED to the box store when the copy runs — which is what
+# lets a copy that happens BEFORE any guest exists still write ``<box_dir>/home``,
+# the very directory the box home bind then delivers at ``~``.
+# ⚑ RESPELLED 2026-08-08c from the host path ``@meta.box.path/home``, TOGETHER with
+# the key-shape flip.  The host spelling needed a per-entry space discriminator,
+# because a box store under ``/home/agent/.local/share/…`` starts with the GUEST
+# home prefix and no prefix test can tell the two apart; the respell removed the
+# ambiguity instead of carrying it.  See ``settings_categories.CategoryEntry``.
 #
 # ⚑ ``@box.canon`` IS NOT ``~/canon``.  See ``settings_categories.CategoryEntry``.
 #
@@ -62,12 +64,22 @@ if TYPE_CHECKING:
 # (skip-if-absent — the seeded category drops a layer whose source dir is absent).
 # ---------------------------------------------------------------------------
 
-#: The box store's HOST-side seed destination, as an ``@``-ref formula (spec §2a).
-#: ⚑ ``@meta.box.path/home`` is the ONLY one — "SEED DESTINATIONS ARE ENUMERATED,
+#: The box home seed destination — the GUEST home ``~/`` (spec §0 "ONE DEST SPACE,
+#: TWO DELIVERIES"; §2a seed table ``seeded[~/]``).  It is RESOLVED to the box
+#: store when the copy runs, which is how a copy that happens BEFORE any guest
+#: exists still writes to ``<box_dir>/home``.
+#: ⚑ ``~/`` is the ONLY one — "SEED DESTINATIONS ARE ENUMERATED,
 #: NEVER A WHOLE-DIRECTORY COPY", because a wholesale ``template/box/* ->
 #: <box_dir>/*`` copy could plant ``<box_dir>/settings.yaml``, which IS
-#: ``meta.box.settings``, the LAST cascade level.
-_SEED_DEST_HOME = "@meta.box.path/home"
+#: ``meta.box.settings``, the LAST cascade level.  Enumerating the GUEST home
+#: rather than the box dir makes that stronger, not weaker: ``~/`` cannot name
+#: ``<box_dir>/settings.yaml`` at all, because the box dir has no guest spelling.
+#: ⚑ RESPELLED 2026-08-08c from ``@meta.box.path/home``, an absolute HOST path.
+#: That spelling needed a per-entry ``dest_space`` discriminator to stop the guest
+#: translator re-rooting it under the box home on a host whose user home is
+#: ``/home/agent`` — see ``settings_categories.CategoryEntry``.  Do not spell a
+#: copy dest host-side again; the discriminator that made it safe is gone.
+_SEED_DEST_HOME = "~/"
 
 #: The per-layer SOURCE subpaths under each layer's ``template`` root.  The two-level
 #: ``box/`` is the declared WHITELIST BOUNDARY (J-2): everything under it is box
@@ -96,17 +108,18 @@ def template_seed_defaults(
     ready to fold into the seed-time snapshot's ``default_categories``
     (``commands.start._apply_init_seeds``) so they resolve + apply through the SAME
     single seeded-category route as every other seed — no bespoke template plumbing
-    (Q1).  Each is a ``seeded`` COPY into a HOST path under the box store, sourced
+    (Q1).  Each is a ``seeded`` COPY into the GUEST home ``~/`` — resolved to the
+    box store when the copy runs (spec §0) — sourced
     from an ``@``-ref SETTINGS key so the source stays user-repointable through the
     cascade (setting ``workset.template`` / ``agent.<a>.template`` reroutes that
     layer):
 
-    * ``system.seeded.template`` — ALWAYS (Q4: no carve-out).
-    * ``agent.<a>.seeded.template`` — only when an agent is bound; the
+    * ``system.seeded`` — ALWAYS (Q4: no carve-out).
+    * ``agent.<a>.seeded`` — only when an agent is bound; the
       source key ``agent.<a>.template`` defaults to ``@config.agents/<harness>/
       template`` (spec §2a/§2d; ``<a>`` = the persona+harness node, Q2). Absent for a
       NO-AGENT box.
-    * ``workset.seeded.template`` — only for a PRIMARY/NAMED box (a
+    * ``workset.seeded`` — only for a PRIMARY/NAMED box (a
       workset tier exists); the source key ``workset.template`` defaults to
       ``@meta.workset.path/template`` (Q3, was ``<None>``). STANDALONE has no workset
       tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is
@@ -130,14 +143,12 @@ def template_seed_defaults(
     from kanibako.channels.channels import has_workset_channels
 
     def _layer(source_root: str) -> dict[str, object]:
-        return {
-            "template": (f"{source_root}/{_SEED_SRC_HOME}", _SEED_DEST_HOME),
-        }
+        # ⚑ A DEST-KEYED map, not a named entry (2026-08-08c): the destination IS
+        # the identity and the value is the 1-element ``(src,)`` — ``opts`` is
+        # RESERVED on a COPY and no shipped layer sets it.
+        return {_SEED_DEST_HOME: (f"{source_root}/{_SEED_SRC_HOME}",)}
 
-    defs: dict[str, object] = {
-        f"system.seeded.{name}": value
-        for name, value in _layer("@system.template").items()
-    }
+    defs: dict[str, object] = {"system.seeded": _layer("@system.template")}
     if agent_id:
         harness = harness_of(agent_id)
         # SOURCE key (spec §2a/§2d): the per-agent template dir under the agent's
@@ -146,8 +157,7 @@ def template_seed_defaults(
         defs[f"agent.{agent_id}.template"] = (
             f"@config.agents/{harness}/{AGENT_TEMPLATE_STORE_REL}"
         )
-        for name, value in _layer(f"@agent.{agent_id}.template").items():
-            defs[f"agent.{agent_id}.seeded.{name}"] = value
+        defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):
         # SOURCE key (spec §2c; Q3 default @meta.workset.path/template): the
         # workset-local template dir. STANDALONE (no workset channels) omits BOTH
@@ -155,32 +165,23 @@ def template_seed_defaults(
         defs["workset.template"] = (
             f"@meta.workset.path/{AGENT_TEMPLATE_STORE_REL}"
         )
-        for name, value in _layer("@workset.template").items():
-            defs[f"workset.seeded.{name}"] = value
+        defs["workset.seeded"] = _layer("@workset.template")
     return defs
 
 
-def seed_keys_of(defs: "dict[str, object]") -> frozenset[str]:
-    """The ``seeded`` KEY names inside a :func:`template_seed_defaults` table.
-
-    The single source of the HOST-space key set the launch resolve needs
-    (``settings_launch.snapshot_category_entries(host_dest_keys=…)``): every key this
-    module declares in the ``seeded`` category targets the ONE ENUMERATED HOST
-    destination above (``@meta.box.path/home``), and nothing else in the table does.
-    Derived from the table rather than restated so a fourth layer cannot be added in
-    one place and forgotten in the other — which would silently route its copy
-    through the GUEST translator and land it inside the box home (see
-    ``CategoryEntry.dest_space``).
-
-    ⚑ STILL LIVE AND STILL NEEDED after the handbook layers left the category
-    (2026-08-07g).  The home dest is spelled ``@meta.box.path/home`` — a HOST path —
-    so the discriminator has exactly as much to do as before; only the number of
-    host destinations went from two to one.
-
-    A USER-declared ``<scope>.seeded.<name>`` is NOT in here and stays GUEST-space,
-    exactly as today.
-    """
-    return frozenset(key for key in defs if ".seeded." in key)
+# ⚑ ``seed_keys_of(defs)`` USED TO LIVE HERE and is GONE (2026-08-08c).  It
+# derived the HOST-space key set the launch resolve needed
+# (``settings_launch.snapshot_category_entries(host_dest_keys=…)``) as
+# ``{key for key in defs if ".seeded." in key}``.  TWO things retired it at once,
+# and only the second is a design decision:
+#
+# 1. It BREAKS MECHANICALLY at the key-shape flip.  The key is ``system.seeded``
+#    now, not ``system.seeded.template``, so the predicate is False for every
+#    layer and the set would come back EMPTY — silently, tagging the trio guest
+#    and landing the box-home seed where nothing reads it.
+# 2. The CURE is the RESPELL, not a replacement carrier.  The dest above is
+#    ``~/`` — a guest path — so there is no host destination left to discriminate
+#    and nothing for a key set to select.  Do not rebuild one under another name.
 
 
 def stage_layers(dest: Path, layers: list[Path]) -> None:

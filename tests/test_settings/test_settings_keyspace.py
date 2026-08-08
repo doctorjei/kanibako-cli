@@ -51,10 +51,12 @@ def reason(key: str) -> str:
     "agent.navigator℘claude.model",
     "agent.claude.bindings.ro",
     "agent.claude.bindings.rw",
-    "agent.claude.common.plugins",
-    "agent.claude.caches.transform",
-    "agent.claude.seeded.template",
-    "agent.claude.synced.credentials",
+    # ⚑ TERMINAL and DEST-KEYED since 2026-08-08c: the category token IS the
+    # whole key. No entry name follows it — see the terminal tests below.
+    "agent.claude.common",
+    "agent.claude.caches",
+    "agent.claude.seeded",
+    "agent.claude.synced",
     "agent.claude.masks",
     "agent.claude.env.DISABLE_AUTOUPDATER",
     "agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN",
@@ -69,13 +71,23 @@ def test_new_name_in_a_parametric_family_is_legal():
     A NEW name inside a parametric family is exactly what a user may want to
     add via a pref. An EXISTENCE test would permit only modifying keys that
     already hold a value, which is the reading Jei rejected.
+
+    ⚑ The families that still carry a free <name> are the VAR-keyed ones
+    (``env`` / ``secret_path``) and the agent discriminator. The bind-shaped
+    CATEGORIES no longer do: all six went TERMINAL and DEST-KEYED (the two
+    ``bindings`` arms at R-5/R-10, then ``caches``/``seeded``/``common``/
+    ``synced`` on 2026-08-08c), so the destination is DATA inside the value and
+    the free name it replaced is gone from the keyspace entirely. That is not a
+    narrowing of §2h — a user may still add a destination nobody declared; it is
+    simply no longer expressed as a key segment.
     """
-    assert valid("agent.claude.common.brand_new_thing")
-    assert valid("box.caches.never_seen_before")
-    assert valid("pref.agent.claude.common.brand_new_thing")
-    # ⚑ NOT bindings: the two arms went TERMINAL and DEST-KEYED (R-5/R-10), so
-    # there is no free <name> under them at all — see the terminal tests below.
+    assert valid("agent.claude.env.BRAND_NEW_THING")
+    assert valid("box.secret_path.NEVER_SEEN_BEFORE")
+    assert valid("pref.agent.claude.env.BRAND_NEW_THING")
+    # ⚑ NOT a bind-shaped category, in EITHER of its two terminal depths.
     assert not valid("agent.claude.bindings.rw.boooooo")
+    assert not valid("agent.claude.common.brand_new_thing")
+    assert not valid("box.caches.never_seen_before")
 
 
 def test_fabrication_is_still_rejected():
@@ -87,7 +99,7 @@ def test_bare_agent_key_is_not_a_key():
     """§0 / §2d — the agent tier is DISCRIMINATED; a bare
     ``agent.<category>.<name>`` must be REFUSED, not quietly widened."""
     assert not valid("agent.bindings.rw.x")
-    assert not valid("agent.common.plugins")
+    assert not valid("agent.common")
     assert not valid("agent.model")
 
 
@@ -150,10 +162,59 @@ def test_a_name_or_dest_under_a_bindings_arm_is_not_a_key(key):
     assert "no entry NAME" in r or "no entry name" in r.lower(), r
 
 
-def test_the_two_terminal_categories_are_declared_in_one_place():
-    """``masks`` and the two bindings arms are the SAME shape, and the parser and
-    the pref walker must agree on which keys they are — see
-    ``settings_prefs._flatten_pref_node``. One constant, two consumers."""
+@pytest.mark.parametrize("key", [
+    "box.common", "box.caches", "box.seeded", "box.synced",
+    "system.caches", "workset.seeded",
+    "agent.default.common", "agent.claude.synced",
+])
+def test_a_dest_keyed_category_is_a_key_on_its_own(key):
+    """2026-08-08c — the category TOKEN is the whole of the key; its VALUE is the
+    dest-keyed map. The same rule R-5 gave the ``bindings`` arms, one segment
+    shallower."""
+    assert valid(key), reason(key)
+
+
+@pytest.mark.parametrize("key", [
+    "box.common.plugins",
+    "box.caches.pip",
+    "system.seeded.template",
+    "workset.synced.credentials",
+    "agent.claude.common.plugins",
+    "agent.default.caches.transform",
+    # A real destination — dots, slashes and all. It is DATA, never a key.
+    "agent.claude.common.~/.claude/plugins",
+    # ⚑ THE NON-VACUITY CASE, exactly as for the bindings arms: this tail was
+    # ALREADY refused under the name-keyed parser — by ``leaf_name_reason``, as a
+    # RESERVED dict-method name. Only the REASON tells the two parsers apart, so
+    # the message assertions below are what make this row prove anything.
+    "agent.claude.common.items",
+])
+def test_a_name_under_a_dest_keyed_category_is_not_a_key(key):
+    """⚑ THE 2026-08-08c REFUSAL. Nothing may follow ``caches``/``seeded``/
+    ``common``/``synced``.
+
+    ⚑ MUTATION: in ``settings_keyspace._category_reason``, delete the
+    ``if len(rest) == 1: return None`` / refusal pair in the four-category branch
+    and fall through to the trailing ``return None`` — every key here becomes
+    VALID and this test dies. Nothing else in the suite emits the word TERMINAL
+    for one of these four.
+    """
+    r = reason(key)
+    assert "TERMINAL" in r, r
+    assert "destinations inside its value" in r, r
+    assert "have no NAME" in r or "no entry name" in r.lower(), r
+
+
+def test_the_terminal_categories_are_declared_in_one_place():
+    """ALL SEVEN dest-keyed categories are the SAME shape, and the parser and the
+    pref walker must agree on which keys they are — see
+    ``settings_prefs._flatten_pref_node``. One constant, two consumers.
+
+    ⚑ The seven sit at TWO depths: a ``bindings`` ARM is terminal at
+    ``bindings.{ro,rw}``, while ``masks`` and the four category tokens are
+    terminal ONE SEGMENT SHALLOWER. The tail matcher must handle both, which is
+    why it compares a SUFFIX rather than a fixed length.
+    """
     from kanibako.settings.settings_keyspace import (
         TERMINAL_CATEGORY_TAILS,
         is_terminal_category_tail,
@@ -161,15 +222,21 @@ def test_the_two_terminal_categories_are_declared_in_one_place():
 
     assert TERMINAL_CATEGORY_TAILS == frozenset({
         ("masks",), ("bindings", "ro"), ("bindings", "rw"),
+        ("caches",), ("seeded",), ("common",), ("synced",),
     })
     assert is_terminal_category_tail(("box", "masks"))
     assert is_terminal_category_tail(("agent", "claude", "bindings", "rw"))
     assert is_terminal_category_tail(("bindings", "ro"))
-    # NOT terminal: a name-keyed category, a bare arm root, an arm-shaped tail
-    # that is not a bindings arm, and the empty tail.
-    assert not is_terminal_category_tail(("box", "common"))
+    # The four that went terminal on 2026-08-08c, at every scope depth.
+    assert is_terminal_category_tail(("box", "common"))
+    assert is_terminal_category_tail(("agent", "claude", "caches"))
+    assert is_terminal_category_tail(("workset", "seeded"))
+    assert is_terminal_category_tail(("synced",))
+    # NOT terminal: a bare arm root, a tail that runs PAST a terminal key, an
+    # arm-shaped tail that is not a bindings arm, and the empty tail.
     assert not is_terminal_category_tail(("box", "bindings"))
     assert not is_terminal_category_tail(("box", "masks", "ro"))
+    assert not is_terminal_category_tail(("box", "common", "plugins"))
     assert not is_terminal_category_tail(("ro",))
     assert not is_terminal_category_tail(())
 
@@ -215,9 +282,18 @@ def test_masks_and_bindings_arms_refuse_a_tail_the_same_way():
 
 
 def test_reserved_leaf_names_rejected():
-    """spec §0 — a leaf may not be named after a public dict method."""
+    """spec §0 — a leaf may not be named after a public dict method.
+
+    ⚑ The probes are VAR-keyed (``env`` / ``secret_path``) because those are the
+    only families left whose free segment is a KEY segment and therefore reaches
+    ``leaf_name_reason``. A reserved name under a bind-shaped category is now
+    refused one step earlier, as a tail past a TERMINAL key — pinned by
+    ``test_a_name_under_a_dest_keyed_category_is_not_a_key``, whose non-vacuity
+    case is exactly ``…common.items``.
+    """
     assert "RESERVED" in reason("box.env.get")
-    assert "RESERVED" in reason("agent.claude.common.items")
+    assert "RESERVED" in reason("agent.claude.env.items")
+    assert "RESERVED" in reason("agent.claude.secret_path.copy")
     assert "dunder" in reason("box.env.__init__")
 
 
@@ -270,7 +346,7 @@ def test_supporting_surface_is_valid(key):
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
     "meta.box.share_workset", "meta.box.auth.workset_path",
-    "meta.box.agent.model", "meta.box.agent.common.plugins",
+    "meta.box.agent.model", "meta.box.agent.common",
     "meta.agent.claude.name", "meta.agent.claude.path",
     "meta.agent.claude.settings", "meta.agent.claude.mode",
     "meta.agent.claude.exec", "meta.agent.claude.auth.share_support",
@@ -284,7 +360,7 @@ def test_the_cut_meta_derived_family_is_refused():
     key, and the refusal is the ORDINARY unknown-meta-group refusal."""
     assert "not a declared meta group" in reason("meta.derived.x")
     assert "not a declared meta group" in reason(
-        "meta.derived.agent.claude.common.plugins"
+        "meta.derived.agent.claude.common"
     )
 
 
@@ -294,7 +370,7 @@ def test_the_reserved_binding_derivations_node_is_not_a_key():
     dispatch by construction, so it can never be re-claimed as a key."""
     assert "not a declared namespace" in reason("binding_derivations.x")
     assert "not a declared namespace" in reason(
-        "binding_derivations.agent.claude.common.plugins"
+        "binding_derivations.agent.claude.common"
     )
 
 

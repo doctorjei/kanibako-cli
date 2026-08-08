@@ -1,22 +1,22 @@
-"""The HOST-space dest contract, the OPTIONAL bind, and the handbook binds.
+"""Where a COPY lands, the OPTIONAL bind, and the handbook binds.
 
 WHY THIS MODULE EXISTS
 ----------------------
-The C-CANON seeds half added ONE contract — *"a copy dest may be HOST-space, and a
-bind may be OPTIONAL"* — and every test here pins a failure that contract closes and
-that nothing else would catch:
+Every test here pins a failure that nothing else would catch, and each is about
+WHERE a delivery lands or WHETHER it is emitted at all:
 
-1. **The ``/home/agent`` host-home collision.**  A HOST store path and a GUEST box
-   path are textually indistinguishable, and on a host whose user home IS
-   ``/home/agent`` they can collide outright.  Fed to the guest translator, a host
-   dest is re-rooted under the box home — content written somewhere nothing reads,
-   and the copy REPORTS SUCCESS.  ⚑ The dev box and the seadog LXC test envs are
-   exactly such hosts; bifrost (``kanibako``) is not, so the two environments we
-   test in disagree about which failure mode appears.  That is the worst possible
-   property for a bug, and the reason ``dest_space`` is a FIELD and not a heuristic.
-2. **Reconcile grouping.**  Keyed on the bare dest, a host COPY and a guest MOUNT
-   that share a dest STRING become one group and "every mount beats ``seeded``"
-   silently eats the seed.
+1. **The ``/home/agent`` host-home collision, and the ONE translator that closes
+   it.**  On a host whose user home IS ``/home/agent`` a HOST store path and a
+   GUEST box path are textually indistinguishable, so a host-spelled dest fed to
+   the guest translator is re-rooted under the box home — content written
+   somewhere nothing reads, and the copy REPORTS SUCCESS.  ⚑ The dev box and the
+   seadog LXC test envs are exactly such hosts; bifrost (``kanibako``) is not, so
+   the two environments we test in disagree about which failure mode appears.
+   That is the worst possible property for a bug, and it is why the two halves
+   below are pinned from opposite sides.
+2. **Reconcile at ONE destination.**  With one dest space, a copy and a mount
+   that share a dest string genuinely ARE one dest, so they meet in
+   ``_resolve_dest_group`` and the cross-delivery ladder decides between them.
 3. **Skip-if-absent.**  Without it, every box with no workset/box chapter — i.e.
    almost every box — prints two ro-drop warnings on every launch, which is the noise
    that teaches users to ignore warnings.
@@ -24,13 +24,25 @@ that nothing else would catch:
    INVISIBLY: a depth-sort regression mounts the chapters before their parents, and a
    wrong agent tier means ``agent.default`` never fires.
 
-⚑ WHAT CARRIES A HOST DEST TODAY (2026-08-07g).  The ``seeded`` category's host arm
-is the box HOME trio (``@meta.box.path/home``).  ``@box.canon/handbook`` LEFT the
-category with Jei's HOST-templates ruling and is filled by
-``launch.templates.install_box_handbook_template``, which reaches the same
-``start._host_copy_dest`` containment check from the other side — so §1 below still
-covers both, and the discriminator (``CategoryEntry.dest_space`` /
-``templates.seed_keys_of``) is still live for the home trio.
+⚑⚑ ONE DEST SPACE, TWO DELIVERIES (spec §0; 2026-08-08c).  EVERY category
+destination is GUEST-spelled now, copies included, and the seed dest was
+respelled from the absolute host path ``@meta.box.path/home`` to the guest
+``~/``.  So the collision in §1 is closed AT THE SOURCE, and the three things
+that used to discriminate the two spaces — ``CategoryEntry.dest_space``,
+``snapshot_category_entries(host_dest_keys=…)`` and ``templates.seed_keys_of`` —
+are DELETED.  Do not reintroduce them under any name; a host-spelled category
+dest would be a guest path taken for a host one, which is exactly the bug above.
+
+⚑ WHAT STILL CARRIES A HOST DEST.  Exactly one thing, and it is NOT a category
+dest: ``@box.canon/handbook``, the HOST template location nothing in the box
+reads (§5C-RULING), copied by ``launch.templates.install_box_handbook_template``
+through ``start._host_copy_dest``'s containment guard.  §1 pins that guard from
+the host side and the seed's route through ``container._guest_dest_to_host``
+from the guest side; between them no copy on either path can land off-target.
+
+⚑ THE FILE NAME IS STALE — ``hostdest`` no longer names the subject.  The rename
+is boarded separately; do not infer from the name that a host dest is still a
+category concern.
 
 Host-side only; no podman.  The physical mount is the e2e's job.
 """
@@ -61,7 +73,7 @@ def _ctx() -> ResolveCtx:
 
 
 # ===========================================================================
-# 1. The HOST-space applier branch.
+# 1. Where a COPY lands: the host-template guard, and the ONE guest translator.
 # ===========================================================================
 
 
@@ -117,30 +129,61 @@ class TestHostCopyDest:
         ) == box_root
 
 
-class TestSeedRoutesRoundTheGuestTranslator:
-    """End-to-end through the REAL seed seam: the three §2a keys never touch
-    ``_guest_dest_to_host``, so no amount of guest-translation weirdness can move
-    them."""
+class TestSeedRoutesThroughTheOneGuestTranslator:
+    """End-to-end through the REAL seed seam: the §2a seed dests are GUEST-spelled
+    and go THROUGH ``container._guest_dest_to_host``, which is the ONE thing that
+    decides where a seed lands.
 
-    def test_guest_translator_is_not_consulted_for_the_seed_layers(
+    ⚑⚑ INVERTED 2026-08-08c, deliberately.  This class used to guarantee the
+    OPPOSITE — that the three §2a keys NEVER touch the translator — and that was
+    true while the seed dest was the absolute HOST path ``@meta.box.path/home``,
+    which the translator would have re-rooted under the box home.  The respell to
+    the guest ``~/`` made routing through the translator the CORRECT behaviour, so
+    the guarantee is replaced rather than dropped: the same mis-landing bug is now
+    pinned by asserting the translator is asked AND answers with the box home.
+    """
+
+    def test_the_seed_dest_routes_through_the_translator_onto_the_box_home(
         self, std, config, project_dir, monkeypatch,
     ):
-        from kanibako.commands.start import _apply_init_seeds
+        """⚑⚑ THE COLLISION, pinned from the guest side.
+
+        Three assertions, and all three are needed:
+
+        1. the §2a seed dest REACHES the one translator (the opposite of the
+           pre-respell guarantee), with ``map_home_root=True`` — without that flag
+           the bare guest home returns ``None`` and the seed is skipped;
+        2. the translator ANSWERS with ``proj.shell_path`` — the box home — and
+           not ``None``, not a path re-rooted a level deeper;
+        3. the seeded content actually lands on disk at that path.
+
+        ⚑ WHY THIS IS NON-VACUOUS.  The spy DELEGATES to the real translator and
+        asserts its RETURN VALUE, so every way the original bug manifests fails
+        here: ``None`` fails (2) and skips the copy, so (3) fails too; the
+        host-home re-rooting (``shell_path/.local/share/kanibako/boxes/…/home``,
+        what a host-spelled dest produced on a ``/home/agent`` host) fails (2) on
+        inequality and (3) because nothing is at the real home; an off-by-one
+        ``shell_path/home`` fails (2) and is caught again by the explicit check
+        below.  A spy that merely RECORDED calls, or an assertion that only
+        checked the content landed, would each miss one of those.  The failure
+        mode being excluded is the one that REPORTS SUCCESS.
+        """
+        from kanibako.commands import start as start_mod
         from kanibako.settings.paths import resolve_project
         from kanibako.launch.templates import install_packaged_templates
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         install_packaged_templates(std, ["claude"])
 
-        seen: list[str] = []
+        real = start_mod._guest_dest_to_host
+        calls: list[tuple[str, bool, Path | None]] = []
 
         def _spy(dest, shell_path, project_path, *, map_home_root=False):
-            seen.append(dest)
-            return None  # a translation failure must NOT affect the seed layers
+            out = real(dest, shell_path, project_path, map_home_root=map_home_root)
+            calls.append((dest, map_home_root, out))
+            return out
 
-        monkeypatch.setattr(
-            "kanibako.commands.start._guest_dest_to_host", _spy,
-        )
+        monkeypatch.setattr(start_mod, "_guest_dest_to_host", _spy)
 
         class _T:
             name = "claude"
@@ -148,57 +191,93 @@ class TestSeedRoutesRoundTheGuestTranslator:
             def default_seeds(self):
                 return {}
 
-        _apply_init_seeds(
+        start_mod._apply_init_seeds(
             std=std, proj=proj, agent_name="claude", target=_T(),
             global_config_path=std.settings,
             agent_config_path=std.agents / "claude" / "settings.yaml",
             logger=logging.getLogger("t"), deliver_creds=True,
         )
-        store = proj.shell_path.parent
-        assert (store / "home" / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
-        # The translator was never asked about a §2a seed dest.  ⚑ The spy RETURNS
-        # None, so a §2a dest routed through it would deliver NOTHING — the assert
-        # above is what makes this one non-vacuous.
-        assert not any(d.endswith("/home") for d in seen), seen
+
+        # (1) The seed dest reached the ONE translator, guest-spelled as the bare
+        # box home, with the home-root mapping enabled.
+        home_calls = [c for c in calls if c[0].rstrip("/") == GUEST_HOME]
+        assert home_calls, [c[0] for c in calls]
+        assert all(map_home_root for _d, map_home_root, _o in home_calls), calls
+
+        # (2) ...and it answered with the box home ITSELF.
+        assert {out for _d, _m, out in home_calls} == {proj.shell_path}, calls
+        # Named separately because it is the exact shape of the old bug: a dest
+        # the translator recognized but re-rooted one level too deep.
+        assert not (proj.shell_path / "home").exists()
+
+        # (3) ...and the seed content is on disk there.
+        assert (
+            proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+        ).is_file()
 
 
 # ===========================================================================
-# 2. Reconcile grouping on (dest_space, box_dest).
+# 2. Reconcile at ONE destination.
 # ===========================================================================
 
 
 def _entry(**kw) -> CategoryEntry:
+    # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and the key
+    # is the arm plus that dest. Callers that care override both.
     base = dict(
         category="seeded", scope="system", box_dest="/x", host_src="/src",
-        delivery="COPY", options="", name="n", key="system.seeded.n",
+        delivery="COPY", options="", name="/x", key="system.seeded./x",
     )
     base.update(kw)
     return CategoryEntry(**base)  # type: ignore[arg-type]
 
 
-class TestReconcileGroupsOnTheSpace:
-    def test_a_host_copy_and_a_guest_mount_sharing_a_dest_string_stay_two(self):
-        """⚑ Keyed on the bare dest these collapse into ONE group and the copy-vs-
-        mount rule silently drops the seed — the collision at the reconcile layer."""
+class TestReconcileAtOneDestination:
+    """A COPY and a MOUNT that name one destination ARE one destination.
+
+    ⚑⚑ THE PREMISE OF THE OLD CLASS DISSOLVED (2026-08-08c).  It pinned that
+    reconcile grouped on ``(dest_space, box_dest)`` so that a HOST copy and a
+    GUEST mount sharing a dest STRING stayed two independent groups.  There is
+    one dest space now (spec §0), ``CategoryEntry.dest_space`` is deleted, and
+    ``reconcile_categories`` keys on the bare ``box_dest`` — so the two entries
+    meet in ``_resolve_dest_group`` and the cross-delivery ladder picks between
+    them.  That is the intended consequence of collapsing the key.
+
+    ⚑⚑ THIS PINS TODAY'S BEHAVIOUR AND DELIBERATELY DOES NOT ASSERT AN ERROR.
+    A separately-planned later step ("the collapse") makes two entries at one
+    point an ERROR; that is not this pass.  When it lands, these two tests are
+    the ones that must be re-derived — do not read their current expectations as
+    an argument against making it an error.
+    """
+
+    def test_a_box_store_shaped_dest_gets_no_special_treatment(self):
+        """A dest that LOOKS like a host box-store path is an ordinary guest dest.
+
+        ⚑ This is what is left of the old host/guest split, and it is worth
+        keeping: the string below is exactly the shape the retired host spelling
+        produced on a ``/home/agent`` host.  Nothing may re-derive a space from
+        it — no prefix heuristic, no special case — so it reconciles precisely
+        like any other dest: one group, and the mount beats the ``seeded`` copy.
+        """
         shared = f"{GUEST_HOME}/.local/share/kanibako/boxes/demo/home"
-        copy = _entry(box_dest=shared, dest_space="host")
+        copy = _entry(box_dest=shared, name=shared, key=f"system.seeded.{shared}")
         mount = _entry(
-            category="bindings.ro", box_dest=shared, dest_space="guest",
-            delivery="MOUNT", options="ro", key="box.bindings.ro.n",
+            category="bindings.ro", box_dest=shared, delivery="MOUNT",
+            options="ro", name=shared, key=f"box.bindings.ro.{shared}",
             scope="box",
         )
         rec = reconcile_categories([copy, mount])
-        assert len(rec.copies) == 1, rec.copies
-        assert len(rec.mounts) == 1, rec.mounts
+        assert rec.copies == [], rec.copies
+        assert [m.key for m in rec.mounts] == [f"box.bindings.ro.{shared}"]
 
-    def test_same_space_same_dest_still_reconciles_as_before(self):
-        """No behavior change for the ordinary case: a guest COPY and a guest MOUNT
-        at one dest keep the old outcome (every mount beats ``seeded``)."""
+    def test_an_ordinary_guest_dest_reconciles_the_same_way(self):
+        """The plain case, unchanged: a MOUNT beats a ``seeded`` COPY at one dest."""
         shared = f"{GUEST_HOME}/thing"
-        copy = _entry(box_dest=shared)
+        copy = _entry(box_dest=shared, name=shared, key=f"system.seeded.{shared}")
         mount = _entry(
             category="bindings.ro", box_dest=shared, delivery="MOUNT",
-            options="ro", key=f"box.bindings.ro.{shared}", scope="box",
+            options="ro", name=shared, key=f"box.bindings.ro.{shared}",
+            scope="box",
         )
         rec = reconcile_categories([copy, mount])
         assert rec.copies == []

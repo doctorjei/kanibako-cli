@@ -18,7 +18,7 @@ from kanibako.settings.agent_defaults import (
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
-    BindDefault,
+    BindArm,
     CategoryBindDefaults,
     CredFileSpec,
     PersonaProbeOutcome,
@@ -450,7 +450,7 @@ class ClaudeTarget(Target):
             state={},
         )
 
-    def default_common(self) -> dict[str, BindDefault]:
+    def default_common(self) -> dict[str, BindArm]:
         """Declare claude's AGENT-scope common dirs (plugins + cache).
 
         Both are shared across every box that runs claude and live under the
@@ -469,8 +469,10 @@ class ClaudeTarget(Target):
 
         The base ``default_common()`` returns ``{}``; this override injects these
         as the AGENT level's declared defaults (overridable/suppressible by the
-        user at a more-specific level).  The common keys + box_dests are declared
-        in this plugin's ``claude-defaults.yaml`` (read via the loader).
+        user at a more-specific level).  The entries are declared in this plugin's
+        ``claude-defaults.yaml`` (read via the loader) and land as ONE terminal key
+        ``agent.claude.common`` holding both, keyed by DESTINATION — the entry
+        names went with the 2026-08-08c dest-key retool.
         """
         return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 

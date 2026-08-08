@@ -6,9 +6,16 @@ out of the frozen-oracle file on 2026-07-29 so that file has exactly ONE purpose
 the retired by-name resolver and its own direct tests. Nothing here may import
 ``flawed_oracle_categories``.
 
-Agent-scope keys are DISCRIMINATED (``agent.<agent>.<category>.<name>``, spec §2d /
-§0). The undiscriminated ``agent.<category>`` form is not a key and appears
-ONLY in the frozen-oracle file.
+Agent-scope keys are DISCRIMINATED (``agent.<agent>.<category>``, spec §2d / §0).
+The undiscriminated ``agent.<category>`` form is not a key and appears ONLY in the
+frozen-oracle file.
+
+⚑ Since 2026-08-08c ALL SIX bind-shaped categories — ``bindings.{ro,rw}``,
+``caches``, ``seeded``, ``common``, ``synced`` — are TERMINAL and DEST-KEYED: the
+key ENDS at the category and its value is ``{box_dest: (host_src[, options])}``.
+The retired per-entry spelling ``<scope>.<category>.<name>`` is not a key, and
+``settings_assemble`` refuses it by name — so a floor fixture below is written in
+the dest-keyed shape, never the name-keyed one.
 """
 
 from __future__ import annotations
@@ -789,12 +796,17 @@ class TestDeclarationRoots:
         return {e.box_dest: e.host_src for e in (*rec.mounts, *rec.copies)}
 
     def test_absolute_and_ref_sources_are_not_rooted(self):
-        """T4 — the spec's own ``caches.transform`` worked example.
+        """T4 — an IDENTITY mount whose source is rooted at ``@system.cache``.
 
-        ``agent.<a>.caches.transform = (@system.cache/tweakcc, =)`` (§2d)
-        is an IDENTITY mount rooted DELIBERATELY at ``@system.cache``.  A rule that
-        prefixed it would break the spec's own example — which is why §2a
-        reversed the "absolute source is a category mismatch" ruling.
+        A rule that prefixed a self-resolving source would break §2a's own
+        reversal of the "absolute source is a category mismatch" ruling.
+
+        ⚑ RE-SPELLED for dest-keying (2026-08-08c): ``caches`` is a TERMINAL key
+        whose value is ``{box_dest: (host_src[, options])}``, so the retired
+        ``agent.claude.caches.transform`` entry name is gone and the destination
+        is the map key.  The dest here is an ``@``-ref FORMULA, which the spec's
+        own ``caches`` row also spells that way (``agent.claude.caches
+        [@system.cache/tweakcc]``); it is resolved guest-side by the emitter.
 
         ⚑ THIS TEST IS *NOT* THE INSTRUMENT FOR AN UNCONDITIONAL-ROOTING BUG.
         It injects the entry straight into the floor, which is where a STORED value
@@ -804,23 +816,29 @@ class TestDeclarationRoots:
         re-roots a self-resolving source. The declaration-time rule is instrumented
         by ``tests/test_agent_defaults.py`` (``test_self_resolving_source_is_stored
         _verbatim`` + ``TestLayoutSingleSource::test_prefix_rule``), which drive the
-        real loader.
+        real loader.  ⚑ The SOURCE is deliberately NOT the agent store — the
+        second assertion below has nothing to bite on if it is.
         """
         by_dest = self._resolve({
-            "agent.claude.caches.transform": (
-                "@system.cache/tweakcc", "@system.cache/tweakcc",
-            ),
+            "agent.claude.caches": {
+                "@system.cache/tweakcc": ("@system.cache/tweakcc",),
+            },
         })
         # No ``common/``, no ``caches/``, no agent-store prefix ANYWHERE.
         assert by_dest["/xcache/kanibako/tweakcc"] == "/xcache/kanibako/tweakcc"
         assert not any("agents/claude" in src for src in by_dest.values())
 
     def test_self_resolving_shapes_pass_through_untouched(self):
+        # ⚑ ONE terminal key holding all four entries, keyed by DESTINATION: the
+        # dest left the value tuple when it became the map key, so each value is
+        # the 1-element ``(host_src,)``.
         by_dest = self._resolve({
-            "agent.claude.common.a": ("/abs/dir", "/g/a"),
-            "agent.claude.common.b": ("~/tdir", "/g/b"),
-            "agent.claude.common.c": ("$XDG_DATA_HOME/x", "/g/c"),
-            "agent.claude.common.d": ("@meta.agent.claude.path/own", "/g/d"),
+            "agent.claude.common": {
+                "/g/a": ("/abs/dir",),
+                "/g/b": ("~/tdir",),
+                "/g/c": ("$XDG_DATA_HOME/x",),
+                "/g/d": ("@meta.agent.claude.path/own",),
+            },
         })
         assert by_dest["/g/a"] == "/abs/dir"
         assert by_dest["/g/b"] == f"{HOST_HOME}/tdir"
@@ -837,12 +855,13 @@ class TestDeclarationRoots:
         from kanibako.settings.agent_config import agent_category_root_ref, root_relative_source
 
         entries = {
-            f"agent.claude.{cat}.probe": (
-                root_relative_source(
-                    "leaf", agent_category_root_ref("claude", cat),
+            f"agent.claude.{cat}": {
+                f"/g/{cat}": (
+                    root_relative_source(
+                        "leaf", agent_category_root_ref("claude", cat),
+                    ),
                 ),
-                f"/g/{cat}",
-            )
+            }
             for cat in ("common", "caches", "seeded")
         }
         by_dest = self._resolve(entries)
@@ -874,14 +893,19 @@ class TestDeclarationKeyIsDiscriminated:
 
     ``CategoryEntry.scope`` is the BARE precedence token (``agent``), but
     ``CategoryEntry.key`` must name a real tier — ``agent.<agent>`` or
-    ``agent.default``. A bare ``agent.<category>.<name>`` is not a key at all, so
+    ``agent.default``. A bare ``agent.<category>.<dest>`` is not a key at all, so
     a collision message or a ``binding_derivations.*`` entry spelled that way
     would point a reader at something the keyspace forbids them to write.
 
     ⚑ The agent tier is the ONLY place the two can differ, because
     ``_agent_pick_node`` collapses ``agent.default`` and ``agent.<active>`` into
-    one effective node BEFORE emission. Both arms are asserted: a name the active
-    slot sets, and a name only ``agent.default`` sets.
+    one effective node BEFORE emission. Both arms are asserted: a DESTINATION the
+    active slot sets, and one only ``agent.default`` sets.
+
+    ⚑ Re-derived for dest-keying (2026-08-08c): under a TERMINAL dest-keyed
+    category the per-entry unit the overlay resolves — and the unit
+    ``CategoryEntry.name`` carries — is the box DESTINATION, not an entry name.
+    That is exactly R-10's "the destination IS the identity", read at the emitter.
     """
 
     @staticmethod
@@ -914,31 +938,31 @@ class TestDeclarationKeyIsDiscriminated:
 
     def test_active_slot_and_default_tier_keys_are_told_apart(self):
         by_name = self._entries({
-            "agent.claude.common.plugins": ("/store/plugins", "/g/plugins"),
-            "agent.default.common.shared_dir": ("/store/shared", "/g/shared"),
+            "agent.claude.common": {"/g/plugins": ("/store/plugins",)},
+            "agent.default.common": {"/g/shared": ("/store/shared",)},
         })
-        assert by_name["plugins"].key == "agent.claude.common.plugins"
-        assert by_name["shared_dir"].key == "agent.default.common.shared_dir"
+        assert by_name["/g/plugins"].key == "agent.claude.common./g/plugins"
+        assert by_name["/g/shared"].key == "agent.default.common./g/shared"
         # The PRECEDENCE token stays bare for both — they are different facts.
-        assert by_name["plugins"].scope == "agent"
-        assert by_name["shared_dir"].scope == "agent"
+        assert by_name["/g/plugins"].scope == "agent"
+        assert by_name["/g/shared"].scope == "agent"
 
-    def test_the_active_slot_wins_a_name_the_default_tier_also_sets(self):
+    def test_the_active_slot_wins_a_dest_the_default_tier_also_sets(self):
         by_name = self._entries({
-            "agent.default.caches.build": ("/default/build", "/g/build"),
-            "agent.claude.caches.build": ("/active/build", "/g/build"),
+            "agent.default.caches": {"/g/build": ("/default/build",)},
+            "agent.claude.caches": {"/g/build": ("/active/build",)},
         })
-        assert by_name["build"].host_src == "/active/build"
-        assert by_name["build"].key == "agent.claude.caches.build"
+        assert by_name["/g/build"].host_src == "/active/build"
+        assert by_name["/g/build"].key == "agent.claude.caches./g/build"
 
     def test_no_emitted_key_uses_the_bare_agent_form(self):
-        # ⚑ The bindings entry is re-spelled for dest-keying (R-3/R-5): the arm is
-        # ONE terminal key holding ``{box_dest: (host_src,)}``. It is here as the
-        # non-agent CONTROL, so what it must keep contributing is a box-scope
-        # entry — its leaf spelling was never the point.
+        # ⚑ ALL SIX bind-shaped categories are dest-keyed now (R-3/R-5), so every
+        # category entry below is ONE terminal key holding ``{box_dest:
+        # (host_src,)}``. ``box.bindings.rw`` remains the non-agent CONTROL — what
+        # it must keep contributing is a box-scope entry.
         for entry in self._entries({
-            "agent.claude.common.plugins": ("/store/plugins", "/g/plugins"),
-            "agent.default.seeded.template": ("/store/tpl", "~"),
+            "agent.claude.common": {"/g/plugins": ("/store/plugins",)},
+            "agent.default.seeded": {"~": ("/store/tpl",)},
             "agent.claude.env.FOO": "bar",
             "agent.claude.secret_path.TOK": "/secrets/tok",
             "box.bindings.rw": {"/home/agent": ("/boxes/b/home",)},
@@ -1151,7 +1175,16 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
     """
 
     # The REAL declaration the forged table collides with.
-    _DECL_KEY = "agent.claude.common.plugins"
+    #
+    # ⚑ Re-spelled for dest-keying (2026-08-08c): a declaration key now ENDS in
+    # its box DESTINATION, so this is ``<scope>.<category>.<dest>``. The dest is
+    # deliberately DOT-FREE — ``derive_binding_keys`` hands the whole key to
+    # ``insert_dotted``, which splits on ``.``, so a dest such as
+    # ``~/.claude/plugins`` fragments into extra tree levels. It round-trips
+    # correctly (verified), but the forged YAML below has to MIRROR the nesting to
+    # collide, and a fixture that must reproduce a splitting rule to stay
+    # meaningful is a fixture that will drift silently when the rule moves.
+    _DECL_KEY = "agent.claude.common./home/agent/claude-plugins"
 
     @staticmethod
     def _snapshot(tmp_path, *, install_derivations: bool = True):
@@ -1178,19 +1211,20 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         box_file.write_text(yaml.safe_dump({
             "box": {"enable_vault": False},
             "binding_derivations": {
-                # (i) collides with the REAL declaration key below.
+                # (i) collides with the REAL declaration key below — which under
+                # dest-keying ENDS in the resolved box DESTINATION.
                 "agent": {"claude": {"common": {
-                    "plugins": ["/forged/src", "~/forged"],
+                    "/home/agent/claude-plugins": ["/forged/src", "~/forged"],
                 }}},
                 # (ii) non-Bind junk — pre-fix this leaf crashed the lens.
                 "junk": "zebra-not-a-bind",
             },
         }))
 
+        # ONE terminal dest-keyed key; the dest is the map KEY and ``Z`` is the
+        # options element that used to sit third behind it.
         floor: dict[str, object] = {
-            "agent.claude.common.plugins": (
-                "/store/plugins", "~/.claude/plugins", "Z",
-            ),
+            "agent.claude.common": {"~/claude-plugins": ("/store/plugins", "Z")},
         }
         floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
         floor.update(workset_anchor_floor(mode="primary"))
@@ -1303,7 +1337,7 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         # host source, and the RESOLVED guest dest the seam materialises (the
         # forged pair was ``/forged/src`` -> ``~/forged``).
         assert bind.host == "/store/plugins"
-        assert bind.box == "/home/agent/.claude/plugins"
+        assert bind.box == "/home/agent/claude-plugins"
 
         # 3. And nothing forged landed ANYWHERE ELSE in the snapshot either —
         #    the drop is at assembly, before the merge, so no scope table may

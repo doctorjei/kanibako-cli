@@ -17,19 +17,22 @@ if TYPE_CHECKING:
     from kanibako.settings.agent_config import AgentConfig
     from kanibako.vscode.vscode_config import CodexModelProvider
 
-# Value of a NAME-keyed `<scope>.<category>.<name>` bind default (spec §2a): the tuple
-# `(host_src, box_dest[, options])`. Emitted by `default_common` / `default_seeds`,
-# consumed by `settings_resolve.unpack_bind`. Contrast `BindArm`, which is dest-keyed.
-BindDefault = tuple[str, str] | tuple[str, str, str]
-
-# The map stored at a terminal `<scope>.bindings.ro`/`.rw` key. Key is the box
+# The map stored at ANY terminal bind-shaped key — `<scope>.bindings.{ro,rw}` and,
+# since 2026-08-08c, `<scope>.{caches,seeded,common,synced}`. Key is the box
 # destination, normalized by `normalize_bind_dest`; value is `(host_src[, options])`.
-# Not `core_defaults.BindArmTable`, which maps arm key -> arm.
+# Not `core_defaults.BindArmTable`, which maps the terminal key -> the map.
+#
+# ⚑ `BindDefault` (the NAME-keyed `(host_src, box_dest[, options])` tuple) IS GONE.
+# It was the value of a `<scope>.<category>.<name>` key, and no such key exists in
+# any bind-shaped category any more: the destination is the identity, so it cannot
+# also be a tuple element. A plugin still emitting one produces a key the reader
+# refuses BY NAME (`settings_assemble._insert_dotted`) rather than a silent
+# mis-bind — the refusal is the migration, v1.8.0 being a clean break.
 BindArm = dict[str, tuple[str, ...]]
 
-# What `Target.default_category_binds` returns: a `bindings.{ro,rw}` arm key maps to a
-# whole `BindArm`; each name-keyed bind category maps to a single `BindDefault`.
-CategoryBindDefaults = dict[str, BindArm | BindDefault]
+# What `Target.default_category_binds` / `default_common` / `default_seeds` return:
+# a TERMINAL category key mapped to its whole `BindArm`.
+CategoryBindDefaults = dict[str, BindArm]
 
 
 @dataclass(frozen=True)
@@ -648,25 +651,30 @@ class Target(ABC):
         """
         return None
 
-    def default_common(self) -> dict[str, BindDefault]:
+    def default_common(self) -> dict[str, BindArm]:
         """Declare default AGENT-scope common/caches binds for this agent.
 
-        Maps full DISCRIMINATED scoped category keys (`agent.<agent>.common.<name>` /
-        `agent.<agent>.caches.<name>`) to `BindDefault` tuples `(host_src, box_dest[,
-        options])` — a tuple, not a colon-joined string. Injected as the AGENT level's
-        declared defaults (`default_categories`) in the category resolver, so a user can
-        override or suppress (terminal "") any of them at a more-specific level. The
-        default returns {} (no declared entries).
+        Maps a DISCRIMINATED TERMINAL category key (`agent.<agent>.common` /
+        `agent.<agent>.caches`) to its whole dest-keyed `BindArm`
+        `{box_dest: (host_src[, options])}` — structured, not a colon-joined string.
+        Injected as the AGENT level's declared defaults (`default_categories`) in the
+        category resolver, so a user can override or suppress (terminal "") any entry
+        at a more-specific level. The default returns {} (no declared entries).
         """
         return {}
 
-    def default_seeds(self) -> dict[str, BindDefault]:
+    def default_seeds(self) -> dict[str, BindArm]:
         """Declare default copy-once-at-init seeds for this agent.
 
-        Maps full DISCRIMINATED seed keys (`agent.<agent>.seeded.<name>`) to `BindDefault`
-        tuples, injected as the AGENT level's declared defaults exactly as
+        Maps the DISCRIMINATED TERMINAL seed key (`agent.<agent>.seeded`) to its whole
+        dest-keyed `BindArm`, injected as the AGENT level's declared defaults exactly as
         `default_common`; a user can override or suppress (terminal "" or the "empty"
-        sentinel) any of them. The default returns {}; no target ships a seed yet.
+        sentinel) any entry. The default returns {}; no target ships a seed yet.
+
+        ⚑ A `seeded` dest is spelled GUEST-side like every other dest (spec §0
+        "ONE DEST SPACE, TWO DELIVERIES") and RESOLVED to the box store when the
+        copy runs. It STAYS A COPY — the shape it shares with `bindings` says how
+        the entry is written down, never what is done with it.
         """
         return {}
 
@@ -710,26 +718,29 @@ class Target(ABC):
     def default_category_binds(self) -> CategoryBindDefaults:
         """Declare default AGENT-scope `@`-ref-sourced category binds.
 
-        Returns a MIXED table (`CategoryBindDefaults`) of DISCRIMINATED scoped category
+        Returns a UNIFORM table (`CategoryBindDefaults`) of DISCRIMINATED scoped category
         keys — *agent* is the declaring plugin's own name, and the agent tier is always
-        discriminated (spec §2d / §0: there is no bare `agent.<key>`). Two shapes, chosen
-        by the CATEGORY:
+        discriminated (spec §2d / §0: there is no bare `agent.<key>`). ONE shape, for
+        every category:
 
-        * a `bindings.ro` / `bindings.rw` arm is a TERMINAL key — `agent.<agent>.bindings.ro`
-          — whose whole VALUE is a `BindArm`, i.e. `{box_dest: (meta_ref[, "ro"])}`. The
-          box DESTINATION is the KEY; there is no entry name. Each destination must be
-          normalized with `settings_resolve.normalize_bind_dest`, because the launch floor
-          merge in `commands.start` dedupes on these keys BEFORE anything parses them, so
-          an un-normalized `~/x` and a `/home/agent/x` would collide at one mountpoint as
-          two surviving entries. Bindings are act-once: one arm admits ONE entry per
-          destination.
-        * each of the four still-name-keyed bind categories (`common`, `caches`, `seeded`,
-          `synced`) keeps `agent.<agent>.<category>.<name>` -> a `BindDefault` tuple
-          `(meta_ref, box_dest[, options])`.
+        every key is TERMINAL — `agent.<agent>.bindings.{ro,rw}` for an ARMED category,
+        `agent.<agent>.{caches,seeded,common,synced}` for the rest — and its whole VALUE
+        is a `BindArm`, i.e. `{box_dest: (meta_ref[, "ro"])}`. The box DESTINATION is the
+        KEY; there is no entry name. Each destination must be normalized with
+        `settings_resolve.normalize_bind_dest`, because the launch floor merge in
+        `commands.start` dedupes on these keys BEFORE anything parses them, so an
+        un-normalized `~/x` and a `/home/agent/x` would collide at one mountpoint as two
+        surviving entries. `core_defaults.add_bind` does the normalizing and enforces
+        act-once: one category map admits ONE entry per destination.
 
-        A plugin still returning the retired name-keyed `agent.<agent>.bindings.ro.<name>`
-        shape is REFUSED by name at `settings_assemble._insert_dotted` when the launch
-        floor is assembled, not silently ignored. There is no shim.
+        ⚑ ONE SHAPE, TWO DELIVERIES. `seeded` and `synced` are COPIES and stay copies —
+        sharing the dest-keyed shape says how an entry is WRITTEN DOWN, never what is
+        done with it.
+
+        A plugin still returning a retired name-keyed
+        `agent.<agent>.<category>.<name>` key is REFUSED by name at
+        `settings_assemble._insert_dotted` when the launch floor is assembled, not
+        silently ignored. There is no shim (v1.8.0 is a clean break).
 
         The HOST SOURCE stays a raw `@`-ref STRING; the launch category cascade folds this
         table into the floor and `expand` resolves the ref, so a plugin declares a bind to

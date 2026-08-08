@@ -274,37 +274,49 @@ def _rooted_form_hint(key: str) -> str:
     (spec §2a), so a relative source there gets the bare refusal — suggesting a
     rooted form for them would be inventing a root the keyspace does not have.
 
-    ⚑ Since R-9 a ``bindings.{ro,rw}`` key gets no hint for a SECOND reason as well:
-    ``BIND_KEY_RE`` no longer matches the arms at any scope, so the match fails
-    before the ABSTRACT test is reached. Same answer, different mechanism — which
-    matters when picking a test key here, because a bindings key would now prove
-    "no hint" VACUOUSLY. Use ``synced`` to exercise the concrete-category rule.
+    ⚑⚑ IT KEYS ON THE TERMINAL KEY, NOT ON A PER-ENTRY SPELLING — and it had to be
+    moved. It used to match ``BIND_KEY_RE``, which on 2026-08-08c began compiling
+    its fail-closed ``(?!)`` form, so this returned ``""`` for EVERY key in the
+    keyspace and the per-scope rooted cure vanished from the bare-relative-source
+    refusal without a word. The category is now read off
+    ``settings_keyspace.is_terminal_category_tail`` — the keyspace's OWN answer to
+    "where does a category key end" — so the hint follows the shape instead of
+    tracking a regex whose membership moves underneath it.
 
     ⚑ THE ROOT IS PER SCOPE, and reading it off the spec's own table is the point:
     §2a gives ``@config.data`` for system, ``@meta.agent.<a>.path`` for
     agent, ``@meta.workset.path`` for workset and ``@meta.box.path`` for box. A
-    single agent-shaped hint would send a user editing ``workset.common.x`` to a
+    single agent-shaped hint would send a user editing ``workset.common`` to a
     root that has nothing to do with their key — a confidently wrong instruction,
-    which is worse than saying nothing.
+    which is worse than saying nothing. An UNDISCRIMINATED ``agent.<category>`` gets
+    no hint at all: there is no agent to name, and ``@meta.agent..path`` would be a
+    ref that resolves to nothing.
     """
     from kanibako.settings.settings_categories import (
         ABSTRACT_CATEGORIES,
-        BIND_KEY_RE,
         DECLARATION_ROOT_REF,
     )
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
-    m = BIND_KEY_RE.match(key)
-    if m is None:
+    segments = key.split(".")
+    if not is_terminal_category_tail(segments):
         return ""
-    category = m.group("category")
+    category = segments[-1]
+    # ``bindings.{ro,rw}`` lands here as a trailing ``ro``/``rw`` and is filtered by
+    # the same test as ``synced`` — neither is abstract, so neither has a root.
     if category not in ABSTRACT_CATEGORIES:
         return ""
-    scope = m.group("scope")
-    # The agent scope is DISCRIMINATED (``agent.<agent>``); name the agent the user
-    # actually typed rather than a placeholder, so the hint is copy-pasteable.
-    agent = scope.split(".", 1)[1] if scope.startswith("agent.") else ""
-    root = DECLARATION_ROOT_REF["agent" if agent else scope].format(agent=agent)
-    return f"{root}/{category}"
+    scope_segments = segments[:-1]
+    # The agent scope is DISCRIMINATED (``agent.<node>``); name the agent the user
+    # actually typed rather than a placeholder, so the hint is copy-pasteable. The
+    # node may itself be dotted, so it is everything after the ``agent`` token.
+    if len(scope_segments) >= 2 and scope_segments[0] == "agent":
+        scope, agent = "agent", ".".join(scope_segments[1:])
+    elif scope_segments in (["system"], ["workset"], ["box"]):
+        scope, agent = scope_segments[0], ""
+    else:
+        return ""
+    return f"{DECLARATION_ROOT_REF[scope].format(agent=agent)}/{category}"
 
 
 def validate_config_set(
@@ -469,8 +481,14 @@ def validate_config_set(
 
 
 def _bindings_arm_of(key: str) -> str:
-    """The dest-keyed ``bindings.{ro,rw}`` ARM *key* names an entry inside, or
-    ``""`` when *key* names no bindings entry at all.
+    """The dest-keyed ARM *key* names an entry inside, or ``""`` when it names none.
+
+    ⚑ THE NAME IS HISTORICAL AND NARROWER THAN THE ANSWER. When it was written the
+    ``bindings.{ro,rw}`` arms were the only dest-keyed categories; since 2026-08-08c
+    all six are, so ``box.caches.x`` gets ``box.caches`` back exactly as
+    ``box.bindings.ro.x`` gets ``box.bindings.ro``. The rename is owed and is not
+    taken here (it would collide with a test pass in flight); read "arm" as "any
+    dest-keyed bind-shaped category key", which is what it has always MEANT.
 
     Recognition REUSES the two existing retired-spelling parsers rather than a
     third copy of the grammar — :data:`~kanibako.settings.settings_categories.SCOPE_BIND_KEY_RE`
@@ -486,13 +504,20 @@ def _bindings_arm_of(key: str) -> str:
     ⚑ It answers about the KEY, never the file location: *dest_parts* moves where
     :func:`repoint_host_src` WRITES, but the value SHAPE follows the key's category.
 
-    ⚑⚑ THE TERMINAL FILTER IS LOAD-BEARING, AND IT IS NOT BELT-AND-BRACES.
-    ``SCOPE_BIND_KEY_RE`` matches ALL SIX bind-shaped categories since DS-BL1 = (a)
-    emptied ``SETTABLE_BIND_CATEGORIES`` (it reads ``RETIRED_BIND_CATEGORIES``), but
-    R-8 is about the DEST-KEYED shape, not about being retired: a 3-element tuple is
-    LIVE and correct for a NAME-KEYED category. Without the filter this would report
-    ``box.common`` as an arm and :func:`_refuse_stale_bind_shape` would refuse a
-    perfectly good ``[host_src, box_dest, options]``.
+    ⚑⚑ THE TERMINAL FILTER IS A TAUTOLOGY TODAY, AND IT IS KEPT ANYWAY — read the
+    reason before deleting it. It exists because R-8 is about the DEST-KEYED shape,
+    NOT about being retired, and those were once different sets:
+    ``SCOPE_BIND_KEY_RE`` has matched all six since DS-BL1 = (a) emptied
+    ``SETTABLE_BIND_CATEGORIES``, while ``_TERMINAL_BIND_CATEGORIES`` held only the
+    two ``bindings`` arms, so without the filter a NAME-KEYED ``box.common`` would
+    have been reported as an arm and :func:`_refuse_stale_bind_shape` would have
+    refused a perfectly good ``[host_src, box_dest, options]``. The 2026-08-08c
+    shape flip made every bind-shaped category terminal, so the two sets now
+    COINCIDE and the test can no longer fail — which changes nothing about WHICH
+    question is being asked. ⚑ It is the question that is load-bearing: this must
+    keep asking ``_TERMINAL_BIND_CATEGORIES`` rather than trusting the regex,
+    because re-admitting a name-keyed category would separate the sets again and a
+    dropped filter would then refuse live values with no edit here to blame.
     """
     from kanibako.settings.settings_categories import (
         SCOPE_BIND_KEY_RE,
@@ -522,11 +547,13 @@ def _refuse_stale_bind_shape(
     from the value — so it is REFUSED, naming both the stale shape and the key
     (spec §0: refuse loudly, never quietly reinterpret).
 
-    *arm* is :func:`_bindings_arm_of`'s answer (``""`` ⇒ nothing to check: the four
-    NAME-KEYED categories ``caches``/``seeded``/``common``/``synced`` still carry a
-    per-name key and their 3-element form is LIVE — this arc is bindings-only; their
-    losing the CLI *write* route under DS-BL1 = (a) does not change their VALUE
-    shape, which the shape cutover (phase QB) is what changes).
+    *arm* is :func:`_bindings_arm_of`'s answer (``""`` ⇒ nothing to check: *key*
+    names no dest-keyed entry at all). ⚑ IT NOW COVERS ALL SIX. The older note here
+    said the four ``caches``/``seeded``/``common``/``synced`` were exempt because
+    they "still carry a per-name key and their 3-element form is LIVE"; the shape
+    cutover it named as future work (phase QB) landed on 2026-08-08c, so their
+    3-element form is the stale name-keyed shape too and R-8 applies to them for
+    exactly the reason it applied to a ``bindings`` arm.
     *origin* labels where the value came from, matching the sibling arity messages.
 
     ⚑⚑ THREE-ELEMENT ONLY, AND THAT IS A RULING (Jei, 2026-08-06e), not an
@@ -590,21 +617,23 @@ def repoint_host_src(
     result, already normalized to a plain 2-/3-element sequence of RAW strings
     (pre-expansion — the merge stores files' tuples verbatim).
 
-    ⚑ WHICH KEYS STILL ARRIVE HERE: the four SETTABLE categories (``caches`` /
-    ``seeded`` / ``common`` / ``synced``), at ``system``/``workset``/``box`` AND at
-    ``agent.<node>``. NO ``bindings.{ro,rw}`` key of any scope does — R-9 retired
-    both bind CLI routes and the verbs refuse them by name before any write
-    machinery runs. Those four are still NAME-keyed, so their 2-/3-element
-    ``[host_src, box_dest[, options]]`` form is LIVE and the arity bracket keeps
-    accepting it.
+    ⚑ WHICH KEYS STILL ARRIVE HERE: NONE. The older note here listed the four
+    ``caches``/``seeded``/``common``/``synced`` as the live arrivals and called them
+    "still NAME-keyed, so their 2-/3-element form is LIVE"; both halves are now
+    false — DS-BL1 = (a) took their CLI write route (so nothing routes a key here at
+    all) and the 2026-08-08c shape flip made them dest-keyed TERMINAL keys like the
+    ``bindings`` arms. The arity bracket below is therefore not a live acceptance of
+    a name-keyed shape: it is the pre-flip contract this function was written
+    against, preserved intact until the deletion pass.
 
-    ⚑⚑ R-8, P8 — a ``bindings.{ro,rw}`` key that DOES reach here (this function is
-    pure and key-agnostic; only its callers are gated) is checked against the
-    dest-keyed shape by :func:`_refuse_stale_bind_shape`: a 3-element value is the
-    retired name-keyed shape and RAISES, naming the arm and the stale tuple. It is
-    the 3-element case ONLY — the 2-element residual is a ruled, documented accept
-    (see the ``NAME THE ELEMENTS`` note at the write). This is defence in depth,
-    not a live route.
+    ⚑⚑ R-8, P8 — a key that DOES reach here (this function is pure and
+    key-agnostic; only its callers are gated) is checked against the dest-keyed
+    shape by :func:`_refuse_stale_bind_shape`: a 3-element value is the retired
+    name-keyed shape and RAISES, naming the arm and the stale tuple. That check now
+    fires for all six categories, because all six are dest-keyed. It is the
+    3-element case ONLY — the 2-element residual is a ruled, documented accept (see
+    the ``NAME THE ELEMENTS`` note at the write). This is defence in depth, not a
+    live route.
     """
     data = load_doc(scope_path)
     # *dest_parts*, when supplied, is the FILE location to walk/write (sections +
@@ -630,9 +659,10 @@ def repoint_host_src(
         node = node[seg]
 
     # R-8's arity refusal (P8). Computed ONCE from the KEY, then applied to
-    # whichever tuple actually backs the write — the arity gates below still
-    # bracket 2..3 because that IS the live shape for the four name-keyed
-    # SETTABLE categories, which are the only ones a caller routes here today.
+    # whichever tuple actually backs the write. ⚑ The arity gates below still
+    # bracket 2..3 because that is the shape this function was written against, NOT
+    # because a name-keyed category is still live — since 2026-08-08c none is, and
+    # no caller routes any key here at all (see the docstring).
     arm = _bindings_arm_of(key)
 
     if isinstance(node, dict) and leaf_name in node:

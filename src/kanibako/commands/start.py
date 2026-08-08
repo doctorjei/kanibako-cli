@@ -49,6 +49,7 @@ from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
+from kanibako.settings.settings_keyspace import is_terminal_category_tail
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
@@ -137,14 +138,21 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     parents=True, exist_ok=True`` on the rw source) is a no-op on the symlink-to-
     existing-dir, so the harness dir is the real writeback target.
 
-    ⚑ THE LEAF COMES FROM THE KEY, NOT THE VALUE, and both sides are built from
-    :func:`~kanibako.settings.agent_config.agent_category_root` — the SAME layout helper the
-    declaration-time ref builder uses.  The ``host_src`` VALUE is now the fully
-    self-resolving ``@meta.agent.<a>.path/common/<leaf>`` (spec §2a), so reading a
-    path component off it would produce the literal directory
-    ``agents/<node>/@meta.agent.<a>.path/common/<leaf>``.  Single-sourcing the
-    layout is also what stops this shim and the resolver from drifting apart —
-    they are two consumers of ONE layout fact.
+    ⚑⚑ THE LEAF COMES FROM THE DECLARATION ROOT, NOT FROM THE KEY AND NOT FROM THE
+    WHOLE VALUE.  Until 2026-08-08c it came off the key (``agent.<a>.common.<leaf>``);
+    dest-keying removed the entry name, so the only remaining carrier of the store
+    DIRNAME is the rooted ``host_src``.  It is read by
+    :func:`~kanibako.settings.agent_representation.harness_common_leaf`, which
+    strips EXACTLY the harness's ``common`` declaration root and answers ``None``
+    for anything else — so this shim still never treats a self-resolving source
+    (an absolute path, a ``~``, an unrelated ``@``-ref) as a store dir.  Reading a
+    path component off the WHOLE value remains wrong for the reason it always was:
+    ``@meta.agent.<a>.path/common/<leaf>`` is a REF, and joining it would produce
+    the literal directory ``agents/<node>/@meta.agent.<a>.path/common/<leaf>``.
+    Both sides of the link are still built from
+    :func:`~kanibako.settings.agent_config.agent_category_root` — the SAME layout
+    helper the declaration-time ref builder uses — so this shim and the resolver
+    cannot drift: they are two consumers of ONE layout fact.
 
     Driven by the descriptor's declared ``common`` entries (generic over harnesses; NO
     per-plugin code).  Call at persona-dir MATERIALIZATION, BEFORE mount assembly /
@@ -167,12 +175,19 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     if target is None:
         return
 
+    from kanibako.settings.agent_representation import harness_common_leaf
+
     logger = get_logger("start")
     agents_root = Path(std.agents)
-    for key in target.default_common():
-        # ``agent.<a>.common.<leaf>`` -> ``<leaf>`` (the keyspace name, which IS the
-        # store's dir name; the host_src value is an @-ref, not a path component).
-        leaf = key.rsplit(".", 1)[-1]
+    # ``default_common()`` is the TERMINAL key -> its whole dest-keyed map; the
+    # entries are its VALUES, and the store leaf is read off each rooted host_src.
+    declared = target.default_common().get(f"agent.{harness}.common", {})
+    for entry in declared.values():
+        leaf = harness_common_leaf(entry[0], harness)
+        if leaf is None:
+            # A self-resolving source the plugin chose itself — not its store dir,
+            # so there is nothing to share and nothing to shim.
+            continue
         harness_dir = agent_category_root(agents_root, harness, "common") / leaf
         node_link = agent_category_root(agents_root, agent_id, "common") / leaf
 
@@ -3213,11 +3228,11 @@ def _run_container(
             _register_new_box(std, proj)
             _clear_create_entry(std, proj)
 
-        # Synced copies (the `<scope>.synced.<name>` category) — applied on
+        # Synced copies (the terminal `<scope>.synced` category) — applied on
         # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
         # plugin descriptor's `cred_files` credsync engine above (that is
         # descriptor-driven; this is settings-driven), so there is no double
-        # application.  ADDITIVE: with no `synced.*` keys configured the
+        # application.  ADDITIVE: with no `<scope>.synced` keys configured the
         # reconciled copy set has no synced winners -> no-op.  The share gate
         # (D-M4) suppresses every synced entry for a PRIVATE box (deliver_creds False).
         _apply_synced_copies(
@@ -6112,18 +6127,26 @@ def _launch_snapshot_inputs(
     )
 
 
-#: The floor keys whose value is a TERMINAL dest-keyed bindings map (R-5): any key
-#: whose last two segments are ``bindings`` + an arm. Everything else in the floor
-#: is a scalar or a name-keyed category table.
-_BIND_ARM_TAIL: frozenset[tuple[str, str]] = frozenset(
-    {("bindings", "ro"), ("bindings", "rw")}
-)
+def _is_terminal_category_key(key: str) -> bool:
+    """True iff *key* is a TERMINAL dest-keyed category key (spec §2a).
 
+    ⚑⚑ **DERIVED, NEVER ENUMERATED HERE.** This asks the keyspace validator's own
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`, which
+    reads :data:`~kanibako.settings.settings_keyspace.TERMINAL_CATEGORY_TAILS` —
+    the ONE declaration of what ends a key with a destination-keyed map for a
+    value. A hand-copied literal lived here until 2026-08-08c and listed only the
+    two ``bindings`` arms; when ``caches``/``seeded``/``common``/``synced`` flipped
+    to terminal keys one segment SHALLOWER the literal silently stopped matching
+    them, and :func:`_merge_default_categories` — written precisely to stop a
+    terminal map being replaced wholesale — dropped all four into its last-wins
+    branch. Deriving the set is what makes that class of drift unavailable.
 
-def _is_bind_arm_key(key: str) -> bool:
-    """True iff *key* is a terminal ``<scope>.bindings.{ro,rw}`` arm key."""
-    parts = key.split(".")
-    return len(parts) >= 3 and (parts[-2], parts[-1]) in _BIND_ARM_TAIL
+    ⚑ A tail match is NECESSARY, not sufficient: ``system.channels.common`` ends in
+    a category token and is an ordinary path SCALAR. The caller therefore pairs
+    this with a ``dict`` value test, which is what actually distinguishes a
+    dest-keyed map from a scalar leaf that happens to share a final segment.
+    """
+    return is_terminal_category_tail(key.split("."))
 
 
 def _merge_default_categories(
@@ -6143,28 +6166,51 @@ def _merge_default_categories(
     ``.update()`` would replace the map wholesale and delete every earlier family's
     entries, silently and with nothing downstream able to notice.
 
+    ⚑ **ALL SEVEN TERMINAL CATEGORIES, not just the two bindings arms.** When
+    ``caches``/``seeded``/``common``/``synced`` became terminal too (2026-08-08c)
+    they landed in exactly the state the paragraph above calls unsafe, and several
+    families write each of them: ``target.default_seeds()`` and
+    ``template_seed_defaults`` both write ``agent.<a>.seeded``;
+    ``target.default_common()`` and ``target.default_category_binds()`` both fold
+    into ``agent.<a>.common``. The membership test is
+    :func:`_is_terminal_category_key`, DERIVED from the keyspace's own declaration
+    so it cannot fall behind the next flip.
+
     Two branches, and the split is deliberate:
 
-    * a **bindings ARM key** merges ENTRY BY ENTRY;
+    * a **TERMINAL dest-keyed category key** whose value is a map merges ENTRY BY
+      ENTRY;
     * **everything else** is LAST-WINS, exactly as before. ⚑⚑ Do NOT generalize this
       into a deep merge for every value. Two call sites — ``extra_default_categories``
       and ``resolved_sys`` — are LATE INJECTIONS that are supposed to override, and a
-      deep merge would quietly stop them from doing so.
+      deep merge would quietly stop them from doing so. The ``dict`` test is also
+      what keeps a scalar leaf that merely ENDS in a category token
+      (``system.channels.common``) and the LIST-valued ``<scope>.masks`` on the
+      last-wins branch where they belong.
 
-    A destination already claimed in the SAME arm RAISES, naming both families
-    (*origins* carries who claimed it). Bindings are strictly act-once, so this can
-    never be a legitimate overlay: it is either two families genuinely fighting over
-    one mountpoint — which the reconciler's resolved-``box_dest`` grouping would
-    already be erroring on today — or a real duplicate that dest-keying has finally
-    made visible. Silencing it by last-wins would hand back exactly the data loss
-    this function was written to prevent. (Two entries at one dest in DIFFERENT arms
-    or DIFFERENT categories are still different keys, still both emitted, and still
-    reach the collision table in ``settings_categories`` — untouched here.)
+    A destination already claimed in the SAME key RAISES, naming both families
+    (*origins* carries who claimed it). ⚑ **The refusal is STRUCTURAL and therefore
+    holds for every terminal category, not only for act-once bindings.** The value
+    is ONE dict keyed by destination, so it can hold exactly one entry per
+    destination — two families claiming one dest under one key is not an overlay
+    the shape can express, and whichever lands second simply erases the first.
+
+    That is NOT a statement that seeds may not layer: they may, and do. Layering is
+    expressed ACROSS KEYS — ``system.seeded`` / ``agent.<a>.seeded`` /
+    ``workset.seeded`` all target ``~/``, remain three DIFFERENT keys here, and are
+    regrouped by destination and staged in scope apply order (per-file last-wins) by
+    ``_apply_init_seeds``. Nothing in that route passes through this function's
+    per-key map, so widening the raise to the copy categories takes no legitimate
+    overlay away; it only refuses the one arrangement that has no representation.
+    (Bindings additionally being act-once is a SECOND reason for the arms, not the
+    reason here: two entries at one dest in DIFFERENT arms or DIFFERENT categories
+    are still different keys, still both emitted, and still reach the collision
+    table in ``settings_categories`` — untouched here.)
     """
     from kanibako.settings.settings_resolve import SettingsError
 
     for key, value in incoming.items():
-        if not _is_bind_arm_key(key) or not isinstance(value, dict):
+        if not _is_terminal_category_key(key) or not isinstance(value, dict):
             table[key] = value
             continue
         existing = table.get(key)
@@ -6178,10 +6224,11 @@ def _merge_default_categories(
             if prior is not None:
                 raise SettingsError(
                     f"launch floor: the {prior} and {family} default families "
-                    f"both bind {dest!r} under {key}. A bindings arm is keyed by "
-                    f"box DESTINATION and bindings are act-once, so one arm "
-                    f"admits one entry per destination — the second would "
-                    f"silently replace the first."
+                    f"both declare {dest!r} under {key}. That key is keyed by box "
+                    f"DESTINATION and holds ONE entry per destination, so the "
+                    f"second would silently replace the first. Layering at one "
+                    f"destination is expressed across SCOPES (different keys), "
+                    f"never twice within one."
                 )
             origins[(key, dest)] = family
             merged[dest] = entry
@@ -6208,7 +6255,6 @@ def _resolve_launch_snapshot(
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
     cli_level: "Mapping[str, object] | None" = None,
-    host_dest_keys: "frozenset[str]" = frozenset(),
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
 
@@ -6245,13 +6291,6 @@ def _resolve_launch_snapshot(
     so the image/helper reconcile carries ONLY their own table + any config-file
     keys — byte-for-byte the old per-family ``_build_image_mounts`` /
     ``_build_helper_hub_mounts`` resolve (which injected only that one table).
-
-    *host_dest_keys* names the category keys whose ``box_dest`` is an absolute HOST
-    path rather than a guest one (the §2a seed layers). Passed by
-    :func:`_apply_init_seeds`, which is the only caller that injects those keys and
-    the only one that APPLIES their copies; every other resolve leaves it empty and
-    is byte-identical. See ``settings_categories.CategoryEntry.dest_space`` for why
-    the space must be carried rather than inferred from the path.
 
     *persona_values* is the persona store's LIVE tier for this launch
     (:func:`_persona_values_for`) — ``endpoint`` / ``model`` /
@@ -6308,8 +6347,11 @@ def _resolve_launch_snapshot(
     # ``box.bindings.ro``, whose value is the whole map, and ``.update()`` would
     # REPLACE it: the 4th family would silently delete the first three families'
     # entire ro arm, with no error anywhere. Every union below therefore goes
-    # through :func:`_merge_default_categories`, which merges a bindings arm ENTRY
-    # BY ENTRY and leaves every other value alone.
+    # through :func:`_merge_default_categories`, which merges ANY terminal
+    # dest-keyed category map ENTRY BY ENTRY and leaves every other value alone.
+    # ⚑ "Any terminal category" is not decoration: ``caches``/``seeded``/``common``/
+    # ``synced`` are terminal too now, and the "agent common" + "agent category
+    # binds" families below BOTH write ``agent.<a>.common``.
     default_categories: dict[str, object] = {}
     # Provenance for the act-once refusal: ``(arm key, dest) -> family label``, so a
     # same-destination clash can name BOTH contributing families rather than just
@@ -6410,12 +6452,17 @@ def _resolve_launch_snapshot(
     # the SAME ``build_launch_snapshot`` pipeline (single-route, 7c) WITHOUT
     # pulling in the unrelated core/channel/share families. This mirrors the old
     # narrow ``_resolve_launch_categories`` agent-level ``defaults=`` injection.
-    # ⚑ A DELIBERATE LATE INJECTION — it must keep LAST-WINS. It carries no
-    # ``bindings`` arm (a narrow caller passes its own seed/synced table), so the
-    # helper's default branch is exactly today's ``.update``. ⚑⚑ Do NOT "simplify"
-    # :func:`_merge_default_categories` into a deep merge for every value: this
-    # site and ``resolved_sys`` below are overrides BY DESIGN, and deep-merging
-    # them would silently stop them from overriding.
+    # ⚑ A DELIBERATE LATE INJECTION — it must keep LAST-WINS for every SCALAR it
+    # carries. ⚑⚑ Do NOT "simplify" :func:`_merge_default_categories` into a deep
+    # merge for every value: this site and ``resolved_sys`` below are overrides BY
+    # DESIGN, and deep-merging them would silently stop them from overriding.
+    # ⚑ It DOES carry terminal category keys (``_apply_init_seeds`` passes
+    # ``seeded``), so those fold entry by entry like any other family — which costs
+    # this site nothing, because a narrow caller runs with
+    # ``include_base_families=False`` and there is no earlier family here to
+    # override. A narrow caller that needs to combine SEVERAL tables folds them
+    # through the same helper BEFORE the call, so its own family labels reach the
+    # message (see ``_apply_init_seeds``).
     if extra_default_categories:
         _merge_default_categories(
             default_categories, extra_default_categories,
@@ -6506,14 +6553,14 @@ def _resolve_launch_snapshot(
             # display resolve and a launch resolve cannot disagree about which binds
             # may legitimately be missing.
             optional_keys=core_defaults.canon_optional_bind_keys(),
-            host_dest_keys=host_dest_keys,
         )
     except SettingsError as exc:
         # A malformed CATEGORY shape raises here naming the DECLARATION key
-        # (e.g. "category agent.claude.common.x is str, expected a Bind"). When a
-        # pref installed that key the name is one the user never wrote, so the
-        # same enrichment the collision path gets applies — otherwise the box
-        # fails to start pointing at a key that is in none of their files.
+        # (e.g. "category agent.claude.common.~/plugins is str, expected a
+        # BindEntry"). When a pref installed that key the name is one the user
+        # never wrote — under dest-keying not even the TAIL is writable as a key
+        # — so the same enrichment the collision path gets applies; otherwise the
+        # box fails to start pointing at a key that is in none of their files.
         raise _annotate_pref_origin(exc, prefs) from None
     # MATERIALISE each ABSTRACT declaration's derived binding beside it, under
     # the reserved ``binding_derivations`` node at the snapshot root (R-8),
@@ -6523,12 +6570,13 @@ def _resolve_launch_snapshot(
     try:
         reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
     except CategoryCollisionError as exc:
-        # A collision names the DECLARATION key. When that declaration was
-        # INSTALLED BY A PREF, the named key is one the user never wrote and
-        # cannot write (``agent.claude.common.x`` from
-        # ``pref.agent.claude.common.x``), so the message would send them looking
-        # for a key that is not in any of their files. Enrich it HERE — the one
-        # seam that holds both the error and the requests.
+        # A collision names the DECLARATION key PLUS the entry's DEST. When that
+        # declaration was INSTALLED BY A PREF, the named key is one the user
+        # never wrote and cannot write (``agent.claude.common.~/plugins`` from
+        # ``pref.agent.claude.common``, whose value carries the dest), so the
+        # message would send them looking for a key that is not in any of their
+        # files. Enrich it HERE — the one seam that holds both the error and the
+        # requests.
         raise _annotate_pref_origin(exc, prefs) from None
     emit_collision_warnings(reconciled.warnings)
     return snapshot, reconciled
@@ -6544,15 +6592,25 @@ def _annotate_pref_origin(exc, prefs):
       (``entries`` = ``(key, host_src)`` pairs) precisely so a CLI seam can
       enrich the rendered text with what the pure resolver does not know.
     * a plain ``SettingsError`` from the category ADAPTER (an undeclared shape /
-      a non-``Bind`` at a category leaf) — it has no structured participants, so
-      the pref TARGETS are matched against the message text instead.
+      a non-``BindEntry`` at a category leaf) — it has no structured
+      participants, so the candidate keys are matched against the message text
+      instead.
 
-    Either way the point is the same: a message naming ``agent.claude.common.x``
-    is useless to a user whose files only contain
-    ``pref.agent.claude.common.x``.
+    Either way the point is the same: a message naming
+    ``agent.claude.common.~/plugins`` is useless to a user whose files only
+    contain ``pref.agent.claude.common``.
+
+    ⚑ BOTH arms match on ``pref_entry_keys`` — the entry keys a request can
+    ACCOUNT FOR — never on the raw target. For the seven terminal dest-keyed
+    categories a target names the whole MAP while an entry key names one
+    DESTINATION inside it, so a raw-target test either never fires (structured
+    arm: exact equality against a longer key) or fires for destinations the
+    request never mentioned (text arm: substring). ``pref_entry_keys`` reads the
+    destinations out of the request's own value, which is what makes the pointer
+    this message hands the user a sound one.
     """
     from kanibako.errors import CategoryCollisionError
-    from kanibako.settings.settings_prefs import pref_origin
+    from kanibako.settings.settings_prefs import pref_entry_keys, pref_origin
 
     def _line(key, req):
         return (
@@ -6576,9 +6634,19 @@ def _annotate_pref_origin(exc, prefs):
             entries=exc.entries,
         )
 
-    # No structured participants: match the pref TARGETS against the message.
+    # No structured participants: match the candidate keys against the message.
+    # ⚑ The two adapter raises a pref can cause are COMPLEMENTARY, which is why
+    # one rule covers both: a map-valued request can only fail per-LEAF
+    # (``_emit_bind_map``, message names ``<target>.<dest>``), and the
+    # CATEGORY-ROOT raise (``_assert_declared_categories``, message names the bare
+    # ``<target>``) can only fire when the value is NOT a map — exactly the case
+    # where ``pref_entry_keys`` yields the bare target.
     text = str(exc)
-    origins = [_line(req.target, req) for req in prefs if req.target in text]
+    origins = []
+    for req in prefs:
+        named = next((k for k in pref_entry_keys(req) if k in text), None)
+        if named is not None:
+            origins.append(_line(named, req))
     if not origins:
         return exc
     return type(exc)(
@@ -6732,7 +6800,7 @@ def _seed_box_home(
     1. the descriptor's one-time credential seed (descriptor-bearing targets
        only; a descriptor-less / no-agent target has nothing to seed here).
     2. the configured copy-once-at-init ``seeded`` category winners — INCLUDING
-       the layered ``seeded.template`` trio (system/base -> agent -> workset;
+       the layered ``seeded[~/]`` trio (system/base -> agent -> workset;
        later overlays earlier, per-file last-wins). The separate on-disk template
        staging route RETIRED (Q1): the template layers are now ordinary keystore
        ``seeded`` keys resolved off the committed snapshot in
@@ -6802,14 +6870,15 @@ def _install_box_handbook(
     building a second one is why the copy cannot disagree with the seed about what a
     repointed ``workset.template`` means.
 
-    ⚑ THE ONE DEST POLICY on this path is :func:`_host_copy_dest`, right here, for
-    the SAME reason the seeded host arm uses it — §2a enforcement point 2, a
-    ``box.canon`` repointed outside the box store is SKIPPED with a warning rather
-    than written, and rather than raised (a mis-declared key must not cost the user
-    the box).  A ``box.canon`` repointed INSIDE the box store is therefore ACCEPTED,
-    exactly as the ``seeded`` route accepts it; the copier applies no second,
+    ⚑ THE ONE DEST POLICY on this path is :func:`_host_copy_dest`, right here —
+    §2a enforcement point 2: a ``box.canon`` repointed outside the box store is
+    SKIPPED with a warning rather than written, and rather than raised (a
+    mis-declared key must not cost the user the box).  A ``box.canon`` repointed
+    INSIDE the box store is therefore ACCEPTED; the copier applies no second,
     stricter dest check of its own (see :func:`install_box_handbook_template` —
-    "NO DEST WHITELIST HERE").
+    "NO DEST WHITELIST HERE").  ⚑ This is now the SOLE caller: since 2026-08-08c
+    the ``seeded`` / ``synced`` appliers spell their dests GUEST-side and resolve
+    them through ``container._guest_dest_to_host`` instead.
     """
     from kanibako.launch.templates import (
         handbook_layer_source_keys,
@@ -7216,20 +7285,27 @@ def _host_copy_dest(
 ) -> Path | None:
     """Validate a HOST-space COPY destination and return it, or None to skip.
 
-    The host arm of the two-namespace split (see
-    ``settings_categories.CategoryEntry.dest_space``).  A host dest is already an
-    absolute host path, so there is nothing to translate — what there IS to do is
     §2a's enforcement point 2: **assert the dest lands inside the BOX STORE ROOT**
-    before anything is written.  Seed dests are fixed by KEYS, so a template cannot
-    choose where it writes; the residual escape is a settings-declared dest such as
-    ``@box.canon/../../../etc``, and this is where that is refused.
+    before anything is written.  The residual escape it refuses is a
+    settings-declared dest such as ``@box.canon/../../../etc``.
+
+    ⚑⚑ ITS ONLY CALLER IS THE HOST-TEMPLATE COPY (:func:`_install_box_handbook`),
+    and that is the whole of what "host space" means here now.  Until 2026-08-08c
+    it ALSO served the ``seeded`` / ``synced`` appliers, as the host arm of a
+    two-namespace COPY split; the respell ended that — every CATEGORY dest is
+    GUEST-spelled (spec §0 "ONE DEST SPACE, TWO DELIVERIES") and resolved by
+    ``container._guest_dest_to_host``.  ⚑ Do NOT reintroduce a call from a category
+    applier: a category dest arriving here would be a guest path taken for a host
+    one, which is the mis-landing bug ``CategoryEntry`` documents.
+    ``@box.canon/handbook`` is not a category dest at all — it is a HOST location
+    nothing in the box reads (§5C-RULING), which is exactly why it still needs this.
 
     *box_root* is ``@meta.box.path`` — obtained as ``shell_path.parent``, which
     equals it in EVERY mode by construction (the shell dir is ``<box_dir>/home``:
     ``boxes/<name>/home`` for primary, ``<project>/box_data/home`` for standalone).
 
-    Returns ``None`` (with a warning) rather than raising: a mis-declared seed must
-    not cost the user the box's other seeds, and the warning names the key's dest.
+    Returns ``None`` (with a warning) rather than raising: a mis-declared dest must
+    not cost the user the box's other content, and the warning names the dest.
     """
     dest = Path(box_dest)
     try:
@@ -7270,8 +7346,8 @@ def _apply_init_seeds(
     category is ``seeded``, translating each guest_dest (/home/agent/X) to a host
     path under proj.shell_path and copying host_src -> that path once.
 
-    The LAYERED ``seeded.template`` trio (system/base -> agent -> workset; spec
-    §2a, Q1) flows through THIS route too — no separate on-disk staging pass. The
+    The LAYERED ``seeded[~/]`` trio (system/base -> agent -> workset; spec §2a, Q1)
+    flows through THIS route too — no separate on-disk staging pass. The
     template layers all target ``~`` (the create-time home); the seeded-category
     reconcile keeps every same-dest COPY (copies OVERLAY, they do not shadow —
     :func:`kanibako.settings.settings_categories.reconcile_categories`), so here the
@@ -7280,17 +7356,30 @@ def _apply_init_seeds(
     into home CREATE-IF-ABSENT (never clobbering user content). A layer whose
     source dir is absent (e.g. an unpopulated ``@workset.template``) is skipped.
 
+    ⚑ ``seeded[~/]`` IS THE SPELLING OF THE TRIO — spec §2a's own seed-table form,
+    and the one this tree uses everywhere it names them (``cli``,
+    ``runtime.container``, ``settings.settings_categories``, and
+    :mod:`kanibako.launch.templates`, which DECLARES them in
+    :func:`~kanibako.launch.templates.template_seed_defaults`).  It reads: the
+    TERMINAL key ``<scope>.seeded`` (``system`` / ``agent.<a>`` / ``workset``),
+    at the one entry its dest-keyed map holds — the guest home ``~/``, whose
+    source is that scope's ``template`` scalar plus ``box/home``.  ⚑ There is NO
+    ``seeded.template`` key and there never can be: since 2026-08-08c the
+    destination IS the entry's identity (R-10), so an entry NAME is not part of
+    the keyspace.  Do not reintroduce the old label as a nickname.
+
     The credential gate (D-M4) is applied during reconcile: a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
 
-    ⚑⚑ TWO DESTINATION NAMESPACES.  The three §2a seed keys resolve to an absolute
-    HOST path under the box store (``@meta.box.path/home``); a user-declared
-    ``<scope>.seeded.<name>`` stays GUEST-space and is translated by
-    ``container._guest_dest_to_host`` exactly as before.  The two are textually
-    indistinguishable — on a host whose user home is ``/home/agent`` a host store
-    path STARTS WITH the guest home prefix — so the entry carries its space and this
-    function branches on it.  Translating a host dest would silently write the box's
-    seeded template layers somewhere nothing reads, and report success.
+    ⚑⚑ ONE DESTINATION NAMESPACE (spec §0 "ONE DEST SPACE, TWO DELIVERIES";
+    2026-08-08c).  Every ``seeded`` dest is GUEST-spelled — the three §2a seed keys
+    target ``~/`` and a user-declared entry targets whatever guest path it names —
+    and ALL of them are resolved to the box store by the ONE translator
+    ``container._guest_dest_to_host``, whose ``map_home_root=True`` maps the bare
+    home to ``proj.shell_path`` (= ``<box_dir>/home``, the very directory the old
+    host spelling named).  There is no branch here and nothing for an entry to
+    carry: see ``settings_categories.CategoryEntry`` for the mis-landing bug the
+    retired host arm existed to close, and why the respell closes it at the source.
 
     ⚑ THE BOX HANDBOOK CHAPTER IS NOT SEEDED HERE, and looking for it in this
     function is the wrong place: the three handbook seed layers were retired
@@ -7300,7 +7389,6 @@ def _apply_init_seeds(
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
     from kanibako.launch.templates import (
-        seed_keys_of,
         stage_layers,
         template_seed_defaults,
     )
@@ -7310,6 +7398,26 @@ def _apply_init_seeds(
     # folded in alongside the target's cred seeds so they resolve + apply through
     # the SAME single seeded-category route (Q1: everything through the keystore).
     template_seeds = template_seed_defaults(proj, agent_name)
+
+    # ⚑⚑ NOT ``{**default_seeds, **template_seeds}`` — that union was a SILENT
+    # DATA LOSS and the reason is the key-shape flip. Both tables are keyed by the
+    # TERMINAL ``agent.<a>.seeded`` (2026-08-08c), so for a bare agent they are the
+    # SAME key: the plain union handed the second table's whole map over the first
+    # and the plugin's declared seeds simply ceased to exist — no error, no log,
+    # nothing downstream able to tell. They fold through the very helper written to
+    # stop that (:func:`_merge_default_categories`), merging ENTRY BY ENTRY, with a
+    # LOCAL origins ledger so a genuine same-destination clash names these two
+    # families rather than the anonymous "narrow injection" the inner fold would.
+    seed_categories: dict[str, object] = {}
+    seed_origins: dict[tuple[str, str], str] = {}
+    _merge_default_categories(
+        seed_categories, default_seeds,
+        family="agent seeds", origins=seed_origins,
+    )
+    _merge_default_categories(
+        seed_categories, template_seeds,
+        family="template layers", origins=seed_origins,
+    )
 
     # Single-route (7c): resolve the seed COPY winners off the ONE committed
     # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
@@ -7332,49 +7440,36 @@ def _apply_init_seeds(
         target=target,
         agent_cfg=None,
         include_base_families=False,
-        extra_default_categories={**default_seeds, **template_seeds},
+        extra_default_categories=seed_categories,
         deliver_creds=deliver_creds,
-        host_dest_keys=seed_keys_of(template_seeds),
         # No persona tier (audit): SEEDING is file delivery — this resolve reads
         # ``seeded`` COPY winners and nothing else. A behavior scalar or a token
         # pointer has no meaning here, and a seed must not vary with a store.
     )
 
-    # Group the seeded COPY winners by (dest_space, resolved dest), PRESERVING the
+    # Group the seeded COPY winners by resolved dest, PRESERVING the
     # reconcile apply order (system -> agent -> workset -> box) within each dest — so
     # a dest targeted by multiple layers (the template trio at the box home) is
     # staged in that order, later overlaying earlier.  A USER-declared seeded entry
     # can share a dest the same way; the grouping is not special to the trio.
-    # ⚑ The SPACE is part of the key for the same reason it is in
-    # ``reconcile_categories``: the two namespaces can produce the same STRING.
-    by_dest: dict[tuple[str, str], list] = {}
+    by_dest: dict[str, list] = {}
     for seed in reconciled.copies:
         if seed.category != "seeded":
             continue  # synced copies are applied by _apply_synced_copies.
-        by_dest.setdefault((seed.dest_space, seed.box_dest), []).append(seed)
+        by_dest.setdefault(seed.box_dest, []).append(seed)
 
-    box_root = Path(proj.shell_path).parent
-    for (dest_space, box_dest), group in by_dest.items():
-        if dest_space == "host":
-            # HOST-space (the §2a seed keys): the dest IS an absolute host path
-            # already — use it DIRECTLY, after the §2a containment check. Feeding it
-            # to the guest translator is the silent bug this branch exists to close.
-            dest = _host_copy_dest(
-                box_dest, box_root, label="seed", name=group[0].name, logger=logger,
-            )
-        else:
-            dest = _guest_dest_to_host(
-                box_dest, proj.shell_path, proj.project_path, map_home_root=True,
-            )
-            if dest is None:
-                logger.warning(
-                    "seed %s: guest_dest %r is outside %s; skipping",
-                    group[0].name, box_dest, GUEST_HOME,
-                )
+    for box_dest, group in by_dest.items():
+        dest = _guest_dest_to_host(
+            box_dest, proj.shell_path, proj.project_path, map_home_root=True,
+        )
         if dest is None:
+            logger.warning(
+                "seed %s: guest_dest %r is outside %s; skipping",
+                group[0].name, box_dest, GUEST_HOME,
+            )
             continue
         if len(group) > 1:
-            # A LAYERED dest (the ``seeded.template`` trio at the box home): stage
+            # A LAYERED dest (the ``seeded[~/]`` trio at the box home): stage
             # the layer sources IN ORDER (per-file last-wins) then seed
             # create-if-absent.
             # ``stage_layers`` skips any absent-dir source (skip-if-absent — e.g. an
@@ -7409,7 +7504,7 @@ def _apply_synced_copies(
     logger,
     deliver_creds: bool = True,
 ) -> None:
-    """Apply the ``<scope>.synced.<name>`` category copies into the box shell dir.
+    """Apply the terminal ``<scope>.synced`` category copies into the box shell dir.
 
     Unlike copy-once seeds, synced entries are reapplied on EVERY launch, but
     only when the host source is NEWER than the box-side copy (mtime gating) so
@@ -7425,7 +7520,7 @@ def _apply_synced_copies(
     The credential gate (D-M4) is applied during reconcile: every ``synced``
     entry is suppressed for a PRIVATE box (*deliver_creds* False).
 
-    ADDITIVE: with no ``synced.*`` keys configured (and no target default synced
+    ADDITIVE: with no ``<scope>.synced`` keys configured (and no target default synced
     entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
@@ -7433,7 +7528,7 @@ def _apply_synced_copies(
     # Single-route (7c): resolve the synced COPY winners off the ONE committed
     # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
     # ``_resolve_launch_snapshot``), replacing the retired second resolver route.
-    # NOTE: synced entries come ONLY from settings `<scope>.synced.<name>` keys —
+    # NOTE: synced entries come ONLY from settings `<scope>.synced` keys —
     # plugin descriptors do NOT yet declare default synced entries (Phase 8) — so
     # there is NO default-category table to inject; the narrow
     # ``include_base_families=False`` (no ``extra_default_categories``) resolves
@@ -7456,36 +7551,25 @@ def _apply_synced_copies(
         # ``synced`` COPY winners and nothing else, exactly as the seed resolve.
     )
 
-    box_root = Path(proj.shell_path).parent
     for sync in reconciled.copies:
         if sync.category != "synced":
             continue  # seeded copies are applied by _apply_init_seeds.
         assert sync.host_src is not None  # synced entries always have a source.
-        if sync.dest_space == "host":
-            # HOST-space arm — built HERE, ahead of its first user, deliberately:
-            # spec §2d's ``synced`` dests are moving host-side with the plugin
-            # packages (``@meta.box.path/home/.claude/.credentials.json`` and
-            # friends), and that phase must NOT have to re-derive this branch. Today
-            # no shipped declaration sets it, so this is inert; the moment one does,
-            # it is already correct rather than silently mapped into the box home.
-            dest = _host_copy_dest(
-                sync.box_dest, box_root,
-                label="synced", name=sync.name, logger=logger,
-            )
-        else:
-            # Shared translator (audit P3): a ``~/workspace/...`` dest now maps under
-            # proj.project_path (the workspace bind) rather than the shadowed
-            # shell_path/workspace stub the former inline branch computed.
-            dest = _guest_dest_to_host(
-                sync.box_dest, proj.shell_path, proj.project_path,
-                map_home_root=True,
-            )
-            if dest is None:
-                logger.warning(
-                    "synced %s: guest_dest %r is outside %s; skipping",
-                    sync.name, sync.box_dest, GUEST_HOME,
-                )
+        # Shared translator (audit P3): a ``~/workspace/...`` dest maps under
+        # proj.project_path (the workspace bind) rather than the shadowed
+        # shell_path/workspace stub a former inline branch computed. ⚑ ONE route:
+        # the host-space arm that used to sit here went with the respell — spec §2d
+        # spells a ``synced`` dest GUEST-side now, resolved to the box store when
+        # the copy runs (spec §0 "ONE DEST SPACE, TWO DELIVERIES").
+        dest = _guest_dest_to_host(
+            sync.box_dest, proj.shell_path, proj.project_path,
+            map_home_root=True,
+        )
         if dest is None:
+            logger.warning(
+                "synced %s: guest_dest %r is outside %s; skipping",
+                sync.name, sync.box_dest, GUEST_HOME,
+            )
             continue
         # if_absent=False -> overwrite (reapplied every launch), mtime-gated so an
         # unchanged source is a no-op.

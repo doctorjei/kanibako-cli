@@ -429,15 +429,24 @@ class TestAgentCommonForNode:
     delta below is the phase's enumerated gate: identity for a bare agent, exactly
     two mounts gained for a claude persona, nothing for goose/codex (their
     ``default_common()`` is empty).
+
+    ⚑ THE TABLE IS DEST-KEYED (2026-08-08c). ``common`` is a TERMINAL key, so the
+    plugin table holds ONE entry — ``agent.<harness>.common`` → the whole
+    ``{box_dest: (host_src,)}`` map — and the re-key is an EXACT match on that key.
+    The DESTINATIONS are data inside the value and do NOT move: a persona and its
+    harness deliver to the same in-box path. They are spelled here the way
+    ``core_defaults.add_bind`` stores them, guest-ABSOLUTE (R-11).
     """
 
     TABLE = {
-        "agent.claude.common.plugins": (
-            "@meta.agent.claude.path/common/plugins", "~/.claude/plugins",
-        ),
-        "agent.claude.common.cache": (
-            "@meta.agent.claude.path/common/cache", "~/.claude/cache",
-        ),
+        "agent.claude.common": {
+            "/home/agent/.claude/plugins": (
+                "@meta.agent.claude.path/common/plugins",
+            ),
+            "/home/agent/.claude/cache": (
+                "@meta.agent.claude.path/common/cache",
+            ),
+        },
     }
 
     def test_a_bare_agent_gets_the_identity(self):
@@ -459,12 +468,16 @@ class TestAgentCommonForNode:
         out = agent_common_for_node(
             self.TABLE, node_name="nav℘claude", harness="claude",
         )
-        assert set(out) == {
-            "agent.nav℘claude.common.plugins", "agent.nav℘claude.common.cache",
-        }
-        assert out["agent.nav℘claude.common.plugins"] == (
-            "@meta.agent.nav℘claude.path/common/plugins", "~/.claude/plugins",
+        assert set(out) == {"agent.nav℘claude.common"}
+        arm = out["agent.nav℘claude.common"]
+        assert arm["/home/agent/.claude/plugins"] == (
+            "@meta.agent.nav℘claude.path/common/plugins",
         )
+        # ⚑ The DESTINATIONS are untouched — they are the entry identity, and a
+        # persona delivers to the same in-box path its harness does. INVERT:
+        # re-root the map KEYS too -> the persona's plugins land somewhere the
+        # agent does not read from.
+        assert set(arm) == set(self.TABLE["agent.claude.common"])
 
     def test_a_self_resolving_source_is_carried_verbatim(self):
         """The re-root rule is NARROW: only the harness's own declaration root
@@ -472,11 +485,11 @@ class TestAgentCommonForNode:
         plugin's deliberate choice (spec §2a), not "my store dir"."""
         from kanibako.settings.agent_representation import agent_common_for_node
 
-        table = {"agent.claude.common.fixed": ("/opt/fixed", "~/x")}
+        table = {"agent.claude.common": {"/home/agent/x": ("/opt/fixed",)}}
         out = agent_common_for_node(
             table, node_name="nav℘claude", harness="claude",
         )
-        assert out["agent.nav℘claude.common.fixed"] == ("/opt/fixed", "~/x")
+        assert out["agent.nav℘claude.common"] == {"/home/agent/x": ("/opt/fixed",)}
 
     def test_an_empty_table_stays_empty(self):
         """goose / codex declare no commons — no delta for their personas."""
@@ -524,6 +537,11 @@ class TestAgentCommonForNode:
         fixed = _mounts(agent_common_for_node(
             self.TABLE, node_name=node, harness="claude",
         ))
-        assert sorted(e.name for e in fixed) == ["cache", "plugins"]
+        # ⚑ TWO entries, identified by DESTINATION — there is no entry name in the
+        # keyspace any more, so ``CategoryEntry.name`` IS the dest (R-10).
+        assert sorted(e.box_dest for e in fixed) == [
+            "/home/agent/.claude/cache", "/home/agent/.claude/plugins",
+        ]
+        assert [e.name for e in fixed] == [e.box_dest for e in fixed]
         # Sourced through the NODE path — the symlink the shim maintains.
         assert all(e.host_src.startswith(f"/store/agents/{node}/common/") for e in fixed)

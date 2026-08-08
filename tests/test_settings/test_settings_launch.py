@@ -287,8 +287,8 @@ def test_adapter_emits_the_stored_host_src_verbatim():
     """
     snap = KeyStore(
         {"agent": {"claude": {"common": {
-            "plugins": Bind("/data/agents/claude/common/plugins",
-                            "/box/plugins", None)}}}}
+            "/box/plugins": BindEntry(
+                "/data/agents/claude/common/plugins", None)}}}}
     )
     entries = snapshot_category_entries(
         snap, active_agent="claude", box_ctx=_ctx(),
@@ -303,7 +303,7 @@ def test_adapter_absolute_host_src_not_joined():
     """The surviving control from the retired pair: an absolute source passes
     through — which is now the ONLY behaviour, for every source shape."""
     snap = KeyStore(
-        {"agent": {"claude": {"common": {"x": Bind("/abs/x", "/box/x", None)}}}}
+        {"agent": {"claude": {"common": {"/box/x": BindEntry("/abs/x", None)}}}}
     )
     entries = snapshot_category_entries(
         snap, active_agent="claude", box_ctx=_ctx(),
@@ -321,7 +321,7 @@ def test_adapter_does_not_root_a_relative_host_src():
     re-introduced prepend RED.
     """
     snap = KeyStore(
-        {"agent": {"claude": {"common": {"p": Bind("plugins", "/box/p", None)}}}}
+        {"agent": {"claude": {"common": {"/box/p": BindEntry("plugins", None)}}}}
     )
     entries = snapshot_category_entries(
         snap, active_agent="claude", box_ctx=_ctx(),
@@ -330,22 +330,28 @@ def test_adapter_does_not_root_a_relative_host_src():
 
 
 def test_adapter_active_over_default_pick():
-    # §2d: the active slot wins a name; agent.default fills the gaps. Both an
-    # active-only and a default-only common bind survive (no sibling clobber).
+    # §2d: the active slot wins a DESTINATION; agent.default fills the gaps. Both
+    # an active-only and a default-only common bind survive (no sibling clobber).
+    #
+    # ⚑ The unit the pick operates on is the DESTINATION, not an entry name
+    # (2026-08-08c): ``common`` is a terminal dest-keyed map, so "the active slot
+    # wins that name" is now "the active slot wins that dest". The overlay is still
+    # PER ENTRY (_overlay_into recurses into the map), which is exactly what the
+    # default-only ``/box/common`` surviving below proves.
     snap = KeyStore({"agent": {
         "default": {"common": {
-            "common": Bind("/abs/common", "/box/common", None),
-            "plugins": Bind("/abs/default-plugins", "/box/plugins", None),
+            "/box/common": BindEntry("/abs/common", None),
+            "/box/plugins": BindEntry("/abs/default-plugins", None),
         }},
         "claude": {"common": {
-            "plugins": Bind("/abs/active-plugins", "/box/plugins", None),
+            "/box/plugins": BindEntry("/abs/active-plugins", None),
         }},
     }})
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    by_name = {e.name: e for e in entries}
-    assert set(by_name) == {"common", "plugins"}
-    assert by_name["plugins"].host_src == "/abs/active-plugins"  # active wins.
-    assert by_name["common"].host_src == "/abs/common"           # default fills.
+    by_dest = {e.box_dest: e for e in entries}
+    assert set(by_dest) == {"/box/common", "/box/plugins"}
+    assert by_dest["/box/plugins"].host_src == "/abs/active-plugins"  # active wins.
+    assert by_dest["/box/common"].host_src == "/abs/common"           # default fills.
     assert all(e.scope == "agent" for e in entries)
 
 
@@ -483,16 +489,26 @@ def test_adapter_bind_with_none_leaf_raises():
 
 
 class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
-    """P7 — the emit boundary takes PRIMITIVES, so each caller rules in its shape.
+    """P7 — the emit boundary takes PRIMITIVES, so the leaf TYPE is ruled in above it.
 
     ⚑ THE FAILURE THESE EXIST TO PREVENT is not a crash, it is a MOUNT AT THE
     WRONG DESTINATION. Before P7 the shared emitter's only guard was
     ``isinstance(bind, Bind)``, so a stale 3-element ``Bind`` sitting in a
     DEST-KEYED ``bindings`` arm was ACCEPTED and its destination was taken from
     the VALUE — silently ignoring the arm key that IS the destination (R-6/R-8).
-    The cure is structural (the emitter holds no leaf type at all), and these two
-    tests are what proves the structure is actually load-bearing rather than
-    incidental: each shape is refused where the OTHER one lives, by KEY.
+    The cure is structural (``_emit_bind`` holds no leaf type at all), and these
+    tests are what proves the structure is load-bearing rather than incidental.
+
+    ⚑ THE CLASS NAME NOW OVERSTATES ITS SUBJECT, deliberately left rather than
+    quietly renamed: since 2026-08-08c there is only ONE bind shape in the
+    keyspace. ``caches`` / ``seeded`` / ``common`` / ``synced`` went dest-keyed
+    alongside the two ``bindings`` arms, so the 3-element ``Bind`` is the RETIRED
+    shape everywhere and there is no longer a name-keyed category for it to live
+    in legitimately. What is still worth pinning — and is pinned below — is that
+    the refusal reaches BOTH routes into ``_emit_bind_map``: the ARM route, where
+    the map sits under ``bindings.{ro,rw}``, and the TERMINAL route, where the map
+    sits at the category token itself. The two are one loop now; a regression that
+    re-split them and dropped the check on one side is exactly what these catch.
     """
 
     @staticmethod
@@ -515,17 +531,30 @@ class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
         assert "Bind" in text                             # names the shape found
 
     @pytest.mark.parametrize("category", ["caches", "seeded", "common", "synced"])
-    def test_a_two_element_bind_entry_in_a_name_keyed_category_is_refused(
-        self, category,
-    ):
+    def test_a_three_element_bind_in_a_terminal_category_is_refused(self, category):
+        """The TERMINAL route's half of the same refusal (2026-08-08c).
+
+        ⚑ THE DIRECTION FLIPPED, and that is the whole of the change: this used to
+        assert that a 2-element ``BindEntry`` was refused HERE, because these four
+        were the name-keyed categories and the 3-element ``Bind`` was their native
+        leaf. They are dest-keyed now, so ``BindEntry`` is what belongs and the
+        stale ``Bind`` — carrying a destination of its OWN, which would silently
+        beat the map key that IS the destination — is the R-8 hazard worth refusing.
+        The dest below (``/box/thing``) and the ``Bind``'s own box (``/elsewhere``)
+        deliberately DIFFER, so an emitter that read the destination off the value
+        could not pass by coincidence.
+        """
         from kanibako.settings.settings_resolve import SettingsError
 
         with pytest.raises(SettingsError) as exc:
-            self._entries({"box": {category: {"thing": BindEntry("/h/thing")}}})
+            self._entries({"box": {category: {
+                "/box/thing": Bind("/h/thing", "/elsewhere", None),
+            }}})
         text = str(exc.value)
-        assert f"box.{category}.thing" in text             # names the KEY
-        assert "BindEntry" in text                         # names the shape found
-        assert "expected a Bind " in text                  # names the shape wanted
+        assert f"box.{category}./box/thing" in text        # names the KEY
+        assert "expected a BindEntry" in text              # names the shape wanted
+        assert "is Bind," in text                          # names the shape found
+        assert f"{category} is dest-keyed" in text         # says WHY
 
 
 def test_adapter_feeds_reconcile_unchanged():
@@ -1913,15 +1942,20 @@ def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus", "allow_helpers": "true"},
         default_categories={
-            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
+            # ⚑ ``common`` is TERMINAL and DEST-KEYED (2026-08-08c): the key names
+            # the CATEGORY and the value is the whole {box_dest: (src[, opts])} map.
+            # The stored map key is the R-11 NORMALIZED dest, so ``~/.claude/plugins``
+            # is read back at ``/home/agent/.claude/plugins``.
+            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
         },
     )
     assert snap.meta.box.agent.model == snap.agent.default.model == "opus"
     assert snap.meta.box.agent.allow_helpers == "true"
-    # The whole subtree mirrors — including category subtrees (a Bind leaf).
-    mirrored = snap.meta.box.agent.common.plugins
-    assert isinstance(mirrored, Bind)
-    assert mirrored == snap.agent.claude.common.plugins
+    # The whole subtree mirrors — including category subtrees (a BindEntry leaf).
+    dest = "/home/agent/.claude/plugins"
+    mirrored = _meta_node(snap, "meta", "box", "agent", "common", dest)
+    assert isinstance(mirrored, BindEntry)
+    assert mirrored == _meta_node(snap, "agent", "claude", "common", dest)
     # …and the RETIRED settable location is NOT materialized.
     assert "box" not in snap or "agent" not in snap.box
 
@@ -1974,12 +2008,13 @@ def test_meta_box_agent_mirror_copy_is_not_an_alias():
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories={
-            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
         },
     )
+    dest = "/home/agent/.claude/plugins"
     assert snap.meta.box.agent.common is not snap.agent.claude.common
-    snap.meta.box.agent.common["plugins"] = Bind("/tweaked", "~/.claude/plugins")
-    assert snap.agent.claude.common.plugins.host == "/store/plugins"
+    snap.meta.box.agent.common[dest] = BindEntry("/tweaked")
+    assert _meta_node(snap, "agent", "claude", "common", dest).src == "/store/plugins"
 
 
 def test_meta_box_agent_mirror_repoints_on_agent_change():
@@ -1994,26 +2029,32 @@ def test_meta_box_agent_mirror_repoints_on_agent_change():
     snap_claude = build_launch_snapshot(
         agent_name="claude",
         default_categories={
-            "agent.claude.common.plugins": ("/claude/plugins", "~/.claude/plugins"),
+            "agent.claude.common": {"~/.claude/plugins": ("/claude/plugins",)},
         },
         **common,
     )
     snap_goose = build_launch_snapshot(
         agent_name="goose",
         default_categories={
-            "agent.goose.common.plugins": ("/goose/plugins", "~/.goose/plugins"),
+            "agent.goose.common": {"~/.goose/plugins": ("/goose/plugins",)},
         },
         **common,
     )
-    assert snap_claude.meta.box.agent.common.plugins.host == "/claude/plugins"
-    assert snap_goose.meta.box.agent.common.plugins.host == "/goose/plugins"
+    claude_dest = "/home/agent/.claude/plugins"
+    goose_dest = "/home/agent/.goose/plugins"
+    assert _meta_node(
+        snap_claude, "meta", "box", "agent", "common", claude_dest,
+    ).src == "/claude/plugins"
+    assert _meta_node(
+        snap_goose, "meta", "box", "agent", "common", goose_dest,
+    ).src == "/goose/plugins"
     assert (
-        snap_claude.meta.box.agent.common.plugins
-        == snap_claude.agent.claude.common.plugins
+        _meta_node(snap_claude, "meta", "box", "agent", "common", claude_dest)
+        == _meta_node(snap_claude, "agent", "claude", "common", claude_dest)
     )
     assert (
-        snap_goose.meta.box.agent.common.plugins
-        == snap_goose.agent.goose.common.plugins
+        _meta_node(snap_goose, "meta", "box", "agent", "common", goose_dest)
+        == _meta_node(snap_goose, "agent", "goose", "common", goose_dest)
     )
 
 
@@ -2066,11 +2107,17 @@ def test_the_no_agent_LAUNCH_shape_mirrors_the_default_backstop():
 def test_box_pref_category_merges_into_active_agent_slot(tmp_path: Path):
     # A box ``pref.agent.<a>.<category>`` tweak merges into the active agent slot as
     # an ORDINARY cascade level (§2h), so a box override of ONE deep leaf coexists
-    # with the sibling default (per-name merge) and shows in the RO read-back.
+    # with the sibling default (per-DEST merge) and shows in the RO read-back.
+    #
+    # ⚑ The per-entry merge is the property under test and it is NOT free: since
+    # 2026-08-08c ``common`` is a TERMINAL key whose value is the whole dest-keyed
+    # map, so a merge that replaced the value wholesale would drop the untouched
+    # ``~/.claude/cache`` default. It survives because ``parse_bind_map`` returns a
+    # nested KeyStore NODE rather than an opaque leaf.
     box = _yaml(
         tmp_path / "box.yaml",
         {"pref": {"agent": {"claude": {"common": {
-            "plugins": ["/box/plugins", "~/.claude/plugins"],
+            "~/.claude/plugins": ["/box/plugins"],
         }}}}},
     )
     snap = build_launch_snapshot(
@@ -2078,14 +2125,16 @@ def test_box_pref_category_merges_into_active_agent_slot(tmp_path: Path):
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         default_categories={
-            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
-            "agent.claude.common.cache": ("/store/cache", "~/.claude/cache"),
+            "agent.claude.common": {
+                "~/.claude/plugins": ("/store/plugins",),
+                "~/.claude/cache": ("/store/cache",),
+            },
         },
     )
-    assert snap.meta.box.agent.common.plugins.host == "/box/plugins"
-    assert snap.meta.box.agent.common.cache.host == "/store/cache"
-    assert snap.agent.claude.common.plugins.host == "/box/plugins"
-    assert snap.agent.claude.common.cache.host == "/store/cache"
+    plugins, cache = "/home/agent/.claude/plugins", "/home/agent/.claude/cache"
+    for root in (("meta", "box", "agent"), ("agent", "claude")):
+        assert _meta_node(snap, *root, "common", plugins).src == "/box/plugins"
+        assert _meta_node(snap, *root, "common", cache).src == "/store/cache"
 
 
 def test_box_pref_category_present_none_suppresses_through_adapter(tmp_path: Path):
@@ -2095,42 +2144,42 @@ def test_box_pref_category_present_none_suppresses_through_adapter(tmp_path: Pat
     # pref loop would silently delete this capability.
     box = _yaml(
         tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"x": None}}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"~/x": None}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
     )
-    names = {
-        e.name
+    dests = {
+        e.box_dest
         for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert "x" not in names
+    assert "/home/agent/x" not in dests
     agent_node = snap.agent.claude if "claude" in snap.agent else KeyStore()
     seeded = agent_node.seeded if "seeded" in agent_node else KeyStore()
-    assert "x" not in seeded
+    assert "/home/agent/x" not in seeded
 
 
 def test_box_pref_category_positive_tweak_delivers_through_adapter(tmp_path: Path):
     # A POSITIVE box pref category entry DELIVERS as an agent-scope entry.
     box = _yaml(
         tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"bx": ["/box/src", "~/bx"]}}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"~/bx": ["/box/src"]}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
-        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    seeded = {e.name: e for e in entries if e.category == "seeded"}
-    assert seeded["bx"].scope == "agent"
-    assert seeded["bx"].host_src == "/box/src"
-    assert seeded["x"].host_src == "/store/x"
+    seeded = {e.box_dest: e for e in entries if e.category == "seeded"}
+    assert seeded["/home/agent/bx"].scope == "agent"
+    assert seeded["/home/agent/bx"].host_src == "/box/src"
+    assert seeded["/home/agent/x"].host_src == "/store/x"
 
 
 def test_workset_pref_delivers_and_suppresses(tmp_path: Path):
@@ -2139,48 +2188,53 @@ def test_workset_pref_delivers_and_suppresses(tmp_path: Path):
     # a present-None.
     ws_pos = _yaml(
         tmp_path / "ws_pos.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"wy": ["/ws/src", "~/wy"]}}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"~/wy": ["/ws/src"]}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=ws_pos, box_path=None,
-        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
     )
     seeded = {
-        e.name: e.host_src
+        e.box_dest: e.host_src
         for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert seeded == {"wy": "/ws/src", "x": "/store/x"}
+    assert seeded == {"/home/agent/wy": "/ws/src", "/home/agent/x": "/store/x"}
 
     ws_null = _yaml(
         tmp_path / "ws_null.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"x": None}}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"~/x": None}}}}},
     )
     snap2 = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=ws_null, box_path=None,
-        default_categories={"agent.claude.seeded.x": ("/store/x", "~/x")},
+        default_categories={"agent.claude.seeded": {"~/x": ("/store/x",)}},
     )
-    names = {
-        e.name
+    dests = {
+        e.box_dest
         for e in snapshot_category_entries(snap2, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert "x" not in names
+    assert "/home/agent/x" not in dests
 
 
 def test_box_pref_beats_workset_pref_for_a_category(tmp_path: Path):
     # §1A: box beats workset by ASSIGNMENT ORDER, for a CATEGORY as well
     # as a scalar. ⮕ P7 FLIP: while the retired ``box.agent.<category>`` fold
     # existed it out-ranked a box pref (P6's transitional pin); the fold is gone.
+    # ⚑ RESPELLED 2026-08-08c, and it was PASSING before the respell — for the
+    # wrong reason. Under the old name-keyed reading ``{"k": ["/ws/k", "~/k"]}``
+    # meant "entry k, src /ws/k, dest ~/k"; the dest-keyed reader takes ``k`` for a
+    # DESTINATION and ``~/k`` for mount OPTIONS, so the assertion still held while
+    # the fixture had stopped meaning what it says. Green is not evidence here.
     ws = _yaml(
         tmp_path / "ws.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"k": ["/ws/k", "~/k"]}}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"~/k": ["/ws/k"]}}}}},
     )
     box = _yaml(
         tmp_path / "box.yaml",
-        {"pref": {"agent": {"claude": {"seeded": {"k": ["/box/k", "~/k"]}}}}},
+        {"pref": {"agent": {"claude": {"seeded": {"~/k": ["/box/k"]}}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
@@ -2188,11 +2242,11 @@ def test_box_pref_beats_workset_pref_for_a_category(tmp_path: Path):
         default_categories={},
     )
     seeded = {
-        e.name: e.host_src
+        e.box_dest: e.host_src
         for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
         if e.category == "seeded"
     }
-    assert seeded == {"k": "/box/k"}
+    assert seeded == {"/home/agent/k": "/box/k"}
 
 
 # --------------------------------------------------------------------------- #
@@ -2235,18 +2289,21 @@ def test_box_pref_bindings_override_changes_category_entries(tmp_path: Path):
     box = _yaml(
         tmp_path / "box.yaml",
         {"pref": {"agent": {"claude": {"common": {
-            "plugins": ["/box/plugins", "~/.claude/plugins"],
+            "~/.claude/plugins": ["/box/plugins"],
         }}}}},
     )
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=box,
         default_categories={
-            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
         },
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    plug = [e for e in entries if e.category == "common" and e.name == "plugins"]
+    plug = [
+        e for e in entries
+        if e.category == "common" and e.box_dest == "/home/agent/.claude/plugins"
+    ]
     assert len(plug) == 1, entries
     assert plug[0].host_src == "/box/plugins"
     assert plug[0].scope == "agent"
@@ -2276,7 +2333,7 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
         agent_name="claude", ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories={
-            "agent.claude.common.plugins": ("/store/plugins", "~/.claude/plugins"),
+            "agent.claude.common": {"~/.claude/plugins": ("/store/plugins",)},
             "agent.claude.env.MY_VAR": "agent_val",
         },
     )
@@ -2286,8 +2343,11 @@ def test_box_agent_no_override_category_entries_identical_to_baseline():
         (e.category, e.name, e.host_src, e.options)
         for e in entries if e.scope == "agent"
     )
+    # ⚑ ``name`` IS the destination for a bind-shaped category now (R-10), so the
+    # ``common`` row names ``/home/agent/.claude/plugins`` where it once named
+    # ``plugins``. ``env`` is unaffected — its name is still the VAR.
     assert agent_entries == [
-        ("common", "plugins", "/store/plugins", "Z,U"),
+        ("common", "/home/agent/.claude/plugins", "/store/plugins", "Z,U"),
         ("env", "MY_VAR", None, "agent_val"),
     ]
 
@@ -2552,8 +2612,13 @@ class TestCategoryRootRefusal:
             self._entries({"agent": {"default": {"bindings": "/some/path"}}})
         msg = str(e.value)
         assert "CATEGORY ROOT" in msg
-        # It names the per-arm declaration form the user actually wants.
-        assert "agent.default.bindings.{ro,rw}.<name>" in msg
+        # It names the per-arm declaration form the user actually wants — the ARM,
+        # which IS the whole key (R-5), and never the retired ``.<name>`` entry.
+        assert "agent.default.bindings.{ro,rw}" in msg
+        assert "agent.default.bindings.{ro,rw}.<name>" not in msg
+        # ...and it says what the arm's VALUE has to be, since the arm alone does
+        # not tell a reader that entries are keyed by destination.
+        assert "keyed by box destination" in msg
 
     @pytest.mark.parametrize("tier", ["default", "claude"])
     def test_agent_message_names_the_DISCRIMINATED_tier(self, tier):
@@ -2599,11 +2664,17 @@ class TestCategoryRootRefusal:
         assert "agent.goose.caches" in str(e.value)
 
     def test_bind_at_a_leaf_category_root_errors(self):
+        """⚑ The prescribed CURE changed with the 2026-08-08c flip, exactly as it
+        did for the ``bindings`` arms at R-5: ``workset.common`` IS the key now, so
+        the message must point at the category itself and say its value is a
+        dest-keyed map. Prescribing the retired ``workset.common.<name>`` would be
+        telling the reader to write a shape that is no longer a key at all."""
         with pytest.raises(_SettingsError) as e:
             self._entries({"workset": {"common": Bind("/h", "/b", None)}})
         msg = str(e.value)
-        assert "workset.common" in msg
-        assert "workset.common.<name>" in msg
+        assert "workset.common is a value at a CATEGORY ROOT" in msg
+        assert "declare workset.common as a map keyed by box destination" in msg
+        assert "workset.common.<name>" not in msg
 
     def test_list_at_a_category_root_errors(self):
         with pytest.raises(_SettingsError):
@@ -2839,22 +2910,36 @@ class TestPrefNullSuppression:
         no diff. INVERT: add that guard -> this reddens."""
         snap = _pref_snap(
             tmp_path,
-            box={"pref": {"agent": {"claude": {"common": {"plugins": None}}}}},
-            floor={"agent.claude.common.plugins": ("/host/plugins", "~/.claude/plugins")},
+            box={"pref": {"agent": {"claude": {"common": {
+                "~/.claude/plugins": None,
+            }}}}},
+            floor={
+                "agent.claude.common": {"~/.claude/plugins": ("/host/plugins",)},
+            },
         )
-        # The inherited bind is GONE (present-None on a category leaf -> OMIT).
+        # The inherited bind is GONE (present-None on a category ENTRY -> OMIT).
+        # ⚑ The entry is addressed by DESTINATION since 2026-08-08c; the merge's
+        # own classification did not have to change, because "an ancestor segment
+        # is a bind category" never cared whether the leaf below it was a name or
+        # a path (settings_merge._resolve_present_none).
+        dest = "/home/agent/.claude/plugins"
         common = snap.agent.claude.common if "common" in snap.agent.claude else None
-        assert common is None or "plugins" not in dict.keys(common)
+        assert common is None or dest not in dict.keys(common)
 
     def test_the_request_itself_stays_visible_after_resolution(self, tmp_path):
         """§2h read verbs — prefs are KEPT IN MEMORY, so ``--effective`` can
         show the request beside the result."""
         snap = _pref_snap(
             tmp_path,
-            box={"pref": {"agent": {"claude": {"common": {"plugins": None}}}}},
+            box={"pref": {"agent": {"claude": {"common": {
+                "~/.claude/plugins": None,
+            }}}}},
         )
         node = snap["pref"]["agent"]["claude"]["common"]
-        assert dict.__getitem__(node, "plugins") is None
+        # ⚑ The request is kept VERBATIM in VALUE (still ``None``) but its KEY is
+        # the R-11 NORMALIZED destination — ``common`` is a dest-keyed map now, so
+        # the pref subtree is parsed by ``parse_bind_map`` like any other.
+        assert dict.__getitem__(node, "/home/agent/.claude/plugins") is None
 
     def test_a_null_pref_on_a_SCALAR_leaf_is_kept_as_none(self, tmp_path):
         """§2b — ``pref.system.agent: null`` is how the NO-AGENT
@@ -2914,17 +2999,20 @@ class TestPrefLevelPrecedence:
             tmp_path,
             box={
                 "pref": {"agent": {"claude": {"common": {
-                    "plugins": ["/from/pref", "~/.claude/plugins"],
+                    "~/.claude/plugins": ["/from/pref"],
                 }}}},
                 # The RETIRED table, left here on purpose: it must be INERT.
                 "box": {"agent": {"common": {
-                    "plugins": ["/from/mirror", "~/.claude/plugins"],
+                    "~/.claude/plugins": ["/from/mirror"],
                 }}},
             },
         )
-        assert snap.agent.claude.common.plugins.host == "/from/pref"
+        dest = "/home/agent/.claude/plugins"
+        assert _meta_node(snap, "agent", "claude", "common", dest).src == "/from/pref"
         # …and the retired table contributes nothing anywhere else either.
-        assert snap.meta.box.agent.common.plugins.host == "/from/pref"
+        assert _meta_node(
+            snap, "meta", "box", "agent", "common", dest,
+        ).src == "/from/pref"
 
     def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
         """⚑ MEASURED, and it corrects the brief's prediction.
@@ -2974,14 +3062,15 @@ class TestPrefIsInertWhereItMustBe:
         would break it silently."""
         snap = _pref_snap(
             tmp_path,
-            box={"pref": {"agent": {"claude": {"common": {"x": ["/s", "~/d"]}}}}},
+            box={"pref": {"agent": {"claude": {"common": {"~/d": ["/s"]}}}}},
         )
         entries = snapshot_category_entries(
             snap, active_agent="claude", box_ctx=_ctx(),
         )
         assert all(not e.key.startswith("pref.") for e in entries)
-        # ...but the INSTALLED target IS emitted.
-        assert any(e.key == "agent.claude.common.x" for e in entries)
+        # ...but the INSTALLED target IS emitted. ⚑ The declaration key's last
+        # segment is the DESTINATION now, not an entry name (R-10).
+        assert any(e.key == "agent.claude.common./home/agent/d" for e in entries)
 
 
 class TestPrefFreeByteIdentity:

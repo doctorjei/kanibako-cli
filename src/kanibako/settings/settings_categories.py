@@ -147,7 +147,9 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 #   verbs must be able to name one in a refusal.  ⚑ MEMBERSHIP MOVES, THE QUESTION
 #   DOES NOT: as each category goes dest-keyed it moves to the terminal tuple and
 #   drops out of this one automatically.  Nothing here asserts anything about WHICH
-#   categories those are.
+#   categories those are — and as of 2026-08-08c it is EMPTY, because all six
+#   moved.  That is the DERIVATION working, not a special case: the per-entry
+#   dotted key does not exist for any bind-shaped category any more.
 # * :data:`SETTABLE_BIND_CATEGORIES` — which bind-shaped categories may be named
 #   in a ``config set`` / ``config reset`` key.  **EMPTY.  All six are YAML-only.**
 #
@@ -162,12 +164,27 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 #
 # * ``{system,workset,box}.<any-of-the-six>.<name>`` — recognised by
 #   :data:`SCOPE_BIND_KEY_RE`, refused by ``config_keys.scope_bind_retired_error``.
-# * ``agent.<node>.bindings.{ro,rw}.<name>`` — recognised by the node-splitting
-#   ``config_keys._AGENT_NODE_BIND_RE`` (which must also canonicalize the ``+``
-#   node segment, so it cannot be folded into the regex above), refused by
-#   ``config_keys.agent_node_bind_retired_error``.
-# * ``agent.<node>.<a NON-TERMINAL category>.<name>`` — recognised by
-#   :data:`BIND_KEY_RE` at the agent scope, refused by that same function.
+# * ``agent.<node>.<any-of-the-six>.<name>`` — recognised by the node-splitting
+#   :data:`AGENT_BIND_KEY_RE` (the node segment may itself be dotted, so it cannot
+#   be folded into the regex above), refused by
+#   ``config_keys.agent_node_bind_retired_error``.  The ``bindings`` arms are ALSO
+#   matched by the narrower ``config_keys._AGENT_NODE_BIND_RE``, which is the READ
+#   parser, not the recogniser — see :data:`AGENT_BIND_KEY_RE`.
+#
+# ⚑ THE READ ROUTE IS THE TERMINAL KEY, NOT THE ENTRY (2026-08-08c).  The
+# per-entry dotted spelling is not a key at ANY scope now, so ``config get``
+# reads ``<scope>.<category>`` — the WHOLE dest-keyed map — through
+# ``settings_keyspace.is_terminal_category_tail``, exactly as it already read
+# ``<scope>.bindings.ro`` and ``<scope>.masks``.  ⚑ A per-entry spelling is
+# therefore refused WITHOUT a read to offer: the refusal names the terminal key
+# and says the entry lives inside its value, rather than promising a ``config
+# get`` of the entry.  ⚑ THE ONE EXCEPTION IS THE AGENT-SCOPE TERMINAL READ:
+# ``config get agent.<node>.<category>`` still resolves through
+# ``config_dest``'s known-broken ``_CATEGORY`` arm to the NOUN's settings file
+# rather than to ``agents/<node>/settings.yaml``, so the value it returns is the
+# wrong file's.  That arm's repointing is an OWED, separately-ruled pass (it moves
+# ``agent_config.agent_file_route``, the per-agent file-shape SoT); it is named
+# here so nothing writes a message promising that read works.
 #
 # NOTE the regex order: ``bindings.ro`` / ``bindings.rw`` must precede a bare
 # ``bindings`` (there is none), and ``caches``/``seeded``/``common``/``synced`` are
@@ -182,18 +199,22 @@ _BIND_CATEGORIES: Final[tuple[str, ...]] = (
 #:
 #: ⚑ A MIRROR, NOT THE DEFINITION.  The keyspace validator owns that:
 #: ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` (which also lists ``masks`` — a
-#: terminal category, but not bind-shaped, so it is absent here).  It is spelled
-#: again rather than imported because this module is deliberately stdlib-only (see
-#: the module docstring), and the two are PINNED EQUAL by
+#: terminal category, but not bind-shaped, so it is absent here).  It is DERIVED
+#: from :data:`_BIND_CATEGORIES` rather than imported because this module is
+#: deliberately stdlib-only (see the module docstring), and the two are PINNED
+#: EQUAL by
 #: ``test_settings_keyspace.test_the_bind_shaped_terminal_mirror_cannot_drift`` so
 #: the mirror cannot drift.
-#: ⚑ THIS IS THE TUPLE THAT MOVES as the disk-store rework proceeds: each category
-#: that goes dest-keyed is added HERE (in the same pass that flips its parsing),
-#: and every derivation below follows.
-_TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = ("bindings.ro", "bindings.rw")
+#: ⚑ THIS TUPLE FINISHED MOVING 2026-08-08c: it is now ALL SIX.  Every
+#: bind-shaped category is dest-keyed and terminal, so
+#: :data:`_NON_TERMINAL_BIND_CATEGORIES` below is EMPTY and
+#: :data:`BIND_KEY_RE` compiles its never-matching form.  A category is added
+#: here in the same pass that flips its parsing, never before.
+_TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = _BIND_CATEGORIES
 #: The bind-shaped categories that still have a PER-ENTRY DOTTED KEY — derived as
 #: the complement of the terminal ones, so "terminal" has exactly one definition
-#: here and this can never disagree with it.
+#: here and this can never disagree with it.  ⚑ EMPTY since 2026-08-08c; the
+#: derivations below (notably :data:`BIND_KEY_RE`) handle that case EXPLICITLY.
 _NON_TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
     c for c in _BIND_CATEGORIES if c not in _TERMINAL_BIND_CATEGORIES
 )
@@ -259,13 +280,15 @@ _NON_TERMINAL_CATEGORY_ALT = "|".join(
 #: The categories NO scope may name in a set/reset key any more — derived as the
 #: DIFFERENCE from ``_BIND_CATEGORIES``, so "settable" has exactly one definition
 #: (:data:`SETTABLE_BIND_CATEGORIES`) and the regexes below cannot drift apart.
-#: Since DS-BL1 = (a) that difference is ALL SIX.  Exported because
-#: ``config_keys`` pins its own node-splitting twin against it — ⚑ that twin
-#: covers the TERMINAL ``bindings`` ARMS ONLY and is pinned as a SUBSET, not an
-#: equality: a non-terminal category is refused at the agent scope through
-#: :data:`BIND_KEY_RE` instead, because routing them through the node parser would
-#: send their READ into ``agent_config.agent_file_route``, which has no shape for
-#: them (it would read the dotted leaf ``self."common.x"``).
+#: Since DS-BL1 = (a) that difference is ALL SIX.  It feeds BOTH scope regexes
+#: below (:data:`SCOPE_BIND_KEY_RE`, :data:`AGENT_BIND_KEY_RE`), so the file and
+#: agent doors cover the same categories by DERIVATION rather than by two hand
+#: lists.  ⚑ ``config_keys._AGENT_NODE_BIND_RE`` also pins itself against this
+#: tuple, as a SUBSET rather than an equality, and that is a MEASUREMENT: it is the
+#: agent-scope READ parser, and ``agent_config.agent_file_route`` has a nested
+#: table for ``bindings.<arm>.<name>`` and none for the other four (it would read
+#: the dotted leaf ``self."common.x"``).  Recognition is derived here; resolution
+#: is not.
 RETIRED_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
     c for c in _BIND_CATEGORIES if c not in SETTABLE_BIND_CATEGORIES
 )
@@ -283,12 +306,36 @@ _RETIRED_CATEGORY_ALT = "|".join(
 #:
 #: ⚑ It deliberately does NOT cover the AGENT scope.  ``agent.<node>``'s node
 #: segment must be split NON-GREEDILY and canonicalized (``+`` -> ``℘``) before
-#: anything else can be done with it, so the agent-scope spellings have their own
-#: parsers — ``config_keys._AGENT_NODE_BIND_RE`` for the ``bindings`` arms and
-#: :data:`BIND_KEY_RE` for the NON-TERMINAL ones — and those, not a
-#: second copy of this one, are what recognise them.
+#: anything else can be done with it, so the agent-scope spelling has its own
+#: recogniser, :data:`AGENT_BIND_KEY_RE` — built from the SAME alternation, so the
+#: two doors cover the same six categories without a second hand list.
 SCOPE_BIND_KEY_RE = re.compile(
     rf"^(?P<scope>{_FILE_SCOPE_ALT})"
+    rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
+)
+#: ``agent.<node>.<bind-shaped category>.<name>`` — the AGENT-scope twin of
+#: :data:`SCOPE_BIND_KEY_RE`, over the SAME derived alternation, so the two scopes
+#: cannot come to cover different category sets.  It exists for ONE reason: to be
+#: RECOGNISED and refused BY NAME (``config_keys.agent_node_bind_retired_error``,
+#: ``config_keys.is_known_key``).
+#:
+#: ⚑ THE NODE IS NON-GREEDY, and that is the whole reason this cannot be folded
+#: into the regex above: a node segment may itself contain dots
+#: (``navigator.v2℘claude``), so the FIRST category segment is what splits node
+#: from name.  An UNDISCRIMINATED ``agent.<category>.<name>`` therefore does NOT
+#: match — the agent tier is discriminated (spec §0/§2d) and an undeclared
+#: spelling must stay unrecognised rather than be quietly admitted.
+#:
+#: ⚑⚑ RECOGNITION ONLY — IT PICKS NO READ ROUTE, and that separation is load-bearing.
+#: ``config_keys._AGENT_NODE_BIND_RE`` is the narrower parser that DOES pick one
+#: (``agent_config.agent_file_route``), and it covers the ``bindings`` arms alone
+#: because that file-shape SoT has a nested table for ``bindings.<arm>.<name>`` and
+#: none for the other four: widening THAT parser would resolve
+#: ``agent.claude.common.plugins`` to the dotted leaf ``self."common.plugins"`` and
+#: answer a silent "(not set)".  Recognising a spelling in order to REFUSE it is a
+#: different job from resolving one, so it gets a different parser.
+AGENT_BIND_KEY_RE = re.compile(
+    rf"^agent\.(?P<node>.+?)"
     rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
 )
 # The PER-ENTRY bind-shaped key shape — a NON-TERMINAL bind category's
@@ -298,23 +345,29 @@ SCOPE_BIND_KEY_RE = re.compile(
 # ⚑⚑ THIS IS NOT A "SETTABLE" SHAPE ANY MORE.  Under DS-BL1 = (a) nothing
 # bind-shaped is CLI-settable, so an alternation over
 # :data:`SETTABLE_BIND_CATEGORIES` would be EMPTY — a ``(?P<category>)`` group that
-# matches the empty string and accepts ``system..foo``.  What the three consumers of
-# this regex actually need is the per-ENTRY RECOGNITION shape: ``config get`` still
-# reads these keys at a dotted path, ``is_known_key`` must read them as keys rather
-# than project names, and the write verbs must refuse them BY NAME (spec §0) — none
-# of which is settability.  So it is built from the NON-TERMINAL complement; a
+# matches the empty string and accepts ``system..foo``.  What its consumers needed
+# was the per-ENTRY shape, for a question that is not settability: does a per-entry
+# dotted key EXIST here?  So it is built from the NON-TERMINAL complement; a
 # terminal arm is absent for the reason it always was — there is no per-entry
 # spelling of one at all.
 #
-# ⚑⚑⚑ IT FAILS CLOSED WHEN THE COMPLEMENT EMPTIES, and that is not hypothetical:
-# the disk-store rework converts these categories to dest-keyed a group at a time,
-# and when the last one lands ``_NON_TERMINAL_BIND_CATEGORIES`` is ``()``.  An empty
-# alternation would silently produce the degenerate ``system..foo``-accepting
-# pattern, so the empty case compiles a NEVER-MATCHING regex instead: no category has
-# a per-entry key, therefore nothing matches.  ⚑ The pass that empties the
-# complement OWES its consumers a read route for the new shape — this guard keeps
-# that a VISIBLE absence (every per-entry get answers "not a key") rather than a
-# silent widening.
+# ⚑⚑⚑ IT FAILS CLOSED, AND SINCE 2026-08-08c THAT IS ITS ONLY STATE: the last
+# non-terminal category went dest-keyed, ``_NON_TERMINAL_BIND_CATEGORIES`` is
+# ``()``, and this compiles ``(?!)`` — no per-entry key exists under any
+# bind-shaped category, therefore nothing matches.  (An empty ALTERNATION would
+# instead have produced the degenerate ``system..foo``-accepting pattern, which is
+# why the empty case is spelled explicitly rather than left to ``"|".join``.)
+#
+# ⚑ THE READ ROUTE THIS GUARD ONCE OWED ITS CONSUMERS IS PAID, and it was paid by
+# ANSWERING the question rather than by widening anything: a per-entry spelling is
+# not a key at any scope, so there is no per-entry read to route.  What the
+# consumers needed instead was RECOGNITION — so the verbs refuse a retired spelling
+# BY NAME (spec §0 refuses loudly, never quietly) and ``is_known_key`` does not
+# mistake it for a project name — and that is :data:`SCOPE_BIND_KEY_RE` at the file
+# scopes and :data:`AGENT_BIND_KEY_RE` at the agent scope, both derived from
+# :data:`RETIRED_BIND_CATEGORIES`.  ⚑ DO NOT RE-OPEN THIS REGEX to restore a
+# refusal: a match here would mean "this per-entry key exists", which is the one
+# thing that is no longer true.
 BIND_KEY_RE = re.compile(
     rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
     rf"\.(?P<category>{_NON_TERMINAL_CATEGORY_ALT})\.(?P<name>.+)$"
@@ -392,9 +445,14 @@ class CategoryEntry:
     For ``env`` entries, *box_dest* is the variable NAME and *options* holds the
     resolved variable VALUE (env carries no path / mount flags).
 
-    *key* is the FULL DECLARED KEY this entry came from
-    (``agent.claude.common.plugins``, ``box.bindings.rw.home``) — the
-    DISCRIMINATED spelling, so its agent segment names a real agent tier
+    *key* is the DECLARATION KEY plus the ENTRY'S DESTINATION
+    (``agent.claude.common.~/.claude/plugins``, ``box.bindings.rw.~/w``) — a
+    diagnostic IDENTIFIER, ⚑ not a keyspace key: since 2026-08-08c every
+    bind-shaped category is TERMINAL, so the part that IS a key ends at the
+    category and the trailing segment is the map's DEST, which is data.  (It read
+    ``agent.claude.common.plugins`` here while that per-name spelling was still a
+    key.)  It carries the DISCRIMINATED spelling, so its agent segment names a real
+    agent tier
     (``agent.<agent>`` / ``agent.default``) and never the bare ``agent.`` form
     §0 forbids. It is DISTINCT from *scope*, which is the BARE precedence
     token, and it replaces nothing: three consumers need it and none of them can
@@ -423,28 +481,25 @@ class CategoryEntry:
     emitter (``settings_launch.snapshot_category_entries(optional_keys=…)``), never
     by a resolve-time ``exists()`` probe: this module is PURE.
 
-    ⚑⚑ *dest_space* says which FILESYSTEM NAMESPACE ``box_dest`` is spelled in, and
-    it exists because the two are TEXTUALLY INDISTINGUISHABLE AND CAN COLLIDE:
+    ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN (2026-08-08c).
+    ``box_dest`` is a GUEST path for EVERY category, bind-shaped or copy-shaped —
+    spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.  A COPY's guest dest is the
+    SPELLING; the copy is RESOLVED to the box store when it runs, by the ONE
+    translator ``container._guest_dest_to_host``.  So there are no longer two
+    namespaces to tell apart, nothing for an entry to carry, and
+    :func:`reconcile_categories` groups on the bare ``box_dest``.
 
-    * ``"guest"`` (the default, and every MOUNT) — an in-box path such as
-      ``/home/agent/.claude``, translated to its host counterpart by
-      ``container._guest_dest_to_host``.
-    * ``"host"`` — an ABSOLUTE HOST path a COPY writes to directly, used by the
-      §2a seed layers, whose dest is the key ``@meta.box.path/home``.  (Until
-      2026-08-07g ``@box.canon/handbook`` was a second one; those layers left the
-      category — HOST templates, not GUEST templates — and the box handbook is now
-      filled by ``launch.templates.install_box_handbook_template``.  The
-      discriminator is unchanged and still LIVE: the home dest is host-spelled.)
-
-    On a host whose user home IS ``/home/agent`` (this project's own dev box, and
-    the seadog LXC test envs), a host dest such as
-    ``/home/agent/.local/share/kanibako/…/boxes/demo/home`` starts with the guest
-    home prefix, so the guest translator would map it BACK under the box home and
-    the copy would land somewhere nothing reads — silently, reporting success.  The
-    fix cannot be a smarter prefix test; the entry has to CARRY ITS SPACE.
-    :func:`reconcile_categories` therefore groups on ``(dest_space, box_dest)``, so
-    a host COPY and a guest MOUNT that happen to share a dest STRING stay two
-    entries and the "every mount beats ``seeded``" rule cannot silently eat the seed.
+    ⚑ WHAT THE RETIRED FIELD WAS FOR, kept as the record of a real bug it closed:
+    the §2a seed layers used to spell their dest ``@meta.box.path/home`` — an
+    ABSOLUTE HOST path.  On a host whose user home IS ``/home/agent`` (this
+    project's own dev box, and the seadog LXC test envs) such a path STARTS WITH
+    the guest home prefix, so the guest translator mapped it BACK under the box
+    home and the copy landed where nothing reads it, silently reporting success.
+    No prefix test could tell the two apart, so the entry carried its space.  The
+    RESPELL removed the ambiguity at the source instead: the seed dest is now
+    ``~/``, which needs no discriminator because it is not a host path at all.
+    ⚑ Do not reintroduce a host-spelled dest — the discriminator that made it
+    safe is gone.
 
     ⚑ THE ``canon`` NAMING TRAP, quarantined here because both spellings meet in
     this dataclass: a box store holds TWO different ``canon`` directories.
@@ -465,7 +520,6 @@ class CategoryEntry:
     key: str
     is_credential: bool = False
     optional: bool = False
-    dest_space: str = "guest"
 
 
 def _bind_options(category: str) -> str:
@@ -523,7 +577,7 @@ class ReconciledCategories:
     Each MOUNT ``box_dest`` appears at most once (mounts SHADOW, so an
     identical-dest collision is resolved to one winner per the §0 table). COPIES
     OVERLAY rather than shadow, so a dest targeted by ``seeded`` copies ONLY keeps
-    every copy (in apply order) — the layered ``seeded.template`` trio all seed
+    every copy (in apply order) — the layered ``seeded[~/]`` trio all seed
     into ``~`` and last-wins-merge there. A dest shared by a mount and copies
     reverts to the single mount winner (the copy cannot survive under a live
     shadow mount) EXCEPT for a ``synced`` copy-sync, which outranks a non-``masks``
@@ -590,7 +644,7 @@ def reconcile_categories(
     states them independently of the table):
 
     * a PURE-``seeded`` dest keeps EVERY entry — copies OVERLAY, they do not
-      shadow, so the layered ``seeded.template`` trio is not a collision at all;
+      shadow, so the layered ``seeded[~/]`` trio is not a collision at all;
     * a ``synced`` copy-sync replaces a ``seeded`` at the same dest;
     * a ``synced`` (COPY) and a ``binding`` (MOUNT) at the EXACT same dest is a
       CONFIG ERROR (a copy cannot override a live mount), never a silent no-op;
@@ -639,21 +693,25 @@ def reconcile_categories(
     envs = [e for e in gated if e.delivery == ENV]
     path_entries = [e for e in gated if e.delivery != ENV]
 
-    # --- group by (dest_space, resolved box_dest); resolve each group per §0.
+    # --- group by resolved box_dest; resolve each group per §0.
     # Preserve input order — "the existing ordering" the table's row 5 defers to.
     #
-    # ⚑ THE SPACE IS PART OF THE KEY, not decoration. A ``host``-space COPY dest and
-    # a ``guest``-space MOUNT dest are drawn from two DIFFERENT namespaces that can
-    # produce the same STRING (a host store under a ``/home/agent`` user home — see
-    # ``CategoryEntry.dest_space``). Keyed on the bare dest they would be reconciled
-    # as one destination and the copy-vs-mount rule would silently drop the seed.
-    by_dest: dict[tuple[str, str], list[CategoryEntry]] = {}
+    # ⚑ THE BARE DEST IS THE WHOLE KEY (2026-08-08c). It used to be
+    # ``(dest_space, box_dest)``, because a COPY's dest was an absolute HOST path
+    # and a MOUNT's was a guest path — two namespaces that can produce the same
+    # STRING. Copy dests are GUEST-spelled now (spec §0 "ONE DEST SPACE, TWO
+    # DELIVERIES"), so there is one namespace and one key.
+    # ⚑⚑ THIS TURNED COLLISION RULES BACK ON that the split key made unreachable:
+    # a COPY and a MOUNT at one dest now meet in ``_resolve_dest_group`` and the
+    # cross-delivery ladder there decides between them. That is the intended
+    # consequence of collapsing the key, not a side effect to route around.
+    by_dest: dict[str, list[CategoryEntry]] = {}
     for e in path_entries:
-        by_dest.setdefault((e.dest_space, e.box_dest), []).append(e)
+        by_dest.setdefault(e.box_dest, []).append(e)
 
     winners: list[CategoryEntry] = []
     warnings: list[CategoryCollision] = []
-    for (_space, box_dest), group in by_dest.items():
+    for box_dest, group in by_dest.items():
         kept, group_warnings = _resolve_dest_group(box_dest, group)
         winners.extend(kept)
         warnings.extend(group_warnings)
@@ -821,7 +879,7 @@ def _resolve_copy_group(copy_sub: list[CategoryEntry]) -> list[CategoryEntry]:
     PER-FILE (later scope overlays earlier — the module's "most-specific scope
     lands LAST" apply order); it does NOT physically shadow the whole dest the way
     a MOUNT does. So a dest targeted by ``seeded`` copies ONLY keeps them ALL, in
-    apply order — which is what lets the layered ``seeded.template`` trio
+    apply order — which is what lets the layered ``seeded[~/]`` trio
     (system+agent+workset, all seeding into ``~``) co-exist and last-wins-merge at
     the seam that applies them (``commands.start._apply_init_seeds`` stages
     same-dest seeds in this order). Overlaying copies displace nothing, so this is

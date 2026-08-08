@@ -283,8 +283,10 @@ def _declaration_delivery(decl_key: str) -> str:
 
     The category is the segment after the scope, and the AGENT scope is
     DISCRIMINATED — two segments (``agent.<tier>``) where every other scope is
-    one. Parsed by position rather than by substring search, so a name that
-    happens to spell a category (``box.caches.common``) cannot be misread.
+    one. Parsed by position rather than by substring search, so a trailing
+    DESTINATION that happens to spell a category (``box.caches.common``) cannot be
+    misread. (The trailing segment is a dest, not a name: the four categories went
+    terminal and dest-keyed on 2026-08-08c.)
 
     The delivery itself is read off ``settings_categories._DELIVERY``: it has ONE
     definition, and a display keeping its own copy would drift the moment a

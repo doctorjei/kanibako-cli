@@ -337,16 +337,19 @@ def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any:
 def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
     """FILTER 1 — is the target a VALID key? (spec §2h)
 
-    ⚑ VALIDITY, not EXISTENCE. ``agent.claude.common.boooooo`` is legal: a
-    new name inside a parametric family is exactly what a user may want to add.
-    An existence test would permit only modifying keys that already hold a value.
+    ⚑ VALIDITY, not EXISTENCE. ``agent.claude.env.BOOOOOO`` is legal: a new name
+    inside a parametric family is exactly what a user may want to add. An existence
+    test would permit only modifying keys that already hold a value.
 
-    ⚑ The example used to be ``agent.claude.bindings.rw.boooooo``, and that is no
-    longer a key: ``bindings.{ro,rw}`` went TERMINAL and DEST-KEYED (spec §2a;
-    R-5/R-10), so only the BARE ARM ``agent.claude.bindings.rw`` is a valid pref
-    target and the destinations live inside its value. The name-keyed families
-    (``common`` / ``caches`` / ``seeded`` / ``synced`` / ``env`` / ``secret_path``)
-    still carry the free ``<name>``, which is what this clause is about.
+    ⚑⚑ NO BIND-SHAPED CATEGORY IS SUCH A FAMILY ANY MORE, and this docstring twice
+    said otherwise. Its example was ``agent.claude.bindings.rw.boooooo`` until those
+    arms went TERMINAL and DEST-KEYED (spec §2a; R-5/R-10), then
+    ``agent.claude.common.boooooo`` until 2026-08-08c did the same to ``common`` /
+    ``caches`` / ``seeded`` / ``synced``. Both spellings are now REFUSED by
+    :func:`key_validity` — correctly — so only the BARE terminal key
+    (``agent.claude.common``) is a valid pref target and the destinations live
+    inside its value. The families that DO still carry a free ``<name>`` are
+    ``env.<VAR>``, ``secret_path.<VAR>`` and the agent discriminator itself.
     """
     return key_validity(
         target,
@@ -736,14 +739,79 @@ def pref_request_for(
     return winner
 
 
+def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
+    """Every DECLARATION-ENTRY key *req* can account for.
+
+    A settings ENTRY is identified downstream (collision errors,
+    ``binding_derivations.*``) by ``<decl-scope>.<category>.<dest>``. For most
+    targets that string IS the pref target — ``pref.agent.claude.env.FOO``
+    requests exactly the key ``agent.claude.env.FOO``, because ``<VAR>`` is a key
+    SEGMENT. For the SEVEN terminal dest-keyed categories (the six bind-shaped
+    ones plus ``masks``) it is not: the target stops at the category
+    (:func:`key_reason` REFUSES ``agent.claude.common.<name>``) and the
+    destinations live INSIDE the value. One request there accounts for one entry
+    key PER DESTINATION IT DECLARES.
+
+    ⚑⚑ **THE DESTINATIONS ARE READ FROM THE REQUEST'S OWN VALUE, not derived by
+    trimming the entry key.** A bare prefix test (``key.startswith(target + ".")``)
+    is the tempting one-liner and it MISATTRIBUTES: two prefs may target one
+    category from the workset and box levels while declaring DIFFERENT
+    destinations, and the entry at a given dest may not have come from a pref at
+    all (the agent settings file and the launch floor also write these keys, they
+    just resolve LOWER). Containment answers both — a request that does not
+    declare the destination cannot be its origin, and two requests that both
+    declare it are separated by the same last-wins rule the overlays use.
+
+    ⚑ A DECLARED-``None`` destination is EXCLUDED. Present-``None`` is the
+    per-entry suppression spelling (§2h / §6e): it removes the entry rather than
+    installing one, so a surviving entry at that dest is somebody else's. Erring
+    this way costs at most a missing annotation; the other way prints a wrong
+    file path.
+
+    ⚑ The terminal-category test gates on the KEYSPACE
+    (:func:`is_terminal_category_tail`), not on "the value happens to be a dict" —
+    only a terminal category's value is a dest-keyed map, and deriving the set
+    from the keyspace is what stops this falling behind the next flip. A terminal
+    target whose value is NOT a map (a malformed ``pref.agent.claude.common:
+    "oops"``) yields the bare target, which is exactly what the adapter's own
+    error names.
+    """
+    if not is_terminal_category_tail(req.target.split(".")):
+        return (req.target,)
+    value = req.value
+    if not isinstance(value, dict):
+        return (req.target,)
+    return tuple(
+        f"{req.target}.{dest}"
+        for dest in dict.keys(value)
+        if dict.__getitem__(value, dest) is not None
+    )
+
+
 def pref_origin(
     target_key: str, requests: Sequence[PrefRequest],
 ) -> PrefRequest | None:
     """The request that INSTALLED *target_key*, for error enrichment.
 
-    A collision error names the DECLARATION key (``agent.claude.common.newthing``)
-    — a key a user who wrote ``pref.agent.claude.common.newthing`` never wrote and
-    cannot write. This lets the one CLI seam that renders such an error say where
-    the entry actually came from.
+    A collision error identifies an entry by the DECLARATION KEY plus that entry's
+    DEST (``agent.claude.common.~/newthing``) — an identifier a user who wrote
+    ``pref.agent.claude.common`` never wrote and cannot write, because the dest
+    lives INSIDE the value that pref carries. This lets the one CLI seam that
+    renders such an error say where the entry actually came from.
+
+    Matching is containment in :func:`pref_entry_keys`, which is the EXACT
+    :attr:`PrefRequest.target` for every non-terminal target and the
+    per-destination expansion for the seven terminal dest-keyed categories. Last
+    request wins, matching the overlay precedence (box after workset).
+
+    ⚑ :func:`pref_request_for` is deliberately NOT reused here. Its contract is
+    exact target equality, the read that agent SELECTION depends on
+    (``pref_value(prefs, "system.agent")``), and widening it so this diagnostic
+    could reach the dest-keyed categories would silently change that read. Two
+    questions, two functions.
     """
-    return pref_request_for(requests, target_key)
+    winner: PrefRequest | None = None
+    for req in requests:
+        if target_key in pref_entry_keys(req):
+            winner = req
+    return winner

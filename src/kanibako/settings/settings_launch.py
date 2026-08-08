@@ -98,9 +98,11 @@ from kanibako.settings.settings_store import (
 )
 
 
-# The category tokens that hold bind-shaped (``Bind``) leaves in the snapshot's
-# ``<scope>.<category>`` subtrees. ``bindings`` carries ``ro`` / ``rw`` sub-nodes;
-# the rest are flat ``<category>.<name>`` bind maps.
+# The bind-shaped category tokens that ARE the terminal key — the snapshot's
+# ``<scope>.<category>`` node IS the dest-keyed ``BindMap``. ``bindings`` is the
+# odd one out (its map sits under an ``ro`` / ``rw`` ARM) and is handled by its own
+# two-line branch at each site, never folded in here: the difference is the DEPTH
+# of the node, which is exactly what a shared set would hide.
 _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
     {"caches", "seeded", "common", "synced"}
 )
@@ -109,6 +111,24 @@ _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
 # drift foot-gun. Order is NOT load-bearing here: the L1334 emit loop re-sorts by
 # its own ``scope_order`` map, so the containment order is safe to reuse verbatim.
 _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
+
+#: The dotted-key TAILS a DEST-KEYED bind map can sit at in a default-category
+#: floor table — the ``bindings`` ARMS plus each of the four terminal categories.
+#: One tuple so the per-entry ``""``-suppression in :func:`category_floor` cannot
+#: fall out of step with the reader.
+_BIND_FLOOR_TAILS: tuple[str, ...] = (".bindings.ro", ".bindings.rw") + tuple(
+    f".{c}" for c in sorted(_BIND_LEAF_CATEGORIES)
+)
+
+
+def _is_bind_floor_key(key: str) -> bool:
+    """Does the floor key *key* address a whole DEST-KEYED bind map?
+
+    True for ``<scope>.bindings.{ro,rw}`` and ``<scope>.<one of the four>``. The
+    tail test is deliberate: a floor key is always scope-qualified, so the
+    category can never be the WHOLE key and a bare ``common`` cannot match.
+    """
+    return key.endswith(_BIND_FLOOR_TAILS)
 
 
 # --------------------------------------------------------------------------- #
@@ -1176,8 +1196,10 @@ def build_launch_snapshot(
     # see the module note; no shipped default table uses "".)
     #
     # OS1 (agent scope): the agent-scope default tables arrive ALREADY DISCRIMINATED
-    # (``default_common()`` → ``agent.<agent>.common.plugins``, ``default_seeds()`` →
-    # ``agent.<agent>.seeded.*``) — the declaring plugin builds the discriminated key
+    # (``default_common()`` → ``agent.<agent>.common``, ``default_seeds()`` →
+    # ``agent.<agent>.seeded``, each holding a whole dest-keyed map since
+    # 2026-08-08c — the older ``agent.<agent>.common.plugins`` spelling in this note
+    # was the retired per-name key) — the declaring plugin builds the discriminated key
     # in :mod:`kanibako.settings.agent_defaults`, because the snapshot agent tier is
     # DISCRIMINATED (§2d / §0 — NO bare ``agent.<key>``) and the bare form must
     # not exist anywhere. A box/workset/agent file STILL overrides them by name
@@ -1197,13 +1219,16 @@ def build_launch_snapshot(
             ):
                 floor[key] = {str(dest): True for dest in val}
                 continue
-            # bindings arms are DEST-KEYED and TERMINAL (R-5), so the whole arm is
-            # ONE floor key and the ""-suppression above can now only reach the arm
-            # as a whole. Apply it PER ENTRY as well, or the reshape would silently
-            # coarsen the smallest suppressible unit from a binding to an arm — a
+            # Every bind-shaped category is DEST-KEYED and TERMINAL (R-5;
+            # 2026-08-08c), so the whole map is ONE floor key and the
+            # ""-suppression above can now only reach the category as a whole.
+            # Apply it PER ENTRY as well, or the reshape would silently coarsen the
+            # smallest suppressible unit from an entry to a whole category — a
             # behaviour change nobody ruled. (No shipped default uses ``""``; this
             # keeps the latent path exactly as wide as it was.)
-            if key.endswith((".bindings.ro", ".bindings.rw")) and isinstance(val, dict):
+            # ⚑ The ``masks`` bridge above is a DIFFERENT thing and stays where it
+            # is: it converts a LIST to the keyed shape, it does not filter.
+            if _is_bind_floor_key(key) and isinstance(val, dict):
                 floor[key] = {d: v for d, v in val.items() if v != ""}
                 continue
             floor[key] = val
@@ -2026,7 +2051,6 @@ def snapshot_category_entries(
     active_agent: str,
     box_ctx: ResolveCtx,
     optional_keys: frozenset[str] = frozenset(),
-    host_dest_keys: frozenset[str] = frozenset(),
 ) -> list[CategoryEntry]:
     """Walk the snapshot's category subtrees → the ``list[CategoryEntry]``
     :func:`reconcile_categories` consumes (the SAME shape the retired by-name
@@ -2060,20 +2084,20 @@ def snapshot_category_entries(
     value-less (one entry per masked dest). Reads via the UNBOUND ``dict`` protocol
     (S3).
 
-    *optional_keys* / *host_dest_keys* are matched against the FULL DISCRIMINATED
-    ``CategoryEntry.key`` and set :attr:`~kanibako.settings.settings_categories.CategoryEntry.
-    optional` / ``dest_space="host"`` on the matching entries. Both default EMPTY, so
-    every caller that does not pass them gets byte-identical output. They are
-    DECLARATION facts the snapshot cannot carry (a bind tuple has two path slots and
-    no room for a third meaning), and they are supplied by the ONE launch aggregation
-    site: ``canon_optional_bind_keys()`` for the skip-if-absent handbook chapters,
-    and ``templates.seed_keys_of()`` — the ``*.seeded.template`` key names — for the
-    §2a seed layers whose dests are HOST paths. ⚑ There is NO ``seeded.handbook``
-    key: those layers left the category on 2026-08-07g, so the ONE host seed dest
-    the discriminator selects for is ``@meta.box.path/home``. ⚑ Neither is a
-    heuristic on the VALUE — see
-    ``CategoryEntry.dest_space`` for why a prefix test on the dest string cannot be
-    made correct.
+    *optional_keys* is matched against the FULL DISCRIMINATED
+    ``CategoryEntry.key`` and sets
+    :attr:`~kanibako.settings.settings_categories.CategoryEntry.optional` on the
+    matching entries. It defaults EMPTY, so every caller that does not pass it gets
+    byte-identical output. It is a DECLARATION fact the snapshot cannot carry (a
+    bind entry has a source slot and no room for a second meaning), supplied by the
+    ONE launch aggregation site: ``canon_optional_bind_keys()`` for the
+    skip-if-absent handbook chapters. ⚑ It is not a heuristic on the VALUE.
+
+    ⚑ THE ``host_dest_keys`` COMPANION IS GONE (2026-08-08c). Every destination is
+    GUEST-spelled now — copies included (spec §0 "ONE DEST SPACE, TWO DELIVERIES")
+    — so there is no second namespace for a key set to select. Do not reintroduce
+    one; see ``CategoryEntry`` for the bug the discriminator used to close and why
+    the respell closed it at the source instead.
     """
     collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
     scope_order = {"system": 0, "agent": 1, "workset": 2, "box": 3}
@@ -2119,7 +2143,7 @@ def snapshot_category_entries(
         _emit_scope_node(
             collected, scope_node, order=order, scope=scope,
             box_dest_fn=_box_dest, decl_scope_fn=decl_scope_fn,
-            optional_keys=optional_keys, host_dest_keys=host_dest_keys,
+            optional_keys=optional_keys,
         )
 
     collected.sort(key=lambda pair: pair[0])
@@ -2309,18 +2333,18 @@ def _require_category_node(key_prefix: str, category: str, node: object) -> None
     """
     if isinstance(node, KeyStore):
         return
-    if "." in category:
-        # An ARM (``bindings.ro``) — names live under it, values do not.
-        declared = f"{key_prefix}.{category}.<name>"
-    else:
-        declared = (
-            f"{key_prefix}.bindings.{{ro,rw}}.<name>" if category == "bindings"
-            else f"{key_prefix}.{category}.<name>"
-        )
+    # Every bind-shaped category is a TERMINAL dest-keyed map (2026-08-08c), so
+    # what a user must declare is the MAP, keyed by destination — never a
+    # ``.<name>`` entry, which is no longer a key at any scope.
+    declared = (
+        f"{key_prefix}.bindings.{{ro,rw}}" if category == "bindings"
+        else f"{key_prefix}.{category}"
+    )
     raise SettingsError(
         f"{key_prefix}.{category} is a value at a CATEGORY ROOT "
         f"({type(node).__name__}: {node!r}), which is not a declared key; "
-        f"declare {declared} (spec §2d L906-910)"
+        f"declare {declared} as a map keyed by box destination, "
+        f"{{box_dest: [src[, options]]}} (spec §2a / §2d L906-910)"
     )
 
 
@@ -2333,7 +2357,6 @@ def _emit_scope_node(
     box_dest_fn,
     decl_scope_fn,
     optional_keys: frozenset[str] = frozenset(),
-    host_dest_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Emit every category entry under ONE (bare) scope NODE.
 
@@ -2360,63 +2383,26 @@ def _emit_scope_node(
     RAISE (naming the key and the shape expected) rather than skip. ``_emit_bind``
     itself holds no leaf type at all — see its docstring.
     """
-    # bindings.{ro,rw}
+    # bindings.{ro,rw} — the ARMED category: the map is one level under the token.
     bindings = dict.get(scope_node, "bindings", _MISSING)
     if isinstance(bindings, KeyStore):
         for mode in ("ro", "rw"):
             mode_node = dict.get(bindings, mode, _MISSING)
-            if not isinstance(mode_node, KeyStore):
-                continue
-            category = f"bindings.{mode}"
-            for dest in dict.keys(mode_node):
-                entry = dict.__getitem__(mode_node, dest)
-                key = f"{decl_scope_fn(category, dest)}.{category}.{dest}"
-                # ⚑ THE DEST-KEYED TYPE SEAM (R-5/R-6). The arm KEY *is* the
-                # (unresolved) box destination and the leaf is a 2-element
-                # ``BindEntry(src, opts)`` that carries no destination at all.
-                # The type is ruled in HERE, at the seam that knows the shape,
-                # and the destination handed to ``_emit_bind`` below is the arm
-                # key — never a value field. That is what makes
-                # "mount at the destination stored in the value" UNREPRESENTABLE
-                # rather than merely guarded against (R-8).
-                if not isinstance(entry, BindEntry):
-                    raise SettingsError(
-                        f"category {key} is {type(entry).__name__}, expected a "
-                        f"BindEntry (a bindings arm is dest-keyed: the arm key is "
-                        f"the destination; present-None binds are omitted at "
-                        f"build, §3/§6e)"
-                    )
-                _emit_bind(
-                    collected, order, scope, category, dest,
-                    entry.src, dest, entry.opts, box_dest_fn,
-                    key=key,
-                    optional_keys=optional_keys, host_dest_keys=host_dest_keys,
+            if isinstance(mode_node, KeyStore):
+                _emit_bind_map(
+                    collected, mode_node, order=order, scope=scope,
+                    category=f"bindings.{mode}", box_dest_fn=box_dest_fn,
+                    decl_scope_fn=decl_scope_fn, optional_keys=optional_keys,
                 )
 
-    # caches / seeded / common / synced
+    # caches / seeded / common / synced — the map is AT the category token.
     for category in _BIND_LEAF_CATEGORIES:
         cat_node = dict.get(scope_node, category, _MISSING)
-        if not isinstance(cat_node, KeyStore):
-            continue
-        for name in dict.keys(cat_node):
-            bind = dict.__getitem__(cat_node, name)
-            key = f"{decl_scope_fn(category, name)}.{category}.{name}"
-            # ⚑ THE NAME-KEYED TYPE SEAM. These four categories are still keyed
-            # by NAME and their leaves are the 3-element ``Bind(host, box, opts)``
-            # that carries its own destination; they are OUT OF SCOPE for the
-            # dest-keying rework. A ``BindEntry`` here has no destination to
-            # deliver, so it is refused by key rather than half-emitted.
-            if not isinstance(bind, Bind):
-                raise SettingsError(
-                    f"category {key} is {type(bind).__name__}, "
-                    f"expected a Bind (present-None binds are omitted at "
-                    f"build, §3/§6e)"
-                )
-            _emit_bind(
-                collected, order, scope, category, name,
-                bind.host, bind.box, bind.opts, box_dest_fn,
-                key=key,
-                optional_keys=optional_keys, host_dest_keys=host_dest_keys,
+        if isinstance(cat_node, KeyStore):
+            _emit_bind_map(
+                collected, cat_node, order=order, scope=scope,
+                category=category, box_dest_fn=box_dest_fn,
+                decl_scope_fn=decl_scope_fn, optional_keys=optional_keys,
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped
@@ -2495,6 +2481,55 @@ def _emit_scope_node(
             ))
 
 
+def _emit_bind_map(
+    collected: list[tuple[tuple[int, str, str], CategoryEntry]],
+    map_node: KeyStore,
+    *,
+    order: int,
+    scope: str,
+    category: str,
+    box_dest_fn,
+    decl_scope_fn,
+    optional_keys: frozenset[str] = frozenset(),
+) -> None:
+    """Emit every entry of ONE terminal DEST-KEYED category map.
+
+    The single loop behind all six bind-shaped categories. *map_node* is the
+    ``BindMap`` node itself — found at the ARM for ``bindings.{ro,rw}`` and at the
+    CATEGORY TOKEN for ``caches`` / ``seeded`` / ``common`` / ``synced``. The two
+    differ only in WHERE the caller found the node; the node's contents and
+    everything done with them are identical, so this is written once
+    (2026-08-08c collapsed two near-identical loops that had already drifted in
+    their error text).
+
+    ⚑ THE DEST-KEYED TYPE SEAM (R-5/R-6). The map KEY *is* the (unresolved) box
+    destination and the leaf is a 2-element ``BindEntry(src, opts)`` that carries
+    no destination at all. The type is ruled in HERE, at the seam that knows the
+    shape, and the destination handed to :func:`_emit_bind` is the map key —
+    never a value field. That is what makes "mount at the destination stored in
+    the value" UNREPRESENTABLE rather than merely guarded against (R-8).
+
+    ⚑ ``name`` is the DESTINATION for every category now. There is no entry name
+    in the keyspace, so the collision messages and the ``binding_derivations.*``
+    materialisation identify an entry by where it lands — which is what R-10 means
+    by "the destination IS the identity".
+    """
+    for dest in dict.keys(map_node):
+        entry = dict.__getitem__(map_node, dest)
+        key = f"{decl_scope_fn(category, dest)}.{category}.{dest}"
+        if not isinstance(entry, BindEntry):
+            raise SettingsError(
+                f"category {key} is {type(entry).__name__}, expected a "
+                f"BindEntry ({category} is dest-keyed: the map key is the "
+                f"destination; present-None binds are omitted at build, §3/§6e)"
+            )
+        _emit_bind(
+            collected, order, scope, category, dest,
+            entry.src, dest, entry.opts, box_dest_fn,
+            key=key, optional_keys=optional_keys,
+        )
+
+
 def _emit_bind(
     collected: list[tuple[tuple[int, str, str], CategoryEntry]],
     order: int,
@@ -2508,18 +2543,12 @@ def _emit_bind(
     *,
     key: str,
     optional_keys: frozenset[str] = frozenset(),
-    host_dest_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY).
 
     ⚑ This function takes PRIMITIVES, not a bind object, and that is the point
-    (P7 ruling). It serves BOTH the dest-keyed ``bindings.{ro,rw}`` arms — where
-    the destination is the ARM KEY and the leaf is a 2-element
-    :class:`~kanibako.settings.settings_store.BindEntry` — and the four
-    still-name-keyed leaf categories, whose 3-element
-    :class:`~kanibako.settings.settings_store.Bind` carries its own destination.
-    Two leaf shapes, one emitter: so the SHAPE is ruled in by each caller, at the
-    seam that knows which shape it holds, and by the time anything gets here
+    (P7 ruling). Its one caller, :func:`_emit_bind_map`, has already ruled in the
+    leaf TYPE at the seam that knows the shape, so by the time anything gets here
     there is only ONE unpacked triple and no second place a destination could
     come from. A leaf type check inside here would put two shapes in one function
     (CONVENTIONS §0) and would leave "take the dest from the value" expressible.
@@ -2531,25 +2560,19 @@ def _emit_bind(
 
     *key* is the DISCRIMINATED declaration key the caller built from
     ``decl_scope_fn`` — carried on the entry for the collision messages and the
-    ``binding_derivations.*`` materialisation.
+    ``binding_derivations.*`` materialisation. *optional_keys* is matched on it.
 
-    *optional_keys* / *host_dest_keys* are matched on that same *key*. A HOST-space
-    dest is taken VERBATIM — it is already an absolute host path (``_expand_bind``
-    resolved its ``@``-refs host-side) and running it through the GUEST expansion
-    would be a category error: a ``~`` in a host dest means the HOST home, and the
-    guest pass would rewrite it to ``/home/agent``.
-
-    ⚑ There is deliberately NO absoluteness assertion here. The one way a host dest
-    can arrive degenerate is an embedded ref coerced to ``""`` by §6b, and the
-    CONTAINMENT check at the applier (``commands.start._host_copy_dest``) already
-    refuses anything that does not land inside the box store — which covers the
-    degenerate case AND the ``..`` escape §2a actually names, in the one place that
-    knows the box store root. A second, weaker check here would be a hard launch
-    error where the applier gives a skip plus a message naming the key.
+    ⚑⚑ EVERY DEST IS GUEST-SPELLED, COPIES INCLUDED (spec §0 "ONE DEST SPACE, TWO
+    DELIVERIES", 2026-08-08c) — so there is ONE resolution here and no space
+    discriminator. A COPY's guest dest is resolved to the box store later, when
+    the copy runs, by ``container._guest_dest_to_host``. The retired
+    ``host_dest_keys`` parameter and ``CategoryEntry.dest_space`` field existed
+    only because the seed layers used to spell their dest as an absolute HOST
+    path; see ``CategoryEntry`` for the bug that made them necessary and why the
+    respell closed it at the source instead.
     """
     delivery = _DELIVERY[category]
-    dest_space = "host" if key in host_dest_keys else "guest"
-    box_dest = box_dest_raw if dest_space == "host" else box_dest_fn(box_dest_raw)
+    box_dest = box_dest_fn(box_dest_raw)
     if delivery == "MOUNT":
         # opts: the per-entry override wins; else the category default.
         # For an agent DELIVERY bind this matches OLD descriptor_mounts EXACTLY for
@@ -2573,7 +2596,6 @@ def _emit_bind(
             name=name,
             key=key,
             optional=key in optional_keys,
-            dest_space=dest_space,
         ),
     ))
 

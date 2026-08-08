@@ -87,21 +87,26 @@ def _entry_set(rec: ReconciledCategories) -> dict:
 # bare-relative source — see the module docstring.
 #
 # ⚑ THE TWO SIDES ARE SPELLED DIFFERENTLY ON PURPOSE, and the difference is exactly
-# one ruling. The LIVE floor is dest-keyed (R-3/R-5): ``box.bindings.{ro,rw}`` is a
-# TERMINAL key whose value is the whole ``{box_dest: (src[, options])}`` map, and
-# the entry NAME is gone (R-10). The FROZEN oracle predates all of that and is
+# one ruling. The LIVE floor is dest-keyed (R-3/R-5): ``box.bindings.{ro,rw}`` and —
+# since 2026-08-08c — ``<scope>.{caches,seeded,common,synced}`` are TERMINAL keys
+# whose value is the whole ``{box_dest: (src[, options])}`` map, and the entry NAME
+# is gone (R-10). The FROZEN oracle predates all of that and is
 # quarantined in the retired name-keyed ``<scope>.<category>.<name> = (src, dest
 # [, options])`` shape forever — it is a drift tripwire, not an authority, so it is
 # NOT migrated. Keeping both tables written out, rather than deriving one from the
 # other, is what keeps the comparison a real one instead of a tautology.
+#
+# ⚑⚑ THE COMPARISON'S PREMISE SURVIVED THE FLIP UNCHANGED, and that is worth
+# saying plainly because it is what makes the respell below safe: ``_entry_set``
+# compares ``(category, scope, host_src, box_dest, options)`` and has NEVER
+# compared the entry NAME. Dest-keying moved where the destination is WRITTEN, not
+# what it resolves to, so both sides still have to agree on the same five facts.
 def _default_categories(agent: str) -> dict:
-    """The LIVE production-shaped default table: dest-keyed arms, agent-scope keys
-    DISCRIMINATED.
+    """The LIVE production-shaped default table: dest-keyed throughout, agent-scope
+    keys DISCRIMINATED.
 
-    A plugin builds its own ``agent.<agent>.<category>.<name>`` keys (there is no
-    bare ``agent.<category>`` anywhere), so the table is agent-specific.
-    ``common`` is NOT dest-keyed — this arc is bindings-only — so it keeps the
-    name-keyed pair.
+    A plugin builds its own ``agent.<agent>.<category>`` keys (there is no bare
+    ``agent.<category>`` anywhere), so the table is agent-specific.
     """
     return {
         # ⚑ ``~/`` is deliberate: R-11 normalizes a dest, so this key IS
@@ -115,9 +120,12 @@ def _default_categories(agent: str) -> dict:
         "box.bindings.ro": {
             "/opt/kanibako": ("/opt/k", "ro"),
         },
-        f"agent.{agent}.common.plugins": (
-            f"@system.agents/{agent}/common/plugins", "~/.claude/plugins",
-        ),
+        # ⚑ ``common`` is TERMINAL too since 2026-08-08c: the dest moved out of the
+        # value and into the map key. The oracle's ``agent.common.plugins`` row
+        # below still spells the same delivery the retired way.
+        f"agent.{agent}.common": {
+            "~/.claude/plugins": (f"@system.agents/{agent}/common/plugins",),
+        },
         "box.masks": ["/home/agent/secret"],
         "box.env.FOO": "bar",
     }
