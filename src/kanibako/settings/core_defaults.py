@@ -1220,7 +1220,6 @@ def _warn_unprotected(
 
 def helper_default_categories(
     *,
-    box_state_kanibako: str,
     socket_path: Path,
     log_path: Path,
 ) -> BindArmTable:
@@ -1232,32 +1231,36 @@ def helper_default_categories(
     appends inside the ``helpers_enabled`` block routed through the category
     resolver.
 
-    Both box-side destinations are DYNAMIC: derived from the box's
-    ``box_state_home(container_env)`` (passed in as *box_state_kanibako*, an
-    absolute box path) — so the loader injects BOTH the probed host source AND the
-    runtime-derived box destination at the seam (the file carries only the symbolic
-    source names + options).  ⚑ Under dest-keying that runtime-derived destination
-    is the arm's MAP KEY, which is why the declarative file cannot carry it.  The host SOURCES (*socket_path* / *log_path*) are runtime-probed and
-    GATED on ``.exists()`` here, reproducing the old skip-if-missing appends: a
+    Both box-side destinations are STATIC and carried by the declarative file as
+    ``~``-spelled dests under the fixed pinned root
+    (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`), absolutized
+    to ``GUEST_HOME`` by :func:`~kanibako.settings.settings_resolve.normalize_bind_dest`
+    inside :func:`add_bind` (R-11) — exactly like every other declared dest in the
+    file.  They carry no ``$XDG_STATE_HOME`` token: a mount dest is written into the
+    runtime's arguments BEFORE the box is live, so resolving XDG host-side bought
+    only a four-way hand-held agreement that had already drifted; the box's real XDG
+    location is served after boot by ``box_supervisor.project_pinned_xdg``.  Only the
+    host SOURCES (*socket_path* / *log_path*) are runtime-probed and injected at the
+    seam, GATED on ``.exists()`` here — reproducing the old skip-if-missing appends: a
     missing socket/log simply omits its key.
 
     ⚠ helper_sock options MUST be ``""`` (empty): it is a LIVE unix socket the hub
     listens on; a ``Z``/``U`` relabel/chown would break the shared socket topology.
     The per-entry empty-options 3rd slot carries that through ``unpack_bind``.
     """
-    base = box_state_kanibako.rstrip("/")
-    sources: dict[str, tuple[Path, str]] = {
-        # symbolic source name -> (probed host source, dynamic box dest)
-        "helper_sock": (socket_path, f"{base}/helper.sock"),
-        "helper_log": (log_path, f"{base}/helpers.jsonl"),
+    sources: dict[str, Path] = {
+        # symbolic source name -> probed host source (the DEST is in the file)
+        "helper_sock": socket_path,
+        "helper_log": log_path,
     }
 
     binds: BindArmTable = {}
     for entry in _load_doc().get("helpers", []):
-        src_path, box_dest = sources[entry["source"]]
+        src_path = sources[entry["source"]]
         # Skip-if-missing gate (parity with the old `.exists()`-guarded appends).
         if not src_path.exists():
             continue
+        box_dest = str(entry["box_dest"])
         category = entry["category"]
         # B2b: helper_log routes through the spec's own formula
         # ``@workset.logs/@{meta.box.name}.jsonl`` (§2c) — byte-identical to the

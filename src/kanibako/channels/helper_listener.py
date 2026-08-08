@@ -12,7 +12,7 @@ from typing import Any
 
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
-from kanibako.settings.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
 from kanibako.targets.base import Mount
 
 logger = get_logger("helper_listener")
@@ -598,16 +598,17 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if spawn_toml.is_file():
         mounts.append(Mount(spawn_toml, f"{GUEST_HOME}/spawn.yaml", "ro"))
 
-    # Helper socket — mount the hub socket into the helper.  The box-side dest
-    # is XDG_STATE_HOME-aware: derived from the helper's container env (the same
-    # single derivation start.py + helper-init.sh use) so all sides agree.
+    # Helper socket — mount the hub socket into the helper.  The box-side dest is
+    # the FIXED pinned root, the same path ``core-defaults.yaml`` declares for the
+    # director's box, that ``helper-init.sh`` registers against and that the in-box
+    # CLI reads.  Nothing is derived from the helper's env: a mount dest is written
+    # into the runtime's arguments before the helper is live, and the box's real XDG
+    # location is served after boot by ``box_supervisor.project_pinned_xdg``.
     if ctx.socket_path.exists():
-        from kanibako.settings.paths import box_state_home
-
-        box_socket = box_state_home(ctx.env) / "kanibako" / "helper.sock"
-        kanibako_dir = helper_root / ".local" / "state" / "kanibako"
+        kanibako_dir = helper_root / BOX_PINNED_STATE_RELPATH
         kanibako_dir.mkdir(parents=True, exist_ok=True)
-        mounts.append(Mount(ctx.socket_path, str(box_socket), ""))
+        box_socket = f"{GUEST_HOME}/{BOX_PINNED_STATE_RELPATH}/helper.sock"
+        mounts.append(Mount(ctx.socket_path, box_socket, ""))
 
     # Target binary mounts (same agent binary as the director)
     mounts.extend(ctx.binary_mounts)

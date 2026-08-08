@@ -5909,7 +5909,7 @@ class TestMergeDefaultCategoriesFoldsArmsPerEntry:
                 "/opt/kanibako": ("/host/pkg", "ro"),
             }}),
             ("helpers", {"box.bindings.ro": {
-                "/home/agent/.local/state/kanibako/helpers.jsonl": (
+                "/home/agent/.kanibako/state/helpers.jsonl": (
                     "/host/log", "ro",
                 ),
             }}),
@@ -5918,7 +5918,7 @@ class TestMergeDefaultCategoriesFoldsArmsPerEntry:
         assert table["box.bindings.ro"] == {
             "/home/agent/canon": ("/host/canon", "ro"),
             "/opt/kanibako": ("/host/pkg", "ro"),
-            "/home/agent/.local/state/kanibako/helpers.jsonl": (
+            "/home/agent/.kanibako/state/helpers.jsonl": (
                 "/host/log", "ro",
             ),
         }

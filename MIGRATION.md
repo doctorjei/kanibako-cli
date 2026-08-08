@@ -1042,6 +1042,52 @@ both arms, which is a launch-time collision — the same outcome as before, when
 names to produce it. The share help text used to claim two shares could never target one
 destination; that claim was wrong before this change and has been corrected.
 
+### 2.22 New fixed box directory `~/.kanibako/`; the helper socket and log moved into it
+
+**What changed.** Inside a box, the helper hub socket and the helper message log are now mounted at
+fixed paths under a new directory, and no longer follow that box's `$XDG_STATE_HOME`:
+
+| Inside the box | v1.7.x | v1.8.0 |
+|---|---|---|
+| helper socket | `$XDG_STATE_HOME/kanibako/helper.sock` | `~/.kanibako/state/helper.sock` |
+| helper message log | `$XDG_STATE_HOME/kanibako/helpers.jsonl` | `~/.kanibako/state/helpers.jsonl` |
+
+`~` is the box's home, so in practice `/home/agent/.kanibako/state/`. Both filenames are unchanged,
+and the **host-side** log path is untouched.
+
+**You are still served at the XDG location.** Once the box is up, kanibako points
+`$XDG_STATE_HOME/kanibako` at `~/.kanibako/state` with a symlink, so anything that resolves the XDG
+way finds the same files. With no `XDG_STATE_HOME` set that means `~/.local/state/kanibako` — the
+exact path v1.7.x used — keeps working. The projection is made **after** the box is live, which is
+the only time the box's own XDG settings can actually be read.
+
+**⚑ The one case that needs a hand: a box created before v1.8.0.** Such a box already has a real
+directory at `~/.local/state/kanibako` (it was a mount destination), and kanibako will **not** delete
+a directory you own. It leaves it alone and logs a warning, so the symlink is not created and that
+old path keeps showing stale, empty files. Nothing breaks — `kanibako helper` and `kanibako fork`
+read `~/.kanibako/state` directly — but to get the XDG path served again, remove the stale directory
+inside the box once and relaunch:
+
+```
+rm -rf ~/.local/state/kanibako     # inside the box; it holds nothing but dead mountpoints
+```
+
+**Who else this affects: a box that sets `XDG_STATE_HOME` to a non-default absolute path.** The
+mount itself no longer follows that setting — but the post-boot symlink does, so a reader using
+`$XDG_STATE_HOME/kanibako/helper.sock` still lands on the socket. Only something that ran *before*
+the box finished starting would see the difference.
+
+**Why.** A mount destination is written into the container runtime's arguments before the box
+exists, and a `seeded` copy runs at `create` with no container at all — so a destination containing
+`$XDG_STATE_HOME` had to be resolved by the **host**, guessing what the box would say. That guess
+was maintained by hand in four places, and they were already out of step: kanibako derived the mount
+destination from `$XDG_STATE_HOME` while hardcoding the matching directory creation at
+`~/.local/state`, so a box that set the variable got its directory made in one place and its socket
+mounted in another. `~/.kanibako/` is a fixed location that resolves identically on both sides,
+always — and it is the general answer for anything else in this class, so the same fix does not have
+to be re-invented per feature. XDG compliance comes back afterwards, properly, from inside the live
+box.
+
 ---
 
 ## 3. For plugin authors
@@ -1901,6 +1947,13 @@ The host roots live under `@system.channelroot` (system scope) and
 **workset-local** one (`channels/share/<box>`).
 
 ### 7.4 Box-side helper socket / log dest (XDG-aware)
+
+> ⚑ **Superseded in v1.8.0 — see §2.22.** The XDG-awareness described below was reverted:
+> both destinations moved to the fixed `~/.kanibako/state/`, and the XDG location is served
+> from there by a symlink made after the box boots. The filename change
+> (`helper-messages.jsonl` → `helpers.jsonl`) still stands. If you are upgrading past
+> v1.8.0, do **not** follow this section's advice to derive the path from `$XDG_STATE_HOME`
+> — read §2.22 instead.
 
 The in-box helper socket and message-log destinations are now XDG-aware (they
 honor `$XDG_STATE_HOME` if it is set and absolute, else fall back to

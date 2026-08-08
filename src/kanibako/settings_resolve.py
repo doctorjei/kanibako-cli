@@ -32,6 +32,12 @@ import warnings
 # at this path before the move.  Carried explicitly: cheap, and a published
 # wheel reaching for it keeps working.
 from kanibako.settings.settings_resolve import (
+    BOX_PINNED_ROOT_RELPATH as BOX_PINNED_ROOT_RELPATH,
+)
+from kanibako.settings.settings_resolve import (
+    BOX_PINNED_STATE_RELPATH as BOX_PINNED_STATE_RELPATH,
+)
+from kanibako.settings.settings_resolve import (
     CANONICAL_SEP as CANONICAL_SEP,
 )
 from kanibako.settings.settings_resolve import (

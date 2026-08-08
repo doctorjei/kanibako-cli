@@ -2110,3 +2110,109 @@ class TestReapZombieChildren:
                 _os.waitpid(pid, _os.WNOHANG)
         finally:
             _reap_quietly(pid)
+
+
+# --------------------------------------------------------------------------- #
+# POST-BOOT XDG PROJECTION (project_pinned_xdg)                                #
+# --------------------------------------------------------------------------- #
+#
+# The host half of the ruling pins the mount dests under ~/.kanibako/state because a
+# mount dest must be concrete before the box is live. This half restores XDG
+# compliance once there IS a box: $XDG_STATE_HOME/kanibako is pointed at the pinned
+# dir. It is a SYMLINK, not the bind mount the design first reached for -- a box runs
+# with an empty effective capability set, so an in-box `mount --bind` cannot execute.
+
+
+class TestProjectPinnedXdg:
+    def test_default_xdg_gets_a_symlink_to_the_pinned_dir(self, tmp_path):
+        """With no XDG_STATE_HOME set, ~/.local/state/kanibako serves the pinned dir."""
+        created = bs.project_pinned_xdg(home=tmp_path, environ={})
+        link = tmp_path / ".local" / "state" / "kanibako"
+        assert created == [str(link)]
+        assert link.is_symlink()
+        assert link.resolve() == (tmp_path / ".kanibako" / "state").resolve()
+
+    def test_pinned_dir_is_created_so_the_link_is_never_dangling(self, tmp_path):
+        bs.project_pinned_xdg(home=tmp_path, environ={})
+        assert (tmp_path / ".kanibako" / "state").is_dir()
+
+    def test_absolute_xdg_state_home_is_honored(self, tmp_path):
+        """The projection follows the box's XDG setting -- that is its whole point:
+        the HOST could not read it, PID-1 can."""
+        elsewhere = tmp_path / "srv" / "state"
+        created = bs.project_pinned_xdg(
+            home=tmp_path, environ={"XDG_STATE_HOME": str(elsewhere)},
+        )
+        assert created == [str(elsewhere / "kanibako")]
+        assert (elsewhere / "kanibako").resolve() == (
+            tmp_path / ".kanibako" / "state"
+        ).resolve()
+
+    def test_relative_xdg_state_home_is_ignored_per_spec(self, tmp_path):
+        """A relative value is invalid per the XDG spec -> the default is used."""
+        created = bs.project_pinned_xdg(
+            home=tmp_path, environ={"XDG_STATE_HOME": "relative/state"},
+        )
+        assert created == [str(tmp_path / ".local" / "state" / "kanibako")]
+
+    def test_second_run_is_a_no_op(self, tmp_path):
+        """PID-1 may re-run on a relaunch; a correct link is left alone, not
+        recreated (and not reported as created)."""
+        assert bs.project_pinned_xdg(home=tmp_path, environ={})
+        assert bs.project_pinned_xdg(home=tmp_path, environ={}) == []
+
+    def test_existing_real_directory_is_never_clobbered(self, tmp_path):
+        """A box upgraded from a release that MOUNTED at ~/.local/state/kanibako has
+        a real directory there. Deleting a user's directory is not PID-1's call, so
+        the projection declines and the box comes up normally."""
+        link = tmp_path / ".local" / "state" / "kanibako"
+        link.mkdir(parents=True)
+        (link / "leftover.jsonl").write_text("keep me\n")
+        assert bs.project_pinned_xdg(home=tmp_path, environ={}) == []
+        assert not link.is_symlink()
+        assert (link / "leftover.jsonl").read_text() == "keep me\n"
+
+    def test_foreign_symlink_is_not_repointed(self, tmp_path):
+        other = tmp_path / "other"
+        other.mkdir()
+        link = tmp_path / ".local" / "state" / "kanibako"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(other)
+        assert bs.project_pinned_xdg(home=tmp_path, environ={}) == []
+        assert link.resolve() == other.resolve()
+
+    def test_same_path_is_skipped(self, tmp_path, monkeypatch):
+        """The guard: nothing to project when the two resolve to one place.
+
+        ⚑ It cannot fire for TODAY's row -- `$XDG_STATE_HOME/kanibako` can only
+        equal `~/.kanibako/state` if the facet dir is named `kanibako`, and it is
+        named `state`. So the row is substituted here to exercise the guard for
+        real and to record the one shape that reaches it: a future facet named
+        `kanibako` with the box pointing that XDG var at the pinned root. The guard
+        is kept rather than deleted precisely because the table is meant to grow.
+        """
+        monkeypatch.setattr(
+            bs, "XDG_PROJECTIONS", (("XDG_STATE_HOME", ".local/state", "kanibako"),),
+        )
+        created = bs.project_pinned_xdg(
+            home=tmp_path, environ={"XDG_STATE_HOME": str(tmp_path / ".kanibako")},
+        )
+        assert created == []
+        # And nothing was made on the way to deciding that.
+        assert not (tmp_path / ".kanibako").exists()
+
+    def test_unwritable_home_logs_and_returns_rather_than_raising(self, tmp_path):
+        """PID-1 must never die of this: the pinned path is the REAL location and
+        every in-box kanibako reader spells it directly, so a failed projection
+        costs a convenience, not the box."""
+        home = tmp_path / "home"
+        home.mkdir()
+        home.chmod(0o500)
+        try:
+            assert bs.project_pinned_xdg(home=home, environ={}) == []
+        finally:
+            home.chmod(0o700)
+
+    def test_projection_table_has_one_row_and_names_state(self):
+        """The table shape is the point: a second facet is a ROW, not a mechanism."""
+        assert bs.XDG_PROJECTIONS == (("XDG_STATE_HOME", ".local/state", "state"),)

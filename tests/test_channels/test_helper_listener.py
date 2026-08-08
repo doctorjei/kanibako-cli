@@ -168,7 +168,7 @@ class TestBuildHelperMounts:
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert any(m.destination == "/home/agent/.local/state/kanibako/helper.sock" for m in mounts)
+        assert any(m.destination == "/home/agent/.kanibako/state/helper.sock" for m in mounts)
 
     def test_no_socket_mount_when_missing(self, tmp_path):
         """Socket is not mounted when it doesn't exist."""
@@ -186,7 +186,7 @@ class TestBuildHelperMounts:
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert not any(m.destination == "/home/agent/.local/state/kanibako/helper.sock" for m in mounts)
+        assert not any(m.destination == "/home/agent/.kanibako/state/helper.sock" for m in mounts)
 
 
 class TestHubSocketProtocol:
@@ -666,7 +666,6 @@ class TestHelperDefaultCategories:
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
-            box_state_kanibako="/home/agent/.local/state/kanibako",
             socket_path=sock,
             log_path=log,
         )
@@ -676,7 +675,7 @@ class TestHelperDefaultCategories:
         # unchanged — an EXPLICIT ``""``, never Z/U/z, and never absent (an absent
         # slot would take the ``rw`` category default, which IS ``Z,U``).
         sock_val = cats["box.bindings.rw"][
-            "/home/agent/.local/state/kanibako/helper.sock"
+            "/home/agent/.kanibako/state/helper.sock"
         ]
         assert sock_val == (str(sock), "")
         assert len(sock_val) == 2 and sock_val[1] == ""
@@ -686,7 +685,6 @@ class TestHelperDefaultCategories:
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
-            box_state_kanibako="/home/agent/.local/state/kanibako",
             socket_path=sock,
             log_path=log,
         )
@@ -697,7 +695,7 @@ class TestHelperDefaultCategories:
         # emitted host_src is the @-ref chain.
         # ⚑ Re-derived for dest-keying: the dest is the map key now.
         assert cats["box.bindings.ro"] == {
-            "/home/agent/.local/state/kanibako/helpers.jsonl": (
+            "/home/agent/.kanibako/state/helpers.jsonl": (
                 "@workset.logs/@{meta.box.name}.jsonl",
                 "ro",
             ),
@@ -711,7 +709,6 @@ class TestHelperDefaultCategories:
         log = tmp_path / "helpers.jsonl"
         log.touch()
         cats = core_defaults.helper_default_categories(
-            box_state_kanibako="/home/agent/.local/state/kanibako",
             socket_path=tmp_path / "nonexistent.sock",
             log_path=log,
         )
@@ -720,7 +717,7 @@ class TestHelperDefaultCategories:
         # A skipped socket leaves no ``rw`` arm at all — the socket is the only
         # thing this producer puts there — and the log's dest must still be present.
         assert "box.bindings.rw" not in cats
-        assert "/home/agent/.local/state/kanibako/helpers.jsonl" in (
+        assert "/home/agent/.kanibako/state/helpers.jsonl" in (
             cats["box.bindings.ro"]
         )
 
@@ -738,7 +735,6 @@ class TestHelperDefaultCategories:
 
         sock, log = self._sources(tmp_path)
         cats = core_defaults.helper_default_categories(
-            box_state_kanibako="/home/agent/.local/state/kanibako",
             socket_path=sock,
             log_path=log,
         )
@@ -777,16 +773,16 @@ class TestHelperDefaultCategories:
         # assertion.
         sock_mount = next(
             e for e in reconciled.mounts
-            if e.name == "/home/agent/.local/state/kanibako/helper.sock"
+            if e.name == "/home/agent/.kanibako/state/helper.sock"
         )
         assert sock_mount.options == ""
         assert sock_mount.box_dest == (
-            "/home/agent/.local/state/kanibako/helper.sock"
+            "/home/agent/.kanibako/state/helper.sock"
         )
         # And the log bind's @-ref chain resolves back to the probed log path —
         # the formula and the .exists()-gated literal must agree (PHASE R).
         log_mount = next(
             e for e in reconciled.mounts
-            if e.name == "/home/agent/.local/state/kanibako/helpers.jsonl"
+            if e.name == "/home/agent/.kanibako/state/helpers.jsonl"
         )
         assert log_mount.host_src == str(log)

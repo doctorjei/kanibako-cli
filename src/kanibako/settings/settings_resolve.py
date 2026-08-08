@@ -52,6 +52,37 @@ GUEST_HOME = "/home/agent"
 # these so the calling host user always lands on the in-box agent user.
 GUEST_UID = 1000
 GUEST_GID = 1000
+
+# The FIXED box-side root for state that CANNOT resolve without a live box but
+# MUST be placed before the box is live.  Part of the same box-layout contract as
+# GUEST_HOME above — machinery, NOT a settings key.
+#
+# The problem it solves: a mount destination goes into the container runtime's
+# argument list before anything is running, and a `copy` category runs at
+# `create` with no container at all — so a destination containing a `$XDG_*`
+# token has to be resolved by the HOST, guessing at what the box would say.  The
+# guess was maintained by hand across four separate resolvers, and they were
+# already out of agreement (`start.py` derived the helper dest from
+# `$XDG_STATE_HOME` while hardcoding the matching `mkdir` at `~/.local/state`).
+# One fixed root deletes the whole class: it resolves identically on both sides,
+# always.  XDG compliance is then restored PROPERLY, after boot, by projecting
+# this root onto the box's real XDG locations
+# (`kanibako.box_supervisor.project_pinned_xdg`) rather than by four resolvers
+# agreeing.
+#
+# ⚑ HOME-RELATIVE by design: the three consumers anchor it differently — the box's
+# own `$HOME` in-box, the box-home BIND SOURCE host-side (`proj.shell_path`), and a
+# `~` expression in the defaults data — so a leading `~` or an absolute
+# `/home/agent` would be wrong for two of the three.
+# ⚑ NARROW: this is a compromise for the resolve-before-liveness class ONLY.  The
+# HOST-side roots (`config.data`, `system.cache`, `system.runtime`) resolve eagerly
+# with a real environment to read and do NOT belong here.
+BOX_PINNED_ROOT_RELPATH = ".kanibako"
+#: The STATE facet of :data:`BOX_PINNED_ROOT_RELPATH` — the pinned counterpart of
+#: ``$XDG_STATE_HOME/kanibako``.  Further facets (cache, runtime, …) become further
+#: names here, never a second mechanism.
+BOX_PINNED_STATE_RELPATH = f"{BOX_PINNED_ROOT_RELPATH}/state"
+
 MAX_REF_DEPTH = 64
 
 _VAR_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
