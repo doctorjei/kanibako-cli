@@ -1,8 +1,7 @@
 """Automated OAuth refresh via headless browser.
 
-Uses Playwright (optional dependency) to navigate the Claude Code OAuth
-authorization page and click "Authorize" when the IdP session is still
-valid.  Falls back to manual login when the session is stale.
+Uses Playwright (optional dependency) to navigate the Claude Code OAuth authorization page & click
+"Authorize" when the IdP session is still valid. Falls back to manual login when session is stale.
 
 Requires: ``pip install playwright && playwright install chromium``
 """
@@ -65,8 +64,7 @@ def refresh_auth(
     """Attempt automated OAuth re-authorization via headless browser.
 
     1. Load stored browser state (cookies from previous sessions)
-    2. Navigate to the OAuth URL
-    3. If authorize button is visible → click it → extract key
+    2. At OAuth URL, if authorize button is visible, click it → extract key
     4. If IdP login form is shown → abort (manual login required)
     5. Save updated browser state on success
 
@@ -121,9 +119,8 @@ def refresh_auth(
 def _handle_auth_page(page) -> AuthResult:
     """Detect and handle the OAuth authorization page.
 
-    Looks for an authorize button or a login form. If the IdP session
-    is still valid, the authorize button should be visible. If not,
-    a login form (Google, GitHub, etc.) will be shown instead.
+    Looks for an authorize button or a login form. If IdP session is still valid, authorize button
+    should be visible. If not, a login form (Google, GitHub, etc.) will be shown instead.
     """
 
     # Check for authorize/approve button (Anthropic consent screen)
@@ -163,10 +160,7 @@ def _handle_auth_page(page) -> AuthResult:
         try:
             el = page.wait_for_selector(selector, timeout=2000)
             if el and el.is_visible():
-                return AuthResult(
-                    success=False,
-                    error="IdP session expired — manual login required",
-                )
+                return AuthResult(success=False, error="IdP session expired; manual login required",)
         except PWTimeout:
             continue
 
@@ -195,10 +189,9 @@ def auto_refresh_auth(
     4. If the browser clicks "Authorize", the redirect completes the login
     5. Wait for ``claude auth login`` to finish
 
-    *env*, when supplied, fully replaces the environment of the spawned
-    ``claude auth login`` process.  Callers pass it to inject
-    ``DISABLE_AUTOUPDATER=1`` so this host exec does not wake Claude's async
-    background auto-updater mid-launch.
+    *env*, when supplied, fully replaces the environment of the spawned ``claude auth login``
+    process.  Callers pass it to inject ``DISABLE_AUTOUPDATER=1`` so this host exec does not wake
+    Claude's async background auto-updater mid-launch.
 
     Returns :class:`AuthResult` indicating success or failure.
     """
@@ -208,10 +201,7 @@ def auto_refresh_auth(
     from kanibako.auth_parser import parse_auth_output
 
     if not _check_playwright():
-        return AuthResult(
-            success=False,
-            error="Playwright not installed",
-        )
+        return AuthResult(success=False, error="Playwright not installed", )
 
     # Start claude auth login, capturing output to find the URL.
     try:
