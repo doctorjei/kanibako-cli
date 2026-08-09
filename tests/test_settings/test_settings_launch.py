@@ -2458,6 +2458,97 @@ def test_workset_anchor_floor_meta_box_path_per_mode():
         assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
 
 
+def _box_root_floor(mode: str) -> dict[str, object]:
+    """The minimum floor that lets the box root (and so ``meta.box.home``) resolve."""
+    from kanibako.settings.settings_launch import workset_anchor_floor
+
+    floor: dict[str, object] = {"meta.workset.path": "/data/ws", "meta.box.name": "b"}
+    floor.update(workset_anchor_floor(mode=mode))
+    return floor
+
+
+def test_meta_box_home_resolves_under_the_box_root_in_every_mode():
+    """``meta.box.home`` is the RO DERIVED box-home SOURCE ``@meta.box.path/home``.
+
+    UNIFORM in every mode (spec §2c ALL PROJECTS), exactly like
+    ``meta.box.settings``: ONE formula, with the whole per-mode variation living in
+    ``meta.box.path`` and nothing downstream. Asserted through a REAL resolve rather
+    than as a string, so a box root whose own per-mode arm changed shape (the empty
+    standalone leaf especially) is caught here too.
+
+    MUTATION-PROOF: removing the ``meta.box.home`` line from
+    ``workset_anchor_floor`` → the key is absent from the snapshot → RED.
+    """
+    expected = {
+        "primary": "/data/ws/boxes/b/home",
+        "named": "/data/ws/boxes/b/home",
+        # The EMPTY LEAF: workset.boxes IS the box root, so there is no name join
+        # and no doubled separator in the home path either.
+        "standalone": "/data/ws/box_data/home",
+    }
+    for mode, want in expected.items():
+        floor = _box_root_floor(mode)
+        assert floor["meta.box.home"] == "@meta.box.path/home", mode
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            default_categories=floor,
+            workset_anchor=floor,
+        )
+        assert snap.meta.box.home == want, mode
+        assert snap.meta.box.home == f"{snap.meta.box.path}/home", mode
+
+
+def test_meta_box_home_agrees_with_the_home_bind_meta_ref():
+    """DRIFT GUARD — the box-home derivation exists TWICE; this pins the two equal.
+
+    ⚑ THIS TEST IS THE WHOLE JUSTIFICATION FOR LANDING THE PRODUCER ON ITS OWN.
+    ``meta.box.home`` is ADDITIVE: the ``home`` bind row in ``core-defaults.yaml``
+    is still what binds a box's home on every launch, and it carries its own INLINE
+    ``meta_ref: "@meta.box.path/home"``. Re-pointing that row at the key is
+    sequenced with the collapse (roadmap step 6) — additive route first, delivery
+    re-point after, never in one pass — so until then the duplication has to be made
+    SAFE rather than removed. Two spellings of one derivation that nothing compares
+    is precisely how a box comes to mount a home the keyspace does not name.
+
+    The row's ``meta_ref`` is READ FROM THE YAML, never hardcoded here: editing
+    EITHER spelling alone turns this RED instead of letting the two diverge
+    silently. Both the raw formula and the RESOLVED host source are compared — the
+    string catches a re-spelling, the resolve catches two spellings that differ in
+    what they actually name.
+
+    ⚑ DELETE THIS TEST when the bind row is re-pointed at ``@meta.box.home``: there
+    is then ONE spelling and nothing left to drift.
+
+    MUTATION-PROOF: producing ``@meta.box.path/home2`` in ``workset_anchor_floor``
+    → RED on both the formula and the resolved-source assertions.
+    """
+    from kanibako.settings.core_defaults import _load_doc
+
+    rows = [r for r in _load_doc().get("core", []) if r.get("key") == "home"]
+    assert len(rows) == 1, "core-defaults.yaml carries exactly one `home` bind row"
+    row = rows[0]
+    bind_ref = row["meta_ref"]
+
+    for mode in ("primary", "named", "standalone"):
+        floor = _box_root_floor(mode)
+        # The FORMULA the floor produces is the row's own spelling, verbatim.
+        assert floor["meta.box.home"] == bind_ref, mode
+        # And both resolve to the same host directory, through the same snapshot.
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            default_categories={
+                **floor,
+                "box.bindings.rw": {row["box_dest"]: (bind_ref, row["options"])},
+            },
+            workset_anchor=floor,
+        )
+        bind = getattr(snap.box.bindings.rw, GUEST_HOME)
+        assert isinstance(bind, BindEntry), mode
+        assert bind.src == snap.meta.box.home, mode
+
+
 def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     """A box root that resolves to nothing RAISES, naming the key.
 

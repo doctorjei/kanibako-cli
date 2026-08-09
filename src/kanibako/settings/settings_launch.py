@@ -809,6 +809,9 @@ def workset_anchor_floor(
       CLI refuses a ``meta.*`` set and ``assemble_levels`` drops a top-level ``meta:``
       table from every settings file. Relocating box data is done one level up, via
       the settable ``workset.boxes``.
+    * ``meta.box.home`` — the RO DERIVED box-home SOURCE ``@meta.box.path/home``,
+      UNIFORM in every mode (§2c ALL PROJECTS). Its settable source is the chain
+      under the box root, so it needs no per-mode arm of its own.
 
     ⚑ ``workset.logs`` is what makes the helper-log bind a SINGLE row for all modes:
     the bind is the spec's own ``@workset.logs/@{meta.box.name}.jsonl`` (§2c ALL
@@ -850,6 +853,14 @@ def workset_anchor_floor(
         "meta.box.path": (
             "@workset.boxes" if standalone else "@workset.boxes/@meta.box.name"
         ),
+        # The RO DERIVED box-home SOURCE (spec §2c ALL PROJECTS). ONE declaration
+        # for EVERY mode — the per-mode variation is the box root above and nothing
+        # here, exactly like ``meta.box.settings``. ⚑ ADDITIVE FOR NOW: the home
+        # bind in ``core-defaults.yaml`` still spells ``@meta.box.path/home``
+        # INLINE, so the derivation exists twice; a test pins the two equal. The
+        # bind is re-pointed at this key by the collapse (roadmap step 6) — route
+        # first, delivery after.
+        "meta.box.home": "@meta.box.path/home",
         # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b). UNIFORM in every
         # mode — no per-mode arm and no ``<None>`` carve-out — which is only safe
         # because the chapter binds they feed are SKIP-IF-ABSENT (spec §2c says so
