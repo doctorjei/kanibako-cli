@@ -2415,3 +2415,23 @@ mv ~/.config/kanibako/env <data>/env
 ```
 
 (`$XDG_CONFIG_HOME` defaults to `~/.config`. Adjust if you set it explicitly.)
+
+---
+
+## 13. Binary transforms are selected by the `transform` key
+
+Which binary transform runs for an agent is now chosen by the
+`agent.<agent>.transform` key. The claude plugin declares `transform: tweakcc`,
+so **claude boxes are unaffected** — the patcher runs exactly as before.
+
+Previously the patcher was gated only on `transform_settings` being non-empty,
+so **any** agent with that table set had claude's tweakcc patcher run against
+its binary. It now runs only when `transform` names `tweakcc`.
+
+| If you have                                                   | What changes                                                                    | What to do                                                                                    |
+|-----------------------------------------------------------------|----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| A claude box (with or without `transform_settings`)              | Nothing                                                                           | Nothing                                                                                           |
+| A goose or codex box with a `transform_settings` table            | claude's patcher no longer runs against that agent's binary, and kanibako warns | Remove the `transform_settings` table from that agent's settings, or set `agent.<agent>.transform` if a transform exists for it |
+
+Running claude's binary patcher against a non-claude binary was never intended;
+the key makes the choice explicit rather than inferred.
