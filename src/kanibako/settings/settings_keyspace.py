@@ -303,10 +303,12 @@ def is_terminal_category_key(key: str) -> bool:
 # meta.* — the RO families (spec §0, §2c, §2d)
 # ---------------------------------------------------------------------------
 
-# ⚑ Last 3 = the COLLAPSE outputs (spec §1A, ratified 2026-08-08f), NOT treewalk
-# results. NOTHING PRODUCES THEM YET; `backup` is RESERVED with no producer at all.
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
     "ws_root", "ws_name", "project_type",
+})
+# The COLLAPSE outputs (spec §1A): folded AFTER every scope resolves, not at the L0.2
+# treewalk above — which is why they are their OWN group. NOTHING PRODUCES THEM YET.
+DECLARED_META_ASSEMBLY_LEAVES: Final[frozenset[str]] = frozenset({
     "bindings", "copies", "backup",
 })
 DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
@@ -576,6 +578,14 @@ def _meta_reason(
             f"{', '.join(sorted(DECLARED_META_RUNTIME_LEAVES))})"
         )
 
+    if group == "assembly":
+        if len(tail) == 1 and tail[0] in DECLARED_META_ASSEMBLY_LEAVES:
+            return None
+        return (
+            f"'meta.assembly.{'.'.join(tail)}' is not a declared key (declared: "
+            f"{', '.join(sorted(DECLARED_META_ASSEMBLY_LEAVES))})"
+        )
+
     if group == "workset":
         if len(tail) == 1 and tail[0] in DECLARED_META_WORKSET_LEAVES:
             return None
@@ -629,7 +639,7 @@ def _meta_reason(
 
     return (
         f"'meta.{group}' is not a declared meta group (declared: runtime, "
-        f"workset, box, agent)"
+        f"assembly, workset, box, agent)"
     )
 
 

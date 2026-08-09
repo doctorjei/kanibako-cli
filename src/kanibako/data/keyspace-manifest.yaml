@@ -184,6 +184,35 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    DECLARED_META_BOX_LEAVES, and the meta.box counterpart of
                    2026-08-08f's manifest drift guard is added — it was the RED
                    test that named this bug."
+    - date: "2026-08-09"
+      what: "THE COLLAPSE OUTPUTS MOVE TO THEIR OWN GROUP:
+             meta.runtime.{bindings,copies,backup} -> meta.assembly.{...}.
+             meta.assembly is a new TOP-LEVEL protected RO meta group (§0);
+             meta.runtime.{ws_root,ws_name,project_type} are UNCHANGED and stay."
+      authority: "Jei 2026-08-09: \"let's use meta.assembly.*; these values will be
+                  used to assemble the box after everything else is sorted.\" Spec
+                  specs/settings-keyspace-1.8.0.md §1A already carries the
+                  meta.assembly block, immediately after the meta.runtime one."
+      scope: "RENAME OF THE THREE 2026-08-08f ROWS ONLY — nothing about what they
+              hold changed; the notes travel verbatim. The reason is LIFECYCLE:
+              meta.runtime.* is what the TREEWALK found at L0.2, before anything
+              else resolves; these are the collapse's OUTPUT, produced after every
+              scope has folded, and they assemble the box. One group, one
+              lifecycle. ⚑ Their `spec:` field drops the `(L0.2)` rider with the
+              move: L0.2 is the treewalk layer and was never their layer.
+              ⚑ CLEAN BREAK, no alias: the keys were declared the day before, are
+              unreleased, and have no producer and no consumer, so the
+              breaking-change policy's additive discipline does not engage.
+              meta.runtime.bindings is now NOT A KEY and is refused BY NAME."
+      code_state: "Code + tests landed with this amendment: the three leaves leave
+                   settings_keyspace.DECLARED_META_RUNTIME_LEAVES for a new
+                   DECLARED_META_ASSEMBLY_LEAVES, key_validity's meta dispatch grows
+                   an `assembly` arm (a new second segment under meta. is a new
+                   family, and without the arm the closed keyspace refuses the
+                   ratified names), and the unknown-group refusal names it. The
+                   2026-08-08f drift guard now covers BOTH families, and a negative
+                   case pins meta.runtime.bindings REFUSED so the move cannot leave
+                   both spellings working."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1435,12 +1464,16 @@ keys:
     type: enum
     choices: [standalone, primary, named]
     spec: "§1A"
-  ## The COLLAPSE outputs (ratified 2026-08-08f). ⚑ `origin: derived` is the
-  ## honest token, NOT `runtime_treewalk`: the treewalk answers the three rows
-  ## above (where is the workset, what is it called, what mode is this) and these
-  ## are folded from the declared category families, exactly like every other
-  ## derived meta row. ⚑ NO PRODUCER EXISTS for any of the three yet.
-  meta.runtime.bindings:
+  ## meta.assembly.* — the COLLAPSE outputs (ratified 2026-08-08f; MOVED out of
+  ## meta.runtime on 2026-08-09). Their own group because they sit at the OPPOSITE
+  ## END OF THE LIFECYCLE from the three rows above: the treewalk answers where the
+  ## workset is, what it is called and what mode is this BEFORE anything else
+  ## resolves (L0.2), while these are folded AFTER every scope has, and they
+  ## ASSEMBLE THE BOX. ⚑ `origin: derived` is the honest token, NOT
+  ## `runtime_treewalk` — nothing walks a tree to get them; they fold from the
+  ## declared category families, exactly like every other derived meta row.
+  ## ⚑ NO PRODUCER EXISTS for any of the three yet.
+  meta.assembly.bindings:
     namespace: meta
     set: never
     origin: derived
@@ -1451,8 +1484,8 @@ keys:
            ERROR. src = None marks a MASK. Home is pid 0 and is seeded here BEFORE
            any scope folds (A9, @meta.box.home). Produced by the collapse, which has
            not landed — declared so the closed keyspace admits the name."
-    spec: "§1A (L0.2)"
-  meta.runtime.copies:
+    spec: "§1A"
+  meta.assembly.copies:
     namespace: meta
     set: never
     origin: derived
@@ -1461,9 +1494,9 @@ keys:
     note: "COLLAPSED COPY MAP, DEST-ORDERED. A dest may carry SEVERAL copies (hence
            a list), unlike bindings. Ordering is load-bearing, not cosmetic: the
            prefix scan that prunes copies INSIDE a bound dest walks this map in dest
-           order. Same producer as meta.runtime.bindings, and equally absent."
-    spec: "§1A (L0.2)"
-  meta.runtime.backup:
+           order. Same producer as meta.assembly.bindings, and equally absent."
+    spec: "§1A"
+  meta.assembly.backup:
     namespace: meta
     set: never
     origin: derived
@@ -1472,7 +1505,7 @@ keys:
            EXISTS; declared with the pair above so the triple ratifies once. ⚑ The
            `origin` here states the CLASS it will belong to, not a claim that
            anything derives it today."
-    spec: "§1A (L0.2)"
+    spec: "§1A"
   meta.workset.path:
     namespace: meta
     set: never
@@ -2390,9 +2423,9 @@ not_keys:
                                ⚑ load-bearing rider at the code step: SETUP_BCV→1.8.0 in the
                                SAME change (RULINGS R-38)."
     "meta.runtime.ws_settings": "CUT (R-36) — 'no longer needed (unified path)': the §1A
-                                 meta.runtime block has never carried it (the block grew
-                                 bindings/copies/backup on 2026-08-08f; ws_settings is still
-                                 not a member, and the cut is what makes it not one);
+                                 meta.runtime block is ws_root/ws_name/project_type ONLY (the
+                                 collapse outputs it briefly sat beside became their own
+                                 meta.assembly group on 2026-08-09);
                                  meta.workset.settings spells @meta.workset.path/settings.yaml
                                  directly (the SINGLE-SOURCE list). The draft's live key
                                  entry was a clause-4 violation and is deleted."
