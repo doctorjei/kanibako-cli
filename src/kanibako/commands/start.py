@@ -48,7 +48,11 @@ from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectE
 from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
-from kanibako.settings.settings_categories import SECRET_MOUNT_DIR, SECRET_VAR_RE
+from kanibako.settings.settings_categories import (
+    SECRET_MOUNT_DIR,
+    SECRET_VAR_RE,
+    is_read_only,
+)
 from kanibako.settings.settings_keyspace import is_terminal_category_key
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
@@ -6731,7 +6735,7 @@ def _emit_category_mounts(reconciled, *, label: str) -> list:
             # + box-side export shim; kept OUT of this ~-rooted depth-sorted emit).
         assert e.host_src is not None  # bind-shaped MOUNTs always have a source.
         src = _Path(e.host_src)
-        if e.options != "ro":
+        if not is_read_only(e.options):
             # rw bind: create the host source dir if absent (L7 guarantee-create).
             try:
                 src.mkdir(parents=True, exist_ok=True)

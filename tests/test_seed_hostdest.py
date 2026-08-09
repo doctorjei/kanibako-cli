@@ -323,6 +323,54 @@ class TestOptionalBindEmission:
         assert any("does not exist" in r.message for r in caplog.records)
 
 
+class TestReadOnlyIsDecidedByTokenNotEquality:
+    """A ``ro`` entry is DROPPED when its source is missing — however options are spelled.
+
+    ⚑ THIS IS THE LIVE LAUNCH PATH.  ``_emit_category_mounts`` used to ask
+    ``e.options != "ro"``, which is a rw answer for any FOLDED read-only spelling
+    (``"ro,Z"``).  A rw answer here does not merely mis-label: it takes the
+    guarantee-create arm and ``mkdir``s a host directory the user never declared,
+    in place of the ro-drop.  The fold keeps ARITY, so nothing else goes red.
+
+    ⚑ The arm is chosen from OPTIONS, never from the category name — each fixture
+    below spells the category that matches its options so the two never disagree.
+    """
+
+    def _emit(self, *, category: str, options: str, host_src: str, caplog):
+        from kanibako.commands.start import _emit_category_mounts
+
+        dest = f"{GUEST_HOME}/folded"
+        arm = category.rsplit(".", 1)[-1]
+        entry = _entry(
+            category=category, scope="box", box_dest=dest,
+            host_src=host_src, delivery="MOUNT", options=options, name=dest,
+            key_segments=("box", "bindings", arm, dest),
+        )
+        with caplog.at_level(logging.WARNING):
+            return _emit_category_mounts(reconcile_categories([entry]), label="folded")
+
+    @pytest.mark.parametrize("options", ["ro", "ro,Z", "Z,U,ro", " ro "])
+    def test_missing_source_is_dropped_for_every_ro_spelling(self, options, tmp_path, caplog):
+        absent = tmp_path / "never-created"
+        mounts = self._emit(
+            category="bindings.ro", options=options, host_src=str(absent), caplog=caplog,
+        )
+        assert mounts == []
+        assert any("does not exist" in r.message for r in caplog.records)
+        assert not absent.exists(), "a ro source must be DROPPED, never guarantee-created"
+
+    # ⚑ ``nodirop`` CONTAINS ``ro``; a substring test would call it read-only and
+    # skip the guarantee-create.  That is why the predicate is a token test.
+    @pytest.mark.parametrize("options", ["Z,U", "", "nodirop"])
+    def test_a_non_ro_entry_still_takes_the_guarantee_create_arm(self, options, tmp_path, caplog):
+        absent = tmp_path / "made-by-l7"
+        mounts = self._emit(
+            category="bindings.rw", options=options, host_src=str(absent), caplog=caplog,
+        )
+        assert len(mounts) == 1
+        assert absent.is_dir(), "a rw source is created by L7 guarantee-create"
+
+
 # ===========================================================================
 # 4. The handbook binds: declaration, ordering, and the agent tier.
 # ===========================================================================
