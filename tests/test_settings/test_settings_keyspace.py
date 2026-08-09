@@ -537,6 +537,7 @@ def test_supporting_surface_is_valid(key):
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
     "meta.box.share_workset", "meta.box.auth.workset_path",
+    "meta.box.home", "meta.box.container_name", "meta.box.helper_num",
     "meta.box.agent.model", "meta.box.agent.common",
     "meta.agent.claude.name", "meta.agent.claude.path",
     "meta.agent.claude.settings", "meta.agent.claude.mode",
@@ -544,6 +545,25 @@ def test_supporting_surface_is_valid(key):
 ])
 def test_meta_families_are_valid(key):
     assert valid(key), reason(key)
+
+
+# ---------------------------------------------------------------------------
+# Manifest <-> declaration drift guards
+# ---------------------------------------------------------------------------
+
+def _manifest_leaves(prefix: str) -> set[str]:
+    """The manifest's DIRECT leaves under *prefix* — nested rows dropped."""
+    import importlib.resources as res
+
+    import yaml
+
+    doc = yaml.safe_load(
+        res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
+    )
+    tails = {
+        str(k)[len(prefix):] for k in doc["keys"] if str(k).startswith(prefix)
+    }
+    return {t for t in tails if "." not in t}
 
 
 # ---------------------------------------------------------------------------
@@ -566,23 +586,16 @@ def test_the_meta_runtime_declaration_matches_the_manifest():
     ratified registry the spec projects onto. A leaf added to one and not the other
     is the exact drift this family had no guard against.
 
-    ⚑ Scoped to ``meta.runtime`` DELIBERATELY: at ``meta.box`` the same comparison
-    is RED today (``home``, ``container_name`` and ``helper_num`` are manifest rows
-    with no code declaration), and that is a separate finding, not this test's.
+    ⚑ Scoped to ``meta.runtime`` because :func:`_manifest_leaves` cannot be shared
+    verbatim: ``meta.runtime`` is FLAT, so its sibling at ``meta.box`` has to drop
+    the nested ``auth.*`` / ``agent.*`` rows. See
+    :func:`test_the_meta_box_declaration_matches_the_manifest`, which was RED until
+    2026-08-08g — ``home``, ``container_name`` and ``helper_num`` were manifest rows
+    the code refused.
     """
-    import importlib.resources as res
-
-    import yaml
-
     from kanibako.settings.settings_keyspace import DECLARED_META_RUNTIME_LEAVES
 
-    doc = yaml.safe_load(
-        res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
-    )
-    manifest = {
-        str(k).split(".", 2)[2] for k in doc["keys"]
-        if str(k).startswith("meta.runtime.")
-    }
+    manifest = _manifest_leaves("meta.runtime.")
     assert manifest == set(DECLARED_META_RUNTIME_LEAVES)
     assert set(COLLAPSE_LEAVES) <= manifest
 
@@ -607,6 +620,50 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
     assert is_known_key(f"meta.runtime.{leaf}") == is_known_key(
         "meta.runtime.ws_root"
     )
+
+
+# ---------------------------------------------------------------------------
+# The UNPRODUCED meta.box leaves — spec §2c; `home` is A9, ratified 2026-08-08a
+# ---------------------------------------------------------------------------
+
+#: The three ``meta.box`` leaves the manifest and the spec declared while the
+#: code refused them (fixed 2026-08-08g). None is produced: ``home``'s
+#: ``@meta.box.path`` derivation is still OWED (``core-defaults`` spells the
+#: literal inline), ``container_name`` renders in ``utils.container_name_for``
+#: off ``proj`` attrs rather than the store, and ``helper_num`` travels as a
+#: structured field in helper messages. Declaring them is the whole change.
+UNPRODUCED_BOX_LEAVES = ("home", "container_name", "helper_num")
+
+
+def test_the_meta_box_declaration_matches_the_manifest():
+    """The ``meta.box`` half of the same drift guard — RED before 2026-08-08g.
+
+    ⚑ DIRECT leaves only: ``meta.box`` also carries ``auth.workset_path`` and the
+    ``agent.*`` mirror, which ``key_validity`` dispatches on separate arms and which
+    ``DECLARED_META_BOX_LEAVES`` deliberately does not hold.
+    """
+    from kanibako.settings.settings_keyspace import DECLARED_META_BOX_LEAVES
+
+    manifest = _manifest_leaves("meta.box.")
+    assert manifest == set(DECLARED_META_BOX_LEAVES)
+    assert set(UNPRODUCED_BOX_LEAVES) <= manifest
+
+
+@pytest.mark.parametrize("leaf", UNPRODUCED_BOX_LEAVES)
+def test_an_unproduced_box_leaf_is_indistinguishable_from_a_produced_sibling(leaf):
+    """Sibling-equality again, against ``meta.box.path`` — which IS produced.
+
+    ``meta.box.path`` is written by ``settings_launch.workset_anchor_floor``; these
+    three are written by nothing. That difference must not reach the read surface,
+    and today it cannot: ``is_known_key`` gates on the SETTABLE set and every
+    ``meta.*`` key is ``set: never``, so ``system get`` answers "unknown config key"
+    for the produced anchor and for these alike (verified at the CLI). The case goes
+    RED if one is ever special-cased in either direction.
+    """
+    from kanibako.settings.config_keys import is_known_key
+
+    assert valid(f"meta.box.{leaf}"), reason(f"meta.box.{leaf}")
+    assert is_known_key(f"meta.box.{leaf}") == is_known_key("meta.box.path")
 
 
 def test_the_cut_meta_derived_family_is_refused():

@@ -312,9 +312,16 @@ DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
 DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "settings",
 })
+# ⚑ Last 3 have NO PRODUCER. `home` is Jei's ratified A9 key (spec §2c, manifest
+# 2026-08-08a): DERIVED from @meta.box.path, but the derivation is still OWED —
+# core-defaults' home bind spells `@meta.box.path/home` inline instead.
+# `container_name` renders in `utils.container_name_for`, off proj attrs, not the
+# store; `helper_num` travels in helper messages. Declared-but-unproduced is the
+# state the manifest already describes (JC-B2-3), not an omission.
 DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "mode", "workspace", "settings",
     "inbox", "share_global", "share_workset",
+    "home", "container_name", "helper_num",
 })
 DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"workset_path"})
 DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
