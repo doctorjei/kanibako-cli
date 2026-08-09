@@ -12,6 +12,8 @@ import pytest
 
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
+    DECLARED_META_ASSEMBLY_LEAVES,
+    DECLARED_META_RUNTIME_LEAVES,
     RESERVED_LEAF_NAMES,
     RETIRING_KEYS,
     is_valid_agent_segment,
@@ -532,7 +534,7 @@ def test_supporting_surface_is_valid(key):
 
 @pytest.mark.parametrize("key", [
     "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
-    "meta.runtime.bindings", "meta.runtime.copies", "meta.runtime.backup",
+    "meta.assembly.bindings", "meta.assembly.copies", "meta.assembly.backup",
     "meta.workset.path", "meta.workset.name", "meta.workset.settings",
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
@@ -567,10 +569,11 @@ def _manifest_leaves(prefix: str) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
-# The COLLAPSE outputs — spec §1A, ratified 2026-08-08f
+# The COLLAPSE outputs — spec §1A, ratified 2026-08-08f, MOVED to
+# ``meta.assembly.*`` on 2026-08-09
 # ---------------------------------------------------------------------------
 
-#: ``meta.runtime.{bindings,copies,backup}``, whose defining property is that
+#: ``meta.assembly.{bindings,copies,backup}``, whose defining property is that
 #: NOTHING PRODUCES THEM: the collapse that writes the first two has not landed
 #: and ``backup`` is RESERVED with no producer at all. They are declared anyway,
 #: because under the closed keyspace (spec §0) an undeclared key is not a key and
@@ -579,25 +582,45 @@ def _manifest_leaves(prefix: str) -> set[str]:
 COLLAPSE_LEAVES = ("bindings", "copies", "backup")
 
 
-def test_the_meta_runtime_declaration_matches_the_manifest():
+@pytest.mark.parametrize("group, declared", [
+    ("runtime", DECLARED_META_RUNTIME_LEAVES),
+    ("assembly", DECLARED_META_ASSEMBLY_LEAVES),
+])
+def test_a_flat_meta_declaration_matches_the_manifest(group, declared):
     """The two declaration sites are ONE question asked twice — pin them EQUAL.
 
     ``settings_keyspace`` decides whether a spelling is a key; the manifest is the
     ratified registry the spec projects onto. A leaf added to one and not the other
-    is the exact drift this family had no guard against.
+    is the exact drift these families had no guard against.
 
-    ⚑ Scoped to ``meta.runtime`` because :func:`_manifest_leaves` cannot be shared
-    verbatim: ``meta.runtime`` is FLAT, so its sibling at ``meta.box`` has to drop
-    the nested ``auth.*`` / ``agent.*`` rows. See
-    :func:`test_the_meta_box_declaration_matches_the_manifest`, which was RED until
-    2026-08-08g — ``home``, ``container_name`` and ``helper_num`` were manifest rows
-    the code refused.
+    ⚑ Parametrising over the PAIR is what makes the 2026-08-09 move safe:
+    ``meta.assembly`` arrived as a new family, and a drift guard that covered only
+    ``meta.runtime`` would have said nothing about it. The ``meta.box`` sibling
+    keeps its own case below because it carries an extra claim about its
+    unproduced leaves, not because the helper cannot reach it.
     """
-    from kanibako.settings.settings_keyspace import DECLARED_META_RUNTIME_LEAVES
+    assert _manifest_leaves(f"meta.{group}.") == set(declared)
 
-    manifest = _manifest_leaves("meta.runtime.")
-    assert manifest == set(DECLARED_META_RUNTIME_LEAVES)
-    assert set(COLLAPSE_LEAVES) <= manifest
+
+def test_the_collapse_outputs_are_declared_under_assembly_only():
+    """The 2026-08-09 MOVE, on the manifest side: under ``assembly``, gone from
+    ``runtime``."""
+    assert set(COLLAPSE_LEAVES) <= _manifest_leaves("meta.assembly.")
+    assert set(COLLAPSE_LEAVES) & _manifest_leaves("meta.runtime.") == set()
+
+
+@pytest.mark.parametrize("leaf", COLLAPSE_LEAVES)
+def test_the_runtime_spelling_of_a_collapse_output_is_refused_by_name(leaf):
+    """The MOVE stated as a NEGATIVE: ``meta.runtime.bindings`` is not a key.
+
+    Without this the change is indistinguishable from an ADD — declaring the three
+    under ``meta.assembly`` while leaving them in
+    ``DECLARED_META_RUNTIME_LEAVES`` leaves every positive case green and both
+    spellings working, which is the clean break silently not happening. ⚑ Refused
+    BY NAME (spec §0), so the assertion is on the reason text carrying the key.
+    """
+    key = f"meta.runtime.{leaf}"
+    assert key in reason(key)
 
 
 @pytest.mark.parametrize("leaf", COLLAPSE_LEAVES)
@@ -616,8 +639,8 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
     """
     from kanibako.settings.config_keys import is_known_key
 
-    assert valid(f"meta.runtime.{leaf}"), reason(f"meta.runtime.{leaf}")
-    assert is_known_key(f"meta.runtime.{leaf}") == is_known_key(
+    assert valid(f"meta.assembly.{leaf}"), reason(f"meta.assembly.{leaf}")
+    assert is_known_key(f"meta.assembly.{leaf}") == is_known_key(
         "meta.runtime.ws_root"
     )
 
