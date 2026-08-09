@@ -1493,12 +1493,14 @@ keys:
     namespace: meta
     set: never
     origin: derived
-    type: dict
-    value: "dict[guest_dest -> list[(host_src, opts)]]"
-    note: "COLLAPSED COPY MAP, DEST-ORDERED. A dest may carry SEVERAL copies (hence
-           a list), unlike bindings. Ordering is load-bearing, not cosmetic: the
-           prefix scan that prunes copies INSIDE a bound dest walks this map in dest
-           order. Same producer as meta.assembly.bindings, and equally absent."
+    type: list
+    value: "list[(host_src, guest_dest, opts)]"
+    note: "COLLAPSED COPY LIST, SCOPE-ORDERED - the concatenation of every scope's
+           copy arm. Copies apply to the HOME bind ALONE, so they resolve BEFORE any
+           binding folds and no mount arbitrates them: nothing is pruned, and a dest
+           MAY repeat (the later entry overwrites the earlier FILEWISE at apply
+           time). A copy whose dest is not inside home is a config ERROR. Same
+           producer as meta.assembly.bindings, and equally absent."
     spec: "§1A"
   meta.assembly.backup:
     namespace: meta

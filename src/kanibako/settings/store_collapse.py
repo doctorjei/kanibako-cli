@@ -1,4 +1,4 @@
-"""The COLLAPSE: four per-scope ``store_shape``s -> ONE bindings map + ONE copies map.
+"""The COLLAPSE: four per-scope ``store_shape``s -> ONE bindings map + ONE copy list.
 
 Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 """
@@ -6,7 +6,7 @@ Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Final, NamedTuple
 
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
@@ -21,6 +21,14 @@ class CollapsedBind(NamedTuple):
   opts: str | None
 
 
+class CollapsedCopy(NamedTuple):
+  """One collapsed copy, ``(src, dest, opts)`` - the dest is CARRIED, not a key."""
+
+  src: str
+  dest: str
+  opts: str | None
+
+
 #: The mask sentinel. The second slot is DEAD, not reserved: a mask is a tmpfs
 #: with no host source and carries no mount-option vocabulary.
 MASK: Final[CollapsedBind] = CollapsedBind(None, None)
@@ -28,8 +36,8 @@ MASK: Final[CollapsedBind] = CollapsedBind(None, None)
 #: The collapsed bindings, dest-keyed. ⚑ ORDER IS NOT MEANING - emission depth-sorts.
 CollapsedBindings = dict[str, CollapsedBind]
 
-#: The collapsed copies, dest-keyed; one dest holds a LIST, appended in scope order.
-CollapsedCopies = dict[str, list[BindEntry]]
+#: The collapsed copies, SCOPE-ORDERED. ⚑ A dest MAY repeat - that IS the overlay.
+CollapsedCopies = list[CollapsedCopy]
 
 #: Home is pid 0 - the foundation, seeded before the loop, in no scope's shape.
 HOME_DEST: Final[str] = normalize_bind_dest("~")
@@ -46,19 +54,12 @@ class CollapsedStore:
 def collapse_store_shapes(
   store_shape_set: StoreShapeSet, home_bind: BindEntry,
 ) -> CollapsedStore:
-  """Merge the four scopes' shapes into one bindings map + one copies map (PURE)."""
-  combined_bindings: CollapsedBindings = {
-    HOME_DEST: CollapsedBind(home_bind.src, home_bind.opts),
-  }
-  final_copies: CollapsedCopies = {}
-  for scope in SCOPE_CONTAINMENT:
-    shape = store_shape_set[scope]
-    _merge_bindings(combined_bindings, shape)
-    _prune_shadowed_copies(final_copies, _scope_dests(shape))
-    _plant_copies(final_copies, combined_bindings, shape)
+  """Merge the four scopes' shapes into one bindings map + one copy list (PURE)."""
+  # ⚑ The copy half completes FIRST and reads no binding: copies apply to the home
+  # bind alone, so no mount arbitrates them and the two halves never interact.
+  copies = _collapse_copies(store_shape_set)
   return CollapsedStore(
-    bindings=combined_bindings,
-    copies={dest: final_copies[dest] for dest in sorted(final_copies)},
+    bindings=_collapse_mounts(store_shape_set, home_bind), copies=copies,
   )
 
 
@@ -73,61 +74,62 @@ def opt_tokens(opts: str | None) -> list[str]:
   return [token.strip() for token in (opts or "").split(",") if token.strip()]
 
 
+def _collapse_copies(store_shape_set: StoreShapeSet) -> CollapsedCopies:
+  """Concatenate every scope's seed arm IN SCOPE ORDER - nothing arbitrates, nothing prunes."""
+  copies: CollapsedCopies = []
+  for scope in SCOPE_CONTAINMENT:
+    for dest_path, entry in store_shape_set[scope].seed.items():
+      dest = normalize_bind_dest(dest_path)
+      _refuse_copy_outside_home(dest, entry)
+      copies.append(CollapsedCopy(entry.src, dest, entry.opts))
+  return copies
+
+
+def _collapse_mounts(
+  store_shape_set: StoreShapeSet, home_bind: BindEntry,
+) -> CollapsedBindings:
+  """Fold every scope's bind + mask arms over the home foundation, in scope order."""
+  combined: CollapsedBindings = {
+    HOME_DEST: CollapsedBind(home_bind.src, home_bind.opts),
+  }
+  for scope in SCOPE_CONTAINMENT:
+    _merge_bindings(combined, store_shape_set[scope])
+  return combined
+
+
 def _merge_bindings(combined: CollapsedBindings, shape: StoreShape) -> None:
   """Fold ONE scope's ro/rw arms into *combined*, then let its masks override."""
   for dest, entry, mode in _scope_binds(shape):
-    _refuse_double_bind(dest, entry, combined.get(dest))
     _refuse_mode_contradiction(dest, entry, mode)
-    _refuse_bind_under_mask(dest, entry, combined)
-    _refuse_bind_over_bind(dest, entry, combined)
-    _subsume_masks_beneath(combined, dest)
+    _refuse_bind_under_mask(combined, dest, entry)
+    _refuse_bind_over_bind(combined, dest, entry)
+    _sweep(combined, dest)
     combined[dest] = CollapsedBind(entry.src, fold_opt(entry.opts, mode))
-  for dest_path in shape.mask:
-    combined[normalize_bind_dest(dest_path)] = MASK
-
-
-def _prune_shadowed_copies(copies: CollapsedCopies, dests: list[str]) -> None:
-  """Drop every copy AT or INSIDE one of *dests* - a mount shadows it, so skip it."""
-  for dest in dests:
-    for copy_dest in [d for d in copies if _is_within(d, dest)]:
-      del copies[copy_dest]
-
-
-def _plant_copies(
-  copies: CollapsedCopies, combined: CollapsedBindings, shape: StoreShape,
-) -> None:
-  """Append ONE scope's seed arm to *copies*, unmasking any dest it plants into."""
-  for dest_path, entry in shape.seed.items():
-    dest = normalize_bind_dest(dest_path)
-    occupant = combined.get(dest)
-    if occupant is not None and occupant.src is None:
-      _refuse_directory_onto_mask(dest, entry)
-      del combined[dest]  # It is masked; remove the MASK, we plant copies here.
-    copies.setdefault(dest, []).append(entry)
+  for dest in _scope_masks(shape):
+    _refuse_mask_on_mask(combined, dest)
+    _sweep(combined, dest)
+    combined[dest] = MASK
 
 
 def _scope_binds(shape: StoreShape) -> list[tuple[str, BindEntry, str]]:
-  """THIS scope's ro+rw binds, SHALLOWEST-FIRST - a parent lands before its children."""
+  """THIS scope's ro+rw binds, PARENT-FIRST - the shortest path lands before what is inside it."""
   binds = [
     (normalize_bind_dest(dest_path), entry, mode)
     for arm, mode in ((shape.ro, "ro"), (shape.rw, "rw"))
     for dest_path, entry in arm.items()
   ]
-  # ⚑ ``sorted`` is STABLE, so his ro-before-rw arm order survives at equal depth.
-  return sorted(binds, key=lambda bind: _depth(bind[0]))
+  # ⚑ ``sorted`` is STABLE, so his ro-before-rw arm order survives at equal length.
+  return sorted(binds, key=lambda bind: _segments(bind[0]))
 
 
-def _scope_dests(shape: StoreShape) -> list[str]:
-  """THIS scope's binding + mask dests. ⚑ CURRENT SCOPE ONLY - never accumulated."""
-  return [
-    normalize_bind_dest(dest)
-    for arm in (shape.ro, shape.rw, shape.mask)
-    for dest in arm
-  ]
+def _scope_masks(shape: StoreShape) -> list[str]:
+  """THIS scope's masks, CHILD-FIRST - the INVERSE order, for the inverted prohibition."""
+  dests = [normalize_bind_dest(dest_path) for dest_path in shape.mask]
+  return sorted(dests, key=_segments, reverse=True)
 
 
-def _depth(dest: str) -> int:
-  """*dest*'s component count - the shallow-first sort key (``/`` = 1, ``/a`` = 2)."""
+def _segments(dest: str) -> int:
+  """*dest*'s path-component count - the containment sort key (``/`` = 1, ``/a`` = 2)."""
   return len(PurePosixPath(dest).parts)
 
 
@@ -136,51 +138,51 @@ def _is_within(dest: str, root: str) -> bool:
   return dest == root or dest.startswith(root.rstrip("/") + "/")
 
 
-def _beneath(combined: CollapsedBindings, dest: str, *, masks: bool) -> list[str]:
-  """The mask (or bind) dests STRICTLY inside *dest*, in collapsed order."""
+def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]:
+  """The BIND dests AT or INSIDE *dest* - what an arriving bind would subsume."""
   return [
-    d for d, bind in combined.items()
-    if (bind.src is None) is masks and d != dest and _is_within(d, dest)
+    d for d, bind in combined.items() if bind.src is not None and _is_within(d, dest)
   ]
 
 
-def _refuse_double_bind(
-  dest: str, entry: BindEntry, occupant: CollapsedBind | None,
-) -> None:
-  """Row 1 ACROSS scopes: two real sources contend for one destination."""
-  if occupant is None or occupant.src is None:
-    return  # Unbound, or a MASK - and a binding may override a mask.
-  raise SettingsError(
-    f"two bindings target the destination {dest!r}: {occupant.src!r} already binds "
-    f"there and {entry.src!r} would bind over it. A binding may override a MASK, "
-    f"never another binding - suppress one of them, or bind them at distinct "
-    f"destinations."
-  )
+def _masks_over(combined: CollapsedBindings, dest: str) -> list[str]:
+  """The MASK dests AT or CONTAINING *dest* - his "same or parent" side, inclusive."""
+  return [
+    d for d, bind in combined.items() if bind.src is None and _is_within(dest, d)
+  ]
+
+
+def _sweep(combined: CollapsedBindings, dest: str) -> None:
+  """Delete every entry AT or INSIDE *dest* - the ONE operation both mounts share."""
+  for occupied in [d for d in combined if _is_within(d, dest)]:
+    del combined[occupied]
 
 
 def _refuse_bind_over_bind(
-  dest: str, entry: BindEntry, combined: CollapsedBindings,
+  combined: CollapsedBindings, dest: str, entry: BindEntry,
 ) -> None:
-  """RULE 1 - a bind may NEST inside a bind, never land ABOVE one already collapsed."""
-  subsumed = _beneath(combined, dest, masks=False)
+  """A bind may NEST inside a bind - never take its point, never land above it."""
+  subsumed = _binds_under(combined, dest)
   if not subsumed:
     return
+  named = ", ".join(f"{d!r} ({combined[d].src!r})" for d in subsumed)
   raise SettingsError(
-    f"the binding of {entry.src!r} at {dest!r} would subsume the binding(s) already "
-    f"collapsed beneath it at {', '.join(repr(d) for d in subsumed)}. A binding may "
-    f"nest INSIDE another, never over it - the mount order follows the path value, "
-    f"not the declaration order, so the inner one could never be reached."
+    f"the binding of {entry.src!r} at {dest!r} collides with the binding(s) already "
+    f"collapsed at or inside it: {named}. A binding may nest INSIDE another, never "
+    f"AT or OVER one - the mount order follows the path value, not the declaration "
+    f"order, so the subsumed binding could never be reached. Suppress one of them, "
+    f"or bind them at distinct destinations."
   )
 
 
 def _refuse_bind_under_mask(
-  dest: str, entry: BindEntry, combined: CollapsedBindings,
+  combined: CollapsedBindings, dest: str, entry: BindEntry,
 ) -> None:
-  """RULE 3 - a bind may not be a CHILD of a mask; the tmpfs would swallow it."""
-  masks = [
-    d for d, bind in combined.items()
-    if bind.src is None and d != dest and _is_within(dest, d)
-  ]
+  """A bind may not be a CHILD of a mask; the tmpfs would swallow it."""
+  # ⚑ The lone equality guard in the module, and it states the RULE rather than
+  # patching a predicate: a bind may take a mask's own point (the sweep then
+  # removes the mask), and may only never sit INSIDE one.
+  masks = [d for d in _masks_over(combined, dest) if d != dest]
   if not masks:
     return
   raise SettingsError(
@@ -190,20 +192,28 @@ def _refuse_bind_under_mask(
   )
 
 
-def _subsume_masks_beneath(combined: CollapsedBindings, dest: str) -> None:
-  """RULE 2 + 6 - a bind SUBSUMES the masks under it, and subsumed means REMOVED."""
-  for masked in _beneath(combined, dest, masks=True):
-    del combined[masked]
-
-
-def _refuse_directory_onto_mask(dest: str, entry: BindEntry) -> None:
-  """RULE 5 - only a copied FILE may land on a mask's exact point, never a directory."""
-  if not Path(entry.src).is_dir():
+def _refuse_mask_on_mask(combined: CollapsedBindings, dest: str) -> None:
+  """A mask may not take another mask's point nor sit inside one: a void within a void."""
+  covering = _masks_over(combined, dest)
+  if not covering:
     return
   raise SettingsError(
-    f"the copy of {entry.src!r} would land on the mask at {dest!r}, but its source "
-    f"is a DIRECTORY. A copied FILE may take a mask's exact point; a directory may "
-    f"not - copy its contents beneath the mask, or do not declare the mask."
+    f"the mask at {dest!r} lands on the mask(s) already collapsed at "
+    f"{', '.join(repr(d) for d in covering)}. A mask may not take another mask's "
+    f"point nor sit inside one - a void within a void hides nothing the outer mask "
+    f"is not hiding already. Declare one of them, not both."
+  )
+
+
+def _refuse_copy_outside_home(dest: str, entry: BindEntry) -> None:
+  """A copy resolves into the HOME bind's source, so its dest must be inside home."""
+  if _is_within(dest, HOME_DEST):
+    return
+  raise SettingsError(
+    f"the copy of {entry.src!r} targets {dest!r}, which is outside the home binding "
+    f"at {HOME_DEST!r}. Copies apply to the home bind ALONE - they resolve into the "
+    f"box home store, so a destination outside it has nowhere to land: give it a "
+    f"destination inside home, or deliver it as a binding."
   )
 
 

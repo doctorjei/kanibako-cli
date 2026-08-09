@@ -1,9 +1,15 @@
-"""The step-6a COLLAPSE: four per-scope shapes + the home bind -> two merged maps.
+"""The step-6a COLLAPSE: four per-scope shapes + the home bind -> a bind map + a copy LIST.
 
 ⚑ [[same-arity-shape-flip-passes-silently]] governs this file. The collapse returns
-dicts of tuples, so a wrong-but-same-shape answer passes trivially — every test below
-asserts MEANING (which dest survived, which mask is GONE, which copy was NOT pruned),
-never merely a shape or a count.
+dicts and lists of tuples, so a wrong-but-same-shape answer passes trivially — every
+test below asserts MEANING (which dest survived, which mask is GONE, which copy
+REPEATS), never merely a shape or a count.
+
+⚑⚑ THE ORACLE TRAP, sprung three times in this module: within ONE scope the parent-first
+bind sort and the child-first mask sort make an intra-scope conflict unconstructible, so
+a single-scope test passes with the rule or without it. Every discriminating case for the
+bind and mask rules below is therefore TWO- or THREE-scope, and the single-scope cases are
+present only to pin the SORTS themselves.
 
 Most fixtures build ``StoreShape``s directly: the collapse's contract is over shapes,
 the producer has its own file, and the prefix cases need destinations a floor cannot
@@ -30,6 +36,7 @@ from kanibako.settings.store_collapse import (
   HOME_DEST,
   MASK,
   CollapsedBind,
+  CollapsedCopy,
   CollapsedStore,
   collapse_store_shapes,
   fold_opt,
@@ -38,6 +45,9 @@ from kanibako.settings.store_shape import StoreShape, StoreShapeSet, build_store
 
 GUEST = GUEST_HOME
 HOME = BindEntry("/host/store/box/home", "Z,U")
+
+#: The unified bind refusal — one message for "at my point" and "inside me" alike.
+COLLIDES = r"collides with the binding\(s\) already collapsed"
 
 
 def shape(*, ro=None, rw=None, mask=None, seed=None, sync=None) -> StoreShape:
@@ -64,7 +74,7 @@ class TestHomeIsPidZero:
   def test_home_is_bound_before_any_scope_is_read(self):
     collapsed = collapse()
     assert collapsed.bindings == {GUEST: CollapsedBind(HOME.src, HOME.opts)}
-    assert collapsed.copies == {}
+    assert collapsed.copies == []
 
   def test_home_is_keyed_by_its_NORMALIZED_dest_not_the_tilde(self):
     # ⚑ His ``{"~": home_bind}`` is spelled symbolically. Left literal, home would
@@ -90,16 +100,22 @@ class TestHomeIsPidZero:
 
   def test_a_SECOND_bind_at_home_is_refused(self):
     # "There should only ever be one bind at home" — enforced by the foundation
-    # itself, through the ordinary double-bind refusal. No new rule.
-    with pytest.raises(SettingsError, match=r"two bindings target the destination"):
+    # itself, through the ONE bind refusal. Its predicate is inclusive of equality
+    # on the subsume side, so a bind AT an occupied dest and a bind OVER one are the
+    # same refusal, not two.
+    with pytest.raises(SettingsError, match=COLLIDES):
+      collapse(box=shape(rw={"~": BindEntry("/h/other", "Z,U")}))
+
+  def test_the_refusal_at_home_NAMES_the_source_already_bound_there(self):
+    with pytest.raises(SettingsError, match=r"'/host/store/box/home'"):
       collapse(box=shape(rw={"~": BindEntry("/h/other", "Z,U")}))
 
   def test_a_bind_ABOVE_home_is_refused(self):
     # ⚑ "Nothing may subsume home" — collapse DESIGN §0.2 states it outright
     # ("/home is SAME-or-PARENT ⇒ ERROR") and says it falls out of the EXISTING
-    # rules with none added. Rule 1 is that existing rule, and home is pid 0, so
-    # every scope's bind arrives with home already collapsed beneath it.
-    with pytest.raises(SettingsError, match=r"would subsume the binding"):
+    # rules with none added. The bind refusal is that existing rule, and home is
+    # pid 0, so every scope's bind arrives with home already collapsed beneath it.
+    with pytest.raises(SettingsError, match=COLLIDES):
       collapse(system=shape(rw={"/home": BindEntry("/h/homes", "Z,U")}))
 
   def test_a_bind_at_the_ROOT_subsumes_home_and_is_refused(self):
@@ -107,218 +123,173 @@ class TestHomeIsPidZero:
       collapse(box=shape(rw={"/": BindEntry("/h/root", "Z,U")}))
 
 
-class TestUnmaskingPlantsIntoTheBindings:
-  """S1 — the un-mask branch deletes the MASK, never the copy it is about to plant."""
+class TestTheCopyHalfIsAConcatenation:
+  """⚖️ RULED 2026-08-09d — copies apply to the HOME bind ALONE, so nothing arbitrates them."""
 
-  DEST = f"{GUEST}/planted"
-
-  def test_a_later_scope_copy_removes_the_mask_it_plants_into(self):
-    seed = BindEntry("/h/seed", "")
+  def test_the_copy_list_is_the_CONCATENATION_in_SCOPE_order(self):
+    # ⚑⚑ THE DESTS DISAGREE WITH THE SCOPES ON PURPOSE: ``z`` is declared in the
+    # OUTERMOST scope and ``a`` in the innermost, so a list that came back
+    # dest-sorted — which is what the dropped ``SortedDict`` gave — reverses this
+    # answer. With ``a``/``z`` the other way round the test passes either way and
+    # pins nothing; a mutant proved exactly that.
     collapsed = collapse(
-      system=shape(mask={self.DEST: True}),
-      box=shape(seed={self.DEST: seed}),
+      box=shape(seed={f"{GUEST}/a": BindEntry("/h/box", "")}),
+      system=shape(seed={f"{GUEST}/z": BindEntry("/h/sys", "")}),
     )
-    # Both halves matter: the mask that would shadow the copy is GONE, and the copy
-    # the branch decided to plant is actually there.
-    assert self.DEST not in collapsed.bindings
-    assert collapsed.copies[self.DEST] == [seed]
+    assert collapsed.copies == [
+      CollapsedCopy("/h/sys", f"{GUEST}/z", ""),
+      CollapsedCopy("/h/box", f"{GUEST}/a", ""),
+    ]
 
-  def test_planting_into_a_masked_dest_does_not_need_an_existing_copy(self):
-    # ``del final_copies[dest]`` would KeyError here: nothing has ever been copied
-    # to this destination.
+  def test_a_dest_REPEATS_and_that_IS_the_seeded_overlay(self):
+    # ⚑⚑ THE POINT OF THE LIST. The layered ``seeded.template`` trio is one row per
+    # scope, every one of them targeting ``~``. A dest-keyed map would collapse the
+    # three into one and silently drop two layers; the later entry must instead
+    # survive AFTER the earlier one and overwrite it FILEWISE at apply time.
     collapsed = collapse(
-      agent=shape(mask={self.DEST: True}),
-      workset=shape(seed={self.DEST: BindEntry("/h/s", "")}),
+      system=shape(seed={"~": BindEntry("/h/base", "")}),
+      agent=shape(seed={"~": BindEntry("/h/agent", "")}),
+      box=shape(seed={"~": BindEntry("/h/box", "")}),
     )
-    assert self.DEST not in collapsed.bindings
+    assert [entry.src for entry in collapsed.copies] == ["/h/base", "/h/agent", "/h/box"]
+    assert {entry.dest for entry in collapsed.copies} == {GUEST}
 
-  def test_a_mask_still_prunes_the_copies_that_preceded_it(self):
-    # The mask's own scope prunes what was already collapsed; a LATER scope may then
-    # plant afresh. The earlier copy must not come back with it.
-    early, late = BindEntry("/h/early", ""), BindEntry("/h/late", "")
-    collapsed = collapse(
-      system=shape(seed={self.DEST: early}),
-      agent=shape(mask={self.DEST: True}),
-      box=shape(seed={self.DEST: late}),
-    )
-    assert collapsed.copies[self.DEST] == [late]
-    assert self.DEST not in collapsed.bindings
+  def test_the_dest_is_CARRIED_on_the_entry_and_NORMALIZED(self):
+    collapsed = collapse(box=shape(seed={"~/x": BindEntry("/h/x", "")}))
+    assert collapsed.copies == [CollapsedCopy("/h/x", f"{GUEST}/x", "")]
 
-  def test_a_mask_and_a_binding_in_ONE_scope_is_not_an_error(self):
-    # S3, RULED: within a scope the mask applies and the cure is not declaring it.
-    # No diagnostic — the mask merges after the arms and simply wins.
-    collapsed = collapse(
-      box=shape(rw={self.DEST: BindEntry("/h/x", "Z,U")}, mask={self.DEST: True}),
-    )
-    assert collapsed.bindings[self.DEST] == MASK
+  def test_a_dotted_dest_survives_WHOLE(self):
+    # ⚑⚑ A destination is DATA — never split on its dots.
+    collapsed = collapse(box=shape(seed={"~/.cache/uv": BindEntry("/h/uv", "")}))
+    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/.cache/uv"]
 
+  def test_a_seeded_entry_is_a_COPY_and_never_becomes_a_binding(self):
+    collapsed = collapse(box=shape(seed={f"{GUEST}/x": BindEntry("/h/x", "")}))
+    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x"]
+    assert f"{GUEST}/x" not in collapsed.bindings
 
-class TestThePrefixMatchNeedsASeparator:
-  """S2 — ``startswith`` is wrong in two directions, and the prune uses both."""
-
-  def test_a_sibling_sharing_a_PREFIX_is_not_inside_the_bind(self):
-    # /home/agent/foobar is NOT inside /home/agent/foo.
-    kept = BindEntry("/h/foobar", "")
-    collapsed = collapse(
-      agent=shape(seed={f"{GUEST}/foobar": kept}),
-      box=shape(ro={f"{GUEST}/foo": BindEntry("/h/foo", "ro")}),
-    )
-    assert collapsed.copies == {f"{GUEST}/foobar": [kept]}
-
-  def test_a_sibling_differing_after_the_separator_position_is_not_inside(self):
-    # /opt/agent-foo is NOT inside /opt/agent. (Spelled outside home so the case is
-    # about the prefix compare and nothing else.)
-    kept = BindEntry("/h/dash", "")
-    collapsed = collapse(
-      agent=shape(seed={"/opt/agent-foo": kept}),
-      box=shape(rw={"/opt/agent": BindEntry("/h/opt", "Z,U")}),
-    )
-    assert collapsed.copies == {"/opt/agent-foo": [kept]}
-
-  def test_the_EXACT_dest_is_pruned(self):
-    # Equality is wanted: a mount AT a copy's destination shadows it.
-    collapsed = collapse(
-      agent=shape(seed={f"{GUEST}/x": BindEntry("/h/x", "")}),
-      box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
-    )
-    assert collapsed.copies == {}
-    assert collapsed.bindings[f"{GUEST}/x"].src == "/h/mount"
-
-  def test_a_child_of_the_dest_is_pruned(self):
-    collapsed = collapse(
-      agent=shape(seed={f"{GUEST}/x/deep/file": BindEntry("/h/f", "")}),
-      box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
-    )
-    assert collapsed.copies == {}
-
-  def test_a_mask_prunes_the_copies_beneath_it_too(self):
-    # ``key_list`` is ro | rw | mask: a mask shadows a copy exactly as a mount does.
-    collapsed = collapse(
-      agent=shape(seed={f"{GUEST}/x/file": BindEntry("/h/f", "")}),
-      box=shape(mask={f"{GUEST}/x": True}),
-    )
-    assert collapsed.copies == {}
-
-  def test_a_mask_at_the_ROOT_prunes_everything_beneath_it(self):
-    # ``rstrip("/") + "/"`` keeps a bare "/" meaning root rather than "//". Spelled
-    # with a MASK because a root BIND now subsumes home and is refused (rule 1).
-    collapsed = collapse(
-      agent=shape(seed={"/anything": BindEntry("/h/a", "")}),
-      box=shape(mask={"/": True}),
-    )
-    assert collapsed.copies == {}
+  def test_the_SYNC_arm_is_never_read(self):
+    # ⚑ HIS ALGORITHM WALKS ``shape.seed`` ONLY. ``synced`` reaches neither output,
+    # and the ``synced_vs_binding`` refusal is therefore not reproduced here either —
+    # the live delivery path still raises it, untouched by step 6. Pinned so that
+    # changing it is a DECISION, not a drive-by.
+    collapsed = collapse(box=shape(sync={f"{GUEST}/x": BindEntry("/h/x", "")}))
+    assert collapsed.copies == []
+    assert list(collapsed.bindings) == [GUEST]
 
 
-class TestThePruneIsScopeOrdered:
-  """S4 — ``key_list`` is the CURRENT scope's keys ONLY. 🛑 Never accumulate it."""
+class TestNothingPrunesACopy:
+  """The two halves do not interact. ⚑ Every case here USED to delete the copy."""
 
-  def test_a_system_bind_does_not_prune_a_box_copy_declared_LATER(self):
-    # Accumulating the prune list would let an OUTER scope reach forward and delete
-    # an INNER scope's copy — precedence inverted. The bind and the copy coexist.
-    late = BindEntry("/h/late", "")
-    collapsed = collapse(
-      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
-      box=shape(seed={f"{GUEST}/x": late}),
-    )
-    assert collapsed.copies == {f"{GUEST}/x": [late]}
-    assert collapsed.bindings[f"{GUEST}/x"].src == "/h/sys"
-
-  def test_a_system_bind_does_not_prune_a_box_copy_BENEATH_it(self):
-    late = BindEntry("/h/deep", "")
-    collapsed = collapse(
-      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
-      box=shape(seed={f"{GUEST}/x/deep": late}),
-    )
-    assert collapsed.copies == {f"{GUEST}/x/deep": [late]}
-
-  def test_an_OUTER_bind_does_not_reach_forward_through_a_LATER_scopes_prune(self):
-    # ⚑⚑ THE TEST THAT ACTUALLY DISCRIMINATES, and the two above do not: within one
-    # scope the prune runs BEFORE the plant, so a copy declared in the SAME scope as
-    # the prune is never offered to it either way. Only a copy planted in a MIDDLE
-    # scope, with a further scope still to run, can be reached by an accumulated
-    # list — and here it must not be.
-    deep = BindEntry("/h/deep", "")
-    collapsed = collapse(
-      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
-      agent=shape(seed={f"{GUEST}/x/deep": deep}),
-      box=shape(rw={f"{GUEST}/other": BindEntry("/h/other", "Z,U")}),
-    )
-    assert collapsed.copies == {f"{GUEST}/x/deep": [deep]}
-
-  def test_an_outer_bind_does_not_reach_forward_to_a_copy_at_its_OWN_dest(self):
-    same = BindEntry("/h/same", "")
-    collapsed = collapse(
-      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
-      agent=shape(seed={f"{GUEST}/x": same}),
-      box=shape(mask={f"{GUEST}/elsewhere": True}),
-    )
-    assert collapsed.copies == {f"{GUEST}/x": [same]}
-
-  def test_a_bind_and_a_copy_in_ONE_scope_both_survive(self):
-    # The prune runs before the plant, so a scope never prunes its OWN copies. His
-    # algorithm's order, pinned as-is: changing it is a ruling, not a tidy-up.
-    same_scope = BindEntry("/h/copy", "")
-    collapsed = collapse(
-      box=shape(
-        rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")},
-        seed={f"{GUEST}/x": same_scope},
-      ),
-    )
-    assert collapsed.copies == {f"{GUEST}/x": [same_scope]}
-    assert collapsed.bindings[f"{GUEST}/x"].src == "/h/mount"
-
-  def test_an_EARLIER_copy_IS_pruned_by_a_later_scope_bind(self):
-    # The positive direction, and the whole point of pruning: a shadowed copy must
-    # not be pointlessly performed. Silent removal, not an error.
+  def test_a_bind_at_a_copys_EXACT_dest_no_longer_prunes_it(self):
     collapsed = collapse(
       system=shape(seed={f"{GUEST}/x": BindEntry("/h/early", "")}),
       box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
     )
-    assert collapsed.copies == {}
+    assert collapsed.copies == [CollapsedCopy("/h/early", f"{GUEST}/x", "")]
+    assert collapsed.bindings[f"{GUEST}/x"].src == "/h/mount"
 
-
-class TestDoubleBind:
-  """Row 1's CROSS-SCOPE case — the collapse's own refusal."""
-
-  def test_two_scopes_binding_one_dest_is_refused(self):
-    with pytest.raises(SettingsError, match=r"/h/sys.*would bind over|two bindings"):
-      collapse(
-        system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
-        box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
-      )
-
-  def test_the_ro_and_rw_arms_of_ONE_scope_contend_at_one_dest(self):
-    with pytest.raises(SettingsError, match=r"two bindings target the destination"):
-      collapse(
-        box=shape(
-          ro={f"{GUEST}/x": BindEntry("/h/ro", "ro")},
-          rw={f"{GUEST}/x": BindEntry("/h/rw", "Z,U")},
-        ),
-      )
-
-  def test_a_MASK_may_be_bound_over_and_is_not_a_double_bind(self):
+  def test_a_bind_ABOVE_a_copy_no_longer_prunes_it(self):
     collapsed = collapse(
-      system=shape(mask={f"{GUEST}/x": True}),
-      box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
+      system=shape(seed={f"{GUEST}/x/deep/file": BindEntry("/h/f", "")}),
+      box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
     )
-    assert collapsed.bindings[f"{GUEST}/x"] == CollapsedBind("/h/box", "Z,U,rw")
+    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x/deep/file"]
 
-  def test_a_mask_over_a_binding_overrides_it_silently(self):
+  def test_a_mask_no_longer_prunes_the_copies_beneath_it(self):
     collapsed = collapse(
-      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
+      system=shape(seed={f"{GUEST}/x/file": BindEntry("/h/f", "")}),
       box=shape(mask={f"{GUEST}/x": True}),
     )
+    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x/file"]
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
 
-  def test_two_SPELLINGS_of_one_dest_are_one_destination(self):
-    # Normalization happens at the point of use, so ``~/x`` and ``/home/agent/x``
-    # meet in the map and raise the double-bind they actually are — rather than
-    # silently overwriting each other inside a pre-pass.
-    with pytest.raises(SettingsError, match=r"two bindings target the destination"):
+  def test_a_copy_at_a_masks_EXACT_point_neither_refuses_nor_unmasks(self):
+    # ⚑ Rule 5 and the S1 unmask are BOTH gone: a copy no longer meets a mask at
+    # all, so the mask stays exactly where the mask rules put it and the copy is
+    # carried beside it. Whether the copy is then dead is a DELIVERY question.
+    collapsed = collapse(
+      system=shape(mask={f"{GUEST}/planted": True}),
+      box=shape(seed={f"{GUEST}/planted": BindEntry("/h/seed", "")}),
+    )
+    assert collapsed.bindings[f"{GUEST}/planted"] == MASK
+    assert collapsed.copies == [CollapsedCopy("/h/seed", f"{GUEST}/planted", "")]
+
+  def test_an_OUTER_scopes_bind_does_not_reach_a_LATER_scopes_copy(self):
+    # Held from the deleted prune's own S4 test: precedence must not invert. It is
+    # now true BY CONSTRUCTION rather than by a scope-local key list.
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
+      agent=shape(seed={f"{GUEST}/x/deep": BindEntry("/h/deep", "")}),
+      box=shape(rw={f"{GUEST}/other": BindEntry("/h/other", "Z,U")}),
+    )
+    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x/deep"]
+
+
+class TestACopyMustLandInsideHome:
+  """⚖️ THE ONE NEW ERROR CASE — a copy resolves into the home store or nowhere."""
+
+  def test_a_copy_OUTSIDE_home_is_refused_by_name(self):
+    with pytest.raises(SettingsError, match=r"outside the home binding"):
+      collapse(box=shape(seed={"/opt/thing": BindEntry("/h/thing", "")}))
+
+  def test_the_refusal_NAMES_the_source_and_the_destination(self):
+    with pytest.raises(SettingsError, match=r"'/h/thing'.*'/opt/thing'"):
+      collapse(box=shape(seed={"/opt/thing": BindEntry("/h/thing", "")}))
+
+  def test_a_copy_AT_home_ITSELF_is_inside_home(self):
+    # The ``seeded`` layers target ``~`` exactly, so equality MUST count as inside.
+    collapsed = collapse(box=shape(seed={"~": BindEntry("/h/layer", "")}))
+    assert collapsed.copies == [CollapsedCopy("/h/layer", GUEST, "")]
+
+  def test_a_SIBLING_of_home_sharing_its_prefix_is_NOT_inside_home(self):
+    # ⚑ The separator guard, on the containment predicate the new refusal uses:
+    # /home/agent-foo is not inside /home/agent, so this copy is refused.
+    with pytest.raises(SettingsError, match=r"outside the home binding"):
+      collapse(box=shape(seed={"/home/agent-foo/x": BindEntry("/h/dash", "")}))
+
+  def test_a_bind_at_the_same_OUTSIDE_dest_does_not_excuse_the_copy(self):
+    # ⚑ The halves do not interact: the copy half runs FIRST and reads no binding,
+    # so a mount there cannot make an out-of-home copy legal.
+    with pytest.raises(SettingsError, match=r"outside the home binding"):
       collapse(
-        system=shape(rw={"~/x": BindEntry("/h/sys", "Z,U")}),
-        box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
+        system=shape(rw={"/opt/thing": BindEntry("/h/mount", "Z,U")}),
+        box=shape(seed={"/opt/thing": BindEntry("/h/thing", "")}),
       )
+
+
+class TestTheModuleNeverTouchesTheFilesystem:
+  """⚑ The collapse is a PURE function of the store shape — no ``is_dir``, no probe."""
+
+  DEST = f"{GUEST}/planted"
+
+  def collapsed_with_source(self, src) -> CollapsedStore:
+    return collapse(
+      system=shape(mask={self.DEST: True}),
+      box=shape(seed={self.DEST: BindEntry(str(src), "")}),
+    )
+
+  def test_a_real_DIRECTORY_source_onto_a_mask_is_no_longer_refused(self, tmp_path):
+    # ⚑ This EXACT config raised until 2026-08-09d, decided by a live ``is_dir()``.
+    # The concrete case is ``~/.config/goose/custom_providers``.
+    source = tmp_path / "adir"
+    source.mkdir()
+    collapsed = self.collapsed_with_source(source)
+    assert collapsed.copies == [CollapsedCopy(str(source), self.DEST, "")]
+
+  def test_the_answer_does_NOT_depend_on_whether_the_source_exists(self, tmp_path):
+    # The old probe made ONE config refuse or permit according to a fact about the
+    # host at resolve time. Same shape, three different filesystems, one answer.
+    directory = tmp_path / "adir"
+    directory.mkdir()
+    afile = tmp_path / "afile"
+    afile.write_text("x")
+    absent = tmp_path / "absent"
+    answers = [
+      self.collapsed_with_source(src).copies[0]._replace(src="<src>")
+      for src in (directory, afile, absent)
+    ]
+    assert answers == [CollapsedCopy("<src>", self.DEST, "")] * 3
 
 
 class TestTheOptsFold:
@@ -365,25 +336,59 @@ class TestTheOptsFold:
     with pytest.raises(SettingsError, match=r"sits in the 'ro' arm"):
       collapse(box=shape(ro={f"{GUEST}/x": BindEntry("/h/x", "Z,rw")}))
 
+  def test_a_copys_opts_are_carried_VERBATIM_with_no_mode_folded_in(self):
+    # A copy is in no ro/rw ARM, so there is no mode to fold. It carries what the
+    # entry stored, exactly as home does.
+    collapsed = collapse(box=shape(seed={"~/x": BindEntry("/h/x", "Z,U")}))
+    assert collapsed.copies[0].opts == "Z,U"
+
 
 class TestABindCannotSubsumeABind:
-  """RULE 1. ⚑ Only a LATER scope can trip it — within a scope the sort forbids it."""
+  """⚑ Only a LATER scope can trip it — within a scope the parent-first sort forbids it."""
 
   def test_a_later_scope_bind_ABOVE_an_earlier_deeper_one_is_refused(self):
     # ⚑⚑ THE DISCRIMINATING SHAPE NEEDS TWO SCOPES. The mount order follows the
     # path VALUE, not the declaration order, so the inner bind could never be
     # reached: shipping it would silently drop a declaration.
-    with pytest.raises(SettingsError, match=r"would subsume the binding"):
+    with pytest.raises(SettingsError, match=COLLIDES):
       collapse(
         system=shape(rw={f"{GUEST}/x/y": BindEntry("/h/deep", "Z,U")}),
         box=shape(rw={f"{GUEST}/x": BindEntry("/h/shallow", "Z,U")}),
       )
 
   def test_the_refusal_NAMES_the_binding_it_would_have_swallowed(self):
-    with pytest.raises(SettingsError, match=rf"'{GUEST}/x/y'"):
+    with pytest.raises(SettingsError, match=rf"'{GUEST}/x/y' \('/h/deep'\)"):
       collapse(
         system=shape(ro={f"{GUEST}/x/y": BindEntry("/h/deep", "ro")}),
         box=shape(rw={f"{GUEST}/x": BindEntry("/h/shallow", "Z,U")}),
+      )
+
+  def test_a_bind_AT_an_occupied_dest_is_the_SAME_refusal_not_a_second_one(self):
+    # ⚑ The predicate is inclusive of equality on the subsume side, which is what
+    # collapsed the old ``_refuse_double_bind`` into this one rule. Same message.
+    with pytest.raises(SettingsError, match=COLLIDES):
+      collapse(
+        system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
+        box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
+      )
+
+  def test_the_ro_and_rw_arms_of_ONE_scope_contend_at_one_dest(self):
+    with pytest.raises(SettingsError, match=COLLIDES):
+      collapse(
+        box=shape(
+          ro={f"{GUEST}/x": BindEntry("/h/ro", "ro")},
+          rw={f"{GUEST}/x": BindEntry("/h/rw", "Z,U")},
+        ),
+      )
+
+  def test_two_SPELLINGS_of_one_dest_are_one_destination(self):
+    # Normalization happens at the point of use, so ``~/x`` and ``/home/agent/x``
+    # meet in the map and raise the collision they actually are — rather than
+    # silently overwriting each other inside a pre-pass.
+    with pytest.raises(SettingsError, match=COLLIDES):
+      collapse(
+        system=shape(rw={"~/x": BindEntry("/h/sys", "Z,U")}),
+        box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
       )
 
   def test_a_later_scope_bind_INSIDE_an_earlier_one_nests_freely(self):
@@ -397,8 +402,8 @@ class TestABindCannotSubsumeABind:
     assert collapsed.bindings[f"{GUEST}/x/y"].src == "/h/deep"
 
   def test_a_SIBLING_sharing_a_prefix_is_not_subsumed(self):
-    # The separator guard again, on the SUBSUME side: /home/agent/foobar is not
-    # inside /home/agent/foo, so neither refuses the other.
+    # The separator guard on the SUBSUME side: /home/agent/foobar is not inside
+    # /home/agent/foo, so neither refuses the other.
     collapsed = collapse(
       system=shape(rw={f"{GUEST}/foobar": BindEntry("/h/foobar", "Z,U")}),
       box=shape(rw={f"{GUEST}/foo": BindEntry("/h/foo", "Z,U")}),
@@ -406,9 +411,8 @@ class TestABindCannotSubsumeABind:
     assert collapsed.bindings[f"{GUEST}/foobar"].src == "/h/foobar"
     assert collapsed.bindings[f"{GUEST}/foo"].src == "/h/foo"
 
-  def test_a_bind_does_not_subsume_a_MASK_by_this_rule(self):
-    # Rule 1 counts BINDINGS only. A mask beneath is rule 2's business and is
-    # removed, never refused.
+  def test_a_bind_does_not_refuse_a_MASK_beneath_it(self):
+    # The bind refusal counts BINDINGS only. A mask beneath is swept, never refused.
     collapsed = collapse(
       system=shape(mask={f"{GUEST}/x/y": True}),
       box=shape(rw={f"{GUEST}/x": BindEntry("/h/shallow", "Z,U")}),
@@ -416,8 +420,8 @@ class TestABindCannotSubsumeABind:
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/shallow"
 
 
-class TestABindSubsumesMasksAndCopies:
-  """RULES 2 + 6 — a bind CAN subsume a mask or copies, and subsumed means REMOVED."""
+class TestABindSweepsTheMasksItCovers:
+  """A bind CAN subsume a mask at its point or inside it, and subsumed means REMOVED."""
 
   def test_a_bind_REMOVES_the_mask_beneath_it_rather_than_leaving_it_inert(self):
     collapsed = collapse(
@@ -443,21 +447,16 @@ class TestABindSubsumesMasksAndCopies:
     )
     assert collapsed.bindings[f"{GUEST}/other"] == MASK
 
-  def test_a_bind_subsumes_the_copies_beneath_it_and_at_its_EXACT_dest(self):
-    # The copy half of rule 2. Both directions in one place: the prune's
-    # equality case IS the "bind clears a copy at its exact dest" rule.
+  def test_a_bind_at_a_masks_EXACT_point_replaces_it(self):
     collapsed = collapse(
-      system=shape(seed={
-        f"{GUEST}/x": BindEntry("/h/at", ""),
-        f"{GUEST}/x/deep": BindEntry("/h/under", ""),
-      }),
-      box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
+      system=shape(mask={f"{GUEST}/x": True}),
+      box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
     )
-    assert collapsed.copies == {}
+    assert collapsed.bindings[f"{GUEST}/x"] == CollapsedBind("/h/box", "Z,U,rw")
 
 
 class TestABindCannotBeAChildOfAMask:
-  """RULE 3 — the mask's tmpfs would swallow the bind, so it is refused by name."""
+  """The mask's tmpfs would swallow the bind, so it is refused by name."""
 
   def test_a_bind_INSIDE_an_earlier_scopes_mask_is_refused(self):
     with pytest.raises(SettingsError, match=r"sits inside the mask at"):
@@ -474,15 +473,6 @@ class TestABindCannotBeAChildOfAMask:
         box=shape(ro={f"{GUEST}/x/deep/y": BindEntry("/h/deep", "ro")}),
       )
 
-  def test_a_bind_at_the_masks_EXACT_point_is_still_allowed(self):
-    # Rule 3 is about being a CHILD. Binding over a mask at its own dest is the
-    # ratified override and stays legal.
-    collapsed = collapse(
-      system=shape(mask={f"{GUEST}/x": True}),
-      box=shape(rw={f"{GUEST}/x": BindEntry("/h/box", "Z,U")}),
-    )
-    assert collapsed.bindings[f"{GUEST}/x"] == CollapsedBind("/h/box", "Z,U,rw")
-
   def test_a_bind_beside_a_mask_is_not_a_child_of_it(self):
     collapsed = collapse(
       system=shape(mask={f"{GUEST}/xy": True}),
@@ -492,7 +482,7 @@ class TestABindCannotBeAChildOfAMask:
 
 
 class TestAMaskMayBeAChildOfABind:
-  """RULE 4 — the permissive half. It guards against rule 3 being made symmetric."""
+  """The permissive half. It guards against the bind-under-mask rule being made symmetric."""
 
   def test_a_later_scopes_mask_INSIDE_a_bind_is_allowed_and_both_survive(self):
     collapsed = collapse(
@@ -518,68 +508,112 @@ class TestAMaskMayBeAChildOfABind:
     assert collapsed.bindings[GUEST].src == HOME.src
 
 
-class TestACopiedDirectoryCannotTakeAMasksPoint:
-  """RULE 5 — a copied FILE may land on a mask's exact point; a DIRECTORY may not.
+class TestAMaskSweepsTheMountsItCovers:
+  """A mask CAN replace or subsume a bind at its point or inside it — and REMOVES it."""
 
-  ⚑ ``stat`` is explicitly allowed here (collapse DESIGN §0 ruling 2: *"just data
-  collection… you aren't changing disk state"*), so these fixtures build REAL
-  sources on disk rather than routing around the check.
-  """
-
-  DEST = f"{GUEST}/planted"
-
-  def masked_seed(self, src) -> CollapsedStore:
-    return collapse(
-      system=shape(mask={self.DEST: True}),
-      box=shape(seed={self.DEST: BindEntry(str(src), "")}),
-    )
-
-  def test_a_copied_DIRECTORY_onto_the_masks_exact_point_is_refused(self, tmp_path):
-    source = tmp_path / "adir"
-    source.mkdir()
-    with pytest.raises(SettingsError, match=r"source is a DIRECTORY"):
-      self.masked_seed(source)
-
-  def test_a_copied_FILE_may_take_the_masks_exact_point(self, tmp_path):
-    source = tmp_path / "afile"
-    source.write_text("x")
-    collapsed = self.masked_seed(source)
-    assert self.DEST not in collapsed.bindings
-    assert collapsed.copies[self.DEST] == [BindEntry(str(source), "")]
-
-  def test_a_directory_copy_BENEATH_a_mask_is_not_refused(self, tmp_path):
-    # The rule names the mask's EXACT point. A copy at a deeper dest lands inside
-    # the tmpfs, which is ordinary.
-    source = tmp_path / "adir"
-    source.mkdir()
+  def test_a_mask_over_a_binding_at_its_EXACT_point_replaces_it(self):
     collapsed = collapse(
-      system=shape(mask={self.DEST: True}),
-      box=shape(seed={f"{self.DEST}/sub": BindEntry(str(source), "")}),
+      system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
+      box=shape(mask={f"{GUEST}/x": True}),
     )
-    assert collapsed.copies[f"{self.DEST}/sub"] == [BindEntry(str(source), "")]
-    assert collapsed.bindings[self.DEST] == MASK
+    assert collapsed.bindings[f"{GUEST}/x"] == MASK
 
-  def test_a_directory_copy_onto_an_UNMASKED_dest_is_not_refused(self, tmp_path):
-    source = tmp_path / "adir"
-    source.mkdir()
-    collapsed = collapse(box=shape(seed={self.DEST: BindEntry(str(source), "")}))
-    assert collapsed.copies[self.DEST] == [BindEntry(str(source), "")]
+  def test_a_mask_REMOVES_the_binding_nested_INSIDE_it(self):
+    # ⚑⚑ THE SWEEP'S DISCRIMINATING CASE, and it needs two scopes: until 2026-08-09d
+    # the mask arm was one unguarded assignment, so this bind SURVIVED beneath the
+    # tmpfs and would have been emitted as a mount into a void.
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/x/y": BindEntry("/h/deep", "Z,U")}),
+      box=shape(mask={f"{GUEST}/x": True}),
+    )
+    assert f"{GUEST}/x/y" not in collapsed.bindings
+    assert list(collapsed.bindings) == [GUEST, f"{GUEST}/x"]
 
-  def test_a_source_that_does_not_exist_yet_is_NOT_refused(self, tmp_path):
-    # ⚑ NOT COVERED BY THE SIX RULES, and decided narrowly rather than invented:
-    # the rule refuses a DIRECTORY, and a source that is not there is not one.
-    # (spec:641 blesses a not-yet-existing copy source, so the file-vs-directory
-    # test is genuinely undecidable for it — that ruling is owed, not assumed.)
-    collapsed = self.masked_seed(tmp_path / "absent")
-    assert self.DEST not in collapsed.bindings
+  def test_a_mask_does_not_remove_a_binding_BESIDE_it(self):
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/xyz": BindEntry("/h/xyz", "Z,U")}),
+      box=shape(mask={f"{GUEST}/xy": True}),
+    )
+    assert collapsed.bindings[f"{GUEST}/xyz"].src == "/h/xyz"
+
+  def test_a_mask_and_a_binding_at_one_dest_in_ONE_scope_is_not_an_error(self):
+    # S3, RULED: within a scope the mask applies and the cure is not declaring it.
+    # No diagnostic — the masks merge after the arms and simply win.
+    collapsed = collapse(
+      box=shape(rw={f"{GUEST}/x": BindEntry("/h/x", "Z,U")}, mask={f"{GUEST}/x": True}),
+    )
+    assert collapsed.bindings[f"{GUEST}/x"] == MASK
+
+  def test_a_mask_AT_home_replaces_the_home_binding(self):
+    # ⚠️ REPORTED, NOT ASSUMED. The ratified refusability table gives an arriving
+    # mask "ok — delete it" over a bind at its point, with no home exception, and
+    # the shipped code already overwrote home here. "Nothing may subsume home" is
+    # stated as falling out of the BIND rule, which counts bindings only. Pinned as
+    # the table has it; if that is to become a refusal it is a RULING, not a tidy-up.
+    collapsed = collapse(box=shape(mask={"~": True}))
+    assert collapsed.bindings == {GUEST: MASK}
 
 
-class TestTheShallowFirstSortWithinAScope:
-  """Ruling 1 — the INTRA-scope mechanism that makes rule 1's error meaningful."""
+class TestAMaskCannotTakeOrEnterAnotherMask:
+  """"A void within a void" — the direction of prohibition is the INVERSE of a bind's."""
 
-  def test_a_parent_declared_AFTER_its_child_in_one_scope_still_lands_first(self):
+  def test_a_mask_at_an_earlier_masks_EXACT_point_is_refused(self):
+    # ⚑ TWO SCOPES ARE REQUIRED: one scope's mask arm is dest-keyed, so the same
+    # point twice inside one scope is unconstructible and pins nothing.
+    with pytest.raises(SettingsError, match=r"lands on the mask"):
+      collapse(
+        system=shape(mask={f"{GUEST}/x": True}),
+        box=shape(mask={"~/x": True}),
+      )
+
+  def test_a_mask_INSIDE_an_earlier_mask_is_refused(self):
+    with pytest.raises(SettingsError, match=r"a void within a void"):
+      collapse(
+        system=shape(mask={f"{GUEST}/x": True}),
+        box=shape(mask={f"{GUEST}/x/y": True}),
+      )
+
+  def test_the_refusal_NAMES_the_mask_it_landed_on(self):
+    with pytest.raises(SettingsError, match=rf"'{GUEST}/x'"):
+      collapse(
+        system=shape(mask={f"{GUEST}/x": True}),
+        box=shape(mask={f"{GUEST}/x/deep/y": True}),
+      )
+
+  def test_a_mask_may_SUBSUME_an_earlier_child_mask_and_it_is_REMOVED(self):
+    # ⚑⚑ THE INVERSION, and the case a mirror-of-the-bind-rule would get backwards:
+    # a mask that is a PARENT of an existing one is FINE, and the child goes.
+    collapsed = collapse(
+      system=shape(mask={f"{GUEST}/x/y": True}),
+      box=shape(mask={f"{GUEST}/x": True}),
+    )
+    assert list(collapsed.bindings) == [GUEST, f"{GUEST}/x"]
+    assert collapsed.bindings[f"{GUEST}/x"] == MASK
+
+  def test_a_SIBLING_mask_sharing_a_prefix_is_neither_refused_nor_swept(self):
+    collapsed = collapse(
+      system=shape(mask={f"{GUEST}/foobar": True}),
+      box=shape(mask={f"{GUEST}/foo": True}),
+    )
+    assert collapsed.bindings[f"{GUEST}/foobar"] == MASK
+    assert collapsed.bindings[f"{GUEST}/foo"] == MASK
+
+  def test_a_bind_between_two_masks_does_not_make_them_legal(self):
+    collapsed = collapse(
+      system=shape(mask={f"{GUEST}/x/y": True}),
+      agent=shape(rw={f"{GUEST}/elsewhere": BindEntry("/h/e", "Z,U")}),
+      box=shape(mask={f"{GUEST}/x": True}),
+    )
+    assert collapsed.bindings[f"{GUEST}/elsewhere"].src == "/h/e"
+    assert f"{GUEST}/x/y" not in collapsed.bindings
+
+
+class TestTheIntraScopeSorts:
+  """Ruling 1's mechanism, and its INVERSE for masks: no answer may turn on dict order."""
+
+  def test_a_parent_bind_declared_AFTER_its_child_in_one_scope_still_lands_first(self):
     # ⚑ Without the sort this raises: the child is already collapsed when the
-    # parent arrives, and rule 1 cannot tell an ordering artefact from a genuine
+    # parent arrives, and the rule cannot tell an ordering artefact from a genuine
     # cross-scope conflict. Within a scope there is no precedence to express, so
     # the sort — not a diagnostic — is the answer.
     collapsed = collapse(
@@ -591,7 +625,7 @@ class TestTheShallowFirstSortWithinAScope:
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/shallow"
     assert collapsed.bindings[f"{GUEST}/x/y"].src == "/h/deep"
 
-  def test_the_sort_spans_BOTH_arms_of_the_scope(self):
+  def test_the_bind_sort_spans_BOTH_arms_of_the_scope(self):
     # ro is walked before rw, so a deep ro entry would otherwise beat a shallow
     # rw one. The sort is over the scope's binds, not over each arm.
     collapsed = collapse(
@@ -603,7 +637,7 @@ class TestTheShallowFirstSortWithinAScope:
     assert collapsed.bindings[f"{GUEST}/x"].opts == "Z,U,rw"
     assert collapsed.bindings[f"{GUEST}/x/y"].opts == "ro"
 
-  def test_three_generations_in_one_scope_collapse_in_depth_order(self):
+  def test_three_generations_of_bind_in_one_scope_collapse_parent_first(self):
     collapsed = collapse(
       box=shape(rw={
         f"{GUEST}/a/b/c": BindEntry("/h/c", "Z,U"),
@@ -615,10 +649,10 @@ class TestTheShallowFirstSortWithinAScope:
       f"{GUEST}/a", f"{GUEST}/a/b", f"{GUEST}/a/b/c",
     )] == ["/h/a", "/h/b", "/h/c"]
 
-  def test_the_arm_order_survives_at_EQUAL_depth(self):
+  def test_the_arm_order_survives_at_EQUAL_length(self):
     # The sort is STABLE, so his ro-before-rw walk is preserved: the ro entry is
-    # the OCCUPANT the double-bind refusal names.
-    with pytest.raises(SettingsError, match=r"'/h/ro' already binds"):
+    # the OCCUPANT the collision names.
+    with pytest.raises(SettingsError, match=r"'/h/ro'"):
       collapse(
         box=shape(
           ro={f"{GUEST}/x": BindEntry("/h/ro", "ro")},
@@ -626,14 +660,32 @@ class TestTheShallowFirstSortWithinAScope:
         ),
       )
 
-  def test_the_sort_does_not_reach_ACROSS_scopes(self):
-    # Scope order is precedence and depth order is intra-scope only. A shallower
-    # bind in a LATER scope is exactly the conflict rule 1 exists to catch.
-    with pytest.raises(SettingsError, match=r"would subsume the binding"):
+  def test_the_bind_sort_does_not_reach_ACROSS_scopes(self):
+    # Scope order is precedence and containment order is intra-scope only. A
+    # shallower bind in a LATER scope is exactly the conflict the rule catches.
+    with pytest.raises(SettingsError, match=COLLIDES):
       collapse(
         agent=shape(rw={f"{GUEST}/x/y": BindEntry("/h/deep", "Z,U")}),
         box=shape(rw={f"{GUEST}/x": BindEntry("/h/shallow", "Z,U")}),
       )
+
+  @pytest.mark.parametrize("declared", [
+    ((f"{GUEST}/x", f"{GUEST}/x/y")),
+    ((f"{GUEST}/x/y", f"{GUEST}/x")),
+  ])
+  def test_nested_masks_in_ONE_scope_collapse_CHILD_first_either_way(self, declared):
+    # ⚑⚑ THE INVERSE SORT, and it is load-bearing: the mask rule refuses a PARENT
+    # and permits a CHILD, so masks must arrive child-first or one declaration
+    # order raises and the other does not. Ruling 1's argument, direction flipped —
+    # within a scope there is no precedence to express, so the sort is the answer.
+    collapsed = collapse(box=shape(mask=dict.fromkeys(declared, True)))
+    assert list(collapsed.bindings) == [GUEST, f"{GUEST}/x"]
+
+  def test_three_generations_of_mask_in_one_scope_leave_only_the_outermost(self):
+    collapsed = collapse(box=shape(mask={
+      f"{GUEST}/a/b": True, f"{GUEST}/a/b/c": True, f"{GUEST}/a": True,
+    }))
+    assert list(collapsed.bindings) == [GUEST, f"{GUEST}/a"]
 
 
 class TestPathsAreCaseSensitive:
@@ -648,54 +700,13 @@ class TestPathsAreCaseSensitive:
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/lower"
     assert collapsed.bindings["/Home/agent/x"].src == "/h/upper"
 
-  def test_a_case_variant_bind_does_not_prune_a_copy(self):
-    # Case-folding the prune compare would silently delete this copy.
-    kept = BindEntry("/h/f", "")
+  def test_a_case_variant_mask_does_not_sweep_a_binding(self):
+    # Case-folding the containment compare would silently delete this binding.
     collapsed = collapse(
-      agent=shape(seed={f"{GUEST}/x": kept}),
-      box=shape(rw={"/Home/agent/x": BindEntry("/h/mount", "Z,U")}),
+      system=shape(rw={f"{GUEST}/x/y": BindEntry("/h/deep", "Z,U")}),
+      box=shape(mask={"/Home/agent/x": True}),
     )
-    assert collapsed.copies == {f"{GUEST}/x": [kept]}
-
-
-class TestTheCopiesMap:
-  """One dest holds a LIST — copies combine filewise, not bindwise."""
-
-  def test_copies_at_one_dest_accumulate_in_SCOPE_order(self):
-    first, second = BindEntry("/h/first", ""), BindEntry("/h/second", "")
-    collapsed = collapse(
-      system=shape(seed={f"{GUEST}/x": first}),
-      box=shape(seed={f"{GUEST}/x": second}),
-    )
-    assert collapsed.copies[f"{GUEST}/x"] == [first, second]
-
-  def test_the_copies_map_is_DEST_ordered(self):
-    # What his ``SortedDict`` gave for free. The ``bisect_left`` scan it existed to
-    # serve is gone with it; the ordering is not.
-    collapsed = collapse(
-      system=shape(seed={f"{GUEST}/z": BindEntry("/h/z", "")}),
-      box=shape(seed={f"{GUEST}/a": BindEntry("/h/a", "")}),
-    )
-    assert list(collapsed.copies) == [f"{GUEST}/a", f"{GUEST}/z"]
-
-  def test_a_seeded_entry_is_a_COPY_and_never_becomes_a_binding(self):
-    collapsed = collapse(box=shape(seed={f"{GUEST}/x": BindEntry("/h/x", "")}))
-    assert f"{GUEST}/x" in collapsed.copies
-    assert f"{GUEST}/x" not in collapsed.bindings
-
-  def test_a_dotted_dest_survives_WHOLE(self):
-    # ⚑⚑ A destination is DATA — never split on its dots.
-    collapsed = collapse(box=shape(seed={"~/.cache/uv": BindEntry("/h/uv", "")}))
-    assert list(collapsed.copies) == [f"{GUEST}/.cache/uv"]
-
-  def test_the_SYNC_arm_is_never_read(self):
-    # ⚑ HIS ALGORITHM WALKS ``shape.seed`` ONLY. ``synced`` reaches neither map, and
-    # the ``synced_vs_binding`` refusal is therefore not reproduced here either —
-    # the live delivery path still raises it, untouched by step 6. Pinned so that
-    # changing it is a DECISION, not a drive-by.
-    collapsed = collapse(box=shape(sync={f"{GUEST}/x": BindEntry("/h/x", "")}))
-    assert collapsed.copies == {}
-    assert list(collapsed.bindings) == [GUEST]
+    assert collapsed.bindings[f"{GUEST}/x/y"].src == "/h/deep"
 
 
 class TestPurity:
@@ -736,7 +747,7 @@ class TestTheLiveRoute:
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
     return collapse_store_shapes(build_store_shape_set(entries), HOME)
 
-  def test_a_real_floor_collapses_to_folded_binds_and_planted_copies(self):
+  def test_a_real_floor_collapses_to_folded_binds_and_a_copy_list(self):
     collapsed = self.collapsed({
       "system.bindings.ro": {"~/ro": ("/h/ro",)},
       "box.caches": {"~/cache": ("/h/cache",)},
@@ -745,7 +756,7 @@ class TestTheLiveRoute:
     assert collapsed.bindings[f"{GUEST}/ro"] == CollapsedBind("/h/ro", "ro")
     assert collapsed.bindings[f"{GUEST}/cache"] == CollapsedBind("/h/cache", "Z,U,rw")
     assert collapsed.bindings[GUEST].src == HOME.src
-    assert collapsed.copies[f"{GUEST}/seed"] == [BindEntry("/h/seed", "")]
+    assert collapsed.copies == [CollapsedCopy("/h/seed", f"{GUEST}/seed", "")]
 
   def test_a_real_mask_over_a_real_bind_from_an_outer_scope(self):
     collapsed = self.collapsed({
@@ -754,14 +765,12 @@ class TestTheLiveRoute:
     })
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
 
-  def test_a_real_agent_scope_bind_collapses_before_the_box(self):
+  def test_a_real_seeded_layer_UNDER_a_real_bind_is_carried_not_pruned(self):
     # The agent tier is DISCRIMINATED on the way in and folds under its BARE scope
     # token, which is what makes it collapse third-from-outermost.
     collapsed = self.collapsed({
       "agent.claude.common": {"~/x": ("/h/agent",)},
       "box.seeded": {"~/x/file": ("/h/file",)},
     })
-    # The agent bind is collapsed FIRST, so it does not prune the box copy: the
-    # prune list is the CURRENT scope's keys only.
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/agent"
-    assert collapsed.copies[f"{GUEST}/x/file"] == [BindEntry("/h/file", "")]
+    assert collapsed.copies == [CollapsedCopy("/h/file", f"{GUEST}/x/file", "")]

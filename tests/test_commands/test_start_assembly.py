@@ -215,10 +215,14 @@ class TestHomeIsLiftedOut:
 def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
     leaf, std, config, project_dir,
 ):
-    """A dest is DATA: the leaf holds ONE dict, never a tree shattered on its dots."""
+    """A dest is DATA: the leaf holds ONE value, never a tree shattered on its dots."""
     proj = resolve_project(std, config, str(project_dir), initialize=True)
     snapshot, _rec = _resolve(std, proj)
     value = _assembly(snapshot)[leaf]
 
-    assert isinstance(value, dict)
-    assert all("/" in dest for dest in value), sorted(value)
+    # ⚑ TWO SHAPES, ONE PROPERTY. ``bindings`` is dest-KEYED; ``copies`` became a
+    # scope-ordered LIST that CARRIES its dest (2026-08-09d: copies apply to the
+    # home bind alone, and a dest MAY repeat). Either way the dest arrives WHOLE.
+    assert isinstance(value, dict if leaf == "bindings" else list)
+    dests = list(value) if leaf == "bindings" else [entry.dest for entry in value]
+    assert all("/" in dest for dest in dests), sorted(dests)
