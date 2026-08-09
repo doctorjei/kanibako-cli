@@ -20,7 +20,9 @@
 #     while the value is filled in at the seam.
 #   * CONDITIONAL gating stays at the injection site, NOT here: the workset-local
 #     channel binds are emitted only for PRIMARY/NAMED boxes (standalone omits
-#     them) — the loader applies that gate when the workset channel paths exist.
+#     them).  The gate is a MODE test, not a filesystem test — the loader adds the
+#     `workset_*` source names only when `proj.mode` is not standalone, then drops
+#     any entry whose `source:` is missing from that map.  Nothing stats a path.
 
 # box.masks default (decision B): EMPTY — there is no default tmpfs mask.  The
 # vault moved OUT of ~/workspace in 1.6.0, so there is nothing in the workspace
@@ -31,8 +33,11 @@ masks: []
 
 # Channel binds (§2c/§2f).  Each entry becomes a `box.bindings.rw.<key>` default
 # whose VALUE is the structured pair (<probed host_src>, <box_dest>).  `source`
-# names the runtime-probed host root the loader injects; `scope` is `system`
-# (every mode) or `workset` (PRIMARY/NAMED only — standalone omits these).
+# names the runtime-probed host root the loader injects, and IS the gate that
+# omits an entry on a standalone box.  `scope` is DESCRIPTIVE on a channel entry —
+# `system` (every mode) / `workset` (PRIMARY/NAMED only) records that policy but no
+# loader reads it here; the field is live only on `core:` rows, where `scope: vault`
+# gates the vault binds.
 #
 # In-box channel mount roots: system channels under ~/channels/; workset-local
 # channels (primary/named only) under ~/channels/workset/; own inbox surfaced at
@@ -80,7 +85,7 @@ channels:
     box_dest: "~/channels/inbox"
     scope: system
   # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
-  # seam by the presence of the workset channel paths).  B2b: routed through
+  # seam by `proj.mode`, via the `source:` names below).  B2b: routed through
   # @workset.channels.* (spec §2c ALL WORKSETS) — the loader folds the
   # resolved workset channel literal into the floor under that key and emits the
   # @-ref as the host_src (byte-identical to the runtime-probed `wch.*`).  The
