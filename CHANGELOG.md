@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A category entry could not be read back when its destination contained a dot.**
+  `config get <scope>.<category>.<dest>` split the key on `.` to find where the value lives, so a
+  real destination — `~/.cache/uv`, `~/.claude/plugins` — was cut apart mid-path and the read
+  answered `(not set)` for an entry the launch mounts. Destinations are spelled guest-side now, so
+  the dotted case is the common one. A destination is DATA: the key stops at the category and
+  everything after it is one destination. This also makes good on the promise the refusal for these
+  keys prints — *"reading it back with `config get …` still works"* — which until now held only for
+  a destination with no dot in it.
+
+- **`config --effective` prescribed a command that does not work for undoing a suppression.** A
+  suppressed entry was reported with *"Undo with 'reset pref.<…>.<dest>'"*; there is no way to
+  address one entry of a dest-keyed key from the CLI, so that reset was refused. The line now names
+  the edit instead: remove the entry from the `pref:` table of the settings file at the scope that
+  set it. Which scope that is deliberately stays unnamed — the merged snapshot no longer records
+  which file wrote the request, so naming one would be a guess.
+
 - **The in-box helper client could hand a caller someone else's message.** `recv()` and the
   request path shared a receive buffer and a socket timeout, but only the request path locked
   them, so the concurrent send-and-receive the client is built for could return a peer's push

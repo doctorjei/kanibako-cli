@@ -187,17 +187,26 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             # masks leaf was suppressed. Saying so is the whole point — this is
             # the difference between "suppressed" and "unset". Name the CURE
             # too (B-6): suppression has no verb of its own, so the only place a
-            # user learns that ``reset`` undoes it is a message like this one.
+            # user learns what undoes it is a message like this one.
+            #
+            # ⚑⚑ THE CURE NAMES THE FILE, NOT A VERB (Jei, 2026-08-08e). It used to
+            # spell ``reset pref.<target>.<dest>``, a command that does not work and
+            # is not going to: individually reading or writing one facet of a
+            # multi-faceted (dest-keyed) key does not make sense, and the access form
+            # for one is a backlogged promise of unknown shape. Prescribing a verb
+            # that will be refused is the same F6 lie as promising a read that has no
+            # route — so this says what the retired-route refusals already say,
+            # "edit the table in the settings file".
             #
             # ⚑ "at the scope that set it" is not vagueness — it is the only
             # honest form available here. Both halves of this block are read off
             # the MERGED snapshot, which no longer carries which file wrote the
-            # request, and a ``reset`` issued at the wrong noun removes nothing
-            # (or is refused by the directional guard). Naming a specific scope
-            # would be a guess dressed as an instruction.
+            # request, and an edit made at the wrong noun removes nothing. Naming a
+            # specific scope would be a guess dressed as an instruction.
             result = (
-                f"(omitted — the entry is suppressed; no mount. Undo with "
-                f"'reset {PREF_ROOT}.{target}' at the scope that set it)"
+                f"(omitted — the entry is suppressed; no mount. Undo by removing "
+                f"this entry from the '{PREF_ROOT}:' table of the settings file "
+                f"at the scope that set it)"
             )
         elif value is None:
             result = "(unset — the consumer applies its default)"

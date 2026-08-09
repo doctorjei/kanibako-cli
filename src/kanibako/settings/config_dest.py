@@ -297,6 +297,34 @@ def noun_settings_file(
 _NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
 
 
+# ⚑⚑ A DESTINATION IS DATA, NOT A KEY PATH — the fourth and last known site of one
+# root cause (`509592a`, `5958572`, `dacd9b7`). Splitting a per-entry spelling on
+# ``.`` cut ``box.caches.~/.cache/uv`` into a section ``~/`` and a leaf ``cache/uv``,
+# so the read landed on a slot no file has and a hand-authored entry read back
+# "(not set)" — which is what made ``config_keys.scope_bind_retired_error``'s closing
+# promise ("reading it back still works") false for exactly the destinations users
+# have, now that destinations are guest-side paths.
+#
+# ⚑ PARSING THE STRING IS THE JOB HERE, and that is why the P4 objection that kept
+# this predicate OUT of ``settings_categories``' derivations (`509592a`: it
+# "re-parses a string we joined ourselves") does not apply. There we HELD the
+# segments and threw them away by joining; here the input is a canonical key the
+# user TYPED at the CLI, so nothing was joined and there is nothing to carry.
+# ⚑ The key STOPS at the terminal category (spec §2a) and everything after it is ONE
+# destination. The WHOLE-key predicate, never the suffix one (QC): a scalar leaf
+# that merely ends in a category token — ``system.channels.common`` — must not have
+# its siblings' path cut apart.
+def _category_segments(canonical: str) -> tuple[str, ...]:
+    """*canonical*'s addressing segments, with a per-entry DESTINATION kept WHOLE."""
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+    parts = canonical.split(".")
+    for cut in range(2, len(parts)):
+        if is_terminal_category_key(".".join(parts[:cut])):
+            return (*parts[:cut], ".".join(parts[cut:]))
+    return tuple(parts)
+
+
 def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     """``(sections, leaf, file_rule)`` for a FILE-scope key, or ``None``.
 
@@ -384,8 +412,12 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         or _is_scope_bind_key(canonical)
         or is_terminal_category_key(canonical)
     ):
-        tail = canonical.split(".")
-        return tuple(tail[:-1]), tail[-1], _CATEGORY
+        # ⚑ SEGMENTS, NOT A DOTTED SPLIT — a per-entry destination stays one segment
+        # (see :func:`_category_segments`). For a TERMINAL key there is no entry and
+        # the segments are the key's own, so one rule serves both: the value lives at
+        # the last addressing unit, whatever that unit is.
+        tail = _category_segments(canonical)
+        return tail[:-1], tail[-1], _CATEGORY
     route = _KEY_ROUTES.get(_route_key(canonical))
     if route is None:
         return None
