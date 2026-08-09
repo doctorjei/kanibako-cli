@@ -109,7 +109,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, Literal, Mapping
+from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from kanibako.settings.settings_store import Bind, KeyStore
@@ -805,8 +805,6 @@ def _resolve_mount_group(
     box_dest: str, mount_sub: list[CategoryEntry],
 ) -> tuple[CategoryEntry | None, list[CategoryCollision]]:
     """Apply §0 rows 1-5 to the MOUNT entries at ONE dest (input order kept)."""
-    from kanibako.errors import CategoryCollisionError
-
     if not mount_sub:
         return None, []
     if len(mount_sub) == 1:
@@ -823,44 +821,13 @@ def _resolve_mount_group(
     if len(concrete) > 1 and not all(
         e.category == "secret_path" for e in concrete
     ):
-        raise CategoryCollisionError(
-            f"Two bindings target the same box destination '{box_dest}':\n"
-            + _entry_lines(concrete)
-            + "A destination may be bound exactly once. Choosing one silently "
-            "would give you a\nread-only mount where the other declaration asked "
-            "for read-write.\n\n"
-            + _rule_changed(
-                "Until {rel} the more specific scope won, silently — a "
-                "configuration that\nlaunched before can refuse to launch now. "
-                "Your files did not change; the rule did."
-            )
-            + _suppress_then_add(concrete[0].key_segments, ambiguous=True),
-            kind="binding_vs_binding",
-            box_dest=box_dest,
-            entries=tuple((e.key, e.host_src) for e in concrete),
-        )
+        raise_binding_vs_binding(box_dest, concrete)
 
     # ROW 3 — an ABSTRACTION extending onto a dest the CONCRETE base occupies:
     # ERROR, refusing the EXTENSION. "I wrote it down literally" wins.
     if concrete and abstract:
-        base = concrete[-1]
-        extension = abstract[-1]
-        raise CategoryCollisionError(
-            f"'{extension.key}' extends onto '{box_dest}', which\n"
-            f"'{base.key}' already binds.\n"
-            "'common', 'caches' and 'seeded' are ABSTRACT declarations: each "
-            "derives a\nbindings.rw entry. The explicit binding is the BASE and "
-            "survives; the derived\nextension is refused.\n\n"
-            + _rule_changed(
-                "Until {rel} a 'common' silently overrode a binding at the same "
-                "destination,\nand a 'caches' silently lost to one — two "
-                "abstractions, two opposite silent\noutcomes. Both are now "
-                "refused."
-            )
-            + _suppress_then_add(base.key_segments),
-            kind="extension_onto_occupied",
-            box_dest=box_dest,
-            entries=tuple((e.key, e.host_src) for e in (extension, base)),
+        raise_extension_onto_occupied(
+            box_dest, extension=abstract[-1], base=concrete[-1],
         )
 
     # ROW 2 — a mask OVERRIDES whatever else lands here (hiding a bound path is
@@ -890,6 +857,70 @@ def _resolve_mount_group(
             loser_keys=same_scope_losers,
         ))
     return winner, warnings
+
+
+def raise_binding_vs_binding(
+    box_dest: str, concrete: list[CategoryEntry],
+) -> NoReturn:
+    """Raise the §0 row-1 refusal: two CONCRETE declarations at one *box_dest*.
+
+    PUBLIC because row 1 is decidable inside ONE scope as well as across two, so
+    it has TWO callers: :func:`_resolve_mount_group` (the cross-scope pass) and
+    the per-scope ``store_shape`` producer (``settings.store_shape``).  The
+    message is spec-mandated, so it is written ONCE, here — a second remedy text
+    is the drift this extraction exists to prevent.  The D2 ``secret_path``
+    carve-out is the CALLER's test, not this function's: it decides whether the
+    set in hand is a collision at all.
+    """
+    from kanibako.errors import CategoryCollisionError
+
+    raise CategoryCollisionError(
+        f"Two bindings target the same box destination '{box_dest}':\n"
+        + _entry_lines(concrete)
+        + "A destination may be bound exactly once. Choosing one silently "
+        "would give you a\nread-only mount where the other declaration asked "
+        "for read-write.\n\n"
+        + _rule_changed(
+            "Until {rel} the more specific scope won, silently — a "
+            "configuration that\nlaunched before can refuse to launch now. "
+            "Your files did not change; the rule did."
+        )
+        + _suppress_then_add(concrete[0].key_segments, ambiguous=True),
+        kind="binding_vs_binding",
+        box_dest=box_dest,
+        entries=tuple((e.key, e.host_src) for e in concrete),
+    )
+
+
+def raise_extension_onto_occupied(
+    box_dest: str, *, extension: CategoryEntry, base: CategoryEntry,
+) -> NoReturn:
+    """Raise the §0 row-3 refusal: *extension* extends onto the *base*'s *box_dest*.
+
+    PUBLIC for the same reason as :func:`raise_binding_vs_binding` — row 3 is
+    decidable inside ONE scope, so the per-scope ``store_shape`` producer raises
+    it too, with this one message.  The BASE always survives, so the remedy names
+    it without the row-1 "either one may be the one you keep" hedge.
+    """
+    from kanibako.errors import CategoryCollisionError
+
+    raise CategoryCollisionError(
+        f"'{extension.key}' extends onto '{box_dest}', which\n"
+        f"'{base.key}' already binds.\n"
+        "'common', 'caches' and 'seeded' are ABSTRACT declarations: each "
+        "derives a\nbindings.rw entry. The explicit binding is the BASE and "
+        "survives; the derived\nextension is refused.\n\n"
+        + _rule_changed(
+            "Until {rel} a 'common' silently overrode a binding at the same "
+            "destination,\nand a 'caches' silently lost to one — two "
+            "abstractions, two opposite silent\noutcomes. Both are now "
+            "refused."
+        )
+        + _suppress_then_add(base.key_segments),
+        kind="extension_onto_occupied",
+        box_dest=box_dest,
+        entries=tuple((e.key, e.host_src) for e in (extension, base)),
+    )
 
 
 def _resolve_copy_group(copy_sub: list[CategoryEntry]) -> list[CategoryEntry]:
