@@ -322,6 +322,8 @@ class TestSystemStructuralFileOnly:
         assert rc == 1
         err = capsys.readouterr().err
         assert "structural config key" in err
+        # The VERB is the op the user ran.
+        assert "cannot be set from the CLI" in err
         # The advice names the file resolve_system_paths actually reads.
         assert str(config_file) in err
         # Nothing was written anywhere.
@@ -330,7 +332,10 @@ class TestSystemStructuralFileOnly:
     def test_reset_structural_key_refused(self, config_file, tmp_home, capsys):
         rc = _reset("system.cache")
         assert rc == 1
-        assert "structural config key" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "structural config key" in err
+        # ⚑ "reset", not "set": a reset is its own op and used to borrow set's verb.
+        assert "cannot be reset from the CLI" in err
 
     def test_hand_editing_the_named_file_actually_works(
         self, config_file, tmp_home, capsys,
@@ -354,12 +359,20 @@ class TestSystemStructuralFileOnly:
         assert rc == 1
         assert "structural config key" in capsys.readouterr().err
 
-    def test_get_structural_key_matches_set_refusal(
+    def test_get_structural_key_refuses_with_a_READ_verb(
         self, config_file, tmp_home, capsys,
     ):
-        """Residuals item 4: `system get system.setup_completed` /
-        `system.channels.*` said "unknown config key" while `set` gave the
-        truthful structural refusal. Make get's message MATCH set's truth."""
+        """Residuals item 4 gave `get` the structural TRUTH; this pins its VERB.
+
+        `get` shares ``system_key_refusal`` with `set`/`reset`, and the message was
+        a fixed "is not settable from the CLI" — a WRITE verb printed on a READ,
+        mis-describing the op that failed. It now takes *verb*, and the read tail
+        drops "(or re-run 'kanibako setup')" too: that is a WRITE cure, useless to
+        someone who ran `get`.
+
+        ⚑ MUTATION: pass ``verb="set"`` at ``system_cmd``'s call -> the read-verb
+        assertion dies.
+        """
         for key in ("system.setup_completed", "system.channels.common"):
             capsys.readouterr()  # drain
             rc = _get(key)
@@ -370,6 +383,12 @@ class TestSystemStructuralFileOnly:
             assert "unknown config key" not in err, (key, err)
             assert "structural config key" in err, (key, err)
             assert str(config_file) in err, (key, err)
+            # THE VERB matches the op the user ran — and no write verb survives.
+            assert "cannot be read from the CLI" in err, (key, err)
+            assert "settable" not in err, (key, err)
+            assert "cannot be set" not in err, (key, err)
+            # A write cure has no business on a read.
+            assert "kanibako setup" not in err, (key, err)
 
     def test_get_config_path_key_reads_kanibako_config_yaml(
         self, config_file, tmp_home, capsys,
