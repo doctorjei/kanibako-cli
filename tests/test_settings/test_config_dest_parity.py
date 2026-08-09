@@ -564,15 +564,6 @@ class TestAgentScopeCategoryDestination:
 # 5b. THE CHANNEL TYPE-ROOTS — one family, one rule (QC)
 # ---------------------------------------------------------------------------
 
-#: The workset channel type-roots that have a ``_KEY_ROUTES`` entry. Spelled out
-#: rather than read from the table so the KNOWN GAP below is a real oracle: derive
-#: it from ``_KEY_ROUTES`` and the case would agree with the table by construction
-#: and could never go red.
-_ROUTED_WORKSET_CHANNELS = (
-    "workset.channels.common", "workset.channels.chat", "workset.channels.share",
-)
-
-
 class TestChannelTypeRootsRouteUNIFORMLY:
     """⚑ A ``channels`` family must route by ONE rule, and until QC it did not.
 
@@ -590,9 +581,16 @@ class TestChannelTypeRootsRouteUNIFORMLY:
     ``_KEY_ROUTES`` entry naming the IDENTICAL ``(sections, leaf)`` — so only the
     family LABEL moved, and ``_CATEGORY`` and ``_SCOPED`` pick the same file.
 
-    ⚑ THE CLASS NAME OVERSTATES BY ONE: three workset members route NOWHERE, and
-    never did. That is a separate, PRE-EXISTING gap, pinned in its own case under
-    this file's known-wrong charter rather than smuggled into a uniformity claim.
+    ⚑⚑ THE CLASS NAME NO LONGER OVERSTATES, AND THIS IS THE SAYING-SO (2026-08-09).
+    It used to: ``workset.channels.{broadcast,mailboxes,share_global}`` were DECLARED
+    with ``set: cli+file`` and routed NOWHERE, so a hand-authored value read back
+    "(not set)" — a get/set asymmetry on a declared key (spec §0), pinned here as a
+    KNOWN GAP by ``test_the_unrouted_members_are_a_KNOWN_GAP_not_this_change``. The
+    three now have ``_KEY_ROUTES`` entries at the SAME ``workset: channels:`` nested
+    slot as their siblings, that case went red as its own docstring predicted, and it
+    was DELETED in favour of :meth:`test_every_declared_member_is_routed` — the same
+    property stated in the positive. The family is uniform now, so the case that said
+    it was not had to go rather than be weakened.
     """
 
     @staticmethod
@@ -619,10 +617,13 @@ class TestChannelTypeRootsRouteUNIFORMLY:
     def test_no_channel_type_root_claims_the_CATEGORY_family(self):
         """⚑ RED BEFORE QC, at BOTH scopes: ``common`` alone answered ``_CATEGORY``.
 
-        Stated as "none of them", not as "all of them agree", because the family is
-        NOT internally uniform for a SECOND, unrelated reason — see
-        :meth:`test_the_unrouted_members_are_a_KNOWN_GAP_not_this_change`. What QC
-        settles is that a channel type-root is never mistaken for a CATEGORY.
+        Stated as "none of them" rather than "all of them agree" because the two
+        SCOPES genuinely answer differently — ``system.channels.*`` has no slot at
+        all (it is read from the config file before the slot rule) while every
+        ``workset.channels.*`` is ``_SCOPED``. What this case settles is the one
+        property common to both: a channel type-root is never mistaken for a
+        CATEGORY. Per-scope uniformity is
+        :meth:`test_every_declared_member_is_routed`.
 
         ⚑ MUTATION: put ``is_terminal_category_tail(canonical.split("."))`` back in
         ``_key_slot`` -> both ``common`` rows answer ``category`` and this dies.
@@ -663,53 +664,65 @@ class TestChannelTypeRootsRouteUNIFORMLY:
         a key with no entry. It reads GREEN on both sides of QC BY DESIGN — its job
         is to stay green, and it goes RED the moment a member loses its read.
 
-        ⚑ Covers every SYSTEM member (they are ``SYSTEM_PATH_DEFAULTS``, read from
-        the config file by a branch that runs BEFORE the slot rule — which is why
-        ``chat`` always read fine with no slot at all) and every ROUTED workset
-        member. The unrouted workset members are the known gap below.
+        ⚑ Covers EVERY declared member at BOTH scopes — the system ones are
+        ``SYSTEM_PATH_DEFAULTS``, read from the config file by a branch that runs
+        BEFORE the slot rule (which is why ``chat`` always read fine with no slot at
+        all); the workset ones are all ``_SCOPED`` since the three unrouted members
+        were routed. The member list is DERIVED from the manifest, so a leaf added
+        there is covered here without an edit — and a leaf that loses its route goes
+        red here rather than silently reading "(not set)".
         """
-        for key in self._families()["system"]:
+        families = self._families()
+        for key in families["system"]:
             leaf = key.rsplit(".", 1)[1]
             bench.seed(bench.cf, ("system", "channels"), leaf, f"/hosted/{leaf}")
-        for key in self._families()["system"]:
+        for key in families["system"]:
             leaf = key.rsplit(".", 1)[1]
             assert bench.get(ConfigLevel.system, key) == f"/hosted/{leaf}", key
 
-        for key in _ROUTED_WORKSET_CHANNELS:
+        for key in families["workset"]:
             leaf = key.rsplit(".", 1)[1]
             bench.seed(bench.ws, ("workset", "channels"), leaf, f"/ws/{leaf}")
-        for key in _ROUTED_WORKSET_CHANNELS:
+        for key in families["workset"]:
             leaf = key.rsplit(".", 1)[1]
             assert bench.get(ConfigLevel.workset, key) == f"/ws/{leaf}", key
 
-    def test_the_unrouted_members_are_a_KNOWN_GAP_not_this_change(self, bench):
-        """⚑⚑ KNOWN-WRONG, PINNED UNDER THIS FILE'S CHARTER — and NOT caused by QC.
+    def test_every_declared_member_is_routed(self):
+        """⚑⚑ THE INVERSION of the deleted KNOWN-GAP case — the family, whole.
 
-        ``workset.channels.{broadcast,mailboxes,share_global}`` are DECLARED in the
-        ratified manifest with ``set: cli+file``, and they have no ``_KEY_ROUTES``
-        entry, so a stored value reads back "(not set)". They answered ``None``
-        BEFORE this change too — ``broadcast`` is not a category token, so no suffix
-        test ever claimed them. This is a get/set-asymmetry on a declared key
-        (spec §0), REPORTED and left alone: adding a route is a routing decision, not
-        a consequence of making one predicate position-aware.
+        Every declared ``workset.channels.*`` leaf must answer a slot, at the SAME
+        ``(sections, rule)`` as its siblings. ``broadcast`` / ``mailboxes`` /
+        ``share_global`` answered ``None`` until 2026-08-09; asserting the positive
+        keeps the property stated about the FAMILY rather than about the three that
+        happened to be missing, so a seventh leaf cannot arrive unrouted.
 
-        The case is here so the gap is visible and dated rather than folded into a
-        "the family is uniform" assertion that was never true. Fixing it makes this
-        RED, which is the correct signal to delete the case.
+        ⚑ MUTATION: drop any one of the six from ``config_keys._KEY_ROUTES`` -> that
+        member answers ``None`` and this dies.
         """
         from kanibako.settings.config_dest import _key_slot
 
-        gap = sorted(set(self._families()["workset"]) - set(_ROUTED_WORKSET_CHANNELS))
-        assert gap == [
-            "workset.channels.broadcast",
-            "workset.channels.mailboxes",
-            "workset.channels.share_global",
-        ], gap
-        for key in gap:
+        slots = {k: _key_slot(k) for k in self._families()["workset"]}
+        assert all(v is not None for v in slots.values()), slots
+        assert {(v[0], v[2]) for v in slots.values()} == {(("workset", "channels"), "scoped")}, slots
+        assert {v[1] for v in slots.values()} == {
+            k.rsplit(".", 1)[1] for k in slots
+        }, slots
+
+    def test_a_CLI_set_of_any_member_round_trips(self, bench):
+        """⚑ THE ASYMMETRY ITSELF — a ``set`` the matching ``get`` cannot read.
+
+        Manifest ``set: cli+file`` promises BOTH surfaces, and spec §0 forbids the
+        halves disagreeing. For the three unrouted members ``set`` answered "unknown
+        config key" while a hand-authored value read "(not set)" — both halves
+        broken, in opposite directions. Exercised through the real verbs, so it pins
+        the promise rather than the table.
+        """
+        for key in self._families()["workset"]:
             leaf = key.rsplit(".", 1)[1]
-            bench.seed(bench.ws, ("workset", "channels"), leaf, f"/ws/{leaf}")
-            assert _key_slot(key) is None, key
-            assert bench.get(ConfigLevel.workset, key) is None, key
+            msg = bench.set(ConfigLevel.workset, key, f"/rt/{leaf}")
+            assert not msg.startswith("Error:"), (key, msg)
+            assert load_doc(bench.ws)["workset"]["channels"][leaf] == f"/rt/{leaf}", key
+            assert bench.get(ConfigLevel.workset, key) == f"/rt/{leaf}", key
 
 
 # ---------------------------------------------------------------------------

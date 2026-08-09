@@ -1310,7 +1310,7 @@ def set_config_value(
     # system.agent / categories / env) was routed above or falls through to the
     # routing table below — it is never refused here.
     if is_system_path_key(canonical):
-        return system_key_refusal(canonical)
+        return system_key_refusal(canonical, verb="set")
 
     # Regular config keys — route via the single known-key table (the H1 fix:
     # an unknown key returns an error string and NEVER raises).  Accept either
@@ -1553,7 +1553,7 @@ def reset_config_value(
     # The CLI refuses to RESET them too (for symmetry); edit the config file
     # directly or re-run ``kanibako setup``.
     if is_system_path_key(canonical):
-        return system_key_refusal(canonical)
+        return system_key_refusal(canonical, verb="reset")
 
     # Regular config keys — route via the same known-key table as set/get
     # (no get-validated/set-unguarded asymmetry).

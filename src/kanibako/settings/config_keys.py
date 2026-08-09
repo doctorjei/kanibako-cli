@@ -233,9 +233,15 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # (no KEY_TYPES), routed to the ``workset:`` nested slot.
     "workset.workspaces",
     "workset.channelroot",
+    # ⚑ THE ``workset.channels.*`` FAMILY, WHOLE — all six declared leaves (spec §2c;
+    # ``DECLARED_WORKSET_CHANNEL_LEAVES``), STRING paths, one nested slot. Three were
+    # missing until 2026-08-09; see ``llm-docs/kanibako/settings/config_keys.py.md``.
     "workset.channels.common",
     "workset.channels.chat",
     "workset.channels.share",
+    "workset.channels.broadcast",
+    "workset.channels.mailboxes",
+    "workset.channels.share_global",
     # Per-workset template SOURCE (template-trio, spec §2c; Q3 2026-07-09).
     # A NORMAL settable STRING-path key (default ``@meta.workset.path/template``);
     # the layer-3 seed ``workset.seeded = {~/: (@workset.template/box/home,)}``
@@ -381,9 +387,13 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # sibling pattern) read the repoint back.  STRING paths (no KEY_TYPES).
     "workset.workspaces": (("workset",), "workspaces"),
     "workset.channelroot": (("workset",), "channelroot"),
+    # The whole six-leaf ``channels`` family, one slot rule (see KNOWN_CONFIG_KEYS).
     "workset.channels.common": (("workset", "channels"), "common"),
     "workset.channels.chat": (("workset", "channels"), "chat"),
     "workset.channels.share": (("workset", "channels"), "share"),
+    "workset.channels.broadcast": (("workset", "channels"), "broadcast"),
+    "workset.channels.mailboxes": (("workset", "channels"), "mailboxes"),
+    "workset.channels.share_global": (("workset", "channels"), "share_global"),
     # Per-workset template SOURCE (template-trio, spec §2c; Q3): the layer-3
     # seed source, routed to the ``workset:`` table slot (same nested-settings
     # pattern as ``workset.registry``). STRING path (no KEY_TYPES / no bool coerce).
@@ -1340,18 +1350,17 @@ def _user_config_file_str() -> "Path | str":
         return "~/.config/kanibako_config.yaml"
 
 
-def system_key_refusal(key: str) -> str:
-    """Error string refusing a CLI write to a FILE-ONLY ``system.*`` config key.
-
-    STRUCTURAL ``system.*`` path-tier keys (the ``SYSTEM_PATH_DEFAULTS`` family,
-    see :func:`is_system_path_key`) are layout config, not behavior settings,
-    so they are file-only: editable in the config file (or via ``kanibako
-    setup``) but never via ``config set``/``config reset``.  Points the user at the
-    REAL resolved config file — the ``kanibako_config.yaml`` ``[system]`` table
-    that ``resolve_system_paths`` actually reads — never the command scope's
-    settings file (which would be wrong-file advice: the F2 lesson)."""
+def system_key_refusal(key: str, *, verb: str) -> str:
+    """Refuse a CLI *verb* (``set``/``reset``/``read``) on a FILE-ONLY ``system.*`` key."""
+    # ⚑ *verb* is REQUIRED, and the READ tail omits ``setup`` (a WRITE cure). Why
+    # both: ``llm-docs/kanibako/settings/config_keys.py.md``.
+    if verb == "read":
+        return (
+            f"Error: '{key}' is a structural config key and cannot be read from "
+            f"the CLI. Its value lives in the config file:\n  {_user_config_file_str()}"
+        )
     return (
-        f"Error: '{key}' is a structural config key and is not settable from "
+        f"Error: '{key}' is a structural config key and cannot be {verb} from "
         f"the CLI. Edit the config file directly:\n  {_user_config_file_str()}\n"
         f"(or re-run 'kanibako setup')."
     )

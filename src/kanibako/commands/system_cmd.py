@@ -340,15 +340,17 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # Residuals item 4: a STRUCTURAL file-only key (system.setup_completed,
             # system.channels.*) is not in the settable known-key set, so the plain
             # is_known_key gate rejected it as "unknown config key" — while `set`
-            # gives the truthful structural refusal (naming the config file). Make
-            # get's message MATCH set's truth for these keys instead of pretending
-            # they do not exist.
+            # gives the truthful structural refusal (naming the config file). Say
+            # the same TRUTH here instead of pretending the key does not exist.
+            # ⚑ verb="read": the refusal describes the op the user actually ran. It
+            # used to say "is not settable from the CLI" on a `get` — a write verb
+            # on a read, mis-stating what failed.
             from kanibako.settings.config_keys import (
                 is_system_path_key,
                 system_key_refusal,
             )
             if is_system_path_key(key):
-                print(system_key_refusal(key), file=sys.stderr)
+                print(system_key_refusal(key, verb="read"), file=sys.stderr)
                 return 1
             # ⚑ THIS MESSAGE IS WRONG FOR SEVEN DECLARED KEYS AND THAT IS
             # QUARANTINED, NOT UNNOTICED. The six bind-shaped category terminals
