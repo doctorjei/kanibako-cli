@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A refused read said the key was "not settable" and told you to re-run setup.** `system get` on a
+  structural config key answered with the wording for a write, then prescribed a write cure — for an
+  operation that never attempted one. Each verb now states what it actually refused, and the read
+  points at the config file holding the value instead of at `kanibako setup`. `reset` was borrowing
+  the same wording and now states its own.
+
 - **A category entry could not be read back when its destination contained a dot.**
   `config get <scope>.<category>.<dest>` split the key on `.` to find where the value lives, so a
   real destination — `~/.cache/uv`, `~/.claude/plugins` — was cut apart mid-path and the read
