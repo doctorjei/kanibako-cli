@@ -1128,6 +1128,24 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         for entry in abstract:
             assert derived[entry.key].box == entry.box_dest
 
+        # ⚑⚑ THE TREE SHAPE, not just the flattened key. The lens rejoins
+        # segments with ``.``, so it reports the SAME string whether the dest is
+        # one node or shattered across several — which is precisely how a real
+        # shipped declaration (``/home/agent/.claude/plugins``, dots and all) sat
+        # here mis-nested with every assertion above green. Walk the segments and
+        # require the Bind to be AT the last one.
+        assert any("." in e.key_segments[-1] for e in abstract), (
+            "no abstract dest carries a dot — this assertion proves nothing"
+        )
+        for entry in abstract:
+            walk = node
+            for seg in entry.key_segments[:-1]:
+                walk = dict.__getitem__(walk, seg)
+                assert isinstance(walk, KeyStore), (entry.key, seg)
+            assert dict.__getitem__(walk, entry.key_segments[-1]) is derived[
+                entry.key
+            ]
+
     @pytest.mark.skip(
         reason="Asserts the ABSTRACT half of the `--effective` block renders the "
                "declaration/derivation PAIR. That half is DISABLED while "
@@ -1178,12 +1196,10 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
     #
     # ⚑ Re-spelled for dest-keying (2026-08-08c): a declaration key now ENDS in
     # its box DESTINATION, so this is ``<scope>.<category>.<dest>``. The dest is
-    # deliberately DOT-FREE — ``derive_binding_keys`` hands the whole key to
-    # ``insert_dotted``, which splits on ``.``, so a dest such as
-    # ``~/.claude/plugins`` fragments into extra tree levels. It round-trips
-    # correctly (verified), but the forged YAML below has to MIRROR the nesting to
-    # collide, and a fixture that must reproduce a splitting rule to stay
-    # meaningful is a fixture that will drift silently when the rule moves.
+    # DOT-FREE so that the forged YAML below can MIRROR the node path and collide:
+    # a dest is ONE node now (``derive_binding_keys`` keys by segments and
+    # ``insert_segments`` splits nothing), and a dotted dest would be one YAML map
+    # key rather than the nesting a hand-written table can express as clearly.
     _DECL_KEY = "agent.claude.common./home/agent/claude-plugins"
 
     @staticmethod

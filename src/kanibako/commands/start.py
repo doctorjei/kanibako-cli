@@ -6636,7 +6636,9 @@ def _annotate_pref_origin(exc, prefs):
     )
 
 
-def _install_derived_bindings(snapshot, derived: "Mapping[str, object]") -> None:
+def _install_derived_bindings(
+    snapshot, derived: "Mapping[tuple[str, ...], object]",
+) -> None:
     """Write the ``binding_derivations.*`` materialisation into *snapshot* in place.
 
     Mirrors ``settings_launch._materialize_box_agent_mirror``: a post-expand
@@ -6647,11 +6649,15 @@ def _install_derived_bindings(snapshot, derived: "Mapping[str, object]") -> None
     it) and assembly drops a file-borne top-level table with a warning
     (``settings_assemble._drop_upward_scopes``), so this seam is the node's
     ONLY producer.
-    """
-    from kanibako.settings.settings_store import insert_dotted
 
-    for dotted, value in derived.items():
-        insert_dotted(snapshot, dotted, value)
+    ⚑ The map is keyed by SEGMENTS and installed with ``insert_segments``, whose
+    terminal is the entry's box DESTINATION — data, and routinely dotted
+    (``~/.cache/uv``). The dotted installer would shatter it across tree levels.
+    """
+    from kanibako.settings.settings_store import insert_segments
+
+    for segments, value in derived.items():
+        insert_segments(snapshot, segments, value)
 
 
 #: Process-scoped DISPLAY state for :func:`emit_collision_warnings`: the

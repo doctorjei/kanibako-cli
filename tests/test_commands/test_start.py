@@ -1988,7 +1988,8 @@ class TestContainerEnvPrecedence:
 
         return CategoryEntry(
             category="env", scope=scope, box_dest=var, host_src=None,
-            delivery="ENV", options=value, name=var, key=f"{scope}.env.{var}",
+            delivery="ENV", options=value, name=var,
+            key_segments=(*scope.split("."), "env", var),
         )
 
     @classmethod
@@ -4599,7 +4600,7 @@ class TestEmitSecretMounts:
                 category="secret_path", scope="agent",
                 box_dest=f"{SECRET_MOUNT_DIR}/{var}", host_src=path,
                 delivery="MOUNT", options="ro", name=var,
-                key=f"agent.claude.secret_path.{var}",
+                key_segments=("agent", "claude", "secret_path", var),
             )
             for var, path in pointers.items()
         ]

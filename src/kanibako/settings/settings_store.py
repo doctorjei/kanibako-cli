@@ -86,6 +86,7 @@ so the custom ``__getattribute__`` interception of block 1 is no longer needed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Final, NamedTuple, Union
 
 
@@ -412,31 +413,36 @@ class KeyStore(dict):  # type: ignore[type-arg]
     # the same (wrapped) contents. dict is unhashable; KeyStore stays unhashable.
 
 
-def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
-    """Install *value* at the dotted path *dotted* in *store*, VERBATIM.
+def insert_segments(
+    store: "KeyStore", segments: "Sequence[str]", value: Any,
+) -> None:
+    """Install *value* at the path *segments* in *store*, VERBATIM.
 
-    Walks/creates the intermediate :class:`KeyStore` nodes and sets the terminal
-    leaf to *value* exactly as given — no bind parsing, no coercion, no
-    emptiness interpretation. A non-``KeyStore`` value sitting at an
-    intermediate segment is REPLACED by a fresh node (the caller is installing a
-    deeper key, so the shallower leaf cannot survive as a leaf).
+    THE walk. Each element of *segments* is ONE node, taken opaquely — a segment
+    containing ``.`` is a segment, not two. Walks/creates the intermediate
+    :class:`KeyStore` nodes and sets the terminal leaf to *value* exactly as
+    given — no bind parsing, no coercion, no emptiness interpretation. A
+    non-``KeyStore`` value sitting at an intermediate segment is REPLACED by a
+    fresh node (the caller is installing a deeper key, so the shallower leaf
+    cannot survive as a leaf).
 
-    THE single non-parsing dotted installer. Two callers need exactly this:
-    the ``binding_derivations.*`` materialisation
-    (``kanibako.commands.start._install_derived_bindings``) and the ``pref.*``
-    overlay builder (:func:`kanibako.settings.settings_prefs.pref_overlay`), whose
-    contract is *"values are installed VERBATIM — including ``None``"* (spec
-    §2h). It is DELIBERATELY distinct from
-    ``kanibako.settings.settings_assemble._insert_dotted``, which does a DIFFERENT job:
-    that one PARSES the terminal through ``_parse_node`` so a floor entry under
-    a bind-shaped category becomes a :class:`Bind`. Two spellings of one walk
-    would be a rule-0 trap; two walks with different jobs are not, provided the
-    difference is stated — which is what this paragraph is for.
+    ⚑ THIS is the entry point for a path whose terminal is a box DESTINATION —
+    ``binding_derivations.<declaration-key>.<dest>``, installed by
+    ``kanibako.commands.start._install_derived_bindings``. A destination is DATA
+    and routinely contains ``.`` (``~/.cache/uv``, ``/home/agent/.claude/plugins``),
+    so it can only travel as a segment: joined into a dotted string it shatters
+    into extra tree levels, and two dests whose shattered paths nest
+    (``~/.claude`` under ``~/.claude.json``) silently overwrite one another.
+
+    RAISES :class:`ValueError` on an EMPTY *segments*: there is no path to
+    install at, and the alternative is writing at some invented root.
 
     Uses the UNBOUND ``dict.get`` (S3): a key legitimately named ``get`` must
     not shadow the protocol into a crash.
     """
-    parts = dotted.split(".")
+    parts = tuple(segments)
+    if not parts:
+        raise ValueError("insert_segments needs at least one segment")
     node: KeyStore = store
     for seg in parts[:-1]:
         child = dict.get(node, seg, None)
@@ -445,3 +451,27 @@ def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
             node[seg] = child
         node = child
     node[parts[-1]] = value
+
+
+def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
+    """Install *value* at the dotted KEY *dotted* — :func:`insert_segments`, split on ``.``.
+
+    The dotted front-end, for a caller whose path is a validated keyspace KEY:
+    every segment of a key is dot-free, so the split is total and lossless. ⚑ A
+    path whose terminal is DATA (a box destination) must NOT come through here —
+    call :func:`insert_segments` and pass the destination as one segment.
+
+    Its one caller is the ``pref.*`` overlay builder
+    (:func:`kanibako.settings.settings_prefs.pref_overlay`), whose target is a
+    declared key (a terminal category target carries its dests in the VALUE map,
+    never in the key) and whose contract is *"values are installed VERBATIM —
+    including ``None``"* (spec §2h).
+
+    DELIBERATELY distinct from ``kanibako.settings.settings_assemble._insert_dotted``,
+    which does a DIFFERENT job: that one PARSES the terminal through
+    ``_parse_node`` so a floor entry under a bind-shaped category becomes a
+    :class:`Bind`. Two spellings of one walk would be a rule-0 trap; two walks
+    with different jobs are not, provided the difference is stated — which is
+    what this paragraph is for.
+    """
+    insert_segments(store, dotted.split("."), value)
