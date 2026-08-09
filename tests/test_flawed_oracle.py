@@ -252,7 +252,9 @@ def flawed_oracle_categories(
                     delivery=delivery,
                     options=options,
                     name=name,
-                    key=f"{scope}.{category}.{name}",
+                    key_segments=(
+                        *scope.split("."), *category.split("."), name,
+                    ),
                 ),
             )
         )
@@ -280,7 +282,7 @@ def flawed_oracle_categories(
                         delivery=_FROZEN_MOUNT,
                         options="ro",
                         name=box_dest,
-                        key=f"{scope}.masks.{raw_dest}",
+                        key_segments=(*scope.split("."), "masks", raw_dest),
                     ),
                 )
             )
@@ -308,7 +310,7 @@ def flawed_oracle_categories(
                     delivery=_FROZEN_ENV,
                     options=value,
                     name=var,
-                    key=f"{scope}.env.{var}",
+                    key_segments=(*scope.split("."), "env", var),
                 ),
             )
         )
@@ -917,7 +919,7 @@ def _entry(
         delivery=delivery,
         options=options,
         name=leaf,
-        key=f"{scope}.{category}.{leaf}",
+        key_segments=(*scope.split("."), *category.split("."), leaf),
         is_credential=is_credential,
     )
 

@@ -92,7 +92,7 @@ def entry(
         delivery=delivery,
         options=_bind_options(category) if delivery == "MOUNT" else "",
         name=name,
-        key=f"{scope}.{category}.{name}",
+        key_segments=(*scope.split("."), *category.split("."), name),
         is_credential=is_credential,
     )
 
@@ -607,11 +607,13 @@ class TestDeriveBindingKeys:
             entry("seeded", name="template", scope="system", host_src="/t"),
         ])
         assert set(derived) == {
-            "binding_derivations.agent.claude.common.plugins",
-            "binding_derivations.workset.caches.build",
-            "binding_derivations.system.seeded.template",
+            ("binding_derivations", "agent", "claude", "common", "plugins"),
+            ("binding_derivations", "workset", "caches", "build"),
+            ("binding_derivations", "system", "seeded", "template"),
         }
-        bind = derived["binding_derivations.agent.claude.common.plugins"]
+        bind = derived[
+            ("binding_derivations", "agent", "claude", "common", "plugins")
+        ]
         assert bind.host == "/store/common/plugins"
         assert bind.box == DEST
 
@@ -643,7 +645,9 @@ class TestDeriveBindingKeys:
         ]
         assert reconcile_categories(entries).warnings  # the loser did lose
         derived = derive_binding_keys(entries)
-        assert derived["binding_derivations.box.caches.build"].host == "/loser"
+        assert derived[
+            ("binding_derivations", "box", "caches", "build")
+        ].host == "/loser"
 
     def test_the_derivation_is_idempotent(self):
         entries = [entry("common", name="plugins", scope="box")]
@@ -666,8 +670,51 @@ class TestDeriveBindingKeys:
             "agent.claude.common.plugins": derive_binding_keys([
                 entry("common", name="plugins", scope="agent.claude",
                       host_src="/p"),
-            ])["binding_derivations.agent.claude.common.plugins"],
+            ])[("binding_derivations", "agent", "claude", "common", "plugins")],
         }
+
+    def test_a_dotted_DESTINATION_installs_as_ONE_node(self):
+        """⚑ The dest is DATA and real dests carry dots — it may not shatter.
+
+        Pre-fix the map was keyed by the DOTTED declaration key and installed with
+        ``insert_dotted``, so ``/home/agent/.claude/plugins`` nested as
+        ``'/home/agent/' → 'claude/plugins'``: two tree levels where the
+        declaration has one dest.
+        """
+        from kanibako.commands.start import _install_derived_bindings
+        from kanibako.settings.settings_store import Bind, KeyStore
+
+        dest = "/home/agent/.claude/plugins"
+        snapshot = KeyStore()
+        _install_derived_bindings(snapshot, derive_binding_keys([
+            entry("common", name=dest, box_dest=dest, scope="agent.claude",
+                  host_src="/store/plugins"),
+        ]))
+        node = dict.__getitem__(snapshot, "binding_derivations")
+        common = node["agent"]["claude"]["common"]
+        assert list(dict.keys(common)) == [dest]
+        assert dict.__getitem__(common, dest) == Bind(
+            host="/store/plugins", box=dest, opts=_bind_options("common"),
+        )
+
+    def test_two_dotted_dests_that_would_NEST_once_split_both_survive(self):
+        """⚑⚑ THE DATA LOSS, pinned. ``~/.cache/uv`` and ``~/.cache/uv.lock``
+        split into paths where the first's LEAF is the second's parent NODE, so
+        installing the second used to replace the first's derivation — no error,
+        no diff, one declaration simply gone from the node."""
+        from kanibako.commands.start import _install_derived_bindings
+        from kanibako.settings.settings_store import KeyStore
+
+        first, second = "~/.cache/uv", "~/.cache/uv.lock"
+        snapshot = KeyStore()
+        _install_derived_bindings(snapshot, derive_binding_keys([
+            entry("caches", name=first, box_dest=first, host_src="/h/uv"),
+            entry("caches", name=second, box_dest=second, host_src="/h/lock"),
+        ]))
+        caches = dict.__getitem__(snapshot, "binding_derivations")["box"]["caches"]
+        assert set(dict.keys(caches)) == {first, second}
+        assert dict.__getitem__(caches, first).host == "/h/uv"
+        assert dict.__getitem__(caches, second).host == "/h/lock"
 
 
 # --------------------------------------------------------------------------- #

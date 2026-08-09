@@ -695,7 +695,7 @@ def _agent_mount(name: str, host: str, dest: str = "/box/x", opts: str = "ro"):
         delivery="MOUNT",
         options=opts,
         name=name,
-        key=f"agent.claude.bindings.ro.{name}",
+        key_segments=("agent", "claude", "bindings", "ro", name),
     )
 
 
@@ -734,7 +734,7 @@ def test_delivery_ignores_non_agent_entries(tmp_path: Path):
     box_entry = CategoryEntry(
         category="bindings.rw", scope="box", box_dest="/home/agent",
         host_src=str(src), delivery="MOUNT", options="Z,U", name="home",
-        key="box.bindings.rw.home",
+        key_segments=("box", "bindings", "rw", "home"),
     )
     mounts = agent_delivery_mounts([box_entry], critical_keys=frozenset())
     assert mounts == []

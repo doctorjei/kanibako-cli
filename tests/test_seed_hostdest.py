@@ -226,7 +226,8 @@ def _entry(**kw) -> CategoryEntry:
     # is the arm plus that dest. Callers that care override both.
     base = dict(
         category="seeded", scope="system", box_dest="/x", host_src="/src",
-        delivery="COPY", options="", name="/x", key="system.seeded./x",
+        delivery="COPY", options="", name="/x",
+        key_segments=("system", "seeded", "/x"),
     )
     base.update(kw)
     return CategoryEntry(**base)  # type: ignore[arg-type]
@@ -260,10 +261,12 @@ class TestReconcileAtOneDestination:
         like any other dest: one group, and the mount beats the ``seeded`` copy.
         """
         shared = f"{GUEST_HOME}/.local/share/kanibako/boxes/demo/home"
-        copy = _entry(box_dest=shared, name=shared, key=f"system.seeded.{shared}")
+        copy = _entry(box_dest=shared, name=shared,
+                      key_segments=("system", "seeded", shared))
         mount = _entry(
             category="bindings.ro", box_dest=shared, delivery="MOUNT",
-            options="ro", name=shared, key=f"box.bindings.ro.{shared}",
+            options="ro", name=shared,
+            key_segments=("box", "bindings", "ro", shared),
             scope="box",
         )
         rec = reconcile_categories([copy, mount])
@@ -273,10 +276,12 @@ class TestReconcileAtOneDestination:
     def test_an_ordinary_guest_dest_reconciles_the_same_way(self):
         """The plain case, unchanged: a MOUNT beats a ``seeded`` COPY at one dest."""
         shared = f"{GUEST_HOME}/thing"
-        copy = _entry(box_dest=shared, name=shared, key=f"system.seeded.{shared}")
+        copy = _entry(box_dest=shared, name=shared,
+                      key_segments=("system", "seeded", shared))
         mount = _entry(
             category="bindings.ro", box_dest=shared, delivery="MOUNT",
-            options="ro", name=shared, key=f"box.bindings.ro.{shared}",
+            options="ro", name=shared,
+            key_segments=("box", "bindings", "ro", shared),
             scope="box",
         )
         rec = reconcile_categories([copy, mount])
@@ -301,7 +306,7 @@ class TestOptionalBindEmission:
             # spelling is kept out of even a hand-built fixture — a stale form in a
             # test reads as precedent (CONVENTIONS §0).
             name=f"{GUEST_HOME}/canon/x",
-            key=f"box.bindings.ro.{GUEST_HOME}/canon/x",
+            key_segments=("box", "bindings", "ro", f"{GUEST_HOME}/canon/x"),
             optional=optional,
         )
         rec = reconcile_categories([entry])

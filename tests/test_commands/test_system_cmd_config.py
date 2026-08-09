@@ -289,7 +289,7 @@ class TestSystemEnvTier:
             return CategoryEntry(
                 category="env", scope=scope, box_dest=var, host_src=None,
                 delivery="ENV", options=value, name=var,
-                key=f"{scope}.env.{var}",
+                key_segments=(*scope.split("."), "env", var),
             )
 
         # Agent tier alone (no scoped env configured) → unchanged.

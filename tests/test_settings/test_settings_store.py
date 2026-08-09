@@ -28,6 +28,8 @@ from kanibako.settings.settings_store import (
     KeyStore,
     ReservedKeyError,
     StoreValue,
+    insert_dotted,
+    insert_segments,
 )
 
 
@@ -512,3 +514,58 @@ def test_bindmap_materialises_as_a_node_not_an_opaque_leaf() -> None:
     assert type(dict.__getitem__(arm, "~/b")) is BindEntry
 
 
+
+# --------------------------------------------------------------------------- #
+# insert_segments / insert_dotted — the ONE walk, and its two entry points     #
+# --------------------------------------------------------------------------- #
+
+
+def test_insert_segments_takes_a_dotted_segment_whole() -> None:
+    # ⚑ THE POINT OF THE FUNCTION. The terminal of a ``binding_derivations`` path
+    # is a box DESTINATION — data — and real destinations carry dots
+    # (``~/.cache/uv``, ``/home/agent/.claude/plugins``). One segment is one node,
+    # whatever it spells.
+    store = KeyStore()
+    insert_segments(
+        store,
+        ("binding_derivations", "agent", "claude", "common",
+         "/home/agent/.claude/plugins"),
+        BindEntry("/store/plugins"),
+    )
+    node = store["binding_derivations"]["agent"]["claude"]["common"]
+    assert list(dict.keys(node)) == ["/home/agent/.claude/plugins"]
+    assert dict.__getitem__(node, "/home/agent/.claude/plugins") == BindEntry(
+        "/store/plugins",
+    )
+
+
+def test_insert_segments_keeps_two_dests_that_would_nest_once_split() -> None:
+    # ⚑ THE DATA LOSS this replaced: split on ``.``, ``~/.claude`` becomes the
+    # path ``~/`` → ``claude`` and ``~/.claude.json`` becomes ``~/`` → ``claude``
+    # → ``json``, so installing the second REPLACES the first's leaf with a node
+    # and the first derivation disappears with no error.
+    store = KeyStore()
+    insert_segments(store, ("caches", "~/.claude"), BindEntry("/h/a"))
+    insert_segments(store, ("caches", "~/.claude.json"), BindEntry("/h/b"))
+    assert set(dict.keys(store["caches"])) == {"~/.claude", "~/.claude.json"}
+    assert dict.__getitem__(store["caches"], "~/.claude") == BindEntry("/h/a")
+
+
+def test_insert_segments_refuses_an_empty_path() -> None:
+    with pytest.raises(ValueError):
+        insert_segments(KeyStore(), (), "x")
+
+
+def test_insert_dotted_splits_a_key_into_segments() -> None:
+    # The dotted front-end, for a caller whose path is a validated KEY (every
+    # segment dot-free). Same walk, one split at the door.
+    store = KeyStore()
+    insert_dotted(store, "box.bindings.rw", None)
+    assert store["box"]["bindings"]["rw"] is None
+
+
+def test_insert_dotted_replaces_a_shallower_leaf_with_a_node() -> None:
+    store = KeyStore()
+    insert_dotted(store, "a.b", "leaf")
+    insert_dotted(store, "a.b.c", "deeper")
+    assert store["a"]["b"]["c"] == "deeper"

@@ -2422,7 +2422,10 @@ def _emit_scope_node(
                     delivery="MOUNT",
                     options="ro",
                     name=box_dest,
-                    key=f"{decl_scope_fn('masks', raw_dest)}.masks.{raw_dest}",
+                    key_segments=(
+                        *decl_scope_fn("masks", raw_dest).split("."),
+                        "masks", raw_dest,
+                    ),
                 ),
             ))
 
@@ -2444,7 +2447,9 @@ def _emit_scope_node(
                     delivery="ENV",
                     options=value if isinstance(value, str) else str(value),
                     name=var,
-                    key=f"{decl_scope_fn('env', var)}.env.{var}",
+                    key_segments=(
+                        *decl_scope_fn("env", var).split("."), "env", var,
+                    ),
                 ),
             ))
 
@@ -2476,7 +2481,10 @@ def _emit_scope_node(
                     delivery="MOUNT",
                     options="ro",
                     name=var,
-                    key=f"{decl_scope_fn('secret_path', var)}.secret_path.{var}",
+                    key_segments=(
+                        *decl_scope_fn("secret_path", var).split("."),
+                        "secret_path", var,
+                    ),
                 ),
             ))
 
@@ -2516,17 +2524,23 @@ def _emit_bind_map(
     """
     for dest in dict.keys(map_node):
         entry = dict.__getitem__(map_node, dest)
-        key = f"{decl_scope_fn(category, dest)}.{category}.{dest}"
+        # ⚑ The DEST is the LAST segment and stays whole: it is data, and a dest
+        # such as ``~/.cache/uv`` carries dots of its own (see CategoryEntry).
+        key_segments = (
+            *decl_scope_fn(category, dest).split("."),
+            *category.split("."), dest,
+        )
         if not isinstance(entry, BindEntry):
             raise SettingsError(
-                f"category {key} is {type(entry).__name__}, expected a "
-                f"BindEntry ({category} is dest-keyed: the map key is the "
-                f"destination; present-None binds are omitted at build, §3/§6e)"
+                f"category {'.'.join(key_segments)} is {type(entry).__name__}, "
+                f"expected a BindEntry ({category} is dest-keyed: the map key is "
+                f"the destination; present-None binds are omitted at build, "
+                f"§3/§6e)"
             )
         _emit_bind(
             collected, order, scope, category, dest,
             entry.src, dest, entry.opts, box_dest_fn,
-            key=key, optional_keys=optional_keys,
+            key_segments=key_segments, optional_keys=optional_keys,
         )
 
 
@@ -2541,7 +2555,7 @@ def _emit_bind(
     opts: str | None,
     box_dest_fn,
     *,
-    key: str,
+    key_segments: tuple[str, ...],
     optional_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY).
@@ -2558,9 +2572,10 @@ def _emit_bind(
     *box_dest_fn* resolves it box-side. *opts* is the per-entry options override
     (``None`` ⇒ the category default).
 
-    *key* is the DISCRIMINATED declaration key the caller built from
-    ``decl_scope_fn`` — carried on the entry for the collision messages and the
-    ``binding_derivations.*`` materialisation. *optional_keys* is matched on it.
+    *key_segments* is the DISCRIMINATED declaration key the caller built from
+    ``decl_scope_fn``, plus the entry's DEST as the last segment — carried on the
+    entry for the collision messages and the ``binding_derivations.*``
+    materialisation. *optional_keys* is matched on its DOTTED spelling.
 
     ⚑⚑ EVERY DEST IS GUEST-SPELLED, COPIES INCLUDED (spec §0 "ONE DEST SPACE, TWO
     DELIVERIES", 2026-08-08c) — so there is ONE resolution here and no space
@@ -2594,8 +2609,8 @@ def _emit_bind(
             delivery=delivery,
             options=options,
             name=name,
-            key=key,
-            optional=key in optional_keys,
+            key_segments=key_segments,
+            optional=".".join(key_segments) in optional_keys,
         ),
     ))
 

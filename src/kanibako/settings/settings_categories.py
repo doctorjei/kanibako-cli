@@ -445,24 +445,34 @@ class CategoryEntry:
     For ``env`` entries, *box_dest* is the variable NAME and *options* holds the
     resolved variable VALUE (env carries no path / mount flags).
 
-    *key* is the DECLARATION KEY plus the ENTRY'S DESTINATION
-    (``agent.claude.common.~/.claude/plugins``, ``box.bindings.rw.~/w``) — a
-    diagnostic IDENTIFIER, ⚑ not a keyspace key: since 2026-08-08c every
-    bind-shaped category is TERMINAL, so the part that IS a key ends at the
-    category and the trailing segment is the map's DEST, which is data.  (It read
-    ``agent.claude.common.plugins`` here while that per-name spelling was still a
-    key.)  It carries the DISCRIMINATED spelling, so its agent segment names a real
-    agent tier
-    (``agent.<agent>`` / ``agent.default``) and never the bare ``agent.`` form
-    §0 forbids. It is DISTINCT from *scope*, which is the BARE precedence
-    token, and it replaces nothing: three consumers need it and none of them can
-    be served by *scope* + *category* + *name*.
+    *key_segments* is the DECLARATION KEY plus the ENTRY'S DESTINATION, ONE
+    SEGMENT PER NODE (``("agent", "claude", "common", "~/.claude/plugins")``,
+    ``("box", "bindings", "rw", "~/w")``) — ⚑ not a keyspace key: since
+    2026-08-08c every bind-shaped category is TERMINAL, so the part that IS a key
+    ends at the category and the LAST segment is the map's DEST, which is data.
+    (It read ``("agent", "claude", "common", "plugins")`` while that per-name
+    spelling was still a key.)  It carries the DISCRIMINATED spelling, so its
+    agent segment names a real agent tier (``agent.<agent>`` / ``agent.default``)
+    and never the bare ``agent.`` form §0 forbids. It is DISTINCT from *scope*,
+    which is the BARE precedence token, and it replaces nothing: three consumers
+    need it and none of them can be served by *scope* + *category* + *name*.
 
-    * the derived-binding materialisation entry (``binding_derivations.<key>``,
-      the reserved internal snapshot node — R-8);
+    * the derived-binding materialisation entry
+      (``binding_derivations.<declaration-key>.<dest>``, the reserved internal
+      snapshot node — R-8);
     * every collision error / warning message (a message that named only the
       category would not tell a user which declaration to edit);
     * the base-vs-extension provenance the §0 collision table reads.
+
+    ⚑⚑ SEGMENTS, NOT A DOTTED STRING, AND THAT IS THE POINT.  A destination
+    routinely contains ``.`` (``~/.cache/uv``, ``/home/agent/.claude/plugins``),
+    so a dotted spelling is AMBIGUOUS with the key-path separator: the
+    materialisation used to hand the joined form to a splitting installer and the
+    dest shattered into extra tree levels, and two dests whose shattered paths
+    nest (``~/.claude`` under ``~/.claude.json``) silently overwrote one another.
+    Carrying segments makes the split unnecessary rather than careful.  :attr:`key`
+    below is the DOTTED spelling, DERIVED — for messages and for matching, never
+    for structure.
 
     *is_credential* tags an entry whose content is an agent CREDENTIAL.  It is the
     hook the credential ``deliver_creds`` gate (D-M4) keys off for ``seeded`` entries: a
@@ -517,9 +527,14 @@ class CategoryEntry:
     delivery: Delivery
     options: str
     name: str
-    key: str
+    key_segments: tuple[str, ...]
     is_credential: bool = False
     optional: bool = False
+
+    @property
+    def key(self) -> str:
+        """The DOTTED spelling of :attr:`key_segments` — for display and matching."""
+        return ".".join(self.key_segments)
 
 
 def _bind_options(category: str) -> str:
@@ -995,16 +1010,25 @@ def _suppress_then_add(occupant_key: str, *, ambiguous: bool = False) -> str:
     )
 
 
-def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
+def derive_binding_keys(
+    entries: list[CategoryEntry],
+) -> dict[tuple[str, ...], "Bind"]:
     """The MATERIALISED derived bindings for the ABSTRACT declarations (§0).
 
     ``common`` / ``caches`` / ``seeded`` are ROOTED declarations that EXTEND
     ``bindings.rw``; §0 requires the binding each one produces to be materialised
     BESIDE the declaration so ``--effective`` can show both and a reader can see
-    WHY a mount exists.  The entry is ``binding_derivations.<declaration-key>``
-    (R-8: the reserved INTERNAL node at the snapshot root — NOT a key) —
-    mechanically one fixed prefix on the declaration key, so the pairing is a
-    string operation and cannot drift.
+    WHY a mount exists.  The entry is
+    ``binding_derivations.<declaration-key>.<dest>`` (R-8: the reserved INTERNAL
+    node at the snapshot root — NOT a key) — mechanically one fixed prefix on the
+    entry's own segments, so the pairing cannot drift.
+
+    ⚑ KEYED BY SEGMENTS, and the installer that consumes this map
+    (``settings_store.insert_segments``) splits nothing.  The last segment is the
+    entry's DESTINATION, which is DATA and routinely contains ``.``; the dotted
+    spelling that used to be returned here shattered such a dest across tree
+    levels and could silently overwrite a sibling derivation.  See
+    :class:`CategoryEntry` for the full account.
 
     ⚑ It is deliberately NOT written into ``<scope>.bindings.rw.<name>``, which is
     §0's own ruling.  Be precise about WHY, because the obvious argument is
@@ -1036,11 +1060,11 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[str, "Bind"]:
     """
     from kanibako.settings.settings_store import BINDING_DERIVATIONS_NODE, Bind
 
-    out: dict[str, Bind] = {}
+    out: dict[tuple[str, ...], Bind] = {}
     for e in entries:
         if e.category not in ABSTRACT_CATEGORIES:
             continue
-        out[f"{BINDING_DERIVATIONS_NODE}.{e.key}"] = Bind(
+        out[(BINDING_DERIVATIONS_NODE, *e.key_segments)] = Bind(
             host=e.host_src or "", box=e.box_dest,
             opts=e.options or None,
         )

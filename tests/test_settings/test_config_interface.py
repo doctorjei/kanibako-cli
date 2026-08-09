@@ -4233,14 +4233,17 @@ class TestEffectiveCategoryBlock:
     # -> ``_install_derived_bindings``. Nothing about the value shapes is
     # asserted here; they are whatever the producers make.
     #
-    # ⚑ Consequences that are the PRODUCERS', not this fixture's, and are left
+    # ⚑ One consequence that is the PRODUCERS', not this fixture's, and is left
     # visible rather than papered over: destinations arrive R-11-ABSOLUTIZED
     # (``~/.claude/plugins`` is stored ``/home/agent/.claude/plugins``), which is
     # what retires the deferred-``~``-vs-resolved-dest contrast the first skipped
-    # test below states; and ``binding_derivations.*`` is materialised by
-    # ``insert_dotted`` on a key ENDING IN A DESTINATION, so a dest containing a
-    # dot is SHATTERED into nested nodes there. Both belong to the collapse
-    # rewrite those two tests are already gated on.
+    # test below states. It belongs to the collapse rewrite that test is gated on.
+    #
+    # ⚑ The dest here CONTAINS DOTS, deliberately: ``binding_derivations.*`` is
+    # keyed by SEGMENTS and installed with ``insert_segments``, so the dest is one
+    # node. It used to be a dotted key handed to ``insert_dotted`` and SHATTERED
+    # into nested nodes; this fixture drives the real chain that proves it no
+    # longer does.
     @staticmethod
     def _snapshot(tmp_path):
         from kanibako.commands.start import _install_derived_bindings
