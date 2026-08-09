@@ -314,12 +314,14 @@ DECLARED_META_ASSEMBLY_LEAVES: Final[frozenset[str]] = frozenset({
 DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "settings",
 })
-# ⚑ Last 3 have NO PRODUCER. `home` is Jei's ratified A9 key (spec §2c, manifest
-# 2026-08-08a): DERIVED from @meta.box.path, but the derivation is still OWED —
-# core-defaults' home bind spells `@meta.box.path/home` inline instead.
-# `container_name` renders in `utils.container_name_for`, off proj attrs, not the
-# store; `helper_num` travels in helper messages. Declared-but-unproduced is the
-# state the manifest already describes (JC-B2-3), not an omission.
+# ⚑ `home` IS produced — `settings_launch.workset_anchor_floor`, beside the
+# `@meta.box.path` it derives from. core-defaults' home bind still spells
+# `@meta.box.path/home` inline, so the derivation exists twice until the collapse
+# re-points the bind at this key; a test holds the two equal meanwhile.
+# ⚑ The last 2 have NO PRODUCER: `container_name` renders in
+# `utils.container_name_for`, off proj attrs, not the store; `helper_num` travels
+# in helper messages. Declared-but-unproduced is the state the manifest already
+# describes (JC-B2-3), not an omission.
 DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "mode", "workspace", "settings",
     "inbox", "share_global", "share_workset",
