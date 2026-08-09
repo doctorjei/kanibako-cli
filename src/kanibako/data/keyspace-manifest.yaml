@@ -157,6 +157,33 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    meta.* key today (`system get meta.<anything>` answers 'unknown
                    config key', including for the three PRODUCED siblings), so the
                    declaration adds no get/set asymmetry."
+    - date: "2026-08-08g"
+      what: "NO KEYSPACE CHANGE — a CODE CORRECTION recorded for the ledger.
+             `meta.box.home`, `meta.box.container_name` and `meta.box.helper_num`
+             were rows in this file and in spec §2c while
+             settings_keyspace.DECLARED_META_BOX_LEAVES omitted all three, so the
+             closed-keyspace validator REFUSED three declared keys. `home` is the
+             ratified A9 key (2026-08-08a, above); the other two are long-standing
+             §2c rows."
+      authority: "The SPEC is the authority (§0: an undeclared key is not a key —
+                  and its converse, that a DECLARED key must resolve as one).
+                  Same defect class as 2026-08-08f, one namespace over; no new
+                  ratification was needed or sought."
+      scope: "DECLARATION ONLY. ⚑ NONE OF THE THREE IS PRODUCED: `home`'s
+              @meta.box.path derivation is still OWED (core-defaults' home bind
+              spells the literal `@meta.box.path/home` inline instead), and
+              `container_name` / `helper_num` are the non-bind RENDER pair
+              (JC-B2-3) — container_name is composed in utils.container_name_for
+              from proj attrs, helper_num travels in helper messages. ⚑⚑ The
+              core-defaults `key: home` / `category: bindings.rw` row and
+              core_defaults.add_bind's home arm are UNTOUCHED and STILL BIND HOME:
+              A9's downstream code follow-up is deliberately NOT in this amendment,
+              because the collapse that would seed home has not landed and deleting
+              the delivery route first breaks every launch."
+      code_state: "Code + tests landed with this amendment: the three leaves join
+                   DECLARED_META_BOX_LEAVES, and the meta.box counterpart of
+                   2026-08-08f's manifest drift guard is added — it was the RED
+                   test that named this bug."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
