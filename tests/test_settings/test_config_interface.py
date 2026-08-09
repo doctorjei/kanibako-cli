@@ -4220,71 +4220,66 @@ class TestSetDispatchCoverage:
 class TestEffectiveCategoryBlock:
     """T15 — the materialisation is observable end-to-end (D6, box scope)."""
 
-    # ⚑⚑ NOT RESPELLED FOR DEST-KEYING, AND THE GREEN BELOW IS NOT EVIDENCE.
-    # This fixture is hand-built and handed straight to ``show_config``, which
-    # renders whatever it is given and validates no key — so it survived the
-    # 2026-08-08c flip unchanged while having stopped meaning what it says. Three
-    # things in it are retired shapes: ``common``/``seeded`` are NAME-keyed here
-    # (``common["plugins"]``) where the keyspace now keys them by DESTINATION; the
-    # leaves are 3-element ``Bind`` where a dest-keyed leaf is a 2-element
-    # ``BindEntry``; and the ``CategoryEntry`` rows carry ``name="plugins"`` /
-    # ``key="agent.claude.common.plugins"`` where the emitter now stamps
-    # ``name`` = the dest and ``key`` = ``<scope>.<category>.<box_dest>``.
+    # ⚑⚑ BUILT THROUGH THE PRODUCTION ROUTE, ON PURPOSE (2026-08-08f). The
+    # previous fixture was hand-assembled from 3-element ``Bind`` leaves under
+    # NAME keys and handed straight to ``show_config``, which renders whatever it
+    # is given and validates no key — so it survived the 2026-08-08c dest-keying
+    # flip unchanged while having stopped meaning what it says, and
+    # ``test_concrete_bindings_are_listed_too`` stayed GREEN against a renderer
+    # that emitted ZERO binding rows on every real snapshot. A fixture that
+    # cannot meet production is worse than no test, so this one is assembled by
+    # the launch itself: settings FILES -> ``build_launch_snapshot`` (assemble ->
+    # merge -> expand) -> ``snapshot_category_entries`` -> ``derive_binding_keys``
+    # -> ``_install_derived_bindings``. Nothing about the value shapes is
+    # asserted here; they are whatever the producers make.
     #
-    # It was left alone DELIBERATELY rather than guessed at: respelling it forces
-    # a decision about what the ``--effective`` DECLARATION line should print for
-    # a dest-keyed category — and in particular whether
-    # ``test_declaration_and_derived_binding_print_adjacently``'s stated contrast
-    # ("the declaration carries the deferred ``~``; the derivation carries the
-    # resolved guest dest") survives R-11 normalizing the destination AT THE
-    # PRODUCER. That is display semantics, gated on the same collapse function
-    # that has ``test_the_derivation_line_states_its_DELIVERY`` skipped, not a
-    # fixture respell. Decide it there, then fix this fixture in the same pass.
+    # ⚑ Consequences that are the PRODUCERS', not this fixture's, and are left
+    # visible rather than papered over: destinations arrive R-11-ABSOLUTIZED
+    # (``~/.claude/plugins`` is stored ``/home/agent/.claude/plugins``), which is
+    # what retires the deferred-``~``-vs-resolved-dest contrast the first skipped
+    # test below states; and ``binding_derivations.*`` is materialised by
+    # ``insert_dotted`` on a key ENDING IN A DESTINATION, so a dest containing a
+    # dot is SHATTERED into nested nodes there. Both belong to the collapse
+    # rewrite those two tests are already gated on.
     @staticmethod
-    def _snapshot():
+    def _snapshot(tmp_path):
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings.settings_categories import (
-            CategoryEntry,
-            derive_binding_keys,
+        from kanibako.settings.settings_categories import derive_binding_keys
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
         )
-        from kanibako.settings.settings_store import Bind, KeyStore
+        from kanibako.settings.settings_resolve import ResolveCtx
 
-        snapshot = KeyStore()
-        agent = KeyStore()
-        claude = KeyStore()
-        common = KeyStore()
-        common["plugins"] = Bind(
-            host="/store/agents/claude/common/plugins",
-            box="~/.claude/plugins", opts=None,
+        # The agent file is rooted at ``self:`` with one sub-table per agent node
+        # (``settings_assemble._agent_partial``); every category below is
+        # DEST-KEYED — the map key is the box destination, the value is
+        # ``[src[, opts]]``.
+        agent_file = tmp_path / "agent-settings.yaml"
+        agent_file.write_text(yaml.safe_dump({"self": {"claude": {
+            "common": {
+                "~/.claude/plugins": ["/store/agents/claude/common/plugins"],
+            },
+            "seeded": {"~": ["/store/template"]},
+            "bindings": {"ro": {"~/ref": ["/store/ref"]}},
+        }}}))
+        box_file = tmp_path / "box-settings.yaml"
+        box_file.write_text(yaml.safe_dump({"box": {"bindings": {
+            "rw": {"~": ["/boxes/mybox/home", "Z,U"]},
+        }}}))
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None, host_home="/home/host", xdg={},
         )
-        seeded = KeyStore()
-        seeded["template"] = Bind(host="/store/template", box="~", opts=None)
-        claude["common"] = common
-        claude["seeded"] = seeded
-        agent["claude"] = claude
-        snapshot["agent"] = agent
-        box = KeyStore()
-        bindings = KeyStore()
-        rw = KeyStore()
-        rw["home"] = Bind(host="/boxes/mybox/home", box="/home/agent", opts="Z,U")
-        bindings["rw"] = rw
-        box["bindings"] = bindings
-        snapshot["box"] = box
-        _install_derived_bindings(snapshot, derive_binding_keys([
-            CategoryEntry(
-                category="common", scope="agent",
-                box_dest="/home/agent/.claude/plugins",
-                host_src="/store/agents/claude/common/plugins",
-                delivery="MOUNT", options="Z,U", name="plugins",
-                key="agent.claude.common.plugins",
+        snapshot = build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=None, agent_path=agent_file,
+            workset_path=None, box_path=box_file,
+        )
+        _install_derived_bindings(snapshot, derive_binding_keys(
+            snapshot_category_entries(
+                snapshot, active_agent="claude", box_ctx=ctx,
             ),
-            CategoryEntry(
-                category="seeded", scope="agent",
-                box_dest="/home/agent", host_src="/store/template",
-                delivery="COPY", options="", name="template",
-                key="agent.claude.seeded.template",
-            ),
-        ]))
+        ))
         return snapshot
 
     def _render(self, tmp_path):
@@ -4296,7 +4291,7 @@ class TestEffectiveCategoryBlock:
             config_path=tmp_path / "settings.yaml",
             effective=True,
             file=buf,
-            category_snapshot=self._snapshot(),
+            category_snapshot=self._snapshot(tmp_path),
         )
         return buf.getvalue()
 
@@ -4354,8 +4349,26 @@ class TestEffectiveCategoryBlock:
         assert common_line.rstrip().endswith("(mount)")
 
     def test_concrete_bindings_are_listed_too(self, tmp_path):
+        """The row is assembled from the map KEY (the destination) and the
+        2-element ``BindEntry`` leaf TOGETHER — the leaf carries no destination
+        at all (R-6). Before 2026-08-08f this block emitted nothing on a real
+        snapshot: the guard tested ``isinstance(leaf, Bind)``, which is False for
+        every ``BindEntry``, so ``--effective`` listed no bindings whatsoever."""
         text = self._render(tmp_path)
-        assert "box.bindings.rw.home = /boxes/mybox/home -> /home/agent" in text
+        assert (
+            "box.bindings.rw./home/agent = /boxes/mybox/home -> /home/agent  [Z,U]"
+            in text
+        )
+
+    def test_the_agent_tier_is_listed_under_its_DISCRIMINATED_name(self, tmp_path):
+        """An agent-scope arm prints as ``agent.<node>.bindings.*`` — the only
+        agent key form the spec defines (§2d), and the reason ``_iter_agent_tiers``
+        exists at all."""
+        text = self._render(tmp_path)
+        assert (
+            "agent.claude.bindings.ro./home/agent/ref = /store/ref -> /home/agent/ref"
+            in text
+        )
 
     def test_the_bare_agent_form_is_never_printed(self, tmp_path):
         """``agent.<category>`` is not a key (spec §0), so a display that
@@ -4703,6 +4716,49 @@ class TestPrefShow:
             "'reset pref.agent.claude.common./home/agent/.claude/plugins'" in out
         )
         assert "at the scope that set it" in out
+
+    def test_a_dotted_DESTINATION_is_not_shattered(self, tmp_path, capsys):
+        """A dest-keyed entry that WORKED was reported as SUPPRESSED.
+
+        The block used to walk the ``pref`` subtree with its own recursion, which
+        descended PAST a terminal dest-keyed arm and then split the target on
+        ``.`` to find the result — so ``…caches./home/agent/.cache/uv`` was cut at
+        the dot inside ``.cache``, the lookup missed, and a present, mounted entry
+        printed as "(omitted — the entry is suppressed; no mount…)" with an
+        instruction to reset it. Built through the LAUNCH (files -> assemble ->
+        merge -> expand), because a hand-built snapshot is exactly what hid this.
+
+        INVERT: restore the private walk (or split the target on ``.``) -> the
+        result half becomes the suppression message and this reddens.
+        """
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        box_file = tmp_path / "box-settings.yaml"
+        box_file.write_text(yaml.safe_dump({"pref": {"agent": {"claude": {
+            "caches": {"~/.cache/uv": ["/host/caches/uv"]},
+        }}}}))
+        snap = build_launch_snapshot(
+            agent_name="claude",
+            ctx=ResolveCtx(
+                agent_name="claude", workset_name=None,
+                host_home="/home/host", xdg={},
+            ),
+            system_path=None, agent_path=None,
+            workset_path=None, box_path=box_file,
+        )
+        show_config(
+            global_config_path=tmp_path / "g.yaml",
+            config_path=tmp_path / "s.yaml",
+            effective=True, category_snapshot=snap,
+        )
+        out = capsys.readouterr().out
+        dest = "/home/agent/.cache/uv"
+        assert f"pref.agent.claude.caches.{dest} = /host/caches/uv -> {dest}" in out
+        assert (
+            f"-> agent.claude.caches.{dest} = /host/caches/uv -> {dest}" in out
+        )
+        assert "suppressed" not in out
 
 
 # ---------------------------------------------------------------------------

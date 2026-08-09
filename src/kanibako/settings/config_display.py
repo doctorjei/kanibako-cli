@@ -114,32 +114,36 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     the form it was WRITTEN (``@meta.workset.path/tpl``) while the target holds
     the resolved terminal. Rendering an expanded request beside its result would
     print the same string twice and answer nothing.
+
+    ⚑ THE REQUEST WALK IS ``settings_prefs``' OWN, not a second one. That module
+    stops the walk at a TERMINAL dest-keyed category (``masks``,
+    ``bindings.{ro,rw}``, ``caches``/``seeded``/``common``/``synced``) because the
+    keys inside one are DESTINATIONS — data, not key segments — and a real
+    destination contains dots. A private walk here descended past that stop and
+    then split the target on ``.``, which SHATTERED every dotted destination and
+    reported a present, working entry as suppressed. Delegating keeps the
+    terminal question in the one module that owns it (no key semantics here); the
+    per-entry expansion below reads the dest as a MAP KEY on both halves and
+    never re-splits it.
     """
-    from kanibako.settings.settings_store import Bind, KeyStore
+    from kanibako.settings.settings_prefs import prefs_from_partial
+    from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
-    node = snapshot
-    for seg in (PREF_ROOT,):
-        if not isinstance(node, KeyStore):
-            return
-        node = dict.get(node, seg, None)
-    if not isinstance(node, KeyStore):
+    if not isinstance(snapshot, KeyStore):
         return
-
-    requests: dict[str, Any] = {}
-
-    def _walk(sub: Any, prefix: str) -> None:
-        for k in dict.keys(sub):
-            v = dict.__getitem__(sub, k)
-            if isinstance(v, KeyStore):
-                _walk(v, f"{prefix}{k}.")
-            else:
-                requests[f"{prefix}{k}"] = v
-
-    _walk(node, "")
+    # *level* / *path* only name the file in the dotted-key refusal, which cannot
+    # fire here: a ``pref`` table is dropped at assembly outside workset/box, and
+    # both those files were already flattened by ``collect_prefs`` during the
+    # build that produced this snapshot — so a dotted name stopped the LAUNCH.
+    requests = prefs_from_partial(snapshot, level="resolved")
     if not requests:
         return
 
-    def _render(value: Any) -> str:
+    def _render(value: Any, dest: str | None = None) -> str:
+        if isinstance(value, BindEntry):
+            # Dest-keyed: the destination is the KEY the caller walked in with.
+            opts = f"  [{value.opts}]" if value.opts else ""
+            return f"{value.src} -> {dest}{opts}"
         if isinstance(value, Bind):
             opts = f"  [{value.opts}]" if value.opts else ""
             return f"{value.host} -> {value.box}{opts}"
@@ -147,18 +151,38 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             return "null"
         return str(value)
 
-    print("", file=out)
-    for target in sorted(requests):
-        print(f"  {PREF_ROOT}.{target} = {_render(requests[target])}", file=out)
-        # The RESULT, read at the TARGET key in the same snapshot.
+    def _at(target: str) -> Any:
+        """The RESULT node at *target*, read in the same snapshot; ``_MISSING`` if absent."""
         cur: Any = snapshot
-        missing = False
         for seg in target.split("."):
             if not isinstance(cur, KeyStore) or dict.get(cur, seg, _MISSING) is _MISSING:
-                missing = True
-                break
+                return _MISSING
             cur = dict.get(cur, seg)
-        if missing:
+        return cur
+
+    # One row per printable request: (display target, rendered request, result,
+    # dest). A TERMINAL arm arrives as ONE request carrying the WHOLE map, and
+    # expands to a row per entry — that is what keeps per-entry suppression
+    # visible as such, since the arm itself survives a suppressed entry.
+    rows: list[tuple[str, str, Any, str | None]] = []
+    for req in requests:
+        if isinstance(req.value, KeyStore):
+            arm = _at(req.target)
+            for dest in dict.keys(req.value):
+                rows.append((
+                    f"{req.target}.{dest}",
+                    _render(dict.__getitem__(req.value, dest), dest),
+                    dict.get(arm, dest, _MISSING) if isinstance(arm, KeyStore)
+                    else _MISSING,
+                    dest,
+                ))
+        else:
+            rows.append((req.target, _render(req.value), _at(req.target), None))
+
+    print("", file=out)
+    for target, request, value, dest in sorted(rows, key=lambda r: r[0]):
+        print(f"  {PREF_ROOT}.{target} = {request}", file=out)
+        if value is _MISSING:
             # The ordinary present-None rule OMITTED it: a bind / category /
             # masks leaf was suppressed. Saying so is the whole point — this is
             # the difference between "suppressed" and "unset". Name the CURE
@@ -175,10 +199,10 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
                 f"(omitted — the entry is suppressed; no mount. Undo with "
                 f"'reset {PREF_ROOT}.{target}' at the scope that set it)"
             )
-        elif cur is None:
+        elif value is None:
             result = "(unset — the consumer applies its default)"
         else:
-            result = _render(cur)
+            result = _render(value, dest)
         print(f"    -> {target} = {result}", file=out)
 
 
@@ -199,7 +223,7 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     from kanibako.settings.settings_categories import (
         effective_bindings_and_template_sources,
     )
-    from kanibako.settings.settings_store import Bind, KeyStore
+    from kanibako.settings.settings_store import BindEntry, KeyStore
 
     print("", file=out)
     if error is not None:
@@ -215,11 +239,16 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
             node = dict.get(node, seg, None)
         return node
 
-    def _pair(bind: Bind) -> str:
-        opts = f"  [{bind.opts}]" if bind.opts else ""
-        return f"{bind.host} -> {bind.box}{opts}"
-
     # CONCRETE first — the source of truth a mount is emitted from.
+    #
+    # ⚑ The arm is DEST-KEYED (R-5/R-6): the map KEY is the box destination and
+    # the leaf is a 2-element ``BindEntry(src, opts)`` carrying no destination at
+    # all, so the pair is assembled from the key and the leaf TOGETHER. The leaf
+    # test is ``isinstance`` and never arity — a legacy 3-tuple ``Bind`` and a
+    # ``BindEntry`` are both legally 2 elements with OPPOSITE meanings
+    # (``settings_store.BindEntry``, the arity trap). A leaf that is neither is a
+    # malformed arm the launch already refused, which is why the display is
+    # showing *error* instead of reaching here.
     for scope in ("system", "agent", "workset", "box"):
         scope_node = _leaf(scope)
         if not isinstance(scope_node, KeyStore):
@@ -229,11 +258,13 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
                 mode_node = _sub(tier, ("bindings", mode))
                 if not isinstance(mode_node, KeyStore):
                     continue
-                for name in sorted(dict.keys(mode_node)):
-                    bind = dict.__getitem__(mode_node, name)
-                    if isinstance(bind, Bind):
+                for dest in sorted(dict.keys(mode_node)):
+                    entry = dict.__getitem__(mode_node, dest)
+                    if isinstance(entry, BindEntry):
+                        opts = f"  [{entry.opts}]" if entry.opts else ""
                         print(
-                            f"  {prefix}.bindings.{mode}.{name} = {_pair(bind)}",
+                            f"  {prefix}.bindings.{mode}.{dest} = "
+                            f"{entry.src} -> {dest}{opts}",
                             file=out,
                         )
 
