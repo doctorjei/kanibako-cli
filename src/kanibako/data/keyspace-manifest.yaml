@@ -1486,8 +1486,9 @@ keys:
     note: "COLLAPSED BIND MAP — the grand-unification output (§0/§2). ONE entry per
            dest BY CONSTRUCTION: a second bind at a live dest is the double-bind
            ERROR. src = None marks a MASK. Home is pid 0 and is seeded here BEFORE
-           any scope folds (A9, @meta.box.home). Produced by the collapse, which has
-           not landed — declared so the closed keyspace admits the name."
+           any scope folds (A9, @meta.box.home). Produced by the collapse on the
+           launch path; ABSENT when the collapse refuses a config the shipping
+           route still accepts, which is caught at that one seam and logged."
     spec: "§1A"
   meta.assembly.copies:
     namespace: meta
@@ -1500,7 +1501,7 @@ keys:
            binding folds and no mount arbitrates them: nothing is pruned, and a dest
            MAY repeat (the later entry overwrites the earlier FILEWISE at apply
            time). A copy whose dest is not inside home is a config ERROR. Same
-           producer as meta.assembly.bindings, and equally absent."
+           producer as meta.assembly.bindings, and absent under the same condition."
     spec: "§1A"
   meta.assembly.backup:
     namespace: meta
