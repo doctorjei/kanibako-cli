@@ -6648,6 +6648,9 @@ def _resolve_launch_snapshot(
         # requests.
         raise _annotate_pref_origin(exc, prefs) from None
     emit_collision_warnings(reconciled.warnings)
+    # Roadmap step 6b: the COLLAPSE, folded and STORED — it drives NOTHING. The
+    # live route above is what delivers, unchanged, until the cutover.
+    _install_assembly_collapse(snapshot, entries)
     return snapshot, reconciled
 
 
@@ -6745,6 +6748,59 @@ def _install_derived_bindings(
 
     for segments, value in derived.items():
         insert_segments(snapshot, segments, value)
+
+
+#: The two ``meta.assembly.*`` leaves the collapse produces, as SEGMENTS — the
+#: same reason ``binding_derivations`` travels that way (a dest is DATA).
+_ASSEMBLY_BINDINGS: "tuple[str, ...]" = ("meta", "assembly", "bindings")
+_ASSEMBLY_COPIES: "tuple[str, ...]" = ("meta", "assembly", "copies")
+
+
+def _install_assembly_collapse(snapshot, entries) -> None:
+    """Store the collapse at ``meta.assembly.*``. ⚑ OBSERVED BY NOTHING — see llm-docs.
+
+    Prose: ``llm-docs/kanibako/commands/start.py.md``.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.settings_store import insert_segments
+    from kanibako.settings.store_collapse import collapse_store_shapes
+    from kanibako.settings.store_shape import build_store_shape_set
+
+    home_bind, folded = _split_home_bind(entries)
+    if home_bind is None:
+        return
+    try:
+        collapsed = collapse_store_shapes(build_store_shape_set(folded), home_bind)
+    except SettingsError as exc:
+        # The collapse REFUSES shapes the shipped route still accepts, and that
+        # tightening lands at the cutover, not here. Report it and leave both
+        # leaves ABSENT — the state the manifest already names for them.
+        get_logger(__name__).debug("meta.assembly.* not folded: %s", exc)
+        return
+    insert_segments(snapshot, _ASSEMBLY_BINDINGS, collapsed.bindings)
+    insert_segments(snapshot, _ASSEMBLY_COPIES, collapsed.copies)
+
+
+def _split_home_bind(entries):
+    """Lift the ONE home mount out of *entries* — home is pid 0 and folds alone (§2a)."""
+    from kanibako.settings.settings_categories import MOUNT
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+    from kanibako.settings.settings_store import BindEntry
+    from kanibako.settings.store_collapse import HOME_DEST
+
+    at_home = [
+        entry for entry in entries
+        if entry.delivery == MOUNT
+        and entry.host_src is not None
+        and normalize_bind_dest(entry.box_dest) == HOME_DEST
+    ]
+    if len(at_home) != 1:
+        return None, entries  # No box home to build on ⇒ nothing to assemble.
+    home = at_home[0]
+    return (
+        BindEntry(home.host_src, home.options),
+        [entry for entry in entries if entry is not home],
+    )
 
 
 #: Process-scoped DISPLAY state for :func:`emit_collision_warnings`: the
