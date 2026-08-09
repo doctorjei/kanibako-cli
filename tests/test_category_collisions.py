@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 
 import pytest
+import yaml
 
 from kanibako.errors import CategoryCollisionError, ConfigError
 from kanibako.settings.settings_categories import (
@@ -780,6 +781,56 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
                 entry("bindings.rw", name="b", scope="box"),
             ])
         assert "self." not in str(exc.value)
+
+
+def _remedy_block(text: str, scope: str) -> str:
+    """The YAML block of a remedy — the ``<scope>:`` line plus its indented tail."""
+    lines = text.splitlines()
+    start = lines.index(f"{scope}:")
+    block = [lines[start]]
+    for line in lines[start + 1:]:
+        if not line.startswith(" "):
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
+class TestRemedyBlockKeysTheDestWhole:
+    """A dest is DATA: the remedy must key it WHOLE, never split it on ``.``.
+
+    ⚑ Every OTHER case in this file uses a dot-free name, so all of them were
+    green while the block shattered ``/home/agent/.claude/plugins`` into two tree
+    levels and printed a path that is not addressable at all (the keyspace is
+    CLOSED). These two drive the LIVE shape — the last segment IS the
+    destination (R-10) — one per caller of ``_suppress_then_add``.
+    """
+
+    def test_row1_prints_the_dotted_dest_as_one_key(self):
+        dest = "/home/agent/.claude/plugins"
+        with pytest.raises(CategoryCollisionError) as exc:
+            reconcile_categories([
+                entry("bindings.ro", name=dest, box_dest=dest, scope="box",
+                      host_src="/srv/plugins"),
+                entry("bindings.rw", name=dest, box_dest=dest, scope="box",
+                      host_src="/home/jei/plugins"),
+            ])
+        assert (
+            f"box:\n  bindings:\n    ro:\n      {dest}: null"
+        ) in str(exc.value)
+
+    def test_row3_block_parses_back_to_the_real_declaration(self):
+        """The oracle is the READER: ``parse_bind_map`` takes the map key whole
+        and keeps a ``null`` value as the per-entry reset."""
+        dest = "~/.cache/uv"
+        with pytest.raises(CategoryCollisionError) as exc:
+            reconcile_categories([
+                entry("bindings.rw", name=dest, box_dest=dest, scope="box",
+                      host_src="/var/cache/uv"),
+                entry("caches", name=dest, box_dest=dest, scope="agent.claude",
+                      host_src="/ext"),
+            ])
+        block = yaml.safe_load(_remedy_block(str(exc.value), "box"))
+        assert block == {"box": {"bindings": {"rw": {dest: None}}}}
 
 
 # ---------------------------------------------------------------------------

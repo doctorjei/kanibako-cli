@@ -829,7 +829,7 @@ def _resolve_mount_group(
                 "configuration that\nlaunched before can refuse to launch now. "
                 "Your files did not change; the rule did."
             )
-            + _suppress_then_add(concrete[0].key, ambiguous=True),
+            + _suppress_then_add(concrete[0].key_segments, ambiguous=True),
             kind="binding_vs_binding",
             box_dest=box_dest,
             entries=tuple((e.key, e.host_src) for e in concrete),
@@ -852,7 +852,7 @@ def _resolve_mount_group(
                 "abstractions, two opposite silent\noutcomes. Both are now "
                 "refused."
             )
-            + _suppress_then_add(base.key),
+            + _suppress_then_add(base.key_segments),
             kind="extension_onto_occupied",
             box_dest=box_dest,
             entries=tuple((e.key, e.host_src) for e in (extension, base)),
@@ -951,7 +951,9 @@ def _rule_changed(body: str) -> str:
     )
 
 
-def _suppress_then_add(occupant_key: str, *, ambiguous: bool = False) -> str:
+def _suppress_then_add(
+    occupant_segments: tuple[str, ...], *, ambiguous: bool = False,
+) -> str:
     """The SUPPRESS-THEN-ADD remedy (§0), spelled as the YAML edit it really is.
 
     ⚑ There is no CLI verb that can express THIS suppression: ``config set``
@@ -974,12 +976,17 @@ def _suppress_then_add(occupant_key: str, *, ambiguous: bool = False) -> str:
     block is labelled an example rather than a prescription. Row 3 passes False —
     there the occupant is determined, because the base always survives.
     """
-    parts = occupant_key.split(".")
-    scope = parts[0]
+    # ⚑ SEGMENTS, NEVER A DOTTED SPLIT. The LAST segment is the
+    # entry's DESTINATION, which is data and routinely carries dots of its own
+    # (``~/.cache/uv``); splitting shattered it across YAML levels and printed a
+    # block that is not a declaration at all. See :class:`CategoryEntry`.
+    occupant_key = ".".join(occupant_segments)
+    scope = occupant_segments[0]
+    last = len(occupant_segments) - 1
     indent = "  "
     lines = [f"{scope}:"]
-    for depth, seg in enumerate(parts[1:], start=1):
-        lines.append(f"{indent * depth}{seg}:" if depth < len(parts) - 1
+    for depth, seg in enumerate(occupant_segments[1:], start=1):
+        lines.append(f"{indent * depth}{seg}:" if depth < last
                      else f"{indent * depth}{seg}: null")
     # ⚑ The AGENT scope stores its own node under ``self.<node>`` in the per-agent
     # settings file (the shape ``_agent_partial`` reads back); the canonical
@@ -988,9 +995,10 @@ def _suppress_then_add(occupant_key: str, *, ambiguous: bool = False) -> str:
     # reader an edit that silently does nothing in the other file.
     caveat = (
         "\n⚑ In the per-agent settings file itself the node is spelled "
-        f"'self.{parts[1]}' rather\nthan '{scope}.{parts[1]}'; the form above is "
+        f"'self.{occupant_segments[1]}' rather\nthan "
+        f"'{scope}.{occupant_segments[1]}'; the form above is "
         "what a CONTAINING scope's file writes.\n"
-        if scope == "agent" and len(parts) > 1 else ""
+        if scope == "agent" and len(occupant_segments) > 1 else ""
     )
     which = (
         "Either entry may be the one you keep — the block below suppresses "
