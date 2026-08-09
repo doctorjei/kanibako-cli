@@ -409,6 +409,98 @@ class TestRetiredScopeBindDest:
         assert bench.changed(before) == {}, bench.changed(before)
 
 
+class TestADottedDestinationSlotsWHOLE:
+    """⚑⚑ A DESTINATION IS DATA — the fourth and last site of one root cause.
+
+    ``_key_slot`` split the canonical key on ``.``, so a destination carrying dots
+    of its own shattered across nested levels: ``box.caches.~/.cache/uv`` asked for
+    a section ``~/`` holding a leaf ``cache/uv``, which no settings file has. The
+    read then answered "(not set)" for an entry the launch mounts. Its three
+    siblings were repaired in `509592a` (derived bindings), `5958572` (the pref
+    block) and `dacd9b7` (the collision remedy).
+
+    ⚑ EVERY PRE-EXISTING CASE IN THIS FILE USES A DOT-FREE DESTINATION — ``pip``,
+    ``vault``, ``/box/c`` — which is exactly how all four instances stayed green.
+    Destinations went guest-side, so the dotted case is now the common one.
+    """
+
+    _CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
+    _DOTTED = "~/.cache/uv"
+
+    @pytest.mark.parametrize("scope", ["system", "workset", "box"])
+    @pytest.mark.parametrize("category", _CATEGORIES)
+    def test_the_dest_is_ONE_leaf_at_the_category_slot(self, scope, category):
+        """⚑ MUTATION: restore ``canonical.split(".")`` in ``_key_slot`` -> the
+        sections grow a ``~/`` and the leaf becomes ``cache/uv``, and this dies."""
+        from kanibako.settings.config_dest import _key_slot
+
+        slot = _key_slot(f"{scope}.{category}.{self._DOTTED}")
+        assert slot == ((scope, *category.split(".")), self._DOTTED, "category"), slot
+
+    def test_a_destination_of_BARE_dotted_segments_is_not_cut_either(self):
+        """The defect is the SPLIT, not the ``~/`` spelling — ``a.b`` is one dest."""
+        from kanibako.settings.config_dest import _key_slot
+
+        assert _key_slot("box.caches.a.b") == (("box", "caches"), "a.b", "category")
+
+    def test_the_TERMINAL_key_itself_is_unchanged(self):
+        """The whole dest-keyed map still slots at ``(scope,) / <category>``.
+
+        The two shapes share one rule — the value lives at the LAST addressing unit
+        — so this is the half that must NOT move when the entry half is repaired.
+        """
+        from kanibako.settings.config_dest import _key_slot
+
+        assert _key_slot("box.caches") == (("box",), "caches", "category")
+        assert _key_slot("box.bindings.ro") == (("box", "bindings"), "ro", "category")
+
+    def test_the_AGENT_scope_per_entry_spelling_still_has_NO_slot(self):
+        """⚑ THE FENCE. The repair changes the SPLIT, never what is CLAIMED.
+
+        ``agent.<node>.<category>.<dest>`` answers ``None`` here and must keep doing
+        so: ``agent_node_bind_retired_error`` tells a user the surviving key is the
+        TERMINAL one for those four categories, and a prefix scan applied without the
+        family guard would silently hand them a read that message says is gone. (The
+        two ``bindings`` arms DO keep a per-entry read, but through the node-file rule
+        ``_node_bind_target``, which runs BEFORE this one — not through a slot.)
+        """
+        from kanibako.settings.config_dest import _key_slot
+
+        slots = {
+            f"agent.claude.{c}.{self._DOTTED}": _key_slot(f"agent.claude.{c}.{self._DOTTED}")
+            for c in self._CATEGORIES
+        }
+        assert all(v is None for v in slots.values()), slots
+
+    def test_a_dotted_dest_READS_BACK_at_every_file_scope(self, bench):
+        """The slot is only a claim; this is the value coming back out of a file."""
+        for scope, target, level in (
+            ("box", bench.box, ConfigLevel.box),
+            ("workset", bench.ws, ConfigLevel.workset),
+            ("system", bench.ssp, ConfigLevel.system),
+        ):
+            bench.seed(target, (scope, "caches"), self._DOTTED, list(_TUPLE))
+            got = bench.get(level, f"{scope}.caches.{self._DOTTED}") or ""
+            assert _TUPLE[0] in got, (scope, got)
+
+    def test_the_RETIRED_ROUTE_PROMISE_is_true_for_a_dotted_dest(self, bench):
+        """⚑⚑ THE MESSAGE'S OWN CLAIM, EXECUTED — ``scope_bind_retired_error``
+        closes with *"Reading it back with 'config get <key>' still works"*.
+
+        The sentence was honest and the ROUTER was not: it held only for a dot-free
+        destination, so the refusal prescribed a cure the user could not verify —
+        the F6 lie in a new place. The promised command is extracted FROM the
+        message rather than retyped here, so a reworded promise cannot drift out
+        from under its own test.
+        """
+        bench.seed(bench.box, ("box", "caches"), self._DOTTED, list(_TUPLE))
+        msg = bench.set(ConfigLevel.box, f"box.caches.{self._DOTTED}", "/some/src")
+        assert msg.startswith("Error:") and "RETIRED" in msg, msg
+        m = re.search(r"'config get (?P<key>[^']+)' still works", msg)
+        assert m is not None, msg
+        assert bench.get(ConfigLevel.box, m.group("key")) is not None, msg
+
+
 # ---------------------------------------------------------------------------
 # 5. ⚑ THE AGENT-SCOPE CATEGORY DESTINATION (write arm deleted; read still broken)
 # ---------------------------------------------------------------------------

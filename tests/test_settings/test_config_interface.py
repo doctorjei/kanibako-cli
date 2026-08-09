@@ -4690,8 +4690,7 @@ class TestPrefShow:
 
         The per-ENTRY suppression itself is unchanged and still expressible: a
         present-None INSIDE the dest-keyed map is the per-entry omit, so the
-        request is now keyed by the DESTINATION and the reset hint names that
-        same spelling.
+        request is now keyed by the DESTINATION.
         """
         from kanibako.settings.settings_store import KeyStore
 
@@ -4714,11 +4713,17 @@ class TestPrefShow:
         assert "(unset — the consumer applies its default)" in out
         # B-6: suppression has no verb of its own, so the message that reports a
         # suppression is where the user learns what UNDOES it — and WHERE, since
-        # a reset at the wrong noun removes nothing.
-        assert (
-            "'reset pref.agent.claude.common./home/agent/.claude/plugins'" in out
-        )
+        # an edit at the wrong noun removes nothing.
+        #
+        # ⚑ THE CURE NAMES THE FILE, NOT A VERB (Jei, 2026-08-08e). This used to
+        # pin ``reset pref.agent.claude.common./home/agent/.claude/plugins`` — a
+        # command that does not work and is not going to, because addressing one
+        # facet of a dest-keyed key individually is not a thing the CLI does. The
+        # assertion was deliberate then and is wrong now; the negative below is
+        # what keeps a non-working verb from creeping back in.
+        assert "Undo by removing this entry from the 'pref:' table" in out
         assert "at the scope that set it" in out
+        assert "reset pref." not in out
 
     def test_a_dotted_DESTINATION_is_not_shattered(self, tmp_path, capsys):
         """A dest-keyed entry that WORKED was reported as SUPPRESSED.
