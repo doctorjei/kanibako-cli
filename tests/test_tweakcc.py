@@ -226,6 +226,54 @@ self:
         assert loaded.transform_settings == {}
 
 
+class TestAgentConfigTransformKey:
+    """``agent.<agent>.transform`` is a flat behavior SCALAR — it needs no modelled
+    ``AgentConfig`` field.
+
+    ⚑ It rides ``AgentConfig.state`` exactly like ``model`` / ``endpoint`` /
+    ``access`` / ``bootstrap``: ``load_agent_config`` captures every non-identity,
+    non-dict ``self.*`` entry as state and ``write_agent_config`` re-emits it.  A
+    dedicated field would be a SECOND copy of a value ``state`` already holds.
+    That is also why it takes NO sparse-write exception: only a dict-valued
+    category can materialize as a phantom ``{}`` override for ``agent reset --all``,
+    and an unset scalar is simply absent from ``state``.
+    """
+
+    def test_load_captures_transform_as_state(self, tmp_path):
+        from kanibako.settings.agent_config import load_agent_config
+
+        path = tmp_path / "agent.yaml"
+        path.write_text('self:\n  name: "Claude Code"\n  transform: tweakcc\n')
+        cfg = load_agent_config(path)
+        assert cfg.state["transform"] == "tweakcc"
+
+    def test_round_trip_through_state(self, tmp_path):
+        from kanibako.settings.agent_config import (
+            AgentConfig, load_agent_config, write_agent_config,
+        )
+
+        path = tmp_path / "agent.yaml"
+        write_agent_config(path, AgentConfig(name="Test", state={"transform": "tweakcc"}))
+        assert load_agent_config(path).state["transform"] == "tweakcc"
+
+    def test_unset_transform_is_absent_not_empty(self, tmp_path):
+        from kanibako.settings.agent_config import (
+            AgentConfig, load_agent_config, write_agent_config,
+        )
+
+        path = tmp_path / "agent.yaml"
+        write_agent_config(path, AgentConfig(name="Test"))
+        assert "transform" not in path.read_text()
+        assert "transform" not in load_agent_config(path).state
+
+    def test_not_a_modelled_field(self):
+        """A modelled ``AgentConfig.transform`` would duplicate the ``state`` entry."""
+        from kanibako.settings.agent_config import AgentConfig, _MODELED_KEYS
+
+        assert not hasattr(AgentConfig(), "transform")
+        assert "transform" not in _MODELED_KEYS
+
+
 # ── Cache layer tests ────────────────────────────────────────────────
 
 

@@ -726,33 +726,33 @@ def _is_no_bootstrap(program: str | None) -> bool:
     return program == _BOOTSTRAP_NONE
 
 
-def _effective_bootstrap(
+def _effective_agent_scalar(
     proj,
     system_settings_path: "Path | None",
     agent_id: str,
     *,
+    key: str,
+    floor: str,
+    agent_state: "dict[str, str] | None" = None,
     agent_path: "Path | None" = None,
-) -> str:
-    """Resolve the effective AGENT-scope ``bootstrap`` behavior value for a box.
+) -> "str | None":
+    """Resolve ONE agent-scope behavior scalar off a focused launch snapshot.
 
-    ``bootstrap`` is an agent-scope behavior key (spec §2d
-    ``agent.default.bootstrap | tmux``), resolved off the SAME KeyStore snapshot
-    pipeline the launch reads for the other agent behavior scalars (``model`` /
-    ``access`` / ``allow_helpers``): a focused ``build_launch_snapshot`` over
-    the scope settings FILES (system / workset / box) + the per-agent file's flat
-    state, then :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d
+    THE shape for a behavior key a caller needs BEFORE the main launch snapshot
+    exists (``bootstrap`` runs ahead of the baseline probe; ``transform`` must
+    settle before the patched install feeds the 7b snapshot's delivery binds).
+    A focused ``build_launch_snapshot`` over the scope settings FILES (system /
+    workset / box) plus the per-agent file's flat state, then
+    :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d
     active-over-default pick.  There is NO derived-on-disk value — the keystore is
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
 
     *agent_id* is the launch-resolved active node-name (``"general"`` for a
     no-agent / shell box, so the ``agent.default`` backstop still applies).
-    *agent_path* is the active agent's OWN settings file (``agents/<node>/
-    settings.yaml``) so a per-agent ``config set agent.<agent>.bootstrap`` override
-    is honored; ``None`` skips it (the scope-file cascade still resolves).
-
-    Returns the resolved program name, or the consumer default ``tmux``
-    (:data:`_BOOTSTRAP_DEFAULT`) when no scope sets ``bootstrap`` — byte-identical
-    to the retired ``box.bootstrap_program or "tmux"`` coercion for the default case.
+    *agent_state* is the per-agent file's flat behavior state when the caller
+    already holds it; *agent_path* loads it from ``agents/<node>/settings.yaml``
+    instead.  Both ``None`` = no per-agent tier (the scope-file cascade still
+    resolves).  Returns ``None`` when no scope and no floor sets *key*.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.paths import host_xdg_map
@@ -766,47 +766,104 @@ def _effective_bootstrap(
     )
     # The per-agent file's FLAT behavior state (agent.<active>.* slot) — the shape
     # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
-    agent_state: "dict[str, str] | None" = None
-    if agent_path is not None and Path(agent_path).exists():
+    if agent_state is None and agent_path is not None and Path(agent_path).exists():
         try:
             agent_state = dict(load_agent_config(agent_path).state)
         except Exception:
             agent_state = None
-    _bootstrap_box_path, _bootstrap_ws_path = box_workset_settings_paths(proj)
+    _scalar_box_path, _scalar_ws_path = box_workset_settings_paths(proj)
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_id,
         ctx=ctx,
         system_path=system_settings_path,
         agent_path=None,
-        workset_path=_bootstrap_ws_path,
-        box_path=_bootstrap_box_path,
-        # Seed the behavior FLOOR with just ``bootstrap`` (→ agent.default.bootstrap
-        # = tmux) so the snapshot's ``agent`` node ALWAYS exists.  Without it, a box
-        # whose SOLE agent-scope setting is the ``box.agent.bootstrap`` mirror (e.g.
-        # ``=none`` for a one-off ephemeral box) has NO ``agent`` node, so
+        workset_path=_scalar_ws_path,
+        box_path=_scalar_box_path,
+        # Seed the behavior FLOOR with just *key* (→ agent.default.<key>) so the
+        # snapshot's ``agent`` node ALWAYS exists.  Without it, a box whose SOLE
+        # agent-scope setting is the ``box.agent.<key>`` mirror (e.g.
+        # ``bootstrap=none`` for a one-off ephemeral box) has NO ``agent`` node, so
         # ``effective_behavior`` early-returns ``{}`` BEFORE consulting the box.agent
         # mirror — silently dropping the override (the regression the retired
-        # ``box.bootstrap_program`` did not have).  Unlike ``model``'s read, this
-        # focused snapshot has no descriptor floor, so it must floor ``bootstrap``
-        # itself.  ``keys=["bootstrap"]`` below extracts ONLY bootstrap, so flooring
-        # it has no effect on any other behavior key.
-        behavior_floor={"bootstrap": _BOOTSTRAP_DEFAULT},
+        # ``box.bootstrap_program`` did not have).  Unlike the main launch's read,
+        # this focused snapshot has no descriptor floor, so the caller supplies the
+        # one value.  ``keys=[key]`` below extracts ONLY *key*, so flooring it has
+        # no effect on any other behavior key.
+        behavior_floor={key: floor},
         agent_state=agent_state,
         # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). Not an
         # oversight and not an ordering accident: this resolve extracts EXACTLY
-        # ONE key (``keys=["bootstrap"]`` below), and a persona bundle can only
-        # ever carry ``endpoint`` / ``model`` / ``secret_path.<VAR>`` /
-        # ``env.<VAR>``. ``bootstrap`` is a user's terminal-multiplexer choice —
-        # nothing a harness config renders — so no persona value can reach this
-        # read, and adding the tier would buy a store read per launch (this runs
-        # ahead of the baseline probe, and again from the host-side persistence
-        # heuristic in ``_resolve_bootstrap_program``, which holds no target) for
-        # a value that could not change.
+        # ONE key (``keys=[key]`` below), and a persona bundle can only ever carry
+        # ``endpoint`` / ``model`` / ``secret_path.<VAR>`` / ``env.<VAR>``. Neither
+        # caller asks for one of those — ``bootstrap`` is a user's
+        # terminal-multiplexer choice and ``transform`` names a kanibako-side patch
+        # pipeline, nothing a harness config renders — so no persona value can reach
+        # this read, and adding the tier would buy a store read per launch (bootstrap
+        # runs ahead of the baseline probe, and again from the host-side persistence
+        # heuristic in ``_resolve_bootstrap_program``, which holds no target) for a
+        # value that could not change.
     )
-    value = settings_launch.effective_behavior(
-        snapshot, active_agent=agent_id, keys=["bootstrap"],
-    ).get("bootstrap")
-    return value if value else _BOOTSTRAP_DEFAULT
+    return settings_launch.effective_behavior(
+        snapshot, active_agent=agent_id, keys=[key],
+    ).get(key) or None
+
+
+def _effective_bootstrap(
+    proj,
+    system_settings_path: "Path | None",
+    agent_id: str,
+    *,
+    agent_path: "Path | None" = None,
+) -> str:
+    """Resolve the effective AGENT-scope ``bootstrap`` behavior value for a box.
+
+    ``bootstrap`` is an agent-scope behavior key (spec §2d
+    ``agent.default.bootstrap | tmux``), resolved off the SAME KeyStore snapshot
+    pipeline the launch reads for the other agent behavior scalars (``model`` /
+    ``access`` / ``allow_helpers``) — see :func:`_effective_agent_scalar`.
+
+    Returns the resolved program name, or the consumer default ``tmux``
+    (:data:`_BOOTSTRAP_DEFAULT`) when no scope sets ``bootstrap`` — byte-identical
+    to the retired ``box.bootstrap_program or "tmux"`` coercion for the default case.
+    """
+    return _effective_agent_scalar(
+        proj, system_settings_path, agent_id,
+        key="bootstrap", floor=_BOOTSTRAP_DEFAULT, agent_path=agent_path,
+    ) or _BOOTSTRAP_DEFAULT
+
+
+def _effective_transform(
+    proj,
+    system_settings_path: "Path | None",
+    agent_id: str,
+    target,
+    agent_cfg,
+) -> "str | None":
+    """Resolve the AGENT-scope ``transform`` key — WHICH binary transform this launch runs.
+
+    Spec §2d ``agent.default.transform | <None>`` / ``agent.claude.transform |
+    tweakcc``.  The FLOOR is the PLUGIN's declared default (§0: every non-universal
+    agent specific is plugin-established), read off ``setting_descriptors()``; the
+    cascade above it is the ordinary system / workset / box / per-agent-file one.
+    ``None`` = no transform named ⇒ nothing is patched.
+
+    Resolved HERE rather than off the 7b launch snapshot because the patched install
+    feeds that snapshot's delivery binds, so the decision must precede it.
+    """
+    floor = ""
+    descriptors = target.setting_descriptors() if target is not None else []
+    # A real target returns a list of TargetSetting; a MagicMock target in unit
+    # tests returns a mock, and iterating it would fabricate a floor (same guard,
+    # same reason, as ``_resolve_box_launch_decisions``).
+    if isinstance(descriptors, list):
+        for descriptor in descriptors:
+            if descriptor.key == "transform":
+                floor = descriptor.default or ""
+    return _effective_agent_scalar(
+        proj, system_settings_path, agent_id,
+        key="transform", floor=floor,
+        agent_state=dict(agent_cfg.state) if agent_cfg is not None else None,
+    )
 
 
 def _resolve_bootstrap_program(
@@ -3335,15 +3392,41 @@ def _run_container(
             else:
                 target.refresh_credentials(proj.shell_path)
 
-        # tweakcc: patch agent binary if enabled
+        # Binary transform: run the one this agent's ``transform`` key NAMES (spec
+        # §2d).  ``transform_settings`` is that transform's CONFIG INPUT and was
+        # never the switch — gating on it ran tweakcc for ANY agent whose settings
+        # merely carried the dict.  An unrunnable/unnamed transform WARNS rather
+        # than passing silently: a lost plugin declaration must not read as
+        # "tweakcc quietly broke".
+        from kanibako.tweakcc import TRANSFORM_NAME as _TWEAKCC_TRANSFORM
         tweakcc_entry = None
         tweakcc_cache_obj = None
-        if target and install and agent_cfg.transform_settings:
+        active_transform = (
+            _effective_transform(
+                proj, system_settings_path, agent_id, target, agent_cfg,
+            )
+            if target and install
+            else None
+        )
+        if active_transform == _TWEAKCC_TRANSFORM:
             result = _apply_tweakcc(
                 install, agent_cfg, std.cache_path, image, runtime.cmd, logger,
             )
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result
+        elif active_transform:
+            logger.warning(
+                "agent.%s.transform names %r, which this kanibako does not "
+                "implement (known: %r) — no binary transform applied.",
+                agent_id, active_transform, _TWEAKCC_TRANSFORM,
+            )
+        elif target and install and agent_cfg.transform_settings:
+            logger.warning(
+                "agent.%s.transform_settings is set but agent.%s.transform names "
+                "no transform — the settings are an INPUT, not a switch, so "
+                "nothing was patched.",
+                agent_id, agent_id,
+            )
 
         # Block 7b (ruling A — the FULL read-path swap): build the ONE launch
         # snapshot HERE, before the behavior read, so BOTH the behavior read (just

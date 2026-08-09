@@ -515,8 +515,9 @@ class PluginDescriptor:
     *informational* — they describe where core derives a path, not a descriptor field:
     `agent.<agent>.path` (`@config.agents/<name>`, derived in core),
     `agent.<agent>.template` (the layer-2 seed source, owned by the templates layer), and
-    `agent.<agent>.transform` (a binary-patch cache label; claude's tweakcc is a bespoke
-    path, not a descriptor hook). The `synced` category in §2d is the spec VIEW of
+    `agent.<agent>.transform` (NAMES which binary transform runs — a plugin declares its
+    value through `setting_descriptors`, so it is a behavior SETTING, not a descriptor
+    field, and it is realized on no channel). The `synced` category in §2d is the spec VIEW of
     `cred_files` (realized by the credsync engine); `critical` is the set of
     AGENT_CRITICAL `bindings` keys.
     """

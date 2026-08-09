@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent.<agent>.transform` now decides whether a binary transform runs.** The key names WHICH
+  transform an agent uses; until now nothing read it, and the tweakcc patch ran for any agent whose
+  settings merely carried a `transform_settings` dict — including agents tweakcc cannot patch.
+  `transform_settings` is that transform's CONFIG INPUT, never the switch. The claude plugin
+  declares `tweakcc`, so a claude box behaves exactly as before; a goose or codex box that had
+  picked up a `transform_settings` table no longer has claude's patcher run against its binary. Set
+  `agent.claude.transform` to the empty value to turn patching off, or set it at any scope
+  (`pref.agent.claude.transform` in a box or workset) to override. A transform named that this
+  kanibako cannot run, and a `transform_settings` set with no transform named, are both reported at
+  launch rather than passing silently.
+
 - **New fixed box directory `~/.kanibako/`; the helper socket and message log moved into it.**
   Inside a box they are now mounted at `~/.kanibako/state/helper.sock` and
   `~/.kanibako/state/helpers.jsonl` instead of under `$XDG_STATE_HOME/kanibako/`. A mount

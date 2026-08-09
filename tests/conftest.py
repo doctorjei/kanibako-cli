@@ -346,6 +346,15 @@ def start_mocks():
                 # stub it to the ``tmux`` default; the zellij / ``none`` tests
                 # override ``start_mocks.effective_bootstrap.return_value``.
                 _effective_bootstrap=DEFAULT,
+                # AGENT-scope ``transform`` resolution (spec §2d): WHICH binary
+                # transform the launch runs.  Same MagicMock-path rationale as
+                # ``_effective_bootstrap`` above — stub it to what the fixture's
+                # target (claude) actually declares, ``tweakcc``.  Tests exercising
+                # a different / absent transform override
+                # ``start_mocks.effective_transform.return_value``; the REAL
+                # cascade behavior is covered by TestEffectiveTransformResolution
+                # with a REAL proj.
+                _effective_transform=DEFAULT,
                 # run_start's EARLY persistence-mode heuristic resolves the box +
                 # agent to read the agent-scope bootstrap; stub it to the ``tmux``
                 # default so a run_start unit test does not double-resolve the box.
@@ -418,6 +427,9 @@ def start_mocks():
             # Default agent-scope bootstrap = tmux (the persistent-session default).
             m_launch_mount_stubs["_effective_bootstrap"].return_value = "tmux"
             m_launch_mount_stubs["_resolve_bootstrap_program"].return_value = "tmux"
+            # Default agent-scope transform = what the fixture's claude target
+            # declares (spec §2d ``agent.claude.transform | tweakcc``).
+            m_launch_mount_stubs["_effective_transform"].return_value = "tweakcc"
 
             proj = MagicMock()
             proj.is_new = False
@@ -711,6 +723,7 @@ def start_mocks():
                     write_create_entry=m_launch_mount_stubs["_write_create_entry"],
                     read_system_agent=m_launch_mount_stubs["read_system_agent"],
                     effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
+                    effective_transform=m_launch_mount_stubs["_effective_transform"],
                     resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
                     virtiofs_check=m_virtiofs_check,
                 )

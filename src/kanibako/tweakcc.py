@@ -11,10 +11,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
 
 from kanibako.log import get_logger
 
 logger = get_logger("tweakcc")
+
+#: The ``agent.<agent>.transform`` VALUE naming THIS transform (spec §2d; see llm-docs).
+TRANSFORM_NAME: Final[str] = "tweakcc"
 
 
 @dataclass

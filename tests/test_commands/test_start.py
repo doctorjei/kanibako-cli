@@ -495,6 +495,125 @@ class TestEffectiveBootstrapResolution:
         assert _effective_bootstrap(proj, sys_file, "goose") == "zellij"
 
 
+class TestEffectiveTransformResolution:
+    """`_effective_transform` resolves the AGENT-scope ``transform`` key (spec §2d
+    ``agent.default.transform | <None>`` / ``agent.claude.transform | tweakcc``) —
+    WHICH binary transform a launch runs.
+
+    The FLOOR is the PLUGIN's own declaration (spec §0: agent specifics are
+    plugin-established), read off ``setting_descriptors()``; above it the ordinary
+    system / workset / box / per-agent-file cascade.
+    """
+
+    def _proj(self, tmp_path):
+        from types import SimpleNamespace
+        from kanibako.settings.paths import BoxMode
+        box_dir = tmp_path / "box"
+        box_dir.mkdir()
+        return SimpleNamespace(
+            metadata_path=box_dir, group=None, mode=BoxMode.primary,
+        )
+
+    def _cfg(self, **kw):
+        from kanibako.settings.agent_config import AgentConfig
+        return AgentConfig(**kw)
+
+    def test_claude_declaration_is_the_floor(self, tmp_path):
+        """⚑ THE BEHAVIOUR-PRESERVATION TEST: a claude box with today's config —
+        nothing set anywhere — still names ``tweakcc``, so it still patches.
+
+        Reads the REAL ``ClaudeTarget``, not a fixture value: the whole risk of
+        moving the gate off ``transform_settings`` is that the plugin declaration
+        is missing and tweakcc silently stops running everywhere.  Mutation-proved
+        by ``test_missing_plugin_declaration_yields_no_transform`` below.
+        """
+        from kanibako.commands.start import _effective_transform
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.tweakcc import TRANSFORM_NAME
+        proj = self._proj(tmp_path)
+        assert _effective_transform(
+            proj, None, "claude", ClaudeTarget(), self._cfg(),
+        ) == TRANSFORM_NAME
+
+    def test_missing_plugin_declaration_yields_no_transform(self, tmp_path, monkeypatch):
+        """MUTATION PROOF for the test above: drop claude's ``transform`` descriptor
+        and the resolve yields ``None`` — i.e. nothing patches.
+
+        Scoped with ``monkeypatch`` so the mutation never reaches disk (this tree is
+        edited by the user).
+        """
+        from kanibako.commands.start import _effective_transform
+        from kanibako.plugins.claude.target import ClaudeTarget
+        proj = self._proj(tmp_path)
+        real = ClaudeTarget.setting_descriptors
+        monkeypatch.setattr(
+            ClaudeTarget,
+            "setting_descriptors",
+            lambda self: [d for d in real(self) if d.key != "transform"],
+        )
+        assert _effective_transform(
+            proj, None, "claude", ClaudeTarget(), self._cfg(),
+        ) is None
+
+    def test_no_target_names_no_transform(self, tmp_path):
+        """A no-agent / shell launch has no plugin, so no transform is named."""
+        from kanibako.commands.start import _effective_transform
+        proj = self._proj(tmp_path)
+        assert _effective_transform(proj, None, "general", None, self._cfg()) is None
+
+    def test_target_declaring_no_transform(self, tmp_path):
+        """A plugin that declares no ``transform`` (goose/codex) names none — the
+        pre-wiring bug was running claude's tweakcc against any agent whose settings
+        happened to carry a ``transform_settings`` dict."""
+        from types import SimpleNamespace
+        from kanibako.commands.start import _effective_transform
+        proj = self._proj(tmp_path)
+        target = SimpleNamespace(setting_descriptors=lambda: [])
+        assert _effective_transform(
+            proj, None, "goose", target,
+            self._cfg(state={}),
+        ) is None
+
+    def test_agent_file_state_overrides_the_floor(self, tmp_path):
+        """``transform`` is a flat behavior scalar: the per-agent file's own state
+        (``self.transform``) wins the §2d active-over-default pick over the
+        plugin floor — including the empty value, which turns the transform OFF."""
+        from kanibako.commands.start import _effective_transform
+        from kanibako.plugins.claude.target import ClaudeTarget
+        proj = self._proj(tmp_path)
+        assert _effective_transform(
+            proj, None, "claude", ClaudeTarget(), self._cfg(state={"transform": ""}),
+        ) is None
+
+    def test_box_pref_override(self, tmp_path):
+        """A box-level §2h REQUEST ``pref.agent.<a>.transform`` wins the pick."""
+        from kanibako.commands.start import _effective_transform
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        dump_doc(
+            proj.metadata_path / "settings.yaml",
+            {"pref": {"agent": {"claude": {"transform": ""}}}},
+        )
+        assert _effective_transform(
+            proj, None, "claude", ClaudeTarget(), self._cfg(),
+        ) is None
+
+    def test_system_agent_default_tier(self, tmp_path):
+        """``agent.default.transform`` at system scope reaches an agent whose plugin
+        declares nothing — the core §2d default-tier row is a real key."""
+        from types import SimpleNamespace
+        from kanibako.commands.start import _effective_transform
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"transform": "tweakcc"}}})
+        target = SimpleNamespace(setting_descriptors=lambda: [])
+        assert _effective_transform(
+            proj, sys_file, "goose", target, self._cfg(),
+        ) == "tweakcc"
+
+
 class TestImageReferenceResolution:
     """Verify a bare configured image is resolved before ensure_image (#81)."""
 
@@ -2106,10 +2225,21 @@ class TestRetiredEnvFilesAreNotRead:
 
 
 class TestTweakccIntegration:
-    """Verify tweakcc patching in the container launch flow."""
+    """Verify tweakcc patching in the container launch flow.
+
+    ⚑ THE GATE IS ``agent.<agent>.transform`` (spec §2d), NOT ``transform_settings``:
+    the key NAMES which transform runs, the settings are that transform's CONFIG
+    INPUT.  ``m.effective_transform`` is the resolved value (fixture default
+    ``"tweakcc"``, which is what claude's plugin declares).
+    """
 
     def test_disabled_by_default(self, start_mocks):
-        """Empty tweakcc config → no patching, normal flow."""
+        """Empty tweakcc config → no patching, normal flow.
+
+        The transform IS named (claude declares it), so ``_apply_tweakcc`` runs and
+        returns ``None``: ``resolve_tweakcc_config({}).enabled`` is False.  A claude
+        box that never configured tweakcc is byte-identical to before the wiring.
+        """
         with start_mocks() as m:
             assert m.agent_cfg.transform_settings == {}
             rc = _run_container(
@@ -2119,6 +2249,43 @@ class TestTweakccIntegration:
             )
             assert rc == 0
             m.runtime.run.assert_called_once()
+
+    def test_unnamed_transform_skips_patching(self, start_mocks):
+        """No transform NAMED → ``_apply_tweakcc`` is never reached, even with settings.
+
+        This is the behaviour the key buys: before the wiring, ANY agent whose
+        settings merely carried a ``transform_settings`` dict got claude's tweakcc
+        run against its binary.
+        """
+        with start_mocks() as m:
+            m.effective_transform.return_value = None
+            m.agent_cfg.transform_settings = {"enabled": True}
+            m.load_agent_config.return_value = m.agent_cfg
+
+            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+                assert rc == 0
+                mock_apply.assert_not_called()
+
+    def test_foreign_transform_name_skips_patching(self, start_mocks):
+        """A transform this build does not implement is NOT run as tweakcc."""
+        with start_mocks() as m:
+            m.effective_transform.return_value = "some-other-transform"
+            m.agent_cfg.transform_settings = {"enabled": True}
+            m.load_agent_config.return_value = m.agent_cfg
+
+            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
+                assert rc == 0
+                mock_apply.assert_not_called()
 
     def test_enabled_calls_apply_tweakcc(self, start_mocks):
         """When tweakcc is enabled in agent config, _apply_tweakcc is called."""

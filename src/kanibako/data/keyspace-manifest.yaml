@@ -1378,9 +1378,13 @@ keys:
            ⚑⚑ DECLARED 2026-08-08c by Jei, RE-declared here 2026-08-08e — it had been
            filed under not_keys.renamed as folded-into-caches (2026-06-27). That fold is
            SUPERSEDED; do not re-file it there.
-           ⏳ NOT READ BY ANY CODE YET as of 2026-08-08e: `_apply_tweakcc` gates on
-           `transform_settings` and hardcodes the literal `\"tweakcc\"`. Wiring tweakcc to
-           read THIS key is boarded on Jei's word."
+           ✅ WIRED 2026-08-09: the launch gate (`start._effective_transform` ->
+           `_apply_tweakcc`) runs the transform this key NAMES; the claude PLUGIN declares
+           the value through `setting_descriptors()` (spec §0 — agent specifics are
+           plugin-established) and core only RECOGNIZES it as
+           `kanibako.tweakcc.TRANSFORM_NAME`. `transform_settings` is no longer the switch.
+           ⏳ STILL BOARDED: moving the tweakcc IMPLEMENTATION (`tweakcc.py`,
+           `tweakcc_cache.py`, `_apply_tweakcc`) out of core into the claude plugin."
     spec: "§2d (declared 2026-08-08c)"
   agent.default.transform_settings:
     scope: agent

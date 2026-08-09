@@ -658,6 +658,13 @@ class ClaudeTarget(Target):
 
         - ``model``: freeform (Claude adds models regularly).
         - ``endpoint``: alternate base-URL (persona); unset = bare/harness-default.
+        - ``transform``: WHICH binary transform claude runs (spec §2d
+          ``agent.claude.transform | tweakcc``).  Spec §0 makes every non-universal
+          agent specific PLUGIN-established, so the word is declared HERE and core
+          only RECOGNIZES it (``kanibako.tweakcc.TRANSFORM_NAME``) — deliberately
+          NOT imported, so this plugin keeps working against an older core.  Unlike
+          ``model``/``endpoint`` it names no realization channel: it is consumed by
+          kanibako's own patch pipeline, never handed to the harness.
 
         ``access`` is NOT declared here: it is the agent-scope permission TIER
         key (spec §2d, ``agent.default.access | full``, enum
@@ -677,6 +684,12 @@ class ClaudeTarget(Target):
                 description="Alternate base-URL endpoint (persona); "
                 "unset uses the harness default and syncs the OAuth login",
                 default="",
+            ),
+            TargetSetting(
+                key="transform",
+                description="Binary transform applied to the agent binary "
+                "(tweakcc); empty = none",
+                default="tweakcc",
             ),
         ]
 
