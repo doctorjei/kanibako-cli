@@ -1195,6 +1195,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     """
     from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_categories import is_read_only
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_launch import snapshot_category_entries
     from kanibako.settings.settings_merge import merge
@@ -1248,6 +1249,6 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     for entry in entries:
         if entry.category not in ("bindings.ro", "bindings.rw"):
             continue
-        mode = "ro" if entry.options == "ro" else "rw"
+        mode = "ro" if is_read_only(entry.options) else "rw"
         print(f"  {entry.host_src} -> {entry.box_dest}  [{mode}]")
     return 0

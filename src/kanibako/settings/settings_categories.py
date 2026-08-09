@@ -547,6 +547,11 @@ def _bind_options(category: str) -> str:
     return "ro" if category == "bindings.ro" else "Z,U"
 
 
+def is_read_only(options: str | None) -> bool:
+    """True when mount *options* carries ``ro`` as a comma-separated TOKEN."""
+    return "ro" in {token.strip() for token in (options or "").split(",")}
+
+
 @dataclass(frozen=True)
 class CategoryCollision:
     """One SAME-SCOPE abstraction ambiguity at one ``box_dest`` (§0 row 5).
