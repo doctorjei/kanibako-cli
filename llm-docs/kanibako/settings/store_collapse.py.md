@@ -1,37 +1,65 @@
 # The Collapse (roadmap step 6a)
 
 The "grand unification": four per-scope `StoreShape`s plus the home bind, merged into ONE dest-keyed
-bindings map and ONE dest-keyed copies map. Scope order — `system`, `agent`, `workset`, `box` — IS
+bindings map and ONE scope-ordered copy LIST. Scope order — `system`, `agent`, `workset`, `box` — IS
 the precedence; a later scope beats an earlier one.
 
 **Authority:** `designs/grand-unification-collapse-DESIGN.md` §2 (Jei's algorithm, verbatim) and
-**§2a, which supersedes §2's head** · its §0 ruling 1 (shallow-first per scope) and ruling 2 (`stat`
-is allowed) · the SUBSUMPTION RULES, recorded at `workbook/devnotes.md` under *"THE COLLAPSE IS
-RULED"* · `designs/collapse-implementation-DESIGN.md` (how it is built and what it must not disturb,
-and §6 for why the rules arrived a commit late) · `designs/store-shape-producer-DESIGN.md` §7 (the
-input arms).
+**§2a, which supersedes §2's head** · its §0 ruling 1 (parent-first per scope) · the SUBSUMPTION
+RULES, verbatim at `designs/collapse-implementation-DESIGN.md` **§7**, with the worked refusability
+table and the operations at **§8** · **§9, which rules that copies apply to the HOME bind ALONE**
+(2026-08-09d) · `designs/store-shape-producer-DESIGN.md` §7 (the input arms).
 
-## Status: ADDITIVE, PURE and UNCONSUMED
+## Status: ADDITIVE, PURE and INFORMATION-ONLY
 
 ⚑⚑ Step 6 *"merges the **information**, but not the action"* — the roadmap's own words. This
 function computes and returns. It drives no emission, executes no copy, changes no mount and
 deletes nothing: `snapshot_category_entries` → `reconcile_categories` → emission is still the whole
 live delivery path, including `reconcile_categories`' arbitration half, its `synced_vs_binding`
-refusal and its row-5 warning channel. Nothing calls this module yet.
+refusal and its row-5 warning channel.
 
-Writing the result into `meta.assembly.bindings` / `meta.assembly.copies` is step 6b and lands in
-`commands/start.py`. Still no emission then either.
+Its one consumer is `start.py:_install_assembly_collapse`, which writes the result to
+`meta.assembly.bindings` / `meta.assembly.copies` — leaves nothing reads. The collapse REFUSES
+shapes the shipped route still accepts, so that seam catches `SettingsError` and leaves both leaves
+absent; the tightening lands at the CUTOVER.
+
+## Two halves that do not interact
+
+⚖️ **RULED 2026-08-09d: a copy applies to the HOME bind alone.** A copy's destination is always
+inside home and it resolves into the home bind's source — the box home store — so no mount can
+arbitrate one. That makes the copy half a plain **concatenation** that completes BEFORE any binding
+or mask fold, reading no binding at all.
+
+Consequences, all of them removals rather than patches:
+
+* **nothing prunes a copy.** A bind or mask at, above or beneath a copy's dest leaves it alone.
+  Whether such a copy is then dead is a DELIVERY question, not a collapse-time one.
+* **a dest MAY repeat**, and that is the point: the layered `seeded` overlay is one row per scope,
+  every one of them targeting `~`. A dest-keyed map would silently drop all but one layer. The
+  later entry overwrites the earlier FILEWISE at apply time — already ruled, and not this
+  function's job.
+* **the copy never meets a mask**, so the copied-directory-onto-a-mask rule and the un-mask branch
+  that went with it are both GONE.
+* ⚑⚑ **the module no longer touches the filesystem.** The directory rule was decided by a live
+  `Path(src).is_dir()`, which made one config refuse or permit according to whether the source
+  happened to exist yet. `settings_categories.py:492` states the standard for its own module:
+  *"never by a resolve-time `exists()` probe: this module is PURE."* The probe is removed by
+  removing its cause.
+
+**The one new error case:** a copy whose dest is not inside home. Every copy shipped today is
+home-relative by construction, so this is structural rather than a behaviour change — and it is
+refused BY NAME, never dropped.
 
 ## Home is pid 0
 
 Home is not in any scope's `store_shape` and the producer must not emit it. It arrives as its own
 `home_bind` parameter and seeds `combined_bindings` BEFORE the loop, so every other binding enters
-as a CHILD of an already-collapsed entry. Three properties fall out of the existing rules, with no
-new rule added:
+as a CHILD of an already-collapsed entry. Two properties fall out of the existing rules, with no new
+rule added:
 
-* **nothing may subsume home** — a bind at `/home` (or at `/`) is a strict ancestor of the
-  foundation, so rule 1 refuses it;
-* **exactly one bind at home** — a second one is a double-bind and raises;
+* **nothing may subsume home** — a bind at `/home` (or at `/`) is an ancestor of the foundation, so
+  the bind refusal catches it; a second bind AT home is the same refusal, equality being on the
+  subsume side;
 * **everything inside home nests freely, at any scope.**
 
 The key is `normalize_bind_dest("~")` = `/home/agent`, not the literal `~`. A dest is a GUEST path
@@ -39,7 +67,12 @@ and the guest home is fixed machinery, so the foundation key normalizes like eve
 otherwise `~` and `/home/agent/...` would not compare and home would subsume nothing.
 
 ⚑ `home_bind`'s options are carried VERBATIM: the mode fold applies to the scoped arms, and home is
-not in an arm.
+not in an arm. A copy's options are carried verbatim for the same reason.
+
+⚠️ **A MASK at home replaces it.** The ratified refusability table gives an arriving mask
+*"ok — delete it"* over a bind at its own point, with no home exception, and "nothing may subsume
+home" is stated as falling out of the BIND rule, which counts bindings only. Implemented as the
+table has it and pinned by a test that says so; making it a refusal is a RULING, not a tidy-up.
 
 ## Every dest is normalized at the point of use
 
@@ -48,39 +81,62 @@ it here is a no-op on well-formed input and states the precondition rather than 
 done at each point of use rather than in a `normalize_paths` pre-pass over the arms, and that is
 load-bearing: a pre-pass rebuilding an arm's dict would let `~/x` and `/home/agent/x` in ONE arm
 silently overwrite each other, where at the point of use the second one meets the first in
-`combined_bindings` and raises the double-bind it actually is.
+`combined_bindings` and raises the collision it actually is.
 
 ⚑⚑ A box destination is DATA. It is never `.split(".")`/rejoined — dests routinely contain dots.
 
-## The prefix match needs a separator guard, on BOTH loops
+## The containment test needs a separator guard
 
-`startswith(dest)` is wrong in two directions and the copy prune uses both:
+`startswith(dest)` is wrong in two directions and every rule here uses containment:
 
 * `/home/agent/foobar` is NOT inside `/home/agent/foo`;
-* `/home/agent-foo` is NOT inside `/home/agent`.
+* `/home/agent-foo` is NOT inside `/home/agent` — which is also what keeps a sibling of home from
+  passing the copy half's inside-home check.
 
-So the test is `d == dest or d.startswith(dest.rstrip("/") + "/")` — the exact-equality case is
-wanted (a mount AT a copy's dest shadows it), the separator makes "inside" mean inside. `rstrip`
-also makes a bare `/` behave: it yields the prefix `/`, and everything is inside root.
+So the test is `d == dest or d.startswith(dest.rstrip("/") + "/")`. `rstrip` makes a bare `/`
+behave: it yields the prefix `/`, and everything is inside root.
 
-## The prune list is the CURRENT scope's keys ONLY
+⚑ **Equality is on the SUBSUME side, not in a branch of its own.** Jei's rules say *"same or parent
+mount point"* in one breath, so `_is_within` is inclusive and the `d != dest` guards disappear with
+it. Exactly ONE equality guard survives, in `_refuse_bind_under_mask`, and it states a RULE rather
+than patching a predicate: a bind may take a mask's own point, and may only never sit inside one.
 
-🛑 **`_scope_dests` must NOT become an accumulating set.** That is what makes the prune
-scope-ordered: a system-scope bind prunes only the copies collapsed BEFORE it, and a box-scope copy
-declared later is untouched. Accumulating would let an outer scope reach forward and delete an
-inner scope's copy — precedence inverted. A test pins it, because it looks exactly like an
-oversight worth tidying.
+## The rules: one refusal set and one sweep, per arrival
 
-## Unmasking plants into the BINDINGS, not the copies
+⚑⚑ **The direction of prohibition is REVERSED between the two mounts** (his words). A mask is the
+INVERSE of a bind, not its mirror.
 
-A mask lives in `combined_bindings[dest] = (None, None)`. When a later scope seeds a copy at a
-masked dest, the mask must go — deleting from the copies map instead would leave the mask in place,
-shadowing the very copy the branch just decided to plant, and would `KeyError` when no copy is
-there yet.
+| arriving | refuses | sweeps |
+|---|---|---|
+| **bind** | a mask that CONTAINS its dest (strictly) · a bind AT its dest or INSIDE it | everything at or inside its dest |
+| **mask** | a mask AT its dest or CONTAINING it | everything at or inside its dest |
 
-⚑ A mask and a binding may share ONE scope, and that is not an error: within the scope the mask
-applies (it merges after the arms) and the cure is not declaring it. The collapse adds no
-diagnostic for it.
+* a **bind** may nest INSIDE a bind, and refuses its own kind at its point or inside it;
+* a **mask** may CONTAIN a mask, and refuses its own kind at its point or containing it —
+  *"a mask inside a mask is a void within a void"*;
+* a **mask** may be a child of a bind; a **bind** may not be a child of a mask.
+
+**Subsumed means REMOVED, not skipped.** One sweep expresses the bind replacing a mask at its point,
+the mask replacing a bind at its point, and the mask subsuming a child mask — which is why the four
+functions that used to encode those separately are gone (P4: a good representation deletes the code
+that would otherwise enforce the rule).
+
+## Two intra-scope sorts, in OPPOSITE directions
+
+Neither answer may turn on the order keys happen to sit in a dict. Within a scope there is no
+precedence to express, so a SORT — not a diagnostic — is the answer (ruling 1).
+
+* **binds collapse PARENT-FIRST**, across BOTH `ro` and `rw` arms together, so a parent always lands
+  before its children and intra-scope subsumption cannot arise at all. The refusal then fires
+  exactly when a LATER SCOPE introduces a bind at or above an earlier scope's — the genuine
+  cross-scope conflict. The sort is STABLE, so Jei's `ro`-before-`rw` walk survives at equal length:
+  at one dest, the `ro` entry is the occupant the collision names.
+* **masks collapse CHILD-FIRST** — the inverse order, for the inverted prohibition. A mask refuses a
+  PARENT and subsumes a CHILD, so masks must arrive innermost-first or `{~/x, ~/x/y}` would raise
+  while `{~/x/y, ~/x}` would not. Ruling 1's argument with its direction flipped.
+
+Masks merge AFTER the scope's bind arms, so a mask and a binding at one dest in ONE scope is not an
+error: the mask applies and the cure is not declaring it (S3, ruled).
 
 ## The mode fold: `opts` is a STRING
 
@@ -98,9 +154,7 @@ emitted `-v` string stays stable) and deduped (`bindings.ro` already carries `ro
   `store_shape`) and importing back would cycle. They are one rule spelled twice by necessity, so a
   change to either belongs in both.
 * A per-entry override that contradicts its own arm — an `rw`-arm entry whose options carry `ro` —
-  is REFUSED BY NAME rather than joined into a meaningless `"ro,rw"`. It is reachable today
-  (`_emit_bind` takes a per-entry override verbatim); before the fold it merely read oddly, after
-  the fold it would read as a contradiction.
+  is REFUSED BY NAME rather than joined into a meaningless `"ro,rw"`.
 
 ## Case is NOT folded
 
@@ -115,81 +169,30 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 * `bindings: dict[dest -> CollapsedBind(src, opts)]`, an ORDINARY dict — `SortedDict` is dropped.
   Its order is not its meaning: SCOPE order decided precedence while it was being built, and PATH
   order is emission's business (`settings_categories` depth-sorts shallowest-first).
-* `copies: dict[dest -> list[BindEntry]]`, **dest-ordered**, one dest holding a list appended in
-  scope order — copies combine filewise, not bindwise. The sort is what the draft's `SortedDict`
-  gave for free; the `bisect_left` scan it existed to serve is gone with it.
+* `copies: list[CollapsedCopy(src, dest, opts)]`, in SCOPE order. The dest is no longer the key, so
+  the entry CARRIES it. Not dest-sorted and not deduplicated: the order IS the overlay order.
 * A MASK is `CollapsedBind(None, None)`. ⚑ `BindEntry.src` is NOT widened to `str | None` to carry
   it: that would relax the storage type for every consumer to serve the collapse's output shape.
   The second slot is DEAD, not reserved — a mask is a tmpfs with no host source and has no
   mount-option vocabulary.
 * `seeded`/`synced` ARE COPIES AND STAY COPIES. The collapse changes key shape, never delivery.
 
-## The subsumption rules
-
-One entry SUBSUMES another when its destination is a strict ancestor of the other's — measured with
-the same separator-guarded containment test as the copy prune, so `/home/agent/foobar` is not inside
-`/home/agent/foo`. Each rule governs what the LATER-arriving entry may do to what is already
-collapsed; scope order is therefore the whole of the ordering, and the direction matters.
-
-| later arrival | over an existing… | outcome |
-|---|---|---|
-| bind | bind | **refused** — rule 1 |
-| bind | mask | mask **removed** — rule 2 |
-| bind | copies | copies **removed** — rule 2 |
-| bind (as a CHILD) | mask | **refused** — rule 3 |
-| mask (as a CHILD) | bind | allowed — rule 4 |
-| copied DIRECTORY | mask, at its EXACT point | **refused** — rule 5 |
-| copied FILE | mask, at its EXACT point | allowed, and the mask is removed — rule 5 |
-
-**Subsumed means REMOVED, not skipped** (rule 6). A shadowed copy left in the map would be
-pointlessly performed and a subsumed mask would be emitted as a tmpfs inside the very bind that
-replaced the region it was hiding.
-
-Rule 1 is why a bind may nest INSIDE another but never land above one: the mount order follows the
-path VALUE, not the declaration order, so the inner bind could never be reached. It is also what
-makes "nothing may subsume home" true, home being pid 0.
-
-Rule 5 needs to know whether a copy source is a directory, and `stat` is explicitly allowed
-(§0 ruling 2: *"just data collection… you aren't changing disk state"* — the charter bars MUTATION,
-not reading). ⚑ **A source that does not exist yet is NOT refused.** The rule refuses a DIRECTORY,
-and an absent path is not one; `spec:641` blesses a not-yet-existing copy source, so the
-file-vs-directory question is genuinely undecidable for it and that ruling is owed, not assumed.
-
-⚑ **Three configurations the six rules DO NOT cover, left exactly as they were.** None is an
-omission to be tidied; each needs a ruling.
-
-* a **mask landing above an existing bind** (the mirror of rule 4) — today the two coexist;
-* **mask-on-mask at one dest** — today idempotent, and the record itself calls two masks at one dest
-  *"the same instruction twice"*, harmless;
-* a **copy at a mask's exact point in the SAME scope** — the plant runs after the mask merge, so
-  rule 5 does see it; but the prune runs before the plant, so a same-scope bind never sees it.
-
-## The shallow-first sort within a scope
-
-Each scope's `ro` + `rw` binds are collapsed **shallowest-first**, across BOTH arms together, so a
-parent always lands before its children and intra-scope subsumption cannot arise at all. Ruling 1 is
-explicit that this is the *intra-scope mechanism that makes rule 1's error meaningful*: with it, the
-error fires exactly when a LATER SCOPE introduces a shallower bind over an earlier scope's deeper
-one — the genuine cross-scope conflict — and never as an artefact of declaration order inside a
-scope, where there is no precedence to express.
-
-The sort is STABLE, so Jei's `ro`-before-`rw` walk survives at equal depth: at one dest, the `ro`
-entry is the occupant the double-bind refusal names.
-
 ## One thing the algorithm deliberately does not do
 
 * **`shape.sync` is never read.** Jei's algorithm walks `shape.seed` only, so `synced` entries reach
-  neither map. `_resolve_dest_group`'s `synced_vs_binding` refusal is therefore not reproduced here
-  either — and it does not need to be, because the live path still raises it. Both facts are already
-  recorded in the producer's own notes.
+  neither output. `_resolve_dest_group`'s `synced_vs_binding` refusal is therefore not reproduced
+  here either — and it does not need to be, because the live path still raises it. ⚑ The deferred
+  `synced` change (producer DESIGN §9.4) LOST ITS PREMISE with the copy ruling: it read *"a shadowed
+  sync's copy is REMOVED from the collapsed list"*, and nothing is removed any more. Its replacement
+  is the `mount_forbidden` list, on the backlog.
 
-## The refusals
+## The refusals, and what each one names
 
-* **Double bind** — two real sources at one dest, ACROSS scopes (row 1's cross-scope case; the
-  same-scope case is the producer's). A binding may override a MASK, never another binding. The
-  message cannot reuse `settings_categories.raise_binding_vs_binding`: that one is written against
-  `CategoryEntry` objects, and by here the entries are gone — a dest, a source and a mode are all
-  that is left.
-* **Bind over bind** (rule 1), **bind under mask** (rule 3), **copied directory onto a mask's exact
-  point** (rule 5) — see the rules table, above. Each names the destination it collided with.
-* **Mode contradiction** — see the fold, above.
+* **bind collision** — a bind at, or above, a dest a binding already occupies. ONE message for both,
+  naming every colliding dest with the source bound there. It cannot reuse
+  `settings_categories.raise_binding_vs_binding`: that one is written against `CategoryEntry`
+  objects, and by here the entries are gone — a dest, a source and a mode are all that is left.
+* **bind under a mask** — names the mask that would swallow it.
+* **mask on a mask** — names every mask it lands on or inside.
+* **copy outside home** — names the source and the destination, and points at the home bind.
+* **mode contradiction** — see the fold, above.
