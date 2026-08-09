@@ -532,6 +532,7 @@ def test_supporting_surface_is_valid(key):
 
 @pytest.mark.parametrize("key", [
     "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
+    "meta.runtime.bindings", "meta.runtime.copies", "meta.runtime.backup",
     "meta.workset.path", "meta.workset.name", "meta.workset.settings",
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
@@ -543,6 +544,69 @@ def test_supporting_surface_is_valid(key):
 ])
 def test_meta_families_are_valid(key):
     assert valid(key), reason(key)
+
+
+# ---------------------------------------------------------------------------
+# The COLLAPSE outputs — spec §1A, ratified 2026-08-08f
+# ---------------------------------------------------------------------------
+
+#: ``meta.runtime.{bindings,copies,backup}``, whose defining property is that
+#: NOTHING PRODUCES THEM: the collapse that writes the first two has not landed
+#: and ``backup`` is RESERVED with no producer at all. They are declared anyway,
+#: because under the closed keyspace (spec §0) an undeclared key is not a key and
+#: reading one is an error — so the declaration is what makes the name legal, and
+#: it is the ONLY thing that changed. Nothing here asserts a value.
+COLLAPSE_LEAVES = ("bindings", "copies", "backup")
+
+
+def test_the_meta_runtime_declaration_matches_the_manifest():
+    """The two declaration sites are ONE question asked twice — pin them EQUAL.
+
+    ``settings_keyspace`` decides whether a spelling is a key; the manifest is the
+    ratified registry the spec projects onto. A leaf added to one and not the other
+    is the exact drift this family had no guard against.
+
+    ⚑ Scoped to ``meta.runtime`` DELIBERATELY: at ``meta.box`` the same comparison
+    is RED today (``home``, ``container_name`` and ``helper_num`` are manifest rows
+    with no code declaration), and that is a separate finding, not this test's.
+    """
+    import importlib.resources as res
+
+    import yaml
+
+    from kanibako.settings.settings_keyspace import DECLARED_META_RUNTIME_LEAVES
+
+    doc = yaml.safe_load(
+        res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
+    )
+    manifest = {
+        str(k).split(".", 2)[2] for k in doc["keys"]
+        if str(k).startswith("meta.runtime.")
+    }
+    assert manifest == set(DECLARED_META_RUNTIME_LEAVES)
+    assert set(COLLAPSE_LEAVES) <= manifest
+
+
+@pytest.mark.parametrize("leaf", COLLAPSE_LEAVES)
+def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
+    """UNIFORMITY, stated as sibling-equality rather than against a literal.
+
+    The honest read behaviour is that NO ``meta.*`` key has a CLI read surface at
+    all: ``is_known_key`` gates on the SETTABLE set and ``meta.*`` is ``set: never``,
+    so ``system get meta.runtime.ws_root`` — a key that IS produced — answers
+    "unknown config key" exactly as an unproduced one does. Having no producer
+    therefore costs these three nothing, and this case says so in the form that
+    survives the gate being fixed: whatever the produced sibling answers, they
+    answer. It goes RED the moment one of them is special-cased in either
+    direction — a fabricated placeholder value on the read side, or a bespoke
+    refusal naming them.
+    """
+    from kanibako.settings.config_keys import is_known_key
+
+    assert valid(f"meta.runtime.{leaf}"), reason(f"meta.runtime.{leaf}")
+    assert is_known_key(f"meta.runtime.{leaf}") == is_known_key(
+        "meta.runtime.ws_root"
+    )
 
 
 def test_the_cut_meta_derived_family_is_refused():

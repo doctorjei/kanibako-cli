@@ -134,6 +134,29 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    seed_keys_of breaks MECHANICALLY at the key-shape flip. The spec
                    is the authority; code that still spells a copy dest host-side
                    is WRONG."
+    - date: "2026-08-08f"
+      what: "THREE keys are DECLARED in the §1A meta.runtime block:
+             meta.runtime.bindings (the collapsed BIND map, dict[guest_dest ->
+             (host_src, opts)], one entry per dest by construction),
+             meta.runtime.copies (the collapsed COPY map, dict[guest_dest ->
+             list[(host_src, opts)]], DEST-ORDERED) and meta.runtime.backup
+             (RESERVED, guest->host, the only reverse-direction member)."
+      authority: "Jei 2026-08-08f, ratifying the triple together; spec
+                  specs/settings-keyspace-1.8.0.md §1A (the meta.runtime block,
+                  immediately after meta.runtime.project_type)."
+      scope: "DECLARATION ONLY — these name the grand-unification OUTPUT (§0/§2),
+              they do not change how any category resolves. ⚑ NO PRODUCER EXISTS
+              for any of the three: bindings/copies are written by the collapse,
+              which has not landed, and backup has no producer at all and is
+              declared now only so the triple ratifies once. Declared-but-unproduced
+              is the intended state, not an omission."
+      code_state: "Code landed with this amendment: the three leaves join
+                   settings_keyspace.DECLARED_META_RUNTIME_LEAVES so the closed
+                   keyspace admits them (spec §0 — until declared, reading one is an
+                   error). Nothing else changed: no read surface exists for ANY
+                   meta.* key today (`system get meta.<anything>` answers 'unknown
+                   config key', including for the three PRODUCED siblings), so the
+                   declaration adds no get/set asymmetry."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1385,6 +1408,44 @@ keys:
     type: enum
     choices: [standalone, primary, named]
     spec: "§1A"
+  ## The COLLAPSE outputs (ratified 2026-08-08f). ⚑ `origin: derived` is the
+  ## honest token, NOT `runtime_treewalk`: the treewalk answers the three rows
+  ## above (where is the workset, what is it called, what mode is this) and these
+  ## are folded from the declared category families, exactly like every other
+  ## derived meta row. ⚑ NO PRODUCER EXISTS for any of the three yet.
+  meta.runtime.bindings:
+    namespace: meta
+    set: never
+    origin: derived
+    type: dict
+    value: "dict[guest_dest -> (host_src, opts)]"
+    note: "COLLAPSED BIND MAP — the grand-unification output (§0/§2). ONE entry per
+           dest BY CONSTRUCTION: a second bind at a live dest is the double-bind
+           ERROR. src = None marks a MASK. Home is pid 0 and is seeded here BEFORE
+           any scope folds (A9, @meta.box.home). Produced by the collapse, which has
+           not landed — declared so the closed keyspace admits the name."
+    spec: "§1A (L0.2)"
+  meta.runtime.copies:
+    namespace: meta
+    set: never
+    origin: derived
+    type: dict
+    value: "dict[guest_dest -> list[(host_src, opts)]]"
+    note: "COLLAPSED COPY MAP, DEST-ORDERED. A dest may carry SEVERAL copies (hence
+           a list), unlike bindings. Ordering is load-bearing, not cosmetic: the
+           prefix scan that prunes copies INSIDE a bound dest walks this map in dest
+           order. Same producer as meta.runtime.bindings, and equally absent."
+    spec: "§1A (L0.2)"
+  meta.runtime.backup:
+    namespace: meta
+    set: never
+    origin: derived
+    type: dict
+    note: "RESERVED — guest->host, the only reverse-direction member. NO PRODUCER
+           EXISTS; declared with the pair above so the triple ratifies once. ⚑ The
+           `origin` here states the CLASS it will belong to, not a claim that
+           anything derives it today."
+    spec: "§1A (L0.2)"
   meta.workset.path:
     namespace: meta
     set: never
@@ -2301,8 +2362,10 @@ not_keys:
                                ACCEPTED LOSS: same-version dev-build drift detection.
                                ⚑ load-bearing rider at the code step: SETUP_BCV→1.8.0 in the
                                SAME change (RULINGS R-38)."
-    "meta.runtime.ws_settings": "CUT (R-36) — 'no longer needed (unified path)': §1A's
-                                 meta.runtime block is ws_root/ws_name/project_type ONLY;
+    "meta.runtime.ws_settings": "CUT (R-36) — 'no longer needed (unified path)': the §1A
+                                 meta.runtime block has never carried it (the block grew
+                                 bindings/copies/backup on 2026-08-08f; ws_settings is still
+                                 not a member, and the cut is what makes it not one);
                                  meta.workset.settings spells @meta.workset.path/settings.yaml
                                  directly (the SINGLE-SOURCE list). The draft's live key
                                  entry was a clause-4 violation and is deleted."

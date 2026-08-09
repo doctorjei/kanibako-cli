@@ -303,8 +303,11 @@ def is_terminal_category_key(key: str) -> bool:
 # meta.* — the RO families (spec §0, §2c, §2d)
 # ---------------------------------------------------------------------------
 
+# ⚑ Last 3 = the COLLAPSE outputs (spec §1A, ratified 2026-08-08f), NOT treewalk
+# results. NOTHING PRODUCES THEM YET; `backup` is RESERVED with no producer at all.
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
     "ws_root", "ws_name", "project_type",
+    "bindings", "copies", "backup",
 })
 DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "settings",
