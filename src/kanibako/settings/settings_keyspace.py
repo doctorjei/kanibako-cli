@@ -160,6 +160,7 @@ DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
     "bootstrap",           # §2d
     "model",               # §2d
     "run_args",            # §2d
+    "transform",           # §2d (WHICH transform; claude declares `tweakcc`)
     "transform_settings",  # §2d
     "endpoint",            # §2d (claude-declared; part of the generic shape)
     "template",            # §2d

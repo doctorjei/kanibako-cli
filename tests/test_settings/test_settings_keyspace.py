@@ -45,6 +45,7 @@ def reason(key: str) -> str:
     "agent.claude.continue_mode",
     "agent.claude.bootstrap",
     "agent.claude.run_args",
+    "agent.claude.transform",
     "agent.claude.transform_settings",
     "agent.claude.endpoint",
     "agent.claude.template",
@@ -834,7 +835,8 @@ def test_declared_agent_leaves_cover_the_spec_2d_default_tier():
     """Spot-check against spec §2d so a silent deletion is caught."""
     assert {
         "access", "allow_helpers", "continue_mode", "bootstrap", "model",
-        "run_args", "transform_settings", "endpoint", "template", "canon",
+        "run_args", "transform", "transform_settings", "endpoint", "template",
+        "canon",
     } <= DECLARED_AGENT_LEAVES
 
 
