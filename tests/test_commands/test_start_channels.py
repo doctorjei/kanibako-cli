@@ -98,7 +98,7 @@ def _build(std, proj):
     )
     mounts = _emit_category_mounts(
         _bind_map_from_mounts(reconciled.mounts), label="channel",
-        delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+        skip_if_absent=_agent_delivered_dests(reconciled.mounts),
     )
     return {
         m.destination: (str(m.source), m.options) for m in mounts

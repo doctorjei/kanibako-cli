@@ -1445,7 +1445,84 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
             for call in m_emit.call_args_list
         }
         assert "category" in passed, passed
-        assert passed["category"] == expected
+        # ⚑ SUPERSET since 2a-3, not equality: the agent's BEST-EFFORT dests joined
+        # this set when the second emitter was retired (a missing or suppressed
+        # agent share is fine, which is skip-if-absent up to the log line).
+        assert expected <= passed["category"], passed
+        # 🛑 AND THE CRITICAL DESTS ARE SUBTRACTED: a dest in both sets would be
+        # answered by whichever test the emitter happened to run first, and
+        # skip-if-absent winning would silently retire the exit-1 safe-fail.
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+        from kanibako.targets.base import BindScope
+
+        bindings = ClaudeTarget().descriptor.bindings
+        critical = {
+            normalize_bind_dest(b.box_dest) for b in bindings
+            if b.scope is BindScope.AGENT_CRITICAL
+        }
+        assert critical, "claude must declare SOME AGENT_CRITICAL delivery bind"
+        assert not (passed["category"] & critical), passed
+        # ⚑ AND THE BEST-EFFORT HALF IS ACTUALLY IN THERE. Dropping it is a SILENT
+        # regression of exactly the kind §3 exists to prevent: the mounts do not
+        # change, but a missing or suppressed agent share starts WARNING on every
+        # launch — the noise that trains users to ignore warnings.
+        best_effort = {
+            normalize_bind_dest(b.box_dest) for b in bindings
+            if b.scope is BindScope.AGENT
+        }
+        assert best_effort, "claude must declare SOME best-effort agent bind"
+        assert best_effort <= passed["category"], passed
+
+    def test_the_live_launch_passes_the_must_exist_DESTS(self, start_mocks):
+        """⚑⚑ THE HISTORICAL BUG'S THIRD HOME — pinned WHERE THE SET IS BUILT.
+
+        ``must_exist`` is matched against the collapsed map's DESTINATIONS. Built
+        from ``b.key`` instead it matches NOTHING, every AGENT_CRITICAL bind
+        silently degrades to best-effort, and a missing agent binary reaches podman
+        as a crun crash instead of the clean exit-1 safe-fail.
+
+        🛑 THE EMITTER CANNOT CATCH THIS: a set that matches nothing is
+        indistinguishable from an empty policy, and both emit the same mounts. So
+        the SPELLING has to be pinned at the call site that builds it — testing the
+        emitter proves nothing about what it is handed
+        [[same-arity-shape-flip-passes-silently]].
+        """
+        from kanibako.commands import start as start_mod
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+        from kanibako.targets.base import BindScope
+
+        expected = frozenset(
+            normalize_bind_dest(b.box_dest)
+            for b in ClaudeTarget().descriptor.bindings
+            if b.scope is BindScope.AGENT_CRITICAL
+        )
+        assert expected, "claude must declare SOME AGENT_CRITICAL delivery bind"
+
+        with start_mocks(), patch.object(
+            start_mod, "_emit_category_mounts",
+            wraps=start_mod._emit_category_mounts,
+        ) as m_emit:
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+
+        passed = {
+            call.kwargs["label"]: call.kwargs.get("must_exist")
+            for call in m_emit.call_args_list
+        }
+        assert passed["category"] == expected, passed
+        # And they are DESTS, not key names: every member is an absolute box path.
+        assert all(d.startswith("/") for d in passed["category"]), passed
+        # ⚑ The narrow resolves state NO must-exist policy — a delivery bind is the
+        # main path's to guarantee, and a narrow caller raising on it would fail a
+        # launch over a bind it does not own.
+        assert all(
+            not p for label, p in passed.items() if label != "category"
+        ), passed
 
 
 class TestTheMainPathEmitsFromTheCollapse:
@@ -1487,10 +1564,53 @@ class TestTheMainPathEmitsFromTheCollapse:
 
         by_dest = {mt.destination: mt.options for mt in mounts}
         assert by_dest.get(self._INJECTED) == "Z,U,rw", by_dest
-        # ⚑ AND THE AGENT ARM KEEPS ITS OWN ROUTE (2a-3 merges them, not this step):
-        # kickoff is a descriptor delivery bind, so it is still here — emitted by
-        # ``agent_delivery_mounts`` off the reconciled rows, untouched by the map.
-        assert by_dest.get(self._KICKOFF) == "ro", by_dest
+        # ⚑⚑ AND KICKOFF IS GONE — THE ASSERTION 2a-3 INVERTED, and the sharpest
+        # evidence in the suite that the merge took effect. It used to read ``== "ro"``
+        # because a SECOND emitter walked the reconciled rows, so an agent delivery
+        # bind survived a map that never mentioned it. There is ONE emitter and ONE
+        # map now: a dest absent from the map is absent from the box.
+        # 🛑 RED if a second delivery route is ever reintroduced — which is exactly
+        # what this assertion is for. That the agent binds are NOT lost is pinned by
+        # the sibling below, where the map is absent and the fallback carries them.
+        assert self._KICKOFF not in by_dest, by_dest
+
+    def test_the_helper_hub_still_gets_the_agent_delivery_binds(self, start_mocks):
+        """⚑⚑ THE SECOND CONSUMER OF THE MERGED LIST, and it is easy to lose.
+
+        Helpers reuse the agent's delivery binds so an in-helper agent finds the
+        same binary. Those used to arrive as ``agent_delivery_mounts``' own return
+        value; 2a-3 retired that emitter, so the list is now SELECTED back out of
+        the emitted category mounts by destination.
+
+        🛑 Nothing else in the suite would notice if that selection came back EMPTY:
+        the box's own mounts are unaffected, every existing assertion passes, and
+        the only symptom is an in-helper agent that cannot find its binary. That is
+        why this pins the hub's kwarg directly.
+        """
+        from kanibako.commands import start as start_mod
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        delivery = {
+            normalize_bind_dest(b.box_dest)
+            for b in ClaudeTarget().descriptor.bindings
+        }
+
+        with start_mocks() as m, patch.object(
+            start_mod, "_start_helper_hub",
+        ) as m_hub:
+            m.agent_cfg.state["allow_helpers"] = "true"
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+
+        assert m_hub.call_count == 1, "the hub must have been started"
+        handed = {
+            mt.destination for mt in m_hub.call_args.kwargs["binary_mnts"]
+        }
+        assert delivery <= handed, (handed, delivery)
 
     def test_the_reconciled_fallback_is_reached_only_when_the_leaf_is_ABSENT(
         self, start_mocks,
@@ -1587,7 +1707,7 @@ class TestPluginsAndCacheShares:
         )
         return _emit_category_mounts(
             _bind_map_from_mounts(reconciled.mounts), label="share",
-            delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+            skip_if_absent=_agent_delivered_dests(reconciled.mounts),
         )
 
     def _by_dest(self, mounts, dest):

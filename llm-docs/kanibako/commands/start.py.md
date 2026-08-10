@@ -35,12 +35,38 @@ foundation, no arbitration, no scope fold).
   source" is the test, and it is structural rather than a lookup. `secret_path` carries no arm in the
   disk-store shape at all, so it is simply not in the map (`_bind_map_from_mounts` drops it for the
   same reason — shape fidelity, not a policy filter).
-* **`scope`** — was doing exactly one job, PARTITIONING: two emitters walk one list today, so each has
-  to filter to its own half or every agent bind is emitted twice. It travels as `delivered_elsewhere`,
-  a dest set, until 2a-3 merges the two emitters and the partition problem stops existing.
+* **`scope`** — was doing exactly one job, PARTITIONING: two emitters walked one list, so each had to
+  filter to its own half or every agent bind was emitted twice. **2a-3 merged them and the partition
+  problem stopped existing** (P4: the representation deletes the code that enforced the rule), so
+  `delivered_elsewhere` is gone. What the agent binds actually needed was never the scope — it was a
+  per-dest MISSING-SOURCE POLICY, and that was already dest-keyed and already a parameter: the
+  descriptor's `BindScope.AGENT_CRITICAL` dests. A narrow resolve still drops the agent rows before
+  handing its map over (`_narrow_bind_map`), but that is a caller selecting its own rows, not the
+  emitter branching on a field.
 * **`name`** — the WARNING text named it. Under dest-keying `CategoryEntry.name` IS the destination
   (R-10), so the dest carries the identity; the only change a user can see is that the message now
   spells the dest normalized (`/home/agent/canon`) rather than as declared (`~/canon`).
+
+### The three missing-source policies, and why their ORDER is load-bearing
+
+One emitter, one walk, three per-dest answers to "the host source is not there":
+
+| policy | parameter | who is in it | what happens |
+|---|---|---|---|
+| must-exist | `must_exist` | the descriptor's `AGENT_CRITICAL` dests | raise `BindingSourceError` → clean exit-1 |
+| skip-if-absent | `skip_if_absent` | the `optional` canon chapters + the agent's best-effort dests | dropped at `debug` |
+| warn-and-drop | *(default)* | everything else | ro warns and drops; rw guarantee-creates |
+
+⚑⚑ **The policy is consulted BEFORE the rw guarantee-create, and that ordering is the whole point.**
+`mkdir(parents=True, exist_ok=True)` would manufacture the very thing must-exist is asking about, so a
+critical dest whose source vanished would get an empty directory bound over the agent's binary instead
+of the safe-fail. Reading the policy first makes "mkdir'd into existence" unreachable rather than
+merely discouraged (P3). Pinned by `test_a_missing_critical_source_RAISES_before_any_mkdir`.
+
+⚑ The agent's best-effort dests join **skip-if-absent** rather than keeping a branch of their own: a
+missing or suppressed agent share is fine (`BindScope.AGENT`), which is skip-if-absent behaviour up to
+the log line. The critical dests are subtracted from that set — must-exist wins its own dests outright,
+and a dest in both would otherwise resolve two ways depending on which test ran first.
 
 ### Emission owns the depth-sort now
 
@@ -163,10 +189,11 @@ The collapsed bind map is keyed by destination — by the time the emitter reads
 and the dest is not. So the policy has to be dest-spelled to survive 2a-2, and it is built with
 `normalize_bind_dest`, the same function `core_defaults.add_bind` keys the arm with.
 
-⚑ **This is the failure `critical_keys` already paid for once.** `agent_delivery_mounts` tests
-`e.name in critical_keys` where `e.name` IS the destination (R-10), so a caller passing key NAMES
-matches nothing and every critical bind silently degrades to best-effort — a missing agent binary
-reaching podman as a crun crash instead of a clean exit-1. Same shape here: a key-spelled
+⚑ **This is the failure `critical_keys` already paid for once.** The retired `agent_delivery_mounts`
+tested `e.name in critical_keys` where `e.name` IS the destination (R-10), so a caller passing key
+NAMES matched nothing and every critical bind silently degraded to best-effort — a missing agent
+binary reaching podman as a crun crash instead of a clean exit-1. The set outlived that function as
+`must_exist`, and so did the hazard. Same shape here: a key-spelled
 `skip_if_absent` matches nothing and every chapter-less workset warns on every launch. The two
 spellings are pinned against each other by
 `test_canon_delivery.py::TestLaunchWiring::test_the_skip_set_matches_what_the_declaration_marks_optional`.
@@ -182,11 +209,11 @@ scope's declaration at the same dest.
 ### Shaped for its sibling
 
 `skip_if_absent` is one of three missing-source policies §2.0g enumerates: **must-exist** (the
-plugin descriptor's `AGENT_CRITICAL` dest set, today `agent_delivery_mounts(critical_keys=…)`) ·
-**skip-if-absent** (this one) · **warn-and-drop** (the L7 default, and the reason the parameter
-defaults EMPTY). The must-exist set joins this signature at 2a-3, when the two emitters merge into
-one. ⚑ It must then be consulted BEFORE the rw guarantee-create branch, or a critical dest with a
-missing source gets `mkdir`'d into existence instead of raising.
+plugin descriptor's `AGENT_CRITICAL` dest set) · **skip-if-absent** (this one, which the agent's
+best-effort dests joined at 2a-3) · **warn-and-drop** (the L7 default, and the reason both
+parameters default EMPTY). ✅ **The must-exist set joined this signature at 2a-3, when the two
+emitters merged into one** — see "The three missing-source policies" above for why the policy is
+read BEFORE the rw guarantee-create.
 
 ### It is passed at every call site, including the narrow ones
 

@@ -2007,55 +2007,15 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 # --------------------------------------------------------------------------- #
 
 
-def agent_delivery_mounts(
-    reconciled_mounts: "list[CategoryEntry]",
-    *,
-    critical_keys: "frozenset[str]",
-):
-    """Emit the AGENT delivery :class:`~kanibako.targets.base.Mount`s from the
-    reconciled ``agent.<agent>.bindings.{ro,rw}`` winners — the single-route replacement
-    for ``descriptor_mounts``' MOUNT role (S27).
-
-    *reconciled_mounts* is the full MOUNT winner list from
-    :func:`reconcile_categories`; this picks the ``scope == "agent"`` /
-    ``category in bindings.ro|rw`` entries (the descriptor delivery binds, now in
-    the cascade via 7a's partial). For each:
-
-    * **AGENT_CRITICAL** (``name`` in *critical_keys*): the host_src MUST exist,
-      else :class:`~kanibako.targets.assembly.BindingSourceError` is raised — the
-      clean exit-1 safe-fail (must-exist), preserved from ``descriptor_mounts``.
-      ⚑ *critical_keys* holds NORMALIZED BOX DESTINATIONS, not ``binding.key``
-      names: a bindings arm is dest-keyed (R-10), so ``e.name`` IS the destination.
-      A caller that still passes descriptor key names matches NOTHING and every
-      critical bind silently degrades to the best-effort branch below — build the
-      set with
-      :func:`~kanibako.settings.settings_resolve.normalize_bind_dest`, which is
-      what keyed the arm in the first place.
-    * **AGENT** (best-effort): a missing host_src is SKIPPED (a missing/suppressed
-      agent share is fine) — matching ``descriptor_mounts``' AGENT branch.
-
-    Returns the ordered ``list[Mount]``. (Symlink-clearing at critical dests stays
-    the caller's ``_precreate_mount_stubs`` job, unchanged.)
-    """
-    from kanibako.targets.assembly import BindingSourceError
-    from kanibako.targets.base import Mount
-
-    mounts: list = []
-    for e in reconciled_mounts:
-        if e.scope != "agent" or e.category not in ("bindings.ro", "bindings.rw"):
-            continue
-        assert e.host_src is not None  # bind-shaped entries always have a source.
-        src = Path(e.host_src)
-        if e.name in critical_keys:
-            if not src.exists():
-                raise BindingSourceError(
-                    f"binding {e.name!r} source missing: {src}"
-                )
-            mounts.append(Mount(src, e.box_dest, e.options))
-        elif src.exists():
-            mounts.append(Mount(src, e.box_dest, e.options))
-        # else: best-effort AGENT bind, source missing → skip.
-    return mounts
+# ⚑ ``agent_delivery_mounts`` LIVED HERE and is GONE (cutover 2a-3). It was the
+# SECOND mount emitter, walking the same reconciled list as the category emitter
+# and filtering to the ``scope == "agent"`` half so neither emitted the other's
+# binds. Under one collapsed, dest-keyed bind map there is one emitter and no half
+# to filter — what survived is a per-dest missing-source POLICY (must-exist ·
+# skip-if-absent · warn-and-drop), which ``commands.start._emit_category_mounts``
+# now applies. The AGENT_CRITICAL safe-fail is unchanged; only the site moved.
+# 🛑 Do not reintroduce a second emitter: the L7 guarantee-create / ro-drop rules
+# exist ONCE precisely so two copies cannot drift apart in silence.
 
 
 def snapshot_category_entries(
@@ -2628,12 +2588,26 @@ def _emit_bind(
     delivery = _DELIVERY[category]
     box_dest = box_dest_fn(box_dest_raw)
     if delivery == "MOUNT":
-        # opts: the per-entry override wins; else the category default.
-        # For an agent DELIVERY bind this matches OLD descriptor_mounts EXACTLY for
-        # an ro bind (opts "ro" → "ro"). ⚑ LATENT EDGE (unreachable for shipped
-        # agents — every descriptor binding is ro): an rw descriptor binding would
-        # get the category default ``Z,U`` here vs descriptor_mounts' ``""`` — a
-        # benign relabel-add, but flagged. No shipped plugin declares an rw bind.
+        # ⚑⚑ THREE STATES, NOT TWO, AND ``is not None`` IS WHAT KEEPS THEM APART:
+        #   None -> UNSET: take the category default (``ro`` / ``Z,U``);
+        #   ""   -> EXPLICITLY NO OPTIONS, a declared value like any other;
+        #   any other string -> that value.
+        # 🛑 ``opts or _bind_options(category)`` collapses the first two and is
+        # WRONG. The live case is ``helper_sock`` (``core-defaults.yaml:386-395``,
+        # ``bindings.rw``, ``options: ""``): it is a unix SOCKET the hub listens on,
+        # and a ``Z``/``U`` relabel/chown breaks the shared socket topology. The
+        # truthiness spelling would hand it ``Z,U`` — the mount is still emitted, at
+        # the same arity, so nothing fails and the socket quietly stops working.
+        # Pinned by ``tests/test_settings/test_mount_options.py``.
+        # ⚑ WHAT THIS LINE STILL DECIDES, after cutover 2a-3: the NARROW resolves
+        # and the collapse's own fallback. The MAIN launch path takes its options
+        # from the collapse instead (``store_collapse.fold_opt(stored_opts, mode)``,
+        # which folds the ARM token in and never consults ``_bind_options``). For a
+        # ro descriptor bind the two agree exactly — ``"ro"`` either way. They part
+        # on an rw bind that stores NO options: ``Z,U`` here, ``rw`` from the
+        # collapse. Still unreachable for shipped agents (every descriptor binding
+        # is ro), and now flagged on the right basis: it is a route difference, not
+        # this line's alone.
         options = opts if opts is not None else _bind_options(category)
     else:
         options = ""

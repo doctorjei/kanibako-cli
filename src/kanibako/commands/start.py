@@ -1714,9 +1714,8 @@ def _assemble_image_sharing_mounts(
         resolved_store = _snapshot_scalar(_img_snap, "box.images_store")
         if resolved_store is not None:
             img_mounts = _emit_category_mounts(
-                _bind_map_from_mounts(_img_rec.mounts), label="images",
+                _narrow_bind_map(_img_rec.mounts), label="images",
                 skip_if_absent=core_defaults.canon_optional_bind_dests(),
-                delivered_elsewhere=_agent_delivered_dests(_img_rec.mounts),
             )
             extra_mounts.extend(img_mounts)
             logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
@@ -1969,9 +1968,8 @@ def _start_helper_hub(
         # box_dests are disjoint from anything a persona bundle can name.
     )
     helper_hub_mounts = _emit_category_mounts(
-        _bind_map_from_mounts(_hub_rec.mounts), label="helper",
+        _narrow_bind_map(_hub_rec.mounts), label="helper",
         skip_if_absent=core_defaults.canon_optional_bind_dests(),
-        delivered_elsewhere=_agent_delivered_dests(_hub_rec.mounts),
     )
     extra_mounts.extend(helper_hub_mounts)
     return hub
@@ -3739,73 +3737,84 @@ def _run_container(
         extra_mounts = []
 
         # AGENT delivery binds: the AGENT_CRITICAL delivery binds (binary +
-        # launcher) now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree
-        # (single-route, 7a) and are emitted by ``agent_delivery_mounts`` — a
-        # missing/unresolvable AGENT_CRITICAL source raises BindingSourceError ->
-        # clean safe-fail (preserved from ``descriptor_mounts``), not a crun crash.
-        # Agent-scope shared dirs (claude's plugins/cache) are NOT delivery binds;
-        # they flow through the category mounts below from ``default_common()``.
-        # Placed FIRST in extra_mounts (matching the old binary_mnts position,
-        # before kani/core), so podman order is preserved.  ``binary_mnts`` is
-        # reused by the helper context further down (an in-helper agent reuses the
-        # same delivery binds).
-        binary_mnts: list = []
+        # launcher) flow through the snapshot's ``agent.<agent>.bindings.*``
+        # subtree (single-route, 7a) and are emitted by the ONE category emitter
+        # below (cutover 2a-3) — a missing/unresolvable AGENT_CRITICAL source
+        # raises BindingSourceError -> clean safe-fail (preserved from
+        # ``descriptor_mounts``), not a crun crash.  Agent-scope shared dirs
+        # (claude's plugins/cache) are NOT delivery binds; they flow through the
+        # same emitter from ``default_common()``.
+        #
+        # ⚑ THE SECOND EMITTER IS GONE.  It existed to PARTITION one reconciled
+        # list between two walkers; the collapsed map is one list with one walker,
+        # so what survives is not a route but a per-dest missing-source POLICY —
+        # and that policy was never a settings-scope fact to begin with.
+        agent_dests = _agent_delivered_dests(reconciled.mounts)
+        critical_dests: "frozenset[str]" = frozenset()
         if target and install and desc is not None:
-            from kanibako.settings.settings_launch import agent_delivery_mounts
             from kanibako.settings.settings_resolve import normalize_bind_dest
             from kanibako.targets.base import BindScope
 
             # ⚑ H6, THIRD SET: keyed by normalized box DESTINATION, not by
-            # ``binding.key``. ``agent_delivery_mounts`` matches these against the
-            # reconciled entry's ``name``, and under dest-keying that name IS the
-            # arm's map key — the destination (R-10 dropped the entry name from the
-            # keyspace entirely). Matching on ``b.key`` here would never hit, so
-            # EVERY delivery bind would silently fall to the best-effort branch and
-            # a missing agent binary/launcher would reach podman as a crun crash
+            # ``binding.key``. The collapsed bind map is keyed by the RESOLVED
+            # destination, and ``Binding.box_dest`` is already ``$GUEST_HOME``-
+            # expanded at load (``agent_defaults._build_binding``), so the two
+            # spellings meet. Matching on ``b.key`` here would never hit, so EVERY
+            # delivery bind would silently fall to the best-effort branch and a
+            # missing agent binary/launcher would reach podman as a crun crash
             # instead of the clean exit-1 safe-fail. Normalized with the SAME
-            # function ``agent_representation`` keys the arm with, so the two
-            # spellings cannot drift.
-            critical_keys = frozenset(
+            # function that keys the arm, so the two spellings cannot drift.
+            critical_dests = frozenset(
                 normalize_bind_dest(b.box_dest) for b in desc.bindings
                 if b.scope is BindScope.AGENT_CRITICAL
             )
-            try:
-                binary_mnts = agent_delivery_mounts(
-                    reconciled.mounts, critical_keys=critical_keys,
-                )
-            except BindingSourceError as exc:
-                logger.error("Agent delivery binding unusable: %s", exc)
-                print(
-                    f"Error: {target.display_name} mount source "
-                    f"disappeared before launch: {exc}\n"
-                    f"The host agent install changed while starting (e.g. "
-                    f"an update pruned a version). Retry the launch.\n"
-                    f"Run 'kanibako system diagnose' for a full health "
-                    f"check.",
-                    file=sys.stderr,
-                )
-                return 1
-            extra_mounts.extend(binary_mnts)
 
-        # The remaining category MOUNT winners (kani / core / channel / share —
-        # the kanibako CLI binds, the box's own home/workspace/vault binds, the
-        # per-mode channel binds, and any scoped bindings/caches/common), emitted
-        # ONCE — from the COLLAPSE (cutover step 2a-2), which folds the four
+        # The category MOUNT winners (kani / core / channel / share — the kanibako
+        # CLI binds, the box's own home/workspace/vault binds, the per-mode channel
+        # binds, the agent's delivery binds, and any scoped bindings/caches/common),
+        # emitted ONCE — from the COLLAPSE (cutover step 2a-2), which folds the four
         # scopes over the home foundation into one dest-keyed bind map.
-        # ``masks`` (tmpfs, no host source) and the agent delivery binds are split
-        # out.  L7 guarantee-create / ro-drop is preserved byte-for-byte.  The
-        # channel side-effect (seeding the chat general/broadcast logs, §3c) is run
-        # explicitly — it was a side-effect of the retired ``_build_channel_mounts``.
+        # ``masks`` (tmpfs, no host source) is split out.  The channel side-effect
+        # (seeding the chat general/broadcast logs, §3c) is run explicitly — it was
+        # a side-effect of the retired ``_build_channel_mounts``.
         _seed_channel_files(std, proj)
         # ⚑ The missing-source policy is passed at EVERY call site, not just this
         # one: the narrow resolves read the user's cascade files too, so a policy
         # that varied by call site would decide one dest two ways.
-        extra_mounts.extend(_emit_category_mounts(
-            _launch_bind_map(_snapshot, reconciled),
-            label="category",
-            skip_if_absent=core_defaults.canon_optional_bind_dests(),
-            delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
-        ))
+        # ⚑ The AGENT best-effort dests join SKIP-IF-ABSENT: a missing or
+        # suppressed agent share is fine (``BindScope.AGENT``), which is the
+        # skip-if-absent behaviour up to the log line. The CRITICAL dests are
+        # subtracted — must-exist wins its own dests outright.
+        try:
+            category_mounts = _emit_category_mounts(
+                _launch_bind_map(_snapshot, reconciled),
+                label="category",
+                must_exist=critical_dests,
+                skip_if_absent=(
+                    core_defaults.canon_optional_bind_dests()
+                    | (agent_dests - critical_dests)
+                ),
+            )
+        except BindingSourceError as exc:
+            logger.error("Agent delivery binding unusable: %s", exc)
+            print(
+                f"Error: {target.display_name if target else 'agent'} mount "
+                f"source disappeared before launch: {exc}\n"
+                f"The host agent install changed while starting (e.g. "
+                f"an update pruned a version). Retry the launch.\n"
+                f"Run 'kanibako system diagnose' for a full health "
+                f"check.",
+                file=sys.stderr,
+            )
+            return 1
+        extra_mounts.extend(category_mounts)
+        # The helper context reuses the agent's delivery binds so an in-helper
+        # agent finds the same binary. They are no longer a separate list to hand
+        # over, so SELECT them back out by destination — the one currency the
+        # emitted mounts and the reconciled rows still share.
+        binary_mnts: list = [
+            m for m in category_mounts if str(m.destination) in agent_dests
+        ]
 
         # Masks: the ``box.masks`` tmpfs mask LIST (the reconciled ``masks``
         # winners).  There is NO default mask (the old ~/workspace/vault default
@@ -6354,8 +6363,9 @@ def _resolve_launch_snapshot(
 
     Returns ``(snapshot, reconciled)``.  AGENT_CRITICAL delivery binds
     now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree (single-route),
-    emitted by :func:`kanibako.settings.settings_launch.agent_delivery_mounts` at the call
-    site — NOT a parallel ``descriptor_mounts`` route.
+    emitted by :func:`_emit_category_mounts` under its ``must_exist`` policy at the
+    call site — NOT a parallel ``descriptor_mounts`` route, and since cutover 2a-3
+    not a parallel agent emitter either.
 
     The image + helper tables are CONDITIONAL: a table is included ONLY when its
     gate holds (image-sharing active → *storage_conf_path* given, *graph_root*
@@ -6901,27 +6911,53 @@ def _launch_bind_map(snapshot, reconciled) -> "dict[str, object]":
     return _bind_map_from_mounts(reconciled.mounts)
 
 
+def _is_agent_delivery(entry) -> bool:
+    """True for an AGENT-scope bind row — the agent's delivery binds (7a).
+
+    ONE spelling of the rule, because it answers two different questions now: which
+    dests carry the agent's missing-source policy, and which rows a NARROW resolve
+    must leave to the main path.  Written twice it is two rules that agree today.
+    """
+    return entry.scope == "agent" and entry.category in ("bindings.ro", "bindings.rw")
+
+
 def _agent_delivered_dests(mounts: list) -> "frozenset[str]":
-    """The dests ``agent_delivery_mounts`` owns — the PARTITION, retired at 2a-3."""
+    """The dests the agent's delivery binds land at, normalized.
+
+    Feeds the emitter's SKIP-IF-ABSENT set (the AGENT best-effort half) and picks
+    the helper context's reuse list back out of the emitted mounts.  It is no
+    longer a PARTITION: there is one emitter now, so there is nothing to split.
+    """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
     return frozenset(
-        normalize_bind_dest(e.box_dest) for e in mounts
-        if e.scope == "agent" and e.category in ("bindings.ro", "bindings.rw")
+        normalize_bind_dest(e.box_dest) for e in mounts if _is_agent_delivery(e)
     )
+
+
+def _narrow_bind_map(mounts: list) -> "dict[str, object]":
+    """A NARROW resolve's own rows as the emitter's shape, minus the agent binds.
+
+    A narrow resolve reads the user's cascade files too, so a user-declared
+    ``agent.<node>.bindings.*`` row reaches it — and the MAIN path already emits
+    every agent delivery bind from the collapse.  Dropping them at the SOURCE
+    keeps the emitter emitting exactly what it is handed (P3).
+    """
+    return _bind_map_from_mounts([e for e in mounts if not _is_agent_delivery(e)])
 
 
 def _emit_category_mounts(
     bindings, *, label: str,
+    must_exist: frozenset[str] = frozenset(),
     skip_if_absent: frozenset[str] = frozenset(),
-    delivered_elsewhere: frozenset[str] = frozenset(),
 ) -> list:
     """Emit a dest-keyed ``(src, opts)`` bind map as :class:`Mount`s under L7.
 
     *bindings* is the SHAPE, not a source: ``meta.assembly.bindings`` on the main
     launch path, the same shape translated from reconciled winners
-    (:func:`_bind_map_from_mounts`) on the narrow resolves.  *skip_if_absent* and
-    *delivered_elsewhere* are the two DEST-keyed policies.  Prose: llm-docs
+    (:func:`_narrow_bind_map`) on the narrow resolves.  *must_exist* and
+    *skip_if_absent* are the two DEST-keyed missing-source policies; a dest in
+    neither takes L7's warn-and-drop default.  Prose: llm-docs
     ``commands/start.py.md``.
     """
     from pathlib import Path as _Path
@@ -6938,34 +6974,47 @@ def _emit_category_mounts(
     ):
         if bind.src is None:
             continue  # a MASK: tmpfs, no host source; split into tmpfs_masks.
-        if dest in delivered_elsewhere:
-            continue  # agent delivery bind → agent_delivery_mounts (must-exist).
         src = _Path(bind.src)
-        if not is_read_only(bind.opts):
-            # rw bind: create the host source dir if absent (L7 guarantee-create).
-            try:
-                src.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass  # best-effort; podman will surface a genuinely bad source
-        elif not src.exists():
+        if not src.exists():
+            # ⚑⚑ THE POLICY IS CONSULTED HERE, BEFORE THE rw GUARANTEE-CREATE
+            # BELOW, AND THE ORDER IS THE WHOLE POINT: a must-exist dest whose
+            # source vanished has to RAISE, and an rw ``mkdir`` would manufacture
+            # the very thing the policy is asking about — turning the clean exit-1
+            # safe-fail into an empty directory bound over the agent's binary.
             import logging
+            if dest in must_exist:
+                # MUST-EXIST: the descriptor's AGENT_CRITICAL delivery binds. A
+                # missing source is a clean exit-1 at the call site, never a crun
+                # crash — the safe-fail carried over from ``descriptor_mounts``.
+                raise BindingSourceError(
+                    f"binding {dest!r} source missing: {src}"
+                )
             if dest in skip_if_absent:
-                # SKIP-IF-ABSENT (spec §2c): at THESE dests an absent source is the
-                # NORMAL case, not a defect (the handbook's per-scope chapters).
-                # Dropped SILENTLY (debug only); the WARNING below stays for every
-                # other ro bind and must not be softened globally.
+                # SKIP-IF-ABSENT: at THESE dests an absent source is the NORMAL
+                # case, not a defect — the handbook's per-scope chapters (spec
+                # §2c) and the agent's best-effort shares, whose source may be
+                # legitimately missing or suppressed. Dropped SILENTLY (debug
+                # only); the WARNING below stays for every other bind and must
+                # not be softened globally.
                 logging.getLogger(__name__).debug(
                     "%s %s: optional source %s absent; bind omitted",
                     label, dest, bind.src,
                 )
                 continue
-            # ro bind with a missing source: DROP with a warning (L7) instead of
-            # letting rootless podman abort the launch on a dangling bind source.
-            logging.getLogger(__name__).warning(
-                "%s %s: read-only source %s does not exist; dropping mount",
-                label, dest, bind.src,
-            )
-            continue
+            if is_read_only(bind.opts):
+                # WARN-AND-DROP (L7 default): a ro bind with a missing source is
+                # dropped with a warning instead of letting rootless podman abort
+                # the launch on a dangling bind source.
+                logging.getLogger(__name__).warning(
+                    "%s %s: read-only source %s does not exist; dropping mount",
+                    label, dest, bind.src,
+                )
+                continue
+            # rw bind: create the host source dir (L7 guarantee-create).
+            try:
+                src.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass  # best-effort; podman will surface a genuinely bad source
         mounts.append(
             Mount(source=src, destination=dest, options=bind.opts or "")
         )

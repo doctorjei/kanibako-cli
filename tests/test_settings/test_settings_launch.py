@@ -3,8 +3,12 @@
 These pin the PURE logic of the ONE-resolve-per-launch builder + adapter (no
 launch I/O): the floor/category/agent-partial fold into the single
 snapshot, the category adapter's shape + root-join + box-side box_dest resolution
-(equivalent to the retired by-name resolver's ``space="guest"`` pass), the behavior
-read, and the agent-delivery emitter's AGENT_CRITICAL exit-1 safe-fail.
+(equivalent to the retired by-name resolver's ``space="guest"`` pass), and the
+behavior read.
+
+⚑ The agent-delivery EMITTER is no longer here to pin: cutover 2a-3 merged it into
+``commands.start._emit_category_mounts``, where its AGENT_CRITICAL exit-1 safe-fail
+became one of three per-dest missing-source policies.
 """
 
 from __future__ import annotations
@@ -13,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings.settings_categories import CategoryEntry, reconcile_categories
+from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
+from kanibako.settings.settings_categories import reconcile_categories
 from kanibako.settings.settings_launch import (
-    agent_delivery_mounts,
     build_launch_snapshot,
     effective_behavior,
     snapshot_category_entries,
@@ -189,9 +193,12 @@ def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     rec = reconcile_categories(entries)
-    # ⚑ critical_keys are DESTINATIONS now, not descriptor key names (H6).
-    mounts = agent_delivery_mounts(
-        rec.mounts, critical_keys=frozenset({"/box/share"}),
+    # ⚑ must_exist holds DESTINATIONS, not descriptor key names (H6) — and since
+    # cutover 2a-3 the delivery binds come out of the ONE category emitter, so this
+    # is the live emission seam rather than a second route that shadowed it.
+    mounts = _emit_category_mounts(
+        _bind_map_from_mounts(rec.mounts), label="delivery",
+        must_exist=frozenset({"/box/share"}),
     )
 
     sources = {str(m.source) for m in mounts}
@@ -761,62 +768,15 @@ def test_effective_behavior_endpoint_default_none_omits_emission():
 
 
 # --------------------------------------------------------------------------- #
-# agent_delivery_mounts — the AGENT_CRITICAL exit-1 safe-fail                  #
+# ⚑ ``agent_delivery_mounts`` AND ITS FOUR TESTS ARE GONE (cutover 2a-3).       #
+# The AGENT_CRITICAL exit-1 safe-fail did NOT go with them — it became one of    #
+# the three per-dest missing-source policies on the ONE emitter, and it is       #
+# pinned (raise · key-spelled set matches nothing · policy read BEFORE the rw    #
+# guarantee-create) by ``TestTheThreeMissingSourcePolicies`` in                  #
+# ``tests/test_commands/test_start_assembly.py``. The end-to-end proof that a    #
+# settings-file repoint reaches an emitted Mount stays HERE, above, and now runs #
+# through that emitter.                                                          #
 # --------------------------------------------------------------------------- #
-
-
-def _agent_mount(name: str, host: str, dest: str = "/box/x", opts: str = "ro"):
-    return CategoryEntry(
-        category="bindings.ro",
-        scope="agent",
-        box_dest=dest,
-        host_src=host,
-        delivery="MOUNT",
-        options=opts,
-        name=name,
-        key_segments=("agent", "claude", "bindings", "ro", name),
-    )
-
-
-def test_delivery_emits_existing_critical(tmp_path: Path):
-    src = tmp_path / "bin"
-    src.write_text("x")
-    mounts = agent_delivery_mounts(
-        [_agent_mount("launcher", str(src))],
-        critical_keys=frozenset({"launcher"}),
-    )
-    assert len(mounts) == 1
-    assert mounts[0].destination == "/box/x"
-
-
-def test_delivery_critical_missing_raises(tmp_path: Path):
-    from kanibako.targets.assembly import BindingSourceError
-
-    with pytest.raises(BindingSourceError):
-        agent_delivery_mounts(
-            [_agent_mount("launcher", str(tmp_path / "gone"))],
-            critical_keys=frozenset({"launcher"}),
-        )
-
-
-def test_delivery_noncritical_missing_skipped(tmp_path: Path):
-    mounts = agent_delivery_mounts(
-        [_agent_mount("share", str(tmp_path / "gone"))],
-        critical_keys=frozenset(),
-    )
-    assert mounts == []
-
-
-def test_delivery_ignores_non_agent_entries(tmp_path: Path):
-    src = tmp_path / "bin"
-    src.write_text("x")
-    box_entry = CategoryEntry(
-        category="bindings.rw", scope="box", box_dest="/home/agent",
-        host_src=str(src), delivery="MOUNT", options="Z,U", name="home",
-        key_segments=("box", "bindings", "rw", "home"),
-    )
-    mounts = agent_delivery_mounts([box_entry], critical_keys=frozenset())
-    assert mounts == []
 
 
 # --------------------------------------------------------------------------- #

@@ -275,14 +275,16 @@ def _shipped_descriptor(agent: str):
 
 def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
     """The NEW single-route delivery: 7a partial → snapshot → adapter → reconcile
-    → agent_delivery_mounts (critical-set exit-1).
+    → the ONE category emitter under its must-exist policy (critical-set exit-1).
 
     *node_name* (Block E fix 2a) is the ACTIVE node the read path (active_agent)
     walks; defaults to *agent* (the harness == install.name for a bare agent). For
     a PERSONA (node ≠ harness) the partial MUST root under the node, else the binds
     orphan at agent.<harness>.* and vanish from the emit."""
+    from kanibako.commands.start import (
+        _agent_delivered_dests, _bind_map_from_mounts, _emit_category_mounts,
+    )
     from kanibako.settings.agent_representation import agent_default_partial
-    from kanibako.settings.settings_launch import agent_delivery_mounts
     from kanibako.settings.settings_resolve import normalize_bind_dest
     from kanibako.targets.base import BindScope
 
@@ -297,8 +299,8 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
         snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
     )
     # ⚑ Mirrors ``commands.start`` EXACTLY, and that is the point: the critical set
-    # is keyed by NORMALIZED BOX DEST, because a dest-keyed arm's entry name IS the
-    # destination (R-10/H6). Building it from ``bd.key`` matches nothing, so every
+    # is keyed by NORMALIZED BOX DEST, because the collapsed bind map is dest-keyed
+    # (R-10/H6). Building it from ``bd.key`` matches nothing, so every
     # AGENT_CRITICAL bind silently drops to the best-effort branch and the
     # must-exist exit-1 stops firing — which is precisely what
     # ``test_delivery_critical_missing_exit1_parity`` below detects.
@@ -306,7 +308,11 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
         normalize_bind_dest(bd.box_dest) for bd in desc.bindings
         if bd.scope is BindScope.AGENT_CRITICAL
     )
-    return agent_delivery_mounts(rec.mounts, critical_keys=critical)
+    return _emit_category_mounts(
+        _bind_map_from_mounts(rec.mounts), label="delivery-equivalence",
+        must_exist=critical,
+        skip_if_absent=_agent_delivered_dests(rec.mounts) - critical,
+    )
 
 
 def _mount_sig(mounts):
@@ -400,7 +406,7 @@ def test_delivery_critical_missing_exit1_parity(agent, tmp_path):
     # An install whose delivery sources do NOT exist on the host (no overrides —
     # the origin itself is missing), so the first AGENT_CRITICAL binding fails the
     # must-exist check on both the OLD (descriptor_mounts) and NEW (snapshot →
-    # agent_delivery_mounts) paths.
+    # the merged category emitter) paths.
     gone = tmp_path / "gone"
     install = AgentInstall(
         name=agent,

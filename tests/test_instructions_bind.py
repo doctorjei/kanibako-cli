@@ -380,12 +380,13 @@ class TestKickoffLaunchWiring:
     def _launch_mounts(self, std, proj, *, target, desc=None, install=None) -> dict:
         """Every Mount a launch would pass to podman, by destination.
 
-        ⚑ BOTH emitters, exactly as ``_run_container`` calls them: box-scope winners
-        through ``_emit_category_mounts`` and the agent-scope delivery binds through
-        ``agent_delivery_mounts`` (they are split because the AGENT_CRITICAL
-        must-exist safe-fail differs from L7's drop-with-warning). Emitting only one
-        of the two would make "no kickoff mount" indistinguishable from "the OTHER
-        route emitted it" — which is precisely the question these tests ask.
+        ⚑ THE ONE emitter, exactly as ``_run_container`` calls it. It used to be two
+        (the agent-scope delivery binds had their own walker, because the
+        AGENT_CRITICAL must-exist safe-fail differs from L7's drop-with-warning);
+        cutover 2a-3 merged them, so the difference is now a per-dest POLICY on the
+        single emitter. Emitting only part of the set would make "no kickoff mount"
+        indistinguishable from "the other route emitted it" — which is precisely the
+        question these tests ask.
         """
         from kanibako.commands.start import (
             _agent_delivered_dests,
@@ -393,7 +394,7 @@ class TestKickoffLaunchWiring:
             _emit_category_mounts,
             _resolve_launch_snapshot,
         )
-        from kanibako.settings.settings_launch import agent_delivery_mounts
+        from kanibako.settings.settings_resolve import normalize_bind_dest
         from kanibako.targets.base import BindScope as _BindScope
 
         _snapshot, reconciled = _resolve_launch_snapshot(
@@ -408,18 +409,15 @@ class TestKickoffLaunchWiring:
             agent_cfg=None,
             deliver_creds=True,
         )
+        critical = frozenset(
+            normalize_bind_dest(b.box_dest) for b in (desc.bindings if desc else ())
+            if b.scope is _BindScope.AGENT_CRITICAL
+        )
         mounts = list(_emit_category_mounts(
             _bind_map_from_mounts(reconciled.mounts), label="kickoff-wiring",
-            delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+            must_exist=critical,
+            skip_if_absent=_agent_delivered_dests(reconciled.mounts) - critical,
         ))
-        if target is not None and install is not None and desc is not None:
-            mounts += agent_delivery_mounts(
-                reconciled.mounts,
-                critical_keys=frozenset(
-                    b.key for b in desc.bindings
-                    if b.scope is _BindScope.AGENT_CRITICAL
-                ),
-            )
         return {m.destination: m for m in mounts}
 
     def test_core_kickoff_reaches_a_real_launch_when_no_plugin_supplies_one(
