@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `masks` list in a settings file was silently dropped.** `box.masks: ["~/secret"]` — the
+  spelling v1.7.x used — reached the launch as a plain list, missed the shape guard that emits the
+  tmpfs, and produced no mount and no message: the host path you had asked to hide stayed plainly
+  readable inside the box. `masks` is a map keyed by box destination, so a list at `<scope>.masks`
+  is now **refused by name**, printing the shape it should have been written in
+  (`{box_dest: true}`). A category that vanishes without a word is the one outcome the closed
+  keyspace forbids. The shipped defaults file no longer spells its own (empty) `masks` default as a
+  list either. See [MIGRATION §2.24](MIGRATION.md#224-masks-is-a-map-keyed-by-destination-a-list-is-refused).
+
 - **A blocked template seed blamed the wrong thing.** Seeding into the managed canon region
   (`canon/COLLECTION.md`, `canon/bible/…`, `canon/handbook/…`) is refused, but the refusal said the
   seeded content "would be silently invisible — never merged, never an error", which describes a

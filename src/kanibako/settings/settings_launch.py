@@ -2278,20 +2278,28 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     merged agent node: an error that said ``agent.bindings`` would be naming a
     shape §0 forbids, and would point the reader at a key they cannot write.
 
-    ⚑ COVERAGE IS THE THREE BIND FAMILIES ONLY — ``bindings.{ro,rw}`` and the
-    ``caches``/``seeded``/``common``/``synced`` leaf categories. ``env``, ``masks``
-    and ``secret_path`` keep their pre-existing SILENT SKIP of a non-``KeyStore``
-    node: they were outside the boundary approved for this change, and widening
-    them is a decision, not an omission to fix in passing. Tracked for the
-    undeclared-shape sweep.
+    ⚑ COVERAGE IS THE FOUR CATEGORY FAMILIES — ``bindings.{ro,rw}``, the
+    ``caches``/``seeded``/``common``/``synced`` leaf categories, and ``masks``.
+    ``masks`` joined them on 2026-08-10: it is a dest-keyed TERMINAL key exactly
+    like the others (R-5/R-10), and its silent skip was the last route by which a
+    user-written category could vanish without a word. A ``masks`` LIST in a
+    settings file stayed a plain ``list`` through the merge, missed the emit's
+    ``isinstance(…, KeyStore)`` guard, and left the path the user asked to HIDE
+    plainly readable inside the box — no mount, no warning. Its declared value is
+    the 3-state marker rather than a source (spec §2a — ``dict[box_dest →
+    bool|None]``, *"NOT a bare list"*), which changes only the example the refusal
+    prints.
 
-    ⚑ The old wording justified the ``masks`` skip by "their shapes differ —
-    ``masks`` is keyed-by-dest". **That reason DIED with the disk-store rework**:
-    ``bindings.{ro,rw}`` are dest-keyed terminal keys too (R-5/R-10), so masks and
-    the two arms now have the SAME shape and the skip is a pure coverage boundary,
-    not a shape distinction. Only ``env`` / ``secret_path`` (scalar-valued) still
-    differ in shape. Stated rather than quietly left, because a justification that
-    has gone false reads as a rule.
+    ⚑ ``env`` and ``secret_path`` still keep their SILENT SKIP of a non-``KeyStore``
+    node: they are the scalar-valued pair, they were outside the boundary approved
+    for the bind pass, and widening them is a decision, not an omission to fix in
+    passing. Tracked for the undeclared-shape sweep.
+
+    ⚑ The FLOOR's list→keyed-dict bridge for ``<scope>.masks`` (in
+    :func:`category_floor`) is NOT the same permission and stays: a floor table is
+    written by kanibako or by an agent plugin, never by a user, and the bridge runs
+    BEFORE assembly, so what reaches this check is already the keyed shape. A
+    settings FILE has no such adapter, and is refused here.
 
     What the arm check still asserts is UNCHANGED by the reshape: a bindings arm's
     value must be a MAP node. Before, a map of names; now, a map of destinations.
@@ -2319,6 +2327,12 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
         cat_node = dict.get(node, category, _MISSING)
         if cat_node is not _MISSING:
             _require_category_node(key_prefix, category, cat_node)
+    # ``masks`` is checked on its own line rather than folded into
+    # ``_BIND_LEAF_CATEGORIES``: that set is what the EMIT walks with
+    # ``_emit_bind_map``, and a mask has no source to unpack.
+    masks = dict.get(node, "masks", _MISSING)
+    if masks is not _MISSING:
+        _require_category_node(key_prefix, "masks", masks)
 
 
 def _require_category_node(key_prefix: str, category: str, node: object) -> None:
@@ -2353,11 +2367,18 @@ def _require_category_node(key_prefix: str, category: str, node: object) -> None
         f"{key_prefix}.bindings.{{ro,rw}}" if category == "bindings"
         else f"{key_prefix}.{category}"
     )
+    # ``masks`` is dest-keyed like the rest, but its VALUE is the 3-state marker
+    # (present = mask · null = unmask · absent = inherit, spec §2a) and not a
+    # source, so only the example spelling differs.
+    shape = (
+        "{box_dest: true}" if category == "masks"
+        else "{box_dest: [src[, options]]}"
+    )
     raise SettingsError(
         f"{key_prefix}.{category} is a value at a CATEGORY ROOT "
         f"({type(node).__name__}: {node!r}), which is not a declared key; "
         f"declare {declared} as a map keyed by box destination, "
-        f"{{box_dest: [src[, options]]}} (spec §2a / §2d L906-910)"
+        f"{shape} (spec §2a / §2d L906-910)"
     )
 
 
@@ -2419,7 +2440,9 @@ def _emit_scope_node(
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped
-    # at build, §6f); each surviving key is a masked dest.
+    # at build, §6f); each surviving key is a masked dest. The isinstance is a
+    # TYPE NARROW, not a filter: _assert_declared_categories has already refused
+    # every other shape by name, so nothing can be dropped here in silence.
     masks = dict.get(scope_node, "masks", _MISSING)
     if isinstance(masks, KeyStore):
         for raw_dest in dict.keys(masks):

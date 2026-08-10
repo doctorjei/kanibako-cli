@@ -161,23 +161,30 @@ def _assert_no_joined_string(elem: str, where: str) -> None:
 class TestCoreDefaultsShape:
     """The ONE system/core defaults file holds the specced structured shape."""
 
-    def test_masks_is_real_list_of_box_dests(self):
-        """``masks`` is a real ``list[box_dest]`` (spec §2a), NOT a comma-string."""
+    def test_masks_is_a_dest_keyed_map(self):
+        """``masks`` is a map keyed by box destination (spec §2a), NOT a list.
+
+        The shipped file used to spell ``masks: []``, which is the one shape a
+        settings file is now refused for — a default that cannot be written by
+        hand documents the wrong thing.  Spec §2a: ``dict[box_dest -> bool|None]``,
+        *"NOT a bare list"*.
+        """
         doc = _load_yaml("kanibako.data", "core-defaults.yaml")
         masks = doc["masks"]
-        assert isinstance(masks, list), (
-            f"core masks must be a real list, got {type(masks).__name__}: {masks!r}"
+        assert isinstance(masks, dict), (
+            f"core masks must be a dest-keyed map, got {type(masks).__name__}: "
+            f"{masks!r}"
         )
-        for m in masks:
-            assert isinstance(m, str), f"mask entry must be str, got {m!r}"
-            _assert_no_joined_string(m, "core-defaults.yaml masks")
+        for dest in masks:
+            assert isinstance(dest, str), f"mask key must be str, got {dest!r}"
+            _assert_no_joined_string(dest, "core-defaults.yaml masks")
 
-    def test_loader_masks_is_list(self):
-        """The loader surfaces ``masks`` as a real ``list[str]`` — now EMPTY.
+    def test_loader_masks_are_the_destinations(self):
+        """The loader surfaces the masked DESTINATIONS — now EMPTY.
 
         The vestigial ``~/workspace/vault`` default mask was dropped (the vault
-        moved out of the workspace in 1.6.0), so the default ``box.masks`` is an
-        empty list; the seam stays so explicit ``box.masks`` declarations work.
+        moved out of the workspace in 1.6.0), so the default ``box.masks`` names
+        no destination; the seam stays so explicit ``box.masks`` declarations work.
         """
         masks = core_defaults.vault_mask_default()
         assert isinstance(masks, list)

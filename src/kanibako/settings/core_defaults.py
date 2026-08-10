@@ -74,17 +74,18 @@ def _load_doc() -> dict[str, Any]:
 
 
 def vault_mask_default() -> list[str]:
-    """Return the default ``box.masks`` list — now EMPTY (no default mask).
+    """Return the default masked DESTINATIONS — now EMPTY (no default mask).
 
-    Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
-    the default is a LIST the resolver iterates as real entries.  The old
-    vestigial ``~/workspace/vault`` default was DROPPED: the vault moved OUT of
-    ``~/workspace`` in 1.6.0, so there is nothing in the workspace to hide behind
-    a tmpfs.  The seam is kept (so a box may still declare masks via
-    ``box.masks`` / ``<scope>.masks``) but the default reads as an empty list
-    from the shipped file (decision B).
+    Per spec §2a ``masks`` is a map keyed by box destination
+    (``dict[box_dest -> bool|None]``, the 3-state), so the shipped file spells a
+    MAP and this reader hands back its keys — the destinations, in file order.
+    The old vestigial ``~/workspace/vault`` default was DROPPED: the vault moved
+    OUT of ``~/workspace`` in 1.6.0, so there is nothing in the workspace to hide
+    behind a tmpfs.  The seam is kept (so a box may still declare masks via
+    ``box.masks`` / ``<scope>.masks``) but the shipped default is empty
+    (decision B).
     """
-    masks = _load_doc().get("masks", [])
+    masks = _load_doc().get("masks", {})
     return [str(m) for m in masks]
 
 
