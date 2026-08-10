@@ -213,6 +213,62 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    2026-08-08f drift guard now covers BOTH families, and a negative
                    case pins meta.runtime.bindings REFUSED so the move cannot leave
                    both spellings working."
+    - date: "2026-08-09d"
+      what: "COPIES APPLY TO THE HOME BIND ALONE, and meta.assembly.copies becomes
+             a SCOPE-ORDERED LIST[(host_src, guest_dest, opts)] instead of a
+             dest-keyed map. Every copy dest lies inside home and resolves into the
+             box home store, so the copy pass completes BEFORE any binding folds; a
+             copy whose dest is not inside home is a config ERROR. NOTHING IS
+             PRUNED — no mount arbitrates a copy at all, and a dest MAY repeat (the
+             later entry overwrites the earlier FILEWISE at apply time)."
+      authority: "Jei 2026-08-09d: \"Keep the bind rules - there's no reason to
+                  delete them. But, let's simplify copies. Copies will apply only
+                  to the home bind - done. They can be completed before any binding
+                  resolution that way. We can split out the final copies in a
+                  simply concatenation of the file list\", ratified on sight of the
+                  drafted spec text (\"ratified\"). Design
+                  designs/collapse-implementation-DESIGN.md §9."
+      scope: "WHERE a copy may point and WHEN it resolves — NOT what a copy is.
+              ⚑⚑ `seeded` and `synced` ARE STILL COPIES (kind: copy untouched).
+              The dest-keyed map was silently collapsing the layered seeded.template
+              trio (one row per SCOPE); a concatenated list keeps all three. ⚑ The
+              synced<->binding refusal at one dest is RETAINED DELIBERATELY until
+              the mount_forbidden list replaces it — deleting it first would leave a
+              window with no protection. The mount table (§0) is untouched by this."
+      code_state: "Code landed with this amendment (948910c, plus c6cddce for the
+                   meta.assembly notes). The collapse also stopped touching the
+                   filesystem as a consequence: the Path(src).is_dir() probe existed
+                   only for the copy-vs-mask rule this ruling deletes."
+    - date: "2026-08-10"
+      what: "THE COLLISION TABLE BECOMES A CONTAINMENT TABLE. policy
+             .category_collisions' five dest-equality cases are replaced by the
+             containment table over the ARRIVING mount (point / child / parent x
+             bind / mask), the four refusals stated once, and the accept-then-sweep
+             operation. policy.category_reconcile's `nested_paths: deepest_wins`
+             becomes `containment_ordered` (ONE merge, TWO orderings) and the block
+             gains the home-only copy rule it never carried."
+      authority: "Jei 2026-08-10, ratifying five spec sites one at a time on sight
+                  of the drafted text (\"Approved\" / \"Ratified\" / \"ratified.\"
+                  x3). The refusability table is HIS (2026-08-09: \"BTW, that table
+                  is good. Keep it.\"). Design
+                  designs/collapse-implementation-DESIGN.md §8. ⚑ This SUPERSEDES
+                  the 2026-08-08 collapse spec-delta PROPOSAL, which is RETIRED —
+                  do not apply any item from that file."
+      scope: "⚑ ONE BEHAVIOUR CHANGE, and it NARROWS what a user may write: two
+              mounts at one dest are an ERROR in EVERY scope combination. The
+              retired rows resolved a cross-scope abstraction collision SILENTLY by
+              scope precedence and a same-scope one with a WARN. It was put to Jei
+              explicitly and ratified with the site. Base-vs-extension keeps only a
+              DIAGNOSTIC requirement — the refusal is SYMMETRIC and is decided in
+              ONE scope at PRODUCTION, before the collapse. ⚑ The table is MOUNTS
+              ONLY: copies apply to the home bind alone and never meet a mount.
+              keyed_on, the ro/rw rationale and error_text_must_point_at are
+              UNCHANGED, and synced_vs_binding_same_dest is UNCHANGED."
+      code_state: "DOC-ONLY. 🛑 The live route does NOT implement this table — it
+                   groups on the exact box_dest string and resolves cross-scope ties
+                   by precedence. The tightening lands at the CUTOVER
+                   (plans/2026-08-09d-CUTOVER-PLAN.md). The spec LEADS the code
+                   here, deliberately; the spec is the authority."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -380,54 +436,99 @@ policy:
   # the check; it does not eliminate it.
   category_collisions:
     keyed_on: resolved_box_dest
-    table:
-      - case: "bindings.{ro,rw} vs bindings.{ro,rw} at one dest"
-        outcome: error
-        qualifier: "always — any scope, any mode. ro/rw is the serious case: two
-                    bindings at one dest disagreeing on MODE is a semantic
-                    disagreement, not just a source disagreement — silently
-                    picking one hands the user a read-only mount where they
-                    expected writable, invisibly."
-      - case: "masks at a dest a binding occupies"
-        outcome: override
-        qualifier: "by design — hiding a bound path is the whole job"
-      - case: "an abstraction EXTENDING onto a dest the base already occupies"
-        outcome: error
-        qualifier: "refuse the EXTENSION. The explicit bindings.* are the BASE
-                    and abstractions apply AFTER, so the explicit binding
-                    survives and the colliding extension is what is refused —
-                    'I wrote it down literally' wins. The error names the
-                    extending entry, the occupant, and the dest."
-      - case: "abstraction vs abstraction, DIFFERENT scopes"
-        outcome: scope_precedence
-        qualifier: "silent"
-      - case: "abstraction vs abstraction, SAME scope (same or different category)"
-        outcome: proceed_and_warn
-        qualifier: "proceed on the existing ordering + WARN, EVERY LAUNCH (not
-                    deduplicated, not once-ever — a same-scope collision is a
-                    real ambiguity and stays visible until fixed)"
-        winning_scope_qualifier: "The warn applies to the WINNING scope's own
-                    ambiguity: a LOSING scope's internal tie is wholly masked by
-                    the cross-scope rule above — its 'winner' changed nothing —
-                    and warning about a decision with no consequence trains the
-                    user to ignore the warning that matters. (Qualified 2026-07-31.)"
+    # The rule is CONTAINMENT, not exact-dest equality: an arriving mount may sit
+    # AT another's point, INSIDE it, or ABOVE it, and the three differ. The table
+    # is stated over the ARRIVING entry (the one the scope loop is processing,
+    # not yet inserted) against what is ALREADY COLLAPSED. ⚑ parent = the SHORTER
+    # path; child = the LONGER path that starts with it. Comparisons are over
+    # NORMALIZED guest paths and are SEPARATOR-GUARDED (`~/foobar` is not inside
+    # `~/foo`). REFUSE FIRST; if nothing refuses, the arrival is accepted.
+    containment_table:            # arriving kind -> what the occupant is -> outcome
+      bind:
+        point_is_bind:  refuse
+        point_is_mask:  sweep
+        child_is_bind:  refuse
+        child_is_mask:  sweep
+        parent_is_bind: nest
+        parent_is_mask: refuse
+      mask:
+        point_is_bind:  sweep_except_home_refuse
+        point_is_mask:  refuse
+        child_is_bind:  sweep_except_home_refuse
+        child_is_mask:  sweep
+        parent_is_bind: nest
+        parent_is_mask: refuse
+    refusals:                     # the four, stated once
+      - "an existing MASK that is a PARENT of the dest refuses EVERY arrival"
+      - "an arriving BIND is refused by an existing bind AT its dest or a CHILD of
+         it — the arrival would subsume a binding nothing could then reach"
+      - "an arriving MASK is refused by an existing mask AT its dest or a PARENT of
+         it — a void inside a void hides nothing the outer mask does not hide"
+      - "an arriving MASK is refused if HOME is at its dest or a CHILD of it —
+         nothing may subsume home, masks included"
+    on_accept: "the mount DELETES every mount AT or INSIDE its dest, then inserts.
+                ONE sweep covers a bind replacing a mask at its point, a mask
+                replacing a bind at its point, and a mask subsuming a child mask."
+    direction_is_reversed: "A bind may be a CHILD of a bind and refuses its own
+                kind at its point or INSIDE it; a mask may be the PARENT of a mask
+                and refuses its own kind at its point or CONTAINING it. Masks are
+                the INVERSE of binds, not their mirror."
+    mounts_only: "Copies (seeded, synced) apply to the HOME bind ALONE, resolve
+                into the box home store and complete BEFORE any binding folds, so
+                a copy never meets a mount here and has no arbitration to state.
+                A copy's only rule is that its dest lies inside home
+                (category_reconcile below)."
+    # ⚑ THE ONE CHANGE THAT NARROWS WHAT A USER MAY WRITE (2026-08-10). TWO MOUNTS
+    # AT ONE DEST ARE NOW AN ERROR IN EVERY SCOPE COMBINATION. The two retired rows
+    # resolved a cross-scope abstraction-vs-abstraction collision SILENTLY by scope
+    # precedence and a same-scope one by proceeding with a WARN; both are refusals
+    # now — the collapse arbitrates NOTHING at a destination. A box-scope override
+    # of a system-scope entry AT THE SAME DEST becomes suppress-then-add.
+    ro_rw_is_the_serious_case: "two bindings at one dest disagreeing on MODE is a
+                semantic disagreement, not just a source disagreement — silently
+                picking one hands the user a read-only mount where they expected
+                writable, invisibly. Hence the unconditional error."
+    base_vs_extension: "the refusal is SYMMETRIC — after the fold nothing
+                distinguishes an explicit bindings.* entry from an abstraction's
+                derived one, and neither wins by being written literally. The
+                refusal of an abstraction EXTENDING onto an occupied dest is
+                decided in ONE scope, at PRODUCTION, before the collapse sees it.
+                What survives here is a DIAGNOSTIC requirement: where one side is
+                an abstraction's derived entry, the error MUST name the extending
+                declaration, the occupant, and the dest."
     # With conflicts strict, present-None-ing the inherited entry and then
     # declaring the new one is the ONLY way to change what occupies a dest.
     # That is the non-obvious part — so the refusal must teach it.
     error_text_must_point_at: suppress_then_add
-  category_collisions_spec: "§0 (Category collisions; R-19, qualified 2026-07-31)"
+  category_collisions_spec: "§0 (Category collisions — the CONTAINMENT table, 2026-08-10; R-19)"
 
-  # The assembler's two reconciliations — the halves of D-B1 that STAND (its
-  # flat authority ORDER is what R-19 retired).
+  # The assembler's ONE merge with TWO orderings — the halves of D-B1 that STAND
+  # (its flat authority ORDER is what R-19 retired). The collapse MERGES THE
+  # INFORMATION; it performs nothing.
   category_reconcile:
-    nested_paths: deepest_wins        # depth-ordered, matches podman mount depth-sort
+    # NOT an arbitration. Nesting is permitted and BOTH entries survive. SCOPE
+    # order decides PRECEDENCE (system -> agent -> workset -> box); CONTAINMENT
+    # order decides PROCESSING and EMISSION — within a scope binds process
+    # parents-before-children and masks children-before-parents (the inverse),
+    # and mounts EMIT ancestors-before-descendants, matching podman's mount
+    # depth-sort. ⚑ Nothing "wins" by being deeper.
+    nested_paths: containment_ordered
     copies: [seeded, synced]          # file COPIES, not mounts; mounts physically
                                       #   shadow a copied file at the same path
                                       #   regardless of order
+    copies_apply_to_home_alone: true  # every copy dest lies inside home and
+                                      #   resolves into the box home store, so the
+                                      #   copy pass completes BEFORE any binding
+                                      #   folds and no mount arbitrates a copy
+    copy_dest_outside_home: error     # a copy dest that is not inside home is a
+                                      #   config ERROR
     synced_vs_binding_same_dest: error   # a copy can't override a live mount —
                                          #   the assembler flags a config error,
-                                         #   not a silent no-op
-  category_reconcile_spec: "§0 (Two reconciliations for the assembler)"
+                                         #   not a silent no-op. STANDS until the
+                                         #   mount_forbidden list replaces it
+                                         #   (Jei, 2026-08-09d — deleting it first
+                                         #   leaves a window with no protection)
+  category_reconcile_spec: "§0 (The collapse MERGES THE INFORMATION; it performs nothing)"
 
   # Collision-safety floor on the resolved data structure.
   # R-25 (RECORD, acknowledged 2026-08-01): checked at ratification — this
@@ -1476,7 +1577,8 @@ keys:
   ## ASSEMBLE THE BOX. ⚑ `origin: derived` is the honest token, NOT
   ## `runtime_treewalk` — nothing walks a tree to get them; they fold from the
   ## declared category families, exactly like every other derived meta row.
-  ## ⚑ NO PRODUCER EXISTS for any of the three yet.
+  ## ⚑ `backup` ALONE has no producer; the collapse writes the other two on the
+  ## launch path (commands/start.py, _install_assembly_collapse).
   meta.assembly.bindings:
     namespace: meta
     set: never

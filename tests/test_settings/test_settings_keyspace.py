@@ -574,10 +574,10 @@ def _manifest_leaves(prefix: str) -> set[str]:
 # ``meta.assembly.*`` on 2026-08-09
 # ---------------------------------------------------------------------------
 
-#: ``meta.assembly.{bindings,copies,backup}``, whose defining property is that
-#: NOTHING PRODUCES THEM: the collapse that writes the first two has not landed
-#: and ``backup`` is RESERVED with no producer at all. They are declared anyway,
-#: because under the closed keyspace (spec §0) an undeclared key is not a key and
+#: ``meta.assembly.{bindings,copies,backup}``. The collapse now writes the first
+#: two on the launch path (``commands/start.py._install_assembly_collapse``);
+#: ``backup`` is RESERVED with no producer at all. All three are declared because
+#: under the closed keyspace (spec §0) an undeclared key is not a key and
 #: reading one is an error — so the declaration is what makes the name legal, and
 #: it is the ONLY thing that changed. Nothing here asserts a value.
 COLLAPSE_LEAVES = ("bindings", "copies", "backup")
