@@ -865,7 +865,8 @@ class TestAgentConfigFirstUse:
 
         Both dests are HOST paths under the box STORE, and the handbook one is a
         SIBLING of the home, not a path inside it: a handbook layer staged under the
-        home would be shadowed by the RO chapter mount and silently invisible."""
+        home would land in the root-owned managed canon region and fail with EACCES
+        at create (and where it could land, the RO chapter mount would shadow it)."""
         import kanibako.launch.templates
         with start_mocks() as m:
             # B7 seed-at-create / membership model: the one-time home seed is
