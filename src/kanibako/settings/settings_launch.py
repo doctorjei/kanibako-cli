@@ -2599,15 +2599,20 @@ def _emit_bind(
         # truthiness spelling would hand it ``Z,U`` — the mount is still emitted, at
         # the same arity, so nothing fails and the socket quietly stops working.
         # Pinned by ``tests/test_settings/test_mount_options.py``.
-        # ⚑ WHAT THIS LINE STILL DECIDES, after cutover 2a-3: the NARROW resolves
-        # and the collapse's own fallback. The MAIN launch path takes its options
-        # from the collapse instead (``store_collapse.fold_opt(stored_opts, mode)``,
-        # which folds the ARM token in and never consults ``_bind_options``). For a
-        # ro descriptor bind the two agree exactly — ``"ro"`` either way. They part
-        # on an rw bind that stores NO options: ``Z,U`` here, ``rw`` from the
-        # collapse. Still unreachable for shipped agents (every descriptor binding
-        # is ro), and now flagged on the right basis: it is a route difference, not
-        # this line's alone.
+        # ⚑⚑ THIS LINE FEEDS BOTH ROUTES — it is UPSTREAM of the collapse, never a
+        # peer of it. ``store_shape.build_store_shape_set`` reads
+        # ``CategoryEntry.options``, i.e. what this line just produced, so the
+        # category default is ALREADY CONCRETE by the time
+        # ``store_collapse.fold_opt`` folds the ARM token onto it: an options-less
+        # ``bindings.rw`` entry reaches the main path as ``Z,U,rw``, and ``Z,U``
+        # cannot be lost in the collapse (pinned by
+        # ``test_mount_options.py::test_the_category_default_reaches_the_COLLAPSED_route_intact``).
+        # The two routes differ by that arm token ALONE — podman's own rw default
+        # — pinned by ``test_start_assembly.py::TestTheEmitterConsumesTheShape``.
+        # 🛑 DO NOT read ``fold_opt`` as taking the STORED opts. It takes THIS
+        # value; the stored ``None`` never reaches it. Reading the call in
+        # isolation manufactures a phantom regression in which an options-less rw
+        # bind collapses to a bare ``rw`` and silently loses its relabel and chown.
         options = opts if opts is not None else _bind_options(category)
     else:
         options = ""

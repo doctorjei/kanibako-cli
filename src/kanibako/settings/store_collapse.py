@@ -126,6 +126,10 @@ def _merge_bindings(combined: CollapsedBindings, shape: StoreShape) -> None:
     _refuse_bind_under_mask(combined, dest, entry)
     _refuse_bind_over_bind(combined, dest, entry)
     _sweep(combined, dest)
+    # ⚑ ``entry.opts`` ARRIVES CONCRETE - the category default was applied
+    # upstream (``settings_launch._emit_bind``), which ``BindEntry.opts``'s
+    # ``str | None`` type cannot say. So this ADDS the arm token to options that
+    # already carry ``Z,U`` / ``ro``; it never stands in for the default.
     combined[dest] = CollapsedBind(entry.src, fold_opt(entry.opts, mode))
   for dest in _scope_masks(shape):
     _refuse_mask_on_mask(combined, dest)
