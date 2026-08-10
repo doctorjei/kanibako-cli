@@ -86,7 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *inside* a masked directory was mounted anyway and stayed visible through the mask, so the mask hid
   only whatever nothing else had claimed. **This changes what a box with a mask over a bind sees at
   your next launch, with no config change.** Nothing else about the mount set moves: the same
-  destinations, from the same sources, in the same order. Mount options for read-write binds now
+  destinations, from the same sources. One ordering note: the whole mount set is now emitted
+  shallowest-first — the agent's own delivery binds (its binary, launcher and shared install dir)
+  included, where they used to be emitted ahead of everything else — so a nested mount always
+  follows the mount it sits inside. Mount options for read-write binds now
   spell `rw` explicitly (`Z,U,rw` rather than `Z,U`) — podman's default either way — and a bind
   dropped for a missing source names its destination rather than the destination as you spelled it
   (`/home/agent/canon`, not `~/canon`). See [MIGRATION.md](MIGRATION.md) §2.27.
