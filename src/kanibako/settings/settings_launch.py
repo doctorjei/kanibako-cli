@@ -2105,6 +2105,9 @@ def snapshot_category_entries(
     bind entry has a source slot and no room for a second meaning), supplied by the
     ONE launch aggregation site: ``canon_optional_bind_keys()`` for the
     skip-if-absent handbook chapters. ⚑ It is not a heuristic on the VALUE.
+    🛑 The flag it sets is DECLARATION-ONLY since cutover step 3 — the emitter now
+    takes the same policy as a DEST SET (``core_defaults.canon_optional_bind_dests``),
+    because a dest is the one thing the collapsed bind map keeps.
 
     ⚑ THE ``host_dest_keys`` COMPANION IS GONE (2026-08-08c). Every destination is
     GUEST-spelled now — copies included (spec §0 "ONE DEST SPACE, TWO DELIVERIES")

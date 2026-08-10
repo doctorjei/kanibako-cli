@@ -1713,7 +1713,10 @@ def _assemble_image_sharing_mounts(
         # ONCE for the whole module in :func:`_snapshot_scalar`.
         resolved_store = _snapshot_scalar(_img_snap, "box.images_store")
         if resolved_store is not None:
-            img_mounts = _emit_category_mounts(_img_rec, label="images")
+            img_mounts = _emit_category_mounts(
+                _img_rec, label="images",
+                skip_if_absent=core_defaults.canon_optional_bind_dests(),
+            )
             extra_mounts.extend(img_mounts)
             logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
         else:
@@ -1964,7 +1967,10 @@ def _start_helper_hub(
         # No persona tier (audit): the HELPER table only, whose pinned
         # box_dests are disjoint from anything a persona bundle can name.
     )
-    helper_hub_mounts = _emit_category_mounts(_hub_rec, label="helper")
+    helper_hub_mounts = _emit_category_mounts(
+        _hub_rec, label="helper",
+        skip_if_absent=core_defaults.canon_optional_bind_dests(),
+    )
     extra_mounts.extend(helper_hub_mounts)
     return hub
 
@@ -3789,7 +3795,13 @@ def _run_container(
         # channel side-effect (seeding the chat general/broadcast logs, §3c) is run
         # explicitly — it was a side-effect of the retired ``_build_channel_mounts``.
         _seed_channel_files(std, proj)
-        extra_mounts.extend(_emit_category_mounts(reconciled, label="category"))
+        # ⚑ The missing-source policy is passed at EVERY call site, not just this
+        # one: the narrow resolves read the user's cascade files too, so a policy
+        # that varied by call site would decide one dest two ways.
+        extra_mounts.extend(_emit_category_mounts(
+            reconciled, label="category",
+            skip_if_absent=core_defaults.canon_optional_bind_dests(),
+        ))
 
         # Masks: the ``box.masks`` tmpfs mask LIST (the reconciled ``masks``
         # winners).  There is NO default mask (the old ~/workspace/vault default
@@ -6849,8 +6861,13 @@ def emit_collision_warnings(collisions) -> None:
         logger.warning("%s", collision.message())
 
 
-def _emit_category_mounts(reconciled, *, label: str) -> list:
+def _emit_category_mounts(
+    reconciled, *, label: str, skip_if_absent: frozenset[str] = frozenset(),
+) -> list:
     """Emit every non-agent, non-mask reconciled MOUNT winner as :class:`Mount`s.
+
+    *skip_if_absent* is the MISSING-SOURCE POLICY, passed in as a set of
+    normalized box DESTS (llm-docs ``commands/start.py.md``).
 
     The single-pass replacement for the per-family ``_emit_reconciled_mounts``
     calls: the snapshot reconcile already partitioned + depth-sorted ALL MOUNT
@@ -6884,13 +6901,11 @@ def _emit_category_mounts(reconciled, *, label: str) -> list:
                 pass  # best-effort; podman will surface a genuinely bad source
         elif not src.exists():
             import logging
-            if e.optional:
-                # SKIP-IF-ABSENT (spec §2c): a declared-optional bind whose source is
-                # absent is the NORMAL case, not a defect — the handbook's per-scope
-                # chapters are the live users, and a workset or box that has written
-                # no chapter is almost every box. Dropped SILENTLY (debug only); the
-                # WARNING below stays for every other ro bind, where it is the safety
-                # net for a mis-pathed source and must not be softened globally.
+            if e.box_dest in skip_if_absent:
+                # SKIP-IF-ABSENT (spec §2c): at THESE dests an absent source is the
+                # NORMAL case, not a defect (the handbook's per-scope chapters).
+                # Dropped SILENTLY (debug only); the WARNING below stays for every
+                # other ro bind and must not be softened globally.
                 logging.getLogger(__name__).debug(
                     "%s %s: optional source %s absent; bind omitted",
                     label, e.name, e.host_src,
