@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mask did not hide anything — it made the path read-only.** The tmpfs a `masks` entry mounts
+  was emitted with podman's default `tmpcopyup`, which copies whatever already sits at the
+  destination up into the fresh tmpfs. Everything that was there stayed plainly visible inside the
+  box (read-only), which is the opposite of what a mask is for: a mask is a void, and there is
+  nothing inside it. Masks are now mounted `notmpcopyup` and show empty. **This changes what an
+  existing mask does at your next launch** — content you could read through a mask disappears. See
+  [MIGRATION.md](MIGRATION.md) §2.25.
+
 - **A `masks` list in a settings file was silently dropped.** `box.masks: ["~/secret"]` — the
   spelling v1.7.x used — reached the launch as a plain list, missed the shape guard that emits the
   tmpfs, and produced no mount and no message: the host path you had asked to hide stayed plainly
@@ -19,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is now **refused by name**, printing the shape it should have been written in
   (`{box_dest: true}`). A category that vanishes without a word is the one outcome the closed
   keyspace forbids. The shipped defaults file no longer spells its own (empty) `masks` default as a
-  list either. See [MIGRATION §2.24](MIGRATION.md#224-masks-is-a-map-keyed-by-destination-a-list-is-refused).
+  list either. See
+  [MIGRATION.md](MIGRATION.md) §2.24.
 
 - **A blocked template seed blamed the wrong thing.** Seeding into the managed canon region
   (`canon/COLLECTION.md`, `canon/bible/…`, `canon/handbook/…`) is refused, but the refusal said the

@@ -1231,6 +1231,43 @@ whole list, and unmasking becomes expressible rather than impossible.
 
 ---
 
+### 2.25 A mask now hides its path instead of making it read-only
+
+**What changed.** A `masks` entry mounts a tmpfs over the box path. That tmpfs was created with
+podman's default `tmpcopyup`, which **copies whatever already sits at the destination up into the
+new tmpfs** — so everything under a masked path stayed plainly visible inside the box, merely
+read-only. The tmpfs is now mounted `notmpcopyup` and the masked path shows **empty**.
+
+**⚠️ This changes what your existing masks do, at the next launch, with no config change.**
+
+```
+# before                                # now
+$ ls ~/private                          $ ls ~/private
+notes.md  keys.txt                       (empty)
+$ cat ~/private/keys.txt                $ cat ~/private/keys.txt
+<the file's contents>                   cat: ...: No such file or directory
+```
+
+**What you must do.**
+
+- **If you were relying on reading through a mask** — some boxes ended up using a mask as a
+  "read-only bind of the box's own home directory" — that no longer works, and it never was what a
+  mask meant. Declare a `bindings.ro` entry for the path instead: it is the category that means
+  *put this here, read-only*.
+- **If you were masking a path to hide it** — the common case — nothing to do; it now does what you
+  asked. **Check what was exposed in the meantime**: anything under a masked path has been readable
+  inside every box that mask applied to.
+
+**Nothing on the host moves or is deleted.** A mask has never touched host content; it only decides
+what the box sees. Whatever lives under the masked path in the box's home directory is still there
+on the host, untouched, and is visible again the moment the mask is removed.
+
+**Why.** A mask says NOTHING MAY BE HERE — it is the inverse of a binding, not a variant of one. A
+void with the old contents copied into it is not a void, and the difference is a security one: the
+paths people mask are the ones they most want gone.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

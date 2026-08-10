@@ -383,16 +383,25 @@ class ContainerRuntime:
             "-w", f"{GUEST_HOME}/workspace",
         ]
         # Local masking is still emitted here (tmpfs has no host source, so it is
-        # not a category MOUNT the caller pre-builds): a read-only tmpfs over each
-        # box-dest in the ``box.masks`` category (resolved in start.py).  There is
-        # NO default mask -- the vault moved out of ``~/workspace`` in 1.6.0, so
+        # not a category MOUNT the caller pre-builds): an EMPTY read-only tmpfs over
+        # each box-dest in the ``box.masks`` category (resolved in start.py).  There
+        # is NO default mask -- the vault moved out of ``~/workspace`` in 1.6.0, so
         # there is nothing in the workspace to hide.  A box (or any scope) may
-        # declare masks via ``box.masks`` / ``<scope>.masks``; an empty list emits
-        # no tmpfs masks.  The ``.gitignore`` overlay that used to ride on the
-        # vault tmpfs is DROPPED (no special-case overlay).
+        # declare masks via ``box.masks`` / ``<scope>.masks``; no masks emits no
+        # tmpfs mounts.  The ``.gitignore`` overlay that used to ride on the vault
+        # tmpfs is DROPPED (no special-case overlay).
+        #
+        # ⚑ ``notmpcopyup`` IS LOAD-BEARING, NOT A TUNING KNOB.  podman's tmpfs
+        # default is ``tmpcopyup``: it copies whatever already sits at the
+        # destination UP into the new tmpfs, so a mask left the pre-existing
+        # content plainly visible (read-only) and hid nothing -- it downgraded the
+        # path to read-only instead.  A mask is a VOID: there is nothing inside it
+        # (collapse DESIGN §8.1a).  Deleting this option restores the old
+        # behaviour silently, with every test still green, because what changes is
+        # what podman shows INSIDE the box.
         if enable_vault:
             for mask in masks:
-                cmd += ["--mount", f"type=tmpfs,dst={mask},ro"]
+                cmd += ["--mount", f"type=tmpfs,dst={mask},ro,notmpcopyup"]
         # Extra mounts (target binary mounts, etc.)
         if extra_mounts:
             for mount in extra_mounts:
