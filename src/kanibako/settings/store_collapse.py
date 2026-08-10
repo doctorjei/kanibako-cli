@@ -1,4 +1,4 @@
-"""The COLLAPSE: four per-scope ``store_shape``s -> ONE bindings map + ONE copy list.
+"""The COLLAPSE: four per-scope ``store_shape``s -> a bindings map + a seed + a sync list.
 
 Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 """
@@ -36,7 +36,7 @@ MASK: Final[CollapsedBind] = CollapsedBind(None, None)
 #: The collapsed bindings, dest-keyed. ⚑ ORDER IS NOT MEANING - emission depth-sorts.
 CollapsedBindings = dict[str, CollapsedBind]
 
-#: The collapsed copies, SCOPE-ORDERED. ⚑ A dest MAY repeat - that IS the overlay.
+#: A collapsed copy list, SCOPE-ORDERED. ⚑ A dest MAY repeat - that IS the overlay.
 CollapsedCopies = list[CollapsedCopy]
 
 #: Home is pid 0 - the foundation, seeded before the loop, in no scope's shape.
@@ -45,21 +45,27 @@ HOME_DEST: Final[str] = normalize_bind_dest("~")
 
 @dataclass(frozen=True)
 class CollapsedStore:
-  """The collapse's OUTPUT: the two merged structures, and nothing else."""
+  """The collapse's OUTPUT: the three merged structures, and nothing else."""
 
   bindings: CollapsedBindings
-  copies: CollapsedCopies
+  seeded: CollapsedCopies
+  synced: CollapsedCopies
 
 
 def collapse_store_shapes(
   store_shape_set: StoreShapeSet, home_bind: BindEntry,
 ) -> CollapsedStore:
-  """Merge the four scopes' shapes into one bindings map + one copy list (PURE)."""
-  # ⚑ The copy half completes FIRST and reads no binding: copies apply to the home
-  # bind alone, so no mount arbitrates them and the two halves never interact.
-  copies = _collapse_copies(store_shape_set)
+  """Merge the four scopes' shapes into a bind map + a seed list + a sync list (PURE)."""
+  # ⚑⚑ THE ORDER IS THE RULING: the two copy categories resolve at OPPOSITE ENDS
+  # of the fold. Seeds apply to the home bind ALONE and complete BEFORE any binding
+  # folds; syncs apply LAST, reading a bind map that is already final. Reading is
+  # all the sync pass does - nothing is pruned and no copy competes with a mount.
+  seeded = _collapse_seeded(store_shape_set)
+  bindings = _collapse_mounts(store_shape_set, home_bind)
   return CollapsedStore(
-    bindings=_collapse_mounts(store_shape_set, home_bind), copies=copies,
+    bindings=bindings,
+    seeded=seeded,
+    synced=_collapse_synced(store_shape_set, bindings),
   )
 
 
@@ -74,13 +80,29 @@ def opt_tokens(opts: str | None) -> list[str]:
   return [token.strip() for token in (opts or "").split(",") if token.strip()]
 
 
-def _collapse_copies(store_shape_set: StoreShapeSet) -> CollapsedCopies:
+def _collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   """Concatenate every scope's seed arm IN SCOPE ORDER - nothing arbitrates, nothing prunes."""
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].seed.items():
       dest = normalize_bind_dest(dest_path)
-      _refuse_copy_outside_home(dest, entry)
+      _refuse_seed_outside_home(dest, entry)
+      copies.append(CollapsedCopy(entry.src, dest, entry.opts))
+  return copies
+
+
+def _collapse_synced(
+  store_shape_set: StoreShapeSet, bindings: CollapsedBindings,
+) -> CollapsedCopies:
+  """Concatenate every scope's sync arm IN SCOPE ORDER, against the FINAL bind map."""
+  # ⚑ NO home-only rule here: a sync dest resolves through whichever binding covers
+  # it, and home is only the pid-0 foundation among them (that resolution is
+  # DELIVERY and lands at the cutover - the emitted row carries the GUEST dest).
+  copies: CollapsedCopies = []
+  for scope in SCOPE_CONTAINMENT:
+    for dest_path, entry in store_shape_set[scope].sync.items():
+      dest = normalize_bind_dest(dest_path)
+      _refuse_sync_at_a_bind_dest(bindings, dest, entry)
       copies.append(CollapsedCopy(entry.src, dest, entry.opts))
   return copies
 
@@ -218,15 +240,36 @@ def _refuse_mask_over_home(dest: str) -> None:
   )
 
 
-def _refuse_copy_outside_home(dest: str, entry: BindEntry) -> None:
-  """A copy resolves into the HOME bind's source, so its dest must be inside home."""
+def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
+  """A seed resolves into the HOME bind's source, so its dest must be inside home."""
   if _is_within(dest, HOME_DEST):
     return
   raise SettingsError(
-    f"the copy of {entry.src!r} targets {dest!r}, which is outside the home binding "
-    f"at {HOME_DEST!r}. Copies apply to the home bind ALONE - they resolve into the "
-    f"box home store, so a destination outside it has nowhere to land: give it a "
-    f"destination inside home, or deliver it as a binding."
+    f"the seeded copy of {entry.src!r} targets {dest!r}, which is outside the home "
+    f"binding at {HOME_DEST!r}. Seeds apply to the home bind ALONE - they resolve "
+    f"into the box home store BEFORE any binding folds, so a destination outside it "
+    f"has nowhere to land: give it a destination inside home, deliver it as a "
+    f"binding, or declare it 'synced', which is not home-only."
+  )
+
+
+def _refuse_sync_at_a_bind_dest(
+  bindings: CollapsedBindings, dest: str, entry: BindEntry,
+) -> None:
+  """A sync may land INSIDE a binding, never AT its point - the dest may BE the file."""
+  # ⚑ Exact equality is the dict lookup itself: both sides are normalized dests, so
+  # no containment predicate is needed and none is added. Stated STRUCTURALLY
+  # because a PURE module cannot tell a file binding from a directory one.
+  occupant = bindings.get(dest)
+  if occupant is None or occupant.src is None:
+    return
+  raise SettingsError(
+    f"the synced copy of {entry.src!r} targets {dest!r}, which is EXACTLY the "
+    f"destination of the collapsed binding of {occupant.src!r}. A sync may land "
+    f"strictly INSIDE a binding - it resolves through it into that binding's "
+    f"source - but never AT its point: a file binding's destination IS the file, so "
+    f"writing there would replace the bound inode. Sync to a path inside "
+    f"{dest!r}, or do not bind at that destination."
   )
 
 

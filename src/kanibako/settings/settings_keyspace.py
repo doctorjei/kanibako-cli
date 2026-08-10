@@ -308,9 +308,11 @@ DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
     "ws_root", "ws_name", "project_type",
 })
 # The COLLAPSE outputs (spec §1A): folded AFTER every scope resolves, not at the L0.2
-# treewalk above — which is why they are their OWN group. NOTHING PRODUCES THEM YET.
+# treewalk above — which is why they are their OWN group. ⚑ ALL THREE ARE PRODUCED,
+# on the launch path (`commands/start.py._install_assembly_collapse`); the copy output
+# split into `seeded` + `synced` on 2026-08-10, retiring the reserved `backup`.
 DECLARED_META_ASSEMBLY_LEAVES: Final[frozenset[str]] = frozenset({
-    "bindings", "copies", "backup",
+    "bindings", "seeded", "synced",
 })
 DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "settings",
