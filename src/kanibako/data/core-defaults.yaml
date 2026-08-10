@@ -134,18 +134,29 @@ core:
   # (not ``~/``) so the dest is exactly ``/home/agent`` — no trailing slash, byte-
   # identical to the old hardwired ``{shell_path}:/home/agent:Z,U`` bind.
   #
-  # Routed through the RO per-mode BOX ROOT `@meta.box.path` — ONE declaration for
-  # EVERY mode (spec §2c ALL PROJECTS: `box.bindings.rw.home | (@meta.box.path/home,
-  # ~/)`).  This REPLACES the old 3-arm `mode_meta_ref` map: the per-mode variation
-  # now lives in `meta.box.path` itself (settings_launch.workset_anchor_floor) and
-  # nowhere downstream, which is the whole point of the anchor.  It resolves to the
-  # SAME literal `proj.shell_path` produces in every mode (byte-identical — gated by
-  # a launch-path before/after comparison of the resolved mount).
-  # `source: shell_path` is kept as the documentary symbolic name.
+  # Routed through the RO DERIVED key `@meta.box.home` (spec `:978`, amendment
+  # 2026-08-08a / A9) — ONE declaration for EVERY mode.  The key IS the box-home
+  # SOURCE (`meta.box.home | @meta.box.path/home`,
+  # `settings_launch.workset_anchor_floor`), so the derivation is spelled ONCE, in
+  # the keyspace, and this row only NAMES it.  It used to spell
+  # `@meta.box.path/home` inline as well — two spellings of one derivation, held
+  # equal by a drift-guard test; the key is the single source and the guard is
+  # gone with the duplicate.  The per-mode variation still lives in
+  # `meta.box.path` and nowhere downstream, which is the whole point of the
+  # anchor, and this resolves to the SAME literal `proj.shell_path` produces in
+  # every mode (byte-identical — gated by a launch-path before/after comparison of
+  # the resolved mount).  `source: shell_path` is kept as the documentary symbolic
+  # name.
+  #
+  # ⚑ STILL A `bindings.rw` ROW, DELIBERATELY.  The spec's END state takes home OUT
+  # of `bindings.rw` entirely and seeds it into the collapse as the pid-0
+  # FOUNDATION bind (amendment 2026-08-08a); that move is the CUTOVER's, together
+  # with `core_defaults.add_bind`'s home arm and these `options` becoming the
+  # seam's.  This row is what binds a box's home on every launch until then.
   - key: home
     category: bindings.rw
     source: shell_path
-    meta_ref: "@meta.box.path/home"
+    meta_ref: "@meta.box.home"
     box_dest: "~"
     options: "Z,U"
     scope: system
