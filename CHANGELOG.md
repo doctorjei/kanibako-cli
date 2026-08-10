@@ -80,6 +80,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A mask now hides the binds nested under it.** A box's mounts are assembled by folding every
+  scope's declarations over the box home in scope order, and in that fold a `masks` entry clears
+  everything at or inside its destination — which is what a mask means. Until now a bind declared
+  *inside* a masked directory was mounted anyway and stayed visible through the mask, so the mask hid
+  only whatever nothing else had claimed. **This changes what a box with a mask over a bind sees at
+  your next launch, with no config change.** Nothing else about the mount set moves: the same
+  destinations, from the same sources, in the same order. Mount options for read-write binds now
+  spell `rw` explicitly (`Z,U,rw` rather than `Z,U`) — podman's default either way — and a bind
+  dropped for a missing source names its destination rather than the destination as you spelled it
+  (`/home/agent/canon`, not `~/canon`). See [MIGRATION.md](MIGRATION.md) §2.27.
+
 - **`agent.<agent>.transform` now decides whether a binary transform runs.** The key names WHICH
   transform an agent uses; until now nothing read it, and the tweakcc patch ran for any agent whose
   settings merely carried a `transform_settings` dict — including agents tweakcc cannot patch.

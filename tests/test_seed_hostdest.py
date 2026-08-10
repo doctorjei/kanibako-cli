@@ -305,7 +305,10 @@ class TestOptionalBindEmission:
     _DEST = f"{GUEST_HOME}/canon/x"
 
     def _emit(self, *, skip_if_absent, caplog, optional: bool = False):
-        from kanibako.commands.start import _emit_category_mounts
+        from kanibako.commands.start import (
+            _bind_map_from_mounts,
+            _emit_category_mounts,
+        )
 
         entry = _entry(
             category="bindings.ro", scope="box", box_dest=self._DEST,
@@ -321,7 +324,8 @@ class TestOptionalBindEmission:
         rec = reconcile_categories([entry])
         with caplog.at_level(logging.WARNING):
             mounts = _emit_category_mounts(
-                rec, label="category", skip_if_absent=skip_if_absent,
+                _bind_map_from_mounts(rec.mounts), label="category",
+                skip_if_absent=skip_if_absent,
             )
         return mounts
 
@@ -339,7 +343,10 @@ class TestOptionalBindEmission:
     ):
         """⚑ The parameter defaults empty deliberately: warn-and-drop is L7's
         answer, and a caller that states no policy must get it."""
-        from kanibako.commands.start import _emit_category_mounts
+        from kanibako.commands.start import (
+            _bind_map_from_mounts,
+            _emit_category_mounts,
+        )
 
         entry = _entry(
             category="bindings.ro", scope="box", box_dest=self._DEST,
@@ -349,7 +356,8 @@ class TestOptionalBindEmission:
         )
         with caplog.at_level(logging.WARNING):
             assert _emit_category_mounts(
-                reconcile_categories([entry]), label="category",
+                _bind_map_from_mounts(reconcile_categories([entry]).mounts),
+                label="category",
             ) == []
         assert any("does not exist" in r.message for r in caplog.records)
 
@@ -389,7 +397,10 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
     """
 
     def _emit(self, *, category: str, options: str, host_src: str, caplog):
-        from kanibako.commands.start import _emit_category_mounts
+        from kanibako.commands.start import (
+            _bind_map_from_mounts,
+            _emit_category_mounts,
+        )
 
         dest = f"{GUEST_HOME}/folded"
         arm = category.rsplit(".", 1)[-1]
@@ -399,7 +410,10 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
             key_segments=("box", "bindings", arm, dest),
         )
         with caplog.at_level(logging.WARNING):
-            return _emit_category_mounts(reconcile_categories([entry]), label="folded")
+            return _emit_category_mounts(
+                _bind_map_from_mounts(reconcile_categories([entry]).mounts),
+                label="folded",
+            )
 
     @pytest.mark.parametrize("options", ["ro", "ro,Z", "Z,U,ro", " ro "])
     def test_missing_source_is_dropped_for_every_ro_spelling(self, options, tmp_path, caplog):

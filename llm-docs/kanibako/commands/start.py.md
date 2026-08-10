@@ -5,6 +5,72 @@ not describe the module as a whole; each section names the seam it covers and no
 
 ---
 
+## `_launch_bind_map` / `_bind_map_from_mounts` — the emitter consumes the SHAPE (cutover 2a-2)
+
+**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2a-2-SHAPE (decided before dispatch) · §2.0e (the
+narrow resolves have no collapsed node) · §2.0g (the four fields the collapsed shape drops).
+
+### What the switch is
+
+The MAIN launch path now emits its category mounts from `meta.assembly.bindings` — the collapse's
+dest-keyed `CollapsedBind(src, opts)` map. `reconcile_categories` still runs and still computes its
+whole answer; nothing is deleted here. What moved is WHERE the main path's rows come from.
+
+### Why the emitter takes a map and not a `ReconciledCategories`
+
+The two narrow resolves (images, helper hub) run with `include_base_families=False`, so they carry no
+home bind, so the collapse writes them no node at all — pointing the shared emitter at
+`meta.assembly.*` from the inside would empty their mounts silently. Making the emitter accept EITHER
+shape is two forms with one meaning (Convention 0), and adapting a collapsed map back into
+`CategoryEntry`s is impossible rather than merely ugly: `category`, `scope`, `name` and `optional` are
+gone by construction. So the emitter takes the SHAPE — dest → `(src, opts)`, plus its dest-keyed
+policies — and each caller supplies that map from wherever it has one. `_bind_map_from_mounts` is the
+translation for a caller whose answer is a reconciled winner list; it is not a collapse (no home
+foundation, no arbitration, no scope fold).
+
+### What became of the four dropped fields
+
+* **`optional`** — already a parameter since step 3 (`skip_if_absent`, dest-spelled).
+* **`category`** — the mask arm needs no category: a mask IS `CollapsedBind(None, None)`, so "no
+  source" is the test, and it is structural rather than a lookup. `secret_path` carries no arm in the
+  disk-store shape at all, so it is simply not in the map (`_bind_map_from_mounts` drops it for the
+  same reason — shape fidelity, not a policy filter).
+* **`scope`** — was doing exactly one job, PARTITIONING: two emitters walk one list today, so each has
+  to filter to its own half or every agent bind is emitted twice. It travels as `delivered_elsewhere`,
+  a dest set, until 2a-3 merges the two emitters and the partition problem stops existing.
+* **`name`** — the WARNING text named it. Under dest-keying `CategoryEntry.name` IS the destination
+  (R-10), so the dest carries the identity; the only change a user can see is that the message now
+  spells the dest normalized (`/home/agent/canon`) rather than as declared (`~/canon`).
+
+### Emission owns the depth-sort now
+
+A dest-keyed map carries no order — `store_collapse` says so at the type. The reconcile used to hand
+the emitter an already depth-sorted list, so the emitter sorts on the same key
+(`settings_categories.path_depth`, made public for this second consumer rather than re-spelled) and
+podman still receives shallow-first, deepest-wins.
+
+### The FALLBACK, and when it dies
+
+`_launch_bind_map` reads the leaf and falls back to the reconciled rows when it is ABSENT. That is not
+a preference between routes: the collapse refuses configurations the live route accepts and leaves all
+three leaves unwritten, and until step 2c that refusal must reach nobody. **The fallback and the
+`SettingsError` swallow in `_install_assembly_collapse` come out together.**
+
+⚑ **A step-2c precondition, measured here:** `start_mocks` stubs `_resolve_launch_snapshot` with a
+category set carrying no home bind, so under that harness the collapse writes nothing and every
+`_run_container` unit test takes the fallback. Deleting the fallback before the harness grows a home
+bind would empty the category mount set for that whole suite at once.
+
+### One measured behavioural difference, pinned rather than smoothed
+
+The five-arm shape carries ro/rw as the ARM, so the collapse folds the mode back into the option
+string: a rw bind the reconciled route emits as `Z,U` arrives as `Z,U,rw`. Podman's default IS rw and
+`fold_opt` dedupes, so `ro` stays `ro` and nothing about the box changes — but the option string
+podman receives does. Home is the exception by construction: pid 0 is lifted out before any scope
+folds, so no arm ever appends to its options.
+
+---
+
 ## `_install_assembly_collapse` / `_split_home_bind` — the collapse wiring (roadmap step 6b)
 
 **Authority:** Jei's roadmap step 6, verbatim — *"implement a 'grand unification function' … that
@@ -16,16 +82,17 @@ will **merge the information, but not perform the action**"* ·
 
 `_resolve_launch_snapshot` folds the same `CategoryEntry` list the live route already produced
 (`snapshot_category_entries`) through the step-4 producer (`build_store_shape_set`) and the step-6a
-collapse (`collapse_store_shapes`), and stores the two results at the declared RO/derived keys
-`meta.assembly.bindings` and `meta.assembly.copies`.
+collapse (`collapse_store_shapes`), and stores the results at the declared RO/derived keys
+`meta.assembly.{bindings,seeded,synced}`.
 
-### What it is NOT
+### What it drives, and what it still does not
 
-**It drives nothing.** `snapshot_category_entries → reconcile_categories → emission` runs exactly as
-before, and every mount, copy and env the box receives still comes from `reconciled`. Nothing reads
-`meta.assembly.*`. The cutover — pointing emission at the collapse, retiring
-`reconcile_categories`' arbitration half, the row-5 warn channel and the `synced`↔`binding` refusal
-— is a LATER step, and none of it may be smuggled in here.
+🛑 **UPDATED AT CUTOVER 2a-2 — this section used to read "it drives nothing", and that is now false
+for MOUNTS.** The main launch path emits its category mounts from `meta.assembly.bindings` (see the
+section above). Everything else still runs on `reconciled`: the copies (`seeded` / `synced`), the env
+set, the row-5 warnings, the mask arm, the agent delivery arm, and both narrow resolves. Retiring
+`reconcile_categories`' arbitration half and the warn channel is step 5, and none of it may be
+smuggled in early.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -59,7 +126,7 @@ declarations at one IDENTICAL dest — so **configurations exist that launch fin
 collapse raise.**
 
 Those refusals are intended; enforcing them is simply premature. So `SettingsError` out of the
-collapse is caught at this one seam: both leaves stay ABSENT (the state the manifest already names
+collapse is caught at this one seam: all three leaves stay ABSENT (the state the manifest already names
 for them — *"declared so the closed keyspace admits the name"*), the launch continues on the
 unchanged live path, and the cause is logged.
 
@@ -67,7 +134,7 @@ unchanged live path, and the cause is logged.
 problem when it does not: it is legal on the route that ships, and the computation that rejected it
 changes nothing they can observe. The message is for whoever is building the cutover.
 
-⚑ A partial write is worse than no write, which is why both leaves are installed only AFTER the
+⚑ A partial write is worse than no write, which is why all three leaves are installed only AFTER the
 collapse returns — a half-built `meta.assembly.bindings` with no `copies` beside it would describe a
 box nothing could assemble.
 

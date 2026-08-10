@@ -388,6 +388,8 @@ class TestKickoffLaunchWiring:
         route emitted it" — which is precisely the question these tests ask.
         """
         from kanibako.commands.start import (
+            _agent_delivered_dests,
+            _bind_map_from_mounts,
             _emit_category_mounts,
             _resolve_launch_snapshot,
         )
@@ -406,7 +408,10 @@ class TestKickoffLaunchWiring:
             agent_cfg=None,
             deliver_creds=True,
         )
-        mounts = list(_emit_category_mounts(reconciled, label="kickoff-wiring"))
+        mounts = list(_emit_category_mounts(
+            _bind_map_from_mounts(reconciled.mounts), label="kickoff-wiring",
+            delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+        ))
         if target is not None and install is not None and desc is not None:
             mounts += agent_delivery_mounts(
                 reconciled.mounts,
