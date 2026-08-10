@@ -392,17 +392,33 @@ class TestListLocalImages:
 
 
 class TestVaultDisabledRun:
-    """Tests that ``enable_vault`` gates the tmpfs masks emitted by run().
+    """What ``enable_vault`` does and does NOT gate in run().
 
-    Since step 3 the vault BINDS no longer come from run() at all (they flow
-    through the category resolver into *extra_mounts*); ``enable_vault`` now gates
-    only the tmpfs mask overlays that run() still emits (masks have no host source,
-    so they are not a category MOUNT the caller pre-builds)."""
+    Since step 3 the vault BINDS do not come from run() at all — they flow through
+    the category resolver into *extra_mounts* — so run() emits nothing vault-shaped
+    either way. And ``enable_vault`` does NOT gate masks: a mask has no host source
+    (which is why run() still emits it in-process rather than the caller
+    pre-building it), but ``<scope>.masks`` is an ordinary user-writable key with
+    nothing to do with the vault.
+
+    ⚑ THIS CLASS USED TO PIN THE OPPOSITE, and its own docstring called that the
+    intent ("``enable_vault`` gates the tmpfs masks"). It was residue, not a
+    decision: when the only mask was the hardcoded ``~/workspace/vault`` tmpfs, the
+    emit sat in the same block as the vault's own mounts. ``4e96daa`` routed those
+    mounts out and left the wrapper behind; ``242bfde`` dropped the default mask.
+    What survived was a silent drop — a vault-disabled box got NO masks and was
+    told nothing — pinned here as though it were the contract."""
 
     def _make_rt(self):
         return ContainerRuntime(command="/usr/bin/podman")
 
-    def test_vault_disabled_skips_mounts_and_tmpfs(self, tmp_path):
+    def test_vault_disabled_still_emits_masks(self, tmp_path):
+        """A declared mask is emitted with the vault OFF; no vault mounts are.
+
+        Re-introduce the ``if enable_vault:`` wrapper around the emit loop and
+        this is the test that goes red. Every other mask test runs with the vault
+        enabled, so nothing else notices.
+        """
         rt = self._make_rt()
         vault_ro = tmp_path / "vault-ro"
         vault_rw = tmp_path / "vault-rw"
@@ -421,15 +437,19 @@ class TestVaultDisabledRun:
             )
             cmd = m_run.call_args[0][0]
             cmd_str = " ".join(cmd)
-            # No vault mounts even though dirs exist
+            # No vault mounts even though dirs exist (run builds none either way).
             assert "/home/agent/vault/ro" not in cmd_str
             assert "/home/agent/vault/rw" not in cmd_str
-            # No tmpfs overlay
-            assert "tmpfs" not in cmd_str
+            # The declared mask IS emitted — the vault does not gate it.
+            assert (
+                "type=tmpfs,dst=/home/agent/workspace/vault,ro,notmpcopyup"
+                in cmd_str
+            )
 
     def test_vault_enabled_includes_tmpfs_masks(self, tmp_path):
-        """enable_vault=True emits the tmpfs mask overlay; the vault BINDS no longer
-        come from run (they arrive via *extra_mounts* — step 3)."""
+        """The mask emit is unchanged with the vault ON — the pair to the test
+        above, which pins the same output with it OFF. The vault BINDS come from
+        *extra_mounts*, not run (step 3)."""
         rt = self._make_rt()
         vault_ro = tmp_path / "vault-ro"
         vault_rw = tmp_path / "vault-rw"

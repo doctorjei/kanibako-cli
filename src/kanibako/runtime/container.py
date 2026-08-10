@@ -399,9 +399,18 @@ class ContainerRuntime:
         # (collapse DESIGN §8.1a).  Deleting this option restores the old
         # behaviour silently, with every test still green, because what changes is
         # what podman shows INSIDE the box.
-        if enable_vault:
-            for mask in masks:
-                cmd += ["--mount", f"type=tmpfs,dst={mask},ro,notmpcopyup"]
+        #
+        # ⚑ A MASK IS INDEPENDENT OF THE VAULT.  This loop used to sit inside an
+        # ``if enable_vault:`` block, which was residue: back then the ONLY mask
+        # was the hardcoded ``~/workspace/vault`` tmpfs, so the block held the
+        # vault binds AND their mask.  ``4e96daa`` routed the vault binds out
+        # through the category resolver and left the wrapper behind, and
+        # ``242bfde`` then dropped the default mask -- so a vault-disabled box
+        # silently got NO masks at all, while ``<scope>.masks`` is an ordinary
+        # user-writable key that has nothing to do with the vault.  A declared
+        # mask is emitted regardless.
+        for mask in masks:
+            cmd += ["--mount", f"type=tmpfs,dst={mask},ro,notmpcopyup"]
         # Extra mounts (target binary mounts, etc.)
         if extra_mounts:
             for mount in extra_mounts:
@@ -1185,16 +1194,18 @@ def _precreate_mount_stubs(
         # are always made whenever vault is enabled.
         _ensure_dir(shell_path / "vault" / "ro", traverse_root=shell_path)
         _ensure_dir(shell_path / "vault" / "rw", traverse_root=shell_path)
-        # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.
-        # Map each box-dest to its host side the same way extra mounts are
-        # mapped (under project_path for workspace dests, shell_path for other
-        # home dests).  Empty list (the default — no masks) -> no stubs.
-        for mask in tmpfs_masks:
-            host_path = _guest_dest_to_host(mask, shell_path, project_path)
-            if host_path is None:
-                logger.debug("mask stub skip (not under home): %s", mask)
-                continue
-            _ensure_dir(host_path, traverse_root=_home_root(mask))
+    # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.  Map each
+    # box-dest to its host side the same way extra mounts are mapped (under
+    # project_path for workspace dests, shell_path for other home dests).  Empty
+    # list (the default — no masks) -> no stubs.  ⚑ OUTSIDE the vault arm on
+    # purpose, and it must STAY outside: ``run`` emits a declared mask whether or
+    # not the vault is enabled, and without its stub the mount fails in LXC.
+    for mask in tmpfs_masks:
+        host_path = _guest_dest_to_host(mask, shell_path, project_path)
+        if host_path is None:
+            logger.debug("mask stub skip (not under home): %s", mask)
+            continue
+        _ensure_dir(host_path, traverse_root=_home_root(mask))
 
     # Extra mounts: pre-create destination stubs.
     if not extra_mounts:

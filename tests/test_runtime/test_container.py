@@ -1141,6 +1141,33 @@ class TestPrecreateMountStubs:
         )
         assert (shell / ".secret").is_dir()
 
+    def test_mask_stub_made_with_the_vault_disabled(self, tmp_path):
+        """Mask stubs are made regardless of ``enable_vault`` — they pair with
+        the emit, which no longer gates on it.
+
+        Without the stub the tmpfs mount FAILS in LXC (the OCI runtime cannot
+        mkdir the mountpoint inside a bind-mounted overlay), so re-nesting this
+        loop under the vault arm would turn the repaired mask into a launch
+        error on exactly the platform the stubs exist for.
+        """
+        from kanibako.runtime.container import _precreate_mount_stubs
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        _precreate_mount_stubs(
+            shell, project, None,
+            enable_vault=False,
+            vault_ro_path=tmp_path / "no-ro",
+            vault_rw_path=tmp_path / "no-rw",
+            tmpfs_masks=["/home/agent/.secret", "/home/agent/workspace/build"],
+        )
+        assert (shell / ".secret").is_dir()
+        assert (project / "build").is_dir()
+        # Still no vault stubs: the vault arm itself is untouched.
+        assert not (shell / "vault" / "ro").exists()
+        assert not (shell / "vault" / "rw").exists()
+
     def test_vault_dirs_created_even_when_source_missing(self, tmp_path):
         """Vault is UNIVERSAL unless disabled: the box-side dest stubs are made
         whenever vault is enabled, regardless of whether the host source exists
