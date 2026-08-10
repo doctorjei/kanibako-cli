@@ -6750,10 +6750,11 @@ def _install_derived_bindings(
         insert_segments(snapshot, segments, value)
 
 
-#: The two ``meta.assembly.*`` leaves the collapse produces, as SEGMENTS — the
+#: The three ``meta.assembly.*`` leaves the collapse produces, as SEGMENTS — the
 #: same reason ``binding_derivations`` travels that way (a dest is DATA).
 _ASSEMBLY_BINDINGS: "tuple[str, ...]" = ("meta", "assembly", "bindings")
-_ASSEMBLY_COPIES: "tuple[str, ...]" = ("meta", "assembly", "copies")
+_ASSEMBLY_SEEDED: "tuple[str, ...]" = ("meta", "assembly", "seeded")
+_ASSEMBLY_SYNCED: "tuple[str, ...]" = ("meta", "assembly", "synced")
 
 
 def _install_assembly_collapse(snapshot, entries) -> None:
@@ -6773,12 +6774,13 @@ def _install_assembly_collapse(snapshot, entries) -> None:
         collapsed = collapse_store_shapes(build_store_shape_set(folded), home_bind)
     except SettingsError as exc:
         # The collapse REFUSES shapes the shipped route still accepts, and that
-        # tightening lands at the cutover, not here. Report it and leave both
+        # tightening lands at the cutover, not here. Report it and leave all three
         # leaves ABSENT — the state the manifest already names for them.
         get_logger(__name__).debug("meta.assembly.* not folded: %s", exc)
         return
     insert_segments(snapshot, _ASSEMBLY_BINDINGS, collapsed.bindings)
-    insert_segments(snapshot, _ASSEMBLY_COPIES, collapsed.copies)
+    insert_segments(snapshot, _ASSEMBLY_SEEDED, collapsed.seeded)
+    insert_segments(snapshot, _ASSEMBLY_SYNCED, collapsed.synced)
 
 
 def _split_home_bind(entries):

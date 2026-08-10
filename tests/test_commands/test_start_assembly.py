@@ -75,14 +75,14 @@ def _delivered(reconciled):
 
 
 class TestTheCollapseIsProduced:
-    """``meta.assembly.{bindings,copies}`` reach the snapshot off a real launch resolve."""
+    """``meta.assembly.{bindings,seeded,synced}`` reach the snapshot off a real resolve."""
 
-    def test_both_declared_leaves_are_written(self, std, config, project_dir):
-        """RED if the wiring is deleted: neither leaf exists at all."""
+    def test_all_three_declared_leaves_are_written(self, std, config, project_dir):
+        """RED if the wiring is deleted: no leaf exists at all."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _rec = _resolve(std, proj)
 
-        assert sorted(_assembly(snapshot)) == ["bindings", "copies"]
+        assert sorted(_assembly(snapshot)) == ["bindings", "seeded", "synced"]
 
     def test_home_is_pid_zero_and_folded_exactly_once(
         self, std, config, project_dir,
@@ -112,7 +112,7 @@ class TestTheCollapseIsProduced:
         }
 
     def test_a_narrow_resolve_writes_nothing(self, std, config, project_dir):
-        """No home in the entry list ⇒ no box to assemble ⇒ both leaves stay absent."""
+        """No home in the entry list ⇒ no box to assemble ⇒ every leaf stays absent."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _rec = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
@@ -158,10 +158,10 @@ class TestTheLivePathIsUnchanged:
         assert wired == bare
         assert ("/home", "/tmp", "Z,U") in wired[0]
 
-    def test_a_refused_configuration_leaves_both_leaves_absent(
+    def test_a_refused_configuration_leaves_every_leaf_absent(
         self, std, config, project_dir,
     ):
-        """A partial write would describe a box nothing could assemble — so write neither."""
+        """A partial write would describe a box nothing could assemble — so write none."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _rec = _resolve(
             std, proj, extra_default_categories=_SUBSUMING,
@@ -211,7 +211,7 @@ class TestHomeIsLiftedOut:
         assert all(e.box_dest != HOME_DEST for e in folded)
 
 
-@pytest.mark.parametrize("leaf", ["bindings", "copies"])
+@pytest.mark.parametrize("leaf", ["bindings", "seeded", "synced"])
 def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
     leaf, std, config, project_dir,
 ):
@@ -220,9 +220,9 @@ def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
     snapshot, _rec = _resolve(std, proj)
     value = _assembly(snapshot)[leaf]
 
-    # ⚑ TWO SHAPES, ONE PROPERTY. ``bindings`` is dest-KEYED; ``copies`` became a
-    # scope-ordered LIST that CARRIES its dest (2026-08-09d: copies apply to the
-    # home bind alone, and a dest MAY repeat). Either way the dest arrives WHOLE.
+    # ⚑ TWO SHAPES, ONE PROPERTY. ``bindings`` is dest-KEYED; ``seeded`` and
+    # ``synced`` are scope-ordered LISTS that CARRY their dest (2026-08-09d for the
+    # first, 2026-08-10b for the split). Either way the dest arrives WHOLE.
     assert isinstance(value, dict if leaf == "bindings" else list)
     dests = list(value) if leaf == "bindings" else [entry.dest for entry in value]
     assert all("/" in dest for dest in dests), sorted(dests)

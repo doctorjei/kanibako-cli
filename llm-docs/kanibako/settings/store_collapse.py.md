@@ -1,14 +1,16 @@
 # The Collapse (roadmap step 6a)
 
 The "grand unification": four per-scope `StoreShape`s plus the home bind, merged into ONE dest-keyed
-bindings map and ONE scope-ordered copy LIST. Scope order — `system`, `agent`, `workset`, `box` — IS
+bindings map and TWO scope-ordered copy LISTS. Scope order — `system`, `agent`, `workset`, `box` — IS
 the precedence; a later scope beats an earlier one.
 
 **Authority:** `designs/grand-unification-collapse-DESIGN.md` §2 (Jei's algorithm, verbatim) and
 **§2a, which supersedes §2's head** · its §0 ruling 1 (parent-first per scope) · the SUBSUMPTION
 RULES, verbatim at `designs/collapse-implementation-DESIGN.md` **§7**, with the worked refusability
 table and the operations at **§8** · **§9, which rules that copies apply to the HOME bind ALONE**
-(2026-08-09d) · `designs/store-shape-producer-DESIGN.md` §7 (the input arms).
+(2026-08-09d) · `designs/store-shape-producer-DESIGN.md` §7 (the input arms) · the spec's
+`meta.assembly.*` rows and the **2026-08-10b** amendment, which splits the copy output in two and
+moves `synced` to the far end of the fold.
 
 ## Status: ADDITIVE, PURE and INFORMATION-ONLY
 
@@ -19,16 +21,29 @@ live delivery path, including `reconcile_categories`' arbitration half, its `syn
 refusal and its row-5 warning channel.
 
 Its one consumer is `start.py:_install_assembly_collapse`, which writes the result to
-`meta.assembly.bindings` / `meta.assembly.copies` — leaves nothing reads. The collapse REFUSES
-shapes the shipped route still accepts, so that seam catches `SettingsError` and leaves both leaves
-absent; the tightening lands at the CUTOVER.
+`meta.assembly.bindings` / `meta.assembly.seeded` / `meta.assembly.synced` — leaves nothing reads.
+The collapse REFUSES shapes the shipped route still accepts, so that seam catches `SettingsError`
+and leaves all three absent; the tightening lands at the CUTOVER.
 
-## Two halves that do not interact
+## Three passes, in the ONE order that is a ruling
 
-⚖️ **RULED 2026-08-09d: a copy applies to the HOME bind alone.** A copy's destination is always
-inside home and it resolves into the home bind's source — the box home store — so no mount can
-arbitrate one. That makes the copy half a plain **concatenation** that completes BEFORE any binding
-or mask fold, reading no binding at all.
+⚖️ **RULED 2026-08-10b: the two copy categories resolve at OPPOSITE ENDS of the fold**, and the
+order below is the ruling itself — *"could we simply copy it last instead? After binds are done?"*
+
+1. **the SEED pass** — every scope's `seed` arm, concatenated. It reads no binding at all.
+2. **the MOUNT fold** — the bind and mask arms, over the home foundation.
+3. **the SYNC pass** — every scope's `sync` arm, concatenated, against a bind map that is by now
+   COMPLETE and IMMUTABLE.
+
+⚑⚑ **Step 3 is a LOOKUP, not an arbitration.** Nothing is pruned, no mount is deleted, no copy
+competes with a mount; the sync pass only READS the map, to refuse the one case below. The
+2026-08-09d simplification is untouched.
+
+### The seed pass: a copy applies to the HOME bind alone
+
+⚖️ **RULED 2026-08-09d.** A seed's destination is always inside home and it resolves into the home
+bind's source — the box home store — so no mount can arbitrate one. That makes the pass a plain
+**concatenation** that completes BEFORE any binding or mask fold.
 
 Consequences, all of them removals rather than patches:
 
@@ -46,9 +61,36 @@ Consequences, all of them removals rather than patches:
   *"never by a resolve-time `exists()` probe: this module is PURE."* The probe is removed by
   removing its cause.
 
-**The one new error case:** a copy whose dest is not inside home. Every copy shipped today is
+**Its one error case:** a SEED whose dest is not inside home. Every seed shipped today is
 home-relative by construction, so this is structural rather than a behaviour change — and it is
 refused BY NAME, never dropped.
+
+### The sync pass: LAST, and NOT home-only
+
+⚑ **There is deliberately no home-only rule for `synced`.** A sync dest resolves through the
+collapsed bindings to the innermost bind containing it — so a cred file inside a bound directory
+lands in THAT BIND'S SOURCE, where the box can actually see it, instead of being written under home
+and shadowed. Home is simply the pid-0 foundation among those binds. ⚑ Applying
+`_refuse_seed_outside_home` to this arm too would reintroduce the rule his ordering deleted.
+
+🛑 **That resolution is DELIVERY and is NOT done here.** The emitted row carries the GUEST dest,
+exactly as a seed row does; the innermost-bind lookup lands at the CUTOVER's step 2.
+
+**Its one error case:** a sync dest that EXACTLY EQUALS a bind dest. A file bind's dest IS the file,
+so writing through it would replace the bound inode; strictly INSIDE a bind dest is fine and is the
+normal case. ⚑ The rule is stated STRUCTURALLY — as dest equality rather than as "a file bind" —
+because a PURE module cannot tell a file bind from a directory bind, and the probe that could is
+gone for good. Broader than the file-bind case it is aimed at, narrower than a probe, and
+**deliberately strict**: a refusal can be LOOSENED later without breaking a box that works today,
+whereas tightening one cannot.
+
+⚑ Exact equality is expressed as the dict lookup itself. Both sides are normalized dests, so no
+containment predicate is involved and none was added — `_is_within` is inclusive of equality and
+would answer a different question.
+
+⚑ A sync at a MASK's exact point is NOT refused: `src = None` marks a mask, and the rule and its
+inode rationale are about BINDINGS. Whether such a sync is then dead is a delivery question, like
+the seed at a mask's point beside it.
 
 ## Home is pid 0
 
@@ -169,27 +211,39 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 
 ## What comes back
 
-`CollapsedStore(bindings, copies)`.
+`CollapsedStore(bindings, seeded, synced)`.
 
 * `bindings: dict[dest -> CollapsedBind(src, opts)]`, an ORDINARY dict — `SortedDict` is dropped.
   Its order is not its meaning: SCOPE order decided precedence while it was being built, and PATH
   order is emission's business (`settings_categories` depth-sorts shallowest-first).
-* `copies: list[CollapsedCopy(src, dest, opts)]`, in SCOPE order. The dest is no longer the key, so
+* `seeded: list[CollapsedCopy(src, dest, opts)]`, in SCOPE order. The dest is no longer the key, so
   the entry CARRIES it. Not dest-sorted and not deduplicated: the order IS the overlay order.
+* `synced: list[CollapsedCopy(src, dest, opts)]`, the same row type in the same SCOPE order. TWO
+  lists rather than one tagged list because no consumer wants both: the two live appliers already
+  filter, in opposite directions, and each would have had to filter again. ⚑ ONE list serves BOTH
+  halves of sync — delivery host→guest at launch and writeback guest→host at session end — because
+  a synced row spells both sides fully and takes no root, so DIRECTION IS A PROPERTY OF THE READ.
+  That is why the reserved `meta.assembly.backup` leaf is retired rather than filled in.
 * A MASK is `CollapsedBind(None, None)`. ⚑ `BindEntry.src` is NOT widened to `str | None` to carry
   it: that would relax the storage type for every consumer to serve the collapse's output shape.
   The second slot is DEAD, not reserved — a mask is a tmpfs with no host source and has no
   mount-option vocabulary.
 * `seeded`/`synced` ARE COPIES AND STAY COPIES. The collapse changes key shape, never delivery.
 
-## One thing the algorithm deliberately does not do
+## What the algorithm deliberately does not do
 
-* **`shape.sync` is never read.** Jei's algorithm walks `shape.seed` only, so `synced` entries reach
-  neither output. `_resolve_dest_group`'s `synced_vs_binding` refusal is therefore not reproduced
-  here either — and it does not need to be, because the live path still raises it. ⚑ The deferred
-  `synced` change (producer DESIGN §9.4) LOST ITS PREMISE with the copy ruling: it read *"a shadowed
-  sync's copy is REMOVED from the collapsed list"*, and nothing is removed any more. Its replacement
-  is the `mount_forbidden` list, on the backlog.
+* **it does not resolve a sync dest through the bind map.** That is the DELIVERY half and it lands
+  at the CUTOVER's step 2; here the row carries the guest dest.
+* **it does not reproduce `_resolve_dest_group`'s `synced_vs_binding` refusal**, which the same
+  ruling RETIRES: it existed because a copy could be shadowed by a live mount, and under copy-last
+  the copy goes INTO the mount's source. The live route still raises it until the cutover deletes
+  it. ⚑ Its stated replacement was the `mount_forbidden` backlog item; the actual replacement is
+  the ORDERING, plus the exact-dest refusal above — so that backlog item is answered, not pending.
+* ⚑ **it does not carry the live route's "a `synced` row REPLACES every other copy at a shared
+  dest"** (`settings_categories._resolve_copy_group`). Two lists leave that rule no home in the
+  collapse. The reading is that it falls out of TIME and POLARITY instead — a seed lands once at
+  create, `if_absent`, and a sync overwrites at every launch — but that is a reading and the
+  cutover owes it a measurement.
 
 ## The refusals, and what each one names
 
@@ -201,5 +255,8 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 * **mask on a mask** — names every mask it lands on or inside.
 * **mask over home** — names the offending dest and home's own, for a mask at home's point or above
   it. Refused BEFORE the sweep, so a mask that cannot be accepted deletes nothing first.
-* **copy outside home** — names the source and the destination, and points at the home bind.
+* **seed outside home** — names the source and the destination, points at the home bind, and offers
+  `synced` as the category that is not home-only.
+* **sync at a bind's exact dest** — names the sync's source, the shared destination and the source
+  bound there, and points at "strictly inside" as the cure.
 * **mode contradiction** — see the fold, above.

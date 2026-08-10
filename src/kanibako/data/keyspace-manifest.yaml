@@ -269,6 +269,58 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    by precedence. The tightening lands at the CUTOVER
                    (plans/2026-08-09d-CUTOVER-PLAN.md). The spec LEADS the code
                    here, deliberately; the spec is the authority."
+    - date: "2026-08-10b"
+      what: "THE COPY OUTPUT SPLITS IN TWO, AND `synced` RESOLVES AT THE OPPOSITE END
+             OF THE FOLD. meta.assembly.copies -> meta.assembly.seeded (renamed; the
+             leaf names the category it carries, as its siblings do), carrying the
+             `seeded` arm and nothing else. meta.assembly.synced is NEW and carries
+             the `synced` arm, which the collapse had been DROPPING ENTIRELY.
+             meta.assembly.backup is RETIRED: it had been reserved for the writeback
+             — the second half of sync — and ONE list now serves both halves, since a
+             synced entry spells both sides fully and takes no root, so DIRECTION IS
+             A PROPERTY OF THE READ, not of the row."
+      authority: "Jei 2026-08-10, in sequence: \"Two lists sounds good.\" ->
+                  \"(meta.assembly.synced should good.) … it may make sense for
+                  'copies' to become meta.assembly.seeded to match the pattern.\" ->
+                  \"Since sync has its own pattern now, could we simply copy it last
+                  instead? After binds are done?\" -> \"synced<->binding is
+                  unnecessary now, yes… we need to either have mount_forbidden for
+                  the specific mount point, or we need to throw an error or warning if
+                  there's a file bind overlap. Perhaps for simplicity, we start with
+                  an error; we can always loosen it later\" — clarified: \"we can
+                  loosen later without breaking existing boxes\" — and on the drafted
+                  rows: \"go\". Spec specs/settings-keyspace-1.8.0.md §0 and §1A;
+                  annotations, post-ratification amendment 2026-08-10b. Precipitating
+                  measurement: plans/2026-08-09d-CUTOVER-PLAN.md §1c-M."
+      scope: "⚑⚑ `seeded` and `synced` ARE STILL COPIES (kind: copy untouched) — this
+              is KEY SHAPE and RESOLUTION ORDER, not delivery. `seeded` is UNCHANGED
+              in every respect but its name: home-only, resolved BEFORE any binding
+              folds, scope-ordered concatenation, dest may repeat. `synced` applies
+              LAST, after the bind map is FINAL, and there is deliberately NO
+              home-only rule for it — home is simply the pid-0 foundation among the
+              binds a sync dest may resolve through. ⚑ ONE NEW REFUSAL: a sync dest
+              that EXACTLY EQUALS a bind dest. It is stated STRUCTURALLY because the
+              collapse is PURE and cannot tell a file bind from a directory bind; it
+              catches every file-bind overlap and starts strict, since loosening a
+              refusal cannot break a box that works today. ⚑ THIS IS NOT AN
+              ARBITRATION: the bind map is complete and immutable before the sync pass
+              READS it — nothing is pruned and no copy competes with a mount, so the
+              2026-08-09d simplification stands. ⚑ CLEAN BREAK, no alias:
+              meta.assembly.* post-dates v1.8.0-rc1, so meta.assembly.copies and
+              meta.assembly.backup are now NOT KEYS and are refused BY NAME.
+              📌 The synced<->binding same-dest refusal on the LIVE route
+              (settings_categories._resolve_dest_group) is RETIRED by this, and the
+              mount_forbidden backlog item is ANSWERED by it — both land at the
+              CUTOVER, not with this amendment."
+      code_state: "Code + tests landed with this amendment: DECLARED_META_ASSEMBLY_
+                   LEAVES becomes {bindings, seeded, synced}; store_collapse splits
+                   _collapse_copies into a seed pass and a sync pass with the mount
+                   fold BETWEEN them, CollapsedStore gains its third field, and the
+                   sync pass carries the exact-dest refusal; _install_assembly_collapse
+                   writes all three leaves. 🛑 NOT in this amendment: the
+                   resolve-through-the-bind-map DELIVERY behaviour (the emitted row
+                   carries the GUEST dest) and the two live copy consumers, which
+                   still read reconciled.copies. Both switch at the CUTOVER's step 2."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1577,8 +1629,10 @@ keys:
   ## ASSEMBLE THE BOX. ⚑ `origin: derived` is the honest token, NOT
   ## `runtime_treewalk` — nothing walks a tree to get them; they fold from the
   ## declared category families, exactly like every other derived meta row.
-  ## ⚑ `backup` ALONE has no producer; the collapse writes the other two on the
-  ## launch path (commands/start.py, _install_assembly_collapse).
+  ## ⚑ ALL THREE ARE PRODUCED: the collapse writes them on the launch path
+  ## (commands/start.py, _install_assembly_collapse). The copy output SPLIT on
+  ## 2026-08-10 — `copies` became `seeded`, `synced` was added, and the RESERVED
+  ## `backup` was retired because one sync list serves both directions.
   meta.assembly.bindings:
     namespace: meta
     set: never
@@ -1592,28 +1646,43 @@ keys:
            launch path; ABSENT when the collapse refuses a config the shipping
            route still accepts, which is caught at that one seam and logged."
     spec: "§1A"
-  meta.assembly.copies:
+  meta.assembly.seeded:
     namespace: meta
     set: never
     origin: derived
     type: list
     value: "list[(host_src, guest_dest, opts)]"
-    note: "COLLAPSED COPY LIST, SCOPE-ORDERED - the concatenation of every scope's
-           copy arm. Copies apply to the HOME bind ALONE, so they resolve BEFORE any
-           binding folds and no mount arbitrates them: nothing is pruned, and a dest
-           MAY repeat (the later entry overwrites the earlier FILEWISE at apply
-           time). A copy whose dest is not inside home is a config ERROR. Same
-           producer as meta.assembly.bindings, and absent under the same condition."
+    note: "COLLAPSED SEED LIST, SCOPE-ORDERED - the CONCATENATION of every scope's
+           `seeded` arm. Applied ONCE at box CREATE, create-if-absent: it never
+           clobbers box content. Resolves into the HOME bind's source, BEFORE any
+           binding folds, so no mount arbitrates it: nothing is pruned, and a dest
+           MAY repeat - rows at one dest are an ordered LAYER STACK, later over
+           earlier, applied FILEWISE. A dest not inside home is a config ERROR.
+           Same producer as meta.assembly.bindings, and absent under the same
+           condition. (Renamed from `copies` 2026-08-10: the leaf names the category
+           it carries, as its siblings do. meta.assembly.* post-dates v1.8.0-rc1, so
+           the rename ships clean - no alias, no shim.)"
     spec: "§1A"
-  meta.assembly.backup:
+  meta.assembly.synced:
     namespace: meta
     set: never
     origin: derived
-    type: dict
-    note: "RESERVED — guest->host, the only reverse-direction member. NO PRODUCER
-           EXISTS; declared with the pair above so the triple ratifies once. ⚑ The
-           `origin` here states the CLASS it will belong to, not a claim that
-           anything derives it today."
+    type: list
+    value: "list[(host_src, guest_dest, opts)]"
+    note: "COLLAPSED SYNC LIST, SCOPE-ORDERED - the CONCATENATION of every scope's
+           `synced` arm. Applied LAST, AFTER the bind map is final: each dest
+           resolves THROUGH the collapsed bindings to the INNERMOST bind containing
+           it, so a sync inside a bound directory lands in THAT BIND'S SOURCE and is
+           visible in the box. Home is simply the pid-0 foundation among those binds
+           - there is NO home-only rule here. A sync dest that EXACTLY EQUALS a bind
+           dest is a config ERROR (a file bind's dest IS the file; writing through it
+           would replace the bound inode); strictly INSIDE a bind dest is fine. BOTH
+           HALVES READ THIS ONE LIST - delivery host->guest at launch (overwrite,
+           mtime-gated) and WRITEBACK guest->host at session end. A synced entry
+           spells both sides fully and takes NO root, so DIRECTION IS A PROPERTY OF
+           THE READ, not of the row; no separate reverse-direction member is needed.
+           Same producer as meta.assembly.bindings, and absent under the same
+           condition. (Replaces the RESERVED `backup` leaf, retired 2026-08-10.)"
     spec: "§1A"
   meta.workset.path:
     namespace: meta

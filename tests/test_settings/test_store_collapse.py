@@ -1,4 +1,4 @@
-"""The step-6a COLLAPSE: four per-scope shapes + the home bind -> a bind map + a copy LIST.
+"""The step-6a COLLAPSE: four per-scope shapes + the home bind -> a bind map + TWO copy LISTS.
 
 ⚑ [[same-arity-shape-flip-passes-silently]] governs this file. The collapse returns
 dicts and lists of tuples, so a wrong-but-same-shape answer passes trivially — every
@@ -74,7 +74,8 @@ class TestHomeIsPidZero:
   def test_home_is_bound_before_any_scope_is_read(self):
     collapsed = collapse()
     assert collapsed.bindings == {GUEST: CollapsedBind(HOME.src, HOME.opts)}
-    assert collapsed.copies == []
+    assert collapsed.seeded == []
+    assert collapsed.synced == []
 
   def test_home_is_keyed_by_its_NORMALIZED_dest_not_the_tilde(self):
     # ⚑ His ``{"~": home_bind}`` is spelled symbolically. Left literal, home would
@@ -123,10 +124,10 @@ class TestHomeIsPidZero:
       collapse(box=shape(rw={"/": BindEntry("/h/root", "Z,U")}))
 
 
-class TestTheCopyHalfIsAConcatenation:
-  """⚖️ RULED 2026-08-09d — copies apply to the HOME bind ALONE, so nothing arbitrates them."""
+class TestTheSeedPassIsAConcatenation:
+  """⚖️ RULED 2026-08-09d — seeds apply to the HOME bind ALONE, so nothing arbitrates them."""
 
-  def test_the_copy_list_is_the_CONCATENATION_in_SCOPE_order(self):
+  def test_the_seed_list_is_the_CONCATENATION_in_SCOPE_order(self):
     # ⚑⚑ THE DESTS DISAGREE WITH THE SCOPES ON PURPOSE: ``z`` is declared in the
     # OUTERMOST scope and ``a`` in the innermost, so a list that came back
     # dest-sorted — which is what the dropped ``SortedDict`` gave — reverses this
@@ -136,7 +137,7 @@ class TestTheCopyHalfIsAConcatenation:
       box=shape(seed={f"{GUEST}/a": BindEntry("/h/box", "")}),
       system=shape(seed={f"{GUEST}/z": BindEntry("/h/sys", "")}),
     )
-    assert collapsed.copies == [
+    assert collapsed.seeded == [
       CollapsedCopy("/h/sys", f"{GUEST}/z", ""),
       CollapsedCopy("/h/box", f"{GUEST}/a", ""),
     ]
@@ -151,30 +152,185 @@ class TestTheCopyHalfIsAConcatenation:
       agent=shape(seed={"~": BindEntry("/h/agent", "")}),
       box=shape(seed={"~": BindEntry("/h/box", "")}),
     )
-    assert [entry.src for entry in collapsed.copies] == ["/h/base", "/h/agent", "/h/box"]
-    assert {entry.dest for entry in collapsed.copies} == {GUEST}
+    assert [entry.src for entry in collapsed.seeded] == ["/h/base", "/h/agent", "/h/box"]
+    assert {entry.dest for entry in collapsed.seeded} == {GUEST}
 
   def test_the_dest_is_CARRIED_on_the_entry_and_NORMALIZED(self):
     collapsed = collapse(box=shape(seed={"~/x": BindEntry("/h/x", "")}))
-    assert collapsed.copies == [CollapsedCopy("/h/x", f"{GUEST}/x", "")]
+    assert collapsed.seeded == [CollapsedCopy("/h/x", f"{GUEST}/x", "")]
 
   def test_a_dotted_dest_survives_WHOLE(self):
     # ⚑⚑ A destination is DATA — never split on its dots.
     collapsed = collapse(box=shape(seed={"~/.cache/uv": BindEntry("/h/uv", "")}))
-    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/.cache/uv"]
+    assert [entry.dest for entry in collapsed.seeded] == [f"{GUEST}/.cache/uv"]
 
   def test_a_seeded_entry_is_a_COPY_and_never_becomes_a_binding(self):
     collapsed = collapse(box=shape(seed={f"{GUEST}/x": BindEntry("/h/x", "")}))
-    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x"]
+    assert [entry.dest for entry in collapsed.seeded] == [f"{GUEST}/x"]
     assert f"{GUEST}/x" not in collapsed.bindings
 
-  def test_the_SYNC_arm_is_never_read(self):
-    # ⚑ HIS ALGORITHM WALKS ``shape.seed`` ONLY. ``synced`` reaches neither output,
-    # and the ``synced_vs_binding`` refusal is therefore not reproduced here either —
-    # the live delivery path still raises it, untouched by step 6. Pinned so that
-    # changing it is a DECISION, not a drive-by.
+  def test_the_SYNC_arm_reaches_the_SYNC_list_and_never_the_seed_one(self):
+    # ⚑ INVERTED 2026-08-10b. The arm used to reach NEITHER output — the collapse
+    # dropped every ``synced`` row, so a declared credential sync gave 1 copy on the
+    # live route and 0 here. The two lists must now stay disjoint in BOTH directions.
     collapsed = collapse(box=shape(sync={f"{GUEST}/x": BindEntry("/h/x", "")}))
-    assert collapsed.copies == []
+    assert collapsed.seeded == []
+    assert collapsed.synced == [CollapsedCopy("/h/x", f"{GUEST}/x", "")]
+    assert list(collapsed.bindings) == [GUEST]
+
+  def test_a_SEED_arm_reaches_the_seed_list_and_never_the_sync_one(self):
+    collapsed = collapse(box=shape(seed={f"{GUEST}/x": BindEntry("/h/x", "")}))
+    assert collapsed.seeded == [CollapsedCopy("/h/x", f"{GUEST}/x", "")]
+    assert collapsed.synced == []
+
+  def test_the_two_lists_do_not_cross_contaminate_when_BOTH_arms_are_declared(self):
+    # ⚑ Both arms, one scope, distinct dests: each row lands in exactly one list.
+    collapsed = collapse(
+      box=shape(
+        seed={f"{GUEST}/s": BindEntry("/h/seed", "")},
+        sync={f"{GUEST}/y": BindEntry("/h/sync", "")},
+      ),
+    )
+    assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/s", "")]
+    assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/y", "")]
+
+  def test_one_dest_in_BOTH_arms_yields_one_row_in_EACH_list(self):
+    # The live route makes a ``synced`` row REPLACE every other copy at a shared
+    # dest. Two lists give that rule no home here, and nothing arbitrates: both rows
+    # survive, in their own lists. Whether the delivery order reproduces the old net
+    # effect is a CUTOVER question, deliberately not answered by the collapse.
+    collapsed = collapse(
+      box=shape(
+        seed={f"{GUEST}/x": BindEntry("/h/seed", "")},
+        sync={f"{GUEST}/x": BindEntry("/h/sync", "")},
+      ),
+    )
+    assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
+    assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/x", "")]
+
+
+class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
+  """⚖️ RULED 2026-08-10b — *"could we simply copy it last instead? After binds are done?"*"""
+
+  def test_the_sync_list_is_the_CONCATENATION_in_SCOPE_order(self):
+    # ⚑⚑ THE DESTS DISAGREE WITH THE SCOPES ON PURPOSE, exactly as the seed case
+    # does: the alphabetically LAST dest sits in the OUTERMOST scope, so a
+    # dest-sorted implementation returns this list REVERSED and the test goes red.
+    collapsed = collapse(
+      box=shape(sync={f"{GUEST}/a": BindEntry("/h/box", "")}),
+      workset=shape(sync={f"{GUEST}/m": BindEntry("/h/ws", "")}),
+      system=shape(sync={f"{GUEST}/z": BindEntry("/h/sys", "")}),
+    )
+    assert collapsed.synced == [
+      CollapsedCopy("/h/sys", f"{GUEST}/z", ""),
+      CollapsedCopy("/h/ws", f"{GUEST}/m", ""),
+      CollapsedCopy("/h/box", f"{GUEST}/a", ""),
+    ]
+
+  def test_a_sync_dest_OUTSIDE_home_is_ACCEPTED(self):
+    # ⚑⚑ THE LOAD-BEARING NEGATIVE: there is deliberately NO home-only rule for
+    # ``synced``. Its dest resolves through whichever binding covers it, and home is
+    # only the pid-0 foundation among them — so the seed refusal must NOT leak onto
+    # this arm. Goes RED the moment ``_refuse_seed_outside_home`` is applied here.
+    collapsed = collapse(
+      system=shape(rw={"/opt/thing": BindEntry("/h/mount", "Z,U")}),
+      box=shape(sync={"/opt/thing/cred": BindEntry("/h/cred", "")}),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/cred", "/opt/thing/cred", "")]
+
+  def test_a_sync_dest_outside_home_with_NO_binding_at_all_is_still_ACCEPTED(self):
+    # The rule is about home, not about coverage: the collapse refuses neither.
+    collapsed = collapse(box=shape(sync={"/opt/loose": BindEntry("/h/loose", "")}))
+    assert collapsed.synced == [CollapsedCopy("/h/loose", "/opt/loose", "")]
+
+  def test_a_SEED_dest_outside_home_is_STILL_refused(self):
+    # The counterpart of the case above, and the reason both are here: the two arms
+    # answer this question DIFFERENTLY, and a shared pass would flatten them.
+    with pytest.raises(SettingsError, match=r"outside the home binding"):
+      collapse(box=shape(seed={"/opt/thing": BindEntry("/h/thing", "")}))
+
+  def test_a_sync_INSIDE_a_bind_dest_is_accepted_and_carries_the_GUEST_dest(self):
+    # ⚑ The normal case, and the one the ordering exists for. The row carries the
+    # GUEST dest: resolving it through the bind map to ``/h/mount/cred`` is DELIVERY
+    # and lands at the cutover, not here.
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+      box=shape(sync={f"{GUEST}/w/cred": BindEntry("/h/cred", "")}),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w/cred", "")]
+
+  def test_a_sync_at_a_binds_EXACT_dest_is_REFUSED(self):
+    with pytest.raises(SettingsError, match=r"EXACTLY the destination"):
+      collapse(
+        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+        box=shape(sync={f"{GUEST}/w": BindEntry("/h/cred", "")}),
+      )
+
+  def test_the_exact_dest_refusal_NAMES_the_sync_the_dest_and_the_bound_source(self):
+    with pytest.raises(
+      SettingsError, match=rf"'/h/cred'.*'{GUEST}/w'.*'/h/mount'",
+    ):
+      collapse(
+        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+        box=shape(sync={f"{GUEST}/w": BindEntry("/h/cred", "")}),
+      )
+
+  def test_the_refusal_reads_the_FINAL_map_not_the_scope_the_sync_was_declared_in(self):
+    # ⚑ THE DISCRIMINATING SHAPE. The binding arrives in the LAST scope, AFTER the
+    # sync's own; only a pass that runs after the WHOLE mount fold can see it. A
+    # per-scope or copies-first implementation accepts this configuration.
+    with pytest.raises(SettingsError, match=r"EXACTLY the destination"):
+      collapse(
+        system=shape(sync={f"{GUEST}/w": BindEntry("/h/cred", "")}),
+        box=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+      )
+
+  def test_a_sync_at_HOME_itself_is_refused_because_home_is_a_binding(self):
+    # Home is pid 0 and sits in the map like any other bind, so the ONE rule covers
+    # it with nothing added.
+    with pytest.raises(SettingsError, match=rf"'{HOME.src}'"):
+      collapse(box=shape(sync={"~": BindEntry("/h/cred", "")}))
+
+  def test_a_sync_at_a_MASKS_exact_point_is_NOT_refused(self):
+    # ⚑ THE BOUNDARY, pinned so that moving it is a DECISION. ``src = None`` marks a
+    # MASK, and the rule — with its bound-inode rationale — is about BINDINGS. A
+    # sync landing on a tmpfs is a DELIVERY question, as the seed beside it is.
+    collapsed = collapse(
+      system=shape(mask={f"{GUEST}/m": True}),
+      box=shape(sync={f"{GUEST}/m": BindEntry("/h/cred", "")}),
+    )
+    assert collapsed.bindings[f"{GUEST}/m"] == MASK
+    assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/m", "")]
+
+  def test_a_sync_whose_dest_CONTAINS_a_bind_dest_is_not_refused(self):
+    # Only EXACT equality is the error. A sync above a binding is not the file-bind
+    # overlap the rule is aimed at, and the refusal must not widen into containment.
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/w/inner": BindEntry("/h/mount", "Z,U")}),
+      box=shape(sync={f"{GUEST}/w": BindEntry("/h/cred", "")}),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w", "")]
+
+  def test_a_sync_dest_is_NORMALIZED_and_a_dotted_one_survives_WHOLE(self):
+    collapsed = collapse(box=shape(sync={"~/.aws/credentials": BindEntry("/h/c", "")}))
+    assert collapsed.synced == [
+      CollapsedCopy("/h/c", f"{GUEST}/.aws/credentials", ""),
+    ]
+
+  def test_a_sync_dest_REPEATS_across_scopes_and_nothing_is_pruned(self):
+    collapsed = collapse(
+      system=shape(sync={"~/c": BindEntry("/h/sys", "")}),
+      box=shape(sync={"~/c": BindEntry("/h/box", "")}),
+    )
+    assert [entry.src for entry in collapsed.synced] == ["/h/sys", "/h/box"]
+
+  def test_a_syncs_opts_are_carried_VERBATIM_with_no_mode_folded_in(self):
+    collapsed = collapse(box=shape(sync={"~/c": BindEntry("/h/c", "Z,U")}))
+    assert collapsed.synced[0].opts == "Z,U"
+
+  def test_a_synced_entry_is_a_COPY_and_never_becomes_a_binding(self):
+    # ⚑⚑ ``seeded``/``synced`` ARE COPIES AND STAY COPIES — key shape only.
+    collapsed = collapse(box=shape(sync={f"{GUEST}/c": BindEntry("/h/c", "")}))
     assert list(collapsed.bindings) == [GUEST]
 
 
@@ -186,7 +342,7 @@ class TestNothingPrunesACopy:
       system=shape(seed={f"{GUEST}/x": BindEntry("/h/early", "")}),
       box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
     )
-    assert collapsed.copies == [CollapsedCopy("/h/early", f"{GUEST}/x", "")]
+    assert collapsed.seeded == [CollapsedCopy("/h/early", f"{GUEST}/x", "")]
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/mount"
 
   def test_a_bind_ABOVE_a_copy_no_longer_prunes_it(self):
@@ -194,14 +350,14 @@ class TestNothingPrunesACopy:
       system=shape(seed={f"{GUEST}/x/deep/file": BindEntry("/h/f", "")}),
       box=shape(rw={f"{GUEST}/x": BindEntry("/h/mount", "Z,U")}),
     )
-    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x/deep/file"]
+    assert [entry.dest for entry in collapsed.seeded] == [f"{GUEST}/x/deep/file"]
 
   def test_a_mask_no_longer_prunes_the_copies_beneath_it(self):
     collapsed = collapse(
       system=shape(seed={f"{GUEST}/x/file": BindEntry("/h/f", "")}),
       box=shape(mask={f"{GUEST}/x": True}),
     )
-    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x/file"]
+    assert [entry.dest for entry in collapsed.seeded] == [f"{GUEST}/x/file"]
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
 
   def test_a_copy_at_a_masks_EXACT_point_neither_refuses_nor_unmasks(self):
@@ -213,7 +369,7 @@ class TestNothingPrunesACopy:
       box=shape(seed={f"{GUEST}/planted": BindEntry("/h/seed", "")}),
     )
     assert collapsed.bindings[f"{GUEST}/planted"] == MASK
-    assert collapsed.copies == [CollapsedCopy("/h/seed", f"{GUEST}/planted", "")]
+    assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/planted", "")]
 
   def test_an_OUTER_scopes_bind_does_not_reach_a_LATER_scopes_copy(self):
     # Held from the deleted prune's own S4 test: precedence must not invert. It is
@@ -223,11 +379,15 @@ class TestNothingPrunesACopy:
       agent=shape(seed={f"{GUEST}/x/deep": BindEntry("/h/deep", "")}),
       box=shape(rw={f"{GUEST}/other": BindEntry("/h/other", "Z,U")}),
     )
-    assert [entry.dest for entry in collapsed.copies] == [f"{GUEST}/x/deep"]
+    assert [entry.dest for entry in collapsed.seeded] == [f"{GUEST}/x/deep"]
 
 
-class TestACopyMustLandInsideHome:
-  """⚖️ THE ONE NEW ERROR CASE — a copy resolves into the home store or nowhere."""
+class TestASeedMustLandInsideHome:
+  """⚖️ THE SEED ERROR CASE — a seed resolves into the home store or nowhere.
+
+  ⚑ It is the SEED arm's rule alone: ``synced`` deliberately has no home-only rule
+  (2026-08-10b), and the sync class below pins that difference from the other side.
+  """
 
   def test_a_copy_OUTSIDE_home_is_refused_by_name(self):
     with pytest.raises(SettingsError, match=r"outside the home binding"):
@@ -240,7 +400,7 @@ class TestACopyMustLandInsideHome:
   def test_a_copy_AT_home_ITSELF_is_inside_home(self):
     # The ``seeded`` layers target ``~`` exactly, so equality MUST count as inside.
     collapsed = collapse(box=shape(seed={"~": BindEntry("/h/layer", "")}))
-    assert collapsed.copies == [CollapsedCopy("/h/layer", GUEST, "")]
+    assert collapsed.seeded == [CollapsedCopy("/h/layer", GUEST, "")]
 
   def test_a_SIBLING_of_home_sharing_its_prefix_is_NOT_inside_home(self):
     # ⚑ The separator guard, on the containment predicate the new refusal uses:
@@ -275,7 +435,7 @@ class TestTheModuleNeverTouchesTheFilesystem:
     source = tmp_path / "adir"
     source.mkdir()
     collapsed = self.collapsed_with_source(source)
-    assert collapsed.copies == [CollapsedCopy(str(source), self.DEST, "")]
+    assert collapsed.seeded == [CollapsedCopy(str(source), self.DEST, "")]
 
   def test_the_answer_does_NOT_depend_on_whether_the_source_exists(self, tmp_path):
     # The old probe made ONE config refuse or permit according to a fact about the
@@ -286,7 +446,7 @@ class TestTheModuleNeverTouchesTheFilesystem:
     afile.write_text("x")
     absent = tmp_path / "absent"
     answers = [
-      self.collapsed_with_source(src).copies[0]._replace(src="<src>")
+      self.collapsed_with_source(src).seeded[0]._replace(src="<src>")
       for src in (directory, afile, absent)
     ]
     assert answers == [CollapsedCopy("<src>", self.DEST, "")] * 3
@@ -340,7 +500,7 @@ class TestTheOptsFold:
     # A copy is in no ro/rw ARM, so there is no mode to fold. It carries what the
     # entry stored, exactly as home does.
     collapsed = collapse(box=shape(seed={"~/x": BindEntry("/h/x", "Z,U")}))
-    assert collapsed.copies[0].opts == "Z,U"
+    assert collapsed.seeded[0].opts == "Z,U"
 
 
 class TestABindCannotSubsumeABind:
@@ -804,7 +964,16 @@ class TestTheLiveRoute:
     assert collapsed.bindings[f"{GUEST}/ro"] == CollapsedBind("/h/ro", "ro")
     assert collapsed.bindings[f"{GUEST}/cache"] == CollapsedBind("/h/cache", "Z,U,rw")
     assert collapsed.bindings[GUEST].src == HOME.src
-    assert collapsed.copies == [CollapsedCopy("/h/seed", f"{GUEST}/seed", "")]
+    assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/seed", "")]
+
+  def test_a_real_synced_declaration_reaches_the_sync_list(self):
+    # ⚑⚑ THE MEASURED GAP, on the REAL chain: `box.synced{~/sy}` gave 1 copy on the
+    # live delivery route and 0 through the collapse, because the `sync` arm was
+    # produced and never read. Nothing shipped declares `synced`, which is why the
+    # drop never showed. RED against the pre-2026-08-10b collapse.
+    collapsed = self.collapsed({"box.synced": {"~/sy": ("/h/sy",)}})
+    assert collapsed.synced == [CollapsedCopy("/h/sy", f"{GUEST}/sy", "")]
+    assert collapsed.seeded == []
 
   def test_a_real_mask_over_a_real_bind_from_an_outer_scope(self):
     collapsed = self.collapsed({
@@ -821,4 +990,4 @@ class TestTheLiveRoute:
       "box.seeded": {"~/x/file": ("/h/file",)},
     })
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/agent"
-    assert collapsed.copies == [CollapsedCopy("/h/file", f"{GUEST}/x/file", "")]
+    assert collapsed.seeded == [CollapsedCopy("/h/file", f"{GUEST}/x/file", "")]

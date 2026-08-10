@@ -375,9 +375,15 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         for tail in ("caches", "bindings.ro", "masks"):
             assert is_terminal_category_tail(tail.split(".")), tail
             assert not self._pred(tail), tail
-        # A scalar leaf that merely ENDS in a category token: only the tail test,
-        # and that is the defect.
-        for key in ("system.channels.common", "workset.channels.common"):
+        # A leaf that merely ENDS in a category token: only the tail test, and that
+        # is the defect. ⚑ The meta pair joined this class on 2026-08-10b, when the
+        # collapse's copy output split into leaves NAMED for the categories they
+        # carry — a second, independent way for the suffix test to be fooled, and
+        # the reason the position predicate is the one every key-shaped call site
+        # uses. Neither reaches a tail call site: those are handed a plugin's bare
+        # category token or a ``pref:`` child, never a ``meta.*`` key.
+        for key in ("system.channels.common", "workset.channels.common",
+                    "meta.assembly.seeded", "meta.assembly.synced"):
             assert is_terminal_category_tail(key.split(".")), key
             assert not self._pred(key), key
 
@@ -413,8 +419,12 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         """The accepted set only ever SHRANK: nothing new was let in.
 
         Enumerated over every spelling the ratified manifest declares — the corpus
-        that makes the claim checkable rather than asserted. ``ADDED`` must be empty
-        and the removals must be exactly the two channel type-roots.
+        that makes the claim checkable rather than asserted. ``ADDED`` must be empty,
+        and the removals must be exactly the keys that merely END in a category
+        token: the two channel type-roots, and the two collapse-output leaves the
+        2026-08-10b split NAMED for the categories they carry. Both classes are
+        DECLARED keys that are not category keys, which is the whole reason the
+        position predicate exists.
         """
         import importlib.resources as res
 
@@ -431,6 +441,7 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         assert position - suffix == set()
         assert suffix - position == {
             "system.channels.common", "workset.channels.common",
+            "meta.assembly.seeded", "meta.assembly.synced",
         }
 
 
@@ -535,7 +546,7 @@ def test_supporting_surface_is_valid(key):
 
 @pytest.mark.parametrize("key", [
     "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
-    "meta.assembly.bindings", "meta.assembly.copies", "meta.assembly.backup",
+    "meta.assembly.bindings", "meta.assembly.seeded", "meta.assembly.synced",
     "meta.workset.path", "meta.workset.name", "meta.workset.settings",
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
@@ -574,13 +585,19 @@ def _manifest_leaves(prefix: str) -> set[str]:
 # ``meta.assembly.*`` on 2026-08-09
 # ---------------------------------------------------------------------------
 
-#: ``meta.assembly.{bindings,copies,backup}``. The collapse now writes the first
-#: two on the launch path (``commands/start.py._install_assembly_collapse``);
-#: ``backup`` is RESERVED with no producer at all. All three are declared because
-#: under the closed keyspace (spec §0) an undeclared key is not a key and
+#: ``meta.assembly.{bindings,seeded,synced}``. The collapse writes ALL THREE on the
+#: launch path (``commands/start.py._install_assembly_collapse``). They are declared
+#: because under the closed keyspace (spec §0) an undeclared key is not a key and
 #: reading one is an error — so the declaration is what makes the name legal, and
 #: it is the ONLY thing that changed. Nothing here asserts a value.
-COLLAPSE_LEAVES = ("bindings", "copies", "backup")
+COLLAPSE_LEAVES = ("bindings", "seeded", "synced")
+
+#: The 2026-08-10b split, stated as the names it RETIRED. ``copies`` was renamed to
+#: ``seeded`` and ``backup`` — reserved for the writeback — was retired outright,
+#: one sync list serving both directions. ``meta.assembly.*`` post-dates
+#: ``v1.8.0-rc1``, so the break ships clean: no alias, no shim, and the old
+#: spellings must be NOT KEYS rather than quietly still working.
+RETIRED_ASSEMBLY_LEAVES = ("copies", "backup")
 
 
 @pytest.mark.parametrize("group, declared", [
@@ -622,6 +639,26 @@ def test_the_runtime_spelling_of_a_collapse_output_is_refused_by_name(leaf):
     """
     key = f"meta.runtime.{leaf}"
     assert key in reason(key)
+
+
+@pytest.mark.parametrize("leaf", RETIRED_ASSEMBLY_LEAVES)
+def test_a_retired_assembly_spelling_is_refused_by_name(leaf):
+    """The 2026-08-10b SPLIT stated as a negative, exactly as the 2026-08-09 MOVE is.
+
+    Without this the rename is indistinguishable from an ADD: declaring ``seeded``
+    and ``synced`` while leaving ``copies`` and ``backup`` in
+    ``DECLARED_META_ASSEMBLY_LEAVES`` leaves every positive case green and both
+    spellings working, which is the clean break silently not happening.
+    """
+    key = f"meta.assembly.{leaf}"
+    assert not valid(key)
+    assert key in reason(key)
+
+
+@pytest.mark.parametrize("leaf", RETIRED_ASSEMBLY_LEAVES)
+def test_a_retired_assembly_spelling_is_gone_from_the_manifest_too(leaf):
+    """Both declaration sites drop it, or the drift guard above is the only witness."""
+    assert leaf not in _manifest_leaves("meta.assembly.")
 
 
 @pytest.mark.parametrize("leaf", COLLAPSE_LEAVES)
