@@ -638,11 +638,8 @@ class TestLaunchWiring:
     that gap by driving the REAL launch seam with real ``std``/``proj`` objects.
     """
 
-    def _launch_mounts(self, std, proj, target) -> dict:
-        from kanibako.commands.start import (
-            _emit_category_mounts,
-            _resolve_launch_snapshot,
-        )
+    def _launch_reconciled(self, std, proj, target):
+        from kanibako.commands.start import _resolve_launch_snapshot
 
         _snapshot, reconciled = _resolve_launch_snapshot(
             std=std,
@@ -656,7 +653,18 @@ class TestLaunchWiring:
             agent_cfg=None,
             deliver_creds=True,
         )
-        mounts = _emit_category_mounts(reconciled, label="canon-wiring")
+        return reconciled
+
+    def _launch_mounts(self, std, proj, target) -> dict:
+        from kanibako.commands.start import _emit_category_mounts
+
+        # ⚑ The missing-source policy is spelled EXACTLY as the live call sites
+        # spell it (``commands/start.py``) — a different spelling here would test
+        # the harness rather than the launch.
+        mounts = _emit_category_mounts(
+            self._launch_reconciled(std, proj, target), label="canon-wiring",
+            skip_if_absent=core_defaults.canon_optional_bind_dests(),
+        )
         return {m.destination: m for m in mounts}
 
     def test_all_five_core_canon_binds_reach_a_real_launch(
@@ -724,6 +732,51 @@ class TestLaunchWiring:
         for dest in _CORE_DESTS:
             assert dest in by_dest
         assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
+
+    def test_an_absent_chapter_is_SKIPPED_SILENTLY_at_a_real_launch(
+        self, std, config, project_dir, caplog,
+    ):
+        """⚑⚑ SPEC §2c SKIP-IF-ABSENT, on the REAL launch seam.
+
+        A box with no workset/box/agent handbook chapter is almost every box, so a
+        warning here is the noise that trains users to ignore warnings.
+
+        RED if ``skip_if_absent`` stops reaching ``_emit_category_mounts``, or
+        reaches it KEY-spelled: a key-spelled set matches no destination, the debug
+        omission disappears and all three chapters start warning on every launch —
+        the silent degradation ``critical_keys`` already paid for once.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        optional = core_defaults.canon_optional_bind_dests()
+        assert optional, "the declaration must mark SOME chapter skip-if-absent"
+
+        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+            by_dest = self._launch_mounts(std, proj, _WiringTarget())
+
+        omitted = [r.getMessage() for r in caplog.records if "bind omitted" in r.getMessage()]
+        warned = [
+            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
+        ]
+        for dest in optional:
+            assert dest not in by_dest, "the fixture must have no chapter to bind"
+            assert any(dest in m for m in omitted), (dest, omitted)
+            assert not any(dest in m for m in warned), (dest, warned)
+
+    def test_the_skip_set_matches_what_the_declaration_marks_optional(
+        self, std, config, project_dir,
+    ):
+        """⚑ THE TWO SPELLINGS, PINNED AGAINST EACH OTHER.
+
+        ``canon_optional_bind_keys()`` is matched against the full discriminated
+        KEY when the entries are built; ``canon_optional_bind_dests()`` is matched
+        against the box DEST when they are emitted. Both are derived from the same
+        ``canon:`` rows, and this is the only place their agreement is observable.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        reconciled = self._launch_reconciled(std, proj, _WiringTarget())
+
+        flagged = {e.box_dest for e in reconciled.mounts if e.optional}
+        assert flagged == core_defaults.canon_optional_bind_dests()
 
 
 # ===========================================================================

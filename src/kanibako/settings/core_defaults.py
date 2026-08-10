@@ -838,11 +838,11 @@ def canon_optional_bind_keys() -> frozenset[str]:
     """The SKIP-IF-ABSENT canon bind keys, read from the same declarative rows.
 
     Fed to :func:`kanibako.settings.settings_launch.snapshot_category_entries` as
-    ``optional_keys`` at the ONE launch aggregation site, so an absent workset/box
-    chapter drops its bind SILENTLY instead of warning on every launch of almost
-    every box (spec §2c "SKIP-IF-ABSENT").  Derived from the file rather than
-    restated: a row that gains or loses ``optional: true`` moves both the
-    declaration and this set at once.
+    ``optional_keys`` at the ONE launch aggregation site (spec §2c
+    "SKIP-IF-ABSENT").  Derived from the file rather than restated: a row that
+    gains or loses ``optional: true`` moves both the declaration and this set at
+    once.  🛑 The SILENT DROP itself is no longer this set's doing — the emitter
+    reads :func:`canon_optional_bind_dests`, the DEST-spelled view of the same rows.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -854,8 +854,28 @@ def canon_optional_bind_keys() -> frozenset[str]:
     # function the producer uses, so the two spellings cannot drift.
     return frozenset(
         f"box.{entry['category']}.{normalize_bind_dest(str(entry['box_dest']))}"
-        for entry in _load_doc().get("canon", [])
-        if entry.get("optional")
+        for entry in _canon_optional_rows()
+    )
+
+
+def _canon_optional_rows() -> list[Any]:
+    """The ``canon:`` rows carrying ``optional: true`` — ONE filter, two views."""
+    return [e for e in _load_doc().get("canon", []) if e.get("optional")]
+
+
+def canon_optional_bind_dests() -> frozenset[str]:
+    """The SKIP-IF-ABSENT canon binds as normalized box DESTS — the EMITTER's view."""
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    # ⚑ The DEST basis, not the key basis: it is handed to
+    # ``commands.start._emit_category_mounts`` as ``skip_if_absent``, and that
+    # decision is made against a destination (llm-docs commands/start.py.md).
+    # Normalized with the SAME function that keys the arm (:func:`add_bind`), so
+    # the two spellings cannot drift — the failure ``critical_keys`` already paid
+    # for once, where a key-spelled set matched NOTHING and silently degraded
+    # every entry to the default policy.
+    return frozenset(
+        normalize_bind_dest(str(entry["box_dest"])) for entry in _canon_optional_rows()
     )
 
 

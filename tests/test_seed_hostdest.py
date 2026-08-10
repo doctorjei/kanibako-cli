@@ -295,31 +295,83 @@ class TestReconcileAtOneDestination:
 
 
 class TestOptionalBindEmission:
-    def _emit(self, *, optional: bool, caplog):
+    """The skip-if-absent policy reaches the emitter as a DEST SET, not as a field.
+
+    ⚑ Cutover step 3 (producer DESIGN §9.1): ``CategoryEntry.optional`` cannot
+    survive the fold into ``CollapsedBind(src, opts)``, so the decision travels as
+    a parameter spelled in the one thing the collapsed map keeps — the destination.
+    """
+
+    _DEST = f"{GUEST_HOME}/canon/x"
+
+    def _emit(self, *, skip_if_absent, caplog, optional: bool = False):
         from kanibako.commands.start import _emit_category_mounts
 
         entry = _entry(
-            category="bindings.ro", scope="box", box_dest=f"{GUEST_HOME}/canon/x",
+            category="bindings.ro", scope="box", box_dest=self._DEST,
             host_src="/definitely/not/here", delivery="MOUNT", options="ro",
             # ⚑ Dest-keyed (R-3/R-10): an entry's NAME is its box destination and
             # the key is the arm plus that dest. The retired ``canon_hb_box``
             # spelling is kept out of even a hand-built fixture — a stale form in a
             # test reads as precedent (CONVENTIONS §0).
-            name=f"{GUEST_HOME}/canon/x",
-            key_segments=("box", "bindings", "ro", f"{GUEST_HOME}/canon/x"),
+            name=self._DEST,
+            key_segments=("box", "bindings", "ro", self._DEST),
             optional=optional,
         )
         rec = reconcile_categories([entry])
         with caplog.at_level(logging.WARNING):
-            mounts = _emit_category_mounts(rec, label="category")
+            mounts = _emit_category_mounts(
+                rec, label="category", skip_if_absent=skip_if_absent,
+            )
         return mounts
 
-    def test_optional_missing_source_emits_no_mount_and_no_warning(self, caplog):
-        assert self._emit(optional=True, caplog=caplog) == []
+    def test_a_dest_in_the_skip_set_emits_no_mount_and_no_warning(self, caplog):
+        emitted = self._emit(skip_if_absent=frozenset({self._DEST}), caplog=caplog)
+        assert emitted == []
         assert caplog.records == [], [r.message for r in caplog.records]
 
-    def test_non_optional_missing_source_still_warns(self, caplog):
-        assert self._emit(optional=False, caplog=caplog) == []
+    def test_a_dest_outside_the_skip_set_still_warns(self, caplog):
+        assert self._emit(skip_if_absent=frozenset(), caplog=caplog) == []
+        assert any("does not exist" in r.message for r in caplog.records)
+
+    def test_the_default_is_EMPTY_so_an_unpassed_policy_never_softens_a_drop(
+        self, caplog,
+    ):
+        """⚑ The parameter defaults empty deliberately: warn-and-drop is L7's
+        answer, and a caller that states no policy must get it."""
+        from kanibako.commands.start import _emit_category_mounts
+
+        entry = _entry(
+            category="bindings.ro", scope="box", box_dest=self._DEST,
+            host_src="/definitely/not/here", delivery="MOUNT", options="ro",
+            name=self._DEST,
+            key_segments=("box", "bindings", "ro", self._DEST),
+        )
+        with caplog.at_level(logging.WARNING):
+            assert _emit_category_mounts(
+                reconcile_categories([entry]), label="category",
+            ) == []
+        assert any("does not exist" in r.message for r in caplog.records)
+
+    def test_the_entry_FIELD_no_longer_decides(self, caplog):
+        """⚑ MUTATION GUARD. ``optional=True`` with the dest outside the set must
+        WARN — if this goes green the emitter is still reading the field, and the
+        guard will vanish the moment the fold drops it."""
+        emitted = self._emit(
+            skip_if_absent=frozenset(), caplog=caplog, optional=True,
+        )
+        assert emitted == []
+        assert any("does not exist" in r.message for r in caplog.records)
+
+    def test_a_key_spelled_skip_set_matches_NOTHING(self, caplog):
+        """⚑⚑ THE HISTORICAL BUG, in its second home. ``critical_keys`` was once
+        built from key NAMES and matched nothing, silently degrading every critical
+        bind. A key-spelled ``skip_if_absent`` fails the same way — loudly here."""
+        emitted = self._emit(
+            skip_if_absent=frozenset({f"box.bindings.ro.{self._DEST}"}),
+            caplog=caplog,
+        )
+        assert emitted == []
         assert any("does not exist" in r.message for r in caplog.records)
 
 
@@ -479,6 +531,20 @@ class TestCanonDefaultCategories:
             f"box.bindings.ro.{GUEST_HOME}/canon/handbook/agent",
             f"box.bindings.ro.{GUEST_HOME}/canon/handbook/workset",
             f"box.bindings.ro.{GUEST_HOME}/canon/handbook/box",
+        }
+
+    def test_the_same_three_chapters_are_the_skip_if_absent_DESTS(self):
+        """The EMITTER's view of the same rows (cutover step 3, producer §9.1).
+
+        ⚑ Spelled as DESTS because that is what the collapsed bind map is keyed by;
+        a key-spelled set handed to ``_emit_category_mounts`` would match nothing
+        and every chapter-less workset would warn on every launch — the failure
+        ``critical_keys`` already paid for once.
+        """
+        assert core_defaults.canon_optional_bind_dests() == {
+            f"{GUEST_HOME}/canon/handbook/agent",
+            f"{GUEST_HOME}/canon/handbook/workset",
+            f"{GUEST_HOME}/canon/handbook/box",
         }
 
     def test_the_canon_binds_are_not_config_set_repointable(self, tmp_path):

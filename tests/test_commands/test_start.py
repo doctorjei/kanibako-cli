@@ -1409,6 +1409,45 @@ class TestInstructionDeliveryActivation:
             assert any("import-directives.py" in str(a) for a in cli_args)
 
 
+class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
+    """⚑ THE CALL SITE, not the emitter (cutover step 3, producer DESIGN §9.1).
+
+    ``_emit_category_mounts`` takes its skip-if-absent policy as a parameter that
+    DEFAULTS EMPTY — warn-and-drop is L7's answer and a caller that states no policy
+    must get it. That makes dropping the argument at the live call site a SILENT,
+    suite-green regression: every workset with no handbook chapter goes back to
+    warning on every launch, which is almost every box.
+
+    The emitter's own behaviour is pinned in
+    ``test_seed_hostdest.py::TestOptionalBindEmission``; this pins that the LAUNCH
+    hands it the policy, DEST-spelled.
+    """
+
+    def test_the_live_launch_passes_the_skip_if_absent_DESTS(self, start_mocks):
+        from kanibako.commands import start as start_mod
+        from kanibako.settings import core_defaults
+
+        expected = core_defaults.canon_optional_bind_dests()
+        assert expected, "the declaration must mark SOME chapter skip-if-absent"
+
+        with start_mocks(), patch.object(
+            start_mod, "_emit_category_mounts",
+            wraps=start_mod._emit_category_mounts,
+        ) as m_emit:
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+
+        passed = {
+            call.kwargs["label"]: call.kwargs.get("skip_if_absent")
+            for call in m_emit.call_args_list
+        }
+        assert "category" in passed, passed
+        assert passed["category"] == expected
+
+
 class TestPluginsAndCacheShares:
     """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``common``
     category entries (the plugin's ``default_common()``), ROOTED AT DECLARATION at

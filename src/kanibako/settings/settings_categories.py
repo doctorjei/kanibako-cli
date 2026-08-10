@@ -491,6 +491,11 @@ class CategoryEntry:
     emitter (``settings_launch.snapshot_category_entries(optional_keys=…)``), never
     by a resolve-time ``exists()`` probe: this module is PURE.
 
+    🛑 **NOTHING READS THIS FIELD ANY MORE** (cutover step 3, 2026-08-10).  The
+    emitter takes the same policy as a DEST SET parameter — ``optional`` is a
+    DECLARATION fact and the fold into ``CollapsedBind(src, opts)`` has no room for
+    it.  The field is left standing deliberately; its retirement is step 5's.
+
     ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN (2026-08-08c).
     ``box_dest`` is a GUEST path for EVERY category, bind-shaped or copy-shaped —
     spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.  A COPY's guest dest is the
