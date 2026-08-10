@@ -1,88 +1,10 @@
 """KeyStore — the resolved-keyspace data structure (storage + types only).
 
-This module defines the raw storage shape of kanibako's settings keyspace and
-nothing more: the value space (:data:`StoreValue`), the binding value
-(:class:`Bind`), the recursive attribute-dict container (:class:`KeyStore`), and
-the module-private absent-vs-present-None sentinel (:data:`_MISSING`). It holds
-NO resolution, merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed
-views, or consumers — those live in later blocks. It imports nothing from the
-settings stack and is (for now) imported by nothing.
-
-Authority: ``~/vault/rw/keystore-design.md`` §2 (storage model — primary), §3
-(``None`` semantics — type-space consequence only), §6f (``masks`` is a keyed
-``dict[box_dest -> bool|None]``, NOT a list); spec
-``settings-keyspace-1.8.0.md`` §0 (files store UNRESOLVED) + §2a (the
-category list + value types).
-
-Storage model (design §2)
--------------------------
-* ``KeyStore = dict[str, StoreValue]`` — a real ``dict`` subclass, so every
-  dict capability is preserved, with attribute access layered on top.
-* ``StoreValue = KeyStore | Bind | BindEntry | str | int | float | bool |
-  list[str] | None`` — ``list[str]`` is for genuinely list-valued scalar keys;
-  ``masks`` is a nested ``KeyStore`` of ``bool | None`` leaves, NOT a bare list.
-* ``Bind`` is a typed ``NamedTuple(host, box, opts=None)`` — the
-  ``(host_src, box_dest[, opts])`` binding value. NEVER a colon-joined string.
-* ``BindEntry`` is the typed ``NamedTuple(src, opts=None)`` of the DEST-KEYED
-  rework (R-6): the destination moves out of the value and becomes the key of a
-  ``BindMap``. ⚑ Both bind types are live during the P5→P8 bridge and their
-  2-element forms mean OPPOSITE things — see :class:`BindEntry` for the two
-  rules (discriminate by TYPE in value space, by NODE in raw space) that make
-  that safe. ``BindEntry`` will be RENAMED to ``Bind`` in P8.
-* Access is attribute-style with a ``[]`` fallback for non-identifier / dynamic
-  keys (``agent.<name>``, ``env.<VAR>``, hyphens, dots, Python keywords). Both
-  surfaces return the SAME :data:`StoreValue` union.
-* The SAME :class:`KeyStore` type serves the per-level partials AND the resolved
-  snapshot — this block builds only the raw union surface.
-
-``None`` semantics — type space only (design §3)
-------------------------------------------------
-A key may be **absent** (unset) or present with value **None** (an explicit
-reset). Present-``None`` is a legal stored :data:`StoreValue`. The canonical
-absent-vs-present-``None`` probe is the **BOUND** ``store.get(key, _MISSING)``
-(design §3): it returns :data:`_MISSING` iff the key is absent, ``None`` iff
-present-``None``, else the value. The bound form is safe because no user key can
-ever be named ``get`` — ``get`` is a RESERVED name (collision safety below), so
-``store.get`` is ALWAYS the inherited ``dict`` method, never a stored value. The
-**unbound** ``dict.get(store, key, _MISSING)`` form remains equally valid and
-is still used by the existing consumers (the block-2b merge, the typed views,
-``config set``); it was the canonical form before block 1b forbade reserved
-names, so no consumer needs retrofitting. ``_MISSING`` is **never stored** and is
-**never** a member of the :data:`StoreValue` union. The merge LOGIC that consults
-it lives in block 2b; here we only define the sentinel and the rule that it never
-enters value space.
-
-Collision safety (the "MonkeyDict" point, design §2) — RESERVED NAMES
----------------------------------------------------------------------
-Earlier this type let *any* key name be stored and relied on attribute access
-resolving to the STORED KEY over a same-named ``dict`` method. That left a latent
-foot-gun: any code that called a *bound* dict-method-named attribute
-(``x.get(...)``, ``x.items()``) on a collision-prone store crashed when a user
-key happened to share that name (block 1's ``.get`` absent-probe and ``items``
-repr crashes). Block 1b removes the collision at the SOURCE: **reserved key names
-are rejected at write time** (:data:`_RESERVED_KEY_NAMES` + the dunder pattern),
-so no user key can ever shadow a real attribute. Reserved =
-
-* any **dunder-pattern** name (``name.startswith("__") and name.endswith("__")``)
-  — these are the Python data-model attributes; AND
-* the public ``dict`` method names :data:`_RESERVED_KEY_NAMES` — exactly
-  ``dir(dict)``'s non-dunder names (verified equal: 0 unguarded, 0 extras). No
-  spec key uses any of these (env vars are UPPER_SNAKE; category/scope names are
-  fixed words like ``bindings``/``box``), so the reservation costs the keyspace
-  nothing while making the bound ``store.get`` permanently safe.
-
-A reserved key is rejected loudly at :meth:`KeyStore.__setitem__` (and therefore
-at construction, ``[]``-set, and attribute-set, which all funnel through it) with
-:class:`ReservedKeyError`. The match is **CASE-SENSITIVE** (the box is Linux;
-env var names are case-sensitive there). *Windows future note:* a Windows HOST
-folds env-name case, so if Windows-host env support is ever added the reservation
-must widen — two options to pick from then: a case-insensitive reservation in
-Windows mode, OR Windows-only key-mangling. Not implemented here (design §2).
-
-With reserved names forbidden, a plain :meth:`__getattr__` (fires only on a
-lookup MISS) suffices for attribute access — no key can shadow a real attribute,
-so the custom ``__getattribute__`` interception of block 1 is no longer needed.
-"""
+This module defines _only_ raw storage shape of the keyspace: its value space (:data:`StoreValue`),
+binding value (:class:`Bind`), module-private absent-vs-present-None sentinel (:data:`_MISSING`), &
+recursive attribute-dict container (:class:`KeyStore`) - NOT resolution, merge, cascade, ``@``-ref
+/ ``$VAR`` / ``~`` expansion, typed views, or consumers — which live in later blocks. It imports
+nothing from the settings stack & is (for now) imported by nothing."""
 
 from __future__ import annotations
 
@@ -90,52 +12,106 @@ from collections.abc import Sequence
 from typing import Any, Final, NamedTuple, Union
 
 
+######## Public Types #######################################
+#
+# For bindings variants, ``opts`` is the optional per-entry mount-options override; ``None`` means
+# fall back to the category's default options".
+
+class Bind(NamedTuple):
+    """A binding value: ``(host_src, box_dest[, opts])``; never a colon-joined ``host:box`` str."""
+    host: str
+    box: str
+    opts: str | None = None
+
+
+# ⚑ **This name is temporary**; eventually it will become ``Bind``, once the conflict is gone.
+class BindEntry(NamedTuple):
+    """A destination-keyed binding entry: ``(src[, opts])`` — the destination is the key."""
+    src: str
+    opts: str | None = None
+
+
+# ⚑ A plain ``dict`` & deliberately NOT member of :data:`StoreValue`; inside :class:`KeyStore`,
+#``BindMap`` materialises as a  nested ``KeyStore`` NODE.
+BindMap = dict[str, BindEntry]
+
+
+# Value space a KeyStore leaf or node may hold (design §2); ``_MISSING`` is deliberately excluded.
+StoreValue = Union["KeyStore", Bind, BindEntry, str, int, float, bool, list[str], None]
+
+
 class ReservedKeyError(KeyError):
-    """Raised when a :class:`KeyStore` write uses a RESERVED key name.
-
-    A :class:`KeyError` subclass (this is a bad-KEY error, not a bad-value one).
-    Reserved = any dunder-pattern name (``__x__``) or a public ``dict`` method
-    name (:data:`_RESERVED_KEY_NAMES`). Forbidding these at write time is what
-    makes the bound ``store.get(key, _MISSING)`` probe permanently collision-safe
-    (design §2/§3; block 1b). The message names the offending key AND lists the
-    reserved set so it is actionable.
-    """
+    """Raised when a :class:`KeyStore` write uses a RESERVED key name (bad-key, not bad-value)"""
 
 
-#: The public, non-dunder method names of :class:`dict`. A user key may NOT take
-#: any of these (it would shadow the inherited method at the attribute surface).
-#: This frozenset is exactly ``dir(dict)``'s non-dunder names — verified equal at
-#: block 1b (0 unguarded, 0 extras); the dunder pattern is checked separately.
-_RESERVED_KEY_NAMES: frozenset[str] = frozenset(
-    {
-        "get",
-        "keys",
-        "values",
-        "items",
-        "pop",
-        "popitem",
-        "setdefault",
-        "update",
-        "clear",
-        "copy",
-        "fromkeys",
-    }
-)
+######## Public Values #####################################
 
+#: The reserved internal derivations node at the snapshot root; not a key.
+BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"
+
+# Scope containment order; ``system ⊃ agent ⊃ workset ⊃ box``, outermost first.
+SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
+
+
+######## Public Functions ##################################
+
+def insert_segments(store: "KeyStore", segments: "Sequence[str]", value: Any,) -> None:
+    """Install *value* at the path *segments* in *store*, VERBATIM; each segment is _one_ node."""
+
+    # ⚑ Entry-point of box-dest, terminal path ``binding_derivations.<declaration-key>.<dest>``.
+    # Routinely contain dots (``.``, ``~/.cache/uv``, etc.).
+    parts = tuple(segments)
+    if not parts:
+        raise ValueError("insert_segments needs at least one segment")
+    node: KeyStore = store
+    for seg in parts[:-1]:
+        child = dict.get(node, seg, None)
+        if not isinstance(child, KeyStore):
+            child = KeyStore()
+            node[seg] = child
+        node = child
+    node[parts[-1]] = value
+
+
+def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
+    """Install *value* at dotted KEY *dotted* — :func:`insert_segments`, split on ``.``."""
+    insert_segments(store, dotted.split("."), value)
+
+
+######## Internal Types ####################################
+
+class _Missing:
+    """Module-private :data:`_MISSING` sentinel type; distinct singleton type (not ``object``)."""
+    _instance: "_Missing | None" = None
+
+    def __new__(cls) -> "_Missing":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "_MISSING"
+
+    # Defensive; _MISSING must never be mistaken for real value. Test presence via `is _MISSING`.
+    def __bool__(self) -> bool:
+        return False
+
+
+######## Internal Values ###################################
+
+#: The public, non-dunder method names of :class:`dict`. These are forbidden as user keys.
+_RESERVED_KEY_NAMES: frozenset[str] = frozenset({"get", "keys", "values",
+    "items", "pop", "popitem", "setdefault", "update", "clear", "copy", "fromkeys",})
+
+
+# Module-private sentinel distinguishing ABSENT key from present-``None`` value at storage surface.
+_MISSING: _Missing = _Missing()
+
+
+######## Internal Functions ################################
 
 def _check_key_name(key: Any) -> str:
-    """Validate a key for storage; return it unchanged or raise.
-
-    Rejects:
-    * a non-``str`` key — :class:`TypeError` (spec keys are always strings);
-    * a **dunder-pattern** name (``__x__``) — :class:`ReservedKeyError`;
-    * a public ``dict`` method name (:data:`_RESERVED_KEY_NAMES`) —
-      :class:`ReservedKeyError`.
-
-    The match is CASE-SENSITIVE (design §2 — the box is Linux). Invoked from
-    :meth:`KeyStore.__setitem__`, so it covers construction, ``[]``-set, and
-    attribute-set (all funnel through ``__setitem__``).
-    """
+    """Validate key; return unchanged if non-dunder str & NOT a method name, or raises error."""
     if not isinstance(key, str):
         raise TypeError(
             f"KeyStore keys must be str, got {type(key).__name__}: {key!r}"
@@ -153,153 +129,8 @@ def _check_key_name(key: Any) -> str:
     return key
 
 
-class Bind(NamedTuple):
-    """A binding value: ``(host_src, box_dest[, opts])``.
-
-    Design §2 / spec §2a: a binding is a STRUCTURED PAIR (a tuple), never a
-    colon-joined ``"host:box"`` string. ``opts`` is the optional per-entry mount
-    options override (the 3rd tuple element); it defaults to ``None`` when the
-    binding is a plain 2-tuple.
-    """
-
-    host: str
-    box: str
-    opts: str | None = None
-
-
-class BindEntry(NamedTuple):
-    """A DEST-KEYED binding entry: ``(src[, opts])`` — the destination is the KEY.
-
-    Disk-store rework R-3/R-6: a bindings arm becomes
-    ``dict[dest -> (src, opts)]`` (:data:`BindMap`) instead of
-    ``dict[name -> (src, dest, opts)]``. The destination is no longer part of the
-    VALUE — it is the mapping KEY — and the name is dropped entirely (R-10: a
-    name has no functional purpose, because bindings are strictly act-once so a
-    name never distinguishes two entries at one dest).
-
-    ``opts`` is the optional per-entry mount-options override; ``None`` means
-    "fall back to the category's default options", exactly as a 2-element
-    :class:`Bind` means today.
-
-    ⚑ **TEMPORARY NAME.** R-6's final name for this type is ``Bind``. The rename
-    (and the deletion of the legacy 3-tuple :class:`Bind` above) happens in P8 of
-    the bindings arc. Two bind names coexisting P5→P8 is the deliberate, bounded
-    cost of the bridge — do NOT rename early.
-
-    ⚑⚑ **THE ARITY TRAP — how the two are told apart.** A legacy :class:`Bind`
-    is legally 2 OR 3 elements and its 2-element form means ``(host, box)``; a
-    :class:`BindEntry` 2-element form means ``(src, opts)``. **Same arity,
-    opposite meaning.** Nothing in this codebase may disambiguate them by LENGTH.
-    Two rules, both mandatory:
-
-    * **In value space, discriminate by TYPE.** :class:`Bind` and
-      :class:`BindEntry` are distinct ``NamedTuple`` classes (neither is a
-      subclass of the other), so ``isinstance(v, Bind)`` is False for a
-      ``BindEntry`` and vice versa. Every consumer branch tests ``isinstance``,
-      never ``len``.
-    * **In RAW space (a YAML list / a floor value), discriminate by NODE.** A raw
-      ``[a, b]`` carries no type, so the parse route is chosen by the CALLER from
-      the node it came from — a name-keyed bind node parses via
-      ``settings_resolve.unpack_bind``, a dest-keyed node via
-      ``settings_resolve.unpack_bind_entry``. The shape is never sniffed off the
-      list itself.
-    """
-
-    src: str
-    opts: str | None = None
-
-
-#: A dest-keyed bindings arm: ``{box_dest -> BindEntry}`` (R-6). This is the
-#: value shape of the TERMINAL keys ``<scope>.bindings.ro`` / ``.rw`` (R-5) —
-#: ⚑ the inner keys are NOT part of the keyspace.
-#:
-#: ⚑ Note this alias is a plain ``dict`` and is deliberately NOT a member of
-#: :data:`StoreValue`: inside a :class:`KeyStore` a ``BindMap`` materialises as a
-#: nested ``KeyStore`` NODE whose leaves are :class:`BindEntry` (``_wrap`` wraps
-#: every plain dict), exactly as ``masks`` materialises as a nested node of
-#: ``bool | None`` leaves rather than an opaque dict leaf. That is load-bearing,
-#: not incidental: it is what makes a bindings arm merge PER-ENTRY across cascade
-#: levels through the generic node recursion, instead of a box-level arm wiping
-#: an inherited workset entry wholesale. The alias exists for the view and
-#: producer signatures, which speak in plain mappings.
-BindMap = dict[str, BindEntry]
-
-
-# The value space a KeyStore leaf or node may hold (design §2). ``_MISSING`` is
-# deliberately NOT a member: it is an absence marker, never a stored value.
-# ``BindEntry`` (the dest-keyed pair, R-6) joins ``Bind`` (the legacy 3-tuple)
-# for the P5→P8 bridge window; ``BindMap`` itself is NOT a member — see its
-# docstring (it materialises as a nested ``KeyStore`` node of ``BindEntry``).
-StoreValue = Union[
-    "KeyStore", Bind, BindEntry, str, int, float, bool, list[str], None
-]
-
-
-#: The scope CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT
-#: levels"): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST first. THE single
-#: source for every directional derivation: the ``config set`` write-allow sets
-#: (``config_keys._SCOPE_WRITE_ALLOWED``) and the RESOLVE-time drop of
-#: containing-scope keys from a lower settings file (``settings_assemble``, spec
-#: §0 "Directional enforcement at RESOLVE"). It lives HERE — in the settings-stack
-#: leaf that imports nothing from the stack — so both consumers import it without
-#: a cycle (``config_interface`` → ``config`` → … would cycle back). A scope
-#: CONTAINS every scope to its RIGHT; the tail-slice from a scope onward is the
-#: set it may write DOWN into.
-SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
-
-
-#: The reserved INTERNAL derivations node at the snapshot root (R-8, manifest
-#: ``not_keys.reserved_internal``) — NOT a key. Declared ONCE, here in the
-#: settings-stack leaf, so the producer
-#: (``settings_categories.derive_binding_keys``) and the assembly drop
-#: (``settings_assemble._drop_upward_scopes``) spell the same token by
-#: construction and cannot drift.
-BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"
-
-
-class _Missing:
-    """Type of the module-private :data:`_MISSING` sentinel.
-
-    A distinct singleton type (not ``object()``) so it has a legible ``repr`` and
-    so static type-checkers can reason about ``StoreValue | _Missing`` at the few
-    internal call sites (block 2b) that distinguish absent from present-``None``.
-    """
-
-    _instance: "_Missing | None" = None
-
-    def __new__(cls) -> "_Missing":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __repr__(self) -> str:
-        return "_MISSING"
-
-    def __bool__(self) -> bool:
-        # Defensive: _MISSING must never be mistaken for a real value. Presence
-        # is tested with `is _MISSING`, never by truthiness (design §6e).
-        return False
-
-
-#: Module-private sentinel distinguishing an ABSENT key from a present-``None``
-#: value at the storage surface. Canonical probe (block 1b) = the BOUND
-#: ``store.get(key, _MISSING) is _MISSING`` == absent — safe because ``get`` is a
-#: reserved key name (see the module docstring), so ``store.get`` is always the
-#: dict method. The UNBOUND ``dict.get(store, key, _MISSING)`` form is equally
-#: valid and still used by existing consumers. Never stored; never a member of
-#: :data:`StoreValue`. Consumed by the merge logic in block 2b.
-_MISSING: _Missing = _Missing()
-
-
 def _wrap(value: Any) -> StoreValue:
-    """Coerce a raw value into the :data:`StoreValue` space.
-
-    A plain ``dict`` (a nested literal) becomes a :class:`KeyStore` recursively,
-    so the whole tree is uniform attribute-dicts. A :class:`KeyStore` is left as
-    is (already wrapped). Everything else — :class:`Bind`, scalars, ``list``,
-    ``None`` — is stored verbatim. ``list`` is NOT descended into: the union only
-    admits ``list[str]`` scalar lists, never nested KeyStores inside a list.
-    """
+    """Coerce raw value into :data:`StoreValue` space; a plain `dict` becomes :class:`KeyStore`."""
     if isinstance(value, KeyStore):
         return value
     if isinstance(value, dict):
@@ -307,86 +138,46 @@ def _wrap(value: Any) -> StoreValue:
     return value
 
 
+######## Main KeyStore Class ###############################
+
 class KeyStore(dict):  # type: ignore[type-arg]
-    """Recursive attribute-dict: ``dict[str, StoreValue]`` with attr access.
+    """Recursive attribute-dict: ``dict[str, StoreValue]`` w. attr access. Inherits from `dict`."""
 
-    Construct from any mapping (or keyword pairs); nested plain ``dict`` literals
-    are wrapped into :class:`KeyStore` recursively so the entire tree is uniform.
-    Attribute access (``store.foo``) and item access (``store["foo"]``) read and
-    write the SAME keys and return the SAME :data:`StoreValue` union; use ``[]``
-    for keys that are not valid Python identifiers (``agent.<name>``, hyphens,
-    dots, keywords). User keys can never collide with a method — every operation
-    is a ``__dunder__`` or an inherited ``dict`` method reached via ``[]``.
-
-    **CLASS INVARIANT (do not break): :class:`KeyStore` defines ONLY dunder
-    members** — no non-dunder method or attribute on the class. Because
-    :meth:`__getattr__` fires only on a normal-lookup MISS, a non-dunder class
-    attribute would resolve BEFORE a same-named stored key, re-introducing a
-    collision the reserved set does not cover. Keep every helper MODULE-LEVEL
-    (e.g. :func:`_wrap`, :func:`_check_key_name`), never ``self._helper``. Holding
-    this keeps the reserved set == ``dict``'s public methods EXACTLY (a ``_``-
-    prefixed user key like ``_check_key`` stays a valid, non-colliding key).
-    """
-
-    # NOTE: no ``__slots__`` and no instance ``__dict__`` use for storage —
-    # state lives entirely in the underlying ``dict``. Attribute writes are
-    # redirected to keys (see ``__setattr__``), so the object never grows a
-    # competing attribute namespace that a key could disagree with.
-
+    # No ``__slots__`` or instance ``__dict__`` use for storage; state lives in underlying `dict`.
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__()
-        # Funnel everything through dict.update -> __setitem__ so nested dicts
-        # are wrapped uniformly regardless of construction style.
+        # Funnel everything through dict.update -> __setitem__ to wrap nested dicts uniformly.
         if args:
             if len(args) > 1:
-                raise TypeError(
-                    f"KeyStore expected at most 1 positional argument, got {len(args)}"
-                )
+                raise TypeError(f"KeyStore expected at most 1 positional argument, got {len(args)}")
+
             source = args[0]
-            # dict.items(source) — NOT source.items() — so a source KeyStore
-            # holding a key named ``items`` does not shadow the method (the very
-            # collision this module guards against).
+            # Use dict.items(source) — NOT source.items() — so source KeyStore with key ``items``
+            # does not shadow a method (the very collision this module guards against).
             items = dict.items(source) if isinstance(source, dict) else source
             for key, value in items:
                 self[key] = value
         for key, value in kwargs.items():
             self[key] = value
 
-    # --- item access: the canonical surface; wraps nested dicts on write ---
+    # --- item access: canonical surface; wraps nested dicts on write. ---
 
+    # Reject reserved keys at SOURCE so user key cannot shadow dict method; funnels construction,
+    # ``[]``-set, & attribute-set (all come here), so bound ``store.get`` is safe.
     def __setitem__(self, key: str, value: Any) -> None:
-        # Reject reserved key names at the SOURCE (design §2 / block 1b) so no
-        # user key can shadow a dict method. This funnels construction, ``[]``-set
-        # and attribute-set (all reach here), making the bound ``store.get`` safe.
         super().__setitem__(_check_key_name(key), _wrap(value))
 
-    # __getitem__ / __delitem__ / __contains__ / __iter__ / __len__ / get /
-    # keys / items / values / ... are inherited from dict unchanged. No user key
-    # can be named after any of them (reserved, ``__setitem__`` above), so the
-    # bound ``store.get(...)`` / ``store.items()`` are ALWAYS the dict methods —
-    # the block-1 attribute-surface asymmetry is gone.
+    # --- attribute access: maps keys; dict methods are reserved; key cannot shadow real attr. ---
 
-    # --- attribute access: maps to keys (a stored key can never shadow a real
-    #     attribute, since the dict method names are reserved) ---
-
+    # Fires ONLY on lookup miss; as reserved names cannot be stored as keys, no method collision.
     def __getattr__(self, name: str) -> StoreValue:
-        # ``__getattr__`` fires ONLY on a normal-lookup MISS. Because reserved
-        # names (every dict method) can never be stored keys, a stored key never
-        # collides with a real attribute, so a plain miss-only ``__getattr__``
-        # is sufficient (block 1b — the custom ``__getattribute__`` is retired):
-        # ``store.foo`` for a stored ``foo`` misses the attribute table and lands
-        # here; ``store.get`` resolves to the dict method before we are reached.
         if dict.__contains__(self, name):
             return dict.__getitem__(self, name)
-        # Neither a stored key nor a real attribute. Raise AttributeError (not
-        # KeyError) to honor the attribute protocol (hasattr / getattr-default).
-        raise AttributeError(
-            f"{type(self).__name__!r} object has no key {name!r}"
-        )
+        # Not stored key or attribute, so raise AttributeError (not KeyError).
+        raise AttributeError(f"{type(self).__name__!r} object has no key {name!r}")
 
+    # Dunder attributes are real (not used for storage, but we'll this helps avoid accidents).
     def __setattr__(self, name: str, value: Any) -> None:
-        # Dunder attributes are real attributes (none are used for storage, but
-        # keep the door closed against accidental shadowing of the protocol).
         if name.startswith("__") and name.endswith("__"):
             object.__setattr__(self, name, value)
             return
@@ -402,76 +193,9 @@ class KeyStore(dict):  # type: ignore[type-arg]
 
     # --- representation ---
 
+    # Use dict.items(self) — NOT self.items() — so key named ``items`` cannot break repr.
     def __repr__(self) -> str:
-        # dict.items(self) — NOT self.items() — so a stored key named ``items``
-        # cannot shadow the method and break repr (collision safety, design §2).
         inner = ", ".join(f"{k!r}: {v!r}" for k, v in dict.items(self))
         return f"{type(self).__name__}({{{inner}}})"
 
-    # Equality / hashing inherited from dict: two KeyStores are equal iff they
-    # hold equal keys -> equal values, and a KeyStore equals a plain dict with
-    # the same (wrapped) contents. dict is unhashable; KeyStore stays unhashable.
-
-
-def insert_segments(
-    store: "KeyStore", segments: "Sequence[str]", value: Any,
-) -> None:
-    """Install *value* at the path *segments* in *store*, VERBATIM.
-
-    THE walk. Each element of *segments* is ONE node, taken opaquely — a segment
-    containing ``.`` is a segment, not two. Walks/creates the intermediate
-    :class:`KeyStore` nodes and sets the terminal leaf to *value* exactly as
-    given — no bind parsing, no coercion, no emptiness interpretation. A
-    non-``KeyStore`` value sitting at an intermediate segment is REPLACED by a
-    fresh node (the caller is installing a deeper key, so the shallower leaf
-    cannot survive as a leaf).
-
-    ⚑ THIS is the entry point for a path whose terminal is a box DESTINATION —
-    ``binding_derivations.<declaration-key>.<dest>``, installed by
-    ``kanibako.commands.start._install_derived_bindings``. A destination is DATA
-    and routinely contains ``.`` (``~/.cache/uv``, ``/home/agent/.claude/plugins``),
-    so it can only travel as a segment: joined into a dotted string it shatters
-    into extra tree levels, and two dests whose shattered paths nest
-    (``~/.claude`` under ``~/.claude.json``) silently overwrite one another.
-
-    RAISES :class:`ValueError` on an EMPTY *segments*: there is no path to
-    install at, and the alternative is writing at some invented root.
-
-    Uses the UNBOUND ``dict.get`` (S3): a key legitimately named ``get`` must
-    not shadow the protocol into a crash.
-    """
-    parts = tuple(segments)
-    if not parts:
-        raise ValueError("insert_segments needs at least one segment")
-    node: KeyStore = store
-    for seg in parts[:-1]:
-        child = dict.get(node, seg, None)
-        if not isinstance(child, KeyStore):
-            child = KeyStore()
-            node[seg] = child
-        node = child
-    node[parts[-1]] = value
-
-
-def insert_dotted(store: "KeyStore", dotted: str, value: Any) -> None:
-    """Install *value* at the dotted KEY *dotted* — :func:`insert_segments`, split on ``.``.
-
-    The dotted front-end, for a caller whose path is a validated keyspace KEY:
-    every segment of a key is dot-free, so the split is total and lossless. ⚑ A
-    path whose terminal is DATA (a box destination) must NOT come through here —
-    call :func:`insert_segments` and pass the destination as one segment.
-
-    Its one caller is the ``pref.*`` overlay builder
-    (:func:`kanibako.settings.settings_prefs.pref_overlay`), whose target is a
-    declared key (a terminal category target carries its dests in the VALUE map,
-    never in the key) and whose contract is *"values are installed VERBATIM —
-    including ``None``"* (spec §2h).
-
-    DELIBERATELY distinct from ``kanibako.settings.settings_assemble._insert_dotted``,
-    which does a DIFFERENT job: that one PARSES the terminal through
-    ``_parse_node`` so a floor entry under a bind-shaped category becomes a
-    :class:`Bind`. Two spellings of one walk would be a rule-0 trap; two walks
-    with different jobs are not, provided the difference is stated — which is
-    what this paragraph is for.
-    """
-    insert_segments(store, dotted.split("."), value)
+    # Remaining `dict` methods (accessors, equality, operators, etc.) are inherited from `dict`.
