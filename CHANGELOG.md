@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A blocked template seed blamed the wrong thing.** Seeding into the managed canon region
+  (`canon/COLLECTION.md`, `canon/bible/…`, `canon/handbook/…`) is refused, but the refusal said the
+  seeded content "would be silently invisible — never merged, never an error", which describes a
+  file that quietly loses to a mount. That is not what happens: box create materialises that region
+  root-owned, so the copy fails with `EACCES` and stops the create outright. The message now leads
+  with the permission failure and keeps the shadowing as the secondary reason, so the cure you reach
+  for matches the failure you actually hit.
+
 - **A refused read said the key was "not settable" and told you to re-run setup.** `system get` on a
   structural config key answered with the wording for a write, then prescribed a write cure — for an
   operation that never attempted one. Each verb now states what it actually refused, and the read
