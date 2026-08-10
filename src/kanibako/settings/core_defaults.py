@@ -589,13 +589,12 @@ def assert_canon_bind_seed_disjoint(
     passes, and checks nothing. Hence :func:`kanibako.launch.templates.
     packaged_box_home_template`, which names the level that IS home-relative.
 
-    PREFIX CONTAINMENT, not set intersection.  A whole-directory bind shadows a
-    whole SUBTREE, so a seed does not have to hit the bind's exact path to be
-    swallowed — ``canon/bible/general/x.md`` is just as invisible under the
-    ``canon/bible`` bind as ``canon/bible`` itself would be.  Spec §0's
-    copy-vs-mount rule makes that shadowing ORDER-INDEPENDENT and SILENT: the
-    seeded bytes are neither merged nor reported, they simply never appear.  Hence
-    a guard rather than a runtime resolution.
+    PREFIX CONTAINMENT, not set intersection.  The managed region is root-owned
+    from create, so a seed does not have to hit an exact path to fail: anything
+    under it — ``canon/bible/general/x.md`` no less than ``canon/bible`` itself —
+    fails with EACCES at create.  Second, and weaker: where a copy could land at
+    all, spec §0's copy-vs-mount rule makes the mount's shadowing of it
+    ORDER-INDEPENDENT and SILENT.  Hence a guard rather than a runtime resolution.
 
     THE SHARED ENTRY POINT between the two C-CANON halves (brief §4): the ROM half
     supplies :data:`CANON_SEED_DENY_PREFIXES`; the SEEDS/handbook half appends
@@ -614,9 +613,12 @@ def assert_canon_bind_seed_disjoint(
                 )
     if violations:
         raise RuntimeError(
-            "template seed collides with a canon RO bind (the mount SHADOWS the "
-            "copied file at the same path regardless of order, so the seeded "
-            "content would be silently invisible — never merged, never an error):\n"
+            "template seed lands in the MANAGED canon region (box create "
+            "materialises that region ROOT-OWNED, so the copy FAILS WITH EACCES "
+            "AT CREATE — it does not silently lose, it stops the create with an "
+            "OS error; and even where a copy could land, the mount SHADOWS it at "
+            "the same path regardless of order, so the content would be invisible "
+            "— not merged, not an error):\n"
             + "\n".join(f"  - {v}" for v in violations)
             + "\nSeeds target canon/{notebook,workbook} ONLY (spec §2c)."
         )

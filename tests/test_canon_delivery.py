@@ -329,8 +329,9 @@ class TestFailClosed:
 class TestDisjointness:
     def test_prefix_containment_not_set_intersection(self):
         """A managed prefix covers a SUBTREE: a seed does not have to hit an exact
-        path to be silently swallowed."""
-        with pytest.raises(RuntimeError, match="silently invisible"):
+        path to be refused. The message pins the PRIMARY reason (spec §2c): the
+        region is root-owned at create, so the copy fails with EACCES."""
+        with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 {"canon/bible"}, {"canon/bible/general/directives/ROM_GENERAL.md"},
             )
@@ -346,10 +347,11 @@ class TestDisjointness:
         a bind dest — only its chapters are — so a guard built from the LITERAL dests
         would silently start allowing a seed at ``canon/bible/agent/…``. Spec §2c
         forbids seeding anywhere under ``canon/bible/``, and under J-7 that path is a
-        root-owned 555 mountpoint, so the copy would fail at create rather than merely
-        be shadowed at launch. RED if someone narrows the deny list back to the dests.
+        root-owned 555 mountpoint, so the copy fails with EACCES at create rather than
+        merely being shadowed at launch. RED if someone narrows the deny list back to
+        the dests.
         """
-        with pytest.raises(RuntimeError, match="silently invisible"):
+        with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 CANON_SEED_DENY_PREFIXES, {"canon/bible/agent/directives/ROM_AGENT.md"},
             )
@@ -398,7 +400,7 @@ class TestDisjointness:
 
     def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
         """Driven through the real emitter: a template seed under ``canon/bible``
-        aborts the launch rather than being silently shadowed."""
+        aborts rather than being carried to a create that would EACCES."""
         real_walk = templates.walk_shipped_files
 
         def _walk(root: Path) -> list[tuple[str, Path]]:
@@ -407,7 +409,7 @@ class TestDisjointness:
             return real_walk(root)
 
         monkeypatch.setattr(templates, "walk_shipped_files", _walk)
-        with pytest.raises(RuntimeError, match="silently invisible"):
+        with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
             core_defaults.rom_default_categories()
 
 
