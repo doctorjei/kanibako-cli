@@ -246,9 +246,17 @@ class TestRunCommandAssembly:
             idx = cmd.index("--name")
             assert cmd[idx + 1] == "kanibako-test"
 
-    def test_tmpfs_mask_default_vault(self, tmp_path):
-        """The default single vault mask emits byte-identical args to the old
-        hardcoded ``vault_tmpfs=True``."""
+    def test_a_mask_is_an_empty_tmpfs_not_a_read_only_copy(self, tmp_path):
+        """A mask emits ``notmpcopyup`` — the option that makes it HIDE.
+
+        ⚑ WHAT THIS PINS, and why the option is not cosmetic: podman's tmpfs
+        default is ``tmpcopyup``, which copies whatever already sits at the
+        destination UP into the fresh tmpfs. Measured on real podman, the mask
+        therefore showed the pre-existing content read-only and hid NOTHING. A
+        mask is a void — there is nothing inside it (collapse DESIGN §8.1a). Drop
+        the option and this is the only test that notices, because the difference
+        is invisible to everything except what podman shows inside the box.
+        """
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
         with patch("kanibako.runtime.container.subprocess.run") as m_run:
@@ -260,10 +268,12 @@ class TestRunCommandAssembly:
             )
             cmd = m_run.call_args[0][0]
             idx = cmd.index("--mount")
-            assert cmd[idx + 1] == "type=tmpfs,dst=/home/agent/workspace/vault,ro"
+            assert cmd[idx + 1] == (
+                "type=tmpfs,dst=/home/agent/workspace/vault,ro,notmpcopyup"
+            )
 
     def test_tmpfs_mask_multiple(self, tmp_path):
-        """Multiple masks each emit a ``--mount type=tmpfs,...,ro`` pair."""
+        """Every mask gets its own EMPTY read-only tmpfs — the option is per-mount."""
         rt = self._make_rt()
         kwargs = self._base_kwargs(tmp_path)
         with patch("kanibako.runtime.container.subprocess.run") as m_run:
@@ -278,8 +288,10 @@ class TestRunCommandAssembly:
             )
             cmd = m_run.call_args[0][0]
             assert cmd.count("--mount") == 2
-            assert "type=tmpfs,dst=/home/agent/workspace/vault,ro" in cmd
-            assert "type=tmpfs,dst=/home/agent/.secret,ro" in cmd
+            assert (
+                "type=tmpfs,dst=/home/agent/workspace/vault,ro,notmpcopyup" in cmd
+            )
+            assert "type=tmpfs,dst=/home/agent/.secret,ro,notmpcopyup" in cmd
 
     def test_tmpfs_mask_empty(self, tmp_path):
         rt = self._make_rt()
@@ -438,7 +450,10 @@ class TestVaultDisabledRun:
             cmd_str = " ".join(cmd)
             # The tmpfs mask overlay is still emitted by run when vault is enabled.
             assert "tmpfs" in cmd_str
-            assert "type=tmpfs,dst=/home/agent/workspace/vault,ro" in cmd_str
+            assert (
+                "type=tmpfs,dst=/home/agent/workspace/vault,ro,notmpcopyup"
+                in cmd_str
+            )
             # The vault BINDS are no longer built by run (caller routes them).
             assert "/home/agent/vault/ro:ro" not in cmd_str
             assert "/home/agent/vault/rw:Z,U" not in cmd_str

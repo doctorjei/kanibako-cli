@@ -832,9 +832,21 @@ inside the box at `~/vault/ro` and `~/vault/rw`:
 - **vault/rw/** -- files that persist across sessions and can be modified
   (databases, build caches, generated artifacts)
 
-The host-side vault lives under the workset (`vault/{ro,rw}/<box>`); inside the
-box the local `~/workspace/vault` path is masked by a read-only tmpfs, so the
-agent cannot see or modify host vault metadata.
+The host-side vault lives under the workset (`vault/{ro,rw}/<box>`).
+
+A box can hide any guest path it likes with a **mask** — an empty tmpfs mounted
+over that path, so whatever the box home holds there is not visible inside the
+box at all:
+
+```yaml
+box:
+  masks:
+    "~/private": true
+```
+
+No mask is applied by default. (Before 1.6.0 the vault lived inside the
+workspace and `~/workspace/vault` was masked automatically; the vault moved out,
+so there is nothing in `~/workspace` left to hide.)
 
 ### Snapshots
 
