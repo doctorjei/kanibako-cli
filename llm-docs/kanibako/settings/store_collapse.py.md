@@ -62,6 +62,12 @@ rule added:
   subsume side;
 * **everything inside home nests freely, at any scope.**
 
+⚖️ **RULED 2026-08-09d — that first property is ABSOLUTE and covers MASKS too.** It used to fall out
+of the BIND refusal alone, which counts BINDINGS only, so a mask at `~` (or at `/`) swept the home
+binding away and the box launched with no home. His words: *"of course we should prohibit masking
+home directly or allowing a mask that would have home as a child path (ie that would shadow home)"*.
+That one IS a rule added rather than a consequence, and it is the mask arm's second refusal.
+
 The key is `normalize_bind_dest("~")` = `/home/agent`, not the literal `~`. A dest is a GUEST path
 and the guest home is fixed machinery, so the foundation key normalizes like every other dest —
 otherwise `~` and `/home/agent/...` would not compare and home would subsume nothing.
@@ -69,10 +75,9 @@ otherwise `~` and `/home/agent/...` would not compare and home would subsume not
 ⚑ `home_bind`'s options are carried VERBATIM: the mode fold applies to the scoped arms, and home is
 not in an arm. A copy's options are carried verbatim for the same reason.
 
-⚠️ **A MASK at home replaces it.** The ratified refusability table gives an arriving mask
-*"ok — delete it"* over a bind at its own point, with no home exception, and "nothing may subsume
-home" is stated as falling out of the BIND rule, which counts bindings only. Implemented as the
-table has it and pinned by a test that says so; making it a refusal is a RULING, not a tidy-up.
+⚑ The home refusal is written as CONTAINMENT and in the direction that is easy to get backwards:
+it fires when HOME is at, or INSIDE, the arriving mask's dest. Home is every mask's parent, so the
+opposite direction — or a bare comparative — would refuse every mask there is.
 
 ## Every dest is normalized at the point of use
 
@@ -109,7 +114,7 @@ INVERSE of a bind, not its mirror.
 | arriving | refuses | sweeps |
 |---|---|---|
 | **bind** | a mask that CONTAINS its dest (strictly) · a bind AT its dest or INSIDE it | everything at or inside its dest |
-| **mask** | a mask AT its dest or CONTAINING it | everything at or inside its dest |
+| **mask** | a mask AT its dest or CONTAINING it · HOME at its dest or INSIDE it | everything at or inside its dest |
 
 * a **bind** may nest INSIDE a bind, and refuses its own kind at its point or inside it;
 * a **mask** may CONTAIN a mask, and refuses its own kind at its point or containing it —
@@ -194,5 +199,7 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   objects, and by here the entries are gone — a dest, a source and a mode are all that is left.
 * **bind under a mask** — names the mask that would swallow it.
 * **mask on a mask** — names every mask it lands on or inside.
+* **mask over home** — names the offending dest and home's own, for a mask at home's point or above
+  it. Refused BEFORE the sweep, so a mask that cannot be accepted deletes nothing first.
 * **copy outside home** — names the source and the destination, and points at the home bind.
 * **mode contradiction** — see the fold, above.
