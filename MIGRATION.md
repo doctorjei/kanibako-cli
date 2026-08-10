@@ -1268,6 +1268,40 @@ paths people mask are the ones they most want gone.
 
 ---
 
+### 2.26 Masks now work in a box with the vault disabled
+
+**What changed.** If your box has the vault turned off (`box.enable_vault` false), **every mask you
+declared was silently discarded** — no tmpfs, no warning, nothing in the log. `<scope>.masks` is an
+ordinary key that has nothing to do with the vault, so a declared mask is now emitted either way.
+
+**⚠️ This changes what a vault-disabled box sees, at the next launch, with no config change.** A
+path you asked to mask has been readable all along in these boxes; now it is actually hidden.
+
+```
+# a box with the vault disabled and `box.masks: {~/private: true}`
+# before                                # now
+$ ls ~/private                          $ ls ~/private
+notes.md  keys.txt                       (empty)
+```
+
+**What you must do.**
+
+- **If you have a vault-disabled box with masks declared** — the mask starts working. **Check what
+  was exposed in the meantime**: anything under it has been readable inside that box for as long as
+  the mask has been declared.
+- **If you were (knowingly or not) depending on the mask NOT applying** — remove the mask entry
+  rather than turning the vault back on. The vault was never what suppressed it.
+- **Every other box is unaffected.** Boxes with the vault enabled already emitted their masks.
+
+**Why.** The gate was left-over wiring, not a decision. When the only mask was a single hardcoded
+tmpfs over `~/workspace/vault`, it genuinely was part of the vault, and it sat in the same block as
+the vault's own mounts. Those mounts moved out to the category resolver and the default mask was
+dropped, but the `if vault enabled` wrapper stayed behind and kept gating a user key on an unrelated
+setting. A declared category that disappears without a word is the one outcome the closed keyspace
+forbids — the same defect as §2.24, on a different axis.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

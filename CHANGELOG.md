@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing mask does at your next launch** — content you could read through a mask disappears. See
   [MIGRATION.md](MIGRATION.md) §2.25.
 
+- **A box with the vault disabled silently got no masks at all.** Turning the vault off
+  (`box.enable_vault`) also discarded every `masks` entry the box declared — no tmpfs, no warning,
+  nothing in the log — because the mask mounts were still emitted from inside the block that used to
+  hold the vault's own mounts, back when the only mask was a single hardcoded tmpfs over
+  `~/workspace/vault`. That mask was dropped and the vault's mounts moved out to the category
+  resolver; only the wrapper stayed, gating an ordinary user key on an unrelated setting. A declared
+  mask is now emitted regardless. **This changes what a vault-disabled box sees at your next
+  launch** — a path you asked to hide, which has been readable all along, becomes empty. See
+  [MIGRATION.md](MIGRATION.md) §2.26.
+
 - **A `masks` list in a settings file was silently dropped.** `box.masks: ["~/secret"]` — the
   spelling v1.7.x used — reached the launch as a plain list, missed the shape guard that emits the
   tmpfs, and produced no mount and no message: the host path you had asked to hide stayed plainly
