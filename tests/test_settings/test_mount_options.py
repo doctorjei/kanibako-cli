@@ -118,3 +118,57 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   }
   assert by_dest[sock_dest].options == "", sorted(by_dest)
   assert by_dest[sock_dest].to_volume_arg() == f"{sock}:{sock_dest}"
+
+
+def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
+  """🛑 ``Z,U`` SURVIVES THE COLLAPSE. The arm token is ADDED, never a stand-in.
+
+  Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
+  """
+  from kanibako.commands.start import _split_home_bind
+  from kanibako.settings.settings_assemble import parse_bind_map
+  from kanibako.settings.settings_launch import snapshot_category_entries
+  from kanibako.settings.settings_resolve import ResolveCtx
+  from kanibako.settings.settings_store import KeyStore
+  from kanibako.settings.store_collapse import HOME_DEST, collapse_store_shapes
+  from kanibako.settings.store_shape import build_store_shape_set
+
+  snap, box, bindings = KeyStore(), KeyStore(), KeyStore()
+  bindings["rw"] = parse_bind_map({
+    "~": [str(tmp_path / "home")],                  # home: pid 0, lifted out
+    "~/ws": [str(tmp_path / "ws")],                 # 1 element -> ABSENT opts
+    "~/sock": [str(tmp_path / "s"), ""],            # explicit "" -> the socket
+    "~/cache": [str(tmp_path / "c"), "z"],          # authored opts
+  }, category="bindings.rw")
+  bindings["ro"] = parse_bind_map(
+    {"~/ref": [str(tmp_path / "ref")]}, category="bindings.ro",
+  )
+  box["bindings"] = bindings
+  snap["box"] = box
+
+  ctx = ResolveCtx(
+    agent_name="claude", workset_name=None, host_home=str(tmp_path), xdg={},
+  )
+  entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+  home, folded = _split_home_bind(entries)
+  assert home is not None, "the fixture must declare a home bind"
+  opts = {
+    dest: bind.opts
+    for dest, bind in collapse_store_shapes(
+      build_store_shape_set(folded), home,
+    ).bindings.items()
+  }
+
+  # THE PHANTOM, REFUSED: an options-less rw bind keeps its relabel + chown. The
+  # collapse is fed ``CategoryEntry.options``, which is ALREADY defaulted, so the
+  # stored ``None`` never reaches ``fold_opt``.
+  assert opts["/home/agent/ws"] == "Z,U,rw", opts
+  # THE THREE STATES, AT THE SAME SEAM — the ``""`` arm is the socket's, and a
+  # truthiness read of the default would hand it ``Z,U,rw`` here too.
+  assert opts["/home/agent/sock"] == "rw", opts
+  # fold_opt ADDS: an authored value is never replaced by the arm token.
+  assert opts["/home/agent/cache"] == "z,rw", opts
+  # The ro arm takes its OWN default, not the rw one, and folding is idempotent.
+  assert opts["/home/agent/ref"] == "ro", opts
+  # HOME is lifted out BEFORE the fold, so no arm token is ever appended to it.
+  assert opts[HOME_DEST] == "Z,U", opts

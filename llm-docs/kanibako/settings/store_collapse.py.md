@@ -194,6 +194,24 @@ fold: split on `,`, strip, drop empties, append the token if absent, rejoin. Ord
 emitted `-v` string stays stable) and deduped (`bindings.ro` already carries `ro`, so folding the
 `ro` mode onto it must not print it twice).
 
+⚑⚑ **THE FOLD ADDS; IT NEVER STANDS IN FOR THE CATEGORY DEFAULT — because it never has to.** The
+arms arrive with their options ALREADY CONCRETE (`StoreShape`'s own words), applied upstream at
+`settings_launch._emit_bind`: `opts if opts is not None else _bind_options(category)`. The collapse
+is DOWNSTREAM of that line, reading `CategoryEntry.options`, so a stored `None` — what
+`parse_bind_map` records for a 1-element entry — never reaches `fold_opt` at all. An options-less
+`bindings.rw` entry therefore arrives as `Z,U` and collapses to **`Z,U,rw`**; `Z,U` cannot be lost
+here. ⚖️ Jei, 2026-08-10: *"We should have `Z,U` survive the collapse, yes. … we should just be
+adding to it."*
+
+🛑 **The phantom this paragraph exists to refuse.** `BindEntry.opts` is typed `str | None`, so the
+TYPE cannot say the value is concrete by now; reading `fold_opt(entry.opts, mode)` in isolation and
+substituting the STORED opts yields `fold_opt(None, "rw")` = `"rw"` and manufactures a regression in
+which every options-less rw bind silently loses its SELinux relabel and userns chown. It was briefed
+as a live defect once and does not exist. The measurement that settles it is a one-line mutant:
+delete the default at `_emit_bind` and the collapsed value drops to `"rw"` — i.e. the default was
+reaching the collapse through that line the whole time. Pinned by
+`tests/test_settings/test_mount_options.py::test_the_category_default_reaches_the_COLLAPSED_route_intact`.
+
 * A deliberate `""` means *no mount options* and is NOT upgraded to a category default: it folds to
   exactly the mode token.
 * ⚑ `opt_tokens` applies the same token rule as `settings_categories.is_read_only`, and the two
