@@ -21,6 +21,7 @@ declarations at ONE identical dest. Prose: ``llm-docs/kanibako/commands/start.py
 """
 
 import logging
+import re
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,7 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.store_collapse import HOME_DEST
+from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.no_agent import NoAgentTarget
 
 #: A bind at ``/home`` — legal on the live route (it collides with no dest and just
@@ -82,7 +84,7 @@ def _delivered(reconciled):
     """
     mounts = _emit_category_mounts(
         _bind_map_from_mounts(reconciled.mounts), label="assembly-wiring",
-        delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+        skip_if_absent=_agent_delivered_dests(reconciled.mounts),
     )
     return (
         [(m.destination, str(m.source), m.options) for m in mounts],
@@ -297,12 +299,12 @@ class TestTheEmitterConsumesTheShape:
         """⚑ THE DESTS AGREE on the shipped fixture — so a difference below is REAL."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         collapsed, from_rows, reconciled = self._both_shapes(std, proj)
-        elsewhere = _agent_delivered_dests(reconciled.mounts)
+        agent = _agent_delivered_dests(reconciled.mounts)
 
         def dests(binds):
             return {
                 m.destination for m in _emit_category_mounts(
-                    binds, label="shape", delivered_elsewhere=elsewhere,
+                    binds, label="shape", skip_if_absent=agent,
                 )
             }
 
@@ -325,12 +327,12 @@ class TestTheEmitterConsumesTheShape:
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         collapsed, from_rows, reconciled = self._both_shapes(std, proj)
-        elsewhere = _agent_delivered_dests(reconciled.mounts)
+        agent = _agent_delivered_dests(reconciled.mounts)
 
         def opts(binds):
             return {
                 m.destination: m.options for m in _emit_category_mounts(
-                    binds, label="shape", delivered_elsewhere=elsewhere,
+                    binds, label="shape", skip_if_absent=agent,
                 )
             }
 
@@ -379,17 +381,6 @@ class TestTheEmitterConsumesTheShape:
 
         assert [m.destination for m in emitted] == ["/tmp"]
 
-    def test_a_dest_delivered_elsewhere_is_not_emitted_twice(self):
-        """The agent partition: two emitters walk one map until 2a-3 merges them."""
-        from kanibako.settings.store_collapse import CollapsedBind
-
-        binds = {"/home/agent/.local/bin/claude": CollapsedBind("/bin", "ro")}
-        assert _emit_category_mounts(binds, label="shape") != []
-        assert _emit_category_mounts(
-            binds, label="shape",
-            delivered_elsewhere=frozenset({"/home/agent/.local/bin/claude"}),
-        ) == []
-
     def test_the_emitter_depth_sorts_the_map_it_is_given(self, tmp_path):
         """⚑ A dest-keyed map carries NO order, so EMISSION owns the depth-sort.
 
@@ -408,6 +399,143 @@ class TestTheEmitterConsumesTheShape:
         )
 
         assert [m.destination for m in emitted] == [shallow, mid, deep]
+
+
+class TestTheThreeMissingSourcePolicies:
+    """One emitter, three per-dest answers to "the host source is not there" (2a-3).
+
+    ⚑ The set membership tests are spelled against a dest that does NOT exist on
+    disk, because every one of these policies is reachable only through the missing
+    branch — a test whose source exists passes under all three and pins none.
+    """
+
+    _CRITICAL = "/home/agent/.local/bin/claude"
+
+    def _emit(self, dest, src, **policy):
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        return _emit_category_mounts(
+            {dest: CollapsedBind(src, "ro")}, label="shape", **policy,
+        )
+
+    def test_a_missing_critical_source_RAISES_instead_of_dropping(self):
+        """MUST-EXIST: the AGENT_CRITICAL safe-fail, now the emitter's own branch.
+
+        RED if ``must_exist`` stops reaching the emitter — a missing agent binary
+        would be dropped with a warning and reach podman as a crun crash instead of
+        the clean exit-1.
+        """
+        with pytest.raises(BindingSourceError, match=re.escape(self._CRITICAL)):
+            self._emit(
+                self._CRITICAL, "/nonexistent/claude",
+                must_exist=frozenset({self._CRITICAL}),
+            )
+
+    def test_a_must_exist_set_spelled_as_KEYS_matches_nothing_and_is_caught(self):
+        """⚑⚑ THE HISTORICAL BUG, in its third home.
+
+        ``critical_keys`` once held descriptor KEY NAMES while the arm was keyed by
+        DESTINATION, so every critical bind silently degraded to best-effort. The
+        collapsed map is dest-keyed too, so a key-spelled ``must_exist`` matches
+        NOTHING — and the failure is SILENT (a warn-and-drop that looks ordinary).
+        This test is the noise that makes it loud.
+        """
+        emitted = self._emit(
+            self._CRITICAL, "/nonexistent/claude",
+            must_exist=frozenset({"launcher", f"agent.claude.bindings.ro.{self._CRITICAL}"}),
+        )
+        assert emitted == [], "a key-spelled must_exist must not match a dest"
+
+    def test_must_exist_beats_skip_if_absent_at_a_shared_dest(self):
+        """A dest in BOTH sets must raise: must-exist wins its own dests outright.
+
+        The live call site subtracts the critical dests from the skip set, so this
+        can only fire on a caller that does not — and "which test ran first" is not
+        an answer a safe-fail may depend on.
+        """
+        with pytest.raises(BindingSourceError):
+            self._emit(
+                self._CRITICAL, "/nonexistent/claude",
+                must_exist=frozenset({self._CRITICAL}),
+                skip_if_absent=frozenset({self._CRITICAL}),
+            )
+
+    def test_a_missing_critical_source_RAISES_before_any_mkdir(self, tmp_path):
+        """⚑⚑ THE ORDERING, PINNED: the policy is read BEFORE the rw guarantee-create.
+
+        An ``rw`` critical dest whose source vanished must RAISE. Consulted after the
+        guarantee-create instead, ``mkdir(parents=True)`` would manufacture the very
+        thing must-exist asks about — the safe-fail becomes an EMPTY DIRECTORY bound
+        over the agent's binary, and nothing anywhere reports it.
+
+        RED two ways: the raise disappears, AND the directory appears on disk.
+        """
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        src = tmp_path / "gone" / "claude"
+        with pytest.raises(BindingSourceError):
+            _emit_category_mounts(
+                {self._CRITICAL: CollapsedBind(str(src), "rw")},
+                label="shape", must_exist=frozenset({self._CRITICAL}),
+            )
+        assert not src.exists(), "the policy was consulted AFTER the guarantee-create"
+
+    def test_skip_if_absent_drops_silently_and_the_default_warns(self, caplog):
+        """SKIP-IF-ABSENT vs WARN-AND-DROP: same mount set, different noise.
+
+        The agent's best-effort dests join the skip set for exactly this reason — a
+        missing or suppressed agent share is ordinary, and warning on it every launch
+        is what trains users to ignore warnings.
+        """
+        dest, src = "/home/agent/canon/handbook/box", "/nonexistent/chapter"
+        with caplog.at_level(logging.WARNING):
+            assert self._emit(dest, src, skip_if_absent=frozenset({dest})) == []
+        assert caplog.records == []
+        with caplog.at_level(logging.WARNING):
+            assert self._emit(dest, src) == []
+        assert [r.levelname for r in caplog.records] == ["WARNING"]
+
+    def test_a_narrow_resolve_drops_the_agent_rows_it_must_not_emit(self, tmp_path):
+        """A narrow resolve reads the user's cascade files, so an agent row reaches it.
+
+        The MAIN path emits every agent delivery bind from the collapse, so a narrow
+        caller emitting the same row would double-mount it. RED if
+        ``_narrow_bind_map`` degrades to ``_bind_map_from_mounts``.
+        """
+        from kanibako.commands.start import _narrow_bind_map
+        from kanibako.settings.settings_categories import CategoryEntry
+
+        def row(scope, category, dest):
+            return CategoryEntry(
+                category=category, scope=scope, box_dest=dest,
+                host_src=str(tmp_path), delivery="MOUNT", options="ro", name=dest,
+                key_segments=(scope, *category.split("."), dest),
+            )
+
+        rows = [
+            row("agent", "bindings.ro", "/home/agent/.local/bin/claude"),
+            row("agent", "common", "/home/agent/.claude/plugins"),
+            row("box", "bindings.ro", "/opt/kanibako"),
+        ]
+
+        # The agent BIND is dropped; an agent-scope COMMON is not a delivery bind
+        # and stays, exactly as the box-scope bind does.
+        assert sorted(_narrow_bind_map(rows)) == [
+            "/home/agent/.claude/plugins", "/opt/kanibako",
+        ]
+        assert "/home/agent/.local/bin/claude" in _bind_map_from_mounts(rows)
+
+    def test_an_rw_dest_with_no_policy_still_guarantee_creates(self, tmp_path):
+        """The L7 rw arm is UNMOVED — it just runs after the policy now."""
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        src = tmp_path / "made" / "here"
+        emitted = _emit_category_mounts(
+            {"/home/agent/w": CollapsedBind(str(src), "rw")}, label="shape",
+        )
+
+        assert src.is_dir()
+        assert [m.destination for m in emitted] == ["/home/agent/w"]
 
 
 @pytest.mark.parametrize("leaf", ["bindings", "seeded", "synced"])

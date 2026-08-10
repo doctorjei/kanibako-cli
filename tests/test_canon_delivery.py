@@ -668,8 +668,10 @@ class TestLaunchWiring:
         rec = self._launch_reconciled(std, proj, target)
         mounts = _emit_category_mounts(
             _bind_map_from_mounts(rec.mounts), label="canon-wiring",
-            skip_if_absent=core_defaults.canon_optional_bind_dests(),
-            delivered_elsewhere=_agent_delivered_dests(rec.mounts),
+            skip_if_absent=(
+                core_defaults.canon_optional_bind_dests()
+                | _agent_delivered_dests(rec.mounts)
+            ),
         )
         return {m.destination: m for m in mounts}
 

@@ -1326,7 +1326,9 @@ notes                                    (empty)
 - **If the bind is the one you want** — remove the mask, or mask a narrower path that does not
   contain the bind.
 - **A box with no mask, or with no bind under a mask, is unaffected.** Same destinations, same
-  sources, same order as before.
+  sources. One ordering note: the whole mount set is now emitted shallowest-first — the agent's own
+  delivery binds (its binary, launcher and shared install dir) included, where they used to be
+  emitted ahead of everything else — so a nested mount always follows the mount it sits inside.
 
 **Two cosmetic differences you may notice.** Read-write mounts now carry an explicit `rw` in their
 options (`Z,U,rw` where `podman inspect` used to show `Z,U`) — podman's default either way, so
