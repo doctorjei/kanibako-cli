@@ -2499,29 +2499,24 @@ def test_meta_box_home_resolves_under_the_box_root_in_every_mode():
         assert snap.meta.box.home == f"{snap.meta.box.path}/home", mode
 
 
-def test_meta_box_home_agrees_with_the_home_bind_meta_ref():
-    """DRIFT GUARD — the box-home derivation exists TWICE; this pins the two equal.
+def test_home_bind_names_the_derived_key_and_resolves_through_it():
+    """The home bind's host_src IS ``@meta.box.home`` — ONE spelling, read from YAML.
 
-    ⚑ THIS TEST IS THE WHOLE JUSTIFICATION FOR LANDING THE PRODUCER ON ITS OWN.
-    ``meta.box.home`` is ADDITIVE: the ``home`` bind row in ``core-defaults.yaml``
-    is still what binds a box's home on every launch, and it carries its own INLINE
-    ``meta_ref: "@meta.box.path/home"``. Re-pointing that row at the key is
-    sequenced with the collapse (roadmap step 6) — additive route first, delivery
-    re-point after, never in one pass — so until then the duplication has to be made
-    SAFE rather than removed. Two spellings of one derivation that nothing compares
-    is precisely how a box comes to mount a home the keyspace does not name.
+    ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point). While the
+    derivation existed TWICE — the key, and an inline ``@meta.box.path/home`` in the
+    ``home`` row of ``core-defaults.yaml`` — a guard held the two spellings equal.
+    The row now NAMES the key, so there is nothing left to drift; what still needs
+    pinning is the opposite thing: that the row did not quietly go back to
+    re-deriving, and that a bind pointing at the key still RESOLVES to the box home
+    (a whole-value ref onto a key that is itself an embedded ref — two hops, and the
+    launch path is where that chain is actually consumed).
 
-    The row's ``meta_ref`` is READ FROM THE YAML, never hardcoded here: editing
-    EITHER spelling alone turns this RED instead of letting the two diverge
-    silently. Both the raw formula and the RESOLVED host source are compared — the
-    string catches a re-spelling, the resolve catches two spellings that differ in
-    what they actually name.
+    The ``meta_ref`` is READ FROM THE YAML, never hardcoded here: re-inlining any
+    formula in that row turns this RED.
 
-    ⚑ DELETE THIS TEST when the bind row is re-pointed at ``@meta.box.home``: there
-    is then ONE spelling and nothing left to drift.
-
-    MUTATION-PROOF: producing ``@meta.box.path/home2`` in ``workset_anchor_floor``
-    → RED on both the formula and the resolved-source assertions.
+    MUTATION-PROOF: restoring ``meta_ref: "@meta.box.path/home"`` in
+    ``core-defaults.yaml`` → RED on the spelling assertion; producing
+    ``@meta.box.path/home2`` in ``workset_anchor_floor`` → RED on the resolved src.
     """
     from kanibako.settings.core_defaults import _load_doc
 
@@ -2529,12 +2524,17 @@ def test_meta_box_home_agrees_with_the_home_bind_meta_ref():
     assert len(rows) == 1, "core-defaults.yaml carries exactly one `home` bind row"
     row = rows[0]
     bind_ref = row["meta_ref"]
+    assert bind_ref == "@meta.box.home", (
+        "the home bind must NAME the derived key, not re-derive it"
+    )
 
-    for mode in ("primary", "named", "standalone"):
+    expected = {
+        "primary": "/data/ws/boxes/b/home",
+        "named": "/data/ws/boxes/b/home",
+        "standalone": "/data/ws/box_data/home",
+    }
+    for mode, want in expected.items():
         floor = _box_root_floor(mode)
-        # The FORMULA the floor produces is the row's own spelling, verbatim.
-        assert floor["meta.box.home"] == bind_ref, mode
-        # And both resolve to the same host directory, through the same snapshot.
         snap = build_launch_snapshot(
             agent_name="claude", ctx=_ctx(),
             system_path=None, agent_path=None, workset_path=None, box_path=None,
@@ -2547,6 +2547,7 @@ def test_meta_box_home_agrees_with_the_home_bind_meta_ref():
         bind = getattr(snap.box.bindings.rw, GUEST_HOME)
         assert isinstance(bind, BindEntry), mode
         assert bind.src == snap.meta.box.home, mode
+        assert bind.src == want, mode
 
 
 def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):

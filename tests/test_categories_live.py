@@ -84,7 +84,7 @@ class TestB2bHomeVaultByteIdentity:
     byte-identical to the pre-B2b proj-attr literals, per mode."""
 
     def test_primary_named_home_vault_resolve_to_proj_literals(self):
-        # PRIMARY/NAMED: home routes the ONE mode-independent @meta.box.path/home
+        # PRIMARY/NAMED: home routes the ONE mode-independent @meta.box.home
         # declaration; vault routes @workset.vault_*/@meta.box.name.  Both resolve to
         # the SAME literal proj.shell_path / proj.vault_*_path the old injection used.
         # ⚑ The ASSERTED PATHS are unchanged from before the anchor collapse — only
@@ -99,7 +99,7 @@ class TestB2bHomeVaultByteIdentity:
         # is ``{box_dest: (src[, options])}`` with the dest already absolutized.
         floor = {
             "box.bindings.rw": {
-                "/home/agent": ("@meta.box.path/home", "Z,U"),
+                "/home/agent": ("@meta.box.home", "Z,U"),
                 "/home/agent/vault/rw": (
                     "@workset.vault_rw/@meta.box.name", "Z,U",
                 ),
@@ -131,7 +131,7 @@ class TestB2bHomeVaultByteIdentity:
         assert by_dest["/home/agent/vault/rw"] == "/data/pw/vault/rw/mybox"
 
     def test_standalone_home_vault_resolve_to_proj_literals(self):
-        # STANDALONE: home routes the SAME @meta.box.path/home declaration as
+        # STANDALONE: home routes the SAME @meta.box.home declaration as
         # primary/named (the per-mode variation lives in meta.box.path = the EMPTY
         # LEAF @workset.boxes); vault routes the bare @workset.vault_* (a lone box has
         # no per-box vault subdir).  meta.workset.path = the project ROOT, so these
@@ -145,7 +145,7 @@ class TestB2bHomeVaultByteIdentity:
 
         floor = {
             "box.bindings.rw": {
-                "/home/agent": ("@meta.box.path/home", "Z,U"),
+                "/home/agent": ("@meta.box.home", "Z,U"),
                 "/home/agent/vault/rw": ("@workset.vault_rw", "Z,U"),
             },
             "box.bindings.ro": {
@@ -172,7 +172,7 @@ class TestB2bHomeVaultByteIdentity:
 
     def test_box_bindings_home_cascade_override_wins(self):
         # Option A: a box.bindings.rw.home CASCADE override (box scope) WINS over the
-        # spec-derived @meta.box.path/home default (the mechanism for a custom home,
+        # spec-derived @meta.box.home default (the mechanism for a custom home,
         # replacing the dropped meta["shell"] override).
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
@@ -183,7 +183,7 @@ class TestB2bHomeVaultByteIdentity:
         )
 
         floor = {
-            "box.bindings.rw": {"/home/agent": ("@meta.box.path/home", "Z,U")},
+            "box.bindings.rw": {"/home/agent": ("@meta.box.home", "Z,U")},
         }
         floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
         floor.update(workset_anchor_floor(
@@ -452,7 +452,7 @@ class TestP1BoxRootAnchor:
     """The RO box root and the one-declaration binds rooted against it."""
 
     def test_home_resolves_identically_in_all_three_modes(self, tmp_path):
-        """The ONE ``@meta.box.path/home`` declaration lands on ``proj.shell_path``.
+        """The ONE ``@meta.box.home`` declaration lands on ``proj.shell_path``.
 
         This is the standing form of the P1 gate: whatever the mode, the resolved
         home mount is byte-identical to the host home dir the launch has always
@@ -501,7 +501,7 @@ class TestP1BoxRootAnchor:
             for mode in ("primary", "named", "standalone")
         }
         for mode, arm in arms.items():
-            assert arm["/home/agent"] == ("@meta.box.path/home", "Z,U"), mode
+            assert arm["/home/agent"] == ("@meta.box.home", "Z,U"), mode
         # The WHOLE arm is mode-invariant, not just the home entry — a per-mode
         # dest would now be a per-mode map KEY, which comparing tuples alone
         # would no longer catch.

@@ -731,13 +731,15 @@ def meta_identity_floor(
 # resolved home/vault/helper_log mounts.
 #
 # ⚑ A BOX ROOT THAT DOES NOT RESOLVE IS CATASTROPHIC, NOT COSMETIC. The consumer
-# ``box.bindings.rw.home = (@meta.box.path/home, ~)`` is an EMBEDDED ref, and the
-# embedded rule (§6b) coerces an absent / present-None referent to ``""`` — so a
-# box root that fails to resolve yields the host_src ``/home``, which the L7
-# guarantee-create then mkdir's and mounts OVER the box home, silently. The floor
-# values below are constants and cannot be None; a user's ``workset.boxes: null``
-# in a settings file still can, which is why ``build_launch_snapshot`` asserts the
-# resolved ``meta.box.path`` is a non-empty absolute path.
+# ``box.bindings.rw.home = (@meta.box.home, ~)`` names the derived key, and that
+# key is itself the EMBEDDED ref ``@meta.box.path/home`` — the embedded rule (§6b)
+# coerces an absent / present-None referent to ``""``, so a box root that fails to
+# resolve yields the host_src ``/home``, which the L7 guarantee-create then
+# mkdir's and mounts OVER the box home, silently. Naming the key moved the
+# embedded dereference one level up; it did not remove it. The floor values below
+# are constants and cannot be None; a user's ``workset.boxes: null`` in a settings
+# file still can, which is why ``build_launch_snapshot`` asserts the resolved
+# ``meta.box.path`` is a non-empty absolute path.
 
 
 #: The box modes this floor knows how to root. An undeclared variant is NOT a mode
@@ -855,11 +857,10 @@ def workset_anchor_floor(
         ),
         # The RO DERIVED box-home SOURCE (spec §2c ALL PROJECTS). ONE declaration
         # for EVERY mode — the per-mode variation is the box root above and nothing
-        # here, exactly like ``meta.box.settings``. ⚑ ADDITIVE FOR NOW: the home
-        # bind in ``core-defaults.yaml`` still spells ``@meta.box.path/home``
-        # INLINE, so the derivation exists twice; a test pins the two equal. The
-        # bind is re-pointed at this key by the collapse (roadmap step 6) — route
-        # first, delivery after.
+        # here, exactly like ``meta.box.settings``. ⚑ THE ONLY SPELLING: the home
+        # bind in ``core-defaults.yaml`` names ``@meta.box.home`` rather than
+        # re-deriving it, so this line is what every launch's home mount resolves
+        # through. Do not re-inline the formula anywhere downstream.
         "meta.box.home": "@meta.box.path/home",
         # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b). UNIFORM in every
         # mode — no per-mode arm and no ``<None>`` carve-out — which is only safe
@@ -1548,11 +1549,12 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
     """Fail LOUDLY when the box root, or the store it derives from, did not resolve.
 
     ⚑ A box root that resolves to nothing does NOT surface as an error on its own.
-    ``box.bindings.rw.home`` is ``(@meta.box.path/home, ~)`` — an EMBEDDED ``@``-ref,
-    and the embedded rule (§6b) coerces an absent / present-``None`` referent to
-    ``""``. The L7 guarantee-create then ``mkdir``\\ s whatever that produced and
-    mounts it OVER the box home, so the box comes up with the wrong host directory
-    as its home and nothing anywhere reports an error.
+    ``box.bindings.rw.home`` is ``(@meta.box.home, ~)``, and ``meta.box.home`` is
+    ``@meta.box.path/home`` — an EMBEDDED ``@``-ref, and the embedded rule (§6b)
+    coerces an absent / present-``None`` referent to ``""``. The L7 guarantee-create
+    then ``mkdir``\\ s whatever that produced and mounts it OVER the box home, so the
+    box comes up with the wrong host directory as its home and nothing anywhere
+    reports an error. The derived key is a NAME for that formula, not a guard on it.
 
     ⚑ AND THE RESULT CAN LOOK PERFECTLY VALID, which is why BOTH keys are checked.
     With ``workset.boxes`` present-``None``:

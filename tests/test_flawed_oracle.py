@@ -1209,11 +1209,12 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         )
         # home: rw bind at /home/agent, options Z,U (the entry's 2nd slot).
-        # The home host_src is the MODE-INDEPENDENT @meta.box.path/home REF (spec §2c
-        # ALL PROJECTS), resolved at launch-expand to str(proj.shell_path).  The
-        # per-mode variation lives in meta.box.path, not here.
+        # The home host_src is the MODE-INDEPENDENT @meta.box.home REF (spec `:978`,
+        # the RO DERIVED key), resolved at launch-expand to str(proj.shell_path) —
+        # the key is itself @meta.box.path/home, so the per-mode variation lives in
+        # meta.box.path, not here and not in this row.
         assert binds["box.bindings.rw"]["/home/agent"] == (
-            "@meta.box.path/home",
+            "@meta.box.home",
             "Z,U",
         )
         # workspace: rw bind at /home/agent/workspace, options Z,U.  B2: the host_src
@@ -1250,7 +1251,7 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         )
         assert binds["box.bindings.rw"]["/home/agent"] == (
-            "@meta.box.path/home", "Z,U",
+            "@meta.box.home", "Z,U",
         )
         # ONE declaration: byte-equal to the primary arm — and now that the dest is
         # the KEY, "byte-equal" covers the destination as well as the value.
@@ -1358,19 +1359,23 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         ))
         ctx = make_ctx()
-        # workspace routes through @meta.box.workspace; home through the RO box
-        # root @meta.box.path; vault through @workset.vault_*/@meta.box.name
+        # workspace routes through @meta.box.workspace; home through the RO DERIVED
+        # key @meta.box.home, which is ITSELF the box root formula
+        # @meta.box.path/home; vault through @workset.vault_*/@meta.box.name
         # (PRIMARY).  Provide the materialized anchors (as the launch floor does) so
-        # the refs resolve.  The box root carries its @-REF FORMULA, not a resolved
+        # the refs resolve.  Each anchor carries its @-REF FORMULA, not a resolved
         # literal, so this stays sensitive to a wrong formula: the oracle resolves
-        # @-refs TRANSITIVELY, exactly as the launch expand does.  The keys must be
-        # LISTED, though — this dict IS the whole keyspace for the oracle, so an
-        # omitted key is simply an unknown @-reference.
+        # @-refs TRANSITIVELY, exactly as the launch expand does — home is now a
+        # THREE-hop walk (@meta.box.home -> @meta.box.path/home -> @workset.boxes/
+        # @meta.box.name).  The keys must be LISTED, though — this dict IS the whole
+        # keyspace for the oracle, so an omitted key is simply an unknown
+        # @-reference.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
                 "meta.box.name": "mybox",
                 "meta.box.path": "@workset.boxes/@meta.box.name",
+                "meta.box.home": "@meta.box.path/home",
                 "workset.boxes": "/data/pw/boxes",
                 "workset.vault_ro": "/data/pw/vault/ro",
                 "workset.vault_rw": "/data/pw/vault/rw",
@@ -1400,16 +1405,18 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         ))
         ctx = make_ctx()
-        # workspace via @meta.box.workspace; home via the RO box root
-        # @meta.box.path; vault via @workset.vault_*/@meta.box.name (PRIMARY).
-        # The box root carries its @-REF FORMULA (the oracle resolves @-refs
-        # transitively), so a wrong formula would show up here; every key it walks
-        # must be LISTED, since this dict IS the oracle's whole keyspace.
+        # workspace via @meta.box.workspace; home via the RO DERIVED key
+        # @meta.box.home (itself the box-root formula @meta.box.path/home); vault
+        # via @workset.vault_*/@meta.box.name (PRIMARY).  Each anchor carries its
+        # @-REF FORMULA (the oracle resolves @-refs transitively), so a wrong
+        # formula would show up here; every key it walks must be LISTED, since this
+        # dict IS the oracle's whole keyspace.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
                 "meta.box.name": "mybox",
                 "meta.box.path": "@workset.boxes/@meta.box.name",
+                "meta.box.home": "@meta.box.path/home",
                 "workset.boxes": "/data/pw/boxes",
                 "workset.vault_ro": "/data/pw/vault/ro",
                 "workset.vault_rw": "/data/pw/vault/rw",
