@@ -6308,9 +6308,14 @@ class TestTerminalCategoryKeyMatchesOnPosition:
 
         ``<scope>.masks`` IS a terminal category key, so the predicate answers True
         for it; what keeps it off the entry-merge branch is the VALUE test, because
-        spec §2a masks is a real ``list[box_dest]`` (NOT a dest-keyed map) at the
-        floor. A later family therefore REPLACES the list rather than merging into
-        it — the mask set a scope declares holds whole.
+        the FLOOR form of masks is a plain ``list[box_dest]``. A later family
+        therefore REPLACES the list rather than merging into it — the mask set a
+        scope declares holds whole.
+
+        ⚑ The list is the FLOOR's form ONLY, never the key's: spec §2a declares
+        ``masks`` a dest-keyed ``dict[box_dest → bool|None]``, "NOT a bare list"
+        (:534/:675/:1117), and ``build_launch_snapshot`` bridges the floor list
+        into that map. Do not read this test as the spec saying "list".
 
         ⚑ Mutation proof, not decoration: drop the ``isinstance(value, dict)`` term
         from the caller and this raises ``AttributeError`` on ``list.items()``

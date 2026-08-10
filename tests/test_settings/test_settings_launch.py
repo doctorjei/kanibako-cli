@@ -370,11 +370,11 @@ def test_adapter_masks_and_env():
 class TestAMasksListInTheFloorReachesTheEmit:
     """The ``masks`` LIST→keyed-dict BRIDGE in the floor fold, end to end.
 
-    ⚑ WHY THIS EXISTS AS A DIRECT TEST. ``masks`` is declared as a real
-    ``list[box_dest]`` (spec §2a — the shipped/floor form, e.g.
-    ``core_defaults.vault_mask_default()``), while the KeyStore model is a keyed
-    ``dict[box_dest → bool]`` (S5/§6f) and the adapter's masks emit only walks a
-    ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
+    ⚑ WHY THIS EXISTS AS A DIRECT TEST. The FLOOR hands masks over as a plain
+    ``list[box_dest]`` (e.g. ``core_defaults.vault_mask_default()``, which returns
+    the shipped MAP's keys), while the KeyStore model — and the spec's own
+    declaration, §2a ``dict[box_dest → bool|None]``, "NOT a bare list" — is KEYED
+    (S5/§6f), and the adapter's masks emit only walks a ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
     ``default_categories`` fold (``settings_launch.py``, the ``masks BRIDGE``
     branch). Delete that branch and the list stays a ``list``, the emit's
     ``isinstance(masks, KeyStore)`` guard skips it, and EVERY floor-declared mask

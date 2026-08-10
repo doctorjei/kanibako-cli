@@ -21,8 +21,11 @@ This module is the standing GUARDRAIL over that surface.  It does TWO things:
    ``settings-keyspace-1.8.0.md`` §2a: ``bindings``/``caches``/``seeded``/
    ``common``/``synced`` are TERMINAL DEST-KEYED arms — ``{box_dest:
    (host_src[, options])}``, so each ENTRY is a 1-/2-element list/tuple —
-   ``masks`` = a real list, and NO colon/comma-string value anywhere in a binding
-   entry (the colon-string form is the divergence the flip reversed).
+   ``masks`` = a DEST-KEYED MAP (``dict[box_dest → bool|None]``, "NOT a bare
+   list" — spec :534/:675/:1117, pinned below by
+   :meth:`TestCoreDefaultsShape.test_masks_is_a_dest_keyed_map`), and NO
+   colon/comma-string value anywhere in a binding entry (the colon-string form is
+   the divergence the flip reversed).
 
 2. **De-hardcoding lock** (a GREP-GUARD): asserts NO raw ``/home/agent`` literal
    survives in the COALESCED-DEFAULTS SURFACE (the shipped data files + their
