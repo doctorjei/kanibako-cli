@@ -544,14 +544,62 @@ class TestAMaskSweepsTheMountsItCovers:
     )
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
 
-  def test_a_mask_AT_home_replaces_the_home_binding(self):
-    # ⚠️ REPORTED, NOT ASSUMED. The ratified refusability table gives an arriving
-    # mask "ok — delete it" over a bind at its point, with no home exception, and
-    # the shipped code already overwrote home here. "Nothing may subsume home" is
-    # stated as falling out of the BIND rule, which counts bindings only. Pinned as
-    # the table has it; if that is to become a refusal it is a RULING, not a tidy-up.
-    collapsed = collapse(box=shape(mask={"~": True}))
-    assert collapsed.bindings == {GUEST: MASK}
+
+class TestAMaskMayNotSubsumeHome:
+  """⚖️ RULED 2026-08-09d — "nothing may subsume home" is ABSOLUTE and covers MASKS.
+
+  ⚑ A DELIBERATE BEHAVIOUR CHANGE, not a regression: until this ruling a mask at
+  ``~`` (or at ``/``) swept the home binding away and the box launched with no home,
+  because the rule fell out of the BIND refusal alone, which counts bindings only.
+  His words: *"of course we should prohibit masking home directly or allowing a mask
+  that would have home as a child path (ie that would shadow home)"*.
+  """
+
+  #: The one message, for "at home's point" and "over home" alike.
+  SUBSUMES_HOME = r"lands at or above the home binding"
+
+  @pytest.mark.parametrize("spelling", ["~", GUEST])
+  def test_a_mask_AT_homes_dest_is_refused_in_either_spelling(self, spelling):
+    # This case is what `948910c` pinned the OTHER way round; it INVERTS here.
+    with pytest.raises(SettingsError, match=self.SUBSUMES_HOME):
+      collapse(box=shape(mask={spelling: True}))
+
+  def test_a_mask_at_the_ROOT_is_refused_because_home_is_a_CHILD_of_it(self):
+    with pytest.raises(SettingsError, match=self.SUBSUMES_HOME):
+      collapse(box=shape(mask={"/": True}))
+
+  def test_a_mask_at_an_ANCESTOR_of_home_is_refused(self):
+    with pytest.raises(SettingsError, match=self.SUBSUMES_HOME):
+      collapse(box=shape(mask={"/home": True}))
+
+  def test_the_refusal_NAMES_the_offending_dest_and_homes_own(self):
+    with pytest.raises(SettingsError, match=rf"'/home'.*'{GUEST}'"):
+      collapse(box=shape(mask={"/home": True}))
+
+  def test_a_mask_INSIDE_home_is_ordinary_and_still_collapses(self):
+    # ⚑ THE OVER-REACH GUARD: home is every mask's parent, so a refusal written as a
+    # bare comparative rather than as CONTAINMENT would refuse every mask there is.
+    collapsed = collapse(box=shape(mask={f"{GUEST}/x/y": True}))
+    assert collapsed.bindings[f"{GUEST}/x/y"] == MASK
+    assert collapsed.bindings[GUEST].src == HOME.src
+
+  def test_a_SIBLING_of_home_sharing_its_prefix_is_not_over_home(self):
+    # The separator guard, on the containment predicate the new refusal uses:
+    # /home/agent-foo does not contain /home/agent, so it masks nothing of home's.
+    collapsed = collapse(box=shape(mask={"/home/agent-foo": True}))
+    assert collapsed.bindings["/home/agent-foo"] == MASK
+    assert collapsed.bindings[GUEST].src == HOME.src
+
+  def test_a_mask_over_home_is_refused_with_other_scopes_already_collapsed(self):
+    # ⚑ NOT AN ORDERING PIN — a swept-then-refused arrival cannot be read back out
+    # of a pure function that raises, so "refuse before sweep" is structural only.
+    # What this does pin: the refusal does not depend on home being ALONE in the map.
+    with pytest.raises(SettingsError, match=self.SUBSUMES_HOME):
+      collapse(
+        system=shape(rw={f"{GUEST}/x": BindEntry("/h/sys", "Z,U")}),
+        agent=shape(mask={f"{GUEST}/x/secret": True}),
+        box=shape(mask={"/": True}),
+      )
 
 
 class TestAMaskCannotTakeOrEnterAnotherMask:

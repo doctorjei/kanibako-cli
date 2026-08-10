@@ -107,6 +107,7 @@ def _merge_bindings(combined: CollapsedBindings, shape: StoreShape) -> None:
     combined[dest] = CollapsedBind(entry.src, fold_opt(entry.opts, mode))
   for dest in _scope_masks(shape):
     _refuse_mask_on_mask(combined, dest)
+    _refuse_mask_over_home(dest)
     _sweep(combined, dest)
     combined[dest] = MASK
 
@@ -202,6 +203,18 @@ def _refuse_mask_on_mask(combined: CollapsedBindings, dest: str) -> None:
     f"{', '.join(repr(d) for d in covering)}. A mask may not take another mask's "
     f"point nor sit inside one - a void within a void hides nothing the outer mask "
     f"is not hiding already. Declare one of them, not both."
+  )
+
+
+def _refuse_mask_over_home(dest: str) -> None:
+  """Nothing may subsume home, masks included: a mask AT home or above it is refused."""
+  if not _is_within(HOME_DEST, dest):
+    return
+  raise SettingsError(
+    f"the mask at {dest!r} lands at or above the home binding at {HOME_DEST!r}, "
+    f"which it would replace and leave the box with no home at all. Nothing may "
+    f"subsume home - a mask may sit INSIDE home, never at its point nor over it: "
+    f"mask a path inside home, or do not declare the mask."
   )
 
 
