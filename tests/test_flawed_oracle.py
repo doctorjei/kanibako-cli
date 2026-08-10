@@ -120,8 +120,9 @@ def flawed_oracle_is_category_key(key: str) -> bool:
 def _as_scalar(value: object) -> str:
     """Narrow a resolved ``env`` value to its scalar ``str`` form.
 
-    The LOAD layer preserves structured category leaves (binding pair/tuple,
-    ``masks`` list — spec §2a), so a resolved value is typed ``object``.  ``env``
+    The LOAD layer preserves structured category leaves (binding pair/tuple —
+    spec §2a — and, in this frozen oracle, a ``masks`` list), so a resolved value
+    is typed ``object``.  ``env``
     is the one remaining scalar category (its value is a plain VAR value); this
     narrows it to ``str`` (a real ``str`` passes through untouched).  Binding and
     ``masks`` leaves are unpacked structurally (:func:`unpack_bind` /
@@ -144,10 +145,13 @@ def _discover(levels: list[LevelView], pred: Callable[[str], bool]) -> set[str]:
 
 
 def _mask_dests(value: object) -> list[str]:
-    """Narrow a resolved ``masks`` value to its real ``list[box_dest]``.
+    """Narrow a resolved ``masks`` value to the ``list[box_dest]`` this oracle wants.
 
-    Per spec §2a ``masks`` is a real ``list[box_dest]`` — the LOAD layer (P1)
-    preserves a YAML list verbatim, so the common case is an actual ``list`` /
+    ⚑ THE LIST IS THIS FROZEN ORACLE'S SHAPE, NOT THE SPEC'S. Spec §2a declares
+    ``masks`` a dest-keyed ``dict[box_dest → bool|None]``, "NOT a bare list"
+    (:534/:675/:1117); only the FLOOR hands over a list. Like the retired key
+    forms above, read this as quarantined legacy — the LOAD layer (P1)
+    preserves a YAML list verbatim, so the common case here is an actual ``list`` /
     ``tuple`` whose elements ARE the box-dest paths (each kept as-is, NOT
     re-derived from a flattened string — the old comma-string shim
     ``str()``-reprd a preserved list into garbage, the latent corruption this
@@ -581,9 +585,9 @@ class TestPerEntryOptionsOverride:
 
 class TestMasks:
     def test_multiple_masks_from_real_list(self):
-        # F1 regression: a multi-element YAML masks list (spec §2a — a real
-        # list[box_dest], preserved by the LOAD layer) resolves to ONE entry
-        # per element, NOT a single str()-reprd-garbage entry.
+        # F1 regression: a multi-element masks list (this frozen oracle's shape —
+        # the SPEC's masks is dest-keyed, §2a — preserved by the LOAD layer)
+        # resolves to ONE entry per element, NOT a single str()-reprd-garbage entry.
         ctx = make_ctx()
         entries = _resolve(
             [LevelView("box", {"box.masks": ["~/workspace/vault", "/secret", "~/cache"]})],

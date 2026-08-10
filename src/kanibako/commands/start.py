@@ -7720,11 +7720,14 @@ def _apply_synced_copies(
 # ``box.masks`` / ``<scope>.masks`` — the category resolver injects this default
 # (empty) at the AGENT level and reconciles any explicit declarations on top.
 #
-# Per spec §2a ``masks`` is a real ``list[box_dest]`` (NOT a comma-string), so
-# the default is a LIST (empty) — the resolver iterates it as real entries.  The
-# STATIC value lives in the shipped system/core defaults file (P6b coalesce);
-# this module is a thin reader (:func:`kanibako.settings.core_defaults.vault_mask_default`),
-# which now returns an empty list.
+# ⚑ Per spec §2a ``masks`` is a KEYED category — ``dict[box_dest → bool|None]``,
+# explicitly "NOT a bare list" (spec :534, :675, :1117).  The FLOOR is the one
+# place a list appears, and it is an internal form, never the key's shape: the
+# shipped file spells the MAP and this module is a thin reader
+# (:func:`kanibako.settings.core_defaults.vault_mask_default`) handing back its
+# KEYS — the destinations — which ``build_launch_snapshot`` bridges BACK to a
+# keyed dict before anything resolves it.  The STATIC value lives in the shipped
+# system/core defaults file (P6b coalesce) and is empty today.
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 
 
