@@ -574,12 +574,18 @@ policy:
                                       #   folds and no mount arbitrates a copy
     copy_dest_outside_home: error     # a copy dest that is not inside home is a
                                       #   config ERROR
-    synced_vs_binding_same_dest: error   # a copy can't override a live mount —
-                                         #   the assembler flags a config error,
-                                         #   not a silent no-op. STANDS until the
-                                         #   mount_forbidden list replaces it
-                                         #   (Jei, 2026-08-09d — deleting it first
-                                         #   leaves a window with no protection)
+    synced_vs_binding_same_dest: error   # RETIRED BY RULING 2026-08-10 ("synced
+                                         #   <->binding is unnecessary now, yes");
+                                         #   the value stays `error` only because
+                                         #   the LIVE route still enforces it. The
+                                         #   deletion lands at the CUTOVER, when
+                                         #   syncs begin copying LAST and resolve
+                                         #   THROUGH the binds — a covering mount
+                                         #   stops being a hazard, so nothing is
+                                         #   left for this to protect.
+                                         #   ⚑ mount_forbidden is REMOVED, not
+                                         #   pending: it was never the replacement,
+                                         #   the copy-LAST ordering is.
   category_reconcile_spec: "§0 (The collapse MERGES THE INFORMATION; it performs nothing)"
 
   # Collision-safety floor on the resolved data structure.
