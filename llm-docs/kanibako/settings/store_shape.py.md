@@ -12,11 +12,19 @@ comparing scopes is the grand-unification collapse's whole job (roadmap step 6).
 `designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
 `specs/settings-keyspace-1.8.0.md` §0 (the collision table).
 
-## Status: ADDITIVE and UNCONSUMED
+## Status: CONSUMED, but INFORMATION-ONLY
 
-Nothing calls this yet and it consumes no live output. The live delivery path is unchanged:
-`snapshot_category_entries` → `reconcile_categories` → emission. Step 6 lands the consumer; only
-then does `reconcile_categories`' arbitration half come out.
+`commands/start.py:_install_assembly_collapse` calls `build_store_shape_set` on the launch path and
+feeds it to `collapse_store_shapes`, storing the result at `meta.assembly.{bindings,copies}`.
+
+⚑ **That output is OBSERVED BY NOTHING.** The live delivery path is unchanged:
+`snapshot_category_entries` → `reconcile_categories` → emission. Step 6 merges the *information* and
+does not perform the action; the CUTOVER lands the consumer, and only then does
+`reconcile_categories`' arbitration half come out.
+
+⚑ The collapse REFUSES some shapes the shipped route still accepts, so the call site catches
+`SettingsError`, leaves both leaves ABSENT and logs at `debug`. That tightening is intended and lands
+at the cutover — do not "fix" the collapse to stop raising.
 
 ## The seam — WITHIN-SCOPE is the producer's, CROSS-SCOPE is the collapse's
 
@@ -130,8 +138,10 @@ loudly rather than dropping its entries.
    collapse's own mask loop is written to override. The collapse would be correct and the answer
    still wrong.
 3. **Not carry the copy-vs-mount ARBITRATION LADDER forward** ("masks beats everything … every mount
-   beats `seeded`"). The collapse supersedes that ladder with SCOPE ORDER; reproducing it here would
-   re-create, one layer earlier, the thing step 6 deletes.
+   beats `seeded`"). ⚑ The collapse does not supersede that ladder with scope order — **it does not
+   arbitrate copies AT ALL.** Copies apply to the home bind alone, the copy half runs before any binding
+   is read, and its output is a concatenation whose only ordering is scope order. Reproducing the ladder
+   here would re-create, one layer earlier, the thing the cutover deletes.
 4. **Not sort by path depth.** Depth ordering is EMISSION order, not precedence. Arms preserve input
    order; the collapse sorts each scope's binds shallowest-first before processing, which is its own
    ruling and its own intra-scope mechanism.
@@ -149,10 +159,12 @@ Recorded so they are not discovered during step 6.
 * **`seeded` onto a binding.** Spec §0 row 3 names `seeded` among the ABSTRACT declarations, but no
   code has ever refused it: `seeded` is a COPY, so it never reaches `_resolve_mount_group` where
   row 3 lives — `reconcile_categories` resolves it through the cross-delivery ladder instead (the
-  mount wins, silently). The collapse rules the same case SILENT REMOVAL ("it's ok for a mount to
-  shadow a seeded file"). Refusing it here would have invented an error that neither ships today nor
-  is wanted downstream, so the producer folds `seeded` without arbitrating it against a bind. **The
-  spec text and the two implementations disagree; that is a spec question, not a writer's.**
+  mount wins, silently). ⚑ The collapse does not rule the case at all — a copy never meets a bind
+  there, so nothing is refused and nothing is removed. A mount shadowing a copied file is a DELIVERY
+  fact, and it is legal ("it's ok for a mount to shadow a seeded file"). Refusing it here would have
+  invented an error that neither ships today nor is wanted downstream, so the producer folds `seeded`
+  without arbitrating it against a bind. **The spec text and the two implementations disagree; that is
+  a spec question, not a writer's.**
 * **`synced` vs a binding at one dest.** `_resolve_dest_group` raises a `synced_vs_binding`
   `CategoryCollisionError` for this, ACROSS all scopes, and it is stated in §0 independently of the
   five-row table. The producer does not implement it (the design's seam assigns it to neither side),
