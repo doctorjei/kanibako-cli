@@ -26,10 +26,15 @@
 
 # box.masks default (decision B): EMPTY — there is no default tmpfs mask.  The
 # vault moved OUT of ~/workspace in 1.6.0, so there is nothing in the workspace
-# to hide; the old vestigial ~/workspace/vault mask is DROPPED.  A real
-# list[box_dest] (spec §2a) — a box may still declare masks via box.masks /
-# <scope>.masks to hide a guest path behind a read-only tmpfs.
-masks: []
+# to hide; the old vestigial ~/workspace/vault mask is DROPPED.  A box may still
+# declare masks via box.masks / <scope>.masks to hide a guest path behind an
+# empty tmpfs.
+#
+# THE SHAPE IS A MAP KEYED BY BOX DESTINATION — dict[box_dest -> bool|null], the
+# 3-state of spec §2a (present = mask · null = unmask · absent = inherit).  It is
+# NOT a list: a list at <scope>.masks in a settings file is refused by name, so
+# the shipped default is spelled in the shape a user must write.
+masks: {}
 
 # Channel binds (§2c/§2f).  Each entry becomes a `box.bindings.rw.<key>` default
 # whose VALUE is the structured pair (<probed host_src>, <box_dest>).  `source`

@@ -1184,6 +1184,53 @@ all six categories instead of two shapes that were 2-element-legal with opposite
 
 ---
 
+### 2.24 `masks` is a map keyed by destination; a list is refused
+
+**What changed.** `<scope>.masks` names the box paths to hide behind a tmpfs. In v1.7.x it was
+written as a **list**; it is now a **map keyed by the box destination**, like every other
+destination-keyed category (§2.23) — but its value is not a source, because a mask has none. The
+value is a three-state marker.
+
+```yaml
+# v1.7.x — a list of destinations
+box:
+  masks:
+    - "~/secret"
+    - "~/workspace/private"
+
+# v1.8.0 — keyed by destination
+box:
+  masks:
+    "~/secret":            true
+    "~/workspace/private": true
+```
+
+**⚑ Edit your settings files.** Until now a list was **silently dropped**: no tmpfs was mounted, no
+warning was printed, and the path you meant to hide stayed readable inside the box. It is now
+refused by name, so a leftover list stops the launch and tells you what to write instead. If you
+carried a `masks:` list forward from v1.7.x, **it has not been masking anything** — check what that
+path exposed before you assume the mask was in force.
+
+**The three states.** `true` (or a bare key with no value) masks the path. `null` **unmasks** it —
+it removes a mask inherited from a wider scope, which a list had no way to express. Omitting the key
+inherits whatever the wider scope said.
+
+```yaml
+box:
+  masks:
+    "~/shared-secret": null   # the workset masks this; this box does not
+```
+
+**Where to look.** Any settings YAML you hand-wrote: the system settings file, a workset's, a box's,
+and `agents/<node>/settings.yaml`. Check for a `masks:` table written with `-` bullets.
+
+**Why.** Keying by destination is what makes the containment rules in §2.2 decidable at all — a mask
+and a bind at one path, or a mask inside another mask, are questions about destinations. It also
+makes the per-entry cascade real: a box can now override *one* inherited mask instead of replacing a
+whole list, and unmasking becomes expressible rather than impossible.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

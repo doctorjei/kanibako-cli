@@ -480,6 +480,85 @@ class TestAMasksListInTheFloorReachesTheEmit:
         ]
 
 
+class TestAMasksListInASETTINGSFILEIsRefusedByName:
+    """A ``masks`` LIST written in a settings FILE is an ERROR that names the key.
+
+    ⚑ WHAT THIS REPLACES — a SILENT DROP, measured twice (once on real podman):
+    ``box.masks: ["~/m"]`` in a box settings file resolved to a plain ``list``,
+    missed the emit's ``isinstance(masks, KeyStore)`` guard, and produced NO tmpfs
+    mount and NO warning. The host path the user asked to hide stayed plainly
+    readable inside the box. A category that vanishes without a word is the one
+    outcome the closed keyspace forbids (spec §0).
+
+    ⚑ WHY REFUSED AND NOT BRIDGED. Spec §2a declares ``masks`` as
+    ``dict[box_dest -> bool|None]`` and says *"NOT a bare list"* in as many words;
+    the 3-state VALUE is what carries the unmask. Teaching the file path to accept
+    a list would be re-declaring the shape, which is a SPEC edit. Refusing conforms
+    the code to the spec and is no spec delta.
+
+    ⚑ THE FLOOR IS A DIFFERENT SEAM and still bridges a list
+    (:class:`TestAMasksListInTheFloorReachesTheEmit` above): a floor table is
+    written by kanibako or a plugin, never by a user, and it is converted BEFORE
+    assembly, so it reaches this check already keyed.
+    """
+
+    @staticmethod
+    def _emit_from_box_file(path: Path, body: str):
+        path.write_text(body)
+        ctx = _ctx()
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=None, agent_path=None, workset_path=None, box_path=path,
+        )
+        return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+
+    def test_a_list_at_box_masks_raises_naming_the_key(self, tmp_path: Path):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            self._emit_from_box_file(
+                tmp_path / "box.yaml", 'box:\n  masks:\n    - "~/m"\n',
+            )
+        message = str(excinfo.value)
+        assert "box.masks" in message
+        # The cure is PRINTED, in the shape a mask actually takes — a mask has no
+        # source, so the bind example would send the reader somewhere wrong.
+        assert "{box_dest: true}" in message
+
+    def test_the_keyed_form_in_the_same_file_still_masks(self, tmp_path: Path):
+        # The refusal's counterpart: the DECLARED shape reaches the seam. Without
+        # this, a refusal that swallowed every mask would look identical.
+        entries = self._emit_from_box_file(
+            tmp_path / "box.yaml", 'box:\n  masks:\n    "~/m": true\n',
+        )
+        masks = [e for e in entries if e.category == "masks"]
+        assert [e.box_dest for e in masks] == [f"{GUEST_HOME}/m"]
+        assert masks[0].host_src is None and masks[0].options == "ro"
+
+    def test_a_list_at_a_workset_file_masks_is_refused_too(self, tmp_path: Path):
+        # The check runs per SCOPE NODE, so the refusal is not box-local.
+        from kanibako.settings.settings_resolve import SettingsError
+
+        ws = tmp_path / "workset.yaml"
+        ws.write_text('workset:\n  masks:\n    - "/w/m"\n')
+        ctx = _ctx()
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=None, agent_path=None, workset_path=ws, box_path=None,
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        assert "workset.masks" in str(excinfo.value)
+
+    def test_an_empty_map_is_not_an_error(self, tmp_path: Path):
+        # PRESENT-BUT-EMPTY stays a no-op, exactly as it is for the bind families:
+        # an empty node is indistinguishable from an absent one after assemble.
+        entries = self._emit_from_box_file(
+            tmp_path / "box.yaml", "box:\n  masks: {}\n",
+        )
+        assert [e for e in entries if e.category == "masks"] == []
+
+
 def test_adapter_bind_with_none_leaf_raises():
     from kanibako.settings.settings_resolve import SettingsError
 
