@@ -619,12 +619,18 @@ class ReconciledCategories:
     warnings: tuple[CategoryCollision, ...] = ()
 
 
-def _path_depth(box_dest: str) -> int:
+def path_depth(box_dest: str) -> int:
     """Path-depth of a guest dest for the mount depth-sort (shallower first).
 
     Depth = number of non-empty path components.  ``~/`` / ``/`` is shallowest;
     ``~/workspace`` is deeper; ``~/workspace/vault`` deeper still.  Guest dests are
     already ``@``-expanded (``~`` -> ``/home/agent``) before reaching here.
+
+    PUBLIC because emission depth-sorts too: the collapsed bind map is dest-keyed
+    and carries NO order (``store_collapse.CollapsedBindings``), so
+    ``commands/start._emit_category_mounts`` sorts on this same key.  One depth
+    rule, two consumers — a second spelling would drift the podman mount order
+    away from the reconcile's on exactly the nested dests it exists to resolve.
     """
     return len([c for c in box_dest.strip("/").split("/") if c])
 
@@ -747,7 +753,7 @@ def reconcile_categories(
 
     # MOUNT depth-sort: shallower box_dest first so the deepest (most specific)
     # mount lands LAST and wins. Stable tie-break by box_dest for determinism.
-    mounts.sort(key=lambda e: (_path_depth(e.box_dest), e.box_dest))
+    mounts.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
     # COPY: deterministic by box_dest (no depth constraint).
     copies.sort(key=lambda e: e.box_dest)
 

@@ -656,14 +656,20 @@ class TestLaunchWiring:
         return reconciled
 
     def _launch_mounts(self, std, proj, target) -> dict:
-        from kanibako.commands.start import _emit_category_mounts
+        from kanibako.commands.start import (
+            _agent_delivered_dests,
+            _bind_map_from_mounts,
+            _emit_category_mounts,
+        )
 
         # ⚑ The missing-source policy is spelled EXACTLY as the live call sites
         # spell it (``commands/start.py``) — a different spelling here would test
         # the harness rather than the launch.
+        rec = self._launch_reconciled(std, proj, target)
         mounts = _emit_category_mounts(
-            self._launch_reconciled(std, proj, target), label="canon-wiring",
+            _bind_map_from_mounts(rec.mounts), label="canon-wiring",
             skip_if_absent=core_defaults.canon_optional_bind_dests(),
+            delivered_elsewhere=_agent_delivered_dests(rec.mounts),
         )
         return {m.destination: m for m in mounts}
 

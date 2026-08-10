@@ -1714,8 +1714,9 @@ def _assemble_image_sharing_mounts(
         resolved_store = _snapshot_scalar(_img_snap, "box.images_store")
         if resolved_store is not None:
             img_mounts = _emit_category_mounts(
-                _img_rec, label="images",
+                _bind_map_from_mounts(_img_rec.mounts), label="images",
                 skip_if_absent=core_defaults.canon_optional_bind_dests(),
+                delivered_elsewhere=_agent_delivered_dests(_img_rec.mounts),
             )
             extra_mounts.extend(img_mounts)
             logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
@@ -1968,8 +1969,9 @@ def _start_helper_hub(
         # box_dests are disjoint from anything a persona bundle can name.
     )
     helper_hub_mounts = _emit_category_mounts(
-        _hub_rec, label="helper",
+        _bind_map_from_mounts(_hub_rec.mounts), label="helper",
         skip_if_absent=core_defaults.canon_optional_bind_dests(),
+        delivered_elsewhere=_agent_delivered_dests(_hub_rec.mounts),
     )
     extra_mounts.extend(helper_hub_mounts)
     return hub
@@ -3788,8 +3790,8 @@ def _run_container(
         # The remaining category MOUNT winners (kani / core / channel / share —
         # the kanibako CLI binds, the box's own home/workspace/vault binds, the
         # per-mode channel binds, and any scoped bindings/caches/common), emitted
-        # ONCE from the single reconcile (depth-sorted across all families
-        # together; podman's last-``-v``-wins/depth-sort resolves nested dests).
+        # ONCE — from the COLLAPSE (cutover step 2a-2), which folds the four
+        # scopes over the home foundation into one dest-keyed bind map.
         # ``masks`` (tmpfs, no host source) and the agent delivery binds are split
         # out.  L7 guarantee-create / ro-drop is preserved byte-for-byte.  The
         # channel side-effect (seeding the chat general/broadcast logs, §3c) is run
@@ -3799,8 +3801,10 @@ def _run_container(
         # one: the narrow resolves read the user's cascade files too, so a policy
         # that varied by call site would decide one dest two ways.
         extra_mounts.extend(_emit_category_mounts(
-            reconciled, label="category",
+            _launch_bind_map(_snapshot, reconciled),
+            label="category",
             skip_if_absent=core_defaults.canon_optional_bind_dests(),
+            delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
         ))
 
         # Masks: the ``box.masks`` tmpfs mask LIST (the reconciled ``masks``
@@ -6861,39 +6865,83 @@ def emit_collision_warnings(collisions) -> None:
         logger.warning("%s", collision.message())
 
 
+def _bind_map_from_mounts(mounts: list) -> "dict[str, object]":
+    """Reconciled MOUNT winners → the emitter's dest-keyed ``(src, opts)`` shape.
+
+    Prose: ``llm-docs/kanibako/commands/start.py.md``.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+    from kanibako.settings.store_collapse import MASK, CollapsedBind
+
+    binds: dict[str, object] = {}
+    for e in mounts:
+        # ``secret_path`` carries NO arm in the disk-store shape (producer DESIGN
+        # §7.4), so the collapsed map has none either; dropping it here is shape
+        # FIDELITY, not a policy filter. Delivery stays _emit_secret_mounts'.
+        if e.category == "secret_path":
+            continue
+        binds[normalize_bind_dest(e.box_dest)] = (
+            MASK if e.category == "masks"
+            else CollapsedBind(e.host_src, e.options)
+        )
+    return binds
+
+
+def _launch_bind_map(snapshot, reconciled) -> "dict[str, object]":
+    """The main path's bind map: the COLLAPSE, or reconciled rows when it wrote none.
+
+    ⚑ The fallback is the collapse's own ABSENT state, not a preference — it writes
+    nothing when it refuses a configuration the live route accepts, and swallows the
+    cause at ``debug``. That swallow and this arm come out TOGETHER at step 2c; until
+    then a refusal must reach nobody (llm-docs ``commands/start.py.md``).
+    """
+    collapsed = _snapshot_assembly_bindings(snapshot)
+    if collapsed is not None:
+        return collapsed
+    return _bind_map_from_mounts(reconciled.mounts)
+
+
+def _agent_delivered_dests(mounts: list) -> "frozenset[str]":
+    """The dests ``agent_delivery_mounts`` owns — the PARTITION, retired at 2a-3."""
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    return frozenset(
+        normalize_bind_dest(e.box_dest) for e in mounts
+        if e.scope == "agent" and e.category in ("bindings.ro", "bindings.rw")
+    )
+
+
 def _emit_category_mounts(
-    reconciled, *, label: str, skip_if_absent: frozenset[str] = frozenset(),
+    bindings, *, label: str,
+    skip_if_absent: frozenset[str] = frozenset(),
+    delivered_elsewhere: frozenset[str] = frozenset(),
 ) -> list:
-    """Emit every non-agent, non-mask reconciled MOUNT winner as :class:`Mount`s.
+    """Emit a dest-keyed ``(src, opts)`` bind map as :class:`Mount`s under L7.
 
-    *skip_if_absent* is the MISSING-SOURCE POLICY, passed in as a set of
-    normalized box DESTS (llm-docs ``commands/start.py.md``).
-
-    The single-pass replacement for the per-family ``_emit_reconciled_mounts``
-    calls: the snapshot reconcile already partitioned + depth-sorted ALL MOUNT
-    winners together, so this emits them ONCE.  AGENT delivery binds
-    (``scope == "agent"`` / ``bindings.{ro,rw}``) are emitted SEPARATELY by
-    :func:`kanibako.settings.settings_launch.agent_delivery_mounts` (their AGENT_CRITICAL
-    must-exist safe-fail differs from L7), and ``masks`` (tmpfs, no host source)
-    are split out for ``tmpfs_masks`` — both are skipped here.  Keeps the L7
-    guarantee-create / ro-drop logic byte-for-byte from ``_emit_reconciled_mounts``.
+    *bindings* is the SHAPE, not a source: ``meta.assembly.bindings`` on the main
+    launch path, the same shape translated from reconciled winners
+    (:func:`_bind_map_from_mounts`) on the narrow resolves.  *skip_if_absent* and
+    *delivered_elsewhere* are the two DEST-keyed policies.  Prose: llm-docs
+    ``commands/start.py.md``.
     """
     from pathlib import Path as _Path
 
+    from kanibako.settings.settings_categories import path_depth
     from kanibako.targets.base import Mount
 
     mounts: list = []
-    for e in reconciled.mounts:
-        if e.category == "masks":
-            continue  # tmpfs masks have no host source; split into tmpfs_masks.
-        if e.scope == "agent" and e.category in ("bindings.ro", "bindings.rw"):
-            continue  # agent delivery binds → agent_delivery_mounts (must-exist).
-        if e.category == "secret_path":
-            continue  # SECRET category → _emit_secret_mounts (arm's-length ro mount
-            # + box-side export shim; kept OUT of this ~-rooted depth-sorted emit).
-        assert e.host_src is not None  # bind-shaped MOUNTs always have a source.
-        src = _Path(e.host_src)
-        if not is_read_only(e.options):
+    # A dest-keyed map carries NO order, so emission owns the depth-sort the
+    # reconcile used to hand over: shallower first, so podman's own depth-sort /
+    # last-``-v``-wins lands the most specific mount on top.
+    for dest, bind in sorted(
+        bindings.items(), key=lambda kv: (path_depth(kv[0]), kv[0]),
+    ):
+        if bind.src is None:
+            continue  # a MASK: tmpfs, no host source; split into tmpfs_masks.
+        if dest in delivered_elsewhere:
+            continue  # agent delivery bind → agent_delivery_mounts (must-exist).
+        src = _Path(bind.src)
+        if not is_read_only(bind.opts):
             # rw bind: create the host source dir if absent (L7 guarantee-create).
             try:
                 src.mkdir(parents=True, exist_ok=True)
@@ -6901,25 +6949,25 @@ def _emit_category_mounts(
                 pass  # best-effort; podman will surface a genuinely bad source
         elif not src.exists():
             import logging
-            if e.box_dest in skip_if_absent:
+            if dest in skip_if_absent:
                 # SKIP-IF-ABSENT (spec §2c): at THESE dests an absent source is the
                 # NORMAL case, not a defect (the handbook's per-scope chapters).
                 # Dropped SILENTLY (debug only); the WARNING below stays for every
                 # other ro bind and must not be softened globally.
                 logging.getLogger(__name__).debug(
                     "%s %s: optional source %s absent; bind omitted",
-                    label, e.name, e.host_src,
+                    label, dest, bind.src,
                 )
                 continue
             # ro bind with a missing source: DROP with a warning (L7) instead of
             # letting rootless podman abort the launch on a dangling bind source.
             logging.getLogger(__name__).warning(
                 "%s %s: read-only source %s does not exist; dropping mount",
-                label, e.name, e.host_src,
+                label, dest, bind.src,
             )
             continue
         mounts.append(
-            Mount(source=src, destination=e.box_dest, options=e.options)
+            Mount(source=src, destination=dest, options=bind.opts or "")
         )
     return mounts
 
@@ -7001,6 +7049,22 @@ def _snapshot_scalar(snapshot: "KeyStore", dotted: str) -> str | None:
     for seg in dotted.split("."):
         node = dict.get(node, seg) if isinstance(node, KeyStore) else None
     return node if isinstance(node, str) and node else None
+
+
+def _snapshot_assembly_bindings(snapshot: "KeyStore") -> "dict[str, object] | None":
+    """The collapsed bind map at ``meta.assembly.bindings``, or ``None`` if absent.
+
+    ⚑ ABSENT is a real state, not a defect: the collapse writes nothing when there
+    is no single home bind to build on, and swallows its own refusals until the
+    cutover's step 2c (llm-docs ``commands/start.py.md``).  COPIED OUT of the
+    snapshot — the caller gets its own map, never the live node.
+    """
+    from kanibako.settings.settings_store import KeyStore
+
+    node: object = snapshot
+    for seg in _ASSEMBLY_BINDINGS:
+        node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+    return dict(node) if isinstance(node, dict) else None
 
 
 def _install_box_handbook(

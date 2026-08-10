@@ -1,14 +1,21 @@
-"""The step-6b collapse WIRING — ``meta.assembly.*`` is PRODUCED, and drives NOTHING.
+"""The collapse WIRING — ``meta.assembly.*`` is produced, and since 2a-2 it BINDS.
 
-Roadmap step 6, verbatim: *"merge the information, but not perform the action"*. So the
-oracle here is TWO-SIDED and the second half is the load-bearing one:
+🛑 **CUTOVER STEP 2a-2 MOVED THE LINE THIS FILE USED TO DRAW.** The collapse was
+information-only through step 6b; the MAIN launch path now emits its category mounts
+from ``meta.assembly.bindings``. What survives unchanged is the RECONCILED route
+itself — it still runs, still computes its whole answer, and still feeds the two
+narrow resolves, the mask arm and the agent arm. So the oracle here is now THREE-sided:
 
-* the collapse runs on the REAL launch seam and its output lands at the two declared
-  keys (this side is easy to fake green — assert MEANING, not shape);
-* the emitted mounts / copies / envs are BYTE-IDENTICAL to a run with the wiring
-  removed, INCLUDING the case where the collapse REFUSES the configuration.
+* the collapse runs on the REAL launch seam and its output lands at the declared keys
+  (this side is easy to fake green — assert MEANING, not shape);
+* the RECONCILED route is byte-identical to a run with the wiring removed, INCLUDING
+  the case where the collapse REFUSES the configuration (that is what keeps a refusal
+  from failing a launch until step 2c);
+* the emitter consumes the SHAPE, so the collapsed map and the same map translated
+  from reconciled winners go through ONE function — and where the two DISAGREE, the
+  disagreement is pinned, not smoothed.
 
-That second case is real, not hypothetical: the collapse forbids a bind above a bind,
+The refusal case is real, not hypothetical: the collapse forbids a bind above a bind,
 while ``reconcile_categories`` permits nested binds and errors only on two concrete
 declarations at ONE identical dest. Prose: ``llm-docs/kanibako/commands/start.py.md``.
 """
@@ -19,8 +26,12 @@ from pathlib import Path
 import pytest
 
 from kanibako.commands.start import (
+    _agent_delivered_dests,
+    _bind_map_from_mounts,
     _emit_category_mounts,
+    _launch_bind_map,
     _resolve_launch_snapshot,
+    _snapshot_assembly_bindings,
     _split_home_bind,
 )
 from kanibako.settings.paths import resolve_project
@@ -64,8 +75,15 @@ def _assembly(snapshot):
 
 
 def _delivered(reconciled):
-    """Everything the live route actually DELIVERS, as comparable plain data."""
-    mounts = _emit_category_mounts(reconciled, label="assembly-wiring")
+    """Everything the RECONCILED route computes, as comparable plain data.
+
+    ⚑ Not "what the box receives" since 2a-2 — the main path's mounts come from the
+    collapse now. This is the arm that must stay untouched by the wiring.
+    """
+    mounts = _emit_category_mounts(
+        _bind_map_from_mounts(reconciled.mounts), label="assembly-wiring",
+        delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+    )
     return (
         [(m.destination, str(m.source), m.options) for m in mounts],
         [(c.box_dest, c.host_src, c.options, c.category) for c in reconciled.copies],
@@ -125,7 +143,12 @@ class TestTheCollapseIsProduced:
 
 
 class TestTheLivePathIsUnchanged:
-    """⚑⚑ THE SAFETY CLAIM of an information-only step: delivery is byte-identical."""
+    """⚑⚑ THE SAFETY CLAIM that OUTLIVED 2a-2: the reconciled route is byte-identical.
+
+    Producing the collapse must not perturb the route that still feeds the narrow
+    resolves, the mask arm and the agent arm — most of all when the collapse REFUSES,
+    because that refusal must reach nobody until step 2c takes the swallow out.
+    """
 
     def _both_ways(self, monkeypatch, std, proj, **kw):
         """Resolve twice — once with the wiring, once with it patched to a no-op."""
@@ -209,6 +232,182 @@ class TestHomeIsLiftedOut:
         assert home_bind is not None
         assert len(folded) == len(entries) - 1
         assert all(e.box_dest != HOME_DEST for e in folded)
+
+
+class TestTheEmitterConsumesTheShape:
+    """Cutover 2a-2: one emitter, one dest-keyed ``(src, opts)`` shape, two sources."""
+
+    def _both_shapes(self, std, proj):
+        """The collapsed map off the snapshot, and the same shape from reconciled rows."""
+        snapshot, reconciled = _resolve(std, proj)
+        collapsed = _snapshot_assembly_bindings(snapshot)
+        assert collapsed is not None, "the fixture must actually collapse"
+        return collapsed, _bind_map_from_mounts(reconciled.mounts), reconciled
+
+    def test_the_snapshot_reader_returns_a_copy_not_the_live_node(
+        self, std, config, project_dir,
+    ):
+        """P8 — a caller mutating what it read must not rewrite the snapshot."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _rec = _resolve(std, proj)
+        first = _snapshot_assembly_bindings(snapshot)
+        first.clear()
+
+        assert _snapshot_assembly_bindings(snapshot), "the node was emptied through the read"
+
+    def test_absent_reads_as_None_so_the_caller_can_tell_empty_from_missing(
+        self, std, config, project_dir,
+    ):
+        """A refusal leaves the leaf ABSENT; ``None`` is what routes the fallback."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _rec = _resolve(std, proj, extra_default_categories=_SUBSUMING)
+
+        assert _snapshot_assembly_bindings(snapshot) is None
+
+    def test_the_main_path_takes_the_COLLAPSED_map_when_there_is_one(
+        self, std, config, project_dir,
+    ):
+        """The switch itself, over a REAL resolve — and the two maps are not equal."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj)
+
+        chosen = _launch_bind_map(snapshot, reconciled)
+        assert chosen == _snapshot_assembly_bindings(snapshot)
+        assert chosen != _bind_map_from_mounts(reconciled.mounts)
+
+    def test_a_refused_collapse_falls_back_to_the_RECONCILED_rows(
+        self, std, config, project_dir,
+    ):
+        """🛑 The safety arm: a refusal must lose the box NOTHING before step 2c.
+
+        RED if the fallback is dropped or emptied — the launch would hand podman an
+        empty category mount set on a configuration that works today.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(
+            std, proj, extra_default_categories=_SUBSUMING,
+        )
+        assert _snapshot_assembly_bindings(snapshot) is None, "the collapse must refuse"
+
+        chosen = _launch_bind_map(snapshot, reconciled)
+        assert chosen == _bind_map_from_mounts(reconciled.mounts)
+        assert len(chosen) > 1, chosen
+
+    def test_both_shapes_emit_the_same_destinations(self, std, config, project_dir):
+        """⚑ THE DESTS AGREE on the shipped fixture — so a difference below is REAL."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        collapsed, from_rows, reconciled = self._both_shapes(std, proj)
+        elsewhere = _agent_delivered_dests(reconciled.mounts)
+
+        def dests(binds):
+            return {
+                m.destination for m in _emit_category_mounts(
+                    binds, label="shape", delivered_elsewhere=elsewhere,
+                )
+            }
+
+        assert dests(collapsed) == dests(from_rows)
+
+    def test_the_collapse_folds_THE_MODE_INTO_THE_OPTIONS(
+        self, std, config, project_dir,
+    ):
+        """🛑 THE MEASURED DIVERGENCE, PINNED — not smoothed over.
+
+        The five-arm shape carries ro/rw as the ARM, so the collapse folds the mode
+        back into the option string (``store_collapse.fold_opt``): a rw bind the
+        reconciled route emits as ``Z,U`` arrives as ``Z,U,rw``. Podman's default IS
+        rw, so nothing about the box changes — but the option string podman receives
+        does, and that is exactly the kind of difference a suite must state out loud
+        rather than let a later reader discover in an argv.
+
+        ⚑ HOME is the exception BY CONSTRUCTION: it is pid 0, lifted out before any
+        scope folds, so no arm ever appends to its options.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        collapsed, from_rows, reconciled = self._both_shapes(std, proj)
+        elsewhere = _agent_delivered_dests(reconciled.mounts)
+
+        def opts(binds):
+            return {
+                m.destination: m.options for m in _emit_category_mounts(
+                    binds, label="shape", delivered_elsewhere=elsewhere,
+                )
+            }
+
+        collapsed_opts, row_opts = opts(collapsed), opts(from_rows)
+        assert collapsed_opts != row_opts, "the two routes cannot be indistinguishable"
+        assert collapsed_opts[HOME_DEST] == row_opts[HOME_DEST] == "Z,U"
+        rw = [d for d, o in row_opts.items() if o == "Z,U" and d != HOME_DEST]
+        assert rw, "the fixture must carry a rw bind that is not home"
+        assert all(collapsed_opts[d] == "Z,U,rw" for d in rw), collapsed_opts
+        ro = [d for d, o in row_opts.items() if o == "ro"]
+        assert ro, "the fixture must carry a ro bind"
+        assert all(collapsed_opts[d] == "ro" for d in ro), collapsed_opts
+
+    def test_A_MASK_NOW_HIDES_THE_BIND_NESTED_UNDER_IT(
+        self, std, config, project_dir,
+    ):
+        """⚑⚑ THE USER-VISIBLE DIVERGENCE OF 2a-2 — the one that is not cosmetic.
+
+        The live route emits a mask and a bind INSIDE it as two mounts, and podman's
+        depth-sort then lands the bind on top: the mask hides only what nothing else
+        claimed. The collapse SWEEPS everything at or inside a mask, which is what a
+        mask means. It does NOT refuse this configuration, so the difference reaches
+        the box — hence CHANGELOG + MIGRATION §2.27 in this same commit.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+            "box.bindings.ro": {"~/masked/inside": ("/tmp",)},
+            "box.masks": ["~/masked"],
+        })
+        chosen = _launch_bind_map(snapshot, reconciled)
+
+        assert chosen is not None
+        assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
+        assert "/home/agent/masked/inside" not in chosen, sorted(chosen)
+        # …and the reconciled route — which still drives the mask arm — still has it.
+        assert "/home/agent/masked/inside" in _bind_map_from_mounts(reconciled.mounts)
+
+    def test_a_mask_in_the_map_emits_no_mount(self):
+        """A MASK has no host source; it rides ``tmpfs_masks`` until 2a-4."""
+        from kanibako.settings.store_collapse import MASK, CollapsedBind
+
+        emitted = _emit_category_mounts(
+            {"/home/agent/w": MASK, "/tmp": CollapsedBind("/tmp", "rw")},
+            label="shape",
+        )
+
+        assert [m.destination for m in emitted] == ["/tmp"]
+
+    def test_a_dest_delivered_elsewhere_is_not_emitted_twice(self):
+        """The agent partition: two emitters walk one map until 2a-3 merges them."""
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        binds = {"/home/agent/.local/bin/claude": CollapsedBind("/bin", "ro")}
+        assert _emit_category_mounts(binds, label="shape") != []
+        assert _emit_category_mounts(
+            binds, label="shape",
+            delivered_elsewhere=frozenset({"/home/agent/.local/bin/claude"}),
+        ) == []
+
+    def test_the_emitter_depth_sorts_the_map_it_is_given(self, tmp_path):
+        """⚑ A dest-keyed map carries NO order, so EMISSION owns the depth-sort.
+
+        Podman resolves nested dests by last-``-v``-wins/depth-sort, so the deepest
+        mount must be emitted LAST. The reconcile used to hand the emitter a sorted
+        list; a map cannot, and taking insertion order would ship the fold's scope
+        order to podman.
+        """
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        src = str(tmp_path)
+        deep, mid, shallow = "/home/agent/w/v/u", "/home/agent/w", "/home"
+        emitted = _emit_category_mounts(
+            {d: CollapsedBind(src, "ro") for d in (deep, mid, shallow)},
+            label="shape",
+        )
+
+        assert [m.destination for m in emitted] == [shallow, mid, deep]
 
 
 @pytest.mark.parametrize("leaf", ["bindings", "seeded", "synced"])

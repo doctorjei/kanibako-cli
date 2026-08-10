@@ -1302,6 +1302,47 @@ forbids — the same defect as §2.24, on a different axis.
 
 ---
 
+### 2.27 A mask hides the binds nested under it
+
+**What changed.** Your box's mounts are now assembled by folding every scope's declarations over the
+box home, in scope order, into one map keyed by destination. In that fold a mask **clears everything
+at or inside its destination**. Until now a bind declared *inside* a masked directory was mounted
+anyway and stayed plainly visible through the mask.
+
+**⚠️ This changes what a box with a mask over a bind sees, at the next launch, with no config
+change.**
+
+```
+# box.masks: {~/private: true}   +   box.bindings.ro.~/private/notes: /host/notes
+# before                                # now
+$ ls ~/private                          $ ls ~/private
+notes                                    (empty)
+```
+
+**What you must do.**
+
+- **If you declared a mask and a bind underneath it and wanted both** — they were never compatible;
+  the mask was simply not enforced. Move the bind to a destination outside the masked directory.
+- **If the bind is the one you want** — remove the mask, or mask a narrower path that does not
+  contain the bind.
+- **A box with no mask, or with no bind under a mask, is unaffected.** Same destinations, same
+  sources, same order as before.
+
+**Two cosmetic differences you may notice.** Read-write mounts now carry an explicit `rw` in their
+options (`Z,U,rw` where `podman inspect` used to show `Z,U`) — podman's default either way, so
+nothing about access changes. And the warning for a read-only bind dropped because its source is
+missing now names the destination as kanibako resolves it (`/home/agent/canon`) rather than as you
+spelled it (`~/canon`).
+
+**Why.** A mask is the inverse of a bind, not a peer of it: it exists to make a path empty inside the
+box. Emitting a mask and then mounting something into the space it was supposed to empty left the
+guarantee half-kept, and which half you got depended on path depth. Assembling the whole mount set
+once, in one place, is what makes "a mask is a void" a property of the result rather than a hope
+about ordering. This is the same correction as §2.24–§2.26, on the last axis where a mask could still
+be quietly defeated.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

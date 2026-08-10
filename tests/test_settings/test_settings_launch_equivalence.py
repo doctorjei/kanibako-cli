@@ -424,8 +424,9 @@ def test_depth_order_preserved_across_families():
     # ⚑ The ASSERTION below is UNCHANGED by the dest-key flip, and that is the
     # finding worth recording: the emitted mount order was NEVER the by-name emit
     # order. ``reconcile_categories`` re-sorts the winners by
-    # ``(_path_depth(box_dest), box_dest)`` (``settings_categories.py`` — the
-    # depth-sort), so the upstream ``(order, category, name)`` emit key only ever
+    # ``(path_depth(box_dest), box_dest)`` (``settings_categories.py`` — the
+    # depth-sort, PUBLIC since cutover 2a-2 because emission sorts on it too), so
+    # the upstream ``(order, category, name)`` emit key only ever
     # broke ties BETWEEN ENTRIES AT ONE DEST — which is now unrepresentable inside
     # an arm anyway. The retired fixture's names (``deep`` < ``home`` < ``ws``)
     # would have emitted the deepest FIRST; the dest keys below are already in

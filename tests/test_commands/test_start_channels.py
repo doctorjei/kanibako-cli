@@ -26,6 +26,8 @@ import pytest
 from kanibako.channels import channels as _ch
 from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.commands.start import (
+    _agent_delivered_dests,
+    _bind_map_from_mounts,
     _channel_default_categories,
     _emit_category_mounts,
     _launch_snapshot_inputs,
@@ -94,7 +96,10 @@ def _build(std, proj):
         extra_default_categories=_channel_default_categories(std, proj),
         deliver_creds=True,
     )
-    mounts = _emit_category_mounts(reconciled, label="channel")
+    mounts = _emit_category_mounts(
+        _bind_map_from_mounts(reconciled.mounts), label="channel",
+        delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+    )
     return {
         m.destination: (str(m.source), m.options) for m in mounts
     }, mounts

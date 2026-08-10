@@ -1448,6 +1448,75 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
         assert passed["category"] == expected
 
 
+class TestTheMainPathEmitsFromTheCollapse:
+    """⚑⚑ CUTOVER 2a-2, AT THE CALL SITE — the only place the switch is observable.
+
+    ``_emit_category_mounts`` takes a dest-keyed ``(src, opts)`` map and cannot tell
+    which route built it, so testing the emitter proves nothing about which map the
+    LAUNCH hands it. These two pin the call site itself: what
+    ``_snapshot_assembly_bindings`` returns is what the box receives, and the
+    reconciled rows are reached ONLY when that read comes back ABSENT.
+
+    ⚑ MEASURED, and it is why the collapsed map is INJECTED here rather than
+    resolved: ``start_mocks`` stubs ``_resolve_launch_snapshot`` with a category set
+    that carries no home bind, so the real collapse writes nothing under this
+    harness and every launch it drives takes the fallback. 🛑 THAT IS A STEP-2c
+    PRECONDITION — deleting the fallback while the harness has no home bind would
+    empty the mount set for the whole ``_run_container`` suite at once.
+    """
+
+    _INJECTED = "/home/agent/injected"
+    _KICKOFF = "/home/agent/.config/kanibako/kickoff.md"
+
+    def test_the_live_launch_emits_THE_MAP_IT_READ(self, start_mocks, tmp_path):
+        """🛑 THE MUTATION ANCHOR: point the call site back at the reconciled rows
+        and this fails — the injected dest vanishes and kickoff comes back."""
+        from kanibako.commands import start as start_mod
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        injected = {self._INJECTED: CollapsedBind(str(tmp_path), "Z,U,rw")}
+        with start_mocks() as m, patch.object(
+            start_mod, "_snapshot_assembly_bindings", return_value=injected,
+        ):
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+            mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+
+        by_dest = {mt.destination: mt.options for mt in mounts}
+        assert by_dest.get(self._INJECTED) == "Z,U,rw", by_dest
+        # ⚑ AND THE AGENT ARM KEEPS ITS OWN ROUTE (2a-3 merges them, not this step):
+        # kickoff is a descriptor delivery bind, so it is still here — emitted by
+        # ``agent_delivery_mounts`` off the reconciled rows, untouched by the map.
+        assert by_dest.get(self._KICKOFF) == "ro", by_dest
+
+    def test_the_reconciled_fallback_is_reached_only_when_the_leaf_is_ABSENT(
+        self, start_mocks,
+    ):
+        """⚑ The collapse still swallows its own refusals (step 2c takes that out).
+
+        With the leaf absent the launch must still mount everything — a silently
+        empty mount set is the failure this arm exists to prevent.
+        """
+        from kanibako.commands import start as start_mod
+
+        with start_mocks() as m, patch.object(
+            start_mod, "_snapshot_assembly_bindings", return_value=None,
+        ):
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+            mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+
+        by_dest = {mt.destination: mt.options for mt in mounts}
+        assert by_dest.get(self._KICKOFF) == "ro", by_dest
+        assert self._INJECTED not in by_dest, by_dest
+
+
 class TestPluginsAndCacheShares:
     """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``common``
     category entries (the plugin's ``default_common()``), ROOTED AT DECLARATION at
@@ -1488,6 +1557,8 @@ class TestPluginsAndCacheShares:
 
     def _build(self, std, config_file, tmp_path):
         from kanibako.commands.start import (
+            _agent_delivered_dests,
+            _bind_map_from_mounts,
             _emit_category_mounts,
             _resolve_launch_snapshot,
         )
@@ -1514,7 +1585,10 @@ class TestPluginsAndCacheShares:
             extra_default_categories=target.default_common(),
             deliver_creds=True,
         )
-        return _emit_category_mounts(reconciled, label="share")
+        return _emit_category_mounts(
+            _bind_map_from_mounts(reconciled.mounts), label="share",
+            delivered_elsewhere=_agent_delivered_dests(reconciled.mounts),
+        )
 
     def _by_dest(self, mounts, dest):
         return [mt for mt in mounts if getattr(mt, "destination", None) == dest]
