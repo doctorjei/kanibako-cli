@@ -1,8 +1,8 @@
 """Typed access — the 3-tier read surface over the expanded snapshot.
 
 The expanded snapshot (assemble → merge → expand) is a
-recursive :class:`~kanibako.settings.settings_store.KeyStore` whose leaves carry the loose
-:data:`~kanibako.settings.settings_store.StoreValue` union. This module adds the TYPED
+recursive :class:`~kanibako.settings.keystore.KeyStore` whose leaves carry the loose
+:data:`~kanibako.settings.kb_store.StoreValue` union. This module adds the TYPED
 read surface design §5 calls for, confining that loose union to genuinely mixed
 nodes only. It is READ-ONLY: it wraps an EXISTING snapshot node and exposes a
 typed lens over it — it never merges, expands, reconciles, writes, or mutates.
@@ -62,7 +62,7 @@ NO ``reconcile_categories`` / cross-scope ``box_dest`` collision (design §6g);
 NO merge / expansion / cycle detection (:mod:`kanibako.settings.settings_merge` /
 :mod:`kanibako.settings.settings_expand`); NO ``config set``
 (:mod:`kanibako.settings.config_interface`); NO ``StandardPaths`` port. This module does
-NOT modify ``settings_store`` / ``settings_merge`` / ``settings_expand`` /
+NOT modify ``keystore`` / ``kb_store`` / ``settings_merge`` / ``settings_expand`` /
 ``paths`` / ``start`` — it only READS the snapshot.
 
 Authority: ``~/vault/rw/keystore-design.md`` §5 (typed access — PRIMARY, incl.
@@ -77,7 +77,8 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar
 
-from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import KeyStore
 
 __all__ = [
     "ViewError",

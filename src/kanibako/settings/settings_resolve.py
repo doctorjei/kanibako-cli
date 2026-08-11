@@ -318,7 +318,7 @@ def unpack_bind_entry(value: object) -> tuple[str, str | None]:
     meanings are opposite — ``[a, b]`` is ``(host, box)`` here and ``(src,
     opts)`` there. The caller picks the unpacker from the NODE the value came
     from (a name-keyed bind node vs a dest-keyed arm), never from the value's
-    shape; see :class:`~kanibako.settings.settings_store.BindEntry` for the full
+    shape; see :class:`~kanibako.settings.kb_store.BindEntry` for the full
     rule. During the P5→P8 bridge both node shapes exist, so both unpackers are
     live; P8 deletes :func:`unpack_bind` and its shape.
     """

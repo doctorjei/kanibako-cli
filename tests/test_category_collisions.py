@@ -659,7 +659,7 @@ class TestDeriveBindingKeys:
         ``binding_derivations`` node at the SNAPSHOT ROOT (R-8) — at the one
         seam."""
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_views import derived_bindings
 
         snapshot = KeyStore()
@@ -683,7 +683,8 @@ class TestDeriveBindingKeys:
         declaration has one dest.
         """
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings.settings_store import Bind, KeyStore
+        from kanibako.settings.kb_store import Bind
+        from kanibako.settings.keystore import KeyStore
 
         dest = "/home/agent/.claude/plugins"
         snapshot = KeyStore()
@@ -704,7 +705,7 @@ class TestDeriveBindingKeys:
         installing the second used to replace the first's derivation — no error,
         no diff, one declaration simply gone from the node."""
         from kanibako.commands.start import _install_derived_bindings
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         first, second = "~/.cache/uv", "~/.cache/uv.lock"
         snapshot = KeyStore()
@@ -865,7 +866,7 @@ def _pref_map(**entries):
     names — the caller passes ``{dest: BindEntry(...)}`` through ``**``-unpacking
     of a literal dict instead.
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     return KeyStore(entries)
 
@@ -882,8 +883,8 @@ class TestPrefOriginEnrichment:
 
         from kanibako.commands.start import _annotate_pref_origin
         from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.kb_store import BindEntry
         from kanibako.settings.settings_prefs import PrefRequest
-        from kanibako.settings.settings_store import BindEntry
 
         src = Path(tmp_path) / "box.yaml"
         exc = CategoryCollisionError(
@@ -924,8 +925,8 @@ class TestPrefOriginEnrichment:
 
         from kanibako.commands.start import _annotate_pref_origin
         from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.kb_store import BindEntry
         from kanibako.settings.settings_prefs import PrefRequest
-        from kanibako.settings.settings_store import BindEntry
 
         exc = CategoryCollisionError(
             "two declarations at /home/agent/workspace",
@@ -954,8 +955,8 @@ class TestPrefOriginEnrichment:
 
         from kanibako.commands.start import _annotate_pref_origin
         from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.kb_store import BindEntry
         from kanibako.settings.settings_prefs import PrefRequest
-        from kanibako.settings.settings_store import BindEntry
 
         ws = Path(tmp_path) / "workset.yaml"
         box = Path(tmp_path) / "box.yaml"
@@ -993,8 +994,8 @@ class TestPrefOriginEnrichment:
 
         from kanibako.commands.start import _annotate_pref_origin
         from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.kb_store import BindEntry
         from kanibako.settings.settings_prefs import PrefRequest
-        from kanibako.settings.settings_store import BindEntry
 
         ws = Path(tmp_path) / "workset.yaml"
         box = Path(tmp_path) / "box.yaml"
@@ -1152,8 +1153,8 @@ class TestPrefOriginOnTheAdapterRaise:
         from pathlib import Path
 
         from kanibako.commands.start import _annotate_pref_origin
+        from kanibako.settings.kb_store import BindEntry
         from kanibako.settings.settings_prefs import PrefRequest
-        from kanibako.settings.settings_store import BindEntry
 
         from kanibako.settings.settings_resolve import SettingsError
 

@@ -24,7 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_views import (
     FiniteView,
     MetaView,

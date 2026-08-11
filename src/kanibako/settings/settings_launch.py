@@ -1,7 +1,7 @@
 """Launch-time settings snapshot — the ONE resolve per launch (block 7b).
 
 This module is the LIVE read-path: ``commands/start.py`` builds ONE resolved
-:class:`~kanibako.settings.settings_store.KeyStore` snapshot per launch here, via the
+:class:`~kanibako.settings.keystore.KeyStore` snapshot per launch here, via the
 committed KeyStore pipeline (``assemble_levels`` → ``merge`` → ``expand``), and
 BOTH the behavior reads AND the category :func:`reconcile_categories` pass read
 from that SINGLE snapshot (S12 WRITE-ONCE — resolve ONCE, read many). It replaces
@@ -77,6 +77,8 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako.agent_ref import harness_of
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
+from kanibako.settings.keystore import _MISSING, KeyStore
 from kanibako.settings.settings_assemble import assemble_levels, dotted_partial
 from kanibako.settings.settings_categories import (
     _DELIVERY,
@@ -89,13 +91,6 @@ from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
-from kanibako.settings.settings_store import (
-    _MISSING,
-    SCOPE_CONTAINMENT,
-    Bind,
-    BindEntry,
-    KeyStore,
-)
 
 
 # The bind-shaped category tokens that ARE the terminal key — the snapshot's
@@ -106,7 +101,7 @@ from kanibako.settings.settings_store import (
 _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
     {"caches", "seeded", "common", "synced"}
 )
-# Aliases the single-source scope-containment tuple (settings_store) so this
+# Aliases the single-source scope-containment tuple (kb_store) so this
 # consumer never re-declares the scope set — the old byte-identical literal was a
 # drift foot-gun. Order is NOT load-bearing here: the L1334 emit loop re-sorts by
 # its own ``scope_order`` map, so the containment order is safe to reuse verbatim.
@@ -1512,7 +1507,14 @@ def resolve_selected_agent(
     if ws_prefs:
         levels.append(ws_prefs)                           # workset pref REQUESTS
     levels.extend([base_levels[4], base_levels[5]])       # system, base
-    expanded, errors = expand(merge(levels), ctx, collect_errors=True)
+    result = expand(merge(levels), ctx, collect_errors=True)
+    # ⚑ The lenient overload is typed ``KeyStore | tuple[KeyStore, dict]`` because
+    # ``collect_errors`` is a plain ``bool``, so the pair has to be narrowed at the
+    # call site — the same two-line shape ``config_interface`` uses at its two
+    # lenient calls. A ``KeyStore`` unpacks into two ``str``s without complaint
+    # (it IS a ``dict[str, …]``), which is exactly what this assert stops.
+    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
+    expanded, errors = result
     if SELECTION_KEY in errors:
         raise SettingsError(
             f"The agent selection key '{SELECTION_KEY}' did not resolve: "
@@ -2082,6 +2084,11 @@ def snapshot_category_entries(
         return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
 
     for scope in _SCOPES:
+        # ⚑ Two producers, two shapes: the agent arm always yields a node, the
+        # plain arm yields the ABSENT sentinel when the scope is missing. Declared
+        # ``object`` (as ``_snapshot_leaf`` declares its walk cursor) so the
+        # ``isinstance`` gate below stays the ONE thing that tells them apart.
+        scope_node: object
         if scope == "agent":
             # §2d active-over-default pick: effective agent node = agent.default
             # overlaid by agent.<active>. The emitted ``CategoryEntry.scope`` stays the
@@ -2271,7 +2278,7 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     """
     bindings = dict.get(node, "bindings", _MISSING)
     if bindings is not _MISSING:
-        _require_category_node(key_prefix, "bindings", bindings)
+        bindings = _require_category_node(key_prefix, "bindings", bindings)
         for name in dict.keys(bindings):
             if name not in ("ro", "rw"):
                 raise SettingsError(
@@ -2298,8 +2305,13 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
         _require_category_node(key_prefix, "masks", masks)
 
 
-def _require_category_node(key_prefix: str, category: str, node: object) -> None:
-    """Refuse a VALUE sitting at a CATEGORY ROOT (spec §2d).
+def _require_category_node(key_prefix: str, category: str, node: object) -> KeyStore:
+    """Refuse a VALUE sitting at a CATEGORY ROOT (spec §2d); return the node itself.
+
+    Returning the node rather than ``None`` is what lets a caller keep reading it:
+    the refusal is the only thing standing between an ``object`` and a
+    :class:`KeyStore`, so handing the narrowed node back means no caller has to
+    restate the check to say what this function already guaranteed.
 
     A category token names a NAMESPACE of per-name entries; it is not itself a
     declared key, so a scalar / :class:`Bind` / list there is an UNDECLARED shape.
@@ -2322,7 +2334,7 @@ def _require_category_node(key_prefix: str, category: str, node: object) -> None
     {}`` row "documentation of intent, not a required default".
     """
     if isinstance(node, KeyStore):
-        return
+        return node
     # Every bind-shaped category is a TERMINAL dest-keyed map (2026-08-08c), so
     # what a user must declare is the MAP, keyed by destination — never a
     # ``.<name>`` entry, which is no longer a key at any scope.

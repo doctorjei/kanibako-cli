@@ -60,6 +60,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Collection, Final, Iterable, Sequence
 
+from kanibako.settings.kb_store import StoreValue
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
     is_terminal_category_key,
     is_terminal_category_tail,
@@ -67,7 +69,6 @@ from kanibako.settings.settings_keyspace import (
     key_validity,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.settings_store import KeyStore, StoreValue, insert_dotted
 
 _log = logging.getLogger(__name__)
 
@@ -216,7 +217,7 @@ def _flatten_pref_node(
     spelling: ``settings_assemble._parse_node`` decides bind-shapes by ANCESTOR
     segment, so under the dotted spelling
     ``pref: {"agent.claude.common.plugins": [src, dest]}`` the value would stay a
-    raw ``list`` and never become a :class:`~kanibako.settings.settings_store.Bind` — the
+    raw ``list`` and never become a :class:`~kanibako.settings.kb_store.Bind` — the
     same request behaving differently depending on how it was spelled. One form,
     enforced (§0 convention 0).
 
@@ -287,7 +288,7 @@ def collect_prefs(
 
     Parses through ``settings_assemble._file_partial`` — the SAME parse the
     cascade uses — so a bind-shaped pref value arrives as a
-    :class:`~kanibako.settings.settings_store.Bind`, exactly as it would at its target
+    :class:`~kanibako.settings.kb_store.Bind`, exactly as it would at its target
     key. (Re-reading the file is deliberate: see the module docstring. It is ONE
     spelling of the parse, called from one collector.)
     """
@@ -531,7 +532,7 @@ def pref_overlay(requests: Iterable[PrefRequest]) -> KeyStore:
     """
     overlay = KeyStore()
     for req in requests:
-        insert_dotted(overlay, req.target, req.value)
+        overlay.insert_segments(req.target.split("."), req.value)
     return overlay
 
 

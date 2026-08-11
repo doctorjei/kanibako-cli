@@ -126,10 +126,10 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
   Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
   """
   from kanibako.commands.start import _split_home_bind
+  from kanibako.settings.keystore import KeyStore
   from kanibako.settings.settings_assemble import parse_bind_map
   from kanibako.settings.settings_launch import snapshot_category_entries
   from kanibako.settings.settings_resolve import ResolveCtx
-  from kanibako.settings.settings_store import KeyStore
   from kanibako.settings.store_collapse import HOME_DEST, collapse_store_shapes
   from kanibako.settings.store_shape import build_store_shape_set
 

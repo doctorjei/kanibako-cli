@@ -961,9 +961,10 @@ def run_share_list(args: argparse.Namespace) -> int:
 def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     """The file's ``workset.bindings.{ro,rw}`` as a ``{(mode, dest): raw}`` map (the RAW view)."""
     from kanibako.settings.agent_config import is_self_resolving
-    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.keystore import _MISSING, KeyStore
     from kanibako.settings.settings_assemble import assemble_levels
-    from kanibako.settings.settings_store import BindEntry, KeyStore, _MISSING
+    from kanibako.settings.settings_resolve import SettingsError
 
     # ⚑ assemble_levels returns [box, workset, agent.<active>, agent.default, system,
     # base] — index 1 is the workset partial, the only file passed.

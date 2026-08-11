@@ -18,6 +18,8 @@ from pathlib import Path
 import pytest
 
 from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import reconcile_categories
 from kanibako.settings.settings_launch import (
     build_launch_snapshot,
@@ -25,7 +27,6 @@ from kanibako.settings.settings_launch import (
     snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
-from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
 
 def _ctx() -> ResolveCtx:

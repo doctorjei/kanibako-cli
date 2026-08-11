@@ -594,7 +594,7 @@ policy:
   # Collision-safety floor on the resolved data structure.
   # R-25 (RECORD, acknowledged 2026-08-01): checked at ratification — this
   # entry, spec §0 and code AGREE; code pins the agreement at import time
-  # (settings_keyspace asserts equality with settings_store._RESERVED_KEY_NAMES).
+  # (settings_keyspace asserts equality with keystore.KeyStore.RESERVED_KEY_NAMES).
   reserved_leaf_names: [get, keys, values, items, pop, popitem, setdefault,
                         update, clear, copy, fromkeys]
   reserved_dunder: true             # a leaf key may not match __x__

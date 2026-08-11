@@ -1105,7 +1105,7 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         return snap, entries
 
     def test_the_plugins_own_declarations_derive_discriminated_keys(self):
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_views import derived_bindings
 
         snap, entries = self._snapshot()
@@ -1270,7 +1270,7 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         leaf into a ``ViewError``, so through it a forged leaf can only ever be
         seen as an exception. This walk SEES the leaf, whatever it is.
         """
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         for key in dict.keys(node):
             value = dict.__getitem__(node, key)
@@ -1283,7 +1283,7 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
                 yield dotted, value
 
     def test_lens_returns_exactly_the_real_derivations(self, tmp_path, caplog):
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_views import derived_bindings
 
         with caplog.at_level("WARNING"):
@@ -1326,7 +1326,8 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         snapshot, because "never enters the merge" is a claim about the snapshot,
         not about one subtree of it.
         """
-        from kanibako.settings.settings_store import Bind, KeyStore
+        from kanibako.settings.kb_store import Bind
+        from kanibako.settings.keystore import KeyStore
 
         # 1. The ASSEMBLY result alone, with the launch seam's write withheld:
         #    the reserved node is ABSENT. Nothing but the seam may create it, so

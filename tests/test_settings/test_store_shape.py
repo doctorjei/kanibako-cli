@@ -22,6 +22,7 @@ import dataclasses
 import pytest
 
 from kanibako.errors import CategoryCollisionError
+from kanibako.settings.kb_store import BindEntry
 from kanibako.settings.settings_categories import (
   _DELIVERY,
   CategoryEntry,
@@ -32,7 +33,6 @@ from kanibako.settings.settings_launch import (
   snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
-from kanibako.settings.settings_store import BindEntry
 from kanibako.settings.store_shape import (
   _ARM,
   _NO_ARM,

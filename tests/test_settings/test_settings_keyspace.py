@@ -275,13 +275,13 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         """DERIVED on both axes — the enumeration is not written down here.
 
         The categories come from ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` and
-        the scopes from ``settings_store.SCOPE_CONTAINMENT``, so a seventh category
+        the scopes from ``kb_store.SCOPE_CONTAINMENT``, so a seventh category
         or a fifth scope is covered by this test the day it is declared. That is
         the property the last flip lacked: four separate defects came from lookups
         keyed on a spelling that changed, each frozen where the declaration moved.
         """
+        from kanibako.settings.kb_store import SCOPE_CONTAINMENT
         from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
-        from kanibako.settings.settings_store import SCOPE_CONTAINMENT
 
         for tail in TERMINAL_CATEGORY_TAILS:
             cat = ".".join(tail)
@@ -909,6 +909,6 @@ def test_reserved_names_match_the_keystore_write_time_set():
     name accepted by the validator and rejected by the store fails deep in the
     write with no reference to the key the user typed.
     """
-    from kanibako.settings.settings_store import _RESERVED_KEY_NAMES
+    from kanibako.settings.keystore import KeyStore
 
-    assert RESERVED_LEAF_NAMES == _RESERVED_KEY_NAMES
+    assert RESERVED_LEAF_NAMES == KeyStore.RESERVED_KEY_NAMES

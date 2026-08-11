@@ -147,11 +147,11 @@ def _resolve_box_scalars(
     ⚑ Lazy imports throughout: ``paths`` and ``settings_assemble`` both import
     this module at module load, so hoisting any of these closes the cycle.
     """
+    from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import load_system_config, host_xdg_map, xdg
     from kanibako.settings.settings_cli_level import build_cli_level
     from kanibako.settings.settings_launch import build_launch_snapshot
     from kanibako.settings.settings_resolve import ResolveCtx
-    from kanibako.settings.settings_store import KeyStore
 
     # Path resolution only, deliberately NOT load_std_paths (which materializes
     # the store). ⚑ Not mkdir-free: an unset XDG_RUNTIME_DIR makes one dir here.

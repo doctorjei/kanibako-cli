@@ -467,7 +467,7 @@ class TestABoxIsAssembledOverEXACTLYONEHomeBinding:
         — and the launch goes on to die inside the emitter instead.
         """
         from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         homeless = [
             e for e in self._mounts(std, config, project_dir)
@@ -486,7 +486,7 @@ class TestABoxIsAssembledOverEXACTLYONEHomeBinding:
         fold anyway; answering only the zero case would leave it open.
         """
         from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         mounts = self._mounts(std, config, project_dir)
         home = next(e for e in mounts if e.box_dest == HOME_DEST)
@@ -506,7 +506,7 @@ class TestABoxIsAssembledOverEXACTLYONEHomeBinding:
         would stop being able to seed a box at all.
         """
         from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         homeless = [
             e for e in self._mounts(std, config, project_dir)

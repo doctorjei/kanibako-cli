@@ -3,7 +3,7 @@
 **_Terminology_**
 - _level_: one cascade tier, identified by its FILE. The 6, least→most authoritative:
   ``base < system < agent.default < agent.<active> < workset < box`` (spec §2)
-- _partial_: that level's whole file content as a nested :class:`~kanibako.settings.settings_store.KeyStore`
+- _partial_: that level's whole file content as a nested :class:`~kanibako.settings.keystore.KeyStore`
 - _scope token_: the ``system``/``agent``/``workset``/``box`` root a file is spelled against — KEPT
   in the partial (§0: namespace is ORTHOGONAL to cascade)
 
@@ -20,18 +20,18 @@ from typing import Any
 
 from kanibako.settings.config import settings_base_path
 from kanibako.settings.config_io import load_doc
+from kanibako.settings.kb_store import (
+    BINDING_DERIVATIONS_NODE,
+    SCOPE_CONTAINMENT,
+    Bind,
+    BindEntry,
+)
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_prefs import refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
     unpack_bind,
     unpack_bind_entry,
-)
-from kanibako.settings.settings_store import (
-    BINDING_DERIVATIONS_NODE,
-    SCOPE_CONTAINMENT,
-    Bind,
-    BindEntry,
-    KeyStore,
 )
 
 _log = logging.getLogger(__name__)

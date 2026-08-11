@@ -55,10 +55,8 @@ from __future__ import annotations
 import re
 from typing import Collection, Final, Sequence
 
-from kanibako.settings.settings_store import (
-    SCOPE_CONTAINMENT,
-    _RESERVED_KEY_NAMES as _STORE_RESERVED,
-)
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+from kanibako.settings.keystore import KeyStore
 
 # ---------------------------------------------------------------------------
 # The keyspace version stamp
@@ -276,7 +274,7 @@ def is_terminal_category_key(key: str) -> bool:
 
     ⚑ BOTH AXES ARE DERIVED, NEVER ENUMERATED HERE: which tails from
     :data:`TERMINAL_CATEGORY_TAILS`; where a scope may END from
-    :data:`~kanibako.settings.settings_store.SCOPE_CONTAINMENT`. A scope is ONE
+    :data:`~kanibako.settings.kb_store.SCOPE_CONTAINMENT`. A scope is ONE
     segment except the DISCRIMINATED agent tier ``agent.<node>`` (spec §0/§2d),
     which is two — and two is the CEILING, because ``.`` is the key-path separator
     and ``agent_ref.parse_agent_ref`` REFUSES a dotted node. ``pref.*`` is False by
@@ -352,17 +350,17 @@ RESERVED_LEAF_NAMES: Final[frozenset[str]] = frozenset({
 # time. Two copies of a collision-safety floor that disagree is worse than one —
 # a name accepted here and rejected there fails deep in the store with no
 # reference to the key the user wrote.
-assert RESERVED_LEAF_NAMES == _STORE_RESERVED, (
+assert RESERVED_LEAF_NAMES == KeyStore.RESERVED_KEY_NAMES, (
     "settings_keyspace.RESERVED_LEAF_NAMES has drifted from "
-    "settings_store._RESERVED_KEY_NAMES"
+    "keystore.KeyStore.RESERVED_KEY_NAMES"
 )
 
 _DUNDER_RE: Final = re.compile(r"^__.*__$")
 
 #: ``env.<VAR>`` / ``secret_path.<VAR>`` variable-name shape (spec §2a; mirrors
 #: ``settings_categories.SECRET_VAR_RE`` — kept as its own compiled copy so this
-#: module's only settings-stack import stays ``settings_store``, the leaf that
-#: imports nothing itself).
+#: module's only settings-stack imports stay ``keystore`` / ``kb_store``, the
+#: leaves at the bottom of the stack).
 _VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # ---------------------------------------------------------------------------
