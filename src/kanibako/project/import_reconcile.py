@@ -49,7 +49,7 @@ from kanibako.errors import KanibakoError
 
 
 # The standalone box's host-side box dir (sibling of ``settings.yaml`` under the
-# project root, holding ``home/``); mirrors ``paths._STANDALONE_META_DIR``.  The
+# project root, holding ``home/``); mirrors ``paths.STANDALONE_META_DIR``.  The
 # J2 journal entry for a standalone import is keyed by ``<root>/box_data`` (the
 # dir CONTAINING ``home/``), the uniform host-side box-dir key scheme.
 _STANDALONE_BOX_DIR = "box_data"

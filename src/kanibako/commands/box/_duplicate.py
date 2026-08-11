@@ -16,7 +16,7 @@ from kanibako.settings.config_io import dump_doc
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.paths import (
-    _STANDALONE_META_DIR,
+    STANDALONE_META_DIR,
     BoxMode,
     WorksetSpec,
     _resolve_local_dir,
@@ -239,7 +239,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     from kanibako.settings.paths import establish_standalone
     from kanibako.utils import write_project_gitignore
 
-    dst_metadata = new_path / _STANDALONE_META_DIR
+    dst_metadata = new_path / STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
     # (The destination ROOT settings.yaml is written by ``establish_standalone`` below
     # — it is the WORKSET tier and carries the FRESH workset.kuid, never a copy of the

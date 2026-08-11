@@ -1102,12 +1102,12 @@ class TestStandaloneDeregisterPurge:
     def _make_standalone(self, config_file, tmp_home):
         from kanibako.project import registry_store
         from kanibako.settings.config import BOX_META_FILE, load_config
-        from kanibako.settings.paths import _STANDALONE_META_DIR, load_std_paths
+        from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
         root = tmp_home / "sa_root"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
         (root / BOX_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
         (root / "vault").mkdir()
         (root / "keep.txt").write_text("workspace file")
@@ -1118,7 +1118,7 @@ class TestStandaloneDeregisterPurge:
         from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
         from kanibako.settings.config import BOX_META_FILE
-        from kanibako.settings.paths import _STANDALONE_META_DIR
+        from kanibako.settings.paths import STANDALONE_META_DIR
 
         std, root = self._make_standalone(config_file, tmp_home)
 
@@ -1130,12 +1130,12 @@ class TestStandaloneDeregisterPurge:
         entry = registry_store.lookup_deregistered(std.registry, "k_box")
         assert entry is not None and entry["kind"] == "standalone"
         assert entry["metadata"] == str(root)
-        assert (root / _STANDALONE_META_DIR).is_dir()
+        assert (root / STANDALONE_META_DIR).is_dir()
 
         # Purge BY NAME: deletes only the in-tree artifacts, never the root/workspace.
         rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
         assert rc == 0
-        assert not (root / _STANDALONE_META_DIR).is_dir()
+        assert not (root / STANDALONE_META_DIR).is_dir()
         assert not (root / BOX_META_FILE).exists()
         assert not (root / "vault").exists()
         assert root.is_dir()
@@ -1206,14 +1206,14 @@ class TestPurgeStaleDeregisteredGuard:
         from kanibako.project import registry_store
         from kanibako.commands.box._parser import _purge_deregistered
         from kanibako.settings.config import load_config
-        from kanibako.settings.paths import _STANDALONE_META_DIR, load_std_paths
+        from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
 
         root = tmp_home / "sabox"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
-        (root / _STANDALONE_META_DIR / "KEEP.txt").write_text("standalone-live")
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
+        (root / STANDALONE_META_DIR / "KEEP.txt").write_text("standalone-live")
         # ACTIVE standalone box registered at this root.
         registry_store.register_standalone(std.registry, "sabox", root)
         # STALE deregistered entry for the same root.
@@ -1228,6 +1228,6 @@ class TestPurgeStaleDeregisteredGuard:
             argparse.Namespace(purge=True, force=True),
         )
         assert rc == 1
-        assert (root / _STANDALONE_META_DIR / "KEEP.txt").read_text() == "standalone-live"
+        assert (root / STANDALONE_META_DIR / "KEEP.txt").read_text() == "standalone-live"
         assert registry_store.lookup_deregistered(std.registry, "sabox") is None
         assert "stale" in capsys.readouterr().err.lower()

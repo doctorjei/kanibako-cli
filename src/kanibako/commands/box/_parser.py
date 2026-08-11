@@ -1148,9 +1148,9 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
 
 def _teardown_standalone_box(root: Path) -> bool:
     """Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched."""
-    from kanibako.settings.paths import _STANDALONE_META_DIR
+    from kanibako.settings.paths import STANDALONE_META_DIR
 
-    metadata_dir = root / _STANDALONE_META_DIR
+    metadata_dir = root / STANDALONE_META_DIR
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
         # ⚑ The ROOT settings.yaml is the WORKSET tier AND half the §5 detection marker —
@@ -1194,7 +1194,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
     """Handle ``rm <name>`` when *name* resolves only to a deregistered entry."""
     from kanibako.project import registry_store
     from kanibako.errors import UserCancelled
-    from kanibako.settings.paths import _STANDALONE_META_DIR
+    from kanibako.settings.paths import STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
 
     kind = entry.get("kind")
@@ -1240,7 +1240,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         return 1
 
     if kind == "standalone":
-        exists = (root / _STANDALONE_META_DIR).is_dir()
+        exists = (root / STANDALONE_META_DIR).is_dir()
     else:
         exists = metadata_dir.is_dir()
 
@@ -1305,7 +1305,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
     from kanibako.project import registry_store
     from kanibako.errors import UserCancelled
-    from kanibako.settings.paths import _STANDALONE_META_DIR
+    from kanibako.settings.paths import STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
 
     print(f"Removing standalone box: {box_name} ({root})")
@@ -1313,7 +1313,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     print(f"Removed '{box_name}' from the registry")
 
     root_path = Path(root) if root is not None else None
-    metadata_dir = root_path / _STANDALONE_META_DIR if root_path is not None else None
+    metadata_dir = root_path / STANDALONE_META_DIR if root_path is not None else None
     if args.purge:
         if root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
             if not args.force:

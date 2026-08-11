@@ -20,7 +20,7 @@ from pathlib import Path
 from kanibako.project import registry_store, workset_registry
 from kanibako.launch import box_resolve
 from kanibako.settings.config import BOX_META_FILE
-from kanibako.settings.paths import BoxMode, _STANDALONE_META_DIR
+from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ def _make_standalone_marker(project_dir: Path) -> None:
     The standalone meta dir + the box settings file — NO ``project.mode`` field
     (the new-model marker is FILE PRESENCE, design D4).
     """
-    (project_dir / _STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
+    (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
     (project_dir / BOX_META_FILE).write_text("box: {}\n")
 
 
@@ -64,7 +64,7 @@ class TestStandaloneSettingsPresent:
         assert box_resolve.standalone_settings_present(project_dir) is True
 
     def test_false_when_no_settings_file(self, project_dir):
-        (project_dir / _STANDALONE_META_DIR).mkdir()
+        (project_dir / STANDALONE_META_DIR).mkdir()
         assert box_resolve.standalone_settings_present(project_dir) is False
 
     def test_false_when_no_meta_dir(self, project_dir):
@@ -75,7 +75,7 @@ class TestStandaloneSettingsPresent:
         # A settings file WITHOUT any ``project.mode`` field still counts —
         # presence is the whole signal (would have been False under the legacy
         # ``_is_standalone_meta_dir`` which required ``box.mode == standalone``).
-        (project_dir / _STANDALONE_META_DIR).mkdir()
+        (project_dir / STANDALONE_META_DIR).mkdir()
         (project_dir / BOX_META_FILE).write_text("box:\n  enable_vault: false\n")
         assert box_resolve.standalone_settings_present(project_dir) is True
 
@@ -204,7 +204,7 @@ class TestResolveBoxIdentity:
         # ``<kuid>_<current-dir leaf>`` — OVERRIDING even a stale registered name
         # (the leaf tracks the dir; the kuid is the stable prefix). Mutation:
         # revert box_resolve to ``registered_name or box_root.name`` → this goes RED.
-        (project_dir / _STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
+        (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
         (project_dir / BOX_META_FILE).write_text("workset:\n  kuid: abcde\n")
         registry_store.register_standalone(
             std.registry, "abcde_oldleaf", project_dir.resolve()
@@ -235,7 +235,7 @@ class TestResolveBoxIdentity:
         # detect_project_mode's treewalk marker still reads the legacy
         # ``project.mode`` field, so build that ancestor marker here.
         box_root = tmp_home / "sabox"
-        (box_root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (box_root / STANDALONE_META_DIR).mkdir(parents=True)
         (box_root / BOX_META_FILE).write_text("project:\n  mode: standalone\n")
         registry_store.register_standalone(std.registry, "sakey", box_root.resolve())
         subdir = box_root / "deep" / "sub"

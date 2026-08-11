@@ -32,7 +32,7 @@ from kanibako.settings.config import (
 )
 from kanibako.errors import ProjectError, WorksetError
 from kanibako.settings.paths import (
-    _STANDALONE_META_DIR,
+    STANDALONE_META_DIR,
     BoxMode,
     ProjectPaths,
     StandardPaths,
@@ -375,7 +375,7 @@ def copy_into_workset(
             dst_workspace = ws.workspaces_dir / proj_name
             ignore = None
             if source_mode == BoxMode.standalone:
-                ignore = shutil.ignore_patterns(_STANDALONE_META_DIR, ".kanibako", "kanibako")
+                ignore = shutil.ignore_patterns(STANDALONE_META_DIR, ".kanibako", "kanibako")
             shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         try:
@@ -821,7 +821,7 @@ def _remove_old_metadata(
         # artifacts inside it — deleting the root would wipe the user's whole project dir
         # AND the already-converted destination.
         root = state.metadata_path
-        box_data = root / _STANDALONE_META_DIR
+        box_data = root / STANDALONE_META_DIR
         if box_data.is_dir():
             # ⚑ Escalating removal: the root-owned canon skeleton makes a bare rmtree
             # fail with EACCES and leave the old box behind (J-7).
@@ -961,7 +961,7 @@ def _to_default(
 #: ⚑ kanibako artifacts (NOT workspace content): they STAY at the standalone root when a
 #: convert consolidates everything else into ``workspace/`` (drift H).
 _STANDALONE_ROOT_ARTIFACTS = frozenset({
-    _STANDALONE_META_DIR,   # box_data/
+    STANDALONE_META_DIR,   # box_data/
     "workspace",            # the subdir we are populating
     "vault",                # vault/{ro,rw}
     "settings.yaml",        # the box meta (drift I — at the root)
@@ -1046,7 +1046,7 @@ def _to_standalone(
     # down the kanibako artifacts — otherwise the artifacts get swept into the subdir.
     root = new_workspace
     root.mkdir(parents=True, exist_ok=True)
-    dst_metadata = root / _STANDALONE_META_DIR
+    dst_metadata = root / STANDALONE_META_DIR
     workspace_subdir = root / "workspace"
     _consolidate_workspace_subdir(root, workspace_subdir, unwind)
 
@@ -1191,7 +1191,7 @@ def _to_workset(
         dst_workspace = target_ws.workspaces_dir / new_name
         ignore = None
         if state.mode == BoxMode.standalone:
-            ignore = shutil.ignore_patterns(_STANDALONE_META_DIR, ".kanibako", "kanibako")
+            ignore = shutil.ignore_patterns(STANDALONE_META_DIR, ".kanibako", "kanibako")
         shutil.copytree(state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
     # Determine the recorded workspace.

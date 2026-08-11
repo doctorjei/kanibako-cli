@@ -424,10 +424,10 @@ class TestAddProjectConnectGuard:
         settings.yaml), matching box_resolve.standalone_settings_present."""
         from kanibako.launch.box_resolve import standalone_settings_present
         from kanibako.settings.config import BOX_META_FILE
-        from kanibako.settings.paths import _STANDALONE_META_DIR
+        from kanibako.settings.paths import STANDALONE_META_DIR
 
         dir_path.mkdir(parents=True, exist_ok=True)
-        (dir_path / _STANDALONE_META_DIR).mkdir()
+        (dir_path / STANDALONE_META_DIR).mkdir()
         (dir_path / BOX_META_FILE).write_text("project: {}\n")
         assert standalone_settings_present(dir_path)  # marker is real
 
