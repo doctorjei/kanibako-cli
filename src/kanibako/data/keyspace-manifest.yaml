@@ -568,12 +568,15 @@ policy:
     copies: [seeded, synced]          # file COPIES, not mounts; mounts physically
                                       #   shadow a copied file at the same path
                                       #   regardless of order
-    copies_apply_to_home_alone: true  # every copy dest lies inside home and
-                                      #   resolves into the box home store, so the
-                                      #   copy pass completes BEFORE any binding
-                                      #   folds and no mount arbitrates a copy
-    copy_dest_outside_home: error     # a copy dest that is not inside home is a
-                                      #   config ERROR
+    seeded_applies_to_home_alone: true   # a SEEDED dest lies inside home and
+                                         #   resolves into the box home store, so
+                                         #   the seed pass completes BEFORE any
+                                         #   binding folds and no mount arbitrates
+                                         #   it. ⚑ `synced` has NO home-only rule
+                                         #   (ruling 2026-08-10): it copies LAST,
+                                         #   through the FINAL bind map
+    seed_dest_outside_home: error        # a SEEDED dest not inside home is a
+                                         #   config ERROR (`synced`: not an error)
     synced_vs_binding_same_dest: error   # RETIRED BY RULING 2026-08-10 ("synced
                                          #   <->binding is unnecessary now, yes");
                                          #   the value stays `error` only because
