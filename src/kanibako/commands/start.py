@@ -6422,6 +6422,7 @@ def _resolve_launch_snapshot(
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.settings_categories import (
         derive_binding_keys,
+        gate_credential_delivery,
         reconcile_categories,
     )
     from kanibako.settings.settings_prefs import collect_prefs
@@ -6663,8 +6664,12 @@ def _resolve_launch_snapshot(
     # BEFORE the reconcile — the derivation is a property of the declaration,
     # not of whether it won.
     _install_derived_bindings(snapshot, derive_binding_keys(entries))
+    # (D-M4) The credential gate, applied ONCE ABOVE BOTH consumers below — see
+    # llm-docs. ⚑ It sits AFTER the derivation on purpose: a derived binding is a
+    # property of the DECLARATION (R-8), not of whether the box may receive it.
+    delivered = gate_credential_delivery(entries, deliver_creds)
     try:
-        reconciled = reconcile_categories(entries, deliver_creds=deliver_creds)
+        reconciled = reconcile_categories(delivered, deliver_creds=deliver_creds)
     except CategoryCollisionError as exc:
         # A collision names the DECLARATION key PLUS the entry's DEST. When that
         # declaration was INSTALLED BY A PREF, the named key is one the user
@@ -6675,9 +6680,9 @@ def _resolve_launch_snapshot(
         # requests.
         raise _annotate_pref_origin(exc, prefs) from None
     emit_collision_warnings(reconciled.warnings)
-    # Roadmap step 6b: the COLLAPSE, folded and STORED — it drives NOTHING. The
-    # live route above is what delivers, unchanged, until the cutover.
-    _install_assembly_collapse(snapshot, entries)
+    # Roadmap step 6b: the COLLAPSE, folded and STORED. ⚑ Off the GATED list, the
+    # same one the reconcile saw — the two must describe the same private box.
+    _install_assembly_collapse(snapshot, delivered)
     return snapshot, reconciled
 
 
@@ -6785,28 +6790,45 @@ _ASSEMBLY_SYNCED: "tuple[str, ...]" = ("meta", "assembly", "synced")
 
 
 def _install_assembly_collapse(snapshot, entries) -> None:
-    """Store the collapse at ``meta.assembly.*``. ⚑ OBSERVED BY NOTHING — see llm-docs.
+    """Store the collapse at ``meta.assembly.*``, each leaf on ITS OWN gate — see llm-docs.
 
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
     from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.settings_store import insert_segments
-    from kanibako.settings.store_collapse import collapse_store_shapes
+    from kanibako.settings.store_collapse import collapse_seeded, collapse_store_shapes
     from kanibako.settings.store_shape import build_store_shape_set
 
+    def refused(exc) -> None:
+        # The collapse REFUSES shapes the shipped route still accepts, and that
+        # tightening lands at step 2c, not here. Report it and leave the leaves it
+        # governs ABSENT — the state the manifest already names for them.
+        get_logger(__name__).debug("meta.assembly.* not folded: %s", exc)
+
     home_bind, folded = _split_home_bind(entries)
+    # The SEED leaf is gated on NOTHING but its own arm (2b-1): home is pid 0 and
+    # is seeded before any bind folds, so a resolve with no home bind — every
+    # narrow one, including the CREATE-side seed resolve — still has a seed list.
+    try:
+        shapes = build_store_shape_set(folded)
+        seeded = collapse_seeded(shapes)
+    except SettingsError as exc:
+        refused(exc)
+        return
+    insert_segments(snapshot, _ASSEMBLY_SEEDED, seeded)
+    # The other two DESCRIBE AN ASSEMBLY, so both of the facts that belong to one
+    # gate them: a home to build on, and a fold that did not refuse.
     if home_bind is None:
         return
     try:
-        collapsed = collapse_store_shapes(build_store_shape_set(folded), home_bind)
+        # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation
+        # over the SAME shapes, so it cannot differ. One implementation beats one
+        # saved traversal.
+        collapsed = collapse_store_shapes(shapes, home_bind)
     except SettingsError as exc:
-        # The collapse REFUSES shapes the shipped route still accepts, and that
-        # tightening lands at the cutover, not here. Report it and leave all three
-        # leaves ABSENT — the state the manifest already names for them.
-        get_logger(__name__).debug("meta.assembly.* not folded: %s", exc)
+        refused(exc)
         return
     insert_segments(snapshot, _ASSEMBLY_BINDINGS, collapsed.bindings)
-    insert_segments(snapshot, _ASSEMBLY_SEEDED, collapsed.seeded)
     insert_segments(snapshot, _ASSEMBLY_SYNCED, collapsed.synced)
 
 
@@ -7120,10 +7142,12 @@ def _snapshot_scalar(snapshot: "KeyStore", dotted: str) -> str | None:
 def _snapshot_assembly_bindings(snapshot: "KeyStore") -> "dict[str, object] | None":
     """The collapsed bind map at ``meta.assembly.bindings``, or ``None`` if absent.
 
-    ⚑ ABSENT is a real state, not a defect: the collapse writes nothing when there
-    is no single home bind to build on, and swallows its own refusals until the
-    cutover's step 2c (llm-docs ``commands/start.py.md``).  COPIED OUT of the
-    snapshot — the caller gets its own map, never the live node.
+    ⚑ ABSENT is a real state, not a defect: THIS leaf is not written when there is
+    no single home bind to build on or the bind fold refuses, and the refusal is
+    swallowed until the cutover's step 2c (llm-docs ``commands/start.py.md``).
+    ⚑ Either condition leaves ``meta.assembly.seeded`` written all the same (2b-1),
+    which is why this walks to the ``bindings`` leaf and never tests the subtree.
+    COPIED OUT of the snapshot — the caller gets its own map, never the live node.
     """
     from kanibako.settings.settings_store import KeyStore
 

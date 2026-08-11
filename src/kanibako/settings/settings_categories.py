@@ -635,6 +635,23 @@ def path_depth(box_dest: str) -> int:
     return len([c for c in box_dest.strip("/").split("/") if c])
 
 
+def gate_credential_delivery(
+    entries: list[CategoryEntry], deliver_creds: bool,
+) -> list[CategoryEntry]:
+    """Drop what a PRIVATE box must not receive (D-M4). PUBLIC, PURE and IDEMPOTENT."""
+    # ⚑ ONE spelling of the rule, because it now has TWO consumers: the reconcile
+    # below, and the ASSEMBLY COLLAPSE beside it. A second spelling would let the
+    # two routes describe a differently-private box — which is how a credential
+    # reaches a box the user made private.
+    if deliver_creds:
+        return list(entries)
+    return [
+        e for e in entries
+        if e.category != "synced"
+        and not (e.category == "seeded" and e.is_credential)
+    ]
+
+
 def reconcile_categories(
     entries: list[CategoryEntry],
     *,
@@ -711,14 +728,10 @@ def reconcile_categories(
     # deliveries up front — the same drop today's group_auth=False produced.
     # ⚑ BEFORE collision resolution, deliberately: a suppressed ``synced`` must not
     # be able to error against — or win over — a binding it never delivers.
-    gated: list[CategoryEntry] = []
-    for e in entries:
-        if not deliver_creds:
-            if e.category == "synced":
-                continue
-            if e.category == "seeded" and e.is_credential:
-                continue
-        gated.append(e)
+    # ⚑ The LAUNCH caller has already applied this above both of its consumers
+    # (``commands/start._resolve_launch_snapshot``); the gate is idempotent, and it
+    # stays here for every OTHER caller of this function.
+    gated = gate_credential_delivery(entries, deliver_creds)
 
     # --- env entries never collide on a guest path; keep them aside (order kept).
     envs = [e for e in gated if e.delivery == ENV]

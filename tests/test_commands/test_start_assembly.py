@@ -57,6 +57,7 @@ class _WiringTarget(NoAgentTarget):
 
 def _resolve(std, proj, **kw):
     """Drive the REAL launch seam with the base families on."""
+    kw.setdefault("deliver_creds", True)
     return _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -67,7 +68,6 @@ def _resolve(std, proj, **kw):
         install=None,
         target=_WiringTarget(),
         agent_cfg=None,
-        deliver_creds=True,
         **kw,
     )
 
@@ -133,8 +133,42 @@ class TestTheCollapseIsProduced:
             m.box_dest for m in reconciled.mounts
         }
 
-    def test_a_narrow_resolve_writes_nothing(self, std, config, project_dir):
-        """No home in the entry list ⇒ no box to assemble ⇒ every leaf stays absent."""
+    def test_a_narrow_resolve_writes_THE_SEED_LIST_AND_NOTHING_ELSE(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """🛑 INVERTED AT 2b-1 — this used to assert ``_assembly(snapshot) == {}``.
+
+        The old premise (*no home in the entry list ⇒ no box to assemble*) stays
+        true for the two leaves that DESCRIBE an assembly, and was never true for
+        the seed list: home is pid 0, seeded BEFORE any bind folds (§2a), so the
+        seed arm is computable with no bind map at all. Gating it on a home bind
+        made the leaf unreadable from precisely the caller that needs it — the
+        CREATE-side seed resolve (``_apply_init_seeds``), which is narrow and
+        reaches ``_seed_box_home`` without ever running a main resolve.
+        """
+        src = tmp_path / "seedme"
+        src.write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _rec = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            include_base_families=False,
+            extra_default_categories={"box.seeded": {"~/seedme": (str(src),)}},
+        )
+
+        assert sorted(_assembly(snapshot)) == ["seeded"]
+        assert [c.dest for c in _assembly(snapshot)["seeded"]] == ["/home/agent/seedme"]
+
+    def test_a_narrow_resolve_with_no_seeds_writes_an_EMPTY_seed_list(
+        self, std, config, project_dir,
+    ):
+        """ABSENT and EMPTY are different answers: "refused" vs "nothing declared".
+
+        The leaf is written unconditionally when the seed arm folds, so a consumer
+        reading ``None`` learns the collapse refused — never that this box seeds
+        nothing. RED if the write is skipped for an empty list.
+        """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _rec = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
@@ -143,7 +177,104 @@ class TestTheCollapseIsProduced:
             include_base_families=False,
         )
 
-        assert _assembly(snapshot) == {}
+        assert _assembly(snapshot) == {"seeded": []}
+
+
+class TestTheCredentialGateReachesTheCollapse:
+    """Cutover 2b-0: D-M4 is applied ONCE, above the reconcile AND the collapse.
+
+    🛑 Before the hoist the gate lived INSIDE ``reconcile_categories`` while
+    ``_install_assembly_collapse`` was handed the RAW entry list, so a PRIVATE box
+    got ``reconciled.copies == []`` and a ``meta.assembly.synced`` still carrying
+    every credential row. Nothing consumed that leaf, so nothing broke — the first
+    consumer pointed at it would have delivered the creds and reversed D-M4.
+
+    ⚑ ``test_start.TestApplySyncedCopies.test_synced_suppressed_when_not_sharing``
+    CANNOT pin this: it consumes ``reconciled.copies``, i.e. the gate that stayed
+    where it was. The leaf is the only place the hoist is observable.
+    """
+
+    @staticmethod
+    def _synced_dests(snapshot):
+        return [copy.dest for copy in _assembly(snapshot).get("synced", [])]
+
+    def _resolve_with_a_synced_cred(self, std, proj, tmp_path, *, deliver_creds):
+        src = tmp_path / "creds.txt"
+        src.write_text("token")
+        return _resolve(
+            std, proj, deliver_creds=deliver_creds,
+            extra_default_categories={"box.synced": {"~/cred.txt": (str(src),)}},
+        )[0]
+
+    def test_a_shared_box_collapses_the_synced_row(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The control: with creds shared the row IS in the leaf, so the drop below is real."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot = self._resolve_with_a_synced_cred(
+            std, proj, tmp_path, deliver_creds=True,
+        )
+
+        assert "/home/agent/cred.txt" in self._synced_dests(snapshot)
+
+    def test_a_PRIVATE_box_collapses_NO_synced_row(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """🛑 THE CREDENTIAL-SAFETY PIN. RED without the hoist, on the identical fixture."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot = self._resolve_with_a_synced_cred(
+            std, proj, tmp_path, deliver_creds=False,
+        )
+
+        assert self._synced_dests(snapshot) == []
+
+    def test_the_reconcile_and_the_collapse_see_ONE_gated_list(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """Both consumers agree about how private the box is — that is the whole point."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        src = tmp_path / "creds.txt"
+        src.write_text("token")
+        extra = {"box.synced": {"~/cred.txt": (str(src),)}}
+        for deliver_creds in (True, False):
+            snapshot, reconciled = _resolve(
+                std, proj, deliver_creds=deliver_creds,
+                extra_default_categories=extra,
+            )
+            assert self._synced_dests(snapshot) == [
+                c.box_dest for c in reconciled.copies if c.category == "synced"
+            ], deliver_creds
+
+    def test_the_gate_drops_a_CREDENTIAL_seed_and_keeps_an_ordinary_one(self, tmp_path):
+        """The seeded half, unreachable from a fixture: nothing sets ``is_credential`` yet."""
+        from kanibako.settings.settings_categories import (
+            CategoryEntry,
+            gate_credential_delivery,
+        )
+
+        def seed(dest, *, is_credential):
+            return CategoryEntry(
+                category="seeded", scope="box", box_dest=dest,
+                host_src=str(tmp_path), delivery="COPY", options=None, name=dest,
+                key_segments=("box", "seeded", dest), is_credential=is_credential,
+            )
+
+        cred, plain = seed("/home/agent/.creds", is_credential=True), seed(
+            "/home/agent/notes", is_credential=False,
+        )
+
+        assert gate_credential_delivery([cred, plain], True) == [cred, plain]
+        assert gate_credential_delivery([cred, plain], False) == [plain]
+        # IDEMPOTENT — the gate inside ``reconcile_categories`` runs over this again.
+        assert gate_credential_delivery([plain], False) == [plain]
+
+    def test_the_gate_returns_a_NEW_list_never_the_callers_own(self, tmp_path):
+        """P8 — a caller that mutates what it got back must not rewrite the entry list."""
+        from kanibako.settings.settings_categories import gate_credential_delivery
+
+        entries = []
+        assert gate_credential_delivery(entries, True) is not entries
+        assert gate_credential_delivery(entries, False) is not entries
 
 
 class TestTheLivePathIsUnchanged:
@@ -185,14 +316,45 @@ class TestTheLivePathIsUnchanged:
         assert wired == bare
         assert ("/home", "/tmp", "Z,U") in wired[0]
 
-    def test_a_refused_configuration_leaves_every_leaf_absent(
-        self, std, config, project_dir,
+    def test_a_BIND_FOLD_refusal_leaves_the_ASSEMBLY_leaves_absent(
+        self, std, config, project_dir, tmp_path,
     ):
-        """A partial write would describe a box nothing could assemble — so write none."""
+        """🛑 NARROWED AT 2b-1 — this used to assert ``_assembly(snapshot) == {}``.
+
+        A partial write of the two leaves that describe an assembly would describe a
+        box nothing could assemble, so neither is written. The SEED list is not part
+        of that description: it folded successfully, off an arm the refused bind
+        never touched. Erasing it would make a subsuming bind silently cost the box
+        its seeds the moment the create path reads this leaf.
+        """
+        src = tmp_path / "seedme"
+        src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(
-            std, proj, extra_default_categories=_SUBSUMING,
-        )
+        # ⚑ The seed is DECLARED here, not inherited: the shipped default-category
+        # families carry no ``seeded`` entry of their own on this target, so an
+        # assertion resting on the fixture's own seeds would rest on an empty list.
+        snapshot, _rec = _resolve(std, proj, extra_default_categories={
+            **_SUBSUMING, "box.seeded": {"~/seedme": (str(src),)},
+        })
+
+        assert sorted(_assembly(snapshot)) == ["seeded"]
+        assert [c.dest for c in _assembly(snapshot)["seeded"]] == ["/home/agent/seedme"]
+
+    def test_a_SEED_ARM_refusal_leaves_every_leaf_absent(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The seed leaf has its own gate, and a seed arm that REFUSES fails it.
+
+        A seed outside home is refused by the fold itself
+        (``store_collapse._refuse_seed_outside_home``). Nothing is written then —
+        not the seed leaf it belongs to, and not the two below it.
+        """
+        src = tmp_path / "seedme"
+        src.write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _rec = _resolve(std, proj, extra_default_categories={
+            "box.seeded": {"/etc/outside": (str(src),)},
+        })
 
         assert _assembly(snapshot) == {}
 
