@@ -7,9 +7,15 @@ This module defines _only_ the raw storage shape of kanibako's settings keyspace
 merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed views, or consumers — which live in
 later blocks. It imports nothing from settings stack & is (for now) imported by nothing.
 
-Authority: `~/vault/rw/keystore-design.md` §2 (storage model — primary), §3 (`None` semantics —
-type-space consequence only), §6f (`masks` is a keyed `dict[box_dest -> bool|None]`, NOT a list);
-spec `settings-keyspace-1.8.0.md` §0 (files store UNRESOLVED) + §2a (category list + value types).
+Authority: **spec `settings-keyspace-1.8.0.md`** — §0 (files store UNRESOLVED), §2 (the cascade), §2a
+(category list + value types). ⚑ **The spec is the LIVE authority; read it first.**
+
+Historical: `keystore-design.md` §2 (storage model), §3 (`None` semantics — type-space consequence
+only), §6f (`masks` is a keyed `dict[box_dest -> bool|None]`, NOT a list). ⚑ **It is ARCHIVED, at
+`~/canon/notebook/archives/keystore-2026-06/keystore-design.md`** — the path this file used to give
+(`~/vault/rw/keystore-design.md`) **does not exist and has not for some time.** 🛑 **Its §4 writes the
+cascade bracket with a 7th `required` tier that S14 and spec §2 CUT** — so on the cascade the archive
+is WRONG and the spec wins. Cite it for the storage model only, never for tier structure.
 
 ## Summary of Storage Model (Design §2)
 
