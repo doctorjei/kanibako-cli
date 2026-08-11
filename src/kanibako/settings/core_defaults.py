@@ -1,25 +1,13 @@
-"""System/core category defaults — thin reader of the shipped declarative file.
+"""System/core category defaults — thin reader of the shipped ``core-defaults.yaml``.
 
-The STATIC, non-agent-specific launch-path defaults (the ``box.masks`` default,
-now empty, and the per-mode channel bind table) live as declarative data in
-:mod:`kanibako.data` (``core-defaults.yaml``), mirroring how the image baseline
-ships (:mod:`kanibako.runtime.baseline`) and how containerfiles/templates ship via
-:mod:`importlib.resources`.  This module reads that file and emits the entries
-through the existing category seam so the box-launch path injects them as the
-AGENT-level ``default_categories`` exactly as the old in-code emitters did.
+**_Terminology_**
+- _STATIC_: box-side dests, options, structural shape — read straight from the file
+- _DYNAMIC_: host SOURCES, runtime-probed and injected at the seam (the file names them
+  symbolically)
+- _CONDITIONAL_: per-mode / per-state gates, applied at the injection site, never in the file
 
-Split (documented in the YAML header too):
-
-* STATIC — box-side destinations + the structural shape (which keys exist, their
-  per-mode scope).  These are read straight from the file.
-* DYNAMIC — host SOURCES that are runtime-PROBED (the channel host roots come
-  from :class:`~kanibako.settings.paths.StandardPaths` /
-  :func:`kanibako.channels.channels.box_channel_addresses`).  The loader injects each
-  probed source into its keyed entry at the seam; the file names the source
-  SYMBOLICALLY so the structure stays declarative.
-* CONDITIONAL — the workset-local channel binds are emitted only for
-  PRIMARY/NAMED boxes; the loader applies that gate (standalone has no workset
-  channel paths) at the injection site.
+Eight declared families, one producer each; every table lands in the BASE-level floor. The
+box-create canon SKELETON also lives here — mirror image of the canon binds (llm-docs).
 """
 
 from __future__ import annotations
@@ -39,29 +27,14 @@ if TYPE_CHECKING:
 
 
 def packaged_data_dir(*parts: str) -> Traversable:
-    """Resolve a path inside the packaged ``kanibako.data`` tree.
-
-    Single source of truth for ``importlib.resources.files("kanibako.data")``
-    joined with ``*parts`` — returns the same ``Traversable`` the inline
-    ``files("kanibako.data").joinpath(*parts)`` expression produced (callers wrap
-    it in ``Path(str(...))`` as before).  Notably it centralizes the rom-root
-    subpath literal :data:`ROM_ROOT_PARTS` (``("global", "rom")``) that is
-    resolved in both this module and :mod:`kanibako.launch.templates`.
-    """
+    """Resolve a path inside the packaged ``kanibako.data`` tree; the ONE ``files()`` join."""
     return importlib.resources.files("kanibako.data").joinpath(*parts)
 
 # Filename of the shipped system/core defaults (in kanibako.data).
 CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
-# ⚑ ``FLOOR_PLACEHOLDER_SRC`` and ``core_default_bind_keys`` USED TO LIVE HERE. They
-# built a context-light SET-TIME floor registry (F10): the core box-mount bind keys
-# with static box_dest+options and a placeholder host_src, folded into
-# ``config_interface._category_set_lookups`` so a source-only repoint of a
-# launch-only bind would pass the must-exist-in-the-cascade gate. R-9 retired both
-# bind CLI write routes and the registry could no longer change any outcome, so the
-# whole thread was deleted in one subtractive pass. The LAUNCH floor producers below
-# (``core_default_categories`` and its siblings) are a DIFFERENT, LIVE mechanism:
-# they are host-probed, feed ``build_launch_snapshot``, and never used the sentinel.
+# ⚑ ``FLOOR_PLACEHOLDER_SRC`` / ``core_default_bind_keys`` (the SET-TIME floor registry) were
+# deleted with R-9; do not reintroduce one — the producers below are a different, LIVE mechanism.
 
 
 def _load_doc() -> dict[str, Any]:
@@ -74,26 +47,13 @@ def _load_doc() -> dict[str, Any]:
 
 
 def vault_mask_default() -> list[str]:
-    """Return the default masked DESTINATIONS — now EMPTY (no default mask).
-
-    Per spec §2a ``masks`` is a map keyed by box destination
-    (``dict[box_dest -> bool|None]``, the 3-state), so the shipped file spells a
-    MAP and this reader hands back its keys — the destinations, in file order.
-    The old vestigial ``~/workspace/vault`` default was DROPPED: the vault moved
-    OUT of ``~/workspace`` in 1.6.0, so there is nothing in the workspace to hide
-    behind a tmpfs.  The seam is kept (so a box may still declare masks via
-    ``box.masks`` / ``<scope>.masks``) but the shipped default is empty
-    (decision B).
-    """
+    """Return the default masked DESTINATIONS — now EMPTY (no default mask)."""
     masks = _load_doc().get("masks", {})
     return [str(m) for m in masks]
 
 
-#: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}``.
-#: The OUTER key is the TERMINAL arm key (R-5) and the INNER key is the normalized
-#: box DESTINATION (R-11); the value is the RAW tuple the floor parser turns into a
-#: :class:`~kanibako.settings.settings_store.BindEntry`. Floor tables are raw — they
-#: are parsed by ``settings_assemble.dotted_partial``, never here.
+#: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}`` (R-5/R-11).
+#: ⚑ RAW — parsed by ``settings_assemble.dotted_partial``, never here.
 BindArmTable = dict[str, dict[str, tuple[str, ...]]]
 
 
@@ -106,38 +66,11 @@ def add_bind(
     *,
     scope: str = "box",
 ) -> None:
-    """Install ONE dest-keyed entry into the ``<scope>.<category>`` arm of *binds*.
+    """Install ONE dest-keyed entry into the ``<scope>.<category>`` arm of *binds* (R-3/R-6/R-11).
 
-    The single constructor every floor producer — in this module and in the
-    plugin loader (:mod:`kanibako.settings.agent_defaults`) — goes through, so
-    the arm key, the R-11 destination normalization and the act-once refusal are
-    written ONCE rather than at ten call sites (disk-store rework R-3/R-6/R-11).
-
-    * *category* is any TERMINAL bind-shaped category — the ARMED
-      ``bindings.ro`` / ``bindings.rw``, or (since 2026-08-08c) ``caches`` /
-      ``seeded`` / ``common`` / ``synced``. ``{scope}.{category}`` is the WHOLE
-      key and the destination is NOT part of it. ⚑ It works for all six because
-      it only ever JOINS the two, never parses them: a category with a dot in it
-      is an arm and one without is not, and nothing here needs to know which.
-      ⚑ ``seeded`` / ``synced`` are COPIES and stay copies — this constructor
-      writes an entry DOWN; what is DONE with it is the delivery table's answer
-      (``settings_categories._DELIVERY``), not this function's.
-    * *box_dest* becomes the map KEY, normalized by
-      :func:`~kanibako.settings.settings_resolve.normalize_bind_dest` — ⚑ the DEST
-      only. *host_src* is stored exactly as given: a source is resolved on its own
-      later (spec §2a), and canonicalizing it would bake this machine's home into
-      a value other machines read.
-    * *options* omitted → a 1-element entry, meaning "use the category default".
-
-    Two entries at ONE destination inside ONE category map RAISES.  For a
-    ``bindings`` arm the reason is act-once: it cannot be a legitimate overlay.
-    For the other four the reason is the DEST-KEYED SHAPE itself — the second
-    entry would simply replace the first in the dict, with nothing downstream able
-    to see the loss, which is the unrepresentable-collision case R-8 says to refuse
-    LOUDLY rather than absorb.  (Two entries at one dest in DIFFERENT arms or
-    different categories are still two different keys and still reach the
-    resolved-``box_dest`` collision table in ``settings_categories`` — that check
-    is untouched, design §2b-CAVEAT.)
+    ⚑ ``seeded`` / ``synced`` are COPIES and stay copies — what is DONE with an entry is
+    ``settings_categories._DELIVERY``'s answer, not this function's.
+    ⚑ The DEST is normalized; *host_src* is stored exactly as given.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -156,36 +89,14 @@ def add_bind(
 def channel_default_categories(
     std: StandardPaths, proj: ProjectPaths
 ) -> BindArmTable:
-    """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f).
-
-    Fills the TERMINAL ``box.bindings.rw`` arm with ONE ``box_dest -> (host_src,)``
-    entry per channel surfaced into THIS box.  The box-side destinations and the
-    structure come from the declarative file; the host SOURCES are runtime-probed
-    here and injected into each entry (the file names them symbolically).
-
-    Per spec §2a a binding is STRUCTURED, never a colon-joined string — so no
-    escaping of a literal ``:`` in the host path is needed. Under dest-keying
-    (R-3/R-5) the DESTINATION is the map key and the value is the 1-or-2 element
-    ``(host_src[, options])`` tuple that
-    :func:`~kanibako.settings.settings_resolve.unpack_bind_entry` consumes; these
-    channel entries omit options, taking the category default.
-
-    ALL MODES (system scope): the five system channel type roots
-    (common/chat/share/mailboxes) plus this box's own inbox double-bind (the SAME
-    host source bound at both ``~/channels/inbox`` and
-    ``~/channels/mailboxes/<ws>/<self>`` — A2).  PRIMARY + NAMED additionally get
-    the three workset-local type roots under ``~/channels/workset/``; STANDALONE
-    OMITS them (A10 — gated by the absence of workset channel paths).
-    """
+    """Build the per-mode channel bind table as ``default_categories`` (§2c/§2f)."""
     from kanibako.channels import channels as _ch
 
     addr = _ch.box_channel_addresses(proj, std)
     wch = _ch.workset_channel_paths(proj, std)
 
-    # Resolve each SYMBOLIC source name from the declarative file to its
-    # runtime-probed host path.  Workset sources are present only when this box
-    # has workset-local channels (PRIMARY/NAMED) — the entries that reference
-    # them are dropped for standalone boxes.
+    # Symbolic source name -> runtime-probed host path.  ⚑ Workset sources exist only for
+    # PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
     sources: dict[str, str] = {
         "channels_common": str(std.channels_common),
         "channels_chat": str(std.channels_chat),
@@ -204,11 +115,8 @@ def channel_default_categories(
         if source not in sources:
             # Workset-scoped entry on a standalone box: no host source → omit.
             continue
-        # B2: an entry with a ``meta_ref`` is ROUTED through that @meta.* reference
-        # (spec §2c) — the host_src is the @-ref STRING, which ``expand`` resolves
-        # to the SAME materialized identity literal as the runtime-probed source
-        # (byte-identical, JC-B2-4).  The ``source`` gate above still applies (so a
-        # workset-scoped meta_ref entry on a standalone box is still omitted).
+        # ⚑ B2: a ``meta_ref`` entry emits the @-ref STRING as host_src (spec §2c); the
+        # ``source`` gate above still applies to it.
         host_src = entry.get("meta_ref", sources[source])
         add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
     return binds
@@ -218,34 +126,8 @@ def core_default_categories(
     std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str,
     guarantee_create: bool = True,
 ) -> BindArmTable:
-    """Build the core box mounts as ``default_categories`` (step 3).
-
-    Fills the TERMINAL ``box.bindings.ro`` / ``box.bindings.rw`` arms with one
-    ``box_dest -> (host_src, options)`` entry per CORE box mount (home + workspace
-    + vault).  These are the box's own home/workspace/vault binds — TODAY's hardwired
-    podman ``-v`` routed through the category resolver so nothing is bound into a
-    box except through the keyspace.  The box-side destinations, per-entry mount
-    options, and armed category come from the declarative file (``core:`` list); the
-    host SOURCES are runtime-probed from *proj* here and injected into each entry.
-
-    Per spec §2a a binding is STRUCTURED, never a colon-joined string.  Under
-    dest-keying (R-3/R-5) the DESTINATION is the map key — R-11-absolutized by
-    :func:`add_bind`, so the file's ``~`` is stored as ``/home/agent/...`` — and
-    the per-entry mount OPTIONS are the value's OPTIONAL 2nd slot, consumed by
-    :func:`~kanibako.settings.settings_resolve.unpack_bind_entry` (present options
-    OVERRIDE the category default for that entry, so e.g. the ``ro`` vault bind
-    keeps ``ro`` and the ``Z,U`` binds keep ``Z,U`` regardless of the category's
-    own default).
-
-    home + workspace are UNCONDITIONAL (every box mode).  The vault binds
-    (``scope: vault`` in the file) are UNIVERSAL UNLESS DISABLED: emitted whenever
-    *enable_vault* is true, with the probed source dir CREATED IF MISSING here so
-    the bind is ALWAYS emitted (rather than silently dropped when the source
-    happens to be absent).  Only an explicitly DISABLED vault (``enable_vault`` is
-    false) omits the vault binds.
-    """
-    # Resolve each SYMBOLIC source name from the declarative file to its
-    # runtime-probed host path off ``ProjectPaths``.
+    """Build the core box mounts — home + workspace + vault — as ``default_categories`` (step 3)."""
+    # Symbolic source name -> runtime-probed host path off ``ProjectPaths``.
     sources: dict[str, str] = {
         "shell_path": str(proj.shell_path),
         "project_path": str(proj.project_path),
@@ -259,39 +141,20 @@ def core_default_categories(
 
     binds: BindArmTable = {}
     for entry in _load_doc().get("core", []):
-        # Vault binds are UNIVERSAL unless explicitly disabled: when vault is
-        # enabled, ensure the probed source dir exists (create-if-missing) so the
-        # bind is ALWAYS emitted, rather than silently dropped when the source
-        # happens to be absent.  Only skip vault when it is disabled.
+        # Vault binds are UNIVERSAL unless explicitly disabled; only a disabled vault skips.
         if entry.get("scope") == "vault":
             if not enable_vault:
                 continue
             src_path = vault_dir.get(entry["source"])
             if src_path is None:
                 continue  # unknown source name (defensive)
-            # Vault is UNIVERSAL unless disabled: ensure the source dir exists
-            # (create-if-missing) so the bind is always emitted when enabled,
-            # rather than silently dropped when the source happens to be absent.
-            #
-            # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is
-            # still emitted with the same host_src, so a read-only consumer sees
-            # exactly what a launch would mount without making it so. It exists
-            # because ``box show --effective`` resolves this same table:
-            # a DISPLAY verb must not write to disk.
+            # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is still emitted;
+            # a DISPLAY verb (``box show --effective``) must not write to disk.
             if guarantee_create:
                 src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
-        # An entry routed through an @-ref carries either a single ``meta_ref``
-        # (MODE-INDEPENDENT — home and workspace) OR a ``mode_meta_ref`` PER-MODE
-        # map.  The per-mode form now serves the VAULT binds ONLY, and for a real
-        # reason: primary/named take the per-box ``/@meta.box.name`` subdir that a
-        # lone standalone box does not have (spec §2c).  Both vault arms root at the
-        # SAME ``@workset.vault_*`` anchor.  home no longer needs an arm at all — it
-        # roots at ``@meta.box.path``, which is where the per-mode variation lives.
-        # The host_src is the @-ref STRING, which ``expand`` resolves to the SAME
-        # runtime-probed literal (byte-identical) because the workset.* /
-        # meta.workset.path anchors resolve to the launch's own roots.  Falls back to
-        # the probed source for an un-routed entry.
+        # ⚑ TWO @-ref shapes: a single ``meta_ref`` (mode-independent — home, workspace) or a
+        # ``mode_meta_ref`` PER-MODE map, which today serves the VAULT binds ONLY (spec §2c).
         mode_ref = entry.get("mode_meta_ref")
         if mode_ref is not None:
             host_src = mode_ref[mode]
@@ -305,16 +168,7 @@ def core_default_categories(
 
 
 def kani_default_categories() -> BindArmTable:
-    """Build the kanibako CLI binds as ``default_categories`` (Phase B).
-
-    Fills the TERMINAL ``box.bindings.ro`` arm with one ``box_dest -> (host_src,
-    options)`` entry for the in-box kanibako package + entry script — TODAY's
-    hardwired ``_kanibako_mounts`` ``-v`` list routed through the category resolver
-    so nothing is bound into a box except through the keyspace.  The box-side
-    destinations + options come from the declarative file (``kani:`` list); the
-    host SOURCES are import-resolved here and injected into each entry (the file
-    names them SYMBOLICALLY).  Both binds are UNCONDITIONAL (every box mode).
-    """
+    """Build the kanibako CLI binds — the UNCONDITIONAL trio — as ``default_categories``."""
     import importlib.resources
 
     import kanibako
@@ -349,24 +203,13 @@ def kani_default_categories() -> BindArmTable:
 # The KICKOFF LOADER — the directive-chain ENTRY SLOT (spec §2c, P-5).
 # ===========================================================================
 
-# The packaged kickoff loader, relative to the ``kanibako.data`` root.  It sits
-# FLAT under ``global/`` beside the two other shipped content trees (``global/rom``,
-# the RO canon; ``global/template``, the writable seed) because it is neither of
-# them: it is not canon TEXT (it never lands under ~/canon and the box never reads it
-# as a directive — the flattener CONSUMES it) and it is not seeded (it is bound RO so
-# it version-follows the package instead of freezing at create).
+# The packaged kickoff loader, relative to the ``kanibako.data`` root; FLAT under ``global/``
+# beside ``global/rom`` (RO canon) and ``global/template`` (writable seed), being neither.
 KICKOFF_PACKAGED_PARTS = ("global", "KICKOFF.md")
 
 
 def _kickoff_entry() -> dict[str, Any]:
-    """The one declarative ``kickoff:`` entry, or RAISE if the shipped file lost it.
-
-    The block is a LIST like every other family in the file (``kani``/``helpers``/
-    ``images``) and carries EXACTLY ONE entry: there is one directive-chain entry
-    slot, and two would mean two files racing for one dest.  Enforced rather than
-    assumed — a second entry would otherwise be silently ignored here while the
-    ``KANIBAKO_DIRECTIVE_SEED`` env var kept naming the first.
-    """
+    """The one declarative ``kickoff:`` entry, or RAISE if the shipped file lost it."""
     entries = _load_doc().get("kickoff") or []
     if not isinstance(entries, list) or len(entries) != 1:
         raise RuntimeError(
@@ -380,25 +223,12 @@ def _kickoff_entry() -> dict[str, Any]:
 
 
 def kickoff_box_dest() -> str:
-    """The ``~``-spelled box-side kickoff slot (``~/.config/kanibako/kickoff.md``).
-
-    SINGLE SOURCE OF TRUTH, read from the declarative file: the bind's dest, the
-    ``KANIBAKO_DIRECTIVE_SEED`` container env var and the transition gate's dest
-    comparison are all the SAME path, and a second literal spelling of it anywhere
-    is a drift waiting to happen.
-    """
+    """The ``~``-spelled box-side kickoff slot — SINGLE SOURCE OF TRUTH, read from the file."""
     return str(_kickoff_entry()["box_dest"])
 
 
 def kickoff_guest_dest() -> str:
-    """:func:`kickoff_box_dest` as an ABSOLUTE guest path.
-
-    Two consumers need the expanded form rather than the ``~`` spelling: the
-    ``KANIBAKO_DIRECTIVE_SEED`` env var (it is read by a hook shell and at exec
-    time, where ``~`` would resolve against whoever's HOME) and the transition
-    gate (descriptor box_dests are ``$GUEST_HOME``-expanded by the defaults
-    loader, so a ``~``-spelled dest would never match one).
-    """
+    """:func:`kickoff_box_dest` as an ABSOLUTE guest path (the env var + the transition gate)."""
     from kanibako.settings.settings_resolve import GUEST_HOME
 
     dest = kickoff_box_dest()
@@ -408,65 +238,19 @@ def kickoff_guest_dest() -> str:
 def kickoff_default_categories(
     descriptor: "PluginDescriptor | None" = None,
 ) -> BindArmTable:
-    """Build the core KICKOFF bind as ``default_categories`` (spec §2c, P-5).
-
-    One entry in the terminal ``box.bindings.ro`` arm, keyed by destination::
-
-        /home/agent/.config/kanibako/kickoff.md = (<packaged global/KICKOFF.md>, ro)
-
-    The directive-chain ENTRY SLOT: the flattener reads this file at box start,
-    follows its ``@~/canon/COLLECTION.md`` import to full depth, and writes the flat
-    result into the harness's native instruction slot.  INTERNAL, like ``kani_pkg``
-    and ``images_conf``: ``config set`` refuses it (R-9 retired the ``bindings.
-    {ro,rw}`` write route at every scope); not repointable (spec §0's test — a user has nothing to configure
-    here, the file is generated content at a fixed location, and repointing it would
-    redirect the entire directive chain).
-
-    ⚑⚑ THE TRANSITION GATE — core YIELDS to a plugin that still ships a kickoff.
-
-    P-5 moved the kickoff CONTENT from the three agent plugins into core.  The
-    plugins publish INDEPENDENTLY of the base and pin no base version, so a NEW base
-    beside an OLD plugin is not just reachable, it is the ordinary
-    ``pip install -U kanibako-cli`` outcome — and both would deliver a file to the
-    SAME dest: core's bind here plus the plugin's descriptor binding (``managed_pointer``
-    in all three first-party plugins).  Two CONCRETE bindings at one box_dest is a
-    row-1 collision in spec §0's identical-dest table, i.e. a HARD LAUNCH ERROR
-    (``CategoryCollisionError``).  Refusing to launch a box because its base got newer
-    is not an acceptable upgrade experience, so core defers: with a plugin-supplied
-    kickoff present, this emitter yields NOTHING and the plugin's file is delivered
-    exactly as before.
-
-    ⚑ REMOVAL CONDITION — delete the gate (and this paragraph) once every published
-    agent plugin has dropped its own kickoff delivery: ``data/KICKOFF.md`` +
-    the ``managed_pointer`` descriptor binding gone from ``kanibako-agent-claude``,
-    ``-codex`` and ``-goose``, with those releases PUBLISHED (not merely merged).
-    After that the gate can only ever be false, and an ungated unconditional bind is
-    the honest shape.  Until then the gate is what keeps the base and the plugins
-    independently upgradable.  Recorded in migration M-12.
-
-    *descriptor* is the descriptor whose bindings the SAME resolve represents in the
-    launch snapshot (see :func:`kanibako.settings.agent_representation.agent_default_partial`).
-    Passing ``None`` (a no-agent box, or a narrow resolve that carries no agent
-    bindings) means nothing else can be delivering a kickoff, so the bind is emitted.
-
-    FAIL-CLOSED: the packaged loader must exist.  A box whose kickoff is missing has
-    NO directive chain at all — the flattener finds no source, the launch shim's
-    ``|| true`` swallows it, and every session runs with an empty instruction set.
-    That is precisely the silent degradation the canon work exists to end, so a
-    missing packaged file RAISES here rather than emitting a bind whose source
-    ``_emit_category_mounts`` would drop with a one-line warning.
-    """
+    """Build the core KICKOFF bind as ``default_categories`` (spec §2c, P-5)."""
     from kanibako.targets.assembly import declares_box_dest
 
+    # ⚑⚑ THE TRANSITION GATE — core YIELDS to a plugin that still ships a kickoff (M-12).
+    # ⚑ REMOVAL CONDITION in llm-docs; re-verify against the three plugins before deleting.
     if declares_box_dest(descriptor, kickoff_guest_dest()):
         return {}
 
     entry = _kickoff_entry()
-    # The host SOURCE, resolved from the entry's SYMBOLIC name exactly as
-    # ``kani_default_categories`` resolves its own (the file names sources
-    # symbolically; the loader supplies the resolved path).
+    # The host SOURCE, resolved from the entry's SYMBOLIC name (kani parity).
     sources = {"kickoff": Path(str(packaged_data_dir(*KICKOFF_PACKAGED_PARTS)))}
     src = sources[str(entry["source"])]
+    # ⚑ FAIL-CLOSED: a missing loader means NO directive chain at all, silently.
     if not src.is_file():
         raise RuntimeError(
             f"the packaged kickoff loader is missing at {src} — it is the entry "
@@ -483,16 +267,12 @@ def kickoff_default_categories(
     return binds
 
 
-# The packaged rom root — the READ-ONLY built-in CANON content (the BIBLE, plus the
-# COLLECTION.md index that enters it).  A module constant (symmetric with
-# :func:`templates._packaged_base_template`'s hardcoded ``("global","template")``
-# writable-seed root): rom is the RO-bind DUAL of that writable template seed.
+# The packaged rom root — the READ-ONLY built-in CANON content; RO-bind DUAL of the
+# ``("global","template")`` writable seed in :func:`templates._packaged_base_template`.
 ROM_ROOT_PARTS = ("global", "rom")
 
-# ⚑ The packaged rom tree is FLAT — ``rom/{COLLECTION.md, bible/**}``, with NO
-# ``canon/`` wrapper level (J-7, 2026-07-31).  It therefore NO LONGER mirrors the
-# guest layout, so a rom-relative path is NOT its own ``~/``-dest: every guest dest
-# is built by :func:`_canon_dest`, which prefixes the guest canon root.
+# ⚑ The packaged rom tree is FLAT (J-7) and does NOT mirror the guest layout: a rom-relative
+# path is NOT its own ``~/``-dest — every guest dest goes through :func:`_canon_dest`.
 CANON_GUEST_ROOT = "canon"
 
 # The rom-ROOT-relative posix paths of the packaged CANON bind SOURCES (spec §2c).
@@ -500,49 +280,29 @@ ROM_COLLECTION_REL = "COLLECTION.md"
 ROM_BIBLE_REL = "bible"
 ROM_CONTENTS_REL = f"{ROM_BIBLE_REL}/ROM_CONTENTS.md"
 
-# The handbook BOOK root, guest-only (nothing packages a handbook).  Declared here
-# beside ``ROM_BIBLE_REL`` for symmetry and because the managed-region deny list
-# below needs both book roots.
+# The handbook BOOK root, guest-only (nothing packages a handbook); beside ``ROM_BIBLE_REL``
+# because the managed-region deny list below needs both book roots.
 HANDBOOK_REL = "handbook"
 
-# The load-bearing box guide (the bible's GENERAL chapter), rom-root-relative.  It
-# MUST ship whenever the rom root is populated (fail-closed guard) — a box launched
-# without the guide is a silent degradation of EVERY box.
+# ⚑ The load-bearing box guide (the bible's GENERAL chapter), rom-root-relative; it MUST ship
+# whenever the rom root is populated — see the fail-closed guard in ``rom_default_categories``.
 ROM_GUIDE_REL = "bible/general/directives/ROM_GENERAL.md"
 
-# The bible chapters core PACKAGES, one whole-directory sibling bind each.  ⚑ There
-# is deliberately no ``agent`` here: J-7 retired the packaged placeholder chapter
-# along with the nested-bind model that needed it (a wheel cannot ship an empty
-# directory, and a mountpoint must never live inside a bind SOURCE).
+# The bible chapters core PACKAGES, one whole-directory sibling bind each.  ⚑ Deliberately no
+# ``agent``: J-7 retired the packaged placeholder chapter with the nested-bind model.
 ROM_BIBLE_CHAPTERS = ("general", "workset", "box")
 
-# The bible's PLUGIN chapter.  Guest-only: it is a mountpoint the box-create
-# skeleton materialises in the box home, never a packaged directory.
+# The bible's PLUGIN chapter.  Guest-only: a mountpoint the box-create skeleton materialises.
 BIBLE_AGENT_CHAPTER = "agent"
 
-# The plugin-rom EMISSION GATE marker, relative to a plugin's ``data/rom`` chapter
-# root: a plugin gets a bible chapter bind ONLY if it actually ships one.
+# The plugin-rom EMISSION GATE marker, relative to a plugin's ``data/rom`` chapter root.
 PLUGIN_CHAPTER_MARKER_REL = "directives/ROM_AGENT.md"
 
-# ⚑ The MANAGED CANON REGION that no template seed may write into (spec §2c: *"a
-# template MUST NOT seed into canon/COLLECTION.md, canon/bible/… or
-# canon/handbook/…; seeds target canon/{notebook,workbook} ONLY"*), as ``~``-relative
-# prefixes.
-#
-# ⚑ WHY PREFIXES AND NOT THE LITERAL BIND DESTS.  Under J-7's SIBLING binds
-# ``canon/bible`` is no longer itself a bind dest — only its chapters are — so
-# passing the literal dests would silently stop rejecting a seed at
-# ``canon/bible/agent/x.md``.  That seed is still forbidden, and under J-7 doubly
-# so: the whole region is root-owned, so the copy would fail with EACCES at create
-# rather than merely be shadowed at launch.  The deny list therefore names the
-# managed REGION, which is what §2c actually states.
-#
-# ⚑ ``canon/handbook`` IS ALREADY IN THE LIST, even though nothing BINDS it until the
-# seeds half lands.  The trigger is not "is it bound?" but "does the box-create
-# SKELETON own it?" — and it does: ``materialize_canon_skeleton`` creates
-# ``canon/handbook/`` + its four chapter mountpoints + ``SYS_CONTENTS.md`` and makes
-# them root-owned TODAY.  A template seeding there would fail with EACCES right now,
-# so deferring the deny entry to R2 would leave a real hole open in between.
+# The MANAGED CANON REGION no template seed may write into (spec §2c), as ``~``-relative
+# PREFIXES.  ⚑ Prefixes, not the literal bind dests: under J-7 ``canon/bible`` is not itself a
+# dest, so literal dests would stop rejecting a seed at ``canon/bible/agent/x.md``.
+# ⚑ ``canon/handbook`` is here on the SKELETON's authority ("does box create own it?"), which
+# holds independently of what is bound.
 CANON_SEED_DENY_PREFIXES = (
     f"{CANON_GUEST_ROOT}/COLLECTION.md",
     f"{CANON_GUEST_ROOT}/{ROM_BIBLE_REL}",
@@ -551,58 +311,18 @@ CANON_SEED_DENY_PREFIXES = (
 
 
 def _canon_dest(rel: str) -> str:
-    """Return the ``~``-relative guest dest for a canon path *rel*.
-
-    *rel* is spelled relative to the BOOK ROOT (``COLLECTION.md``, ``bible/general``,
-    …), which is the rom-root-relative spelling for packaged sources and the
-    home-relative-under-``canon`` spelling for everything else.
-    """
+    """Return the ``~``-relative guest dest for a BOOK-ROOT-relative canon path *rel*."""
     return f"~/{CANON_GUEST_ROOT}/{rel}"
 
 
 def assert_canon_bind_seed_disjoint(
     bind_dests: Iterable[str], seed_rels: Iterable[str],
 ) -> None:
-    """RAISE if any template SEED lands at or under a MANAGED ``~/canon`` path.
+    """RAISE if any template SEED lands at or under a MANAGED ``~/canon`` path (spec §2c).
 
-    Both arguments are ``~``-RELATIVE posix paths (``canon/bible``,
-    ``canon/notebook/MY_CONTENTS.md``, …): *bind_dests* are the managed canon prefixes
-    (:data:`CANON_SEED_DENY_PREFIXES` — the BOOK ROOTS, which under J-7's sibling
-    binds are a superset of the literal bind dests; see that constant for why),
-    *seed_rels* the files a seed layer would copy to the box home.
-
-    ⚑ SCOPE OF WHAT IS ACTUALLY CHECKED TODAY. The only caller
-    (:func:`rom_default_categories`) passes the PACKAGED BOX-HOME template walk
-    (``template/box/home``) — i.e. layer 1 of the three in
-    :func:`kanibako.launch.templates.template_seed_defaults`. The AGENT and WORKSET layers
-    (``@agent.<a>.template`` / ``@workset.template``, both user-repointable and both
-    resolved at seed time, not here) are NOT covered, and neither are a plugin's
-    ``default_seeds()``. This function does not decide that scope, it only enforces
-    what it is handed — WIDENING THE INPUTS IS THE CALLER'S JOB, which is exactly why
-    the bind dests and seed rels are parameters rather than computed inside.
-
-    ⚑⚑ BOTH SIDES MUST BE HOME-RELATIVE, and that is easy to break silently. The
-    ``~``-relative bind prefixes (``canon/bible``, ``canon/handbook``) can only be
-    compared against seed rels spelled the same way. Before the canon restructure the
-    packaged template ROOT happened to BE the home-relative root, so passing its walk
-    worked by coincidence; it no longer is (``box/home/...``), and passing the root
-    walk today would make every comparison a guaranteed miss — a guard that runs,
-    passes, and checks nothing. Hence :func:`kanibako.launch.templates.
-    packaged_box_home_template`, which names the level that IS home-relative.
-
-    PREFIX CONTAINMENT, not set intersection.  The managed region is root-owned
-    from create, so a seed does not have to hit an exact path to fail: anything
-    under it — ``canon/bible/general/x.md`` no less than ``canon/bible`` itself —
-    fails with EACCES at create.  Second, and weaker: where a copy could land at
-    all, spec §0's copy-vs-mount rule makes the mount's shadowing of it
-    ORDER-INDEPENDENT and SILENT.  Hence a guard rather than a runtime resolution.
-
-    THE SHARED ENTRY POINT between the two C-CANON halves (brief §4): the ROM half
-    supplies :data:`CANON_SEED_DENY_PREFIXES`; the SEEDS/handbook half appends
-    ``canon/handbook`` to it, with no edit to the rom emitter.  Spec §2c states the
-    rule this enforces: *"a template MUST NOT seed into ``canon/COLLECTION.md``,
-    ``canon/bible/…`` or ``canon/handbook/…``; seeds target
-    ``canon/{notebook,workbook}`` ONLY."*
+    ⚑⚑ BOTH ARGUMENTS MUST BE ``~``-RELATIVE or every comparison silently misses.
+    ⚑ WIDENING THE INPUTS IS THE CALLER'S JOB — hence parameters, not computed inside.
+    PREFIX CONTAINMENT, not set intersection.
     """
     dests = sorted(set(bind_dests))
     violations: list[str] = []
@@ -626,63 +346,11 @@ def assert_canon_bind_seed_disjoint(
 
 
 def rom_default_categories() -> BindArmTable:
-    """Build the FIVE read-only packaged-CANON binds as ``default_categories``.
+    """Build the FIVE read-only packaged-CANON binds as ``default_categories`` (J-7, spec §2c).
 
-    All five are ENTRIES of the ONE terminal ``box.bindings.ro`` arm, keyed by
-    DESTINATION (R-3/R-5/R-11 — the ``canon_*`` names below are gone from the data
-    and survive here only as prose labels)::
-
-        /home/agent/canon/COLLECTION.md          = (<rom>/COLLECTION.md,         ro)
-        /home/agent/canon/bible/ROM_CONTENTS.md  = (<rom>/bible/ROM_CONTENTS.md, ro)
-        /home/agent/canon/bible/general          = (<rom>/bible/general,         ro)
-        /home/agent/canon/bible/workset          = (<rom>/bible/workset,         ro)
-        /home/agent/canon/bible/box              = (<rom>/bible/box,             ro)
-
-    (The sixth canon bind, the plugin's ``~/canon/bible/agent`` chapter, is
-    emitted separately — see :func:`rom_agent_default_categories`.)
-
-    All INTERNAL/generated binds, not user keys: ``config set`` refuses them exactly
-    as it does ``kani_pkg`` and ``images_conf`` — as of R-9 it refuses EVERY
-    ``bindings.{ro,rw}`` spelling at every scope, so the rule no longer turns on any
-    per-entry registry membership.  Spec §0's test — *"could a user reasonably want to override
-    it?"* — answers itself here: the one book a user cannot edit is also the one they
-    cannot repoint, and ``COLLECTION.md`` is the INDEX that defines the canon's shape
-    and load order, so a repointable index would mean no guaranteed structure.
-
-    ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK (J-7, 2026-07-31 — REPLACES R1's single
-    ``canon_bible`` directory bind, which shipped only in the unreleased ``93b9a9d``).
-    Every entry is its own bind onto a mountpoint that ALREADY EXISTS in the box home,
-    materialised by :func:`materialize_canon_skeleton` at box create.  Nothing nests
-    inside anything, so no mountpoint ever has to live inside a bind SOURCE — which is
-    what killed the whole-dir model: the plugin chapter's mountpoint would have had to
-    exist inside site-packages (where a wheel cannot ship an empty directory and no
-    runtime may write), and the handbook chapters' inside the user's own stores.
-    The nested-mount physics PASSED on real podman; the model was retired anyway
-    because of where it forced the mountpoints to live.
-
-    ``COLLECTION.md`` and ``ROM_CONTENTS.md`` are FILE binds (file-onto-file, over the
-    0-byte mountpoints the skeleton creates).  They stay BINDS rather than seeded
-    copies because they are rom TRUTH: a copy would freeze at create and drift from
-    the installed package.
-
-    FAIL-CLOSED guards (a mis-pathed or half-shipped canon must RAISE, never silently
-    launch a box with no directives):
-
-    * the guide is physically on disk but absent from the shipped-file walk → the
-      over-broad-filter / empty-glob / broken-walk class;
-    * the rom root is POPULATED but any EMITTED BIND'S SOURCE is missing.  Now that
-      every source is its own bind, "the required members" and "the emitted sources"
-      are the same list — so the guard is generated from it rather than restated.
-
-    ⚑ ``bible/agent/`` is deliberately NOT required (and must NOT ship): J-7 retired
-    the packaged placeholder chapter together with the nesting that needed it.
-
-    An absent or genuinely EMPTY rom root yields an empty dict — a no-rom install,
-    which is fine.
-
-    DISJOINTNESS: delegated to :func:`assert_canon_bind_seed_disjoint` (prefix
-    containment against the template seed tree) — the shared entry point the
-    seeds/handbook sub-phase extends.
+    ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
+    :func:`materialize_canon_skeleton` already made, so no mountpoint lives inside a bind SOURCE.
+    ⚑ ``bible/agent/`` is deliberately NOT required and must NOT ship.
     """
     from kanibako.launch import templates
 
@@ -693,13 +361,8 @@ def rom_default_categories() -> BindArmTable:
     rom_files = templates.walk_shipped_files(rom_root)
     rom_rels = {rel for rel, _ in rom_files}
 
-    # FAIL-CLOSED (a): the guide SHIPS under the rom root, so if that file is
-    # physically present on disk it MUST appear in the shipped-file walk.  Anchoring
-    # the guard to the guide's on-disk presence (NOT to a non-empty filtered list)
-    # catches the over-broad-filter / empty-glob / broken-walk class where the walk
-    # silently returns nothing while the guide still ships — that must RAISE, never
-    # short-circuit to a guide-less launch (MEMORY: "check the file COUNT, never
-    # just rc").
+    # ⚑ FAIL-CLOSED (a): anchored to the guide's ON-DISK presence, NOT to a non-empty filtered
+    # list — that is what catches the over-broad-filter / empty-glob / broken-walk class.
     guide_shipped = (rom_root / ROM_GUIDE_REL).is_file()
     if guide_shipped and ROM_GUIDE_REL not in rom_rels:
         raise RuntimeError(
@@ -709,15 +372,13 @@ def rom_default_categories() -> BindArmTable:
             "without the guide."
         )
 
-    # A genuinely empty rom root (the guide is not shipped here either) is a no-rom
-    # install — emit nothing.  Reached only when the guide is NOT on disk (the
-    # fail-closed guard above already raised if it was).
+    # A genuinely empty rom root is a no-rom install — emit nothing.  Reached only when the
+    # guide is NOT on disk (guard (a) above already raised if it was).
     if not rom_files:
         return {}
 
-    # The SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.  ⚑ ONE
-    # declaration drives BOTH the fail-closed completeness guard and the emission, so
-    # the guard cannot drift away from what is actually bound.
+    # The SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.  ⚑ ONE declaration
+    # drives BOTH the completeness guard and the emission, so they cannot drift apart.
     binds: list[tuple[str, str, bool]] = [
         ("canon_collection", ROM_COLLECTION_REL, False),
         ("canon_bible_contents", ROM_CONTENTS_REL, False),
@@ -727,11 +388,8 @@ def rom_default_categories() -> BindArmTable:
         ),
     ]
 
-    # FAIL-CLOSED (b): the rom root is POPULATED, so the WHOLE canon payload must be
-    # there — every emitted bind's SOURCE, plus the guide (which has no bind of its
-    # own: it rides the ``general`` chapter's).  A half-shipped canon is a PACKAGING
-    # defect, and a bind with a missing source would otherwise be silently DROPPED by
-    # ``_emit_category_mounts`` with only a per-launch warning.
+    # ⚑ FAIL-CLOSED (b): a POPULATED rom root must carry the WHOLE payload — every emitted
+    # bind's SOURCE, plus the guide (which has no bind of its own: it rides ``general``'s).
     present: list[tuple[str, bool]] = [
         (rel, (rom_root / rel).is_dir() if is_dir else (rom_root / rel).is_file())
         for _key, rel, is_dir in binds
@@ -747,14 +405,9 @@ def rom_default_categories() -> BindArmTable:
             "partial canon."
         )
 
-    # DISJOINTNESS: no template seed may land at or under the MANAGED canon region.
-    #
-    # ⚑ RE-ANCHORED to the BOX-HOME template root (``template/box/home``), NOT the
-    # template ROOT.  Both sides of this guard must be HOME-RELATIVE for the prefix
-    # comparison to mean anything, and after the canon restructure a root-relative
-    # walk yields ``box/home/...`` / ``workset/...`` / ``handbook/...`` — none of
-    # which can ever match a ``canon/...`` prefix.  Left un-re-anchored the guard
-    # would still run, still pass, and check NOTHING.
+    # DISJOINTNESS.  ⚑ RE-ANCHORED to the BOX-HOME template root, NOT the template ROOT: a
+    # root-relative walk can never match a ``canon/...`` prefix, so the guard would check
+    # NOTHING while still running and passing.
     home_template_root = templates.packaged_box_home_template()
     if home_template_root is not None:
         assert_canon_bind_seed_disjoint(
@@ -775,44 +428,14 @@ def rom_agent_default_categories(
 ) -> BindArmTable:
     """Build the PLUGIN's bible chapter bind — the SIXTH canon bind (spec §2c).
 
-    One entry in the terminal ``box.bindings.ro`` arm, keyed by destination::
-
-        /home/agent/canon/bible/agent = (<plugin pkg>/data/rom, ro)
-
-    Emitted by CORE from the RESOLVED *target*, beside the five core canon binds —
-    NOT by the plugin, and NOT through the agent-scope descriptor route.  That
-    choice is the whole design: an ``agent.<node>.bindings.ro`` entry would have
-    ridden the per-node descriptor floor into the set-time cascade and made the
-    bible's agent chapter the SOLE repointable page of an otherwise unrepointable
-    book, and it would discriminate on the NODE (a persona) while the content is a
-    property of the HARNESS PACKAGE.  (R-9 has since retired the bind CLI write
-    route at every scope, so no page of the book is repointable from the CLI — the
-    asymmetry the choice avoided cannot arise at all now.)  As a box-scoped INTERNAL bind there is no discriminator
-    at all, which is spec §2d's *"storage is varied, binding is not"* verbatim.
-
-    ⚑ bible/agent = per-HARNESS (packaged, one per plugin).  handbook/agent =
-    per-AGENT-NODE (host, ``agent.<agent>.canon``, personas included).  A persona
-    has no package, so it has no bible chapter; what it can have is a handbook
-    chapter.  Two books, two cardinalities, no overlap.
-
-    ⚑ A SIBLING, not a nested bind (J-7, 2026-07-31 — REPLACES R1's shadow model).
-    Its dest no longer sits inside another bind's: ``~/canon/bible`` is not bound at
-    all, only its chapters are, and this one lands on a mountpoint the box-create
-    skeleton already made.  Nothing shadows anything, so the ascending mount
-    depth-sort is not load-bearing here any more.
-
-    GATE — emit ONLY when the plugin actually ships a chapter (``rom_root`` exists
-    AND contains ``directives/ROM_AGENT.md``).  With no packaged placeholder chapter
-    left to shadow, an ungated bare ``data/rom/`` would bind an EMPTY directory over
-    the mountpoint: visibly identical to emitting nothing, but paid for with a
-    per-launch missing-source WARNING from ``_emit_category_mounts`` — the wrong
-    signal for the perfectly ordinary "this plugin has no chapter".  Gate-false is
-    the honest shape: an empty root-owned mountpoint plus ONE dangling-import warning
-    from the flattener, which is exactly what J-7 accepts.
+    ⚑ Emitted by CORE from the RESOLVED *target*, NOT by the plugin and NOT through the
+    agent-scope descriptor route; ``bible/agent`` is per-HARNESS, ``handbook/agent`` per-NODE.
     """
     rom_root = target.rom_root()
     if rom_root is None:
         return {}
+    # ⚑ GATE: emit ONLY when the plugin actually SHIPS a chapter — an ungated bare
+    # ``data/rom/`` would bind an empty dir and cost a per-launch missing-source warning.
     if not (rom_root / PLUGIN_CHAPTER_MARKER_REL).is_file():
         return {}
     out: BindArmTable = {}
@@ -827,31 +450,17 @@ def rom_agent_default_categories(
 # The HANDBOOK binds + the <scope>.canon keys (spec §2c/§2b/§2d/§2g).
 # ===========================================================================
 
-# The ACTIVE-AGENT placeholder in the declarative ``canon:`` rows.  The bind source
-# for the agent chapter discriminates on the ACTIVE AGENT NODE, which no static file
-# can spell; the loader substitutes it.  A literal that could never occur in a real
-# key (``<``/``>`` are not key characters), so the substitution cannot collide.
+# The ACTIVE-AGENT placeholder in the declarative ``canon:`` rows — a literal that cannot
+# occur in a real key (``<``/``>`` are not key characters), so the substitution cannot collide.
 CANON_ACTIVE_AGENT_TOKEN = "<active>"
 
 
 def canon_optional_bind_keys() -> frozenset[str]:
-    """The SKIP-IF-ABSENT canon bind keys, read from the same declarative rows.
-
-    Fed to :func:`kanibako.settings.settings_launch.snapshot_category_entries` as
-    ``optional_keys`` at the ONE launch aggregation site (spec §2c
-    "SKIP-IF-ABSENT").  Derived from the file rather than restated: a row that
-    gains or loses ``optional: true`` moves both the declaration and this set at
-    once.  🛑 The SILENT DROP itself is no longer this set's doing — the emitter
-    reads :func:`canon_optional_bind_dests`, the DEST-spelled view of the same rows.
-    """
+    """The SKIP-IF-ABSENT canon bind KEYS — ``snapshot_category_entries(optional_keys=…)``."""
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    # ⚑ H6 — RE-DERIVED FROM THE DESTINATION (R-10/R-11). The emitted
-    # ``CategoryEntry.key`` is now ``box.<category>.<box_dest>``, because a
-    # dest-keyed arm's map key IS the destination; matching on ``entry['key']``
-    # here would silently never hit, and a missing workset chapter would go back
-    # to warning on every launch of almost every box. Normalized with the SAME
-    # function the producer uses, so the two spellings cannot drift.
+    # ⚑ H6 — RE-DERIVED FROM THE DESTINATION (R-10/R-11), and normalized with the SAME
+    # function the producer uses; matching on ``entry['key']`` would silently never hit.
     return frozenset(
         f"box.{entry['category']}.{normalize_bind_dest(str(entry['box_dest']))}"
         for entry in _canon_optional_rows()
@@ -867,13 +476,9 @@ def canon_optional_bind_dests() -> frozenset[str]:
     """The SKIP-IF-ABSENT canon binds as normalized box DESTS — the EMITTER's view."""
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    # ⚑ The DEST basis, not the key basis: it is handed to
-    # ``commands.start._emit_category_mounts`` as ``skip_if_absent``, and that
-    # decision is made against a destination (llm-docs commands/start.py.md).
-    # Normalized with the SAME function that keys the arm (:func:`add_bind`), so
-    # the two spellings cannot drift — the failure ``critical_keys`` already paid
-    # for once, where a key-spelled set matched NOTHING and silently degraded
-    # every entry to the default policy.
+    # ⚑ The DEST basis, not the key basis, and normalized with the SAME function that keys the
+    # arm — the drift ``critical_keys`` already paid for, where a key-spelled set matched
+    # NOTHING and silently degraded every entry to the default policy.
     return frozenset(
         normalize_bind_dest(str(entry["box_dest"])) for entry in _canon_optional_rows()
     )
@@ -884,50 +489,9 @@ def canon_default_categories(
 ) -> dict[str, object]:
     """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
 
-    Returns a MIXED table — the terminal ``box.bindings.ro`` arm holding the five
-    ``~/canon/handbook/*`` chapter entries PLUS the agent-scope SCALAR keys their
-    ``@``-refs resolve against.  Mixing the two is
-    the established shape (:func:`kanibako.launch.templates.template_seed_defaults` does the
-    same for the seed layers and their source keys): both land in the SAME snapshot
-    floor, the scalar resolves the ref, and a user override of the scalar wins by
-    cascade precedence and reroutes the bind.
-
-    The other three ``<scope>.canon`` keys are floored elsewhere, each beside the
-    anchor it is spelled against: ``system.canon`` in the resolved ``system.*`` tier
-    (``StandardPaths.canon``), ``workset.canon`` and ``box.canon`` in
-    :func:`kanibako.settings.settings_launch.workset_anchor_floor`.
-
-    ⚑ THE REPOINT ROUTES DIFFER PER SCOPE, and the difference is inherited, not
-    chosen here: ``workset.canon`` / ``box.canon`` are ordinary ``config set`` keys
-    (wired like ``workset.template``), ``agent.<a>.canon`` is settable at the SYSTEM
-    scope only (the per-persona agent-leaf rule ``agent.<a>.template`` already
-    follows), and ``system.canon`` is CLI-REFUSED as a structural path key — it is a
-    ``SYSTEM_PATH_DEFAULTS`` member, so it lives in the hand-edited ``[system]``
-    table of ``kanibako_config.yaml``, exactly like ``system.template``.
-
-    ⚑⚑ THE AGENT TIER — J-1 option (a) ("the ``agent.default`` tier must be able to
-    win"), implemented against a resolver that has NO agent-tier fallback:
-
-    * ``agent.default.canon`` is ALWAYS floored at ``@config.agents/default/canon``.
-    * the ACTIVE NODE's ``agent.<node>.canon`` is floored too, but its FLOOR VALUE
-      is chosen by whether that node's own store actually PROVIDES a canon dir —
-      ``@config.agents/<node>/canon`` when it does, and the REF
-      ``@agent.default.canon`` when it does not.  So a plugin agent whose install
-      stamped its own chapter binds that chapter, and a PERSONA (no package, no
-      stamped store) falls back to the DEFAULT store — which is precisely the
-      beneficiary case J-1 names.
-    * being a FLOOR entry, any ``agent.<node>.canon`` a plugin or the user sets in
-      the cascade OVERRIDES it.
-
-    A literal reading of option (a) — flooring ONLY ``agent.default.canon`` — is not
-    implementable here: ``settings_expand._lookup_raw`` walks the merged snapshot with
-    no per-tier fallback, and ``@agent.<node>.canon/handbook`` is an EMBEDDED ref, so
-    an undeclared node key coerces to ``""`` (spec §6b) and yields the degenerate host
-    path ``/handbook`` rather than falling back to the default tier.
-
-    A NO-AGENT box (*agent_name* None) emits NEITHER the agent scalar NOR the
-    ``canon_hb_agent`` entry — deliberately not an entry with an empty ref, which
-    would produce exactly that degenerate path.
+    ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``@``-refs
+    resolve against; both land in the SAME floor, so a user override of the scalar reroutes
+    the bind.  ⚑⚑ The ACTIVE NODE's floor value is store-dependent (J-1 option (a)).
     """
     store_canon = f"@config.agents/{agent_name}/canon" if agent_name else None
     out: dict[str, object] = {}
@@ -955,36 +519,16 @@ def canon_default_categories(
 # The box-create CANON SKELETON (J-7).
 # ===========================================================================
 
-# The handbook's chapters.  Their BINDS are the seeds/handbook half's (they need
-# ``<scope>.canon`` resolution, which does not exist yet), but their MOUNTPOINTS are
-# part of this one closed skeleton: J-7 specifies the skeleton as a single set, an
-# absent chapter is REQUIRED to show as an empty root-owned dir, and creating them
-# later would mean mkdir-ing into an already-555 tree.
+# The handbook's chapters (BINDS: ``canon_default_categories``).  ⚑ Their MOUNTPOINTS belong to
+# this one closed skeleton — creating them later would mean mkdir-ing into an already-555 tree.
 HANDBOOK_CHAPTERS = ("general", "agent", "workset", "box")
 HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
 
-# ⚑⚑ THE IMPORT-FALLBACK FILES (seeds-gate F1, 2026-08-01) — the per-scope chapters
-# whose ENTRY FILE the skeleton pre-creates 0-byte, keyed chapter → entry filename.
-#
-# WHY THEY EXIST, and why skip-if-absent did NOT already cover it: the packaged
-# ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and skip-if-absent
-# governs the BIND, not the INDEX.  So on a box with no workset chapter — i.e. every
-# primary box — the flattener printed ``unresolved import
-# @workset/directives/SYS_WORKSET.md`` on EVERY launch.  That is the warning-noise
-# failure the skip-if-absent work exists to prevent, arriving through the other door.
-#
-# With a 0-byte entry file already inside the mountpoint: an UNBOUND chapter
-# RESOLVES-TO-EMPTY (no warning, no content), and a BOUND one has its whole directory
-# replaced by the mount, so the store's real file SHADOWS the fallback. No branch, no
-# gate, no second mechanism.
-#
-# ⚑ ``general`` is deliberately ABSENT: the system store always supplies it, so a
-# fallback there would mask a genuinely missing system handbook — which is exactly
-# what ``canon_hb_general`` being NON-optional exists to surface.
-#
-# ⚑ MACHINERY, NOT CONTENT. Jei's D2 cut stands: the global handbook STORE still
-# ships ``general`` only. These files live in the BOX's skeleton, are root-owned like
-# the rest of it, and are never installed anywhere.
+# ⚑⚑ THE IMPORT-FALLBACK FILES (seeds-gate F1) — per-scope chapters whose ENTRY FILE the
+# skeleton pre-creates 0-byte, keyed chapter → entry filename, so ``SYS_CONTENTS.md``'s
+# UNCONDITIONAL imports resolve-to-empty rather than warn on every launch.
+# ⚑ ``general`` is deliberately ABSENT: a fallback there would mask a missing system handbook.
+# ⚑ MACHINERY, NOT CONTENT — these live in the BOX's skeleton and are installed nowhere.
 HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
     ("agent", "SYS_AGENT.md"),
     ("workset", "SYS_WORKSET.md"),
@@ -995,65 +539,24 @@ HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
 # spelling ``SYS_CONTENTS.md`` imports.
 HANDBOOK_DIRECTIVES_DIRNAME = "directives"
 
-# ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0.
-#
-# J-7's prose says ``podman unshare chown 0:0``, but 0 does not do what it reads
-# like.  ``podman unshare`` enters the rootless INTERMEDIATE user namespace, whose
-# mapping is ``ns-uid 0 -> the real host user`` and ``ns-uid 1.. -> the host user's
-# subuid range``.  kanibako runs every box with
-# ``--userns=keep-id:uid=1000,gid=1000`` (:data:`kanibako.runtime.container.KEEP_ID_USERNS`),
-# under which the real host user appears IN-BOX as uid 1000 — the agent.  So
-# ``chown 0:0`` inside unshare produces an AGENT-OWNED skeleton, the exact opposite
-# of J-7's stated effect ("in-box: root-owned, unwritable").  Container uid 0 under
-# keep-id is the host user's FIRST SUBUID, which inside ``podman unshare`` is ns-uid
-# 1 — hence 1.
-#
-# The property J-7 actually needs is *owner != the host user*, which holds for ANY
-# subuid; 0 is the one value that provably breaks it.  Named constants so a bifrost
-# measurement corrects this in one place.
-#
-# ⚑ CAVEAT: in a DEGENERATE configuration — a host ``/etc/subuid`` range shorter than
-# GUEST_UID (so keep-id cannot fill container 0..999 from subuids at all) — ns-uid 1
-# may not render as container-root in-box.  The SAFETY property is unaffected: the
-# owner is still a subuid and still not the host user, so the books stay unwritable
-# by the agent; only the cosmetic "shows as uid 0" would differ.
+# ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0; under
+# :data:`kanibako.runtime.container.KEEP_ID_USERNS`, ``chown 0:0`` inside ``podman unshare``
+# would produce an AGENT-OWNED skeleton, the exact opposite of the intended effect.
 UNSHARE_BOX_ROOT_UID = 1
 UNSHARE_BOX_ROOT_GID = 1
 
-# ⚑ TWO MODES, NOT ONE (spec J-7 banner, amended 2026-07-31).
-#
-# DIRS ``r-xr-xr-x``: unwritable by everyone, but the SEARCH bit stays set so crun's
-# openat2 destination resolution can still traverse ``~/canon`` and ``~/canon/bible``
-# to reach the chapter mountpoints — a 444 directory would break every canon bind.
-#
-# FILE mountpoints ``r--r--r--``: the search bit is meaningless on a file, and 555
-# would mark a 0-byte ``.md`` executable for no reason.  Applied as a SEPARATE chmod
-# call precisely because the two sets need different modes.
+# ⚑ TWO MODES, NOT ONE (spec J-7 banner): dirs keep the SEARCH bit so crun can traverse to the
+# chapter mountpoints; file mountpoints must not be marked executable.
 CANON_SKELETON_DIR_MODE = "555"
 CANON_SKELETON_FILE_MODE = "444"
 
 
 def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
-    """The canon skeleton as ``(home-relative posix path, is_dir)`` pairs (J-7).
+    """The canon skeleton as ``(home-relative posix path, is_dir)`` pairs, PARENTS-FIRST (J-7).
 
-    ⚑ DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated: the
-    skeleton IS the mirror image of the canon binds, so one edit to
-    :data:`ROM_BIBLE_CHAPTERS` / :data:`HANDBOOK_CHAPTERS` moves both sides at once.
-    A hand-kept second list is exactly the duplicated-shared-data class the design
-    principles forbid — and a skeleton that drifts from the binds is a mountpoint
-    podman then creates itself, which is the whole failure J-7 exists to remove.
-
-    Ordered PARENTS-FIRST so a caller can create them in sequence.
-
-    ``canon/notebook`` and ``canon/workbook`` are ABSENT by design: they are SEEDED,
-    agent-owned and writable, and become undeletable only because their parent is
-    555 — which is intended, not a side effect.
-
-    ⚑ THE CHAPTER MOUNTPOINTS ARE NOT EMPTY (F1): three of them carry a 0-byte
-    IMPORT-FALLBACK entry file, so ``SYS_CONTENTS.md``'s unconditional imports
-    resolve-to-empty instead of warning on every launch of every box that has no
-    workset or box chapter. A BOUND chapter replaces the whole directory, fallback
-    included. See :data:`HANDBOOK_FALLBACK_ENTRIES`.
+    ⚑ DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated — a skeleton that
+    drifts from the binds is a mountpoint podman creates itself.
+    ``canon/notebook`` / ``canon/workbook`` are ABSENT by design: they are SEEDED and writable.
     """
     root = CANON_GUEST_ROOT
     rels: list[tuple[str, bool]] = [
@@ -1075,9 +578,8 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
     rels += [
         (f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS
     ]
-    # The IMPORT-FALLBACK entry files (F1), INSIDE three of those mountpoints.  Their
-    # ``directives/`` parents are part of the skeleton too — root-owned like
-    # everything else here, so nothing in the books is agent-creatable.
+    # The IMPORT-FALLBACK entry files (F1), INSIDE three of those mountpoints; their
+    # ``directives/`` parents are part of the skeleton too, so nothing here is agent-creatable.
     for chapter, entry in HANDBOOK_FALLBACK_ENTRIES:
         chapter_dir = f"{root}/{HANDBOOK_REL}/{chapter}"
         rels.append((f"{chapter_dir}/{HANDBOOK_DIRECTIVES_DIRNAME}", True))
@@ -1091,38 +593,12 @@ def materialize_canon_skeleton(
     logger: "logging.Logger | None" = None,
     quiet: bool = False,
 ) -> None:
-    """Create the canon SKELETON in a box home and make it root-owned + unwritable.
+    """Create the canon SKELETON in a box home and make it root-owned + unwritable (J-7).
 
-    The J-7 assembly model in one function.  Called at box CREATE (after the seed,
-    before the create-journal entry is cleared) and again after any box-home COPY;
-    the LAUNCH path never touches it.
-
-    ⚑ ORDER IS LOAD-BEARING: seed FIRST, protect SECOND.  The seeds/handbook half
-    will seed ``canon/notebook`` + ``canon/workbook``, which live UNDER ``canon/``;
-    if the 555 landed first those copies would fail with EACCES.
-
-    ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED.  Re-running over an
-    already-materialised skeleton is a no-op (every ``mkdir``/``touch`` is
-    create-if-absent) and the ownership pass is a plain re-assert, so calling this
-    after a box-home COPY restores what the copy could not carry.  It does NOT,
-    however, let a FUTURE release add a new mountpoint to
-    :func:`canon_skeleton_rels` and have existing boxes pick it up: creating a new
-    entry inside an already-root-owned parent fails with EACCES, and this function
-    swallows that (per-path ``OSError`` is debug-logged and skipped, because one
-    unmakeable mountpoint must not cost a box the other thirteen — podman's own
-    error at launch is the honest signal).  ⇒ **Growing the skeleton is a MIGRATION,
-    not a redeploy.**  That is why the handbook mountpoints are created NOW, ahead of
-    the binds that will use them in the seeds half.
-
-    ⚑ WHY OWNERSHIP AND NOT MODE ALONE.  A 555 directory the agent OWNS is not
-    protection — the owner can ``chmod +w`` it back.  Only an owner the in-box agent
-    is not can make ``~/canon`` un-litterable.
-
-    DEGRADED PATH (no container runtime, docker, or a failing ``unshare``): the
-    skeleton is left agent-owned and writable and ONE warning is logged.  Box create
-    must not hard-fail on a missing runtime — creating a box works today with no
-    podman installed — and the skeleton is what makes the binds land, so a box in
-    this state is fully functional, just not litter-proof.
+    ⚑ ORDER IS LOAD-BEARING: seed FIRST, protect SECOND — the 555 landing first kills the
+    ``canon/{notebook,workbook}`` copies with EACCES.
+    ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED ⇒ growing the skeleton is a MIGRATION.
+    ⚑ Ownership, not mode alone: a 555 dir the agent OWNS is no protection.
     """
     log = logger or _skeleton_logger()
     dirs: list[Path] = []
@@ -1149,13 +625,10 @@ def materialize_canon_skeleton(
 def materialize_canon_skeleton_if_present(
     shell_path: Path, *, logger: "logging.Logger | None" = None,
 ) -> None:
-    """Re-assert an EXISTING canon skeleton; do nothing if the home has none.
+    """Re-assert an EXISTING canon skeleton; do nothing if the home has none (helper boxes).
 
-    The post-start re-protect for homes that are not box homes — helper boxes today.
-    ``materialize_canon_skeleton`` would CREATE the skeleton, which is wrong here: a
-    helper home is not a box and gaining canon mountpoints from a launch would be a
-    silent layout change made by the wrong seam.  Re-asserting what is already there
-    is always right, because ``:U`` re-chowns whatever the bind source holds.
+    ⚑ NOT :func:`materialize_canon_skeleton`: a helper home is not a box, and gaining canon
+    mountpoints from a launch would be a silent layout change made by the wrong seam.
     """
     if not (shell_path / CANON_GUEST_ROOT).is_dir():
         return
@@ -1171,14 +644,9 @@ def _protect_canon_skeleton(
 ) -> None:
     """Make the skeleton root-owned + unwritable from inside the user namespace.
 
-    THREE ``podman unshare`` calls: one ``chown`` over everything, then a ``chmod``
-    per mode class — dirs ``555`` (the search bit is what lets crun traverse
-    ``~/canon`` to reach the chapter mountpoints) and file mountpoints ``444``.
-
-    ⚑ NEVER ``-R``: a recursive sweep of ``canon/`` would take the SEEDED,
-    agent-owned ``notebook/`` + ``workbook/`` with it, which must stay writable.  The
-    skeleton is a closed, enumerated set, so an explicit list is both safer and no
-    harder.
+    THREE ``podman unshare`` calls: one ``chown`` over everything, then a ``chmod`` per mode
+    class.  ⚑ NEVER ``-R`` — a recursive sweep would take the SEEDED, agent-owned
+    ``notebook/`` + ``workbook/`` with it.
     """
     from kanibako.runtime.container import ContainerError, ContainerRuntime
 
@@ -1219,18 +687,9 @@ def _warn_unprotected(
 ) -> None:
     """Report a skeleton that did not get its full lockdown.
 
-    ⚑ *quiet* demotes the report to DEBUG.  The POST-START caller sets it: that hook
-    runs while the user's terminal is being handed to the agent (tmux, a TUI), and on
-    a docker host — or anywhere ``unshare`` cannot work — this fires on EVERY launch,
-    so at WARNING it would paint over the session, forever, for a condition the user
-    already learned about at box create.  Create reports it loudly; the per-launch
-    re-assert does not repeat it.
-
-    ⚑ The two arms are genuinely different and must not share wording.  If the CHOWN
-    did not happen (*agent_owned*), the tree is the agent's and fully writable in-box.
-    If the chown SUCCEEDED and only a chmod failed, the tree is root-owned at its
-    default mode (0755/0644) — the agent CANNOT write it, but the world-traversal and
-    file modes are not the declared ones, and a later chmod re-assert is still owed.
+    ⚑ *quiet* demotes the report to DEBUG; the POST-START caller sets it, because at WARNING
+    it would paint over the live session on every launch of a docker/unshare-less host.
+    ⚑ The two arms are genuinely different and must not share wording.
     """
     emit = log.debug if quiet else log.warning
     if agent_owned:
@@ -1255,30 +714,12 @@ def helper_default_categories(
     socket_path: Path,
     log_path: Path,
 ) -> BindArmTable:
-    """Build the helper hub binds as ``default_categories`` (Phase B).
+    """Build the helper hub binds — the live unix SOCKET + the per-box message LOG (Phase B).
 
-    Fills the TERMINAL ``box.bindings.rw`` / ``box.bindings.ro`` arms with one
-    ``box_dest -> (host_src, options)`` entry for the live helper unix SOCKET and
-    the per-box helper message LOG respectively — TODAY's hardwired ``_HMount``
-    appends inside the ``helpers_enabled`` block routed through the category
-    resolver.
-
-    Both box-side destinations are STATIC and carried by the declarative file as
-    ``~``-spelled dests under the fixed pinned root
-    (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`), absolutized
-    to ``GUEST_HOME`` by :func:`~kanibako.settings.settings_resolve.normalize_bind_dest`
-    inside :func:`add_bind` (R-11) — exactly like every other declared dest in the
-    file.  They carry no ``$XDG_STATE_HOME`` token: a mount dest is written into the
-    runtime's arguments BEFORE the box is live, so resolving XDG host-side bought
-    only a four-way hand-held agreement that had already drifted; the box's real XDG
-    location is served after boot by ``box_supervisor.project_pinned_xdg``.  Only the
-    host SOURCES (*socket_path* / *log_path*) are runtime-probed and injected at the
-    seam, GATED on ``.exists()`` here — reproducing the old skip-if-missing appends: a
-    missing socket/log simply omits its key.
-
-    ⚠ helper_sock options MUST be ``""`` (empty): it is a LIVE unix socket the hub
-    listens on; a ``Z``/``U`` relabel/chown would break the shared socket topology.
-    The per-entry empty-options 3rd slot carries that through ``unpack_bind``.
+    ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
+    shared socket topology of a LIVE unix socket the hub listens on.
+    ⚑ The dests carry no ``$XDG_STATE_HOME`` token — they are written into the runtime's
+    arguments BEFORE the box is live; ``box_supervisor.project_pinned_xdg`` restores XDG later.
     """
     sources: dict[str, Path] = {
         # symbolic source name -> probed host source (the DEST is in the file)
@@ -1294,19 +735,10 @@ def helper_default_categories(
             continue
         box_dest = str(entry["box_dest"])
         category = entry["category"]
-        # B2b: helper_log routes through the spec's own formula
-        # ``@workset.logs/@{meta.box.name}.jsonl`` (§2c) — byte-identical to the
-        # probed ``src_path`` in all three modes, since ``workset.logs`` and
-        # ``meta.box.name`` resolve to exactly what ``helper_log_path(std, proj)``
-        # builds (gated by a before/after comparison of the resolved bind, PHASE R).
-        # ⚑ The ``.exists()`` gate above keys off the PROBED path while the emitted
-        # host_src is the FORMULA, so a user repointing ``workset.logs`` moves the
-        # MOUNT but not the hub's WRITER — see migration M-14.  helper_sock is NOT
-        # routed: its host path is the LENGTH-BOUNDED (hashable) socket name
-        # ``bounded_socket_name(<box>-<ws>, run_dir)``, which the spec form
-        # ``@system.runtime/<box>-<ws>.sock`` cannot reproduce when the name is
-        # hashed for the AF_UNIX sun_path limit (JC-B2b-3) — so it keeps its probed
-        # literal host_src (the ``.exists()`` gate above is unchanged either way).
+        # ⚑ B2b: the ``.exists()`` gate above keys off the PROBED path while ``helper_log``'s
+        # emitted host_src is the spec FORMULA, so a user repointing ``workset.logs`` moves the
+        # MOUNT but not the hub's WRITER — see migration M-14.  ⚑ ``helper_sock`` is NOT
+        # routed: its hashed, length-bounded socket name has no spec spelling (JC-B2b-3).
         host_src = entry.get("meta_ref", str(src_path))
         add_bind(binds, category, box_dest, host_src, str(entry["options"]))
     return binds
@@ -1319,31 +751,10 @@ def image_default_categories(
 ) -> dict[str, object]:
     """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
 
-    Returns a MIXED table: the TERMINAL ``box.bindings.ro`` arm carrying one
-    ``box_dest -> (host_src, options)`` entry for the host image graph root and one
-    for the GENERATED ``storage.conf``, routed through the category resolver (the
-    sole route; the old hardwired Mounts are gone), PLUS the ``box.images_store``
-    floor SCALAR below.  The box-side destinations + options come from the
-    declarative file (``images:`` list); the host SOURCES (the runtime-probed
-    *graph_root* and the already-GENERATED *storage_conf_path*) are injected here.
-
-    ⚑ B3 (spec §2b / §2c, D-M8): the store bind — the arm's
-    ``/var/lib/shared-images`` entry — is ROUTED THROUGH THE USER KEY — its shipped host_src is the @-ref
-    ``@box.images_store`` (the file's ``meta_ref``, helper_log parity), and the
-    runtime-probed *graph_root* enters the keyspace HERE as that key's DEFAULT: a
-    floor scalar in the returned table.  The floor is the least-specific cascade
-    level (``base``), so a ``box:``/``workset:``/``system:`` FILE value for
-    ``images_store`` overrides it by name and the ONE expand pass resolves the
-    bind's host_src to the winning value.  ``images_conf`` stays an INTERNAL bind
-    and NOT a key (fixed location, generated content — spec §0's test).
-
-    ⚑ 11a (2026-08-02): the PROBE feeds ONLY that default — *graph_root* may be
-    ``None`` (probe failed), in which case NO floor scalar is emitted and the
-    ``@box.images_store`` host_src resolves solely from a set tier value (or
-    propagates ABSENT, dropping the bind).  The caller's gate is now just
-    "image-sharing requested" — the code realization of the spec's
-    ``%if @box.share_images%`` condition on the ``images`` row; whether the
-    RESOLVED store exists is decided after the resolve, at the seam.
+    ⚑ B3: the store bind is ROUTED THROUGH THE USER KEY ``@box.images_store``, whose DEFAULT is
+    the probed *graph_root* — a floor scalar in this same MIXED table.  ⚑ 11a: the probe feeds
+    ONLY that default, so ``graph_root=None`` emits no scalar rather than gating the table.
+    ``images_conf`` stays an INTERNAL bind and NOT a key (spec §0's test).
     """
     sources: dict[str, str] = {
         "images_conf": str(storage_conf_path),
@@ -1352,17 +763,12 @@ def image_default_categories(
     binds: dict[str, object] = {}
     if graph_root is not None:
         sources["images_store"] = str(graph_root)
-        # The USER KEY behind the store bind: the probe lands as the DEFAULT of
-        # ``box.images_store`` (manifest §2b row — "<runtime-probed podman
-        # graphroot>"); the ``images`` bind's ``@box.images_store`` host_src
-        # resolves against whatever value wins the cascade.
+        # The USER KEY behind the store bind: the probe lands as ``box.images_store``'s DEFAULT.
         binds["box.images_store"] = str(graph_root)
     for entry in _load_doc().get("images", []):
         category = entry["category"]
-        # ``meta_ref`` (when declared) is the emitted host_src — the spec's own
-        # @-ref spelling; the symbolic ``source`` stays the probed-literal
-        # fallback (helper_default_categories parity; LAZY so a probe-fail
-        # ``None`` only raises if an entry actually needs the probed literal).
+        # ⚑ ``meta_ref`` is the emitted host_src; the symbolic ``source`` is the probed-literal
+        # fallback, read LAZILY so a probe-fail ``None`` only raises if an entry needs it.
         host_src = entry.get("meta_ref")
         if host_src is None:
             host_src = sources[entry["source"]]
