@@ -24,6 +24,8 @@ absent-vs-present-None probe; non-reserved near-miss names (``getter``, ``key``,
 
 from __future__ import annotations
 
+from typing import Generic, TypeVar
+
 import pytest
 
 # ⚑ ``Bind`` / ``BindEntry`` appear below only as opaque PAYLOADS — the subject of every test in
@@ -34,6 +36,10 @@ from kanibako.settings.keystore import (
     KeyStore,
     ReservedKeyError,
 )
+
+#: Stands in for the container's own value parameter when a test needs a class with
+#: KeyStore's exact bases and none of its members.
+_V = TypeVar("_V")
 
 
 # --------------------------------------------------------------------------- #
@@ -275,10 +281,40 @@ def test_keystore_class_members_are_exactly_the_declared_four() -> None:
         "_KeyStore__check_key_name",
         "_KeyStore__wrap",
     }, f"unexpected non-dunder class members: {non_dunder_own}"
-    beyond_dict = set(dir(KeyStore)) - set(dir(dict)) - non_dunder_own
-    assert all(n.startswith("__") and n.endswith("__") for n in beyond_dict), (
+    # ⚑ The baseline is CONSTRUCTED, not listed, and that is the point: on 3.11 —
+    # the floor, and what CI runs — typing puts ``_is_protocol`` on a generic dict
+    # subclass, while 3.13 does not. It is INHERITED, so the ``vars()`` pin above
+    # never saw it and only this one reddened, in CI, on a tree green locally.
+    # Naming the noise would hardcode one interpreter's answer AND my guess about
+    # WHERE it comes from; building an empty class with the same bases asks the
+    # running interpreter both questions at once. A fifth member of ours is not on
+    # the baseline, so the pin still bites — ``test_a_fifth_class_member_is_caught``.
+    class _SameBasesNoMembers(dict[str, object], Generic[_V]):
+        pass
+
+    beyond_bases = set(dir(KeyStore)) - set(dir(_SameBasesNoMembers)) - non_dunder_own
+    assert all(n.startswith("__") and n.endswith("__") for n in beyond_bases), (
         f"non-dunder attrs beyond dict: "
-        f"{[n for n in beyond_dict if not (n.startswith('__') and n.endswith('__'))]}"
+        f"{[n for n in beyond_bases if not (n.startswith('__') and n.endswith('__'))]}"
+    )
+
+
+def test_a_fifth_class_member_is_caught() -> None:
+    # The pin above is only worth its line if it can still FAIL. Subtracting a
+    # constructed baseline is what makes it version-proof, and the risk of any
+    # "subtract the noise" fix is that it subtracts the SIGNAL too. This pins the
+    # mechanism on a stand-in rather than by mutating the real class, so it costs
+    # nothing and cannot leave a mutated KeyStore behind if it fails midway.
+    class _Baseline(dict[str, object], Generic[_V]):
+        pass
+
+    class _WithFifth(dict[str, object], Generic[_V]):
+        SNEAKY = 1
+
+    leaked = set(dir(_WithFifth)) - set(dir(_Baseline))
+    assert leaked == {"SNEAKY"}, (
+        f"the baseline subtraction swallowed a real member, so the exact-four pin "
+        f"cannot fail and pins nothing: {leaked}"
     )
 
 
