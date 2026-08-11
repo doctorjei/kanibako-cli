@@ -82,10 +82,16 @@ a preference between routes: the collapse refuses configurations the live route 
 three leaves unwritten, and until step 2c that refusal must reach nobody. **The fallback and the
 `SettingsError` swallow in `_install_assembly_collapse` come out together.**
 
-⚑ **A step-2c precondition, measured here:** `start_mocks` stubs `_resolve_launch_snapshot` with a
-category set carrying no home bind, so under that harness the collapse writes nothing and every
-`_run_container` unit test takes the fallback. Deleting the fallback before the harness grows a home
-bind would empty the category mount set for that whole suite at once.
+⚑ **The step-2c precondition, measured and then CLOSED:** `start_mocks` stubbed
+`_resolve_launch_snapshot` with a category set carrying no home bind, and — the half that a reading of
+the category set alone misses — the stub never called `_install_assembly_collapse`, which lives in the
+orchestrator it REPLACES. Either half alone leaves all three leaves absent, so every `_run_container`
+unit test took the fallback and deleting the fallback would have emptied the category mount set for
+that whole suite at once. The fixture now carries the core home row AND mirrors the orchestrator's
+tail (gate → reconcile → collapse, off the same gated list), so those launches read a real
+`meta.assembly.bindings`. **Measured delta on the emitted mount set: `+ /home/agent` and nothing
+else** — home is lifted out before any scope folds, so its options stay `Z,U`, and the agent delivery
+binds fold `fold_opt("ro", "ro") == "ro"`, byte-identical to the fallback.
 
 ### One measured behavioural difference, pinned rather than smoothed
 

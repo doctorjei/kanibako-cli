@@ -1534,12 +1534,17 @@ class TestTheMainPathEmitsFromTheCollapse:
     ``_snapshot_assembly_bindings`` returns is what the box receives, and the
     reconciled rows are reached ONLY when that read comes back ABSENT.
 
-    ⚑ MEASURED, and it is why the collapsed map is INJECTED here rather than
-    resolved: ``start_mocks`` stubs ``_resolve_launch_snapshot`` with a category set
-    that carries no home bind, so the real collapse writes nothing under this
-    harness and every launch it drives takes the fallback. 🛑 THAT IS A STEP-2c
-    PRECONDITION — deleting the fallback while the harness has no home bind would
-    empty the mount set for the whole ``_run_container`` suite at once.
+    ⚑ The collapsed map is INJECTED here rather than resolved because the point is
+    the CALL SITE, not the fold: injection is the only way to make the map a KNOWN
+    value and so tell the two routes apart in the emitted mounts.
+
+    ⚑ HISTORY, kept because it was measured and then FIXED: ``start_mocks`` used to
+    stub ``_resolve_launch_snapshot`` with a category set carrying no home bind AND
+    without calling ``_install_assembly_collapse`` at all, so the real collapse wrote
+    nothing under this harness and every launch it drove took the fallback. Both
+    halves were closed as the step-2c precondition — the stub now carries the core
+    home row and mirrors the orchestrator's tail — so a launch driven here reads a
+    REAL ``meta.assembly.bindings``.
     """
 
     _INJECTED = "/home/agent/injected"
