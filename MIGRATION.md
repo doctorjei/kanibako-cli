@@ -1409,6 +1409,67 @@ not be the one that degrades quietly.
 
 ---
 
+### 2.29 A `synced` entry lands inside the bind that covers it, and is applied later in the launch
+
+**What changed.** `<scope>.synced` entries — the files re-copied into the box on every launch, which
+is how host credentials reach it — are delivered from the assembled mount set now (§2.27) rather than
+from a pair of hardwired paths. Three consequences, in the order you are likely to notice them.
+
+**1. A synced destination inside one of your own binds now arrives where the box can see it.** A
+synced destination is written box-side (`~/…`), and until now exactly two of them worked: anything
+under `~/workspace` was written into the project directory, and everything else under `~` was written
+into the box's home directory. If you pointed a synced entry at a path that some *other* bind covers
+— a vault path, a channel path, a directory you bind yourself — the copy was written underneath the
+mount rather than into it, so the box never saw the file and nothing said so. The destination is now
+resolved through whichever bind covers it, and the copy lands in that bind's host source:
+
+```
+box:
+  bindings.rw:
+    "~/notes": ["/srv/notes"]
+  synced:
+    "~/notes/today.md": ["/srv/inbox/today.md"]     # -> /srv/notes/today.md, visible in the box
+```
+
+**⚠️ If you were relying on the old landing spot, the file moves.** Nothing that was *visible in the
+box* changes location — the old path was shadowed by definition — but a host-side script that read
+the copy out of the box home directory will not find it there any more.
+
+**2. A synced destination inside a read-only bind, or under a `masks` entry, is skipped with a
+warning.** There is no host location to deliver to in either case: a mask is a tmpfs with no source
+at all, and writing into a read-only bind's source would put content on the host that the box is
+mounted read-only against. Both used to be written under the box home, i.e. behind the mount, where
+nothing read them. A destination that no bind covers at all is skipped the same way:
+
+```
+synced /home/agent/private/notes.md: /home/agent/private is a mask (tmpfs, no host source); skipping
+synced /home/agent/vault/ro/x: /home/agent/vault/ro is bound read-only; skipping
+synced /srv/x: no binding covers this destination; skipping
+```
+
+These three messages replace the single `guest_dest … is outside /home/agent` warning, and they name
+the destination as kanibako resolves it (`/home/agent/x`, not `~/x`) for the same reason §2.27's do.
+
+**3. Synced entries are applied later in the launch, after credential sync.** The pass now runs once
+the mount set is final — which is also after the plugin's own credential refresh, and after the three
+checks that can abort a launch (an unusable host agent binary, a failed authentication check, an
+agent bind whose source vanished). Two differences follow: a launch that fails one of those checks no
+longer refreshes your synced files on the way out, and where a `synced` entry and the plugin's
+credential sync write the *same* host file, the `synced` entry is applied second and wins. It used to
+be applied first and lose.
+
+**What you must do.** Nothing, unless you have a `synced` entry aimed at a destination covered by
+some bind other than home or the workspace. Check the launch warnings once: the three messages above
+name every entry that is now being skipped, and each names the bind that decided it.
+
+**Why.** A destination means whatever the box's mount set says it means; that is the whole point of
+assembling the mounts in one place. Resolving a copy against two hardwired paths instead made the
+answer right for the two binds that were hardwired and silently wrong for every other one — and
+"silently wrong" for `synced` means the wrong credentials, or none, with a launch that reports
+success.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

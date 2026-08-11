@@ -3423,7 +3423,16 @@ class TestApplyInitSeeds:
 
 
 class TestApplySyncedCopies:
-    """Unit tests for _apply_synced_copies (the `<scope>.synced.<name>` cat)."""
+    """Unit tests for _apply_synced_copies (the `<scope>.synced` category).
+
+    🛑 **THESE ALL EXERCISE THE FALLBACK ARM, and that is a fact about the harness,
+    not a choice.** The resolve below is NARROW (`include_base_families=False`), so it
+    carries no home bind, so `_install_assembly_collapse` writes no
+    `meta.assembly.synced` leaf and `_launch_synced_list` falls back to
+    `reconciled.copies`. Nothing here can pin the collapsed route or the 2b-0
+    credential-gate hoist — `test_start_assembly.TestTheSyncApplierConsumesTheLeaf`
+    resolves with the base families on and does that.
+    """
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
@@ -3477,21 +3486,57 @@ class TestApplySyncedCopies:
         shell.mkdir()
         return shell
 
+    def _bindings(self, proj):
+        """The four SHIPPED binds a synced dest can land in, as the launch map's shape.
+
+        ⚑ NOT a convenience fake: these are the destinations, sources and options
+        ``core-defaults.yaml`` declares for every box (home + workspace rw, the two
+        vault binds ro/rw), spelled as ``_launch_bind_map`` hands them over. The
+        dest resolver reads nothing else, so a test that invented a map would pin
+        the resolver against a mount set no box has.
+        """
+        from kanibako.settings.store_collapse import CollapsedBind
+
+        return {
+            "/home/agent": CollapsedBind(str(proj.shell_path), "Z,U,rw"),
+            "/home/agent/workspace": CollapsedBind(str(proj.project_path), "Z,U,rw"),
+            "/home/agent/vault/ro": CollapsedBind(str(proj.vault_ro_path), "ro"),
+            "/home/agent/vault/rw": CollapsedBind(str(proj.vault_rw_path), "Z,U,rw"),
+        }
+
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, agent_config_path=None,
-              deliver_creds=True):
-        from kanibako.commands.start import _apply_synced_copies
+              deliver_creds=True, bindings=None):
+        """Resolve, then apply — the two halves the launch path also does in order.
+
+        ⚑ THE RESOLVE MOVED OUT OF THE FUNCTION AT CUTOVER 2b-3, so it moves out of
+        the harness too. ``_apply_synced_copies`` consumes the launch's OWN resolve
+        now; running one here is what the caller does, not a fixture convenience.
+        ⚑ ``include_base_families=False`` keeps the resolve narrow — these fakes are
+        ``SimpleNamespace``, not a real project — which is why *bindings* is supplied
+        separately rather than read back out of this snapshot.
+        """
+        from kanibako.commands.start import (
+            _apply_synced_copies,
+            _resolve_launch_snapshot,
+        )
         # P6c: the box-tier synced config is single-sourced off proj.metadata_path/
         # settings.yaml (box_workset_settings_paths); tests place it there directly.
-        _apply_synced_copies(
+        snapshot, reconciled = _resolve_launch_snapshot(
             std=std or self._std(tmp_path),
             proj=proj,
             agent_name="claude",
-            target=target,
-            global_config_path=global_config_path,
-            agent_config_path=agent_config_path,
-            logger=self._logger(),
+            system_settings_path=global_config_path,
+            agent_cfg_path=agent_config_path,
+            desc=None, install=None, target=target, agent_cfg=None,
+            include_base_families=False,
             deliver_creds=deliver_creds,
+        )
+        _apply_synced_copies(
+            snapshot=snapshot,
+            reconciled=reconciled,
+            bindings=self._bindings(proj) if bindings is None else bindings,
+            logger=self._logger(),
         )
 
     def test_empty_no_config_copies_nothing(self, tmp_path):

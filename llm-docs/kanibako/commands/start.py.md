@@ -113,13 +113,13 @@ collapse (`collapse_store_shapes`), and stores the results at the declared RO/de
 
 ### What it drives, and what it still does not
 
-🛑 **UPDATED AT CUTOVER 2a-2, AND AGAIN AT 2b-2 — this section used to read "it drives nothing", and
-that is now false for MOUNTS and for the SEEDS.** The main launch path emits its category mounts from
-`meta.assembly.bindings` (see the section above), and the create-time seed applier reads
-`meta.assembly.seeded` (see below). Everything else still runs on `reconciled`: the `synced` copies,
-the env set, the row-5 warnings, the mask arm, the agent delivery arm, and both narrow resolves.
-Retiring `reconcile_categories`' arbitration half and the warn channel is step 5, and none of it may
-be smuggled in early.
+🛑 **UPDATED AT CUTOVER 2a-2, AGAIN AT 2b-2, AND AGAIN AT 2b-3 — this section used to read "it drives
+nothing", and that is now false for MOUNTS and for BOTH copy arms.** The main launch path emits its
+category mounts from `meta.assembly.bindings` (see the section above), the create-time seed applier
+reads `meta.assembly.seeded`, and the launch-time sync applier reads `meta.assembly.synced` (both
+below). What still runs on `reconciled`: the env set, the row-5 warnings, the agent delivery arm, and
+the remaining narrow resolves. Retiring `reconcile_categories`' arbitration half and the warn channel
+is step 5, and none of it may be smuggled in early.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -395,3 +395,120 @@ brand-new box with NOTHING, silently, at `debug`.
 (`include_base_families=False`) that has **no home bind at all** and never runs a main resolve. Under
 the pre-2b-1 gate the seed leaf was absent on every such resolve, so consumer 5 would have taken the
 fallback on every box — a cutover that moved nothing.
+
+---
+
+## `_apply_synced_copies` / `_launch_synced_list` / `_synced_host_dest` — the sync applier consumes the LEAF (cutover 2b-3)
+
+**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2b-3-MEASURED (consumer 6) ·
+`~/canon/workbook/specs/settings-keyspace-1.8.0.md:147-149` (*"both flat scope-ordered lists"*) ·
+spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
+
+### 🛑🛑 The switch required MOVING the pass, and that is a MEASUREMENT, not a preference
+
+`_apply_synced_copies` used to run its own NARROW resolve (`include_base_families=False`) ~180 lines
+above the main one, next to the create-time seed. **That resolve carries no base families, therefore
+no home bind, therefore `_install_assembly_collapse` writes no `synced` leaf on it — ever.** Measured
+2026-08-11 by spying on `_snapshot_assembly_synced` across the real function: `[None]`. Pointing the
+consumer at the leaf while it still resolved for itself would have read `None` on every launch and
+**moved nothing** — precisely the trap 2b-1 had to fix on the seed side, in a form 2b-1's own fix does
+not reach (the sync leaf is gated on the bind fold *by design*, because a sync dest is meaningless
+without a bind map).
+
+So the pass moved **below the main resolve and below the emit**, and consumes them:
+
+```
+_apply_synced_copies(snapshot=_snapshot, reconciled=reconciled, bindings=launch_binds, logger=logger)
+```
+
+⚑ **The three inputs are ONE collapse.** `collapse_store_shapes` folds the sync list *against* the
+bind map it just built (`_collapse_synced(shapes, bindings)`) and returns both in one
+`CollapsedStore`. Resolving a sync dest against a bind map from a *different* resolve would resolve it
+against a mount set the collapse never validated it over. There is exactly one coherent pairing.
+
+⚑ **The narrow synced resolve is GONE, not disabled.** `emit_collision_warnings`' memo used to name
+five in-process re-resolutions; there are four.
+
+### The position is the contract (P3 — unavailable, not forbidden)
+
+Every parameter is keyword-only and REQUIRED, with no `None` default. A caller at the old site cannot
+name `_snapshot`, `reconciled` or `launch_binds` — they are assigned further down the same function —
+so the mistake is an `UnboundLocalError`, never a silent no-delivery. **Mutation-proved:** restoring
+the old call site fails 156 tests with `UnboundLocalError: cannot access local variable '_snapshot'`.
+`test_the_consumer_CANNOT_BE_CALLED_before_the_bind_map_exists` pins the signature itself, because no
+launch-harness test can pin the placement: `start_mocks` patches `_resolve_launch_snapshot` outright,
+so no `_run_container` test drives the real resolve at all.
+
+Three further consequences of the position, all deliberate:
+
+* the three `return 1` arms in between — an unusable host agent binary, a failed auth check, an agent
+  delivery bind whose source disappeared — now PRECEDE the pass, so a launch that bails no longer
+  first writes into the box;
+* `detect_shadowed_mounts` still runs BELOW it, so it keeps seeing synced files as pre-existing;
+* the plugin descriptor's `cred_files` credsync engine now runs BEFORE this settings-driven pass
+  rather than after it. Where both write one host file the `synced` row wins. (The old docstring
+  claimed the two "do not overlap" — false as stated, and deleted rather than ported.)
+
+### `_synced_host_dest` — the dest resolves THROUGH the bind that covers it
+
+A `synced` dest is GUEST-spelled, and what it means on the host is decided by the mount set: the copy
+must land in the SOURCE of whichever bind covers that path, or the box never sees it. So the rule is
+**longest-prefix cover over the final bind map**, using `store_collapse.is_within` — published for
+this, exactly as `path_depth` was published at 2a-2, so "inside" means one thing on both sides of the
+delivery split.
+
+⚑ **It does NOT replace `container._guest_dest_to_host`**, which keeps three other callers (the
+stub/shadow scans) and answers a different question: where a guest path's host STUB is, under two
+hardwired roots. On shipped config the two AGREE — `/home/agent` covers everything the stub arm sent
+to `shell_path`, `/home/agent/workspace` covers its workspace arm with the same source. They part
+company inside SOME OTHER bind, which the stub arm sent under the home stub: a host path that bind
+shadows, so the copy was invisible in the box.
+
+| arm | when | why it is where it is |
+|---|---|---|
+| no cover → warn+skip | dest outside every bind | there is no host location it could arrive at. Wider than the retired outside-home skip |
+| cover is a MASK → warn+skip | `is_mask(bind)` | **must precede any `Path(bind.src)`** — `MASK` is `src=None`, so it raises `TypeError`, not `AttributeError` |
+| cover is READ-ONLY → warn+skip | `is_read_only(bind.opts)` | see below |
+| else | — | `Path(bind.src) / rel` |
+
+⚑ **A dest is DATA** — compared and sliced as a path, never `.split(".")`-ed.
+
+🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then SKIPS.**
+`_refuse_sync_at_a_bind_dest` returns early when the occupant has no source, and a mask IS the
+source-less entry — so a sync at a mask's exact point falls through the refusal by construction. That
+acceptance is spec-silent and was an implementer's call, not a ruling; delivery has to cope with it.
+
+🔴 **The READ-ONLY arm is SPEC-SILENT and deliberately strict.** Writing into a read-only bind's host
+source delivers content the box cannot be shown to have received, and the source is usually something
+the user did not mean this to reach. Home and workspace are both `rw`, so no shipped configuration
+loses anything; under the retired translator such a copy landed under the home stub, behind the
+read-only mount, invisible. Loosening it later breaks no existing box — the reverse would not be true.
+
+### `_synced_last_wins` — an overwrite copy's overlay IS last-wins
+
+`_resolve_copy_group` returned ONE row per dest and called it *the credential pick*. The leaf returns
+**both**. Applied in list order under the mtime gate (`_synced_uptodate`), a system row with a NEWER
+source makes the box row a SKIP — so the less specific scope silently keeps a credential destination.
+
+**The mtime gate is an OPTIMIZATION** — it exists to make an unchanged source a no-op — **and an
+optimization may not decide which row wins.** So one row per dest, the LAST, which is byte-identical
+to `_most_specific` because `SCOPE_CONTAINMENT` and `_SCOPE_APPLY_ORDER` are the same order and the
+leaf is emitted in it. Each dest keeps its first appearance's position, so apply order over distinct
+dests does not move.
+
+⚑ **There is no seed analogue and there must not be:** a `seeded` dest's repeats are LAYERS that all
+apply (the §2a template trio).
+
+### 🛑 The category filter SURVIVES, in the fallback arm only
+
+`_launch_synced_list` mirrors `_launch_seed_list`, and the `row.category == "synced"` test inside it
+is **not** a leftover from the pre-cutover route. `reconciled.copies` is ONE list holding BOTH copy
+categories, so the arm that reads it must still say which half it wants. The seed switch could delete
+its filter because it stopped reading that list; this one still reads it on the fallback path.
+**Deleting it applies every `seeded` row as an OVERWRITE, on every launch, over content the box owns**
+— mutation-proved: the box's own file is clobbered back to the seed's bytes.
+
+The fallback itself is reachable today: `_install_assembly_collapse` writes neither the bindings leaf
+nor this one when the fold refuses or there is no single home bind, and swallows the cause at `debug`.
+**The arm and the filter inside it come out at step 2c with that swallow**, together with
+`_launch_bind_map`'s and `_launch_seed_list`'s.

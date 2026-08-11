@@ -499,9 +499,11 @@ class CategoryEntry:
     ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN (2026-08-08c).
     ``box_dest`` is a GUEST path for EVERY category, bind-shaped or copy-shaped —
     spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.  A COPY's guest dest is the
-    SPELLING; the copy is RESOLVED to the box store when it runs, by the ONE
-    translator ``container._guest_dest_to_host``.  So there are no longer two
-    namespaces to tell apart, nothing for an entry to carry, and
+    SPELLING; the copy is RESOLVED to a host path when it runs — a ``seeded`` dest
+    by ``container._guest_dest_to_host``, a ``synced`` dest by
+    ``commands.start._synced_host_dest``, which resolves it through the bind that
+    covers it rather than under the box home (cutover 2b-3).  Either way there are
+    no longer two namespaces to tell apart, nothing for an entry to carry, and
     :func:`reconcile_categories` groups on the bare ``box_dest``.
 
     ⚑ WHAT THE RETIRED FIELD WAS FOR, kept as the record of a real bug it closed:
