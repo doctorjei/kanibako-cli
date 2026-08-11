@@ -262,7 +262,7 @@ NOT re-implemented), then:
   ⚑ A `ReservedKeyError` from the candidate write (`…common.get`) is a set-time DEFECT, not a
   crash: it is a `KeyError`, so it escaped this closure and broke `set_config_value`'s "returns
   an error string, NEVER raises" contract (the H1 rule). It is reported as the defect it is.
-* `raw_bind(key)` returns the key's effective RAW pre-expansion `settings_store.Bind` from the
+* `raw_bind(key)` returns the key's effective RAW pre-expansion `kb_store.Bind` from the
   merged snapshot — the tuple the resolver would pick (merge precedence) — or `None` when no
   scope in the set-time cascade sets a bind there (absent / suppressed / not bind-shaped). It
   walks the pre-expansion store with UNBOUND `dict` ops (S3). NOTE: the set-time cascade covers

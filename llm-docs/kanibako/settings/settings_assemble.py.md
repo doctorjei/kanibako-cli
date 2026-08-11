@@ -158,7 +158,7 @@ Reading either at the wrong depth would take a destination for an arm name.
 ⚑ **This is the other half of why the reader cannot use a blanket `dest_keyed=True`:** a leaf under
 a bind category is 2-element-legal in BOTH shapes with OPPOSITE meanings (`(host, box)` vs
 `(src, opts)`), so the DEPTH of the walk — never the leaf's arity — is what says which one it is.
-That is the arity trap `settings_store.BindEntry` documents, and spec §2a calls the loud refusal of
+That is the arity trap `kb_store.BindEntry` documents, and spec §2a calls the loud refusal of
 the stale shape load-bearing for exactly this reason.
 
 ⚑ The depth is derived from the CATEGORY token `_parse_node` walks past, so `_file_partial` needs no
@@ -321,7 +321,7 @@ The scope tokens that CONTAIN *file_scope* (spec §0, the drop-set).
 
 A settings file contributes keys of its OWN scope and of scopes it CONTAINS (defaults-down); a
 top-level key naming a CONTAINING scope is an UPWARD write that `_drop_upward_scopes` drops at
-assembly. Containment is `system ⊃ agent ⊃ workset ⊃ box` (`settings_store.SCOPE_CONTAINMENT`, single
+assembly. Containment is `system ⊃ agent ⊃ workset ⊃ box` (`kb_store.SCOPE_CONTAINMENT`, single
 source), so the containing set is the HEAD-slice strictly BEFORE *file_scope*. The outermost scope
 (`system`) has an empty set — nothing contains it.
 
