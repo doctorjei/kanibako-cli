@@ -55,15 +55,24 @@ CONTINUES.
 ## Design for testability
 
 The PURE decision logic (`decide`, `decide_panel`) is split from the impure tmux actions, and every
-**subprocess** call funnels through an injectable runner (plus an injectable `sleep`), so tests drive
-the whole thing with no real tmux, no real agent, and no real waiting.
+impure op funnels through an injectable seam on the constructor, so tests drive the whole thing with
+no real tmux, no real agent, no real waiting and **no real process**. The seams, all keyword-only:
 
-⚑ **That sentence is TRUE but does not cover the whole surface.** The increment-4b signal path and the
-PID-1 reaping duty call `os.kill`, `os.killpg`, `os.getpgid`, `os.getpgrp` and `os.waitpid`
-**directly** — those are not subprocess calls and do not pass through the injected runner. Tests
-reach them by monkeypatching the module-level `bs.os` attributes (`tests/test_box_supervisor.py`
-~L1380–L1670). The two marker probes (`_PidAlive`, `_MarkersLister`) ARE injectable; the signal
-primitives are not. Anyone adding a signal op here must add a monkeypatch, not a fake runner.
+| Seam | Default | Covers |
+|------|---------|--------|
+| `run` / `sleep` | `subprocess.run` / `time.sleep` | every tmux subprocess call; the loop + backoff waits |
+| `pid_alive` / `list_marker_pids` | `_default_pid_alive` / `_default_list_marker_pids` | the marker probes (E2f liveness, 4a detection) |
+| `kill` / `killpg` | `os.kill` / `os.killpg` | the 4b SIGSTOP/SIGCONT and the pane process-GROUP evict |
+| `getpgid` / `getpgrp` | `os.getpgid` / `os.getpgrp` | the group resolution the evict's safety guard rules on |
+| `reap` | `reap_zombie_children` | the PID-1 child-reap duty at the top of every tick |
+
+⚑ **Nothing in `BoxSupervisor` may reach `os` (or the module reaper) directly** — a unit test that
+tripped over such a call would signal a REAL process. The pin is
+`test_process_ops_reach_the_os_only_through_the_injected_seam`: it booby-traps the module-level ops
+and fails on any direct call, so the rule holds BY CONSTRUCTION, not by convention. The `_default_*`
+functions and
+`reap_zombie_children` are the REAL implementations that sit BEHIND their seams (exactly as
+`subprocess.run` sits behind `run`); their own tests drive them directly.
 
 ## The increment map
 
@@ -306,8 +315,8 @@ against `/proc/<pid>/stat`, state `Z` ⇒ dead.
 Reaping our OWN children is always safe here regardless of PID-1-ness: the supervisor collects no
 child exit statuses anywhere else (its only child mechanism is inline `subprocess.run`, which waits
 its child synchronously on the same single thread — there is no concurrent waiter to rob), so both
-supervise loops call `reap_zombie_children` unconditionally at the top of every tick, **FIRST**,
-before the marker probes.
+supervise loops call the injected `reap` (default `reap_zombie_children`) unconditionally at the top
+of every tick, **FIRST**, before the marker probes.
 
 ### Parsing `/proc/<pid>/stat` safely
 
@@ -372,6 +381,22 @@ Returns the PIDs named by the marker FILES in the markers dir (`[]` when the dir
 
 Both marker probes are injectable so unit tests never touch the real FS / os; the defaults are the
 real PID-1 implementations.
+
+```_Signaller = Callable[[int, int], None]```
+The `(pid, sig)` shape of BOTH process-signal primitives — `os.kill` and `os.killpg` match it.
+
+```_GroupOf = Callable[[int], int]```
+`os.getpgid`: the process GROUP of a pid, resolved before the group-kill safety guard rules on it.
+
+```_OwnGroup = Callable[[], int]```
+`os.getpgrp`: the SUPERVISOR's own group — the value the guard refuses to signal.
+
+```_Reaper = Callable[[], int]```
+`reap_zombie_children` at its default arity: the PID-1 child-reap duty, returning the count reaped.
+
+The four process-control primitives are injectable for the same reason the runner is, and one degree
+more sharply: a unit test that reached the real ops would signal a REAL process. See "Design for
+testability" for the full seam table and the test that pins it.
 
 ## Functions
 
@@ -615,9 +640,9 @@ B); otherwise `NONE` (keep-alive).
 
 ## `class BoxSupervisor` — PID-1 keep-alive supervising an agent in a detached tmux session
 
-Impure by nature (it shells `tmux` and sleeps), but every side effect is funnelled through the
-injected *run* / *sleep* so tests drive it deterministically and instantly — with the signal-op
-exception noted under "Design for testability". Detection is **DELEGATED** to
+Impure by nature (it shells `tmux`, sleeps and signals processes), but every side effect is funnelled
+through an injected primitive — see the seam table under "Design for testability" — so tests drive it
+deterministically, instantly, and without touching a real process. Detection is **DELEGATED** to
 `kanibako.box_lifecycle` (`snapshot_attach_state` + `classify_transition` via `decide`); this class
 never re-implements attach detection.
 
@@ -627,7 +652,7 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 
 ### Constructor state
 
-```__init__(self, config, *, run=subprocess.run, sleep=time.sleep, proc_cmdlines=None, pid_alive=_default_pid_alive, list_marker_pids=_default_list_marker_pids)```
+```__init__(self, config, *, run=subprocess.run, sleep=time.sleep, proc_cmdlines=None, pid_alive=_default_pid_alive, list_marker_pids=_default_list_marker_pids, kill=os.kill, killpg=os.killpg, getpgid=os.getpgid, getpgrp=os.getpgrp, reap=reap_zombie_children)```
 
 * `_proc_cmdlines` — when provided, a fixed process-cmdline listing handed to `snapshot_attach_state`
   (tests inject it to skip the real `/proc` walk); `None` ⇒ each snapshot collects fresh from `/proc`
@@ -635,6 +660,10 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 * `_pid_alive` / `_list_marker_pids` — the agent-marker probes (E2f liveness + 4a detection),
   injectable so unit tests never touch the real FS / os; defaults are the real PID-1
   implementations.
+* `_kill` / `_killpg` / `_getpgid` / `_getpgrp` / `_reap` — the process-control primitives (4b
+  signals, the pane-group evict, the PID-1 reap duty); defaults are the stdlib ops and the module
+  reaper. ⚑ Every process-touching call in this class goes through one of these — never `os`
+  directly, or a unit test would signal a REAL process.
 * `_reported_newcomers` — 4a: PIDs already logged as newcomers, so the LOG-ONLY detection announces a
   given newcomer ONCE, not every poll tick. Pruned to the still-present newcomer set each tick, so a
   departed-then-returning PID re-logs.
@@ -756,9 +785,10 @@ Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant.
 tmux starts it as a session/process-group LEADER — its PID is the group id — and every subagent /
 worker it spawns inherits that group. Signalling the GROUP (`os.killpg`) therefore reaps the agent
 AND all its descendants, so no orphaned worker survives a takeover/teardown (the child-kill-with-
-parent ruling, design §267 / §348). Resolves the real pgid via `os.getpgid` (falling back to the pid
-itself when it cannot — a group leader's pgid == its pid), then signals it. Tolerant like every PID-1
-op: `ProcessLookupError` or any `OSError` resolves to `False` and is logged at debug.
+parent ruling, design §267 / §348). Resolves the real pgid via the injected `getpgid` (falling back
+to the pid itself when it cannot — a group leader's pgid == its pid), then signals it through the
+injected `killpg`. Tolerant like every PID-1 op: `ProcessLookupError` or any `OSError` resolves to
+`False` and is logged at debug.
 
 ⚑ **SAFETY GUARD — a wrong pgid here could kill the whole box.** **[UNVERIFIED-PLATFORM]** A real
 pane agent is its OWN `setsid` session/group leader, so its pgid is never 0/1 nor the SUPERVISOR's
@@ -829,7 +859,7 @@ PID re-logs) and does NOTHING else — NO SIGSTOP, kill, evict, or send-keys.
 ### 4b ENFORCEMENT — single-writer takeover (grace + pause + evict)
 
 ```_signal_pid(self, pid: int, sig: int) -> bool```
-`os.kill(pid, sig)` — a tolerant SINGLE-process signal (SIGSTOP/SIGCONT).
+A tolerant SINGLE-process signal (SIGSTOP/SIGCONT) via the injected `kill`.
 
 Distinct from `_kill_process_group` (which signals a whole group): the newcomer PAUSE/RESUME targets
 ONE process (the panel agent), never its group. Tolerant like every PID-1 op.
@@ -1003,7 +1033,7 @@ keeps the teardown decision in exactly ONE place (design §86-88, cold-start-err
 
 **Per-tick order, and why:**
 
-1. **PID-1 duty FIRST** — `reap_zombie_children()`, so a dead panel process cannot sit as a zombie and
+1. **PID-1 duty FIRST** — `self._reap()`, so a dead panel process cannot sit as a zombie and
    read ALIVE to the marker probes below.
 2. snapshot, then `agent_session_alive`.
 3. **Newcomer detection**, gated on a configured markers dir so an old launcher (or a test) that
@@ -1144,5 +1174,5 @@ real tmux server under PID-1). None was dropped; none was independently confirme
 | `SupervisorAction.fire_detach_hook` | *"GAP-1 cred-writeback fills it in D"* — future tense | Increment D is SHIPPED: `_on_detach` writes the flag and `start.py` threads `--creds-flag`. |
 | `newcomer_pids` / `_log_newcomers` | *"4b will act"* — future tense | 4b is SHIPPED as `_takeover`, gated OFF by `session_takeover`. |
 | `kill_agent_session` | *"the process-group handling this method's docstring RESERVED for increment 4"* | Self-reference to docstring text that no longer exists. Dangling; dropped. |
-| module docstring | *"EVERY subprocess call funnels through an injectable runner"* — true but incomplete | The 4b signal ops and `waitpid` bypass the runner entirely; tests monkeypatch `bs.os`. |
+| module docstring | *"EVERY subprocess call funnels through an injectable runner"* — true but incomplete WHEN WRITTEN | ⚑ **RESOLVED SINCE** — the signal ops and the reap duty now go through injected primitives too, so the promise covers the whole surface again (see "Design for testability"). |
 | module docstring | scope framed as in-box supervisor only | It is ALSO the single source of three host-side launch literals that `start.py` imports at module scope. |

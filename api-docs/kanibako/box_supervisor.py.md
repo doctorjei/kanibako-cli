@@ -36,6 +36,14 @@ _PidAlive = Callable[[int], bool]
 
 _MarkersLister = Callable[[str], 'list[int]']
 
+_Signaller = Callable[[int, int], None]
+
+_GroupOf = Callable[[int], int]
+
+_OwnGroup = Callable[[], int]
+
+_Reaper = Callable[[], int]
+
 def _parse_stat_state(stat_text: str) -> str | None:
     ...
 
@@ -107,7 +115,7 @@ def decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, 
 
 class BoxSupervisor:
 
-    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids) -> None:
+    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, kill: _Signaller=os.kill, killpg: _Signaller=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children) -> None:
         ...
 
     def _run_tmux(self, args: list[str]) -> int | None:

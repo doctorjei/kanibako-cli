@@ -10,6 +10,9 @@ PANEL-WATCH: the E2f agentless ``code`` warm-up loop.  NEWCOMER: a live marker P
 is not the supervisor's own agent.  TAKEOVER: the 4b single-writer evict (DEFAULT-OFF).
 
 ⚑ Every probe and action here is TOLERANT — PID-1 must never die on a hiccup.
+⚑ Every impure op — subprocess, sleep, marker probe, process signal, child reap — funnels
+through an INJECTABLE seam on :class:`BoxSupervisor`, so a test never touches a real tmux,
+a real clock or a real process.
 ⚑ Prose lives in ``llm-docs/kanibako/box_supervisor.py.md``.
 """
 
@@ -173,10 +176,17 @@ _Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 _Sleeper = Callable[[float], None]
 
 # The agent-marker probes (E2f liveness + 4a detection), injectable so unit tests never
-# touch the real FS / os.  ⚑ The 4b signal ops are NOT injectable — tests monkeypatch
-# the module-level ``os``.  Defaults below are the real PID-1 implementations.
+# touch the real FS / os.  Defaults below are the real PID-1 implementations.
 _PidAlive = Callable[[int], bool]
 _MarkersLister = Callable[[str], "list[int]"]
+
+# The PROCESS-CONTROL primitives — the 4b takeover signals, the pane-group evict and the
+# PID-1 reap duty.  Injectable exactly like ``run`` / ``sleep``, so a unit test can never
+# signal a REAL process; the defaults are the stdlib ops (and the module reaper) below.
+_Signaller = Callable[[int, int], None]   # os.kill / os.killpg
+_GroupOf = Callable[[int], int]           # os.getpgid
+_OwnGroup = Callable[[], int]             # os.getpgrp
+_Reaper = Callable[[], int]               # reap_zombie_children
 
 
 def _parse_stat_state(stat_text: str) -> str | None:
@@ -389,6 +399,11 @@ class BoxSupervisor:
         proc_cmdlines: Iterable[str] | None = None,
         pid_alive: _PidAlive = _default_pid_alive,
         list_marker_pids: _MarkersLister = _default_list_marker_pids,
+        kill: _Signaller = os.kill,
+        killpg: _Signaller = os.killpg,
+        getpgid: _GroupOf = os.getpgid,
+        getpgrp: _OwnGroup = os.getpgrp,
+        reap: _Reaper = reap_zombie_children,
     ) -> None:
         self.config = config
         self._run = run
@@ -399,6 +414,13 @@ class BoxSupervisor:
         # Agent-marker probes, injectable; defaults are the real PID-1 implementations.
         self._pid_alive = pid_alive
         self._list_marker_pids = list_marker_pids
+        # Process-control primitives, injectable; NOTHING here may reach ``os`` directly,
+        # or a unit test would signal a REAL process.  Defaults are the stdlib ops.
+        self._kill = kill
+        self._killpg = killpg
+        self._getpgid = getpgid
+        self._getpgrp = getpgrp
+        self._reap = reap
         # 4a: newcomers already logged, so each is announced ONCE.  Re-pinned to the
         # current newcomer set each tick, so a departed-then-returning PID re-logs.
         self._reported_newcomers: set[int] = set()
@@ -548,11 +570,11 @@ class BoxSupervisor:
             log.warning("kill process group: refusing unsafe pid %d (would risk PID-1)", pid)
             return False
         try:
-            pgid = os.getpgid(pid)
+            pgid = self._getpgid(pid)
         except OSError:
             pgid = pid
         try:
-            own_pgrp = os.getpgrp()
+            own_pgrp = self._getpgrp()
         except OSError:
             own_pgrp = -1
         if pgid <= 1 or pgid == own_pgrp:
@@ -563,7 +585,7 @@ class BoxSupervisor:
             )
             return False
         try:
-            os.killpg(pgid, sig)
+            self._killpg(pgid, sig)
         except ProcessLookupError:
             return False
         except OSError as exc:
@@ -639,9 +661,9 @@ class BoxSupervisor:
     # -- 4b ENFORCEMENT: single-writer takeover (grace + pause + evict) -------
 
     def _signal_pid(self, pid: int, sig: int) -> bool:
-        """``os.kill(pid, sig)`` — a tolerant SINGLE-process signal (SIGSTOP/SIGCONT)."""
+        """A tolerant SINGLE-process signal (SIGSTOP/SIGCONT) via the injected ``kill``."""
         try:
-            os.kill(pid, sig)
+            self._kill(pid, sig)
         except ProcessLookupError:
             log.debug("session takeover: pid %d gone before signal %s", pid, sig)
             return False
@@ -808,7 +830,7 @@ class BoxSupervisor:
             try:
                 # ⚑ PID-1 duty FIRST: reap orphan-reparented children so a dead panel
                 # cannot sit as a zombie and read ALIVE to the marker probes below.
-                reap_zombie_children()
+                self._reap()
                 cur = self._snapshot()
                 alive = self.agent_session_alive()
                 # Newcomer detection, gated on a configured markers dir so an old launcher
@@ -897,7 +919,7 @@ class BoxSupervisor:
             try:
                 # ⚑ PID-1 duty FIRST: a dead panel agent must not sit as a zombie and hold
                 # panel_agent_state at ALIVE forever, wedging SELF_HEAL_CLI and TEARDOWN.
-                reap_zombie_children()
+                self._reap()
                 cur = self._snapshot()
                 if cur.any_attached:
                     seen_surface = True
