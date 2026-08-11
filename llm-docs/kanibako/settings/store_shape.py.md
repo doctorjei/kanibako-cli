@@ -1,7 +1,8 @@
 # The `store_shape` Producer (roadmap step 4)
 
-A `store_shape` is the REALIZATION view of ONE scope: `{ro, rw, mask, seed, sync}`, each dest-keyed,
-with the ABSTRACT categories (`caches`, `common`) already materialised into `rw` and every bind arm
+A `store_shape` is the REALIZATION view of ONE scope: `{ro, rw, mask, seed, sync}` — the three MOUNT
+arms dest-keyed, the two COPY arms flat ordered lists — with the ABSTRACT categories (`caches`,
+`common`) already materialised into `rw` and every bind arm
 carrying CONCRETE mount options. A `StoreShapeSet` holds one per scope over
 `("system", "agent", "workset", "box")` — **four scopes, deliberately not the six cascade levels.**
 
@@ -12,15 +13,18 @@ comparing scopes is the grand-unification collapse's whole job (roadmap step 6).
 `designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
 `specs/settings-keyspace-1.8.0.md` §0 (the collision table).
 
-## Status: CONSUMED, but INFORMATION-ONLY
+## Status: CONSUMED — the MOUNT arms live, the COPY arms not yet
 
 `commands/start.py:_install_assembly_collapse` calls `build_store_shape_set` on the launch path and
-feeds it to `collapse_store_shapes`, storing the result at `meta.assembly.{bindings,copies}`.
+feeds it to `collapse_store_shapes`, storing the result at
+`meta.assembly.{bindings,seeded,synced}` — three leaves, each on its own gate.
 
-⚑ **That output is OBSERVED BY NOTHING.** The live delivery path is unchanged:
-`snapshot_category_entries` → `reconcile_categories` → emission. Step 6 merges the *information* and
-does not perform the action; the CUTOVER lands the consumer, and only then does
-`reconcile_categories`' arbitration half come out.
+⚑ **Only the `bindings` leaf has a consumer.** Since 2a-3 `start.py:_launch_bind_map` reads it and
+emits from it, with the reconciled rows as the collapse's-own-ABSENT fallback. **The two COPY leaves
+are still OBSERVED BY NOTHING** — their consumers move at 2b-2/2b-3 — so a change confined to the
+`seed`/`sync` arms changes nothing a box receives today. Until then `snapshot_category_entries` →
+`reconcile_categories` still owns copy delivery, and `reconcile_categories`' arbitration half comes
+out at the cutover.
 
 ⚑ The collapse REFUSES some shapes the shipped route still accepts, so the call site catches
 `SettingsError`, leaves both leaves ABSENT and logs at `debug`. That tightening is intended and lands
@@ -87,10 +91,30 @@ COPY entries (`seeded`, `synced`) carry `options == ""` — `_emit_bind` discard
 override for a copy. That is upstream behaviour, carried verbatim here, not a decision of this
 module.
 
-## The arms
+## The arms — and why the two COPY arms are NOT shaped like the three MOUNT arms
 
-* `ro` · `rw` · `seed` · `sync` are `BindMap` = `dict[dest -> BindEntry(src, opts)]`, matching the
-  collapse's unpack `for dest_path, (src_path, opts) in ....items()`.
+⚑⚑ **A dest is a KEY on a mount and DATA on a copy, and that split IS the arm types.** A mount
+arbitrates at a destination — two mounts at one dest is an error in every scope combination — so
+dest-keying a mount arm makes the rule true by construction. A copy arbitrates at nothing: spec
+`:147-149` calls `meta.assembly.seeded`/`.synced` *"both flat scope-ordered lists"* and rules that
+*"nothing is arbitrated at a destination"*, and the manifest amendment spells it *"scope-ordered
+concatenation, **dest may repeat**"*. A dict cannot express a list with repeats, so it silently
+kept the LAST row.
+
+* `ro` · `rw` are `BindMap` = `dict[dest -> BindEntry(src, opts)]`, matching the collapse's unpack
+  `for dest_path, (src_path, opts) in ....items()`.
+* `seed` · `sync` are `CopyList` = `list[CopyRow(dest, entry)]`, in DECLARATION order, duplicates
+  kept. The collapse iterates them directly and concatenates scope by scope.
+  * ⚑ **MEASURED 2026-08-11, and it is the honest scope of the repair:** the live emitter cannot
+    yet hand this arm two rows at one dest in one scope — the store LEAF is itself dest-keyed, so
+    `~/x` and `/home/agent/x` merge inside `build_launch_snapshot`, and `agent.default` vs
+    `agent.<active>` resolve through the cascade before an entry exists. The repair is therefore a
+    REPRESENTATION fix, not a live-loss fix. It still matters: `reconcile_categories` keeps both
+    rows on the same input (measured), so the dict arm was the one place in the chain where a
+    declared copy could vanish with no warning at any log level, and it chose the survivor by raw
+    dest SPELLING rather than by the user's file order.
+  * ⚑ **Do not "tidy" the two arms back into a `BindMap` for symmetry with the mounts.** The
+    asymmetry is the ruling; symmetry here is the bug.
 * `mask` is dest-keyed and its **VALUE IS NEVER READ**: the collapse touches `shape.mask` in exactly
   two places and both iterate KEYS. The `(None, None)` sentinel it writes goes into its OUTPUT map,
   not back into this arm.
@@ -144,7 +168,11 @@ loudly rather than dropping its entries.
    here would re-create, one layer earlier, the thing the cutover deletes.
 4. **Not sort by path depth.** Depth ordering is EMISSION order, not precedence. Arms preserve input
    order; the collapse sorts each scope's binds shallowest-first before processing, which is its own
-   ruling and its own intra-scope mechanism.
+   ruling and its own intra-scope mechanism. ⚑ For the COPY arms "preserve input order" is now
+   load-bearing rather than incidental, which is why the fold walks `_scope_survivors` — the §0 rows
+   are decided per DEST, but the survivors come back in DECLARATION order. Grouping the emission by
+   dest would pull two copies at one dest together and land a copy at a NESTING dest after both,
+   inverting which one overwrites which at apply time.
 5. **Not widen past five keys.** `StoreShape` is a frozen five-field structure so "exactly five" is
    true BY CONSTRUCTION rather than by convention. The collapse reads `shape.ro` / `shape.seed` /
    `shape.mask` — attribute access — so the structure satisfies both readings of "a dict with

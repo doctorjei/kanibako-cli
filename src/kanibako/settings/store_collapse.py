@@ -96,7 +96,7 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   # which door it was fetched through.
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
-    for dest_path, entry in store_shape_set[scope].seed.items():
+    for dest_path, entry in store_shape_set[scope].seed:
       dest = normalize_bind_dest(dest_path)
       _refuse_seed_outside_home(dest, entry)
       copies.append(CollapsedCopy(entry.src, dest, entry.opts))
@@ -112,7 +112,7 @@ def _collapse_synced(
   # DELIVERY and lands at the cutover - the emitted row carries the GUEST dest).
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
-    for dest_path, entry in store_shape_set[scope].sync.items():
+    for dest_path, entry in store_shape_set[scope].sync:
       dest = normalize_bind_dest(dest_path)
       _refuse_sync_at_a_bind_dest(bindings, dest, entry)
       copies.append(CollapsedCopy(entry.src, dest, entry.opts))
