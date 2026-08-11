@@ -50,8 +50,13 @@ bind's source — the box home store — so no mount can arbitrate one. That mak
 
 Consequences, all of them removals rather than patches:
 
-* **nothing prunes a copy.** A bind or mask at, above or beneath a copy's dest leaves it alone.
+* **no MOUNT prunes a copy.** A bind or mask at, above or beneath a copy's dest leaves it alone.
   Whether such a copy is then dead is a DELIVERY question, not a collapse-time one.
+  * 🛑 **READ THE SCOPE OF THAT CLAUSE.** It is about MOUNTS arbitrating copies, which is what
+    every "nothing is arbitrated at a destination" line in the spec and the manifest points at
+    (the containment table IS the mount table). It has never spoken to **copy-vs-copy**, and there
+    IS a copy-vs-copy rule — see *A sync OWNS its dest* below. Until 2026-08-11 this bullet read
+    "nothing prunes a copy" flat, which invited exactly the wrong generalization.
 * **a dest MAY repeat**, and that is the point: the layered `seeded` overlay is one row per scope,
   every one of them targeting `~`. A dest-keyed map would silently drop all but one layer. The
   later entry overwrites the earlier FILEWISE at apply time — already ruled, and not this
@@ -72,6 +77,52 @@ Consequences, all of them removals rather than patches:
 **Its one error case:** a SEED whose dest is not inside home. Every seed shipped today is
 home-relative by construction, so this is structural rather than a behaviour change — and it is
 refused BY NAME, never dropped.
+
+### A sync OWNS its dest: the one copy-vs-copy prune (`_sync_dests`, cutover 2b-2)
+
+⚑ **This is a REPRODUCTION of shipped behaviour, not a new rule, and not a spec change.** No key
+changes and no leaf shape changes. `settings_categories._resolve_copy_group` has always done it:
+
+```python
+synced = [e for e in copy_sub if e.category == "synced"]
+if synced:
+    return [_most_specific(synced)]
+```
+
+— at a dest both arms target, every `seeded` row is DROPPED and the sync wins. Its own docstring
+states the stakes: *"a `synced` cred copy-sync is not a layer: it REPLACES whatever else copies to
+that dest … it is the CREDENTIAL pick — getting it wrong copies the wrong credentials into the box,
+silently."*
+
+**Why it had to move here.** The collapse had no such rule while nothing read its output. Cutover
+2b-2 pointed `_apply_init_seeds` at `meta.assembly.seeded`, which removed the arbiter from the seed
+path — and the resulting failure is not cosmetic:
+
+1. the seed runs FIRST (create, create-if-absent) via `shutil.copy2` — the file arm directly, the
+   directory arm through `copy_tree`'s leaf `copy2` — and **`copy2` PRESERVES the source mtime**;
+2. `start._synced_uptodate` skips the sync when `dest.st_mtime >= src.st_mtime`;
+3. ⇒ **a seed source newer than the sync source permanently pins the SEED's bytes at a credential
+   dest.** Silently. `_apply_synced_copies` staying on the reconciled route does not save it: the
+   seed still writes first and the sync's own gate still skips.
+
+**Why `collapse_seeded` and nowhere else.** It already receives the whole shape set, so the sync arm
+is in hand **without a home bind** — which is what preserves the public signature that makes the
+create-side resolve work at all (§2a, home is pid 0). And both doors run this one function
+(`_install_assembly_collapse` calls it bare; `collapse_store_shapes` calls the same function), so a
+rule placed anywhere else would prune the launch resolve and not the create path — the only path
+that writes seeds.
+
+**Two properties that are deliberate, and each has its own test:**
+
+* **EXACT DEST EQUALITY, never containment.** `_resolve_copy_group` groups on the exact `box_dest`,
+  so this matches it byte for byte. A seed *inside* a synced directory is unhandled there too;
+  widening it here would be a new rule, and it is not one.
+* **REFUSED FIRST, PRUNED SECOND.** `_refuse_seed_outside_home` runs on every seed row, pruned or
+  not. A sync at the same dest must not quietly excuse a mis-declared seed dest.
+
+⚑ Fixing the mtime gate instead was rejected: it would still write the seed's bytes to disk before
+overwriting them (a transient wrong-credential file), and it would need a "was this written by a
+seed" fact that nothing carries.
 
 ### The sync pass: LAST, and NOT home-only
 

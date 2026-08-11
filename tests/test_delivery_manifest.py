@@ -125,11 +125,17 @@ class SeedFile:
 
     ``layer`` names WHERE the shipped source lives, so a failure points at the exact
     source tree that dropped/renamed the file.
+
+    ``packaged`` is False for a row whose SOURCE is PLANTED by the driver rather than
+    shipped in the wheel — today exactly the workset layer (see the manifest note).
+    Those rows are real deliveries and the presence check covers them; only the
+    provenance check (*does the wheel ship this source*) skips them.
     """
 
-    layer: str  # "base" | "agent:claude"
+    layer: str  # "base" | "agent:claude" | "workset"
     rel: str
     dest: str
+    packaged: bool = True
 
 
 # --- SEED layer: every file a claude PRIMARY box must have seeded at create. ---
@@ -151,8 +157,21 @@ class SeedFile:
 # ⚑ There is deliberately no ``playbook/`` row any more: that tree became the canon
 # HANDBOOK, which is BOUND from a host store and never seeded (M-10).
 #
-# The workset layer is INTENTIONALLY absent: a primary box's default workset
-# template dir ships no files, so its (skip-if-absent) layer contributes none.
+# 🛑 THE WORKSET LAYER USED TO BE ABSENT HERE, AND THAT WAS A HOLE IN THE DETECTOR.
+# The note this replaces read "INTENTIONALLY absent: a primary box's default workset
+# template dir ships no files, so its (skip-if-absent) layer contributes none." Every
+# word of that is still true about the WHEEL — and it meant a delivery loss confined
+# to the workset scope's seed row was INVISIBLE to the one test whose whole job is
+# catching a dropped delivery. Two of the three §2a layers were guarded; the third
+# was not, and the third is the one a scope-ordered fold is most likely to drop.
+#
+# So the driver PLANTS one file in the workset template dir (``packaged=False``) and
+# the manifest carries its row. This is not a synthetic extra: it exercises the SAME
+# ``workset.seeded`` key a user gets the moment they put a file in that dir.
+#: Source path within the workset template dir, and the box-store dest it must reach.
+WORKSET_PLANT_REL = "box/home/workset-layer-marker.md"
+WORKSET_PLANT_DEST = "home/workset-layer-marker.md"
+
 SEED_MANIFEST: tuple[SeedFile, ...] = (
     # ---- base: the box's own NOTEBOOK (agent-editable directives) ----
     SeedFile("base", "box/home/canon/notebook/MY_CONTENTS.md",
@@ -173,6 +192,8 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
              "home/.claude.json"),
     SeedFile("agent:claude", "template/box/home/.claude/settings.json",
              "home/.claude/settings.json"),
+    # ---- workset: layer 3, PLANTED (the wheel ships no workset template files) ----
+    SeedFile("workset", WORKSET_PLANT_REL, WORKSET_PLANT_DEST, packaged=False),
 )
 
 
@@ -214,13 +235,17 @@ PLUGIN_STORE_MANIFEST: tuple[tuple[str, str], ...] = (
 
 
 def _seed_source_root(layer: str) -> Path | None:
-    """Resolve the packaged SOURCE tree a seed layer copies from."""
+    """Resolve the packaged SOURCE tree a seed layer copies from.
+
+    ⚑ PACKAGED layers only — a ``packaged=False`` row's source is planted at run
+    time and has no wheel subtree to point at, so it never reaches here.
+    """
     if layer == "base":
         return _packaged_base_template()
     if layer.startswith("agent:"):
         found = _packaged_agent_store(layer.split(":", 1)[1])
         return None if found is None else found[0]
-    raise AssertionError(f"unknown seed layer: {layer!r}")
+    raise AssertionError(f"unknown packaged seed layer: {layer!r}")
 
 
 def _store_root(std, token: str) -> Path:
@@ -319,6 +344,10 @@ class TestSeededManifest:
         handbook chapter is filled by step 3 (a host template copy) rather than by
         the ``seeded`` category, so a driver that stopped at step 2 would be
         asserting delivery for a route that no longer delivers it.
+
+        ⚑ PLANTS the workset layer's one file before seeding — see the manifest note
+        at ``WORKSET_PLANT_REL``. Without it the third §2a layer contributes nothing
+        and this whole class is blind to a loss confined to the workset scope.
         """
         from types import SimpleNamespace
 
@@ -326,6 +355,9 @@ class TestSeededManifest:
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         install_packaged_templates(std, ["claude"])
+        plant = std.primary_workset / "template" / WORKSET_PLANT_REL
+        plant.parent.mkdir(parents=True, exist_ok=True)
+        plant.write_text("workset layer")
         _seed_box_home(
             std=std,
             proj=proj,
@@ -340,14 +372,20 @@ class TestSeededManifest:
         return proj.shell_path.parent
 
     def test_every_manifest_source_exists(self):
-        """Provenance guard: every seeded file has a real packaged SOURCE.
+        """Provenance guard: every PACKAGED seeded file has a real shipped SOURCE.
 
         Names exactly which (layer, rel) the shipped tree is missing — so a
         data-layout rename that moves the source tree fails HERE, loudly, naming
         the file, rather than silently seeding nothing.
+
+        ⚑ A ``packaged=False`` row is skipped, and only here: its source is planted
+        by the driver, so there is no wheel subtree to interrogate. Its DELIVERY is
+        asserted by the sibling below exactly like every other row's.
         """
         missing: list[str] = []
         for entry in SEED_MANIFEST:
+            if not entry.packaged:
+                continue
             root = _seed_source_root(entry.layer)
             if root is None or not (root / entry.rel).is_file():
                 missing.append(f"{entry.layer}:{entry.rel}")

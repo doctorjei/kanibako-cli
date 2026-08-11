@@ -88,19 +88,41 @@ def is_mask(bind: CollapsedBind) -> bool:
 
 
 def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
-  """Every scope's seed arm concatenated IN SCOPE ORDER - nothing arbitrates, nothing prunes."""
+  """Every scope's seed arm concatenated IN SCOPE ORDER, minus the dests a SYNC owns."""
   # ⚑ PUBLIC because it needs no home bind, and its SIGNATURE is the argument: home
   # is pid 0, seeded BEFORE the loop (§2a), so the seed arm is computable where no
   # bind map is. A caller with no home bind (the CREATE-side seed resolve) reads
   # this; ONE implementation, so a seed list cannot come out different depending on
-  # which door it was fetched through.
+  # which door it was fetched through - INCLUDING the prune below.
+  # ⚑⚑ NO MOUNT ARBITRATES ANYTHING HERE, and the prune is not a mount rule: it is
+  # the COPY-vs-COPY pick the shipped route already makes
+  # (``settings_categories._resolve_copy_group`` - "a synced cred copy-sync is not a
+  # layer: it REPLACES whatever else copies to that dest"), reproduced so the
+  # collapse cannot deliver a seed the reconcile would have dropped. Prose:
+  # ``llm-docs/kanibako/settings/store_collapse.py.md``.
+  owned = _sync_dests(store_shape_set)
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].seed:
       dest = normalize_bind_dest(dest_path)
+      # ⚑ REFUSED FIRST, PRUNED SECOND: a mis-declared dest is still an error, and
+      # a sync at that dest must not quietly excuse it.
       _refuse_seed_outside_home(dest, entry)
-      copies.append(CollapsedCopy(entry.src, dest, entry.opts))
+      if dest not in owned:
+        copies.append(CollapsedCopy(entry.src, dest, entry.opts))
   return copies
+
+
+def _sync_dests(store_shape_set: StoreShapeSet) -> set[str]:
+  """Every scope's SYNC destinations, normalized - the dests a sync owns OUTRIGHT."""
+  # ⚑ EXACT EQUALITY, NEVER CONTAINMENT. ``_resolve_copy_group`` groups on the exact
+  # dest, so this reproduces shipped behaviour byte for byte. A seed INSIDE a synced
+  # directory is unhandled there too, and widening it here would be a new rule.
+  return {
+    normalize_bind_dest(dest_path)
+    for scope in SCOPE_CONTAINMENT
+    for dest_path, _entry in store_shape_set[scope].sync
+  }
 
 
 def _collapse_synced(

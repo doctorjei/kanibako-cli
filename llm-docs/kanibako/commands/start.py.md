@@ -113,12 +113,13 @@ collapse (`collapse_store_shapes`), and stores the results at the declared RO/de
 
 ### What it drives, and what it still does not
 
-🛑 **UPDATED AT CUTOVER 2a-2 — this section used to read "it drives nothing", and that is now false
-for MOUNTS.** The main launch path emits its category mounts from `meta.assembly.bindings` (see the
-section above). Everything else still runs on `reconciled`: the copies (`seeded` / `synced`), the env
-set, the row-5 warnings, the mask arm, the agent delivery arm, and both narrow resolves. Retiring
-`reconcile_categories`' arbitration half and the warn channel is step 5, and none of it may be
-smuggled in early.
+🛑 **UPDATED AT CUTOVER 2a-2, AND AGAIN AT 2b-2 — this section used to read "it drives nothing", and
+that is now false for MOUNTS and for the SEEDS.** The main launch path emits its category mounts from
+`meta.assembly.bindings` (see the section above), and the create-time seed applier reads
+`meta.assembly.seeded` (see below). Everything else still runs on `reconciled`: the `synced` copies,
+the env set, the row-5 warnings, the mask arm, the agent delivery arm, and both narrow resolves.
+Retiring `reconcile_categories`' arbitration half and the warn channel is step 5, and none of it may
+be smuggled in early.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -321,3 +322,76 @@ two disagree, the map now decides both halves:
 ⚑ The dests are the map's KEYS, so they are `normalize_bind_dest`-spelled (`/home/agent/x`, never
 `~/x`) and the arm is depth-sorted on `path_depth` — the same key the emitter sorts on, so the tmpfs
 and the binds reach podman in one order.
+
+---
+
+## `_launch_seed_list` / `_snapshot_assembly_seeded` — the seed applier consumes the LEAF (cutover 2b-2)
+
+**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2b (consumer 5) ·
+`~/canon/workbook/specs/settings-keyspace-1.8.0.md:147-149` (*"both flat scope-ordered lists"*,
+*"nothing is arbitrated at a destination"*) · 2b-1 (the seed leaf's own gate).
+
+### What the switch is
+
+`_apply_init_seeds` — consumer 5, the create-time home seed — used to walk `reconciled.copies` and
+filter `seed.category != "seeded"`. It now reads `meta.assembly.seeded`, and **that filter is
+deleted**: the seed arm and the sync arm are two SEPARATE leaves, so there is no discriminator left
+to test. It was one of only two readers of `reconciled.copies`; the other is consumer 6
+(`_apply_synced_copies`), which is a separate step.
+
+⚑⚑ **`seeded` and `synced` ARE COPIES AND STAY COPIES.** Nothing here turns one into a mount, and
+nothing carries a per-category destination space — the dest is DATA on the row.
+
+🐞 **THIS SWITCH REMOVED AN ARBITER, AND THE SAME COMMIT PUT IT BACK.** `reconcile_categories`
+arbitrates copy-vs-copy at a shared dest (`_resolve_copy_group` returns the sync and drops every
+seeded row); `collapse_seeded` did not, because nothing read it. Reading the leaf without that rule
+lets a seed write a credential dest FIRST with a PRESERVED mtime, after which `_synced_uptodate`
+skips the sync forever. The prune now lives in `collapse_seeded` — **read
+`llm-docs/kanibako/settings/store_collapse.py.md`, "A sync OWNS its dest"**, for why that is the
+only home that works and why it is a reproduction rather than a spec change.
+
+### The shape delta, and the three things it moved
+
+A reconciled winner is a `CategoryEntry` carrying `category`, `name`, `box_dest`, `host_src`,
+`options`. A collapsed row is `CollapsedCopy(src, dest, opts)` — **no `name`, no `category`.**
+
+| what it was | what it is | why |
+|---|---|---|
+| `seed.category != "seeded"` filter | *(deleted)* | two leaves, not one list with a discriminator |
+| `group[0].name` in the outside-home warning | the `box_dest` itself | the DEST is the row's identity (R-10); the old text printed the dest twice |
+| `assert e.host_src is not None` (×2) | *(deleted)* | `CollapsedCopy.src` is typed `str`, and `build_store_shape` refuses a source-less copy row before one exists |
+| `name=seed.name` on `_apply_shell_copy` | `name=seed.dest` | same R-10 reason; the label a warning prints is the dest |
+
+The user-visible consequence is confined to two `logger.warning` texts on the seed path, and in both
+the value printed is the same destination it always was — normalized (`/home/agent/x`) rather than as
+declared (`~/x`), exactly as 2a-2 already did for the mount warnings.
+
+### Grouping is order-preserving BY CONSTRUCTION, and that is the load-bearing part
+
+`collapse_seeded` emits in `SCOPE_CONTAINMENT` order and **a dest MAY repeat — the repetition IS the
+overlay** (spec: nothing is arbitrated at a destination). `by_dest.setdefault(dest, []).append(row)`
+preserves that: each group holds its rows in scope order, and dict insertion order keeps the dests in
+first-appearance order. Nothing sorts and nothing keys a dest to a single row.
+
+🛑 **A dest-keyed (`by_dest[dest] = row`) arm would pass most of the suite and silently drop the
+template trio down to its last layer.** That is why the duplicate-dest case is pinned directly, and
+mutation-proved against exactly that arm.
+
+### The FALLBACK, and when it dies
+
+Identical in shape and in reasoning to `_launch_bind_map`'s: `_launch_seed_list` reads the leaf, and
+falls back to the reconciled `seeded` winners when it is ABSENT. A refusal must reach nobody until
+step 2c. **It is also the one arm that can still produce a seed row the collapse would have refused**
+— a dest outside the guest home — which is why the applier keeps its outside-home guard even though
+`_refuse_seed_outside_home` makes that guard unreachable from the leaf.
+
+⚑ **ABSENT ≠ EMPTY, and here the distinction is the data.** `_snapshot_assembly_seeded` returns
+`None` for absent and `[]` for empty. Collapsing the two would make a refusing configuration seed a
+brand-new box with NOTHING, silently, at `debug`.
+
+### Why the create path could not have been pointed here before 2b-1
+
+`box create` reaches this function through `seed_new_box` → `_seed_box_home`, on a NARROW resolve
+(`include_base_families=False`) that has **no home bind at all** and never runs a main resolve. Under
+the pre-2b-1 gate the seed leaf was absent on every such resolve, so consumer 5 would have taken the
+fallback on every box — a cutover that moved nothing.

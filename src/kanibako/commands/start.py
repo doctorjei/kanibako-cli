@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
     from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.store_collapse import CollapsedCopy
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -7157,6 +7158,52 @@ def _snapshot_assembly_bindings(snapshot: "KeyStore") -> "dict[str, object] | No
     return dict(node) if isinstance(node, dict) else None
 
 
+def _snapshot_assembly_seeded(snapshot: "KeyStore") -> "list[CollapsedCopy] | None":
+    """The collapsed seed list at ``meta.assembly.seeded``, or ``None`` if absent.
+
+    ⚑ ABSENT and EMPTY are DIFFERENT ANSWERS here, which is the whole reason this
+    returns an option rather than a list.  The leaf is written whenever the seed arm
+    folds — including for a narrow resolve with no home bind and no seeds at all
+    (2b-1) — so ``[]`` means *this box seeds nothing* and ``None`` means *the
+    collapse REFUSED*, a state the caller must not read as an empty box.
+    COPIED OUT of the snapshot — the caller gets its own list, never the live node.
+    """
+    from kanibako.settings.settings_store import KeyStore
+
+    node: object = snapshot
+    for seg in _ASSEMBLY_SEEDED:
+        node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+    return list(node) if isinstance(node, list) else None
+
+
+def _launch_seed_list(snapshot: "KeyStore", reconciled) -> "list[CollapsedCopy]":
+    """The collapsed seed rows, falling back to the reconciled ``seeded`` winners.
+
+    Cutover step 2b-2, and the SIBLING of :func:`_launch_bind_map` in every respect:
+    the consumer reads ``meta.assembly.seeded`` and the reconciled route stays in
+    place beneath it, so the move is one line to revert and nothing is deleted until
+    step 5.
+
+    ⚑ The fallback is the collapse's own ABSENT state, not a preference — a refusal
+    must reach nobody until step 2c takes the swallow out.  ⚑ It is also the one arm
+    that can still produce a row the collapse would have refused (a seed dest outside
+    the guest home), which is why the applier keeps its outside-home guard.
+    """
+    from kanibako.settings.store_collapse import CollapsedCopy
+
+    collapsed = _snapshot_assembly_seeded(snapshot)
+    if collapsed is not None:
+        return collapsed
+    # The shape adapter, and the ONLY place the two row shapes meet: a reconciled
+    # winner carries a name and a category that the collapsed row does not, and an
+    # optional source that a copy arm cannot have (``build_store_shape`` refuses it).
+    return [
+        CollapsedCopy(row.host_src, row.box_dest, row.options)
+        for row in reconciled.copies
+        if row.category == "seeded" and row.host_src is not None
+    ]
+
+
 def _install_box_handbook(
     *, proj, snapshot: "KeyStore", agent_id: str, logger,
 ) -> None:
@@ -7643,10 +7690,16 @@ def _apply_init_seeds(
     function already runs the one resolve that has the answer.
 
     ADDITIVE: with no seed config and no target default seeds, copies nothing.
-    Routes the category config through the reconcile model
-    (:func:`_resolve_launch_categories`) and applies the COPY winners whose
-    category is ``seeded``, translating each guest_dest (/home/agent/X) to a host
-    path under proj.shell_path and copying host_src -> that path once.
+    Routes the category config through the ONE launch resolve and applies the
+    COLLAPSED SEED LIST it stored at ``meta.assembly.seeded`` (cutover step 2b-2,
+    via :func:`_launch_seed_list`), translating each guest dest (/home/agent/X) to a
+    host path under ``proj.shell_path`` and copying its source -> that path once.
+
+    ⚑ A COLLAPSED SEED ROW IS ``(src, dest, opts)`` AND NOTHING ELSE — no name, no
+    category.  The DEST is the row's identity (R-10), so it is what a warning names,
+    and there is no category to filter on: the seed arm and the sync arm are two
+    SEPARATE leaves now, not one list with a discriminator.  ⚑⚑ Both leaves are
+    still COPIES and stay copies; do not let either become a mount.
 
     The LAYERED ``seeded[~/]`` trio (system/base -> agent -> workset; spec §2a, Q1)
     flows through THIS route too — no separate on-disk staging pass. The
@@ -7749,25 +7802,33 @@ def _apply_init_seeds(
         # pointer has no meaning here, and a seed must not vary with a store.
     )
 
-    # Group the seeded COPY winners by resolved dest, PRESERVING the
-    # reconcile apply order (system -> agent -> workset -> box) within each dest — so
-    # a dest targeted by multiple layers (the template trio at the box home) is
-    # staged in that order, later overlaying earlier.  A USER-declared seeded entry
-    # can share a dest the same way; the grouping is not special to the trio.
-    by_dest: dict[str, list] = {}
-    for seed in reconciled.copies:
-        if seed.category != "seeded":
-            continue  # synced copies are applied by _apply_synced_copies.
-        by_dest.setdefault(seed.box_dest, []).append(seed)
+    # Group the collapsed seed rows by dest, PRESERVING the list order (system ->
+    # agent -> workset -> box) within each dest — so a dest targeted by multiple
+    # layers (the template trio at the box home) is staged in that order, later
+    # overlaying earlier.  A USER-declared seeded entry can share a dest the same
+    # way; the grouping is not special to the trio.
+    # ⚑ ORDER-PRESERVING BY CONSTRUCTION, and that is load-bearing: ``setdefault``
+    # appends, so each group holds its rows in the SCOPE order ``collapse_seeded``
+    # emitted them, and dict insertion order keeps the dests in first-appearance
+    # order.  Nothing sorts, nothing keys on the dest — a dest MAY repeat, and the
+    # repetition IS the overlay.
+    by_dest: "dict[str, list[CollapsedCopy]]" = {}
+    for seed in _launch_seed_list(snapshot, reconciled):
+        by_dest.setdefault(seed.dest, []).append(seed)
 
     for box_dest, group in by_dest.items():
         dest = _guest_dest_to_host(
             box_dest, proj.shell_path, proj.project_path, map_home_root=True,
         )
         if dest is None:
+            # ⚑ DEFENSIVE, not reachable from the collapsed leaf: the collapse's own
+            # ``_refuse_seed_outside_home`` covers exactly the dests this translator
+            # answers ``None`` for, and a refusal drops the WHOLE leaf, which falls
+            # back below.  It stays because the fallback arm CAN produce such a row,
+            # and because a mis-landed copy reports success.
+            # ⚑ The dest IS the row's identity (R-10) — there is no name to print.
             logger.warning(
-                "seed %s: guest_dest %r is outside %s; skipping",
-                group[0].name, box_dest, GUEST_HOME,
+                "seed %s: guest_dest is outside %s; skipping", box_dest, GUEST_HOME,
             )
             continue
         if len(group) > 1:
@@ -7776,20 +7837,20 @@ def _apply_init_seeds(
             # create-if-absent.
             # ``stage_layers`` skips any absent-dir source (skip-if-absent — e.g. an
             # unpopulated @workset.template).
-            for e in group:
-                assert e.host_src is not None  # seeds always have a source.
+            # ⚑ The old ``assert host_src is not None`` here is GONE, not dropped:
+            # ``CollapsedCopy.src`` is typed ``str``, and the source-less case is
+            # refused upstream by ``build_store_shape`` before a row exists at all.
             dest.mkdir(parents=True, exist_ok=True)
-            stage_layers(dest, [Path(e.host_src) for e in group])
+            stage_layers(dest, [Path(e.src) for e in group])
             continue
         # Single-source dest — the ordinary per-seed copy (unchanged behavior).
         # Create-if-absent (``if_absent=True``): a seed delivers content ONCE;
         # existing home content is owned by the box and must never be overwritten
         # by a re-seed (the playbook-clobber bug).
         seed = group[0]
-        assert seed.host_src is not None  # seeds always have a source.
         _apply_shell_copy(
-            Path(seed.host_src), dest,
-            label="seed", name=seed.name, host_src=seed.host_src,
+            Path(seed.src), dest,
+            label="seed", name=seed.dest, host_src=seed.src,
             logger=logger, if_absent=True,
         )
     return snapshot
