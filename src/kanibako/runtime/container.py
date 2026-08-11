@@ -1,4 +1,17 @@
-"""ContainerRuntime: detect podman/docker, pull/build/run images, list images."""
+"""ContainerRuntime: detect podman/docker, pull/build/run images, list images.
+
+Terminology.  *Box* — a running container; *rig* — the image it runs from.  *Stub* — a
+host-side mountpoint pre-created so the OCI runtime never has to mkdir a bind dest.
+*Mask* — an empty read-only tmpfs emitted over a box-dest; a VOID, with nothing inside
+it.  *Shadowing* — pre-existing host content at a bind DEST, hidden (not deleted) by the
+bind that lands on it.  *Managed canon* — the root-owned 555 skeleton box-create
+materialises under ``~/canon``, whose mountpoints the launch path does not manage.
+
+⚑ The ``⚑`` comments below record PLATFORM behaviour, not design, and most of it cannot
+be tested from a box without podman.  Eight such claims are UNVERIFIED here and listed
+under "UNVERIFIED on this box" in ``llm-docs/kanibako/runtime/container.py.md``; do not
+delete one for lack of a covering test.
+"""
 
 from __future__ import annotations
 
@@ -21,33 +34,18 @@ from kanibako.settings.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
 
 logger = get_logger("container")
 
-# User-namespace mapping for every box launch.  Plain ``keep-id`` maps the
-# CALLING host user to the same numeric uid inside the container, so a host
-# user whose uid != 1000 lands beside — not on — the image's ``agent`` user
-# (uid/gid 1000, the GUEST_UID/GUEST_GID image contract), and the ``:U`` bind
-# option then recursively chowns the box home AND the user's project tree to
-# an unrelated subuid, bricking both.  ``keep-id:uid=…,gid=…`` pins the caller
-# onto the agent user regardless of host uid: in-box files are caller-owned,
-# ``:U`` chowns resolve to the caller's own uid (a no-op on caller-owned
-# trees), and the host-uid==1000 case is unchanged.  Requires podman >= 4.3
-# (the ``uid=``/``gid=`` options, 2022-10).  ``keep-id`` is podman-only;
-# Docker support is future backlog work with its own userns handling.
+# ⚑ NOT plain ``keep-id``: the ``uid=``/``gid=`` pin is what stops ``:U`` recursively
+# chowning the box home and project tree to a stray subuid.  Needs podman >= 4.3.
 KEEP_ID_USERNS = f"--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}"
 
 
-# Post-start hook plumbing (see ``ContainerRuntime.run``).  Bounded so a container
-# that never comes up cannot leave a thread spinning for the process's lifetime.
+# Post-start hook plumbing: bounded so a box that never comes up cannot spin a thread forever.
 _POST_START_TIMEOUT_S = 30.0
 _POST_START_POLL_S = 0.25
 
 
 def _run_post_start(hook: "Callable[[], None]") -> None:
-    """Invoke a post-start *hook*, swallowing anything it raises.
-
-    The hook is a repair step, not a precondition: a box whose canon re-protect
-    failed is degraded (litter-able) but perfectly usable, and taking the launch
-    down over it would trade a cosmetic problem for a total one.
-    """
+    """Invoke a post-start *hook*, swallowing anything it raises."""
     try:
         hook()
     except Exception as exc:  # noqa: BLE001 - a hook must never break a launch
@@ -121,15 +119,7 @@ class ContainerRuntime:
             raise ContainerError(f"Failed to remove rig {image}:\n{result.stderr}")
 
     def unshare_rm(self, path: Path) -> bool:
-        """Remove *path* from within the rootless user namespace.
-
-        Files a ``--userns=keep-id`` container creates as root map to subuids
-        the host user cannot ``unlink`` directly, so a plain ``rmtree`` of a
-        box's shell dir can fail with EACCES. ``podman unshare`` runs ``rm``
-        inside the user namespace where those subuids appear as root, so the
-        removal succeeds. Returns True on success. Only podman supports
-        ``unshare``; returns False for docker or on any failure.
-        """
+        """Remove *path* from within the rootless user namespace; False for docker/failure."""
         if "podman" not in Path(self.cmd).name:
             return False
         result = subprocess.run(
@@ -140,29 +130,14 @@ class ContainerRuntime:
         return result.returncode == 0
 
     def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool:
-        """``chown uid:gid`` *paths* from within the rootless user namespace.
-
-        The write-side counterpart of :meth:`unshare_rm`, and the mechanism behind
-        the canon skeleton's root-owned book roots (J-7): a host user cannot hand a
-        file to one of their own subuids directly, but inside ``podman unshare``
-        those subuids are ordinary namespace uids.
-
-        ⚑ NO ``-R``.  Callers pass an EXPLICIT, enumerated path list — a recursive
-        sweep of ``~/canon`` would take the seeded, agent-owned ``notebook/`` and
-        ``workbook/`` books with it.
-
-        Only podman supports ``unshare``; returns False for docker, for an empty
-        *paths*, or on any failure.
-        """
+        """``chown uid:gid`` *paths* from within the rootless user namespace."""
+        # ⚑ NO ``-R``: callers pass an EXPLICIT list — a recursive sweep of ``~/canon``
+        # would take the seeded, agent-owned ``notebook/``/``workbook/`` books with it.
         return self._unshare_apply(["chown", f"{uid}:{gid}"], paths)
 
     def unshare_chmod(self, paths: list[Path], mode: str) -> bool:
-        """``chmod mode`` *paths* from within the rootless user namespace.
-
-        Runs inside the namespace because the paths are (by then) owned by a subuid
-        the host user cannot chmod directly.  Same no-``-R`` rule as
-        :meth:`unshare_chown`.
-        """
+        """``chmod mode`` *paths* from within the rootless user namespace."""
+        # ⚑ Same no-``-R`` rule as :meth:`unshare_chown`.
         return self._unshare_apply(["chmod", mode], paths)
 
     def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
@@ -225,10 +200,7 @@ class ContainerRuntime:
             raise ContainerError(f"Failed to commit container: {result.stderr}")
 
     def cp(self, src: Path, dest: str) -> bool:
-        """Copy *src* into a container at *dest* (``<container>:<path>``).
-
-        Returns True on success.
-        """
+        """Copy *src* into a container at *dest* (``<container>:<path>``); True on success."""
         result = subprocess.run(
             [self.cmd, "cp", str(src), dest],
             capture_output=True,
@@ -244,14 +216,7 @@ class ContainerRuntime:
         return result.returncode == 0
 
     def load(self, archive: Path) -> str | None:
-        """Load an image from the tar *archive*.
-
-        Returns the loaded image reference parsed from the runtime's
-        ``Loaded image: <ref>`` output (an archive with no RepoTags yields an
-        empty string), or ``None`` if the load command itself failed. Reading
-        the ref back from the runtime is authoritative -- the archive's
-        filename is not a reliable source for the loaded tag.
-        """
+        """Load an image from the tar *archive*; returns its ref, or None if load failed."""
         result = subprocess.run(
             [self.cmd, "load", "-i", str(archive)],
             capture_output=True,
@@ -259,8 +224,7 @@ class ContainerRuntime:
         )
         if result.returncode != 0:
             return None
-        # podman/docker print e.g. "Loaded image: repo:tag",
-        # "Loaded image(s): repo:tag", or "Loaded image ID: sha256:...".
+        # ⚑ THREE observed output shapes: ``Loaded image:``, ``Loaded image(s):``, ``Loaded image ID:``.
         for line in result.stdout.splitlines():
             m = re.search(r"Loaded image(?:\(s\)| ID)?:\s*(\S.*)$", line)
             if m:
@@ -268,11 +232,7 @@ class ContainerRuntime:
         return ""
 
     def diff(self, image: str) -> list[str]:
-        """Return the changed paths for *image* as verbatim lines.
-
-        Each line is a changed path, possibly prefixed by a change-type
-        letter (``C``/``A``/``D``). Returns an empty list on failure.
-        """
+        """Return the changed paths for *image* as verbatim lines; empty list on failure."""
         result = subprocess.run(
             [self.cmd, "diff", image],
             capture_output=True,
@@ -283,13 +243,7 @@ class ContainerRuntime:
         return [line for line in result.stdout.splitlines() if line]
 
     def ensure_image(self, image: str, containers_dir: Path | None = None) -> None:
-        """Make sure *image* is available locally: inspect, then pull.
-
-        Base images are pull-only -- the cli no longer bundles or builds a base
-        Containerfile. On pull failure raise an actionable :class:`ContainerError`
-        directing the user to build a custom base themselves. *containers_dir* is
-        accepted for call-site compatibility but unused.
-        """
+        """Make sure *image* is available locally: inspect, then pull.  Base images are PULL-ONLY."""
         if self.image_exists(image):
             return
 
@@ -331,38 +285,9 @@ class ContainerRuntime:
         detach: bool = False,
         post_start: "Callable[[], None] | None" = None,
     ) -> int:
-        """Run a container and return the exit code.
-
-        When *detach* is True the container runs in the background (``-d``
-        instead of ``-it``, no ``--rm``).  Returns 0 on success.
-
-        ⚑ *post_start* runs after podman has set the box's mounts up.  On the
-        DETACHED path that is once, inline, the moment ``podman run -d`` returns.  On
-        the FOREGROUND path it runs when the session ends (and, opportunistically,
-        from a watcher as soon as the container is seen running) — see below.
-        It is the seam for work that must happen AFTER podman has set the box's
-        mounts up — specifically the canon re-protect, because the home bind's
-        ``:U`` option makes podman RECURSIVELY RE-CHOWN the home bind SOURCE to the
-        container user's mapping at container creation, which resets the box-create
-        canon skeleton from container-root back to the agent (bifrost, 2026-07-31:
-        host ``165536 165536 555`` post-create → ``1000 1000 555`` post-start).
-
-        The hook is wired HERE, rather than as a separate step after each
-        ``runtime.run(...)``, so that the ORDERING (and the detach/foreground split
-        below) exists in one place instead of being re-derived at every call site.
-
-        ⚑ IT IS NOT "COVERED BY CONSTRUCTION" — the parameter is OPT-IN, so a call
-        site that does not pass *post_start* gets nothing.  What IS true by
-        construction is narrower and worth stating exactly: ``run()`` is the only
-        container-CREATION seam (stopped containers are ``rm``'d and recreated, never
-        ``podman start``ed), so there is no OTHER place a ``:U`` chown can happen.
-        Every call site that binds a box home must pass the hook itself; that
-        obligation is enforced by a test
-        (``test_container.TestPostStartCallSites``), not by this signature.
-        """
+        """Run a container and return the exit code; *detach* backgrounds it (``-dt``, no ``--rm``)."""
         masks = tmpfs_masks or []
-        # Pre-create mount destination stubs so crun doesn't need to mkdir
-        # inside bind-mounted overlay filesystems (fails in LXC).
+        # Stubs first: crun cannot mkdir a bind dest inside a bind-mounted overlay (LXC).
         _precreate_mount_stubs(
             shell_path, project_path, extra_mounts,
             enable_vault, vault_ro_path, vault_rw_path, masks,
@@ -375,43 +300,18 @@ class ContainerRuntime:
             run_flags = [tty_flag, "--rm", KEEP_ID_USERNS]
         cmd: list[str] = [
             self.cmd, "run", *run_flags,
-            # Working directory inside the box.  The home + workspace + vault binds
-            # are NO LONGER hardwired here — they flow in via *extra_mounts* (the
-            # core box mounts the caller routes through the category resolver,
-            # ``start._build_core_mounts``), so nothing is bound into a box except
-            # through the keyspace.  Only ``-w`` (a flag, not a mount) stays.
+            # ⚑ NO hardwired binds: home/workspace/vault arrive via *extra_mounts* (single route).
             "-w", f"{GUEST_HOME}/workspace",
         ]
-        # Local masking is still emitted here (tmpfs has no host source, so it is
-        # not a category MOUNT the caller pre-builds): an EMPTY read-only tmpfs over
-        # each box-dest in the ``box.masks`` category (resolved in start.py).  There
-        # is NO default mask -- the vault moved out of ``~/workspace`` in 1.6.0, so
-        # there is nothing in the workspace to hide.  A box (or any scope) may
-        # declare masks via ``box.masks`` / ``<scope>.masks``; no masks emits no
-        # tmpfs mounts.  The ``.gitignore`` overlay that used to ride on the vault
-        # tmpfs is DROPPED (no special-case overlay).
-        #
-        # ⚑ ``notmpcopyup`` IS LOAD-BEARING, NOT A TUNING KNOB.  podman's tmpfs
-        # default is ``tmpcopyup``: it copies whatever already sits at the
-        # destination UP into the new tmpfs, so a mask left the pre-existing
-        # content plainly visible (read-only) and hid nothing -- it downgraded the
-        # path to read-only instead.  A mask is a VOID: there is nothing inside it
-        # (collapse DESIGN §8.1a).  Deleting this option restores the old
-        # behaviour silently, with every test still green, because what changes is
-        # what podman shows INSIDE the box.
-        #
-        # ⚑ A MASK IS INDEPENDENT OF THE VAULT.  This loop used to sit inside an
-        # ``if enable_vault:`` block, which was residue: back then the ONLY mask
-        # was the hardcoded ``~/workspace/vault`` tmpfs, so the block held the
-        # vault binds AND their mask.  ``4e96daa`` routed the vault binds out
-        # through the category resolver and left the wrapper behind, and
-        # ``242bfde`` then dropped the default mask -- so a vault-disabled box
-        # silently got NO masks at all, while ``<scope>.masks`` is an ordinary
-        # user-writable key that has nothing to do with the vault.  A declared
-        # mask is emitted regardless.
+        # ⚑ ``notmpcopyup`` IS LOAD-BEARING: the ``tmpcopyup`` default copies the dest's
+        # content UP, downgrading the path to read-only instead of emptying it.  A mask is
+        # a VOID.  Dropping it regresses SILENTLY — every test stays green.
+        # ⚑ OUTSIDE any vault arm, and it must STAY outside: a mask is a user key of its own.
         for mask in masks:
             cmd += ["--mount", f"type=tmpfs,dst={mask},ro,notmpcopyup"]
-        # Extra mounts (target binary mounts, etc.)
+        # ⚑ MASKS BEFORE BINDS, and the order is load-bearing: it is why a bind whose dest
+        # sits under a mask still takes at runtime.  Binds go via ``-v`` — the ONLY
+        # ``--mount`` in this argv is the tmpfs above.
         if extra_mounts:
             for mount in extra_mounts:
                 cmd += ["-v", mount.to_volume_arg()]
@@ -429,11 +329,7 @@ class ContainerRuntime:
         logger.debug("Container command: %s", cmd)
 
         if detach:
-            # ``podman run -d`` prints the new container's full SHA id to
-            # stdout. The caller reattaches by NAME (runtime.exec), so the id
-            # is not needed; capture it to keep it off the user's terminal and
-            # surface it only at DEBUG (``-v``). A genuine launch failure must
-            # still be reported, so echo captured stderr on a non-zero return.
+            # Capture the container id podman prints; the caller reattaches by NAME.
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 logger.error(
@@ -445,20 +341,13 @@ class ContainerRuntime:
                 logger.debug(
                     "Detached container started: %s", (result.stdout or "").strip()
                 )
-                # The container is up the instant ``podman run -d`` returns, so the
-                # hook runs INLINE here — no polling, no thread.
+                # The box is up the instant ``run -d`` returns: hook runs INLINE, no watcher.
                 if post_start is not None:
                     _run_post_start(post_start)
             return result.returncode
 
-        # Interactive foreground path: inherit the terminal so the agent /
-        # shell (and tmux attach) get the real stdio/tty.
-        #
-        # ⚑ This call BLOCKS for the whole session, so there is no "after start"
-        # moment in this thread — the hook has to run from a watcher that waits for
-        # the container to come up alongside it.  Without this the ephemeral/shell
-        # modes would run their entire session with an agent-owned canon (the
-        # detached path would be protected and the foreground path silently not).
+        # Foreground: inherit the terminal, and BLOCK for the whole session — so there is no
+        # "after start" moment in this thread and the hook needs a watcher alongside it.
         watcher = None
         if post_start is not None and name:
             watcher = self._watch_for_start(name, post_start)
@@ -467,15 +356,9 @@ class ContainerRuntime:
         finally:
             if watcher is not None:
                 watcher.set()
-            # ⚑ THE GUARANTEE LIVES HERE, NOT IN THE WATCHER.  A container that
-            # lives less than one poll interval is never observed running (measured:
-            # up at 20ms, gone at 50ms — the first probe fires before the subprocess
-            # even starts and the second lands after this cancel), so the watcher
-            # alone would leave short-lived ephemeral boxes NEVER repaired, silently
-            # and invisibly to any e2e using a long-running stub.  Re-asserting once
-            # the container is gone costs one idempotent pass and makes the on-disk
-            # state ALWAYS end protected.  The watcher is now only an optimisation:
-            # it shortens the window DURING a long session.
+            # ⚑ THE GUARANTEE LIVES HERE, NOT IN THE WATCHER: a box shorter-lived than one
+            # poll interval is never observed running, so this UNCONDITIONAL re-assert is
+            # what makes the on-disk state always end protected.  Never gate it on *watcher*.
             if post_start is not None:
                 _run_post_start(post_start)
         return fg_result.returncode
@@ -483,12 +366,7 @@ class ContainerRuntime:
     def _watch_for_start(
         self, name: str, post_start: "Callable[[], None]",
     ) -> "threading.Event":
-        """Fire *post_start* once *name* is running; return a cancel Event.
-
-        A short-lived DAEMON thread: it cannot keep the process alive, it polls a
-        bounded number of times, and every exception is swallowed and debug-logged.
-        A launch must never fail because a post-start hook did.
-        """
+        """Fire *post_start* once *name* is running; return a cancel Event."""
         cancelled = threading.Event()
 
         def _wait() -> None:
@@ -514,24 +392,9 @@ class ContainerRuntime:
         env: dict[str, str] | None = None,
         attach: bool = False,
     ) -> int:
-        """Run a command inside a running container. Interactive (inherits stdio).
-
-        Returns the exit code of the exec'd process.
-
-        *attach* marks this exec as a BOOTSTRAP ATTACH (a ``tmux attach`` handoff)
-        rather than a command whose output is the user's payload.  It only changes
-        the NON-tty case: an attach has no session to render without a terminal, and
-        the caller surfaces the agent's real logs/exit via ``podman logs``, so the
-        runtime's own raw race error — e.g. ``container state improper`` when a
-        supervised box tore down between the readiness probe and this exec — is
-        CAPTURED instead of leaking to the caller's stderr as if it were agent
-        output.  A NON-attach exec (the default; the one-off ``kanibako shell <box>
-        -- <cmd>`` path) always inherits stdio so its output reaches the user, tty or
-        not.
-        """
-        # Allocate a pty only when stdin is a real terminal. In scripted /
-        # subprocess contexts (CI, e2e tests), -t causes interactive commands
-        # like ``tmux attach`` to render but never return.
+        """Run a command in a running container; *attach* marks a ``tmux attach`` handoff."""
+        # ⚑ pty ONLY on a real terminal: under CI/subprocess, ``-t`` makes ``tmux attach``
+        # render but never return.
         interactive = sys.stdin.isatty()
         tty_flag = "-it" if interactive else "-i"
         cmd: list[str] = [self.cmd, "exec", tty_flag]
@@ -543,27 +406,16 @@ class ContainerRuntime:
 
         logger.debug("Container exec: %s", cmd)
         if not attach:
-            # A NON-attach exec whose output IS the user's payload (the one-off
-            # ``kanibako shell <box> -- <cmd>`` path): inherit all stdio so the
-            # output reaches the user, tty or not.
+            # Output IS the user's payload: inherit all stdio, tty or not.
             return subprocess.run(cmd).returncode
-        # Bootstrap ATTACH (a ``tmux attach`` handoff).  In BOTH cases we capture
-        # stderr so the runtime's raw race error (``container state improper`` / ``can
-        # only create exec sessions on running containers`` when a supervised box tore
-        # down between the readiness probe and this attach) does NOT leak to the
-        # caller's stderr as if it were agent output — the caller re-checks liveness
-        # and surfaces the agent's real logs/exit, so that noise is debug-only.
+        # ⚑ Attach captures stderr in BOTH arms so podman's teardown race error does not
+        # leak to the caller as if it were agent output.
         if interactive:
-            # Real terminal: keep stdin/stdout on the TTY so the interactive tmux
-            # session renders and the user drives it (tmux draws to stdout, errors to
-            # stderr).  stdout is a terminal, so it drains itself — no deadlock.
+            # Real terminal: stdout stays on the TTY, so it drains itself — no deadlock.
             result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
         else:
-            # Scripted / non-tty: there is no session to render, so capture BOTH
-            # streams.  ⚑ Capturing stdout is REQUIRED, not just tidy: inheriting it
-            # to the caller's (undrained) pipe lets a live ``tmux attach`` fill the
-            # pipe buffer and DEADLOCK until the caller's timeout.  Draining it here
-            # both prevents that wedge and keeps the raw error off the caller's stdio.
+            # ⚑ Capturing stdout here is REQUIRED, not tidy: inherited to an undrained
+            # caller pipe, a live ``tmux attach`` fills the buffer and DEADLOCKS.
             result = subprocess.run(cmd, capture_output=True, text=True)
         err = (result.stderr or "").strip()
         if err:
@@ -571,15 +423,7 @@ class ContainerRuntime:
         return result.returncode
 
     def exec_ready(self, name: str) -> bool:
-        """Probe whether the container can accept an exec session right now.
-
-        Runs a cheap CAPTURED `exec <name> true`. Because the output is
-        captured, podman's raw "container state improper" race error is
-        swallowed instead of leaking to the user's TTY. This is the same
-        operation as the interactive bootstrap-attach exec, so a fresh
-        success is a tight predictor that the attach will start cleanly.
-        Used to gate the TTY-inheriting interactive exec.
-        """
+        """Probe whether the container can accept an exec session right now."""
         result = subprocess.run(
             [self.cmd, "exec", name, "true"],
             capture_output=True,
@@ -620,13 +464,7 @@ class ContainerRuntime:
         return result.returncode == 0 and result.stdout.strip() == "true"
 
     def inspect_env(self, name: str, key: str) -> str | None:
-        """Return the value of env var *key* on container *name*, or None.
-
-        Reads the container's recorded ``.Config.Env`` (the env baked in at
-        ``run`` time) and returns the first ``KEY=VALUE`` whose KEY matches.
-        Returns None if the container does not exist, the var is unset, or the
-        inspect fails — callers fall back to normal resolution in that case.
-        """
+        """Return the value of env var *key* recorded on container *name*, or None."""
         result = subprocess.run(
             [self.cmd, "inspect", "--format", "{{json .Config.Env}}", name],
             capture_output=True,
@@ -647,25 +485,8 @@ class ContainerRuntime:
         return None
 
     def container_image(self, name: str) -> str | None:
-        """Return the image reference container *name* was created from, or None.
-
-        Reads the running container's ``.ImageName`` (the fully-qualified image
-        reference recorded at ``run`` time).  Returns None if the container does
-        not exist, the field is empty, or the inspect fails.
-
-        ⚑ What a None MEANS is the caller's call, not this function's, and the
-        two callers answer it differently — neither is a sanctioned default:
-        ``code_cmd._resolve_box_image`` falls back to the configured
-        ``box_image`` (it only needs a stable key for image-shared config),
-        while the box-shell resolve on the reattach fast path
-        (``commands/start.py``) DROPS the image tier instead, because there the
-        configured image was never run through ``resolve_rig`` and can name a
-        different rig than the live box.
-
-        Note: ``.ImageName`` is podman-specific; ``docker inspect`` has no such
-        field, so on Docker this errors → returns None (Docker is backlog, not
-        yet supported).
-        """
+        """Return the image reference container *name* was created from, or None."""
+        # ⚑ ``.ImageName`` is podman-only — docker has no such field, so docker → None.
         result = subprocess.run(
             [self.cmd, "inspect", "--format", "{{.ImageName}}", name],
             capture_output=True,
@@ -698,15 +519,7 @@ class ContainerRuntime:
     # ------------------------------------------------------------------
 
     def get_local_digests(self, image: str) -> list[str]:
-        """Return all repo digests (``sha256:...``) for a local image.
-
-        Parses ``RepoDigests`` from ``image inspect`` and strips the
-        ``repo@`` prefix from each entry. A pulled multi-arch image typically
-        records BOTH the per-platform manifest digest and the index digest;
-        callers that need to decide freshness want the full set, not just the
-        first entry. Returns an empty list on any failure or when the image
-        has no repo digests (e.g. locally-built images).
-        """
+        """Return ALL repo digests (``sha256:...``) for a local image; empty list on failure."""
         try:
             result = subprocess.run(
                 [self.cmd, "image", "inspect", image, "--format", "json"],
@@ -730,20 +543,12 @@ class ContainerRuntime:
             return []
 
     def get_local_digest(self, image: str) -> str | None:
-        """Return the first repo digest (``sha256:...``) for a local image, or None.
-
-        Kept for callers that need a single stable image key (e.g.
-        ``shells.image_store_key``). Delegates to :meth:`get_local_digests`.
-        """
+        """Return the FIRST repo digest (``sha256:...``) for a local image, or None."""
         digests = self.get_local_digests(image)
         return digests[0] if digests else None
 
     def get_local_created(self, image: str) -> str | None:
-        """Return the local image build timestamp (``.Created``), or None.
-
-        ``image inspect`` reports ``Created`` as an RFC3339 string. Returns
-        None on any failure or when the field is absent/empty.
-        """
+        """Return the local image build timestamp (``.Created``, RFC3339), or None."""
         data = self.image_inspect(image)
         if not data:
             return None
@@ -751,11 +556,7 @@ class ContainerRuntime:
         return created if isinstance(created, str) and created else None
 
     def get_local_tags(self, image: str) -> list[str]:
-        """Return the local image's ``RepoTags`` (``repo:tag`` strings).
-
-        Returns an empty list on any failure or when the image has no repo
-        tags (e.g. an image referenced only by digest).
-        """
+        """Return the local image's ``RepoTags`` (``repo:tag`` strings); empty on failure."""
         data = self.image_inspect(image)
         if not data:
             return []
@@ -763,11 +564,7 @@ class ContainerRuntime:
         return [t for t in tags if isinstance(t, str)]
 
     def get_local_label(self, image: str, label: str) -> str | None:
-        """Return the value of *label* from the local image's config, or None.
-
-        Reads ``Config.Labels`` (or top-level ``Labels`` as a fallback).
-        Returns None on any failure or when the label is absent/empty.
-        """
+        """Return the value of *label* from the local image's config, or None."""
         data = self.image_inspect(image)
         if not data:
             return None
@@ -781,11 +578,7 @@ class ContainerRuntime:
         return value if isinstance(value, str) and value else None
 
     def get_local_platform(self, image: str) -> str | None:
-        """Return the local image platform as ``os/arch[/variant]``, or None.
-
-        This is the platform we actually run; freshness matches it against the
-        per-arch child of a remote image index.
-        """
+        """Return the local image platform as ``os/arch[/variant]``, or None."""
         try:
             result = subprocess.run(
                 [self.cmd, "image", "inspect", image, "--format", "json"],
@@ -832,41 +625,10 @@ class ContainerRuntime:
 
 
 def remove_box_tree(target: Path) -> bool:
-    """Remove *target*, tolerating files a rootless container created.
+    """Remove *target*, tolerating files a rootless container created — THE box-tree deleter.
 
-    THE box-tree deleter.  A box's home can contain files owned by mapped subuids —
-    files a ``--userns=keep-id`` container wrote as root, and (since J-7) the
-    root-owned canon skeleton kanibako itself creates at box create — which the host
-    user cannot unlink.  A plain :func:`shutil.rmtree` then fails with EACCES, so
-    this falls back to ``podman unshare rm -rf``, which deletes from within the user
-    namespace.  Returns True if *target* is gone afterwards, False otherwise (callers
-    warn rather than crash).
-
-    ⚑ EVERY verb that deletes a box home or box metadata tree must come through
-    here — ``rm --purge``, ``extract``, ``move``/``convert``, ``duplicate``'s
-    ``--force``/rollback arms and ``purge``.  A bare ``rmtree`` on any of those paths
-    is a bug: it fails on the canon skeleton and leaves a half-deleted box behind.
-
-    THREE ESCALATING ATTEMPTS, because there are three distinct failure shapes:
-
-    1. plain ``rmtree`` — ordinary content;
-    2. ``rmtree`` after re-opening the directory modes we OWN.  ⚑ ``rmtree`` raises
-       ``PermissionError`` on a tree containing 555 directories EVEN WHEN THE CALLER
-       OWNS THEM (unlinking a child needs write on its parent), and an owned-but-555
-       canon skeleton is genuinely reachable: ``shutil.copytree`` reproduces the
-       skeleton's modes without its ownership, so every box-home copy passes through
-       that state, as does a create whose ``chown`` failed after the ``chmod``. This
-       step needs no container runtime at all, which matters because the machines
-       that most often lack podman are exactly the ones running these verbs;
-    3. ``podman unshare rm -rf`` — the SUBUID case, where the files are not ours and
-       no amount of chmod helps.
-
-    ⚑ DEGRADED END-STATE, stated because it is not obvious: if step 2 re-opened some
-    modes and steps 2 AND 3 then both failed, the tree is left BEHIND with those dir
-    modes re-opened — i.e. LESS protected than before the attempt.  That is the right
-    trade (the caller is trying to delete the tree, and a half-deletable box is worse
-    than a briefly-writable one) but a caller that reports the False return must not
-    imply the tree is untouched.
+    ⚑ EVERY verb deleting a box home or metadata tree must come through here; a bare
+    ``rmtree`` on those paths is a bug.  THREE ESCALATING ATTEMPTS — see the llm-doc.
     """
     try:
         shutil.rmtree(target)
@@ -874,22 +636,15 @@ def remove_box_tree(target: Path) -> bool:
     except OSError:
         pass
 
-    # (2) Re-open the modes on directories WE own, then retry.  Bounded to *target*'s
-    # own subtree, best-effort per entry, and it never touches a dir owned by someone
-    # else (the chmod simply fails and is skipped — that is case 3's job).
+    # (2) Re-open the modes on directories WE own, then retry.  A dir owned by someone
+    # else simply fails the chmod and is skipped — that is attempt 3's job.
     reopened = False
     for root, dirs, _files in os.walk(target, topdown=True):
         for d in (root, *(os.path.join(root, x) for x in dirs)):
             try:
-                # ⚑ NEVER chmod THROUGH a symlink.  ``os.chmod`` follows links, so a
-                # symlinked dir inside the box home would have its TARGET re-opened —
-                # possibly somewhere outside the tree we are deleting.  On Linux this
-                # is safe today only by accident (a symlink's own lstat mode is 0777,
-                # so the ``not S_IWUSR`` test skips it); make the safety DELIBERATE
-                # rather than a property of one platform's mode bits.  ``os.walk``
-                # does not follow directory symlinks either, so skipping here loses
-                # nothing: rmtree unlinks the link itself, which needs only the
-                # parent's write bit.
+                # ⚑ NEVER chmod THROUGH a symlink: ``os.chmod`` follows links and would
+                # re-open a TARGET outside the tree being deleted.  Deliberate, not
+                # incidental — do not drop this as redundant with the mode test below.
                 if os.path.islink(d):
                     continue
                 mode = stat.S_IMODE(os.lstat(d).st_mode)
@@ -913,20 +668,13 @@ def remove_box_tree(target: Path) -> bool:
     return not target.exists()
 
 
-# The MANAGED CANON region inside a box (J-7).  Every bind dest at or under it lands
-# on a mountpoint the box-create skeleton already materialised, root-owned and 555.
+# The MANAGED CANON region inside a box (J-7): box-create materialises these mountpoints.
 _CANON_GUEST_PREFIX = f"{GUEST_HOME}/canon"
 
 
 def _is_managed_canon_dest(dest: str) -> bool:
-    """True for a bind dest the CANON SKELETON owns, which must not be stubbed.
-
-    ⚑ PATH-SHAPED, not key-shaped, and deliberately so: EVERY bind under ``~/canon``
-    is by construction one of the canon book binds, whose mountpoint
-    :func:`kanibako.settings.core_defaults.materialize_canon_skeleton` pre-created at box
-    create.  One uniform rule beats six per-key special cases.  The seeded
-    ``canon/notebook`` + ``canon/workbook`` are never binds, so they never reach here.
-    """
+    """True for a bind dest the CANON SKELETON owns, which must not be stubbed."""
+    # ⚑ PATH-shaped, not key-shaped, deliberately: one uniform rule, not six per-key cases.
     return dest == _CANON_GUEST_PREFIX or dest.startswith(f"{_CANON_GUEST_PREFIX}/")
 
 
@@ -939,27 +687,8 @@ def _guest_dest_to_host(
 ) -> Path | None:
     """Map a box-side guest DEST to its host stub path; None if not under home.
 
-    The SINGLE translator shared by the mount-stub precreate/shadow scans (here)
-    and the seed/synced COPY appliers (:mod:`kanibako.commands.start`).
-    Destinations under ``/home/agent/workspace/`` map relative to *project_path*
-    (the workspace bind); other destinations under ``/home/agent/`` map relative
-    to *shell_path* (the box HOME bind).  A dest outside the box home returns
-    ``None``.
-
-    *map_home_root* controls the box-home ROOT itself (``/home/agent``, with any
-    trailing slash):
-
-    * ``False`` (default — the mount-stub callers): the bare home root returns
-      ``None``.  The base home bind is not a stub to pre-create, and the shadow
-      scan skips the base roots explicitly.
-    * ``True`` (the seed/synced COPY callers): the bare home root maps to
-      *shell_path* so a ``~``-targeted copy (the ``seeded[~/]`` trio) stages
-      straight into the box HOME.
-
-    Both COPY callers gain the ``/workspace`` split for free by routing here: a
-    ``~/workspace/...`` copy dest now lands under *project_path* (the workspace
-    bind), not the shadowed ``shell_path/workspace`` stub — closing the former
-    inline translators' latent drift bug (audit P3).
+    ⚑ THE SINGLE translator — stub/shadow scans here, seed/synced COPY appliers there.
+    *map_home_root* maps the bare home root: ``None`` (stubs) vs *shell_path* (copies).
     """
     if map_home_root and dest.rstrip("/") == GUEST_HOME:
         return shell_path
@@ -980,24 +709,8 @@ def detect_shadowed_mounts(
 ) -> list[str]:
     """Report box-dests whose pre-existing host content a bind will SHADOW.
 
-    A bind mount whose DEST already holds content silently hides that content
-    inside the box: the files remain on disk under the OUTER home/workspace
-    bind, but the INNER mount shadows them so they are invisible (and untouched)
-    in the box.  This detector inspects each candidate dest's mapped host stub
-    (the OUTER view) and returns the box-dests that already contain content.
-
-    Candidates: the vault ro/rw dests (when *enable_vault*) plus each
-    ``mount.destination`` in *extra_mounts*.  The base roots ``/home/agent`` and
-    ``/home/agent/workspace`` are EXCLUDED — their content IS the box, not
-    something shadowed (in 1.6.0 the home/workspace base binds flow through
-    ``extra_mounts`` too).  Tmpfs masks are not candidates here: masking is
-    intentional hiding, and they are not in *extra_mounts*.
-
-    This function is PURE: it performs no filesystem mutation (no mkdir/touch/
-    unlink/clear-symlink).  All filesystem probes are best-effort and any
-    ``OSError`` skips that dest rather than raising.
-
-    Returns the list of shadowed BOX-DEST strings (e.g. ``/home/agent/vault/rw``).
+    ⚑ PURE: probes only, no mkdir/touch/unlink/clear-symlink, and every ``OSError``
+    skips that dest rather than raising.  Do not add mutation here.
     """
     candidates: list[str] = []
     if enable_vault:
@@ -1048,27 +761,9 @@ def _precreate_mount_stubs(
     vault_rw_path: Path,
     tmpfs_masks: list[str],
 ) -> None:
-    """Pre-create mount destination stubs to avoid crun permission errors.
-
-    In some environments (e.g. LXC nested containers), the OCI runtime
-    cannot create mount-point directories inside bind-mounted overlay
-    filesystems.  Pre-creating the stubs on the host side avoids the
-    problem.
-
-    Mapping: destinations under ``/home/agent/workspace/`` are created
-    relative to *project_path*; other destinations under ``/home/agent/``
-    are created relative to *shell_path*.
-    """
+    """Pre-create mount destination stubs to avoid crun permission errors."""
     def _clear_symlink(p: Path) -> None:
-        """Remove *p* if it is a symlink so a bind lands on a clean mountpoint.
-
-        A baked/dirty image may ship ``~/.local/bin/claude`` (or
-        ``~/.local/share/claude``) as a symlink into the install-dir subtree.
-        If the destination is a symlink, the OCI runtime follows it and the
-        bind lands somewhere it gets shadowed ("the bind isn't taking").
-        Clearing the symlink first guarantees the bind takes on a real,
-        non-symlink mountpoint that we own.
-        """
+        """Remove *p* if it is a symlink so a bind lands on a clean mountpoint."""
         try:
             if p.is_symlink():
                 p.unlink()
@@ -1079,35 +774,8 @@ def _precreate_mount_stubs(
     def _loosen_parents(stub: Path, root: Path) -> None:
         """Add SEARCH bits to *stub*'s parent dirs up to (not incl.) *root*.
 
-        WHY: crun's openat2 destination resolution must TRAVERSE every parent of
-        a bind dest.  A pre-existing box home commonly ships XDG dirs like
-        ``~/.config`` at 0700 (gh/podman/XDG tools create them private); a file
-        bind placed under such a dir (the agent kickoff SEED at
-        ``~/.config/kanibako/kickoff.md``, new in rc12) then dies at launch with
-        ``crun: creating ... openat2 home/agent/.config: Permission denied``
-        (exit 126).  Fresh boxes never hit it because our own mkdir makes
-        ``.config`` traversable; pre-existing homes do.
-
-        WHY only ``0o011`` (g+x, o+x — the SEARCH bits, no read): +x alone makes
-        a directory TRAVERSABLE without exposing a listing, so directory contents
-        stay unlistable/private.  It is the MINIMUM that makes the path resolve.
-
-        Containment (load-bearing — this mutates user-visible modes in the box
-        home, so it is deliberately narrow):
-          * *root* is *shell_path* ONLY; callers never pass a project_path
-            (workspace) dest — that is the user's real tree and loosening its
-            modes is a policy call we are not making this increment.
-          * Never chmod AT or ABOVE *root*: the walk stops when it reaches root,
-            so root itself and its ancestors are untouched.
-          * A SYMLINKED parent stops the walk — we must not follow a symlink OUT
-            of the box home and chmod a target elsewhere (belt-and-suspenders:
-            ``resolve().relative_to`` below also catches an escaping ancestor).
-          * Only parents of ACTUAL bind dests are visited, so a private 0700 dir
-            with no bind under it (e.g. ``~/.ssh``) is never touched.
-
-        Best-effort like the sibling stub helpers: any ``OSError`` is
-        debug-logged and swallowed — a pre-create hiccup must never abort a
-        launch (crun may still succeed, or the real error surfaces there).
+        ⚑ This MUTATES user-visible modes in the box home, so its containment is
+        load-bearing and deliberately narrow — see the llm-doc before widening it.
         """
         try:
             root_resolved = root.resolve()
@@ -1115,12 +783,10 @@ def _precreate_mount_stubs(
             logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
             return
         # Start at the stub's PARENT: the stub's own mode is owned by the bind.
-        # Walk LEXICAL parents upward and test each against *root*.
         current = stub.parent
         while True:
-            # Stop AT root (and never above it).  ``resolve()`` collapses any
-            # symlinked ancestor, so an escape resolves OUTSIDE root -> ValueError
-            # -> we stop rather than chmod something beyond the box home.
+            # ⚑ Stop AT root, never above: an escaping ancestor resolves OUTSIDE root and
+            # raises ValueError, so we stop rather than chmod beyond the box home.
             try:
                 rel = current.resolve().relative_to(root_resolved)
             except (OSError, ValueError):
@@ -1129,8 +795,8 @@ def _precreate_mount_stubs(
                 # Reached root itself — off-limits, and nothing above it either.
                 break
             try:
-                # A symlinked parent would let the chmod escape the box home even
-                # if its target resolves back inside — stop the walk here.
+                # ⚑ A symlinked parent could escape the box home even if it resolves
+                # back inside — stop the walk rather than chmod through it.
                 if current.is_symlink():
                     logger.debug("loosen stop at symlink parent: %s", current)
                     break
@@ -1143,9 +809,7 @@ def _precreate_mount_stubs(
                         current, perm, new_perm,
                     )
             except OSError as exc:
-                # Tolerant like the sibling stub helpers: an unreadable/vanished
-                # parent must never abort the launch.  Stop the walk — we can no
-                # longer safely reason about ancestors we cannot probe.
+                # Stop the walk: we cannot reason about ancestors we cannot probe.
                 logger.debug("loosen probe/chmod FAILED: %s (%s)", current, exc)
                 break
             current = current.parent
@@ -1176,30 +840,21 @@ def _precreate_mount_stubs(
         if traverse_root is not None:
             _loosen_parents(p, traverse_root)
 
-    # A dest maps to the shell_path (box HOME) side unless it lives under
-    # ``/home/agent/workspace/`` (the project tree).  Only home-side parents are
-    # loosened for traversal; workspace parents are the user's real tree (see
-    # ``_loosen_parents``), so they pass ``traverse_root=None``.
+    # ⚑ Only HOME-side parents are loosened; workspace parents are the user's real tree
+    # and pass ``traverse_root=None``.
     workspace_prefix = GUEST_HOME + "/workspace/"
 
     def _home_root(dest: str) -> Path | None:
         return None if dest.startswith(workspace_prefix) else shell_path
 
-    # Built-in directory mounts.  These are all shell_path-side; the workspace
-    # stub's only parent IS shell_path, so its loosen walk is a no-op.
+    # Built-in directory mounts — all shell_path-side, so their loosen walks are no-ops.
     _ensure_dir(shell_path / "workspace", traverse_root=shell_path)
     if enable_vault:
-        # Vault is UNIVERSAL unless disabled: the host source dirs are created
-        # if missing by the core-defaults resolver, so the box-side dest stubs
-        # are always made whenever vault is enabled.
+        # Vault is UNIVERSAL unless disabled, so its dest stubs are always made.
         _ensure_dir(shell_path / "vault" / "ro", traverse_root=shell_path)
         _ensure_dir(shell_path / "vault" / "rw", traverse_root=shell_path)
-    # tmpfs mask stubs: one per box-dest in the ``box.masks`` category.  Map each
-    # box-dest to its host side the same way extra mounts are mapped (under
-    # project_path for workspace dests, shell_path for other home dests).  Empty
-    # list (the default — no masks) -> no stubs.  ⚑ OUTSIDE the vault arm on
-    # purpose, and it must STAY outside: ``run`` emits a declared mask whether or
-    # not the vault is enabled, and without its stub the mount fails in LXC.
+    # ⚑ Mask stubs sit OUTSIDE the vault arm on purpose and must STAY outside: ``run``
+    # emits a declared mask vault-or-not, and without its stub the mount fails in LXC.
     for mask in tmpfs_masks:
         host_path = _guest_dest_to_host(mask, shell_path, project_path)
         if host_path is None:
@@ -1214,25 +869,9 @@ def _precreate_mount_stubs(
         dest = mount.destination
         src = mount.source
         host_path = _guest_dest_to_host(dest, shell_path, project_path)
-        # ⚑ THE CANON SKELETON OWNS ITS OWN MOUNTPOINTS (J-7) — BUT ONLY WHERE IT
-        # EXISTS.  On a box created by R1b the mountpoint is already there,
-        # root-owned and unwritable, so stubbing it is pointless and wrong-headed.
-        #
-        # ⚑ THE SKIP IS EXISTENCE-AWARE, NOT PATH-AWARE, and that distinction is
-        # load-bearing.  Boxes with NO skeleton exist and will keep arriving: every
-        # R1-era and pre-canon box, plus any box whose create hit the degraded path.
-        # An unconditional skip leaves their five-or-six canon binds with no
-        # mountpoints at all, and in LXC crun cannot mkdir inside a bind-mounted
-        # overlay — that is a launch failure (exit 126), not a degradation. Falling
-        # through to the tolerant stub helpers instead pre-creates the mountpoints
-        # for exactly those boxes, which also makes this a free self-healing
-        # migration: an old box gains its canon mountpoints on its next launch.
-        #
-        # Where the skeleton DOES exist the fall-through would be a no-op anyway
-        # (``_ensure_dir``/``_ensure_file`` are create-if-absent, and
-        # ``_loosen_parents`` finds 555 already carrying the 0o011 search bits), so
-        # the skip buys clarity rather than behaviour — it says out loud that these
-        # mountpoints are not the launch path's to manage.
+        # ⚑ THE SKIP IS EXISTENCE-AWARE, NOT PATH-AWARE, and that is load-bearing: a
+        # skeleton-less box (pre-canon, or a degraded create) must FALL THROUGH and get
+        # its canon mountpoints stubbed, or crun fails the launch in LXC (exit 126).
         if host_path is not None and _is_managed_canon_dest(dest):
             if host_path.exists():
                 logger.debug("stub skip (canon skeleton owns it): %s → %s", src, dest)
