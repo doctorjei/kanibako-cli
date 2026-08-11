@@ -80,6 +80,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The warnings and errors from path resolution are reworded.** The messages about XDG variables,
+  workset and box discovery, vault location, and the refusals that protect `$HOME` from being used as
+  a project root are shorter and more plainly punctuated; a few name their subject more precisely.
+  Nothing they report has changed and no message was removed — only the wording. This is called out
+  because the text is what you see, and because anything matching on these strings (a script grepping
+  output, a test pinning a message) will need updating. The one that is most likely to be matched on:
+  `Refusing to create a project rooted at $HOME` is now `Refusing to create project rooted at $HOME`.
+
 - **A mount set that cannot be assembled now stops the launch instead of being quietly abandoned.**
   A box's mounts are assembled by folding every scope's declarations over the box home in scope
   order, and that fold has always had rules about what an arrangement may be: a binding may nest
