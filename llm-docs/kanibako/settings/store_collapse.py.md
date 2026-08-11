@@ -21,9 +21,12 @@ live delivery path, including `reconcile_categories`' arbitration half, its `syn
 refusal and its row-5 warning channel.
 
 Its one consumer is `start.py:_install_assembly_collapse`, which writes the result to
-`meta.assembly.bindings` / `meta.assembly.seeded` / `meta.assembly.synced` — leaves nothing reads.
-The collapse REFUSES shapes the shipped route still accepts, so that seam catches `SettingsError`
-and leaves all three absent; the tightening lands at the CUTOVER.
+`meta.assembly.bindings` / `meta.assembly.seeded` / `meta.assembly.synced`. ⚑ **Of those three,
+only `bindings` is read**: since 2a-3 `start.py:_launch_bind_map` emits mounts from it, falling back
+to the reconciled rows when the collapse wrote none. **The two COPY leaves are read by nothing** —
+their consumers move at 2b-2/2b-3 — so a change confined to `seeded`/`synced` alters nothing a box
+receives today. The collapse REFUSES shapes the shipped route still accepts, so that seam catches
+`SettingsError` and leaves the leaves it governs absent; the tightening lands at the CUTOVER.
 
 ## Three passes, in the ONE order that is a ruling
 
@@ -53,6 +56,11 @@ Consequences, all of them removals rather than patches:
   every one of them targeting `~`. A dest-keyed map would silently drop all but one layer. The
   later entry overwrites the earlier FILEWISE at apply time — already ruled, and not this
   function's job.
+  * ⚑ **A dest may repeat WITHIN one scope too, and the INPUT arm had to be fixed to say so**
+    (2026-08-11). The output list always allowed it, but `StoreShape.seed`/`.sync` were dest-keyed
+    `BindMap`s, so a repeat inside one scope was dropped one layer EARLIER than this list — before
+    the concatenation ever saw it. Both arms are now `CopyList`; see the `store_shape` llm-doc for
+    the measurement, including what the live emitter can and cannot yet produce.
 * **the copy never meets a mask**, so the copied-directory-onto-a-mask rule and the un-mask branch
   that went with it are both GONE.
 * ⚑⚑ **the module no longer touches the filesystem.** The directory rule was decided by a live

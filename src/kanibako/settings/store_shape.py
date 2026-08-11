@@ -6,7 +6,7 @@ Prose: ``llm-docs/kanibako/settings/store_shape.py.md``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, NamedTuple
 
 from kanibako.settings.settings_categories import (
   CategoryCollision,
@@ -19,6 +19,17 @@ from kanibako.settings.settings_store import SCOPE_CONTAINMENT, BindEntry, BindM
 
 #: A dest-keyed mask arm. ⚑ The VALUE IS NEVER READ - presence is the whole fact.
 MaskMap = dict[str, bool]
+
+
+class CopyRow(NamedTuple):
+  """One copy row, ``(dest, entry)`` - the dest is CARRIED, never a key."""
+
+  dest: str
+  entry: BindEntry
+
+
+#: A COPY arm: an ORDERED list, duplicates kept. ⚑ A dest MAY repeat - that IS the overlay.
+CopyList = list[CopyRow]
 
 #: ``StoreShape`` per scope, ``("system", "agent", "workset", "box")`` - the collapse's order.
 StoreShapeSetMap = dict[str, "StoreShape"]
@@ -49,13 +60,13 @@ _FOLDED_ABSTRACT_MOUNT: Final[tuple[str, ...]] = ("caches", "common")
 
 @dataclass(frozen=True)
 class StoreShape:
-  """ONE scope's realization view - five dest-keyed arms, opts already CONCRETE."""
+  """ONE scope's realization view - three dest-keyed MOUNTS, two ordered COPY lists."""
 
   ro: BindMap = field(default_factory=dict)
   rw: BindMap = field(default_factory=dict)
   mask: MaskMap = field(default_factory=dict)
-  seed: BindMap = field(default_factory=dict)
-  sync: BindMap = field(default_factory=dict)
+  seed: CopyList = field(default_factory=list)
+  sync: CopyList = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -94,30 +105,51 @@ def build_store_shape(
   entries: list[CategoryEntry],
 ) -> tuple[StoreShape, list[CategoryCollision]]:
   """Fold ONE scope's entries into its :class:`StoreShape` + its §0 row-5 warnings."""
+  survivors, warnings = _scope_survivors(entries)
+  mounts: dict[str, BindMap] = {"ro": {}, "rw": {}}
+  copies: dict[str, CopyList] = {"seed": [], "sync": []}
+  mask: MaskMap = {}
+  for entry in survivors:
+    arm = _ARM[entry.category]
+    if arm == "mask":
+      mask[entry.box_dest] = True
+      continue
+    if entry.host_src is None:
+      raise SettingsError(
+        f"category entry {entry.key!r} folds into the {arm!r} arm but has no "
+        f"host source (only 'masks' and 'env' are source-less)"
+      )
+    bind = BindEntry(entry.host_src, entry.options)
+    if arm in copies:
+      # ⚑ APPEND, never key: a copy arm is a flat scope-ordered list and one scope
+      # may declare two copies at ONE dest - keying would drop all but the last.
+      copies[arm].append(CopyRow(entry.box_dest, bind))
+    else:
+      mounts[arm][entry.box_dest] = bind
+  shape = StoreShape(
+    ro=mounts["ro"], rw=mounts["rw"], mask=mask,
+    seed=copies["seed"], sync=copies["sync"],
+  )
+  return shape, warnings
+
+
+def _scope_survivors(
+  entries: list[CategoryEntry],
+) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
+  """Every entry the within-scope §0 rows keep, IN DECLARATION ORDER, + their warnings."""
+  # ⚑ The rows are decided per DEST, but the survivors come back in the order the
+  # user WROTE them: a copy arm is an ordered overlay, so grouping by dest would
+  # reorder two copies whose dests nest and silently change which one lands last.
   by_dest: dict[str, list[CategoryEntry]] = {}
   for entry in entries:
     by_dest.setdefault(entry.box_dest, []).append(entry)
-  arms: dict[str, BindMap] = {"ro": {}, "rw": {}, "seed": {}, "sync": {}}
-  mask: MaskMap = {}
   warnings: list[CategoryCollision] = []
+  losers: list[CategoryEntry] = []
   for box_dest, group in by_dest.items():
-    survivors, dest_warnings = _within_scope_survivors(box_dest, group)
+    kept, dest_warnings = _within_scope_survivors(box_dest, group)
     warnings.extend(dest_warnings)
-    for entry in survivors:
-      arm = _ARM[entry.category]
-      if arm == "mask":
-        mask[box_dest] = True
-        continue
-      if entry.host_src is None:
-        raise SettingsError(
-          f"category entry {entry.key!r} folds into the {arm!r} arm but has no "
-          f"host source (only 'masks' and 'env' are source-less)"
-        )
-      arms[arm][box_dest] = BindEntry(entry.host_src, entry.options)
-  shape = StoreShape(
-    ro=arms["ro"], rw=arms["rw"], mask=mask, seed=arms["seed"], sync=arms["sync"],
-  )
-  return shape, warnings
+    losers.extend(e for e in group if not any(e is k for k in kept))
+  return [e for e in entries if not any(e is loser for loser in losers)], warnings
 
 
 def _within_scope_survivors(

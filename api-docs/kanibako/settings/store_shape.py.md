@@ -7,6 +7,12 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/store_shape.py.md`.
 ```python
 MaskMap = dict[str, bool]
 
+class CopyRow(NamedTuple):
+    dest: str
+    entry: BindEntry
+
+CopyList = list[CopyRow]
+
 StoreShapeSetMap = dict[str, 'StoreShape']
 
 _ARM: Final[dict[str, str]] = {'bindings.ro': 'ro', 'bindings.rw': 'rw', 'caches': 'rw', 'common': 'rw', 'masks': 'mask', 'seeded': 'seed', 'synced': 'sync'}
@@ -22,8 +28,8 @@ class StoreShape:
     ro: BindMap = field(default_factory=dict)
     rw: BindMap = field(default_factory=dict)
     mask: MaskMap = field(default_factory=dict)
-    seed: BindMap = field(default_factory=dict)
-    sync: BindMap = field(default_factory=dict)
+    seed: CopyList = field(default_factory=list)
+    sync: CopyList = field(default_factory=list)
 
 @dataclass(frozen=True)
 class StoreShapeSet:
@@ -37,6 +43,9 @@ def build_store_shape_set(entries: list[CategoryEntry]) -> StoreShapeSet:
     ...
 
 def build_store_shape(entries: list[CategoryEntry]) -> tuple[StoreShape, list[CategoryCollision]]:
+    ...
+
+def _scope_survivors(entries: list[CategoryEntry]) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
     ...
 
 def _within_scope_survivors(box_dest: str, group: list[CategoryEntry]) -> tuple[list[CategoryEntry], list[CategoryCollision]]:

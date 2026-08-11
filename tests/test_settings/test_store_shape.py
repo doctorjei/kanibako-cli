@@ -36,6 +36,7 @@ from kanibako.settings.settings_store import BindEntry
 from kanibako.settings.store_shape import (
   _ARM,
   _NO_ARM,
+  CopyRow,
   StoreShape,
   StoreShapeSet,
   build_store_shape_set,
@@ -93,13 +94,21 @@ class TestTheFold:
     # ``rw`` beside the concrete binding — there is no ``caches`` arm to land in.
     assert set(box.rw) == {f"{GUEST}/rw", f"{GUEST}/cache", f"{GUEST}/common"}
     assert set(box.mask) == {f"{GUEST}/masked"}
-    assert set(box.seed) == {f"{GUEST}/seed"}
-    assert set(box.sync) == {f"{GUEST}/sync"}
+    # ⚑ The copy arms are LISTS, so their dests are read off the rows.
+    assert [row.dest for row in box.seed] == [f"{GUEST}/seed"]
+    assert [row.dest for row in box.sync] == [f"{GUEST}/sync"]
 
   def test_bind_arms_are_dest_keyed_src_opts_entries(self):
     box = shapes(self.FLOOR)["box"]
     assert box.rw[f"{GUEST}/rw"] == BindEntry("/h/rw", "Z,U")
     assert box.ro[f"{GUEST}/ro"] == BindEntry("/h/ro", "ro")
+
+  def test_copy_arms_are_ordered_rows_that_CARRY_their_dest(self):
+    # ⚑ The MOUNTS arbitrate at a dest and are keyed by it; the COPIES do not and
+    # are not. A dest is DATA on a copy row, never its key.
+    box = shapes(self.FLOOR)["box"]
+    assert box.seed == [CopyRow(f"{GUEST}/seed", BindEntry("/h/seed", ""))]
+    assert box.sync == [CopyRow(f"{GUEST}/sync", BindEntry("/h/sync", ""))]
 
   def test_copies_stay_copies(self):
     # ⚑ The fold changes KEY SHAPE only. A ``seeded``/``synced`` COPY must never
@@ -108,8 +117,8 @@ class TestTheFold:
     for mount_arm in (box.ro, box.rw, box.mask):
       assert f"{GUEST}/seed" not in mount_arm
       assert f"{GUEST}/sync" not in mount_arm
-    assert box.seed[f"{GUEST}/seed"].src == "/h/seed"
-    assert box.sync[f"{GUEST}/sync"].src == "/h/sync"
+    assert [row.entry.src for row in box.seed] == ["/h/seed"]
+    assert [row.entry.src for row in box.sync] == ["/h/sync"]
 
   def test_abstract_mounts_carry_the_relabel_policy_through_the_fold(self):
     # The category default supplies TWO facts through one value: the MODE and the
@@ -142,6 +151,68 @@ class TestTheFold:
     # keys; no mask VALUE is ever unpacked. The arm carries no bind entry.
     box = shapes(self.FLOOR)["box"]
     assert box.mask == {f"{GUEST}/masked": True}
+
+
+class TestACopyArmIsAFlatList:
+  """Spec `:147-149` — the copy leaves are FLAT SCOPE-ORDERED LISTS and *"nothing is
+  arbitrated at a destination"*."""
+
+  # ⚑⚑ HAND-BUILT ON PURPOSE — the THIRD stated exception to this file's live-route
+  # rule, and it is stated here rather than assumed. MEASURED 2026-08-11: the live
+  # emitter cannot yet produce two copy rows at one dest in one scope, because the
+  # store LEAF is itself dest-keyed — ``~/x`` and ``/home/agent/x`` normalize into
+  # one key inside ``build_launch_snapshot``, and ``agent.default`` vs
+  # ``agent.<active>`` resolve through the cascade before an entry exists. So these
+  # assert the ARM'S CONTRACT, not a reproduction of a live loss.
+  #
+  # The contract is not academic: ``reconcile_categories`` on these very entries
+  # keeps BOTH (measured), so a dest-keyed ``seed``/``sync`` arm is the ONE place in
+  # the chain where a declared copy can vanish with no warning at any log level, and
+  # the survivor is chosen by raw dest SPELLING rather than by the user's file order.
+
+  def rows(self, category: str, *srcs: str) -> list[CategoryEntry]:
+    """*srcs* as that many copy entries at ONE dest, in the order given."""
+    return [
+      CategoryEntry(
+        category=category, scope="box", box_dest=DEST, host_src=src,
+        delivery="COPY", options="", name=DEST,
+        key_segments=("box", category, DEST),
+      )
+      for src in srcs
+    ]
+
+  def test_TWO_seeded_rows_at_ONE_dest_BOTH_survive_in_declaration_order(self):
+    box = build_store_shape_set(self.rows("seeded", "/h/first", "/h/second"))["box"]
+    assert box.seed == [
+      CopyRow(DEST, BindEntry("/h/first", "")),
+      CopyRow(DEST, BindEntry("/h/second", "")),
+    ]
+
+  def test_TWO_synced_rows_at_ONE_dest_BOTH_survive_in_declaration_order(self):
+    box = build_store_shape_set(self.rows("synced", "/h/first", "/h/second"))["box"]
+    assert box.sync == [
+      CopyRow(DEST, BindEntry("/h/first", "")),
+      CopyRow(DEST, BindEntry("/h/second", "")),
+    ]
+
+  def test_a_repeat_does_not_reorder_a_copy_at_a_NESTING_dest(self):
+    # ⚑ The fold decides the §0 rows per DEST but must emit in DECLARATION order.
+    # Grouping by dest pulls the two ``DEST`` rows together and lands the nested
+    # one LAST, inverting which copy overwrites which at apply time.
+    inner = CategoryEntry(
+      category="seeded", scope="box", box_dest=f"{DEST}/inner", host_src="/h/inner",
+      delivery="COPY", options="", name=f"{DEST}/inner",
+      key_segments=("box", "seeded", f"{DEST}/inner"),
+    )
+    first, second = self.rows("seeded", "/h/first", "/h/second")
+    box = build_store_shape_set([first, inner, second])["box"]
+    assert [row.entry.src for row in box.seed] == ["/h/first", "/h/inner", "/h/second"]
+
+  def test_a_copy_row_is_NEVER_a_mount_row(self):
+    # ⚑ The arms diverge in TYPE, which is the whole repair: a mount arm arbitrates
+    # at a dest and is keyed by it, a copy arm does neither.
+    box = build_store_shape_set(self.rows("seeded", "/h/first", "/h/second"))["box"]
+    assert (box.ro, box.rw, box.mask) == ({}, {}, {})
 
 
 class TestPerScope:
