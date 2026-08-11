@@ -3289,6 +3289,21 @@ def _run_container(
                 auth_src=auth_src, logger=logger,
                 suppress_oauth=suppress_oauth,
             )
+            # The create-time ``synced`` write — the seed's SIBLING, immediately
+            # after it and BEFORE the canon skeleton (which makes that region 555).
+            # It runs again below on this same launch, mtime-gated; that is the
+            # point, not a duplicate: this write is what the gate then compares
+            # against.  ⚑ ``install`` here is the FIRST detect — the launch
+            # re-detects after ``prepare_host()`` further down, so the two bind maps
+            # are not guaranteed identical.
+            _sync_box_at_create(
+                std=std, proj=proj, agent_name=agent_id, target=target, desc=desc,
+                install=install, agent_cfg=agent_cfg,
+                global_config_path=system_settings_path,
+                agent_config_path=agent_cfg_path,
+                persona_values=persona_values,
+                logger=logger, deliver_creds=auth_src.creds_shared,
+            )
             # The canon skeleton (J-7), in the SAME position as ``run_create``'s:
             # after the seed, inside the journal window.  See that call site for why
             # both are load-bearing.
@@ -3841,9 +3856,12 @@ def _run_container(
         # after it: where both write one host file, the `synced` row wins.
         # ⚑ D-M4 is unchanged: this resolve was made with the SAME
         # `deliver_creds=auth_src.creds_shared` the retired one was.
+        # ⚑ MTIME-GATED, and the gate is now honest: every sync dest was written by
+        # the CREATE-time sync (:func:`_sync_box_at_create`), so this compares against
+        # the sync's own prior write rather than against whatever landed there first.
         _apply_synced_copies(
             snapshot=_snapshot, reconciled=reconciled,
-            bindings=launch_binds, logger=logger,
+            bindings=launch_binds, logger=logger, skip_if=_synced_uptodate,
         )
 
         # Image sharing: mount host image storage read-only into child, routed
@@ -6422,9 +6440,13 @@ def _resolve_launch_snapshot(
     actually mounts.
     The NARROW resolves leave it ``None`` deliberately — the image / helper
     tables (``include_base_families=False``, no target) resolve box_dests
-    disjoint from anything a persona touches, and the seed / synced resolves are
-    FILE DELIVERY only, where a behavior scalar or a token pointer has no
-    meaning.  ``None`` is byte-identical to a pre-persona build.
+    disjoint from anything a persona touches, and the SEED resolve is FILE
+    DELIVERY only, where a behavior scalar or a token pointer has no meaning.
+    ``None`` is byte-identical to a pre-persona build.  ⚑ The CREATE-time SYNC
+    resolve (:func:`_sync_box_at_create`) is NOT among them and DOES carry the
+    tier: it is a FULL resolve whose whole product is the bind map, and a persona's
+    ``secret_path.<VAR>`` is a MOUNT — a map built without it would resolve a sync
+    dest against a mount set the launch does not have.
 
     *cli_level* is the §1A CLI LEVEL (P8), built by
     :func:`kanibako.settings.settings_cli_level.build_cli_level` and validated inside
@@ -6901,16 +6923,18 @@ def emit_collision_warnings(collisions) -> None:
     after that, until the config is fixed.
 
     ⚑ What IS collapsed is the in-process re-resolutions of one declaration set:
-    ``_resolve_launch_snapshot`` runs up to four times per ``kanibako start`` (the
-    main resolve, the conditional image + helper resolves, the create-time seed
-    resolve) and every one of them reads the user's settings FILES, so one
-    same-scope collision declared in a box file surfaces in several of them.
-    Printing it four times is one ambiguity reported four times, not four
-    ambiguities — so the memo is keyed ``(box_dest, scope)`` and lives for the
-    process, never beyond it.
+    ``_resolve_launch_snapshot`` runs up to five times per ``kanibako start`` (the
+    main resolve, the conditional image + helper resolves, and — on a launch that
+    materializes the box — the create-time seed and create-time sync resolves) and
+    every one of them reads the user's settings FILES, so one same-scope collision
+    declared in a box file surfaces in several of them.  Printing it five times is
+    one ambiguity reported five times, not five ambiguities — so the memo is keyed
+    ``(box_dest, scope)`` and lives for the process, never beyond it.
 
-    ⚑ There WAS a fifth — the ``synced`` copy resolve — retired at cutover 2b-3
-    when that pass moved below the main resolve and started consuming it.
+    ⚑ THE COUNT HAS MOVED TWICE AND THE HISTORY MATTERS: the LAUNCH-time ``synced``
+    resolve was retired at cutover 2b-3, when that pass moved below the main resolve
+    and started consuming it; a CREATE-time one arrived 2026-08-11 with
+    :func:`_sync_box_at_create`, which is a different resolve on a different path.
     """
     logger = get_logger(__name__)
     for collision in collisions:
@@ -7126,6 +7150,14 @@ def _seed_box_home(
        created without step 3 gets an EMPTY chapter.  This is not a redundant
        second copy — do not "simplify" it away by folding it back into step 2.
 
+    ⚑⚑ THE CREATE-TIME ``synced`` WRITE IS **NOT** A FOURTH STEP HERE — it is the
+    SIBLING :func:`_sync_box_at_create`, which every caller runs immediately after
+    this returns.  Two reasons it must stay outside: a sync is an OVERWRITE, so
+    folding it in would falsify the create-if-absent contract stated above; and this
+    function's resolve is deliberately NARROW (no bind map), while the sync needs a
+    FULL one.  Housing both in one function is a standing invitation to "simplify"
+    by widening the narrow resolve, which is exactly what must not happen.
+
     The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
     per-launch mechanisms and are NOT part of this one-time seed.
     """
@@ -7142,6 +7174,89 @@ def _seed_box_home(
     )
     _install_box_handbook(
         proj=proj, snapshot=snapshot, agent_id=agent_id, logger=logger,
+    )
+
+
+def _sync_box_at_create(
+    *,
+    std,
+    proj,
+    agent_name: str,
+    target=None,
+    desc=None,
+    install=None,
+    agent_cfg=None,
+    global_config_path,
+    agent_config_path,
+    persona_values: "Mapping[str, str] | None" = None,
+    logger,
+    deliver_creds: bool = True,
+) -> None:
+    """Write every ``synced`` copy ONCE at create, UNGATED — the SIBLING of the seed.
+
+    ⚖️ RULED 2026-08-11 — *"at box creation, since that's the only time seeded is
+    copied, find the top-most bind in the bindings and write synced to it once at
+    creation, irrespective of date"*, "top-most" being *"the opposite of home"*: the
+    INNERMOST bind covering the dest, which is what :func:`_synced_host_dest` already
+    resolves (longest-prefix cover).  There is ONE covering-bind resolver and this is
+    a CALLER of it, not a second copy engine.
+
+    ⚑⚑ ``skip_if=None`` — the create-time write is UNCONDITIONAL, and that is the
+    whole point of the ruling rather than an omission.  :func:`_synced_uptodate`
+    compares the destination's mtime against the source's, which means something only
+    if the destination was last written BY THE SYNC.  Nothing made that true: the
+    create-time seed writes first through ``shutil.copy2``, which PRESERVES the source
+    mtime, so a seed source newer than the sync source pinned the SEED's bytes at a
+    ``synced`` destination — permanently, silently, and at a credential more often
+    than not.  Writing the sync once at create, irrespective of date, makes the
+    invariant TRUE from creation onward, which is why the collapse's copy-vs-copy
+    prune (the retired ``store_collapse._sync_dests``) came out in the same commit: it
+    was working around this gate by deleting a declared seed row.
+
+    ⚑ A SECOND, FULL RESOLVE, beside the seed's narrow one, and the two must stay
+    two.  A ``synced`` dest is meaningless without the bind map (spec §0 "ONE DEST
+    SPACE, TWO DELIVERIES"), so this needs ``include_base_families=True`` — while
+    :func:`_apply_init_seeds` deliberately resolves NARROW, without the agent-binding
+    inputs, because SEEDING is file delivery.  Widening that one to reach the bind map
+    would make it lie about what it reads.
+
+    ⚑ IT RUNS BEFORE ``materialize_canon_skeleton``, for the same reason the seed
+    does: the skeleton makes the canon region 555, and a copy into it afterwards dies
+    ``EACCES``.  Both create call sites keep that order.
+
+    ⚑ *install* is ``target.detect()`` — a HOST FILESYSTEM PROBE (agent name, host
+    binary, install root, launcher), nothing to do with the image — and ``None`` (the
+    agent is not installed on this host) is a legitimate state, not an error.  On the
+    LAUNCH auto-create path the launch RE-DETECTS after ``prepare_host()``, so the
+    create-time and launch-time bind maps are not guaranteed identical; the sync runs
+    again later in that same process and the mtime gate then correctly no-ops.
+
+    ⚑ NO CLI LEVEL (§1A): the create-side flags are not the launch's, and the
+    ephemeral ones (``-M``/``-N``/``-C``/``-R``) carry no bind.  The image keys ride
+    their own conditional resolve, which this map does not carry either.
+
+    ADDITIVE: with no ``<scope>.synced`` keys configured the sync list is empty and
+    this copies nothing.
+    """
+    snapshot, reconciled = _resolve_launch_snapshot(
+        std=std,
+        proj=proj,
+        agent_name=agent_name,
+        system_settings_path=global_config_path,
+        agent_cfg_path=agent_config_path,
+        desc=desc,
+        install=install,
+        target=target,
+        agent_cfg=agent_cfg,
+        persona_values=persona_values,
+        deliver_creds=deliver_creds,
+    )
+    _apply_synced_copies(
+        snapshot=snapshot,
+        reconciled=reconciled,
+        bindings=_launch_bind_map(snapshot, reconciled),
+        logger=logger,
+        skip_if=None,
     )
 
 
@@ -7416,7 +7531,8 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     the minimal-sufficient seed context — the agent-resolution chain the seed
     needs (active agent → target/descriptor, the agent config path, and the
     effective group-auth gate) — WITHOUT the launch-only image pull/build, then
-    delegates to the shared :func:`_seed_box_home`.
+    delegates to the shared :func:`_seed_box_home` and its SIBLING
+    :func:`_sync_box_at_create` (the once-at-create, UNGATED ``synced`` write).
 
     A no-op-safe entry: a no-agent box (no resolvable target) still seeds its
     base/workset template layers (the agent layer + cred seed are skipped).
@@ -7522,6 +7638,21 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         system_settings_path=system_settings_path,
         auth_src=auth_src, logger=logger,
         suppress_oauth=suppress_oauth,
+    )
+    # The create-time ``synced`` write, the seed's SIBLING (see
+    # :func:`_sync_box_at_create`).  It is INSIDE this function, not beside the
+    # ``run_create`` call, so it lands BEFORE ``materialize_canon_skeleton`` — which
+    # makes the canon region 555 and would fail a copy into it with ``EACCES``.
+    # ⚑ The host-install PROBE: it feeds the agent delivery binds, and a ``None``
+    # (agent not installed on this host) is an ordinary state, exactly as at launch.
+    _sync_box_at_create(
+        std=std, proj=proj, agent_name=agent_id, target=target, desc=desc,
+        install=target.detect() if target is not None else None,
+        agent_cfg=seed_agent_cfg,
+        global_config_path=system_settings_path,
+        agent_config_path=agent_cfg_path,
+        persona_values=persona_values,
+        logger=logger, deliver_creds=auth_src.creds_shared,
     )
 
 
@@ -8024,22 +8155,32 @@ def _apply_synced_copies(
     reconciled,
     bindings,
     logger,
+    skip_if: "Callable[[Path, Path], bool] | None",
 ) -> None:
     """Apply the terminal ``<scope>.synced`` category copies into the box.
 
-    Unlike copy-once seeds, synced entries are reapplied on EVERY launch, but only
-    when the host source is NEWER than the box-side copy (mtime gating) so an
-    unchanged source is a no-op.  Reads the collapsed sync rows
-    (:func:`_launch_synced_list`) and resolves each guest dest through the bind that
-    covers it (:func:`_synced_host_dest`).
+    Reads the collapsed sync rows (:func:`_launch_synced_list`) and resolves each
+    guest dest through the bind that covers it (:func:`_synced_host_dest`).
 
-    ⚑⚑ ALL FOUR PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
+    ⚑⚑ *skip_if* IS REQUIRED AND HAS NO DEFAULT, because the two passes that run this
+    are not the same pass and neither may inherit the other's answer:
+
+    * the LAUNCH refresh passes :func:`_synced_uptodate` — reapply on every launch,
+      but only when the host source is NEWER than the box-side copy, so an unchanged
+      source is a no-op;
+    * the CREATE-time write (:func:`_sync_box_at_create`) passes ``None`` — write
+      UNCONDITIONALLY, once, *"irrespective of date"* (Jei, 2026-08-11).  That write
+      is what MAKES the launch gate meaningful: an mtime comparison against the
+      destination only says anything if the destination was last written by the sync.
+
+    ⚑⚑ ALL FIVE PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
     (P3 — make the violation unavailable, not forbidden).  This pass cannot run until
-    the launch bind map is FINAL, because a sync dest means nothing without it: every
+    the bind map is FINAL, because a sync dest means nothing without it: every
     row would have to be skipped.  A caller that tries to run it earlier — where this
     used to sit, ~180 lines up beside the create-time seed — cannot even NAME
     *snapshot*, *reconciled* or *bindings*, so it fails LOUDLY instead of quietly
-    delivering nothing.
+    delivering nothing.  ⚑ The create-time caller satisfies that by bringing a real,
+    FULL resolve of its own; the guard is not relaxed for it.
 
     ⚑⚑ THE THREE INPUTS COME FROM ONE COLLAPSE, AND THEY HAVE TO.
     ``collapse_store_shapes`` folds the sync list AGAINST the bind map it just built
@@ -8064,13 +8205,13 @@ def _apply_synced_copies(
         dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:
             continue
-        # if_absent=False -> overwrite (reapplied every launch), mtime-gated so an
-        # unchanged source is a no-op.
+        # if_absent=False -> overwrite, ALWAYS: a sync owns its destination by
+        # writing it, and *skip_if* is the caller's gate, not this loop's.
         # ⚑ The dest IS the row's identity (R-10) — a ``CollapsedCopy`` has no name.
         _apply_shell_copy(
             Path(sync.src), dest,
             label="synced", name=sync.dest, host_src=sync.src,
-            logger=logger, if_absent=False, skip_if=_synced_uptodate,
+            logger=logger, if_absent=False, skip_if=skip_if,
         )
 
 

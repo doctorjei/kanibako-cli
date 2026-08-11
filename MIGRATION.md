@@ -1470,6 +1470,61 @@ success.
 
 ---
 
+### 2.30 `synced` is written once at box creation, and a `seeded` entry sharing that destination is kept
+
+**What changed.** Two things, and they only make sense together.
+
+**1. `box create` now writes every `synced` entry once, unconditionally.** It happens immediately
+after the box is seeded, into the bind that covers the destination (§2.29), before anything is
+launched. A launch still re-copies synced entries, still only when the host source is newer than the
+copy already in the box — that is unchanged.
+
+**2. A destination declared under both `seeded` and `synced` now keeps both entries.** The seed is
+applied first, at create, and the sync then overwrites it. Until now the seed entry was discarded and
+only the sync was ever delivered.
+
+**Why the two go together.** A launch decides whether to re-copy a synced entry by comparing
+timestamps: if the copy in the box is at least as new as the host source, there is nothing to do.
+**That comparison only means anything if the copy in the box was written by the sync.** Nothing made
+that true. `seeded` entries are copied once, when the box is created, and the copy preserves the
+source file's own timestamp — so if a seed source happened to be newer than a sync source aimed at
+the same place, the seed's content sat at that destination looking up to date, and every launch
+thereafter skipped the sync. Permanently, with nothing in the log, at a destination that is usually a
+credential.
+
+Writing the sync once at creation, irrespective of timestamps, makes the assumption true from the
+box's first moment: the destination holds sync-written content, and the launch check compares against
+the sync's own previous write. The arbitration that used to paper over this — dropping the seed entry
+— is no longer needed, so a declared entry is no longer thrown away.
+
+**What you must do.** Nothing for an existing box: this changes what happens at `create`, and an
+existing box has already been created.
+
+For a **new** box, check for any destination you have declared under both categories:
+
+```yaml
+box:
+  seeded:
+    "~/.config/tool/config.toml": ["/etc/skel/tool.toml"]   # applied first, at create
+  synced:
+    "~/.config/tool/config.toml": ["~/host/tool.toml"]      # then overwrites it, at create
+```
+
+Both are delivered now, in that order, so the sync's content is what the box ends up with — the same
+end state the old arbitration produced, reached by delivering both rather than by discarding one. The
+difference is visible only if the two sources are directories: the seed's files that the sync does not
+also carry now survive underneath, where before they were never written at all.
+
+⚑ The refusal for a `seeded` destination outside the box home is unchanged, and a `synced` entry at
+the same destination does not excuse it. It is still reported by name.
+
+**Why.** The timestamp check is an optimisation — it exists so an unchanged source costs nothing —
+and an optimisation was deciding which of two declared entries a box received. Making the sync write
+its own destination once at creation fixes the assumption the check was built on, instead of deleting
+one of the user's entries to keep the assumption from being tested.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

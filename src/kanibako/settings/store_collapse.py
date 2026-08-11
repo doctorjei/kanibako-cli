@@ -88,41 +88,31 @@ def is_mask(bind: CollapsedBind) -> bool:
 
 
 def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
-  """Every scope's seed arm concatenated IN SCOPE ORDER, minus the dests a SYNC owns."""
+  """Every scope's seed arm concatenated IN SCOPE ORDER - EVERY row, nothing pruned."""
   # ⚑ PUBLIC because it needs no home bind, and its SIGNATURE is the argument: home
   # is pid 0, seeded BEFORE the loop (§2a), so the seed arm is computable where no
   # bind map is. A caller with no home bind (the CREATE-side seed resolve) reads
   # this; ONE implementation, so a seed list cannot come out different depending on
-  # which door it was fetched through - INCLUDING the prune below.
-  # ⚑⚑ NO MOUNT ARBITRATES ANYTHING HERE, and the prune is not a mount rule: it is
-  # the COPY-vs-COPY pick the shipped route already makes
-  # (``settings_categories._resolve_copy_group`` - "a synced cred copy-sync is not a
-  # layer: it REPLACES whatever else copies to that dest"), reproduced so the
-  # collapse cannot deliver a seed the reconcile would have dropped. Prose:
-  # ``llm-docs/kanibako/settings/store_collapse.py.md``.
-  owned = _sync_dests(store_shape_set)
+  # which door it was fetched through.
+  # ⚑⚑ NOTHING IS ARBITRATED AT A DESTINATION (spec :147-149) - and that now holds
+  # ACROSS the two arms as well as within one. A dest carrying both a seed and a
+  # sync keeps BOTH rows, because DELIVERY ORDER decides it: `box create` seeds
+  # first, then writes every sync row into the bind that covers it UNCONDITIONALLY
+  # (Jei, 2026-08-11: *"write synced to it once at creation, irrespective of
+  # date"*). The sync therefore owns the dest by having written it LAST, which is
+  # also what makes the launch-time mtime gate mean anything - it compares against a
+  # dest the SYNC wrote. The earlier prune here answered the same question by
+  # deleting the seed, which cost the user a declared copy to protect a gate.
+  # Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].seed:
       dest = normalize_bind_dest(dest_path)
-      # ⚑ REFUSED FIRST, PRUNED SECOND: a mis-declared dest is still an error, and
-      # a sync at that dest must not quietly excuse it.
+      # ⚑ A mis-declared dest is still an ERROR BY NAME, and a sync sharing that dest
+      # does not quietly excuse it.
       _refuse_seed_outside_home(dest, entry)
-      if dest not in owned:
-        copies.append(CollapsedCopy(entry.src, dest, entry.opts))
+      copies.append(CollapsedCopy(entry.src, dest, entry.opts))
   return copies
-
-
-def _sync_dests(store_shape_set: StoreShapeSet) -> set[str]:
-  """Every scope's SYNC destinations, normalized - the dests a sync owns OUTRIGHT."""
-  # ⚑ EXACT EQUALITY, NEVER CONTAINMENT. ``_resolve_copy_group`` groups on the exact
-  # dest, so this reproduces shipped behaviour byte for byte. A seed INSIDE a synced
-  # directory is unhandled there too, and widening it here would be a new rule.
-  return {
-    normalize_bind_dest(dest_path)
-    for scope in SCOPE_CONTAINMENT
-    for dest_path, _entry in store_shape_set[scope].sync
-  }
 
 
 def _collapse_synced(
