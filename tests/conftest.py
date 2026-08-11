@@ -588,8 +588,12 @@ def start_mocks():
                     # (the module-level captured, unpatched orchestrator).
                     return _REAL_RESOLVE_LAUNCH_SNAPSHOT(*a, **kw)
 
+                from kanibako.commands.start import _install_assembly_collapse
                 from kanibako.settings.agent_representation import agent_default_partial
-                from kanibako.settings.settings_categories import reconcile_categories
+                from kanibako.settings.settings_categories import (
+                    gate_credential_delivery,
+                    reconcile_categories,
+                )
                 from kanibako.settings.settings_launch import (
                     build_launch_snapshot,
                     meta_agent_grammar_floor,
@@ -628,17 +632,35 @@ def start_mocks():
                         _floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
                     _state = dict(_agent_cfg.state)
+                # ⚑⚑ THE ONE CORE ROW THIS STUB CARRIES — the box HOME bind, and it
+                # is a PRECONDITION of the collapse, not a convenience.  Home is pid
+                # 0: ``_split_home_bind`` lifts the single mount at ``~`` out as the
+                # foundation, and with no such mount the collapse EARLY-RETURNS and
+                # writes no ``meta.assembly.bindings`` at all.  This stub
+                # reimplements the base-families branch and would otherwise omit
+                # every core family, so every launch driven through it would take
+                # the reconciled route rather than the collapsed one — i.e. would
+                # test the route the cutover is deleting.
+                # 🛑 The terminal arm key is ``box.bindings.rw``; a deeper
+                # ``box.bindings.rw.home`` is REFUSED BY NAME (``_insert_dotted``) —
+                # the dest is the map KEY, the entry name was dropped.
+                # 🛑 The src is the LITERAL path, not ``@meta.box.home``: this stub
+                # passes no ``meta_runtime``/``workset_anchor``, so an @-ref would
+                # not resolve.  ``proj.shell_path`` is a REAL mkdir'd dir above, so
+                # the L7 guarantee-create has nothing to do.
+                _default_cats: dict[str, object] = {
+                    "box.bindings.rw": {"~": (str(proj.shell_path), "Z,U")},
+                }
                 # SECRET category (spec §2a secret_path): fold the active agent's
                 # secret_path pointers into the snapshot as agent-scope category
                 # defaults (already discriminated agent.<node>.secret_path.<VAR>), so
                 # the reconcile emits the secret_path winners the delivery seam +
                 # export shim consume — exactly as the real cascade would.
-                _default_cats = None
                 if _agent_cfg is not None and getattr(_agent_cfg, "secret_path", None):
-                    _default_cats = {
+                    _default_cats.update({
                         f"agent.{_node}.secret_path.{var}": path
                         for var, path in _agent_cfg.secret_path.items()
-                    }
+                    })
                 # allow_helpers is now an AGENT-scope behavior key (spec §2d): the
                 # live launch reader (effective_behavior) resolves it off the
                 # snapshot and DEFAULTS True (helpers ON). Unit tests drive the
@@ -673,9 +695,21 @@ def start_mocks():
                 entries = snapshot_category_entries(
                     snap, active_agent=_node, box_ctx=ctx,
                 )
+                # ⚑⚑ THE TAIL OF THE REAL ORCHESTRATOR, MIRRORED BY CALL — the gate,
+                # the reconcile, and the COLLAPSE, in that order and off the SAME
+                # gated list, exactly as ``_resolve_launch_snapshot`` does it.
+                # 🛑 The collapse install is not optional decoration: it is the ONLY
+                # writer of ``meta.assembly.*``, and it lives in the orchestrator
+                # this stub REPLACES.  Without it every launch driven through this
+                # fixture reads all three leaves ABSENT and takes the reconciled
+                # fallback — i.e. tests the route the cutover is deleting.  These are
+                # CALLS to the one implementation, never a second copy of it.
+                _deliver_creds = kw.get("deliver_creds", True)
+                delivered = gate_credential_delivery(entries, _deliver_creds)
                 rec = reconcile_categories(
-                    entries, deliver_creds=kw.get("deliver_creds", True),
+                    delivered, deliver_creds=_deliver_creds,
                 )
+                _install_assembly_collapse(snap, delivered)
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
                 # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and
                 # emits the §0 row-5 collision warnings. This stub does NEITHER,
