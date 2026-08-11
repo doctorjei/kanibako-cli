@@ -221,6 +221,13 @@ class _WorksetLike(Protocol):
     def projects(self) -> Sequence[_WorksetProjectLike]: ...
 
 
+#: One :func:`iter_workset_projects` row: ``(workset_name, workset, [(project, status), ...])``.
+#: ⚑ Named because the bare type is 127 characters — too long for any signature wrap that keeps it
+#: whole, so spelling it inline forced a break INSIDE the generic in one place and left it unbroken
+#: in another. Two spellings of one concept is the thing that gets copied wrong (convention 0).
+_WorksetProjectRows = list[tuple[str, _WorksetLike, list[tuple[str, str]]]]
+
+
 class _WorksetProjectLike(Protocol):
     """Structural type for the workset project attributes read here."""
     @property
@@ -1061,9 +1068,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     return results
 
 
-def iter_workset_projects(std: StandardPaths,
-                          config: KanibakoConfig) -> list[tuple[str, _WorksetLike,
-                                                                list[tuple[str, str]]]]:
+def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _WorksetProjectRows:
     """Return ``(workset_name, workset, [(project_name, status), ...])`` for every workset."""
     import sys
 
@@ -1072,7 +1077,7 @@ def iter_workset_projects(std: StandardPaths,
     from kanibako.settings.config_io import load_doc
 
     registry = list_worksets(std)
-    results: list[tuple[str, _WorksetLike, list[tuple[str, str]]]] = []
+    results: _WorksetProjectRows = []
 
     for ws_name in sorted(registry):
         root = registry[ws_name]
