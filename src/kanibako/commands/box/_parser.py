@@ -1,4 +1,10 @@
-"""Parser setup, list, info, config, and lifecycle commands for kanibako box."""
+"""The ``box`` verb tree: parser setup, create, list, info, rm/register, config verbs.
+
+**_Terminology_**
+- _primary_ box: metadata under ``std.boxes/<name>``, indexed in the primary workset membership
+- _standalone_ box: metadata in-tree (``<root>/box_data``), indexed in ``registry.standalone``
+- _deregistered_: ``rm`` without ``--purge`` — membership dropped, metadata retained for readopt
+"""
 
 from __future__ import annotations
 
@@ -48,12 +54,7 @@ _MODE_CHOICES = ["default", "standalone", "workset"]
 def _add_target_group(
     parser: argparse.ArgumentParser, *, required: bool = False,
 ) -> None:
-    """Attach the uniform ownership-target flags to *parser*.
-
-    ``--default`` / ``--standalone`` / ``--workset <ws>`` are mutually
-    exclusive.  Used identically by ``move`` (optional) and ``convert``
-    (required).
-    """
+    """Attach the uniform, mutually-exclusive ownership-target flags to *parser*."""
     group = parser.add_mutually_exclusive_group(required=required)
     group.add_argument(
         "--default", dest="to_default", action="store_true",
@@ -497,51 +498,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _assert_primary_home_free_for_create(std, name: str) -> None:
-    """Refuse a primary ``create --name <name>`` that would reuse an existing box home.
-
-    ⚑ DATA-LOSS GUARD (box-lifecycle I4).  ``create --name X`` materialises the box
-    at ``std.boxes/X`` with ``mkdir(exist_ok=True)`` — so if that home is already
-    occupied the create MERGES into the existing box's data instead of failing.
-    Combined with the retained metadata of a ``deregistered`` box, a later
-    ``rm X --purge`` (resolving the deregistered entry) would then delete the
-    freshly-created box's home — silent data loss.  Refuse the create up front,
-    naming the ``register`` / ``purge`` recovery.
-
-    Detects, for the target home ``std.boxes/<name>``:
-
-    * DEREGISTERED — a ``registry_store`` deregistered entry parked by ``rm`` (no
-      ``--purge``); the exact hazard.  Recoverable via ``register`` (readopt) or
-      deletable via ``rm --purge``.
-    * ORPHANED metadata — a ``std.boxes/<name>`` dir with NO active membership and
-      NO deregistered entry (a hand-left dir, or a create that crashed before its
-      write-ahead journal entry).  Neither ``register`` nor ``rm`` resolves it by
-      name today, so the guidance points at removing the dir / choosing another name.
-
-    A genuine half-create being RE-RUN (a pending ``create`` journal entry keyed by
-    this home) is the sanctioned recovery re-entry and is NOT refused — it is left
-    to :func:`run_create`'s recovery path.  ACTIVE-name collisions are handled
-    UPSTREAM by :func:`check_primary_box_name_free` (which raises before this runs),
-    so this guard never sees a live-membership name.
-
-    Fires UNCONDITIONALLY of the ``register`` flag: ``run_create`` always resolves
-    with ``register=False`` (deferring the up-front name-uniqueness check), so this
-    is what closes the reuse hole on the deferred path.  Raises
-    :class:`ProjectError` on a conflict; returns ``None`` when the home is free —
-    the common case, leaving a normal create byte-identical.
-    """
+    """⚑ DATA-LOSS GUARD (I4): refuse a ``create --name`` that would reuse a box home."""
     from kanibako.project import registry_store
     from kanibako.launch import journal
 
     box_dir = std.boxes / name
 
-    # DEREGISTERED wins over any journal crumb: a box that was deliberately
-    # `rm`-deregistered must be recovered via `register` / deleted via `--purge`,
-    # never silently reused by `create`.  This refusal MUST precede the
-    # pending-create allow below — otherwise a STALE `create` journal entry
-    # (left by a register->clear-window crash that `rm` does not clear) would
-    # FALSE-ALLOW a `create --name X <new path>` to merge into the deregistered
-    # box's retained home (reopening the data-loss window).  A legitimate
-    # half-create has NO deregistered entry, so this ordering never refuses one.
+    # ⚑ ORDER: this refusal MUST precede the pending-create allow below — a STALE create
+    # entry would otherwise FALSE-ALLOW a merge into a deregistered box's retained home.
     if registry_store.lookup_deregistered(std.registry, name) is not None:
         raise ProjectError(
             f"a box named '{name}' already exists as a deregistered box "
@@ -550,9 +514,7 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
             f"retry."
         )
 
-    # A half-create being recovered (pending `create` entry for this home, and
-    # NOT deregistered per the check above) is the legitimate re-entry — never
-    # refuse it (run_create completes the replay).
+    # A half-create being recovered is the legitimate re-entry — never refuse it.
     if journal.pending_create(std.journal, box_dir) is not None:
         return
 
@@ -565,28 +527,7 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
 
 
 def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
-    """Create-side persona-grata store CHECK for ``create --agent <pid>+<hid>``.
-
-    The create-side trigger (DESIGN §4): when the explicit agent ref names a
-    persona whose persona-grata store entry EXISTS, read the store and refuse
-    the create NOW if it cannot yield a usable persona — BEFORE the persona
-    create verdict, so a broken store is reported as itself rather than as the
-    verdict's downstream "no endpoint configured".
-
-    ⚑ NOTHING IS WRITTEN.  This used to IMPORT the store into
-    ``agents/<node>/settings.yaml``; the store is a LIVE resolution input now
-    (``read_persona_bundle`` → the launch's persona cascade level), and the
-    agent settings file holds user-intent values only, so there is nothing to
-    persist and no ``settings.yaml`` for a corrupt-file arm to trip over.  The
-    gates themselves are UNCHANGED: same hard errors, same WARN-ONLY probe.
-
-    Returns an ``"Error: …"`` message for the caller to print-and-refuse
-    (malformed ref, unusable store config, a store naming no endpoint), or
-    ``None`` when there is nothing to do (bare/plain ref, no store entry,
-    harness not installed, a harness with no persona reader — all fall through
-    to today's create behavior) or the store checked out (a soft token-pointer
-    warning is printed here).
-    """
+    """⚑ READ-ONLY create-side persona-grata store CHECK; an ``"Error: …"`` or ``None``."""
     from kanibako.agent_ref import display_agent_ref
     from kanibako.errors import ConfigError
     from kanibako.log import get_logger
@@ -605,11 +546,8 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
     display = display_agent_ref(entry.node)
     bundle = read_persona_bundle(entry.node, target)
     if bundle is None or bundle.no_reader:
-        # ``None`` cannot happen (the entry located a moment ago) but costs
-        # nothing to honour.  ``no_reader`` DOES: a goose persona is configured
-        # entirely through the keyspace and may own a store dir purely for its
-        # ``.secret_path``, so "this harness cannot read a store config" is a
-        # fall-through, never a refusal.
+        # ⚑ ``no_reader`` is a FALL-THROUGH, never a refusal (a goose persona may own a
+        # store dir purely for its ``.secret_path``).
         return None
     if bundle.reject_reason is not None:
         return f"Error: {bundle.reject_reason}"
@@ -624,23 +562,15 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
             f"({bundle.token_error}); the store contributes no token.",
             file=sys.stderr,
         )
-    # WARN-ONLY first-ever probe (see the docstring).  ⚑ WARN-ONLY applies to
-    # the two ANSWERED non-PASS verdicts; ``NOT_APPLICABLE`` means nothing was
-    # learned about the token and nothing will be for this input (a harness with
-    # no probe, an unreadable token, an endpoint that requires a model this
-    # persona does not name) — a valid configuration nobody can act on, so it
-    # goes to the log, exactly as on the launch path
-    # (:func:`~kanibako.commands.start._persona_probe_error`).  ⚑ A persona that
-    # simply names no model is still PROBED (model field omitted), so a dead
-    # token still warns here.
+    # ⚑ WARN-ONLY probe, and it warns for the two ANSWERED non-PASS verdicts only —
+    # ``NOT_APPLICABLE`` learned nothing and goes to the log, as on the launch path.
     if bundle.token_path is not None:
         try:
             outcome = target.verify_persona(
                 bundle.endpoint, bundle.token_path, bundle.model,
             )
         except Exception:
-            # Probe contract is never-raise; hold plugins to it. A plugin bug IS
-            # an anomaly, so it warns rather than going quiet.
+            # The probe contract is never-raise; hold plugins to it, and warn on a bug.
             outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
         if outcome.verdict is PersonaProbeVerdict.REJECTED:
             print(
@@ -676,15 +606,12 @@ def run_create(args: argparse.Namespace) -> int:
     enable_vault = not getattr(args, "no_vault", False)
     project_dir = args.path
 
-    # R2: every box name is lowercase — silently fold a user-supplied --name.
-    # After folding, a NEW box's --name is held to the §Design 8 blocklist.
+    # ⚑ R2: fold --name to lowercase BEFORE validating (the blocklist sees the fold).
     if getattr(args, "name", None):
         args.name = args.name.lower()
         validate_box_name(args.name)
 
-    # $HOME guard: a home-directory project mounts the entire home tree, so it
-    # must be (a) standalone and (b) an explicit opt-in via --allow-home. Local
-    # mode at $HOME is never permitted.
+    # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
     effective_path = Path(project_dir).resolve() if project_dir else Path.cwd().resolve()
     if effective_path == Path.home().resolve():
         if not args.standalone:
@@ -706,13 +633,7 @@ def run_create(args: argparse.Namespace) -> int:
             )
             return 1
 
-    # Cross-kind name guard (per-kind name policy, Jei 2026-07-08): an EXPLICIT
-    # --name for a PRIMARY box that collides with a WORKSET name shadows that
-    # workset in bare-name resolution (the box wins), so refuse UNLESS --force.
-    # SAME-KIND (another primary box already owns the name) is unconditional.
-    # The deferred registration (``_register_new_box``) re-checks with the same
-    # flag; doing it HERE refuses cleanly BEFORE the box dir + seed materialize
-    # (standalone boxes are not in the primary/workset name domain — skip them).
+    # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
     if getattr(args, "name", None) and not args.standalone:
         from kanibako.errors import ProjectError
         try:
@@ -721,12 +642,7 @@ def run_create(args: argparse.Namespace) -> int:
                 args.name, str(effective_path),
                 force=getattr(args, "force", False),
             )
-            # ⚑ I4 data-loss guard: ALSO refuse when the box HOME std.boxes/<name>
-            # is occupied by a DEREGISTERED entry or an ORPHANED metadata dir
-            # (active-name collisions are already refused by
-            # check_primary_box_name_free above).  This fires on the register=False
-            # create path that skips the up-front uniqueness check — the reuse hole
-            # a later deregistered-purge would exploit to delete a live box's home.
+            # ⚑ I4 data-loss guard — the HOME check the name check above does not make.
             _assert_primary_home_free_for_create(std, args.name)
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -749,15 +665,8 @@ def run_create(args: argparse.Namespace) -> int:
     )
     from kanibako.settings.core_defaults import materialize_canon_skeleton
 
-    # PERSONA LOAD-OR-ERROR — TRUE PRE-FLIGHT (F5, Director ruling 2026-07-03):
-    # resolve a NON-materialising PROBE (``initialize=False`` → NO mkdir) and run
-    # the persona load-or-error gate BEFORE any box dir / meta is created, applying
-    # the SAME probe(named) → gate → initialize pattern the launch path uses.  An
-    # unloadable persona `create` then refuses HERE with NOTHING left on disk (no
-    # box dir, no meta, no journal entry, no seed) — mirroring the ordering clause
-    # for the create path.  The probe carries the deterministic name it WILL
-    # materialise under (:func:`_name_new_box_probe`) so the gate's channel-address
-    # derivation resolves instead of raising "box has no name".
+    # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materialising
+    # (``initialize=False``) so an unloadable persona refuses with NOTHING left on disk.
     if args.standalone:
         _probe = resolve_standalone_project(
             std, config, project_dir, initialize=False,
@@ -772,18 +681,11 @@ def run_create(args: argparse.Namespace) -> int:
             name_override=getattr(args, "name", None),
             register=False,
         )
-    # ALREADY-INITIALIZED, read off the PROBE — captured BEFORE
-    # ``_name_new_box_probe`` below, which mutates ``_probe.name``.  The refusal
-    # itself is deferred to just past the persona pre-flight so error ORDERING is
-    # unchanged; only the MUTATION it used to trail now happens after it.
+    # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
     _already = box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
-    # PERSONA-GRATA STORE CHECK (create trigger): an explicit --agent persona
-    # ref whose store entry exists is READ NOW, BEFORE the verdict below, so a
-    # store that cannot yield a usable persona is refused as ITSELF rather than
-    # as the verdict's downstream "no endpoint configured".  Bare refs / absent
-    # store entries fall through untouched.  ⚑ Nothing is written: the store is
-    # a live resolution input, so a create leaves no persona artifact behind.
+    # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported as
+    # itself rather than as the verdict's downstream "no endpoint configured".
     _agent_arg = getattr(args, "agent", None)
     if isinstance(_agent_arg, str) and _agent_arg:
         _store_err = _check_persona_store_for_create(
@@ -799,26 +701,9 @@ def run_create(args: argparse.Namespace) -> int:
         print(_persona_err, file=sys.stderr)
         return 1
 
-    # ALREADY-INITIALIZED REFUSAL — HOISTED ABOVE THE MATERIALISING RESOLVE.
-    #
-    # It used to sit AFTER that resolve, reading ``proj.is_new``.  But the resolve
-    # runs with ``initialize=True``, and its recovery arms re-create a missing home
-    # (``resolve_project``) and a missing home + workspace
-    # (``resolve_standalone_project``) BEFORE returning — so a box whose home had
-    # been deleted got it silently bootstrapped and was THEN told "already
-    # initialized", a message that was false at the moment it was printed.  Asking
-    # the NON-materialising probe instead makes the message TRUE: nothing has been
-    # written when it prints.  (Standalone AND primary — both resolvers have the
-    # shape.)  Message and exit code are unchanged.
-    #
-    # J1 interrupted-create RECOVERY is unchanged and still takes precedence: a box
-    # that already exists but carries a pending create journal entry is a
-    # half-completed create (crash between seed-start and the registry write), and
-    # is COMPLETED by replay below rather than refused.  The journal entry (not
-    # ``is_new``) drives completion — that is the central J1 fix, restoring the HARD
-    # INVARIANT "registered ==> no pending entry" for PRIMARY and STANDALONE.
-    # ``_pending_create_entry`` keys on the box dir, which the probe resolves
-    # identically to the materialising call (same inputs, ``initialize`` aside).
+    # ⚑ THE ALREADY-INITIALIZED REFUSAL IS HOISTED ABOVE THE MATERIALISING RESOLVE, and
+    # asks the PROBE: the resolve's recovery arms would bootstrap the home the message
+    # then claims already existed.  ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
     is_recovery = _already and _pending_create_entry(std, _probe) is not None
     if _already and not is_recovery:
         print(
@@ -827,16 +712,8 @@ def run_create(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # Loadability resolved → MATERIALISE the box for real.
-    #
-    # J1 lifecycle journal: resolve with register=False so registration is
-    # DEFERRED past the home seed (write-entry -> seed -> register -> clear-entry
-    # below), giving the invariant "registered ==> fully seeded".  The resolver
-    # creates the box dir + meta and sets is_new; only the registry write is held
-    # back to the caller.  On a RE-CREATE of an interrupted box the register=False
-    # import HONORS the flag (resolves the box name from on-disk meta without
-    # registering), so the box resolves with is_new False BUT a pending create
-    # journal entry — the recovery signal handled below.
+    # Loadability resolved → MATERIALISE the box for real.  ⚑ ``register=False`` DEFERS
+    # registration past the home seed, giving the invariant "registered ==> fully seeded".
     if args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
@@ -852,40 +729,17 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
 
-    # Persist image + standalone .gitignore only on a FRESH create — a recovery
-    # re-create reuses the half-built box's already-written meta (the on-disk
-    # record is authoritative; do not overwrite it with possibly-different args).
+    # ⚑ FRESH CREATE ONLY — a recovery re-create reuses the half-built box's on-disk meta.
     if proj.is_new:
-        # §1A CREATE EXCEPTION (R-11a) via the ONE shared gate — the SAME gate the
-        # launch-materialization path calls (`start.py`), so the persist rule has
-        # exactly one home. Only an EXPLICITLY-GIVEN ``-i``/``--image`` persists:
-        # a no-flag create bakes NOTHING into the box tier, and the box resolves
-        # the live cascade for its image (single source — the stored default
-        # stays at its own tier and later default changes reach this box).
-        # The write target is the BOX-TIER settings file from the ONE pair (M-8)
-        # — for standalone that is ``box_data/settings.yaml``, the same file
-        # ``box set box.image=…`` writes and the launch cascade reads as the box
-        # tier.  Deriving it independently here is exactly the split M-8 exists
-        # to prevent.
+        # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
+        # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
         project_toml, _ = box_workset_settings_paths(proj)
         persist_creation_flags(
             project_toml, materializing=proj.is_new, image=args.image,
         )
 
-        # --private: turn the box PRIVATE *before* the home seed runs, so the
-        # host OAuth cred is never forwarded.  Persist both box-scope auth
-        # toggles OFF into the box settings.yaml via the SANCTIONED settings
-        # write (set_config_value; NOT a raw yaml dump) — the same box-scope
-        # path `config set` uses, so the keys land in the box.auth.* slot the
-        # launch snapshot reads.  `project_toml` IS the box-tier file from
-        # `box_workset_settings_paths` — the SAME file seed_new_box's
-        # `resolve_auth_source` reads through the snapshot's box tier — and this
-        # runs BEFORE the seed below, so the seed then resolves tier="box"
-        # (source_root=None) and `seed_cred_files` no-ops.  ⚑ AUTH-CRITICAL that the
-        # two agree: if this wrote a file the snapshot did not read as the box tier,
-        # a supposedly-private box would resolve a sharing tier and leak the host
-        # OAuth token into the seed.  Additive/non-destructive: no scrub, only two
-        # boolean overrides.
+        # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
+        # SANCTIONED settings write into the SAME box-tier file the snapshot reads.
         if getattr(args, "private", False):
             from kanibako.settings.config_interface import set_config_value
             from kanibako.settings.config_keys import ConfigLevel
@@ -894,12 +748,8 @@ def run_create(args: argparse.Namespace) -> int:
                 "box.auth.global_enabled",
                 "box.auth.workset_enabled",
             ):
-                # set_config_value RETURNS an "Error: …" string (never raises) on a
-                # refused/unknown-key write; success is a "Set …" string.  This is
-                # an AUTH-CRITICAL write — a silent no-op here would leave a
-                # supposedly-private box resolving a sharing tier and leak the host
-                # OAuth token into the seed.  Fail LOUD (before the seed runs) if
-                # the write did not succeed, rather than leak silently.
+                # ⚑ set_config_value RETURNS an "Error: …" string, never raises — so this
+                # AUTH-CRITICAL write must be checked or it fails silently and leaks.
                 _msg = set_config_value(
                     _auth_key, "false",
                     config_path=project_toml,
@@ -912,20 +762,8 @@ def run_create(args: argparse.Namespace) -> int:
                         f"forward host credentials."
                     )
 
-        # Persist the box's AGENT SELECTION (`create --agent <ref>`): write the
-        # REQUEST `pref.system.agent` into the box settings via the SANCTIONED
-        # settings write (the same route `box set pref.system.agent=<ref>` uses —
-        # single-route, no bespoke YAML poke), so a plain `start` resolves this
-        # agent through the ordinary §2h pref path instead of falling through to
-        # the system default.  ⮕ P7: this used to write the RETIRED `box.agent_name`
-        # (spec §2b); a pref is how a box influences a key that resolves above it.
-        # Applies to ANY selector — persona or plain (`create --agent goose` must
-        # make plain start launch goose too).  The RAW user ref is stored
-        # (selection canonicalizes on read, exactly as for a hand-set key);
-        # `start --agent <other>` remains an ephemeral override on top (CLI args
-        # ephemeral over settings — start never persists).  Fresh create only: a
-        # recovery re-create reuses the half-built box's on-disk record (parity
-        # with the image/--private writes above).
+        # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
+        # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
         _agent_sel = getattr(args, "agent", None)
         if isinstance(_agent_sel, str) and _agent_sel.strip():
             from kanibako.settings.config_interface import set_config_value
@@ -936,8 +774,7 @@ def run_create(args: argparse.Namespace) -> int:
                 command_scope=ConfigLevel.box,
             )
             if not _msg.startswith("Set "):
-                # A silent no-op would create a box whose plain start launches
-                # a DIFFERENT agent than the one the user just selected.
+                # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
                 print(
                     f"Error: failed to persist the box agent selection "
                     f"({_msg}).",
@@ -945,46 +782,24 @@ def run_create(args: argparse.Namespace) -> int:
                 )
                 return 1
 
-        # Write .gitignore for standalone projects only — at the project ROOT
-        # (metadata_path), where box_data/ + vault/ live and need ignoring (drift
-        # H+I: project_path is the workspace subdir, not the root).
+        # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
+        # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
         if args.standalone:
             write_project_gitignore(proj.metadata_path)
 
-    # Seed the box home NOW, atomically with creation (keyspace spec §0/§5).
-    # The one-time home seed runs at `create`, not at first launch — registry
-    # MEMBERSHIP is the seed signal, so `start` never re-seeds an existing box.
-    #
-    # J1 lifecycle journal (Jei 2026-06-30b): the four ordered steps are
-    # write-ahead.  Write the create journal entry (intent), seed the home
-    # (create-if-absent), THEN register (deferred via register=False above), then
-    # clear the entry — clearing is the IMMEDIATE step after the registry write
-    # (HARD INVARIANT: registered ==> no pending entry at rest).  A crash anywhere
-    # before the entry is cleared leaves it, so the next `create`/launch re-seeds
-    # + completes registration + clears the entry (forward-recovery, not
-    # rollback).  ``_register_new_box`` is register-if-absent so a recovery of an
-    # already-registered box (register -> clear-entry window crash) is a no-op
-    # + entry clear.  If register raises a genuine collision the entry is
-    # intentionally LEFT (the box is incomplete) and propagates.
-    # PERSONA LOAD-OR-ERROR ran as a TRUE PRE-FLIGHT above (before box-dir
-    # creation), so by here the persona is known loadable — proceed to seed +
-    # register.  The guard still precedes the write-ahead journal entry (Director
-    # ruling #3): an abort after the entry would leave a pending entry whose
-    # recovery replays the seed.
+    # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
+    # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
+    # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
     _write_create_entry(std, proj)
     seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
-    # ⚑ THE CANON SKELETON (J-7) — AFTER the seed, INSIDE the journal window.
-    # After, because the seed writes ``canon/{notebook,workbook}`` UNDER the same
-    # root this step makes 555: protect first and those copies die with EACCES.
-    # Inside, because an interrupted create must replay it like every other step.
+    # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
+    # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
     materialize_canon_skeleton(proj.shell_path)
     _register_new_box(std, proj, force=getattr(args, "force", False))
     _clear_create_entry(std, proj)
 
     mode = "standalone" if args.standalone else "default"
-    # Explicit-create (Jei 2026-07-11g): `create` MAKES the box but does NOT launch
-    # it — a launch (`start` / bare `kanibako` / `code` / `shell`) no longer
-    # auto-creates, so tell the user exactly how to start what they just made.
+    # Explicit-create: `create` MAKES the box but does NOT launch it, so name the verb.
     start_hint = (
         "Start the box by executing 'kanibako' (shortcuts to 'kanibako start') "
         "from its path (or add a path argument)."
@@ -998,14 +813,8 @@ def run_create(args: argparse.Namespace) -> int:
 
 
 def run_ps(args: argparse.Namespace) -> int:
-    """List running boxes (delegates to run_list with active-only filtering).
-
-    ``ps`` shows active boxes by default.  ``ps --all`` / ``ps -a`` shows
-    all boxes (active + inactive), equivalent to ``list``.
-    """
+    """List running boxes — :func:`run_list` with active-only filtering."""
     show_all = getattr(args, "show_all", False)
-    # When ps --all is passed, show everything (like list).
-    # Otherwise, show active only (like list --active).
     if not show_all:
         args.active = True
     return run_list(args)
@@ -1023,15 +832,10 @@ def run_list(args: argparse.Namespace) -> int:
 
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)
-    # STANDALONE boxes live only in registry.standalone (box name → root); they
-    # are not in names.yaml / iter_projects, so list them explicitly (BUG-E).
+    # ⚑ STANDALONE boxes are NOT in names.yaml / iter_projects — list them explicitly.
     from kanibako.project import registry_store
     standalone = registry_store.load_standalone(std.registry)
-    # DEREGISTERED boxes (rm without --purge) are never active, so they are only
-    # surfaced when NOT filtering to active-only (plain `list` / `list --all`,
-    # not `--active` / `ps`).  list_deregistered self-heals genuinely-stale
-    # entries; with none parked it returns {} and writes nothing (list stays
-    # byte-identical for a tree without deregistered boxes).
+    # DEREGISTERED boxes are never active, so they are skipped under an active-only filter.
     deregistered = (
         registry_store.list_deregistered(std.registry) if not active_only else {}
     )
@@ -1046,7 +850,7 @@ def run_list(args: argparse.Namespace) -> int:
         for cname, _image, _status in runtime.list_running():
             running_containers.add(cname)
     except ContainerError:
-        pass  # No runtime available — all projects show as stopped.
+        pass  # No runtime available — every project shows as stopped.
 
     if not projects and not ws_data and not standalone and not deregistered:
         if not quiet:
@@ -1067,9 +871,7 @@ def run_list(args: argparse.Namespace) -> int:
         except OSError:
             return str(p)
 
-    # NAME column width: floor 18 (the historical fixed width), grown to fit the
-    # longest displayed name (capped) so long names like
-    # ``ai-java-course-materials`` don't overflow the column.
+    # NAME column width: floor 18, grown to fit the longest displayed name, capped at 40.
     _candidate_names: list[str] = []
     for _sp, _pp in projects:
         _candidate_names.append(
@@ -1080,9 +882,7 @@ def run_list(args: argparse.Namespace) -> int:
     _candidate_names.extend(standalone.keys())
     name_width = min(40, max([18, *(len(n) for n in _candidate_names)]))
 
-    # Cross-source row dedup (BUG-A): collapse rows that share the same
-    # ``(name, resolved path)`` so an already-duplicated registry entry (e.g. a
-    # box double-registered under the same workspace path) prints exactly once.
+    # Cross-source row dedup: rows sharing a ``(name, resolved path)`` print once.
     seen_rows: set[tuple[str, str]] = set()
 
     any_output = False
@@ -1090,14 +890,13 @@ def run_list(args: argparse.Namespace) -> int:
     if projects:
         header_printed = False
         for settings_path, project_path in projects:
-            # Directory name is now the project name (or hash for legacy).
+            # The directory name IS the project name (or a hash, for legacy trees).
             dir_name = settings_path.name
             proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
             if project_path is None:
                 status = "unknown"
                 label = "(no breadcrumb)"
             elif project_path.is_dir():
-                # Check if container is running.
                 cname = f"kanibako-{proj_name}"
                 if cname in running_containers:
                     status = "active"
@@ -1112,11 +911,9 @@ def run_list(args: argparse.Namespace) -> int:
             if status in ("missing", "unknown") and not show_all:
                 continue
 
-            # Skip inactive when --active filter is set.
             if active_only and status != "active":
                 continue
 
-            # Cross-source dedup (BUG-A).
             row_key = (proj_name, _norm(project_path))
             if row_key in seen_rows:
                 continue
@@ -1136,7 +933,7 @@ def run_list(args: argparse.Namespace) -> int:
         for proj_name, proj_status in project_list:
             if proj_status == "missing" and not show_all:
                 continue
-            # Determine activity status for healthy workset projects.
+            # Activity status, for healthy workset projects only.
             if proj_status not in ("missing",):
                 cname = f"kanibako-{proj_name}"
                 if cname in running_containers:
@@ -1147,13 +944,11 @@ def run_list(args: argparse.Namespace) -> int:
                 display_status = proj_status
             if active_only and display_status != "active":
                 continue
-            # Look up source_path from workset projects.
             source = ""
             for p in ws.projects:
                 if p.name == proj_name:
                     source = str(p.source_path)
                     break
-            # Cross-source dedup (BUG-A): collapse identical (name, path) rows.
             row_key = (proj_name, _norm(source))
             if row_key in seen_rows:
                 continue
@@ -1193,7 +988,6 @@ def run_list(args: argparse.Namespace) -> int:
             continue
         if active_only and status != "active":
             continue
-        # Cross-source dedup (BUG-A).
         row_key = (box_name, _norm(root_str))
         if row_key in seen_rows:
             continue
@@ -1213,11 +1007,8 @@ def run_list(args: argparse.Namespace) -> int:
             for box_name, status, root_str in sa_items:
                 print(f"  {box_name:<{sa_width}} {status:<10} {root_str}")
 
-    # DEREGISTERED boxes (registry.deregistered: name → recovery blob).  Surfaced
-    # in a dedicated section — with the DEREGISTERED status as the marker — so a
-    # user can SEE what they may `register` (recover) or `rm --purge` (delete);
-    # today these are invisible.  Only shown when entries exist, keeping a tree
-    # with no deregistered boxes byte-identical.  `quiet` prints bare names.
+    # DEREGISTERED boxes get their own section so a user can SEE what they may
+    # `register` or `rm --purge`; shown only when entries exist.
     if deregistered:
         any_output = True
         if quiet:
@@ -1252,7 +1043,7 @@ def _list_orphans(
     std,
     quiet: bool,
 ) -> int:
-    """List only orphaned projects (--orphan flag handler)."""
+    """List only orphaned projects (the ``--orphan`` handler)."""
     # Default-mode orphans: path missing or no breadcrumb.
     ac_orphans = []
     for metadata_path, project_path in projects:
@@ -1306,32 +1097,14 @@ def _list_orphans(
 
 
 def _purge_dir(target: Path) -> bool:
-    """Remove *target*, tolerating files a rootless container created.
-
-    Thin alias for :func:`kanibako.runtime.container.remove_box_tree`, which is where this
-    body now lives so that EVERY box-tree deleter can reuse it — ``extract``,
-    ``move``, ``duplicate`` and ``purge`` all need the same ``podman unshare``
-    escalation, and since J-7 they need it on every box (the canon skeleton is
-    root-owned by construction, not only when an agent happened to write as root).
-    Kept as a name because ``rm``'s call sites and tests read against it.
-    """
+    """Thin alias for :func:`kanibako.runtime.container.remove_box_tree`, kept for its callers."""
     from kanibako.runtime.container import remove_box_tree
 
     return remove_box_tree(target)
 
 
 def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
-    """Validate *path* is safe to ``rm -rf`` and return its resolved form.
-
-    ⚑ DESTRUCTIVE-SAFETY gate for purge.  A ``deregistered`` entry stores a
-    metadata path that a later ``--purge`` deletes; that stored path is untrusted
-    (a corrupt/crafted registry must never let purge delete outside a box's own
-    metadata).  Refuses — rather than silently no-op-deleting — when the resolved
-    path is empty, ``/``, ``$HOME``, or (when *must_be_under* is given) not a
-    strict descendant of that root.  ``resolve()`` collapses ``..`` and follows
-    symlinks, so a ``..``/symlink escape resolves OUTSIDE *must_be_under* and is
-    rejected.  Raises :class:`ProjectError` on any violation.
-    """
+    """⚑ DESTRUCTIVE-SAFETY gate: validate *path* is safe to ``rm -rf``, return it resolved."""
     raw = str(path).strip()
     if not raw:
         raise ProjectError("refusing to delete: empty metadata path")
@@ -1341,8 +1114,7 @@ def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
         raise ProjectError(f"refusing to delete a protected path: {resolved}")
     if must_be_under is not None:
         root = must_be_under.resolve()
-        # Strict containment: a direct-or-deeper descendant, never the root
-        # itself (deleting std.boxes/ would take every box with it).
+        # ⚑ STRICT containment — never the root itself (that would take every box).
         if resolved == root or root not in resolved.parents:
             raise ProjectError(
                 f"refusing to delete {resolved}: not contained under {root}"
@@ -1351,19 +1123,11 @@ def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
 
 
 def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
-    """Delete a PRIMARY box's metadata: box dir + vault ro/rw + helper log.
-
-    The single deletion routine shared by the active ``--purge`` path and the
-    deregistered ``--purge`` path — same paths, same order, same guards as the
-    former inline block.  Returns True if the box dir was removed.  The caller is
-    responsible for containment-validating *metadata_dir* first when it comes
-    from an untrusted ``deregistered`` entry (see :func:`_assert_deletable`).
-    """
+    """Delete a PRIMARY box's metadata: box dir + vault ro/rw + helper log."""
     removed = _purge_dir(metadata_dir)
     if removed:
         print(f"Removed metadata: {metadata_dir}")
-        # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
-        # {ro,rw}/<name> (not under metadata_dir) — remove it too.
+        # ⚑ The PRIMARY vault is NOT under metadata_dir — remove it separately.
         for vdir in (std.primary_vault_ro / name, std.primary_vault_rw / name):
             if vdir.is_dir():
                 _purge_dir(vdir)
@@ -1374,8 +1138,7 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
             f"Try: podman unshare rm -rf {metadata_dir}",
             file=sys.stderr,
         )
-    # Remove the per-box helper log if present.  PRIMARY logs live at
-    # @config.primary_workset/logs/<box>.jsonl (box == registry name).
+    # The per-box helper log, keyed by the registry name.
     log_file = std.primary_logs / f"{name}.jsonl"
     if log_file.is_file():
         log_file.unlink()
@@ -1384,23 +1147,14 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
 
 
 def _teardown_standalone_box(root: Path) -> bool:
-    """Delete a STANDALONE box's in-tree metadata, never the workspace root.
-
-    Removes the in-tree ``box_data/`` marker + root ``settings.yaml`` + ``vault/``
-    — the same set the active standalone purge and ``purge`` command delete.  The
-    user's workspace files (and *root* itself) are never touched.  Returns True if
-    the ``box_data/`` marker was removed.
-    """
+    """Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched."""
     from kanibako.settings.paths import _STANDALONE_META_DIR
 
     metadata_dir = root / _STANDALONE_META_DIR
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
-        # The ROOT settings.yaml is the WORKSET tier and the other half of the §5
-        # detection marker — drop it too so the box is not re-detected.  (The BOX
-        # tier lives INSIDE box_data/ and went with the dir above; the old comment
-        # here said settings lived "at the ROOT, not in box_data/", which is the
-        # retired pre-P2 model.)
+        # ⚑ The ROOT settings.yaml is the WORKSET tier AND half the §5 detection marker —
+        # drop it too, or the box is re-detected.  (The BOX tier went with box_data/.)
         settings_file = root / BOX_META_FILE
         if settings_file.is_file():
             settings_file.unlink()
@@ -1420,11 +1174,7 @@ def _teardown_standalone_box(root: Path) -> bool:
 
 
 def _read_box_image(settings_file: Path) -> str | None:
-    """Best-effort read of a box's ``box.image`` from its settings.yaml.
-
-    Captured into the deregistered blob for a later readopt (I2); purge does not
-    need it, so any read failure degrades to ``None`` rather than erroring.
-    """
+    """Best-effort read of a box's ``box.image`` from its settings.yaml; failure is ``None``."""
     try:
         from kanibako.settings.config_io import load_doc
 
@@ -1436,25 +1186,12 @@ def _read_box_image(settings_file: Path) -> str | None:
 
 
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None:
-    """:func:`_read_box_image` over a ``(box_tier, workset_tier)`` pair, box wins.
-
-    ``box.image`` is a BOX-scope key, so it is read from the box tier; the workset
-    tier is consulted only as the R2 downward-default.  That fallback is what keeps
-    a pre-P2 standalone box — whose ``box.image`` was written to its ROOT file when
-    that file WAS the box tier (M-8) — capturable into the deregistered blob.
-    """
+    """:func:`_read_box_image` over a ``(box_tier, workset_tier)`` pair, box tier wins."""
     return _read_box_image(box_tier) or _read_box_image(workset_tier)
 
 
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int:
-    """Handle ``rm <name>`` when *name* resolves only to a deregistered entry.
-
-    Without ``--purge`` the box is already deregistered — print the recovery
-    guidance and return 0 (no re-error, no re-deregister).  With ``--purge``,
-    validate the stored metadata path for containment, delete it via the shared
-    per-kind teardown, then drop the deregistered entry.  IDEMPOTENT: an entry
-    whose dir is already gone just gets dropped, no error.
-    """
+    """Handle ``rm <name>`` when *name* resolves only to a deregistered entry."""
     from kanibako.project import registry_store
     from kanibako.errors import UserCancelled
     from kanibako.settings.paths import _STANDALONE_META_DIR
@@ -1471,12 +1208,8 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         )
         return 0
 
-    # ⚑ I4 STALE-ENTRY belt-and-suspenders: the name may have been REUSED by a new
-    # ACTIVE box that now occupies the SAME metadata path (e.g. a create that
-    # re-claimed `std.boxes/<name>`).  Purging by this stale deregistered entry
-    # would then delete the LIVE box's home — so refuse, and drop the stale entry
-    # (it is definitively wrong: an active box owns that path) so it stops
-    # shadowing.  NEVER delete the active box's home.
+    # ⚑ I4 STALE-ENTRY guard: if an ACTIVE box now owns this metadata path, purging by
+    # the stale entry would delete a LIVE box's home.  Refuse, and drop the stale entry.
     if kind == "standalone":
         active_owner = registry_store.standalone_name_for_root(
             std.registry, Path(str(metadata)),
@@ -1496,14 +1229,11 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         registry_store.unregister_deregistered(std.registry, name)
         return 1
 
-    # --purge on a deregistered box: validate + delete its retained metadata.
+    # ⚑ The stored metadata path is UNTRUSTED — validate before any delete.
     try:
         if kind == "standalone":
-            # metadata is the in-tree ROOT; only fixed children are deleted, but
-            # still refuse a bare/protected root.
             root = _assert_deletable(metadata)
         else:
-            # PRIMARY: metadata must be strictly under std.boxes/.
             metadata_dir = _assert_deletable(metadata, must_be_under=std.boxes)
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1515,8 +1245,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         exists = metadata_dir.is_dir()
 
     if not exists:
-        # Idempotent: dir already gone (deleted out-of-band) → drop the stale
-        # entry, no error, no prompt (nothing to delete).
+        # Idempotent: the dir is already gone → drop the stale entry, no error, no prompt.
         registry_store.unregister_deregistered(std.registry, name)
         print(f"No metadata directory found for '{name}' (dropped stale entry).")
         return 0
@@ -1546,23 +1275,16 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
 def _resolve_standalone_target(
     std, config, target: str,
 ) -> tuple[str | None, Path | None]:
-    """Resolve a ``box rm`` *target* to a registered standalone box.
-
-    Returns ``(box_name, root)`` when *target* names a standalone box, else
-    ``(None, None)``.  *target* may be a registered standalone box NAME (looked
-    up in ``registry.standalone``) or a PATH (resolved by ancestor-walk
-    detection, then matched to its registered root).  Mirrors how ``box purge``
-    finds standalone boxes (BUG-C).
-    """
+    """Resolve a ``box rm`` *target* (NAME or PATH) to ``(box_name, root)``, else two ``None``."""
     from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, detect_project_mode
 
-    # 1) Direct standalone-name lookup.
+    # 1) Direct standalone-NAME lookup.
     entries = registry_store.load_standalone(std.registry)
     if target in entries:
         return target, Path(entries[target])
 
-    # 2) Path target: detect the box by ancestor-walk, then match its root.
+    # 2) PATH target: detect the box by ancestor-walk, then match its registered root.
     candidate = Path(target)
     if candidate.exists():
         try:
@@ -1578,14 +1300,7 @@ def _resolve_standalone_target(
 
 
 def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
-    """Remove a standalone box: drop its registry entry (+ box_data/ on --purge).
-
-    Standalone state lives in-tree under ``<root>/box_data`` (+ ``<root>/vault``)
-    and the box is indexed in ``registry.standalone``.  Always drops the registry
-    entry; with ``--purge`` also deletes the in-tree ``box_data/`` metadata (and,
-    on confirmation, the ``vault/`` tree).  The user's workspace files are never
-    touched.
-    """
+    """Remove a standalone box: always drop its registry entry, its ``box_data/`` on --purge."""
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
@@ -1615,19 +1330,15 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
-        # Park a deregistered entry so a later `rm <name> --purge` can find the
-        # retained in-tree metadata BY NAME (the registry.standalone index is
-        # already dropped above).
+        # Park a deregistered entry: the index was dropped above, so BY NAME is the
+        # only way a later `rm --purge` / `register` can find the retained metadata.
         registry_store.register_deregistered(
             std.registry,
             box_name,
             kind="standalone",
             workspace=str(root_path),
             metadata=str(root_path),
-            # The box's ``box.image`` lives in the BOX tier (M-8); the ROOT file is
-            # the workset tier and may still carry it as a pre-P2 downward default,
-            # so fall back to it.  Best-effort capture for a later readopt — either
-            # read failing degrades to None.
+            # Best-effort capture for a later readopt; either read failing is ``None``.
             image=_read_box_image_tiered(
                 *_standalone_settings_files(root_path)
             ),
@@ -1659,13 +1370,11 @@ def run_rm(args: argparse.Namespace) -> int:
         print("Error: no box specified to remove.", file=sys.stderr)
         return 1
     names = read_names(std.registry)
-    # PRIMARY boxes live in the primary per-workset ``boxes:`` membership (the
-    # sole store since the global ``projects:`` section retired); worksets in the
-    # global ``worksets:`` name section.  ``section`` carries "projects" for a
-    # primary box (drives the membership unregister below) or "worksets".
+    # ⚑ ``section`` is "projects" for a PRIMARY box (its membership drives the unregister
+    # below) or "worksets" — the global ``projects:`` section is retired.
     primary_boxes = load_primary_boxes(std.primary_workset)
 
-    # Resolve target: try as a registered name first, then as a path.
+    # Resolve the target: as a registered name first, then as a path.
     name: str | None = None
     section: str | None = None
     path: str | None = None
@@ -1676,8 +1385,7 @@ def run_rm(args: argparse.Namespace) -> int:
         name, section, path = target, "worksets", names["worksets"][target]
 
     if name is None:
-        # Try as a path (reverse lookup): the primary membership first, then the
-        # global worksets index.
+        # Reverse path lookup: the primary membership first, then the worksets index.
         primary_hit = primary_box_name_for_workspace(std.primary_workset, target)
         if primary_hit is not None:
             name, section, path = primary_hit, "projects", primary_boxes.get(primary_hit)
@@ -1688,20 +1396,14 @@ def run_rm(args: argparse.Namespace) -> int:
                 path = names[section][name]
 
     if name is None:
-        # STANDALONE boxes are not in the name index — they live in
-        # registry.standalone (box name → root). Resolve the target as either a
-        # registered standalone box name or a path (ancestor-walk detection), so
-        # `box rm <canonical-name>` and `box rm <path>` both clean up an
-        # otherwise-uncleanable standalone box (BUG-C).
+        # ⚑ STANDALONE boxes are not in the name index — resolve them separately.
         sa_name, sa_root = _resolve_standalone_target(std, config, target)
         if sa_name is not None:
             return _rm_standalone(std, sa_name, sa_root, args)
 
     if name is None:
-        # Not active anywhere — check the global ``deregistered`` section by
-        # name.  THE REPORTED-BUG FIX: after `rm` (no --purge) the active
-        # membership is gone, so `rm <name> --purge` (and a re-`rm`) must resolve
-        # the retained metadata here instead of erroring "not registered".
+        # ⚑ Not active anywhere — a re-`rm` after a plain `rm` must resolve the retained
+        # metadata HERE rather than erroring "not registered".
         dereg = registry_store.lookup_deregistered(std.registry, target)
         if dereg is not None:
             return _purge_deregistered(std, target, dereg, args)
@@ -1713,9 +1415,7 @@ def run_rm(args: argparse.Namespace) -> int:
     kind = "workset" if section == "worksets" else "project"
     print(f"Removing {kind}: {name} ({path})")
 
-    # Unregister from the registry (membership for a primary box, the global
-    # worksets index for a workset) — re-routing the primary arm to membership
-    # closes the pre-existing gap where `rm` left the membership stale.
+    # ⚑ A PRIMARY box unregisters from the MEMBERSHIP, a workset from the global index.
     if section == "worksets":
         unregister_name(std.registry, name, section="worksets")
     else:
@@ -1738,16 +1438,13 @@ def run_rm(args: argparse.Namespace) -> int:
                     print("Aborted (name was already unregistered).")
                     return 2
 
-            # Shared teardown — same paths/order/guards as the deregistered-purge
-            # path (box dir + PRIMARY vault ro/rw + helper log).
+            # The shared teardown — same paths/order/guards as the deregistered purge.
             _teardown_primary_box(std, name, metadata_dir)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     else:
-        # No --purge: retain the metadata and park a ``deregistered`` entry so a
-        # later `rm <name> --purge` (or, in I2, `register <name>`) can find it BY
-        # NAME — the active membership was just dropped above.  Worksets are NOT
-        # boxes (they keep their own lifecycle), so they are never parked here.
+        # No --purge: retain the metadata and park a ``deregistered`` entry, so a later
+        # `rm --purge` / `register` finds it BY NAME.  ⚑ Worksets are NEVER parked here.
         metadata_dir = std.boxes / name
         if section != "worksets" and metadata_dir.is_dir():
             registry_store.register_deregistered(
@@ -1771,20 +1468,7 @@ def run_rm(args: argparse.Namespace) -> int:
 
 
 def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
-    """Readopt a DEREGISTERED box: move it from ``deregistered`` back to active.
-
-    INDEX-ONLY and SEED-FREE — writes ONLY the active membership index (primary
-    per-workset ``boxes:`` / ``registry.standalone``) and drops the deregistered
-    entry; NEVER touches the box's home content or re-materializes templates
-    (membership is itself the seed signal, so a re-index must not re-seed).
-
-    Per-kind routing off the entry's ``kind``.  Self-heals a stale entry whose
-    metadata is gone (drops it, reports nothing to restore).  Conflict-safe: the
-    reused registration APIs refuse when an ACTIVE box already owns the name
-    (``check_primary_box_name_free`` / the ``standalone`` name check) or the
-    workspace path (``register_workset_box``'s one-box-per-path guard), so a
-    readopt never clobbers a live box.
-    """
+    """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
     from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
 
@@ -1794,7 +1478,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
 
     if kind == "standalone":
         root = Path(str(metadata)).resolve() if metadata else None
-        # Self-heal: the in-tree marker is gone → nothing to restore, drop entry.
+        # Self-heal: the in-tree marker is gone → nothing to restore, drop the entry.
         if root is None or not standalone_settings_present(root):
             registry_store.unregister_deregistered(std.registry, name)
             print(
@@ -1803,8 +1487,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
                 file=sys.stderr,
             )
             return 1
-        # Conflict: the name is already an ACTIVE standalone box at a DIFFERENT
-        # root — refuse rather than clobber the live entry.
+        # Conflict: an ACTIVE standalone box at a DIFFERENT root — refuse, never clobber.
         registered = registry_store.load_standalone(std.registry)
         other = registered.get(name)
         if other is not None and Path(other).resolve() != root:
@@ -1814,7 +1497,6 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
                 file=sys.stderr,
             )
             return 1
-        # Index-only, seed-free re-register (overwrites a matching name->root).
         registry_store.register_standalone(std.registry, name, root)
         registry_store.unregister_deregistered(std.registry, name)
         print(f"Registered standalone box '{name}' at {root}.")
@@ -1824,7 +1506,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
     from kanibako.settings.paths import register_primary_box_name
 
     metadata_dir = Path(str(metadata)).resolve() if metadata else None
-    # Self-heal: the box dir is gone → nothing to restore, drop entry.
+    # Self-heal: the box dir is gone → nothing to restore, drop the entry.
     if metadata_dir is None or not metadata_dir.is_dir():
         registry_store.unregister_deregistered(std.registry, name)
         print(
@@ -1840,10 +1522,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
             file=sys.stderr,
         )
         return 1
-    # Index-only, seed-free re-register into the PRIMARY membership.  The reused
-    # API enforces the conflict guards ($HOME, SAME-kind active-box name, the
-    # one-box-per-workspace-path invariant, and the CROSS-kind workset-shadow
-    # refusal unless --force); a violation refuses cleanly with guidance.
+    # ⚑ The REUSED registration API carries every conflict guard — do not inline a write.
     try:
         register_primary_box_name(
             std.primary_workset, std.registry, name, str(workspace), force=force,
@@ -1857,22 +1536,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
 
 
 def run_register(args: argparse.Namespace) -> int:
-    """Re-register a box into the registry (INDEX-ONLY, SEED-FREE).
-
-    Unifies two index-only operations (design box-lifecycle I2):
-
-    * READOPT a box deregistered by ``rm`` (no ``--purge``): move it from the
-      global ``deregistered`` section back to active membership (primary
-      per-workset ``boxes:`` / ``registry.standalone``).  Resolved by NAME first.
-    * REGISTER a never-registered STANDALONE box that exists on disk (``box_data/``
-      + root ``settings.yaml``) but has no ``registry.standalone`` entry.
-      Resolved by PATH.
-
-    NEVER re-seeds, NEVER touches the box's home content — registration is purely
-    an index write (membership is itself the seed signal).  Refuses if an ACTIVE
-    box already occupies the target name or workspace path; worksets are refused
-    (they keep their own lifecycle).
-    """
+    """⚑ Re-register a box: INDEX-ONLY and SEED-FREE, by NAME (readopt) or PATH (standalone)."""
     from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
 
@@ -1888,15 +1552,12 @@ def run_register(args: argparse.Namespace) -> int:
 
     force = getattr(args, "force", False)
 
-    # 1. DEREGISTERED readopt — resolve by NAME first (design: a bare name → the
-    #    deregistered section first).  The retained blob carries ``kind``, so the
-    #    per-kind readopt routes off it.
+    # 1. DEREGISTERED readopt — a bare name resolves here FIRST; the blob's ``kind`` routes.
     dereg = registry_store.lookup_deregistered(std.registry, target)
     if dereg is not None:
         return _readopt_deregistered(std, target, dereg, force=force)
 
-    # 2. Already-ACTIVE guards — a clear "already registered" (rc 0, no-op) for a
-    #    live box, and a redirect for a workset (register is box-only).
+    # 2. Already-ACTIVE guards — rc 0 no-op for a live box, a redirect for a workset.
     primary_boxes = load_primary_boxes(std.primary_workset)
     if target in primary_boxes:
         print(f"'{target}' is already registered (primary box at {primary_boxes[target]}).")
@@ -1914,11 +1575,8 @@ def run_register(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # 3. STANDALONE register-later — the target is a PATH to an on-disk standalone
-    #    box (box_data/ + root settings.yaml) with no index entry.  Reuse
-    #    import_standalone: it is INDEX-ONLY + SEED-FREE (the box was seeded where
-    #    it was created) and already composes the kuid-first name + refuses a
-    #    name collision to a different root.
+    # 3. STANDALONE register-later — a PATH to an on-disk box with no index entry.
+    #    ⚑ REUSE ``import_standalone``: it is already index-only + seed-free.
     candidate = Path(target)
     if candidate.is_dir():
         root = candidate.resolve()
@@ -1971,11 +1629,7 @@ def _format_credential_age(creds_path: Path) -> str:
 
 
 def _check_container_running(proj) -> tuple[bool, str]:
-    """Check if a kanibako container is running for this project.
-
-    Accepts a ``ProjectPaths`` (or duck-typed equivalent).
-    Returns ``(is_running, detail_string)``.
-    """
+    """Is a kanibako container running for this project? Returns ``(is_running, detail)``."""
     container_name = container_name_for(proj)
     try:
         runtime = ContainerRuntime()
@@ -1985,7 +1639,7 @@ def _check_container_running(proj) -> tuple[bool, str]:
     for name, image, status in containers:
         if name == container_name:
             return True, f"running ({container_name}: {image})"
-    # Check for stopped persistent container
+    # A stopped PERSISTENT container still exists.
     if runtime.container_exists(container_name):
         return False, f"stopped persistent ({container_name})"
     return False, f"not running ({container_name})"
@@ -2006,40 +1660,29 @@ def run_info(args: argparse.Namespace) -> int:
         getattr(args, "path", None), getattr(args, "box", None),
     )
 
-    # Route the subject (positional path OR ``--box`` value) through the unified
-    # path-or-name resolver (name-precedence), the same way the sibling box
-    # commands / D2 wiring do — so a bare registered box NAME selects that box
-    # instead of being treated as a (nonexistent) relative directory.  The old
-    # premature ``Path(raw).is_dir()`` check rejected every name here.
+    # ⚑ Route the subject through the unified path-or-NAME resolver — a bare registered
+    # box name must select that box, not be read as a relative directory.
     try:
         proj = resolve_box_target(std, config, project_dir, initialize=False)
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Check if the project has been initialized (has metadata on disk).
+    # Initialized == metadata on disk.
     has_data = proj.metadata_path.is_dir()
 
     if not has_data:
         print(f"No project data found for: {proj.project_path}")
         print()
-        # "No box directory" collapses TWO states that need different words.
-        # A box with a name is REGISTERED: its directory is gone, which is not
-        # an unused directory — it is exactly what a launch refuses (MBR-6), and
-        # its cure is MODE-DEPENDENT (``create`` for a PRIMARY box, ``workset
-        # disconnect`` + ``connect`` for a NAMED one).  Defer to that refusal's
-        # own message rather than restating it, so ``info`` and a launch can
-        # never name different cures.
+        # ⚑ DEFER to the launch's own refusal rather than restating it — otherwise
+        # ``info`` and a launch can name DIFFERENT cures for the same box.
         from kanibako.commands.start import _unbuilt_box_error
         unbuilt = _unbuilt_box_error(proj) if proj.name else None
         if unbuilt is not None:
             print(unbuilt, file=sys.stderr)
             return 1
         if proj.group is not None and proj.group.is_default:
-            # ⚑ NOT "start a session with 'kanibako start'": since the v1.7.0
-            # explicit-create gate a launch NEVER materialises a box — it errors
-            # and points at ``create``.  Naming ``start`` here described
-            # behaviour we do not have.
+            # ⚑ NOT "start a session": under explicit-create a launch NEVER makes a box.
             print("This directory has not been used with kanibako yet.")
             print("A launch will not create a box for it — create it with:")
             print("  kanibako box create")
@@ -2047,7 +1690,7 @@ def run_info(args: argparse.Namespace) -> int:
             print("This directory has not been initialized.")
         return 1
 
-    # Load merged config for image info.
+    # The merged config, for the image row.
     project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
         config_file,
@@ -2055,29 +1698,21 @@ def run_info(args: argparse.Namespace) -> int:
         workset_path=workset_path,
     )
 
-    # Gather status info.
     lock_file = proj.metadata_path / ".kanibako.lock"
     lock_held = lock_file.exists()
 
     container_running, container_detail = _check_container_running(proj)
 
-    # Resolve target for credential check path.  This is an INFORMATIONAL
-    # display (box status), not an agent-requiring launch — so a resolution
-    # failure (no default + 2+ agents, 0 agents, adapter missing) degrades to
-    # "n/a (no target)" rather than erroring out.  Uses the ONE selection seam
-    # (agent_select.select_agent — system.agent < workset pref < box pref).
+    # ⚑ INFORMATIONAL, not a launch: a resolution failure DEGRADES rather than errors.
+    # Selection still goes through the ONE seam (:func:`select_agent`).
     agent_display = "n/a (unresolved)"
     try:
         from kanibako.agent_ref import display_agent_ref
         from kanibako.settings.agent_select import select_agent
         _sel = select_agent(std=std, proj=proj)
         agent_name = _sel.node
-        # ⚑ SHOW WHERE IT CAME FROM (P7). "Which agent does this box run, and WHY?"
-        # is the question a retired-key or wrong-default box makes urgent, and the
-        # answer is not in any one file: it may be the stored ``system.agent``, a
-        # workset/box ``pref.system.agent``, or the installed-count rule picking the
-        # only agent installed. ``AgentSelection.source`` already carries it — this
-        # is the one place a user can read it.
+        # ⚑ SHOW WHERE IT CAME FROM (P7) — this is the ONE place a user can read
+        # ``AgentSelection.source``, and "which agent, and WHY" is not in any one file.
         agent_display = (
             f"{display_agent_ref(agent_name)}  (from: {_sel.source})"
             if agent_name
@@ -2093,16 +1728,14 @@ def run_info(args: argparse.Namespace) -> int:
         )
     except Exception as exc:
         creds_file = None
-        # A refused RETIRED key (migration M-4) surfaces HERE rather than being
-        # swallowed as "unresolved" — `box info` is where a user looks when a box
-        # will not start.
+        # ⚑ A refused RETIRED key SURFACES here rather than being swallowed as
+        # "unresolved" — `box info` is where a user looks when a box will not start.
         agent_display = f"n/a ({exc})" if "RETIRED" in str(exc) else agent_display
     cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
 
-    # Display mode name with dashes for readability.
+    # Dashes read better than underscores in the mode row.
     mode_display = proj.mode.value.replace("_", "-")
 
-    # Format output.
     rows: list[tuple[str, str]] = [
         ("Name", proj.name or "(unnamed)"),
         ("Mode", mode_display),
@@ -2121,8 +1754,7 @@ def run_info(args: argparse.Namespace) -> int:
         ("Credentials", cred_age),
     ])
 
-    # Compute alignment width from longest label.
-    label_width = max(len(label) for label, _ in rows) + 1  # +1 for colon
+    label_width = max(len(label) for label, _ in rows) + 1  # +1 for the colon
     for label, value in rows:
         print(f"  {label + ':':<{label_width}}  {value}")
 
@@ -2130,14 +1762,8 @@ def run_info(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Project config verbs (set / reset / get / show)
-#
-# Each verb parser registers its own thin entry point below; they normalize the
-# per-verb Namespace into the shared shape the engine dispatch (_run_box_config)
-# expects, then thread the SAME context.  The config_interface engine — and with
-# it the B2 config.*-forbid guard, the B4/R2 scope-direction guard, and the Q9
-# full-cascade set-time validation — is unchanged: every set still routes
-# through set_config_value with command_scope=ConfigLevel.box.
+# Project config verbs (set / reset / get / show) — thin per-verb entry points
+# that normalize their Namespace into the shape :func:`_run_box_config` expects.
 # ---------------------------------------------------------------------------
 
 def run_set(args: argparse.Namespace) -> int:
@@ -2154,8 +1780,7 @@ def run_reset(args: argparse.Namespace) -> int:
 
     positional = list(getattr(args, "args", []))
     reset_all = getattr(args, "reset_all", False)
-    # Positional shape: [project] [key].  Disambiguate a lone token as a key
-    # when it looks like one (matches the get/show heuristic).
+    # Positional shape ``[project] [key]``; a lone token is a KEY when it is known.
     project: str | None = None
     key: str | None = None
     if len(positional) == 0:
@@ -2176,8 +1801,8 @@ def run_reset(args: argparse.Namespace) -> int:
         print("Error: reset requires a key (or --all)", file=sys.stderr)
         return 1
 
-    # Rebuild the legacy shape: positionals carry only [project]; the key (or the
-    # all-sentinel) rides on ``reset``.
+    # Rebuild the engine shape: positionals carry ``[project]`` only; the key (or the
+    # all-sentinel) rides on ``args.reset``.
     args.args = [project] if project is not None else []
     args.reset = "__ALL__" if reset_all else key
     args.effective = False
@@ -2203,27 +1828,7 @@ def run_show(args: argparse.Namespace) -> int:
 
 
 def _resolve_config_subject(std, config, project_dir: str | None):
-    """Resolve the box the ``box`` config verbs address — refusing the
-    ``__unregistered__`` phantom (MBR-6, Jei 2026-08-02f).
-
-    ``_resolve_local_dir`` answers "no PRIMARY box is registered for this
-    workspace" with the SENTINEL ``("", std.boxes / "__unregistered__")`` — a
-    name-assignment placeholder for the resolvers that go on to pick a real name
-    (``resolve_project``'s create block; ``restore``, which rewrites it with the
-    box's real name).  The config verbs pick NO name: they simply address the box
-    the sentinel points at, so ``box set box.image=…`` from a cwd that is no box
-    used to WRITE ``boxes/__unregistered__/settings.yaml`` and report success —
-    materialising a placeholder instead of refusing.
-
-    Refused here, at the verb's own seam, so the sentinel keeps working for the
-    resolvers that legitimately replace it.  ``mode is primary and not name`` IS
-    the sentinel: for a PRIMARY box an empty name means the membership
-    reverse-lookup missed, which is the only way that path is returned; NAMED
-    raises :class:`WorksetError` for a non-member, and STANDALONE addresses its
-    own in-tree files rather than ``std.boxes``.
-
-    Raises :class:`ProjectError` (the shape every caller here already handles).
-    """
+    """⚑ Resolve the box the config verbs address, refusing the ``__unregistered__`` phantom."""
     proj = resolve_any_project(
         std, config, project_dir=project_dir, initialize=False,
     )
@@ -2238,11 +1843,7 @@ def _resolve_config_subject(std, config, project_dir: str | None):
 
 
 def _run_box_config(args: argparse.Namespace) -> int:
-    """Shared project-config engine dispatch.
-
-    Handles get, set, show, reset operations via the config_interface engine.
-    Uses the known-key heuristic to disambiguate project names from config keys.
-    """
+    """Shared box-config dispatch into the ``config_interface`` engine."""
     from kanibako.settings.config_keys import ConfigLevel, is_known_key
     from kanibako.settings.config_interface import (
         ConfigAction,
@@ -2258,15 +1859,15 @@ def _run_box_config(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    # Parse the positional args list: [project] [key[=value]]
-    positional = args.args  # list of 0-2 items
+    # Positional shape ``[project] [key[=value]]`` — 0-2 items.
+    positional = args.args
     project_dir: str | None = None
     key_value_arg: str | None = None
 
     if len(positional) == 0:
         pass  # show mode
     elif len(positional) == 1:
-        # Is it a known key (or key=value), or a project name?
+        # A known key (or a key=value), else a project name.
         arg = positional[0]
         if "=" in arg or is_known_key(arg):
             key_value_arg = arg
@@ -2279,14 +1880,12 @@ def _run_box_config(args: argparse.Namespace) -> int:
         print("Error: too many arguments (expected [project] [key[=value]])", file=sys.stderr)
         return 1
 
-    # --box names the subject project; reconcile with the positional [project]
-    # (same → warn / differ → error).
+    # --box also names the subject; reconcile it with the positional (same → warn).
     from kanibako.commands.flags import resolve_subject_value
     project_dir = resolve_subject_value(project_dir, getattr(args, "box", None))
 
-    # Handle --reset mode
     if args.reset is not None:
-        # --reset with --all: reset everything
+        # reset --all: everything at this level.
         if args.reset_all or args.reset == "__ALL__":
             try:
                 proj = _resolve_config_subject(std, config, project_dir)
@@ -2302,20 +1901,17 @@ def _run_box_config(args: argparse.Namespace) -> int:
             print(msg)
             return 0
 
-        # --reset KEY: reset a specific key
+        # reset KEY: one key.
         reset_key = args.reset
         try:
             proj = _resolve_config_subject(std, config, project_dir)
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        # The box-tier target AND the workset tier come from the ONE pair (M-8), so
-        # reset clears exactly the file set/get address.
+        # ⚑ The M-8 PAIR: reset clears exactly the file set/get address.
         project_toml, reset_ws_path = box_workset_settings_paths(proj)
-        # Full launch cascade so the honest cleared-message can name the
-        # now-effective value + source tier (item 1) — the SAME context the box
-        # SET handler threads. A resolution failure just leaves the agent name
-        # empty → the message degrades to the cleared-only form.
+        # The full launch cascade, so the cleared-message can name the now-effective
+        # value and its tier.  A resolution failure degrades to the cleared-only form.
         reset_agent_name = ""
         try:
             from kanibako.settings.agent_select import select_agent
@@ -2337,22 +1933,18 @@ def _run_box_config(args: argparse.Namespace) -> int:
         print(msg)
         return 0
 
-    # Parse the key/value argument
     action, key, value = parse_config_arg(
         key_value_arg, set_null=getattr(args, "null", False),
     )
 
-    # Resolve the project
     try:
         proj = _resolve_config_subject(std, config, project_dir)
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # ⚑ THE M-8 CHOKEPOINT: get / set / show / reset all address the box through the
-    # ONE pair, so a box-scope write and the read that follows it CANNOT disagree.
-    # (The box's docker ``env`` FILE tier is GONE — R-39/RQ-1; the env family is
-    # the settings key ``box.env.<VAR>``, which lives in this same pair's file.)
+    # ⚑ THE M-8 CHOKEPOINT: every verb addresses the box through the ONE pair, so a
+    # box-scope write and the read that follows it CANNOT disagree.
     project_toml, workset_path = box_workset_settings_paths(proj)
 
     if action == ConfigAction.show:
@@ -2374,9 +1966,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
             effective_selection = None
             try:
                 from kanibako.settings.agent_select import select_agent
-                # Informational --effective display: tolerate a resolution
-                # failure (degrade to the "general" no-agent state below)
-                # rather than erroring.  The ONE selection seam (§1A/§2h).
+                # Informational display: tolerate a resolution failure, degrading to
+                # the "general" no-agent state below.  Still the ONE selection seam.
                 effective_selection = select_agent(std=std, proj=proj)
                 agent_name = effective_selection.node
                 target = (
@@ -2386,9 +1977,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 )
             except Exception:
                 target = None
-            # NODE-name keys the agent.<node>.* keyspace slot / agents/<node>/ dir
-            # for the --effective display; with_harness reflects the resolved target
-            # (fallback-safe), persona preserved. Bare + as-requested == target.name.
+            # ⚑ The NODE-name keys both the ``agent.<node>.*`` slot and the
+            # ``agents/<node>/`` dir; ``with_harness`` follows the RESOLVED target.
             agent_id = with_harness(agent_name, target.name) if target else "general"
             agent_cfg_path = agent_settings_path(std.agents, agent_id)
             if target and not agent_cfg_path.exists():
@@ -2404,12 +1994,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     workset_config_path=workset_path,
                     node_name=agent_id,
                 )
-            # The PATH-DELIVERY categories + their materialised derivations (§0):
-            # resolved off the SAME single launch pipeline a start takes, so the
-            # display cannot drift from what actually mounts. A collision is
-            # REPORTED rather than raised — this display is the M-7 detection
-            # recipe ("resolve the snapshot and look for duplicate dests"), so
-            # dying on the very fault it exists to surface would be backwards.
+            # ⚑ Resolved off the SAME launch pipeline a start takes, so the display
+            # cannot drift from what mounts.  A collision is REPORTED, never raised —
+            # this view IS the detection recipe for that fault.
             from kanibako.commands.start import (
                 _persona_values_for,
                 _resolve_launch_snapshot,
@@ -2422,57 +2009,27 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     agent_cfg_path=agent_cfg_path,
                     desc=None, install=None,
                     target=target, agent_cfg=agent_cfg,
-                    # The SAME persona-store tier the launch resolves against —
-                    # required for the promise the comment above makes. The store
-                    # supplies ``secret_path.<VAR>``, a PATH-DELIVERY category:
-                    # without the tier this view would list a persona box's mounts
-                    # MINUS the token the launch actually mounts (and minus its
-                    # ``env`` passthrough). Tolerant + ``None`` for a bare agent,
-                    # so a store-less box renders exactly as before.
+                    # ⚑ The SAME persona-store tier the launch resolves against — without
+                    # it this view lists a persona box's mounts MINUS its token.
                     persona_values=_persona_values_for(agent_id, target),
-                    # A DISPLAY verb must not write to disk: the core table's
-                    # vault create-if-missing is a LAUNCH guarantee, not a
-                    # read one. The binds are emitted either way.
+                    # ⚑ A DISPLAY verb must not write to disk: create-if-missing is a
+                    # LAUNCH guarantee, not a read one.  The binds are emitted either way.
                     guarantee_create=False,
-                    # ⚑ The SAME §1A selection level the launch installs (P7) —
-                    # without it this display would resolve ``@system.agent``
-                    # differently from the launch it claims to show (e.g. an
-                    # autopicked or ``--agent`` box: the displayed
-                    # ``meta.box.auth.workset_path`` would drop the agent segment).
-                    # A display that disagrees with the launch is worse than no
-                    # display.
-                    #
-                    # ⚑ SELECTION ONLY — and that is the whole of the CLI level for a
-                    # READ verb (P8). ``box config`` carries none of the launch's
-                    # ephemeral VALUE flags (``-M`` / ``-N``-``-C``-``-R`` /
-                    # ``--image`` / ``--share-images`` live on ``start``), so there
-                    # is nothing ephemeral to install here. Rendering a flag from
-                    # some OTHER invocation would be the "a flag mutated a stored
-                    # value" failure §1A forbids, one screen removed:
-                    # ``--effective`` reports what the box IS configured to do, and
-                    # a per-launch override is by definition not that.
-                    #
-                    # ⚑ ``--agent`` is the EXCEPTION, and it is a PRE-EXISTING
-                    # DEFECT, not a P8 decision: the blanket flag injector puts it
-                    # on every leaf parser, so ``box config --agent goose
-                    # --effective`` PARSES — but this call site (and the other four
-                    # read-verb ``select_agent`` sites) never passes it through, so
-                    # it is silently IGNORED. It is advertised and inert. P8 leaves
-                    # the behaviour exactly as it found it rather than quietly
-                    # changing what a read verb reports; honouring it (or refusing
-                    # it) is tracked as a follow-on.
+                    # ⚑ The SAME §1A selection level the launch installs (P7): without
+                    # it this display resolves ``@system.agent`` differently from the
+                    # launch it claims to show.
+                    # ⚑ SELECTION ONLY, and for a READ verb that is the WHOLE CLI level
+                    # (P8) — do not add an ephemeral VALUE flag here.
+                    # ⚑ ``--agent`` PARSES here and is silently IGNORED — a pre-existing
+                    # defect of the blanket flag injector, deliberately left as found.
                     cli_level=(
                         effective_selection.selection_level
                         if effective_selection is not None
                         else None
                     ),
                 )
-                # The box's resolved config ENV, composed by the SAME helper the
-                # launch uses (agent tier under the reconciled
-                # ``<scope>.env.<VAR>`` winners), so the display cannot claim an
-                # env the box will not get — or miss one it will. It needs the
-                # RECONCILE, which is why it lands here rather than beside the
-                # agent state above.
+                # ⚑ The SAME helper the launch uses, so the display cannot claim an env
+                # the box will not get.  It needs the RECONCILE — hence its position here.
                 env_resolved = _build_config_env(
                     agent_cfg.env if agent_cfg is not None else {},
                     _reconciled.envs,
@@ -2491,9 +2048,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
-        # Bare env.* — RETIRED (R-39): refused at the HANDLER because the get
-        # engine returns values, never error strings (the same handler-side split
-        # as the workset bare-agent-key read guard).
+        # ⚑ Bare ``env.*`` is RETIRED, and must be refused at the HANDLER: the get
+        # engine returns VALUES, never error strings.
         from kanibako.settings.config_keys import bare_env_retired_error
         _env_err = bare_env_retired_error(
             key, verb="read", command_scope=ConfigLevel.box,
@@ -2501,9 +2057,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         if _env_err is not None:
             print(_env_err, file=sys.stderr)
             return 1
-        # The box's resolved agent NODE — needed to name/READ the box-scoped
-        # request a BARE agent key redirects to (``pref.agent.<active>.<key>``,
-        # P7). Best-effort: an unresolvable agent just means no redirect.
+        # The resolved agent NODE names the ``pref.agent.<active>.<key>`` a BARE agent
+        # key redirects to.  Best-effort: an unresolvable agent just means no redirect.
         _get_agent_name = ""
         try:
             from kanibako.settings.agent_select import select_agent
@@ -2517,10 +2072,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
             command_scope=ConfigLevel.box,
             active_agent=_get_agent_name or None,
         )
-        # A BARE agent behavior key at box scope has no box-writable value of its
-        # own: get_config_value redirected the READ to the box's §2h request
-        # ``pref.agent.<active>.<key>``. Name the value with that canonical form so
-        # the read teaches the request (mirrors the refuse-message ``set`` prints).
+        # ⚑ Name the value with the canonical redirect form, so the READ teaches the
+        # request — mirroring the refusal message ``set`` prints.
         from kanibako.settings.config_keys import resolve_key, box_agent_redirect_key
         redirect = box_agent_redirect_key(
             resolve_key(key), ConfigLevel.box, _get_agent_name or None,
@@ -2532,17 +2085,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
-        # 2026-06-29): thread every scope's settings file + the active agent name so
-        # a cross-scope @-ref in the new value resolves exactly as it would at
-        # launch. The box handler already holds box (project_toml) / workset
-        # (workset_path) / system (std.settings) files. The active agent NAME is
-        # resolved best-effort: it selects the ``agent.<active>.*`` sub-table the
-        # OTHER cascade files may carry (mirroring _effective_behavior_for_display,
-        # which likewise passes agent_path=None — the per-agent file stores behavior
-        # FLAT, so assemble_levels reads no category subtree from it). A resolution
-        # failure just leaves the agent name empty.  The workset tier is the one the
-        # pair named above — NOT a second derivation (M-8).
+        # ⚑ Thread the FULL launch cascade so a cross-scope ``@``-ref in the new value
+        # resolves at set time exactly as it would at launch.  ⚑ The workset tier is the
+        # one the M-8 pair named above — NEVER a second derivation.
         cascade_workset_path = workset_path
         cascade_agent_name = ""
         try:
