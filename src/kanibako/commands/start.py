@@ -16,9 +16,9 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from kanibako.persona_store import PersonaBundle
     from kanibako.settings.config import KanibakoConfig
+    from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
-    from kanibako.settings.settings_store import KeyStore
     from kanibako.settings.store_collapse import CollapsedCopy
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
@@ -6821,10 +6821,8 @@ def _install_derived_bindings(
     terminal is the entry's box DESTINATION — data, and routinely dotted
     (``~/.cache/uv``). The dotted installer would shatter it across tree levels.
     """
-    from kanibako.settings.settings_store import insert_segments
-
     for segments, value in derived.items():
-        insert_segments(snapshot, segments, value)
+        snapshot.insert_segments(segments, value)
 
 
 #: The three ``meta.assembly.*`` leaves the collapse produces, as SEGMENTS — the
@@ -6851,7 +6849,6 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
 
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
-    from kanibako.settings.settings_store import insert_segments
     from kanibako.settings.store_collapse import collapse_seeded, collapse_store_shapes
     from kanibako.settings.store_shape import build_store_shape_set
 
@@ -6862,7 +6859,7 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # is seeded before any bind folds, so a resolve with no home bind — every
     # narrow one, including the CREATE-side seed resolve — still has a seed list.
     shapes = build_store_shape_set(folded)
-    insert_segments(snapshot, _ASSEMBLY_SEEDED, collapse_seeded(shapes))
+    snapshot.insert_segments(_ASSEMBLY_SEEDED, collapse_seeded(shapes))
     # The other two DESCRIBE AN ASSEMBLY, so the fact that belongs to one gates them:
     # a home to build on. Above, a whole-box resolve has already REFUSED if it lacks
     # that; what reaches this return is a narrow resolve, and only ever that.
@@ -6872,8 +6869,8 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # the SAME shapes, so it cannot differ. One implementation beats one saved
     # traversal.
     collapsed = collapse_store_shapes(shapes, home_bind)
-    insert_segments(snapshot, _ASSEMBLY_BINDINGS, collapsed.bindings)
-    insert_segments(snapshot, _ASSEMBLY_SYNCED, collapsed.synced)
+    snapshot.insert_segments(_ASSEMBLY_BINDINGS, collapsed.bindings)
+    snapshot.insert_segments(_ASSEMBLY_SYNCED, collapsed.synced)
 
 
 def _home_bind_entries(entries) -> list:
@@ -6930,7 +6927,7 @@ def _refuse_without_one_home(entries) -> None:
 
 def _split_home_bind(entries):
     """Lift the ONE home mount out of *entries* — home is pid 0 and folds alone (§2a)."""
-    from kanibako.settings.settings_store import BindEntry
+    from kanibako.settings.kb_store import BindEntry
 
     at_home = _home_bind_entries(entries)
     if len(at_home) != 1:
@@ -7328,7 +7325,7 @@ def _snapshot_scalar(snapshot: "KeyStore", dotted: str) -> str | None:
     leaf and an empty string all read as ``None``: an unset key is absent, never a
     fabricated default.
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     node: object = snapshot
     for seg in dotted.split("."):
@@ -7347,7 +7344,7 @@ def _snapshot_assembly_bindings(snapshot: "KeyStore") -> "dict[str, object] | No
     which is why this walks to the ``bindings`` leaf and never tests the subtree.
     COPIED OUT of the snapshot — the caller gets its own map, never the live node.
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     node: object = snapshot
     for seg in _ASSEMBLY_BINDINGS:
@@ -7366,7 +7363,7 @@ def _snapshot_assembly_seeded(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
     raises); it means *this snapshot was never resolved*, and the consumer refuses it.
     COPIED OUT of the snapshot — the caller gets its own list, never the live node.
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     node: object = snapshot
     for seg in _ASSEMBLY_SEEDED:
@@ -7385,7 +7382,7 @@ def _snapshot_assembly_synced(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
     cutover 2c is a NARROW resolve and nothing else, a refused fold having raised.
     COPIED OUT of the snapshot — the caller gets its own list, never the live node.
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     node: object = snapshot
     for seg in _ASSEMBLY_SYNCED:

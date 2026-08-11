@@ -112,7 +112,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from kanibako.settings.settings_store import Bind, KeyStore
+    from kanibako.settings.kb_store import Bind
+    from kanibako.settings.keystore import KeyStore
 
 # Delivery tags.
 Delivery = Literal["COPY", "MOUNT", "ENV"]
@@ -1094,7 +1095,7 @@ def derive_binding_keys(
     entry's own segments, so the pairing cannot drift.
 
     ⚑ KEYED BY SEGMENTS, and the installer that consumes this map
-    (``settings_store.insert_segments``) splits nothing.  The last segment is the
+    (``KeyStore.insert_segments``) splits nothing.  The last segment is the
     entry's DESTINATION, which is DATA and routinely contains ``.``; the dotted
     spelling that used to be returned here shattered such a dest across tree
     levels and could silently overwrite a sibling derivation.  See
@@ -1128,7 +1129,7 @@ def derive_binding_keys(
     ⚑ Distinct by NAME from the READ lens ``settings_views.derived_bindings`` —
     one PRODUCES the keys, the other READS them back off a snapshot.
     """
-    from kanibako.settings.settings_store import BINDING_DERIVATIONS_NODE, Bind
+    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, Bind
 
     out: dict[tuple[str, ...], Bind] = {}
     for e in entries:

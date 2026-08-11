@@ -1129,10 +1129,10 @@ class TestWorksetEnv:
         from kanibako.commands.start import _build_config_env
         from kanibako.commands.system_cmd import run_set as system_set
         from kanibako.commands.workset_cmd import run_set
-        from kanibako.settings.settings_launch import snapshot_category_entries
+        from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_launch import snapshot_category_entries
         from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.settings_store import KeyStore
 
         assert system_set(argparse.Namespace(
             key_value="system.env.EDITOR=nano", force=True,
@@ -1191,6 +1191,7 @@ class TestPrimaryWorksetMigration:
         one-shot stderr warning while it exists without the spec file.
         """
         import kanibako.settings.paths as paths_mod
+        from kanibako.settings.keystore import KeyStore
         from kanibako.settings.paths import (
             host_xdg_map,
             resolve_project,
@@ -1198,7 +1199,6 @@ class TestPrimaryWorksetMigration:
         )
         from kanibako.settings.settings_launch import build_launch_snapshot
         from kanibako.settings.settings_resolve import ResolveCtx
-        from kanibako.settings.settings_store import KeyStore
 
         monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
         config = load_config(config_file)

@@ -91,8 +91,8 @@ from kanibako.settings.config_io import (
     write_root_key,
 )
 from kanibako.errors import UserCancelled
+from kanibako.settings.keystore import _MISSING, ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
-from kanibako.settings.settings_store import _MISSING, ReservedKeyError
 from kanibako.utils import confirm_prompt
 
 
@@ -338,7 +338,8 @@ def _category_set_lookups(
 
     def raw_bind(key: str) -> "Any | None":
         # The key's effective RAW tuple in the SAME merged snapshot (F10), via unbound ops (S3).
-        from kanibako.settings.settings_store import Bind, KeyStore
+        from kanibako.settings.kb_store import Bind
+        from kanibako.settings.keystore import KeyStore
 
         node: "Any" = base_snapshot
         for seg in key.split("."):
@@ -354,7 +355,7 @@ def _category_set_lookups(
 
 def _clone_keystore(store: "Any") -> "Any":
     """Deep-clone a :class:`KeyStore` — nested nodes rebuilt, immutable leaves shared (S19)."""
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     out = KeyStore()
     for k in dict.keys(store):
@@ -365,7 +366,7 @@ def _clone_keystore(store: "Any") -> "Any":
 
 def _set_leaf(store: "Any", parts: list, value: object) -> None:
     """Set *value* at the *parts* path in *store*, creating nested KeyStore nodes as needed."""
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     node = store
     for seg in parts[:-1]:
@@ -977,10 +978,11 @@ def _effective_after_reset(
         p is None for p in (system_path, agent_path, workset_path, box_path)
     ):
         return None
+    from kanibako.settings.kb_store import Bind
+    from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge
-    from kanibako.settings.settings_store import Bind, KeyStore
 
     # ⚑ The path tier — identical inputs to the set-time probe, but the failure arm DIFFERS:
     # an "effective" computed without the floor would name a value the cascade never resolves.

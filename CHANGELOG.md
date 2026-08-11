@@ -80,6 +80,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Two of the refusals for a key that collides with a reserved name are reworded.** A settings key
+  may not be named after a Python dunder (`__init__`) or after a dictionary method (`get`, `keys`,
+  `items`, …); both would shadow part of the structure the resolved settings live in, so both are
+  refused when the value is validated. The two refusals are shorter now. Nothing about what they
+  refuse has changed and neither was removed — only the wording. As with the path messages below,
+  this is called out because the text is what you see, and because anything matching on these
+  strings (a script grepping output, a test pinning a message) will need updating:
+  `is reserved: dunder-pattern names (__x__) are not allowed (they are Python data-model
+  attributes)` is now `is reserved: dunder names (__x__) not allowed (dict attributes).`, and
+  `is reserved: it shadows a dict method. Reserved names: …` is now
+  `is reserved: (dict method name). Reserved names: …`.
+
 - **The warnings and errors from path resolution are reworded.** The messages about XDG variables,
   workset and box discovery, vault location, and the refusals that protect `$HOME` from being used as
   a project root are shorter and more plainly punctuated; a few name their subject more precisely.

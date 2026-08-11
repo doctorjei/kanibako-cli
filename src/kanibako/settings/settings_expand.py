@@ -2,12 +2,12 @@
 
 ONE pure function, :func:`expand`, walks
 :mod:`kanibako.settings.settings_merge`'s raw merged
-:class:`~kanibako.settings.settings_store.KeyStore` snapshot
+:class:`~kanibako.settings.keystore.KeyStore` snapshot
 (``d33db5c``) and resolves every ``@``-ref (CONFIG, both bind sides) and host-side
 ``$VAR`` / ``~`` (ENVIRONMENT) to terminals — TRANSITIVELY (fixpoint /
 topological), with cycle detection. It is PURE: no file / env / clock access, same
 input → same output, and it NEVER mutates the input snapshot (S19) — it builds a
-fresh :class:`~kanibako.settings.settings_store.KeyStore`.
+fresh :class:`~kanibako.settings.keystore.KeyStore`.
 
 It REUSES the existing single-expr engine
 :func:`kanibako.settings.settings_resolve.expand_expr` (the scanner: escapes, ``~``,
@@ -83,6 +83,8 @@ from __future__ import annotations
 
 from typing import overload
 
+from kanibako.settings.kb_store import Bind, BindEntry, StoreValue
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_resolve import (
     MAX_REF_DEPTH,
     ResolveCtx,
@@ -90,7 +92,6 @@ from kanibako.settings.settings_resolve import (
     expand_expr,
     match_ref,
 )
-from kanibako.settings.settings_store import Bind, BindEntry, KeyStore, StoreValue
 
 
 class _Absent:
@@ -100,7 +101,7 @@ class _Absent:
     None, a real terminal). A whole-value ``@``-ref to an absent key propagates
     THIS sentinel up the chain; at the top it drops the host key from the
     snapshot. An EMBEDDED token coerces it to ``""``. Module-private, never
-    stored, never a member of :data:`~kanibako.settings.settings_store.StoreValue`.
+    stored, never a member of :data:`~kanibako.settings.kb_store.StoreValue`.
     """
 
     _instance: "_Absent | None" = None

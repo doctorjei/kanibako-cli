@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final, NamedTuple
 
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry, BindMap
 from kanibako.settings.settings_categories import (
   CategoryCollision,
   CategoryEntry,
@@ -15,7 +16,6 @@ from kanibako.settings.settings_categories import (
   raise_extension_onto_occupied,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.settings_store import SCOPE_CONTAINMENT, BindEntry, BindMap
 
 #: A dest-keyed mask arm. ⚑ The VALUE IS NEVER READ - presence is the whole fact.
 MaskMap = dict[str, bool]

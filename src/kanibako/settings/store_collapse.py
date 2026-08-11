@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Final, NamedTuple
 
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
-from kanibako.settings.settings_store import SCOPE_CONTAINMENT, BindEntry
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet
 
 

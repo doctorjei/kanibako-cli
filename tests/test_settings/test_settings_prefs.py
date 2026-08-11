@@ -12,6 +12,8 @@ import logging
 import pytest
 import yaml
 
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_prefs import (
     ALLOWLIST,
     LOCATOR_CLOSURE,
@@ -31,7 +33,6 @@ from kanibako.settings.settings_prefs import (
     validate_pref,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
 AGENTS = AgentNames({"claude", "codex", "goose"})
 

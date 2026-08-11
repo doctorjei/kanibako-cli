@@ -20,10 +20,10 @@ import pytest
 import yaml
 
 from kanibako.settings.agent_select import AgentSelection, SELECTION_KEY
+from kanibako.settings.keystore import _MISSING
 from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
-from kanibako.settings.settings_store import _MISSING
 
 AGENTS = frozenset({"claude", "goose", "codex"})
 

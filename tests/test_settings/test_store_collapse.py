@@ -26,12 +26,12 @@ import copy
 
 import pytest
 
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
 from kanibako.settings.settings_launch import (
   build_launch_snapshot,
   snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
-from kanibako.settings.settings_store import SCOPE_CONTAINMENT, BindEntry
 from kanibako.settings.store_collapse import (
   HOME_DEST,
   MASK,

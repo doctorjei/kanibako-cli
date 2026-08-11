@@ -1,11 +1,17 @@
-"""Unit tests for the KeyStore storage model (block 1 + 1b reserved-key revision).
+"""Unit tests for the KeyStore container (storage model; block 1 + 1b reserved-key revision).
+
+Carried over VERBATIM from the tests of the single storage module this pair replaced, when it
+split into :mod:`kanibako.settings.keystore` (the container) and :mod:`kanibako.settings.kb_store` (the
+kanibako value space). The value-shape tests — ``Bind`` / ``BindEntry`` / ``BindMap`` /
+``StoreValue`` — moved to ``test_kb_store.py``; everything here pins the CONTAINER. Assertions
+changed only where this split respells a name: ``insert_segments`` is now a METHOD, and
+``_RESERVED_KEY_NAMES`` is now the public ``KeyStore.RESERVED_KEY_NAMES``.
+(``insert_dotted`` RETIRED with its sole caller, and its two tests went with it.)
 
 Covers the brief's checklist: construction from nested dict literals; attr access
-== ``[]`` access; dynamic / keyword / hyphen / dotted keys via ``[]``; the
-``Bind`` round-trip + ``opts=None`` default; present-``None`` stored and
-distinguishable from absent via the BOUND ``store.get(k, _MISSING)`` + the
-``_MISSING`` sentinel; masks modeled as ``{box_dest: bool|None}`` (NOT a list);
-repr / equality sanity.
+== ``[]`` access; dynamic / keyword / hyphen / dotted keys via ``[]``; present-``None`` stored and
+distinguishable from absent via the BOUND ``store.get(k, _MISSING)`` + the ``_MISSING`` sentinel;
+masks modeled as ``{box_dest: bool|None}`` (NOT a list); repr / equality sanity.
 
 Block 1b (reserved key names): a key named after a public ``dict`` method
 (``get keys values items pop popitem setdefault update clear copy fromkeys``) or
@@ -20,45 +26,14 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings.settings_store import (
+# ⚑ ``Bind`` / ``BindEntry`` appear below only as opaque PAYLOADS — the subject of every test in
+# this file is the container, not the value shape. Their own tests live in ``test_kb_store.py``.
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import (
     _MISSING,
-    _RESERVED_KEY_NAMES,
-    Bind,
-    BindEntry,
     KeyStore,
     ReservedKeyError,
-    StoreValue,
-    insert_dotted,
-    insert_segments,
 )
-
-
-# --------------------------------------------------------------------------- #
-# Bind                                                                         #
-# --------------------------------------------------------------------------- #
-
-
-def test_bind_two_tuple_defaults_opts_none() -> None:
-    b = Bind("/host/src", "/box/dest")
-    assert b.host == "/host/src"
-    assert b.box == "/box/dest"
-    assert b.opts is None
-    # Positional / namedtuple round-trip.
-    assert tuple(b) == ("/host/src", "/box/dest", None)
-    assert b == Bind(host="/host/src", box="/box/dest", opts=None)
-
-
-def test_bind_three_tuple_carries_opts() -> None:
-    b = Bind("/host/sock", "/box/sock", "z")
-    assert b.opts == "z"
-    assert tuple(b) == ("/host/sock", "/box/sock", "z")
-
-
-def test_bind_is_not_a_string() -> None:
-    # Load-bearing: a binding is a structured pair, never "host:box".
-    b = Bind("/h", "/b")
-    assert isinstance(b, tuple)
-    assert not isinstance(b, str)
 
 
 # --------------------------------------------------------------------------- #
@@ -190,7 +165,7 @@ def test_reserved_set_equals_dict_public_methods() -> None:
     # 0 unguarded, 0 extras — which is what makes the bound store.get safe and
     # the __getattr__ simplification sound. (Provable completeness, block 1b.)
     public = {n for n in dir(dict) if not (n.startswith("__") and n.endswith("__"))}
-    assert _RESERVED_KEY_NAMES == public
+    assert KeyStore.RESERVED_KEY_NAMES == public
 
 
 @pytest.mark.parametrize(
@@ -208,6 +183,21 @@ def test_reserved_method_name_rejected_at_construction(name: str) -> None:
     assert "fromkeys" in msg  # lists the (sorted) reserved set -> actionable
     # ReservedKeyError is a KeyError subclass (a bad-KEY error).
     assert isinstance(exc.value, KeyError)
+
+
+def test_reserved_method_error_names_the_set_without_crashing() -> None:
+    # ⚑ REGRESSION, and a REAL bug in the handed-over file: the reserved-set
+    # interpolation was left with its f-string braces (``{sorted(...)}``), which
+    # builds a SET CONTAINING A LIST -> ``TypeError: unhashable type: 'list'``
+    # raised from inside the error path. The user hits it at the exact moment
+    # they are being told their key is reserved: the diagnostic destroys itself.
+    # So this asserts the ERROR TYPE (not a TypeError) and that the sorted set
+    # reaches the message as a list, in order.
+    with pytest.raises(ReservedKeyError) as exc:
+        KeyStore({"pop": 1})
+    msg = str(exc.value)
+    assert str(sorted(KeyStore.RESERVED_KEY_NAMES)) in msg
+    assert "{" not in msg  # a set literal here would mean the braces survived
 
 
 @pytest.mark.parametrize(
@@ -266,18 +256,26 @@ def test_near_miss_non_reserved_names_allowed(name: str) -> None:
     assert getattr(store, name) == "ok"  # attr surface still works
 
 
-def test_keystore_defines_only_dunder_members() -> None:
-    # CLASS INVARIANT (director/Jei): KeyStore adds NO non-dunder class member.
-    # With the miss-only __getattr__, a non-dunder class attr would resolve
-    # BEFORE a same-named key -> a collision the reserved set misses. So the only
-    # attrs beyond dict's must be dunders, and the reserved set stays == dict's
-    # public methods exactly.
+def test_keystore_class_members_are_exactly_the_declared_four() -> None:
+    # CLASS INVARIANT (director/Jei), RESTATED for the split. With the miss-only
+    # __getattr__, ANY non-dunder class member resolves BEFORE a same-named key —
+    # a collision the reserved set misses. The old module carried zero such
+    # members; the split moves four onto the class ON PURPOSE (the public reserved
+    # set, the walk that used to be a module function, and the two name-mangled
+    # validators). None of the four is a declared key or could be one, so the
+    # guard becomes an EXACT pin rather than an empty one: a FIFTH member — the
+    # unreviewed kind, which is how a real key gets shadowed — fails here.
     own = {n for n in vars(KeyStore)}
     non_dunder_own = {
         n for n in own if not (n.startswith("__") and n.endswith("__"))
     }
-    assert non_dunder_own == set(), f"non-dunder class members: {non_dunder_own}"
-    beyond_dict = set(dir(KeyStore)) - set(dir(dict))
+    assert non_dunder_own == {
+        "RESERVED_KEY_NAMES",
+        "insert_segments",
+        "_KeyStore__check_key_name",
+        "_KeyStore__wrap",
+    }, f"unexpected non-dunder class members: {non_dunder_own}"
+    beyond_dict = set(dir(KeyStore)) - set(dir(dict)) - non_dunder_own
     assert all(n.startswith("__") and n.endswith("__") for n in beyond_dict), (
         f"non-dunder attrs beyond dict: "
         f"{[n for n in beyond_dict if not (n.startswith('__') and n.endswith('__'))]}"
@@ -286,8 +284,8 @@ def test_keystore_defines_only_dunder_members() -> None:
 
 def test_underscore_prefixed_key_is_allowed() -> None:
     # A `_`-prefixed NON-dunder name is NOT reserved (it is not a dict method and
-    # not a dunder) and — given the class-only-dunder invariant — does not shadow
-    # any class attribute. So it stores and round-trips by key and by attribute.
+    # not a dunder) and — given the class-member pin above — does not shadow any
+    # class attribute. So it stores and round-trips by key and by attribute.
     store = KeyStore({"_check_key": 1, "_wrap": 2, "_private": 3})
     assert store["_check_key"] == 1 and store["_wrap"] == 2
     assert store._private == 3  # attribute surface works (no class attr shadows)
@@ -333,10 +331,25 @@ def test_missing_sentinel_is_not_none_and_falsy_guard() -> None:
 
 
 def test_missing_sentinel_singleton_and_repr() -> None:
-    from kanibako.settings.settings_store import _Missing
+    from kanibako.settings.keystore import _Missing
 
     assert _Missing() is _MISSING
     assert repr(_MISSING) == "_MISSING"
+
+
+def test_missing_sentinel_lives_at_module_level_not_inside_keystore() -> None:
+    # ⚑ REGRESSION, and a REAL bug in the handed-over file: ``_Missing`` and
+    # ``_MISSING`` were indented INSIDE ``class KeyStore`` while the module
+    # docstring and their own comment both call them module-level/module-private.
+    # Nested, ``from ...keystore import _MISSING`` raises ImportError — and
+    # ELEVEN modules import it exactly that way. So this pins the LOCATION.
+    import kanibako.settings.keystore as ks
+
+    assert isinstance(ks._MISSING, ks._Missing)
+    assert ks._Missing.__qualname__ == "_Missing"  # not "KeyStore._Missing"
+    # ...and they are NOT reachable through the container class.
+    assert not hasattr(KeyStore, "_Missing")
+    assert not hasattr(KeyStore, "_MISSING")
 
 
 def test_key_named_get_is_rejected_so_bound_probe_is_safe() -> None:
@@ -377,20 +390,6 @@ def test_nested_present_none_leaf() -> None:
     rw = store["bindings"]["rw"]
     assert dict.get(rw, "home", _MISSING) is None
     assert dict.get(rw, "other", _MISSING) is _MISSING
-
-
-# --------------------------------------------------------------------------- #
-# Bind stored inside a category                                                #
-# --------------------------------------------------------------------------- #
-
-
-def test_bind_value_stored_in_category_unmodified() -> None:
-    bind = Bind("/host/home", "/box/home")
-    store = KeyStore({"bindings": {"rw": {"home": bind}}})
-    got = store.bindings["rw"]["home"]
-    assert got is bind
-    assert isinstance(got, Bind)
-    assert got.host == "/host/home" and got.box == "/box/home" and got.opts is None
 
 
 # --------------------------------------------------------------------------- #
@@ -461,73 +460,18 @@ def test_keystore_is_a_dict_subclass() -> None:
     assert isinstance(KeyStore(), dict)
 
 
-def test_storevalue_alias_is_importable() -> None:
-    # Public surface sanity: the union alias is exported.
-    assert StoreValue is not None
-
-
 # --------------------------------------------------------------------------- #
-# BindEntry / BindMap — the DEST-KEYED shape (R-5/R-6) and the P5→P8 bridge    #
-# --------------------------------------------------------------------------- #
-
-
-def test_bind_entry_one_element_defaults_opts_none() -> None:
-    e = BindEntry("/host/src")
-    assert e.src == "/host/src"
-    assert e.opts is None
-    assert tuple(e) == ("/host/src", None)
-
-
-def test_bind_entry_carries_explicit_opts() -> None:
-    e = BindEntry("/host/src", "ro")
-    assert (e.src, e.opts) == ("/host/src", "ro")
-
-
-def test_bind_and_bind_entry_are_mutually_exclusive_types() -> None:
-    # ⚑ THE ARITY TRAP. Both shapes admit a 2-element tuple with OPPOSITE
-    # meanings, so every consumer discriminates by TYPE. Neither NamedTuple is a
-    # subclass of the other, so ``isinstance`` separates them exactly — this is
-    # the property the whole bridge rests on.
-    assert not isinstance(BindEntry("/a"), Bind)
-    assert not isinstance(Bind("/a", "/b"), BindEntry)
-    # And a 2-element value of each shape is NOT equal to the other's, because
-    # ``Bind`` always materialises 3 elements (opts defaults into the tuple).
-    assert BindEntry("/a", "/b") != Bind("/a", "/b")
-
-
-def test_bind_entry_round_trips_through_a_keystore() -> None:
-    store = KeyStore({"box": {"bindings": {"rw": {"~/.claude": BindEntry("/h/c")}}}})
-    entry = store["box"]["bindings"]["rw"]["~/.claude"]
-    assert type(entry) is BindEntry
-    assert entry == BindEntry("/h/c")
-
-
-def test_bindmap_materialises_as_a_node_not_an_opaque_leaf() -> None:
-    # ⚑ Load-bearing (see the ``BindMap`` docstring): a plain dict assigned into a
-    # KeyStore is WRAPPED into a nested KeyStore node, so a dest-keyed arm merges
-    # PER ENTRY through the generic node recursion rather than wholesale.
-    store = KeyStore()
-    store["arm"] = {"~/a": BindEntry("/h/a"), "~/b": BindEntry("/h/b", "ro")}
-    arm = store["arm"]
-    assert isinstance(arm, KeyStore)
-    assert set(dict.keys(arm)) == {"~/a", "~/b"}
-    assert type(dict.__getitem__(arm, "~/b")) is BindEntry
-
-
-
-# --------------------------------------------------------------------------- #
-# insert_segments / insert_dotted — the ONE walk, and its two entry points     #
+# insert_segments — the ONE walk, now a METHOD on the container                #
 # --------------------------------------------------------------------------- #
 
 
 def test_insert_segments_takes_a_dotted_segment_whole() -> None:
-    # ⚑ THE POINT OF THE FUNCTION. The terminal of a ``binding_derivations`` path
+    # ⚑ THE POINT OF THE METHOD. The terminal of a ``binding_derivations`` path
     # is a box DESTINATION — data — and real destinations carry dots
     # (``~/.cache/uv``, ``/home/agent/.claude/plugins``). One segment is one node,
     # whatever it spells.
     store = KeyStore()
-    insert_segments(
-        store,
+    store.insert_segments(
         ("binding_derivations", "agent", "claude", "common",
          "/home/agent/.claude/plugins"),
         BindEntry("/store/plugins"),
@@ -545,27 +489,12 @@ def test_insert_segments_keeps_two_dests_that_would_nest_once_split() -> None:
     # → ``json``, so installing the second REPLACES the first's leaf with a node
     # and the first derivation disappears with no error.
     store = KeyStore()
-    insert_segments(store, ("caches", "~/.claude"), BindEntry("/h/a"))
-    insert_segments(store, ("caches", "~/.claude.json"), BindEntry("/h/b"))
+    store.insert_segments(("caches", "~/.claude"), BindEntry("/h/a"))
+    store.insert_segments(("caches", "~/.claude.json"), BindEntry("/h/b"))
     assert set(dict.keys(store["caches"])) == {"~/.claude", "~/.claude.json"}
     assert dict.__getitem__(store["caches"], "~/.claude") == BindEntry("/h/a")
 
 
 def test_insert_segments_refuses_an_empty_path() -> None:
     with pytest.raises(ValueError):
-        insert_segments(KeyStore(), (), "x")
-
-
-def test_insert_dotted_splits_a_key_into_segments() -> None:
-    # The dotted front-end, for a caller whose path is a validated KEY (every
-    # segment dot-free). Same walk, one split at the door.
-    store = KeyStore()
-    insert_dotted(store, "box.bindings.rw", None)
-    assert store["box"]["bindings"]["rw"] is None
-
-
-def test_insert_dotted_replaces_a_shallower_leaf_with_a_node() -> None:
-    store = KeyStore()
-    insert_dotted(store, "a.b", "leaf")
-    insert_dotted(store, "a.b.c", "deeper")
-    assert store["a"]["b"]["c"] == "deeper"
+        KeyStore().insert_segments((), "x")

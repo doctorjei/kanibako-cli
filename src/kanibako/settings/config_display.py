@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.settings.config_io import load_doc
+from kanibako.settings.keystore import _MISSING
 from kanibako.settings.settings_prefs import PREF_ROOT
-from kanibako.settings.settings_store import _MISSING
 
 
 def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
@@ -126,8 +126,9 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     per-entry expansion below reads the dest as a MAP KEY on both halves and
     never re-splits it.
     """
+    from kanibako.settings.kb_store import Bind, BindEntry
+    from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_prefs import prefs_from_partial
-    from kanibako.settings.settings_store import Bind, BindEntry, KeyStore
 
     if not isinstance(snapshot, KeyStore):
         return
@@ -168,13 +169,17 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     for req in requests:
         if isinstance(req.value, KeyStore):
             arm = _at(req.target)
-            for dest in dict.keys(req.value):
+            # ⚑ NOT named ``dest``: the row tuple unpacked below binds a ``dest``
+            # of its own that is ``str | None`` (a scalar request has no
+            # destination), and one name for two types is how a None-carrying row
+            # gets read as an entry key.
+            for entry_dest in dict.keys(req.value):
                 rows.append((
-                    f"{req.target}.{dest}",
-                    _render(dict.__getitem__(req.value, dest), dest),
-                    dict.get(arm, dest, _MISSING) if isinstance(arm, KeyStore)
+                    f"{req.target}.{entry_dest}",
+                    _render(dict.__getitem__(req.value, entry_dest), entry_dest),
+                    dict.get(arm, entry_dest, _MISSING) if isinstance(arm, KeyStore)
                     else _MISSING,
-                    dest,
+                    entry_dest,
                 ))
         else:
             rows.append((req.target, _render(req.value), _at(req.target), None))
@@ -229,10 +234,11 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     which is deliberately unimplemented, so the section prints a NOTICE instead
     of pairs.  See the block below for why a notice rather than silence.
     """
+    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_categories import (
         effective_bindings_and_template_sources,
     )
-    from kanibako.settings.settings_store import BindEntry, KeyStore
 
     print("", file=out)
     if error is not None:
@@ -255,7 +261,7 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     # all, so the pair is assembled from the key and the leaf TOGETHER. The leaf
     # test is ``isinstance`` and never arity — a legacy 3-tuple ``Bind`` and a
     # ``BindEntry`` are both legally 2 elements with OPPOSITE meanings
-    # (``settings_store.BindEntry``, the arity trap). A leaf that is neither is a
+    # (``kb_store.BindEntry``, the arity trap). A leaf that is neither is a
     # malformed arm the launch already refused, which is why the display is
     # showing *error* instead of reaching here.
     for scope in ("system", "agent", "workset", "box"):
@@ -347,7 +353,7 @@ def _iter_agent_tiers(scope: str, scope_node: Any):
     other scope is itself.  Keeps the display from printing the bare
     ``agent.bindings.*`` form, which is not a key (spec §0).
     """
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     if scope != "agent":
         yield scope_node, scope
@@ -360,7 +366,7 @@ def _iter_agent_tiers(scope: str, scope_node: Any):
 
 def _sub(node: Any, path: "tuple[str, ...]") -> Any:
     """Walk *path* under *node* with unbound ``dict`` ops (S3); ``None`` if absent."""
-    from kanibako.settings.settings_store import KeyStore
+    from kanibako.settings.keystore import KeyStore
 
     cur: Any = node
     for seg in path:

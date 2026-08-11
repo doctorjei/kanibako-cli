@@ -4661,7 +4661,7 @@ class TestPrefShow:
 
     def test_effective_shows_request_and_result(self, tmp_path, capsys):
         """§2h — '--effective shows BOTH the request and the resulting value'."""
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         snap = KeyStore({
             "pref": {"system": {"agent": "goose"},
@@ -4692,7 +4692,7 @@ class TestPrefShow:
         present-None INSIDE the dest-keyed map is the per-entry omit, so the
         request is now keyed by the DESTINATION.
         """
-        from kanibako.settings.settings_store import KeyStore
+        from kanibako.settings.keystore import KeyStore
 
         snap = KeyStore({
             "pref": {"agent": {"claude": {

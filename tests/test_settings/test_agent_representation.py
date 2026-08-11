@@ -19,7 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from kanibako.settings.agent_representation import agent_default_partial
-from kanibako.settings.settings_store import _MISSING, BindEntry, KeyStore
+from kanibako.settings.kb_store import BindEntry
+from kanibako.settings.keystore import _MISSING, KeyStore
 from kanibako.targets.base import (
     AgentInstall,
     BindKind,

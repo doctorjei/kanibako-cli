@@ -8,7 +8,11 @@ The resolver chain, in build order:
 
 * ``settings_keyspace``   — the CLOSED KEYSPACE: what IS a key, and the one
   validator that answers it (spec §0).
-* ``settings_store``      — the KeyStore: the resolved-keyspace data structure.
+* ``keystore``            — the KeyStore: the resolved-keyspace data structure,
+  generic over its value space and kanibako-agnostic (its user-facing strings
+  travel with it in ``keystore_strings``).
+* ``kb_store``            — kanibako's instantiation of that value space:
+  ``StoreValue``, ``Bind``/``BindEntry``/``BindMap``, ``SCOPE_CONTAINMENT``.
 * ``settings_assemble``   — per-scope settings files → ordered partials.
 * ``settings_merge``      — the depth-sensitive per-name union of those partials.
 * ``settings_expand``     — eager build-time expansion of tokens to terminals.
@@ -66,7 +70,7 @@ artifact the launcher consumes.  It is NOT part of ``kanibako.launch``, which is
 the box lifecycle.
 
 PUBLIC SURFACE: the submodules named in ``__all__``.  Consumers outside this
-package import the SUBMODULE — ``from kanibako.settings.settings_store import
+package import the SUBMODULE — ``from kanibako.settings.keystore import
 KeyStore`` — never a name re-exported here.
 
 ⚑ DELIBERATELY IMPORT-FREE, and here it matters most.  This package holds most
@@ -84,6 +88,15 @@ facade is gated on breaking that cycle (the ``paths`` split, LaunchPlan/KeyKind)
 
 IN-PACKAGE IMPORTS ARE ABSOLUTE (``from kanibako.settings.settings_merge import
 merge``), never relative — §4.4 of that plan.
+
+⚑ ONE DELIBERATE EXCEPTION, and it is exactly one edge: ``keystore`` reaches
+``keystore_strings`` RELATIVELY.  Those TWO are the liftable unit — the container
+is generic over its value space and knows nothing about kanibako, which is the
+whole point of the split, and a unit's user-facing strings are part of its
+surface.  An absolute path there would name the package the pair is meant to be
+able to leave.  ``kb_store`` is NOT part of that unit: it is kanibako's
+instantiation and stays behind, so it spells the absolute path like everything
+else.  Nothing else may copy this edge.
 """
 
 __all__ = [
@@ -98,6 +111,8 @@ __all__ = [
     "config_io",
     "config_keys",
     "core_defaults",
+    "kb_store",
+    "keystore",
     "paths",
     "settings_assemble",
     "settings_categories",
@@ -109,6 +124,5 @@ __all__ = [
     "settings_merge",
     "settings_prefs",
     "settings_resolve",
-    "settings_store",
     "settings_views",
 ]

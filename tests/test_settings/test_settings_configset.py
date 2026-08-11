@@ -36,10 +36,10 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.keystore import _MISSING, KeyStore
 from kanibako.settings.settings_configset import OK, Error, validate_config_set
 from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_resolve import ResolveCtx
-from kanibako.settings.settings_store import _MISSING, KeyStore
 
 # --------------------------------------------------------------------------- #
 # Test stubs for the injected callback                                        #

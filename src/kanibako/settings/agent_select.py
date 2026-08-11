@@ -70,7 +70,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from kanibako.settings.settings_store import _MISSING
+from kanibako.settings.keystore import _MISSING
 
 #: The key naming the agent a box runs (spec §2g). Re-exported so callers
 #: spell it once.

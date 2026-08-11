@@ -21,10 +21,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import _MISSING, KeyStore
 from kanibako.settings.settings_assemble import assemble_levels, parse_bind_map
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.settings_store import _MISSING, Bind, BindEntry, KeyStore
 
 # Index of each level in the returned MOST-SPECIFIC-FIRST list (S8).
 BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM, BASE = range(6)

@@ -21,13 +21,13 @@ from pathlib import Path  # noqa: F401  (annotations)
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
 from kanibako.settings.config import coerce_bool
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_keyspace import (
     ACCESS_DEFAULT,
     ACCESS_TIERS,
     leaf_name_reason,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
-from kanibako.settings.settings_store import SCOPE_CONTAINMENT
 
 
 class ConfigLevel(Enum):
@@ -224,7 +224,7 @@ _SCOPE_NAMESPACES: frozenset[str] = frozenset({
 })
 
 # The module-local alias of the CONTAINMENT order (spec §0): ``system ⊃ agent ⊃
-# workset ⊃ box``, OUTERMOST first — declared in ``settings_store``, the stack leaf.
+# workset ⊃ box``, OUTERMOST first — declared in ``kb_store``, the stack leaf.
 _SCOPE_CONTAINMENT: tuple[str, ...] = SCOPE_CONTAINMENT
 
 # Which key-scope namespaces a COMMAND scope may WRITE (spec §0 + §2a): its OWN

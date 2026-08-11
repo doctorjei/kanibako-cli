@@ -2,7 +2,7 @@
 
 This module represents a plugin's per-agent DESCRIPTOR delivery binds as
 agent-level category-default entries in the resolved-keyspace
-:class:`~kanibako.settings.settings_store.KeyStore`, so agent binary/launcher/share
+:class:`~kanibako.settings.keystore.KeyStore`, so agent binary/launcher/share
 delivery flows through the ONE category keyspace (the single-route invariant),
 NOT a parallel descriptor mount route.
 
@@ -88,8 +88,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kanibako.settings.kb_store import BindEntry
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
-from kanibako.settings.settings_store import BindEntry, KeyStore
 from kanibako.targets.assembly import resolve_binding_source
 
 if TYPE_CHECKING:
@@ -103,7 +104,7 @@ def agent_default_partial(
 ) -> KeyStore:
     """Represent a descriptor's delivery bindings as an agent-level KeyStore partial.
 
-    Returns a :class:`~kanibako.settings.settings_store.KeyStore` partial rooted at
+    Returns a :class:`~kanibako.settings.keystore.KeyStore` partial rooted at
     ``agent.<node>`` where ``<node>`` is the ACTIVE node-name (*node_name*), holding
     each resolvable :class:`~kanibako.targets.base.Binding` as a
     ``agent.<node>.bindings.{ro,rw}`` entry ``box_dest -> BindEntry(src, opts)`` —

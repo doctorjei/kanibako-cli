@@ -4,7 +4,7 @@ ONE pure function, :func:`merge`, walks :mod:`kanibako.settings.settings_assembl
 ``list[KeyStore]`` partials (MOST-SPECIFIC-FIRST, S8) and produces ONE raw merged
 snapshot. It is PURE: no file / env / clock access, same input → same output, and
 it NEVER mutates its input partials (S15) — it builds a fresh
-:class:`~kanibako.settings.settings_store.KeyStore`.
+:class:`~kanibako.settings.keystore.KeyStore`.
 
 It is the depth-sensitive successor to ``settings_resolve.resolve_value``'s
 most-specific-first winner-take-all (which used ``""`` as a terminal + a separate
@@ -47,8 +47,9 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 
 from __future__ import annotations
 
+from kanibako.settings.kb_store import StoreValue
+from kanibako.settings.keystore import _MISSING, KeyStore
 from kanibako.settings.settings_assemble import _BIND_CATEGORIES
-from kanibako.settings.settings_store import _MISSING, KeyStore, StoreValue
 
 # The scope-category segment whose present-None leaf means UNMASK (not a scalar
 # reset). S16 — reuse 2a's category awareness; ``masks`` is the one keyed
@@ -58,8 +59,8 @@ _MASKS_SEGMENT = "masks"
 # The top-level table holding ``pref.*`` REQUESTS (spec §2h). Its subtree is
 # EXEMPT from the present-None type-split — see :func:`_resolve_present_none`.
 # Spelled here rather than imported from ``settings_prefs`` to keep this module's
-# import surface at ``settings_assemble`` + ``settings_store`` (it is one fixed
-# token, and ``settings_prefs`` imports the settings stack, which would cycle).
+# import surface at ``settings_assemble`` + ``keystore``/``kb_store`` (it is one
+# fixed token, and ``settings_prefs`` imports the settings stack, which would cycle).
 _PREF_ROOT = "pref"
 
 # The agent tier keeps its ``default`` / ``<active-name>`` discriminator as the true

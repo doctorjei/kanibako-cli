@@ -23,9 +23,10 @@ import copy
 
 import pytest
 
+from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.keystore import _MISSING, KeyStore
 from kanibako.settings.settings_expand import _is_whole_value_ref, expand
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
-from kanibako.settings.settings_store import _MISSING, Bind, BindEntry, KeyStore
 
 HOST_HOME = "/home/u"
 
