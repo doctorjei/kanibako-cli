@@ -1,93 +1,15 @@
-"""Cascade level assembly — per-scope settings files → ordered KeyStore partials.
+"""Cascade level assembly — per-scope settings files → ordered ``KeyStore`` partials.
 
-Block 2a of the KeyStore implementation. This module reads each cascade scope's
-settings file(s) into ONE unified nested :class:`~kanibako.settings.settings_store.KeyStore`
-partial per level and returns the ordered ``list[KeyStore]`` the merge (block 2b)
-consumes. It builds ALONGSIDE the live launch cascades (``commands/start.py``,
-``config.py:load_settings``) — it modifies none of them; the swap is block 7.
+**_Terminology_**
+- _level_: one cascade tier, identified by its FILE. The 6, least→most authoritative:
+  ``base < system < agent.default < agent.<active> < workset < box`` (spec §2)
+- _partial_: that level's whole file content as a nested :class:`~kanibako.settings.settings_store.KeyStore`
+- _scope token_: the ``system``/``agent``/``workset``/``box`` root a file is spelled against — KEPT
+  in the partial (§0: namespace is ORTHOGONAL to cascade)
 
-It performs READS and structural parsing ONLY: NO merge / precedence, NO
-``@``-ref / ``$var`` / ``~`` expansion or cycle detection, NO typed views, NO
-``config set``. Tokens are left RAW inside binds (``files store UNRESOLVED``,
-design §6a / spec §0).
-
-Authority
----------
-* Spec ``settings-keyspace-1.8.0.md`` §2 (cascade — PRIMARY
-  authority): the 6-level order ``base < system < agent.default < agent.<active> <
-  workset < box``, high→low precedence; ``agent.default`` is an EXPLICIT
-  level and both agent layers reuse the same linear ``_MISSING`` precedence (no
-  nested mini-cascade) — the LEVEL ORDER is the precedence. §2d: the ONLY
-  two agent key forms are ``agent.default.<key>`` and ``agent.<agent>.<key>`` (a
-  concrete agent name) — §0 forbids a bare ``agent.<key>``. ``keystore-design.md``
-  §2 (storage — partials are ``KeyStore``s, binds are ``Bind``); §6a / spec §0
-  (files store UNRESOLVED — refs stay raw).
-* Spec ``settings-keyspace-1.8.0.md`` §2 (cascade + scopes) / §2a
-  (categories + value types) / §0 (namespace ORTHOGONAL to cascade).
-* Keyspace audit 2026-06-27c #2: the ``machine`` (``/etc/kanibako.yaml``) tier is
-  CUT — cascade floor is ``base`` (overridable) and the cascade ENDS at ``box``
-  (the former ``required`` non-overridable cap is CUT, 2026-06-29f). This module
-  reads NO ``machine_config_path()``.
-
-Seams realized here (``plans/keystore-blocks/SEAMS.md``)
--------------------------------------------------------
-* **S7** — partials are NESTED ``KeyStore``s (not flat dotted dicts); a scope
-  file's nested tables are mirrored verbatim into the partial.
-* **S8** — output order is MOST-SPECIFIC-FIRST:
-  ``[box, workset, agent.<active>, agent.default, system, base]``. The
-  two agent levels keep their TRUE discriminated keys (``agent.<active-name>.*`` /
-  ``agent.default.*``, §2d) — NO bare-``agent`` collapse; level order is the
-  cascade precedence.
-* **S9** — binds parsed to ``Bind`` at ASSEMBLY with ``@``-refs / ``$vars`` / ``~``
-  left RAW inside ``host`` / ``box`` (expansion is block 3).
-* **S13** — ONE unified ``KeyStore`` partial per level holding BOTH behavior
-  leaves AND category subtrees together (design §1/§2 single-source).
-* **S14** — no ``machine`` tier; floor → ``base``; cascade ends at ``box`` (no
-  ``required`` cap).
-
-Keyspace convention — scope token KEPT; DOWNWARD/same-scope only (§0)
---------------------------------------------------------------------
-Settings files are scope-ROOTED on disk (``config.py:_flatten_categories`` —
-``{system: {bindings: {rw: {foo: …}}}}`` → ``system.bindings.rw.foo``). The scope
-token is LOAD-BEARING (it names the DECLARATION ROOT an abstract-category source
-is spelled against, and picks the mount mode for ``bindings``)
-and namespace is ORTHOGONAL to cascade level (§0). A file may hold keys of its OWN
-scope AND of scopes it CONTAINS (``system ⊃ agent ⊃ workset ⊃ box``) as
-OVERRIDABLE defaults-down — e.g. a workset file may set ``box.*`` and it flows.
-But **directional enforcement at RESOLVE** (spec §0, Jei-blessed 2026-07-02)
-DROPS a top-level table of a CONTAINING scope found in a lower file (e.g.
-``system:`` / ``workset:`` / ``agent:`` in a box file) at assembly, with a warning
-naming the file + token — it never enters the merge (see
-:func:`_drop_upward_scopes`). So a level partial mirrors its file's WHOLE nested
-content MINUS any upward table, SCOPE TOKEN KEPT (``box.image``,
-``box.caches.x`` at box; a workset file keeps ``workset.*`` + its ``box.*``
-defaults) — the LEVEL identity is the FILE, not a lifted sub-table. Block 2b then
-merges by the scope-qualified name across levels. The ``base`` code floor is
-EXEMPT for SCOPE keys (the system-scope floor). ``@``-refs still view UP
-read-only. A top-level ``meta:`` table is ALWAYS dropped from EVERY file
-(``base`` included) — ``meta.*`` is a TOP-LEVEL protected namespace set by the
-construct-time/bootstrap layer and stays RO everywhere (spec §0 / clause 4). The
-sole sanctioned meta source is the runtime/identity FLOOR (``dotted_partial``),
-which is never dropped, and a NESTED ``<scope>.meta`` bootstrap table (e.g.
-``workset.meta`` from ``workset.py``) is UNTOUCHED — only the top-level ``meta:``
-key is stripped (see :func:`_drop_upward_scopes`).
-
-The AGENT tier yields TWO separate cascade levels from the one agent file (spec
-§2): the file nests ``agent.default.<key>`` (the all-agents fallback
-layer) and ``agent.<agent>.<key>`` (the per-agent layer). Each becomes a SEPARATE
-cascade LEVEL and the per-agent DISCRIMINATOR is KEPT VERBATIM — the default layer
-under ``agent.default.<key>``, the active layer under ``agent.<active-name>.<key>``
-(the ONLY two agent key forms the spec allows — §2d; §0 forbids a
-bare ``agent.<key>``). The two levels merge BY THEIR TRUE NAMES (block 2b); the
-LEVEL ORDER (active above default, S8) is the explicit cascade precedence (§2
-"explicit in the cascade … no nested mini-cascade"). The thin
-active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
-§2d) is an effective-agent READ deferred to the block-7 consumer, NOT a
-name collapse here. Keeping the discriminator preserves §0 per-agent
-independence: ``agent.<other>.*`` set within the AGENT scope (or higher) survives
-the merge by its own name — but a box file may NOT set ``agent.<other>.*`` (that
-is an upward write, dropped above; a box tweaks its agent via the ``box.agent.*``
-mirror, §2b).
+READS + structural parsing ONLY: no merge/precedence, no ``@``-ref / ``$var`` / ``~`` expansion, no
+typed views, no ``config set``. Binds keep their tokens RAW (spec §0). Authority, the seams realized
+here (S3/S7/S8/S9/S13/S14) & the dest-keying depth rule: llm-docs.
 """
 
 from __future__ import annotations
@@ -114,12 +36,9 @@ from kanibako.settings.settings_store import (
 
 _log = logging.getLogger(__name__)
 
-# The bind-shaped categories whose leaf value is a structured pair/tuple
-# ``[host_src, box_dest[, options]]`` (spec §2a "REPRESENTATION") — each is parsed
-# to a :class:`Bind` at assembly (S9). ``masks`` (a keyed ``dict[box_dest →
-# bool|None]``, S5) and ``env`` (scalar ``{VAR} → value``) keep their natural
-# nested shape and are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw``
-# sub-tables, each of which holds bind leaves.
+# The bind-shaped category tokens; every one holds dest-keyed ``BindMap``(s). ``masks`` (a keyed
+# 3-state, S5) and the scalar ``env`` / ``secret_path`` families keep their natural nested shape and
+# are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw`` sub-tables, each holding a map.
 _BIND_CATEGORIES: frozenset[str] = frozenset(
     {"bindings", "caches", "seeded", "common", "synced"}
 )
@@ -130,20 +49,11 @@ _BIND_CATEGORIES: frozenset[str] = frozenset(
 _DEST_KEYED_CATEGORY = "bindings"
 #: The two arms a dest-keyed ``bindings`` node carries; each holds a ``BindMap``.
 _BIND_ARMS: tuple[str, str] = ("ro", "rw")
-#: The bind-shaped categories whose CATEGORY TOKEN IS THE WHOLE KEY — terminal
-#: ONE LEVEL SHALLOWER than a ``bindings`` arm, with a ``BindMap`` for a value
-#: (2026-08-08c; the ``bindings`` arms went first, 2026-08-06c).
-#:
-#: ⚑⚑ EVERY bind-shaped category is dest-keyed now, and this set exists to say
-#: WHERE the map sits, not WHETHER there is one. The distinction is still
-#: load-bearing for the walk: a ``bindings`` token is followed by an ARM and the
-#: map is one level down, while these four ARE the map. Reading either at the
-#: wrong depth would take a destination for an arm name.
-#: ⚑ The other half of why the reader cannot use a blanket ``dest_keyed=True``:
-#: a leaf under a bind category is 2-element-legal in BOTH shapes with opposite
-#: meanings, so the depth of the walk — never the leaf's arity — is what says
-#: which one it is (the arity trap
-#: :class:`~kanibako.settings.settings_store.BindEntry` documents).
+#: The bind-shaped categories whose CATEGORY TOKEN IS THE WHOLE KEY — terminal ONE
+#: LEVEL SHALLOWER than a ``bindings`` arm, with a ``BindMap`` for a value.
+#: ⚑⚑ This set says WHERE the map sits, not WHETHER there is one: read at the wrong
+#: depth, a destination is taken for an arm name. Why a blanket ``dest_keyed=True``
+#: cannot replace it (the 2-element arity trap): llm-docs.
 _DEST_KEYED_LEAF_CATEGORIES: frozenset[str] = frozenset(
     {"caches", "seeded", "common", "synced"}
 )
@@ -155,24 +65,12 @@ _AGENT_DEFAULT_SUB = "default"
 # ---------------------------------------------------------------------------
 # RETIRED agent-selection spellings — refuse by name (P7, spec §0 / §2b / §2g)
 # ---------------------------------------------------------------------------
-#
-# ⚑ WHY THIS EXISTS AT ALL, given that migration is DOCUMENTATION-ONLY for this
-# arc (IMPL-PLAN standing ruling 1). This is NOT migration machinery: it reads
-# nothing, relocates nothing and writes nothing. It is §0's CLOSED-KEYSPACE rule
-# — *an undeclared key is an ERROR that NAMES it* — applied to the two spellings
-# P7 retired. The documentation-only ruling was made against failure modes of the
-# "empty dir beside a populated one" shape; a box that SILENTLY RUNS A DIFFERENT
-# AGENT (and seeds that agent's CREDENTIALS into itself) is categorically worse,
-# and Jei's own M-7 ruling — hard error with a migration-grade message — is the
-# precedent for loud in exactly this arc. Scope is deliberately TIGHT: these two
-# keys, nothing else. This is NOT general resolve enforcement; that follow-on
-# stays deferred (it is gated on ``settings_keyspace.RETIRING_KEYS`` emptying).
-#
-# Each entry maps the NESTED file path of the retired leaf to the retired KEY name.
-# The CURE is LEVEL-DEPENDENT (see :func:`_retired_key_cure`) — a pref is legal only
-# in a workset or box file (spec §2h), so telling a SYSTEM-file reader to
-# "box set pref…" would prescribe a write that cannot fix their file.
-# Migration record: M-4.
+# ⚑ NOT migration machinery (which is documentation-only for this arc): it is §0's CLOSED-KEYSPACE
+# rule — an undeclared key is an ERROR that NAMES it — applied to two retired spellings. Scope is
+# deliberately TIGHT: these two keys, nothing else. Why, and the M-7 precedent: llm-docs.
+
+#: The NESTED FILE path of each retired leaf → the retired KEY name. The cure is LEVEL-DEPENDENT
+#: (:func:`_retired_key_cure`) — a pref is legal only in a workset or box file (§2h). Record: M-4.
 RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
     ("box", "agent_name"): "box.agent_name",
     ("agent", "default", "default_agent"): "system.default_agent",
@@ -186,8 +84,7 @@ _PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
 def _retired_key_cure(key: str, *, level: str, value: str) -> str:
     """The LEVEL-APPROPRIATE fix for a retired key (M-4)."""
     if key == "system.default_agent":
-        # Always the same cure: the replacement is a SYSTEM-scope key wherever the
-        # stale leaf was found.
+        # Always the same cure: the replacement is a SYSTEM-scope key wherever the stale leaf was.
         return f"kanibako system set system.agent={value}"
     # box.agent_name → the §2h request, but ONLY where a request may be written.
     if level in _PREF_LEGAL_LEVELS:
@@ -195,8 +92,7 @@ def _retired_key_cure(key: str, *, level: str, value: str) -> str:
             f"kanibako box set pref.system.agent={value}   "
             f"(or `kanibako box set --null pref.system.agent` for a no-agent box)"
         )
-    # M-4: *"A box.agent_name found in a system or agent file has no legal pref
-    # equivalent — flag it rather than silently relocating it."*
+    # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
     return (
         f"REMOVE it — a request may be written ONLY in a workset or box settings "
         f"file (spec §2h), so this key has NO equivalent at {level} scope. If you "
@@ -207,18 +103,13 @@ def _retired_key_cure(key: str, *, level: str, value: str) -> str:
 
 
 #: The "no such leaf" sentinel for :func:`_nested_present`. ⚑ NOT ``None``: a
-#: ``box: {agent_name:}`` leaf is PRESENT with the value ``None``, and it is still
-#: the retired key — conflating present-null with absent is the same 3-state
-#: mistake §2h warns about for prefs, and it would let the exact config the
-#: refusal exists to catch slip through silently.
+#: ``box: {agent_name:}`` leaf is PRESENT with the value ``None`` and is still the retired key —
+#: conflating present-null with absent would let the exact config this catches slip by (llm-docs).
 _NO_LEAF: Any = object()
 
 
 def _nested_present(raw: Any, parts: "tuple[str, ...]") -> Any:
-    """Read *raw* at the nested *parts* path, or :data:`_NO_LEAF` when ABSENT.
-
-    Distinguishes ABSENT from PRESENT-``None`` (see :data:`_NO_LEAF`).
-    """
+    """Read *raw* at the nested *parts* path, or :data:`_NO_LEAF` when ABSENT."""
     node: Any = raw
     for part in parts:
         if not isinstance(node, dict) or part not in node:
@@ -228,18 +119,11 @@ def _nested_present(raw: Any, parts: "tuple[str, ...]") -> Any:
 
 
 def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
-    """RAISE when *raw* still carries a RETIRED agent-selection key (P7).
+    """RAISE when *raw* still carries a RETIRED agent-selection key (P7); the two are
+    :data:`RETIRED_FILE_KEYS`.
 
-    The two keys are :data:`RETIRED_FILE_KEYS`. The message names the KEY, the
-    FILE, the fact that THE RULE CHANGED, and the one-line cure — it must never
-    read as "your config is wrong" (the M-7 precedent). Never a warning and never
-    a silent drop: a dropped ``box.agent_name`` would leave the box launching the
-    system default with that agent's credentials, which is the exact failure this
-    refusal exists to prevent.
-
-    Called at the SELECTION seam (:mod:`kanibako.settings.agent_select`), not inside
-    :func:`assemble_levels` — a raise there would also break ``config set``,
-    i.e. the very command the message prescribes as the cure.
+    Never a warning and never a silent drop; called at the SELECTION seam
+    (:mod:`kanibako.settings.agent_select`), NOT inside :func:`assemble_levels`. Why both: llm-docs.
     """
     if not isinstance(raw, dict):
         return
@@ -247,9 +131,8 @@ def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
         found = _nested_present(raw, parts)
         if found is _NO_LEAF:
             continue
-        # The cure carries the value the user ACTUALLY has, so it is
-        # copy-pasteable rather than a shape to fill in. A present-``None`` (an
-        # empty ``agent_name:`` leaf) has no value to quote → the shape.
+        # The cure quotes the value the user ACTUALLY has, so it is copy-pasteable; a
+        # present-``None`` has no value to quote → the shape.
         value = "" if found is None else str(found).strip()
         cure = _retired_key_cure(key, level=level, value=value or "<name>")
         raise SettingsError(
@@ -270,44 +153,23 @@ def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
 # ---------------------------------------------------------------------------
 # RETIRED BEHAVIOR spellings — the permission axis (R-41, spec §2d)
 # ---------------------------------------------------------------------------
-#
-# ⚑ SAME shape, SAME reason, DIFFERENT seam as :data:`RETIRED_FILE_KEYS` above.
-# R-41 replaced the boolean ``auto_approve`` with the enum ``access``
-# (``restricted|editing|full``, default ``full``). Under the closed keyspace the
-# old spelling is now UNDECLARED, and an undeclared stored key is SILENT at
-# launch — which on a PERMISSION axis means a box deliberately configured
-# ``auto_approve: false`` would come up at the new ``full`` default with nothing
-# printed. That is a safety-class silent regression in the UNSAFE direction, so
-# the stale key is REFUSED (RQ-2, ruled by Jei 2026-08-02) with a
-# level-appropriate cure that NAMES ``access`` and QUOTES the user's own value
-# through the ruled mapping (``true`` → ``full``, ``false`` → ``restricted``).
-#
-# Scope is deliberately TIGHT: this one key, in the shapes a settings file can
-# actually carry it. It is NOT general resolve enforcement (still deferred, still
-# gated on ``settings_keyspace.RETIRING_KEYS`` being EMPTY — this refusal does
-# NOT repopulate that set).
-#
-# The seam is the LAUNCH's BEHAVIOR tier (``commands/start.py``), NOT
-# :func:`assemble_levels`: a raise inside assembly would also break ``config
-# set``, i.e. the very command the message prescribes as the cure.
-# Migration record: M-22.
+# ⚑ SAME shape, SAME reason, DIFFERENT seam as :data:`RETIRED_FILE_KEYS` above: R-41 replaced the
+# boolean ``auto_approve`` with the enum ``access``, and an undeclared stored key is SILENT — which
+# on a PERMISSION axis is a safety-class regression in the UNSAFE direction (RQ-2). Scope is TIGHT:
+# this one key. The seam is the LAUNCH's behavior tier (``commands/start.py``), NOT
+# :func:`assemble_levels`. Record: M-22. Full reasoning: llm-docs.
 
 #: The RETIRED behavior leaf → its successor key (R-41).
 RETIRED_BEHAVIOR_KEYS: "dict[str, str]" = {"auto_approve": "access"}
 
-#: The RULED value mapping for the retired boolean (R-41): what the user's own
-#: stored value becomes in the successor enum. Keys are the ``coerce_bool``
-#: results; an UNPARSEABLE stored value maps to nothing and the cure then names
-#: the legal tiers instead of quoting a translation (never guess a tier).
+#: The RULED value mapping for the retired boolean (R-41). Keys are the ``coerce_bool`` results; an
+#: UNPARSEABLE stored value maps to nothing and the cure names the legal tiers (never guess a tier).
 _RETIRED_BEHAVIOR_VALUE_MAP: "dict[str, dict[bool, str]]" = {
     "auto_approve": {True: "full", False: "restricted"},
 }
 
-#: The nested TABLES a behavior leaf can live under, per settings-file shape:
-#: the scope files carry ``agent.<sub>.<leaf>`` (``<sub>`` = ``default`` or an
-#: agent node) and ``pref.agent.<node>.<leaf>`` (a §2h request), while a
-#: per-agent file carries it FLAT under its ``self`` table
-#: (``agent_config.agent_file_route``). Each entry is (prefix, depth-of-<sub>).
+#: The nested TABLES a behavior leaf can live under, per settings-file shape.
+#: Each entry is (prefix, depth-of-<sub>); the shapes themselves: llm-docs.
 _BEHAVIOR_TABLE_SHAPES: "tuple[tuple[tuple[str, ...], int], ...]" = (
     (("agent",), 1),          # scope file:  agent.<sub>.<leaf>
     (("pref", "agent"), 1),   # §2h request: pref.agent.<node>.<leaf>
@@ -318,15 +180,12 @@ _BEHAVIOR_TABLE_SHAPES: "tuple[tuple[tuple[str, ...], int], ...]" = (
 def _behavior_leaf_sites(
     raw: Any, leaf: str
 ) -> "list[tuple[tuple[str, ...], Any]]":
-    """Every (nested path, value) where *leaf* is present in *raw*.
-
-    Walks exactly the :data:`_BEHAVIOR_TABLE_SHAPES` — no free-form recursion, so
-    an unrelated user key that happens to be spelled ``auto_approve`` deeper in
-    some other table is not swept up.
-    """
+    """Every (nested path, value) where *leaf* is present in *raw*."""
     sites: "list[tuple[tuple[str, ...], Any]]" = []
     if not isinstance(raw, dict):
         return sites
+    # ⚑ Walks EXACTLY the declared shapes — no free-form recursion, so an unrelated user key spelled
+    # ``auto_approve`` deeper in some other table is not swept up. Do not generalise this loop.
     for prefix, sub_depth in _BEHAVIOR_TABLE_SHAPES:
         node = _nested_present(raw, prefix)
         if node is _NO_LEAF or not isinstance(node, dict):
@@ -348,19 +207,7 @@ def _behavior_leaf_sites(
 def _retired_behavior_cure(
     successor: str, *, level: str, tier: str, subject: str | None,
 ) -> str:
-    """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22).
-
-    ``access`` is an AGENT-scope key, so where it may be WRITTEN depends on the
-    file the stale value was found in — the same asymmetry
-    :func:`_retired_key_cure` handles for the selection keys:
-
-    * ``base`` / ``system`` — a bare agent key is a DOWNWARD write from system
-      scope, so the system verb sets it for every agent.
-    * ``agent`` — the per-agent file has its own verb (*subject* is the node).
-    * ``workset`` / ``box`` — a BARE agent key is an UPWARD write there (agent
-      ⊃ workset ⊃ box) and is dropped at assembly, so the legal spelling is the
-      §2h REQUEST, which is exactly where a per-box permission tier belongs.
-    """
+    """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22); per-level reasons in llm-docs."""
     agent = subject or "<agent>"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
@@ -372,21 +219,11 @@ def _retired_behavior_cure(
 def refuse_retired_behavior_keys(
     raw: Any, *, level: str, path: Path | None, subject: str | None = None,
 ) -> None:
-    """RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2).
+    """RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2) —
+    :data:`RETIRED_BEHAVIOR_KEYS`.
 
-    Today that is exactly one key, :data:`RETIRED_BEHAVIOR_KEYS`
-    (``auto_approve`` → ``access``). The message names the KEY, the SPELLING
-    found, the LEVEL, the FILE, the fact that THE RULE CHANGED, the user's own
-    value translated through the RULED mapping, and the one-line cure.
-
-    Never a warning and never a silent drop: the whole point is that an
-    undeclared stored key is silent, and silence on the permission axis resolves
-    to the PERMISSIVE default. *subject* is the agent node the cure should name
-    (the file's own node for an agent file, the box's active agent otherwise);
-    ``None`` renders the shape ``<agent>``.
-
-    Called at the LAUNCH's behavior tier, NOT inside :func:`assemble_levels` —
-    see the block comment above.
+    *subject* is the agent node the cure should name; ``None`` renders the shape ``<agent>``. Never
+    a warning and never a silent drop; called at the LAUNCH's behavior tier (see block comment).
     """
     from kanibako.settings.config import coerce_bool
 
@@ -399,8 +236,8 @@ def refuse_retired_behavior_keys(
             mapped = _RETIRED_BEHAVIOR_VALUE_MAP.get(leaf, {})
             as_bool = coerce_bool(raw_value) if raw_value else None
             tier = mapped.get(as_bool) if as_bool is not None else None
-            # The value line only ever states a translation the RULING makes. An
-            # unparseable stored value gets the legal tiers instead of a guess.
+            # ⚑ The value line only ever states a translation the RULING makes; an unparseable
+            # stored value gets the legal tiers instead of a guess.
             if tier is not None:
                 value_line = (
                     f"Your stored `{leaf}: {raw_value}` means "
@@ -434,15 +271,8 @@ def refuse_retired_behavior_keys(
 
 
 def _containing_scopes(file_scope: str) -> frozenset[str]:
-    """The scope tokens that CONTAIN *file_scope* (spec §0, the drop-set).
-
-    A settings file contributes keys of its OWN scope and of scopes it CONTAINS
-    (defaults-down); a top-level key naming a CONTAINING scope is an UPWARD write
-    that :func:`_drop_upward_scopes` drops at assembly. Containment is
-    ``system ⊃ agent ⊃ workset ⊃ box`` (:data:`SCOPE_CONTAINMENT`, single source),
-    so the containing set is the HEAD-slice strictly BEFORE *file_scope*. The
-    outermost scope (``system``) has an empty set — nothing contains it.
-    """
+    """The scope tokens that CONTAIN *file_scope* — the HEAD-slice of
+    :data:`SCOPE_CONTAINMENT` strictly before it (spec §0, the drop-set)."""
     idx = SCOPE_CONTAINMENT.index(file_scope)
     return frozenset(SCOPE_CONTAINMENT[:idx])
 
@@ -450,56 +280,15 @@ def _containing_scopes(file_scope: str) -> frozenset[str]:
 def _drop_upward_scopes(
     raw: dict, *, file_scope: str, path: Path | None
 ) -> dict:
-    """Return *raw* with any CONTAINING-scope top-level table, a top-level
-    ``meta:`` table AND a top-level ``binding_derivations:`` table removed
-    (spec §0).
+    """Return *raw* without any CONTAINING-scope top-level table, top-level ``meta:`` or top-level
+    ``binding_derivations:`` (spec §0) — a shallow copy, warning-only, never a raise.
 
-    Directional enforcement at RESOLVE: a settings file may set keys of its own
-    scope and of scopes it CONTAINS, but a top-level key of a CONTAINING scope
-    (e.g. ``system:`` / ``workset:`` in a box file) is an UPWARD write — DROPPED
-    here before it enters the partial, with ONE ``logger.warning`` per dropped
-    token naming the file path and the token. Downward and same-scope tables are
-    untouched (a workset file's ``box:`` defaults-down table still flows — the
-    Jei-ruled defaults-down mechanism).
-
-    ``meta`` is ALSO dropped, for EVERY file (``base`` included) — ``meta.*`` is a
-    TOP-LEVEL protected read-only namespace set by the construct-time/bootstrap
-    layer, RO everywhere (spec §0 / clause 4 "meta.* remains RO everywhere"); a
-    settings file may not set it. ``meta`` is NOT a containing scope, so it earns a
-    DISTINCT warning. This drop is TOP-LEVEL ONLY: a NESTED ``<scope>.meta``
-    bootstrap table (e.g. ``workset.meta`` written by ``workset.py`` and read by
-    ``read_workset_meta``) rides under its scope table and is UNTOUCHED — this
-    function iterates only top-level keys of *raw* and never descends. The sole
-    sanctioned meta source is the FLOOR (``dotted_partial``), inserted separately
-    and never routed through this drop.
-
-    ``binding_derivations`` is the THIRD dropped token, with a THIRD rationale
-    (spec §0 fault class: "never enters the merge"): it is the RESERVED INTERNAL
-    derivations node at the snapshot root (R-8, manifest
-    ``not_keys.reserved_internal``) — machinery output regenerated per launch by
-    ``commands.start._install_derived_bindings``, not a key. A hand-forged table
-    in a settings file would otherwise ride into the snapshot beside the real
-    materialisation (phantom ``--effective`` lines; a non-``Bind`` leaf crashes
-    the ``derived_bindings`` lens with ``ViewError``). Same profile as ``meta``:
-    EVERY file (``base`` included), TOP-LEVEL ONLY — a NESTED
-    ``<scope>.binding_derivations`` key is not this rule's business. SCOPE
-    TIGHT: this ONE name only — arbitrary unknown top-level tables still ride
-    (general unknown-table refusal is the backlogged keyspace-ENFORCEMENT work,
-    not this drop).
-
-    ``base`` is EXEMPT for SCOPE keys (its containing set is empty — it is the
-    system-scope floor) but NOT for ``meta``: a base-file top-level ``meta:`` table
-    would clobber the floor's materialized identity anchors, so it drops too.
-
-    Returns a shallow copy with the dropped keys removed (never mutates *raw*);
-    a non-dict *raw* is returned unchanged. Warning-only side effect (no raise) —
-    a mis-scoped key is a config mistake, not a hard error.
+    THREE dropped tokens, THREE distinct rationales, one warning each (llm-docs).
     """
     if not isinstance(raw, dict):
         return raw
-    # ONE drop-set = the containing scopes (defensive: ``base`` is not in
-    # SCOPE_CONTAINMENT so ``.index`` would raise — an unknown/base scope has an
-    # empty containing set) UNION the always-dropped top-level ``meta`` token.
+    # ONE drop-set: the containing scopes UNION the always-dropped tokens. Defensive branch —
+    # ``base`` is not in SCOPE_CONTAINMENT, so ``.index`` would raise; it takes an empty set.
     containing = (
         _containing_scopes(file_scope)
         if file_scope in SCOPE_CONTAINMENT
@@ -512,9 +301,9 @@ def _drop_upward_scopes(
     where = str(path) if path is not None else "<settings>"
     for token in dropped:
         if token == "meta":
-            # meta is NOT a containing scope — distinct rationale (spec §0 meta-RO /
-            # clause 4): meta.* is a top-level RO namespace owned by the bootstrap
-            # layer, never settable from a settings file.
+            # meta is NOT a containing scope — a DISTINCT rationale, hence its own warning.
+            # ⚑ TOP-LEVEL ONLY: a nested ``<scope>.meta`` bootstrap table is untouched (this loop
+            # never descends), and the FLOOR's meta is inserted separately, never routed here.
             _log.warning(
                 "Dropping top-level 'meta' table from %s settings file %s: "
                 "meta.* is a read-only namespace set by the "
@@ -523,9 +312,9 @@ def _drop_upward_scopes(
                 file_scope, where,
             )
         elif token == BINDING_DERIVATIONS_NODE:
-            # binding_derivations is neither a containing scope nor meta — a
-            # THIRD rationale (spec §0 fault class): the RESERVED INTERNAL
-            # derivations node (R-8), machinery output, never file input.
+            # Neither a containing scope nor meta — a THIRD rationale: the RESERVED INTERNAL
+            # derivations node (R-8), machinery output, never file input. SCOPE TIGHT: this ONE
+            # name; arbitrary unknown top-level tables still ride (llm-docs).
             _log.warning(
                 "Dropping top-level %r table from %s settings file %s: "
                 "'%s' is the RESERVED INTERNAL derivations node (R-8; manifest "
@@ -550,57 +339,27 @@ def _parse_node(
 ) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
-    *in_binds* is True while descending the subtree of a bind-shaped category
-    (``bindings.{ro,rw}`` / ``caches`` / ``seeded`` / ``common`` / ``synced``) —
-    where a list/tuple LEAF is a structured pair parsed to a bind value (S9).
-    Refs inside the bind stay RAW (spec §0). A plain ``dict`` descends (the
-    per-entry dict UNDER the category); any other leaf (scalar / ``None`` / a
-    genuine ``list[str]``) is stored verbatim.
-
-    *dest_keyed* selects WHICH bind shape a leaf under a bind category has, and
-    is the ONLY thing that decides it (disk-store rework R-3/R-6):
-
-    * ``False`` — NAME-keyed, a leaf is ``[host_src, box_dest[, opts]]`` →
-      :class:`Bind`. ⚑ NO bind-shaped category reaches this branch any more (all
-      six are dest-keyed as of 2026-08-08c); it survives for a MALFORMED node
-      that :func:`parse_bind_map` handed back — see the ``at_bindings`` note.
-    * ``True`` — DEST-keyed, the key IS the destination and a leaf is
-      ``[src[, opts]]`` → :class:`BindEntry`.
-
-    ⚑⚑ Both shapes admit a 2-element list with OPPOSITE meanings, so the choice
-    is made by this CONTEXT FLAG — passed down from the caller that knows which
-    node it is reading — and NEVER by inspecting the leaf's arity.
-
-    *at_bindings* says "the dict I am about to descend is the ``bindings``
-    category node, so its keys are ARMS (``ro``/``rw``) and each arm's value is a
-    ``BindMap``". It is set by this function itself when it walks past a
-    ``bindings`` token, which is what wires user settings FILES onto the dest-keyed
-    route (P6) — ``_file_partial`` needs no flag of its own, because the shape is a
-    property of the CATEGORY, not of the caller. ⚑ It is deliberately NOT set for a
-    ``bindings`` token encountered while already ``in_binds``: inside a bind
-    category the keys are names/destinations, and a user with a ``caches`` entry
-    literally named ``bindings`` must not have it re-read as a category.
+    ⚑⚑ *dest_keyed* selects WHICH bind shape a leaf has and is the ONLY thing that decides it
+    (R-3/R-6): both shapes admit a 2-element list with OPPOSITE meanings, so the choice is made by
+    this CONTEXT FLAG — passed down from the caller that knows the node — and NEVER by the leaf's
+    arity. *in_binds* / *at_bindings* and the depth rule they encode: llm-docs.
     """
     if isinstance(value, dict):
         store = KeyStore()
         for key, sub in value.items():
             key_s = str(key)
             if at_bindings and key_s in _BIND_ARMS:
-                # An ARM (``bindings.ro`` / ``.rw``) — a TERMINAL dest-keyed map
-                # (R-5). A non-dict here is a malformed arm; leave it to the
-                # legacy leaf path so ``settings_launch._assert_declared_categories``
-                # still produces the arm-shape message that names the key.
+                # An ARM (``bindings.ro`` / ``.rw``) — a TERMINAL dest-keyed map (R-5).
+                # ⚑ A non-dict is a MALFORMED arm and is deliberately left to the legacy leaf path,
+                # so ``settings_launch._assert_declared_categories`` still names the key.
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(sub, category=key_s)
                     continue
             if not in_binds and key_s in _DEST_KEYED_LEAF_CATEGORIES:
-                # A TERMINAL dest-keyed category (``caches`` / ``seeded`` /
-                # ``common`` / ``synced``) — the map is HERE, not one level down,
-                # so it is parsed on the way PAST the category token rather than
-                # on the way past an arm. Same malformed-shape hand-off as an arm.
-                # ⚑ ``not in_binds`` is what keeps a user's entry literally NAMED
-                # ``common`` inside another category from being re-read as one —
-                # the same guard ``at_bindings`` carries below.
+                # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
+                # parsed on the way PAST the category token. Same malformed-shape hand-off as an arm.
+                # ⚑ ``not in_binds`` keeps a user's entry literally NAMED ``common`` inside another
+                # category from being re-read as one — the guard ``at_bindings`` carries below.
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(sub, category=key_s)
                     continue
@@ -614,50 +373,25 @@ def _parse_node(
             )
         return store
     if in_binds and isinstance(value, (list, tuple)):
-        # A structured bind leaf — refs left RAW (S9). A malformed arity raises
-        # SettingsError (the structured shape is load-bearing).
+        # A structured bind leaf — refs left RAW (S9); a malformed arity raises SettingsError.
+        # ⚑ No bind-shaped category reaches the name-keyed branch any more; it survives for a
+        # MALFORMED node handed back by :func:`parse_bind_map`.
         if dest_keyed:
             src, entry_opts = unpack_bind_entry(value)
             return BindEntry(src, entry_opts)
         host, box, opts = unpack_bind(value)
         return Bind(host, box, opts)
-    # Scalar / None / genuine list[str] — stored verbatim (KeyStore wraps None and
-    # scalars as-is; a list is not descended).
+    # Scalar / None / genuine list[str] — stored verbatim (a list is not descended).
     return value
 
 
 def parse_bind_map(raw: Any, *, category: str = "bindings") -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
-    *raw* is the mapping stored at ANY terminal bind-shaped key: a ``bindings``
-    arm (``<scope>.bindings.ro`` / ``.rw``, R-5) or one of the four whose category
-    token is itself the whole key (``<scope>.caches`` / ``.seeded`` / ``.common`` /
-    ``.synced``, 2026-08-08c). Both hold the SAME ``{box_dest: [src[, opts]]}``
-    shape, which is why there is ONE parser and not two — *category* only names
-    the key in the refusals. Returns
-    the map as a nested :class:`KeyStore` node — NOT an opaque dict leaf — so it
-    merges PER-ENTRY across cascade levels through the generic node recursion
-    (the ``masks`` precedent), instead of a box-level arm wiping an inherited
-    workset entry wholesale.
-
-    A ``None`` entry value is preserved VERBATIM (the per-entry reset that the
-    merge classifies as an OMIT, design §3). A non-mapping *raw* raises
-    :class:`SettingsError`; so does a malformed entry (see
-    :func:`~kanibako.settings.settings_resolve.unpack_bind_entry`).
-
-    ⚑ **THIS IS THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ** (R-11): every
-    key goes through
-    :func:`~kanibako.settings.settings_resolve.normalize_bind_dest`, so ``~`` and
-    ``~/`` are ONE entry and not two colliding at one destination. Producers
-    normalize too — they must, because the floor merge in ``commands.start`` dedupes
-    on these keys BEFORE anything is parsed — and the function is idempotent, so
-    doing it in both places costs nothing and neither place is load-bearing alone.
-    ⚑ The VALUE is never canonicalized: a ``host_src`` stays exactly as authored.
-
-    ⚑ A nested MAPPING entry is REFUSED by name: under dest-keying an arm's value
-    is a flat ``{dest: [src[, opts]]}``, so a sub-table is the retired
-    ``{name: {…}}`` shape (spec §2a "STALE SHAPES ARE REFUSED LOUDLY"). A
-    3-element list is refused one level down, by ``unpack_bind_entry``.
+    *raw* is the ``{box_dest: [src[, opts]]}`` mapping at ANY terminal bind-shaped key — a
+    ``bindings`` arm or one of the four whose token is the whole key. ONE parser, not two;
+    *category* only names the key in the refusals. Returns a nested node (not an opaque dict leaf)
+    so it merges PER-ENTRY across levels; a ``None`` entry is preserved VERBATIM. llm-docs.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -668,8 +402,13 @@ def parse_bind_map(raw: Any, *, category: str = "bindings") -> KeyStore:
         )
     store = KeyStore()
     for key, sub in raw.items():
+        # ⚑ THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ (R-11) — ``~`` and ``~/`` must be
+        # ONE entry. Producers normalize too; the function is idempotent, so neither place is
+        # load-bearing alone. ⚑ The VALUE is never canonicalized: a host_src stays as authored.
         dest = normalize_bind_dest(str(key))
         if isinstance(sub, dict):
+            # ⚑ A nested MAPPING is the RETIRED name-keyed shape — refused BY NAME (spec §2a
+            # "STALE SHAPES ARE REFUSED LOUDLY"). A 3-element list is refused by unpack_bind_entry.
             raise SettingsError(
                 f"{category} entry {str(key)!r} holds a sub-table, which is the "
                 f"RETIRED name-keyed shape {{name: {{...}}}}. A {category} value "
@@ -683,19 +422,11 @@ def parse_bind_map(raw: Any, *, category: str = "bindings") -> KeyStore:
 
 
 def _file_partial(raw: dict) -> KeyStore:
-    """Build ONE level partial from a settings file's WHOLE nested content.
+    """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
-    *raw* is the parsed file (``load_doc`` output). The full scope-ROOTED tree is
-    mirrored into a nested :class:`KeyStore` with the SCOPE TOKEN KEPT (§0:
-    namespace orthogonal to cascade) — refs raw. EVERY bind-shaped category is
-    read as a DEST-KEYED :data:`~kanibako.settings.settings_store.BindMap` of
-    :class:`~kanibako.settings.settings_store.BindEntry` leaves (R-5/R-6): at the
-    ARM for ``bindings.{ro,rw}``, at the CATEGORY TOKEN for the other four.
-    ⚑ The DEPTH is not chosen here — :func:`_parse_node` derives it from the
-    CATEGORY token it walks past, so there is no flag for a caller to get wrong.
-    An empty / non-dict file → an empty :class:`KeyStore`. This is the rule for
-    every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the
-    agent tier uses :func:`_agent_partial`.
+    The rule for every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the agent
+    tier uses :func:`_agent_partial`. ⚑ The bind DEPTH is not chosen here — :func:`_parse_node`
+    derives it from the CATEGORY token it walks past, so there is no flag for a caller to get wrong.
     """
     if not isinstance(raw, dict):
         return KeyStore()
@@ -705,53 +436,30 @@ def _file_partial(raw: dict) -> KeyStore:
 
 
 def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
-    """Build an AGENT-tier level partial (``agent.default`` or ``agent.<active>``).
+    """Build an AGENT-tier level partial (``agent.default`` or ``agent.<active>``) from the agent
+    file's ``self:`` table, re-rooted under its TRUE discriminated name ``agent.<sub_key>``.
 
-    The agent settings file is rooted at a top-level ``agent:`` table holding
-    per-agent sub-tables (``default:`` for the all-agents layer, ``<name>:`` for
-    each agent). *sub_key* selects which sub-table becomes THIS level — the two
-    are kept SEPARATE cascade levels (spec §2; today's
-    ``read_agent_settings`` pre-merges them, which 2a deliberately does NOT).
-
-    The per-agent DISCRIMINATOR is KEPT VERBATIM — the sub-table is re-rooted under
-    its TRUE discriminated name ``agent.<sub_key>`` (``agent.default.<key>`` for the
-    default layer, ``agent.<active-name>.<key>`` for the active layer), the ONLY two
-    agent key forms the spec defines (§2d; §0 forbids a bare
-    ``agent.<key>``). The two agent levels then merge BY THEIR TRUE NAMES (block 2b),
-    each scope-qualified key overriding the same key at a lower level; the
-    active-over-default value-pick (``agent.<active>.<key> | agent.default.<key>``,
-    §2d) is a thin effective-agent READ deferred to the block-7 consumer (the
-    cascade's job is precedence by LEVEL ORDER — §2 "explicit in the
-    cascade … no nested mini-cascade" — not a name collapse). This preserves §0
-    per-agent independence: a box/workset that sets ``agent.<other>.*`` (or directly
-    sets ``agent.default.*``) keeps its true name and survives the merge intact.
-
-    A missing ``agent`` table, or a *sub_key* with no matching sub-table (e.g. an
-    active agent absent from the file), → an empty :class:`KeyStore` level.
+    *sub_key* selects the sub-table; the two agent levels are kept SEPARATE (spec §2) and merge by
+    their true §2d names — NO bare-``agent`` collapse. A missing ``self`` table, or a *sub_key* with
+    no matching sub-table, yields an empty level. llm-docs.
     """
     agent = raw.get("self") if isinstance(raw, dict) else None
     if not isinstance(agent, dict):
         return KeyStore()
     sub = agent.get(sub_key)
     node_tbl: dict = dict(sub) if isinstance(sub, dict) else {}
-    # ``self`` IS ``agent.<active-node>``: the FLATTENED cascade category
-    # ``secret_path`` lives at the file's TOP level (``self.secret_path`` since the
-    # 2026-07-14b flatten), NOT in the nested ``self.<node>`` sub-table (which still
-    # holds bindings, pending their own flatten). It belongs to THIS node, so re-root
-    # it alongside the sub-table for the ACTIVE layer ONLY — never the all-agents
-    # ``default`` layer. Without this the launch SECRET export (which reads the
-    # reconciled cascade) never sees an agent-scope secret_path → no token mount.
+    # ⚑ ``self`` IS ``agent.<active-node>``, so the FLATTENED ``secret_path`` lives at the file's
+    # TOP level, not in the ``self.<node>`` sub-table — re-root it for the ACTIVE layer ONLY, never
+    # the all-agents ``default``. Without this the launch secret export sees no agent-scope
+    # secret_path and no token is mounted (llm-docs).
     if sub_key != _AGENT_DEFAULT_SUB:
         flat_secret = agent.get("secret_path")
         if isinstance(flat_secret, dict) and flat_secret:
             node_tbl["secret_path"] = flat_secret
     if not node_tbl:
         return KeyStore()
-    # Re-root the sub-table under its TRUE discriminated name ``agent.<sub_key>``
-    # (NO bare-token collapse). _parse_node handles the bind/category structure
-    # inside. The discriminator (``default`` / the active agent's name) is the §2d
-    # key form and is load-bearing — it keeps the all-agents fallback layer and any
-    # per-agent override distinct under the cascade merge.
+    # The discriminator (``default`` / the active agent's name) is the §2d key form and is
+    # load-bearing: it keeps the fallback layer and any per-agent override distinct under the merge.
     parsed_sub = _parse_node(node_tbl, in_binds=False)
     agent_node = KeyStore()
     agent_node[sub_key] = parsed_sub
@@ -761,20 +469,12 @@ def _agent_partial(raw: dict, *, sub_key: str) -> KeyStore:
 
 
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
-    """Build a merge LEVEL from a flat ``{dotted key: value}`` mapping.
+    """Build a merge LEVEL from the caller's flat ``{dotted key: value}`` declared-default *floor*,
+    EXPLODED to the nested keyspace (S7) so it merges uniformly with the other partials.
 
-    *floor* is the target's declared ``{key: default}`` behavior defaults plus
-    default-categories (mirrors what ``start.py`` gathers today). Its keys are the
-    same SCOPE-QUALIFIED logical keys as the files use (flat dotted, e.g.
-    ``"box.caches.pip"`` / ``"agent.access"``); dotted keys are
-    EXPLODED to the nested keyspace (S7) so the floor merges uniformly with the
-    other partials. A name-keyed bind value is parsed to :class:`Bind`.
-
-    ⚑ **The example used to be ``"box.bindings.rw.home"``, which
-    :func:`_insert_dotted` below now REFUSES BY NAME** (R-5: a ``bindings`` arm is
-    TERMINAL — the key stops at ``"box.bindings.rw"`` and its whole value is a
-    dest-keyed map parsed to :class:`BindEntry` leaves). Do not reintroduce that
-    spelling as an example: it documented the one shape this function rejects.
+    ⚑⚑ DO NOT PUT A CATEGORY-ENTRY SPELLING IN THIS DOCSTRING AS AN EXAMPLE — :func:`_insert_dotted`
+    REFUSES BY NAME every floor key deeper than the terminal category key, and two examples have
+    already been burned here (llm-docs). A behavior key such as ``"agent.access"`` is safe.
     """
     store = KeyStore()
     if not floor:
@@ -785,23 +485,12 @@ def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
 
 
 def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
-    """Insert *value* at the dotted-path *dotted* into *store*, exploding to nested
-    :class:`KeyStore` nodes (S7). The terminal leaf is parsed: a value under a
-    bind-shaped category segment becomes a :class:`Bind`; otherwise verbatim.
+    """Insert *value* at the dotted-path *dotted*, exploding to nested :class:`KeyStore` nodes (S7)
+    and parsing the terminal leaf.
 
-    ⚑ **EVERY bind-shaped category is the exception now (R-5/R-6; 2026-08-08c).**
-    A floor key ENDS at the terminal key — ``box.bindings.ro`` for an ARMED
-    category, ``agent.claude.common`` for the other four — and its value is a whole
-    dest-keyed ``BindMap``, parsed by :func:`parse_bind_map`. A floor key that goes
-    DEEPER (``box.bindings.ro.<name>``, ``agent.claude.common.<name>``) is the
-    retired name-keyed producer shape and is
-    REFUSED here, loudly and by name. That refusal is not decoration: the deeper
-    spelling is exactly what every floor producer emitted before P6, it still
-    type-checks all the way to launch, and the ``<name>`` segment would land as a
-    sibling of real destinations inside the map — a name sitting where a path
-    belongs, which nothing downstream can tell apart. It also catches a
-    third-party plugin's ``default_category_binds()`` still returning the old
-    shape (spec §2d; empty for all first-party plugins today).
+    ⚑ EVERY bind-shaped category is the exception (R-5/R-6): a floor key ENDS at the terminal key
+    and its value is a whole dest-keyed ``BindMap``. A key that goes DEEPER is the retired
+    name-keyed producer shape and is REFUSED here, loudly and by name. Why that matters: llm-docs.
     """
     parts = dotted.split(".")
     # A leaf is bind-shaped iff any ancestor segment is a bind category.
@@ -829,9 +518,8 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
         )
     node: KeyStore = store
     for part in parts[:-1]:
-        # UNBOUND dict.get (S3): never the bound ``node.get`` — a leaf named
-        # ``get`` would shadow the method into a crash. Keeps the collision-safe
-        # convention uniform even though these stores are module-built.
+        # ⚑ UNBOUND dict.get (S3): never the bound ``node.get`` — a leaf named ``get`` would shadow
+        # the method into a crash. Uniform even though these stores are module-built.
         existing = dict.get(node, part)
         if not isinstance(existing, KeyStore):
             existing = KeyStore()
@@ -855,40 +543,12 @@ def assemble_levels(
     box_path: Path | None = None,
     floor: dict[str, object] | None = None,
 ) -> list[KeyStore]:
-    """Read each cascade scope's settings file into ONE nested ``KeyStore`` partial
-    and return the ordered ``list[KeyStore]`` (MOST-SPECIFIC-FIRST, S8).
+    """Read each cascade scope's settings file into ONE nested ``KeyStore`` partial and return the
+    six MOST-SPECIFIC-FIRST (S8): ``[box, workset, agent.<active>, agent.default, system, base]``.
 
-    The 6 levels, in order::
-
-        [box, workset, agent.<active>, agent.default, system, base]
-
-    matching design §4's ``base < system < agent.default < agent.<active> <
-    workset < box`` reversed to high→low precedence (block 2b walks
-    this order; the first scope that SETS a leaf wins).
-
-    Each non-agent level's partial = its file's WHOLE nested content, scope token
-    KEPT (§0). The agent file yields BOTH agent levels via its ``default`` and
-    ``<active>`` sub-tables, each kept under its TRUE discriminated name
-    (``agent.default.<key>`` / ``agent.<active-name>.<key>``, spec §2d) — NO
-    bare-``agent`` collapse.
-
-    * *agent_name* selects the active agent's sub-table for the ``agent.<active>``
-      level; ``agent.default`` reads the ``default`` sub-table from the SAME file.
-    * *base_path* defaults to ``settings_base_path()`` (the ``/etc`` floor) — no
-      ``machine`` tier (S14); the cascade ends at ``box`` (no ``required`` cap).
-      The base file uses the SAME scoped keyspace as every other file (NOT a
-      synthetic ``base:`` wrapper).
-    * *floor* (declared defaults + default-categories) is folded UNDER the base
-      file's content into the ``base`` level — a base-FILE set-value beats the
-      floor at the same key; the floor is the ultimate fallback. The floor is also
-      the SOLE sanctioned ``meta.*`` source: a top-level ``meta:`` table is dropped
-      from every FILE view (base included, spec §0 / clause 4 — RO everywhere)
-      BEFORE it is built, so it can never clobber the floor's identity anchors; the
-      floor itself is inserted separately and never dropped.
-
-    Binds are parsed to :class:`Bind`; ``@``-ref / ``$var`` / ``~`` tokens stay RAW
-    (S9 / spec §0). Absent / unreadable files → an empty :class:`KeyStore` partial
-    (skipped cleanly by the merge). NO ``machine`` path is consulted.
+    *floor* (declared defaults + default-categories) folds UNDER the base file into the ``base``
+    level and is the SOLE sanctioned ``meta.*`` source. Absent / unreadable files yield an empty
+    partial; NO ``machine`` path is consulted (S14). Per-parameter detail: llm-docs.
     """
     base_p = base_path if base_path is not None else settings_base_path()
 
@@ -898,34 +558,15 @@ def assemble_levels(
     raw_workset = load_doc(workset_path)
     raw_box = load_doc(box_path)
 
-    # Directional enforcement at RESOLVE (spec §0). Each USER settings file may set
-    # keys of its OWN scope and of scopes it CONTAINS (defaults-down), but NOT of a
-    # CONTAINING scope: drop those upward top-level tables here (warn-once each) so
-    # they never enter the merge. Done on the RAW file view BEFORE building the
-    # partial — the agent tier never mirrors a non-``agent:`` table, so a
-    # post-partial filter could not see (or warn) a ``system:`` table in the agent
-    # file; the raw view catches it. The ``system`` file's containing-set is empty
-    # (outermost — nothing contains it), so its scope-key pass is a no-op. The
-    # ``base`` level (floor dict + ``/etc`` base file) is a CODE FLOOR and is EXEMPT
-    # for SCOPE keys — it is the system-scope floor from which the auth gate is set.
-    # BUT a top-level ``meta:`` table is dropped from EVERY file (base included):
-    # ``meta.*`` is a top-level RO namespace owned by the bootstrap layer (spec §0 /
-    # clause 4), so a base-FILE meta table must not clobber the floor's identity
-    # anchors. ``file_scope="base"`` yields an empty containing set, so this drops
-    # ONLY meta from base — its ``system.*`` scope floor stays exempt. (A nested
-    # ``<scope>.meta`` bootstrap table is TOP-LEVEL-untouched — see the drop fn.)
-    # ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h —
-    # "this is what BOUNDS the recursion"). A ``pref:`` table in the base /
-    # system / agent file is DROPPED with a warning, the SAME treatment the
-    # sibling mis-scope above gets: two behaviours for one fault class is the
-    # confusion §0's convention 0 forbids, and dropping preserves the recursion
-    # bound at least as strongly as erroring would. The HARD refusal §2h calls
-    # for lives at the WRITE site (``config set pref.*`` at these scopes RAISES),
-    # which is the only way a user creates one short of hand-editing.
+    # ⚑ Both filters run on the RAW file view, BEFORE the partial is built, and that ordering is
+    # LOAD-BEARING: the agent tier never mirrors a non-``self:`` table into its partial, so a
+    # post-partial filter could not see (or warn about) a ``system:`` or ``pref:`` table there.
     #
-    # Run on the RAW view for the same reason ``_drop_upward_scopes`` is: the
-    # agent tier never mirrors a non-``agent:`` table into its partial, so a
-    # post-partial filter could not see (or warn about) a ``pref:`` table there.
+    # ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h) — elsewhere DROPPED with a
+    # warning, the SAME treatment the sibling mis-scope gets; the HARD refusal lives at the WRITE
+    # site. Directional enforcement then drops any CONTAINING-scope top-level table (spec §0):
+    # ``system``'s containing set is empty, and ``base`` is a CODE FLOOR, EXEMPT for SCOPE keys but
+    # NOT for ``meta``. Full reasoning: llm-docs.
     raw_base = refuse_pref_table(raw_base, level="base", path=base_p)
     raw_system = refuse_pref_table(raw_system, level="system", path=system_path)
     raw_agent = refuse_pref_table(raw_agent, level="agent", path=agent_path)
@@ -941,17 +582,14 @@ def assemble_levels(
         raw_system, file_scope="system", path=system_path
     )
 
-    # The base partial carries the declared-default floor UNDER any base-file
-    # content: a base-FILE set-value beats the floor at the same key (the floor is
-    # the ultimate fallback). The floor is inserted first, then the file leaves
-    # overlay, so a base-file entry wins WITHIN this single level.
+    # The floor is inserted FIRST and the base-file leaves overlay it, so a base-file entry wins
+    # WITHIN this single level and the floor is the ultimate fallback.
     base_partial = dotted_partial(floor)
     _overlay(base_partial, _file_partial(raw_base))
 
-    # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token
-    # so 2b merges by the scope-qualified name; the agent tier keeps its
-    # default/<active> discriminator as the TRUE §2d key (``agent.default.*`` /
-    # ``agent.<active-name>.*``), NO bare-``agent`` collapse.
+    # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token so the merge works
+    # by scope-qualified name; the agent tier keeps its §2d discriminator — NO bare-``agent``
+    # collapse.
     return [
         _file_partial(raw_box),
         _file_partial(raw_workset),
@@ -963,17 +601,12 @@ def assemble_levels(
 
 
 def _overlay(base: KeyStore, top: KeyStore) -> None:
-    """Deep-overlay *top*'s leaves onto *base*, in place (same-level combine).
+    """Deep-overlay *top*'s leaves onto *base*, in place — the same-level combine that layers a
+    base-FILE partial over the declared-default floor.
 
-    Used ONLY to layer a base-FILE partial over the declared-default floor WITHIN
-    the single ``base`` level (so a base-file set-value beats the floor default).
-    This is NOT the cascade merge (block 2b) — it is a same-level union of two
-    SOURCES (floor defaults + the base file). It descends matching :class:`KeyStore`
-    subtrees so a deep base-file leaf (``agent.<agent>.bindings.rw.x``) overlays the same
-    deep floor leaf without clobbering sibling floor leaves; a non-subtree leaf in
-    *top* replaces *base*'s same key wholesale (the file is the authoritative
-    source at this level). Uses unbound ``dict`` ops (S3) — both stores are
-    module-built, but the bypass keeps the collision-safe convention uniform.
+    ⚑ NOT the cascade merge: a same-level union of two SOURCES. Matching subtrees descend so a deep
+    file leaf does not clobber sibling floor leaves; any other leaf replaces wholesale. Unbound
+    ``dict`` ops (S3).
     """
     for key in dict.keys(top):
         top_val = dict.__getitem__(top, key)
