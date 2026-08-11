@@ -94,6 +94,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped for a missing source names its destination rather than the destination as you spelled it
   (`/home/agent/canon`, not `~/canon`). See [MIGRATION.md](MIGRATION.md) §2.27.
 
+  A mask and a bind that name the **same** destination are decided by that same fold now: the one
+  declared at the more specific scope takes the destination (`system` → `agent` → `workset` → `box`),
+  so a bind declared for your box replaces a mask inherited from the agent or the workset, where the
+  mask used to win that destination outright. The tmpfs masks a box receives come from the assembled
+  mount set itself, so a mask that lost its destination is no longer mounted over the bind that took
+  it. ⚑ The reverse nesting — a mask declared at a *broader* scope than the bind sitting inside it —
+  is not enforced: that arrangement still delivers both, as it always has. Treat it as unsupported
+  rather than as a way to keep a bind inside a mask.
+
+- **A missing bind source is handled by destination, not by who declared the bind.** There are three
+  answers to "the host source is not there at launch": the launch stops with a clean error (the
+  agent's own delivery binds — its binary, launcher and shared install dir), the bind is dropped
+  silently (the optional canon chapters, and the agent's best-effort shares), or the bind is dropped
+  with a warning (everything else). Which one a bind got used to depend on how it was declared rather
+  than on where it lands: the agent's delivery binds were emitted by a separate emitter carrying its
+  own rule, and the silent case was a flag on the declaration. The whole mount set is assembled in one
+  place now, so the answer follows the **destination** and applies to whichever declaration wins that
+  destination, at any scope. The practical difference: if you point one of the agent's delivery
+  destinations at a source of your own (`box.bindings.ro` at `~/.local/bin/<agent>`, say) and that
+  source is missing, the launch now stops with `Error: <agent> mount source disappeared before
+  launch` instead of warning and starting a box with no agent binary in it. See
+  [MIGRATION.md](MIGRATION.md) §2.28.
+
 - **`agent.<agent>.transform` now decides whether a binary transform runs.** The key names WHICH
   transform an agent uses; until now nothing read it, and the tweakcc patch ran for any agent whose
   settings merely carried a `transform_settings` dict — including agents tweakcc cannot patch.

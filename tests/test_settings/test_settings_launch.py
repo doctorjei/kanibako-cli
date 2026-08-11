@@ -409,10 +409,16 @@ class TestAMasksListInTheFloorReachesTheEmit:
 
     @classmethod
     def _tmpfs_masks(cls, cats):
-        """The EFFECTIVE mask destinations, built exactly as the launch does —
-        ``[e.box_dest for e in reconciled.mounts if e.category == "masks"]``
-        (``commands/start.py``, the ``tmpfs_masks`` split feeding
-        ``runtime.run(tmpfs_masks=...)``)."""
+        """The mask destinations that SURVIVE the reconcile — the BRIDGE's output.
+
+        ⚑ NOT the launch's own split any more: since cutover 2a-4 the tmpfs arm comes
+        from the collapsed bind map (``commands/start._bind_map_masks``). Both routes
+        read the same ``snapshot_category_entries`` list ``_emit`` builds — the
+        reconcile here, ``store_shape`` + the collapse there — so the FLOOR-FOLD
+        BRIDGE these six cases test sits upstream of both and the reconcile remains a
+        faithful oracle for it. The arm itself is pinned in
+        ``test_start_assembly.py::TestTheMaskArm``.
+        """
         rec = reconcile_categories(cls._emit(cats))
         return [e.box_dest for e in rec.mounts if e.category == "masks"]
 

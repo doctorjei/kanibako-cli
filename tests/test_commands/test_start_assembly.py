@@ -23,12 +23,14 @@ declarations at ONE identical dest. Prose: ``llm-docs/kanibako/commands/start.py
 import logging
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from kanibako.commands.start import (
     _agent_delivered_dests,
     _bind_map_from_mounts,
+    _bind_map_masks,
     _emit_category_mounts,
     _launch_bind_map,
     _resolve_launch_snapshot,
@@ -371,7 +373,7 @@ class TestTheEmitterConsumesTheShape:
         assert "/home/agent/masked/inside" in _bind_map_from_mounts(reconciled.mounts)
 
     def test_a_mask_in_the_map_emits_no_mount(self):
-        """A MASK has no host source; it rides ``tmpfs_masks`` until 2a-4."""
+        """A MASK has no host source; the tmpfs arm takes it (:class:`TestTheMaskArm`)."""
         from kanibako.settings.store_collapse import MASK, CollapsedBind
 
         emitted = _emit_category_mounts(
@@ -399,6 +401,205 @@ class TestTheEmitterConsumesTheShape:
         )
 
         assert [m.destination for m in emitted] == [shallow, mid, deep]
+
+
+class TestTheMaskArm:
+    """Cutover 2a-4: the tmpfs masks and the bind mounts are halves of ONE map.
+
+    The mask arm used to be built from the RECONCILED rows while the mounts beside it
+    came from the collapse, so the two could — and at one dest did — disagree about
+    what the box gets. Every test here asks the question the divergence asked: does
+    the mask arm say the same thing the mount arm says, off the same value?
+    """
+
+    @staticmethod
+    def _mounted(bindings):
+        """The dests the emitter would mount from *bindings* (sources that exist)."""
+        return [m.destination for m in _emit_category_mounts(bindings, label="mask-arm")]
+
+    def test_a_declared_mask_reaches_the_tmpfs_arm_THROUGH_THE_COLLAPSE(
+        self, std, config, project_dir,
+    ):
+        """The live seam: a ``<scope>.masks`` entry arrives as a mask IN THE MAP.
+
+        RED if the arm goes back to the reconciled rows only by accident — the
+        assertion is that the map it is taken from IS the collapsed one.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(
+            std, proj, extra_default_categories={"box.masks": ["~/private"]},
+        )
+        collapsed = _snapshot_assembly_bindings(snapshot)
+        assert collapsed is not None, "the fixture must actually collapse"
+
+        assert _bind_map_masks(_launch_bind_map(snapshot, reconciled)) == [
+            "/home/agent/private",
+        ]
+        # …and it is the COLLAPSE's own answer, not the fallback's.
+        assert _bind_map_masks(collapsed) == ["/home/agent/private"]
+
+    def test_the_mask_is_emitted_and_the_bind_UNDER_it_is_not(
+        self, std, config, project_dir,
+    ):
+        """⚑⚑ BOTH ARMS, ONE CONFIGURATION — the divergence this step closes.
+
+        A bind inside a mask is swept by the fold (MIGRATION §2.27, shipped at 2a-2
+        for the mount arm). What 2a-4 adds is that the SAME map answers the mask arm,
+        so the tmpfs the box receives is the one the sweep was performed against.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+            "box.bindings.ro": {"~/private/notes": ("/tmp",)},
+            "box.masks": ["~/private"],
+        })
+        assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
+        chosen = _launch_bind_map(snapshot, reconciled)
+
+        assert _bind_map_masks(chosen) == ["/home/agent/private"]
+        assert "/home/agent/private/notes" not in self._mounted(chosen)
+
+    def test_a_bind_AT_a_mask_dest_takes_the_point_instead_of_emitting_BOTH(
+        self, std, config, project_dir,
+    ):
+        """🛑 THE MEASURED DIVERGENCE OF 2a-4, and the reason it is not cosmetic.
+
+        A mask may be TAKEN by a bind at its own destination in a later scope (the
+        fold sweeps the mask and the bind lands). The reconcile resolves that same
+        collision the other way — §0 row 2, a mask OVERRIDES a binding at its dest —
+        so with the arms on two sources the launch emitted a ``-v`` bind AND a
+        ``--mount type=tmpfs`` at ONE destination. Off one map it emits the bind.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+            "agent.claude.masks": ["~/contested"],
+            "box.bindings.ro": {"~/contested": ("/tmp",)},
+        })
+        assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
+        chosen = _launch_bind_map(snapshot, reconciled)
+
+        assert _bind_map_masks(chosen) == []
+        assert "/home/agent/contested" in self._mounted(chosen)
+        # The retired arm's answer, still computed, and still the OPPOSITE one.
+        assert "/home/agent/contested" in [
+            e.box_dest for e in reconciled.mounts if e.category == "masks"
+        ]
+
+    def test_a_mask_ABOVE_a_LATER_scopes_bind_refuses_so_BOTH_arms_fall_back(
+        self, std, config, project_dir,
+    ):
+        """⚑ MEASURED, and the limit of what MIGRATION §2.27 can claim today.
+
+        Whether a mask sweeps a bind nested under it depends on the SCOPE DIRECTION:
+        the sweep only happens when the mask folds LAST. A mask whose scope strictly
+        PRECEDES the bind's is a bind arriving INSIDE an existing mask, which the
+        collapse REFUSES — so the leaf stays absent, both arms fall back, and the box
+        gets the pre-collapse answer (mask AND bind). That is what keeps a refusal
+        costing nothing until step 2c, and it is why §2.27 is written about a mask and
+        a bind declared at the same scope.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+            "agent.claude.masks": ["~/private"],
+            "box.bindings.ro": {"~/private/notes": ("/tmp",)},
+        })
+        assert _snapshot_assembly_bindings(snapshot) is None, "the collapse must refuse"
+        chosen = _launch_bind_map(snapshot, reconciled)
+
+        assert _bind_map_masks(chosen) == ["/home/agent/private"]
+        assert "/home/agent/private/notes" in self._mounted(chosen)
+
+    def test_a_REFUSED_collapse_takes_BOTH_arms_from_the_reconciled_rows(
+        self, std, config, project_dir,
+    ):
+        """The safety arm, on the mask side: a refusal must lose the box no mask.
+
+        RED if the arm is read from ``_snapshot_assembly_bindings`` directly instead
+        of from ``_launch_bind_map`` — the mask would vanish on a configuration the
+        live route still delivers.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+            **_SUBSUMING, "box.masks": ["~/private"],
+        })
+        assert _snapshot_assembly_bindings(snapshot) is None, "the collapse must refuse"
+
+        assert _bind_map_masks(_launch_bind_map(snapshot, reconciled)) == [
+            "/home/agent/private",
+        ]
+
+    def test_the_two_arms_PARTITION_one_map(self, tmp_path):
+        """⚑ ONE VALUE, BOTH ARMS: mutate the map and BOTH answers move with it.
+
+        The arms are complementary halves of the same keys — nothing is delivered
+        twice and nothing is dropped. Flipping one entry moves it from one arm to the
+        other, which is the property two independent sources could never have.
+        """
+        from kanibako.settings.store_collapse import MASK, CollapsedBind
+
+        src = str(tmp_path)
+        bindings = {
+            "/home/agent/bound": CollapsedBind(src, "ro"),
+            "/home/agent/hidden": MASK,
+        }
+        assert self._mounted(bindings) == ["/home/agent/bound"]
+        assert _bind_map_masks(bindings) == ["/home/agent/hidden"]
+
+        bindings["/home/agent/bound"] = MASK
+
+        assert self._mounted(bindings) == []
+        assert _bind_map_masks(bindings) == ["/home/agent/bound", "/home/agent/hidden"]
+
+    def test_the_LAUNCH_reads_the_map_ONCE_and_serves_both_arms_from_it(
+        self, start_mocks, tmp_path,
+    ):
+        """⚑⚑ THE PRODUCTION SEAM, not the functions: `_run_container` → `runtime.run`.
+
+        Patching ``_launch_bind_map`` makes the map the ONLY place either arm could
+        have come from — the harness's reconciled rows carry no mask at all, so the
+        retired spelling would hand podman an empty mask list while mounting the bind.
+        The call COUNT is asserted too: two reads is not one value, and while the
+        fallback lives nothing says two reads answer from the same arm.
+        """
+        from kanibako.commands.start import _run_container
+        from kanibako.settings.store_collapse import MASK, CollapsedBind
+
+        bindings = {
+            "/home/agent/hidden": MASK,
+            "/home/agent/bound": CollapsedBind(str(tmp_path), "ro"),
+        }
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._launch_bind_map", return_value=bindings,
+        ) as m_map:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            kwargs = m.runtime.run.call_args.kwargs
+
+        assert m_map.call_count == 1, "the map is read ONCE for both arms"
+        assert kwargs["tmpfs_masks"] == ["/home/agent/hidden"]
+        assert "/home/agent/bound" in [
+            str(mount.destination) for mount in kwargs["extra_mounts"]
+        ]
+
+    def test_the_mask_arm_depth_sorts_on_the_key_the_mounts_use(self):
+        """A dest-keyed map carries no order, so the tmpfs arm sorts too — same key.
+
+        Podman is handed the masks and the binds as one argv; sorting them on two
+        different keys would order a mask against the mount it sits inside by luck.
+
+        ⚑ ``/home/agent/w/a`` before ``/home/agent/x`` is where the two orders PART:
+        a plain lexicographic sort puts the deeper one first, and every shallower-is-
+        alphabetically-earlier fixture passes under both.
+        """
+        from kanibako.settings.store_collapse import MASK
+
+        deep, mid, shallow = "/home/agent/w/a", "/home/agent/x", "/home"
+
+        assert _bind_map_masks(dict.fromkeys((deep, mid, shallow), MASK)) == [
+            shallow, mid, deep,
+        ]
 
 
 class TestTheThreeMissingSourcePolicies:
@@ -524,6 +725,31 @@ class TestTheThreeMissingSourcePolicies:
             "/home/agent/.claude/plugins", "/opt/kanibako",
         ]
         assert "/home/agent/.local/bin/claude" in _bind_map_from_mounts(rows)
+
+    def test_a_BOX_scope_bind_at_a_CRITICAL_dest_takes_THAT_DESTS_policy(
+        self, std, config, project_dir,
+    ):
+        """The scope-blindness the emitter's dest-keying implies, MEASURED end to end.
+
+        The policy sets are dest-spelled, and by the time the emitter reads the map
+        the scope is gone — so a user's own bind that WINS one of the agent's delivery
+        destinations inherits that destination's must-exist safe-fail rather than the
+        warn-and-drop it would have taken on the old route. Documented in MIGRATION
+        §2.28; this is the half of it the reconcile and the fold have to agree on —
+        that the box-scope declaration actually lands at that exact key.
+        """
+        critical = "/home/agent/.local/bin/claude"
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+            "box.bindings.ro": {critical: ("/nonexistent/kanibako-test-source",)},
+        })
+        chosen = _launch_bind_map(snapshot, reconciled)
+        assert chosen[critical].src == "/nonexistent/kanibako-test-source"
+
+        with pytest.raises(BindingSourceError, match=re.escape(critical)):
+            _emit_category_mounts(
+                chosen, label="policy", must_exist=frozenset({critical}),
+            )
 
     def test_an_rw_dest_with_no_policy_still_guarantee_creates(self, tmp_path):
         """The L7 rw arm is UNMOVED — it just runs after the policy now."""
