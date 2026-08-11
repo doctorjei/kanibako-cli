@@ -1,23 +1,17 @@
-"""Shared transactional engine for project lifecycle operations.
+"""Shared transactional engine behind ``box remap`` / ``move`` / ``convert``.
 
-This module houses the single routine behind ``remap`` / ``move`` / ``convert``
-(and their combos).  It splits a project's identity into two axes:
+**_Terminology_**
+- _location_: where the workspace files physically live (:class:`TargetSpec`'s ``location``)
+- _ownership_: which mode/workset owns the project (``TargetSpec.ownership``)
+- _records-only_: ``remap`` — the files have ALREADY moved; record the new location, copy nothing
+- _unwind_: the LIFO stack of compensating actions run in reverse on ANY failure
 
-- **location** — where the workspace files physically live (the ``location``
-  field of :class:`TargetSpec`).
-- **ownership** — which mode/workset owns the project (the ``ownership`` field).
+Public surface: :class:`ProjectState` · :func:`resolve_lifecycle_target` · :class:`TargetSpec` ·
+:func:`execute_lifecycle` · the ``run_remap``/``run_move``/``run_convert`` CLI entry points ·
+:func:`copy_into_workset` (the std-aware copy path for ``box duplicate``).
 
-The public surface is:
-
-- :class:`ProjectState` — a uniform descriptor of an existing project.
-- :func:`resolve_lifecycle_target` — resolve a path/name to a ``ProjectState``.
-- :class:`TargetSpec` — what the caller wants changed (location + ownership).
-- :func:`execute_lifecycle` — apply a ``TargetSpec`` to a ``ProjectState``
-  transactionally (canonical 5-step order with an unwind stack).
-
-This module also houses the ``run_remap`` / ``run_move`` / ``run_convert`` CLI
-entry points and the std-aware :func:`copy_into_workset` helper used by
-``box duplicate``.
+⚑ Destructive: steps 2 and 5 copy then ``rmtree``. The step ORDER and the unwind pushes are
+load-bearing; see ``llm-docs/kanibako/commands/box/_lifecycle.py.md``.
 """
 
 from __future__ import annotations
@@ -85,8 +79,7 @@ class _Sentinel:
 
 #: ``location`` sentinel — keep the workspace where it is (no file move).
 INPLACE = _Sentinel("INPLACE")
-#: ``location`` sentinel — move the workspace *into* the target workset
-#: (``{ws}/workspaces/<name>``).  Only valid with a workset ownership target.
+#: ``location`` sentinel — move into ``{ws}/workspaces/<name>``; workset targets only.
 BARE_INTO_WS = _Sentinel("BARE_INTO_WS")
 #: ``ownership`` sentinel — keep the current owner/mode.
 UNCHANGED = _Sentinel("UNCHANGED")
@@ -98,13 +91,7 @@ UNCHANGED = _Sentinel("UNCHANGED")
 
 @dataclass
 class ProjectState:
-    """Uniform descriptor of an existing, resolved project.
-
-    *owner* is the canonical ownership token: ``"primary"``, ``"standalone"``,
-    or ``"workset:<name>"``.  *ws* is the loaded :class:`Workset` when the owner
-    is a workset (else ``None``).  *is_external* is True when the live workspace
-    lives outside the owning workset's root (a connected-external project).
-    """
+    """Uniform descriptor of an existing, resolved project."""
 
     owner: str
     mode: BoxMode
@@ -121,21 +108,12 @@ class ProjectState:
 
 @dataclass
 class TargetSpec:
-    """What a lifecycle operation should change.
-
-    *location* is one of :data:`INPLACE`, :data:`BARE_INTO_WS`, or a concrete
-    ``Path`` destination.  *ownership* is one of :data:`UNCHANGED`,
-    ``"default"``, ``"standalone"``, or a workset name (plain string, NOT
-    prefixed with ``workset:``).  *name* optionally renames the project at the
-    destination (defaults to the existing name).
-    """
+    """What a lifecycle operation should change (location axis + ownership axis)."""
 
     location: Path | _Sentinel = INPLACE
     ownership: str | _Sentinel = UNCHANGED
     name: str | None = None
-    #: ``remap`` semantics — the workspace has ALREADY moved on disk; record the
-    #: new ``location`` (path + hash + markers) WITHOUT copying or deleting any
-    #: files.  Only meaningful with a concrete ``Path`` location.
+    #: ⚑ ``remap`` semantics — record the new location, copy/delete NOTHING.
     records_only: bool = False
 
 
@@ -154,27 +132,7 @@ def _default_rename_name(
     landing_ws: Path,
     requested_name: str,
 ) -> str | None:
-    """The explicit primary-box name a DEFAULT-mode edge would MINT, or ``None``.
-
-    Returns the user's ``requested_name`` only when it will actually name a NEW
-    primary registration (a true ``--name`` rename edge landing in default mode),
-    else ``None`` — i.e. ``None`` for an auto-derived name (no ``--name``, which
-    keeps the basename-derived auto-suffix) OR the primary-source SAME-PATH REUSE
-    case where ``--name`` equals the current name (the box keeps its existing
-    name, so ``--name`` is moot).
-
-    The returned name is the one the cross-kind (box-vs-workset) name policy must
-    gate: F-7 routes it through :func:`check_primary_box_name_free` /
-    :func:`register_primary_box_name` so a rename obeys the same per-kind policy
-    as ``create`` (workset-name collision refused unless ``--force``; same-kind
-    primary collision unconditional).
-
-    F-3-fix2: for a primary-source SAME-PATH edge an explicit ``--name`` that
-    DIFFERS from the current name would be an in-place RENAME of a primary box —
-    which is NOT supported (the box keeps its ``boxes/<name>`` metadata dir +
-    registration at this path).  Rather than silently drop the different name,
-    REFUSE with an actionable ``ProjectError`` (move the box to rename it).
-    """
+    """The explicit primary-box name a DEFAULT-mode edge would MINT, or ``None``."""
     if not requested_name:
         return None
     if state.mode == BoxMode.primary and state.name:
@@ -182,8 +140,7 @@ def _default_rename_name(
             std.primary_workset, str(landing_ws),
         )
         if existing is not None:
-            # SAME-PATH (in-place) primary edge: the landing path is already
-            # registered to this box, so no NEW registration is minted.
+            # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
             if requested_name != existing:
                 raise ProjectError(
                     f"In-place rename of a primary (default-mode) box is not "
@@ -199,13 +156,7 @@ def _default_rename_name(
 def _primary_source_own_name(
     state: ProjectState, std: StandardPaths,
 ) -> str | None:
-    """The name the SOURCE primary box is CURRENTLY registered under, else ``None``.
-
-    Reverse-looks-up ``state.workspace_path`` in the PRIMARY membership.  A
-    same-name move/convert reuses THIS entry (source's own name -> its own current
-    path), which the cross-kind/same-kind name guards must exempt: it is not a
-    foreign collision.  ``None`` when the source is not a registered primary box.
-    """
+    """The name the SOURCE primary box is CURRENTLY registered under, else ``None``."""
     if state.mode != BoxMode.primary or not state.name:
         return None
     return primary_box_name_for_workspace(
@@ -214,10 +165,7 @@ def _primary_source_own_name(
 
 
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
-    """Map a TargetSpec ownership value to ``(mode, workset_name | None)``.
-
-    A non-default/standalone string is treated as a workset name.
-    """
+    """Map a TargetSpec ownership value to ``(mode, workset_name | None)``."""
     if ownership == "default":
         return BoxMode.primary, None
     if ownership == "standalone":
@@ -234,16 +182,7 @@ def resolve_lifecycle_target(
     std: StandardPaths,
     config: KanibakoConfig | None = None,
 ) -> ProjectState:
-    """Resolve an existing project (by path or name) to a :class:`ProjectState`.
-
-    *old* may be a path or a registered project/workset-relative name; ``None``
-    means the current working directory.  Builds on the existing detectors and
-    resolvers; honors ``meta["workspace"]`` overrides (external-connected
-    projects) so the descriptor reflects the *live* workspace location.
-
-    Raises :class:`ProjectError` / :class:`WorksetError` when no project is
-    found.
-    """
+    """Resolve an existing project (by path or name) to a :class:`ProjectState`."""
     import os
 
     if config is None:
@@ -252,10 +191,8 @@ def resolve_lifecycle_target(
         config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
 
     raw = old or os.getcwd()
-    # Front-door (mirrors resolve_any_project): a bare token (no path separator)
-    # that doesn't exist in cwd may be a registered project/workset name.  This
-    # is essential for ``remap``/``convert`` when the folder has already moved,
-    # so the on-disk path is stale but the name still resolves.
+    # ⚑ Bare-token front door (mirrors resolve_any_project): ``remap``/``convert`` need it —
+    # the folder has already moved, so the path is stale but the NAME still resolves.
     raw_name = raw
     named_workset = False
     if raw and "/" not in raw and not Path(raw).exists():
@@ -266,28 +203,19 @@ def resolve_lifecycle_target(
                 primary_workset=std.primary_workset,
             )
             if kind in ("project", "workset"):
-                # Update `raw` for BOTH kinds (mirrors resolve_any_project): a
-                # bare workset name resolves to the workset ROOT, which
-                # detect_project_mode must see -- without this the name
-                # path-ifies to cwd/<name> and resolution fails misleadingly.
+                # ⚑ BOTH kinds update `raw`: detect_project_mode must see the workset ROOT.
                 raw = resolved
                 named_workset = kind == "workset"
         except ProjectError:
             pass
     if named_workset:
-        # Lifecycle ops (remap/move/convert) act on a single project box; a
-        # workset is not one.  Reject with an actionable message.
+        # Lifecycle ops act on a single project box; a workset is not one.
         raise WorksetError(
             f"'{raw_name}' is a workset, not a single project box. "
             f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
             f"command from a project workspace under that workset."
         )
-    # Qualified ``workset/project`` addressing (mirrors resolve_any_project): a
-    # token with a separator that is NOT an existing path may be a qualified
-    # name -- the form the bare-workset rejection above suggests.  Resolve it to
-    # the project's workspace so detect_project_mode sees a single box.  A real
-    # relative path that happens not to exist is left untouched (falls through
-    # to the path-ify below, failing exactly as before).
+    # Qualified ``workset/project`` addressing — the form the rejection above suggests.
     if raw and "/" in raw and not Path(raw).exists():
         from kanibako.project.names import resolve_qualified_name
         try:
@@ -312,9 +240,8 @@ def resolve_lifecycle_target(
     # default mode
     root = detection.project_root
     if not root.is_dir():
-        # The workspace dir is gone (e.g. the user moved the folder before
-        # running `remap`).  resolve_project requires the dir to exist, so fall
-        # back to building the state from the registered metadata alone.
+        # ⚑ Workspace dir gone (moved before `remap`): resolve_project requires it, so
+        # fall back to the registered metadata alone.
         fallback = _default_state_from_meta(root, std)
         if fallback is not None:
             return fallback
@@ -329,27 +256,15 @@ def resolve_lifecycle_target(
 def _default_state_from_meta(
     workspace: Path, std: StandardPaths,
 ) -> ProjectState | None:
-    """Build a default-mode :class:`ProjectState` from registered metadata.
-
-    Used by ``remap`` when the recorded workspace directory no longer exists on
-    disk: the box is still registered in the PRIMARY ``boxes:`` membership (path
-    -> name) and its metadata lives in ``boxes/<name>``.  Returns ``None`` when no
-    such registration is found, so the caller can raise the normal error.
-    """
+    """Build a default-mode :class:`ProjectState` from registered metadata (``remap``)."""
     name = primary_box_name_for_workspace(std.primary_workset, str(workspace))
     if name is None:
         return None
-    # P8b: PRIMARY membership (the reverse-lookup hit above) IS the existence
-    # signal — identity no longer self-describes on disk, so there is no
-    # ``project.mode`` presence gate.  ``enable_vault`` is the plain box-scope
-    # ``box.enable_vault`` read (decoupled from identity).
+    # ⚑ P8b: the PRIMARY-membership hit above IS the existence signal — identity no
+    # longer self-describes on disk, so there is NO ``project.mode`` presence gate.
     metadata_path = std.boxes / name
-    # B2b (Option A, Jei-ruled): the per-box meta["shell"]/["vault_*"] custom-path
-    # OVERRIDE is DROPPED here too — to stay CONSISTENT with the launch path
-    # (resolve_project), which now derives home/vault SOLELY from the default
-    # location. Reading the stored override here would make stop/cleanup/move target
-    # a DIFFERENT home than the launch binds (JC-B2b-4). home/vault are the default
-    # PRIMARY-box location (boxes/<name>/home + primary vault/{ro,rw}/<name>).
+    # ⚑ B2b: home/vault are the DEFAULT location only — never a stored per-box override,
+    # which would target a different home than the launch binds do (JC-B2b-4).
     shell_path = metadata_path / "home"
     vault_ro = std.primary_vault_ro / name
     vault_rw = std.primary_vault_rw / name
@@ -385,7 +300,7 @@ def _resolve_workset_state(
     proj = resolve_workset_project(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
-    # External when the live workspace is outside the workset root.
+    # EXTERNAL == the live workspace lies outside the workset root.
     is_external = True
     try:
         proj.project_path.resolve().relative_to(ws.root.resolve())
@@ -435,37 +350,13 @@ def copy_into_workset(
     copy_workspace: bool,
     std: StandardPaths,
 ) -> None:
-    """Re-root a project into *ws* — the std-aware copy path for ``duplicate``.
-
-    The duplicate is always an INTERNAL workset project: it gets a real
-    ``workspaces/<name>`` directory, never an external symlink/redirect back to
-    the source.  Duplicate makes a *copy*, not a *connection*; an external
-    connection (1:1 in the per-workset registry) is what ``connect`` is for, and a bare
-    duplicate of an already-connected source is refused up front in
-    ``run_duplicate``.
-
-    *std* is threaded to :func:`kanibako.project.workset.add_project` so its up-front
-    guards run (and to keep a single std-aware registration path); because the
-    registration target is the in-tree workspace dir, ``add_project`` always
-    creates a real directory and writes no external markers — which also avoids
-    the source-into-symlink ``copytree`` collision that registering the external
-    *source* path would cause.
-
-    *copy_workspace* controls whether the source tree is copied into the new
-    internal workspace (``True``) or it is left as an empty skeleton dir (a
-    *bare* duplicate, ``False``).  *metadata_path* / *shell_path* are the SOURCE
-    project's dirs to copy from.
-    """
-    # Register the in-tree workspace dir (INTERNAL): add_project then makes a real
-    # directory rather than connecting to (and symlinking at) the source.
+    """Re-root a project into *ws* — the std-aware copy path for ``duplicate``."""
+    # ⚑ Register the IN-TREE workspace dir: a duplicate is always INTERNAL, so add_project
+    # makes a real directory instead of symlinking back at the source.
     add_project(ws, proj_name, ws.workspaces_dir / proj_name, std)
 
-    # Failure-consistency: a crash AFTER add_project (which registers the project
-    # in the workset.meta identity + creates per-project dirs) but DURING the copies below
-    # would otherwise strand a registered-but-incomplete project.  Roll the
-    # registration + partial dirs back on any failure, then re-raise.
-    # remove_project(remove_files=True, std=...) is idempotent and removes only
-    # workset-side dirs (never the user's external source).
+    # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
+    # registered-but-incomplete project. Roll registration + partial dirs back, then re-raise.
     try:
         dst_project = ws.projects_dir / proj_name
         shutil.copytree(
@@ -477,7 +368,7 @@ def copy_into_workset(
         if shell_path.is_dir():
             dst_shell = dst_project / "home"
             shutil.copytree(shell_path, dst_shell, dirs_exist_ok=True)
-            # Copy carries the skeleton's modes but not its ownership — re-assert.
+            # ⚑ copytree carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
             materialize_canon_skeleton(dst_shell)
 
         if copy_workspace:
@@ -500,12 +391,7 @@ def copy_into_workset(
 
 @dataclass
 class _Unwind:
-    """A LIFO stack of compensating actions for failure-consistency.
-
-    Each pushed action is a zero-arg callable that reverses a forward step.
-    On :meth:`run`, actions execute in reverse order; individual failures are
-    swallowed (best-effort restore) so one bad unwind does not mask the rest.
-    """
+    """A LIFO stack of compensating actions for failure-consistency."""
 
     actions: list[Callable[[], None]] = field(default_factory=list)
     cleanups: list[Callable[[], None]] = field(default_factory=list)
@@ -514,11 +400,7 @@ class _Unwind:
         self.actions.append(action)
 
     def on_success(self, action: Callable[[], None]) -> None:
-        """Register an action to run only when the whole op succeeds.
-
-        Used for scratch (e.g. an unwind stash) that must survive until the
-        operation completes but be discarded on success.
-        """
+        """Register an action to run only when the whole op succeeds (scratch disposal)."""
         self.cleanups.append(action)
 
     def run(self) -> None:
@@ -566,13 +448,7 @@ def _validate(
     force: bool,
     cwd: Path,
 ) -> dict:
-    """Validate the requested operation up front; return resolved plan facts.
-
-    Refuses early (raises ProjectError/WorksetError) so steps 2-5 only run on a
-    sound request → zero partial state.  Returns a dict carrying the resolved
-    target mode / target workset / destination so :func:`execute_lifecycle`
-    need not re-derive them.
-    """
+    """Validate up front; return plan facts. ⚑ EVERY refusal belongs HERE, never in a step."""
     # --- resolve ownership target ---
     if spec.ownership is UNCHANGED:
         target_mode = state.mode
@@ -633,8 +509,8 @@ def _validate(
         raise ProjectError(STUBBORN_INPLACE_MSG)
 
     # --- destination not already occupied ---
-    # ``remap`` is records-only: the files are presumed ALREADY at *dest*, so we
-    # do not require it to be empty (and a no-op same-path remap is fine).
+    # ⚑ ``records_only`` exempt: ``remap``'s files are ALREADY at *dest*, so it must not
+    # be required empty (and a no-op same-path remap is fine).
     if relocating and dest is not None and not spec.records_only:
         if dest.resolve() == state.workspace_path.resolve():
             raise ProjectError(
@@ -645,8 +521,7 @@ def _validate(
 
     # --- membership guard: refuse landing inside a workset the project is
     #     not (becoming) a member of ---
-    # ``relocating`` is exactly ``dest is not None`` (set above); test dest
-    # directly so mypy narrows away the None for the .resolve() below.
+    # ``relocating`` is exactly ``dest is not None``; test dest directly so mypy narrows.
     landing = dest if dest is not None else state.workspace_path
     owning_ws_root: Path | None = None
     if target_mode == BoxMode.named and target_ws is not None:
@@ -667,7 +542,7 @@ def _validate(
         )
 
     # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
-    # ``remap`` removes nothing, so it cannot strand the shell — skip the guard.
+    # ⚑ ``records_only`` exempt: ``remap`` removes nothing, so it cannot strand the shell.
     if relocating and not state.is_external and not spec.records_only:
         old = state.workspace_path.resolve()
         cwd_r = cwd.resolve()
@@ -701,25 +576,13 @@ def _validate(
                 )
 
     # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
-    # An explicit --name that lands a box in primary/default mode is held to the
-    # SAME per-kind name policy as create: a WORKSET-name collision refuses UNLESS
-    # --force (the box would shadow the workset in bare-name resolution); a
-    # SAME-KIND (another primary box) collision refuses UNCONDITIONALLY.  Checked
-    # UP FRONT here so a refusal costs no file copy.  Only a name that actually
-    # mints a new registration is gated (auto-derived names + the primary
-    # same-path reuse are not cross-kind assertions).  NAMED-workset targets are
-    # out of scope (handled by the same-kind workset-membership check above);
-    # standalone targets are excluded from the cross-kind domain.
+    # ⚑ Checked UP FRONT so a name refusal costs no file copy.
     requested_name = (spec.name or "").lower()
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
         mint = _default_rename_name(state, std, landing_ws, requested_name)
-        # FIX1: a relocating move/convert that KEEPS the same name reuses the
-        # SOURCE box's OWN registration (name -> its current path); that is a
-        # self-reuse, not a collision, so exempt it from the same-kind guard
-        # (register_primary_box_name would otherwise see the box's own still-live
-        # entry as "already registered").  Genuine same-kind + cross-kind
-        # collisions (mint names a DIFFERENT box or a workset) still refuse.
+        # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration — self-reuse,
+        # not a collision, so it is exempt from the same-kind guard.
         if mint is not None and mint != _primary_source_own_name(state, std):
             check_primary_box_name_free(
                 std.primary_workset, std.registry, mint, str(landing_ws),
@@ -735,10 +598,8 @@ def _validate(
         "no_owner_change": no_owner_change,
         "new_name": new_name,
         "force": force,
-        # The user's EXPLICIT --name (empty when not given).  Unlike ``new_name``
-        # (which defaults to the source name), this distinguishes "no --name"
-        # from "--name <source-name>" so a standalone target only treats a real
-        # --name as a user assertion (R1/R3).
+        # ⚑ The EXPLICIT --name (empty when absent) — distinct from ``new_name``, which
+        # defaults to the source name. Standalone needs the distinction (R1/R3).
         "requested_name": requested_name,
     }
 
@@ -756,22 +617,7 @@ def execute_lifecycle(
     force: bool = False,
     confirm: Callable[[], bool] | None = None,
 ) -> ProjectState:
-    """Apply *spec* to *state* transactionally and return the new state.
-
-    Canonical 5-step order (see the redesign DESIGN):
-
-      1. Validate everything up front (refuse early → zero partial state).
-      2. Move files (if relocating).
-      3. Update location records / markers.
-      4. Apply ownership / mode change (re-root metadata/shell/vault; registry;
-         names; rewrite ``settings.yaml`` mode + paths).
-      5. Clean up old (never the user's external source dir).
-
-    Steps 2-5 push compensating actions onto an unwind stack; on ANY exception
-    the stack runs in reverse to restore a consistent state, then re-raises.
-    *confirm*, if given, is called after validation; returning False aborts
-    cleanly (no changes) by raising :class:`ProjectError`.
-    """
+    """Apply *spec* to *state* transactionally, in the canonical 5-step order."""
     import os
 
     if config is None:
@@ -811,17 +657,11 @@ def _run_steps(
     requested_name: str = plan["requested_name"]
     force: bool = plan["force"]
 
-    # ------------------------------------------------------------------
-    # STEP 2 — Move files (only when relocating a real workspace tree).
-    # For workset->workset re-roots the *workspace* is not what relocates
-    # here when external; for internal ws->ws the move IS required and was
-    # validated.  Standard moves copytree the workspace to dest.
-    # ------------------------------------------------------------------
+    # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
     records_only: bool = spec.records_only
     new_workspace = state.workspace_path
     if records_only and dest is not None:
-        # ``remap``: the files are presumed already at *dest*; record the new
-        # location without copying or removing anything.
+        # ``remap``: files presumed already at *dest*; copy and remove nothing.
         new_workspace = dest
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
@@ -829,11 +669,8 @@ def _run_steps(
         unwind.push(lambda: shutil.rmtree(dest, ignore_errors=True))
         new_workspace = dest
     elif relocating and dest is not None and state.is_external:
-        # External source: the "workspace" is the user's external dir; we never
-        # move it.  A relocation request on an external project means re-point
-        # to a new external/internal location is out of Phase-1 scope beyond
-        # ws->ws repoint (handled in ownership). Treat dest as the new recorded
-        # location only when it is the destination of an internalizing move.
+        # ⚑ EXTERNAL source: the "workspace" is the USER'S OWN dir — never moved, only
+        # re-recorded. *dest* is the recorded location of an internalizing move.
         new_workspace = dest
     elif (
         not records_only
@@ -841,22 +678,14 @@ def _run_steps(
         and state.mode is BoxMode.standalone
         and target_mode is not BoxMode.standalone
     ):
-        # Reverse of drift H: a standalone source roots its live workspace at the
-        # ``<root>/workspace`` SUBDIR, but a non-standalone box roots at the
-        # project dir itself.  On an in-place convert OUT of standalone, lift the
-        # workspace files back up to the root and root the converted box there
-        # (so the project stays at the dir the user is in, not a subdir).
+        # ⚑ Reverse of drift H: standalone roots the live workspace at ``<root>/workspace``,
+        # every other mode at the project dir — so an in-place convert OUT must lift.
         root = state.workspace_path.parent
         _unconsolidate_workspace_subdir(state.workspace_path, root, unwind)
         new_workspace = root
 
-    # ------------------------------------------------------------------
-    # STEP 4 (ownership) is interleaved with STEP 3 (markers) because the
-    # destination metadata roots depend on the target owner.  We compute the
-    # new metadata/shell/vault dirs for the target owner, copy them, write the
-    # rewritten settings.yaml (with correct mode + workspace override + hash +
-    # markers), then update registry/names, then clean up the old side.
-    # ------------------------------------------------------------------
+    # --- STEPS 3+4 — markers INTERLEAVED with ownership: the destination metadata
+    #     roots depend on the target owner, so they cannot be separated. ---
     new_state = _apply_ownership_and_markers(
         state, std, config, unwind,
         target_mode=target_mode,
@@ -869,25 +698,16 @@ def _run_steps(
         force=force,
     )
 
-    # ------------------------------------------------------------------
-    # STEP 4b — Relocate THIS box's OWN channel partition (best-effort, D-M10).
-    # Runs AFTER ownership/identity is finalized (A9): standalone convert
-    # regenerates the box name, so we must read the FINAL post-convert name + ws
-    # token off ``new_state``.  Best-effort + idempotent — failures warn and the
-    # lifecycle continues; not registered on the unwind stack (a partial move is
-    # not catastrophic and re-running reconciles).
-    # ------------------------------------------------------------------
+    # --- STEP 4b — Relocate this box's OWN channel partition (best-effort, D-M10).
+    # ⚑ MUST run AFTER identity is finalized (A9): a standalone convert REGENERATES the
+    #   box name, so the new address is only readable off ``new_state``. ---
     _relocate_channel_partition(state, new_state, std)
 
-    # ------------------------------------------------------------------
-    # STEP 5 — Clean up old workspace (only for a real, internal move).
-    # NEVER delete a user's external source directory.
-    # ------------------------------------------------------------------
+    # --- STEP 5 — Clean up the old workspace (real, internal moves only).
+    # ⚑ NEVER delete a user's EXTERNAL source directory, and never before step 2's copy. ---
     if not records_only and relocating and dest is not None and not state.is_external:
         old_ws = state.workspace_path
         if old_ws.resolve() != dest.resolve() and old_ws.is_dir():
-            # Irreversible-ish; but we copied first and recorded everything, so
-            # this is the last step.  Keep a backup move for unwind safety.
             shutil.rmtree(old_ws, ignore_errors=True)
 
     return new_state
@@ -908,13 +728,7 @@ def _apply_ownership_and_markers(
     requested_name: str = "",
     force: bool = False,
 ) -> ProjectState:
-    """Re-root metadata/shell/vault into the target owner + rewrite markers.
-
-    Handles every transition by copying the source metadata into the target
-    owner's metadata root, writing a fresh ``settings.yaml`` (mode + paths +
-    workspace override + hash), updating registry/names, and removing the old
-    owner's metadata.  Returns the resulting :class:`ProjectState`.
-    """
+    """Re-root metadata/shell/vault into the target owner + rewrite markers."""
     if target_mode == BoxMode.named:
         return _to_workset(
             state, std, config, unwind,
@@ -940,12 +754,7 @@ def _apply_ownership_and_markers(
 # -- per-target-mode ownership steps ---------------------------------------
 
 def _unwind_box_tree(path: Path) -> None:
-    """Best-effort box-tree removal shaped for ``_Unwind.push``.
-
-    ``remove_box_tree`` returns a bool; ``_Unwind`` wants ``Callable[[], None]``.
-    A named wrapper rather than an inline lambda that discards the result, because
-    "swallow this value" is exactly the kind of thing worth saying out loud.
-    """
+    """Best-effort box-tree removal shaped for ``_Unwind.push`` (discards the bool)."""
     remove_box_tree(path)
 
 
@@ -958,52 +767,33 @@ def _copy_metadata(
     home_leaf: str = "home",
     unwind: _Unwind,
 ) -> Path:
-    """Copy metadata (minus lock+home) and shell into *dst_metadata*.
-
-    Returns the destination shell path (``dst_metadata / home_leaf``).  Pushes
-    an rmtree of *dst_metadata* onto *unwind*.
-    """
+    """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
     shutil.copytree(
         src_metadata, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
-    # ⚑ The unwind must use the SAME escalation as every other box-tree deletion:
-    # this function creates the destination's canon skeleton four lines down, so a
-    # failed move/convert unwinding with a plain rmtree would silently fail to clean
-    # up its own destination (ignore_errors swallows the PermissionError).
+    # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
+    # so a plain rmtree would silently fail to clean up its own destination.
     unwind.push(lambda: _unwind_box_tree(dst_metadata))
 
     dst_shell = dst_metadata / home_leaf
     if src_shell.is_dir():
         shutil.copytree(src_shell, dst_shell, dirs_exist_ok=True)
-        # ⚑ copytree reproduces the canon skeleton's 555 MODES but never its
-        # OWNERSHIP, so the copy lands host-user-owned — which in-box is the agent,
-        # who can chmod it back.  Re-assert (idempotent; J-7).
+        # ⚑ copytree carries the canon skeleton's 555 MODES but never its OWNERSHIP —
+        # re-assert (idempotent; J-7).
         materialize_canon_skeleton(dst_shell)
     return dst_shell
 
 
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None:
-    """Write the source box's carried box-scope settings to *dst_box_tier* (M-8).
-
-    A convert/move makes a NEW box that inherits the source's box settings. The
-    source's box tier and the destination's are BOTH resolved through the single
-    derivation, so the settings land where the destination will actually read them
-    — and a pre-P2 standalone source's root-stored ``box.*`` keys are underlaid
-    rather than lost (:func:`kanibako.settings.config.carried_box_settings`).
-
-    A no-op when the source carries nothing, so a box with no settings file still
-    produces no destination file (sparse — matching create).
-    """
+    """Write the source box's carried box-scope settings to *dst_box_tier* (M-8)."""
     from kanibako.settings.config import carried_box_settings
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.paths import _box_settings_files
 
-    # group=None: only the STANDALONE arm consults it, and standalone's workset tier
-    # is derived from the root, not from a ProjectGroup (which ProjectState does not
-    # carry).  For primary/named the workset tier is therefore None — no legacy
-    # underlay, so those modes stay byte-identical to pre-P2.
+    # ⚑ ``group=None`` is deliberate: only the STANDALONE arm consults it, and standalone
+    # derives its workset tier from the root — ProjectState carries no ProjectGroup.
     src_box, src_ws = _box_settings_files(state.mode, state.metadata_path, None)
     carried = carried_box_settings(src_box, src_ws)
     if carried:
@@ -1017,39 +807,24 @@ def _remove_old_metadata(
     *,
     preserve_name: str | None = None,
 ) -> None:
-    """Remove the source project's metadata/shell (+ PRIMARY vault).
-
-    Standalone source: removes the in-tree kanibako artifacts (the ``box_data/``
-    marker dir + the root ``settings.yaml`` + ``vault/``) — NOT the project root
-    itself (which for standalone IS ``metadata_path``: deleting it would wipe the
-    user's whole project dir + the already-converted destination).
-    Primary source: unregisters the name, removes the boxes metadata dir and
-    the PRIMARY-workset vault dir (which Phase 5 moved out of the workspace).
-    Workset source: removes the workset registration (std-aware) so external
-    markers / the per-workset connection record are cleaned; the external source
-    dir is never deleted.
-
-    (Phase 5 / A7: layouts are gone and the vault is never "hidden" inside the
-    workspace, so the human-vault / project-vault discovery symlinks were
-    deleted — nothing to clean up here.)
-    """
+    """Remove the source project's metadata/shell (+ PRIMARY vault), per source mode."""
     if state.mode == BoxMode.standalone:
-        # Standalone boxes are registered in registry.standalone (Phase 5d), so
-        # a standalone source's entry must be dropped too — otherwise a
-        # standalone→standalone move strands the old name → root mapping.
+        # ⚑ Standalone lives in registry.standalone, not names.yaml: drop that entry too,
+        # or a standalone→standalone move strands the old name → root mapping.
         from kanibako.project import registry_store
         if state.name:
             try:
                 registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
-        # metadata_path is the standalone ROOT (drift I); remove only the
-        # kanibako artifacts living in it, never the root itself.
+        # ⚑⚑ ``metadata_path`` IS the standalone ROOT (drift I). Remove only the kanibako
+        # artifacts inside it — deleting the root would wipe the user's whole project dir
+        # AND the already-converted destination.
         root = state.metadata_path
         box_data = root / _STANDALONE_META_DIR
         if box_data.is_dir():
-            # Carries the box home + its root-owned canon skeleton (J-7): a bare
-            # rmtree fails with EACCES and leaves the old box behind.
+            # ⚑ Escalating removal: the root-owned canon skeleton makes a bare rmtree
+            # fail with EACCES and leave the old box behind (J-7).
             remove_box_tree(box_data)
         settings = root / BOX_META_FILE
         if settings.is_file():
@@ -1060,9 +835,8 @@ def _remove_old_metadata(
         return
 
     if state.mode == BoxMode.primary:
-        # L2: when the converted box reuses its own name (same-name in-place
-        # convert), the destination metadata/vault IS the source — keep the
-        # reused name + its metadata/vault rather than dropping them.
+        # ⚑⚑ L2: on a same-name in-place convert the destination metadata/vault IS the
+        # source — dropping them here would delete the box just written.
         reused_in_place = preserve_name is not None and state.name == preserve_name
         if state.name and not reused_in_place:
             try:
@@ -1073,10 +847,9 @@ def _remove_old_metadata(
             return
         if state.metadata_path.is_dir():
             remove_box_tree(state.metadata_path)
-        # PRIMARY vault lives under @config.primary_workset/vault/{ro,rw}/<name>
-        # (Phase 5), so it is NOT under metadata_path — remove the per-box ro/rw
-        # dirs explicitly (NOT their shared parent, which holds every box's
-        # vault).
+        # ⚑⚑ PRIMARY vault sits at @config.primary_workset/vault/{ro,rw}/<name>, NOT under
+        # metadata_path: remove the per-box dirs only — the shared parent holds EVERY box's
+        # vault, and the relative_to check below is what keeps the removal inside it.
         for vault_dir in (state.vault_ro, state.vault_rw):
             if vault_dir.is_dir():
                 try:
@@ -1091,7 +864,7 @@ def _remove_old_metadata(
                 remove_box_tree(state.shell_path)
         return
 
-    # workset source
+    # Workset source: drop the registration; the external source dir is NEVER deleted.
     if state.ws is not None:
         remove_project(state.ws, state.name, remove_files=True, std=std)
 
@@ -1108,53 +881,30 @@ def _to_default(
     force: bool = False,
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
-    # F-7: an explicit --name landing in default mode is HONORED as the box name
-    # (previously silently dropped) and held to the per-kind cross-kind policy.
-    # Decide this BEFORE the reuse unregister below, so the same-path reuse case
-    # is still detectable (the source's name is still registered here).
-    # _default_rename_name returns None for an auto-derived name or the primary
-    # same-path reuse case, which keep the basename-derived auto-suffix path.
+    # ⚑ ORDER: decide the mint BEFORE the reuse-unregister below, or the same-path reuse
+    # case stops being detectable (it is detected BY the source's live registration).
     mint = _default_rename_name(state, std, new_workspace, requested_name)
-    # L2 / FIX1 (name reuse across the register): a PRIMARY source's own name is
-    # still registered at this point, so register/assign would see the source's
-    # OWN entry as a same-kind collision (auto-suffix foo→foo2, or an outright
-    # "already registered" refusal).  Two reuse shapes need the source entry
-    # freed FIRST:
-    #   * SAME-PATH in-place convert — the source is registered AT new_workspace;
-    #     unregister so assign reuses the name verbatim (no suffix).
-    #   * RELOCATING same-name move — the source's OWN name (== mint) is still
-    #     registered at its OLD path (new_workspace is the fresh dest);
-    #     unregister so register_primary_box_name at the new path is not a
-    #     self-collision, and push a FAILURE-WINDOW unwind that RESTORES the
-    #     source's old registration if the re-register (or a later step) fails.
-    # In both, mark the name preserved so _remove_old_metadata neither
-    # re-unregisters it nor deletes the reused ``boxes/<name>`` metadata dir.
+    # ⚑⚑ L2 / FIX1: a PRIMARY source's own name is STILL registered here, so register/assign
+    # would read the source's OWN entry as a same-kind collision. Free it first.
     preserved_name: str | None = None
     if state.mode == BoxMode.primary and state.name:
         existing = primary_box_name_for_workspace(
             std.primary_workset, str(new_workspace),
         )
         if existing is not None:
-            # Path unchanged + still registered: free the name so it is reused
-            # verbatim rather than suffixed, and mark it preserved so
-            # _remove_old_metadata neither re-unregisters it nor deletes the
-            # reused metadata.
+            # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
             preserved_name = existing
             _safe_unregister(std, existing)
         elif mint is not None and mint == _primary_source_own_name(state, std):
-            # RELOCATING same-name move: unregister the source's OLD entry first,
-            # restoring it on the failure window (this unwind runs in reverse
-            # BEFORE any later one, so a failed re-register leaves the source's
-            # name -> old path intact — no orphaned/lost registration).
+            # ⚑ RELOCATING same-name move: this unwind runs BEFORE any later one, so a
+            # failed re-register leaves name -> OLD path intact rather than orphaned.
             preserved_name = mint
             old_ws = state.workspace_path
             _safe_unregister(std, mint)
             unwind.push(
                 lambda: _safe_register_membership(std, mint, old_ws)
             )
-    # Register the honored --name (cross-kind refuse-workset-unless-force +
-    # same-kind unconditional via check_primary_box_name_free), else the
-    # basename-derived auto-suffix path.
+    # Honored --name goes through the per-kind guard; else the auto-suffix path.
     if mint is not None:
         register_primary_box_name(
             std.primary_workset, std.registry, mint, new_workspace, force=force,
@@ -1167,13 +917,12 @@ def _to_default(
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
-    # When the name is reused in place, the metadata already lives at the
-    # destination — copying would be a (failing) copy-onto-self, so reuse it.
-    # ⚑ Copy from the box METADATA DIR, not from ``metadata_path``: for a
-    # standalone source those differ (root vs ``box_data/``), and copying the root
-    # would drag workspace+vault into the box dir AND put the source's WORKSET-tier
-    # file at the destination's BOX tier (M-8).
+    # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone source
+    # those differ (root vs ``box_data/``), and the root would drag workspace+vault into
+    # the box dir AND land the source's WORKSET-tier file at the dest's BOX tier (M-8).
     src_meta_dir = box_metadata_dir(state.mode, state.metadata_path)
+    # Name reused in place ⇒ the metadata IS already at the destination; copying it
+    # would be a failing copy-onto-self.
     if dst_metadata.resolve() == state.metadata_path.resolve():
         dst_shell = state.shell_path
     else:
@@ -1187,11 +936,9 @@ def _to_default(
     vault_ro = std.primary_vault_ro / project_name
     vault_rw = std.primary_vault_rw / project_name
 
-    # Sparse move (P8b/Option A): NO ``project:``/``resolved:`` identity is
-    # written — the moved box's identity/workspace live in the PRIMARY ``boxes:``
-    # membership (re-registered above via assign_primary_box_name).  Persist
-    # only the NON-default ``box.enable_vault``, sparsely (carried from the source
-    # box's ``state.enable_vault`` so a disabled-vault box stays disabled).
+    # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
+    # the PRIMARY ``boxes:`` membership registered above. Only the non-default
+    # ``box.enable_vault`` is persisted, carried so a disabled-vault box stays disabled.
     write_box_enable_vault(dst_metadata / BOX_META_FILE, state.enable_vault)
 
     if state.enable_vault:
@@ -1211,9 +958,8 @@ def _to_default(
     )
 
 
-#: Top-level entries that are kanibako artifacts (NOT workspace content) and so
-#: must stay at the standalone root rather than move into the ``workspace/``
-#: subdir during a convert (drift H consolidation).
+#: ⚑ kanibako artifacts (NOT workspace content): they STAY at the standalone root when a
+#: convert consolidates everything else into ``workspace/`` (drift H).
 _STANDALONE_ROOT_ARTIFACTS = frozenset({
     _STANDALONE_META_DIR,   # box_data/
     "workspace",            # the subdir we are populating
@@ -1230,22 +976,7 @@ def _consolidate_workspace_subdir(
     workspace_subdir: Path,
     unwind: _Unwind,
 ) -> None:
-    """Move the project's top-level files into the ``workspace/`` subdir.
-
-    Drift H: a standalone box's live workspace is the ``<root>/workspace/``
-    SUBDIR, not the root itself.  On an in-place convert the user's project
-    files currently sit AT the root; relocate everything that is not a kanibako
-    artifact (see :data:`_STANDALONE_ROOT_ARTIFACTS`) into the subdir so the
-    bind source matches the resolved layout.  A no-op when there is nothing to
-    move (e.g. an empty root or files already consolidated).  Each move is
-    pushed onto *unwind* so a later failure restores the original placement.
-
-    *root* always holds the project's current files at this point in the convert
-    (in-place: the source dir; relocating: the copy STEP 2 made at *dest*;
-    external-in-place: the external dir that is BECOMING the standalone root), so
-    consolidation applies uniformly — the result roots the live workspace at the
-    ``workspace/`` subdir for every transition.
-    """
+    """Move the project's top-level files into the ``workspace/`` subdir (drift H)."""
     if not root.is_dir():
         return
 
@@ -1280,14 +1011,7 @@ def _unconsolidate_workspace_subdir(
     root: Path,
     unwind: _Unwind,
 ) -> None:
-    """Lift the ``workspace/`` subdir's contents back up to *root*.
-
-    The inverse of :func:`_consolidate_workspace_subdir`: used when converting
-    OUT of standalone in place, so the workspace files return to the project
-    root (where a non-standalone box roots them) and the now-empty subdir is
-    removed.  A no-op when the subdir is absent or empty.  Each move is pushed
-    onto *unwind* for rollback on a later failure.
-    """
+    """Lift the ``workspace/`` subdir's contents back up to *root* (inverse of consolidate)."""
     if not workspace_subdir.is_dir():
         return
     movable = list(workspace_subdir.iterdir())
@@ -1296,8 +1020,7 @@ def _unconsolidate_workspace_subdir(
     for child in movable:
         shutil.move(str(child), str(root / child.name))
         moved.append(child)
-    # Drop the emptied subdir so the converted project does not keep a stray
-    # ``workspace/`` dir at its root.
+    # Drop the emptied subdir so the converted project keeps no stray ``workspace/``.
     try:
         workspace_subdir.rmdir()
     except OSError:
@@ -1314,64 +1037,33 @@ def _to_standalone(
     new_workspace: Path,
     requested_name: str = "",
 ) -> ProjectState:
-    """Convert/relocate the project so it becomes standalone (in-tree metadata).
-
-    A standalone box's identity is the canonical opaque ``<kuid>_<leaf>``
-    (matching ``create --standalone`` / ``duplicate --standalone``); standalone
-    boxes are NOT named via ``names.yaml`` but registered in
-    ``registry.standalone``.  Convert ESTABLISHES the box uniformly via
-    :func:`establish_standalone`, which now HONORS an explicit ``--name``
-    (``new_name``) through :func:`box_identity.resolve_standalone_name`: a
-    verbatim canonical id is used if free (else refused), a non-canonical
-    ``--name`` becomes a fresh ``<kuid>_<sanitized name>``, and NO ``--name``
-    generates a fresh canonical id from the root basename.  It writes
-    ``mode=standalone`` with that identity and registers it in
-    ``registry.standalone`` (with an unwind to drop the registration on
-    failure).  ``_remove_old_metadata`` purges the source's prior registry entry
-    (``names.yaml`` for primary/named) so it does not dangle.
-
-    ``new_name`` is only a *requested* name; the source's name is passed as the
-    default when the caller did not pass ``--name`` (i.e. ``new_name ==
-    state.name``), in which case it is NOT treated as a user assertion — a fresh
-    canonical id is generated instead.
-    """
+    """Convert/relocate the project so it becomes standalone (in-tree metadata)."""
     from kanibako.project import registry_store
     from kanibako.settings.config import BOX_META_FILE
     from kanibako.settings.paths import establish_standalone
 
-    # *new_workspace* is the standalone ROOT (the project dir).  Drift H+I: the
-    # standalone tree roots here with ``settings.yaml`` AT THE ROOT, a
-    # ``box_data/`` marker dir (home + helper log), ``vault/{ro,rw}/``, and the
-    # live workspace as a ``workspace/`` SUBDIR.  Consolidate the source's
-    # current top-level project files into that subdir first (in-place convert
-    # leaves them at the root otherwise), THEN lay down the kanibako artifacts.
+    # ⚑ ORDER: consolidate the source's top-level files into ``workspace/`` FIRST, THEN lay
+    # down the kanibako artifacts — otherwise the artifacts get swept into the subdir.
     root = new_workspace
     root.mkdir(parents=True, exist_ok=True)
     dst_metadata = root / _STANDALONE_META_DIR
     workspace_subdir = root / "workspace"
     _consolidate_workspace_subdir(root, workspace_subdir, unwind)
 
-    # Copy from the box METADATA DIR (``box_data/`` for a standalone source, so a
-    # standalone→standalone move does not strand ``<dst>/box_data/box_data/``).
+    # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
+    # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
     dst_shell = _copy_metadata(
         box_metadata_dir(state.mode, state.metadata_path), state.shell_path,
         dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
-    # The settings.yaml that lands in box_data/ IS the destination's BOX TIER now
-    # (spec §2c ALL PROJECTS: meta.box.settings = @meta.box.path/settings.yaml, and
-    # @meta.box.path for standalone IS box_data/).  It used to be deleted here as an
-    # "orphan" on the theory that the box meta lived only at the ROOT — that theory
-    # is the retired model, and deleting the file now discards the box's settings.
-    # Detection is unaffected either way: it reads the ROOT file (§5),
-    # which ``establish_standalone`` writes below.
+    # ⚑⚑ DO NOT DELETE this file as an "orphan": the settings.yaml landing in ``box_data/``
+    # IS the destination's BOX TIER (spec §2c — @meta.box.path for standalone IS
+    # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
+    # file (§5), which ``establish_standalone`` writes below.
     _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
 
-    # Establish the standalone identity + meta + registration via the shared
-    # core.  ``requested_name`` is the user's explicit ``--name`` (empty when
-    # not given); establish_standalone routes it through resolve_standalone_name
-    # (honor a free canonical id verbatim, refuse a taken one, else fresh prefix
-    # over the supplied string; empty → fresh canonical from the root basename).
-    # It writes <root>/settings.yaml (mode=standalone) + registers the box.
+    # Establish identity + meta + registration through the shared core; it writes
+    # <root>/settings.yaml (mode=standalone) and registers the box.
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.enable_vault,
@@ -1421,38 +1113,19 @@ def _to_workset(
     except ValueError:
         internal = False
 
-    # Source path that add_project records + decides external wiring from.
-    # For an internal landing we pass the in-tree workspace dir; for external we
-    # pass the live external workspace path.
+    # The path add_project records and decides external wiring from.
     source_for_add = new_workspace
 
-    # Whether to copy the workspace tree into the workset.
-    # - internal landing where the workspace is NOT already the in-tree dir →
-    #   copy.  (When relocating into the ws via STEP 2 we already moved the
-    #   tree to dest == workspaces/<name>, so don't copy again.)
-    # - external → never copy.
+    # ⚑ Copy only for an internal landing NOT already in place — STEP 2 may have moved the
+    # tree to ``workspaces/<name>`` already. External never copies.
     copy_workspace = False
     if internal:
         expected_internal = (target_ws.workspaces_dir / new_name).resolve()
         already_in_place = new_workspace.resolve() == expected_internal
         copy_workspace = not already_in_place
 
-    # workset -> workset re-root: the source workset must release the project
-    # BEFORE the target registers it.  The connection record is 1:1, so an
-    # external source still mapped to the OLD workset would collide with
-    # add_project's "already connected" guard.  We therefore drop the source
-    # registration first (clears the per-workset connection record + the
-    # discoverability symlink; NEVER touches the user's external dir), capture a
-    # snapshot of the source
-    # metadata for unwind, then register with the target.  For an internal
-    # ws->ws move the workspace tree was already relocated in STEP 2, so removing
-    # the source project (remove_files) only sweeps the leftover skeleton dirs.
-    # Where to read the source metadata/shell from when copying into the target.
-    # Default: the live source paths.  For a workset source we release the
-    # registration FIRST (see below), which deletes those dirs, so we copy from a
-    # stash instead.
-    # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those
-    # differ (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
+    # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those differ
+    # (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
     metadata_source = box_metadata_dir(state.mode, state.metadata_path)
     shell_source = state.shell_path
 
@@ -1461,8 +1134,9 @@ def _to_workset(
         src_ws = state.ws
         src_name = state.name
         src_source_path = state.workspace_path
-        # Stash the source metadata (incl. shell) so the forward copy below and
-        # the unwind both have a stable source after release.
+        # ⚑⚑ ws->ws: the SOURCE must release BEFORE the target registers (the connection
+        # record is 1:1). Release DELETES the source dirs, so stash them first — the
+        # forward copy below and the unwind both read the stash, not the live paths.
         import tempfile
         stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
         stash_boxes = stash / "boxes"
@@ -1489,13 +1163,9 @@ def _to_workset(
         # Discard the stash on success (kept intact while unwind may need it).
         unwind.on_success(lambda: shutil.rmtree(stash, ignore_errors=True))
 
-    # add_project (std-aware) registers + creates skeleton + (external) markers.
-    # ``force=True``: a convert/move/duplicate INTO a workset is a DELIBERATE
-    # absorb, so it must override the standalone-marker connect guard (B2a) — the
-    # source of a standalone->workset convert still carries its in-place
-    # ``box_data/`` marker at this point (the marker is removed later in the
-    # convert).  ``force`` only affects a standalone-marked source (a no-op
-    # otherwise), so it is safe for the non-standalone move/duplicate cases.
+    # ⚑ ``force=True``: an absorb INTO a workset must override the standalone-marker
+    # connect guard (B2a) — a standalone source still carries its ``box_data/`` marker
+    # here, since the marker is removed LATER in the convert. No-op for other modes.
     add_project(target_ws, new_name, source_for_add, std, force=True)
     unwind.push(
         lambda: _safe_remove_project(target_ws, new_name, std)
@@ -1508,14 +1178,13 @@ def _to_workset(
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
-    # The destination's BOX TIER gets the source's carried box settings (M-8) — for a
-    # standalone source the copy above cannot supply them, since its box tier is a
-    # different file from the root one a pre-P2 box stored them in.
+    # ⚑ The copy above cannot supply a STANDALONE source's box settings — its box tier is
+    # a different file from the root one a pre-P2 box stored them in (M-8).
     _deliver_carried_box_settings(state, dst_project / BOX_META_FILE)
     dst_shell = dst_project / "home"
     if shell_source.is_dir():
         shutil.copytree(shell_source, dst_shell, dirs_exist_ok=True)
-        # Copy carries the skeleton's modes but not its ownership — re-assert (J-7).
+        # ⚑ copytree carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
     if copy_workspace:
@@ -1525,14 +1194,13 @@ def _to_workset(
             ignore = shutil.ignore_patterns(_STANDALONE_META_DIR, ".kanibako", "kanibako")
         shutil.copytree(state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
-    # Determine the recorded workspace + hash.
+    # Determine the recorded workspace.
     if internal:
         recorded_workspace = (target_ws.workspaces_dir / new_name)
     else:
-        # External: source the workspace from the per-workset ``boxes:`` registry
-        # that ``add_project`` just wrote (P8b — the D10 connection record is the
-        # authoritative external-workspace source, not the box's settings.yaml
-        # identity, which stops self-describing under sparse create).
+        # ⚑ EXTERNAL: read the workspace back from the per-workset ``boxes:`` registry
+        # add_project just wrote — under sparse create (P8b) the box's settings.yaml no
+        # longer self-describes, so the D10 connection record is the authority.
         from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
@@ -1548,16 +1216,12 @@ def _to_workset(
     vault_ro = target_ws.vault_dir / "ro" / new_name
     vault_rw = target_ws.vault_dir / "rw" / new_name
 
-    # Sparse move (P8b/Option A): NO ``project:``/``resolved:`` identity is
-    # written — the moved box's identity lives in the global name index and its
-    # workspace in the target workset's ``boxes:`` registry (add_project wrote the
-    # external entry; sourced above as ``recorded_workspace``).  Persist only the
-    # NON-default ``box.enable_vault``, sparsely (carried from ``state`` so a
-    # disabled-vault box stays disabled across the move).
+    # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
+    # the global name index, workspace in the target workset's ``boxes:`` registry. Only
+    # the non-default ``box.enable_vault`` is carried, so a disabled box stays disabled.
     write_box_enable_vault(dst_project / BOX_META_FILE, state.enable_vault)
 
-    # For a workset source the registration was already released above;
-    # otherwise clean up the source owner's metadata/markers now.
+    # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
     if not source_is_workset:
         _remove_old_metadata(state, std, config)
 
@@ -1574,13 +1238,7 @@ def _to_workset(
 # -- small helpers ----------------------------------------------------------
 
 def _state_ws_token(state: ProjectState) -> str:
-    """Return the channel-partition workset-name token for *state*.
-
-    ``__PRIMARY__`` for primary mode, the named workset's name for named mode,
-    ``__STANDALONE__`` for standalone.  Mirrors
-    :func:`kanibako.channels.channels.workset_name_token` but reads off the lifecycle
-    :class:`ProjectState` (mode + loaded ``ws``) rather than a ``ProjectPaths``.
-    """
+    """Return the channel-partition workset-name token for *state*."""
     from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 
     if state.mode == BoxMode.standalone:
@@ -1598,23 +1256,7 @@ def _state_ws_token(state: ProjectState) -> str:
 def _relocate_channel_partition(
     old: ProjectState, new: ProjectState, std: StandardPaths,
 ) -> None:
-    """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
-
-    A box's mailbox + system-scope share are partitioned by
-    ``@meta.workset.name`` (and keyed by box name), so a move/convert that
-    changes the workset and/or the box name changes its channel address.  This
-    moves the OWN ``mailboxes/<ws>/<box>`` and ``share/<ws>/<box>`` dirs from the
-    OLD partition (*old* — pre-convert identity) to the NEW one (*new* — the
-    FINAL post-convert identity; standalone convert regenerates the box name, so
-    this MUST run after identity is finalized, A9/IN-8).
-
-    BEST-EFFORT (D-M10): any failure — missing source, destination already
-    present, permission — is WARNED and swallowed; the lifecycle continues.  No
-    forwarding marker is left for stale cross-box references to the old address.
-    Workset-LOCAL channels (common/chat) are scope-owned, not box-owned, so they
-    are NOT relocated (the box simply stops mounting the old workset's local
-    channels and starts mounting the new one's).
-    """
+    """Best-effort relocate THIS box's OWN channel partition (D-M10, §6)."""
     import sys
 
     from kanibako.channels.channels import own_partition_dirs
@@ -1641,7 +1283,7 @@ def _relocate_channel_partition(
             if not src_dir.is_dir():
                 continue  # nothing published yet under the old address
             if dst_dir.exists():
-                # Idempotent / best-effort: never clobber an existing dest.
+                # ⚑ NEVER clobber an existing dest — this whole step is best-effort.
                 print(
                     f"Warning: channel {label} destination already exists, "
                     f"leaving it in place: {dst_dir}",
@@ -1668,13 +1310,7 @@ def _safe_unregister(std: StandardPaths, name: str) -> None:
 def _safe_register_membership(
     std: StandardPaths, name: str, workspace: Path,
 ) -> None:
-    """Best-effort re-register *name* -> *workspace* in the PRIMARY membership.
-
-    The failure-window restore for FIX1: writes the raw membership entry directly
-    (no cross-kind/same-kind guard) so restoring the source box's OWN prior
-    registration is unconditional.  Swallows errors (the unwind stack is
-    best-effort restore).
-    """
+    """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1)."""
     try:
         _register_workset_box_membership(std.primary_workset, name, workspace)
     except Exception:  # noqa: BLE001
@@ -1693,12 +1329,7 @@ def _safe_remove_project(ws: Workset, name: str, std: StandardPaths) -> None:
 # ---------------------------------------------------------------------------
 
 def _ownership_from_args(args) -> str | _Sentinel:
-    """Map the uniform target flags (--default/--standalone/--workset) to an
-    ownership value, or :data:`UNCHANGED` when none is given.
-
-    The three flags are mutually exclusive (enforced by an argparse mutually
-    exclusive group); ``--workset`` carries the workset name.
-    """
+    """Map --default/--standalone/--workset to an ownership value, else :data:`UNCHANGED`."""
     if getattr(args, "to_default", False):
         return "default"
     if getattr(args, "to_standalone", False):
@@ -1710,13 +1341,7 @@ def _ownership_from_args(args) -> str | _Sentinel:
 
 
 def _lower_name(args) -> str | None:
-    """Return the user's ``--name`` folded to lowercase (R2), or ``None``.
-
-    Every box name is lowercase, so a user-supplied ``--name`` is silently
-    lowercased on acceptance (no rejection of mixed-case input).  After folding,
-    the name is validated against the §Design 8 blocklist (NEW/renamed boxes are
-    held to the constraint); an invalid name raises ``ProjectError``.
-    """
+    """Return the user's ``--name`` folded to lowercase and validated (R2), or ``None``."""
     name = getattr(args, "name", None)
     if not name:
         return name
@@ -1726,11 +1351,7 @@ def _lower_name(args) -> str | None:
 
 
 def _make_confirm(force: bool, summary: str):
-    """Return a ``Callable[[], bool]`` for ``execute_lifecycle``'s *confirm*.
-
-    With *force* the op proceeds without prompting.  Otherwise it prints
-    *summary* and prompts; a non-``yes`` answer returns False (engine aborts).
-    """
+    """Return a ``Callable[[], bool]`` for ``execute_lifecycle``'s *confirm* (None if forced)."""
     if force:
         return None
 
@@ -1759,14 +1380,7 @@ def _load_env():
 
 
 def _abort_if_locked(state: ProjectState, force: bool) -> bool:
-    """Refuse a destructive relocation while a box may be running.
-
-    ``move`` / ``convert`` copy then ``rmtree`` the source workspace, which for a
-    running box would delete the live bind-mounted directory out from under it.
-    Mirror ``box duplicate``'s lock pre-flight (``_duplicate.py``): if the
-    project's ``.kanibako.lock`` is present, warn and abort unless *force* is set.
-    Returns True when the caller should abort (and has been warned).
-    """
+    """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
     import sys
 
     lock_file = state.metadata_path / ".kanibako.lock"
@@ -1784,12 +1398,7 @@ def _abort_if_locked(state: ProjectState, force: bool) -> bool:
 
 
 def run_remap(args) -> int:
-    """``box remap <old> [<new>]`` — records-only relocation.
-
-    The folder has already moved on disk; update kanibako's recorded path,
-    hash, and markers to reflect the new location.  Does NOT move files and
-    never changes ownership.
-    """
+    """``box remap <old> [<new>]`` — records-only relocation; moves no files."""
     import sys
 
     config, std = _load_env()
@@ -1827,12 +1436,7 @@ def run_remap(args) -> int:
 
 
 def run_move(args) -> int:
-    """``box move <old> <new>`` (alias ``mv``) — physically relocate files.
-
-    Both paths are required.  An optional target flag
-    (--default/--standalone/--workset) also changes ownership.  Refuses an
-    external-connected project (its workspace is the user's own directory).
-    """
+    """``box move <old> <new>`` (alias ``mv``) — physically relocate files."""
     import sys
 
     config, std = _load_env()
@@ -1889,12 +1493,7 @@ def run_move(args) -> int:
 
 
 def run_convert(args) -> int:
-    """``box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]``.
-
-    Change a project's ownership/mode.  In-place by default for all modes;
-    ``--move <path>`` relocates, bare ``--move`` moves into the target workset
-    (only valid with ``--workset``).  ``--name`` renames in the target.
-    """
+    """``box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]``."""
     import sys
 
     config, std = _load_env()
@@ -1908,8 +1507,7 @@ def run_convert(args) -> int:
         )
         return 1
 
-    # --move handling: argparse stores _BARE_MOVE sentinel for bare --move,
-    # a path string for --move <path>, and None when absent.
+    # argparse stores :data:`_BARE_MOVE` for bare --move, a path string for --move <path>.
     move_val = getattr(args, "move", None)
     if move_val is None:
         location: Path | _Sentinel = INPLACE
@@ -1936,9 +1534,7 @@ def run_convert(args) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Lock pre-flight: convert re-roots by copy then rmtree of the source
-    # workspace/metadata, so abort while a box may be running unless --force
-    # (mirrors move / duplicate).
+    # Lock pre-flight: convert re-roots by copy-then-rmtree (mirrors move / duplicate).
     if _abort_if_locked(state, getattr(args, "force", False)):
         return 2
 
