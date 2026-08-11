@@ -76,7 +76,7 @@ podman graph root over as `box.images_store`'s *default* rather than as its valu
 
 The OUTER key is the TERMINAL arm key (R-5) and the INNER key is the normalized box DESTINATION
 (R-11); the value is the RAW tuple the floor parser turns into a
-:class:`~kanibako.settings.settings_store.BindEntry`. **Floor tables are raw** — they are parsed by
+:class:`~kanibako.settings.kb_store.BindEntry`. **Floor tables are raw** — they are parsed by
 `settings_assemble.dotted_partial`, never here.
 
 Per spec §2a a binding is STRUCTURED, never a colon-joined string, so no escaping of a literal `:`

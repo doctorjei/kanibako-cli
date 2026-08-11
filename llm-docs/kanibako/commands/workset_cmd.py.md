@@ -170,7 +170,7 @@ halves non-empty. `tests/test_commands/test_workset_share.py` pins the retiremen
 
 ### The stored entry shape
 
-**The stored value is the 1-ELEMENT `[host_src]` entry** (R-3/R-6, `settings_store.BindEntry`): the
+**The stored value is the 1-ELEMENT `[host_src]` entry** (R-3/R-6, `kb_store.BindEntry`): the
 destination is the KEY and appears exactly once. P4′ deliberately left it as the 2-element
 `[host_src, box_dest]` pair — the destination written twice — because the reader could not flip
 alone: the floor producers still emitted name-keyed entries into the SAME merged arm, and a merged

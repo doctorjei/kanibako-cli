@@ -355,7 +355,7 @@ short-circuit `config.*` earlier with the file-only refusal (B2).
 
 `_SCOPE_CONTAINMENT` is the CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT
 levels", repaired 2026-07-02): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST first. The single source
-the write-allow sets derive from — it lives in `settings_store` (the stack leaf) so the RESOLVE-time
+the write-allow sets derive from — it lives in `kb_store` (the stack leaf) so the RESOLVE-time
 drop (`settings_assemble`) shares the SAME tuple without an import cycle; the module-level name here
 is the module-local alias.
 
