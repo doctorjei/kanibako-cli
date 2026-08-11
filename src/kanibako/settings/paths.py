@@ -383,9 +383,7 @@ def resolve_system_paths(set_values: Mapping[str, str],
         if isinstance(rv, _Unset):
             raise SettingsError(ERR_SETTINGS_BAD_REF % ("", ref))
         # system.* config paths are always scalar strings; narrow the ``object``-typed value.
-        return expand_expr(
-            str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain,
-        )
+        return expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain)
 
     resolved: dict[str, Path] = {}
     # Layer 1 foundation paths are surfaced under their ``config.*`` keys.
