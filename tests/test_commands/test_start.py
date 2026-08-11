@@ -3506,7 +3506,7 @@ class TestApplySyncedCopies:
 
     def _call(self, tmp_path, *, std=None, proj=None, target=None,
               global_config_path=None, agent_config_path=None,
-              deliver_creds=True, bindings=None):
+              deliver_creds=True, bindings=None, gated=True):
         """Resolve, then apply — the two halves the launch path also does in order.
 
         ⚑ THE RESOLVE MOVED OUT OF THE FUNCTION AT CUTOVER 2b-3, so it moves out of
@@ -3515,10 +3515,13 @@ class TestApplySyncedCopies:
         ⚑ ``include_base_families=False`` keeps the resolve narrow — these fakes are
         ``SimpleNamespace``, not a real project — which is why *bindings* is supplied
         separately rather than read back out of this snapshot.
+        ⚑ *gated* picks WHICH pass this is: the LAUNCH refresh (the mtime gate, the
+        default here) or the once-at-create write, which is ungated by ruling.
         """
         from kanibako.commands.start import (
             _apply_synced_copies,
             _resolve_launch_snapshot,
+            _synced_uptodate,
         )
         # P6c: the box-tier synced config is single-sourced off proj.metadata_path/
         # settings.yaml (box_workset_settings_paths); tests place it there directly.
@@ -3537,6 +3540,7 @@ class TestApplySyncedCopies:
             reconciled=reconciled,
             bindings=self._bindings(proj) if bindings is None else bindings,
             logger=self._logger(),
+            skip_if=_synced_uptodate if gated else None,
         )
 
     def test_empty_no_config_copies_nothing(self, tmp_path):
@@ -5009,6 +5013,7 @@ class TestSeedNewBoxCreateEntry:
             ),
             patch("kanibako.commands.start.load_agent_config"),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
+            patch("kanibako.commands.start._sync_box_at_create"),
         ):
             m_rt.return_value.name = "claude"
             seed_new_box(std, config, proj)
@@ -5018,6 +5023,87 @@ class TestSeedNewBoxCreateEntry:
         assert kwargs["std"] is std
         # <None> endpoint → the seed is NOT told to suppress the OAuth cred (bare).
         assert kwargs["suppress_oauth"] is False
+
+    def test_the_create_time_SYNC_runs_here_too_and_AFTER_the_seed(self):
+        """⚖️ RULED 2026-08-11 — the ``synced`` write happens ONCE, at create.
+
+        🛑 THE WIRING, not the mechanism: RED if the ``_sync_box_at_create`` call is
+        dropped from ``seed_new_box``, which is the whole of what makes a brand-new
+        box's ``synced`` destinations sync-written rather than seed-written.
+
+        ⚑ AFTER the seed, and it must live INSIDE this function rather than beside
+        ``run_create``'s call to it: ``run_create`` materialises the canon skeleton
+        (555) immediately after, and a copy into that region afterwards dies EACCES.
+        The seed→skeleton half of that order is pinned in ``test_canon_delivery``.
+        """
+        from kanibako.commands.start import seed_new_box
+
+        std = MagicMock()
+        config = MagicMock()
+        proj = MagicMock()
+        proj.group = None
+        order: list[str] = []
+        with (
+            patch("kanibako.commands.start.load_merged_config"),
+            patch("kanibako.settings.config.resolve_agent", return_value="claude"),
+            patch("kanibako.commands.start.resolve_target") as m_rt,
+            patch("kanibako.commands.start.agent_settings_path"),
+            patch("kanibako.commands.start.write_agent_config"),
+            patch(
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                return_value=(_SHARED_AUTH, None, None),
+            ),
+            patch("kanibako.commands.start.load_agent_config"),
+            patch(
+                "kanibako.commands.start._seed_box_home",
+                side_effect=lambda **kw: order.append("seed"),
+            ),
+            patch(
+                "kanibako.commands.start._sync_box_at_create",
+                side_effect=lambda **kw: order.append("sync"),
+            ) as m_sync,
+        ):
+            m_rt.return_value.name = "claude"
+            seed_new_box(std, config, proj)
+
+        assert order == ["seed", "sync"]
+        m_sync.assert_called_once()
+        kwargs = m_sync.call_args.kwargs
+        assert kwargs["proj"] is proj
+        assert kwargs["std"] is std
+        # D-M4 rides through: a PRIVATE box suppresses every synced entry, and it
+        # can only do that if the create-side resolve is told the same thing.
+        assert kwargs["deliver_creds"] is _SHARED_AUTH.creds_shared
+
+    def test_the_LAUNCH_auto_create_block_syncs_too_between_seed_and_skeleton(self):
+        """The OTHER create — ``workset connect``'s first launch — gets the same write.
+
+        🛑 ASSERTED ON THE SOURCE, deliberately, and for the same reason
+        ``test_canon_delivery`` asserts ``run_create``'s order that way: no harness
+        can drive this block's ORDER. ``start_mocks`` stubs the resolve and hands
+        ``_run_container`` a MagicMock project, so the three calls cannot be
+        distinguished by their effects — but the order is load-bearing twice over
+        (the seed writes first; the canon skeleton then makes that region 555 and a
+        copy into it afterwards dies EACCES).
+
+        RED if the create-time sync is dropped from the launch auto-create path,
+        or hoisted above the seed, or pushed below the skeleton.
+        """
+        import inspect
+
+        from kanibako.commands import start as _start
+
+        src = inspect.getsource(_start._run_container)
+        block = src[src.index("if proj.is_new:"):]
+        seed = block.index("_seed_box_home(")
+        sync = block.index("_sync_box_at_create(")
+        skeleton = block.index("materialize_canon_skeleton(")
+        register = block.index("_register_new_box(")
+        assert seed < sync, "the sync is the seed's SIBLING, and runs after it"
+        assert sync < skeleton, (
+            "the skeleton makes the canon region 555 — a copy after it dies EACCES"
+        )
+        assert skeleton < register, "all of it inside the create-journal window"
 
 
 class TestEmitSecretMounts:

@@ -342,13 +342,15 @@ to test. It was one of only two readers of `reconciled.copies`; the other is con
 ⚑⚑ **`seeded` and `synced` ARE COPIES AND STAY COPIES.** Nothing here turns one into a mount, and
 nothing carries a per-category destination space — the dest is DATA on the row.
 
-🐞 **THIS SWITCH REMOVED AN ARBITER, AND THE SAME COMMIT PUT IT BACK.** `reconcile_categories`
-arbitrates copy-vs-copy at a shared dest (`_resolve_copy_group` returns the sync and drops every
-seeded row); `collapse_seeded` did not, because nothing read it. Reading the leaf without that rule
-lets a seed write a credential dest FIRST with a PRESERVED mtime, after which `_synced_uptodate`
-skips the sync forever. The prune now lives in `collapse_seeded` — **read
-`llm-docs/kanibako/settings/store_collapse.py.md`, "A sync OWNS its dest"**, for why that is the
-only home that works and why it is a reproduction rather than a spec change.
+🐞 **THIS SWITCH REMOVED AN ARBITER, AND THE FIX IS AT DELIVERY, NOT IN THE COLLAPSE.**
+`reconcile_categories` arbitrates copy-vs-copy at a shared dest (`_resolve_copy_group` returns the
+sync and drops every seeded row); `collapse_seeded` did not, because nothing read it. Reading the leaf
+without that rule lets a seed write a credential dest FIRST with a PRESERVED mtime, after which
+`_synced_uptodate` skips the sync forever. A prune in `collapse_seeded` closed it for one commit and
+was **removed by ruling on 2026-08-11**: `_sync_box_at_create` now writes every sync row UNGATED right
+after the create-time seed, so the dest holds sync-written bytes from creation onward and the launch
+gate compares against the sync's own prior write. **Read `_sync_box_at_create` below, and
+`llm-docs/kanibako/settings/store_collapse.py.md`, "Nothing is arbitrated at a destination".**
 
 ### The shape delta, and the three things it moved
 
@@ -426,8 +428,10 @@ bind map it just built (`_collapse_synced(shapes, bindings)`) and returns both i
 `CollapsedStore`. Resolving a sync dest against a bind map from a *different* resolve would resolve it
 against a mount set the collapse never validated it over. There is exactly one coherent pairing.
 
-⚑ **The narrow synced resolve is GONE, not disabled.** `emit_collision_warnings`' memo used to name
-five in-process re-resolutions; there are four.
+⚑ **The narrow LAUNCH-time synced resolve is GONE, not disabled.** `emit_collision_warnings`' memo
+named five in-process re-resolutions before 2b-3 and four after. It is back at five as of 2026-08-11
+— the fifth is now the CREATE-time sync resolve (`_sync_box_at_create`, below), a different resolve on
+a different path, and it runs only on a launch that materializes the box.
 
 ### The position is the contract (P3 — unavailable, not forbidden)
 
@@ -512,3 +516,77 @@ The fallback itself is reachable today: `_install_assembly_collapse` writes neit
 nor this one when the fold refuses or there is no single home bind, and swallows the cause at `debug`.
 **The arm and the filter inside it come out at step 2c with that swallow**, together with
 `_launch_bind_map`'s and `_launch_seed_list`'s.
+
+---
+
+## `_sync_box_at_create` — the `synced` write happens ONCE at create, UNGATED
+
+**Authority:** Jei, 2026-08-11 — *"at box creation, since that's the only time seeded is copied, find
+the top-most bind in the bindings and write synced to it once at creation, irrespective of date"*;
+"top-most" corrected in the same exchange to mean *"the opposite of home"* — the INNERMOST covering
+bind. On removing the collapse's prune in the same commit: *"Confirmed."*
+
+### What it is, and what it deliberately is not
+
+It is a **CALLER**, not a mechanism. `_synced_host_dest` already resolves a guest dest to its host
+landing spot by LONGEST-PREFIX cover — longest prefix *is* innermost *is* "the opposite of home" — and
+already carries the three warn-and-skip refusals (no cover · the cover is a MASK · the cover is
+READ-ONLY). `_apply_synced_copies` already applies the rows. This adds the create-time caller and
+nothing else; a second covering-bind resolver would be two spellings of one rule, which drift.
+
+### Why UNGATED is the whole point
+
+`_synced_uptodate` skips when `dest.st_mtime >= src.st_mtime`. **That comparison means something only
+if the destination was last written BY THE SYNC**, and until now nothing made that true — the
+create-time seed writes first through `shutil.copy2`, which PRESERVES the source mtime, so a seed
+source newer than the sync source pinned the SEED's bytes at a `synced` destination, permanently and
+silently, most often at a credential.
+
+Writing the sync once at create with `skip_if=None` **restores the gate's own invariant** rather than
+working around it. That is why the collapse's copy-vs-copy prune came out in the same commit: the
+prune was deleting a user's declared seed row to protect a gate that can now protect itself.
+
+⚑ **`skip_if` is therefore a REQUIRED keyword on `_apply_synced_copies`**, with no default. The launch
+refresh passes `_synced_uptodate`; the create-time write passes `None`. They are two passes with two
+answers, and a default would silently hand one of them the other's.
+
+⚑⚑ **This makes SEED-THEN-OVERWRITE the shipped model**, in place of *"a sync owns its dest, seeds
+never write there."* Both rows are delivered at a shared dest, in category order. That is decided.
+
+### The second, FULL resolve — and why it does not widen the narrow one
+
+A `synced` dest is meaningless without a bind map, so this needs `include_base_families=True`, while
+`_apply_init_seeds` deliberately resolves NARROW: no `desc`, no `install`, no persona tier, no base
+families, because *seeding is file delivery* and those inputs feed only `agent.<agent>.bindings.*`
+MOUNTs. **Two resolves, two purposes, neither lying about what it reads.** Widening the seed resolve
+to reach the bind map would be the cheap move and it is the wrong one.
+
+For the same reason it is a **SIBLING** of `_seed_box_home` and not a fourth step inside it:
+`_seed_box_home`'s stated contract is three ordered *create-if-absent* steps, and a sync is an
+*overwrite*.
+
+### The two call sites, and the order that matters
+
+Both `_seed_box_home` call sites are creates and both get it, immediately after the seed:
+
+| site | why |
+|---|---|
+| `seed_new_box` (the `box create` entry) | INSIDE that function, not beside `run_create`'s call to it — so it lands BEFORE `materialize_canon_skeleton`, which makes the canon region 555 and would fail a later copy with `EACCES` |
+| `_run_container`'s `if proj.is_new:` block | the `workset connect` flow, whose FIRST launch materialises and seeds the box |
+
+⚑ On the launch auto-create path the sync then runs **again**, later in the same process, mtime-gated
+(`_apply_synced_copies` below the emit). That is correct and is the design: the create-time write
+establishes the invariant, and the launch-time gate then correctly no-ops.
+
+### Two caveats, stated because neither is blocking and both are easy to misread
+
+* **`install` is `target.detect()` — a HOST FILESYSTEM PROBE** (agent name · host binary · install
+  root · launcher), the early-out check, nothing to do with the container image. `create` already
+  resolves `target`, so it can call it. **`detect()` returns `None` when the agent is not installed on
+  the host**, which is a legitimate state, not an error.
+* **The launch RE-DETECTS after `prepare_host()`** (the auto-updater), so the create-time and
+  launch-time bind maps are not guaranteed identical. The later gated pass covers the difference.
+
+⚑ **No CLI level (§1A)** on the create-side resolve: the create path's flags are not the launch's, and
+the ephemeral ones (`-M`/`-N`/`-C`/`-R`) carry no bind. The image keys ride their own conditional
+resolve, which this map does not carry either.

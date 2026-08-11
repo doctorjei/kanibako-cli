@@ -134,6 +134,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one of them no longer refreshes your synced files on the way out. See
   [MIGRATION.md](MIGRATION.md) §2.29.
 
+- **`synced` entries are now written once when the box is created, and a `seeded` entry at the same
+  destination is no longer discarded.** Two changes that only make sense together. A `synced` entry
+  is re-copied on every launch, but only when the host source is newer than the copy already in the
+  box — and that comparison only means anything if the copy in the box was written by the sync in the
+  first place. Nothing made that true: `seeded` files are written once when the box is created, with
+  the source file's own timestamp preserved, so a seed source that happened to be newer than the sync
+  source pinned the *seed's* content at a synced destination for the life of the box, silently, and
+  most often at a credential. `box create` now writes every `synced` entry once, unconditionally,
+  immediately after seeding — into the bind that covers the destination, exactly as a launch does.
+  Because the destination then holds sync-written content from the start, the launch-time check
+  compares against the sync's own previous write and the problem cannot arise. The consequence you
+  may notice: a destination declared under **both** `seeded` and `synced` now keeps both entries —
+  the seed is applied first and the sync overwrites it — where the seed entry used to be dropped
+  outright. See [MIGRATION.md](MIGRATION.md) §2.30.
+
 - **`agent.<agent>.transform` now decides whether a binary transform runs.** The key names WHICH
   transform an agent uses; until now nothing read it, and the tweakcc patch ran for any agent whose
   settings merely carried a `transform_settings` dict — including agents tweakcc cannot patch.

@@ -73,7 +73,7 @@ def _resolve(std, proj, **kw):
     )
 
 
-def _sync(std, proj, *, logger, bindings=None, **kw):
+def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
     """Drive the REAL sync consumer the way the launch path does: resolve, then apply.
 
     ⚑⚑ ONE RESOLVE, AND IT IS THE MAIN ONE — that is the whole of cutover 2b-3.
@@ -83,8 +83,15 @@ def _sync(std, proj, *, logger, bindings=None, **kw):
     ``None`` on every launch and changed nothing. The bind map defaults to the one
     this very resolve produces, because a sync dest must be resolved against the
     mount set the collapse validated it over.
+
+    ⚑ *gated* picks WHICH of the two passes this is — the LAUNCH refresh (mtime
+    gate, the default) or the once-at-create UNGATED write (2026-08-11 ruling).
     """
-    from kanibako.commands.start import _apply_synced_copies, _launch_bind_map
+    from kanibako.commands.start import (
+        _apply_synced_copies,
+        _launch_bind_map,
+        _synced_uptodate,
+    )
 
     snapshot, reconciled = _resolve(std, proj, **kw)
     _apply_synced_copies(
@@ -92,6 +99,7 @@ def _sync(std, proj, *, logger, bindings=None, **kw):
         bindings=_launch_bind_map(snapshot, reconciled) if bindings is None
         else bindings,
         logger=logger,
+        skip_if=_synced_uptodate if gated else None,
     )
     return snapshot, reconciled
 
@@ -1155,31 +1163,59 @@ class TestTheSeedApplierConsumesTheLeaf:
         # ⚑ NOT the authored spelling — that is the half the CHANGELOG names.
         assert not any(m.startswith("seed ~/gone:") for m in messages), messages
 
-    def test_a_SEED_at_a_SYNCED_dest_NEVER_PINS_THE_CREDENTIAL(
+    def _create_sync(self, std, proj, *, logger):
+        """Drive the REAL create-side sync — ``_seed``'s production SIBLING.
+
+        ⚑ The function ``seed_new_box`` and the launch auto-create block both call,
+        with the FULL resolve it runs for itself. Not re-spelled here: a harness that
+        composed its own resolve + apply could pass while production passed the
+        launch's mtime gate, which is precisely the delivery this pins.
+        """
+        from kanibako.commands.start import _sync_box_at_create
+
+        return _sync_box_at_create(
+            std=std, proj=proj, agent_name="claude", target=_WiringTarget(),
+            global_config_path=std.settings,
+            agent_config_path=std.agents / "claude" / "settings.yaml",
+            logger=logger, deliver_creds=True,
+        )
+
+    def test_a_SEED_at_a_SYNCED_dest_IS_OVERWRITTEN_BY_THE_CREATE_TIME_SYNC(
         self, std, config, project_dir, tmp_path,
     ):
-        """🐞🐞 THE CREDENTIAL-CORRUPTION WINDOW THIS STEP OPENED, closed and pinned.
+        """⚖️ RULED 2026-08-11 — SEED-THEN-OVERWRITE, and the collapse prunes NOTHING.
 
-        ``reconcile_categories`` arbitrates copy-vs-copy at a shared dest —
-        ``_resolve_copy_group`` returns the sync and DROPS every seeded row. The
-        collapse had no such rule, so pointing consumer 5 at the leaf removed the
-        arbiter. The failure is not cosmetic:
+        🛑 THIS TEST WAS INVERTED. It used to pin the opposite outcome (the collapse
+        DROPPED the seed row at a synced dest, so the dest stayed absent until the
+        sync wrote it). Jei replaced that rule with a DELIVERY one — *"at box
+        creation … write synced to it once at creation, irrespective of date"* — and
+        confirmed the prune comes out with it.
+
+        The hazard is unchanged and still real:
 
         1. the seed runs FIRST (create, create-if-absent) through ``shutil.copy2``,
            which PRESERVES the source mtime;
         2. ``_synced_uptodate`` skips the sync when ``dest.st_mtime >= src.st_mtime``;
-        3. ⇒ a seed source NEWER than the sync source pins the SEED's bytes at a
+        3. ⇒ a seed source NEWER than the sync source would pin the SEED's bytes at a
            credential dest, permanently and silently.
 
-        ⚑⚑ THE ``os.utime`` BELOW IS THE TEST. Without it the sync's later write
-        masks the bug and this passes for the wrong reason — it would pin the prune
-        only incidentally, not the delivery outcome the prune exists for.
+        What closes it is step (2) below: the create-time sync is UNGATED, so the
+        destination holds SYNC-written bytes from creation onward — which is the fact
+        the launch gate was always assuming and never had.
 
-        MUTATION-PROVED against removing the prune from ``collapse_seeded``.
+        ⚑⚑ THE ``os.utime`` CALLS ARE THE TEST. Without them the seed source would be
+        the older one, every write would land for incidental reasons, and this would
+        pin nothing. Steps (3) and (4) hold the mtime FIXED across a content change to
+        prove the launch gate is live in both directions.
+
+        MUTATION-PROVED against: restoring the ``collapse_seeded`` prune (step 1
+        fails); giving the create-time sync the launch's mtime gate (step 2 fails);
+        dropping ``skip_if`` on the launch pass (step 3 fails).
         """
         import os
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
+        logger = logging.getLogger("seed-consumer")
         seed_src = tmp_path / "seed-cred.txt"
         sync_src = tmp_path / "sync-cred.txt"
         seed_src.write_text("SEED BYTES")
@@ -1194,13 +1230,28 @@ class TestTheSeedApplierConsumesTheLeaf:
         )
         landed = proj.shell_path / "cred.txt"
 
+        # (1) NOTHING IS ARBITRATED AT A DESTINATION: the seed row survives the
+        #     collapse and is delivered, at a dest a sync also claims.
         self._seed(std, proj, {})
-        # (1) The create-time seed must not have written the sync's dest AT ALL.
-        assert not landed.exists(), landed.read_text()
+        assert landed.read_text() == "SEED BYTES"
 
-        _sync(std, proj, logger=logging.getLogger("seed-consumer"))
-        # (2) ...so the sync's own mtime gate sees an ABSENT dest and delivers.
+        # (2) The create-time sync OVERWRITES it — *irrespective of date*, though the
+        #     seed's mtime is NEWER, which is exactly what a gated pass would skip.
+        self._create_sync(std, proj, logger=logger)
         assert landed.read_text() == "SYNC BYTES"
+
+        # (3) ...and the dest now carries the SYNC's own mtime, so the LAUNCH pass
+        #     compares against the sync's prior write and no-ops. Proved by changing
+        #     the source's BYTES while holding its mtime: nothing may be delivered.
+        sync_src.write_text("STALE-MTIME BYTES")
+        os.utime(sync_src, (1000, 1000))
+        _sync(std, proj, logger=logger)
+        assert landed.read_text() == "SYNC BYTES"
+
+        # (4) The gate still works FORWARD — a genuinely newer source is delivered.
+        os.utime(sync_src, (3000, 3000))
+        _sync(std, proj, logger=logger)
+        assert landed.read_text() == "STALE-MTIME BYTES"
 
     def test_an_ABSENT_leaf_falls_back_to_the_RECONCILED_seed_winners(
         self, monkeypatch, std, config, project_dir, tmp_path,
@@ -1592,8 +1643,12 @@ class TestTheSyncApplierConsumesTheLeaf:
         therefore the guard — every input REQUIRED, keyword-only, and none of them
         nameable at the site this pass used to occupy.
 
-        RED the moment any of the four grows a default (``= None`` most of all,
+        RED the moment any of the five grows a default (``= None`` most of all,
         which is how this becomes a silent no-delivery again).
+
+        ⚑ ``skip_if`` JOINED THEM 2026-08-11 and is required for a DIFFERENT reason:
+        the launch refresh and the once-at-create write are two passes with two
+        answers, and a default would silently hand one of them the other's.
         """
         import inspect
 
@@ -1601,7 +1656,9 @@ class TestTheSyncApplierConsumesTheLeaf:
 
         params = inspect.signature(_apply_synced_copies).parameters
 
-        assert list(params) == ["snapshot", "reconciled", "bindings", "logger"]
+        assert list(params) == [
+            "snapshot", "reconciled", "bindings", "logger", "skip_if",
+        ]
         assert all(
             p.kind is inspect.Parameter.KEYWORD_ONLY for p in params.values()
         ), {n: str(p.kind) for n, p in params.items()}

@@ -598,7 +598,11 @@ class TestNoSeedInImportConnectModules:
         import inspect
 
         src = inspect.getsource(importlib.import_module(module))
-        for forbidden in ("seed_new_box", "_seed_box_home"):
+        # ⚑ ``_sync_box_at_create`` JOINED THE LIST 2026-08-11: the once-at-create
+        # ``synced`` write is the seed's sibling and belongs to the SAME create
+        # moment, so a register-only flow must not reach it either. An imported box
+        # was created — and synced — where it was created.
+        for forbidden in ("seed_new_box", "_seed_box_home", "_sync_box_at_create"):
             assert forbidden not in src, (
                 f"{module} must not reference {forbidden}: import/connect "
                 f"register-only flows must NEVER seed (B7)."

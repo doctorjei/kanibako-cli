@@ -229,38 +229,35 @@ class TestTheSeedPassIsAConcatenation:
     assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/s", "")]
     assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/y", "")]
 
-  def test_one_dest_in_BOTH_arms_keeps_the_SYNC_and_drops_the_SEED(self):
-    # 🛑 INVERTED AT CUTOVER 2b-2, and the OLD TEST SAID SO ITSELF: it asserted both
-    # rows survive and closed with "whether the delivery order reproduces the old net
-    # effect is a CUTOVER question, deliberately not answered by the collapse". 2b-2
-    # is the step that had to answer it, because it is the step that made the answer
-    # matter — consumer 5 reads this list, so an unpruned seed row here is a seed
-    # DELIVERED at a dest the sync owns.
+  def test_one_dest_in_BOTH_arms_keeps_BOTH_ROWS(self):
+    # 🛑 RE-INVERTED 2026-08-11, and this time by RULING rather than by measurement.
+    # Cutover 2b-2 added a prune here that dropped the seed row at a dest a sync also
+    # claimed, reproducing ``settings_categories._resolve_copy_group``. Jei replaced
+    # the question with a DELIVERY rule — *"write synced to it once at creation,
+    # irrespective of date"* — and confirmed the prune comes out with it.
     #
-    # ⚑ The shipped route already picks: ``settings_categories._resolve_copy_group``
-    # returns ``[_most_specific(synced)]`` and drops every seeded row at that dest —
-    # "a synced cred copy-sync is not a layer: it REPLACES whatever else copies to
-    # that dest ... it is the CREDENTIAL pick". This reproduces that pick; it does
-    # not invent one.
+    # ⚑ "Nothing is arbitrated at a destination" (spec :147-149) now holds ACROSS the
+    # two arms as well as within one. Both rows survive; ORDER decides, at create:
+    # the seed writes, then ``start._sync_box_at_create`` overwrites UNGATED.
     #
-    # 🐞 WHY IT IS NOT MERELY COSMETIC: the seed runs FIRST (create, create-if-absent)
-    # through ``shutil.copy2``, which PRESERVES the source mtime, and
-    # ``start._synced_uptodate`` then skips the sync whenever
-    # ``dest.st_mtime >= src.st_mtime``. A seed source newer than the sync source
-    # would pin the SEED's bytes, permanently and silently, at a credential dest.
+    # 🐞 THE HAZARD THE PRUNE ADDRESSED IS STILL REAL and is closed elsewhere: the
+    # seed's ``shutil.copy2`` PRESERVES the source mtime, and
+    # ``start._synced_uptodate`` skips whenever ``dest.st_mtime >= src.st_mtime``, so
+    # a newer seed source used to pin the SEED's bytes at a credential dest. The
+    # create-time UNGATED sync makes the gate compare against the sync's OWN write —
+    # pinned by ``test_start_assembly`` (the create-time delivery tests).
     collapsed = collapse(
       box=shape(
         seed=[CopyRow(f"{GUEST}/x", BindEntry("/h/seed", ""))],
         sync=[CopyRow(f"{GUEST}/x", BindEntry("/h/sync", ""))],
       ),
     )
-    assert collapsed.seeded == []
+    assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
     assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/x", "")]
 
-  def test_the_prune_is_EXACT_DEST_and_never_containment(self):
-    # ⚑ A seed INSIDE a synced directory is UNHANDLED on the live route too
-    # (``_resolve_copy_group`` groups on the exact ``box_dest``), so widening this to
-    # containment would be a NEW rule, not a reproduction. It is deliberately not one.
+  def test_a_seed_INSIDE_a_synced_directory_survives_too(self):
+    # The containment case, kept as its own row: no rule here reads the sync arm at
+    # all any more, so neither exact-dest nor containment can remove a seed.
     collapsed = collapse(
       box=shape(
         seed=[CopyRow(f"{GUEST}/x/inner", BindEntry("/h/seed", ""))],
@@ -270,8 +267,7 @@ class TestTheSeedPassIsAConcatenation:
     assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x/inner", "")]
 
   def test_a_seed_at_a_dest_NO_sync_claims_is_UNTOUCHED(self):
-    # The control for the prune: without it this passes anyway, which is why the
-    # shared-dest test above is the one that carries the proof.
+    # The control: a seed at an unclaimed dest was never at issue, before or after.
     collapsed = collapse(
       box=shape(
         seed=[CopyRow(f"{GUEST}/kept", BindEntry("/h/seed", ""))],
@@ -280,10 +276,9 @@ class TestTheSeedPassIsAConcatenation:
     )
     assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/kept", "")]
 
-  def test_the_prune_crosses_SCOPES_in_both_directions(self):
-    # A sync in ANY scope owns the dest — the prune reads the whole shape set, not
-    # the row's own scope. Both directions, because a one-directional sweep passes
-    # one of these and fails the other.
+  def test_a_sync_in_ANY_SCOPE_removes_NOTHING_from_the_seed_arm(self):
+    # Both directions, because a re-introduced sweep in either direction has to fail
+    # this. RED if the prune comes back in any form.
     outer_sync = collapse(
       system=shape(sync=[CopyRow(f"{GUEST}/x", BindEntry("/h/sync", ""))]),
       box=shape(seed=[CopyRow(f"{GUEST}/x", BindEntry("/h/seed", ""))]),
@@ -292,13 +287,12 @@ class TestTheSeedPassIsAConcatenation:
       system=shape(seed=[CopyRow(f"{GUEST}/x", BindEntry("/h/seed", ""))]),
       box=shape(sync=[CopyRow(f"{GUEST}/x", BindEntry("/h/sync", ""))]),
     )
-    assert outer_sync.seeded == []
-    assert inner_sync.seeded == []
+    assert outer_sync.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
+    assert inner_sync.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
 
-  def test_a_PRUNED_seed_outside_home_is_STILL_REFUSED(self):
-    # ⚑ REFUSED FIRST, PRUNED SECOND. A sync at the same dest must not quietly
-    # excuse a mis-declared seed dest — RED if the prune is hoisted above the
-    # refusal, which is the obvious way to write it.
+  def test_a_seed_outside_home_is_REFUSED_even_when_a_sync_shares_the_dest(self):
+    # ⚑ The prune's one surviving ordering property, now unconditional: a sync at the
+    # same dest does not quietly excuse a mis-declared seed dest.
     with pytest.raises(SettingsError, match="outside the home binding"):
       collapse(
         box=shape(
@@ -307,12 +301,12 @@ class TestTheSeedPassIsAConcatenation:
         ),
       )
 
-  def test_the_prune_fires_with_NO_HOME_BIND_AT_ALL(self):
+  def test_the_BARE_door_sees_the_same_seed_arm_WITH_NO_HOME_BIND_AT_ALL(self):
     """🛑 THE ``box create`` PATH. ``collapse_seeded`` is called BARE there.
 
-    Both doors run the same function, so a prune living anywhere else would prune
-    the launch resolve and not the create-side seed — which is the ONLY door that
-    writes seeds. RED if the rule is moved into ``collapse_store_shapes``.
+    Both doors run the same function, so a rule placed in either one alone would give
+    the create path — the ONLY door that writes seeds — a different seed list from the
+    launch resolve. RED if a prune is reintroduced on either side.
     """
     shapes = shape_set(
       box=shape(
@@ -320,7 +314,7 @@ class TestTheSeedPassIsAConcatenation:
         sync=[CopyRow(f"{GUEST}/x", BindEntry("/h/sync", ""))],
       ),
     )
-    assert collapse_seeded(shapes) == []
+    assert collapse_seeded(shapes) == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
 
 
 class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
