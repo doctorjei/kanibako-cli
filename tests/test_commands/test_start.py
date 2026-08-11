@@ -1617,29 +1617,34 @@ class TestTheMainPathEmitsFromTheCollapse:
         }
         assert delivery <= handed, (handed, delivery)
 
-    def test_the_reconciled_fallback_is_reached_only_when_the_leaf_is_ABSENT(
+    def test_an_ABSENT_leaf_now_FAILS_THE_LAUNCH_instead_of_falling_back(
         self, start_mocks,
     ):
-        """⚑ The collapse still swallows its own refusals (step 2c takes that out).
+        """🛑 INVERTED AT 2c — this asserted the fallback that the cutover deleted.
 
-        With the leaf absent the launch must still mount everything — a silently
-        empty mount set is the failure this arm exists to prevent.
+        It read: with the leaf absent the launch must still mount everything, because
+        the collapse swallowed its own refusals and a silently empty mount set was the
+        failure the arm existed to prevent. Both halves are gone. A refusal is the
+        launch's now, and a snapshot with no assembled map has nothing to launch from —
+        so the seam says so by name and the box is not started at all.
+
+        ⚑ It exits rc 1 through ``cli.main``'s ``KanibakoError`` arm in the real CLI;
+        here the error propagates because the test calls ``_run_container`` directly.
         """
         from kanibako.commands import start as start_mod
+        from kanibako.settings.settings_resolve import SettingsError
 
         with start_mocks() as m, patch.object(
             start_mod, "_snapshot_assembly_bindings", return_value=None,
         ):
-            assert _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            ) == 0
-            mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+            with pytest.raises(SettingsError, match="meta.assembly.bindings"):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                )
 
-        by_dest = {mt.destination: mt.options for mt in mounts}
-        assert by_dest.get(self._KICKOFF) == "ro", by_dest
-        assert self._INJECTED not in by_dest, by_dest
+            m.runtime.run.assert_not_called()
 
 
 class TestPluginsAndCacheShares:
@@ -3425,230 +3430,6 @@ class TestApplyInitSeeds:
         self._call(tmp_path, proj=proj, agent_config_path=agent_cfg)
         assert (project / "sub" / "f.txt").read_text() == "seed-ws"
         assert not (shell / "workspace" / "sub").exists()
-
-
-class TestApplySyncedCopies:
-    """Unit tests for _apply_synced_copies (the `<scope>.synced` category).
-
-    🛑 **THESE ALL EXERCISE THE FALLBACK ARM, and that is a fact about the harness,
-    not a choice.** The resolve below is NARROW (`include_base_families=False`), so it
-    carries no home bind, so `_install_assembly_collapse` writes no
-    `meta.assembly.synced` leaf and `_launch_synced_list` falls back to
-    `reconciled.copies`. Nothing here can pin the collapsed route or the 2b-0
-    credential-gate hoist — `test_start_assembly.TestTheSyncApplierConsumesTheLeaf`
-    resolves with the base families on and does that.
-    """
-
-    def _std(self, tmp_path):
-        from types import SimpleNamespace
-        return SimpleNamespace(
-            agents=tmp_path / "agents",
-            data_home=tmp_path / "data_home",
-            data_path=tmp_path / "data",
-            data=tmp_path / "data",
-            channels=tmp_path / "channels",
-            template=tmp_path / "template",
-            canon=tmp_path / "canon",
-            registry=tmp_path / "registry.yaml",
-            primary_workset=tmp_path / "primary_workset",
-            settings=tmp_path / "settings.yaml",
-            # B2: the channel partition roots box_channel_addresses reads (the
-            # meta.box.{inbox,share_global} identity anchors).
-            channels_mailboxes=tmp_path / "channels" / "mailboxes",
-            channels_share=tmp_path / "channels" / "share",
-            # B2b: the system channel type-roots folded into resolved_sys so the
-            # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
-            channels_common=tmp_path / "channels" / "common",
-            channels_chat=tmp_path / "channels" / "chat",
-            # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
-            # workset.logs anchor the helper-log bind routes through).
-            primary_logs=tmp_path / "primary_workset" / "logs",
-        )
-
-    def _proj(self, shell_path, group=None):
-        from types import SimpleNamespace
-        # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
-        # (the @config.primary_workset @-ref, so project_path is unused).
-        # B2: meta.box.* identity anchors need the box name (proj.name).
-        # B2b: the workset path anchors are derived off the vault paths + the box
-        # home's box-parent, so the proj fake supplies them.
-        return SimpleNamespace(
-            shell_path=shell_path, group=group, name="seedbox",
-            mode=BoxMode.primary, project_path=shell_path,
-            # P6c: the cascade box/workset tier files are single-sourced off
-            # proj.metadata_path (box_workset_settings_paths).
-            metadata_path=shell_path.parent,
-            vault_ro_path=shell_path.parent / "vault" / "ro" / "seedbox",
-            vault_rw_path=shell_path.parent / "vault" / "rw" / "seedbox",
-        )
-
-    def _logger(self):
-        import logging
-        return logging.getLogger("test_apply_synced_copies")
-
-    def _shell(self, tmp_path):
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        return shell
-
-    def _bindings(self, proj):
-        """The four SHIPPED binds a synced dest can land in, as the launch map's shape.
-
-        ⚑ NOT a convenience fake: these are the destinations, sources and options
-        ``core-defaults.yaml`` declares for every box (home + workspace rw, the two
-        vault binds ro/rw), spelled as ``_launch_bind_map`` hands them over. The
-        dest resolver reads nothing else, so a test that invented a map would pin
-        the resolver against a mount set no box has.
-        """
-        from kanibako.settings.store_collapse import CollapsedBind
-
-        return {
-            "/home/agent": CollapsedBind(str(proj.shell_path), "Z,U,rw"),
-            "/home/agent/workspace": CollapsedBind(str(proj.project_path), "Z,U,rw"),
-            "/home/agent/vault/ro": CollapsedBind(str(proj.vault_ro_path), "ro"),
-            "/home/agent/vault/rw": CollapsedBind(str(proj.vault_rw_path), "Z,U,rw"),
-        }
-
-    def _call(self, tmp_path, *, std=None, proj=None, target=None,
-              global_config_path=None, agent_config_path=None,
-              deliver_creds=True, bindings=None, gated=True):
-        """Resolve, then apply — the two halves the launch path also does in order.
-
-        ⚑ THE RESOLVE MOVED OUT OF THE FUNCTION AT CUTOVER 2b-3, so it moves out of
-        the harness too. ``_apply_synced_copies`` consumes the launch's OWN resolve
-        now; running one here is what the caller does, not a fixture convenience.
-        ⚑ ``include_base_families=False`` keeps the resolve narrow — these fakes are
-        ``SimpleNamespace``, not a real project — which is why *bindings* is supplied
-        separately rather than read back out of this snapshot.
-        ⚑ *gated* picks WHICH pass this is: the LAUNCH refresh (the mtime gate, the
-        default here) or the once-at-create write, which is ungated by ruling.
-        """
-        from kanibako.commands.start import (
-            _apply_synced_copies,
-            _resolve_launch_snapshot,
-            _synced_uptodate,
-        )
-        # P6c: the box-tier synced config is single-sourced off proj.metadata_path/
-        # settings.yaml (box_workset_settings_paths); tests place it there directly.
-        snapshot, reconciled = _resolve_launch_snapshot(
-            std=std or self._std(tmp_path),
-            proj=proj,
-            agent_name="claude",
-            system_settings_path=global_config_path,
-            agent_cfg_path=agent_config_path,
-            desc=None, install=None, target=target, agent_cfg=None,
-            include_base_families=False,
-            deliver_creds=deliver_creds,
-        )
-        _apply_synced_copies(
-            snapshot=snapshot,
-            reconciled=reconciled,
-            bindings=self._bindings(proj) if bindings is None else bindings,
-            logger=self._logger(),
-            skip_if=_synced_uptodate if gated else None,
-        )
-
-    def test_empty_no_config_copies_nothing(self, tmp_path):
-        """No synced config → nothing copied (additive no-op)."""
-        shell = self._shell(tmp_path)
-        self._call(tmp_path, proj=self._proj(shell))
-        assert list(shell.iterdir()) == []
-
-    def test_configured_synced_copied(self, tmp_path):
-        """A box-config synced entry copies host_src into shell_path/<dest>."""
-        shell = self._shell(tmp_path)
-        src = tmp_path / "creds.txt"
-        src.write_text("token")
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(f'box:\n  synced:\n    "~/cred.txt": ["{src}"]\n')
-        self._call(tmp_path, proj=self._proj(shell))
-        assert (shell / "cred.txt").read_text() == "token"
-
-    def test_synced_suppressed_when_not_sharing(self, tmp_path):
-        """deliver_creds=False (private box) suppresses every synced entry (D-M4)."""
-        shell = self._shell(tmp_path)
-        src = tmp_path / "creds.txt"
-        src.write_text("token")
-        ptoml = tmp_path / "settings.yaml"
-        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
-        # EVIDENCE FOR THIS CASE. The retired fixture read
-        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
-        # new reader silently took the NAME as the destination and the DEST as
-        # the mount options. Nothing raised and the assertion still held — for
-        # the wrong reason. ⚑ ``synced`` is a COPY, where options are
-        # meaningless, so the misplaced dest was never even exercised.
-        ptoml.write_text(f'box:\n  synced:\n    "~/cred.txt": ["{src}"]\n')
-        self._call(
-            tmp_path, proj=self._proj(shell),
-            deliver_creds=False,
-        )
-        assert not (shell / "cred.txt").exists()
-
-    def test_mtime_gate_skips_fresh_dest(self, tmp_path):
-        """An unchanged source (dest newer-or-equal) is not recopied."""
-        import os
-        shell = self._shell(tmp_path)
-        src = tmp_path / "creds.txt"
-        src.write_text("old")
-        ptoml = tmp_path / "settings.yaml"
-        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
-        # EVIDENCE FOR THIS CASE. The retired fixture read
-        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
-        # new reader silently took the NAME as the destination and the DEST as
-        # the mount options. Nothing raised and the assertion still held — for
-        # the wrong reason. ⚑ ``synced`` is a COPY, where options are
-        # meaningless, so the misplaced dest was never even exercised.
-        ptoml.write_text(f'box:\n  synced:\n    "~/cred.txt": ["{src}"]\n')
-        dest = shell / "cred.txt"
-        dest.write_text("newer")
-        # Make dest strictly newer than src.
-        os.utime(src, (1000, 1000))
-        os.utime(dest, (2000, 2000))
-        self._call(tmp_path, proj=self._proj(shell))
-        # mtime gate: dest is newer, so it is NOT overwritten.
-        assert dest.read_text() == "newer"
-
-    def test_missing_host_src_skipped(self, tmp_path):
-        """A synced whose host_src does not exist is skipped (no crash)."""
-        shell = self._shell(tmp_path)
-        missing = tmp_path / "nope"
-        ptoml = tmp_path / "settings.yaml"
-        # ⚑ RESPELLED for dest-keying (2026-08-08c) — AND THE OLD GREEN WAS NOT
-        # EVIDENCE FOR THIS CASE. The retired fixture read
-        # ``{<name>: [<host_src>, <box_dest>]}``; the arity is unchanged, so the
-        # new reader silently took the NAME as the destination and the DEST as
-        # the mount options. Nothing raised and the assertion still held — for
-        # the wrong reason. ⚑ ``synced`` is a COPY, where options are
-        # meaningless, so the misplaced dest was never even exercised.
-        ptoml.write_text(f'box:\n  synced:\n    "~/gone": ["{missing}"]\n')
-        self._call(tmp_path, proj=self._proj(shell))
-        assert list(shell.iterdir()) == []
-
-    def test_workspace_dest_lands_under_project_not_shell(self, tmp_path):
-        """P3 bug-fix: a ~/workspace/... synced dest maps under proj.project_path
-        (the workspace bind), NOT the shadowed shell_path/workspace stub.
-
-        Regression guard: the FORMER inline synced translator lacked the
-        ``/workspace`` split, so this entry computed shell_path/workspace/sub/f.txt
-        (invisible in the box behind the workspace bind). Routing through the
-        shared ``_guest_dest_to_host`` fixes it. This test FAILS on the old code.
-        """
-        shell = self._shell(tmp_path)
-        project = tmp_path / "project"
-        project.mkdir()
-        proj = self._proj(shell)
-        proj.project_path = project  # distinct from shell_path
-        src = tmp_path / "ws.txt"
-        src.write_text("in-workspace")
-        ptoml = tmp_path / "settings.yaml"
-        ptoml.write_text(
-            f'box:\n  synced:\n    "~/workspace/sub/f.txt": ["{src}"]\n'
-        )
-        self._call(tmp_path, proj=proj)
-        # Correct: lands under project_path.
-        assert (project / "sub" / "f.txt").read_text() == "in-workspace"
-        # The old (buggy) shadowed path was NOT written.
-        assert not (shell / "workspace" / "sub" / "f.txt").exists()
 
 
 class TestBoxShellLaunch:

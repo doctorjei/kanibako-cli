@@ -39,6 +39,7 @@ from kanibako.commands.start import (
     _split_home_bind,
 )
 from kanibako.settings.paths import resolve_project
+from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.store_collapse import HOME_DEST
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.no_agent import NoAgentTarget
@@ -95,8 +96,8 @@ def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
 
     snapshot, reconciled = _resolve(std, proj, **kw)
     _apply_synced_copies(
-        snapshot=snapshot, reconciled=reconciled,
-        bindings=_launch_bind_map(snapshot, reconciled) if bindings is None
+        snapshot=snapshot,
+        bindings=_launch_bind_map(snapshot) if bindings is None
         else bindings,
         logger=logger,
         skip_if=_synced_uptodate if gated else None,
@@ -310,11 +311,15 @@ class TestTheCredentialGateReachesTheCollapse:
 
 
 class TestTheLivePathIsUnchanged:
-    """⚑⚑ THE SAFETY CLAIM that OUTLIVED 2a-2: the reconciled route is byte-identical.
+    """⚑⚑ THE 2a-2 SAFETY CLAIM, NARROWED AT 2c TO CONFIGURATIONS THAT FOLD.
 
     Producing the collapse must not perturb the route that still feeds the narrow
-    resolves, the mask arm and the agent arm — most of all when the collapse REFUSES,
-    because that refusal must reach nobody until step 2c takes the swallow out.
+    resolves and the agent arm — and where nothing refuses, it does not.
+
+    🛑 THE REFUSAL HALF IS INVERTED. It read "most of all when the collapse REFUSES,
+    because that refusal must reach nobody until step 2c takes the swallow out."
+    Step 2c took it out: a fold that refuses now RAISES out of the resolve and stops
+    the launch, and the tests below say so rather than assert the old silence.
     """
 
     def _both_ways(self, monkeypatch, std, proj, **kw):
@@ -336,70 +341,68 @@ class TestTheLivePathIsUnchanged:
         assert wired == bare
         assert wired[0], "the fixture must actually deliver mounts"
 
-    def test_a_refused_configuration_still_launches_and_delivers_identically(
-        self, monkeypatch, std, config, project_dir,
-    ):
-        """⚑ THE SHARPEST CASE: the collapse RAISES, the launch does not notice."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        wired, bare = self._both_ways(
-            monkeypatch, std, proj, extra_default_categories=_SUBSUMING,
-        )
-
-        assert wired == bare
-        assert ("/home", "/tmp", "Z,U") in wired[0]
-
-    def test_a_BIND_FOLD_refusal_leaves_the_ASSEMBLY_leaves_absent(
+    def test_a_BIND_FOLD_refusal_STOPS_THE_RESOLVE(
         self, std, config, project_dir, tmp_path,
     ):
-        """🛑 NARROWED AT 2b-1 — this used to assert ``_assembly(snapshot) == {}``.
+        """⚑⚑ CUTOVER 2c, THE SHARPEST CASE: the fold refuses and the launch STOPS.
 
-        A partial write of the two leaves that describe an assembly would describe a
-        box nothing could assemble, so neither is written. The SEED list is not part
-        of that description: it folded successfully, off an arm the refused bind
-        never touched. Erasing it would make a subsuming bind silently cost the box
-        its seeds the moment the create path reads this leaf.
+        🛑 THE ASSERTION THIS REPLACED IS THE POINT. It read ``sorted(_assembly(
+        snapshot)) == ["seeded"]`` — a refused bind fold left the two assembly leaves
+        absent, the launch fell back to the reconciled rows, and a configuration the
+        spec forbids started a box anyway. It now raises, naming both participants.
+
+        ⚑ The seed is DECLARED here, not inherited: the shipped default-category
+        families carry no ``seeded`` entry on this target, so the pre-2c form of this
+        test would have rested on an empty list.
+
+        MUTATION ANCHOR: restore the ``except SettingsError`` swallow in
+        ``_install_assembly_collapse`` and this goes RED — no exception is raised.
         """
         src = tmp_path / "seedme"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        # ⚑ The seed is DECLARED here, not inherited: the shipped default-category
-        # families carry no ``seeded`` entry of their own on this target, so an
-        # assertion resting on the fixture's own seeds would rest on an empty list.
-        snapshot, _rec = _resolve(std, proj, extra_default_categories={
-            **_SUBSUMING, "box.seeded": {"~/seedme": (str(src),)},
-        })
+        with pytest.raises(SettingsError) as excinfo:
+            _resolve(std, proj, extra_default_categories={
+                **_SUBSUMING, "box.seeded": {"~/seedme": (str(src),)},
+            })
 
-        assert sorted(_assembly(snapshot)) == ["seeded"]
-        assert [c.dest for c in _assembly(snapshot)["seeded"]] == ["/home/agent/seedme"]
+        message = str(excinfo.value)
+        assert "'/tmp' at '/home'" in message, message
+        assert HOME_DEST in message, message
 
-    def test_a_SEED_ARM_refusal_leaves_every_leaf_absent(
+    def test_a_SEED_ARM_refusal_STOPS_THE_RESOLVE(
         self, std, config, project_dir, tmp_path,
     ):
-        """The seed leaf has its own gate, and a seed arm that REFUSES fails it.
+        """A seed outside home is refused by the fold, and that refusal is the launch's.
 
-        A seed outside home is refused by the fold itself
-        (``store_collapse._refuse_seed_outside_home``). Nothing is written then —
-        not the seed leaf it belongs to, and not the two below it.
+        ``store_collapse._refuse_seed_outside_home`` raises before any leaf is written,
+        so the seed arm's own refusal reaches the user exactly as the bind fold's does.
         """
         src = tmp_path / "seedme"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(std, proj, extra_default_categories={
-            "box.seeded": {"/etc/outside": (str(src),)},
-        })
+        with pytest.raises(SettingsError, match="outside the home binding"):
+            _resolve(std, proj, extra_default_categories={
+                "box.seeded": {"/etc/outside": (str(src),)},
+            })
 
-        assert _assembly(snapshot) == {}
-
-    def test_the_refusal_is_reported_not_swallowed(
+    def test_the_refusal_is_RAISED_and_NOT_logged_away(
         self, caplog, std, config, project_dir,
     ):
-        """The cause is logged at DEBUG — visible to the cutover, silent to the user."""
+        """🛑 THE SWALLOW IS GONE, and its absence is pinned, not just its replacement.
+
+        Until 2c the cause went to ``debug`` as "meta.assembly.* not folded" and the
+        launch continued. Asserting only that something raises would still pass if a
+        second, quieter swallow were reintroduced beside it, so this asserts the log
+        line is gone as well.
+        """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         with caplog.at_level(logging.DEBUG, logger="kanibako.kanibako.commands.start"):
-            _resolve(std, proj, extra_default_categories=_SUBSUMING)
+            with pytest.raises(SettingsError):
+                _resolve(std, proj, extra_default_categories=_SUBSUMING)
 
-        assert any(
-            "meta.assembly.* not folded" in r.message for r in caplog.records
+        assert not any(
+            "not folded" in r.message for r in caplog.records
         ), [r.message for r in caplog.records]
 
 
@@ -432,6 +435,89 @@ class TestHomeIsLiftedOut:
         assert all(e.box_dest != HOME_DEST for e in folded)
 
 
+class TestABoxIsAssembledOverEXACTLYONEHomeBinding:
+    """⚑⚑ CUTOVER 2c's OWN GUARD — the defect 2c would otherwise have INTRODUCED.
+
+    With the reconciled fallback deleted, ``_launch_bind_map`` reduces to the reader,
+    and a whole-box resolve that wrote no ``meta.assembly.bindings`` would hand
+    ``_emit_category_mounts`` a ``None`` that dies on ``.items()``: an uncaught
+    ``AttributeError`` traceback instead of a ``KanibakoError``. So the resolve refuses
+    FIRST, by name.
+
+    ⚑ ONE guard for BOTH failures, because ``len(at_home) != 1`` is ONE spec violation:
+    home is pid 0, the base plate seeded before any bind folds, so zero leaves the box
+    nothing to build on and two leave it ambiguous. 🛑 The NARROW path keeps its early
+    return — it carries no core family and asks only for the seed arm — which is what
+    ``TestTheCollapseIsProduced.test_a_narrow_resolve_writes_THE_SEED_LIST_AND_NOTHING_ELSE``
+    pins.
+    """
+
+    def _mounts(self, std, config, project_dir):
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        _snapshot, reconciled = _resolve(std, proj)
+        return list(reconciled.mounts)
+
+    def test_NO_home_binding_REFUSES_a_whole_box_resolve(
+        self, std, config, project_dir,
+    ):
+        """Zero: the box has no floor, and it says which destination is missing.
+
+        MUTATION ANCHOR: drop the ``if whole_box: _refuse_without_one_home(entries)``
+        call from ``_install_assembly_collapse`` and this fails with ``DID NOT RAISE``
+        — and the launch goes on to die inside the emitter instead.
+        """
+        from kanibako.commands.start import _install_assembly_collapse
+        from kanibako.settings.settings_store import KeyStore
+
+        homeless = [
+            e for e in self._mounts(std, config, project_dir)
+            if e.box_dest != HOME_DEST
+        ]
+
+        with pytest.raises(SettingsError, match="no binding at its home destination"):
+            _install_assembly_collapse(KeyStore(), homeless, whole_box=True)
+
+    def test_TWO_home_bindings_REFUSE_THE_SAME_WAY(self, std, config, project_dir):
+        """Two: the same violation, and the remedy names the mechanism (suppress).
+
+        🛑 Reached here by construction rather than through a settings file, because
+        ``reconcile_categories`` refuses two concrete declarations at one identical
+        dest a layer earlier. This guard is what covers the arrangements that reach the
+        fold anyway; answering only the zero case would leave it open.
+        """
+        from kanibako.commands.start import _install_assembly_collapse
+        from kanibako.settings.settings_store import KeyStore
+
+        mounts = self._mounts(std, config, project_dir)
+        home = next(e for e in mounts if e.box_dest == HOME_DEST)
+
+        with pytest.raises(SettingsError, match="2 bindings target the box home") as e:
+            _install_assembly_collapse(KeyStore(), [*mounts, home], whole_box=True)
+
+        assert "null" in str(e.value), str(e.value)
+
+    def test_a_NARROW_resolve_with_no_home_STILL_writes_its_seed_leaf(
+        self, std, config, project_dir,
+    ):
+        """🛑 THE HALF THAT MUST NOT MOVE: the guard is the whole-box path's alone.
+
+        MUTATION ANCHOR: call ``_refuse_without_one_home`` unconditionally and this
+        fails — the create-side seed resolve, which has no home bind by construction,
+        would stop being able to seed a box at all.
+        """
+        from kanibako.commands.start import _install_assembly_collapse
+        from kanibako.settings.settings_store import KeyStore
+
+        homeless = [
+            e for e in self._mounts(std, config, project_dir)
+            if e.box_dest != HOME_DEST
+        ]
+        snapshot = KeyStore()
+        _install_assembly_collapse(snapshot, homeless, whole_box=False)
+
+        assert _assembly(snapshot) == {"seeded": []}
+
+
 class TestTheEmitterConsumesTheShape:
     """Cutover 2a-2: one emitter, one dest-keyed ``(src, opts)`` shape, two sources."""
 
@@ -456,11 +542,22 @@ class TestTheEmitterConsumesTheShape:
     def test_absent_reads_as_None_so_the_caller_can_tell_empty_from_missing(
         self, std, config, project_dir,
     ):
-        """A refusal leaves the leaf ABSENT; ``None`` is what routes the fallback."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(std, proj, extra_default_categories=_SUBSUMING)
+        """ABSENT is still a real state — but only a NARROW resolve can produce it now.
 
-        assert _snapshot_assembly_bindings(snapshot) is None
+        🛑 REWRITTEN AT 2c. It used to reach ABSENT through a REFUSED fold, which is
+        the state that no longer exists: a refusal raises. What is left is the narrow
+        resolve, which carries no base families, hence no home bind, hence nothing to
+        assemble — and it must stay distinguishable from an assembled-but-empty map.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        narrow, _rec = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            include_base_families=False,
+        )
+
+        assert _snapshot_assembly_bindings(narrow) is None
 
     def test_the_main_path_takes_the_COLLAPSED_map_when_there_is_one(
         self, std, config, project_dir,
@@ -469,27 +566,37 @@ class TestTheEmitterConsumesTheShape:
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, reconciled = _resolve(std, proj)
 
-        chosen = _launch_bind_map(snapshot, reconciled)
+        chosen = _launch_bind_map(snapshot)
         assert chosen == _snapshot_assembly_bindings(snapshot)
         assert chosen != _bind_map_from_mounts(reconciled.mounts)
 
-    def test_a_refused_collapse_falls_back_to_the_RECONCILED_rows(
+    def test_a_NARROW_snapshot_REFUSES_instead_of_returning_None(
         self, std, config, project_dir,
     ):
-        """🛑 The safety arm: a refusal must lose the box NOTHING before step 2c.
+        """🛑 THE FALLBACK IS GONE, and what replaced it is a NAMED error.
 
-        RED if the fallback is dropped or emptied — the launch would hand podman an
-        empty category mount set on a configuration that works today.
+        This test used to assert the opposite — that a snapshot with no assembly leaf
+        fell back to ``_bind_map_from_mounts(reconciled.mounts)``. With the arm removed
+        the reader's ``None`` would reach ``_emit_category_mounts`` and die on
+        ``.items()``: an uncaught ``AttributeError`` traceback rather than a
+        ``KanibakoError``. So the seam states the wiring invariant itself.
+
+        ⚑ A whole-box resolve cannot reach here — it refuses at the fold — so the
+        narrow snapshot is the only way to hand this function an absent leaf at all.
+
+        MUTATION ANCHOR: delete the ``if collapsed is None`` guard in
+        ``_launch_bind_map`` and this fails with ``DID NOT RAISE``.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(
-            std, proj, extra_default_categories=_SUBSUMING,
+        narrow, _rec = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            include_base_families=False,
         )
-        assert _snapshot_assembly_bindings(snapshot) is None, "the collapse must refuse"
 
-        chosen = _launch_bind_map(snapshot, reconciled)
-        assert chosen == _bind_map_from_mounts(reconciled.mounts)
-        assert len(chosen) > 1, chosen
+        with pytest.raises(SettingsError, match="meta.assembly.bindings"):
+            _launch_bind_map(narrow)
 
     def test_both_shapes_emit_the_same_destinations(self, std, config, project_dir):
         """⚑ THE DESTS AGREE on the shipped fixture — so a difference below is REAL."""
@@ -558,7 +665,7 @@ class TestTheEmitterConsumesTheShape:
             "box.bindings.ro": {"~/masked/inside": ("/tmp",)},
             "box.masks": ["~/masked"],
         })
-        chosen = _launch_bind_map(snapshot, reconciled)
+        chosen = _launch_bind_map(snapshot)
 
         assert chosen is not None
         assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
@@ -626,7 +733,7 @@ class TestTheMaskArm:
         collapsed = _snapshot_assembly_bindings(snapshot)
         assert collapsed is not None, "the fixture must actually collapse"
 
-        assert _bind_map_masks(_launch_bind_map(snapshot, reconciled)) == [
+        assert _bind_map_masks(_launch_bind_map(snapshot)) == [
             "/home/agent/private",
         ]
         # …and it is the COLLAPSE's own answer, not the fallback's.
@@ -647,7 +754,7 @@ class TestTheMaskArm:
             "box.masks": ["~/private"],
         })
         assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
-        chosen = _launch_bind_map(snapshot, reconciled)
+        chosen = _launch_bind_map(snapshot)
 
         assert _bind_map_masks(chosen) == ["/home/agent/private"]
         assert "/home/agent/private/notes" not in self._mounted(chosen)
@@ -669,7 +776,7 @@ class TestTheMaskArm:
             "box.bindings.ro": {"~/contested": ("/tmp",)},
         })
         assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
-        chosen = _launch_bind_map(snapshot, reconciled)
+        chosen = _launch_bind_map(snapshot)
 
         assert _bind_map_masks(chosen) == []
         assert "/home/agent/contested" in self._mounted(chosen)
@@ -678,48 +785,27 @@ class TestTheMaskArm:
             e.box_dest for e in reconciled.mounts if e.category == "masks"
         ]
 
-    def test_a_mask_ABOVE_a_LATER_scopes_bind_refuses_so_BOTH_arms_fall_back(
+    def test_a_mask_ABOVE_a_LATER_scopes_bind_STOPS_THE_LAUNCH(
         self, std, config, project_dir,
     ):
-        """⚑ MEASURED, and the limit of what MIGRATION §2.27 can claim today.
+        """⚑ MEASURED, and it is what MIGRATION §2.27 can no longer leave unsaid.
 
         Whether a mask sweeps a bind nested under it depends on the SCOPE DIRECTION:
         the sweep only happens when the mask folds LAST. A mask whose scope strictly
         PRECEDES the bind's is a bind arriving INSIDE an existing mask, which the
-        collapse REFUSES — so the leaf stays absent, both arms fall back, and the box
-        gets the pre-collapse answer (mask AND bind). That is what keeps a refusal
-        costing nothing until step 2c, and it is why §2.27 is written about a mask and
-        a bind declared at the same scope.
+        collapse REFUSES.
+
+        🛑 INVERTED AT 2c. Until now that refusal left the leaf absent, both arms fell
+        back, and the box quietly received the pre-collapse answer (mask AND bind).
+        The refusal is the launch's now: this arrangement stops the box instead of
+        delivering a bind inside the void that is supposed to hide it.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
-            "agent.claude.masks": ["~/private"],
-            "box.bindings.ro": {"~/private/notes": ("/tmp",)},
-        })
-        assert _snapshot_assembly_bindings(snapshot) is None, "the collapse must refuse"
-        chosen = _launch_bind_map(snapshot, reconciled)
-
-        assert _bind_map_masks(chosen) == ["/home/agent/private"]
-        assert "/home/agent/private/notes" in self._mounted(chosen)
-
-    def test_a_REFUSED_collapse_takes_BOTH_arms_from_the_reconciled_rows(
-        self, std, config, project_dir,
-    ):
-        """The safety arm, on the mask side: a refusal must lose the box no mask.
-
-        RED if the arm is read from ``_snapshot_assembly_bindings`` directly instead
-        of from ``_launch_bind_map`` — the mask would vanish on a configuration the
-        live route still delivers.
-        """
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
-            **_SUBSUMING, "box.masks": ["~/private"],
-        })
-        assert _snapshot_assembly_bindings(snapshot) is None, "the collapse must refuse"
-
-        assert _bind_map_masks(_launch_bind_map(snapshot, reconciled)) == [
-            "/home/agent/private",
-        ]
+        with pytest.raises(SettingsError, match="sits inside the mask at"):
+            _resolve(std, proj, extra_default_categories={
+                "agent.claude.masks": ["~/private"],
+                "box.bindings.ro": {"~/private/notes": ("/tmp",)},
+            })
 
     def test_the_two_arms_PARTITION_one_map(self, tmp_path):
         """⚑ ONE VALUE, BOTH ARMS: mutate the map and BOTH answers move with it.
@@ -937,7 +1023,7 @@ class TestTheThreeMissingSourcePolicies:
         snapshot, reconciled = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {critical: ("/nonexistent/kanibako-test-source",)},
         })
-        chosen = _launch_bind_map(snapshot, reconciled)
+        chosen = _launch_bind_map(snapshot)
         assert chosen[critical].src == "/nonexistent/kanibako-test-source"
 
         with pytest.raises(BindingSourceError, match=re.escape(critical)):
@@ -1253,48 +1339,60 @@ class TestTheSeedApplierConsumesTheLeaf:
         _sync(std, proj, logger=logger)
         assert landed.read_text() == "STALE-MTIME BYTES"
 
-    def test_an_ABSENT_leaf_falls_back_to_the_RECONCILED_seed_winners(
+    def test_an_ABSENT_leaf_REFUSES_instead_of_falling_back(
         self, monkeypatch, std, config, project_dir, tmp_path,
     ):
-        """🛑 The safety arm, identical in reasoning to ``_launch_bind_map``'s.
+        """🛑 INVERTED AT 2c — and this arm was UNREACHABLE, not merely unused.
 
-        ABSENT (``None``) is *the collapse refused*, and until step 2c a refusal must
-        cost a brand-new box nothing. RED if the fallback is dropped: the create path
-        would seed an empty home and say nothing above ``debug``.
+        It read: an absent leaf falls back to the reconciled ``seeded`` winners, so a
+        refused fold costs a brand-new box nothing. The seed leaf rides its own gate
+        (2b-1) and every resolve writes it, so once refusals stopped being swallowed
+        the only way to reach ``None`` was to patch the reader — which is what this
+        test had to do to exercise it. A route only a monkeypatch can take is not a
+        route. What remains is the wiring invariant, named rather than silent: a create
+        that seeds an empty home must say so.
+
+        MUTATION ANCHOR: delete the ``if collapsed is None`` guard in
+        ``_launch_seed_list`` and this fails with ``DID NOT RAISE``.
         """
         monkeypatch.setattr(
             "kanibako.commands.start._snapshot_assembly_seeded", lambda _snap: None,
         )
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        self._seed(
-            std, proj, self._two_layers_at_one_dest(tmp_path),
-        )
-        landed = proj.shell_path / "x"
 
-        assert (landed / "only-first.txt").read_text() == "first"
-        assert (landed / "shared.txt").read_text() == "second"
+        with pytest.raises(SettingsError, match="meta.assembly.seeded"):
+            self._seed(std, proj, self._two_layers_at_one_dest(tmp_path))
 
-    def test_the_snapshot_reader_tells_ABSENT_from_EMPTY(
-        self, std, config, project_dir, tmp_path,
+        assert not (proj.shell_path / "x").exists()
+
+    def test_EVERY_resolve_writes_the_seed_leaf_so_the_consumer_never_guesses(
+        self, std, config, project_dir,
     ):
-        """``None`` vs ``[]`` is the data here — collapsing them seeds nothing, silently."""
+        """🛑 REWRITTEN AT 2c: ABSENT is no longer a state a resolve can produce.
+
+        This read ``_snapshot_assembly_seeded(refused) is None`` against a seed dest
+        outside home — the arm that routed the reconciled fallback. That refusal raises
+        now, so the leaf's ``None`` means only "this snapshot was never resolved", and
+        the property worth pinning is the one 2b-1 built: the seed leaf rides its OWN
+        gate, so even a NARROW resolve — the create-side seed path, which has no home
+        bind and can assemble nothing — still gets a list rather than a hole.
+
+        MUTATION ANCHOR: gate the seed leaf on ``home_bind`` (move its insert below the
+        ``if home_bind is None: return``) and the narrow read comes back ``None``.
+        """
         from kanibako.commands.start import _snapshot_assembly_seeded
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        src = tmp_path / "seedme"
-        src.write_text("x")
-        refused, _rec = _resolve(std, proj, extra_default_categories={
-            "box.seeded": {"/etc/outside": (str(src),)},
-        })
-        empty, _rec = _resolve_launch_snapshot(
+        narrow, _rec = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
         )
+        whole_box, _rec = _resolve(std, proj)
 
-        assert _snapshot_assembly_seeded(refused) is None
-        assert _snapshot_assembly_seeded(empty) == []
+        assert _snapshot_assembly_seeded(narrow) == []
+        assert _snapshot_assembly_seeded(whole_box) is not None
 
     def test_the_snapshot_reader_returns_a_copy_not_the_live_node(
         self, std, config, project_dir, tmp_path,
@@ -1403,6 +1501,71 @@ class TestTheSyncApplierConsumesTheLeaf:
         )
 
         assert landed.read_text() == "BOX BYTES"
+
+    def test_NO_synced_declaration_copies_nothing(
+        self, std, config, project_dir,
+    ):
+        """ADDITIVE: an empty sync arm is a no-op, not an empty-list special case.
+
+        ⚑ MOVED HERE AT 2c from ``test_start.TestApplySyncedCopies``, whose whole class
+        drove a NARROW resolve and therefore exercised the reconciled fallback arm that
+        the cutover deleted. The behaviour is unchanged; what changed is that it is now
+        asserted against the route the box actually takes.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        before = sorted(p.name for p in proj.shell_path.iterdir())
+
+        _sync(std, proj, logger=logging.getLogger("sync-consumer"))
+
+        assert sorted(p.name for p in proj.shell_path.iterdir()) == before
+
+    def test_a_MISSING_host_source_is_skipped_rather_than_raising(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """A declared source that is not on disk costs the launch nothing.
+
+        ⚑ MOVED HERE AT 2c from ``test_start.TestApplySyncedCopies`` (see above). A
+        sync source can legitimately be absent — a credential the host has not written
+        yet — and the pass must step over it, not stop the box.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        missing = tmp_path / "nope"
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={"box.synced": {"~/gone": (str(missing),)}},
+        )
+
+        assert not (proj.shell_path / "gone").exists()
+
+    def test_the_MTIME_GATE_leaves_a_destination_newer_than_its_source_alone(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The LAUNCH pass is gated; an unchanged source is not recopied.
+
+        ⚑ MOVED HERE AT 2c from ``test_start.TestApplySyncedCopies`` (see above).
+        ⚑⚑ THE ``os.utime`` IS THE TEST: without it the source is the newer file, the
+        copy happens, and the assertion below would be pinning nothing.
+        🛑 This is the LAUNCH refresh (``gated=True``). The CREATE-time write is
+        ungated by ruling and must NOT be made to share this answer.
+        """
+        import os
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        src = tmp_path / "cred.txt"
+        src.write_text("old")
+        landed = proj.shell_path / "cred.txt"
+        landed.parent.mkdir(parents=True, exist_ok=True)
+        landed.write_text("newer")
+        os.utime(src, (1000, 1000))
+        os.utime(landed, (2000, 2000))
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={"box.synced": {"~/cred.txt": (str(src),)}},
+        )
+
+        assert landed.read_text() == "newer"
 
     def test_a_dest_inside_a_NON_HOME_bind_lands_in_THAT_BINDS_SOURCE(
         self, std, config, project_dir, tmp_path,
@@ -1540,14 +1703,19 @@ class TestTheSyncApplierConsumesTheLeaf:
             r.getMessage() for r in caplog.records
         ]
 
-    def test_an_ABSENT_leaf_falls_back_to_the_RECONCILED_synced_winners(
+    def test_an_ABSENT_leaf_REFUSES_instead_of_falling_back(
         self, monkeypatch, std, config, project_dir, tmp_path,
     ):
-        """🛑 The safety arm — the collapse REFUSES more configurations than the live route.
+        """🛑 INVERTED AT 2c — the safety arm this asserted is gone.
 
-        ABSENT (``None``) means *the collapse refused*, and until step 2c a refusal
-        must cost the box nothing. RED if the fallback is dropped: a box whose config
-        the fold rejects would silently stop receiving its credentials, at ``debug``.
+        It read: an absent leaf falls back to the reconciled ``synced`` winners, so a
+        refused fold costs the box nothing. The fold's refusals are the launch's now,
+        and the arm went with the swallow; what is left is the wiring invariant, which
+        must be a NAMED error rather than a silent empty sync list.
+
+        MUTATION ANCHOR: delete the ``if collapsed is None`` guard in
+        ``_launch_synced_list`` and this fails with ``DID NOT RAISE`` — and the sync
+        would silently deliver nothing.
         """
         monkeypatch.setattr(
             "kanibako.commands.start._snapshot_assembly_synced", lambda _snap: None,
@@ -1556,36 +1724,36 @@ class TestTheSyncApplierConsumesTheLeaf:
         src.write_text("token")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
 
-        _sync(
-            std, proj, logger=logging.getLogger("sync-consumer"),
-            extra_default_categories={"box.synced": {"~/cred.txt": (str(src),)}},
-        )
+        with pytest.raises(SettingsError, match="meta.assembly.synced"):
+            _sync(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={"box.synced": {"~/cred.txt": (str(src),)}},
+            )
 
-        assert (proj.shell_path / "cred.txt").read_text() == "token"
+        assert not (proj.shell_path / "cred.txt").exists()
 
-    def test_the_FALLBACK_applies_SYNCED_rows_and_NEVER_SEEDED_ONES(
-        self, monkeypatch, std, config, project_dir, tmp_path,
+    def test_the_sync_pass_applies_SYNCED_rows_AND_NEVER_SEEDED_ONES(
+        self, std, config, project_dir, tmp_path,
     ):
-        """🛑🛑 WHY THE CATEGORY FILTER SURVIVES IN THE FALLBACK ARM.
+        """🛑🛑 THE PROPERTY OUTLIVED THE FILTER THAT USED TO CARRY IT.
 
-        ``reconciled.copies`` is ONE list holding BOTH copy categories, so the arm
-        that reads it must still say which half it wants. The leaf does not — there
-        are two leaves — but deleting the test outright, as the seed switch could,
-        would apply every ``seeded`` row here as an OVERWRITE, on EVERY launch, over
-        content the box owns.
+        ``reconciled.copies`` was ONE list holding BOTH copy categories, so the
+        fallback arm needed a ``category == "synced"`` test to say which half it
+        wanted. The arm is gone at 2c and the filter with it — the two categories are
+        two LEAVES now, and this pass reads one of them. That makes the property
+        structural rather than enforced, which is exactly when a test earns its keep:
+        it is the thing that goes RED if the consumer is ever pointed at the wrong
+        leaf, and nothing about the types would stop that.
 
         ⚑⚑ THE ``os.utime`` IS THE TEST. Without it the box's own file is the newer
         one, ``_synced_uptodate`` skips the copy, and this passes against no rule at
-        all — MEASURED: the mutation below went GREEN on the first form of this test.
+        all — MEASURED: the mutation went GREEN on the first form of this test.
 
-        MUTATION-PROVED against removing ``row.category == "synced"`` from
-        ``_launch_synced_list``: ``~/owned.txt`` is clobbered back to ``SEED``.
+        MUTATION-PROVED against pointing ``_launch_synced_list`` at
+        ``_snapshot_assembly_seeded``: ``~/owned.txt`` is clobbered back to ``SEED``.
         """
         import os
 
-        monkeypatch.setattr(
-            "kanibako.commands.start._snapshot_assembly_synced", lambda _snap: None,
-        )
         seed_src = tmp_path / "seed.txt"
         seed_src.write_text("SEED")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
@@ -1643,12 +1811,15 @@ class TestTheSyncApplierConsumesTheLeaf:
         therefore the guard — every input REQUIRED, keyword-only, and none of them
         nameable at the site this pass used to occupy.
 
-        RED the moment any of the five grows a default (``= None`` most of all,
+        RED the moment any of the four grows a default (``= None`` most of all,
         which is how this becomes a silent no-delivery again).
 
         ⚑ ``skip_if`` JOINED THEM 2026-08-11 and is required for a DIFFERENT reason:
         the launch refresh and the once-at-create write are two passes with two
         answers, and a default would silently hand one of them the other's.
+
+        ⚑ ``reconciled`` LEFT THEM at cutover 2c: it was read only by the sync list's
+        fallback arm, and an input nothing reads cannot make a mis-placed call fail.
         """
         import inspect
 
@@ -1656,9 +1827,7 @@ class TestTheSyncApplierConsumesTheLeaf:
 
         params = inspect.signature(_apply_synced_copies).parameters
 
-        assert list(params) == [
-            "snapshot", "reconciled", "bindings", "logger", "skip_if",
-        ]
+        assert list(params) == ["snapshot", "bindings", "logger", "skip_if"]
         assert all(
             p.kind is inspect.Parameter.KEYWORD_ONLY for p in params.values()
         ), {n: str(p.kind) for n, p in params.items()}

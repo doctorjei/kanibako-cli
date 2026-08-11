@@ -217,7 +217,20 @@ def _sweep(combined: CollapsedBindings, dest: str) -> None:
 def _refuse_bind_over_bind(
   combined: CollapsedBindings, dest: str, entry: BindEntry,
 ) -> None:
-  """A bind may NEST inside a bind - never take its point, never land above it."""
+  """A bind may NEST inside a bind - never take its point, never land above it.
+
+  ⚑ THE REMEDY SENTENCE IS THE ONE ALREADY PUBLISHED for the identical class of
+  refusal a layer up (``raise_binding_vs_binding``, MIGRATION.md §2.2), WORD FOR WORD
+  and deliberately: a user meeting one of these has met the other, and two spellings
+  of one cure send them to two mechanisms. ⚑ "Suppress" is a present-``None`` at the
+  key, resolved to an OMIT at cascade merge - it is NOT masking, and saying "suppress
+  one of them" without saying HOW was this message's defect until cutover 2c, when it
+  stopped being swallowed and became a user's only diagnostic.
+  🐞 BOARDED, out of 2c's scope: this still names no declaration KEY for either
+  participant and structurally cannot - ``build_store_shape`` drops
+  ``CategoryEntry.key_segments`` when it writes the arm, so naming them is a producer
+  shape change.
+  """
   subsumed = _binds_under(combined, dest)
   if not subsumed:
     return
@@ -226,8 +239,12 @@ def _refuse_bind_over_bind(
     f"the binding of {entry.src!r} at {dest!r} collides with the binding(s) already "
     f"collapsed at or inside it: {named}. A binding may nest INSIDE another, never "
     f"AT or OVER one - the mount order follows the path value, not the declaration "
-    f"order, so the subsumed binding could never be reached. Suppress one of them, "
-    f"or bind them at distinct destinations."
+    f"order, so the subsumed binding could never be reached. To change what occupies "
+    f"a destination you must SUPPRESS the entry you do not want and then declare the "
+    f"one you do. An override is not enough: these are two different KEYS, so both "
+    f"survive the cascade. Set the unwanted key to null in the settings file for its "
+    f"scope (a file may write its own scope and the scopes it contains). Either "
+    f"declaration may be the one you keep."
   )
 
 

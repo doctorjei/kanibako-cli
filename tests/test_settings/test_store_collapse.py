@@ -117,6 +117,38 @@ class TestHomeIsPidZero:
     with pytest.raises(SettingsError, match=r"'/host/store/box/home'"):
       collapse(box=shape(rw={"~": BindEntry("/h/other", "Z,U")}))
 
+  def test_the_refusal_PRESCRIBES_THE_SAME_REMEDY_THE_SIBLING_PUBLISHES(self):
+    """⚑⚑ CUTOVER 2c — the wording is load-bearing and NOTHING ELSE PINS IT.
+
+    Until 2c every one of these refusals was swallowed at ``debug``; the message is a
+    user's ONLY diagnostic now. It used to end "Suppress one of them, or bind them at
+    distinct destinations" — two paths, no key, and no statement of what "suppress"
+    means. The identical class of refusal a layer up
+    (``settings_categories.raise_binding_vs_binding``) already publishes the correct
+    remedy, and MIGRATION.md §2.2 ships it verbatim, so this says the same thing in the
+    same words: one cure, one mechanism.
+
+    🛑 The prefix (``COLLIDES``) was the only thing any test pinned, which meant the
+    remedy could be reworded — or made wrong again — with the suite green.
+
+    ⚑ "Suppress" is a present-``None`` at the key, resolved to an OMIT at cascade
+    merge. It is NOT masking, and a scope clause about masks would send the user to the
+    wrong mechanism (that error was made once and caught in review).
+    """
+    with pytest.raises(SettingsError) as excinfo:
+      collapse(box=shape(rw={"~": BindEntry("/h/other", "Z,U")}))
+
+    message = str(excinfo.value)
+    for clause in (
+      "you must SUPPRESS the entry you do not want and then declare the one you do",
+      "An override is not enough: these are two different KEYS, so both survive the "
+      "cascade",
+      "Set the unwanted key to null in the settings file for its scope",
+      "a file may write its own scope and the scopes it contains",
+    ):
+      assert clause in message, message
+    assert "mask" not in message.lower(), message
+
   def test_a_bind_ABOVE_home_is_refused(self):
     # ⚑ "Nothing may subsume home" — collapse DESIGN §0.2 states it outright
     # ("/home is SAME-or-PARENT ⇒ ERROR") and says it falls out of the EXISTING

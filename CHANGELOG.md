@@ -80,6 +80,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A mount set that cannot be assembled now stops the launch instead of being quietly abandoned.**
+  A box's mounts are assembled by folding every scope's declarations over the box home in scope
+  order, and that fold has always had rules about what an arrangement may be: a binding may nest
+  inside another but not take its point or sit above it; a binding may not sit inside a mask; a mask
+  may not land on another mask, nor at or above home; a `seeded` destination must be inside home; a
+  `synced` entry may not take a binding's exact destination; and a binding's options may not
+  contradict its arm. Until now, breaking one of those abandoned the fold silently and the launch
+  fell back to the older mount-resolution route — so the rule was not a rule, and which mount set the
+  box received depended on which route ran. Each of them is now a launch error naming the
+  participants and the cure. **A default install cannot reach any of them**: every one requires a
+  binding, mask, seed or sync entry you wrote yourself. `kanibako box show --effective` reports the
+  same refusal without starting anything. Relatedly, a box must now have exactly one binding at its
+  home destination — home is bound by default, and suppressing that key (or declaring a second
+  binding there) refuses rather than producing a box with no floor. The refusal for two bindings at
+  one destination also states the cure the same way its sibling does — suppress the entry you do not
+  want, since an override is not enough. See [MIGRATION.md](MIGRATION.md) §2.31.
+
 - **A mask now hides the binds nested under it.** A box's mounts are assembled by folding every
   scope's declarations over the box home in scope order, and in that fold a `masks` entry clears
   everything at or inside its destination — which is what a mask means. Until now a bind declared

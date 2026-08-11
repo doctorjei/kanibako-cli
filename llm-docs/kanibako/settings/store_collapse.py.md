@@ -318,6 +318,24 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   naming every colliding dest with the source bound there. It cannot reuse
   `settings_categories.raise_binding_vs_binding`: that one is written against `CategoryEntry`
   objects, and by here the entries are gone — a dest, a source and a mode are all that is left.
+
+  ⚑⚑ **Its REMEDY sentence is `raise_binding_vs_binding`'s, word for word** (and MIGRATION.md §2.2
+  ships that text): suppress the entry you do not want, then declare the one you do; an override is
+  not enough, because these are two different keys and both survive the cascade; set the unwanted key
+  to null in the settings file for its scope. It read *"Suppress one of them, or bind them at
+  distinct destinations"* until cutover 2c — two paths, no key, and no statement of what "suppress"
+  means. That was invisible while the wiring swallowed every refusal at `debug`; the moment 2c made
+  refusals fatal, this became a user's ONLY diagnostic for the arrangement. A user who meets one of
+  these has met the other, so two spellings of one cure would send them to two mechanisms.
+
+  ⚑ **"Suppress" is a present-`None` at the key**, resolved to an OMIT at cascade merge, entirely
+  upstream of this module. It is NOT masking, and a scope clause about masks would send the user to
+  the wrong mechanism.
+
+  🐞 **BOARDED, not 2c's:** the message still names no declaration KEY for either participant and
+  structurally cannot — `build_store_shape` drops `CategoryEntry.key_segments` when it writes the
+  arm, so naming them is a producer-shape change. Its sibling one layer up publishes keys, the owning
+  scope and a copy-pasteable YAML block; this one publishes dests and sources.
 * **bind under a mask** — names the mask that would swallow it.
 * **mask on a mask** — names every mask it lands on or inside.
 * **mask over home** — names the offending dest and home's own, for a mask at home's point or above

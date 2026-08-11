@@ -75,12 +75,20 @@ the emitter an already depth-sorted list, so the emitter sorts on the same key
 (`settings_categories.path_depth`, made public for this second consumer rather than re-spelled) and
 podman still receives shallow-first, deepest-wins.
 
-### The FALLBACK, and when it dies
+### The FALLBACK — DEAD AT CUTOVER 2c
 
-`_launch_bind_map` reads the leaf and falls back to the reconciled rows when it is ABSENT. That is not
-a preference between routes: the collapse refuses configurations the live route accepts and leaves all
-three leaves unwritten, and until step 2c that refusal must reach nobody. **The fallback and the
-`SettingsError` swallow in `_install_assembly_collapse` come out together.**
+`_launch_bind_map` read the leaf and fell back to the reconciled rows when it was ABSENT. That was not
+a preference between routes: the collapse refuses configurations the live route accepts and left all
+three leaves unwritten, so until step 2c a refusal had to reach nobody. **The fallback and the
+`SettingsError` swallow in `_install_assembly_collapse` came out together, at 2c**, and the three
+sibling arms (`_launch_seed_list`'s, `_launch_synced_list`'s, and the `category == "synced"` filter
+that only the synced fallback needed) went with them.
+
+What replaced each is a NAMED `SettingsError` rather than a `None`: the readers still return an
+option, and each consumer refuses it. That is a WIRING invariant, not a config diagnostic — a
+whole-box resolve refuses at the fold (below) long before a consumer could see an absent leaf, so the
+only way to reach these is to hand a consumer a narrow snapshot. Stating it is what keeps the failure
+a `KanibakoError` instead of an `AttributeError` on `None.items()` inside the emitter.
 
 ⚑ **The step-2c precondition, measured and then CLOSED:** `start_mocks` stubbed
 `_resolve_launch_snapshot` with a category set carrying no home bind, and — the half that a reading of
@@ -198,9 +206,9 @@ seeds the moment the create path reads this leaf — the same class of latent ha
 the credential side. A SEED-ARM refusal (a seed outside home) is different: that leaf did not fold,
 so nothing is written at all.
 
-⚑ The `SettingsError` swallow itself is UNCHANGED in kind — still a `debug` log, still never fails a
-launch. Only its blast radius narrowed to the leaves each raise actually invalidates. Turning it
-into a hard error is step 2c.
+⚑ The `SettingsError` swallow is GONE (cutover 2c). It was a `debug` log that never failed a launch;
+2b-1 narrowed its blast radius to the leaves each raise actually invalidates, and 2c removed it
+outright. A fold that refuses now raises out of `_resolve_launch_snapshot`.
 
 ⚑ `collapse_store_shapes` recomputes the seed list in the home branch and the result is discarded.
 That is deliberate: it is the same pure concatenation over the same shapes, so it cannot differ, and
@@ -210,26 +218,39 @@ one implementation of the seed rule is worth more than one saved traversal.
 UNTOUCHED. Re-pointing it at the ratified `meta.box.home` key binds home on every launch and needs a
 real-podman e2e; it rides with the cutover.
 
-### A collapse refusal MUST NOT fail a launch
+### A collapse refusal IS the launch's, as of cutover 2c
+
+🛑 **THIS SECTION USED TO READ "A collapse refusal MUST NOT fail a launch". THAT WAS TRUE UNTIL 2c
+AND IS THE OPPOSITE OF THE RULE NOW.** Kept, inverted in place, because the reasoning for the old
+state is what explains the new one.
 
 The collapse enforces refusals the shipped route does not: a bind may not subsume a bind, nor sit
-inside a mask, and a copied DIRECTORY may not take a mask's exact point. Today's
-`reconcile_categories` permits nested binds — it depth-sorts them and errors only on two concrete
-declarations at one IDENTICAL dest — so **configurations exist that launch fine and make the
-collapse raise.**
+inside a mask, a mask may not take another mask's point nor land at or above home, a seed may not
+land outside home, a sync may not take a bind's exact point, and a bind's options may not contradict
+its arm. `reconcile_categories` permits nested binds — it depth-sorts them and errors only on two
+concrete declarations at one IDENTICAL dest — so **configurations exist that used to launch fine and
+make the collapse raise.** That is the tightening, and it is what CHANGELOG + MIGRATION §2.31 owe.
 
-Those refusals are intended; enforcing them is simply premature. So `SettingsError` out of the
-collapse is caught at this one seam: all three leaves stay ABSENT (the state the manifest already names
-for them — *"declared so the closed keyspace admits the name"*), the launch continues on the
-unchanged live path, and the cause is logged.
+Those refusals were always intended; enforcing them was premature while both routes ran. So until 2c
+`SettingsError` out of the collapse was caught at this one seam, at `debug`, and every consumer fell
+back. **2c removed the catch.** A refusal now propagates out of `_resolve_launch_snapshot` and exits
+through `cli.main`'s `except KanibakoError` arm as `Error: …`, rc 1, no traceback — so no new
+try/except is needed at the launch site, and `box show --effective` (which already catches
+`KanibakoError`) stays safe as the "check before you hit it" path.
 
-**The log level is `debug`, deliberately.** A `warning` would tell a user their configuration has a
-problem when it does not: it is legal on the route that ships, and the computation that rejected it
-changes nothing they can observe. The message is for whoever is building the cutover.
+⚑ **The one refusal 2c ADDED is this seam's own:** a whole-box resolve with `len(at_home) != 1` is
+refused by name (`_refuse_without_one_home`). Home is pid 0, the base plate every other binding folds
+over; zero leaves the box nothing to build on, two leave it ambiguous, and both are ONE spec
+violation, so one guard covers both. Without it, deleting the fallback would have turned an invalid
+configuration into an `AttributeError` on `None.items()` inside the emitter instead of a
+`KanibakoError`. 🛑 The NARROW path keeps its early return — it carries no core family, has no home
+bind by construction, and asks only for the seed arm — which is why the guard is gated on the
+resolve's own `include_base_families`, forwarded as `whole_box` rather than re-derived.
 
-⚑ A partial write is worse than no write, which is why all three leaves are installed only AFTER the
-collapse returns — a half-built `meta.assembly.bindings` with no `copies` beside it would describe a
-box nothing could assemble.
+⚑ A partial write is worse than no write, which is why the two leaves that DESCRIBE an assembly are
+installed only after the fold returns — a half-built `meta.assembly.bindings` with no sync list
+beside it would describe a box nothing could assemble. The SEED leaf is not part of that description
+and rides its own gate (2b-1).
 
 ---
 
@@ -305,10 +326,12 @@ assembly seam, `_emit_category_mounts` takes the binds and `_bind_map_masks` tak
 
 ### Why one VALUE and not merely one function
 
-`_launch_bind_map` still falls back to the reconciled rows while the leaf is absent (see "The
-FALLBACK, and when it dies"), so calling it twice is not the same as calling it once: nothing
-guarantees two reads answer from the same arm, and the failure would be silent and per-launch.
-Reading once makes the two arms agree by CONSTRUCTION rather than by both being careful (P3).
+`_launch_bind_map` had a second arm when this landed — it fell back to the reconciled rows while the
+leaf was absent — so calling it twice was not the same as calling it once: nothing guaranteed two
+reads answered from the same arm, and the failure would have been silent and per-launch. 2c deleted
+that arm, which removes the *divergence* hazard but not the reason: reading once makes the two arms
+agree by CONSTRUCTION rather than by both being careful (P3), and it is one read of one snapshot
+rather than two.
 
 ### What this changes for a box
 
@@ -321,9 +344,10 @@ two disagree, the map now decides both halves:
   point. The reconcile resolves that same collision the other way (§0 row 2: a mask OVERRIDES a
   binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a
   `--mount type=tmpfs` at one destination — where it now emits the bind alone;
-* a mask **at or above home**, or **on another mask**, is REFUSED by the collapse, which leaves the
-  leaf absent and drops the whole launch to the fallback: masks and binds both come from the
-  reconciled rows there, exactly as before. Nothing about a refusal is mask-specific.
+* a mask **at or above home**, or **on another mask**, is REFUSED by the collapse. Until 2c that left
+  the leaf absent and dropped the whole launch to the fallback, so masks and binds both came from the
+  reconciled rows and the box started; since 2c the refusal STOPS THE LAUNCH by name. Nothing about a
+  refusal is mask-specific — this is the same tightening every collapse refusal got.
 
 ⚑ The dests are the map's KEYS, so they are `normalize_bind_dest`-spelled (`/home/agent/x`, never
 `~/x`) and the arm is depth-sorted on `path_depth` — the same key the emitter sorts on, so the tmpfs
@@ -385,17 +409,26 @@ first-appearance order. Nothing sorts and nothing keys a dest to a single row.
 template trio down to its last layer.** That is why the duplicate-dest case is pinned directly, and
 mutation-proved against exactly that arm.
 
-### The FALLBACK, and when it dies
+### The FALLBACK — DEAD AT CUTOVER 2c, and it was UNREACHABLE by then
 
-Identical in shape and in reasoning to `_launch_bind_map`'s: `_launch_seed_list` reads the leaf, and
-falls back to the reconciled `seeded` winners when it is ABSENT. A refusal must reach nobody until
-step 2c. **It is also the one arm that can still produce a seed row the collapse would have refused**
-— a dest outside the guest home — which is why the applier keeps its outside-home guard even though
-`_refuse_seed_outside_home` makes that guard unreachable from the leaf.
+`_launch_seed_list` read the leaf and fell back to the reconciled `seeded` winners when it was
+ABSENT, identical in shape and reasoning to `_launch_bind_map`'s, because a refusal had to reach
+nobody until step 2c.
 
-⚑ **ABSENT ≠ EMPTY, and here the distinction is the data.** `_snapshot_assembly_seeded` returns
-`None` for absent and `[]` for empty. Collapsing the two would make a refusing configuration seed a
-brand-new box with NOTHING, silently, at `debug`.
+🛑 **By the time 2c arrived that arm could not be taken at all.** The seed leaf rides its OWN gate
+(2b-1) and is written by EVERY resolve, narrow ones included, so the only route to an absent leaf was
+a fold that refused — and 2c made a refusal raise. The one test exercising the arm had to monkeypatch
+the reader to reach it, which is the tell: a route only a monkeypatch can take is not a route. It
+came out with its two siblings.
+
+⚑ **The applier keeps its outside-home guard regardless.** That guard is about DELIVERING a dest,
+which is its own concern; it was never a consequence of the arm being able to hand it a row
+`_refuse_seed_outside_home` would have rejected.
+
+⚑ **ABSENT ≠ EMPTY, and the distinction is still the data.** `_snapshot_assembly_seeded` returns
+`None` for absent and `[]` for empty, and `[]` is a real answer a narrow resolve produces. What
+changed is what `None` MEANS: not "the collapse refused" (a refusal raises now) but "this snapshot
+was never resolved", which is why the consumer refuses it by name instead of seeding nothing.
 
 ### Why the create path could not have been pointed here before 2b-1
 
@@ -426,7 +459,7 @@ without a bind map).
 So the pass moved **below the main resolve and below the emit**, and consumes them:
 
 ```
-_apply_synced_copies(snapshot=_snapshot, reconciled=reconciled, bindings=launch_binds, logger=logger)
+_apply_synced_copies(snapshot=_snapshot, bindings=launch_binds, logger=logger, skip_if=...)
 ```
 
 ⚑ **The three inputs are ONE collapse.** `collapse_store_shapes` folds the sync list *against* the
@@ -509,19 +542,20 @@ dests does not move.
 ⚑ **There is no seed analogue and there must not be:** a `seeded` dest's repeats are LAYERS that all
 apply (the §2a template trio).
 
-### 🛑 The category filter SURVIVES, in the fallback arm only
+### 🛑 The category filter outlived its arm by exactly one step, then went with it
 
-`_launch_synced_list` mirrors `_launch_seed_list`, and the `row.category == "synced"` test inside it
-is **not** a leftover from the pre-cutover route. `reconciled.copies` is ONE list holding BOTH copy
-categories, so the arm that reads it must still say which half it wants. The seed switch could delete
-its filter because it stopped reading that list; this one still reads it on the fallback path.
-**Deleting it applies every `seeded` row as an OVERWRITE, on every launch, over content the box owns**
-— mutation-proved: the box's own file is clobbered back to the seed's bytes.
+`_launch_synced_list` mirrored `_launch_seed_list`, and the `row.category == "synced"` test inside it
+was **not** a leftover from the pre-cutover route: `reconciled.copies` is ONE list holding BOTH copy
+categories, so the arm reading it had to say which half it wanted. The seed switch could delete its
+filter at 2b-2 because it stopped reading that list; this one still read it on the fallback path, so
+the filter was kept alive one step longer — deleting it there would have applied every `seeded` row
+as an OVERWRITE, on every launch, over content the box owns.
 
-The fallback itself is reachable today: `_install_assembly_collapse` writes neither the bindings leaf
-nor this one when the fold refuses or there is no single home bind, and swallows the cause at `debug`.
-**The arm and the filter inside it come out at step 2c with that swallow**, together with
-`_launch_bind_map`'s and `_launch_seed_list`'s.
+**Both came out at 2c**, with the swallow that made the fallback necessary, and together with
+`_launch_bind_map`'s and `_launch_seed_list`'s arms. The property the filter carried is now
+STRUCTURAL: there are two leaves and this consumer reads one of them. That is exactly when a test
+earns its keep — nothing in the types stops a future edit pointing the consumer at
+`_snapshot_assembly_seeded`, so `test_start_assembly` pins it, mutation-proved against that edit.
 
 ---
 

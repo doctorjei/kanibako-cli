@@ -709,7 +709,7 @@ def start_mocks():
                 rec = reconcile_categories(
                     delivered, deliver_creds=_deliver_creds,
                 )
-                _install_assembly_collapse(snap, delivered)
+                _install_assembly_collapse(snap, delivered, whole_box=True)
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
                 # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and
                 # emits the §0 row-5 collision warnings. This stub does NEITHER,
