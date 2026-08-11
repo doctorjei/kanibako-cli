@@ -80,6 +80,13 @@ def opt_tokens(opts: str | None) -> list[str]:
   return [token.strip() for token in (opts or "").split(",") if token.strip()]
 
 
+def is_mask(bind: CollapsedBind) -> bool:
+  """Is *bind* a MASK? :data:`MASK`'s own rule, spelled ONCE for both halves of the split."""
+  # ⚑ BOTH sides of the delivery split read it: the emitter skips what it answers
+  # True for, the tmpfs arm takes exactly those. Two spellings would drift apart.
+  return bind.src is None
+
+
 def _collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   """Concatenate every scope's seed arm IN SCOPE ORDER - nothing arbitrates, nothing prunes."""
   copies: CollapsedCopies = []

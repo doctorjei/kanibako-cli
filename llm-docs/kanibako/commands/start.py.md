@@ -220,3 +220,44 @@ read BEFORE the rw guarantee-create.
 The image and helper resolves run with `include_base_families=False`, so they carry no canon floor —
 but they still read the user's cascade files, so a user-declared bind at a chapter dest reaches them
 too. A policy that varied by call site would decide one destination two ways.
+
+---
+
+## `_bind_map_masks` — the mask arm comes off the SAME map (cutover 2a-4)
+
+**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2.7 · collapse `DESIGN` §8.1a (a mask is a void).
+
+### What moved
+
+The launch's `tmpfs_masks` list was built from the RECONCILED rows
+(`[e.box_dest for e in reconciled.mounts if e.category == "masks"]`) while the bind mounts beside it
+already came from `meta.assembly.bindings`. Two arms of ONE delivery, off two different sources —
+the last half of the 2a divergence. The map already carries masks (a mask IS `CollapsedBind(None,
+None)`), so the arm is now the `is_mask` half of the same value: `launch_binds` is read ONCE at the
+assembly seam, `_emit_category_mounts` takes the binds and `_bind_map_masks` takes the masks.
+
+### Why one VALUE and not merely one function
+
+`_launch_bind_map` still falls back to the reconciled rows while the leaf is absent (see "The
+FALLBACK, and when it dies"), so calling it twice is not the same as calling it once: nothing
+guarantees two reads answer from the same arm, and the failure would be silent and per-launch.
+Reading once makes the two arms agree by CONSTRUCTION rather than by both being careful (P3).
+
+### What this changes for a box
+
+The collapse arbitrates masks against binds; the old mask arm did not arbitrate at all. Where the
+two disagree, the map now decides both halves:
+
+* a **bind nested under a mask** is swept, and the mask survives — already true of the bind arm
+  since 2a-2 (MIGRATION §2.27); the mask arm now agrees with it instead of being computed elsewhere;
+* a **bind at a mask's own destination**, declared in a LATER scope, sweeps the mask and takes the
+  point. The reconcile resolves that same collision the other way (§0 row 2: a mask OVERRIDES a
+  binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a
+  `--mount type=tmpfs` at one destination — where it now emits the bind alone;
+* a mask **at or above home**, or **on another mask**, is REFUSED by the collapse, which leaves the
+  leaf absent and drops the whole launch to the fallback: masks and binds both come from the
+  reconciled rows there, exactly as before. Nothing about a refusal is mask-specific.
+
+⚑ The dests are the map's KEYS, so they are `normalize_bind_dest`-spelled (`/home/agent/x`, never
+`~/x`) and the arm is depth-sorted on `path_depth` — the same key the emitter sorts on, so the tmpfs
+and the binds reach podman in one order.

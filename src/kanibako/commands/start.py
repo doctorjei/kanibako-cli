@@ -3774,10 +3774,13 @@ def _run_container(
         # binds, the agent's delivery binds, and any scoped bindings/caches/common),
         # emitted ONCE — from the COLLAPSE (cutover step 2a-2), which folds the four
         # scopes over the home foundation into one dest-keyed bind map.
-        # ``masks`` (tmpfs, no host source) is split out.  The channel side-effect
-        # (seeding the chat general/broadcast logs, §3c) is run explicitly — it was
-        # a side-effect of the retired ``_build_channel_mounts``.
+        # ⚑ ONE VALUE, BOTH ARMS (2a-4): the bind mounts and the tmpfs ``masks``
+        # are the two halves of ONE map, read ONCE here (llm-docs).
+        # The channel side-effect (seeding the chat general/broadcast logs, §3c) is
+        # run explicitly — it was a side-effect of the retired
+        # ``_build_channel_mounts``.
         _seed_channel_files(std, proj)
+        launch_binds = _launch_bind_map(_snapshot, reconciled)
         # ⚑ The missing-source policy is passed at EVERY call site, not just this
         # one: the narrow resolves read the user's cascade files too, so a policy
         # that varied by call site would decide one dest two ways.
@@ -3787,7 +3790,7 @@ def _run_container(
         # subtracted — must-exist wins its own dests outright.
         try:
             category_mounts = _emit_category_mounts(
-                _launch_bind_map(_snapshot, reconciled),
+                launch_binds,
                 label="category",
                 must_exist=critical_dests,
                 skip_if_absent=(
@@ -3816,14 +3819,12 @@ def _run_container(
             m for m in category_mounts if str(m.destination) in agent_dests
         ]
 
-        # Masks: the ``box.masks`` tmpfs mask LIST (the reconciled ``masks``
-        # winners).  There is NO default mask (the old ~/workspace/vault default
+        # Masks: the tmpfs mask dests, taken from the SAME map the mounts above
+        # came from.  There is NO default mask (the old ~/workspace/vault default
         # was dropped — the vault moved out of the workspace in 1.6.0); a box (or
         # any scope) may declare masks via ``box.masks`` / ``<scope>.masks``.  The
         # result drives runtime.run(tmpfs_masks=...) below.
-        tmpfs_masks = [
-            e.box_dest for e in reconciled.mounts if e.category == "masks"
-        ]
+        tmpfs_masks = _bind_map_masks(launch_binds)
 
         # Image sharing: mount host image storage read-only into child, routed
         # through the category resolver (Phase B, D-M8) instead of hardwired
@@ -6911,6 +6912,21 @@ def _launch_bind_map(snapshot, reconciled) -> "dict[str, object]":
     return _bind_map_from_mounts(reconciled.mounts)
 
 
+def _bind_map_masks(bindings) -> "list[str]":
+    """The map's MASK dests, depth-sorted — the other half of what the emitter skips.
+
+    ⚑ Hand it the SAME map object :func:`_emit_category_mounts` gets: one value, both
+    arms (llm-docs ``commands/start.py.md``).
+    """
+    from kanibako.settings.settings_categories import path_depth
+    from kanibako.settings.store_collapse import is_mask
+
+    return sorted(
+        (dest for dest, bind in bindings.items() if is_mask(bind)),
+        key=lambda dest: (path_depth(dest), dest),
+    )
+
+
 def _is_agent_delivery(entry) -> bool:
     """True for an AGENT-scope bind row — the agent's delivery binds (7a).
 
@@ -6963,6 +6979,7 @@ def _emit_category_mounts(
     from pathlib import Path as _Path
 
     from kanibako.settings.settings_categories import path_depth
+    from kanibako.settings.store_collapse import is_mask
     from kanibako.targets.base import Mount
 
     mounts: list = []
@@ -6972,8 +6989,8 @@ def _emit_category_mounts(
     for dest, bind in sorted(
         bindings.items(), key=lambda kv: (path_depth(kv[0]), kv[0]),
     ):
-        if bind.src is None:
-            continue  # a MASK: tmpfs, no host source; split into tmpfs_masks.
+        if is_mask(bind):
+            continue  # a MASK: tmpfs, no host source; _bind_map_masks takes it.
         src = _Path(bind.src)
         if not src.exists():
             # ⚑⚑ THE POLICY IS CONSULTED HERE, BEFORE THE rw GUARANTEE-CREATE

@@ -1330,6 +1330,28 @@ notes                                    (empty)
   delivery binds (its binary, launcher and shared install dir) included, where they used to be
   emitted ahead of everything else — so a nested mount always follows the mount it sits inside.
 
+**Scope direction decides it, and one arrangement is not enforced yet.** The fold applies each scope
+in turn — `system`, then `agent`, then `workset`, then `box` — and a mask clears what is already
+there. So the sweep above is what you get when the mask is declared at the **same scope as the bind
+or a more specific one**, which is the ordinary case (both in your box's settings file, or a box mask
+over a workset bind). The reverse — a mask at a *broader* scope than the bind nested inside it — is
+**unchanged for now**: that box still receives both the mask and the bind, exactly as before. Do not
+read that as a supported way to keep a bind inside a mask; it is the one arrangement kanibako does
+not yet assemble, and it will not keep working.
+
+**A mask and a bind at the SAME destination.** This is the other half of the same rule, and it moved:
+the declaration at the more specific scope takes the destination. A `box.bindings.ro` entry at the
+destination of a mask your agent or workset declares is now mounted there, where the mask used to win
+that destination outright and hide it. The masks a box receives are read off the assembled mount set,
+so a mask that lost its destination is not mounted over the bind that took it.
+
+```
+# agent.<agent>.masks: {~/contested: true}  +  box.bindings.ro.~/contested: /host/dir
+# before                                # now
+$ ls ~/contested                        $ ls ~/contested
+ (empty — the mask won)                  (the contents of /host/dir)
+```
+
 **Two cosmetic differences you may notice.** Read-write mounts now carry an explicit `rw` in their
 options (`Z,U,rw` where `podman inspect` used to show `Z,U`) — podman's default either way, so
 nothing about access changes. And the warning for a read-only bind dropped because its source is
@@ -1342,6 +1364,45 @@ guarantee half-kept, and which half you got depended on path depth. Assembling t
 once, in one place, is what makes "a mask is a void" a property of the result rather than a hope
 about ordering. This is the same correction as §2.24–§2.26, on the last axis where a mask could still
 be quietly defeated.
+
+### 2.28 A missing bind source is handled by destination, not by who declared it
+
+**What changed.** When a bind's host source does not exist at launch, kanibako has three answers:
+
+| what happens | which destinations |
+|---|---|
+| the launch stops with a clean error | the agent's own delivery binds — its binary, launcher and shared install dir |
+| the bind is dropped silently | the optional canon chapters, and the agent's best-effort shares |
+| the bind is dropped with a warning | everything else |
+
+Which answer a bind got used to depend on how it was **declared** rather than on where it lands: the
+agent's delivery binds were emitted separately, carrying their own rule, and the silent case was a
+flag on the declaration itself. The whole mount set is assembled in one place now (§2.27), so the
+answer is attached to the **destination** and applies to whichever declaration wins it — at any scope.
+
+**⚠️ This changes one case, and it is one you would have to have gone looking for:** a bind of your
+own at one of the agent's delivery destinations. Repointing `~/.local/bin/<agent>` (or the agent's
+launcher or install dir) at a source that is not there no longer warns and starts the box anyway —
+it stops the launch:
+
+```
+Error: <agent> mount source disappeared before launch: binding '/home/agent/.local/bin/<agent>'
+source missing: /your/path
+```
+
+**What you must do.**
+
+- **If you repoint one of the agent's delivery destinations**, make sure the source exists. That is
+  the same safe-fail the agent's own binds have always had — a box whose agent binary did not mount
+  is a box that cannot run its agent, and it is better to hear that than to be dropped into it.
+- **If you do not repoint them, nothing changes.** Every other destination keeps the behaviour it had:
+  a read-only bind with a missing source is dropped with a warning, a read-write one has its source
+  directory created.
+
+**Why.** The policy was never a fact about *who declared* a bind — it is a fact about *what lives at
+that destination*. Carrying it on the route meant one destination could be answered two ways
+depending on which emitter reached it, and it is exactly the destination the agent needs that must
+not be the one that degrades quietly.
 
 ---
 
