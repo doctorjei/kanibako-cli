@@ -1523,6 +1523,65 @@ and an optimisation was deciding which of two declared entries a box received. M
 its own destination once at creation fixes the assumption the check was built on, instead of deleting
 one of the user's entries to keep the assumption from being tested.
 
+### 2.31 A mount set that cannot be assembled now stops the launch
+
+**What changed.** A box's mounts are assembled by folding every scope's declarations over the box
+home in scope order (§2.27). That fold has always had rules about what an arrangement may be, and
+until now it applied them silently: when a configuration broke one, the fold was abandoned, the
+launch quietly fell back to the older mount-resolution route, and the box started anyway — usually
+with the arrangement you asked for, sometimes with an arrangement nobody asked for. **The fold's
+refusals now stop the launch, by name, with the reason.** Your files did not change; the rule did.
+
+**This cannot happen on a default install.** Every arrangement below requires a binding, mask, seed
+or sync entry that you wrote. Nothing kanibako ships declares one, in any box mode, with or without
+an agent.
+
+**The seven arrangements that now refuse:**
+
+- **A binding at or above another binding's destination.** A binding may nest INSIDE another; it may
+  not take another's exact destination, nor sit above one. Mount order follows the path, not the
+  order you declared things in, so the one underneath could never be reached.
+- **A binding inside a mask.** A mask is a void; a binding inside it would be swallowed. (A mask
+  INSIDE a binding is fine, and is what §2.27 describes.)
+- **A mask on another mask** — at its point or inside it. A void within a void hides nothing the
+  outer one is not hiding already.
+- **A mask at or above the box home.** Home is the foundation everything else folds over. A mask
+  there would leave the box with no home at all.
+- **A `seeded` entry with a destination outside the box home.** Seeds are copied into the home store
+  before any binding folds, so a destination outside it has nowhere to land. Give it a destination
+  inside home, deliver it as a binding, or declare it `synced` — which is not home-only (§2.29).
+- **A `synced` entry at a binding's exact destination.** A sync may land strictly INSIDE a binding
+  (§2.29); at its point it would replace the bound inode.
+- **A binding whose options contradict its arm.** `ro` in the options of a `bindings.rw` entry, or
+  `rw` in a `bindings.ro` one. The mode IS the arm — declare it in the arm that means it.
+
+**And one more, which is new rather than newly-enforced: a box must have exactly one binding at its
+home destination.** Home is bound by default. Suppressing that key, or declaring a second binding at
+the same place, now refuses instead of producing a box with no floor.
+
+**What you must do.** Nothing, unless you declare one of the arrangements above. To find out before
+you hit it, `kanibako box show --effective` resolves the same settings and reports the same refusal
+without starting anything.
+
+**The cure is the same one §2.2 describes**, and the message says so: SUPPRESS the entry you do not
+want and then declare the one you do. An override is not enough — these are two different keys, so
+both survive the cascade. Set the unwanted key to null in the settings file for its scope:
+
+```yaml
+box:
+  bindings:
+    ro:
+      "~/somewhere": null      # suppressed
+    rw:
+      "~/somewhere": ["/host/path"]
+```
+
+**Why.** A refusal that is not raised is a rule that is not enforced. The fold decides what the box
+receives; if it rejects an arrangement and the launch proceeds on a different route, then the rule
+the fold was applying was never a rule — and the box you get is decided by which route happened to
+run. Two of the arrangements above (a binding under a mask, a mask over home) produced a box that
+does not match any reading of the configuration. It is better to be told.
+
 ---
 
 ## 3. For plugin authors

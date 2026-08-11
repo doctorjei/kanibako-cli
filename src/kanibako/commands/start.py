@@ -3782,7 +3782,7 @@ def _run_container(
         # run explicitly — it was a side-effect of the retired
         # ``_build_channel_mounts``.
         _seed_channel_files(std, proj)
-        launch_binds = _launch_bind_map(_snapshot, reconciled)
+        launch_binds = _launch_bind_map(_snapshot)
         # ⚑ The missing-source policy is passed at EVERY call site, not just this
         # one: the narrow resolves read the user's cascade files too, so a policy
         # that varied by call site would decide one dest two ways.
@@ -3860,8 +3860,8 @@ def _run_container(
         # the CREATE-time sync (:func:`_sync_box_at_create`), so this compares against
         # the sync's own prior write rather than against whatever landed there first.
         _apply_synced_copies(
-            snapshot=_snapshot, reconciled=reconciled,
-            bindings=launch_binds, logger=logger, skip_if=_synced_uptodate,
+            snapshot=_snapshot, bindings=launch_binds,
+            logger=logger, skip_if=_synced_uptodate,
         )
 
         # Image sharing: mount host image storage read-only into child, routed
@@ -6724,7 +6724,10 @@ def _resolve_launch_snapshot(
     emit_collision_warnings(reconciled.warnings)
     # Roadmap step 6b: the COLLAPSE, folded and STORED. ⚑ Off the GATED list, the
     # same one the reconcile saw — the two must describe the same private box.
-    _install_assembly_collapse(snapshot, delivered)
+    # ⚑ Its refusals are THE LAUNCH'S now (cutover 2c) — they propagate from here.
+    _install_assembly_collapse(
+        snapshot, delivered, whole_box=include_base_families,
+    )
     return snapshot, reconciled
 
 
@@ -6831,62 +6834,105 @@ _ASSEMBLY_SEEDED: "tuple[str, ...]" = ("meta", "assembly", "seeded")
 _ASSEMBLY_SYNCED: "tuple[str, ...]" = ("meta", "assembly", "synced")
 
 
-def _install_assembly_collapse(snapshot, entries) -> None:
+def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     """Store the collapse at ``meta.assembly.*``, each leaf on ITS OWN gate — see llm-docs.
+
+    *whole_box* is the resolve's own ``include_base_families``, forwarded rather than
+    re-derived: a resolve that carries the base families is describing A BOX, and a box
+    without exactly one home binding is not a box (cutover 2c). A NARROW resolve carries
+    no core family, has no home bind by construction, and asks only for the seed arm —
+    so it keeps the early return.
+
+    ⚑ NOTHING IS SWALLOWED HERE ANY MORE. Until step 2c a ``SettingsError`` from the
+    fold was logged at ``debug`` and the leaves left absent, so a refusal reached
+    nobody and every consumer fell back to the reconciled rows. Both halves came out
+    together: the fold's refusals are now the launch's, and they exit through
+    ``cli.main``'s ``KanibakoError`` arm as ``Error: …`` with no traceback.
 
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
-    from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.settings_store import insert_segments
     from kanibako.settings.store_collapse import collapse_seeded, collapse_store_shapes
     from kanibako.settings.store_shape import build_store_shape_set
 
-    def refused(exc) -> None:
-        # The collapse REFUSES shapes the shipped route still accepts, and that
-        # tightening lands at step 2c, not here. Report it and leave the leaves it
-        # governs ABSENT — the state the manifest already names for them.
-        get_logger(__name__).debug("meta.assembly.* not folded: %s", exc)
-
+    if whole_box:
+        _refuse_without_one_home(entries)
     home_bind, folded = _split_home_bind(entries)
     # The SEED leaf is gated on NOTHING but its own arm (2b-1): home is pid 0 and
     # is seeded before any bind folds, so a resolve with no home bind — every
     # narrow one, including the CREATE-side seed resolve — still has a seed list.
-    try:
-        shapes = build_store_shape_set(folded)
-        seeded = collapse_seeded(shapes)
-    except SettingsError as exc:
-        refused(exc)
-        return
-    insert_segments(snapshot, _ASSEMBLY_SEEDED, seeded)
-    # The other two DESCRIBE AN ASSEMBLY, so both of the facts that belong to one
-    # gate them: a home to build on, and a fold that did not refuse.
+    shapes = build_store_shape_set(folded)
+    insert_segments(snapshot, _ASSEMBLY_SEEDED, collapse_seeded(shapes))
+    # The other two DESCRIBE AN ASSEMBLY, so the fact that belongs to one gates them:
+    # a home to build on. Above, a whole-box resolve has already REFUSED if it lacks
+    # that; what reaches this return is a narrow resolve, and only ever that.
     if home_bind is None:
         return
-    try:
-        # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation
-        # over the SAME shapes, so it cannot differ. One implementation beats one
-        # saved traversal.
-        collapsed = collapse_store_shapes(shapes, home_bind)
-    except SettingsError as exc:
-        refused(exc)
-        return
+    # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation over
+    # the SAME shapes, so it cannot differ. One implementation beats one saved
+    # traversal.
+    collapsed = collapse_store_shapes(shapes, home_bind)
     insert_segments(snapshot, _ASSEMBLY_BINDINGS, collapsed.bindings)
     insert_segments(snapshot, _ASSEMBLY_SYNCED, collapsed.synced)
 
 
-def _split_home_bind(entries):
-    """Lift the ONE home mount out of *entries* — home is pid 0 and folds alone (§2a)."""
+def _home_bind_entries(entries) -> list:
+    """The MOUNT entries landing AT the box home — the collapse's pid-0 candidates.
+
+    ⚑ ONE predicate, TWO askers (:func:`_split_home_bind` takes the home,
+    :func:`_refuse_without_one_home` counts it), so the fold and the refusal cannot
+    disagree about what "a home binding" is.
+    """
     from kanibako.settings.settings_categories import MOUNT
     from kanibako.settings.settings_resolve import normalize_bind_dest
-    from kanibako.settings.settings_store import BindEntry
     from kanibako.settings.store_collapse import HOME_DEST
 
-    at_home = [
+    return [
         entry for entry in entries
         if entry.delivery == MOUNT
         and entry.host_src is not None
         and normalize_bind_dest(entry.box_dest) == HOME_DEST
     ]
+
+
+def _refuse_without_one_home(entries) -> None:
+    """A box is assembled over EXACTLY ONE home binding — nothing may subsume pid 0.
+
+    ⚑ ONE guard for BOTH failures, because they are ONE spec violation: home is the
+    base plate, seeded before any bind folds, so zero home bindings leaves the box
+    nothing to build on and two leave it ambiguous. Suppressing the core home row is
+    spec-invalid by construction (there is already a binding there), and so is
+    declaring a second one.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.store_collapse import HOME_DEST
+
+    at_home = _home_bind_entries(entries)
+    if len(at_home) == 1:
+        return
+    if not at_home:
+        raise SettingsError(
+            f"this box has no binding at its home destination {HOME_DEST!r}. Home is "
+            f"the foundation every other binding folds over, so a box cannot be "
+            f"assembled without it. It is bound by default; a settings file that "
+            f"suppresses that key (a null at the home destination) takes the box's "
+            f"floor away. Remove the suppression, or bind a source of your own there."
+        )
+    named = ", ".join(f"{e.key!r} ({e.host_src!r})" for e in at_home)
+    raise SettingsError(
+        f"{len(at_home)} bindings target the box home destination {HOME_DEST!r}: "
+        f"{named}. Home is bound exactly once — it is the foundation the rest of the "
+        f"mount set folds over, and two claims on it leave no way to say which box "
+        f"the other bindings are inside. Keep the one you want and SUPPRESS the "
+        f"other: set the unwanted key to null in the settings file for its scope."
+    )
+
+
+def _split_home_bind(entries):
+    """Lift the ONE home mount out of *entries* — home is pid 0 and folds alone (§2a)."""
+    from kanibako.settings.settings_store import BindEntry
+
+    at_home = _home_bind_entries(entries)
     if len(at_home) != 1:
         return None, entries  # No box home to build on ⇒ nothing to assemble.
     home = at_home[0]
@@ -6967,18 +7013,30 @@ def _bind_map_from_mounts(mounts: list) -> "dict[str, object]":
     return binds
 
 
-def _launch_bind_map(snapshot, reconciled) -> "dict[str, object]":
-    """The main path's bind map: the COLLAPSE, or reconciled rows when it wrote none.
+def _launch_bind_map(snapshot) -> "dict[str, object]":
+    """The launch's bind map — THE COLLAPSE, and nothing else (cutover 2c).
 
-    ⚑ The fallback is the collapse's own ABSENT state, not a preference — it writes
-    nothing when it refuses a configuration the live route accepts, and swallows the
-    cause at ``debug``. That swallow and this arm come out TOGETHER at step 2c; until
-    then a refusal must reach nobody (llm-docs ``commands/start.py.md``).
+    ⚑ TOTAL on both of its callers BY CONSTRUCTION, not by luck: each resolves with
+    the base families on, and such a resolve either wrote this leaf or REFUSED by name
+    (:func:`_refuse_without_one_home`, plus the fold's own seven refusals, which no
+    longer reach a swallow). The narrow resolves never arrive here at all — they read
+    :func:`_narrow_bind_map` off their own reconciled rows.
+
+    ⚑ The reconciled fallback this used to carry came out with that swallow. It
+    existed so a refusal reached nobody while both routes ran; a refusal is the point
+    now (llm-docs ``commands/start.py.md``).
     """
+    from kanibako.settings.settings_resolve import SettingsError
+
     collapsed = _snapshot_assembly_bindings(snapshot)
-    if collapsed is not None:
-        return collapsed
-    return _bind_map_from_mounts(reconciled.mounts)
+    if collapsed is None:
+        # The wiring invariant, stated where it would otherwise be an AttributeError
+        # inside the emitter: a narrow snapshot carries no assembly to launch from.
+        raise SettingsError(
+            "the launch read no assembled bind map (meta.assembly.bindings) off this "
+            "snapshot: only a resolve carrying the base families assembles one."
+        )
+    return collapsed
 
 
 def _bind_map_masks(bindings) -> "list[str]":
@@ -7238,7 +7296,9 @@ def _sync_box_at_create(
     ADDITIVE: with no ``<scope>.synced`` keys configured the sync list is empty and
     this copies nothing.
     """
-    snapshot, reconciled = _resolve_launch_snapshot(
+    # ⚑ The reconciled winners are DISCARDED: since cutover 2c the sync pass reads the
+    # collapse alone, and this resolve exists only to produce it.
+    snapshot, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -7253,8 +7313,7 @@ def _sync_box_at_create(
     )
     _apply_synced_copies(
         snapshot=snapshot,
-        reconciled=reconciled,
-        bindings=_launch_bind_map(snapshot, reconciled),
+        bindings=_launch_bind_map(snapshot),
         logger=logger,
         skip_if=None,
     )
@@ -7280,10 +7339,11 @@ def _snapshot_scalar(snapshot: "KeyStore", dotted: str) -> str | None:
 def _snapshot_assembly_bindings(snapshot: "KeyStore") -> "dict[str, object] | None":
     """The collapsed bind map at ``meta.assembly.bindings``, or ``None`` if absent.
 
-    ⚑ ABSENT is a real state, not a defect: THIS leaf is not written when there is
-    no single home bind to build on or the bind fold refuses, and the refusal is
-    swallowed until the cutover's step 2c (llm-docs ``commands/start.py.md``).
-    ⚑ Either condition leaves ``meta.assembly.seeded`` written all the same (2b-1),
+    ⚑ ABSENT is a real state and it means ONE thing since cutover 2c: a NARROW resolve,
+    which carries no core family, has no home bind to build on, and asks only for the
+    seed arm. It no longer means "the fold refused" — a refusal RAISES — and a
+    whole-box resolve with no single home bind is refused by name before it gets here.
+    ⚑ A narrow resolve leaves ``meta.assembly.seeded`` written all the same (2b-1),
     which is why this walks to the ``bindings`` leaf and never tests the subtree.
     COPIED OUT of the snapshot — the caller gets its own map, never the live node.
     """
@@ -7301,8 +7361,9 @@ def _snapshot_assembly_seeded(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
     ⚑ ABSENT and EMPTY are DIFFERENT ANSWERS here, which is the whole reason this
     returns an option rather than a list.  The leaf is written whenever the seed arm
     folds — including for a narrow resolve with no home bind and no seeds at all
-    (2b-1) — so ``[]`` means *this box seeds nothing* and ``None`` means *the
-    collapse REFUSED*, a state the caller must not read as an empty box.
+    (2b-1) — so ``[]`` means *this box seeds nothing* and must never be read as a hole.
+    ⚑ Since cutover 2c ``None`` no longer means *the collapse REFUSED* (a refusal
+    raises); it means *this snapshot was never resolved*, and the consumer refuses it.
     COPIED OUT of the snapshot — the caller gets its own list, never the live node.
     """
     from kanibako.settings.settings_store import KeyStore
@@ -7318,10 +7379,10 @@ def _snapshot_assembly_synced(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
 
     ⚑ ABSENT and EMPTY are DIFFERENT ANSWERS, exactly as for the seed leaf — but the
     gate is NOT the same one.  This leaf DESCRIBES AN ASSEMBLY: a sync dest resolves
-    through whichever binding covers it, so it is written only when there is a home
-    to build on AND the bind fold did not refuse (2b-1's table).  ``[]`` therefore
-    means *this box syncs nothing* and ``None`` means *there is no assembly to
-    resolve a sync against*.
+    through whichever binding covers it, so it is written only when there is a home to
+    build on (2b-1's table).  ``[]`` therefore means *this box syncs nothing* and
+    ``None`` means *there is no assembly to resolve a sync against* — which since
+    cutover 2c is a NARROW resolve and nothing else, a refused fold having raised.
     COPIED OUT of the snapshot — the caller gets its own list, never the live node.
     """
     from kanibako.settings.settings_store import KeyStore
@@ -7332,61 +7393,55 @@ def _snapshot_assembly_synced(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
     return list(node) if isinstance(node, list) else None
 
 
-def _launch_seed_list(snapshot: "KeyStore", reconciled) -> "list[CollapsedCopy]":
-    """The collapsed seed rows, falling back to the reconciled ``seeded`` winners.
+def _launch_seed_list(snapshot: "KeyStore") -> "list[CollapsedCopy]":
+    """The collapsed seed rows — THE COLLAPSE, and nothing else (cutover 2c).
 
-    Cutover step 2b-2, and the SIBLING of :func:`_launch_bind_map` in every respect:
-    the consumer reads ``meta.assembly.seeded`` and the reconciled route stays in
-    place beneath it, so the move is one line to revert and nothing is deleted until
-    step 5.
+    Arrived at step 2b-2 with a reconciled fallback beneath it, so a refusal reached
+    nobody while both routes ran. 🛑 THAT ARM IS NOT MERELY UNUSED NOW, IT IS
+    UNREACHABLE: the seed leaf rides its own gate (2b-1) and is written by EVERY
+    resolve, narrow ones included, so the only way it can be absent is a fold that
+    refused — and a refusal raises. A route nothing can take is worse than no route:
+    it reads as a supported state and it cannot be tested.
 
-    ⚑ The fallback is the collapse's own ABSENT state, not a preference — a refusal
-    must reach nobody until step 2c takes the swallow out.  ⚑ It is also the one arm
-    that can still produce a row the collapse would have refused (a seed dest outside
-    the guest home), which is why the applier keeps its outside-home guard.
+    ⚑ The applier keeps its outside-home guard regardless. It guards the DELIVERY of a
+    dest, which is its own concern, not a leftover of the arm that used to be able to
+    hand it a row the fold would have refused.
     """
-    from kanibako.settings.store_collapse import CollapsedCopy
+    from kanibako.settings.settings_resolve import SettingsError
 
     collapsed = _snapshot_assembly_seeded(snapshot)
-    if collapsed is not None:
-        return collapsed
-    # The shape adapter, and the ONLY place the two row shapes meet: a reconciled
-    # winner carries a name and a category that the collapsed row does not, and an
-    # optional source that a copy arm cannot have (``build_store_shape`` refuses it).
-    return [
-        CollapsedCopy(row.host_src, row.box_dest, row.options)
-        for row in reconciled.copies
-        if row.category == "seeded" and row.host_src is not None
-    ]
+    if collapsed is None:
+        raise SettingsError(
+            "the launch read no collapsed seed list (meta.assembly.seeded) off this "
+            "snapshot: every resolve writes one, so this snapshot was not resolved."
+        )
+    return collapsed
 
 
-def _launch_synced_list(snapshot: "KeyStore", reconciled) -> "list[CollapsedCopy]":
-    """The collapsed sync rows, falling back to the reconciled ``synced`` winners.
+def _launch_synced_list(snapshot: "KeyStore") -> "list[CollapsedCopy]":
+    """The collapsed sync rows — THE COLLAPSE, and nothing else (cutover 2c).
 
-    Cutover step 2b-3, and the SIBLING of :func:`_launch_seed_list` — with ONE
-    difference, and it is the reason this exists at all rather than the filter being
-    deleted outright.  🛑 **The ``category == "synced"`` test below is NOT a leftover.**
-    It is the fallback arm's own discriminator: ``reconciled.copies`` is one list
-    holding BOTH copy categories, so the arm that reads it must still say which half
-    it wants.  Deleting it here would apply every ``seeded`` row as a sync — an
-    overwrite, every launch, over content the box owns.
+    Arrived at step 2b-3 as the SIBLING of :func:`_launch_seed_list`, and kept a
+    reconciled fallback arm one step longer than that step needed: a refused fold left
+    every leaf absent, so deleting the arm while the swallow still stood would have
+    dropped every synced copy on those launches in silence.  The swallow is gone, so
+    the arm is too — and with it the ``category == "synced"`` filter that arm needed to
+    tell the two copy categories apart inside ``reconciled.copies``.
 
-    ⚑ The fallback is reachable TODAY: ``_install_assembly_collapse`` writes neither
-    the bindings leaf nor this one when the fold refuses or when there is no single
-    home bind, and it swallows the cause at ``debug``.  A refusal must reach nobody
-    until step 2c takes that swallow out; this arm and the filter inside it come out
-    with it, together with :func:`_launch_bind_map`'s and :func:`_launch_seed_list`'s.
+    ⚑ TOTAL on its one caller BY CONSTRUCTION, exactly as :func:`_launch_bind_map` is:
+    a sync dest resolves through the assembled mount set, so this leaf is written
+    whenever that assembly is — and a whole-box resolve that cannot assemble one now
+    REFUSES by name instead of returning quietly.
     """
-    from kanibako.settings.store_collapse import CollapsedCopy
+    from kanibako.settings.settings_resolve import SettingsError
 
     collapsed = _snapshot_assembly_synced(snapshot)
-    if collapsed is not None:
-        return collapsed
-    return [
-        CollapsedCopy(row.host_src, row.box_dest, row.options)
-        for row in reconciled.copies
-        if row.category == "synced" and row.host_src is not None
-    ]
+    if collapsed is None:
+        raise SettingsError(
+            "the launch read no assembled sync list (meta.assembly.synced) off this "
+            "snapshot: only a resolve carrying the base families assembles one."
+        )
+    return collapsed
 
 
 def _install_box_handbook(
@@ -7985,7 +8040,9 @@ def _apply_init_seeds(
     # template layer keys (NOT the unrelated core/channel/share families). The
     # agent-binding inputs (``desc``/``install``) are omitted — they feed only
     # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
-    snapshot, reconciled = _resolve_launch_snapshot(
+    # ⚑ The reconciled winners are DISCARDED: since cutover 2c the seed pass reads the
+    # collapsed leaf alone, and this narrow resolve exists only to produce it.
+    snapshot, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -8014,7 +8071,7 @@ def _apply_init_seeds(
     # order.  Nothing sorts, nothing keys on the dest — a dest MAY repeat, and the
     # repetition IS the overlay.
     by_dest: "dict[str, list[CollapsedCopy]]" = {}
-    for seed in _launch_seed_list(snapshot, reconciled):
+    for seed in _launch_seed_list(snapshot):
         by_dest.setdefault(seed.dest, []).append(seed)
 
     for box_dest, group in by_dest.items():
@@ -8152,7 +8209,6 @@ def _synced_last_wins(copies: "list[CollapsedCopy]") -> "list[CollapsedCopy]":
 def _apply_synced_copies(
     *,
     snapshot: "KeyStore",
-    reconciled,
     bindings,
     logger,
     skip_if: "Callable[[Path, Path], bool] | None",
@@ -8173,14 +8229,16 @@ def _apply_synced_copies(
       is what MAKES the launch gate meaningful: an mtime comparison against the
       destination only says anything if the destination was last written by the sync.
 
-    ⚑⚑ ALL FIVE PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
+    ⚑⚑ ALL FOUR PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
     (P3 — make the violation unavailable, not forbidden).  This pass cannot run until
     the bind map is FINAL, because a sync dest means nothing without it: every
     row would have to be skipped.  A caller that tries to run it earlier — where this
     used to sit, ~180 lines up beside the create-time seed — cannot even NAME
-    *snapshot*, *reconciled* or *bindings*, so it fails LOUDLY instead of quietly
-    delivering nothing.  ⚑ The create-time caller satisfies that by bringing a real,
-    FULL resolve of its own; the guard is not relaxed for it.
+    *snapshot* or *bindings*, so it fails LOUDLY instead of quietly delivering
+    nothing.  ⚑ The create-time caller satisfies that by bringing a real, FULL resolve
+    of its own; the guard is not relaxed for it.  ⚑ The reconciled rows were a fifth
+    parameter until cutover 2c, read ONLY by the sync list's fallback arm; the arm and
+    the parameter came out together.
 
     ⚑⚑ THE THREE INPUTS COME FROM ONE COLLAPSE, AND THEY HAVE TO.
     ``collapse_store_shapes`` folds the sync list AGAINST the bind map it just built
@@ -8201,7 +8259,7 @@ def _apply_synced_copies(
     ADDITIVE: with no ``<scope>.synced`` keys configured (and no target default synced
     entries) the sync list is empty -> copies nothing.
     """
-    for sync in _synced_last_wins(_launch_synced_list(snapshot, reconciled)):
+    for sync in _synced_last_wins(_launch_synced_list(snapshot)):
         dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:
             continue
