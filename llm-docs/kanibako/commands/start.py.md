@@ -123,6 +123,28 @@ smuggled in early.
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
 
+### The credential gate is HOISTED above BOTH consumers (cutover 2b-0)
+
+`reconcile_categories` applies the D-M4 credential gate INTERNALLY, so before 2b-0 a PRIVATE box
+(`deliver_creds=False`) got `reconciled.copies == []` while `_install_assembly_collapse` — handed the
+RAW entry list two lines later — folded the credential rows into `meta.assembly.synced` anyway. The
+divergence was inert only because nothing consumed that leaf. Pointing a consumer at it would have
+delivered every `synced` credential into a box the user made private, reversing D-M4.
+
+`_resolve_launch_snapshot` therefore calls `settings_categories.gate_credential_delivery` ONCE and
+hands the SAME gated list to the reconcile and to the collapse. The gate inside
+`reconcile_categories` stays: it is idempotent, it is the rule's one spelling (the hoist calls the
+same function), and it still guards every OTHER caller. Removing it is step 5.
+
+⚑ The gate runs AFTER `_install_derived_bindings`, not before. A derived binding materialises a
+property of the DECLARATION (R-8) — `binding_derivations` records what was declared, not what this
+box is allowed to receive.
+
+⚑ The `seeded` half of the gate is LATENT: `CategoryEntry.is_credential` has no production producer
+today (only tests set it), so on a real launch the gate drops `synced` rows and nothing else. Both
+halves are gated regardless — a gate that covers one of two arms is the shape that produces this
+class of bug in the first place.
+
 ### Home is pid 0, so it is lifted OUT of the fold
 
 `collapse_store_shapes` seeds `combined_bindings` with home BEFORE any scope folds, and takes it as
@@ -134,10 +156,48 @@ The home entry is identified by its DESTINATION — the one MOUNT entry with a s
 `normalize_bind_dest(box_dest)` is `store_collapse.HOME_DEST`. Not by key, not by category, and
 never by splitting a dest on `.`: a destination is data.
 
-**Zero or several such entries ⇒ no write at all.** There is then no pid 0 to build on, so there is
-no assembly to describe. In practice this is what makes the narrow resolves (`box show
---effective`'s families-off siblings, the conditional image and helper resolves) a no-op: they carry
-image and helper binds only, and no box home.
+**Zero or several such entries ⇒ no BINDINGS and no SYNCED leaf.** There is then no pid 0 to build
+on, so there is no assembly to describe. In practice this is what silences the narrow resolves
+(`box show --effective`'s families-off siblings, the conditional image and helper resolves) for
+those two leaves: they carry image and helper binds only, and no box home.
+
+### …but the SEED leaf is not gated on a home bind (cutover 2b-1)
+
+🛑 **UPDATED AT 2b-1 — the paragraph above used to read "no write at all", and that gated three
+leaves on a fact belonging to two.** `collapse_seeded` takes the shape set and NOTHING else; only
+`_collapse_mounts` ever wanted the home bind. Home is pid 0, seeded BEFORE any bind folds (§2a), so
+a seed list is computable where no bind map is.
+
+This is a precondition, not a tidy-up. `seed_new_box` — the `box create` entry — reaches
+`_seed_box_home` → `_apply_init_seeds` without ever running a main resolve, and that resolve is
+NARROW (`include_base_families=False`, target seeds + template layers injected, no box home). Under
+the old gate its `meta.assembly.seeded` was always absent, so consumer 5 could not have been pointed
+at the leaf at all: the create path would have read `None` on every box.
+
+So `_install_assembly_collapse` gates each leaf on its OWN facts:
+
+| leaf | written when |
+|------|--------------|
+| `seeded` | the seed arm folds |
+| `bindings`, `synced` | the seed arm folds AND there is exactly one home bind AND the bind fold does not refuse |
+
+⚑ **ABSENT and EMPTY are different answers.** The seed leaf is written even when the list is empty,
+so a consumer reading `None` learns the collapse REFUSED — never that this box seeds nothing.
+
+⚑ **A BIND-FOLD refusal does not erase the seed list.** The refusal says nothing could assemble this
+box; it says nothing about an arm the refused bind never touched, and the seed list was already
+folded successfully when it fired. Erasing it would make a subsuming bind silently cost a box its
+seeds the moment the create path reads this leaf — the same class of latent hazard 2b-0 closed on
+the credential side. A SEED-ARM refusal (a seed outside home) is different: that leaf did not fold,
+so nothing is written at all.
+
+⚑ The `SettingsError` swallow itself is UNCHANGED in kind — still a `debug` log, still never fails a
+launch. Only its blast radius narrowed to the leaves each raise actually invalidates. Turning it
+into a hard error is step 2c.
+
+⚑ `collapse_store_shapes` recomputes the seed list in the home branch and the result is discarded.
+That is deliberate: it is the same pure concatenation over the same shapes, so it cannot differ, and
+one implementation of the seed rule is worth more than one saved traversal.
 
 ⚑ The home bind row itself (`data/core-defaults.yaml`, `core_defaults.add_bind`'s home arm) is
 UNTOUCHED. Re-pointing it at the ratified `meta.box.home` key binds home on every launch and needs a

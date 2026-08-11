@@ -60,7 +60,7 @@ def collapse_store_shapes(
   # of the fold. Seeds apply to the home bind ALONE and complete BEFORE any binding
   # folds; syncs apply LAST, reading a bind map that is already final. Reading is
   # all the sync pass does - nothing is pruned and no copy competes with a mount.
-  seeded = _collapse_seeded(store_shape_set)
+  seeded = collapse_seeded(store_shape_set)
   bindings = _collapse_mounts(store_shape_set, home_bind)
   return CollapsedStore(
     bindings=bindings,
@@ -87,8 +87,13 @@ def is_mask(bind: CollapsedBind) -> bool:
   return bind.src is None
 
 
-def _collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
-  """Concatenate every scope's seed arm IN SCOPE ORDER - nothing arbitrates, nothing prunes."""
+def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
+  """Every scope's seed arm concatenated IN SCOPE ORDER - nothing arbitrates, nothing prunes."""
+  # ⚑ PUBLIC because it needs no home bind, and its SIGNATURE is the argument: home
+  # is pid 0, seeded BEFORE the loop (§2a), so the seed arm is computable where no
+  # bind map is. A caller with no home bind (the CREATE-side seed resolve) reads
+  # this; ONE implementation, so a seed list cannot come out different depending on
+  # which door it was fetched through.
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].seed.items():
