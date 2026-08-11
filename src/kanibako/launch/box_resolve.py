@@ -31,7 +31,7 @@ from kanibako.project import registry_store, workset_registry
 from kanibako.settings.config import BOX_META_FILE, KanibakoConfig
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import (
-    _STANDALONE_META_DIR,
+    STANDALONE_META_DIR,
     BoxMode,
     DetectionResult,
     StandardPaths,
@@ -50,7 +50,7 @@ def standalone_settings_present(project_dir: Path) -> bool:
     The marker is the standalone meta dir PLUS the box settings file, both
     present::
 
-        (project_dir/_STANDALONE_META_DIR).is_dir()
+        (project_dir/STANDALONE_META_DIR).is_dir()
             and (project_dir/BOX_META_FILE).is_file()
 
     Mirrors :func:`kanibako.settings.paths._is_standalone_meta_dir` BUT deliberately does
@@ -60,7 +60,7 @@ def standalone_settings_present(project_dir: Path) -> bool:
     authoritative self-declaration of standalone identity and OVERRIDES any
     workset determination (a workset must not be able to "steal" it).
     """
-    return (project_dir / _STANDALONE_META_DIR).is_dir() and (
+    return (project_dir / STANDALONE_META_DIR).is_dir() and (
         project_dir / BOX_META_FILE
     ).is_file()
 

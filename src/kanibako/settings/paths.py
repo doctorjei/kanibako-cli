@@ -2,6 +2,34 @@
 
 from __future__ import annotations
 
+from kanibako.settings.paths_defaults import (XDG_SPEC_DEFAULTS, CONFIG_PATH_DEFAULTS,
+                                              SYSTEM_PATH_DEFAULTS, XDG_DATA_HOME, XDG_CONFIG_HOME,
+                                              XDG_RUNTIME_DIR, XDG_STATE_HOME, XDG_CACHE_HOME,
+
+                                              SHELL_D_FILE, PROFILE_FILE, BASHRC_FILE, IGNORE_FILE,
+                                              SETTINGS_FILE, PROFILE_CONTENTS, BASHRC_CONTENTS,
+                                              SHELL_D_CONTENTS, RUN_USER_UID_PATH,
+
+                                              BOXES_PATH, HOME_PATH, KANIBAKO_PATH, LOGS_PATH,
+                                              RO_PATH, RW_PATH, VAULT_PATH, STANDALONE_META_DIR,
+
+                                              STATUS_OK, STATUS_MISSING, STATUS_NO_DATA,
+                                              MSG_OTS_KB_INIT, MSG_OTS_WS_PROJ_INIT, MSG_DONE,
+
+                                              WARN_RELATIVE_XDG, WARN_FALLBACK_RT_DIR,
+                                              WARN_RUNDIR_UNUSABLE, WARN_WS_NO_ROOT,
+                                              WARN_WS_BAD_LOAD, WARN_WS_BOX_BAD_NAME,
+                                              WARN_BOX_BAD_KUID, WARN_BOX_NO_VAULT,
+
+                                              ERR_SETTINGS_BAD_PATH, ERR_SETTINGS_BAD_REF,
+                                              ERR_CONFIG_NO_FILE, ERR_PROJECT_NO_PATH,
+                                              ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
+                                              ERR_PROJECT_NAME_USED, ERR_PROJECT_DIR_IS_WS,
+                                              ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
+                                              ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
+
+                                              UNREGISTERED_MARKER, KIND_PROJECT, KIND_WORKSET)
+
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -12,47 +40,27 @@ from typing import NamedTuple, Protocol, overload
 
 from kanibako.log import get_logger
 
-from kanibako.settings.config import (
-    BOX_META_FILE,
-    KanibakoConfig,
-    config_file_path,
-    load_config,
-    read_box_enable_vault,
-    read_workset_kuid,
-    read_workset_skip_kuid_check,
-    write_box_enable_vault,
-)
+from kanibako.settings.config import (BOX_META_FILE, KanibakoConfig, config_file_path, load_config,
+                                      read_box_enable_vault, read_workset_kuid,
+                                      read_workset_skip_kuid_check, write_box_enable_vault)
+
 from kanibako.errors import ConfigError, ProjectError, WorksetError
-from kanibako.settings.settings_resolve import (
-    LevelView,
-    ResolveCtx,
-    SettingsError,
-    _Unset,
-    expand_expr,
-    resolve_value,
-)
-from kanibako.project.names import (
-    resolve_name,
-    resolve_qualified_name,
-)
+from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
+                                                _Unset, expand_expr, resolve_value)
+
+from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.utils import project_hash, short_hash
 
 
 class BoxMode(Enum):
     """How a box's persistent state is organized on disk (the ``box.mode`` token)."""
-
     primary = "primary"
     named = "named"
     standalone = "standalone"
 
 
-# The STANDALONE box-store dir name — ``@meta.box.path`` and half the §5 marker.
-_STANDALONE_META_DIR = "box_data"
-
-
 class DetectionResult(NamedTuple):
     """Result of box mode detection: the *mode* + the ancestor *project_root* it was found at."""
-
     mode: BoxMode
     project_root: Path
 
@@ -60,7 +68,6 @@ class DetectionResult(NamedTuple):
 @dataclass
 class StandardPaths:
     """Resolved XDG and kanibako standard directory paths."""
-
     config_home: Path
     data_home: Path
     state_home: Path
@@ -103,7 +110,6 @@ class StandardPaths:
 @dataclass(frozen=True)
 class ProjectGroup:
     """A project's grouping (PRIMARY or named workset) as DATA rather than control flow."""
-
     name: str
     root: Path
     is_default: bool
@@ -112,7 +118,6 @@ class ProjectGroup:
 
 class _WorksetRooted(Protocol):
     """Structural type for "anything rooted at ``@meta.workset.path``"."""
-
     @property
     def root(self) -> Path: ...
 
@@ -125,46 +130,37 @@ def workset_settings_path(group: None) -> None: ...
 
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None:
     """THE workset-tier settings-file derivation: ``@meta.workset.path/settings.yaml`` (spec §2c)."""
-    return group.root / "settings.yaml" if group is not None else None
+    return group.root / SETTINGS_FILE if group is not None else None
 
 
 def _default_project_group(std: StandardPaths) -> ProjectGroup:
     """The PRIMARY (default) workset's :class:`ProjectGroup`, rooted at ``@config.primary_workset``."""
     warn_legacy_primary_settings(std)
-    return ProjectGroup(
-        name="default",
-        root=std.primary_workset,
-        is_default=True,
-        local_shared_base=std.data_path,
-    )
+    return ProjectGroup(name="default", root=std.primary_workset,
+                        is_default=True, local_shared_base=std.data_path)
 
 
 _legacy_primary_settings_warned = False
-
 
 def warn_legacy_primary_settings(std: StandardPaths) -> None:
     """One-shot warning for a leftover legacy ``<data>/settings.yaml`` (never read, never touched)."""
     global _legacy_primary_settings_warned
     if _legacy_primary_settings_warned:
         return
-    legacy = std.data_path / "settings.yaml"
-    spec_file = std.primary_workset / "settings.yaml"
+    legacy = std.data_path / SETTINGS_FILE
+    spec_file = std.primary_workset / SETTINGS_FILE
     if legacy.is_file() and not spec_file.is_file():
         import sys
 
         _legacy_primary_settings_warned = True
-        print(
-            f"warning: {legacy} is no longer read — 1.7.0 moved the primary "
-            f"workset's settings to {spec_file}. Move wanted values there, or "
-            "re-set them via 'kanibako workset set default <key>=<value>'.",
-            file=sys.stderr,
-        )
+        print(f"warning: {legacy} is no longer read — 1.7.0 moved primary workset's settings " +
+              f"to {spec_file}. Move wanted values there or re-set them via 'kanibako workset " +
+              "set default <key>=<value>'.", file=sys.stderr)
 
 
 @dataclass
 class ProjectPaths:
     """Resolved paths for a specific project."""
-
     project_path: Path
     project_hash: str
     metadata_path: Path      # host-only: settings.yaml, breadcrumb, lock
@@ -185,25 +181,18 @@ def box_tree_materialized(proj: ProjectPaths) -> bool:
 
 def _standalone_settings_files(root: Path) -> tuple[Path, Path]:
     """The STANDALONE ``(box_tier, workset_tier)`` pair — BOTH always real paths."""
-    return root / _STANDALONE_META_DIR / BOX_META_FILE, root / BOX_META_FILE
+    return root / STANDALONE_META_DIR / BOX_META_FILE, root / BOX_META_FILE
 
 
 def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path:
     """The DIR holding a box's own metadata — home, session state, box tier."""
-    if mode is BoxMode.standalone:
-        return metadata_path / _STANDALONE_META_DIR
-    return metadata_path
+    return metadata_path / STANDALONE_META_DIR if mode is BoxMode.standalone else metadata_path
 
 
-def _box_settings_files(
-    mode: BoxMode,
-    metadata_path: Path,
-    group: "ProjectGroup | None",
-) -> tuple[Path, Path | None]:
+def _box_settings_files(mode: BoxMode, metadata_path: Path,
+                        group: "ProjectGroup | None") -> tuple[Path, Path | None]:
     """THE ``(box_tier, workset_tier)`` settings-file derivation (spec §2c) — spelled ONCE.
-
-    ⚑ The box tier is non-optional BY TYPE; do not widen the return to ``Path | None``.
-    """
+    ⚑ The box tier is non-optional BY TYPE; do not widen the return to ``Path | None``."""
     if mode is BoxMode.standalone:
         return _standalone_settings_files(metadata_path)
     return metadata_path / BOX_META_FILE, workset_settings_path(group)
@@ -216,33 +205,26 @@ def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
 
 class _WorksetLike(Protocol):
     """Structural type for the attributes :meth:`WorksetSpec.from_workset` reads (cycle-breaker)."""
-
     name: str
     root: Path
     is_default: bool
 
     @property
     def projects_dir(self) -> Path: ...
-
     @property
     def workspaces_dir(self) -> Path: ...
-
     @property
     def vault_dir(self) -> Path: ...
-
     @property
     def logs_dir(self) -> Path: ...
-
     @property
     def projects(self) -> Sequence[_WorksetProjectLike]: ...
 
 
 class _WorksetProjectLike(Protocol):
     """Structural type for the workset project attributes read here."""
-
     @property
     def name(self) -> str: ...
-
     @property
     def source_path(self) -> Path: ...
 
@@ -250,7 +232,6 @@ class _WorksetProjectLike(Protocol):
 @dataclass(frozen=True)
 class WorksetSpec:
     """Primitive view of a workset, decoupled from :class:`kanibako.project.workset.Workset`."""
-
     name: str
     root: Path
     projects_dir: Path
@@ -262,29 +243,12 @@ class WorksetSpec:
     @classmethod
     def from_workset(cls, ws: _WorksetLike) -> WorksetSpec:
         """Build a :class:`WorksetSpec` from a ``Workset``-like object."""
-        return cls(
-            name=ws.name,
-            root=ws.root,
-            projects_dir=ws.projects_dir,
-            workspaces_dir=ws.workspaces_dir,
-            vault_dir=ws.vault_dir,
-            project_names=tuple(p.name for p in ws.projects),
-            is_default=ws.is_default,
-        )
+        return cls(name=ws.name, root=ws.root, projects_dir=ws.projects_dir,
+                   workspaces_dir=ws.workspaces_dir, vault_dir=ws.vault_dir,
+                   project_names=tuple(p.name for p in ws.projects), is_default=ws.is_default)
 
 
 logger = get_logger("paths")
-
-
-# Spec defaults for the XDG base dirs that HAVE one.  ⚑ ``XDG_RUNTIME_DIR`` is
-# deliberately ABSENT — no spec default; :func:`resolve_xdg` handles it (fallback + warn).
-_XDG_SPEC_DEFAULTS: dict[str, str] = {
-    "XDG_DATA_HOME": ".local/share",
-    "XDG_CONFIG_HOME": ".config",
-    "XDG_STATE_HOME": ".local/state",
-    "XDG_CACHE_HOME": ".cache",
-}
-
 
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path:
     """Resolve an XDG base dir per the freedesktop spec — env honored iff set AND absolute."""
@@ -292,13 +256,9 @@ def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path:
     if val:
         if os.path.isabs(val):
             return Path(val).resolve()
+
         # Relative value: invalid per spec → ignore and fall through to default.
-        logger.warning(
-            "%s=%r is relative (not absolute); ignoring per the XDG Base "
-            "Directory spec and using the default.",
-            var_name,
-            val,
-        )
+        logger.warning(WARN_RELATIVE_XDG, var_name, val)
 
     if spec_default_suffix is not None:
         return Path.home() / spec_default_suffix
@@ -310,7 +270,6 @@ def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path:
 # Process-lifetime cache of the chosen runtime-dir fallback, keyed by (var_name, env value).
 _runtime_fallback_cache: dict[tuple[str, str], Path] = {}
 
-
 def _fallback_runtime_dir(var_name: str) -> Path:
     """Choose a replacement for an unset/invalid ``XDG_RUNTIME_DIR`` and warn (never silent)."""
     cache_key = (var_name, os.environ.get(var_name, ""))
@@ -319,32 +278,18 @@ def _fallback_runtime_dir(var_name: str) -> Path:
         return cached
 
     uid = os.getuid()
-    run_user = Path(f"/run/user/{uid}")
+    run_user = Path(RUN_USER_UID_PATH % uid)
     if _runtime_base_usable(run_user):
-        chosen = run_user / "kanibako"
+        chosen = run_user / KANIBAKO_PATH
         chosen.mkdir(mode=0o700, parents=True, exist_ok=True)
-        logger.warning(
-            "%s is not set; falling back to %s for runtime files (helper "
-            "sockets). Set %s to a per-user runtime dir to silence this.",
-            var_name,
-            chosen,
-            var_name,
-        )
+        logger.warning(WARN_FALLBACK_RT_DIR, var_name, chosen, var_name)
         _runtime_fallback_cache[cache_key] = chosen
         return chosen
 
     # Last resort: a 0700 temp dir under the system temp root.
     chosen = Path(tempfile.mkdtemp(prefix="kanibako-runtime-"))
     chosen.chmod(0o700)
-    logger.warning(
-        "%s is not set and /run/user/%d is unusable; falling back to the "
-        "temp dir %s for runtime files. Set %s to a persistent per-user "
-        "runtime dir to silence this.",
-        var_name,
-        uid,
-        chosen,
-        var_name,
-    )
+    logger.warning(WARN_RUNDIR_UNUSABLE, var_name, uid, chosen, var_name)
     _runtime_fallback_cache[cache_key] = chosen
     return chosen
 
@@ -369,96 +314,43 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     return resolve_xdg(env_var, default_suffix)
 
 
-# ---------------------------------------------------------------------------
-# Layer 1 — the CONFIG-key FOUNDATION (spec §1; config keys finalized at 5)
-# ---------------------------------------------------------------------------
-# Bootstrap keys from ``kanibako_config.yaml``, resolved FLAT — not by the keyspace pipeline.
-CONFIG_PATH_DEFAULTS: dict[str, str] = {
-    "config.data": "$XDG_DATA_HOME/kanibako",
-    "config.settings": "@config.data/global/settings.yaml",
-    "config.agents": "@config.data/agents",
-    "config.primary_workset": "@config.data/primary_workset",
-    "config.registry": "@config.data/global/registry.yaml",
-    # The LIFECYCLE JOURNAL — the TRANSIENT truth beside the steady-state registry.
-    "config.journal": "@config.data/global/journal.yaml",
-}
-
-
-# ---------------------------------------------------------------------------
-# Layer 2 — system-scope SETTINGS keys that are PATHS (spec §1/§2g)
-# ---------------------------------------------------------------------------
-# SETTINGS keys, not bootstrap config: each ``@``-refs a Layer-1 config key or an XDG base.
-SYSTEM_PATH_DEFAULTS: dict[str, str] = {
-    "system.backup": "@config.data/backup",
-    "system.channelroot": "@config.data/channels",
-    # M-11: renamed from ``system.base_template``; ⚑ the old on-disk dir is ORPHANED, not migrated.
-    "system.template": "@config.data/global/template",
-    # The SYSTEM canon CONTRIBUTION root (spec §2g); its ``handbook/`` is what binds into a box.
-    "system.canon": "@config.data/global/canon",
-    "system.cache": "$XDG_CACHE_HOME/kanibako",
-    "system.runtime": "$XDG_RUNTIME_DIR/kanibako",
-    # Channels skeleton (the type-roots derive from system.channelroot).
-    "system.channels.common": "@system.channelroot/common",
-    "system.channels.chat": "@system.channelroot/chat",
-    "system.channels.broadcast": "@system.channels.chat/broadcast.md",
-    "system.channels.mailboxes": "@system.channelroot/mailboxes",
-    "system.channels.share": "@system.channelroot/share",
-}
-
-
 def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     """THE single builder for the ``xdg=`` argument of every host-side ``ResolveCtx``."""
     xdg_map: dict[str, str] = {}
-    for name, suffix in _XDG_SPEC_DEFAULTS.items():
-        if name == "XDG_DATA_HOME" and data_home is not None:
+    for name, suffix in XDG_SPEC_DEFAULTS.items():
+        if name == XDG_DATA_HOME and data_home is not None:
             # Already resolved by the caller — don't re-read the env (it would re-warn).
             xdg_map[name] = str(data_home)
         else:
             xdg_map[name] = str(resolve_xdg(name, suffix))
-    xdg_map["XDG_RUNTIME_DIR"] = str(resolve_xdg("XDG_RUNTIME_DIR", None))
+    xdg_map[XDG_RUNTIME_DIR] = str(resolve_xdg(XDG_RUNTIME_DIR, None))
     return xdg_map
 
 
-def resolve_config_paths(
-    set_values: Mapping[str, str], *, data_home: Path, home: Path,
-) -> dict[str, str]:
+def resolve_config_paths(set_values: Mapping[str, str],
+                         *, data_home: Path, home: Path) -> dict[str, str]:
     """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design)."""
     xdg_vars = host_xdg_map(data_home)
-    ctx = ResolveCtx(
-        agent_name=None,
-        workset_name=None,
-        host_home=str(home),
-        xdg=xdg_vars,
-    )
-    levels = [
-        LevelView("config", values=dict(set_values), defaults=CONFIG_PATH_DEFAULTS)
-    ]
+    ctx = ResolveCtx(agent_name=None, workset_name=None, host_home=str(home), xdg=xdg_vars)
+    levels = [LevelView("config", values=dict(set_values), defaults=CONFIG_PATH_DEFAULTS)]
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
-            raise SettingsError(f"Unknown @-reference: {ref}")
-        return expand_expr(
-            str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain,
-        )
+            raise SettingsError(ERR_SETTINGS_BAD_REF % ("", ref))
+        return expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain)
 
     resolved: dict[str, str] = {}
     for key in CONFIG_PATH_DEFAULTS:
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
-            raise SettingsError(f"Unresolvable config path: {key}")
-        resolved[key] = expand_expr(
-            str(rv.value), space="host", ctx=ctx, lookup=lookup,
-        )
+            raise SettingsError(ERR_SETTINGS_BAD_PATH % ("config", key))
+        resolved[key] = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
     return resolved
 
 
-def resolve_system_paths(
-    set_values: Mapping[str, str],
-    *,
-    data_home: Path,
-    home: Path,
-) -> dict[str, Path]:
+def resolve_system_paths(set_values: Mapping[str, str],
+                         *, data_home: Path, home: Path) -> dict[str, Path]:
     """Resolve the path tier (Layer-1 ``config.*`` + Layer-2 ``system.*``) to concrete host paths."""
     xdg_vars = host_xdg_map(data_home)
 
@@ -467,20 +359,11 @@ def resolve_system_paths(
     set_values = {k: v for k, v in set_values.items() if k.startswith("system.")}
 
     # Layer 1: resolve the config-key foundation first (chicken-and-egg).
-    config = resolve_config_paths(
-        config_set, data_home=data_home, home=home,
-    )
+    config = resolve_config_paths(config_set, data_home=data_home, home=home)
 
-    ctx = ResolveCtx(
-        agent_name=None,
-        workset_name=None,
-        host_home=str(home),
-        xdg=xdg_vars,
-        config=config,
-    )
-    levels = [
-        LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)
-    ]
+    ctx = ResolveCtx(agent_name=None, workset_name=None,
+                     host_home=str(home), xdg=xdg_vars, config=config)
+    levels = [LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)]
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         # Resolver SPLIT (spec §1A / JC-2), prefix-driven: ``@config.*`` vs ``@system.*``.
@@ -488,10 +371,10 @@ def resolve_system_paths(
             try:
                 return config[ref]
             except KeyError:
-                raise SettingsError(f"Unknown @config-reference: {ref}") from None
+                raise SettingsError(ERR_SETTINGS_BAD_REF % ("config", ref)) from None
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
-            raise SettingsError(f"Unknown @-reference: {ref}")
+            raise SettingsError(ERR_SETTINGS_BAD_REF % ("", ref))
         # system.* config paths are always scalar strings; narrow the ``object``-typed value.
         return expand_expr(
             str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain,
@@ -505,30 +388,25 @@ def resolve_system_paths(
     for key in SYSTEM_PATH_DEFAULTS:
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
-            raise SettingsError(f"Unresolvable system path: {key}")
+            raise SettingsError(ERR_SETTINGS_BAD_PATH % ("system", key))
         expanded = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
         resolved[key] = Path(expanded)
 
     # PRIMARY-workset box/vault/logs roots, derived from ``@config.primary_workset``.
     pw = resolved["config.primary_workset"]
-    resolved["system._boxes"] = pw / "boxes"
-    resolved["system._primary_vault_ro"] = pw / "vault" / "ro"
-    resolved["system._primary_vault_rw"] = pw / "vault" / "rw"
-    resolved["system._primary_logs"] = pw / "logs"
+    resolved["system._boxes"] = pw / BOXES_PATH
+    resolved["system._primary_vault_ro"] = pw / VAULT_PATH / RO_PATH
+    resolved["system._primary_vault_rw"] = pw / VAULT_PATH / RW_PATH
+    resolved["system._primary_logs"] = pw / LOGS_PATH
     return resolved
 
 
-def load_system_config(
-    user_config_path: Path, *, data_home: Path, home: Path,
-) -> dict[str, Path]:
+def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:
     """Resolve the path tier from the CONFIG file set: ``/etc`` base < user global."""
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
-    from kanibako.settings.config import (
-        config_base_path,
-        load_config,
-    )
-
+    from kanibako.settings.config import (config_base_path, load_config)
     raw: dict[str, str] = {}
+
     # base < user; an absent file yields {}, so missing layers are skipped automatically.
     raw.update(load_config(config_base_path()).config_paths)
     raw.update(load_config(user_config_path).config_paths)
@@ -538,24 +416,20 @@ def load_system_config(
 
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories, creating them as needed."""
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
-    data_home = xdg("XDG_DATA_HOME", ".local/share")
-    state_home = xdg("XDG_STATE_HOME", ".local/state")
-    cache_home = xdg("XDG_CACHE_HOME", ".cache")
+    config_home = xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    state_home = xdg(XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME])
+    cache_home = xdg(XDG_CACHE_HOME, XDG_SPEC_DEFAULTS[XDG_CACHE_HOME])
 
     config_file = config_file_path(config_home)
 
     if config is None:
         if not config_file.exists():
-            raise ConfigError(
-                f"{config_file} is missing. Run any kanibako command to initialize."
-            )
+            raise ConfigError(ERR_CONFIG_NO_FILE % config_file)
         config = load_config(config_file)
 
     # Resolve the system-level path tier from the CONFIG file set: /etc base < user-global.
-    resolved = load_system_config(
-        config_file, data_home=data_home, home=Path.home(),
-    )
+    resolved = load_system_config(config_file, data_home=data_home, home=Path.home())
     data_path = resolved["config.data"]
     # state/cache paths track the data dir's leaf name (default leaf "kanibako").
     rel = data_path.name
@@ -568,66 +442,44 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     state_path.mkdir(parents=True, exist_ok=True)
     cache_path.mkdir(parents=True, exist_ok=True)
 
-    return StandardPaths(
-        config_home=config_home,
-        data_home=data_home,
-        state_home=state_home,
-        cache_home=cache_home,
-        config_file=config_file,
-        data_path=data_path,
-        state_path=state_path,
-        cache_path=cache_path,
-        data=resolved["config.data"],
-        backup=resolved["system.backup"],
-        agents=resolved["config.agents"],
-        channels=resolved["system.channelroot"],
-        template=resolved["system.template"],
-        canon=resolved["system.canon"],
-        settings=resolved["config.settings"],
-        primary_workset=resolved["config.primary_workset"],
-        registry=resolved["config.registry"],
-        journal=resolved["config.journal"],
-        cache=resolved["system.cache"],
-        runtime=resolved["system.runtime"],
-        channels_common=resolved["system.channels.common"],
-        channels_chat=resolved["system.channels.chat"],
-        channels_broadcast=resolved["system.channels.broadcast"],
-        channels_mailboxes=resolved["system.channels.mailboxes"],
-        channels_share=resolved["system.channels.share"],
-        boxes=resolved["system._boxes"],
-        primary_vault_ro=resolved["system._primary_vault_ro"],
-        primary_vault_rw=resolved["system._primary_vault_rw"],
-        primary_logs=resolved["system._primary_logs"],
-    )
+    return StandardPaths(config_home=config_home, data_home=data_home, state_home=state_home,
+                     cache_home=cache_home, config_file=config_file, data_path=data_path,
+                     state_path=state_path, cache_path=cache_path, data=resolved["config.data"],
+                     backup=resolved["system.backup"], agents=resolved["config.agents"],
+                     channels=resolved["system.channelroot"], template=resolved["system.template"],
+                     canon=resolved["system.canon"], settings=resolved["config.settings"],
+                     primary_workset=resolved["config.primary_workset"],
+                     registry=resolved["config.registry"], journal=resolved["config.journal"],
+                     cache=resolved["system.cache"], runtime=resolved["system.runtime"],
+                     channels_common=resolved["system.channels.common"],
+                     channels_chat=resolved["system.channels.chat"],
+                     channels_broadcast=resolved["system.channels.broadcast"],
+                     channels_mailboxes=resolved["system.channels.mailboxes"],
+                     channels_share=resolved["system.channels.share"],
+                     boxes=resolved["system._boxes"],
+                     primary_vault_ro=resolved["system._primary_vault_ro"],
+                     primary_vault_rw=resolved["system._primary_vault_rw"],
+                     primary_logs=resolved["system._primary_logs"])
 
 
-def resolve_project(
-    std: StandardPaths,
-    config: KanibakoConfig,
-    project_dir: str | None = None,
-    *,
-    initialize: bool = False,
-    enable_vault: bool | None = None,
-    name_override: str | None = None,
-    register: bool = True,
-) -> ProjectPaths:
+def resolve_project(std: StandardPaths, config: KanibakoConfig, project_dir: str | None = None, *,
+                    initialize: bool = False, enable_vault: bool | None = None,
+                    name_override: str | None = None, register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths (PRIMARY mode)."""
     raw = project_dir or os.getcwd()
     # A bare token that names no path in cwd may be a registered project name; miss falls through.
     if raw and "/" not in raw and not Path(raw).exists():
         try:
-            resolved, kind = resolve_name(
-                std.registry, raw, cwd=Path.cwd(),
-                primary_workset=std.primary_workset,
-            )
-            if kind == "project":
+            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd(),
+                                          primary_workset=std.primary_workset)
+            if kind == KIND_PROJECT:
                 raw = resolved
         except ProjectError:
             pass
     project_path = Path(raw).resolve()
 
     if not project_path.is_dir():
-        raise ProjectError(f"Project path '{project_path}' does not exist.")
+        raise ProjectError(ERR_PROJECT_NO_PATH % project_path)
 
     phash = project_hash(str(project_path))
     project_path_str = str(project_path)
@@ -640,10 +492,9 @@ def resolve_project(
     if not project_name and not register:
         from kanibako.launch import journal as journal_mod
 
-        entry = journal_mod.pending_create_for_workspace(
-            std.journal, project_path,
-        )
+        entry = journal_mod.pending_create_for_workspace(std.journal, project_path)
         recovered = (entry.get("name") or "").strip() if entry else ""
+
         if recovered:
             project_name = recovered
             project_dir_path = std.boxes / recovered
@@ -651,9 +502,8 @@ def resolve_project(
     # Registration-layer reverse-lookup (Bug A durable fix — Guard 2, defense in depth).
     if not project_name and register:
         try:
-            _member = _workset_box_name_for_workspace(
-                std.primary_workset, project_path_str,
-            )
+            _member = _workset_box_name_for_workspace(std.primary_workset, project_path_str)
+
         except (OSError, RuntimeError):
             _member = None
         if _member:
@@ -664,69 +514,55 @@ def resolve_project(
 
     # B2b (Option A, Jei-ruled): the per-box custom home/vault path OVERRIDE is DROPPED.
     project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
-    shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
-        std, metadata_path, project_name or metadata_path.name,
-    )
+    shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(std, metadata_path,
+                                                               project_name or metadata_path.name)
     # enable_vault (P5a): explicit param wins, else stored ``box.enable_vault`` (absent ⇒ True).
     # ⚑ NO ``default_from``: PRIMARY reads the box tier ONLY — adding it would go live workset-wide.
-    actual_vault_enabled = (
-        enable_vault if enable_vault is not None
-        else read_box_enable_vault(project_toml)
-    )
+    actual_vault_enabled = (enable_vault if enable_vault is not None
+                            else read_box_enable_vault(project_toml))
 
     is_new = False
     if initialize and not project_dir_path.is_dir():
         # Guard: refuse to implicitly create a project rooted at $HOME.
         if project_path == Path.home().resolve():
-            raise ProjectError(
-                "Refusing to create a project rooted at $HOME — this would "
-                "mount your entire home directory as the workspace.\n"
-                "If you really want a project here, use:\n"
-                "  kanibako create --standalone ~ --allow-home"
-            )
+            raise ProjectError(ERR_PROJECT_NEW_HOME)
+
         # New project: SELECT a name here only (no store write); the membership write happens
         # below — eager for register=True, deferred to the caller for register=False.
         if name_override:
             if register:
-                check_primary_box_name_free(
-                    std.primary_workset, std.registry,
-                    name_override, project_path_str,
-                )
+                check_primary_box_name_free(std.primary_workset, std.registry,
+                                              name_override, project_path_str)
             project_name = name_override
         elif project_name:
             # Bug A: the workspace is ALREADY registered; reuse the name (re-register is a no-op).
             pass
         else:
-            project_name = pick_primary_box_name(
-                std.primary_workset, std.registry, project_path_str,
-                boxes_dir=std.boxes,
-            )
+            project_name = pick_primary_box_name(std.primary_workset, std.registry,
+                                                 project_path_str, boxes_dir=std.boxes)
+
         project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
         # Recompute paths with the name-based directory.
-        shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(
-            std, metadata_path, project_name,
-        )
+        shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(std, metadata_path,
+                                                                      project_name)
         project_toml, _ = _box_settings_files(BoxMode.primary, metadata_path, None)
 
         # ⚑ Creation ownership for the unwind below — must be captured BEFORE ``_init_project``
         # merges into the dir, so the unwind never deletes a pre-existing box's ``home/``.
         _dir_existed = project_dir_path.is_dir()
 
-        _init_project(
-            std, metadata_path, shell_path,
-            vault_ro_path, vault_rw_path, project_path,
-            enable_vault=actual_vault_enabled,
-        )
+        _init_project(std, metadata_path, shell_path, vault_ro_path,
+                      vault_rw_path, project_path, enable_vault=actual_vault_enabled)
+
         # Sparse create (P8b/Option A): only a NON-default ``box.enable_vault`` is persisted.
         write_box_enable_vault(project_toml, actual_vault_enabled)
         # Register the PRIMARY membership (name → workspace) — the SOLE store, idempotent.
         # The except-arm is the belt-and-suspenders unwind for a Guard-1 refusal.
         if register:
             try:
-                _register_workset_box_membership(
-                    std.primary_workset, project_name, project_path,
-                )
+                _register_workset_box_membership(std.primary_workset, project_name, project_path)
+
             except Exception:
                 if not _dir_existed:
                     import shutil
@@ -742,25 +578,14 @@ def resolve_project(
             _bootstrap_shell(shell_path)
         # P8b/Option A: NO settings.yaml backfill — identity lives in the registries now.
 
-    return ProjectPaths(
-        project_path=project_path,
-        project_hash=phash,
-        metadata_path=metadata_path,
-        shell_path=shell_path,
-        vault_ro_path=vault_ro_path,
-        vault_rw_path=vault_rw_path,
-        is_new=is_new,
-        mode=BoxMode.primary,
-        enable_vault=actual_vault_enabled,
-        name=project_name,
-        group=_default_project_group(std),
-    )
+    return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
+                        shell_path=shell_path, vault_ro_path=vault_ro_path,
+                        vault_rw_path=vault_rw_path,
+                        is_new=is_new, mode=BoxMode.primary, enable_vault=actual_vault_enabled,
+                        name=project_name, group=_default_project_group(std))
 
 
-def _resolve_local_dir(
-    std: StandardPaths,
-    project_path_str: str,
-) -> tuple[str, Path]:
+def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]:
     """Find the boxes directory for a default-mode project; ``("", empty_path)`` when unregistered."""
     try:
         name = primary_box_name_for_workspace(std.primary_workset, project_path_str)
@@ -769,37 +594,32 @@ def _resolve_local_dir(
     if name is not None:
         return name, std.boxes / name
 
-    return "", std.boxes / "__unregistered__"
+    return "", std.boxes / UNREGISTERED_MARKER
 
 
-
-def _primary_box_paths(
-    std: StandardPaths, metadata_path: Path, box_name: str,
-) -> tuple[Path, Path, Path]:
+def _primary_box_paths(std: StandardPaths,
+                       metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]:
     """Fixed PRIMARY-mode ``(shell, vault_ro, vault_rw)`` (no layout axis)."""
-    shell = metadata_path / "home"
+    shell = metadata_path / HOME_PATH
     vault_ro = std.primary_vault_ro / box_name
     vault_rw = std.primary_vault_rw / box_name
     return shell, vault_ro, vault_rw
 
 
-def _workset_box_paths(
-    metadata_path: Path, vault_base: Path, box_name: str,
-) -> tuple[Path, Path, Path]:
+def _workset_box_paths(metadata_path: Path,
+                       vault_base: Path, box_name: str) -> tuple[Path, Path, Path]:
     """Fixed NAMED-mode ``(shell, vault_ro, vault_rw)`` (no layout axis)."""
-    shell = metadata_path / "home"
-    vault_ro = vault_base / "ro" / box_name
-    vault_rw = vault_base / "rw" / box_name
+    shell = metadata_path / HOME_PATH
+    vault_ro = vault_base / RO_PATH / box_name
+    vault_rw = vault_base / RW_PATH / box_name
     return shell, vault_ro, vault_rw
 
 
-def _standalone_box_paths(
-    root: Path,
-) -> tuple[Path, Path, Path]:
+def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]:
     """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis)."""
-    home = root / _STANDALONE_META_DIR / "home"
-    vault_ro = root / "vault" / "ro"
-    vault_rw = root / "vault" / "rw"
+    home = root / STANDALONE_META_DIR / HOME_PATH
+    vault_ro = root / VAULT_PATH / RO_PATH
+    vault_rw = root / VAULT_PATH / RW_PATH
     return home, vault_ro, vault_rw
 
 
@@ -808,39 +628,26 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
     box = proj.name if proj.name else short_hash(proj.project_hash)
     if proj.mode is BoxMode.standalone:
         # Anchored under ``box_data/`` (not the root) so the standalone tree stays portable.
-        return proj.metadata_path / _STANDALONE_META_DIR / f"{box}.jsonl"
+        return proj.metadata_path / STANDALONE_META_DIR / f"{box}.jsonl"
     if proj.mode is BoxMode.named:
         # The workset root is carried on the project group (root=ws.root).
         ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
-        return ws_root / "logs" / f"{box}.jsonl"
+        return ws_root / LOGS_PATH / f"{box}.jsonl"
     # PRIMARY: the PRIMARY workset's logs dir.
     return std.primary_logs / f"{box}.jsonl"
 
 
-# The `~/.shell.d/*.sh` user/template extension point for a box's INTERACTIVE shell.
-# ⚑ INTERACTIVE ONLY — it never reaches the agent; use `env.<VAR>` / `secret_path` for that.
-_SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
-
-
 def _bootstrap_shell(shell_path: Path) -> None:
     """Write minimal shell skeleton files into a new shell directory."""
-    bashrc = shell_path / ".bashrc"
+    bashrc = shell_path / BASHRC_FILE
     if not bashrc.exists():
-        bashrc.write_text(
-            "# kanibako shell environment\n"
-            "[ -f /etc/bashrc ] && . /etc/bashrc\n"
-            'export PS1="${KANIBAKO_PS1:-(kanibako) \\u@\\h:\\w\\$ }"\n'
-            "# Source user init scripts\n"
-            f"{_SHELL_D_SOURCE_LINE}\n"
-        )
-    profile = shell_path / ".profile"
+        bashrc.write_text(BASHRC_CONTENTS)
+    profile = shell_path / PROFILE_FILE
     if not profile.exists():
-        profile.write_text(
-            "# kanibako login profile\n"
-            "[ -f ~/.bashrc ] && . ~/.bashrc\n"
-        )
+        profile.write_text(PROFILE_CONTENTS)
+
     # Create shell.d drop-in directory.
-    shell_d = shell_path / ".shell.d"
+    shell_d = shell_path / SHELL_D_FILE
     shell_d.mkdir(exist_ok=True)
 
 
@@ -848,20 +655,21 @@ def _upgrade_shell(shell_path: Path) -> None:
     """Keep the ``.shell.d`` sourcing seam current on an existing shell dir (idempotent)."""
     if not shell_path.is_dir():
         return
-    shell_d = shell_path / ".shell.d"
+    shell_d = shell_path / SHELL_D_FILE
     shell_d.mkdir(exist_ok=True)
 
-    bashrc = shell_path / ".bashrc"
+    bashrc = shell_path / BASHRC_FILE
     if not bashrc.is_file():
         return
     content = bashrc.read_text()
-    if ".shell.d/" in content:
+    # ⚑ The trailing slash is load-bearing: the seam is detected by the SOURCE LINE
+    # (``~/.shell.d/*.sh``), not by a bare mention of the directory name.
+    if SHELL_D_FILE + "/" in content:
         return
     # Append source line.
     if content and not content.endswith("\n"):
         content += "\n"
-    content += "# Source user init scripts\n"
-    content += f"{_SHELL_D_SOURCE_LINE}\n"
+    content += SHELL_D_CONTENTS
     bashrc.write_text(content)
 
 
@@ -878,12 +686,7 @@ def _init_common(
     """Shared first-time project setup: create directories, bootstrap shell."""
     import sys
 
-    print(
-        f"[One Time Setup] Initializing kanibako in {project_path}... ",
-        end="",
-        flush=True,
-        file=sys.stderr,
-    )
+    print(MSG_OTS_KB_INIT % project_path, end="", flush=True, file=sys.stderr)
     metadata_path.mkdir(parents=True, exist_ok=True)
 
     # Create persistent agent shell (mounted as /home/agent).
@@ -896,11 +699,11 @@ def _init_common(
         vault_rw_path.mkdir(parents=True, exist_ok=True)
         # .gitignore in vault/ to exclude rw from version control.
         vault_dir = vault_ro_path.parent
-        gitignore = vault_dir / ".gitignore"
+        gitignore = vault_dir / IGNORE_FILE
         if not gitignore.exists():
             gitignore.write_text("rw/\n")
 
-    print("done.", file=sys.stderr)
+    print(MSG_DONE, file=sys.stderr)
 
 
 def _init_project(
@@ -1063,7 +866,7 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / "settings.yaml"),
+        ws_root, load_doc(ws_root / SETTINGS_FILE),
     )
     return workset_registry.reverse_lookup_workset_box(registry_path, workspace)
 
@@ -1074,7 +877,7 @@ def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None:
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / "settings.yaml"),
+        ws_root, load_doc(ws_root / SETTINGS_FILE),
     )
     return workset_registry.workset_box_path(registry_path, box_name)
 
@@ -1087,7 +890,7 @@ def _register_workset_box_membership(
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / "settings.yaml"),
+        ws_root, load_doc(ws_root / SETTINGS_FILE),
     )
     workset_registry.register_workset_box(registry_path, box_name, workspace)
 
@@ -1098,7 +901,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / "settings.yaml"),
+        ws_root, load_doc(ws_root / SETTINGS_FILE),
     )
     workset_registry.unregister_workset_box(registry_path, box_name)
 
@@ -1114,7 +917,7 @@ def load_primary_boxes(primary_workset: Path) -> dict[str, str]:
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        primary_workset, load_doc(primary_workset / "settings.yaml"),
+        primary_workset, load_doc(primary_workset / SETTINGS_FILE),
     )
     return workset_registry.load_workset_boxes(registry_path)
 
@@ -1144,24 +947,15 @@ def check_primary_box_name_free(
 
     if Path(workspace).resolve() == Path.home().resolve():
         from kanibako.errors import ProjectError
+        raise ProjectError(ERR_PROJECT_REG_HOME)
 
-        raise ProjectError(
-            "Refusing to register $HOME as a project path — this would "
-            "mount your entire home directory as the workspace."
-        )
     if name in load_primary_boxes(primary_workset):
         from kanibako.errors import ProjectError
+        raise ProjectError(ERR_PROJECT_NAME_USED % name)
 
-        raise ProjectError(f"Name '{name}' is already registered")
     if not force and name in set(registry_store.load_section(registry, "worksets")):
         from kanibako.errors import ProjectError
-
-        raise ProjectError(
-            f"Name '{name}' is already in use by a workset. Box and workset "
-            f"names are separate namespaces, but this bare name would then "
-            f"resolve to the box, shadowing the workset in bare-name lookups. "
-            f"Re-run with --force to create the box under this name anyway."
-        )
+        raise ProjectError(ERR_PROJECT_DIR_IS_WS % name)
 
 
 def pick_primary_box_name(
@@ -1244,9 +1038,7 @@ def resolve_workset_project(
     """Resolve per-project paths for a project inside a NAMED workset."""
     # Look up project in workset.
     if project_name not in ws.project_names:
-        raise WorksetError(
-            f"Project '{project_name}' not found in workset '{ws.name}'."
-        )
+        raise WorksetError(ERR_WORKSET_NO_PROJECT % (project_name, ws.name))
 
     # Name-based paths (not hash-based).
     project_path = ws.workspaces_dir / project_name
@@ -1331,20 +1123,13 @@ def _init_workset_project(
 ) -> None:
     """First-time workset project setup: bootstrap shell directory (no vault ``.gitignore``)."""
     import sys
-
-    print(
-        f"[One Time Setup] Initializing workset project in {metadata_path}... ",
-        end="",
-        flush=True,
-        file=sys.stderr,
-    )
+    print(MSG_OTS_WS_PROJ_INIT % metadata_path, end="", flush=True, file=sys.stderr)
     metadata_path.mkdir(parents=True, exist_ok=True)
 
     # Create persistent agent shell (mounted as /home/agent).
     shell_path.mkdir(parents=True, exist_ok=True)
     _bootstrap_shell(shell_path)
-
-    print("done.", file=sys.stderr)
+    print(MSG_DONE, file=sys.stderr)
 
 
 def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
@@ -1358,7 +1143,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     from kanibako.settings.config_io import load_doc
 
     primary_registry = workset_registry.resolve_workset_registry_path(
-        std.primary_workset, load_doc(std.primary_workset / "settings.yaml"),
+        std.primary_workset, load_doc(std.primary_workset / SETTINGS_FILE),
     )
     registered = workset_registry.load_workset_boxes(primary_registry)
     results: list[tuple[Path, Path | None]] = []
@@ -1388,24 +1173,18 @@ def iter_workset_projects(
     for ws_name in sorted(registry):
         root = registry[ws_name]
         if not root.is_dir():
-            print(
-                f"Warning: workset '{ws_name}' root missing: {root}",
-                file=sys.stderr,
-            )
+            print(WARN_WS_NO_ROOT % (ws_name, root), file=sys.stderr)
             continue
         try:
             ws = load_workset(root)
         except Exception as exc:
-            print(
-                f"Warning: failed to load workset '{ws_name}': {exc}",
-                file=sys.stderr,
-            )
+            print(WARN_WS_BAD_LOAD % (ws_name, exc), file=sys.stderr)
             continue
 
         # The per-workset ``boxes:`` membership, loaded ONCE per workset.  ⚑ Presence is
         # checked at the REGISTERED path, else an old-composition member reads as "missing".
         registry_path = workset_registry.resolve_workset_registry_path(
-            ws.root, load_doc(ws.root / "settings.yaml"),
+            ws.root, load_doc(ws.root / SETTINGS_FILE),
         )
         registered_boxes = workset_registry.load_workset_boxes(registry_path)
 
@@ -1419,11 +1198,11 @@ def iter_workset_projects(
             )
             has_workspace = workspace_path.is_dir()
             if has_project_dir and has_workspace:
-                status = "ok"
+                status = STATUS_OK
             elif has_project_dir and not has_workspace:
-                status = "missing"
+                status = STATUS_MISSING
             else:
-                status = "no-data"
+                status = STATUS_NO_DATA
             project_list.append((proj.name, status))
 
         results.append((ws_name, ws, project_list))
@@ -1463,7 +1242,7 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
             return ws, None
         except ValueError:
             continue
-    raise WorksetError(f"No workset found for path: {project_dir}")
+    raise WorksetError(ERR_WORKSET_NO_WORKSET % project_dir)
 
 
 def _resolve_workset_or_connected(
@@ -1485,7 +1264,7 @@ def _resolve_workset_or_connected(
         if owned is not None:
             ws, proj_name = load_workset(owned.workset_root), owned.box_name
     if ws is None:
-        raise WorksetError(f"No workset found for path: {project_dir}")
+        raise WorksetError(ERR_WORKSET_NO_WORKSET % project_dir)
     return ws, proj_name
 
 
@@ -1516,17 +1295,15 @@ def resolve_any_project(
             if not initialize:
                 raise
         else:
-            if kind in ("project", "workset"):
+            if kind in (KIND_PROJECT, KIND_WORKSET):
                 # Update `raw` for BOTH kinds; a bare WORKSET is still rejected below.
                 raw = resolved
-                named_workset = kind == "workset"
+                named_workset = kind == KIND_WORKSET
+
     if named_workset:
         # A workset is not a single box; fail with an actionable message, not the generic one.
-        raise WorksetError(
-            f"'{raw_name}' is a workset, not a single project box. "
-            f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
-            f"command from a project workspace under that workset."
-        )
+        raise WorksetError(ERR_WORKSET_WS_NOT_BOX % (raw_name, raw_name))
+
     # Qualified ``workset/project`` addressing; a real relative path is left untouched.
     if "/" in raw and not Path(raw).exists():
         try:
@@ -1541,10 +1318,8 @@ def resolve_any_project(
     if detection.mode == BoxMode.named:
         ws, proj_name = _resolve_workset_or_connected(raw_dir, std)
         if proj_name is None:
-            raise WorksetError(
-                f"Inside workset '{ws.name}' but not in a specific project workspace. "
-                f"Change to a project directory under {ws.workspaces_dir}/."
-            )
+            raise WorksetError(ERR_WORKSET_NOT_IN_BOX % (ws.name, ws.workspaces_dir))
+
         return resolve_workset_project(
             WorksetSpec.from_workset(ws), proj_name, std, config, initialize=initialize,
         )
@@ -1613,12 +1388,8 @@ def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths:
     if proj.name:
         reason = box_name_reason(proj.name)
         if reason is not None:
-            get_logger(__name__).warning(
-                "box name '%s' does not meet the naming rules (%s); it still "
-                "resolves, but rename it when convenient.",
-                proj.name,
-                reason,
-            )
+            get_logger(__name__).warning(WARN_WS_BOX_BAD_NAME, proj.name, reason)
+
     return proj
 
 
@@ -1639,26 +1410,17 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
         and not read_workset_skip_kuid_check(settings_file)
         and not kuid.is_valid(value)
     ):
-        get_logger(__name__).warning(
-            "Warning: invalid KUID '%s' for standalone box '%s' (not a valid "
-            "kuid); it still resolves — fix workset.kuid or set "
-            "workset.skip_kuid_check=true to silence this.",
-            value,
-            proj.name,
-        )
+        get_logger(__name__).warning(WARN_BOX_BAD_KUID, value, proj.name)
+
     return proj
 
 
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
     """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5)."""
     if proj.enable_vault and not proj.vault_rw_path.is_dir():
-        get_logger(__name__).warning(
-            "warning: cannot find vault for box '%s' (expected at %s); it still "
-            "launches without a vault — recreate the directory or set "
-            "box.enable_vault=false to silence this.",
-            proj.name or str(proj.project_path),
-            proj.vault_rw_path.parent,
-        )
+        get_logger(__name__).warning(WARN_BOX_NO_VAULT,
+            proj.name or str(proj.project_path), proj.vault_rw_path.parent)
+
     return proj
 
 
@@ -1710,7 +1472,7 @@ def resolve_standalone_project(
     root = Path(raw).resolve()
 
     if not root.is_dir():
-        raise ProjectError(f"Project path '{root}' does not exist.")
+        raise ProjectError(ERR_PROJECT_NO_PATH % root)
 
     # The hash + identity key off the stable ROOT; the workspace subdir is not the identity.
     phash = project_hash(str(root))
@@ -1722,7 +1484,7 @@ def resolve_standalone_project(
 
     # Metadata at the ROOT; ``project_path`` is the RESOLVED ``workset.workspaces`` (ruled 10).
     metadata_path = root
-    box_data = root / _STANDALONE_META_DIR
+    box_data = root / STANDALONE_META_DIR
     project_path = resolve_workset_workspaces(
         root, load_workset_settings_doc(root), standalone=True,
     )

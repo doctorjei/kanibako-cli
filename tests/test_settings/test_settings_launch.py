@@ -1828,13 +1828,13 @@ def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
     value wins → RED; reverting the standalone arm to a ``None`` box tier → the box
     value is never read → RED.)"""
     from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.paths import _STANDALONE_META_DIR, BoxMode, _box_settings_files
+    from kanibako.settings.paths import STANDALONE_META_DIR, BoxMode, _box_settings_files
 
     root = tmp_path / "myproj"
-    (root / _STANDALONE_META_DIR).mkdir(parents=True)
+    (root / STANDALONE_META_DIR).mkdir(parents=True)
     # LITERAL positions (spec §5), independent of the code under test.
     literal_ws = root / "settings.yaml"
-    literal_box = root / _STANDALONE_META_DIR / "settings.yaml"
+    literal_box = root / STANDALONE_META_DIR / "settings.yaml"
     dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
     dump_doc(literal_box, {"box": {"image": "box/img:2"}})
 

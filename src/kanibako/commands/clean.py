@@ -10,7 +10,7 @@ from kanibako.settings.config import BOX_META_FILE, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.errors import UserCancelled
 from kanibako.settings.paths import (
-    _STANDALONE_META_DIR,
+    STANDALONE_META_DIR,
     BoxMode,
     helper_log_path,
     load_std_paths,
@@ -139,7 +139,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     # box metadata lives in box_data/ + the root settings.yaml + vault/.  "No
     # session data" means no box_data/ marker dir (the root always exists).
     if proj.mode is BoxMode.standalone:
-        if not (proj.metadata_path / _STANDALONE_META_DIR).is_dir():
+        if not (proj.metadata_path / STANDALONE_META_DIR).is_dir():
             print(f"No session data found for project {proj.project_path}")
             return 0
     elif not proj.metadata_path.is_dir():
@@ -172,7 +172,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         root = proj.metadata_path
         # box_data/ holds the box home + its root-owned canon skeleton (J-7), so
         # the deletion needs the podman-unshare escalation, not a bare rmtree.
-        box_data = root / _STANDALONE_META_DIR
+        box_data = root / STANDALONE_META_DIR
         if box_data.is_dir() and not remove_box_tree(box_data):
             _warn_undeleted(box_data)
         (root / BOX_META_FILE).unlink(missing_ok=True)

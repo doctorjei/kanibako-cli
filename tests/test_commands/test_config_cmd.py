@@ -743,9 +743,9 @@ class TestStandaloneBoxTierRoundTrip:
         gets both positions from the code under test is self-consistent and therefore
         BLIND to a swapped pair.  These literals are what make the swap mutation
         redden here."""
-        from kanibako.settings.paths import _STANDALONE_META_DIR, BOX_META_FILE
+        from kanibako.settings.paths import STANDALONE_META_DIR, BOX_META_FILE
 
-        return root / BOX_META_FILE, root / _STANDALONE_META_DIR / BOX_META_FILE
+        return root / BOX_META_FILE, root / STANDALONE_META_DIR / BOX_META_FILE
 
     def test_set_writes_the_box_tier_and_leaves_the_root_file_alone(
         self, config_file, tmp_home, credentials_dir, capsys,

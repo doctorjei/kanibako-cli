@@ -970,7 +970,7 @@ class TestResolveProjectHomeGuard:
         std = load_std_paths(config)
         home = tmp_home / "home"  # This is set as $HOME by the fixture
 
-        with pytest.raises(ProjectError, match="Refusing to create a project rooted at .HOME"):
+        with pytest.raises(ProjectError, match="Refusing to create project rooted at .HOME"):
             resolve_project(std, config, project_dir=str(home), initialize=True)
 
     def test_home_guard_allows_existing_project(
@@ -1926,18 +1926,18 @@ class TestP5aStandalonePresenceSwitch:
 
     def test_presence_detects_without_mode_field(self, tmp_home):
         from kanibako.settings.config import BOX_META_FILE, dump_doc
-        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.paths import STANDALONE_META_DIR, _is_standalone_meta_dir
         root = tmp_home / "box"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
         # A settings.yaml with NO project.mode = "standalone" declaration.  The
         # OLD field-reading impl returned False here; the presence impl → True.
         dump_doc(root / BOX_META_FILE, {"box": {"image": "x"}})
         assert _is_standalone_meta_dir(root) is True
 
     def test_missing_settings_is_not_standalone(self, tmp_home):
-        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.paths import STANDALONE_META_DIR, _is_standalone_meta_dir
         root = tmp_home / "box"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
         # box_data/ present but NO settings.yaml → not a standalone marker.
         assert _is_standalone_meta_dir(root) is False
 
@@ -1989,14 +1989,14 @@ class TestBoxWorksetSettingsPaths:
         the ROOT file (= the file §5 DETECTION reads).  (Mutation: swapping the
         returned pair → RED.)"""
         from kanibako.settings.paths import (
-            _STANDALONE_META_DIR,
+            STANDALONE_META_DIR,
             BoxMode,
             box_workset_settings_paths,
         )
 
         proj = self._proj(tmp_path, mode=BoxMode.standalone, group=None)
         box_tier, ws_tier = box_workset_settings_paths(proj)
-        assert box_tier.parent.name == _STANDALONE_META_DIR
+        assert box_tier.parent.name == STANDALONE_META_DIR
         assert box_tier.parent.parent == proj.metadata_path
         assert ws_tier is not None and ws_tier.parent == proj.metadata_path
 
@@ -2073,13 +2073,13 @@ class TestStandaloneDetectionIsRootFileOnly:
 
     def test_root_file_alone_detects_without_a_box_tier_file(self, tmp_home):
         from kanibako.settings.config import BOX_META_FILE, dump_doc
-        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.paths import STANDALONE_META_DIR, _is_standalone_meta_dir
 
         root = tmp_home / "sa"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
         dump_doc(root / BOX_META_FILE, {"workset": {"kuid": "abcde"}})
         # No box_data/settings.yaml at all — the ABSENT-BY-DEFAULT shape.
-        assert not (root / _STANDALONE_META_DIR / BOX_META_FILE).exists()
+        assert not (root / STANDALONE_META_DIR / BOX_META_FILE).exists()
         assert _is_standalone_meta_dir(root) is True
 
     def test_box_tier_file_alone_is_not_a_standalone_marker(self, tmp_home):
@@ -2087,11 +2087,11 @@ class TestStandaloneDetectionIsRootFileOnly:
         two settings paths into one would point detection at ``box_data/settings.yaml``
         — and this box, which has NO root file, would start being detected → RED."""
         from kanibako.settings.config import BOX_META_FILE, dump_doc
-        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.paths import STANDALONE_META_DIR, _is_standalone_meta_dir
 
         root = tmp_home / "sa"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
-        dump_doc(root / _STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
+        dump_doc(root / STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
         assert not (root / BOX_META_FILE).exists()
         assert _is_standalone_meta_dir(root) is False
 
@@ -2099,12 +2099,12 @@ class TestStandaloneDetectionIsRootFileOnly:
         """The new box tier does not DISTURB detection either — presence of both is
         the normal post-``config set`` shape."""
         from kanibako.settings.config import BOX_META_FILE, dump_doc
-        from kanibako.settings.paths import _STANDALONE_META_DIR, _is_standalone_meta_dir
+        from kanibako.settings.paths import STANDALONE_META_DIR, _is_standalone_meta_dir
 
         root = tmp_home / "sa"
-        (root / _STANDALONE_META_DIR).mkdir(parents=True)
+        (root / STANDALONE_META_DIR).mkdir(parents=True)
         dump_doc(root / BOX_META_FILE, {"workset": {"kuid": "abcde"}})
-        dump_doc(root / _STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
+        dump_doc(root / STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
         assert _is_standalone_meta_dir(root) is True
 
     def test_kuid_is_read_from_the_root_file_not_the_box_tier(
@@ -2116,7 +2116,7 @@ class TestStandaloneDetectionIsRootFileOnly:
         that looks unrelated — so pin the read side explicitly."""
         from kanibako.settings.config import BOX_META_FILE, read_workset_kuid
         from kanibako.settings.paths import (
-            _STANDALONE_META_DIR,
+            STANDALONE_META_DIR,
             resolve_standalone_project,
         )
 
@@ -2129,7 +2129,7 @@ class TestStandaloneDetectionIsRootFileOnly:
         # create wrote the kuid to the ROOT file, and NOT to the box tier.
         assert read_workset_kuid(root / BOX_META_FILE) != "00000"
         assert read_workset_kuid(
-            root / _STANDALONE_META_DIR / BOX_META_FILE
+            root / STANDALONE_META_DIR / BOX_META_FILE
         ) == "00000"
 
 
@@ -2141,7 +2141,7 @@ class TestStandaloneEnableVaultTier:
     def _standalone(self, config_file, tmp_home, *, box=None, root_extra=None):
         from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.config_io import dump_doc, load_doc
-        from kanibako.settings.paths import _STANDALONE_META_DIR, resolve_standalone_project
+        from kanibako.settings.paths import STANDALONE_META_DIR, resolve_standalone_project
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2152,7 +2152,7 @@ class TestStandaloneEnableVaultTier:
             doc = load_doc(root / BOX_META_FILE)
             doc.setdefault("box", {}).update(root_extra)
             dump_doc(root / BOX_META_FILE, doc)
-        box_file = root / _STANDALONE_META_DIR / BOX_META_FILE
+        box_file = root / STANDALONE_META_DIR / BOX_META_FILE
         if box is not None:
             doc = load_doc(box_file)
             doc.setdefault("box", {}).update(box)
