@@ -118,6 +118,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch` instead of warning and starting a box with no agent binary in it. See
   [MIGRATION.md](MIGRATION.md) §2.28.
 
+- **A `synced` entry lands inside the bind that covers its destination.** `<scope>.synced` files are
+  re-copied into the box on every launch — this is how host credentials get there — and their
+  destination is written box-side (`~/…`). Until now exactly two destinations resolved correctly:
+  anything under `~/workspace` went to the project directory and everything else under `~` went to
+  the box home. A synced destination inside any *other* bind — a vault path, a channel path, one of
+  your own — was written underneath that mount rather than into it, so the box never saw the file and
+  nothing said so. The destination now resolves through the assembled mount set, and the copy lands
+  in the covering bind's host source. Where there is nothing to deliver to — the covering bind is
+  read-only, or is a `masks` entry, or no bind covers the destination at all — the entry is skipped
+  with a warning naming the bind that decided it, in place of the single `guest_dest … is outside
+  /home/agent` message. Synced entries are also applied later in the launch now: after the mount set
+  is final, after the plugin's credential sync (so a `synced` entry aimed at the same host file wins
+  where it used to lose), and after the three checks that can abort a launch, so a launch that fails
+  one of them no longer refreshes your synced files on the way out. See
+  [MIGRATION.md](MIGRATION.md) §2.29.
+
 - **`agent.<agent>.transform` now decides whether a binary transform runs.** The key names WHICH
   transform an agent uses; until now nothing read it, and the tweakcc patch ran for any agent whose
   settings merely carried a `transform_settings` dict — including agents tweakcc cannot patch.

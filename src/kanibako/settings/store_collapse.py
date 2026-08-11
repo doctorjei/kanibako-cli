@@ -194,28 +194,33 @@ def _segments(dest: str) -> int:
   return len(PurePosixPath(dest).parts)
 
 
-def _is_within(dest: str, root: str) -> bool:
+def is_within(dest: str, root: str) -> bool:
   """Is *dest* AT or INSIDE *root*? ⚑ Separator-guarded, never a bare prefix match."""
+  # ⚑ PUBLIC for the same reason ``path_depth`` is (cutover 2a-2): DELIVERY asks
+  # this question too. ``commands/start._synced_host_dest`` finds the bind covering
+  # a sync's dest with it, so "inside" means ONE thing on both sides of the split -
+  # a second spelling would let the fold and the copy disagree about which bind a
+  # destination sits in.
   return dest == root or dest.startswith(root.rstrip("/") + "/")
 
 
 def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]:
   """The BIND dests AT or INSIDE *dest* - what an arriving bind would subsume."""
   return [
-    d for d, bind in combined.items() if bind.src is not None and _is_within(d, dest)
+    d for d, bind in combined.items() if bind.src is not None and is_within(d, dest)
   ]
 
 
 def _masks_over(combined: CollapsedBindings, dest: str) -> list[str]:
   """The MASK dests AT or CONTAINING *dest* - his "same or parent" side, inclusive."""
   return [
-    d for d, bind in combined.items() if bind.src is None and _is_within(dest, d)
+    d for d, bind in combined.items() if bind.src is None and is_within(dest, d)
   ]
 
 
 def _sweep(combined: CollapsedBindings, dest: str) -> None:
   """Delete every entry AT or INSIDE *dest* - the ONE operation both mounts share."""
-  for occupied in [d for d in combined if _is_within(d, dest)]:
+  for occupied in [d for d in combined if is_within(d, dest)]:
     del combined[occupied]
 
 
@@ -268,7 +273,7 @@ def _refuse_mask_on_mask(combined: CollapsedBindings, dest: str) -> None:
 
 def _refuse_mask_over_home(dest: str) -> None:
   """Nothing may subsume home, masks included: a mask AT home or above it is refused."""
-  if not _is_within(HOME_DEST, dest):
+  if not is_within(HOME_DEST, dest):
     return
   raise SettingsError(
     f"the mask at {dest!r} lands at or above the home binding at {HOME_DEST!r}, "
@@ -280,7 +285,7 @@ def _refuse_mask_over_home(dest: str) -> None:
 
 def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
   """A seed resolves into the HOME bind's source, so its dest must be inside home."""
-  if _is_within(dest, HOME_DEST):
+  if is_within(dest, HOME_DEST):
     return
   raise SettingsError(
     f"the seeded copy of {entry.src!r} targets {dest!r}, which is outside the home "

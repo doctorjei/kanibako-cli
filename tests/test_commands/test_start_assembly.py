@@ -35,6 +35,7 @@ from kanibako.commands.start import (
     _launch_bind_map,
     _resolve_launch_snapshot,
     _snapshot_assembly_bindings,
+    _snapshot_assembly_synced,
     _split_home_bind,
 )
 from kanibako.settings.paths import resolve_project
@@ -70,6 +71,29 @@ def _resolve(std, proj, **kw):
         agent_cfg=None,
         **kw,
     )
+
+
+def _sync(std, proj, *, logger, bindings=None, **kw):
+    """Drive the REAL sync consumer the way the launch path does: resolve, then apply.
+
+    ⚑⚑ ONE RESOLVE, AND IT IS THE MAIN ONE — that is the whole of cutover 2b-3.
+    ``_apply_synced_copies`` used to run a NARROW resolve of its own, which carries
+    no base families, hence no home bind, hence NO ``meta.assembly.synced`` leaf at
+    all; pointing the consumer at the leaf without moving it here would have read
+    ``None`` on every launch and changed nothing. The bind map defaults to the one
+    this very resolve produces, because a sync dest must be resolved against the
+    mount set the collapse validated it over.
+    """
+    from kanibako.commands.start import _apply_synced_copies, _launch_bind_map
+
+    snapshot, reconciled = _resolve(std, proj, **kw)
+    _apply_synced_copies(
+        snapshot=snapshot, reconciled=reconciled,
+        bindings=_launch_bind_map(snapshot, reconciled) if bindings is None
+        else bindings,
+        logger=logger,
+    )
+    return snapshot, reconciled
 
 
 def _assembly(snapshot):
@@ -1155,8 +1179,6 @@ class TestTheSeedApplierConsumesTheLeaf:
         """
         import os
 
-        from kanibako.commands.start import _apply_synced_copies
-
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         seed_src = tmp_path / "seed-cred.txt"
         sync_src = tmp_path / "sync-cred.txt"
@@ -1176,12 +1198,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         # (1) The create-time seed must not have written the sync's dest AT ALL.
         assert not landed.exists(), landed.read_text()
 
-        _apply_synced_copies(
-            std=std, proj=proj, agent_name="claude", target=None,
-            global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
-            logger=logging.getLogger("seed-consumer"), deliver_creds=True,
-        )
+        _sync(std, proj, logger=logging.getLogger("seed-consumer"))
         # (2) ...so the sync's own mtime gate sees an ABSENT dest and delivers.
         assert landed.read_text() == "SYNC BYTES"
 
@@ -1251,3 +1268,343 @@ class TestTheSeedApplierConsumesTheLeaf:
         assert _snapshot_assembly_seeded(snapshot), (
             "the seed leaf was emptied through the read"
         )
+
+
+class TestTheSyncApplierConsumesTheLeaf:
+    """Cutover 2b-3: consumer 6 (``_apply_synced_copies``) reads ``meta.assembly.synced``.
+
+    ⚑⚑ **THE SWITCH IS ONLY REAL BECAUSE THE PASS MOVED.** Measured 2026-08-11: the
+    narrow resolve the function used to run carries no base families, therefore no
+    home bind, therefore ``_install_assembly_collapse`` writes no ``synced`` leaf on
+    it — ever. Pointing the consumer at the leaf while it still resolved for itself
+    would have read ``None`` on every launch and moved nothing at all, which is
+    exactly the trap 2b-1 had to fix on the seed side. So the pass now consumes the
+    MAIN launch resolve, below the bind map, and every test here drives that shape.
+
+    ⚑ A sync dest is resolved against the mount set the collapse VALIDATED it over
+    (``_collapse_synced`` folds against the bind map in the same ``CollapsedStore``),
+    which is why ``_sync`` defaults *bindings* to that resolve's own map.
+
+    ⚑⚑ ``synced`` IS A COPY AND STAYS A COPY. Nothing here turns one into a mount:
+    the bind map decides only WHERE ON THE HOST a copy lands.
+    """
+
+    @staticmethod
+    def _two_scopes_at_one_dest(tmp_path):
+        """One credential dest, claimed by ``system`` and by ``box``.
+
+        ⚑⚑ THE ``os.utime`` IS THE TEST, exactly as it is on the seed side. The
+        SYSTEM source is made STRICTLY NEWER so that applying both rows in list
+        order lets ``_synced_uptodate`` skip the box row — the failure mode
+        ``_synced_last_wins`` exists for. Without it the box row would land last and
+        the test would pass against no rule at all.
+        """
+        import os
+
+        system_src, box_src = tmp_path / "system-cred", tmp_path / "box-cred"
+        system_src.write_text("SYSTEM BYTES")
+        box_src.write_text("BOX BYTES")
+        os.utime(box_src, (1000, 1000))
+        os.utime(system_src, (2000, 2000))
+        return {
+            "system.synced": {"~/cred.txt": (str(system_src),)},
+            "box.synced": {"~/cred.txt": (str(box_src),)},
+        }
+
+    def test_the_leaf_carries_BOTH_rows_at_one_dest_in_SCOPE_order(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The producer half: the sync arm is a FLAT list, not one arbitrated winner.
+
+        RED if anything between the declaration and the leaf keys the sync arm on its
+        destination — which is what ``reconcile_categories`` does
+        (``_resolve_copy_group`` returns ONE row) and what the leaf deliberately does
+        not.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _rec = _resolve(
+            std, proj, extra_default_categories=self._two_scopes_at_one_dest(tmp_path),
+        )
+        rows = [
+            c for c in _assembly(snapshot)["synced"] if c.dest == "/home/agent/cred.txt"
+        ]
+
+        assert [Path(c.src).name for c in rows] == ["system-cred", "box-cred"]
+
+    def test_the_LAST_row_at_a_dest_WINS_even_when_its_SOURCE_IS_OLDER(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """🐞🐞 THE SECOND CREDENTIAL REGRESSION THIS STEP OPENED, closed and pinned.
+
+        ``_resolve_copy_group`` returned one row per dest and called it *the
+        credential pick*. The leaf returns BOTH. Applied in list order under the
+        mtime gate, a NEWER system source makes the box row a skip — so the LESS
+        SPECIFIC scope silently keeps a credential destination.
+
+        MUTATION-PROVED against dropping ``_synced_last_wins``: ``SYSTEM BYTES``.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        landed = proj.shell_path / "cred.txt"
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories=self._two_scopes_at_one_dest(tmp_path),
+        )
+
+        assert landed.read_text() == "BOX BYTES"
+
+    def test_a_dest_inside_a_NON_HOME_bind_lands_in_THAT_BINDS_SOURCE(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """⚑ THE DEST GENERALIZATION, on the one shipped bind that proves it.
+
+        ``~/vault/rw`` is a real rw bind in every vault-enabled box, with a source
+        that is NOT under the box home. The retired translator mapped every
+        non-workspace guest path to ``shell_path/<rel>`` — a host location the vault
+        bind SHADOWS, so the box never saw the copy.
+
+        MUTATION-PROVED (M2) against restoring ``container._guest_dest_to_host``:
+        this test goes RED while ``test_a_WORKSPACE_dest...`` below stays GREEN —
+        the workspace arm alone is NOT sufficient coverage for the generalization.
+        """
+        src = tmp_path / "note.txt"
+        src.write_text("in-vault")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={
+                "box.synced": {"~/vault/rw/note.txt": (str(src),)},
+            },
+        )
+
+        assert (proj.vault_rw_path / "note.txt").read_text() == "in-vault"
+        # The shadowed host path the old translator computed was NOT written.
+        assert not (proj.shell_path / "vault" / "rw" / "note.txt").exists()
+
+    def test_a_WORKSPACE_dest_still_lands_under_the_workspace_bind(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The control for M2, and the shipped behaviour that must not move.
+
+        ⚑ It stays GREEN under the mutation above precisely because
+        ``_guest_dest_to_host`` has a hardwired ``~/workspace`` arm. That is what
+        makes it a control rather than a second copy of the test above.
+        """
+        src = tmp_path / "ws.txt"
+        src.write_text("in-workspace")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={
+                "box.synced": {"~/workspace/sub/f.txt": (str(src),)},
+            },
+        )
+
+        assert (proj.project_path / "sub" / "f.txt").read_text() == "in-workspace"
+
+    def test_a_dest_under_a_MASK_is_skipped_and_does_not_RAISE(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """🛑 The arm that must precede every ``Path(bind.src)``, and why.
+
+        The collapse ACCEPTS a sync at a mask's point by construction —
+        ``_refuse_sync_at_a_bind_dest`` returns early when the occupant has no source,
+        and a mask IS the source-less entry. Delivery therefore meets a
+        ``CollapsedBind(None, None)``.
+
+        MUTATION-PROVED against dropping the ``is_mask`` arm: ``TypeError: argument
+        should be a str or an os.PathLike object where __fspath__ returns a str, not
+        'NoneType'`` — a crashed launch, not a skipped copy.
+        """
+        src = tmp_path / "hidden.txt"
+        src.write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            _sync(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.masks": ["~/private"],
+                    "box.synced": {"~/private/hidden.txt": (str(src),)},
+                },
+            )
+
+        assert not (proj.shell_path / "private" / "hidden.txt").exists()
+        assert any("is a mask" in r.getMessage() for r in caplog.records), [
+            r.getMessage() for r in caplog.records
+        ]
+
+    def test_a_dest_inside_a_READ_ONLY_bind_is_skipped(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """A read-only bind's host source is not a delivery target (spec is SILENT).
+
+        Refusing is the strict start: home and workspace are both ``rw``, so no
+        shipped configuration loses anything, and loosening this later breaks no
+        existing box. Under the retired translator the copy landed under the home
+        stub — behind the read-only mount, invisible in the box — so nothing that
+        used to be DELIVERED stops being delivered; only the warning is new.
+        """
+        src = tmp_path / "ro.txt"
+        src.write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            _sync(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.bindings.ro": {"~/ro-area": (str(tmp_path / "roroot"),)},
+                    "box.synced": {"~/ro-area/f.txt": (str(src),)},
+                },
+            )
+
+        assert not (tmp_path / "roroot" / "f.txt").exists()
+        assert any("read-only" in r.getMessage() for r in caplog.records), [
+            r.getMessage() for r in caplog.records
+        ]
+
+    def test_a_dest_NO_BINDING_COVERS_is_skipped(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """No cover ⇒ no host location the copy could arrive at.
+
+        ⚑ Wider than the retired outside-home skip: this fires for any guest path
+        outside every bind, not only for one outside ``/home/agent``.
+        """
+        src = tmp_path / "out.txt"
+        src.write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            _sync(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.synced": {"/srv/outside.txt": (str(src),)},
+                },
+            )
+
+        assert any("no binding covers" in r.getMessage() for r in caplog.records), [
+            r.getMessage() for r in caplog.records
+        ]
+
+    def test_an_ABSENT_leaf_falls_back_to_the_RECONCILED_synced_winners(
+        self, monkeypatch, std, config, project_dir, tmp_path,
+    ):
+        """🛑 The safety arm — the collapse REFUSES more configurations than the live route.
+
+        ABSENT (``None``) means *the collapse refused*, and until step 2c a refusal
+        must cost the box nothing. RED if the fallback is dropped: a box whose config
+        the fold rejects would silently stop receiving its credentials, at ``debug``.
+        """
+        monkeypatch.setattr(
+            "kanibako.commands.start._snapshot_assembly_synced", lambda _snap: None,
+        )
+        src = tmp_path / "cred.txt"
+        src.write_text("token")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={"box.synced": {"~/cred.txt": (str(src),)}},
+        )
+
+        assert (proj.shell_path / "cred.txt").read_text() == "token"
+
+    def test_the_FALLBACK_applies_SYNCED_rows_and_NEVER_SEEDED_ONES(
+        self, monkeypatch, std, config, project_dir, tmp_path,
+    ):
+        """🛑🛑 WHY THE CATEGORY FILTER SURVIVES IN THE FALLBACK ARM.
+
+        ``reconciled.copies`` is ONE list holding BOTH copy categories, so the arm
+        that reads it must still say which half it wants. The leaf does not — there
+        are two leaves — but deleting the test outright, as the seed switch could,
+        would apply every ``seeded`` row here as an OVERWRITE, on EVERY launch, over
+        content the box owns.
+
+        ⚑⚑ THE ``os.utime`` IS THE TEST. Without it the box's own file is the newer
+        one, ``_synced_uptodate`` skips the copy, and this passes against no rule at
+        all — MEASURED: the mutation below went GREEN on the first form of this test.
+
+        MUTATION-PROVED against removing ``row.category == "synced"`` from
+        ``_launch_synced_list``: ``~/owned.txt`` is clobbered back to ``SEED``.
+        """
+        import os
+
+        monkeypatch.setattr(
+            "kanibako.commands.start._snapshot_assembly_synced", lambda _snap: None,
+        )
+        seed_src = tmp_path / "seed.txt"
+        seed_src.write_text("SEED")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        owned = proj.shell_path / "owned.txt"
+        owned.parent.mkdir(parents=True, exist_ok=True)
+        owned.write_text("THE BOX OWNS THIS")
+        # The seed source is STRICTLY NEWER — so only the category filter stops it.
+        os.utime(owned, (1000, 1000))
+        os.utime(seed_src, (2000, 2000))
+
+        _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={
+                "box.seeded": {"~/owned.txt": (str(seed_src),)},
+            },
+        )
+
+        assert owned.read_text() == "THE BOX OWNS THIS"
+
+    def test_a_PRIVATE_box_receives_NO_synced_row_THROUGH_THE_LEAF(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """D-M4 on the NEW route — the 2b-0 hoist is what keeps this true.
+
+        ⚑ ``test_start.TestApplySyncedCopies.test_synced_suppressed_when_not_sharing``
+        still cannot pin it: that harness has no home bind, so it takes the FALLBACK
+        and observes the gate that never moved. This one resolves with base families
+        on, so the leaf exists and the gate under test is the hoisted one.
+
+        MUTATION-PROVED against reverting ``gate_credential_delivery`` to hand
+        ``_install_assembly_collapse`` the UNGATED entry list: the credential lands.
+        """
+        src = tmp_path / "cred.txt"
+        src.write_text("token")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        landed = proj.shell_path / "cred.txt"
+        cats = {"box.synced": {"~/cred.txt": (str(src),)}}
+
+        snapshot, _rec = _sync(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories=cats, deliver_creds=False,
+        )
+
+        # The control lives in the assertion: the leaf EXISTS (so the fallback is not
+        # what is being observed) and is EMPTY of the row.
+        assert _snapshot_assembly_synced(snapshot) == []
+        assert not landed.exists()
+
+    def test_the_consumer_CANNOT_BE_CALLED_before_the_bind_map_exists(self):
+        """P3 — the failure is made unavailable, not merely detectable.
+
+        There is no launch-harness test that could catch a mis-placed call:
+        ``start_mocks`` patches ``_resolve_launch_snapshot`` outright, so no
+        ``_run_container`` test drives the real resolve at all. The signature is
+        therefore the guard — every input REQUIRED, keyword-only, and none of them
+        nameable at the site this pass used to occupy.
+
+        RED the moment any of the four grows a default (``= None`` most of all,
+        which is how this becomes a silent no-delivery again).
+        """
+        import inspect
+
+        from kanibako.commands.start import _apply_synced_copies
+
+        params = inspect.signature(_apply_synced_copies).parameters
+
+        assert list(params) == ["snapshot", "reconciled", "bindings", "logger"]
+        assert all(
+            p.kind is inspect.Parameter.KEYWORD_ONLY for p in params.values()
+        ), {n: str(p.kind) for n, p in params.items()}
+        assert all(
+            p.default is inspect.Parameter.empty for p in params.values()
+        ), {n: p.default for n, p in params.items()}

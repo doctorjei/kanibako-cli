@@ -144,7 +144,7 @@ gone for good. Broader than the file-bind case it is aimed at, narrower than a p
 whereas tightening one cannot.
 
 ⚑ Exact equality is expressed as the dict lookup itself. Both sides are normalized dests, so no
-containment predicate is involved and none was added — `_is_within` is inclusive of equality and
+containment predicate is involved and none was added — `is_within` is inclusive of equality and
 would answer a different question.
 
 ⚑ A sync at a MASK's exact point is NOT refused: `src = None` marks a mask, and the rule and its
@@ -203,7 +203,7 @@ So the test is `d == dest or d.startswith(dest.rstrip("/") + "/")`. `rstrip` mak
 behave: it yields the prefix `/`, and everything is inside root.
 
 ⚑ **Equality is on the SUBSUME side, not in a branch of its own.** Jei's rules say *"same or parent
-mount point"* in one breath, so `_is_within` is inclusive and the `d != dest` guards disappear with
+mount point"* in one breath, so `is_within` is inclusive and the `d != dest` guards disappear with
 it. Exactly ONE equality guard survives, in `_refuse_bind_under_mask`, and it states a RULE rather
 than patching a predicate: a bind may take a mask's own point, and may only never sit inside one.
 

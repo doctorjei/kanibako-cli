@@ -2578,8 +2578,10 @@ def _emit_bind(
 
     ⚑⚑ EVERY DEST IS GUEST-SPELLED, COPIES INCLUDED (spec §0 "ONE DEST SPACE, TWO
     DELIVERIES", 2026-08-08c) — so there is ONE resolution here and no space
-    discriminator. A COPY's guest dest is resolved to the box store later, when
-    the copy runs, by ``container._guest_dest_to_host``. The retired
+    discriminator. A COPY's guest dest is resolved to a host path later, when the
+    copy runs: a ``seeded`` dest by ``container._guest_dest_to_host``, a ``synced``
+    dest by ``commands.start._synced_host_dest`` (through the bind that covers it —
+    cutover 2b-3). Neither resolution happens here. The retired
     ``host_dest_keys`` parameter and ``CategoryEntry.dest_space`` field existed
     only because the seed layers used to spell their dest as an absolute HOST
     path; see ``CategoryEntry`` for the bug that made them necessary and why the

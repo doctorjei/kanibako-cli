@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -3296,20 +3296,6 @@ def _run_container(
             _register_new_box(std, proj)
             _clear_create_entry(std, proj)
 
-        # Synced copies (the terminal `<scope>.synced` category) — applied on
-        # EVERY launch (mtime-gated), unlike copy-once seeds.  Distinct from the
-        # plugin descriptor's `cred_files` credsync engine above (that is
-        # descriptor-driven; this is settings-driven), so there is no double
-        # application.  ADDITIVE: with no `<scope>.synced` keys configured the
-        # reconciled copy set has no synced winners -> no-op.  The share gate
-        # (D-M4) suppresses every synced entry for a PRIVATE box (deliver_creds False).
-        _apply_synced_copies(
-            std=std, proj=proj, agent_name=agent_id, target=target,
-            global_config_path=system_settings_path,
-            agent_config_path=agent_cfg_path,
-            logger=logger, deliver_creds=auth_src.creds_shared,
-        )
-
         # Plugin-owned pre-launch host preparation (agent-agnostic call).
         # The plugin owns everything agent-specific that must touch the host
         # before mounts: e.g. the Claude plugin runs a synchronous `claude
@@ -3826,6 +3812,39 @@ def _run_container(
         # any scope) may declare masks via ``box.masks`` / ``<scope>.masks``.  The
         # result drives runtime.run(tmpfs_masks=...) below.
         tmpfs_masks = _bind_map_masks(launch_binds)
+
+        # Synced copies (the terminal `<scope>.synced` category) — applied on EVERY
+        # launch (mtime-gated), unlike copy-once seeds.  ADDITIVE: with no
+        # `<scope>.synced` keys configured the sync list is empty -> no-op.  The share
+        # gate (D-M4) suppresses every synced entry for a PRIVATE box.
+        #
+        # ⚑⚑ IT RUNS HERE, AND THE POSITION IS THE CONTRACT (cutover 2b-3).  A sync
+        # dest is GUEST-spelled and lands in the SOURCE of whichever bind covers it,
+        # so this pass cannot run until ``launch_binds`` is FINAL — which it is only
+        # after the emit above.  Four consequences, all deliberate:
+        #   * it reads THIS resolve — the same one the bind map came from — instead of
+        #     running a narrow resolve of its own.  That second resolve carried no
+        #     base families, hence no home bind, hence no `meta.assembly.synced` at
+        #     all; a sync also has to be resolved against the mount set the collapse
+        #     validated it over, and there is only one of those.
+        #   * every parameter is REQUIRED, so leaving this call where it used to sit
+        #     (beside the create-time seed, ~180 lines up) cannot even name its
+        #     arguments — a loud failure rather than a silent no-delivery;
+        #   * the three `return 1` arms between there and here — an unusable host
+        #     agent binary, a failed auth check, and an agent delivery bind whose
+        #     source disappeared — now precede it, so a launch that bails no longer
+        #     first writes into the box;
+        #   * `detect_shadowed_mounts` still runs BELOW, so it keeps seeing synced
+        #     files as pre-existing content exactly as it did before.
+        # ⚑ The plugin descriptor's `cred_files` credsync engine (descriptor-driven,
+        # above) therefore now runs BEFORE this settings-driven pass rather than
+        # after it: where both write one host file, the `synced` row wins.
+        # ⚑ D-M4 is unchanged: this resolve was made with the SAME
+        # `deliver_creds=auth_src.creds_shared` the retired one was.
+        _apply_synced_copies(
+            snapshot=_snapshot, reconciled=reconciled,
+            bindings=launch_binds, logger=logger,
+        )
 
         # Image sharing: mount host image storage read-only into child, routed
         # through the category resolver (Phase B, D-M8) instead of hardwired
@@ -6881,14 +6900,17 @@ def emit_collision_warnings(collisions) -> None:
     registry flag, no per-box state, so the next launch warns again and the one
     after that, until the config is fixed.
 
-    ⚑ What IS collapsed is the FIVE in-process re-resolutions of one declaration
-    set: ``_resolve_launch_snapshot`` runs up to five times per ``kanibako
-    start`` (the main resolve, the conditional image + helper resolves, the seed
-    resolve, the ``synced`` copy resolve) and every one of them reads the user's
-    settings FILES, so one same-scope collision declared in a box file surfaces in
-    several of them. Printing it five times is one ambiguity reported five times,
-    not five ambiguities — so the memo is keyed ``(box_dest, scope)`` and lives
-    for the process, never beyond it.
+    ⚑ What IS collapsed is the in-process re-resolutions of one declaration set:
+    ``_resolve_launch_snapshot`` runs up to four times per ``kanibako start`` (the
+    main resolve, the conditional image + helper resolves, the create-time seed
+    resolve) and every one of them reads the user's settings FILES, so one
+    same-scope collision declared in a box file surfaces in several of them.
+    Printing it four times is one ambiguity reported four times, not four
+    ambiguities — so the memo is keyed ``(box_dest, scope)`` and lives for the
+    process, never beyond it.
+
+    ⚑ There WAS a fifth — the ``synced`` copy resolve — retired at cutover 2b-3
+    when that pass moved below the main resolve and started consuming it.
     """
     logger = get_logger(__name__)
     for collision in collisions:
@@ -7176,6 +7198,25 @@ def _snapshot_assembly_seeded(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
     return list(node) if isinstance(node, list) else None
 
 
+def _snapshot_assembly_synced(snapshot: "KeyStore") -> "list[CollapsedCopy] | None":
+    """The collapsed sync list at ``meta.assembly.synced``, or ``None`` if absent.
+
+    ⚑ ABSENT and EMPTY are DIFFERENT ANSWERS, exactly as for the seed leaf — but the
+    gate is NOT the same one.  This leaf DESCRIBES AN ASSEMBLY: a sync dest resolves
+    through whichever binding covers it, so it is written only when there is a home
+    to build on AND the bind fold did not refuse (2b-1's table).  ``[]`` therefore
+    means *this box syncs nothing* and ``None`` means *there is no assembly to
+    resolve a sync against*.
+    COPIED OUT of the snapshot — the caller gets its own list, never the live node.
+    """
+    from kanibako.settings.settings_store import KeyStore
+
+    node: object = snapshot
+    for seg in _ASSEMBLY_SYNCED:
+        node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+    return list(node) if isinstance(node, list) else None
+
+
 def _launch_seed_list(snapshot: "KeyStore", reconciled) -> "list[CollapsedCopy]":
     """The collapsed seed rows, falling back to the reconciled ``seeded`` winners.
 
@@ -7201,6 +7242,35 @@ def _launch_seed_list(snapshot: "KeyStore", reconciled) -> "list[CollapsedCopy]"
         CollapsedCopy(row.host_src, row.box_dest, row.options)
         for row in reconciled.copies
         if row.category == "seeded" and row.host_src is not None
+    ]
+
+
+def _launch_synced_list(snapshot: "KeyStore", reconciled) -> "list[CollapsedCopy]":
+    """The collapsed sync rows, falling back to the reconciled ``synced`` winners.
+
+    Cutover step 2b-3, and the SIBLING of :func:`_launch_seed_list` — with ONE
+    difference, and it is the reason this exists at all rather than the filter being
+    deleted outright.  🛑 **The ``category == "synced"`` test below is NOT a leftover.**
+    It is the fallback arm's own discriminator: ``reconciled.copies`` is one list
+    holding BOTH copy categories, so the arm that reads it must still say which half
+    it wants.  Deleting it here would apply every ``seeded`` row as a sync — an
+    overwrite, every launch, over content the box owns.
+
+    ⚑ The fallback is reachable TODAY: ``_install_assembly_collapse`` writes neither
+    the bindings leaf nor this one when the fold refuses or when there is no single
+    home bind, and it swallows the cause at ``debug``.  A refusal must reach nobody
+    until step 2c takes that swallow out; this arm and the filter inside it come out
+    with it, together with :func:`_launch_bind_map`'s and :func:`_launch_seed_list`'s.
+    """
+    from kanibako.settings.store_collapse import CollapsedCopy
+
+    collapsed = _snapshot_assembly_synced(snapshot)
+    if collapsed is not None:
+        return collapsed
+    return [
+        CollapsedCopy(row.host_src, row.box_dest, row.options)
+        for row in reconciled.copies
+        if row.category == "synced" and row.host_src is not None
     ]
 
 
@@ -7856,89 +7926,150 @@ def _apply_init_seeds(
     return snapshot
 
 
+def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
+    """A sync's guest dest → the host path it lands on, THROUGH the bind that covers it.
+
+    Cutover step 2b-3.  A ``synced`` dest is spelled GUEST-side (spec §0 "ONE DEST
+    SPACE, TWO DELIVERIES"), and what it means on the host is decided by the mount
+    set: the copy has to land in the SOURCE of whichever bind covers that path, or
+    the box will never see it.  So the resolution is the LONGEST-PREFIX cover over
+    the final bind map, and *bindings* must be the map the launch actually emits.
+
+    ⚑ This does NOT replace ``container._guest_dest_to_host``, which keeps three
+    other callers (the stub/shadow scans) and answers a different question — where a
+    guest path's host STUB is, under the two hardwired roots.  On shipped config the
+    two agree: ``/home/agent`` covers everything the stub arm mapped to
+    ``shell_path``, and ``/home/agent/workspace`` covers its workspace arm with the
+    same source.  They part company on a dest inside SOME OTHER bind, which the stub
+    arm mapped under the home stub — a host path the bind shadows, so nothing in the
+    box ever saw the copy.
+
+    Three refusals, each a warn-and-skip rather than a raise (a mis-declared dest
+    must not cost the user the launch), in the order they must be asked:
+
+    * **no cover** — the dest is outside every bind, so there is no host location it
+      could arrive at.  ⚑ Reachable in more places than the old translator's
+      outside-home skip: ``/etc/...`` with nothing declared over it, for instance.
+    * **the cover is a MASK** — a tmpfs has no host source at all.  ⚑ This MUST be
+      asked before ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK`
+      carries ``src=None``, so ``Path(bind.src)`` raises ``TypeError``, and the
+      collapse deliberately ACCEPTS a sync at a mask's point
+      (``_refuse_sync_at_a_bind_dest`` returns early on a source-less occupant).
+    * **the cover is READ-ONLY** — writing into a read-only bind's host source
+      delivers content the box cannot be shown to have received, and the source is
+      very often something the user did not mean this to reach (a canon chapter, the
+      packaged CLI).  Spec is SILENT here; refusing is the strict start, and
+      loosening it later breaks no existing box.
+
+    ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
+    """
+    from kanibako.settings.store_collapse import is_mask, is_within
+
+    covers = [dest for dest in bindings if is_within(box_dest, dest)]
+    if not covers:
+        logger.warning(
+            "synced %s: no binding covers this destination; skipping", box_dest,
+        )
+        return None
+    # LONGEST PREFIX = the innermost bind, which is the one the box sees at that
+    # path. ⚑ Every candidate is a prefix of ONE string, so length totally orders
+    # them and there is no tie to break: two covers of equal length are equal.
+    cover = max(covers, key=len)
+    bind = bindings[cover]
+    if is_mask(bind):
+        logger.warning(
+            "synced %s: %s is a mask (tmpfs, no host source); skipping",
+            box_dest, cover,
+        )
+        return None
+    if is_read_only(bind.opts):
+        logger.warning(
+            "synced %s: %s is bound read-only; skipping", box_dest, cover,
+        )
+        return None
+    return Path(bind.src) / PurePosixPath(box_dest).relative_to(cover)
+
+
+def _synced_last_wins(copies: "list[CollapsedCopy]") -> "list[CollapsedCopy]":
+    """One row per destination — the LAST, which is the most specific scope's.
+
+    ⚑⚑ THE OVERLAY OF AN OVERWRITE COPY *IS* LAST-WINS, and this makes that the
+    thing that decides.  The leaf is a flat scope-ordered list in which a dest MAY
+    repeat, and applying every row in order would look equivalent — except that the
+    sync is mtime-GATED (:func:`_synced_uptodate`).  With a system row written first,
+    a box row whose source happens to be OLDER is then SKIPPED, and the less specific
+    scope keeps the destination.  For ``synced`` that destination is usually a
+    credential, so the gate would turn the credential pick into a lottery on file
+    timestamps.  The gate is an OPTIMIZATION — it exists to make an unchanged source
+    a no-op — and an optimization may not decide which row wins.
+
+    ⚑ Byte-identical to what ``settings_categories._resolve_copy_group`` picks today
+    (``_most_specific``: scope precedence, then last within the scope), because
+    ``SCOPE_CONTAINMENT`` and ``_SCOPE_APPLY_ORDER`` are the same order and the leaf
+    is emitted in it.  Each destination keeps its FIRST appearance's position, so the
+    apply order over distinct dests does not move either.
+
+    ⚑ There is no seed analogue and there must not be: a ``seeded`` dest's repeats
+    are LAYERS that all apply (the §2a template trio).
+    """
+    last: "dict[str, CollapsedCopy]" = {}
+    for row in copies:
+        last[row.dest] = row
+    return list(last.values())
+
+
 def _apply_synced_copies(
     *,
-    std,
-    proj,
-    agent_name: str,
-    target=None,
-    global_config_path,
-    agent_config_path,
+    snapshot: "KeyStore",
+    reconciled,
+    bindings,
     logger,
-    deliver_creds: bool = True,
 ) -> None:
-    """Apply the terminal ``<scope>.synced`` category copies into the box shell dir.
+    """Apply the terminal ``<scope>.synced`` category copies into the box.
 
-    Unlike copy-once seeds, synced entries are reapplied on EVERY launch, but
-    only when the host source is NEWER than the box-side copy (mtime gating) so
-    an unchanged source is a no-op.  Routes the category config through the
-    reconcile model (:func:`_resolve_launch_categories`) and applies the COPY
-    winners whose category is ``synced``, translating each guest_dest
-    (/home/agent/X) to a host path under ``proj.shell_path``.
+    Unlike copy-once seeds, synced entries are reapplied on EVERY launch, but only
+    when the host source is NEWER than the box-side copy (mtime gating) so an
+    unchanged source is a no-op.  Reads the collapsed sync rows
+    (:func:`_launch_synced_list`) and resolves each guest dest through the bind that
+    covers it (:func:`_synced_host_dest`).
 
-    This is the settings-driven synced path, DISTINCT from the plugin
-    descriptor's ``cred_files`` credsync engine (descriptor-driven) — the two do
-    not overlap, so there is no double application.
+    ⚑⚑ ALL FOUR PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
+    (P3 — make the violation unavailable, not forbidden).  This pass cannot run until
+    the launch bind map is FINAL, because a sync dest means nothing without it: every
+    row would have to be skipped.  A caller that tries to run it earlier — where this
+    used to sit, ~180 lines up beside the create-time seed — cannot even NAME
+    *snapshot*, *reconciled* or *bindings*, so it fails LOUDLY instead of quietly
+    delivering nothing.
 
-    The credential gate (D-M4) is applied during reconcile: every ``synced``
-    entry is suppressed for a PRIVATE box (*deliver_creds* False).
+    ⚑⚑ THE THREE INPUTS COME FROM ONE COLLAPSE, AND THEY HAVE TO.
+    ``collapse_store_shapes`` folds the sync list AGAINST the bind map it just built
+    (``_collapse_synced(shapes, bindings)``) — the same object, in one
+    ``CollapsedStore``.  Resolving a sync dest against a bind map from a DIFFERENT
+    resolve would resolve it against a mount set the collapse never validated it
+    over.  So this consumes the MAIN launch resolve rather than running one of its
+    own; see llm-docs for the measurement that forced it.
+
+    This is the settings-driven synced path; the plugin descriptor's ``cred_files``
+    credsync engine is descriptor-driven and runs ABOVE this on the launch path, so a
+    ``synced`` row pointed at a file credsync also writes is applied SECOND and wins.
+
+    The credential gate (D-M4) suppresses every ``synced`` entry for a PRIVATE box;
+    it is applied once inside the resolve, above both the reconcile and the collapse
+    (``settings_categories.gate_credential_delivery``).
 
     ADDITIVE: with no ``<scope>.synced`` keys configured (and no target default synced
-    entries) the reconciled copy set has no ``synced`` winners -> copies nothing.
+    entries) the sync list is empty -> copies nothing.
     """
-    from kanibako.settings.settings_resolve import GUEST_HOME
-
-    # Single-route (7c): resolve the synced COPY winners off the ONE committed
-    # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
-    # ``_resolve_launch_snapshot``), replacing the retired second resolver route.
-    # NOTE: synced entries come ONLY from settings `<scope>.synced` keys —
-    # plugin descriptors do NOT yet declare default synced entries (Phase 8) — so
-    # there is NO default-category table to inject; the narrow
-    # ``include_base_families=False`` (no ``extra_default_categories``) resolves
-    # synced purely from the cascade config files, byte-for-byte the old resolve.
-    # *target* is accepted for call-site symmetry and contributes nothing until
-    # descriptors declare default synced entries.
-    _snapshot, reconciled = _resolve_launch_snapshot(
-        std=std,
-        proj=proj,
-        agent_name=agent_name,
-        system_settings_path=global_config_path,
-        agent_cfg_path=agent_config_path,
-        desc=None,
-        install=None,
-        target=target,
-        agent_cfg=None,
-        include_base_families=False,
-        deliver_creds=deliver_creds,
-        # No persona tier (audit): SYNCED is file delivery — this resolve reads
-        # ``synced`` COPY winners and nothing else, exactly as the seed resolve.
-    )
-
-    for sync in reconciled.copies:
-        if sync.category != "synced":
-            continue  # seeded copies are applied by _apply_init_seeds.
-        assert sync.host_src is not None  # synced entries always have a source.
-        # Shared translator (audit P3): a ``~/workspace/...`` dest maps under
-        # proj.project_path (the workspace bind) rather than the shadowed
-        # shell_path/workspace stub a former inline branch computed. ⚑ ONE route:
-        # the host-space arm that used to sit here went with the respell — spec §2d
-        # spells a ``synced`` dest GUEST-side now, resolved to the box store when
-        # the copy runs (spec §0 "ONE DEST SPACE, TWO DELIVERIES").
-        dest = _guest_dest_to_host(
-            sync.box_dest, proj.shell_path, proj.project_path,
-            map_home_root=True,
-        )
+    for sync in _synced_last_wins(_launch_synced_list(snapshot, reconciled)):
+        dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:
-            logger.warning(
-                "synced %s: guest_dest %r is outside %s; skipping",
-                sync.name, sync.box_dest, GUEST_HOME,
-            )
             continue
         # if_absent=False -> overwrite (reapplied every launch), mtime-gated so an
         # unchanged source is a no-op.
+        # ⚑ The dest IS the row's identity (R-10) — a ``CollapsedCopy`` has no name.
         _apply_shell_copy(
-            Path(sync.host_src), dest,
-            label="synced", name=sync.name, host_src=sync.host_src,
+            Path(sync.src), dest,
+            label="synced", name=sync.dest, host_src=sync.src,
             logger=logger, if_absent=False, skip_if=_synced_uptodate,
         )
 
