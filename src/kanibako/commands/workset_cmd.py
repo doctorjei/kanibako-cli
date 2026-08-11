@@ -1,4 +1,11 @@
-"""kanibako workset: create, manage, and inspect working sets."""
+"""The ``workset`` verb tree: create, list, info, rm, connect/disconnect, config verbs, share.
+
+**_Terminology_**
+- _named_ workset: registered under a user-chosen name, rooted at a user directory it owns
+- _default_ workset: the synthesized PRIMARY workset, rooted at ``@config.primary_workset``
+(kanibako's internal store, NOT a project dir) — so it has NO bindings root
+- _share_: a ``workset.bindings.{ro,rw}`` entry, keyed BY its box DESTINATION (R-10)
+"""
 
 from __future__ import annotations
 
@@ -36,8 +43,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     ws_sub = p.add_subparsers(dest="workset_command", metavar="COMMAND")
 
-    # kanibako workset create [path] [--name NAME] [--standalone] [--image IMAGE]
-    #                         [--no-vault]
+    # workset create [path] [--name N] [--standalone] [-i IMAGE] [--no-vault] [--force]
     create_p = ws_sub.add_parser(
         "create",
         help="Create a new working set",
@@ -100,7 +106,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rm_p.set_defaults(func=run_rm)
 
-    # kanibako workset connect <workset> [source] [--name N]
+    # kanibako workset connect <workset> [source] [--name N] [--force]
     connect_p = ws_sub.add_parser(
         "connect",
         help="Add a project to a working set",
@@ -329,16 +335,7 @@ def _load_std():
 
 
 def _workset_config_path(ws) -> Path:
-    """Return the path to the workset-level settings file.
-
-    ONE derivation for every mode (spec §2c: ``meta.workset.settings`` =
-    ``@meta.workset.path/settings.yaml``): ``<root>/settings.yaml``.  A NAMED
-    workset's file also carries the workset identity (``workset.meta``); the
-    cascade-settings tables (box/agent/workset.bindings) coexist there without
-    colliding.  The PRIMARY ("default") workset roots at
-    ``@config.primary_workset`` (F4 — its old ``@config.data/config.yaml``
-    write target was a dead write: the launch cascade never read it).
-    """
+    """The workset-tier settings file — ONE derivation for every mode (spec §2c)."""
     return workset_settings_path(ws)
 
 
@@ -352,11 +349,8 @@ def run_create(args: argparse.Namespace) -> int:
     path = Path(path).resolve()
     name = args.name or path.name
 
-    # PRE-FLIGHT the workset mould BEFORE anything is registered or created.
-    # ⚑ A whitelist refusal part-way through the stamp would be loud but NOT atomic:
-    # it would leave a REGISTERED workset with a root, its own settings.yaml and a
-    # partial chapter copy, recoverable only by ``workset rm``. Checking first is
-    # also the order ``create_workset`` already uses for its own name guards.
+    # ⚑ PRE-FLIGHT the workset mould BEFORE anything is registered or created — a
+    # mid-stamp whitelist refusal would be loud but NOT atomic. Do not reorder.
     from kanibako.errors import TemplateScopeError
     from kanibako.launch.templates import check_workset_template, install_workset_template
 
@@ -372,19 +366,11 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # J-6 A-action (INSTANTIATION): stamp the new workset store from the host
-    # workset mould (@system.template/workset), under the WORKSET whitelist. This
-    # is what gives a workset its own handbook chapter dir and its own box
-    # template; before this step existed, neither did.  The pre-flight above already
-    # proved the mould passes that whitelist, so this call cannot refuse half-way.
+    # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mould.
     install_workset_template(std, ws.root)
 
-    # Credential SHARING is now a settable cascade key (workset.auth.share_allowed
-    # via config), NOT a create-time flag — the --distinct-auth flag is retired.
-
-    # Store additional cascade settings in the workset settings.yaml.  Merge
-    # into the existing file (created with the workset.meta identity by
-    # create_workset) rather than overwriting it, so the identity survives.
+    # ⚑ MERGE into the existing file, never overwrite — create_workset already wrote
+    # the workset.meta identity there and it must survive.
     image = getattr(args, "image", None)
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)
@@ -495,20 +481,9 @@ def run_connect(args: argparse.Namespace) -> int:
     source = Path(args.source) if args.source else Path(os.getcwd())
     project_name = args.project_name or source.resolve().name
 
-    # J2 lifecycle journal: write-ahead a ``op: connect`` entry around the
-    # register-only membership write (connect REGISTERS an externally-existing
-    # dir into a workset and NEVER seeds).  The bracket lives HERE (the actual
-    # connect command), not in ``add_project`` — which is also the membership-
-    # write seam for the deferred move/convert/duplicate pipelines that must NOT
-    # journal a ``connect`` op.  Write-ahead order: write entry BEFORE
-    # ``add_project`` (the durable membership write), clear immediately after it
-    # returns (HARD INVARIANT: registered ==> no pending entry at rest).  The key
-    # is the host-side box dir (``ws.projects_dir / project_name``, the dir
-    # CONTAINING ``home/`` — uniform J1/J2 key).  On a crash before the clear the
-    # entry lingers; ``resolve_workset_project`` clears a stale ``connect`` entry
-    # on the next resolve of the now-member box (self-heal, symmetric with the
-    # import path).  If ``add_project`` raises, the entry is LEFT (incomplete) and
-    # the error propagates after ``_Unwind`` rolls back the in-process effects.
+    # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry
+    # BEFORE the membership write, cleared immediately after (HARD INVARIANT: registered
+    # ==> no pending entry at rest). Key = the box dir, the uniform J1/J2 key.
     from kanibako.project.workset import _journal_connect
 
     try:
@@ -543,12 +518,9 @@ def run_disconnect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Reconcile the positional <project> with the blanket --box (same → warn /
-    # differ → error), then resolve path-or-name to the canonical box name via
-    # the shared resolver (§Design 8 — same resolver even though "box" reads
-    # oddly for a workset member; consistency wins).  A bare member name that
-    # is not an independently-registered box still falls back to the raw token
-    # (remove_project matches it against the workset's member list by name).
+    # Reconcile the positional <project> with the blanket --box, then resolve
+    # path-or-name through the SHARED box resolver (§Design 8). A bare member name
+    # falls back to the raw token, which remove_project matches by name.
     from kanibako.commands.flags import resolve_subject_value
     from kanibako.settings.paths import resolve_box_target
     project_token = resolve_subject_value(
@@ -584,11 +556,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     except OSError as e:
-        # ⚑ A box tree can refuse deletion (root-owned canon skeleton, or any file a
-        # rootless container wrote as root). ``remove_project`` reports that by
-        # raising, and only ``WorksetError`` was caught — so the PermissionError
-        # escaped as a raw traceback. Report it like every other verb does, with the
-        # escalation the user can actually run.
+        # ⚑ NOT redundant with the WorksetError arm: a box tree can REFUSE deletion
+        # (root-owned canon skeleton, or anything the rootless container wrote as root).
         print(f"Error: could not remove project '{member}': {e}", file=sys.stderr)
         print(
             f"  Try: podman unshare rm -rf {ws.projects_dir / member}",
@@ -659,13 +628,7 @@ def run_show(args: argparse.Namespace) -> int:
 
 
 def _run_workset_config(args: argparse.Namespace) -> int:
-    """Shared working-set config engine dispatch.
-
-    Handles get, set, show, reset operations via the config_interface engine.
-    Credential sharing is an ordinary settable cascade key
-    (``workset.auth.share_allowed``) routed through the engine like any other — no
-    special-casing (the old ``group_auth`` workset.meta identity key is retired).
-    """
+    """Shared get/set/show/reset dispatch into the ``config_interface`` engine."""
     from kanibako.settings.config_keys import ConfigLevel
     from kanibako.settings.config_interface import (
         ConfigAction,
@@ -687,9 +650,8 @@ def _run_workset_config(args: argparse.Namespace) -> int:
 
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     ws_config = _workset_config_path(ws)
-    # (The workset-tier docker env FILE is GONE — R-39/RQ-1. The env family is
-    # the settings key ``workset.env.<VAR>``, stored in ``ws_config`` like every
-    # other workset key.)
+    # The workset-tier docker env FILE is GONE (R-39/RQ-1); ``workset.env.<VAR>`` is an
+    # ordinary key in ``ws_config``, so there is no second write target here.
 
     key_value = getattr(args, "key_value", None)
 
@@ -705,9 +667,8 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             return 0
 
         reset_key = args.reset
-        # Full launch cascade so the honest cleared-message can name the
-        # now-effective value + source tier (item 1) — mirrors the workset SET
-        # handler (system settings file + this workset file; no box scope here).
+        # ⚑ Full launch cascade so the cleared-message can name the now-effective value
+        # and its source tier — same two arms as the SET branch below.
         msg = reset_config_value(
             reset_key,
             config_path=ws_config,
@@ -734,10 +695,8 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         )
 
     if action == ConfigAction.get:
-        # A BARE agent behavior key at workset scope is REFUSED (a workset spans
-        # multiple boxes/agents — no single agent to read, and no workset.agent.*
-        # mirror; set/get/reset are all refused symmetrically). The box scope
-        # instead redirects the read to its box.agent.* mirror.
+        # ⚑ Refused at the HANDLER, not in the engine: the get engine returns VALUES and
+        # never error strings, so both guards below have to fire before it is called.
         from kanibako.settings.config_keys import (
             bare_agent_key_scope_error,
             bare_env_retired_error,
@@ -749,8 +708,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         if _bare_err is not None:
             print(_bare_err, file=sys.stderr)
             return 1
-        # Bare env.* — RETIRED (R-39): refused at the HANDLER because the get
-        # engine returns values, never error strings.
+        # Bare env.* — RETIRED (R-39, spec §2a: the env family is scoped).
         _env_err = bare_env_retired_error(
             key, verb="read", command_scope=ConfigLevel.workset,
         )
@@ -770,11 +728,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
-        # 2026-06-29): the workset is the command scope (ws_config lands in the
-        # workset slot); thread the system settings file so an @system.* / lower-
-        # scope ref in the new value resolves as it would at launch. No box scope
-        # at the workset command level.
+        # ⚑ Full launch cascade for a CATEGORY set's set-time E3 probe: the system file
+        # must be threaded or an @system.* ref in the new value resolves differently here
+        # than it will at launch. There is no box scope at the workset command level.
         msg = set_config_value(
             key, value,
             config_path=ws_config,
@@ -795,20 +751,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
 # workset share add | rm | list
 # ---------------------------------------------------------------------------
 
-# ⚑ ``_SHARE_NAME_RE`` (``^[A-Za-z0-9._-]+$``) was RETIRED here, 2026-08-06c
-# (R-10: a binding has no entry NAME — the box DESTINATION is the identity).
-# It was NOT converted into a destination validator, deliberately:
-#
-# * its character class excludes ``/``, so it cannot describe a path at all —
-#   "converting" it would mean writing a different rule, i.e. inventing a NEW
-#   refusal on a surface that has never validated the destination;
-# * the destination's real rule IS ruled, and it is R-11 — a dest is normalized
-#   to an ABSOLUTE guest path (``~`` expanded, the SOURCE never) — which lands
-#   with the floor producers, not here. A weaker second rule now would be two
-#   rules for one thing, which is the drift Code Convention 0 opens with.
-#
-# What still guards ``share add`` is the BIND GRAMMAR in :func:`run_share_add`:
-# exactly one unescaped ':', both halves non-empty. That is unchanged.
+# ⚑ ``_SHARE_NAME_RE`` was RETIRED here (R-10) and was DELIBERATELY NOT reborn as a
+# destination validator. Do not add one: llm-docs, "Why there is no destination
+# validator". Pinned by ``tests/test_commands/test_workset_share.py``.
 
 # Reminder printed after a mutation: bind mounts are fixed at creation time.
 _NEXT_LAUNCH_REMINDER = (
@@ -818,30 +763,20 @@ _NEXT_LAUNCH_REMINDER = (
 
 
 def _share_source_display(value: object) -> str:
-    """Render a stored binding entry's HOST SOURCE for the raw listing.
-
-    The entry's box destination is the dict KEY (R-10) and is printed in its own
-    DEST column, so this renders only the other half: the host source, plus any
-    per-entry mount options in brackets. Storage is a structured list (spec §2a,
-    never a colon-joined string); a non-list legacy scalar falls back to ``str``.
-    """
+    """Render a stored binding entry's HOST SOURCE for the raw listing's SOURCE column."""
     if isinstance(value, (list, tuple)):
         if not value:
             return ""
         src = str(value[0])
-        # Element 1 is the stored destination (already the DEST column); anything
-        # beyond it is the per-entry options override.
+        # ⚑ ``value[2:]`` IS ALWAYS EMPTY under the live entry shape — see llm-docs,
+        # "The dead options bracket". Do not read this slice as live behaviour.
         extra = [str(p) for p in value[2:] if str(p)]
         return f"{src}  [{', '.join(extra)}]" if extra else src
     return str(value)
 
 
 def _resolve_share_workset(name: str):
-    """Resolve *name* to a :class:`Workset`, printing + returning on error.
-
-    Returns ``(ws, std)`` on success or ``(None, None)`` on failure (the caller
-    returns 1).
-    """
+    """Resolve *name*: ``(ws, std)``, or a printed error and ``(None, None)`` — caller returns 1"""
     std = _load_std()
     try:
         ws = resolve_workset_name(name, std)
@@ -859,48 +794,7 @@ def _load_share_doc(ws_config: Path) -> dict:
 
 
 def run_share_add(args: argparse.Namespace) -> int:
-    """Add (or overwrite) a workset-scoped shared directory.
-
-    Writes the entry into the working set's ``settings.yaml`` under
-    ``workset.bindings.{mode}``, **KEYED BY ITS BOX DESTINATION** (R-10: a binding
-    has no entry name — bindings are strictly act-once, so a name never
-    distinguishes two entries at one dest). Re-running with the same destination
-    overwrites its source (this is how a binding is "updated"; bindings are live
-    bind mounts and no content sync exists).
-
-    ⚑⚑ **THE STORED VALUE IS THE 1-ELEMENT ``[host_src]`` ENTRY** (R-3/R-6,
-    ``settings_store.BindEntry``): the destination is the KEY and appears exactly
-    once. P4′ deliberately left it as the 2-element ``[host_src, box_dest]`` pair —
-    the destination written twice — because the reader could not flip alone: the
-    floor producers still emitted name-keyed entries into the SAME merged arm, and
-    a merged arm must be HOMOGENEOUS. P6 flipped the reader, the floor and this
-    writer together, which is what made the deferred "drop element 2" safe.
-
-    ⚑ The stored DESTINATION is canonicalized (R-11): a leading ``~`` expands to the
-    fixed guest home, so ``~/x`` and ``/home/agent/x`` are one entry rather than two
-    at one destination. ⚑⚑ The stored ``host_src`` is NOT — its ``~`` is the
-    INVOKING USER's home, and a workset file is read by other users on other
-    machines (spec §2a "the destination is canonicalized; the source is not").
-
-    ⚑ A BARE-RELATIVE host source is ABSOLUTISED AGAINST THE WORKSET ROOT HERE, at
-    WRITE time (spec §2a: a stored source must fully resolve on its own).
-    The documented convenience — "a relative host_src is resolved under the working
-    set root" — is preserved EXACTLY: the same input yields the same mount, because
-    this join is the one the launch used to apply (the retired assembly-time
-    prepend). What changes is the ARTIFACT: the stored value is now the full path,
-    so it resolves the same in every context that reads it (launch, ``--effective``,
-    another tool) instead of only in the one that knew the root.
-
-    The DEFAULT workset REFUSES a relative source instead. It has no bindings root:
-    both live root tables deliberately excluded it (``_launch_snapshot_inputs`` and
-    ``_print_effective_shares`` set the workset arms only ``if not is_default``), so
-    a relative source there never joined and went to the mount spec as a relative
-    string — resolved against whatever the process CWD happened to be. There is no
-    defensible root to pick at write time either: ``@config.primary_workset`` is
-    kanibako's own internal store, not a user project dir, so rooting there would
-    swap a visible failure for a silent wrong path. Refusing names the mistake at
-    the moment it is made.
-    """
+    """Add (or overwrite) a workset binding, keyed by its box DESTINATION (R-10)."""
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_resolve import (
@@ -909,14 +803,9 @@ def run_share_add(args: argparse.Namespace) -> int:
     )
 
     bind = args.bind
-    # Parse the ``host_src:guest_dest`` grammar through the CANONICAL escape-aware
-    # splitter (spec §2a CLI-INPUT edge) — the SAME parser config set / the resolver
-    # use — so an escaped colon (``\:`` for a literal ':' in a path) behaves
-    # identically here. ``split_bind`` splits at the FIRST unescaped ':' and returns
-    # both halves with escapes resolved (2nd half is None when there is no unescaped
-    # ':'). The share grammar is EXACTLY two fields — the ro/rw mode comes from
-    # ``--mode``, not the bind — so a SECOND unescaped ':' is rejected, detected by
-    # re-splitting the (already-unescaped) guest half rather than a raw ':' scan.
+    # ⚑ The CANONICAL escape-aware splitter, not a raw ':' scan — the same parser
+    # ``config set`` and the resolver use. The share grammar is EXACTLY two fields, so a
+    # second unescaped ':' is caught by RE-SPLITTING the already-unescaped guest half.
     host_src, guest_dest = split_bind(bind)
     has_extra_colon = guest_dest is not None and split_bind(guest_dest)[1] is not None
     if guest_dest is None or not host_src or not guest_dest or has_extra_colon:
@@ -945,8 +834,8 @@ def run_share_add(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        # Absolutise against the working set root — the SAME join the launch used
-        # to apply, moved to write time so the STORED value resolves on its own.
+        # ⚑ The SAME join the launch used to apply, moved to WRITE time so the stored
+        # value resolves on its own (spec §2a). Same input, same mount.
         host_src = str(ws.root / host_src)
 
     ws_config = _workset_config_path(ws)
@@ -954,16 +843,12 @@ def run_share_add(args: argparse.Namespace) -> int:
     subtree = data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
         args.mode, {}
     )
-    # R-11: the key is the DESTINATION, so it is canonicalized before it is used
-    # as one — otherwise ``~/x`` and ``/home/agent/x`` are two entries at one place
-    # and ``share rm`` can only remove the spelling the user happens to retype.
+    # ⚑ R-11: the DESTINATION is canonicalized before it is used as a key; the SOURCE
+    # never is (its ``~`` is the invoking user's home). Do not make these symmetric.
     guest_dest = normalize_bind_dest(guest_dest)
     existed = guest_dest in subtree
-    # CLI-INPUT edge: the ``host_src:guest_dest`` grammar (mirroring podman -v) is
-    # parsed HERE and STORED in the structured form (spec §2a — a YAML list, NOT a
-    # colon-joined string). Storage stays pure structured; the colon form is only
-    # the user-facing input/display grammar. The KEY is the destination (R-10) and
-    # the value is the 1-element dest-keyed entry (R-6) — see the docstring.
+    # ⚑ The 1-ELEMENT dest-keyed entry (R-6): the destination is the KEY and appears
+    # exactly once. Storage is structured (spec §2a); the colon form is input/display only.
     subtree[guest_dest] = [host_src]
     dump_doc(ws_config, data)
 
@@ -973,9 +858,7 @@ def run_share_add(args: argparse.Namespace) -> int:
         f"'{ws.name}': {bind}"
     )
     if host_src != typed_host_src:
-        # Say what was actually stored: the value is no longer the string the user
-        # typed, and a silent rewrite of a path is exactly the kind of thing a user
-        # should be told about once rather than discover later.
+        # Say what was actually stored — a silent rewrite of a path should be told once.
         print(
             f"  (relative source resolved under the working set root and stored "
             f"as {host_src})"
@@ -985,21 +868,7 @@ def run_share_add(args: argparse.Namespace) -> int:
 
 
 def run_share_remove(args: argparse.Namespace) -> int:
-    """Remove a workset-scoped shared directory from the working set config.
-
-    The share is named BY ITS BOX DESTINATION (R-10) — the stored dict key, which
-    is exactly what ``share list`` prints in its DEST column. With ``--mode``
-    omitted, removes from whichever mode (ro/rw) contains that destination; errors
-    if it exists in both (ambiguous) or in neither (missing).
-
-    ⚑ The destination is matched VERBATIM against the stored key — no colon
-    grammar, so a literal ':' in a destination is typed plainly here even though
-    ``share add`` needs it escaped as ``\\:`` (there, the ':' is the separator).
-
-    ⚑ A key left over from the RETIRED name-keyed shape is removable by that name:
-    this deletes whatever key the user gives, which is what makes the cure
-    ``_workset_raw_shares`` prescribes actually spellable.
-    """
+    """Remove a workset binding BY ITS BOX DESTINATION (R-10) — ``share list``'s DEST column."""
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -1010,10 +879,9 @@ def run_share_remove(args: argparse.Namespace) -> int:
     ws_config = _workset_config_path(ws)
     data = _load_share_doc(ws_config)
     path_tree = data.get("workset", {}).get("bindings", {})
-    # R-11 again, on the LOOKUP side: ``share add`` stored a canonical destination,
-    # so a user who types the ``~`` spelling of the same place must still find it.
-    # Canonicalizing the ARGUMENT (rather than every stored key) is the right half:
-    # the stored keys are already canonical by construction.
+    # ⚑ R-11 on the LOOKUP side: canonicalize the ARGUMENT, never the stored keys —
+    # those are already canonical by construction. Deleting whatever key the user gives
+    # is also what makes the retired-name-keyed cure in ``_workset_raw_shares`` spellable.
     dest = normalize_bind_dest(args.dest)
 
     def _present(mode: str) -> bool:
@@ -1054,18 +922,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
 
 
 def run_share_list(args: argparse.Namespace) -> int:
-    """List a working set's shared directories.
-
-    Default: print the working set's own configured bindings (raw DEST/MODE →
-    SOURCE). With ``--effective``: resolve through the KeyStore snapshot pipeline
-    (``assemble_levels → merge → expand → snapshot_category_entries``, scoped to
-    the workset file) — the SAME resolver a launch uses — and print the final
-    mounts. Single-route (7c): no second ``resolve_shares`` / ``read_bindings``
-    resolver path, and (P3) no root-join on either side to keep in step.
-
-    The DEST column is the share's IDENTITY (R-10) and is exactly the argument
-    ``share rm`` takes.
-    """
+    """List a workset's bindings: raw DEST/MODE/SOURCE, or resolved mounts if ``--effective``."""
     from kanibako.settings.settings_resolve import SettingsError
 
     ws, std = _resolve_share_workset(args.workset)
@@ -1076,8 +933,7 @@ def run_share_list(args: argparse.Namespace) -> int:
     try:
         raw_shares = _workset_raw_shares(ws_config)
     except SettingsError as e:
-        # A malformed bindings table (bad arity, a retired name-keyed entry, …).
-        # Report it rather than letting a traceback out of a listing command.
+        # A malformed bindings table must not leave a traceback out of a listing command.
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
@@ -1103,39 +959,14 @@ def run_share_list(args: argparse.Namespace) -> int:
 
 
 def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
-    """Read the workset file's ``workset.bindings.{ro,rw}`` entries as a
-    ``{(mode, box_dest): raw_value}`` map for the RAW display view.
-
-    Reads the workset partial through the committed ``assemble_levels`` (the SAME
-    file reader the launch snapshot uses — single-route, no ``read_bindings``), then
-    walks its ``workset.bindings.{ro,rw}`` subtree. The raw value is the structured
-    ``Bind`` (``@``-refs / ``$XDG`` / ``~`` UNRESOLVED, per §0). Missing file → {}.
-
-    ⚑ **REFUSES A RETIRED NAME-KEYED ENTRY** (R-10), now on the KEY. P4′ could
-    compare the key against the value's own stored destination; P6 dropped that
-    element (R-6), so the test is instead whether the key is SPELLABLE as a
-    destination at all — absolute, or leading ``~``/``$``/``@`` (spec §2a
-    self-resolving). A bare leaf like ``docs`` is a NAME, and there is no honest
-    way to DISPLAY one: the DEST column would print a name and the ``share rm``
-    argument it advertises would be a name too. So it is named and refused rather
-    than silently mis-rendered (Code Convention 0; disk-store R-8's posture).
-    Raises :class:`SettingsError`; ``run_share_list`` reports it.
-
-    ⚑⚑ **KNOWN, RULED GAP — a retired 2-element ``[src, dest]`` under a
-    DESTINATION-shaped key is UNDETECTABLE here** and reads as
-    ``BindEntry(src, opts=dest)``. That is the arity trap the spec names outright
-    ("the retired 2-element ``(host_src, box_dest)`` and the current 2-element
-    ``(host_src, options)`` have the SAME ARITY"), and it is accepted because R-4
-    rules NO MIGRATION: nobody has such a file. Do not invent a mount-options
-    grammar here to close it — that would be a new refusal nobody ruled.
-    """
+    """The file's ``workset.bindings.{ro,rw}`` as a ``{(mode, dest): raw}`` map (the RAW view)."""
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_store import BindEntry, KeyStore, _MISSING
 
-    # assemble_levels returns [box, workset, agent.<active>, agent.default,
-    # system, base]; index 1 is the workset partial (the only file we pass).
+    # ⚑ assemble_levels returns [box, workset, agent.<active>, agent.default, system,
+    # base] — index 1 is the workset partial, the only file passed.
     levels = assemble_levels(
         agent_name="general",
         base_path=ws_config.parent / "__absent_base__",
@@ -1155,8 +986,13 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
             continue
         for dest in dict.keys(mode_node):
             leaf = dict.__getitem__(mode_node, dest)
-            # Render the BindEntry back to its on-disk shape for the display.
+            # ⚑ KNOWN, RULED GAP: a RETIRED 2-element ``[src, dest]`` under a
+            # destination-shaped key is UNDETECTABLE here and reads as
+            # ``BindEntry(src, opts=dest)``. Accepted (R-4 rules NO MIGRATION); do NOT
+            # invent a mount-options grammar to close it — llm-docs, "The arity trap".
             if isinstance(leaf, BindEntry):
+                # ⚑ REFUSES a RETIRED name-keyed entry, on the KEY: a bare leaf cannot be
+                # DISPLAYED honestly, so it is named rather than mis-rendered.
                 if not is_self_resolving(dest):
                     raise SettingsError(
                         f"workset.bindings.{mode} has an entry keyed '{dest}', "
@@ -1180,19 +1016,7 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
 
 
 def _print_effective_shares(ws, std, ws_config: Path) -> int:
-    """Resolve and print the workset's bindings as launch-time mounts.
-
-    Single-route (7c): resolves through the committed KeyStore snapshot pipeline
-    (``assemble_levels → merge → expand → snapshot_category_entries``) scoped to
-    the workset file — the SAME resolver the launch uses — replacing the retired
-    ``resolve_shares``/``read_bindings``/``LevelView`` path.
-
-    Every stored host_src resolves ON ITS OWN (spec §2a) — ``share add``
-    absolutises a relative source at WRITE time — so there is no root to apply
-    here. This display therefore cannot diverge from what a launch mounts, which
-    it previously could: the old join lived in TWO places (here and
-    ``_launch_snapshot_inputs``) and neither applied to the default workset.
-    """
+    """Resolve and print the workset's bindings as launch-time mounts (``--effective``)."""
     from kanibako.settings.paths import host_xdg_map
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_categories import is_read_only
@@ -1201,10 +1025,9 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     from kanibako.settings.settings_merge import merge
     from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
 
-    # Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` → ``ctx.config``
-    # foundation; Layer-2 ``system.*`` → the snapshot floor.  The xdg map is the
-    # canonical FULL host map (a data-home-only partial map raised on stored
-    # ``$XDG_CACHE_HOME/...`` values), anchored on the resolved ``std.data_home``.
+    # ⚑ Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` goes in ``ctx.config``,
+    # Layer-2 ``system.*`` in the snapshot floor below. The xdg map must be the FULL host
+    # map — a data-home-only partial raises on a stored ``$XDG_CACHE_HOME/...``.
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None if ws.is_default else ws.name,
@@ -1219,10 +1042,8 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         },
     )
 
-    # Fold the resolved Layer-2 system.* tier into the snapshot floor so a share
-    # value's @-ref (e.g. @system.channelroot) resolves from the snapshot itself
-    # (replicating the old ``_lookup`` map). Keys are flat dotted; assemble
-    # explodes them.
+    # Fold the resolved Layer-2 system.* tier into the floor so a value's @-ref (e.g.
+    # @system.channelroot) resolves from the snapshot. Keys are flat dotted; assemble explodes.
     floor: dict[str, object] = {
         "system.channelroot": str(std.channels),
         "system.template": str(std.template),
