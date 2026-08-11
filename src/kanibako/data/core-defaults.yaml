@@ -111,10 +111,14 @@ channels:
     box_dest: "~/channels/workset/share"
     scope: workset
 
-# Core box mounts (step 3).  Each entry becomes a `box.bindings.{ro,rw}.<key>`
-# default whose VALUE is the structured triple (<probed host_src>, <box_dest>,
-# <options>) — the per-entry mount OPTIONS are the OPTIONAL 3rd slot of the
-# binding tuple (spec §2a), consumed by `settings_resolve.unpack_bind`.  These
+# Core box mounts (step 3).  Each entry becomes a `box.bindings.{ro,rw}` default
+# that is DEST-KEYED: the box destination is the map KEY, and the VALUE is
+# [<probed host_src>[, <options>]] — so the per-entry mount OPTIONS are the
+# OPTIONAL 2nd slot of the VALUE (spec §2a), consumed by
+# `settings_resolve.unpack_bind_entry`.
+# ⚑ NOT the retired name-keyed triple (<host_src>, <box_dest>, <options>) and NOT
+# `unpack_bind`: that pair is the pre-2026-08-07f shape and now survives only to
+# report a MALFORMED node.  Do not copy it from here.  These
 # are the box's own home + workspace + vault binds — TODAY's hardwired podman
 # `-v` (container.py) routed through the category resolver so NOTHING is bound
 # into a box except through the keyspace.
@@ -385,7 +389,7 @@ canon:
 #
 # ⚠ helper_sock options MUST be "" (empty) — it is a LIVE unix socket the hub
 # listens on; a Z/U relabel/chown would break the shared socket topology.  The
-# per-entry empty-options 3rd slot is exactly what makes this routable.
+# per-entry empty-options 2nd slot is exactly what makes this routable.
 helpers:
   # Live helper unix socket → ~/.kanibako/state/helper.sock (rw, options="").
   - key: helper_sock
