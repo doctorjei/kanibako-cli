@@ -1356,7 +1356,10 @@ $ ls ~/contested                        $ ls ~/contested
 options (`Z,U,rw` where `podman inspect` used to show `Z,U`) — podman's default either way, so
 nothing about access changes. And the warning for a read-only bind dropped because its source is
 missing now names the destination as kanibako resolves it (`/home/agent/canon`) rather than as you
-spelled it (`~/canon`).
+spelled it (`~/canon`). ⚑ The same is true of the two warnings on the **create-time seed** path (a
+seed whose source is missing, and a seed whose destination falls outside the box home): they name
+the resolved destination too, for the same reason — the seeds are assembled by the same fold, and an
+entry's destination is now its identity, so there is no separate name left to print.
 
 **Why.** A mask is the inverse of a bind, not a peer of it: it exists to make a path empty inside the
 box. Emitting a mask and then mounting something into the space it was supposed to empty left the

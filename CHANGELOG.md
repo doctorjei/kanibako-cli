@@ -92,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   follows the mount it sits inside. Mount options for read-write binds now
   spell `rw` explicitly (`Z,U,rw` rather than `Z,U`) — podman's default either way — and a bind
   dropped for a missing source names its destination rather than the destination as you spelled it
-  (`/home/agent/canon`, not `~/canon`). See [MIGRATION.md](MIGRATION.md) §2.27.
+  (`/home/agent/canon`, not `~/canon`) — as do the two warnings on the create-time seed path, which
+  is assembled by the same fold. See [MIGRATION.md](MIGRATION.md) §2.27.
 
   A mask and a bind that name the **same** destination are decided by that same fold now: the one
   declared at the more specific scope takes the destination (`system` → `agent` → `workset` → `box`),

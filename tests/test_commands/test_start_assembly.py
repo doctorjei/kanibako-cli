@@ -941,3 +941,313 @@ def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
     assert isinstance(value, dict if leaf == "bindings" else list)
     dests = list(value) if leaf == "bindings" else [entry.dest for entry in value]
     assert all("/" in dest for dest in dests), sorted(dests)
+
+
+class TestTheSeedApplierConsumesTheLeaf:
+    """Cutover 2b-2: consumer 5 (``_apply_init_seeds``) reads ``meta.assembly.seeded``.
+
+    ⚑⚑ THE ARM IS A LIST AND A DEST MAY REPEAT — spec ``settings-keyspace-1.8.0.md``
+    :147-149, *"both flat scope-ordered lists"*, *"nothing is arbitrated at a
+    destination"*. That is what these tests exist for: a dest-KEYED seed arm passes
+    almost everything else in the suite and silently collapses the §2a template trio
+    down to its last layer. Every test below is mutation-proved against exactly that.
+
+    ⚑ The category FILTER is gone with the switch. ``seeded`` and ``synced`` are two
+    SEPARATE leaves, so there is no discriminator left to test — and they are still
+    COPIES, on both sides of the move.
+    """
+
+    def _seed(self, std, proj, seeds):
+        """Drive the REAL create-side seed — narrow resolve, no home bind, no main resolve.
+
+        ⚑ The extra rows arrive as the TARGET's ``default_seeds()``, which is the
+        production door: ``_apply_init_seeds`` folds that table with
+        ``template_seed_defaults`` and injects the result as the narrow resolve's
+        ``extra_default_categories``. There is no other way in, and inventing one
+        would test a route ``box create`` does not take.
+        """
+        from kanibako.commands.start import _apply_init_seeds
+
+        class _T:
+            name = "claude"
+
+            def default_seeds(self):
+                return seeds
+
+        return _apply_init_seeds(
+            std=std, proj=proj, agent_name="claude", target=_T(),
+            global_config_path=std.settings,
+            agent_config_path=std.agents / "claude" / "settings.yaml",
+            logger=logging.getLogger("seed-consumer"), deliver_creds=True,
+        )
+
+    def _two_layers_at_one_dest(self, tmp_path):
+        """Two seed source dirs, in two SCOPES, at ONE destination.
+
+        ⚑⚑ TWO SCOPES AND NOT ONE, AND THAT IS A MEASUREMENT, not a preference.
+        A SAME-scope duplicate dest is NOT EXPRESSIBLE from a declaration:
+        ``settings_assemble._dest_keyed_map`` canonicalizes every key on read (R-11 —
+        it is the one place that happens), so a scope's arm is a map KEYED by the
+        normalized dest and ``~/x`` + ``/home/agent/x`` are ONE entry, last-wins,
+        before any of this runs. The repetition the leaf's type permits therefore
+        arrives ACROSS scopes — which is exactly the §2a template trio.
+
+        ``store_shape``'s copy arm still appends rather than keys, and still must:
+        that is a property of the ARM's type, not of what today's producer emits.
+        The applier's own contract against a same-scope repeat is pinned separately,
+        by injecting the leaf.
+        """
+        first, second = tmp_path / "first", tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        (first / "only-first.txt").write_text("first")
+        (first / "shared.txt").write_text("first")
+        (second / "shared.txt").write_text("second")
+        return {
+            "system.seeded": {"~/x": (str(first),)},
+            "box.seeded": {"~/x": (str(second),)},
+        }
+
+    def test_the_leaf_carries_BOTH_rows_at_one_dest_in_SCOPE_order(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The producer half: two rows at one dest, neither arbitrated away.
+
+        RED if anything keys the seed arm on its dest, at any layer between the
+        declaration and the leaf.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot = self._seed(
+            std, proj, self._two_layers_at_one_dest(tmp_path),
+        )
+        rows = [c for c in _assembly(snapshot)["seeded"] if c.dest == "/home/agent/x"]
+
+        # system BEFORE box — ``SCOPE_CONTAINMENT``, not declaration order.
+        assert [Path(c.src).name for c in rows] == ["first", "second"]
+
+    def test_BOTH_rows_at_ONE_dest_are_applied_IN_ORDER(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """🐞 THE LOSS THIS STEP COULD HAVE CAUSED, pinned on the real seed path.
+
+        MUTATION-PROVED against a dest-KEYED grouping arm
+        (``by_dest[seed.dest] = [seed]``): ``only-first.txt`` then never lands,
+        because the second row replaced the first before anything was staged. Proved
+        AGAIN against a REVERSED group (``[*group][::-1]``): ``shared.txt`` then
+        reads ``first``. Neither mutation is caught by the leaf test above — that one
+        pins the producer, this one pins the CONSUMER's grouping.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._seed(
+            std, proj, self._two_layers_at_one_dest(tmp_path),
+        )
+        landed = proj.shell_path / "x"
+
+        assert (landed / "only-first.txt").read_text() == "first", sorted(
+            p.name for p in landed.iterdir()
+        )
+        # LAST-WINS per file — the overlay's whole meaning, and the order oracle.
+        assert (landed / "shared.txt").read_text() == "second"
+
+    def test_a_SAME_SCOPE_repeat_in_the_leaf_is_applied_as_TWO_ROWS(
+        self, monkeypatch, std, config, project_dir, tmp_path,
+    ):
+        """The applier's contract against the LEAF'S TYPE, not against today's producer.
+
+        ``CollapsedCopies`` is a flat scope-ordered list in which *a dest MAY repeat*
+        (spec :147-149), and nothing in that type says the repeats came from
+        different scopes. The declaration route cannot currently emit a same-scope
+        repeat (see ``_two_layers_at_one_dest``), so it is INJECTED here — otherwise
+        the consumer's handling of the shape it is typed against is untested, and a
+        producer change would be the thing that discovers it.
+
+        MUTATION-PROVED against the same dest-keyed grouping arm.
+        """
+        from kanibako.settings.store_collapse import CollapsedCopy
+
+        first, second = tmp_path / "one", tmp_path / "two"
+        first.mkdir()
+        second.mkdir()
+        (first / "only-first.txt").write_text("first")
+        (first / "shared.txt").write_text("first")
+        (second / "shared.txt").write_text("second")
+        leaf = [
+            CollapsedCopy(str(first), "/home/agent/x", ""),
+            CollapsedCopy(str(second), "/home/agent/x", ""),
+        ]
+        monkeypatch.setattr(
+            "kanibako.commands.start._snapshot_assembly_seeded", lambda _snap: leaf,
+        )
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._seed(std, proj, {})
+        landed = proj.shell_path / "x"
+
+        assert (landed / "only-first.txt").read_text() == "first"
+        assert (landed / "shared.txt").read_text() == "second"
+
+    def test_the_applier_reads_THE_LEAF_and_not_the_reconciled_copies(
+        self, monkeypatch, std, config, project_dir, tmp_path,
+    ):
+        """🛑 THE SWITCH ITSELF. Empty the LEAF and nothing is seeded, though the
+        reconciled route still carries every row.
+
+        RED before 2b-2 on the identical fixture: the old loop walked
+        ``reconciled.copies``, which this monkeypatch does not touch at all.
+        """
+        monkeypatch.setattr(
+            "kanibako.commands.start._snapshot_assembly_seeded", lambda _snap: [],
+        )
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._seed(
+            std, proj, self._two_layers_at_one_dest(tmp_path),
+        )
+
+        assert not (proj.shell_path / "x").exists()
+        assert not (proj.shell_path / "canon").exists(), "no layer may have seeded"
+
+    def test_a_missing_seed_source_WARNS_NAMING_THE_RESOLVED_DEST(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """The one USER-VISIBLE text this step moves — CHANGELOG'd, so pinned.
+
+        ``CategoryEntry.name`` is the dest AS AUTHORED (``~/gone``) while
+        ``CollapsedCopy`` carries only the RESOLVED dest, so the warning's identity
+        token changes value. Measured, not assumed: ``name='~/gone'`` vs
+        ``box_dest='/home/agent/gone'`` off the real ``snapshot_category_entries``.
+
+        Same change 2a-2 made for the mount warnings, now true of the seed path —
+        which is why CHANGELOG.md and MIGRATION.md §2.27 were extended rather than
+        given a second entry.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        missing = tmp_path / "not-there"
+        with caplog.at_level(logging.WARNING, logger="seed-consumer"):
+            self._seed(std, proj, {"box.seeded": {"~/gone": (str(missing),)}})
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(
+            m.startswith("seed /home/agent/gone: host_src ") for m in messages
+        ), messages
+        # ⚑ NOT the authored spelling — that is the half the CHANGELOG names.
+        assert not any(m.startswith("seed ~/gone:") for m in messages), messages
+
+    def test_a_SEED_at_a_SYNCED_dest_NEVER_PINS_THE_CREDENTIAL(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """🐞🐞 THE CREDENTIAL-CORRUPTION WINDOW THIS STEP OPENED, closed and pinned.
+
+        ``reconcile_categories`` arbitrates copy-vs-copy at a shared dest —
+        ``_resolve_copy_group`` returns the sync and DROPS every seeded row. The
+        collapse had no such rule, so pointing consumer 5 at the leaf removed the
+        arbiter. The failure is not cosmetic:
+
+        1. the seed runs FIRST (create, create-if-absent) through ``shutil.copy2``,
+           which PRESERVES the source mtime;
+        2. ``_synced_uptodate`` skips the sync when ``dest.st_mtime >= src.st_mtime``;
+        3. ⇒ a seed source NEWER than the sync source pins the SEED's bytes at a
+           credential dest, permanently and silently.
+
+        ⚑⚑ THE ``os.utime`` BELOW IS THE TEST. Without it the sync's later write
+        masks the bug and this passes for the wrong reason — it would pin the prune
+        only incidentally, not the delivery outcome the prune exists for.
+
+        MUTATION-PROVED against removing the prune from ``collapse_seeded``.
+        """
+        import os
+
+        from kanibako.commands.start import _apply_synced_copies
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        seed_src = tmp_path / "seed-cred.txt"
+        sync_src = tmp_path / "sync-cred.txt"
+        seed_src.write_text("SEED BYTES")
+        sync_src.write_text("SYNC BYTES")
+        # ⚑ The seed source is STRICTLY NEWER — the mtime gate's blind spot.
+        os.utime(sync_src, (1000, 1000))
+        os.utime(seed_src, (2000, 2000))
+        (proj.metadata_path / "settings.yaml").write_text(
+            f'box:\n'
+            f'  seeded:\n    "~/cred.txt": ["{seed_src}"]\n'
+            f'  synced:\n    "~/cred.txt": ["{sync_src}"]\n'
+        )
+        landed = proj.shell_path / "cred.txt"
+
+        self._seed(std, proj, {})
+        # (1) The create-time seed must not have written the sync's dest AT ALL.
+        assert not landed.exists(), landed.read_text()
+
+        _apply_synced_copies(
+            std=std, proj=proj, agent_name="claude", target=None,
+            global_config_path=std.settings,
+            agent_config_path=std.agents / "claude" / "settings.yaml",
+            logger=logging.getLogger("seed-consumer"), deliver_creds=True,
+        )
+        # (2) ...so the sync's own mtime gate sees an ABSENT dest and delivers.
+        assert landed.read_text() == "SYNC BYTES"
+
+    def test_an_ABSENT_leaf_falls_back_to_the_RECONCILED_seed_winners(
+        self, monkeypatch, std, config, project_dir, tmp_path,
+    ):
+        """🛑 The safety arm, identical in reasoning to ``_launch_bind_map``'s.
+
+        ABSENT (``None``) is *the collapse refused*, and until step 2c a refusal must
+        cost a brand-new box nothing. RED if the fallback is dropped: the create path
+        would seed an empty home and say nothing above ``debug``.
+        """
+        monkeypatch.setattr(
+            "kanibako.commands.start._snapshot_assembly_seeded", lambda _snap: None,
+        )
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._seed(
+            std, proj, self._two_layers_at_one_dest(tmp_path),
+        )
+        landed = proj.shell_path / "x"
+
+        assert (landed / "only-first.txt").read_text() == "first"
+        assert (landed / "shared.txt").read_text() == "second"
+
+    def test_the_snapshot_reader_tells_ABSENT_from_EMPTY(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """``None`` vs ``[]`` is the data here — collapsing them seeds nothing, silently."""
+        from kanibako.commands.start import _snapshot_assembly_seeded
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        src = tmp_path / "seedme"
+        src.write_text("x")
+        refused, _rec = _resolve(std, proj, extra_default_categories={
+            "box.seeded": {"/etc/outside": (str(src),)},
+        })
+        empty, _rec = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            include_base_families=False,
+        )
+
+        assert _snapshot_assembly_seeded(refused) is None
+        assert _snapshot_assembly_seeded(empty) == []
+
+    def test_the_snapshot_reader_returns_a_copy_not_the_live_node(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """P8 — a caller mutating what it read must not rewrite the snapshot.
+
+        ⚑ The fixture must actually SEED something, or ``clear()`` is a no-op and the
+        test passes against a reader that hands out the live node.
+        """
+        from kanibako.commands.start import _snapshot_assembly_seeded
+
+        src = tmp_path / "seedme"
+        src.write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _rec = _resolve(std, proj, extra_default_categories={
+            "box.seeded": {"~/seedme": (str(src),)},
+        })
+        first = _snapshot_assembly_seeded(snapshot)
+        assert first, "the fixture must produce a NON-EMPTY seed leaf"
+        first.clear()
+
+        assert _snapshot_assembly_seeded(snapshot), (
+            "the seed leaf was emptied through the read"
+        )
