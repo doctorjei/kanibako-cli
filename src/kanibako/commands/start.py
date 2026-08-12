@@ -75,21 +75,25 @@ from kanibako.agent_ref import (
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.utils import container_name_for, project_hash, short_hash
+# The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
+# :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
+# write-side hook command; IMPORTED rather than re-derived so this file's
+# ``--agent-markers-dir`` value (read side) and the ``KANIBAKO_AGENT_MARKERS_DIR`` env
+# it seeds are byte-identical to the seeded hook's default dir — the two ends of the
+# contract can never desync.  Re-exported from this module for existing importers.
 from kanibako.vscode.vscode_config import AGENT_MARKERS_DIR
 
 
 def _agent_critical_dests() -> list[tuple[str, str]]:
     """Enumerate AGENT_CRITICAL bind mountpoints across ALL installed plugins.
 
-    Each installed plugin's descriptor declares AGENT_CRITICAL delivery binds
-    whose ``box_dest`` is an in-box absolute path (a ``$GUEST_HOME`` expression
-    expanded to the ``/home/agent`` literal at load).  Map each to a
-    shell_dir-relative path (strip the guest-home prefix) plus its kind
-    ("file"/"dir"), for the per-launch hygiene sweep to reap stale empty stubs
-    (the 0-byte ``.local/bin/<agent>`` decoy).  Enumerated across EVERY plugin,
-    not just this launch's agent: a claude box later ``shell``-launched (no
-    agent) must still have claude's stubs reaped.  Returns [] if nothing
-    matches, which makes the reaper a no-op.
+    Each plugin descriptor's AGENT_CRITICAL binds carry an in-box absolute
+    ``box_dest`` (``$GUEST_HOME`` already expanded to the ``/home/agent`` literal
+    at load); return each as a shell_dir-relative path plus its kind
+    ("file"/"dir"), for the per-launch hygiene sweep that reaps stale empty stubs
+    (the 0-byte ``.local/bin/<agent>`` decoy).  EVERY plugin, not just this
+    launch's agent: a claude box later ``shell``-launched (no agent) must still
+    have claude's stubs reaped.  [] when nothing matches, so the reaper no-ops.
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
     from kanibako.targets import discover_targets
@@ -136,12 +140,18 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     dir is its own store, but whose plugins/cache SHOULD be shared with the bare
     harness (``agents/claude/``) rather than starting empty.  Rather than re-root
     the resolver, we lay a SYMLINK shim: for every agent-scope common the target
-    declares (``target.default_common()`` — claude's ``plugins`` / ``cache``),
-    ``agents/<node>/common/<leaf>`` becomes a symlink ->
-    ``agents/<harness>/common/<leaf>``.
-    The resolver + spec are UNCHANGED; the L7 guarantee-create later (``mkdir
-    parents=True, exist_ok=True`` on the rw source) is a no-op on the symlink-to-
-    existing-dir, so the harness dir is the real writeback target.
+    declares (``target.default_common()`` — claude's ``plugins`` / ``cache``; generic
+    over harnesses, NO per-plugin code), ``agents/<node>/common/<leaf>`` becomes a
+    symlink -> ``agents/<harness>/common/<leaf>``.  The resolver + spec are
+    UNCHANGED; the L7 guarantee-create later (``mkdir parents=True, exist_ok=True``
+    on the rw source) is a no-op on the symlink-to-existing-dir, so the harness dir
+    is the real writeback target.
+
+    PRECONDITION: call at persona-dir MATERIALIZATION, BEFORE mount assembly /
+    category source resolution, so the symlink pre-dates any real-dir
+    guarantee-create.  Idempotent and fail-safe: it NEVER clobbers.  BARE
+    (``agent_id == harness``) returns immediately, so every existing (non-persona)
+    agent path is byte-for-byte unchanged — no symlink, no new dir.
 
     ⚑⚑ THE LEAF COMES FROM THE DECLARATION ROOT, NOT FROM THE KEY AND NOT FROM THE
     WHOLE VALUE.  Until 2026-08-08c it came off the key (``agent.<a>.common.<leaf>``);
@@ -158,24 +168,9 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     :func:`~kanibako.settings.agent_config.agent_category_root` — the SAME layout
     helper the declaration-time ref builder uses — so this shim and the resolver
     cannot drift: they are two consumers of ONE layout fact.
-
-    Driven by the descriptor's declared ``common`` entries (generic over harnesses; NO
-    per-plugin code).  Call at persona-dir MATERIALIZATION, BEFORE mount assembly /
-    category source resolution, so the symlink pre-dates any real-dir guarantee-create.
-
-    Edge cases (idempotent + fail-safe, NEVER clobber):
-      * BARE (``agent_id == harness``) -> return immediately, do nothing.  Every
-        existing (non-persona) agent path is byte-for-byte unchanged: no symlink,
-        no new dir.
-      * harness dir made FIRST (``mkdir parents``) so the link never dangles.
-      * node path already the CORRECT symlink -> no-op.
-      * node path ABSENT -> create the symlink.
-      * node path EXISTS as a real dir OR a WRONG-target symlink -> LEAVE it +
-        debug-log (a persona that legitimately has its own dir wins).
     """
     harness = harness_of(agent_id)
     if agent_id == harness:
-        # Bare agent (node == harness): nothing to shim.  Backward-compatible.
         return
     if target is None:
         return
@@ -320,10 +315,8 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         "--attach", action="store_const", const=False, dest="detach",
         help="Attach the terminal into the session (default)",
     )
-    # Tri-state default None = neither --detach nor --attach given (the attach
-    # default).  run_start normalises None -> attach and distinguishes an EXPLICIT
-    # --attach (False) from the unset default so it can reject a contradictory
-    # --warm-only --attach.
+    # Tri-state: None = neither flag given (the attach default), False = an EXPLICIT
+    # --attach.  run_start relies on telling those two apart.
     p.set_defaults(detach=None)
 
     p.add_argument(
@@ -468,22 +461,19 @@ def run_start(args: argparse.Namespace) -> int:
         detach = True
     if detach:
         # Detach is inherently a persistent/tmux mode (the box must survive as a
-        # keep-alive with no attached terminal).  --ephemeral is a direct
+        # keep-alive with no attached terminal), so --ephemeral is a direct
         # contradiction (foreground single-use vs. background keep-alive).
         #
-        # NOTE (Finding 4): unlike --persistent, detach does NOT require the
-        # bootstrap program on the HOST.  --persistent checks the host because it
-        # RE-ATTACHES this terminal into an in-box tmux and, historically, gates
-        # on the host program being present.  Detach never attaches — the
-        # keep-alive tmux runs entirely IN-BOX as PID-1, so the only thing that
-        # must have the bootstrap program is the IMAGE, which _run_container's
-        # tier-1 baseline probe already verifies for every persistent launch.
-        # This also unifies the two detach entry points: `kanibako code`'s
-        # auto-start goes through start_detached -> _run_container with no host
-        # check, so --detach must match.  The `agent.default.bootstrap=none`
-        # config contradiction (no in-box bootstrap to keep alive) is still a
-        # genuine error, surfaced early here for a clean message and re-guarded
-        # by _run_container.
+        # Unlike --persistent, detach does NOT require the bootstrap program on the
+        # HOST: --persistent checks the host because it RE-ATTACHES this terminal
+        # into an in-box tmux, but detach never attaches — the keep-alive tmux runs
+        # entirely IN-BOX as PID-1, so only the IMAGE must carry the program, and
+        # _run_container's tier-1 baseline probe already verifies that for every
+        # persistent launch.  This also keeps the two detach entry points aligned:
+        # `kanibako code`'s auto-start goes through start_detached ->
+        # _run_container with no host check.  `agent.default.bootstrap=none` (no
+        # in-box bootstrap to keep alive) is still a genuine error, surfaced early
+        # here for a clean message and re-guarded by _run_container.
         if explicit_ephemeral:
             print(
                 "Error: --detach cannot be combined with --ephemeral "
@@ -656,24 +646,24 @@ def start_detached(
     project_dir: str | None, *, explicit_agent: str | None = None,
     warm_only: bool = True,
 ) -> int:
-    """Start a box DETACHED and AGENT-INDEPENDENT — no terminal attach, no CLI agent.
+    """Start a box DETACHED — no terminal attach, and no CLI agent by default.
 
     Public entry reused by ``kanibako code`` auto-start.  Runs the FULL persistent
     box assembly (mounts / credentials / agent delivery binds / env / the
-    ``KANIBAKO_AGENT`` stamp) exactly as a normal persistent launch, and the
-    caller's terminal is NOT attached.
+    ``KANIBAKO_AGENT`` stamp) exactly as a normal persistent launch; only the
+    caller's terminal is left unattached.  The box stays Up for a later VS Code
+    attach, a ``tmux attach``, or a subsequent ``kanibako start``.
 
     *warm_only* (default ``True``) selects the E2f AGENT-INDEPENDENT warm-up: PID-1
     is the box_supervisor in PANEL-WATCH mode — it starts NO CLI agent (the VS Code
     panel is the sole agent, avoiding a two-agent split-brain on one ``~/.claude``),
     watches the panel-agent liveness marker + the vscode_server surface, and
     self-heals a CLI agent only if the panel agent dies with the panel still
-    connected.  A caller that instead wants the E2b supervised-agent keep-alive can
-    pass ``warm_only=False`` (then a background CLI agent runs, self-healed).
+    connected.  ``warm_only=False`` selects the E2b supervised-agent keep-alive
+    instead: a background CLI agent runs, self-healed.
 
-    The box stays Up for a later VS Code attach, a ``tmux attach``, or a subsequent
-    ``kanibako start``.  Returns 0 once the box is confirmed running in the
-    background, non-zero on a launch failure (with the container logs surfaced).
+    Returns 0 once the box is confirmed running in the background, non-zero on a
+    launch failure (with the container logs surfaced).
     """
     return _run_container(
         project_dir=project_dir,
@@ -706,15 +696,6 @@ _BOOTSTRAP_NONE = "none"
 # an unset value (no scope sets ``bootstrap``) resolves to ``tmux`` and every shipped
 # agent (which declares NO bootstrap override, spec §2d) inherits it.
 _BOOTSTRAP_DEFAULT = "tmux"
-
-# E2g / increment 4a — the box-local AGENT LIVENESS MARKERS directory (per-PID).
-# The canonical constant lives in :mod:`kanibako.vscode.vscode_config` (the low-level module
-# that owns the marker write-side hook command); it is imported here (see the module
-# imports) so this file's ``--agent-markers-dir`` value (read side) and the
-# ``KANIBAKO_AGENT_MARKERS_DIR`` env it seeds are byte-identical to the seeded hook's
-# default dir — the two ends of the contract can never desync.  Re-exported from
-# this module for existing importers (``from kanibako.commands.start import
-# AGENT_MARKERS_DIR``).
 
 
 def _is_no_bootstrap(program: str | None) -> bool:
@@ -870,14 +851,14 @@ def _effective_transform(
 def _resolve_bootstrap_program(
     project_dir: str | None = None, explicit_agent: str | None = None,
 ) -> str:
-    """Resolve the AGENT-scope ``bootstrap`` program for the host-side default-mode
-    persistence heuristic in ``run_start``.
+    """Resolve the AGENT-scope ``bootstrap`` program for ``run_start``'s persistence heuristic.
 
     ``bootstrap`` relocated from the retired box-scope ``box.bootstrap_program`` to
-    the agent scope (spec §2d), so the persistence-mode default decision now
-    needs the box's RESOLVED agent + its agent-scope ``bootstrap`` value.  Resolves
-    them here WITHOUT side effects (``resolve_box_target(initialize=False)``) and
-    reads the effective value off the settings snapshot via :func:`_effective_bootstrap`.
+    the agent scope (spec §2d), so the host-side default-mode persistence decision
+    now needs the box's RESOLVED agent + its agent-scope ``bootstrap`` value.
+    Resolves them here WITHOUT side effects (``resolve_box_target(initialize=False)``)
+    and reads the effective value off the settings snapshot via
+    :func:`_effective_bootstrap`.
 
     FAIL-SOFT: any resolution failure (unresolvable box, ambiguous/uninstalled agent
     — those raise their own typed errors from ``_run_container`` moments later) falls
@@ -900,10 +881,11 @@ def _resolve_bootstrap_program(
             std=std, proj=proj, explicit_agent=explicit_agent,
         )
         agent_name = _sel.node
-        # NODE-name (persona identity); the harness keys the target/plugin. The
-        # translator is REQUIRED here too (see the seam note in _run_container): a
-        # SUPPRESSED box has no node, and handing "" to resolve_target would
-        # auto-detect an agent and read ITS bootstrap for a plain-shell box.
+        # NODE-name (persona identity); the harness keys the target/plugin.  The
+        # ``has_agent`` guard is REQUIRED here too (see the two-vocabulary seam note
+        # in _run_container): a SUPPRESSED box has no node, and handing "" to
+        # resolve_target would auto-detect an agent and read ITS bootstrap for a
+        # plain-shell box.
         target = (
             resolve_target(harness_of(agent_name), proj.project_path)
             if _sel.has_agent
@@ -928,11 +910,10 @@ def _bootstrap_available(program: str = "tmux") -> bool:
 
 
 def _check_box_components(proj) -> str | None:
-    """D5 CRITICAL integrity gate: verify a resolved box's REQUIRED host-side
-    components exist before launch.  Returns an error message when one is
-    missing (the caller aborts with a non-zero exit), else ``None``.
+    """D5 CRITICAL integrity gate: a resolved box's REQUIRED host-side components exist.
 
-    Two components are checked here, at LAUNCH:
+    Returns an error message when one is missing (the caller aborts with a non-zero
+    exit), else ``None``.  Two components are checked here, at LAUNCH:
 
     * **workspace** (``proj.project_path``) — the load-bearing check.  For a
       registered / externally-connected box the workspace is a dir recorded in a
@@ -978,10 +959,9 @@ def _check_box_components(proj) -> str | None:
 def _resolve_existing_box(
     std: StandardPaths, config: KanibakoConfig, project_dir: str | None,
 ) -> ProjectPaths | None:
-    """Non-materialising probe: the :class:`ProjectPaths` of an EXISTING
-    registered box for *project_dir*, or ``None`` when no box exists there.
+    """Non-materialising probe: the :class:`ProjectPaths` of an EXISTING registered box.
 
-    Explicit-create gate (Jei 2026-07-11g): a launch (``start`` / bare
+    ``None`` when no box exists at *project_dir*.  Explicit-create gate (Jei 2026-07-11g): a launch (``start`` / bare
     ``kanibako`` / ``code`` / ``shell``) NEVER auto-creates a box — the box must
     already have been made by ``kanibako create``.  We resolve through the SAME
     ``resolve_box_target`` the launch uses, but:
@@ -1132,9 +1112,9 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
 
 
 def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
-    """The launch-time "registered, but its box directory is gone" refusal, or
-    ``None`` when the directory is where the registration says it is.
+    """The launch-time "registered, but its box directory is gone" refusal.
 
+    ``None`` when the directory is where the registration says it is.
     MBR-6 (Jei, 2026-08-02f): *"no, a launch should not silently rebuild
     anything."*  ``_run_container``'s explicit-create gate only asks whether a box
     is REGISTERED; the materialising resolve right after it re-creates a missing
@@ -1437,9 +1417,9 @@ def _bootstrap_attach(program: str) -> list[str]:
 def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
     """Apply tweakcc patching if enabled in agent config.
 
-    Patching runs inside a throwaway container (``podman run --rm``) using
-    the same image that will be used for the agent.  The patched binary is
-    cached on disk with flock-based reference counting.
+    Patching runs inside a throwaway container (``<runtime> run --rm``) on the
+    same image the agent will use.  The patched binary is cached on disk with
+    flock-based reference counting.
 
     Returns ``(patched_install, cache_entry, cache)`` on success, or
     *None* if tweakcc is disabled or patching fails (graceful fallback).
@@ -1663,8 +1643,7 @@ def _assemble_image_sharing_mounts(
 ):
     """Append host image-storage share mounts to ``extra_mounts`` (conditional).
 
-    Extracted verbatim from ``_run_container``; extends the passed
-    ``extra_mounts`` list in place exactly as the inline block did.
+    SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.
 
     ⮕ B6: the gate reads ``merged.box_share_images`` ALONE — the ``--share-images``
     flag already rides the §1A CLI level inside the merged-config resolve, so a
@@ -1746,9 +1725,8 @@ def _assemble_launch_env(
 ):
     """Assemble the container environment + secret export list for the launch.
 
-    Extracted verbatim from ``_run_container``.  Extends ``extra_mounts`` with
-    the secret mounts in place (exactly where the inline block did) and returns
-    the assembled ``container_env`` plus the ``secret_export_vars`` list.
+    SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE with the
+    secret mounts.  Returns ``(container_env, secret_export_vars)``.
     """
     # Config-level env: the agent tier under the settings-framework env (the
     # `<scope>.env.<VAR>` category), whose per-VAR winner the single launch
@@ -1779,10 +1757,10 @@ def _assemble_launch_env(
     # Merge per-run -e/--env KEY=VALUE vars (highest priority).
     container_env.update(_parse_cli_env(cli_env))
 
-    # NOTE: Claude Code telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
-    # and the auto-updater disable (DISABLE_AUTOUPDATER) are now carried by
-    # claude's descriptor.container_env, merged via state_env above.  The
-    # former core `target.name == "claude"` special-case has been removed.
+    # Claude Code's telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) and
+    # auto-updater (DISABLE_AUTOUPDATER) vars ride claude's
+    # ``descriptor.container_env`` in via ``state_env`` above: core does NO
+    # per-agent (``target.name == "claude"``) special-casing.
 
     # Inject instance identity for peer communication.
     if proj.name:
@@ -1847,11 +1825,9 @@ def _start_helper_hub(
     auth_src,
     extra_mounts,
 ):
-    """Start the helper hub + append its mounts; return the started hub.
+    """Start the helper hub + append its mounts; return the started ``HelperHub``.
 
-    Extracted verbatim from the ``if helpers_enabled:`` block of
-    ``_run_container``.  Extends ``extra_mounts`` in place exactly as the inline
-    block did and returns the started ``HelperHub``.
+    SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.
     """
     from kanibako.channels.helper_listener import HelperContext, HelperHub, MessageLog
     from kanibako.targets.base import Mount as _HMount
@@ -1983,8 +1959,9 @@ def _persist_or_announce_flags(
     image_override: str | None,
     share_images: bool,
 ) -> None:
-    """Settle a launch's SHADOWING flags — persist them, or say OUT LOUD that
-    they are ephemeral.  Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.
+    """Settle a launch's SHADOWING flags: persist them, or say OUT LOUD they are ephemeral.
+
+    Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.
 
     **Persist arm.**  Every flag value still routes through the ONE §1A
     CREATE-EXCEPTION gate (:func:`~kanibako.settings.config.persist_creation_flags`),
@@ -2321,18 +2298,14 @@ def _run_container(
     )
 
     image = merged.box_image
-    # ``bootstrap`` relocated from the retired box-scope ``box.bootstrap_program``
-    # to the AGENT scope (spec §2d), so the authoritative per-launch value is
-    # resolved BELOW — after the agent is resolved (line ~1300) — off the settings
-    # snapshot via :func:`_effective_bootstrap`, together with its ``none``-opt-out
-    # persistence contradiction guard.  It cannot be read here (pre-agent).
+    # ``bootstrap`` is AGENT-scope (spec §2d), so it cannot be read here — the agent
+    # is not resolved yet.  The authoritative per-launch value, and its
+    # ``none``-opt-out persistence guard, are resolved below once it is.
 
-    # Detach is inherently persistent: the box must survive as a background
-    # keep-alive (a tmux session running a bare shell as PID-1) with no attached
-    # terminal.  run_start already sets persistent=True for --detach; force it
-    # here too so any other caller (e.g. the `kanibako code` auto-start path)
-    # cannot reach the launch with detach=True but persistent=False.  The
-    # `none`-opt-out contradiction below then still fires for a detach launch.
+    # Detach is inherently persistent (see ``run_start``).  Forced again here so any
+    # other caller (e.g. the `kanibako code` auto-start path) cannot reach the launch
+    # with detach=True but persistent=False; the `none`-opt-out contradiction below
+    # then still fires for a detach launch.
     if detach:
         persistent = True
 
@@ -2346,18 +2319,6 @@ def _run_container(
     # launch" is where it lands (ruling #12), and why a REATTACH reaches it ZERO
     # times.
 
-    # Resolve target (agent plugin) and detect installation.
-    #
-    # W1 §Design 7: "resolve config FIRST ... before anything else."  Agent
-    # resolution depends only on config/settings (merged config + system
-    # default), NOT on the image being pulled or the bootstrap baseline.  So
-    # resolve it up front — BEFORE ensure_image (image pull) and the tmux
-    # baseline check below — so a user with 2+ agents and no default hits the
-    # Gate-2a "pick an agent" error immediately, rather than paying a full
-    # image pull and then a tmux baseline error.
-    #
-    # `kanibako shell` (box_shell_mode) and explicit-entrypoint launches skip
-    # resolution entirely (they need no agent); this is unchanged.
     logger = get_logger("start")
 
     # Detect the container runtime up front: agent resolution below needs it to
@@ -2619,6 +2580,14 @@ def _run_container(
             )
             return 1
 
+    # Resolve the target (agent plugin) and detect its installation.  W1 §Design 7,
+    # "resolve config FIRST ... before anything else": agent resolution depends only
+    # on config/settings (merged config + system default), NOT on the image being
+    # pulled or the launch baseline — so it runs UP FRONT, above the image prep and
+    # baseline probe below, and a user with 2+ agents and no default hits the Gate-2a
+    # "pick an agent" error immediately instead of paying for a full image pull
+    # first.  ``kanibako shell`` (box_shell_mode) and explicit-entrypoint launches
+    # skip resolution entirely: they need no agent.
     target = None
     install = None
     agent_selection = None
@@ -2643,12 +2612,13 @@ def _run_container(
         # line: "no agent" to selection, "no name given → AUTO-DETECT" to
         # ``resolve_target``. Passing it straight through LAUNDERED the suppression
         # into auto-detection — measured on bifrost: the no-agent box launched
-        # claude, with claude's binary, commons and CREDENTIALS. ``resolve_selected_target``
-        # is the ONE translator between the two vocabularies and returns ``None``
-        # here, which is the shipped plain-shell shape (identical to ``kanibako
-        # shell``): every downstream gate keys on ``target is None``, so no agent
-        # binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp, and
-        # ``agent_id`` = ``"general"``.
+        # claude, with claude's binary, commons and CREDENTIALS. The
+        # ``agent_selection.has_agent`` guard below IS the translator between the two
+        # vocabularies: a suppressed box never reaches ``resolve_target`` at all and
+        # gets ``target = None``, the shipped plain-shell shape (identical to
+        # ``kanibako shell``). Every downstream gate keys on ``target is None``, so no
+        # agent binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp,
+        # and ``agent_id`` = ``"general"``.
         target = (
             resolve_target(harness_of(agent_name), proj.project_path)
             if agent_selection.has_agent
@@ -2791,11 +2761,11 @@ def _run_container(
 
         # `kanibako shell` (interactive, no agent): resolve the box.shell now,
         # with the runtime/image handle, so the image-default tier participates.
-        # This makes entrypoint concrete *before* the agent-vs-shell decision
-        # (line ~672) and the exec-into-running check (line ~737), so neither
-        # regresses.  A reattach never reaches here (this whole block is inside
-        # ``not reattach_running``); it resolves its own shell at the fast path
-        # below, off the LIVE container's image rather than this ``image``.
+        # This makes ``entrypoint`` concrete BEFORE the agent-vs-shell decision and
+        # the exec-into-running check further down, so neither regresses.  A
+        # reattach never reaches here (this whole block is inside ``not
+        # reattach_running``); it resolves its own shell at the fast path below, off
+        # the LIVE container's image rather than this ``image``.
         if box_shell_mode and entrypoint is None:
             from kanibako.launch.shells import resolve_box_shell
             entrypoint, _src = resolve_box_shell(
@@ -2820,10 +2790,6 @@ def _run_container(
             ) is _BOOTSTRAP_MISSING:
                 return 1
 
-    # Load agent config.  ``agent_id`` / ``agent_cfg_path`` were hoisted ABOVE (the
-    # agent-scope ``bootstrap`` resolution needs them ahead of the baseline probe);
-    # they name the NODE-scoped ``agents/<node>/`` store + the active-agent snapshot
-    # discriminator.
     # Load or GENERATE the agent config IN MEMORY — do NOT write it yet.  The
     # persona load-or-error pre-flight below MUST resolve loadability BEFORE any
     # artifact for the persona is created (JEI-CRITICAL ordering, dogfood
@@ -2950,9 +2916,9 @@ def _run_container(
         if running_door == "box-shell":
             # ``kanibako shell`` (interactive, no agent) at a live box that is
             # RUNNING AN AGENT: the user asked for a SHELL, so resolve one here
-            # and let the exec arm below run it.  The launch path's resolve
-            # (line ~2491) sits INSIDE the ``not reattach_running`` prep block,
-            # so on this path ``entrypoint`` would still be None and we would
+            # and let the exec arm below run it.  The launch path's own
+            # ``resolve_box_shell`` sits INSIDE the ``not reattach_running`` prep
+            # block, so on this path ``entrypoint`` would still be None and we would
             # fall through to the bootstrap attach — handing the user the
             # AGENT'S tmux session instead of a shell (ruled a bug, Jei
             # 2026-08-05g).  The override gate above deliberately does not
@@ -3094,9 +3060,9 @@ def _run_container(
     # Loadability resolved → materialise the DEFERRED box now (the explicit-persona
     # path resolved paths only above; mkdir the box + set ``is_new`` here, then
     # replay the one ``is_new``-gated step the deferred probe skipped — the
-    # flag-persist seam below).  A non-deferred launch already materialised at
-    # 791 — this is a no-op for it.  (There were TWO such steps until MBR-6
-    # residual 2 removed the orphan hint; see its note at the probe.)
+    # flag-persist seam below).  A non-deferred launch already materialised at the
+    # ``resolve_box_target`` up top — this is a no-op for it.  (There were TWO such
+    # steps until MBR-6 residual 2 removed the orphan hint; see its note at the probe.)
     if _defer_box:
         proj = resolve_box_target(
             std, config, project_dir, initialize=True, register=False,
@@ -3773,7 +3739,8 @@ def _run_container(
 
         # The category MOUNT winners (kani / core / channel / share — the kanibako
         # CLI binds, the box's own home/workspace/vault binds, the per-mode channel
-        # binds, the agent's delivery binds, and any scoped bindings/caches/common),
+        # binds (5 types, 2 scopes — TARGET §2f), the agent's delivery binds, and any
+        # scoped bindings/caches/common),
         # emitted ONCE — from the COLLAPSE (cutover step 2a-2), which folds the four
         # scopes over the home foundation into one dest-keyed bind map.
         # ⚑ ONE VALUE, BOTH ARMS (2a-4): the bind mounts and the tmpfs ``masks``
@@ -3887,12 +3854,6 @@ def _run_container(
             logger=logger,
         )
 
-        # Peer communication: the channel system (5 types, 2 scopes — TARGET §2f)
-        # is now folded into the single launch reconcile above (the per-mode
-        # channel binds from ``_channel_default_categories``, emitted by
-        # ``_emit_category_mounts``); the chat ``general.md``/``broadcast.md`` seed
-        # side-effect (``_seed_channel_files``) ran just before that emit.
-
         container_env, secret_export_vars = _assemble_launch_env(
             std=std,
             proj=proj,
@@ -3989,15 +3950,11 @@ def _run_container(
                 logger.warning("Browser sidecar failed to start: %s", exc)
                 browser_sidecar = None
 
-        # Set agent entrypoint if not explicitly overridden.
+        # Set agent entrypoint if not explicitly overridden.  A real agent gets a
+        # non-None entrypoint here; a no-agent box leaves it None and launches the
+        # ``box_shell`` resolved above instead.
         if not entrypoint and target:
             entrypoint = target.default_entrypoint
-
-        # No-agent box: launch the configured box.shell (already resolved above
-        # via the single-source-of-truth chain box.shell -> $KANIBAKO_SHELL ->
-        # stored image shell -> sh, and threaded into the helper context).  A
-        # real agent sets a non-None entrypoint here and is left untouched —
-        # box_shell only feeds the no-agent launch below.
 
         # In-box setup (FIX 2): the pre-launch auth probe failed AND the target
         # declares an interactive setup command (goose ``configure`` / codex
@@ -4081,7 +4038,7 @@ def _run_container(
         # Delivery is agent-INDEPENDENT: a no-agent shell launch with a box secret
         # still gets the exports (the shim wraps box.shell).
         #
-        # ⚑ DETACH CAVEAT (Finding 3): the shim wraps whatever PID-1 exec's — the
+        # ⚑ DETACH CAVEAT: the shim wraps whatever PID-1 exec's — the
         # supervised AGENT on a detached AGENT box (E2b, so the always-on agent DOES
         # see its secrets), or the keep-alive SHELL on a no-agent detached box.  A
         # later `podman exec` (a VS Code integrated terminal, the claude-code panel's
@@ -4535,12 +4492,9 @@ def _run_container(
                     # the FF-10 suppression over-reached to the crash path).
                     if rc != 0 or not _interactive_host():
                         print(logs, file=sys.stderr)
-                # FIX 2 (launch-validation): the launched session is GROUND TRUTH
-                # for a bootable config.  If its logs say the agent is still not
-                # configured/authenticated, the in-box setup did NOT take.  BOUNDED
-                # — setup already ran once this invocation, so we only ERROR here,
-                # never loop back into setup.  Still write back first: a partial
-                # in-box login may have produced credentials worth propagating.
+                # FIX 2 (launch-validation), as on the never-started path above, and
+                # equally BOUNDED.  Still write back FIRST: a partial in-box login
+                # may have produced credentials worth propagating.
                 if target and logs and target.should_run_setup(logs):
                     writeback_session_credentials(target, proj, auth_src=auth_src)
                     _print_setup_did_not_take(target)
@@ -4861,9 +4815,10 @@ def _emit_secret_mounts(reconciled, logger) -> "tuple[list, list[str]]":
 def _secret_export_shim(
     program: str, args: list[str], export_vars: list[str],
 ) -> "tuple[str, list[str]]":
-    """Wrap ``(program, args)`` in a ``sh -c`` shim that exports each secret VAR
-    from its ro mount, then ``exec``s the agent — the box-side half of the
-    arm's-length SECRET delivery.
+    """Wrap ``(program, args)`` in a ``sh -c`` shim that exports each secret VAR.
+
+    Each VAR is read from its ro mount, then the shim ``exec``s the agent — the
+    box-side half of the arm's-length SECRET delivery.
 
     The shim runs, at agent start, ``export <VAR>="$(cat SECRET_MOUNT_DIR/<VAR>)"``
     for each *export_vars* entry, then ``exec``s the original *program* with its
@@ -4897,10 +4852,11 @@ def _secret_export_shim(
 def _directive_flatten_shim(
     program: str, args: list[str],
 ) -> "tuple[str, list[str]]":
-    """Wrap ``(program, args)`` in an ``sh -c`` shim that FLATTENS the instruction
-    SEED into the agent's native instruction slot, then ``exec``s the agent — the
-    DEFAULT instruction-delivery mechanism for EVERY agent (increment 2b; made the
-    universal default 2026-07-12).
+    """Wrap ``(program, args)`` in an ``sh -c`` shim that FLATTENS the instruction SEED.
+
+    The flattened seed lands in the agent's native instruction slot, then the shim
+    ``exec``s the agent — the DEFAULT instruction-delivery mechanism for EVERY agent
+    (increment 2b; made the universal default 2026-07-12).
 
     Before ``exec``, the shim runs (in-box) the flattener in its SOURCE→DEST file
     mode — ``python3 <flattener> "$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"``
@@ -4909,17 +4865,18 @@ def _directive_flatten_shim(
     ``~/.codex/AGENTS.md``, goose ``~/.config/goose/.additionalContext.md``).  This
     lands the FULL guide in the native, always-loaded instruction file — the strong,
     uncapped channel — instead of the 2K/10K-capped ``additionalContext`` hook (kept
-    as a secondary/future channel).  The flattener is MACHINERY, not instructional
-    text, so it does not live in the canon: it ships in the kanibako package itself
-    and rides the existing unconditional ``kani_pkg`` bind (whole package dir, ro)
-    to ``/opt/kanibako/kanibako/scripts/import-directives.py`` — no extra bind, no
-    extra key.  No sudo — the native slots are agent-owned.  ⚑ The SAME literal is
-    carried by the SessionStart hook command in :mod:`kanibako.vscode.vscode_config`; the
-    two must move TOGETHER, because a one-sided change is SILENT (``|| true``
-    swallows the failure and the box just loses its directives).  SILENT-SAFE
-    (``|| true``) and GUARDED on
-    ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive slot
-    (e.g. a no-agent shell) skips the flatten cleanly.
+    as a secondary/future channel).
+
+    The flattener is MACHINERY, not instructional text, so it does not live in the
+    canon: it ships in the kanibako package itself and rides the existing
+    unconditional ``kani_pkg`` bind (whole package dir, ro) to
+    ``/opt/kanibako/kanibako/scripts/import-directives.py`` — no extra bind, no extra
+    key.  No sudo — the native slots are agent-owned.  ⚑ The SAME literal is carried
+    by the SessionStart hook command in :mod:`kanibako.vscode.vscode_config`; the two
+    must move TOGETHER, because a one-sided change is SILENT (``|| true`` swallows the
+    failure and the box just loses its directives).  SILENT-SAFE (``|| true``) and
+    GUARDED on ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive
+    slot (e.g. a no-agent shell) skips the flatten cleanly.
 
     Returns ``("sh", ["-c", <script>, "sh", program, *args])`` so ``sh -c`` sets
     ``$0=sh`` and ``$@=program args`` and ``exec "$@"`` runs the agent with its
@@ -5135,9 +5092,7 @@ def _persona_wiring(target) -> "PersonaSpec":
     declared :class:`~kanibako.targets.base.PersonaSpec`; a target with no descriptor
     or no ``persona:`` block falls back to the claude-style shape (ENV endpoint
     delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var) so any pre-seam /
-    no-target caller resolves BYTE-IDENTICALLY to before this seam existed.  That
-    shape is spelled out EXPLICITLY at the fallback below: it is a legacy
-    compatibility shape, not an accident of the field defaults.
+    no-target caller resolves BYTE-IDENTICALLY to before this seam existed.
 
     ⚑ NEUTRALIZING this fallback (the planned T3.1 "a plugin that declares no
     ``persona:`` block gets NO persona wiring") NEEDS A VERSION FLOOR on the agent
@@ -5707,9 +5662,9 @@ def _effective_behavior_for_display(
     workset_config_path=None,
     node_name=None,
 ) -> dict[str, str]:
-    """Resolve the effective agent BEHAVIOR state for the ``config --effective``
-    DISPLAY, off the SAME KeyStore snapshot the live launch reads (block 7c).
+    """Effective agent BEHAVIOR state for the ``config --effective`` DISPLAY.
 
+    Read off the SAME KeyStore snapshot the live launch reads (block 7c).
     Single-route + launch-FIDELITY: this builds the behavior snapshot exactly as
     :func:`_resolve_launch_snapshot` does for a launch — the target's declared
     defaults fold in as the ``agent.default.*`` floor (OS1); the per-agent FILE
@@ -5904,11 +5859,8 @@ def _resolve_box_auth_source(
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
-        # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
-        # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
-        # must carry the RESOLVED selection or the per-agent credential source
-        # would degenerate to the workset auth ROOT for any launch whose agent
-        # came from ``--agent`` or the installed-count rule.
+        # ⚑ REQUIRED (P7) — see the *selection_level* note in the docstring for what
+        # omitting it silently collapses.
         cli_level=selection_level,
     )
     return settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
@@ -5926,9 +5878,10 @@ def _resolve_box_launch_decisions(
     selection_level: "Mapping[str, object] | None",
     persona_values: "Mapping[str, str] | None" = None,
 ) -> "tuple[AuthSource, str | None, str | None]":
-    """Resolve the launch's per-box decisions (auth SOURCE + persona endpoint + persona
-    model) off ONE snapshot — the single-source consolidation of the auth resolve and
-    the behavior (endpoint/model) resolve.
+    """Resolve the launch's per-box decisions off ONE snapshot.
+
+    Auth SOURCE + persona endpoint + persona model — the single-source consolidation
+    of the auth resolve and the behavior (endpoint/model) resolve.
 
     ``build_launch_snapshot`` accepts BOTH the auth 3-tier ``auth_chain`` floor AND
     the behavior ``behavior_floor`` in a single call, so the box's sharing decision
@@ -6054,8 +6007,10 @@ def _launch_snapshot_inputs(
     proj,
     agent_name: str,
 ):
-    """Build the (ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
-    cascade_box_path, cascade_workset_path) the launch SNAPSHOT path needs.
+    """Build the seven-tuple of inputs the launch SNAPSHOT path needs.
+
+    ``(ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+    cascade_box_path, cascade_workset_path)``.
 
     Constructs the host_home / xdg / workset name / resolved ``system.*`` map the
     ONE-resolve snapshot path (block 7b) feeds to ``build_launch_snapshot`` so
@@ -6477,20 +6432,12 @@ def _resolve_launch_snapshot(
 
     # Aggregate every runtime default-categories table into ONE dict.
     #
-    # ⚑⚑ NOT a plain ``dict.update`` union, and the reason is load-bearing. This
-    # block's comment USED to say "keys are disjoint across families (each uses its
-    # own ``<scope>.<category>.<key>`` namespace), so a plain union is
-    # well-defined." That was true only while a bindings arm was NAME-keyed, giving
-    # each family its own ``box.bindings.ro.<name>`` keys. Under dest-keying the
-    # arm is a TERMINAL key (R-5) — so ~8 of these families all write the SAME key
-    # ``box.bindings.ro``, whose value is the whole map, and ``.update()`` would
-    # REPLACE it: the 4th family would silently delete the first three families'
-    # entire ro arm, with no error anywhere. Every union below therefore goes
-    # through :func:`_merge_default_categories`, which merges ANY terminal
-    # dest-keyed category map ENTRY BY ENTRY and leaves every other value alone.
-    # ⚑ "Any terminal category" is not decoration: ``caches``/``seeded``/``common``/
-    # ``synced`` are terminal too now, and the "agent common" + "agent category
-    # binds" families below BOTH write ``agent.<a>.common``.
+    # ⚑⚑ NOT a plain ``dict.update`` union: ~8 of the families below write the SAME
+    # terminal key ``box.bindings.ro`` (R-5), whose value is the whole dest-keyed
+    # map, so ``.update()`` would REPLACE it and silently delete every earlier
+    # family's entries.  Every union therefore goes through
+    # :func:`_merge_default_categories` — see it for why the copy categories
+    # (``caches``/``seeded``/``common``/``synced``) are equally in scope.
     default_categories: dict[str, object] = {}
     # Provenance for the act-once refusal: ``(arm key, dest) -> family label``, so a
     # same-destination clash can name BOTH contributing families rather than just
@@ -7503,9 +7450,9 @@ def _install_box_handbook(
 def persona_create_verdict(
     std, config, proj, *, explicit_agent: str | None = None
 ) -> str | None:
-    """The persona LOAD-OR-ERROR verdict for the `box create` path — a read-only
-    pre-check the caller runs BEFORE the lifecycle-journal write-entry.
+    """The persona LOAD-OR-ERROR verdict for the `box create` path.
 
+    A read-only pre-check the caller runs BEFORE the lifecycle-journal write-entry.
     Director ruling (2026-07-03): the create guard MUST precede the journal entry
     (an abort after the entry would leave a pending entry whose recovery replays
     the seed).  So `run_create` calls this FIRST; a non-``None`` return is the
@@ -8076,11 +8023,13 @@ def _apply_init_seeds(
             box_dest, proj.shell_path, proj.project_path, map_home_root=True,
         )
         if dest is None:
-            # ⚑ DEFENSIVE, not reachable from the collapsed leaf: the collapse's own
-            # ``_refuse_seed_outside_home`` covers exactly the dests this translator
-            # answers ``None`` for, and a refusal drops the WHOLE leaf, which falls
-            # back below.  It stays because the fallback arm CAN produce such a row,
-            # and because a mis-landed copy reports success.
+            # ⚑ DEFENSIVE, and unreachable from the collapsed leaf: the collapse's
+            # own ``_refuse_seed_outside_home`` refuses exactly the dests this
+            # translator answers ``None`` for, and since cutover 2c that refusal
+            # RAISES rather than leaving the leaf absent — there is no reconciled
+            # fallback arm left that could hand this loop such a row.  It stays
+            # because a mis-landed copy reports SUCCESS, which is the one failure
+            # mode worth keeping a dead branch for.
             # ⚑ The dest IS the row's identity (R-10) — there is no name to print.
             logger.warning(
                 "seed %s: guest_dest is outside %s; skipping", box_dest, GUEST_HOME,
