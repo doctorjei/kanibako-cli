@@ -131,12 +131,47 @@ collapse (`collapse_store_shapes`), and stores the results at the declared RO/de
 nothing", and that is now false for MOUNTS and for BOTH copy arms.** The main launch path emits its
 category mounts from `meta.assembly.bindings` (see the section above), the create-time seed applier
 reads `meta.assembly.seeded`, and the launch-time sync applier reads `meta.assembly.synced` (both
-below). What still runs on `reconciled`: the env set, the row-5 warnings, the agent delivery arm, and
-the remaining narrow resolves. Retiring `reconcile_categories`' arbitration half and the warn channel
-is step 5, and none of it may be smuggled in early.
+below). What still runs on `reconciled`: the env set, the agent delivery arm, and the remaining narrow
+resolves. Retiring `reconcile_categories`' arbitration half is step 5, and none of it may be smuggled
+in early.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
+
+### The row-5 warning now has a home HERE too (cutover 5-0)
+
+🛑 **UPDATED AT 5-0 — the paragraph above used to list "the row-5 warnings" among what runs on
+`reconciled`, and that is no longer the whole picture.** `build_store_shape_set` computed the same
+same-scope ambiguities all along and `StoreShapeSet` carried them as data, but nothing ever asked
+for `.warnings`: the ONLY emission in `src/` was `emit_collision_warnings(reconciled.warnings)`, on
+the arm step 5 deletes. `_install_assembly_collapse` now hands `shapes.warnings` to that same seam,
+so the deletion is a deletion and not a silently lost warning. **Both feeds are live and nothing was
+removed** — reverting is one line.
+
+**One ambiguity still prints one line, by construction.** `store_shape` imports
+`CategoryCollision` from `settings_categories`, so both arms build the same type; both group on the
+bare `entry.box_dest`; both name the winner's scope; and `emit_collision_warnings` memoises on
+exactly `(box_dest, scope)`. **Measured:** for an ambiguity inside ONE scope the two arms' warning
+tuples are equal field for field.
+
+**Where they diverge, and it is not filtered.** The producer folds each scope alone, so it reports
+an ambiguity the reconcile silenced for a reason of its own. **Measured, and there are exactly two
+such reasons:**
+
+| what silenced the reconcile | what the collapse arm now says | what the launch does |
+|---|---|---|
+| a `masks` entry at that dest, in ANY scope (§0 row 2 returns the mask and no warnings) | warns for the ambiguous scope | **works** — one extra line the user did not get before (CHANGELOG, Unreleased/Changed) |
+| another scope's abstraction took the dest (its old row 4) | warns for the LOSING scope, a scope the reconcile never names | refused by `collapse_store_shapes` — two mounts at one dest — so the line only ever precedes that refusal |
+
+The mask row is the one that changes what a working launch prints, and it is the reason this is a
+CHANGELOG entry at all; it is pinned by
+`tests/test_category_collisions.py::TestTheCollapseRouteFeedsTheSameChannel::test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not`.
+⚑ The second row is MEASURED, not pinned — no test drives a warning that precedes a refusal.
+
+⚑ **The channel itself is a spec question step 5 has to answer.** §0's containment table makes two
+mounts at one destination "an error in EVERY scope combination", same-scope included; warn-and-
+proceed is the retired five-row table's row 5, which both arms still implement. 5-0 gives the
+existing behaviour a home in the new route; it does not rule on whether that behaviour survives.
 
 ### The credential gate is HOISTED above BOTH consumers (cutover 2b-0)
 

@@ -95,6 +95,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An ambiguity at a destination that is also masked is no longer silent.** When two of `caches`,
+  `common` (or one of each) target the same destination in ONE scope, kanibako keeps the existing
+  ordering and warns — every launch — so the ambiguity stays visible until you fix it. A `masks`
+  entry at that same destination used to suppress that warning entirely, from any scope: the mask
+  takes the destination over, so nothing was said about the two declarations underneath it. It is
+  not suppressed now. They are still ambiguous, and a mask over them says nothing about which of
+  the two you meant. **No warning was removed and none is duplicated** — one ambiguity is still one
+  line per launch. (A launch that is refused because two mounts claim one destination may now print
+  this warning before the refusal; what is refused, and its message, are unchanged.)
+
 - **Two of the refusals for a key that collides with a reserved name are reworded.** A settings key
   may not be named after a Python dunder (`__init__`) or after a dictionary method (`get`, `keys`,
   `items`, …); both would shadow part of the structure the resolved settings live in, so both are

@@ -6794,6 +6794,10 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     together: the fold's refusals are now the launch's, and they exit through
     ``cli.main``'s ``KanibakoError`` arm as ``Error: …`` with no traceback.
 
+    ⚑ It also ANNOUNCES the producer's §0 same-scope ambiguities (cutover 5-0) — see
+    the comment at the ``emit_collision_warnings`` call below for why that emission is
+    a second FEED of one channel and not a second channel.
+
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
     from kanibako.settings.store_collapse import collapse_seeded, collapse_store_shapes
@@ -6806,6 +6810,30 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # is seeded before any bind folds, so a resolve with no home bind — every
     # narrow one, including the CREATE-side seed resolve — still has a seed list.
     shapes = build_store_shape_set(folded)
+    # The PRODUCER's own same-scope ambiguities, handed to the ONE emission seam
+    # (cutover 5-0). ``_resolve_launch_snapshot`` feeds that same seam its RECONCILED
+    # warnings immediately before calling this function; this is the collapse route's
+    # feed of it, and having it is what makes step 5's removal of the other feed a
+    # deletion rather than a silently lost warning. It sits BEFORE the folds below
+    # because an ambiguity is a property of what was DECLARED, not of whether the
+    # assembly then succeeds.
+    #
+    # ⚑ ONE AMBIGUITY STILL PRINTS ONE LINE. Both arms build the same
+    # ``settings_categories.CategoryCollision`` (``store_shape`` imports it), both group
+    # on the bare ``entry.box_dest``, both name the WINNER's scope — and
+    # ``emit_collision_warnings`` memoises on exactly that ``(box_dest, scope)`` pair.
+    # MEASURED: for an ambiguity inside ONE scope the two arms' warning tuples are equal
+    # field for field.
+    #
+    # ⚑ WHERE THEY DIVERGE, unfiltered on purpose: the producer folds each scope ALONE,
+    # so it reports an ambiguity that the reconcile silenced for a reason of its own.
+    # MEASURED, and there are exactly two such reasons — a ``masks`` entry at that dest
+    # (in ANY scope) overrode both declarations, or another scope's abstraction took the
+    # dest outright. The masked one reaches a WORKING launch, so the user gets a line
+    # they did not get before (CHANGELOG); the cross-scope one is two mounts at one
+    # dest, which ``collapse_store_shapes`` refuses below, so there the line only ever
+    # precedes that refusal.
+    emit_collision_warnings(shapes.warnings)
     snapshot.insert_segments(_ASSEMBLY_SEEDED, collapse_seeded(shapes))
     # The other two DESCRIBE AN ASSEMBLY, so the fact that belongs to one gates them:
     # a home to build on. Above, a whole-box resolve has already REFUSED if it lacks
@@ -6920,6 +6948,12 @@ def emit_collision_warnings(collisions) -> None:
     declared in a box file surfaces in several of them.  Printing it five times is
     one ambiguity reported five times, not five ambiguities — so the memo is keyed
     ``(box_dest, scope)`` and lives for the process, never beyond it.
+
+    ⚑ Since cutover 5-0 each of those resolves ALSO reports the ambiguity twice, from
+    two producers over one declaration set: ``reconcile_categories`` and the
+    ``store_shape`` PRODUCER, whose warnings :func:`_install_assembly_collapse` feeds
+    here.  The memo covers that the same way and for the same reason — the two build
+    the same ``CategoryCollision`` for it, so the pair they key on is identical.
 
     ⚑ THE COUNT HAS MOVED TWICE AND THE HISTORY MATTERS: the LAUNCH-time ``synced``
     resolve was retired at cutover 2b-3, when that pass moved below the main resolve
