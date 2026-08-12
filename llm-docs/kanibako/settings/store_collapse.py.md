@@ -17,8 +17,8 @@ moves `synced` to the far end of the fold.
 ⚑⚑ Step 6 *"merges the **information**, but not the action"* — the roadmap's own words. This
 function computes and returns. It drives no emission, executes no copy, changes no mount and
 deletes nothing: `snapshot_category_entries` → `reconcile_categories` → emission is still the whole
-live delivery path, including `reconcile_categories`' arbitration half, its `synced_vs_binding`
-refusal and its row-5 warning channel.
+live delivery path, including `reconcile_categories`' arbitration half and its row-5 warning
+channel.
 
 Its one consumer is `start.py:_install_assembly_collapse`, which writes the result to
 `meta.assembly.bindings` / `meta.assembly.seeded` / `meta.assembly.synced`. ⚑ **Of those three,
@@ -302,10 +302,12 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 * **it does not resolve a sync dest through the bind map.** That is the DELIVERY half and it lands
   at the CUTOVER's step 2; here the row carries the guest dest.
 * **it does not reproduce `_resolve_dest_group`'s `synced_vs_binding` refusal**, which the same
-  ruling RETIRES: it existed because a copy could be shadowed by a live mount, and under copy-last
-  the copy goes INTO the mount's source. The live route still raises it until the cutover deletes
-  it. ⚑ Its stated replacement was the `mount_forbidden` backlog item; the actual replacement is
-  the ORDERING, plus the exact-dest refusal above — so that backlog item is answered, not pending.
+  ruling RETIRED — and which is now GONE from the reconcile route (cutover 5-1b). It existed
+  because a copy could be shadowed by a live mount, and under copy-last the copy goes INTO the
+  mount's source. ⚑ The RULE survives, once, as `_refuse_sync_at_a_bind_dest` above: a sync
+  strictly INSIDE a bind resolves through it, a sync AT its point still refuses. Its stated
+  replacement was the `mount_forbidden` backlog item; the actual replacement is the ORDERING, plus
+  that exact-dest refusal — so that backlog item is answered, not pending.
 * ⚑ **it does not carry the live route's "a `synced` row REPLACES every other copy at a shared
   dest"** (`settings_categories._resolve_copy_group`). Two lists leave that rule no home in the
   collapse. The reading is that it falls out of TIME and POLARITY instead — a seed lands once at

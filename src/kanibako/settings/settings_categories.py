@@ -10,8 +10,8 @@ mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
 Cross-category collision resolution (the spec §0 identical-dest TABLE, depth-order,
-``synced``↔``binding`` errors, the credential ``deliver_creds`` gate) is
-:func:`reconcile_categories` (sub-step 4b), layered on top of category entries.
+the credential ``deliver_creds`` gate) is :func:`reconcile_categories` (sub-step
+4b), layered on top of category entries.
 
 **Block 7c status:** :func:`reconcile_categories` is LIVE — the by-dest pass the
 KeyStore snapshot path uses (fed by ``settings_launch.snapshot_category_entries``).
@@ -697,11 +697,14 @@ def reconcile_categories(
     * a PURE-``seeded`` dest keeps EVERY entry — copies OVERLAY, they do not
       shadow, so the layered ``seeded[~/]`` trio is not a collision at all;
     * a ``synced`` copy-sync replaces a ``seeded`` at the same dest;
-    * a ``synced`` (COPY) and a ``binding`` (MOUNT) at the EXACT same dest is a
-      CONFIG ERROR (a copy cannot override a live mount), never a silent no-op;
-    * otherwise, where a MOUNT winner and a COPY winner name one dest: ``masks``
-      beats everything including ``synced``; ``synced`` beats every other mount;
+    * where a MOUNT winner and a COPY winner name one dest: ``masks`` beats
+      everything including ``synced``; ``synced`` beats every other mount;
       every mount beats ``seeded``.
+
+    ⚑ A ``synced`` copy at a binding's EXACT dest is NOT refused here (RETIRED
+    2026-08-10) — it resolves by the ladder above, to the copy.  The ASSEMBLY
+    refuses that arrangement, once, against the final bind map
+    (``store_collapse._refuse_sync_at_a_bind_dest``).
 
     ⚑ Rows 1 and 3 are evaluated BEFORE the row-2 mask OVERRIDE.  §0 states row 1
     as "ERROR, always — any scope, any mode", and a mask that happens to cover a
@@ -719,13 +722,12 @@ def reconcile_categories(
     entry flagged :attr:`CategoryEntry.is_credential` (the plugin's cred-seed
     hook).  When True (the box receives creds at the global OR workset tier) they are kept.
     The gate is applied BEFORE collision resolution, so a suppressed ``synced``
-    cannot win — or error against — a colliding binding. (Callers pass
+    cannot win against a colliding binding. (Callers pass
     ``deliver_creds=auth.creds_shared`` off the resolved
     :class:`~kanibako.settings.settings_launch.AuthSource`.)
 
     Raises :class:`~kanibako.errors.CategoryCollisionError` (a
-    :class:`~kanibako.errors.ConfigError`) on a row-1 / row-3 collision and on a
-    ``synced``↔``binding`` identical-dest collision.
+    :class:`~kanibako.errors.ConfigError`) on a row-1 / row-3 collision.
     """
     # --- credential-delivery gate (D-M4): a PRIVATE box (deliver_creds=False) suppresses cred
     # deliveries up front — the same drop today's group_auth=False produced.
@@ -788,25 +790,11 @@ def _resolve_dest_group(
     named for the rule it implements so no single ladder stands in for five
     different decisions.
     """
-    from kanibako.errors import CategoryCollisionError
-
-    # The copy-vs-mount CONFIG ERROR (spec §0) — stated independently of
-    # the collision table and UNCHANGED by it, so it is checked first and carries
-    # no rule-changed paragraph.
-    synced = [e for e in group if e.category == "synced"]
-    bindings = [e for e in group if e.category in ("bindings.ro", "bindings.rw")]
-    if synced and bindings:
-        raise CategoryCollisionError(
-            f"Category collision at '{box_dest}': a 'synced' copy and a "
-            f"'binding' mount target the same destination.\n"
-            + _entry_lines(synced + bindings)
-            + "A copy cannot override a live mount — resolve by removing one "
-            "(e.g. drop the binding or point the synced copy elsewhere).",
-            kind="synced_vs_binding",
-            box_dest=box_dest,
-            entries=tuple((e.key, e.host_src) for e in synced + bindings),
-        )
-
+    # ⚑ NO ``synced``↔``binding`` refusal here (RETIRED 2026-08-10). The ASSEMBLY
+    # owns that arrangement now: ``store_collapse._refuse_sync_at_a_bind_dest``
+    # folds the sync list LAST, against a bind map that is already final, and
+    # refuses a sync AT a binding's point by name. Re-raising it here would be a
+    # second implementation of one rule, reached first and worded differently.
     mount_sub = [e for e in group if e.delivery == MOUNT]
     copy_sub = [e for e in group if e.delivery == COPY]
 
@@ -1004,8 +992,8 @@ def _entry_lines(entries: list[CategoryEntry]) -> str:
 def _rule_changed(body: str) -> str:
     """The migration-grade paragraph (M-7) — ONLY on a rule whose outcome changed.
 
-    Putting it on a rule that did NOT change trains a reader to skip it, so the
-    unchanged ``synced``↔``binding`` error deliberately does not carry it.
+    Putting it on a rule that did NOT change trains a reader to skip it, so a
+    rule the table left alone deliberately does not carry it.
     """
     return (
         f"⚑ THIS RULE CHANGED IN kanibako {_RULE_CHANGE_RELEASE}. "

@@ -1557,7 +1557,10 @@ an agent.
   before any binding folds, so a destination outside it has nowhere to land. Give it a destination
   inside home, deliver it as a binding, or declare it `synced` — which is not home-only (§2.29).
 - **A `synced` entry at a binding's exact destination.** A sync may land strictly INSIDE a binding
-  (§2.29); at its point it would replace the bound inode.
+  (§2.29); at its point it would replace the bound inode. ⚑ This one is not new to you: 1.7.x
+  already refused it, from the category resolver, and the only change is that the fold now states
+  it — naming the sync, the destination and the bound source instead of just the destination. There
+  is no configuration that launched before and refuses now.
 - **A binding whose options contradict its arm.** `ro` in the options of a `bindings.rw` entry, or
   `rw` in a `bindings.ro` one. The mode IS the arm — declare it in the arm that means it.
 

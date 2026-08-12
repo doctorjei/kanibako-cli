@@ -577,15 +577,16 @@ policy:
                                          #   through the FINAL bind map
     seed_dest_outside_home: error        # a SEEDED dest not inside home is a
                                          #   config ERROR (`synced`: not an error)
-    synced_vs_binding_same_dest: error   # RETIRED BY RULING 2026-08-10 ("synced
-                                         #   <->binding is unnecessary now, yes");
-                                         #   the value stays `error` only because
-                                         #   the LIVE route still enforces it. The
-                                         #   deletion lands at the CUTOVER, when
-                                         #   syncs begin copying LAST and resolve
-                                         #   THROUGH the binds — a covering mount
-                                         #   stops being a hazard, so nothing is
-                                         #   left for this to protect.
+    synced_vs_binding_same_dest: error   # STILL an error — the ASSEMBLY owns it.
+                                         #   Ruling 2026-08-10 ("synced<->binding
+                                         #   is unnecessary now, yes") retired the
+                                         #   DUPLICATE in the reconcile route, not
+                                         #   the rule: syncs copy LAST, through the
+                                         #   FINAL bind map, and
+                                         #   store_collapse._refuse_sync_at_a_bind_dest
+                                         #   refuses a sync AT a bind's point once,
+                                         #   by name. A sync strictly INSIDE a bind
+                                         #   resolves through it and is NOT an error.
                                          #   ⚑ mount_forbidden is REMOVED, not
                                          #   pending: it was never the replacement,
                                          #   the copy-LAST ordering is.

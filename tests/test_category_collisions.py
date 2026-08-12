@@ -2,7 +2,7 @@
 
 One test per table row, plus the behaviours the table does not mention and which
 must survive it byte-for-byte (the pure-``seeded`` overlay, the credential gate
-ordering, the ``synced``↔``binding`` error, the ``secret_path`` per-VAR cascade).
+ordering, the cross-delivery ladder, the ``secret_path`` per-VAR cascade).
 
 ⚑ EVERY case here is MUTATION-PROVEN: each one reddens when its own branch in
 ``settings_categories`` is inverted, and stays green when the others are. A test
@@ -66,7 +66,7 @@ import logging
 import pytest
 import yaml
 
-from kanibako.errors import CategoryCollisionError, ConfigError
+from kanibako.errors import CategoryCollisionError
 from kanibako.settings.settings_categories import (
     SECRET_MOUNT_DIR,
     CategoryEntry,
@@ -694,24 +694,23 @@ class TestPreservedCopyAndCrossDeliveryRules:
         assert [c.host_src for c in rec.copies] == ["/base", "/ag", "/ws"]
         assert rec.warnings == ()
 
-    def test_synced_vs_binding_at_one_dest_is_still_a_config_error(self):
-        with pytest.raises(ConfigError) as exc:
-            reconcile_categories([
-                entry("synced", name="creds"),
-                entry("bindings.rw", name="home"),
-            ])
-        assert exc.value.kind == "synced_vs_binding"
-        assert DEST in str(exc.value)
+    def test_synced_at_a_bindings_dest_resolves_to_the_copy(self):
+        """The RETIRED ``synced_vs_binding`` refusal (ruling 2026-08-10).
 
-    def test_the_unchanged_rule_carries_NO_rule_changed_paragraph(self):
-        """T13 — putting it on a rule that did not change trains readers to
-        skip it, so its absence here is a requirement, not an oversight."""
-        with pytest.raises(ConfigError) as exc:
-            reconcile_categories([
-                entry("synced", name="creds"),
-                entry("bindings.rw", name="home"),
-            ])
-        assert "THIS RULE CHANGED" not in str(exc.value)
+        The helper no longer raises here: the pair falls through to the
+        cross-delivery ladder, where a ``synced`` copy beats every non-``masks``
+        mount.  ⚑ This is NOT "the arrangement is now legal" — the ASSEMBLY
+        still refuses it, once, against the final bind map
+        (``store_collapse._refuse_sync_at_a_bind_dest``, pinned in
+        ``tests/test_settings/test_store_collapse.py``).
+        """
+        rec = reconcile_categories([
+            entry("synced", name="creds"),
+            entry("bindings.rw", name="home"),
+        ])
+        assert [c.category for c in rec.copies] == ["synced"]
+        assert rec.mounts == []
+        assert rec.warnings == ()
 
     def test_the_synced_winner_is_the_MOST_SPECIFIC_scope(self):
         """N3 — this is the CREDENTIAL pick, so getting it wrong is not a

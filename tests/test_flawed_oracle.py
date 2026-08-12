@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping
 
 import pytest
 
-from kanibako.errors import CategoryCollisionError, ConfigError
+from kanibako.errors import CategoryCollisionError
 from kanibako.settings.settings_categories import (
     COPY,
     ENV,
@@ -1031,22 +1031,31 @@ class TestReconcileScopePrecedence:
         assert rec.mounts[0].host_src == "/box"
 
 
-class TestReconcileSyncedBindingError:
-    def test_synced_vs_binding_same_dest_raises(self):
+class TestReconcileSyncedBindingNoLongerRaises:
+    """The ``synced_vs_binding`` refusal was RETIRED here at cutover 5-1b.
+
+    ⚑ The RULE did not go: the assembly collapse refuses a sync at a binding's
+    exact dest against the FINAL bind map
+    (``store_collapse._refuse_sync_at_a_bind_dest``). What went is this helper's
+    DUPLICATE of it, which ran first and worded it differently.
+    """
+
+    def test_synced_vs_binding_same_dest_resolves_to_the_copy(self):
         synced = _entry("synced", box_dest="/g/clash")
         binding = _entry("bindings.rw", box_dest="/g/clash")
-        with pytest.raises(ConfigError) as exc:
-            reconcile_categories([synced, binding])
-        assert "/g/clash" in str(exc.value)
+        rec = reconcile_categories([synced, binding])
+        assert [c.category for c in rec.copies] == ["synced"]
+        assert rec.mounts == []
 
-    def test_synced_vs_binding_ro_same_dest_raises(self):
+    def test_synced_vs_binding_ro_same_dest_resolves_to_the_copy(self):
         synced = _entry("synced", box_dest="/g/clash")
         binding = _entry("bindings.ro", box_dest="/g/clash")
-        with pytest.raises(ConfigError):
-            reconcile_categories([synced, binding])
+        rec = reconcile_categories([synced, binding])
+        assert [c.category for c in rec.copies] == ["synced"]
+        assert rec.mounts == []
 
     def test_synced_and_shared_same_dest_is_not_an_error(self):
-        # Only synced<->binding is the hard error; synced beats shared cleanly.
+        # The cross-delivery ladder, on the abstract arm: synced beats common cleanly.
         synced = _entry("synced", box_dest="/g/ok")
         shared = _entry("common", box_dest="/g/ok")
         rec = reconcile_categories([synced, shared])
