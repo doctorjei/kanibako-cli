@@ -111,8 +111,10 @@ class AgentSelection:
         Handing the first to the second LAUNDERS a deliberate suppression into
         auto-detection: bifrost measured a suppressed box launching claude, with
         claude's binary, commons and CREDENTIALS delivered. Route every
-        selection→target conversion through :func:`resolve_selected_target`, which
-        is the ONE place these two vocabularies are translated.
+        selection→target conversion through the idiom below. ⚑ **There is no
+        helper that does it for you** — the ``has_agent`` guard IS the
+        translation, spelled at each seam, so look for the guard and not for a
+        function.
 
         **The idiom, at every seam that needs a target:**
 
