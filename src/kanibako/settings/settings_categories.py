@@ -606,10 +606,11 @@ class ReconciledCategories:
     identical-dest collision is resolved to one winner per the §0 table). COPIES
     OVERLAY rather than shadow, so a dest targeted by ``seeded`` copies ONLY keeps
     every copy (in apply order) — the layered ``seeded[~/]`` trio all seed
-    into ``~`` and last-wins-merge there. A dest shared by a mount and copies
-    reverts to the single mount winner (the copy cannot survive under a live
-    shadow mount) EXCEPT for a ``synced`` copy-sync, which outranks a non-``masks``
-    mount exactly as it always has.
+    into ``~`` and last-wins-merge there. A dest shared by a mount and ``seeded``
+    copies reverts to the single mount winner (the copy cannot survive under a live
+    shadow mount); a dest shared by a mount and a ``synced`` copy-sync keeps BOTH,
+    because the sync is delivered THROUGH the covering bind into its host source —
+    so the same ``box_dest`` may appear once in *mounts* and once in *copies*.
 
     *warnings* carries the §0 row-5 SAME-SCOPE abstraction ambiguities as DATA.
     This function stays PURE (no logging, no process state), so the caller owns
@@ -698,13 +699,14 @@ def reconcile_categories(
       shadow, so the layered ``seeded[~/]`` trio is not a collision at all;
     * a ``synced`` copy-sync replaces a ``seeded`` at the same dest;
     * where a MOUNT winner and a COPY winner name one dest: ``masks`` beats
-      everything including ``synced``; ``synced`` beats every other mount;
-      every mount beats ``seeded``.
+      everything including ``synced``; a ``synced`` and any other mount BOTH
+      survive; every mount beats ``seeded``.
 
-    ⚑ A ``synced`` copy at a binding's EXACT dest is NOT refused here (RETIRED
-    2026-08-10) — it resolves by the ladder above, to the copy.  The ASSEMBLY
-    refuses that arrangement, once, against the final bind map
-    (``store_collapse._refuse_sync_at_a_bind_dest``).
+    ⚑ A ``synced`` copy at a mount's EXACT dest is not refused, here or anywhere
+    (the rule is RETIRED, 2026-08-12) — and it does not displace the mount either.
+    The sync is delivered LAST, through the bind covering its dest and into that
+    bind's host source, so it overwrites CONTENT the mount exposes rather than the
+    mount itself.
 
     ⚑ Rows 1 and 3 are evaluated BEFORE the row-2 mask OVERRIDE.  §0 states row 1
     as "ERROR, always — any scope, any mode", and a mask that happens to cover a
@@ -732,7 +734,7 @@ def reconcile_categories(
     # --- credential-delivery gate (D-M4): a PRIVATE box (deliver_creds=False) suppresses cred
     # deliveries up front — the same drop today's group_auth=False produced.
     # ⚑ BEFORE collision resolution, deliberately: a suppressed ``synced`` must not
-    # be able to error against — or win over — a binding it never delivers.
+    # be able to survive beside — or win over — a binding it never delivers.
     # ⚑ The LAUNCH caller has already applied this above both of its consumers
     # (``commands/start._resolve_launch_snapshot``); the gate is idempotent, and it
     # stays here for every OTHER caller of this function.
@@ -790,26 +792,37 @@ def _resolve_dest_group(
     named for the rule it implements so no single ladder stands in for five
     different decisions.
     """
-    # ⚑ NO ``synced``↔``binding`` refusal here (RETIRED 2026-08-10). The ASSEMBLY
-    # owns that arrangement now: ``store_collapse._refuse_sync_at_a_bind_dest``
-    # folds the sync list LAST, against a bind map that is already final, and
-    # refuses a sync AT a binding's point by name. Re-raising it here would be a
-    # second implementation of one rule, reached first and worded differently.
+    # ⚑ NO ``synced``↔``binding`` refusal here, and none anywhere else either — the
+    # rule is RETIRED, not relocated (Jei, 2026-08-12: *"don't check for sync. Let
+    # it clobber whatever it wants."*). A copy sharing a mount's destination is
+    # ordinary; the copy lands ON TOP of the mount and most of the mount remains
+    # intact.
     mount_sub = [e for e in group if e.delivery == MOUNT]
     copy_sub = [e for e in group if e.delivery == COPY]
 
     mount_winner, warnings = _resolve_mount_group(box_dest, mount_sub)
     copy_winners = _resolve_copy_group(copy_sub)
 
-    # CROSS-DELIVERY (preserved, unchanged): a mount physically shadows a copied
-    # file, so it beats a ``seeded`` copy; a ``synced`` inode-swap cannot live
-    # under a bind, so it beats every non-``masks`` mount; a ``masks`` tmpfs hides
-    # the dest outright, so it beats even a ``synced``.
+    # CROSS-DELIVERY. A mount physically shadows a copied file, so it beats a
+    # ``seeded`` copy; a ``masks`` tmpfs hides the dest outright, so it beats even a
+    # ``synced``.
+    #
+    # ⚑⚑ A ``synced`` DOES NOT DISPLACE THE MOUNT — BOTH SURVIVE. The sync is
+    # delivered LAST and resolves THROUGH the bind that covers its dest into that
+    # bind's host source (``commands.start._synced_host_dest``), so at an EXACT-dest
+    # pair it writes into the very source the mount exposes. It clobbers CONTENT, not
+    # the mount. Returning the copy alone deleted a declared binding to make room for
+    # a copy that never needed the room (Jei, 2026-08-12: *"copy | bind copies on top
+    # of the bind, and most of bind remains intact"*).
+    #
+    # ⚑ Every non-``masks`` mount category is treated alike here on purpose:
+    # ``caches`` and ``common`` FOLD INTO the bindings, so singling ``bindings.*``
+    # out would be one rule wearing two faces.
     if mount_winner is not None and copy_winners:
         if mount_winner.category == "masks":
             return [mount_winner], warnings
         if any(e.category == "synced" for e in copy_winners):
-            return copy_winners, warnings
+            return [mount_winner, *copy_winners], warnings
         return [mount_winner], warnings
     if mount_winner is not None:
         return [mount_winner], warnings

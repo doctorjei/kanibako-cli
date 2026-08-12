@@ -349,8 +349,16 @@ class TestTheSeedPassIsAConcatenation:
     assert collapse_seeded(shapes) == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
 
 
-class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
-  """⚖️ RULED 2026-08-10b — *"could we simply copy it last instead? After binds are done?"*"""
+class TestTheSyncArmIsAPlainConcatenation:
+  """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
+
+  ⚑ The pass USED to fold against the final bind map, to refuse a sync at a bind's
+  exact point. That refusal is GONE and the parameter went with it, so this arm is
+  now the seed arm's twin: a scope-ordered concatenation that arbitrates nothing.
+  ⚑⚑ Half these cases are therefore NEGATIVE — they pin an ACCEPTANCE, and each one
+  asserts the MOUNT as well as the copy, because dropping the bind to make room for
+  the copy is the other way to break this ruling.
+  """
 
   def test_the_sync_list_is_the_CONCATENATION_in_SCOPE_order(self):
     # ⚑⚑ THE DESTS DISAGREE WITH THE SCOPES ON PURPOSE, exactly as the seed case
@@ -380,15 +388,20 @@ class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
       CollapsedCopy("/h/second", f"{GUEST}/c", ""),
     ]
 
-  def test_a_per_row_sync_refusal_fires_from_INSIDE_a_repeated_arm(self):
-    with pytest.raises(SettingsError, match="EXACTLY the"):
-      collapse(
-        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-        box=shape(sync=[
-          CopyRow(f"{GUEST}/w/inner", BindEntry("/h/ok", "")),
-          CopyRow(f"{GUEST}/w", BindEntry("/h/nope", "")),
-        ]),
-      )
+  def test_EVERY_row_of_a_repeated_arm_survives_a_bind_at_one_of_their_dests(self):
+    # The sync arm has NO per-row refusal left to fire, so a repeated arm comes out
+    # whole no matter what the bind map holds. Goes RED if any row is dropped.
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+      box=shape(sync=[
+        CopyRow(f"{GUEST}/w/inner", BindEntry("/h/inner", "")),
+        CopyRow(f"{GUEST}/w", BindEntry("/h/at", "")),
+      ]),
+    )
+    assert collapsed.synced == [
+      CollapsedCopy("/h/inner", f"{GUEST}/w/inner", ""),
+      CollapsedCopy("/h/at", f"{GUEST}/w", ""),
+    ]
 
   def test_a_sync_dest_OUTSIDE_home_is_ACCEPTED(self):
     # ⚑⚑ THE LOAD-BEARING NEGATIVE: there is deliberately NO home-only rule for
@@ -422,66 +435,62 @@ class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
     )
     assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w/cred", "")]
 
-  def test_a_sync_at_a_binds_EXACT_dest_is_REFUSED(self):
-    with pytest.raises(SettingsError, match=r"EXACTLY the destination"):
-      collapse(
-        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-        box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
-      )
+  def test_a_sync_at_a_binds_EXACT_dest_is_ACCEPTED_and_the_BIND_SURVIVES(self):
+    """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
 
-  def test_a_sync_at_a_RO_binds_EXACT_dest_is_REFUSED_TOO(self):
-    # ⚑ The ro arm folds SEPARATELY from rw (``_scope_binds`` walks both), and the
-    # refusal reads the COLLAPSED map, so both arms must reach it. Inherited from
-    # the retired ``synced_vs_binding`` pair, which covered ro explicitly (5-1b).
-    with pytest.raises(SettingsError, match=r"EXACTLY the destination"):
-      collapse(
-        system=shape(ro={f"{GUEST}/w": BindEntry("/h/mount", "ro")}),
-        box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
-      )
-
-  def test_the_exact_dest_refusal_carries_NO_rule_changed_paragraph(self):
-    """T13, moved with the rule at 5-1b — copy-vs-mount did NOT change.
-
-    ``settings_categories._rule_changed`` marks only the §0 table rows whose
-    OUTCOME changed. Putting that paragraph on a rule that did not change trains
-    a reader to skip it, so its absence here is a requirement, not an oversight.
+    ⚑ THE REVERSAL. Until this ruling the fold REFUSED this arrangement by name.
+    It is ordinary: delivery resolves the dest through the bind that covers it, so
+    an exact-dest sync writes into that bind's own host source — it clobbers
+    CONTENT, and *"most of bind remains intact"*. Both halves are asserted because
+    accepting the copy while dropping the mount would be the other way to get this
+    wrong.
     """
-    with pytest.raises(SettingsError) as exc:
-      collapse(
-        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-        box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
-      )
-    assert "THIS RULE CHANGED" not in str(exc.value)
+    collapsed = collapse(
+      system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+      box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w", "")]
+    assert collapsed.bindings[f"{GUEST}/w"] == CollapsedBind("/h/mount", "Z,U,rw")
 
-  def test_the_exact_dest_refusal_NAMES_the_sync_the_dest_and_the_bound_source(self):
-    with pytest.raises(
-      SettingsError, match=rf"'/h/cred'.*'{GUEST}/w'.*'/h/mount'",
+  def test_a_sync_at_a_RO_binds_EXACT_dest_is_ACCEPTED_TOO(self):
+    # ⚑ The ro arm folds SEPARATELY from rw (``_scope_binds`` walks both), so both
+    # arms are pinned. The collapse does not rule on read-only-ness at all: DELIVERY
+    # warns and skips a sync whose cover is ro (``start._synced_host_dest``), and
+    # that is a different seam answering a different question.
+    collapsed = collapse(
+      system=shape(ro={f"{GUEST}/w": BindEntry("/h/mount", "ro")}),
+      box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w", "")]
+    assert collapsed.bindings[f"{GUEST}/w"] == CollapsedBind("/h/mount", "ro")
+
+  def test_the_sync_arm_TAKES_NO_BIND_MAP_so_scope_ORDER_cannot_matter(self):
+    # ⚑ THE DISCRIMINATING SHAPE, INVERTED. It used to prove the refusal read the
+    # FINAL map: the bind arrives in the LAST scope, after the sync's own, so only a
+    # whole-fold pass could see it. Nothing sees it now, and that is the point —
+    # neither arrival order can produce a refusal or a dropped row.
+    for shapes in (
+      {"system": shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+       "box": shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")})},
+      {"system": shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+       "box": shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))])},
     ):
-      collapse(
-        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-        box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
-      )
+      collapsed = collapse(**shapes)
+      assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w", "")]
+      assert collapsed.bindings[f"{GUEST}/w"].src == "/h/mount"
 
-  def test_the_refusal_reads_the_FINAL_map_not_the_scope_the_sync_was_declared_in(self):
-    # ⚑ THE DISCRIMINATING SHAPE. The binding arrives in the LAST scope, AFTER the
-    # sync's own; only a pass that runs after the WHOLE mount fold can see it. A
-    # per-scope or copies-first implementation accepts this configuration.
-    with pytest.raises(SettingsError, match=r"EXACTLY the destination"):
-      collapse(
-        system=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
-        box=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
-      )
+  def test_a_sync_at_HOME_itself_is_ACCEPTED_and_home_still_stands(self):
+    # ⚑ Home is pid 0 and sits in the map like any other bind, so it inherits the
+    # ruling with nothing added — and NOTHING may subsume home, so the assertion
+    # that home survives is the load-bearing half.
+    collapsed = collapse(box=shape(sync=[CopyRow("~", BindEntry("/h/cred", ""))]))
+    assert collapsed.synced == [CollapsedCopy("/h/cred", GUEST, "")]
+    assert collapsed.bindings[GUEST] == CollapsedBind(HOME.src, HOME.opts)
 
-  def test_a_sync_at_HOME_itself_is_refused_because_home_is_a_binding(self):
-    # Home is pid 0 and sits in the map like any other bind, so the ONE rule covers
-    # it with nothing added.
-    with pytest.raises(SettingsError, match=rf"'{HOME.src}'"):
-      collapse(box=shape(sync=[CopyRow("~", BindEntry("/h/cred", ""))]))
-
-  def test_a_sync_at_a_MASKS_exact_point_is_NOT_refused(self):
-    # ⚑ THE BOUNDARY, pinned so that moving it is a DECISION. ``src = None`` marks a
-    # MASK, and the rule — with its bound-inode rationale — is about BINDINGS. A
-    # sync landing on a tmpfs is a DELIVERY question, as the seed beside it is.
+  def test_a_sync_at_a_MASKS_exact_point_is_accepted_and_the_mask_stands(self):
+    # The one case that was ALREADY accepted, kept so the two now agree for one
+    # reason rather than by coincidence. ⚑ Delivery warns and skips it (a tmpfs has
+    # no host source); the collapse rules nothing.
     collapsed = collapse(
       system=shape(mask={f"{GUEST}/m": True}),
       box=shape(sync=[CopyRow(f"{GUEST}/m", BindEntry("/h/cred", ""))]),
@@ -489,14 +498,15 @@ class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
     assert collapsed.bindings[f"{GUEST}/m"] == MASK
     assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/m", "")]
 
-  def test_a_sync_whose_dest_CONTAINS_a_bind_dest_is_not_refused(self):
-    # Only EXACT equality is the error. A sync above a binding is not the file-bind
-    # overlap the rule is aimed at, and the refusal must not widen into containment.
+  def test_a_sync_whose_dest_CONTAINS_a_bind_dest_is_accepted_and_keeps_the_bind(self):
+    # Containment never was the rule, and now equality is not one either — the two
+    # shapes are pinned side by side so no future narrowing can reach only one.
     collapsed = collapse(
       system=shape(rw={f"{GUEST}/w/inner": BindEntry("/h/mount", "Z,U")}),
       box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
     )
     assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w", "")]
+    assert collapsed.bindings[f"{GUEST}/w/inner"].src == "/h/mount"
 
   def test_a_sync_dest_is_NORMALIZED_and_a_dotted_one_survives_WHOLE(self):
     collapsed = collapse(box=shape(sync=[CopyRow("~/.aws/credentials", BindEntry("/h/c", ""))]))

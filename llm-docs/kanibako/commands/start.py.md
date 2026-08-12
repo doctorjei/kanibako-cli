@@ -551,10 +551,11 @@ shadows, so the copy was invisible in the box.
 
 ⚑ **A dest is DATA** — compared and sliced as a path, never `.split(".")`-ed.
 
-🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then SKIPS.**
-`_refuse_sync_at_a_bind_dest` returns early when the occupant has no source, and a mask IS the
-source-less entry — so a sync at a mask's exact point falls through the refusal by construction. That
-acceptance is spec-silent and was an implementer's call, not a ruling; delivery has to cope with it.
+🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then SKIPS.** Since the
+2026-08-12 ruling (*"don't check for sync. Let it clobber whatever it wants."*) the fold refuses a
+sync nothing whatever, so every sync row reaches here, a mask's exact point included — and a mask is the
+source-less entry, so `Path(bind.src)` would raise. Delivery is the only stage that can cope with it,
+and this arm is where it does.
 
 🔴 **The READ-ONLY arm is SPEC-SILENT and deliberately strict.** Writing into a read-only bind's host
 source delivers content the box cannot be shown to have received, and the source is usually something

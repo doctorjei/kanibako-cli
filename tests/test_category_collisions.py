@@ -694,22 +694,23 @@ class TestPreservedCopyAndCrossDeliveryRules:
         assert [c.host_src for c in rec.copies] == ["/base", "/ag", "/ws"]
         assert rec.warnings == ()
 
-    def test_synced_at_a_bindings_dest_resolves_to_the_copy(self):
-        """The RETIRED ``synced_vs_binding`` refusal (ruling 2026-08-10).
+    def test_synced_at_a_bindings_dest_keeps_the_BINDING_AND_the_copy(self):
+        """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
 
-        The helper no longer raises here: the pair falls through to the
-        cross-delivery ladder, where a ``synced`` copy beats every non-``masks``
-        mount.  ⚑ This is NOT "the arrangement is now legal" — the ASSEMBLY
-        still refuses it, once, against the final bind map
-        (``store_collapse._refuse_sync_at_a_bind_dest``, pinned in
-        ``tests/test_settings/test_store_collapse.py``).
+        The arrangement IS legal now, at every stage: the reconcile's refusal went
+        at 5-1b and the assembly fold's went with this ruling.  ⚑⚑ AND THE BINDING
+        SURVIVES.  The sync is delivered THROUGH the bind covering its dest, into
+        that bind's host source, so it overwrites CONTENT rather than the mount —
+        *"copy | bind copies on top of the bind, and most of bind remains intact"*.
+        Between 5-1b and this ruling the ladder returned the copy alone and deleted
+        a declared binding, which is why ``rec.mounts`` is asserted here at all.
         """
         rec = reconcile_categories([
             entry("synced", name="creds"),
             entry("bindings.rw", name="home"),
         ])
         assert [c.category for c in rec.copies] == ["synced"]
-        assert rec.mounts == []
+        assert [m.category for m in rec.mounts] == ["bindings.rw"]
         assert rec.warnings == ()
 
     def test_the_synced_winner_is_the_MOST_SPECIFIC_scope(self):
@@ -737,12 +738,16 @@ class TestPreservedCopyAndCrossDeliveryRules:
         ])
         assert [c.host_src for c in rec.copies] == ["/sys/creds"]
 
-    def test_synced_still_outranks_a_non_mask_mount(self):
+    def test_synced_no_longer_DISPLACES_a_non_mask_mount(self):
+        # ⚑ The ABSTRACT arm of the same ruling, and it must answer identically to
+        # the ``bindings.rw`` case above: ``common`` and ``caches`` FOLD INTO the
+        # bindings, so sparing one mount and dropping the other would be one rule
+        # wearing two faces.
         rec = reconcile_categories([
             entry("common", name="a"),
             entry("synced", name="creds"),
         ])
-        assert categories(rec) == ["synced"]
+        assert categories(rec) == ["common", "synced"]
 
     def test_a_mount_still_outranks_a_seeded_copy(self):
         rec = reconcile_categories([

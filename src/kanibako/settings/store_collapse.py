@@ -56,16 +56,15 @@ def collapse_store_shapes(
   store_shape_set: StoreShapeSet, home_bind: BindEntry,
 ) -> CollapsedStore:
   """Merge the four scopes' shapes into a bind map + a seed list + a sync list (PURE)."""
-  # ⚑⚑ THE ORDER IS THE RULING: the two copy categories resolve at OPPOSITE ENDS
-  # of the fold. Seeds apply to the home bind ALONE and complete BEFORE any binding
-  # folds; syncs apply LAST, reading a bind map that is already final. Reading is
-  # all the sync pass does - nothing is pruned and no copy competes with a mount.
-  seeded = collapse_seeded(store_shape_set)
-  bindings = _collapse_mounts(store_shape_set, home_bind)
+  # ⚑⚑ NEITHER COPY ARM MEETS THE BIND MAP. Seeds apply to the home bind ALONE and
+  # complete BEFORE any binding folds; syncs apply LAST, at DELIVERY, resolving
+  # through whichever bind covers each dest. Both arms are therefore plain
+  # concatenations here - nothing is pruned, nothing is refused for sharing a dest
+  # with a mount, and no copy competes with one.
   return CollapsedStore(
-    bindings=bindings,
-    seeded=seeded,
-    synced=_collapse_synced(store_shape_set, bindings),
+    bindings=_collapse_mounts(store_shape_set, home_bind),
+    seeded=collapse_seeded(store_shape_set),
+    synced=_collapse_synced(store_shape_set),
   )
 
 
@@ -115,19 +114,22 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   return copies
 
 
-def _collapse_synced(
-  store_shape_set: StoreShapeSet, bindings: CollapsedBindings,
-) -> CollapsedCopies:
-  """Concatenate every scope's sync arm IN SCOPE ORDER, against the FINAL bind map."""
+def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
+  """Every scope's sync arm concatenated IN SCOPE ORDER - EVERY row, nothing pruned."""
   # ⚑ NO home-only rule here: a sync dest resolves through whichever binding covers
   # it, and home is only the pid-0 foundation among them (that resolution is
-  # DELIVERY and lands at the cutover - the emitted row carries the GUEST dest).
+  # DELIVERY - the emitted row carries the GUEST dest).
+  # ⚑⚑ AND NO BIND MAP EITHER (Jei, 2026-08-12: *"don't check for sync. Let it
+  # clobber whatever it wants."*). A sync at a binding's EXACT dest is ordinary: the
+  # copy lands on top of the bind and most of the bind remains intact. It is not the
+  # collapse's business which mount a copy shares a destination with, so this arm
+  # takes no bind map and cannot refuse for a reason the delivery half owns.
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].sync:
-      dest = normalize_bind_dest(dest_path)
-      _refuse_sync_at_a_bind_dest(bindings, dest, entry)
-      copies.append(CollapsedCopy(entry.src, dest, entry.opts))
+      copies.append(
+        CollapsedCopy(entry.src, normalize_bind_dest(dest_path), entry.opts)
+      )
   return copies
 
 
@@ -300,26 +302,6 @@ def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
     f"into the box home store BEFORE any binding folds, so a destination outside it "
     f"has nowhere to land: give it a destination inside home, deliver it as a "
     f"binding, or declare it 'synced', which is not home-only."
-  )
-
-
-def _refuse_sync_at_a_bind_dest(
-  bindings: CollapsedBindings, dest: str, entry: BindEntry,
-) -> None:
-  """A sync may land INSIDE a binding, never AT its point - the dest may BE the file."""
-  # ⚑ Exact equality is the dict lookup itself: both sides are normalized dests, so
-  # no containment predicate is needed and none is added. Stated STRUCTURALLY
-  # because a PURE module cannot tell a file binding from a directory one.
-  occupant = bindings.get(dest)
-  if occupant is None or occupant.src is None:
-    return
-  raise SettingsError(
-    f"the synced copy of {entry.src!r} targets {dest!r}, which is EXACTLY the "
-    f"destination of the collapsed binding of {occupant.src!r}. A sync may land "
-    f"strictly INSIDE a binding - it resolves through it into that binding's "
-    f"source - but never AT its point: a file binding's destination IS the file, so "
-    f"writing there would replace the bound inode. Sync to a path inside "
-    f"{dest!r}, or do not bind at that destination."
   )
 
 

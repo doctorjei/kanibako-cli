@@ -1623,10 +1623,9 @@ class TestTheSyncApplierConsumesTheLeaf:
     ):
         """🛑 The arm that must precede every ``Path(bind.src)``, and why.
 
-        The collapse ACCEPTS a sync at a mask's point by construction —
-        ``_refuse_sync_at_a_bind_dest`` returns early when the occupant has no source,
-        and a mask IS the source-less entry. Delivery therefore meets a
-        ``CollapsedBind(None, None)``.
+        The collapse refuses a sync NOTHING (ruling 2026-08-12), so every declared row
+        reaches delivery — a dest whose cover is a mask included. Delivery therefore
+        meets a ``CollapsedBind(None, None)``.
 
         MUTATION-PROVED against dropping the ``is_mask`` arm: ``TypeError: argument
         should be a str or an os.PathLike object where __fspath__ returns a str, not
