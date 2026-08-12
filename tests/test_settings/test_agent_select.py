@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from kanibako.settings.agent_select import AgentSelection, SELECTION_KEY
-from kanibako.settings.keystore import _MISSING
+from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
@@ -99,10 +99,10 @@ class TestSelectionOrder:
 
 class TestSelectionThreeState:
     def test_absent_everywhere_is_MISSING_not_none(self, tmp_path):
-        """``_MISSING`` (nothing set) must stay distinguishable from ``None``
+        """``__MISSING__`` (nothing set) must stay distinguishable from ``None``
         (explicitly suppressed): the first falls through to the installed-count
         rule, the second is a NO-AGENT box."""
-        assert _select(tmp_path) is _MISSING
+        assert _select(tmp_path) is __MISSING__
 
     def test_a_null_pref_is_KEPT_as_present_none(self, tmp_path):
         """⚑ The D-M6 capability GAIN, and the silent-failure hazard §2h names.
@@ -113,7 +113,7 @@ class TestSelectionThreeState:
         the retired ``box.agent_name`` could not express.
 
         INVERT: ``if value is None: continue`` anywhere on the pref/selection path
-        (the most natural guard to write) -> this returns ``_MISSING`` and the box
+        (the most natural guard to write) -> this returns ``__MISSING__`` and the box
         silently launches the system default instead of a plain shell.
         """
         got = _select(
@@ -122,7 +122,7 @@ class TestSelectionThreeState:
             box={"pref": {"system": {"agent": None}}},
         )
         assert got is None
-        assert got is not _MISSING
+        assert got is not __MISSING__
 
     def test_a_workset_null_pref_suppresses_for_its_boxes(self, tmp_path):
         assert _select(

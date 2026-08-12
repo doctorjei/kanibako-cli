@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A settings key named for one of the store's own members was accepted, then unreadable.**
+  `insert_segments` is a public method on the resolved store, and it was not a reserved leaf
+  name — so `box.env.insert_segments` (and the like) was accepted and stored. Attribute reads
+  returned the method rather than your value, because attribute lookup finds a real class member
+  before it ever consults stored keys; the value survived only by subscript and looked simply
+  absent everywhere else. `insert_segments` and `RESERVED_KEY_NAMES` now join the `dict` method
+  names already refused at write time. **A key spelled either way is now refused by name instead
+  of silently swallowed** — rename it.
+
+- **Two reserved-key refusals gave a reason that was not true.** Both explained themselves as a
+  clash with a `dict` method name. That was never the whole reason, and for the two names above
+  it is simply wrong — neither is a `dict` method. The messages now state the actual rule: the
+  name would shadow a real attribute on the store, and dunder names are the store's attribute
+  space rather than key space.
+
 - **A mask did not hide anything — it made the path read-only.** The tmpfs a `masks` entry mounts
   was emitted with podman's default `tmpcopyup`, which copies whatever already sits at the
   destination up into the fresh tmpfs. Everything that was there stayed plainly visible inside the

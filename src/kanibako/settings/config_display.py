@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.settings.config_io import load_doc
-from kanibako.settings.keystore import _MISSING
+from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_prefs import PREF_ROOT
 
 
@@ -153,11 +153,11 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
         return str(value)
 
     def _at(target: str) -> Any:
-        """The RESULT node at *target*, read in the same snapshot; ``_MISSING`` if absent."""
+        """The RESULT node at *target*, read in the same snapshot; ``__MISSING__`` if absent."""
         cur: Any = snapshot
         for seg in target.split("."):
-            if not isinstance(cur, KeyStore) or dict.get(cur, seg, _MISSING) is _MISSING:
-                return _MISSING
+            if not isinstance(cur, KeyStore) or dict.get(cur, seg, __MISSING__) is __MISSING__:
+                return __MISSING__
             cur = dict.get(cur, seg)
         return cur
 
@@ -177,8 +177,8 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
                 rows.append((
                     f"{req.target}.{entry_dest}",
                     _render(dict.__getitem__(req.value, entry_dest), entry_dest),
-                    dict.get(arm, entry_dest, _MISSING) if isinstance(arm, KeyStore)
-                    else _MISSING,
+                    dict.get(arm, entry_dest, __MISSING__) if isinstance(arm, KeyStore)
+                    else __MISSING__,
                     entry_dest,
                 ))
         else:
@@ -187,7 +187,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     print("", file=out)
     for target, request, value, dest in sorted(rows, key=lambda r: r[0]):
         print(f"  {PREF_ROOT}.{target} = {request}", file=out)
-        if value is _MISSING:
+        if value is __MISSING__:
             # The ordinary present-None rule OMITTED it: a bind / category /
             # masks leaf was suppressed. Saying so is the whole point — this is
             # the difference between "suppressed" and "unset". Name the CURE

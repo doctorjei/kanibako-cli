@@ -70,7 +70,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from kanibako.settings.keystore import _MISSING
+from kanibako.settings.kb_store import __MISSING__
 
 #: The key naming the agent a box runs (spec §2g). Re-exported so callers
 #: spell it once.
@@ -240,7 +240,7 @@ def select_agent(
         if path is not None and Path(path).exists():
             refuse_retired_keys(load_doc(Path(path)), level=level, path=Path(path))
 
-    requested: object = _MISSING
+    requested: object = __MISSING__
     if not explicit_agent:
         # Only the cascade can suppress or supply; ``--agent`` short-circuits it,
         # so a launch that names its agent pays for no extra resolve.
@@ -255,17 +255,17 @@ def select_agent(
             # the NO-AGENT plain-shell box (D-M6). ⚑ This arm is the capability the
             # retired ``box.agent_name`` could NOT express (a stored system default
             # always re-supplied an agent), so it must be kept distinct from
-            # ``_MISSING`` — never collapse them with a falsiness test.
+            # ``__MISSING__`` — never collapse them with a falsiness test.
             return AgentSelection(node="", source="suppressed")
 
     node = resolve_agent(
         explicit_agent=explicit_agent,
-        requested=None if requested is _MISSING else str(requested),
+        requested=None if requested is __MISSING__ else str(requested),
         project_path=project_path if project_path is not None else proj.project_path,
     )
     if explicit_agent:
         source = "cli"
-    elif requested is _MISSING:
+    elif requested is __MISSING__:
         source = "autopick"
     else:
         source = "settings"

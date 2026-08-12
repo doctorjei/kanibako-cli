@@ -6,7 +6,7 @@ Covers the brief §4 checklist for the pure ``merge(levels) -> snapshot``:
   workset / system entries SURVIVE by name (deep recursion, not whole-node
   replace);
 * most-specific-first LEAF win;
-* ``_MISSING`` vs truthiness — a leaf set to ``0`` / ``""`` / ``False`` SETS and
+* ``__MISSING__`` vs truthiness — a leaf set to ``0`` / ``""`` / ``False`` SETS and
   wins (NOT skipped);
 * present-None TYPE-SPLIT (§3) — scalar → None KEPT; bind → OMITTED; category →
   OMITTED; masks → UNMASKED (omitted);
@@ -26,7 +26,8 @@ from __future__ import annotations
 import copy
 
 from kanibako.settings.kb_store import Bind, BindEntry
-from kanibako.settings.keystore import _MISSING, KeyStore
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_merge import merge
 
 
@@ -37,13 +38,13 @@ from kanibako.settings.settings_merge import merge
 
 def _probe(store: KeyStore, *segments: str) -> object:
     """Walk *segments* into *store* with the unbound-``dict.get`` probe (S3),
-    returning ``_MISSING`` if any segment is absent (so a present-None leaf is
+    returning ``__MISSING__`` if any segment is absent (so a present-None leaf is
     distinguishable from an absent one)."""
     node: object = store
     for seg in segments:
         if not isinstance(node, KeyStore):
-            return _MISSING
-        node = dict.get(node, seg, _MISSING)
+            return __MISSING__
+        node = dict.get(node, seg, __MISSING__)
     return node
 
 
@@ -67,7 +68,7 @@ def test_absent_everywhere_not_in_snapshot() -> None:
     levels = [KeyStore({"box": {"image": "img"}})]
     snap = merge(levels)
     assert _probe(snap, "box", "image") == "img"
-    assert _probe(snap, "box", "missing") is _MISSING
+    assert _probe(snap, "box", "missing") is __MISSING__
 
 
 # --------------------------------------------------------------------------- #
@@ -97,7 +98,7 @@ def test_lower_scope_survives_when_higher_absent() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# _MISSING vs truthiness — falsy values SET and win (S3)                       #
+# __MISSING__ vs truthiness — falsy values SET and win (S3)                       #
 # --------------------------------------------------------------------------- #
 
 
@@ -215,7 +216,7 @@ def test_deep_recursion_three_levels() -> None:
         == Bind("/a/lib", "/lib")
     )
     # No bare agent.bindings.* form is ever produced (a §0 violation).
-    assert _probe(snap, "agent", "bindings") is _MISSING
+    assert _probe(snap, "agent", "bindings") is __MISSING__
 
 
 def test_higher_subtree_shadows_lower_nonsubtree() -> None:
@@ -249,7 +250,7 @@ def test_two_agents_coexist_in_snapshot_by_name() -> None:
     assert _probe(snap, "agent", "claude", "model") == "cm"
     assert _probe(snap, "agent", "goose", "model") == "gm"
     # No bare agent.model (a §0 violation) is produced.
-    assert _probe(snap, "agent", "model") is _MISSING
+    assert _probe(snap, "agent", "model") is __MISSING__
 
 
 def test_higher_scope_overrides_one_agent_by_name() -> None:
@@ -288,7 +289,7 @@ def test_present_none_bind_omitted() -> None:
     box = KeyStore({"box": {"bindings": {"rw": {"foo": None}}}})
     ws = KeyStore({"box": {"bindings": {"rw": {"foo": Bind("/h", "/foo")}}}})
     snap = merge([box, ws])
-    assert _probe(snap, "box", "bindings", "rw", "foo") is _MISSING  # OMITTED
+    assert _probe(snap, "box", "bindings", "rw", "foo") is __MISSING__  # OMITTED
 
 
 def test_present_none_category_leaf_omitted() -> None:
@@ -296,7 +297,7 @@ def test_present_none_category_leaf_omitted() -> None:
     box = KeyStore({"system": {"caches": {"pip": None}}})
     sysf = KeyStore({"system": {"caches": {"pip": Bind("/h/pip", "/pip")}}})
     snap = merge([box, sysf])
-    assert _probe(snap, "system", "caches", "pip") is _MISSING
+    assert _probe(snap, "system", "caches", "pip") is __MISSING__
 
 
 def test_present_none_lone_subtree_category_omitted_scalar_kept() -> None:
@@ -313,7 +314,7 @@ def test_present_none_lone_subtree_category_omitted_scalar_kept() -> None:
         }}}
     )
     snap = merge([lone])
-    assert _probe(snap, "agent", "claude", "seeded", "x") is _MISSING  # OMITTED
+    assert _probe(snap, "agent", "claude", "seeded", "x") is __MISSING__  # OMITTED
     # The seeded subtree survives (now empty of x); the scalar None is kept.
     assert _probe(snap, "agent", "claude", "model") is None  # KEPT
 
@@ -324,7 +325,7 @@ def test_present_none_masks_unmasked() -> None:
     box = KeyStore({"box": {"masks": {"/secret": None}}})
     ws = KeyStore({"box": {"masks": {"/secret": True, "/other": True}}})
     snap = merge([box, ws])
-    assert _probe(snap, "box", "masks", "/secret") is _MISSING  # unmasked
+    assert _probe(snap, "box", "masks", "/secret") is __MISSING__  # unmasked
     assert _probe(snap, "box", "masks", "/other") is True  # sibling survives
 
 
@@ -335,7 +336,7 @@ def test_present_none_category_root_omitted() -> None:
     box = KeyStore({"box": {"bindings": None}})
     ws = KeyStore({"box": {"bindings": {"rw": {"home": Bind("/h", "/home")}}}})
     snap = merge([box, ws])
-    assert _probe(snap, "box", "bindings") is _MISSING
+    assert _probe(snap, "box", "bindings") is __MISSING__
 
 
 def test_present_none_masks_root_omitted() -> None:
@@ -343,7 +344,7 @@ def test_present_none_masks_root_omitted() -> None:
     box = KeyStore({"box": {"masks": None}})
     ws = KeyStore({"box": {"masks": {"/a": True}}})
     snap = merge([box, ws])
-    assert _probe(snap, "box", "masks") is _MISSING
+    assert _probe(snap, "box", "masks") is __MISSING__
 
 
 def test_masks_three_state_generic_merge() -> None:
@@ -352,7 +353,7 @@ def test_masks_three_state_generic_merge() -> None:
     ws = KeyStore({"box": {"masks": {"/b": True, "/c": True}}})
     snap = merge([box, ws])
     assert _probe(snap, "box", "masks", "/a") is True  # box masks
-    assert _probe(snap, "box", "masks", "/b") is _MISSING  # box unmasks /b
+    assert _probe(snap, "box", "masks", "/b") is __MISSING__  # box unmasks /b
     assert _probe(snap, "box", "masks", "/c") is True  # workset mask survives
 
 
@@ -517,7 +518,7 @@ def test_bindmap_present_none_unsets_just_that_dest() -> None:
     )
     snap = merge([box, ws])
     assert _probe(snap, "box", "bindings", "rw", "~/a") == BindEntry("/h/a")
-    assert _probe(snap, "box", "bindings", "rw", "~/b") is _MISSING  # unset
+    assert _probe(snap, "box", "bindings", "rw", "~/b") is __MISSING__  # unset
     assert _probe(snap, "box", "bindings", "rw", "~/c") == BindEntry("/w/c")
 
 
@@ -560,4 +561,4 @@ def test_bindmap_root_reset_still_omits_the_whole_arm() -> None:
     box = KeyStore({"box": {"bindings": None}})
     ws = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/w/a")}}}})
     snap = merge([box, ws])
-    assert _probe(snap, "box", "bindings") is _MISSING
+    assert _probe(snap, "box", "bindings") is __MISSING__

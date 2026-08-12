@@ -22,7 +22,8 @@ import pytest
 import yaml
 
 from kanibako.settings.kb_store import Bind, BindEntry
-from kanibako.settings.keystore import _MISSING, KeyStore
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_assemble import assemble_levels, parse_bind_map
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_resolve import SettingsError
@@ -69,18 +70,18 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     )
 
     def _marker(store: KeyStore, scope: str) -> object:
-        sub = dict.get(store, scope, _MISSING)
-        return dict.get(sub, "marker", _MISSING) if isinstance(sub, KeyStore) else _MISSING
+        sub = dict.get(store, scope, __MISSING__)
+        return dict.get(sub, "marker", __MISSING__) if isinstance(sub, KeyStore) else __MISSING__
 
     assert _marker(levels[BOX], "box") == "box"
     assert _marker(levels[WORKSET], "workset") == "workset"
     # The agent levels keep their TRUE discriminated key: the active level under
     # agent.claude.*, the default level under agent.default.* (NO bare-agent collapse).
     assert (
-        dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "marker", _MISSING) == "aact"
+        dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "marker", __MISSING__) == "aact"
     )
     assert (
-        dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "marker", _MISSING)
+        dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "marker", __MISSING__)
         == "adef"
     )
     assert _marker(levels[SYSTEM], "system") == "system"
@@ -97,8 +98,8 @@ def test_scope_token_kept_not_stripped(tmp_path: Path) -> None:
     box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
     # The partial keeps the scope token: box.image, NOT a stripped `image`.
     assert isinstance(dict.get(box_level, "box"), KeyStore)
-    assert dict.get(box_level["box"], "image", _MISSING) == "img"
-    assert dict.get(box_level, "image", _MISSING) is _MISSING
+    assert dict.get(box_level["box"], "image", __MISSING__) == "img"
+    assert dict.get(box_level, "image", __MISSING__) is __MISSING__
 
 
 def test_upward_scope_key_in_box_file_dropped_with_warning(
@@ -116,8 +117,8 @@ def test_upward_scope_key_in_box_file_dropped_with_warning(
     with caplog.at_level("WARNING"):
         box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
     # The box's OWN-scope key survives; the upward system: table is GONE.
-    assert dict.get(box_level["box"], "image", _MISSING) == "img"
-    assert dict.get(box_level, "system", _MISSING) is _MISSING
+    assert dict.get(box_level["box"], "image", __MISSING__) == "img"
+    assert dict.get(box_level, "system", __MISSING__) is __MISSING__
     # The drop is announced (file path + dropped token), unconditionally.
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert any("system" in m and str(box) in m for m in warnings), warnings
@@ -132,9 +133,9 @@ def test_downward_scope_key_in_workset_file_preserved(tmp_path: Path) -> None:
         {"workset": {"marker": "w"}, "box": {"masks": {"/x": None}}},
     )
     ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
-    assert dict.get(ws_level["workset"], "marker", _MISSING) == "w"
+    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "w"
     assert isinstance(dict.get(ws_level, "box"), KeyStore)
-    assert dict.get(ws_level["box"]["masks"], "/x", _MISSING) is None
+    assert dict.get(ws_level["box"]["masks"], "/x", __MISSING__) is None
 
 
 # Every UPWARD (containing-scope-in-a-lower-file) direction the drop must kill.
@@ -169,8 +170,8 @@ def test_upward_scope_dropped_and_warned(
     with caplog.at_level("WARNING"):
         level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
     # The own-scope contribution survives; the upward table is gone.
-    assert dict.get(level[own_scope], "marker", _MISSING) == "keep"
-    assert dict.get(level, token, _MISSING) is _MISSING
+    assert dict.get(level[own_scope], "marker", __MISSING__) == "keep"
+    assert dict.get(level, token, __MISSING__) is __MISSING__
     # The drop is announced, naming the file and the dropped token.
     msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert any(token in m and str(f) in m for m in msgs), msgs
@@ -194,10 +195,10 @@ def test_upward_drop_warns_once_per_agent_file(
     with caplog.at_level("WARNING"):
         levels = assemble_levels(agent_name="claude", agent_path=agent)
     # The two agent levels are intact and carry NO system node.
-    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", _MISSING) == "cm"
-    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", _MISSING) == "dm"
-    assert dict.get(levels[AGENT_ACTIVE], "system", _MISSING) is _MISSING
-    assert dict.get(levels[AGENT_DEFAULT], "system", _MISSING) is _MISSING
+    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", __MISSING__) == "cm"
+    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", __MISSING__) == "dm"
+    assert dict.get(levels[AGENT_ACTIVE], "system", __MISSING__) is __MISSING__
+    assert dict.get(levels[AGENT_DEFAULT], "system", __MISSING__) is __MISSING__
     # Exactly ONE warning for the dropped system token (not one-per-level).
     sys_warns = [
         r for r in caplog.records
@@ -222,7 +223,7 @@ def test_base_floor_is_exempt_from_upward_drop(
     # The base file's system.* survived (NOT dropped).
     assert isinstance(dict.get(base_level, "system"), KeyStore)
     assert (
-        dict.get(base_level["system"]["auth"], "share_allowed", _MISSING) is True
+        dict.get(base_level["system"]["auth"], "share_allowed", __MISSING__) is True
     )
     # No drop warning fired for the exempt floor.
     assert not [
@@ -264,8 +265,8 @@ def test_top_level_meta_in_box_file_dropped_with_warning(
     with caplog.at_level("WARNING"):
         box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
     # The box's own-scope key survives; the top-level meta table is GONE.
-    assert dict.get(box_level["box"], "image", _MISSING) == "img"
-    assert dict.get(box_level, "meta", _MISSING) is _MISSING
+    assert dict.get(box_level["box"], "image", __MISSING__) == "img"
+    assert dict.get(box_level, "meta", __MISSING__) is __MISSING__
     # A distinct meta-RO warning fired, naming the file and the meta token.
     assert _meta_warns(caplog, box), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
@@ -299,8 +300,8 @@ def test_top_level_meta_dropped_across_scopes(
     )
     with caplog.at_level("WARNING"):
         level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
-    assert dict.get(level[own_scope], "marker", _MISSING) == "keep"
-    assert dict.get(level, "meta", _MISSING) is _MISSING
+    assert dict.get(level[own_scope], "marker", __MISSING__) == "keep"
+    assert dict.get(level, "meta", __MISSING__) is __MISSING__
     assert _meta_warns(caplog, f), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -326,10 +327,10 @@ def test_top_level_meta_in_base_file_drops_but_system_scope_survives(
     # SCOPE key exempt: the base file's system.* floor survives.
     assert isinstance(dict.get(base_level, "system"), KeyStore)
     assert (
-        dict.get(base_level["system"]["auth"], "share_allowed", _MISSING) is True
+        dict.get(base_level["system"]["auth"], "share_allowed", __MISSING__) is True
     )
     # meta NOT exempt: the top-level meta table dropped, with a warning.
-    assert dict.get(base_level, "meta", _MISSING) is _MISSING
+    assert dict.get(base_level, "meta", __MISSING__) is __MISSING__
     assert _meta_warns(caplog, base), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -350,9 +351,9 @@ def test_nested_scope_meta_is_untouched(
     with caplog.at_level("WARNING"):
         ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
     # The nested workset.meta.name survives verbatim; sibling own-scope key too.
-    assert dict.get(ws_level["workset"], "marker", _MISSING) == "keep"
+    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
     assert isinstance(dict.get(ws_level["workset"], "meta"), KeyStore)
-    assert dict.get(ws_level["workset"]["meta"], "name", _MISSING) == "foo"
+    assert dict.get(ws_level["workset"]["meta"], "name", __MISSING__) == "foo"
     # No meta-drop warning fired (nothing top-level was dropped).
     assert not _meta_warns(caplog, ws), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
@@ -376,10 +377,10 @@ def test_top_level_meta_drop_warns_once_per_agent_file(
     with caplog.at_level("WARNING"):
         levels = assemble_levels(agent_name="claude", agent_path=agent)
     # The two agent levels are intact and carry NO meta node.
-    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", _MISSING) == "cm"
-    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", _MISSING) == "dm"
-    assert dict.get(levels[AGENT_ACTIVE], "meta", _MISSING) is _MISSING
-    assert dict.get(levels[AGENT_DEFAULT], "meta", _MISSING) is _MISSING
+    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", __MISSING__) == "cm"
+    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", __MISSING__) == "dm"
+    assert dict.get(levels[AGENT_ACTIVE], "meta", __MISSING__) is __MISSING__
+    assert dict.get(levels[AGENT_DEFAULT], "meta", __MISSING__) is __MISSING__
     # Exactly ONE meta-drop warning (not one-per-level).
     assert len(_meta_warns(caplog, agent)) == 1, _meta_warns(caplog, agent)
 
@@ -431,8 +432,8 @@ def test_top_level_binding_derivations_dropped_across_scopes(
     )
     with caplog.at_level("WARNING"):
         level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
-    assert dict.get(level[own_scope], "marker", _MISSING) == "keep"
-    assert dict.get(level, "binding_derivations", _MISSING) is _MISSING
+    assert dict.get(level[own_scope], "marker", __MISSING__) == "keep"
+    assert dict.get(level, "binding_derivations", __MISSING__) is __MISSING__
     assert _derivations_warns(caplog, f), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -452,9 +453,9 @@ def test_top_level_binding_derivations_in_base_file_drops_too(
     with caplog.at_level("WARNING"):
         base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
     assert (
-        dict.get(base_level["system"]["auth"], "share_allowed", _MISSING) is True
+        dict.get(base_level["system"]["auth"], "share_allowed", __MISSING__) is True
     )
-    assert dict.get(base_level, "binding_derivations", _MISSING) is _MISSING
+    assert dict.get(base_level, "binding_derivations", __MISSING__) is __MISSING__
     assert _derivations_warns(caplog, base), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -473,10 +474,10 @@ def test_nested_binding_derivations_is_untouched(
     )
     with caplog.at_level("WARNING"):
         box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
-    assert dict.get(box_level["box"], "image", _MISSING) == "img"
-    nested = dict.get(box_level["box"], "binding_derivations", _MISSING)
+    assert dict.get(box_level["box"], "image", __MISSING__) == "img"
+    nested = dict.get(box_level["box"], "binding_derivations", __MISSING__)
     assert isinstance(nested, KeyStore)
-    assert dict.get(nested, "marker", _MISSING) == "rides"
+    assert dict.get(nested, "marker", __MISSING__) == "rides"
     assert not _derivations_warns(caplog, box), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -496,9 +497,9 @@ def test_arbitrary_unknown_table_still_rides(
     )
     with caplog.at_level("WARNING"):
         box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
-    zebra = dict.get(box_level, "zebra", _MISSING)
+    zebra = dict.get(box_level, "zebra", __MISSING__)
     assert isinstance(zebra, KeyStore)
-    assert dict.get(zebra, "stripes", _MISSING) == 3
+    assert dict.get(zebra, "stripes", __MISSING__) == 3
     assert not [
         r.getMessage()
         for r in caplog.records
@@ -527,16 +528,16 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
     active = levels[AGENT_ACTIVE]["agent"]["claude"]
     default = levels[AGENT_DEFAULT]["agent"]["default"]
     # active carries ONLY what claude set (NOT pre-merged with default).
-    assert dict.get(active, "model", _MISSING) == "cmodel"
-    assert dict.get(active, "allow_helpers", _MISSING) is _MISSING
-    assert dict.get(default, "model", _MISSING) == "dmodel"
-    assert dict.get(default, "allow_helpers", _MISSING) is True
+    assert dict.get(active, "model", __MISSING__) == "cmodel"
+    assert dict.get(active, "allow_helpers", __MISSING__) is __MISSING__
+    assert dict.get(default, "model", __MISSING__) == "dmodel"
+    assert dict.get(default, "allow_helpers", __MISSING__) is True
     # The discriminator is KEPT (the §2d key form), not collapsed to bare `agent`.
-    assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", _MISSING) is not _MISSING
-    assert dict.get(levels[AGENT_DEFAULT]["agent"], "default", _MISSING) is not _MISSING
+    assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", __MISSING__) is not __MISSING__
+    assert dict.get(levels[AGENT_DEFAULT]["agent"], "default", __MISSING__) is not __MISSING__
     # No bare `agent.<key>` leaked (would be a §0 violation).
-    assert dict.get(levels[AGENT_ACTIVE]["agent"], "model", _MISSING) is _MISSING
-    assert dict.get(levels[AGENT_DEFAULT]["agent"], "model", _MISSING) is _MISSING
+    assert dict.get(levels[AGENT_ACTIVE]["agent"], "model", __MISSING__) is __MISSING__
+    assert dict.get(levels[AGENT_DEFAULT]["agent"], "model", __MISSING__) is __MISSING__
 
 
 def test_active_override_not_in_default_and_vice_versa(tmp_path: Path) -> None:
@@ -547,10 +548,10 @@ def test_active_override_not_in_default_and_vice_versa(tmp_path: Path) -> None:
     levels = assemble_levels(agent_name="goose", agent_path=agent)
     active = levels[AGENT_ACTIVE]["agent"]["goose"]
     default = levels[AGENT_DEFAULT]["agent"]["default"]
-    assert dict.get(active, "y", _MISSING) == "g"
-    assert dict.get(active, "x", _MISSING) is _MISSING  # default key not here
-    assert dict.get(default, "x", _MISSING) == "d"
-    assert dict.get(default, "y", _MISSING) is _MISSING  # active key not here
+    assert dict.get(active, "y", __MISSING__) == "g"
+    assert dict.get(active, "x", __MISSING__) is __MISSING__  # default key not here
+    assert dict.get(default, "x", __MISSING__) == "d"
+    assert dict.get(default, "y", __MISSING__) is __MISSING__  # active key not here
 
 
 def test_unknown_active_agent_yields_empty_active_level(tmp_path: Path) -> None:
@@ -561,7 +562,7 @@ def test_unknown_active_agent_yields_empty_active_level(tmp_path: Path) -> None:
     levels = assemble_levels(agent_name="codex", agent_path=agent)
     # An active agent absent from the file → empty active level (no agent.codex.*).
     assert len(levels[AGENT_ACTIVE]) == 0
-    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "x", _MISSING) == "d"
+    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "x", __MISSING__) == "d"
 
 
 def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
@@ -594,13 +595,13 @@ def test_per_agent_independence_other_agent_under_own_name(tmp_path: Path) -> No
     levels = assemble_levels(agent_name="claude", agent_path=agent)
     active = levels[AGENT_ACTIVE]["agent"]
     # The active (claude) level carries claude's subtree only — NOT goose's.
-    assert dict.get(active, "claude", _MISSING) is not _MISSING
-    assert dict.get(active, "goose", _MISSING) is _MISSING
+    assert dict.get(active, "claude", __MISSING__) is not __MISSING__
+    assert dict.get(active, "goose", __MISSING__) is __MISSING__
     # goose's keys are simply not represented as an active level here (claude is
     # active); they live in the file for a future goose launch. The default level
     # still carries agent.default.* by its true name.
     assert (
-        dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", _MISSING) == "dm"
+        dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", __MISSING__) == "dm"
     )
 
 
@@ -702,10 +703,10 @@ def test_masks_is_keyed_dict_three_state(tmp_path: Path) -> None:
     )
     masks = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]["masks"]
     assert isinstance(masks, KeyStore)
-    assert dict.get(masks, "/secret", _MISSING) is True
+    assert dict.get(masks, "/secret", __MISSING__) is True
     # present-None survives as present-None (UNMASK), distinct from absent.
-    assert dict.get(masks, "/inherited", _MISSING) is None
-    assert dict.get(masks, "/absent", _MISSING) is _MISSING
+    assert dict.get(masks, "/inherited", __MISSING__) is None
+    assert dict.get(masks, "/absent", __MISSING__) is __MISSING__
 
 
 def test_masks_not_bind_parsed(tmp_path: Path) -> None:
@@ -759,7 +760,7 @@ def test_base_uses_scoped_keyspace_no_wrapper(tmp_path: Path) -> None:
     # The base file's agent.default tier is read on the BASE level (scope kept),
     # NOT lost to a missing `base:` wrapper.
     assert (
-        dict.get(levels[BASE]["agent"]["default"], "model", _MISSING) == "bm"
+        dict.get(levels[BASE]["agent"]["default"], "model", __MISSING__) == "bm"
     )
 
 
@@ -776,8 +777,8 @@ def test_floor_lands_on_base_level() -> None:
         floor={"agent.default.allow_helpers": True, "agent.default.bootstrap": "tmux"},
     )
     base = levels[BASE]["agent"]["default"]
-    assert dict.get(base, "allow_helpers", _MISSING) is True
-    assert dict.get(base, "bootstrap", _MISSING) == "tmux"
+    assert dict.get(base, "allow_helpers", __MISSING__) is True
+    assert dict.get(base, "bootstrap", __MISSING__) == "tmux"
     # The floor is NOT in any other level.
     assert len(levels[BOX]) == 0
 
@@ -801,7 +802,7 @@ def test_base_file_set_value_beats_floor_at_same_key(tmp_path: Path) -> None:
     )
     # Within the single base level, the base FILE entry wins over the floor; the
     # deep overlay must not clobber sibling floor leaves either.
-    assert dict.get(levels[BASE]["agent"]["default"], "bootstrap", _MISSING) == "none"
+    assert dict.get(levels[BASE]["agent"]["default"], "bootstrap", __MISSING__) == "none"
 
 
 def test_overlay_preserves_sibling_floor_leaves(tmp_path: Path) -> None:
@@ -812,8 +813,8 @@ def test_overlay_preserves_sibling_floor_leaves(tmp_path: Path) -> None:
         floor={"agent.default.a": "floor", "agent.default.b": "floorB"},
     )
     sub = levels[BASE]["agent"]["default"]
-    assert dict.get(sub, "a", _MISSING) == "file"  # file overlays floor
-    assert dict.get(sub, "b", _MISSING) == "floorB"  # sibling floor leaf survives
+    assert dict.get(sub, "a", __MISSING__) == "file"  # file overlays floor
+    assert dict.get(sub, "b", __MISSING__) == "floorB"  # sibling floor leaf survives
 
 
 # --------------------------------------------------------------------------- #
@@ -849,7 +850,7 @@ def test_partial_holds_behavior_and_category_together(tmp_path: Path) -> None:
         },
     )
     box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
-    assert dict.get(box_scope, "image", _MISSING) == "ghcr.io/x:latest"
+    assert dict.get(box_scope, "image", __MISSING__) == "ghcr.io/x:latest"
     assert isinstance(box_scope["bindings"], KeyStore)
     assert isinstance(box_scope["bindings"]["rw"]["/home/agent"], BindEntry)
     assert isinstance(box_scope["masks"], KeyStore)
@@ -869,8 +870,8 @@ def test_present_none_scalar_preserved(tmp_path: Path) -> None:
     # An explicit null behavior leaf is present-None (a reset), distinct from absent.
     box = _write(tmp_path / "box.yaml", {"box": {"model": None}})
     box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
-    assert dict.get(box_scope, "model", _MISSING) is None
-    assert dict.get(box_scope, "absent", _MISSING) is _MISSING
+    assert dict.get(box_scope, "model", __MISSING__) is None
+    assert dict.get(box_scope, "absent", __MISSING__) is __MISSING__
 
 
 # --------------------------------------------------------------------------- #
@@ -917,11 +918,11 @@ def test_agent_active_override_survives_and_wins_by_name(tmp_path: Path) -> None
         system={"agent": {"default": {"model": "dm"}, "claude": {"model": "sysm"}}},
     )
     # The more-specific agent-active level wins for claude (over system default).
-    assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "cm"
+    assert dict.get(snap["agent"]["claude"], "model", __MISSING__) == "cm"
     # agent.default.* survives by its own true name (NOT erased / collapsed).
-    assert dict.get(snap["agent"]["default"], "model", _MISSING) == "dm"
+    assert dict.get(snap["agent"]["default"], "model", __MISSING__) == "dm"
     # No bare agent.model leaked (a §0 violation).
-    assert dict.get(snap["agent"], "model", _MISSING) is _MISSING
+    assert dict.get(snap["agent"], "model", __MISSING__) is __MISSING__
 
 
 def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
@@ -943,10 +944,10 @@ def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
     )
     # claude resolves to the more-specific agent-active level ("cm"); goose and
     # default coexist by name from the system level, distinct from claude.
-    assert dict.get(snap["agent"]["claude"], "model", _MISSING) == "cm"
-    assert dict.get(snap["agent"]["goose"], "model", _MISSING) == "sys_goose"
+    assert dict.get(snap["agent"]["claude"], "model", __MISSING__) == "cm"
+    assert dict.get(snap["agent"]["goose"], "model", __MISSING__) == "sys_goose"
     # agent.default.* also coexists, distinct from both.
-    assert dict.get(snap["agent"]["default"], "model", _MISSING) == "dm"
+    assert dict.get(snap["agent"]["default"], "model", __MISSING__) == "dm"
 
 
 # --------------------------------------------------------------------------- #
@@ -956,8 +957,8 @@ def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
 
 
 def _box_enable_vault(snap: KeyStore) -> object:
-    box = dict.get(snap, "box", _MISSING)
-    return dict.get(box, "enable_vault", _MISSING) if isinstance(box, KeyStore) else _MISSING
+    box = dict.get(snap, "box", __MISSING__)
+    return dict.get(box, "enable_vault", __MISSING__) if isinstance(box, KeyStore) else __MISSING__
 
 
 def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> None:
@@ -987,7 +988,7 @@ def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> Non
     snap_dropped = merge(
         assemble_levels(agent_name="claude", box_path=None, workset_path=None)
     )
-    assert _box_enable_vault(snap_dropped) is _MISSING
+    assert _box_enable_vault(snap_dropped) is __MISSING__
 
 
 def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
@@ -1001,9 +1002,9 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
     snap = merge(
         assemble_levels(agent_name="claude", box_path=None, workset_path=f)
     )
-    ws = dict.get(snap, "workset", _MISSING)
+    ws = dict.get(snap, "workset", __MISSING__)
     assert isinstance(ws, KeyStore)
-    assert dict.get(ws, "marker", _MISSING) == "w"
+    assert dict.get(ws, "marker", __MISSING__) == "w"
     # box.* still resolves too (both scopes coexist at the workset tier).
     assert _box_enable_vault(snap) is False
 

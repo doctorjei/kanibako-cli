@@ -24,7 +24,8 @@ import copy
 import pytest
 
 from kanibako.settings.kb_store import Bind, BindEntry
-from kanibako.settings.keystore import _MISSING, KeyStore
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_expand import _is_whole_value_ref, expand
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
 
@@ -55,13 +56,13 @@ def _ctx(
 
 
 def _probe(store: KeyStore, *segments: str) -> object:
-    """Walk *segments* with the unbound-``dict.get`` probe (S3); ``_MISSING`` if
+    """Walk *segments* with the unbound-``dict.get`` probe (S3); ``__MISSING__`` if
     any segment is absent (so a present-None leaf differs from an absent one)."""
     node: object = store
     for seg in segments:
         if not isinstance(node, KeyStore):
-            return _MISSING
-        node = dict.get(node, seg, _MISSING)
+            return __MISSING__
+        node = dict.get(node, seg, __MISSING__)
     return node
 
 
@@ -174,8 +175,8 @@ def test_whole_value_absent_drops_key_full_chain() -> None:
     # a = @b, b = @c, c ABSENT → a and b are both DROPPED (absence full chain).
     snap = KeyStore({"a": "@b", "b": "@c"})
     out = expand(snap, _ctx())
-    assert _probe(out, "a") is _MISSING
-    assert _probe(out, "b") is _MISSING
+    assert _probe(out, "a") is __MISSING__
+    assert _probe(out, "b") is __MISSING__
 
 
 def test_whole_value_present_none_propagates_none() -> None:
@@ -204,8 +205,8 @@ def test_braced_whole_value_absent_drops_key_full_chain() -> None:
     # Mirror of test_whole_value_absent_drops_key_full_chain with braces.
     snap = KeyStore({"a": "@{b}", "b": "@{c}"})
     out = expand(snap, _ctx())
-    assert _probe(out, "a") is _MISSING
-    assert _probe(out, "b") is _MISSING
+    assert _probe(out, "a") is __MISSING__
+    assert _probe(out, "b") is __MISSING__
 
 
 def test_braced_whole_value_present_none_propagates_none() -> None:
@@ -249,7 +250,7 @@ def test_braced_embedded_absent_coerces_empty_and_keeps_key() -> None:
 def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
     snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@{missing}", "~/x")}}}})
     out = expand(snap, _ctx())
-    assert _probe(out, "box", "bindings", "rw", "x") is _MISSING
+    assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
 
 
 def test_braced_bind_whole_value_host_present_none_carries_none() -> None:
@@ -426,7 +427,7 @@ def test_bind_whole_value_host_absent_drops_bind() -> None:
     # host_src is a whole-value @-ref to an absent key → the bind is DROPPED.
     snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@missing", "~/x")}}}})
     out = expand(snap, _ctx())
-    assert _probe(out, "box", "bindings", "rw", "x") is _MISSING
+    assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
 
 
 def test_bind_whole_value_host_present_none_carries_none() -> None:
@@ -512,7 +513,7 @@ def test_absent_ref_is_NOT_a_cycle_error() -> None:
     # A legit-absent referent is §6b propagation, NOT a cycle — must not raise.
     snap = KeyStore({"a": "@nope"})
     out = expand(snap, _ctx())  # no exception.
-    assert _probe(out, "a") is _MISSING
+    assert _probe(out, "a") is __MISSING__
 
 
 # --------------------------------------------------------------------------- #
@@ -653,7 +654,7 @@ def test_lenient_collects_dangling_whole_value_ref() -> None:
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "nope.missing" in errors["a"]
     # The defective leaf is OMITTED; the clean leaf still resolves.
-    assert _probe(expanded, "a") is _MISSING
+    assert _probe(expanded, "a") is __MISSING__
     assert expanded["c"] == "/ok"
 
 
@@ -665,7 +666,7 @@ def test_lenient_collects_dangling_embedded_ref() -> None:
     snap = KeyStore({"a": "pre-@{nope.x}-post", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "nope.x" in errors["a"]
-    assert _probe(expanded, "a") is _MISSING
+    assert _probe(expanded, "a") is __MISSING__
     assert expanded["c"] == "/ok"
 
 
@@ -677,8 +678,8 @@ def test_lenient_collects_dangling_braced_ref_like_a_bare_one() -> None:
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "nope.missing" in errors["a"]
     assert "b" in errors and "nope.missing" in errors["b"]
-    assert _probe(expanded, "a") is _MISSING
-    assert _probe(expanded, "b") is _MISSING
+    assert _probe(expanded, "a") is __MISSING__
+    assert _probe(expanded, "b") is __MISSING__
     assert expanded["c"] == "/ok"
 
 
@@ -688,7 +689,7 @@ def test_lenient_collects_malformed_braced_ref() -> None:
     snap = KeyStore({"a": "@{nope", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "Unterminated" in errors["a"]
-    assert _probe(expanded, "a") is _MISSING
+    assert _probe(expanded, "a") is __MISSING__
     assert expanded["c"] == "/ok"
 
 
@@ -706,7 +707,7 @@ def test_lenient_collects_unknown_var() -> None:
     snap = KeyStore({"a": "$NOPE_VAR/x", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "NOPE_VAR" in errors["a"]
-    assert _probe(expanded, "a") is _MISSING
+    assert _probe(expanded, "a") is __MISSING__
     assert expanded["c"] == "/ok"
 
 
@@ -769,7 +770,7 @@ def test_lenient_bind_dangling_host_recorded() -> None:
     snap = KeyStore({"x": Bind("@gone.src", "~/dest", None)})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "x" in errors and "gone.src" in errors["x"]
-    assert _probe(expanded, "x") is _MISSING
+    assert _probe(expanded, "x") is __MISSING__
 
 
 def test_lenient_bind_box_dest_xdg_deferred_not_a_defect() -> None:
@@ -922,7 +923,7 @@ def test_bind_entry_whole_value_src_absent_drops_the_entry() -> None:
     # binding cannot point anywhere, so the entry is DROPPED (§6b/§3).
     snap = _arm({"~/a": BindEntry("@box.nope"), "~/b": BindEntry("/h/b")})
     out = expand(snap, _ctx())
-    assert _probe(out, "box", "bindings", "rw", "~/a") is _MISSING
+    assert _probe(out, "box", "bindings", "rw", "~/a") is __MISSING__
     assert _probe(out, "box", "bindings", "rw", "~/b") == BindEntry("/h/b")
 
 

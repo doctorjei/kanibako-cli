@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings.keystore import _MISSING, KeyStore
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_configset import OK, Error, validate_config_set
 from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_resolve import ResolveCtx
@@ -82,8 +83,8 @@ def _resolves(key: str, value: str):
         node = sub
     node[parts[-1]] = value
     _expanded, errors = expand(candidate, _CTX, collect_errors=True)
-    reason = dict.get(errors, key, _MISSING)
-    return None if reason is _MISSING else reason
+    reason = dict.get(errors, key, __MISSING__)
+    return None if reason is __MISSING__ else reason
 
 
 def _validate(key: str, value: str, *, resolves=_resolves):
@@ -351,8 +352,8 @@ def _resolves_with(extra: dict, *, key: str, value: str):
         node = sub
     node[parts[-1]] = value
     _expanded, errors = expand(candidate, _CTX, collect_errors=True)
-    reason = dict.get(errors, key, _MISSING)
-    return None if reason is _MISSING else reason
+    reason = dict.get(errors, key, __MISSING__)
+    return None if reason is __MISSING__ else reason
 
 
 def test_e3_a_unrelated_preexisting_defect_allows() -> None:

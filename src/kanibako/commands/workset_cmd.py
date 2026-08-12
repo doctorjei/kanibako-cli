@@ -962,7 +962,8 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     """The file's ``workset.bindings.{ro,rw}`` as a ``{(mode, dest): raw}`` map (the RAW view)."""
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.kb_store import BindEntry
-    from kanibako.settings.keystore import _MISSING, KeyStore
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_resolve import SettingsError
 
@@ -975,14 +976,14 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     )
     workset_partial = levels[1]
     out: dict[tuple[str, str], object] = {}
-    ws_node = dict.get(workset_partial, "workset", _MISSING)
+    ws_node = dict.get(workset_partial, "workset", __MISSING__)
     if not isinstance(ws_node, KeyStore):
         return out
-    bindings = dict.get(ws_node, "bindings", _MISSING)
+    bindings = dict.get(ws_node, "bindings", __MISSING__)
     if not isinstance(bindings, KeyStore):
         return out
     for mode in ("ro", "rw"):
-        mode_node = dict.get(bindings, mode, _MISSING)
+        mode_node = dict.get(bindings, mode, __MISSING__)
         if not isinstance(mode_node, KeyStore):
             continue
         for dest in dict.keys(mode_node):
