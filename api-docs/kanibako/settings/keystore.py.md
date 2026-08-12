@@ -10,22 +10,8 @@ V = TypeVar('V')
 class ReservedKeyError(KeyError):
     ...
 
-class _Missing:
-    _instance: '_Missing | None' = None
-
-    def __new__(cls) -> '_Missing':
-        ...
-
-    def __repr__(self) -> str:
-        ...
-
-    def __bool__(self) -> bool:
-        ...
-
-_MISSING: _Missing = _Missing()
-
 class KeyStore(dict[str, 'V | KeyStore[V]'], Generic[V]):
-    RESERVED_KEY_NAMES: frozenset[str] = frozenset({'get', 'keys', 'values', 'items', 'pop', 'popitem', 'setdefault', 'update', 'clear', 'copy', 'fromkeys'})
+    RESERVED_KEY_NAMES: frozenset[str] = frozenset({'get', 'keys', 'values', 'items', 'pop', 'popitem', 'setdefault', 'update', 'clear', 'copy', 'fromkeys', 'RESERVED_KEY_NAMES', 'insert_segments'})
 
     def __init__(self: KeyStore[Any], *args: Any, **kwargs: Any) -> None:
         ...

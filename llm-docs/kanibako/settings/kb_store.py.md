@@ -32,11 +32,41 @@ The value space a `KeyStore` leaf or node may hold.
 
 * `list[str]` is in the union for genuinely list-valued scalar keys.
 * `None` is a legal STORED value (explicit reset), distinct from an absent key. The
-  absent-vs-present-`None` probe and the `_MISSING` sentinel it returns live in `keystore`.
-* ⚑ **`_MISSING` is deliberately NOT a member.** It is the absence marker, never a stored value;
+  absent-vs-present-`None` sentinel `__MISSING__` is defined in THIS module, just below.
+* ⚑ **`__MISSING__` is deliberately NOT a member.** It is the absence marker, never a stored value;
   keeping it out of the union is what keeps absence out of the value space.
 * `masks` is a nested `KeyStore` of `bool | None` leaves, ***NOT*** a bare list.
 * ⚑ `BindMap` is NOT a member either — see below.
+
+## `__MISSING__` — the absence marker
+
+```python
+class __Missing__: ...          # the singleton TYPE
+__MISSING__: __Missing__        # the singleton VALUE
+```
+
+`__MISSING__` is **never stored**. It is the value handed back by the absent-vs-present-`None` probe
+— `store.get(key, __MISSING__)` returns `__MISSING__` iff the key is absent, `None` iff
+present-`None`, else the value — and it is consulted by merge LOGIC elsewhere.
+
+`class __Missing__` is a distinct singleton TYPE, not a bare `object()`, so it has a legible `repr`
+(`"__MISSING__"`) and static type-checkers can reason about `StoreValue | __Missing__` at internal
+call sites. Its `__bool__` returns `False` defensively — **test presence with `is __MISSING__`,
+never as a bool.**
+
+⚑ **It lives HERE, not in `keystore`.** Absence is a fact about the VALUE space, and the union that
+excludes it is in this file; `keystore` is the container, the unit that can LEAVE the tree, and it
+stays value-space-agnostic. The dependency runs one way — `kb_store` imports `keystore`, never the
+reverse — and moving the sentinel here does not add a back-edge, because the container never
+referenced it.
+
+⚑ Both names are DUNDERS so that neither can be shadowed at a `KeyStore` attribute surface: a dunder
+can never be a stored key. Neither is name-mangled (two trailing underscores), so importers spell
+them verbatim. **`__MISSING__` is module-OWNED, not module-private** — `agent_select`,
+`settings_launch`, `settings_merge`, `config_interface`, `config_display`, `workset_cmd` and the
+tests all import it deliberately; it is the canonical probe value, and prose calling it
+"module-private" is describing a rule that never held. `_Missing._instance` is deliberately NOT
+renamed: `__Missing__` is not a `KeyStore`, so it has no key/attribute collision to close.
 
 ## `Bind` — the binding value
 

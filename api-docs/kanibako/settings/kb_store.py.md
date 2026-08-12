@@ -20,5 +20,19 @@ class BindEntry(NamedTuple):
 
 BindMap = dict[str, BindEntry]
 
+class __Missing__:
+    _instance: '__Missing__ | None' = None
+
+    def __new__(cls) -> '__Missing__':
+        ...
+
+    def __repr__(self) -> str:
+        ...
+
+    def __bool__(self) -> bool:
+        ...
+
+__MISSING__: __Missing__ = __Missing__()
+
 StoreValue = Union[KeyStore, Bind, BindEntry, str, int, float, bool, list[str], None]
 ```
