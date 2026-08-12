@@ -902,13 +902,17 @@ def test_access_tier_vocabulary_is_declared_once():
     assert ACCESS_DEFAULT in ACCESS_TIERS
 
 
-def test_reserved_names_match_the_keystore_write_time_set():
-    """SHOULD-6 drift guard, asserted as a TEST as well as a module assert.
+def test_the_keyspace_floor_is_the_store_set_not_a_copy():
+    """SHOULD-6 — ONE collision-safety floor, read here under a local name.
 
-    Two copies of one collision-safety floor that disagree is worse than one: a
-    name accepted by the validator and rejected by the store fails deep in the
-    write with no reference to the key the user typed.
+    ⚑ Equality is NOT the property: an alias makes ``==`` unfailable, and a
+    reintroduced literal copy would satisfy it on the day it is written. What can
+    still fail is (1) IDENTITY — a copy, however faithful, breaks it — and (2)
+    that the validator actually consults that object, walked over the WHOLE set
+    rather than the spot names of ``test_reserved_leaf_names_rejected``.
     """
     from kanibako.settings.keystore import KeyStore
 
-    assert RESERVED_LEAF_NAMES == KeyStore.RESERVED_KEY_NAMES
+    assert RESERVED_LEAF_NAMES is KeyStore.RESERVED_KEY_NAMES
+    for name in KeyStore.RESERVED_KEY_NAMES:
+        assert "RESERVED" in reason(f"box.env.{name}"), name

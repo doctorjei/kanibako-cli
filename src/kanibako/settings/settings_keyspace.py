@@ -341,19 +341,10 @@ DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_suppo
 #: Public ``dict`` method names a leaf key may NOT be called — a collision-safety
 #: floor on the resolved data structure (spec §0). Matched
 #: CASE-SENSITIVELY.
-RESERVED_LEAF_NAMES: Final[frozenset[str]] = frozenset({
-    "get", "keys", "values", "items", "pop", "popitem", "setdefault",
-    "update", "clear", "copy", "fromkeys",
-})
-
-# ⚑ Drift guard: this list must be the SAME set the KeyStore rejects at write
-# time. Two copies of a collision-safety floor that disagree is worse than one —
-# a name accepted here and rejected there fails deep in the store with no
-# reference to the key the user wrote.
-assert RESERVED_LEAF_NAMES == KeyStore.RESERVED_KEY_NAMES, (
-    "settings_keyspace.RESERVED_LEAF_NAMES has drifted from "
-    "keystore.KeyStore.RESERVED_KEY_NAMES"
-)
+#: ⚑ The keyspace floor IS the store's write-time floor, named in this module's
+#: vocabulary ("leaf" for what the store calls a key): one set, so there is
+#: nothing that can drift and nothing to guard.
+RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 
 _DUNDER_RE: Final = re.compile(r"^__.*__$")
 
