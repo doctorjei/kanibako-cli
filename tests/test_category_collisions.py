@@ -38,8 +38,14 @@ a user meets. What the helper still decides on the live path:
 
 * ``envs`` — the collapse produces none (``CollapsedStore`` is bindings + seeded
   + synced), leaving this its sole producer;
-* the row-5 SAME-SCOPE ``warnings`` channel, emitted by
-  ``commands.start.emit_collision_warnings``;
+* ⚑ **CUTOVER 5-0 TOOK A LINE OUT OF THIS LIST.** The row-5 SAME-SCOPE
+  ``warnings`` channel was here, because the helper was its only producer.
+  ``commands.start.emit_collision_warnings`` is still the ONE emission seam, but
+  ``_install_assembly_collapse`` now feeds it the ``store_shape`` producer's
+  warnings as well, so the channel no longer depends on this helper. (What one
+  ambiguity reaching that seam TWICE does — nothing: the memo is keyed on the
+  ``CategoryCollision`` both arms build — is pinned by
+  ``TestTheCollapseRouteFeedsTheSameChannel`` below.)
 * rows 1 and 3, which RAISE inside ``commands.start._resolve_launch_snapshot``
   BEFORE the collapse is reached, so their message and remedy text are still
   exactly what a user is handed.
@@ -437,9 +443,14 @@ class TestRow5SameScopeWarns:
 
     ⚑ Row 5 is the arm of the helper that is STILL USER-VISIBLE: the warnings it
     returns are emitted on the live launch path
-    (``commands.start.emit_collision_warnings``) and that channel survives until
+    (``commands.start.emit_collision_warnings``) and that emission survives until
     cutover step 5 retires the helper. Read these as live behaviour — the module
     docstring's caveat is about row 4, not this row.
+
+    ⚑ What they are no longer the SOLE source of is the channel itself (5-0): the
+    ``store_shape`` producer computes the same ambiguity per scope and
+    ``_install_assembly_collapse`` feeds it to the same seam. So a case going red
+    here means the HELPER stopped warning, not that the user stopped being told.
     """
 
     def test_same_scope_pair_survives_with_exactly_one_warning(self):
@@ -553,6 +564,118 @@ class TestCollisionWarningEmission:
         with caplog.at_level(logging.WARNING):
             emit_collision_warnings([self._collision(), other])
         assert len([r for r in caplog.records if "/g/" in r.getMessage()]) == 2
+
+
+class TestTheCollapseRouteFeedsTheSameChannel:
+    """CUTOVER 5-0 — the row-5 warning has a home in the NEW route, and only one.
+
+    Step 5 deletes ``reconcile_categories``' arbitration half together with the
+    ``emit_collision_warnings(reconciled.warnings)`` call in
+    ``_resolve_launch_snapshot``. These two say what has to be true for that to be a
+    deletion rather than a regression: the collapse route announces the ambiguity BY
+    ITSELF, and with BOTH feeds live one ambiguity is still one line — because the two
+    build the SAME ``CategoryCollision``, and the emitter's memo is keyed on it.
+
+    ⚑ Both drive ``_install_assembly_collapse`` itself, not the producer beneath it: what
+    is under test is the WIRING, so a test that called ``build_store_shape_set`` and
+    emitted its warnings by hand would stay green with the wiring ripped out.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        """The memo is PROCESS state — reset it around each case, both sides."""
+        from kanibako.commands.start import reset_collision_warnings
+
+        reset_collision_warnings()
+        yield
+        reset_collision_warnings()
+
+    def _ambiguous(self):
+        """One same-scope abstraction ambiguity at ``DEST``, and no home bind.
+
+        No home means ``whole_box=False`` — the narrow shape — which is enough: the
+        shapes are built, and the warnings with them, before the bind fold the home
+        gates.
+        """
+        return [
+            entry("caches", name="build", scope="box", host_src="/cache"),
+            entry("common", name="buildcache", scope="box", host_src="/common"),
+        ]
+
+    def _lines(self, caplog):
+        return [r.getMessage() for r in caplog.records if DEST in r.getMessage()]
+
+    def test_the_collapse_route_ALONE_announces_the_ambiguity(self, caplog):
+        """Delete the reconcile feed tomorrow and the user still hears about it.
+
+        MUTATION ANCHOR: drop the ``emit_collision_warnings(shapes.warnings)`` call from
+        ``_install_assembly_collapse`` and this fails on ``assert 0 == 1`` — nothing
+        else in ``src/`` emits a collision.
+        """
+        from kanibako.commands.start import _install_assembly_collapse
+        from kanibako.settings.keystore import KeyStore
+
+        with caplog.at_level(logging.WARNING):
+            _install_assembly_collapse(
+                KeyStore(), self._ambiguous(), whole_box=False,
+            )
+
+        assert len(self._lines(caplog)) == 1
+        # The LOSER is the actionable half — it names the declaration to edit.
+        assert "box.caches.build" in self._lines(caplog)[0]
+
+    def test_BOTH_feeds_live_still_produce_EXACTLY_ONE_line(self, caplog):
+        """The ordering rule the plan states: never two lines for one ambiguity.
+
+        Driven in the live order — the reconcile emission first, the collapse install
+        after — because that is the order ``_resolve_launch_snapshot`` runs them in.
+
+        MUTATION ANCHOR: make the two arms disagree about the pair the memo is keyed on
+        (e.g. give ``store_shape``'s ``CategoryCollision`` a different ``scope``) and
+        this fails on ``assert 2 == 1``.
+        """
+        from kanibako.commands.start import (
+            _install_assembly_collapse,
+            emit_collision_warnings,
+        )
+        from kanibako.settings.keystore import KeyStore
+
+        entries = self._ambiguous()
+        with caplog.at_level(logging.WARNING):
+            emit_collision_warnings(reconcile_categories(entries).warnings)
+            _install_assembly_collapse(KeyStore(), entries, whole_box=False)
+
+        assert len(self._lines(caplog)) == 1
+
+    def test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not(
+        self, caplog,
+    ):
+        """The one place 5-0 changed what a user sees, pinned (CHANGELOG, Unreleased).
+
+        A ``masks`` entry at the dest makes the RECONCILE silent about the pair beneath
+        it (§0 row 2 returns the mask and no warnings, from any scope). The producer
+        folds each scope alone, so it still reports the pair — and the pair is still
+        ambiguous, mask or no mask.
+
+        MUTATION ANCHOR: filter ``shapes.warnings`` down to what the reconcile also
+        reports before emitting, and this fails on ``assert 0 == 1`` while both tests
+        above stay green — which is exactly the shape of edit this exists to catch.
+        """
+        from kanibako.commands.start import (
+            _install_assembly_collapse,
+            emit_collision_warnings,
+        )
+        from kanibako.settings.keystore import KeyStore
+
+        entries = [*self._ambiguous(), entry("masks", name="hide", scope="box")]
+        reconciled = reconcile_categories(entries)
+        assert reconciled.warnings == (), "the reconcile arm must be the silent one here"
+
+        with caplog.at_level(logging.WARNING):
+            emit_collision_warnings(reconciled.warnings)
+            _install_assembly_collapse(KeyStore(), entries, whole_box=False)
+
+        assert len(self._lines(caplog)) == 1
 
 
 # --------------------------------------------------------------------------- #
