@@ -41,7 +41,7 @@ scope still overrides by name — precedence-equivalent to the old AGENT-level
   no parallel override route.
 
 The DISCRIMINATED agent read (§2d)
----------------------------------------
+----------------------------------
 The snapshot keeps the agent tier discriminated — ``agent.default.*`` (the
 all-agents backstop) and ``agent.<active>.*`` (the active slot, where 7a or
 a per-agent file land). Both the behavior read
@@ -62,9 +62,17 @@ absolute ``box_dest`` it did pre-swap (depth-sort + dest-collision unchanged). T
 S20 escape contract (backslash-escaped ``$`` / ``~`` / ``\\`` carried literal) is
 honored by the shared ``expand_expr`` scanner.
 
-Authority: ``~/vault/rw/keystore-design.md`` §1/§2/§4/§6g; SEAMS
-S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1; spec ``settings-keyspace-1.8.0.md``
-§0/§1/§2/§2a/§2c.
+**Authority:** ``specs/settings-keyspace-1.8.0.md`` — §0 (the CLOSED keyspace), §1,
+§2 (the cascade), §2a (the categories), §2c (worksets + box bindings per mode).
+⚑ **The spec is the LIVE authority; read it first.** SEAMS
+S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1.
+
+Historical: ``keystore-design.md`` §1 (purpose), §2 (storage model), §4
+(resolution), §6g (cascade MERGE and category RECONCILE kept distinct). ⚑ **It is
+ARCHIVED, at ``~/canon/notebook/archives/keystore-2026-06/keystore-design.md``.**
+🛑 **Its §4 writes the cascade bracket with a 7th ``required`` tier that S14 and
+spec §2 CUT** — so on the cascade the archive is WRONG and the spec wins. Cite §4
+for the resolution mechanics only, never for tier structure.
 """
 
 from __future__ import annotations
@@ -104,14 +112,15 @@ _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
 )
 # Aliases the single-source scope-containment tuple (kb_store) so this
 # consumer never re-declares the scope set — the old byte-identical literal was a
-# drift foot-gun. Order is NOT load-bearing here: the L1334 emit loop re-sorts by
-# its own ``scope_order`` map, so the containment order is safe to reuse verbatim.
+# drift foot-gun. Order is NOT load-bearing here: the emit loop in
+# :func:`snapshot_category_entries` re-sorts by its own ``scope_order`` map, so the
+# containment order is safe to reuse verbatim.
 _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 
 #: The dotted-key TAILS a DEST-KEYED bind map can sit at in a default-category
 #: floor table — the ``bindings`` ARMS plus each of the four terminal categories.
-#: One tuple so the per-entry ``""``-suppression in :func:`category_floor` cannot
-#: fall out of step with the reader.
+#: One tuple so the per-entry ``""``-suppression in :func:`build_launch_snapshot`'s
+#: floor fold cannot fall out of step with the reader.
 _BIND_FLOOR_TAILS: tuple[str, ...] = (".bindings.ro", ".bindings.rw") + tuple(
     f".{c}" for c in sorted(_BIND_LEAF_CATEGORIES)
 )
@@ -133,7 +142,7 @@ def _is_bind_floor_key(key: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Auth 3-tier SHARING chain (spec §2a/§2b/§2c/§2d — 2026-07-01 redesign)        #
+# Auth 3-tier SHARING chain (spec §2a/§2b/§2c/§2d — 2026-07-01 redesign)      #
 # --------------------------------------------------------------------------- #
 #
 # REPLACES the boolean group_auth chain with a global/workset/box SHARING model
@@ -319,7 +328,7 @@ def auth_chain_floor(
 
 
 # --------------------------------------------------------------------------- #
-# meta.runtime.* materialization (block B1 — spec §1A, 2026-06-29h)   #
+# meta.runtime.* materialization (block B1 — spec §1A, 2026-06-29h)           #
 # --------------------------------------------------------------------------- #
 #
 # The spec's RUNTIME-RESOLVED identity anchors (spec §1A; §0 meta.* is a
@@ -343,7 +352,7 @@ def auth_chain_floor(
 #
 # Then the SINGLE-SOURCE re-root (spec §1A; §2c):
 #   meta.workset.path     = "@meta.runtime.ws_root"                (UNIFORM all modes)
-#   meta.workset.settings = "@meta.workset.path/settings.yaml"     (UNIFORM; spec 2c L804)
+#   meta.workset.settings = "@meta.workset.path/settings.yaml"     (UNIFORM; spec §2c)
 #   meta.box.mode         = "@meta.runtime.project_type"   (RO identity anchor; spec §2b)
 #
 # These resolve transitively in the ONE expand pass (e.g. primary:
@@ -437,15 +446,15 @@ def meta_runtime_floor(
     # 2026-07-04) — the SINGLE SOURCE for the partition token; block B2 no longer
     # sets it directly.
     floor["meta.workset.name"] = "@meta.runtime.ws_name"
-    # meta.box.mode — the RO identity anchor surfacing the runtime mode (spec §2b
-    # ; was the settable box.mode config-set key, dropped this block).
+    # meta.box.mode — the RO identity anchor surfacing the runtime mode (spec §2b;
+    # was the settable box.mode config-set key, dropped this block).
     floor["meta.box.mode"] = "@meta.runtime.project_type"
 
     return floor
 
 
 # --------------------------------------------------------------------------- #
-# meta.* IDENTITY-ANCHOR materialization (block B2 — spec §2c/§2d, §0)          #
+# meta.* IDENTITY-ANCHOR materialization (block B2 — spec §2c/§2d, §0)        #
 # --------------------------------------------------------------------------- #
 #
 # B1 materialized meta.runtime.* + the single-source re-root of meta.workset.path
@@ -697,7 +706,7 @@ def meta_identity_floor(
 
 
 # --------------------------------------------------------------------------- #
-# LAYOUT-anchor materialization: workset roots + the RO BOX ROOT (spec §2a/§2c) #
+# LAYOUT-anchor materialization: workset roots + RO BOX ROOT (spec §2a/§2c)   #
 # --------------------------------------------------------------------------- #
 #
 # This is the single-route payoff: it materializes the workset-scope PATH anchors
@@ -787,8 +796,8 @@ def workset_anchor_floor(
     * ``workset.vault_{ro,rw}`` — UNIFORM in every mode (§2c ALL PROJECTS):
       ``@meta.workset.path/vault/{ro,rw}``. Only the BOX BIND differs per mode (the
       per-box ``/@meta.box.name`` subdir a lone box does not need).
-    * ``workset.logs`` — PER-MODE: ``@meta.workset.path/logs`` (primary/named, §2c
-      ) · ``@meta.box.path`` (standalone, §2c).
+    * ``workset.logs`` — PER-MODE: ``@meta.workset.path/logs`` (primary/named, §2c)
+      · ``@meta.box.path`` (standalone, §2c).
     * ``workset.canon`` / ``box.canon`` — the per-scope CANON CONTRIBUTION roots,
       UNIFORM in every mode (§2c ALL PROJECTS / §2b). Their ``handbook/`` subtrees
       are the sources of the skip-if-absent ``canon_hb_{workset,box}`` binds, so
@@ -824,8 +833,8 @@ def workset_anchor_floor(
 
     *workset_channels* (PRIMARY/NAMED only) maps ``common``/``chat``/``share`` to
     the resolved workset-local channel roots (= ``workset_channel_paths(proj, std)``),
-    materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c
-    ) route through them. ``None`` for STANDALONE (no workset channels).
+    materialized as ``workset.channels.*`` so the workset-channel binds (spec §2c)
+    route through them. ``None`` for STANDALONE (no workset channels).
     ⚑ Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an
     undeclared one is REFUSED: this is the one place a floor builds a key from a
     caller-supplied NAME, and a free-form passthrough there would open the closed
@@ -1103,9 +1112,12 @@ def build_launch_snapshot(
     snapshot (spec §2d / §0) — the agent tier is DISCRIMINATED throughout.
 
     *behavior_floor* is the BARE behavior-default dict (``{d.key: d.default}``);
-    *default_categories* are the already-scope-qualified category default tables
-    (``{"box.bindings.rw.home": (h, d, o), ...}``) unioned across every mount
-    family.
+    *default_categories* are the already-scope-qualified category default tables,
+    unioned across every mount family. Each KEY is a whole category ARM and each
+    VALUE the whole DEST-KEYED map under it —
+    ``{"box.bindings.rw": {box_dest: (host_src, opts)}, ...}``, the shape
+    ``core_defaults.add_bind`` builds (R-5 / 2026-08-08c: the map is TERMINAL, so
+    there is no trailing entry-name segment and no dest inside the value).
 
     *persona_values* are the PERSONA STORE's rendered values for the ACTIVE agent
     (``endpoint`` / ``model`` / ``secret_path.<VAR>`` / ``env.<VAR>``), collected
@@ -1199,9 +1211,8 @@ def build_launch_snapshot(
     # Category default tables are already scope-qualified dotted keys. A live
     # ""-suppression of a DEFAULT means "this default is disabled" → just DROP it
     # (absent ≡ no default), matching the retired by-name resolver's terminal
-    # skip. (A box/
-    # workset FILE ""-suppression of an inherited default is a separate path —
-    # see the module note; no shipped default table uses "".)
+    # skip. (A box/workset FILE ""-suppression of an inherited default is a
+    # SEPARATE path, not this one; no shipped default table uses "".)
     #
     # OS1 (agent scope): the agent-scope default tables arrive ALREADY DISCRIMINATED
     # (``default_common()`` → ``agent.<agent>.common``, ``default_seeds()`` →
@@ -1336,7 +1347,6 @@ def build_launch_snapshot(
     #                      key-shadowing flag values (P8). GUARDED just below.
     state_partial = _agent_state_partial(agent_name, agent_state)
     persona_partial = _persona_partial(agent_name, persona_values)
-    # box.agent.* CATEGORY fold (spec §2b / §0): the box's same-scope
     # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7). It existed to give a box's
     # SETTABLE ``box.agent.<category>`` tweak box-precedence inside the active
     # agent's slot. Spec §2b retires the settable mirror wholesale: ``box.agent.*``
@@ -1344,7 +1354,8 @@ def build_launch_snapshot(
     # ``pref.agent.<agent>.<key>`` (§2h) — which is a pref overlay, already spliced
     # below. So the fold has no settable input left to fold, and removing it FLIPS
     # the transitional contest P6 pinned (a box pref now wins a CATEGORY, as it
-    # already won a SCALAR): tests/test_settings_launch.py TestPrefLevelPrecedence.
+    # already won a SCALAR): tests/test_settings/test_settings_launch.py
+    # TestPrefLevelPrecedence.
     #
     # ``pref.*`` REQUESTS (spec §2h). Collected from the two pref-LEGAL files, and
     # collected HERE when the caller did not supply them, so no call path can
@@ -1436,7 +1447,7 @@ def build_launch_snapshot(
 
 
 # --------------------------------------------------------------------------- #
-# Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7)  #
+# Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7) #
 # --------------------------------------------------------------------------- #
 
 #: The key that names the agent a box runs (spec §2g).
@@ -1623,7 +1634,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# meta.box.agent.* RO mirror materialization (block B5 — spec §2b)        #
+# meta.box.agent.* RO mirror materialization (block B5 — spec §2b)            #
 # --------------------------------------------------------------------------- #
 #
 # Spec §2b: ``meta.box.agent.<key>`` is the box-scoped READ-BACK of its
@@ -1682,9 +1693,10 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 #     which the auth FLOOR materializes pre-expand, not this copy).
 #   * A caller that passes a BLANK ``active_agent`` (tests, and any future caller
 #     that wants the strict reading) gets an EMPTY mirror — the short-circuit below.
-# Both shapes are PINNED (tests/test_settings_launch.py). If the strict reading is
-# ever wanted at the launch too, the change belongs at the ``agent_id`` seam in
-# start.py, not here — this function mirrors whatever active agent it is given.
+# Both shapes are PINNED (tests/test_settings/test_settings_launch.py). If the
+# strict reading is ever wanted at the launch too, the change belongs at the
+# ``agent_id`` seam in start.py, not here — this function mirrors whatever active
+# agent it is given.
 
 
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None:
@@ -2006,7 +2018,7 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 
 
 # --------------------------------------------------------------------------- #
-# Category adapter — snapshot subtrees → the list reconcile_categories eats    #
+# Category adapter — snapshot subtrees → the list reconcile_categories eats   #
 # --------------------------------------------------------------------------- #
 
 
@@ -2240,8 +2252,8 @@ def _overlay_into(base: KeyStore, top: KeyStore) -> None:
 
 
 def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
-    """Refuse every UNDECLARED category shape under ONE scope node (spec §2d
-    ), naming the key with the prefix it is really written under.
+    """Refuse every UNDECLARED category shape under ONE scope node (spec §2d),
+    naming the key with the prefix it is really written under.
 
     *key_prefix* is the DISCRIMINATED key prefix — a bare scope token for
     system/workset/box, and ``agent.default`` / ``agent.<active>`` for the agent
@@ -2267,10 +2279,10 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     passing. Tracked for the undeclared-shape sweep.
 
     ⚑ The FLOOR's list→keyed-dict bridge for ``<scope>.masks`` (in
-    :func:`category_floor`) is NOT the same permission and stays: a floor table is
-    written by kanibako or by an agent plugin, never by a user, and the bridge runs
-    BEFORE assembly, so what reaches this check is already the keyed shape. A
-    settings FILE has no such adapter, and is refused here.
+    :func:`build_launch_snapshot`'s floor fold) is NOT the same permission and
+    stays: a floor table is written by kanibako or by an agent plugin, never by a
+    user, and the bridge runs BEFORE assembly, so what reaches this check is already
+    the keyed shape. A settings FILE has no such adapter, and is refused here.
 
     What the arm check still asserts is UNCHANGED by the reshape: a bindings arm's
     value must be a MAP node. Before, a map of names; now, a map of destinations.
@@ -2608,11 +2620,12 @@ def _emit_bind(
         #   ""   -> EXPLICITLY NO OPTIONS, a declared value like any other;
         #   any other string -> that value.
         # 🛑 ``opts or _bind_options(category)`` collapses the first two and is
-        # WRONG. The live case is ``helper_sock`` (``core-defaults.yaml:386-395``,
-        # ``bindings.rw``, ``options: ""``): it is a unix SOCKET the hub listens on,
-        # and a ``Z``/``U`` relabel/chown breaks the shared socket topology. The
-        # truthiness spelling would hand it ``Z,U`` — the mount is still emitted, at
-        # the same arity, so nothing fails and the socket quietly stops working.
+        # WRONG. The live case is the ``helper_sock`` entry under ``helpers:`` in
+        # ``core-defaults.yaml`` (``bindings.rw``, ``options: ""``): it is a unix
+        # SOCKET the hub listens on, and a ``Z``/``U`` relabel/chown breaks the
+        # shared socket topology. The truthiness spelling would hand it ``Z,U`` —
+        # the mount is still emitted, at the same arity, so nothing fails and the
+        # socket quietly stops working.
         # Pinned by ``tests/test_settings/test_mount_options.py``.
         # ⚑⚑ THIS LINE FEEDS BOTH ROUTES — it is UPSTREAM of the collapse, never a
         # peer of it. ``store_shape.build_store_shape_set`` reads
