@@ -429,6 +429,30 @@ class TestTheSyncPassRunsLastAgainstTheFinalBindMap:
         box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
       )
 
+  def test_a_sync_at_a_RO_binds_EXACT_dest_is_REFUSED_TOO(self):
+    # ⚑ The ro arm folds SEPARATELY from rw (``_scope_binds`` walks both), and the
+    # refusal reads the COLLAPSED map, so both arms must reach it. Inherited from
+    # the retired ``synced_vs_binding`` pair, which covered ro explicitly (5-1b).
+    with pytest.raises(SettingsError, match=r"EXACTLY the destination"):
+      collapse(
+        system=shape(ro={f"{GUEST}/w": BindEntry("/h/mount", "ro")}),
+        box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+      )
+
+  def test_the_exact_dest_refusal_carries_NO_rule_changed_paragraph(self):
+    """T13, moved with the rule at 5-1b — copy-vs-mount did NOT change.
+
+    ``settings_categories._rule_changed`` marks only the §0 table rows whose
+    OUTCOME changed. Putting that paragraph on a rule that did not change trains
+    a reader to skip it, so its absence here is a requirement, not an oversight.
+    """
+    with pytest.raises(SettingsError) as exc:
+      collapse(
+        system=shape(rw={f"{GUEST}/w": BindEntry("/h/mount", "Z,U")}),
+        box=shape(sync=[CopyRow(f"{GUEST}/w", BindEntry("/h/cred", ""))]),
+      )
+    assert "THIS RULE CHANGED" not in str(exc.value)
+
   def test_the_exact_dest_refusal_NAMES_the_sync_the_dest_and_the_bound_source(self):
     with pytest.raises(
       SettingsError, match=rf"'/h/cred'.*'{GUEST}/w'.*'/h/mount'",

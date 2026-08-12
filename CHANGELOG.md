@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The "synced copy at a binding's exact destination" error now comes from box assembly, and
+  reads differently.** The rule is unchanged and still refuses the launch: a `synced` copy may
+  land strictly *inside* a binding — it resolves through it into that binding's source — but never
+  *at* its destination, because a file binding's destination is the file, so writing there would
+  replace the bound inode. What changed is which stage reports it. The category reconcile and the
+  assembly fold both refused this, one behind the other; the duplicate has been removed and the
+  fold is now its sole enforcer. **The wording you see is the fold's**: it names the host paths and
+  the destination rather than the declaration keys, and it no longer annotates which preference
+  installed the key when one did. Nothing that launched before refuses now, and nothing that
+  refused before launches.
+
 ### Fixed
 
 - **A settings key named for one of the store's own members was accepted, then unreadable.**
