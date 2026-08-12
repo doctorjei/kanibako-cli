@@ -22,6 +22,35 @@ row  case                                            outcome
 4    abstraction vs abstraction, DIFFERENT scopes    scope precedence, SILENT
 5    abstraction vs abstraction, SAME scope          existing order + WARN
 ===  =============================================  =========================
+
+⚑⚑ WHOSE TRUTH THIS IS, SINCE CUTOVER 2c — READ BEFORE APPLYING ANY OUTCOME
+BELOW TO A REAL BOX. ``reconcile_categories`` is a PURE helper and is no longer
+authoritative for BOX ASSEMBLY. What a box is assembled from — its bindings, its
+seed list and its sync list — is decided by the assembly COLLAPSE
+(``settings.store_collapse.collapse_store_shapes``, installed on the launch path
+by ``commands.start._install_assembly_collapse``), and the collapse's refusals
+are the launch's. The helper KEEPS RUNNING by design; that is not a migration and
+not a second opinion. It is retired at cutover step 5, together with its
+arbitration half and never apart from it — NOT here.
+
+So every case below drives a FUNCTION, and only some of them still describe what
+a user meets. What the helper still decides on the live path:
+
+* ``envs`` — the collapse produces none (``CollapsedStore`` is bindings + seeded
+  + synced), leaving this its sole producer;
+* the row-5 SAME-SCOPE ``warnings`` channel, emitted by
+  ``commands.start.emit_collision_warnings``;
+* rows 1 and 3, which RAISE inside ``commands.start._resolve_launch_snapshot``
+  BEFORE the collapse is reached, so their message and remedy text are still
+  exactly what a user is handed.
+
+What it no longer decides is row 4's SILENT cross-scope pick: the collapse
+refuses two binds at one dest whatever their scopes
+(``store_collapse._refuse_bind_over_bind``), so no user can reach the pick even
+though the function still performs it. Those tests stay because the behaviour
+stays; their outcome is a helper's, not a box's. ⚑ Do not "correct" them by
+inverting an assertion — the function is unchanged and the inversion would be
+false.
 """
 
 from __future__ import annotations
@@ -116,6 +145,11 @@ class TestShippedDefaultsAreQuiet:
     the REAL pipeline (see ``tests/test_categories_live.py`` for the per-mode
     probe it borrows) and asserts zero errors and zero warnings — which is also
     the M-7 real-world exposure check.
+
+    ⚑ It certifies the RECONCILE arm of that install, and only that arm. Whether
+    the same shipped set survives the ASSEMBLY COLLAPSE — the route that decides
+    the install since cutover 2c — is a separate question, and neither this file
+    nor the per-mode probe it borrows asks it.
     """
 
     def test_every_mode_and_agent_shape_resolves_clean(self, tmp_path):
@@ -330,7 +364,20 @@ class TestRow3ExtensionOntoOccupied:
 
 
 class TestRow4CrossScopeIsSilent:
-    """T6 — scope precedence decides and nothing is said."""
+    """T6 — scope precedence decides and nothing is said, IN THE HELPER.
+
+    ⚑⚑ THE OUTCOME THIS CLASS NAMES IS NO LONGER REACHABLE FROM A LAUNCH (see the
+    module docstring). The two CROSS-SCOPE cases below are exactly the
+    arrangement the assembly collapse refuses — two binds at one dest, whatever
+    their scopes (``store_collapse._refuse_bind_over_bind``) — so a real box
+    never gets the silent pick; it fails to assemble instead. The function still
+    performs the pick, and that is what is asserted here, deliberately and
+    unchanged: this is the pure helper's behaviour, not a box's.
+
+    ⚑ The caveat is per-CASE, not per-class:
+    ``test_agent_default_and_active_count_as_ONE_scope`` is NOT a cross-scope
+    case in the collapse's terms — see its own docstring.
+    """
 
     def test_box_beats_system_across_categories_silently(self):
         rec = reconcile_categories([
@@ -345,6 +392,12 @@ class TestRow4CrossScopeIsSilent:
 
         ``reconcile_categories`` takes an arbitrary list; only the live adapter
         happens to hand it apply-ordered.
+
+        ⚑ THE CANARY, and it is pinning a PURE FUNCTION on purpose. It calls the
+        helper directly, so what it proves — that the helper's own answer does
+        not depend on input order — is untouched by the collapse taking over box
+        assembly. A cutover step that expects this to change is reading it as an
+        assembly claim; it is not one.
         """
         rec = reconcile_categories([
             entry("caches", name="b", scope="box", host_src="/box"),
@@ -363,6 +416,12 @@ class TestRow4CrossScopeIsSilent:
         view — an ambiguity the user must resolve. So P5 treats the whole agent
         tier as ONE scope and WARNS, which is the LOUD direction. If Jei rules
         the other way, this assertion is the single place that flips.
+
+        ⚑ The collapse reads it the same way, which is why the class-level
+        caveat does not reach this case: both entries carry the one ``agent``
+        scope token, so they fold into a single scope's shape and never meet
+        ``_refuse_bind_over_bind``. Nothing refuses this arrangement, and the
+        warning below stays the only announcement the user gets.
         """
         rec = reconcile_categories([
             entry("common", name="a", scope="agent.default", host_src="/def"),
@@ -374,7 +433,14 @@ class TestRow4CrossScopeIsSilent:
 
 
 class TestRow5SameScopeWarns:
-    """T7 — proceed on the existing ordering, and say so."""
+    """T7 — proceed on the existing ordering, and say so.
+
+    ⚑ Row 5 is the arm of the helper that is STILL USER-VISIBLE: the warnings it
+    returns are emitted on the live launch path
+    (``commands.start.emit_collision_warnings``) and that channel survives until
+    cutover step 5 retires the helper. Read these as live behaviour — the module
+    docstring's caveat is about row 4, not this row.
+    """
 
     def test_same_scope_pair_survives_with_exactly_one_warning(self):
         rec = reconcile_categories([
@@ -401,7 +467,13 @@ class TestRow5SameScopeWarns:
 
     def test_a_lower_scopes_own_ambiguity_is_masked_by_row_4(self):
         """Row 4 makes the whole lower scope lose, so its internal order
-        decided nothing and naming a "winner" there would be a lie."""
+        decided nothing and naming a "winner" there would be a lie.
+
+        ⚑ A row-4 shape, so the class-level caveat on
+        ``TestRow4CrossScopeIsSilent`` applies here and not the one above it:
+        three binds at one dest across two scopes is an arrangement the collapse
+        refuses outright, so the silence asserted below is the helper's alone.
+        """
         rec = reconcile_categories([
             entry("common", name="a", scope="system"),
             entry("caches", name="b", scope="system"),
