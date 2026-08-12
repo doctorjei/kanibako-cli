@@ -1330,14 +1330,20 @@ notes                                    (empty)
   delivery binds (its binary, launcher and shared install dir) included, where they used to be
   emitted ahead of everything else — so a nested mount always follows the mount it sits inside.
 
-**Scope direction decides it, and one arrangement is not enforced yet.** The fold applies each scope
-in turn — `system`, then `agent`, then `workset`, then `box` — and a mask clears what is already
-there. So the sweep above is what you get when the mask is declared at the **same scope as the bind
-or a more specific one**, which is the ordinary case (both in your box's settings file, or a box mask
-over a workset bind). The reverse — a mask at a *broader* scope than the bind nested inside it — is
-**unchanged for now**: that box still receives both the mask and the bind, exactly as before. Do not
-read that as a supported way to keep a bind inside a mask; it is the one arrangement kanibako does
-not yet assemble, and it will not keep working.
+**Scope direction decides which of two things happens, and both are new.** The fold applies each
+scope in turn — `system`, then `agent`, then `workset`, then `box` — and a mask clears what is
+already there. So the sweep above is what you get when the mask is declared at the **same scope as
+the bind or a more specific one**, which is the ordinary case (both in your box's settings file, or a
+box mask over a workset bind): the bind is dropped and the box starts.
+
+The reverse — a mask at a **broader** scope than the bind nested inside it, say a workset mask over a
+box bind — **stops the launch** with an error naming the bind, the mask and the destination. It is
+the same rule; the fold simply meets that arrangement in the other order, and a declaration it has
+already placed is refused rather than silently removed. See §2.31, which lists this among the
+arrangements that now refuse.
+
+Either way, a bind inside a mask is not a supported arrangement and has not been one — until now it
+survived only because the mask was never enforced against it.
 
 **A mask and a bind at the SAME destination.** This is the other half of the same rule, and it moved:
 the declaration at the more specific scope takes the destination. A `box.bindings.ro` entry at the
