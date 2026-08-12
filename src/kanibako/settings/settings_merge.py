@@ -8,7 +8,7 @@ it NEVER mutates its input partials (S15) — it builds a fresh
 
 It is the depth-sensitive successor to ``settings_resolve.resolve_value``'s
 most-specific-first winner-take-all (which used ``""`` as a terminal + a separate
-``defaults`` pass): here the 3-state ``_MISSING`` / present-``None`` model
+``defaults`` pass): here the 3-state ``__MISSING__`` / present-``None`` model
 replaces both (assembly already folded the floor INTO the ``base`` level, so there
 is no separate defaults dict). ``resolve_value`` itself is NOT retired — it still
 serves the ``config.*`` / ``system.*`` FOUNDATION path tier (``paths.py``); it is
@@ -26,7 +26,7 @@ Authority
 * ``~/vault/rw/keystore-design.md`` §6e (depth-sensitive merge — PRIMARY): per-NAME
   recursive union of subtrees; a LEAF (scalar / ``list`` / :class:`Bind`) is
   replaced WHOLE by the highest-precedence scope that SETS it; "sets" is tested
-  with the ``_MISSING`` sentinel (NOT truthiness) at EVERY named leaf. **§3** (the
+  with the ``__MISSING__`` sentinel (NOT truthiness) at EVERY named leaf. **§3** (the
   3-state ``None`` + the present-``None`` TERMINAL type-split). **§6f** (``masks``
   rides the SAME generic dict-merge). **§4** (cascade order; the cascade ends at
   ``box`` — the former ``required`` cap is CUT, 2026-06-29f). **§6g** (merge keys
@@ -36,8 +36,8 @@ Authority
 
 Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 -------------------------------------------------------
-* **S3** — presence is the UNBOUND ``dict.get(level, name, _MISSING) is not
-  _MISSING`` probe, never the bound ``.get`` (a key named ``get`` would shadow the
+* **S3** — presence is the UNBOUND ``dict.get(level, name, __MISSING__) is not
+  __MISSING__`` probe, never the bound ``.get`` (a key named ``get`` would shadow the
   method into a crash) and never truthiness (a leaf set to ``0`` / ``""`` /
   ``False`` still SETS and wins).
 * **S15** — the merge does NOT mutate its input partials; it builds a fresh tree.
@@ -48,7 +48,8 @@ Seams realized here (``plans/keystore-blocks/SEAMS.md``)
 from __future__ import annotations
 
 from kanibako.settings.kb_store import StoreValue
-from kanibako.settings.keystore import _MISSING, KeyStore
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_assemble import _BIND_CATEGORIES
 
 # The scope-category segment whose present-None leaf means UNMASK (not a scalar
@@ -79,12 +80,12 @@ def merge(levels: list[KeyStore]) -> KeyStore:
     The merge walks names across the partials and, for each NAME at each depth,
     applies the depth-sensitive rule (§6e / §3):
 
-    * **absent everywhere** (``_MISSING`` at every level) → not in the snapshot.
+    * **absent everywhere** (``__MISSING__`` at every level) → not in the snapshot.
     * the highest-precedence setter's value AND a lower setter's value are both
       :class:`KeyStore` subtrees → RECURSE (per-name union of those subtrees); a
       lower NON-subtree value at the same name is shadowed by the higher subtree.
     * otherwise the **highest-precedence scope that SETS the name wins** (presence
-      tested via the UNBOUND ``dict.get(level, name, _MISSING) is not _MISSING``,
+      tested via the UNBOUND ``dict.get(level, name, __MISSING__) is not __MISSING__``,
       S3 — never truthiness, never the bound ``.get``); its leaf
       (scalar / ``list`` / :class:`Bind`) replaces any lower value atomically.
     * **present-None TERMINAL** (the type-split, §3, keyed by the name's CATEGORY
@@ -108,12 +109,12 @@ def merge(levels: list[KeyStore]) -> KeyStore:
 def _is_set(level: KeyStore, name: str) -> bool:
     """Is *name* SET at this *level*? (S3 — the canonical presence probe.)
 
-    Uses the UNBOUND ``dict.get(level, name, _MISSING)`` — NEVER the bound
+    Uses the UNBOUND ``dict.get(level, name, __MISSING__)`` — NEVER the bound
     ``level.get`` (a key literally named ``get`` shadows the method into a crash)
     and NEVER truthiness (a leaf set to ``0`` / ``""`` / ``False`` / present-``None``
-    still SETS the name and must win). Absent ⇒ ``_MISSING`` ⇒ ``False``.
+    still SETS the name and must win). Absent ⇒ ``__MISSING__`` ⇒ ``False``.
     """
-    return dict.get(level, name, _MISSING) is not _MISSING
+    return dict.get(level, name, __MISSING__) is not __MISSING__
 
 
 def _names_in_order(levels: list[KeyStore]) -> list[str]:
@@ -209,7 +210,7 @@ def _deep_copy_store(store: KeyStore) -> KeyStore:
 class _Omit:
     """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot
     (a bind / category / masks reset — no default to synthesize, §3). Module-private,
-    never stored, distinct from :data:`_MISSING` (absence) and from present-``None``
+    never stored, distinct from :data:`__MISSING__` (absence) and from present-``None``
     (a kept scalar reset).
     """
 

@@ -78,7 +78,8 @@ if TYPE_CHECKING:
 
 from kanibako.agent_ref import harness_of
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
-from kanibako.settings.keystore import _MISSING, KeyStore
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_assemble import assemble_levels, dotted_partial
 from kanibako.settings.settings_categories import (
     _DELIVERY,
@@ -970,7 +971,7 @@ def resolve_auth_source(
     """
     from kanibako.settings.settings_views import as_bool
 
-    box_node = dict.get(snapshot, "box", _MISSING)
+    box_node = dict.get(snapshot, "box", __MISSING__)
     if not isinstance(box_node, KeyStore):
         return AuthSource(
             tier="box",
@@ -984,15 +985,15 @@ def resolve_auth_source(
     # ``meta.box.agent.auth.share_support`` AND the DERIVED per-box source root
     # ``meta.box.auth.workset_path`` (change 8 — reclassified from the old settable
     # ``box.auth.workset_path``; being ``meta.*`` a scope FILE cannot repoint it).
-    meta_node = dict.get(snapshot, "meta", _MISSING)
+    meta_node = dict.get(snapshot, "meta", __MISSING__)
     support = False
     workset_source: str | None = None
     if isinstance(meta_node, KeyStore):
-        meta_box = dict.get(meta_node, "box", _MISSING)
+        meta_box = dict.get(meta_node, "box", __MISSING__)
         if isinstance(meta_box, KeyStore):
-            meta_box_agent = dict.get(meta_box, "agent", _MISSING)
+            meta_box_agent = dict.get(meta_box, "agent", __MISSING__)
             if isinstance(meta_box_agent, KeyStore):
-                mba_auth = dict.get(meta_box_agent, "auth", _MISSING)
+                mba_auth = dict.get(meta_box_agent, "auth", __MISSING__)
                 if isinstance(mba_auth, KeyStore):
                     support = as_bool(
                         dict.get(mba_auth, "share_support", False)
@@ -1000,25 +1001,25 @@ def resolve_auth_source(
             # meta.box.auth.workset_path (sibling of meta.box.agent) — the RO
             # DERIVED per-box workset source root. A resolved string (or None /
             # absent for standalone); absent/None/"" all coerce to None below.
-            meta_box_auth = dict.get(meta_box, "auth", _MISSING)
+            meta_box_auth = dict.get(meta_box, "auth", __MISSING__)
             if isinstance(meta_box_auth, KeyStore):
-                wp = dict.get(meta_box_auth, "workset_path", _MISSING)
+                wp = dict.get(meta_box_auth, "workset_path", __MISSING__)
                 if isinstance(wp, str) and wp:
                     workset_source = wp
 
     # The system + workset allow flags.
-    system_node = dict.get(snapshot, "system", _MISSING)
+    system_node = dict.get(snapshot, "system", __MISSING__)
     system_allow = False
     if isinstance(system_node, KeyStore):
-        sys_auth = dict.get(system_node, "auth", _MISSING)
+        sys_auth = dict.get(system_node, "auth", __MISSING__)
         if isinstance(sys_auth, KeyStore):
             system_allow = as_bool(dict.get(sys_auth, "share_allowed", False))
 
-    workset_node = dict.get(snapshot, "workset", _MISSING)
+    workset_node = dict.get(snapshot, "workset", __MISSING__)
     workset_auth = (
-        dict.get(workset_node, "auth", _MISSING)
+        dict.get(workset_node, "auth", __MISSING__)
         if isinstance(workset_node, KeyStore)
-        else _MISSING
+        else __MISSING__
     )
     workset_allow = False
     global_sync = False
@@ -1029,7 +1030,7 @@ def resolve_auth_source(
     # The two settable box ENABLE knobs (per-tier opt-out; STAY in ``box.auth``).
     # The workset SOURCE path is read above from the RO ``meta.box.auth`` node
     # (change 8), NOT here — only the settable knobs remain in ``box.auth``.
-    box_auth = dict.get(box_node, "auth", _MISSING)
+    box_auth = dict.get(box_node, "auth", __MISSING__)
     global_knob = True
     workset_knob = True
     if isinstance(box_auth, KeyStore):
@@ -1463,7 +1464,7 @@ def resolve_selected_agent(
       present-``None`` on a SCALAR leaf is KEPT by ``_resolve_present_none``, which
       is exactly what makes this reachable — ``if value is None: continue`` anywhere
       on this path silently deletes the capability;
-    * ``_MISSING`` — nothing ever set it ⇒ the caller falls through to the
+    * ``__MISSING__`` — nothing ever set it ⇒ the caller falls through to the
       installed-count rule.
 
     **Why this is a SEPARATE resolve.** ``build_launch_snapshot`` needs the active
@@ -1536,14 +1537,14 @@ _BOX_STORE_KEY = "workset.boxes"
 
 
 def _snapshot_leaf(snapshot: KeyStore, dotted: str) -> object:
-    """Read the resolved leaf at *dotted*, or ``_MISSING``. UNBOUND protocol (S3)."""
+    """Read the resolved leaf at *dotted*, or ``__MISSING__``. UNBOUND protocol (S3)."""
     node: object = snapshot
     for seg in dotted.split("."):
         if not isinstance(node, KeyStore):
-            return _MISSING
-        node = dict.get(node, seg, _MISSING)
-        if node is _MISSING:
-            return _MISSING
+            return __MISSING__
+        node = dict.get(node, seg, __MISSING__)
+        if node is __MISSING__:
+            return __MISSING__
     return node
 
 
@@ -1599,7 +1600,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
         value = _snapshot_leaf(snapshot, key)
         if isinstance(value, str) and value != "" and not value.endswith("/"):
             continue
-        got = "absent" if value is _MISSING else repr(value)
+        got = "absent" if value is __MISSING__ else repr(value)
         trailing = isinstance(value, str) and value.endswith("/")
         why = (
             "its trailing separator means the final path segment resolved to "
@@ -1721,15 +1722,15 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
         # The active agent set NO category/behavior leaves (and no default backstop
         # either) — nothing to mirror; leave meta.box.agent.* absent.
         return
-    meta_node = dict.get(snapshot, "meta", _MISSING)
+    meta_node = dict.get(snapshot, "meta", __MISSING__)
     if not isinstance(meta_node, KeyStore):
         meta_node = KeyStore()
         snapshot["meta"] = meta_node
-    meta_box = dict.get(meta_node, "box", _MISSING)
+    meta_box = dict.get(meta_node, "box", __MISSING__)
     if not isinstance(meta_box, KeyStore):
         meta_box = KeyStore()
         meta_node["box"] = meta_box
-    box_agent = dict.get(meta_box, "agent", _MISSING)
+    box_agent = dict.get(meta_box, "agent", __MISSING__)
     if not isinstance(box_agent, KeyStore):
         box_agent = KeyStore()
         meta_box["agent"] = box_agent
@@ -1755,8 +1756,8 @@ def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
 
     for name in dict.keys(agent_node):
         agent_val = dict.__getitem__(agent_node, name)
-        box_val = dict.get(box_node, name, _MISSING)
-        if box_val is _MISSING:
+        box_val = dict.get(box_node, name, __MISSING__)
+        if box_val is __MISSING__:
             # The box did not set this name → mirror a fresh deep copy of the
             # resolved agent value (no alias of the shared agent subtree).
             if isinstance(agent_val, KeyStore):
@@ -1888,12 +1889,12 @@ def effective_behavior(
     stringified (behavior settings are scalars). Reads via the UNBOUND ``dict``
     probe (S3).
     """
-    agent_node = dict.get(snapshot, "agent", _MISSING)
+    agent_node = dict.get(snapshot, "agent", __MISSING__)
     out: dict[str, str] = {}
     if not isinstance(agent_node, KeyStore):
         return out
-    active_node = dict.get(agent_node, active_agent, _MISSING)
-    default_node = dict.get(agent_node, "default", _MISSING)
+    active_node = dict.get(agent_node, active_agent, __MISSING__)
+    default_node = dict.get(agent_node, "default", __MISSING__)
     # ⚑ NO ``box.agent.*`` OVERLAY (P7). The settable box-scoped agent mirror is
     # RETIRED (spec §2b — it is now the RO read-back ``meta.box.agent.*``), so
     # there is no box-scope behavior source to overlay here: a box tweaks its
@@ -1918,13 +1919,13 @@ def effective_behavior(
     for key in key_iter:
         # The §2d active-over-default pick. A present value (incl.
         # present-None) SETS the key and shadows the default backstop below it.
-        val: object = _MISSING
+        val: object = __MISSING__
         if isinstance(active_node, KeyStore):
-            val = dict.get(active_node, key, _MISSING)
-        if val is _MISSING and isinstance(default_node, KeyStore):
+            val = dict.get(active_node, key, __MISSING__)
+        if val is __MISSING__ and isinstance(default_node, KeyStore):
             # Neither box nor active set it → fall back to the agent.default backstop.
-            val = dict.get(default_node, key, _MISSING)
-        if val is _MISSING or val is None:
+            val = dict.get(default_node, key, __MISSING__)
+        if val is __MISSING__ or val is None:
             continue
         # Behavior leaves are scalars; a category subtree / Bind is NOT behavior.
         if isinstance(val, (KeyStore, Bind)):
@@ -1957,14 +1958,14 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
     second source. Raises :class:`SettingsError` naming the key instead.
     """
     key = f"meta.agent.{active_agent}.mode"
-    meta_node = dict.get(snapshot, "meta", _MISSING)
+    meta_node = dict.get(snapshot, "meta", __MISSING__)
     agent_root = (
-        dict.get(meta_node, "agent", _MISSING)
-        if isinstance(meta_node, KeyStore) else _MISSING
+        dict.get(meta_node, "agent", __MISSING__)
+        if isinstance(meta_node, KeyStore) else __MISSING__
     )
     slot = (
-        dict.get(agent_root, active_agent, _MISSING)
-        if isinstance(agent_root, KeyStore) else _MISSING
+        dict.get(agent_root, active_agent, __MISSING__)
+        if isinstance(agent_root, KeyStore) else __MISSING__
     )
     if not isinstance(slot, KeyStore):
         raise SettingsError(
@@ -1972,7 +1973,7 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
             f"meta.agent.{active_agent} node) — the launch grammar composes from "
             f"the keyspace, so the resolve must carry meta_agent_grammar_floor()"
         )
-    mode_node = dict.get(slot, "mode", _MISSING)
+    mode_node = dict.get(slot, "mode", __MISSING__)
     if not isinstance(mode_node, KeyStore):
         raise SettingsError(
             f"'{key}' is not materialized in this snapshot — the launch grammar "
@@ -1990,9 +1991,9 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
                 f"(expected a list of strings, got {type(fragment).__name__})"
             )
         mode[str(mode_key)] = list(fragment)
-    exec_raw = dict.get(slot, "exec", _MISSING)
+    exec_raw = dict.get(slot, "exec", __MISSING__)
     exec_fragment: "list[str] | None" = None
-    if exec_raw is not _MISSING and exec_raw is not None:
+    if exec_raw is not __MISSING__ and exec_raw is not None:
         if not isinstance(exec_raw, (list, tuple)) or not all(
             isinstance(part, str) for part in exec_raw
         ):
@@ -2107,7 +2108,7 @@ def snapshot_category_entries(
             # the merged node instead would only be able to say ``agent.bindings``
             # — a bare form that is NOT a key (§0), i.e. an error message
             # instructing the reader toward a shape the keyspace forbids.
-            agent_node = dict.get(snapshot, "agent", _MISSING)
+            agent_node = dict.get(snapshot, "agent", __MISSING__)
             if isinstance(agent_node, KeyStore):
                 for tier in dict.keys(agent_node):
                     tier_node = dict.__getitem__(agent_node, tier)
@@ -2116,7 +2117,7 @@ def snapshot_category_entries(
             scope_node = _agent_pick_node(snapshot, active_agent)
             decl_scope_fn = _agent_decl_scope_fn(agent_node, active_agent)
         else:
-            scope_node = dict.get(snapshot, scope, _MISSING)
+            scope_node = dict.get(snapshot, scope, __MISSING__)
             if isinstance(scope_node, KeyStore):
                 _assert_declared_categories(scope, scope_node)
             decl_scope_fn = _fixed_decl_scope_fn(scope)
@@ -2165,8 +2166,8 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
     through :func:`_overlay_into` — the pick's own rule is enough to answer it.
     """
     active_tier = (
-        dict.get(agent_node, active_agent, _MISSING)
-        if isinstance(agent_node, KeyStore) else _MISSING
+        dict.get(agent_node, active_agent, __MISSING__)
+        if isinstance(agent_node, KeyStore) else __MISSING__
     )
 
     def decl(category: str, name: str) -> str:
@@ -2174,8 +2175,8 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
         for seg in (*category.split("."), name):
             if not isinstance(node, KeyStore):
                 return "agent.default"
-            node = dict.get(node, seg, _MISSING)
-        if node is _MISSING:
+            node = dict.get(node, seg, __MISSING__)
+        if node is __MISSING__:
             return "agent.default"
         return f"agent.{active_agent}"
 
@@ -2204,11 +2205,11 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     tweak is live in category resolution with NO post-expand overlay (single-route).
     Reads via the UNBOUND ``dict`` protocol (S3); never mutates the snapshot.
     """
-    agent_node = dict.get(snapshot, "agent", _MISSING)
+    agent_node = dict.get(snapshot, "agent", __MISSING__)
     if not isinstance(agent_node, KeyStore):
         return KeyStore()
-    default_node = dict.get(agent_node, "default", _MISSING)
-    active_node = dict.get(agent_node, active_agent, _MISSING)
+    default_node = dict.get(agent_node, "default", __MISSING__)
+    active_node = dict.get(agent_node, active_agent, __MISSING__)
     out = KeyStore()
     if isinstance(default_node, KeyStore):
         _overlay_into(out, default_node)
@@ -2227,7 +2228,7 @@ def _overlay_into(base: KeyStore, top: KeyStore) -> None:
     """
     for key in dict.keys(top):
         top_val = dict.__getitem__(top, key)
-        base_val = dict.get(base, key, _MISSING)
+        base_val = dict.get(base, key, __MISSING__)
         if isinstance(top_val, KeyStore) and isinstance(base_val, KeyStore):
             _overlay_into(base_val, top_val)
         elif isinstance(top_val, KeyStore):
@@ -2276,8 +2277,8 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     A scalar / :class:`Bind` / list sitting at ``<scope>.bindings.ro`` is an
     undeclared shape either way.
     """
-    bindings = dict.get(node, "bindings", _MISSING)
-    if bindings is not _MISSING:
+    bindings = dict.get(node, "bindings", __MISSING__)
+    if bindings is not __MISSING__:
         bindings = _require_category_node(key_prefix, "bindings", bindings)
         for name in dict.keys(bindings):
             if name not in ("ro", "rw"):
@@ -2290,18 +2291,18 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
                     f"two arms, keyed by its destination"
                 )
         for mode in ("ro", "rw"):
-            mode_node = dict.get(bindings, mode, _MISSING)
-            if mode_node is not _MISSING:
+            mode_node = dict.get(bindings, mode, __MISSING__)
+            if mode_node is not __MISSING__:
                 _require_category_node(key_prefix, f"bindings.{mode}", mode_node)
     for category in _BIND_LEAF_CATEGORIES:
-        cat_node = dict.get(node, category, _MISSING)
-        if cat_node is not _MISSING:
+        cat_node = dict.get(node, category, __MISSING__)
+        if cat_node is not __MISSING__:
             _require_category_node(key_prefix, category, cat_node)
     # ``masks`` is checked on its own line rather than folded into
     # ``_BIND_LEAF_CATEGORIES``: that set is what the EMIT walks with
     # ``_emit_bind_map``, and a mask has no source to unpack.
-    masks = dict.get(node, "masks", _MISSING)
-    if masks is not _MISSING:
+    masks = dict.get(node, "masks", __MISSING__)
+    if masks is not __MISSING__:
         _require_category_node(key_prefix, "masks", masks)
 
 
@@ -2393,10 +2394,10 @@ def _emit_scope_node(
     itself holds no leaf type at all — see its docstring.
     """
     # bindings.{ro,rw} — the ARMED category: the map is one level under the token.
-    bindings = dict.get(scope_node, "bindings", _MISSING)
+    bindings = dict.get(scope_node, "bindings", __MISSING__)
     if isinstance(bindings, KeyStore):
         for mode in ("ro", "rw"):
-            mode_node = dict.get(bindings, mode, _MISSING)
+            mode_node = dict.get(bindings, mode, __MISSING__)
             if isinstance(mode_node, KeyStore):
                 _emit_bind_map(
                     collected, mode_node, order=order, scope=scope,
@@ -2406,7 +2407,7 @@ def _emit_scope_node(
 
     # caches / seeded / common / synced — the map is AT the category token.
     for category in _BIND_LEAF_CATEGORIES:
-        cat_node = dict.get(scope_node, category, _MISSING)
+        cat_node = dict.get(scope_node, category, __MISSING__)
         if isinstance(cat_node, KeyStore):
             _emit_bind_map(
                 collected, cat_node, order=order, scope=scope,
@@ -2418,7 +2419,7 @@ def _emit_scope_node(
     # at build, §6f); each surviving key is a masked dest. The isinstance is a
     # TYPE NARROW, not a filter: _assert_declared_categories has already refused
     # every other shape by name, so nothing can be dropped here in silence.
-    masks = dict.get(scope_node, "masks", _MISSING)
+    masks = dict.get(scope_node, "masks", __MISSING__)
     if isinstance(masks, KeyStore):
         for raw_dest in dict.keys(masks):
             box_dest = box_dest_fn(raw_dest)
@@ -2441,7 +2442,7 @@ def _emit_scope_node(
             ))
 
     # env — scalar VAR → value.
-    env = dict.get(scope_node, "env", _MISSING)
+    env = dict.get(scope_node, "env", __MISSING__)
     if isinstance(env, KeyStore):
         for var in dict.keys(env):
             value = dict.__getitem__(env, var)
@@ -2472,7 +2473,7 @@ def _emit_scope_node(
     # winner (box over workset) by identical box_dest; start.py emits the ro Mount +
     # the box-side export shim — kanibako NEVER reads the file VALUE. options="ro"
     # (NO ``:U`` chown of the host secret). name = VAR (the shim exports it).
-    secret = dict.get(scope_node, "secret_path", _MISSING)
+    secret = dict.get(scope_node, "secret_path", __MISSING__)
     if isinstance(secret, KeyStore):
         for var in dict.keys(secret):
             path_val = dict.__getitem__(secret, var)

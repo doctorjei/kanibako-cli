@@ -91,7 +91,8 @@ from kanibako.settings.config_io import (
     write_root_key,
 )
 from kanibako.errors import UserCancelled
-from kanibako.settings.keystore import _MISSING, ReservedKeyError
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt
 
@@ -1010,7 +1011,7 @@ def _effective_after_reset(
         for seg in segs:
             if not isinstance(node, KeyStore):
                 return (False, None)
-            if dict.get(node, seg, _MISSING) is _MISSING:
+            if dict.get(node, seg, __MISSING__) is __MISSING__:
                 return (False, None)
             node = dict.get(node, seg)
         return (True, node)

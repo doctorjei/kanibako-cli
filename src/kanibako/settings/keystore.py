@@ -1,10 +1,14 @@
 """KeyStore — the resolved-keyspace data structure (storage + types only).
 
 This module defines the KeyStore class and its supporting types _only_: reserved key errors
-(:class:`ReservedKeyError`), module-private absent-vs-present-None sentinel (:data:`_MISSING`), &
-recursive attribute-dict container (:class:`KeyStore`) - NOT resolution, merge, cascade, ``@``-ref
-/ ``$VAR`` / ``~`` expansion, typed views, or consumers — which live in later blocks. It imports
-nothing from the settings stack beyond its own :mod:`keystore_strings`."""
+(:class:`ReservedKeyError`) & the recursive attribute-dict container (:class:`KeyStore`) - NOT
+resolution, merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed views, or consumers —
+which live in later blocks. It imports nothing from the settings stack beyond its own
+:mod:`keystore_strings`.
+
+⚑ The absent-vs-present-None sentinel (``__MISSING__``) is NOT here: it belongs to kanibako's VALUE
+space, so it lives in :mod:`kb_store` beside :data:`StoreValue`, which excludes it. This module is
+the unit that can LEAVE the tree; keeping it value-space-agnostic is what makes that possible."""
 
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ from typing import Any, Generic, TypeVar
 from .keystore_strings import (
     ERR_ATTRIBUTE_NO_KEY,
     ERR_RESERVEDKEY_DUNDER,
-    ERR_RESERVEDKEY_METHOD,
+    ERR_RESERVEDKEY_SHADOW,
     ERR_TYPE_KEYSTORE_ARGS,
     ERR_TYPE_NONSTRING_KEY,
 )
@@ -30,37 +34,28 @@ class ReservedKeyError(KeyError):
     """Raised when a :class:`KeyStore` write uses a RESERVED key name (bad-key, not bad-value)"""
 
 
-######## Internal Types & Values ###########################
-
-class _Missing:
-    """Module-private :data:`_MISSING` sentinel type; distinct singleton type (not ``object``)."""
-    _instance: "_Missing | None" = None
-
-    def __new__(cls) -> "_Missing":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __repr__(self) -> str:
-        return "_MISSING"
-
-    # Defensive; _MISSING must never be mistaken for real value. Test presence via `is _MISSING`.
-    def __bool__(self) -> bool:
-        return False
-
-
-# Module-private sentinel distinguishing ABSENT key from present-``None`` value at storage surface.
-_MISSING: _Missing = _Missing()
-
-
 ######## Main KeyStore Class ###############################
 
 class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
     """Recursive attribute-dict: ``dict[str, V | KeyStore[V]]`` w. attr access. Inherits `dict`."""
 
-    #: The public, non-dunder method names of :class:`dict`. These are forbidden as user keys.
+    #: The public, non-dunder method names of :class:`dict`, PLUS this class's OWN public members.
+    #: All are forbidden as user keys.
+    #:
+    #: ⚑ THE EXPOSURE, stated the right way round: ``__getattr__`` fires on a lookup MISS ONLY, so
+    #: a class member ALWAYS wins. A key spelled like a member does not break the member — it
+    #: becomes SILENTLY UNREADABLE through attribute access (``store[name]`` still returns it,
+    #: ``store.name`` hands back the member). That silence is the whole reason for this set.
+    #:
+    #: THE RULE every class member satisfies: it is NAME-MANGLED (``_KeyStore__*``), or a DUNDER,
+    #: or LISTED HERE. Mangled and dunder names are out of reach of a declared key by construction
+    #: — no key is spelled ``_KeyStore__*``, and a dunder key is refused at write time — so the
+    #: internals need no entry. A PUBLIC member has neither protection and must name itself, which
+    #: is why this set carries its own members alongside ``dict``'s. Pinned by
+    #: ``test_every_non_dunder_class_member_is_mangled_or_reserved``.
     RESERVED_KEY_NAMES: frozenset[str] = frozenset({"get", "keys", "values",
-        "items", "pop", "popitem", "setdefault", "update", "clear", "copy", "fromkeys",})
+        "items", "pop", "popitem", "setdefault", "update", "clear", "copy", "fromkeys",
+        "RESERVED_KEY_NAMES", "insert_segments",})
 
     # No ``__slots__`` or instance ``__dict__`` use for storage; state lives in underlying `dict`.
     # ⚑ ``self`` is pinned to ``KeyStore[Any]``: an argument-free ``KeyStore()`` has nothing to
@@ -73,16 +68,22 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
             if len(args) > 1:
                 raise TypeError(ERR_TYPE_KEYSTORE_ARGS % len(args))
             source = args[0]
-            # Use dict.items(source) — NOT source.items() — so source KeyStore with key ``items``
-            # does not shadow a method (the very collision this module guards against).
+            # Use dict.items(source) — NOT source.items() — so the REAL storage of whatever mapping
+            # arrived is what gets read. ⚑ For a KeyStore source the two are identical: ``items`` is
+            # a reserved key name, and even force-written past that check the METHOD still wins the
+            # attribute lookup (__getattr__ fires on a MISS only). The unbound call earns its keep
+            # against any OTHER dict subclass, whose items() may be overridden to answer something
+            # that is not its contents.
             items = dict.items(source) if isinstance(source, dict) else source
             for key, value in items:
                 self[key] = value
         for key, value in kwargs.items():
             self[key] = value
 
-    # ⚑ A non-dunder class member (this, RESERVED_KEY_NAMES) shadows a same-named KEY at the attr
-    # surface — __getattr__ fires on MISS only. Neither is a declared key; the member set is pinned.
+    # ⚑ PUBLIC, so it is SELF-LISTED in RESERVED_KEY_NAMES. Called from other modules, it can be
+    # neither mangled nor dundered, and as a plain name it would win over a same-named KEY at the
+    # attr surface (__getattr__ fires on MISS only) — leaving that key readable by [] but not by
+    # attribute. Naming it in the reserved set refuses the key instead, at write time.
     def insert_segments(self, segments: "Sequence[str]", value: Any) -> None:
         """Install *value* at the path *segments* VERBATIM; each segment is _one_ node."""
         # ⚑ Entry-point of box-dest, terminal path ``binding_derivations.<declaration-key>.<dest>``.
@@ -103,7 +104,7 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
 
     @staticmethod
     def __check_key_name(key: Any) -> str:
-        """Validate key; return unchanged if non-dunder str & NOT a method name, or raises error."""
+        """Validate key; return unchanged if non-dunder str & NOT a reserved name, or raise."""
         if not isinstance(key, str):
             raise TypeError(ERR_TYPE_NONSTRING_KEY % (type(key).__name__, repr(key)))
 
@@ -111,7 +112,7 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
             raise ReservedKeyError(ERR_RESERVEDKEY_DUNDER % repr(key))
         if key in KeyStore.RESERVED_KEY_NAMES:
             raise ReservedKeyError(
-                ERR_RESERVEDKEY_METHOD % (repr(key), sorted(KeyStore.RESERVED_KEY_NAMES))
+                ERR_RESERVEDKEY_SHADOW % (repr(key), sorted(KeyStore.RESERVED_KEY_NAMES))
             )
         return key
 
@@ -124,8 +125,12 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
             return KeyStore(value)
         return value
 
-    # Reject reserved keys at SOURCE so user key cannot shadow dict method; funnels construction,
-    # ``[]``-set, & attribute-set (all come here), so bound ``store.get`` is safe.
+    # THE single write funnel — construction, ``[]``-set & attribute-set all arrive here, so the
+    # reserved-name check cannot be routed around. ⚑ It is not the METHOD that needs protecting: a
+    # class attribute ALWAYS wins the lookup, so no stored key can break ``store.get``. What needs
+    # protecting is the VALUE. A key spelled like a member would be stored where ``store.<name>``
+    # can never read it while ``store[name]`` still returns it — a silent split. Refusing the key
+    # at write time is what keeps that unreadable state from ever existing.
     def __setitem__(self, key: str, value: Any) -> None:
         super().__setitem__(self.__check_key_name(key), self.__wrap(value))
 
@@ -155,7 +160,9 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
 
     # --- representation ---
 
-    # Use dict.items(self) — NOT self.items() — so key named ``items`` cannot break repr.
+    # Use dict.items(self) — NOT self.items() — the unbound form reads storage directly and cannot
+    # be answered by an override. (A key named ``items`` could not break this in any case: it is
+    # reserved, and an attribute lookup finds the method whatever is stored.)
     def __repr__(self) -> str:
         inner = ", ".join(f"{k!r}: {v!r}" for k, v in dict.items(self))
         return f"{type(self).__name__}({{{inner}}})"

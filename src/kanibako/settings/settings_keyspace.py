@@ -338,9 +338,12 @@ DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_suppo
 # Reserved leaf names (spec §0)
 # ---------------------------------------------------------------------------
 
-#: Public ``dict`` method names a leaf key may NOT be called — a collision-safety
-#: floor on the resolved data structure (spec §0). Matched
-#: CASE-SENSITIVELY.
+#: Names a leaf key may NOT be called, because each would shadow a REAL attribute
+#: on the resolved store — a collision-safety floor on the resolved data structure
+#: (spec §0). Two kinds, one rule: the public (non-dunder) ``dict`` methods, plus
+#: the store's own public class members (``RESERVED_KEY_NAMES``,
+#: ``insert_segments``), neither of which can be spelled as a dunder and so each
+#: names itself. Matched CASE-SENSITIVELY.
 #: ⚑ The keyspace floor IS the store's write-time floor, named in this module's
 #: vocabulary ("leaf" for what the store calls a key): one set, so there is
 #: nothing that can drift and nothing to guard.
@@ -393,8 +396,8 @@ def leaf_name_reason(leaf: str) -> str | None:
     """
     if leaf in RESERVED_LEAF_NAMES:
         return (
-            f"'{leaf}' is a RESERVED key name (a public dict method) and may not "
-            f"name a key (spec §0 reserved key names)"
+            f"'{leaf}' is a RESERVED key name — it would shadow a real attribute on "
+            f"the resolved store — and may not name a key (spec §0 reserved key names)"
         )
     if _DUNDER_RE.match(leaf):
         return (

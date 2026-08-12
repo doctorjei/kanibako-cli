@@ -565,19 +565,56 @@ def test_meta_families_are_valid(key):
 # Manifest <-> declaration drift guards
 # ---------------------------------------------------------------------------
 
-def _manifest_leaves(prefix: str) -> set[str]:
-    """The manifest's DIRECT leaves under *prefix* — nested rows dropped."""
+def _manifest_doc() -> dict:
+    """The ratified manifest AS SHIPPED — read through ``importlib.resources``.
+
+    ⚑ Resource lookup, not a repo-relative path: the manifest ships INSIDE the
+    wheel, and reading it the way the package does is what makes a guard here a
+    statement about the artefact rather than about this checkout.
+    """
     import importlib.resources as res
 
     import yaml
 
-    doc = yaml.safe_load(
+    return yaml.safe_load(
         res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
     )
+
+
+def _manifest_leaves(prefix: str) -> set[str]:
+    """The manifest's DIRECT leaves under *prefix* — nested rows dropped."""
     tails = {
-        str(k)[len(prefix):] for k in doc["keys"] if str(k).startswith(prefix)
+        str(k)[len(prefix):] for k in _manifest_doc()["keys"] if str(k).startswith(prefix)
     }
     return {t for t in tails if "." not in t}
+
+
+def test_the_manifest_reserved_leaf_names_match_the_code():
+    """The reserved-name floor (spec §0) has a THIRD carrier — pin it to the code.
+
+    ``settings_keyspace.RESERVED_LEAF_NAMES`` IS ``KeyStore.RESERVED_KEY_NAMES``
+    (an alias — identity pinned by
+    ``test_the_keyspace_floor_is_the_store_set_not_a_copy``), so the two CODE
+    carriers cannot drift apart. The manifest is a SEPARATE, hand-maintained
+    carrier that ships in the wheel as release authority, and until this case
+    NOTHING read it: ruling 25 (2026-08-12) added the store's own two public
+    members to the code and the manifest silently stayed at the 11 ``dict``
+    methods, with the whole gate green.
+
+    ⚑ Asserted against ``KeyStore.RESERVED_KEY_NAMES``, never the alias — the
+    alias would be comparing the honest source to itself under a second name.
+    """
+    from kanibako.settings.keystore import KeyStore
+
+    manifest = set(_manifest_doc()["policy"]["reserved_leaf_names"])
+    code = set(KeyStore.RESERVED_KEY_NAMES)
+    # Named in BOTH directions: a bare set == set on 13 strings says nothing
+    # actionable at the moment it fires.
+    assert manifest == code, (
+        f"reserved_leaf_names drift — in code not manifest: "
+        f"{sorted(code - manifest)}; in manifest not code: "
+        f"{sorted(manifest - code)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -915,4 +952,10 @@ def test_the_keyspace_floor_is_the_store_set_not_a_copy():
 
     assert RESERVED_LEAF_NAMES is KeyStore.RESERVED_KEY_NAMES
     for name in KeyStore.RESERVED_KEY_NAMES:
-        assert "RESERVED" in reason(f"box.env.{name}"), name
+        r = reason(f"box.env.{name}")
+        assert "RESERVED" in r, name
+        # (3) and the reason must be TRUE of every name it is walked over. The set is
+        # no longer DICT method names alone — ``RESERVED_KEY_NAMES`` is a class
+        # attribute and ``insert_segments`` is a KeyStore method, not a dict one — so
+        # calling the offender a dict method is false for two members of this loop.
+        assert "dict method" not in r, name

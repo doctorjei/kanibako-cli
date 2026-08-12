@@ -336,7 +336,7 @@ policy:
   # R-17: the manifest carries BOTH forms — one alone generates the wrong
   # resolver. The IMPLEMENTATION BRACKET writes the agent tier's intra-tier
   # fallback as an explicit linear level; §2 rules this EQUIVALENT for scalars
-  # AND for per-ENTRY category merges (`_MISSING` is tested per entry key — no nested
+  # AND for per-ENTRY category merges (`__MISSING__` is tested per entry key — no nested
   # mini-cascade). Do NOT count agent.default as a separate authority level.
   # Token mapping: the spec (§2) spells the active-agent level `agent.<active>`; this file spells it `agent.active`.
   cascade_bracket: [base, system, agent.default, agent.active, workset, box]
@@ -591,13 +591,23 @@ policy:
                                          #   the copy-LAST ordering is.
   category_reconcile_spec: "§0 (The collapse MERGES THE INFORMATION; it performs nothing)"
 
-  # Collision-safety floor on the resolved data structure.
-  # R-25 (RECORD, acknowledged 2026-08-01): checked at ratification — this
-  # entry, spec §0 and code AGREE; the code carries ONE set, so it cannot
-  # disagree with itself (settings_keyspace.RESERVED_LEAF_NAMES IS
-  # keystore.KeyStore.RESERVED_KEY_NAMES — an alias, not a copy).
+  # Collision-safety floor on the resolved data structure. THE RULE is "would this
+  # name shadow a REAL ATTRIBUTE on the resolved store?", NOT "is it a dict
+  # method?" — attribute lookup finds a class member before it consults stored
+  # keys, so a key spelled like one is stored but SILENTLY UNREADABLE through
+  # attribute access. Hence both kinds: dict's public (non-dunder) methods, PLUS
+  # the store's OWN public members. Every other member is dunder or name-mangled,
+  # which the dunder branch already refuses, so only the public ones need naming.
+  # R-25 (RECORD, acknowledged 2026-08-01): checked at ratification — this entry,
+  # spec §0 and code AGREE. ⚑ The two CODE carriers cannot disagree with each
+  # other (settings_keyspace.RESERVED_LEAF_NAMES IS
+  # keystore.KeyStore.RESERVED_KEY_NAMES — an alias, not a copy), but THIS list is
+  # a THIRD carrier and it DID drift: it still read 11 after ruling 25
+  # (2026-08-12) added the store's own two members. Pinned against the code since,
+  # by test_settings_keyspace.test_the_manifest_reserved_leaf_names_match_the_code.
   reserved_leaf_names: [get, keys, values, items, pop, popitem, setdefault,
-                        update, clear, copy, fromkeys]
+                        update, clear, copy, fromkeys, RESERVED_KEY_NAMES,
+                        insert_segments]
   reserved_dunder: true             # a leaf key may not match __x__
   key_match: case_sensitive
   reserved_spec: "§0 (Reserved key names) / §2a (R-25: recorded as checked)"
