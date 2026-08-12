@@ -320,7 +320,47 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    writes all three leaves. 🛑 NOT in this amendment: the
                    resolve-through-the-bind-map DELIVERY behaviour (the emitted row
                    carries the GUEST dest) and the two live copy consumers, which
-                   still read reconciled.copies. Both switch at the CUTOVER's step 2."
+                   still read reconciled.copies. Both switch at the CUTOVER's step 2.
+                   ⚑ SUPERSEDED 2026-08-12 (below): the exact-dest refusal this
+                   amendment introduced is GONE, and nothing replaces it."
+    - date: "2026-08-12"
+      what: "THE SYNC-vs-BIND CHECK IS DELETED OUTRIGHT. policy.category_reconcile
+             .synced_vs_binding_same_dest: error -> allowed. A `synced` copy whose
+             dest EXACTLY EQUALS a bind dest is ordinary — it resolves through that
+             bind into its host source and overwrites CONTENT there, so the bind is
+             not replaced and most of it remains intact. No stage refuses it: the
+             reconcile's copy went at 5-1b, and the assembly fold's
+             store_collapse._refuse_sync_at_a_bind_dest is now deleted too, leaving
+             the sync arm a plain scope-ordered concatenation that takes no bind map
+             at all. ⚑ THE MOUNT ALSO STOPS BEING DROPPED: settings_categories
+             ._resolve_dest_group returned the copy ALONE when a `synced` met a
+             non-`masks` mount at one dest, deleting a declared binding; both now
+             survive, so one box_dest may appear in BOTH ReconciledCategories.mounts
+             and .copies. The `masks` arm is UNTOUCHED — a copy-vs-mask rule is a
+             separate question and is not decided here."
+      authority: "Jei 2026-08-12: \"don't check for sync. Let it clobber whatever it
+                  wants.\" Consistent with four earlier statements of the same
+                  position — \"sometimes we want to copy onto a bind\", \"copy |
+                  bind, same, OK\", \"copy | bind copies on top of the bind, and most
+                  of bind remains intact\", \"it's ok for a synced item to apply to
+                  the exact same root as a bind, just like a copy can\". ⚑ The
+                  earlier reading that a structural blanket refusal followed from the
+                  file-bind-overlap concern was the DIRECTOR's, not his."
+      scope: "⚑⚑ `seeded` and `synced` ARE STILL COPIES (kind: copy untouched). This
+              LOOSENS: a configuration that refused to launch now launches, and
+              nothing that launched before refuses. `seed_dest_outside_home` is
+              UNTOUCHED and still an error — the two copy arms answer this question
+              DIFFERENTLY and always did. ⚑ It also supersedes two earlier records
+              in THIS list that read as live: 2026-08-10's `scope` (\"...and
+              synced_vs_binding_same_dest is UNCHANGED\") and 2026-08-10b's `scope`
+              (\"ONE NEW REFUSAL: a sync dest that EXACTLY EQUALS a bind dest\").
+              Both are left standing as the dated history of what those rulings did;
+              neither states the rule today.
+              🔴 SPEC DELTA, OWED AND NOT TAKEN HERE: specs/settings-keyspace-1.8.0.md
+              §0 still reads \"A sync dest that EXACTLY EQUALS a bind dest is a config
+              ERROR\", and settings-keyspace-1.8.0-annotations.md:187 mirrors it. The
+              ruling supersedes both sentences. The spec edit is a separate act."
+      code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -577,19 +617,23 @@ policy:
                                          #   through the FINAL bind map
     seed_dest_outside_home: error        # a SEEDED dest not inside home is a
                                          #   config ERROR (`synced`: not an error)
-    synced_vs_binding_same_dest: error   # STILL an error — the ASSEMBLY owns it.
-                                         #   Ruling 2026-08-10 ("synced<->binding
-                                         #   is unnecessary now, yes") retired the
-                                         #   DUPLICATE in the reconcile route, not
-                                         #   the rule: syncs copy LAST, through the
-                                         #   FINAL bind map, and
-                                         #   store_collapse._refuse_sync_at_a_bind_dest
-                                         #   refuses a sync AT a bind's point once,
-                                         #   by name. A sync strictly INSIDE a bind
-                                         #   resolves through it and is NOT an error.
-                                         #   ⚑ mount_forbidden is REMOVED, not
-                                         #   pending: it was never the replacement,
-                                         #   the copy-LAST ordering is.
+    synced_vs_binding_same_dest: allowed  # ⚑ RETIRED AS A RULE, ruling 2026-08-12
+                                         #   ("don't check for sync. Let it clobber
+                                         #   whatever it wants."). A sync at a bind's
+                                         #   EXACT dest is ORDINARY: it resolves
+                                         #   through that bind into its host source,
+                                         #   so it overwrites CONTENT and most of the
+                                         #   bind remains intact. NOTHING refuses it —
+                                         #   not the reconcile (retired 5-1b) and not
+                                         #   the assembly fold. The mount SURVIVES
+                                         #   beside the copy; a `synced` no longer
+                                         #   displaces it. ⚑ mount_forbidden stays
+                                         #   REMOVED: nothing needs replacing.
+                                         #   🔴 SPEC DELTA: §0 still reads "A sync dest
+                                         #   that EXACTLY EQUALS a bind dest is a config
+                                         #   ERROR" (annotations :187 mirrors it). The
+                                         #   ruling supersedes that sentence; the spec
+                                         #   edit is OWED and is not the code's to make.
   category_reconcile_spec: "§0 (The collapse MERGES THE INFORMATION; it performs nothing)"
 
   # Collision-safety floor on the resolved data structure. THE RULE is "would this

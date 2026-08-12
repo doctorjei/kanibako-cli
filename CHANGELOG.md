@@ -12,16 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The "synced copy at a binding's exact destination" error now comes from box assembly, and
-  reads differently.** The rule is unchanged and still refuses the launch: a `synced` copy may
-  land strictly *inside* a binding — it resolves through it into that binding's source — but never
-  *at* its destination, because a file binding's destination is the file, so writing there would
-  replace the bound inode. What changed is which stage reports it. The category reconcile and the
-  assembly fold both refused this, one behind the other; the duplicate has been removed and the
-  fold is now its sole enforcer. **The wording you see is the fold's**: it names the host paths and
-  the destination rather than the declaration keys, and it no longer annotates which preference
-  installed the key when one did. Nothing that launched before refuses now, and nothing that
-  refused before launches.
+- **A `synced` copy may now share a destination with a binding, and both are delivered.** Until
+  now, declaring a `synced` copy whose destination was exactly a binding's destination refused the
+  launch outright: *"a 'synced' copy and a 'binding' mount target the same destination"*. That
+  refusal is gone. The arrangement was never broken — a `synced` copy is written *through* the
+  binding that covers its destination, into that binding's host source, so a copy at the exact
+  destination lands in the bound directory itself. **It overwrites content there; it does not
+  replace the mount, and the rest of the binding is untouched.** Copying onto a binding is a thing
+  you may legitimately want, so kanibako no longer second-guesses it. A `synced` copy at a
+  `masks` destination is still skipped (a tmpfs has no host source to write into), and a copy whose
+  covering binding is read-only is still skipped with a warning. See
+  [MIGRATION.md](MIGRATION.md) §2.29.
 
 ### Fixed
 

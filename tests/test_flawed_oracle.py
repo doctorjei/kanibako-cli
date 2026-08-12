@@ -950,12 +950,14 @@ class TestReconcileCollisionTable:
             for c in ("synced", "common", "caches", "seeded", "masks")
         ])
         assert [w.category for w in rec.mounts + rec.copies] == ["masks"]
-        # synced still beats every non-mask mount (cross-delivery, unchanged);
-        # the common/caches pair underneath it is a same-scope row-5 ambiguity.
+        # ⚑ synced no longer DISPLACES the surviving mount (ruling 2026-08-12) — the
+        # mount winner and the copy both come out, and the ``seeded`` under them is
+        # still shadowed by the mount. The common/caches pair is a same-scope row-5
+        # ambiguity, which ``caches`` wins on input order.
         rec = reconcile_categories([
             _entry(c, box_dest=D) for c in ("common", "caches", "seeded", "synced")
         ])
-        assert [w.category for w in rec.mounts + rec.copies] == ["synced"]
+        assert [w.category for w in rec.mounts + rec.copies] == ["caches", "synced"]
         assert len(rec.warnings) == 1
         # A mount beats a seeded copy (cross-delivery, unchanged).
         rec = reconcile_categories([
@@ -1031,35 +1033,60 @@ class TestReconcileScopePrecedence:
         assert rec.mounts[0].host_src == "/box"
 
 
-class TestReconcileSyncedBindingNoLongerRaises:
-    """The ``synced_vs_binding`` refusal was RETIRED here at cutover 5-1b.
+class TestReconcileSyncedBindingKeepsBOTH:
+    """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
 
-    ⚑ The RULE did not go: the assembly collapse refuses a sync at a binding's
-    exact dest against the FINAL bind map
-    (``store_collapse._refuse_sync_at_a_bind_dest``). What went is this helper's
-    DUPLICATE of it, which ran first and worded it differently.
+    ⚑ THE RULE IS GONE, not relocated. The reconcile's duplicate went at 5-1b and
+    the assembly fold's copy went with this ruling, so no stage refuses a sync at a
+    mount's exact dest. ⚑⚑ AND THE MOUNT IS NOT DROPPED EITHER: the sync is
+    delivered THROUGH the covering bind into its host source, so it clobbers CONTENT
+    and *"most of bind remains intact"*. Between 5-1b and this ruling the ladder
+    returned the copy ALONE and silently deleted a declared binding.
     """
 
-    def test_synced_vs_binding_same_dest_resolves_to_the_copy(self):
+    def test_synced_vs_binding_same_dest_keeps_the_mount_AND_the_copy(self):
         synced = _entry("synced", box_dest="/g/clash")
         binding = _entry("bindings.rw", box_dest="/g/clash")
         rec = reconcile_categories([synced, binding])
         assert [c.category for c in rec.copies] == ["synced"]
-        assert rec.mounts == []
+        assert [m.category for m in rec.mounts] == ["bindings.rw"]
 
-    def test_synced_vs_binding_ro_same_dest_resolves_to_the_copy(self):
+    def test_synced_vs_binding_ro_same_dest_keeps_the_mount_AND_the_copy(self):
         synced = _entry("synced", box_dest="/g/clash")
         binding = _entry("bindings.ro", box_dest="/g/clash")
         rec = reconcile_categories([synced, binding])
         assert [c.category for c in rec.copies] == ["synced"]
-        assert rec.mounts == []
+        assert [m.category for m in rec.mounts] == ["bindings.ro"]
 
-    def test_synced_and_shared_same_dest_is_not_an_error(self):
-        # The cross-delivery ladder, on the abstract arm: synced beats common cleanly.
+    def test_synced_and_shared_same_dest_keeps_BOTH_too(self):
+        # ⚑ The ABSTRACT arm, and it must answer identically: ``common`` and
+        # ``caches`` FOLD INTO the bindings, so a ladder that spared a
+        # ``bindings.*`` mount but dropped this one would be one rule wearing two
+        # faces. (This case used to resolve to the copy alone.)
         synced = _entry("synced", box_dest="/g/ok")
         shared = _entry("common", box_dest="/g/ok")
         rec = reconcile_categories([synced, shared])
-        assert [w.category for w in (rec.mounts + rec.copies)] == ["synced"]
+        assert [m.category for m in rec.mounts] == ["common"]
+        assert [c.category for c in rec.copies] == ["synced"]
+
+    def test_a_masks_mount_STILL_takes_the_dest_from_a_synced_alone(self):
+        # ⚑ THE UNTOUCHED ARM, pinned so this ruling cannot be read as reaching it.
+        # A tmpfs has no host source for a copy to resolve THROUGH; copy-vs-mask is
+        # a separate question and is not decided here.
+        synced = _entry("synced", box_dest="/g/hidden")
+        mask = _entry("masks", box_dest="/g/hidden")
+        rec = reconcile_categories([synced, mask])
+        assert [m.category for m in rec.mounts] == ["masks"]
+        assert rec.copies == []
+
+    def test_a_seeded_copy_is_STILL_dropped_by_a_mount_at_its_dest(self):
+        # ⚑ THE OTHER UNTOUCHED ARM. Only ``synced`` gained the mount's company:
+        # a mount physically shadows a seeded file, and that rule did not move.
+        seeded = _entry("seeded", box_dest="/g/under")
+        binding = _entry("bindings.rw", box_dest="/g/under")
+        rec = reconcile_categories([seeded, binding])
+        assert [m.category for m in rec.mounts] == ["bindings.rw"]
+        assert rec.copies == []
 
 
 class TestReconcileDepthOrder:

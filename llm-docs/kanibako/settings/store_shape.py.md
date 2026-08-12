@@ -193,13 +193,15 @@ Recorded so they are not discovered during step 6.
   invented an error that neither ships today nor is wanted downstream, so the producer folds `seeded`
   without arbitrating it against a bind. **The spec text and the two implementations disagree; that is
   a spec question, not a writer's.**
-* **`synced` vs a binding at one dest.** Stated in §0 independently of the five-row table. The
-  producer does not implement it (the design's seam assigns it to neither side), so a same-scope
-  pair survives into `sync` and `rw` — which is correct, because the COLLAPSE rules it: since the
-  copy-LAST ordering (2b-3) `_collapse_synced` folds `shape.sync` against the final bind map and
-  `_refuse_sync_at_a_bind_dest` refuses a sync at a bind's exact point. ⚑ `_resolve_dest_group`
-  used to raise a `synced_vs_binding` `CategoryCollisionError` for this as well; that duplicate was
-  RETIRED at cutover 5-1b, and the `synced_vs_binding` kind no longer exists.
+* **`synced` vs a binding at one dest.** ⚖️ **RULED 2026-08-12 — NOBODY rules it, because it is not
+  a collision** (*"don't check for sync. Let it clobber whatever it wants."*). The producer never
+  implemented it, so a same-scope pair survives into `sync` and `rw` — and that is now simply the
+  right answer rather than a gap another stage closed. `_resolve_dest_group`'s
+  `synced_vs_binding` `CategoryCollisionError` went at cutover 5-1b (the kind no longer exists) and
+  `store_collapse._refuse_sync_at_a_bind_dest` went with the ruling. A sync resolves THROUGH the
+  bind covering its dest into that bind's host source, at its exact point as much as inside it, so
+  it overwrites CONTENT and the mount stands. 🔴 The spec's §0 sentence still says ERROR; that edit
+  is owed.
 
 ## Warnings are DATA
 

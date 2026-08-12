@@ -8120,9 +8120,9 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
       outside-home skip: ``/etc/...`` with nothing declared over it, for instance.
     * **the cover is a MASK** — a tmpfs has no host source at all.  ⚑ This MUST be
       asked before ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK`
-      carries ``src=None``, so ``Path(bind.src)`` raises ``TypeError``, and the
-      collapse deliberately ACCEPTS a sync at a mask's point
-      (``_refuse_sync_at_a_bind_dest`` returns early on a source-less occupant).
+      carries ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.  The collapse
+      refuses a sync NOTHING (ruling 2026-08-12), so every declared row arrives here
+      and this seam is the only one that can decline one.
     * **the cover is READ-ONLY** — writing into a read-only bind's host source
       delivers content the box cannot be shown to have received, and the source is
       very often something the user did not mean this to reach (a canon chapter, the
@@ -8221,12 +8221,15 @@ def _apply_synced_copies(
     the parameter came out together.
 
     ⚑⚑ THE THREE INPUTS COME FROM ONE COLLAPSE, AND THEY HAVE TO.
-    ``collapse_store_shapes`` folds the sync list AGAINST the bind map it just built
-    (``_collapse_synced(shapes, bindings)``) — the same object, in one
-    ``CollapsedStore``.  Resolving a sync dest against a bind map from a DIFFERENT
-    resolve would resolve it against a mount set the collapse never validated it
-    over.  So this consumes the MAIN launch resolve rather than running one of its
-    own; see llm-docs for the measurement that forced it.
+    ``collapse_store_shapes`` returns the sync list and the bind map in ONE
+    ``CollapsedStore``, built from one set of shapes.  ⚑ The sync ARM itself is a
+    plain scope-ordered concatenation and takes NO bind map (``_collapse_synced``
+    lost that parameter when the sync-at-a-bind refusal was deleted — ruling
+    2026-08-12); the bind map is applied to a sync dest at DELIVERY, by
+    :func:`_synced_host_dest`.  Resolving a sync dest against a bind map from a
+    DIFFERENT resolve would resolve it against a mount set the collapse never
+    validated it over.  So this consumes the MAIN launch resolve rather than
+    running one of its own; see llm-docs for the measurement that forced it.
 
     This is the settings-driven synced path; the plugin descriptor's ``cred_files``
     credsync engine is descriptor-driven and runs ABOVE this on the launch path, so a

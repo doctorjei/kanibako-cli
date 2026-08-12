@@ -43,7 +43,7 @@ def is_mask(bind: CollapsedBind) -> bool:
 def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
     ...
 
-def _collapse_synced(store_shape_set: StoreShapeSet, bindings: CollapsedBindings) -> CollapsedCopies:
+def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
     ...
 
 def _collapse_mounts(store_shape_set: StoreShapeSet, home_bind: BindEntry) -> CollapsedBindings:
@@ -61,7 +61,7 @@ def _scope_masks(shape: StoreShape) -> list[str]:
 def _segments(dest: str) -> int:
     ...
 
-def _is_within(dest: str, root: str) -> bool:
+def is_within(dest: str, root: str) -> bool:
     ...
 
 def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]:
@@ -86,9 +86,6 @@ def _refuse_mask_over_home(dest: str) -> None:
     ...
 
 def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
-    ...
-
-def _refuse_sync_at_a_bind_dest(bindings: CollapsedBindings, dest: str, entry: BindEntry) -> None:
     ...
 
 def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None:

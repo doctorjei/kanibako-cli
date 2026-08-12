@@ -1464,6 +1464,29 @@ longer refreshes your synced files on the way out, and where a `synced` entry an
 credential sync write the *same* host file, the `synced` entry is applied second and wins. It used to
 be applied first and lose.
 
+**4. A synced destination that is exactly a bind's destination is now allowed, and both are
+delivered.** This one used to refuse the launch: *"Category collision at '…': a 'synced' copy and a
+'binding' mount target the same destination. A copy cannot override a live mount"*. It no longer
+does, and nothing else refuses it in its place. Consequence 1 above is the reason — the copy is
+written *through* the bind that covers it, so at the exact destination it is written into that
+bind's own host source:
+
+```
+box:
+  bindings.rw:
+    "~/notes": ["/srv/notes"]
+  synced:
+    "~/notes": ["/srv/inbox/notes"]     # -> contents copied into /srv/notes; the bind stays
+```
+
+**The mount is not replaced and the rest of the bound directory is untouched** — the copy overwrites
+what it names and nothing else. If the covering bind is read-only, or is a `masks` entry, the copy is
+still skipped with the warning consequence 2 describes; that has not changed.
+
+**⚠️ A configuration that refused to launch now launches.** If you declared this pair deliberately,
+expecting the error to stop you, it will not any more. There is no configuration that launched before
+and refuses now.
+
 **What you must do.** Nothing, unless you have a `synced` entry aimed at a destination covered by
 some bind other than home or the workspace. Check the launch warnings once: the three messages above
 name every entry that is now being skipped, and each names the bind that decided it.
@@ -1542,7 +1565,7 @@ refusals now stop the launch, by name, with the reason.** Your files did not cha
 or sync entry that you wrote. Nothing kanibako ships declares one, in any box mode, with or without
 an agent.
 
-**The seven arrangements that now refuse:**
+**The six arrangements that now refuse:**
 
 - **A binding at or above another binding's destination.** A binding may nest INSIDE another; it may
   not take another's exact destination, nor sit above one. Mount order follows the path, not the
@@ -1556,11 +1579,6 @@ an agent.
 - **A `seeded` entry with a destination outside the box home.** Seeds are copied into the home store
   before any binding folds, so a destination outside it has nowhere to land. Give it a destination
   inside home, deliver it as a binding, or declare it `synced` — which is not home-only (§2.29).
-- **A `synced` entry at a binding's exact destination.** A sync may land strictly INSIDE a binding
-  (§2.29); at its point it would replace the bound inode. ⚑ This one is not new to you: 1.7.x
-  already refused it, from the category resolver, and the only change is that the fold now states
-  it — naming the sync, the destination and the bound source instead of just the destination. There
-  is no configuration that launched before and refuses now.
 - **A binding whose options contradict its arm.** `ro` in the options of a `bindings.rw` entry, or
   `rw` in a `bindings.ro` one. The mode IS the arm — declare it in the arm that means it.
 

@@ -35,12 +35,13 @@ order below is the ruling itself — *"could we simply copy it last instead? Aft
 
 1. **the SEED pass** — every scope's `seed` arm, concatenated. It reads no binding at all.
 2. **the MOUNT fold** — the bind and mask arms, over the home foundation.
-3. **the SYNC pass** — every scope's `sync` arm, concatenated, against a bind map that is by now
-   COMPLETE and IMMUTABLE.
+3. **the SYNC pass** — every scope's `sync` arm, concatenated. It, too, reads no binding at all.
 
-⚑⚑ **Step 3 is a LOOKUP, not an arbitration.** Nothing is pruned, no mount is deleted, no copy
-competes with a mount; the sync pass only READS the map, to refuse the one case below. The
-2026-08-09d simplification is untouched.
+⚑⚑ **Step 3 touches the bind map NOT AT ALL** — ⚖️ RULED 2026-08-12, *"don't check for sync. Let it
+clobber whatever it wants."* It once took the collapsed map as a parameter, to refuse a sync at a
+bind's exact point; that refusal is gone and the parameter with it, so the two copy arms are now
+structurally identical passes. Nothing is pruned, no mount is deleted, no copy competes with a
+mount. The 2026-08-09d simplification is untouched, and step 3 is no longer even a lookup.
 
 ### The seed pass: a copy applies to the HOME bind alone
 
@@ -114,7 +115,7 @@ create-side resolve (`_install_assembly_collapse`), which has no home bind, so i
 bind map — the sync arm's dests are visible to it, but where those dests LAND is not. Delivery order
 is a fact about the create path, and it belongs there.
 
-### The sync pass: LAST, and NOT home-only
+### The sync pass: NOT home-only, and it arbitrates NOTHING
 
 ⚑ **There is deliberately no home-only rule for `synced`.** A sync dest resolves through the
 collapsed bindings to the innermost bind containing it — so a cred file inside a bound directory
@@ -125,21 +126,28 @@ and shadowed. Home is simply the pid-0 foundation among those binds. ⚑ Applyin
 🛑 **That resolution is DELIVERY and is NOT done here.** The emitted row carries the GUEST dest,
 exactly as a seed row does; the innermost-bind lookup lands at the CUTOVER's step 2.
 
-**Its one error case:** a sync dest that EXACTLY EQUALS a bind dest. A file bind's dest IS the file,
-so writing through it would replace the bound inode; strictly INSIDE a bind dest is fine and is the
-normal case. ⚑ The rule is stated STRUCTURALLY — as dest equality rather than as "a file bind" —
-because a PURE module cannot tell a file bind from a directory bind, and the probe that could is
-gone for good. Broader than the file-bind case it is aimed at, narrower than a probe, and
-**deliberately strict**: a refusal can be LOOSENED later without breaking a box that works today,
-whereas tightening one cannot.
+**It has NO error case.** ⚖️ **RULED 2026-08-12** — *"don't check for sync. Let it clobber whatever
+it wants."* Until that ruling the pass refused a sync dest that EXACTLY EQUALED a bind dest, on the
+reasoning that a file bind's dest IS the file and writing through it would replace the bound inode.
+The refusal is DELETED, and nothing replaces it.
 
-⚑ Exact equality is expressed as the dict lookup itself. Both sides are normalized dests, so no
-containment predicate is involved and none was added — `is_within` is inclusive of equality and
-would answer a different question.
+⚑ **The narrow concern was real; the blanket refusal was not his.** His worry was the file-bind
+overlap; a structural dest-equality rule was the generalisation an implementer drew from it, and
+his consistent position across four earlier exchanges was the opposite — *"sometimes we want to
+copy onto a bind"*, *"copy | bind, same, OK"*, *"copy | bind copies on top of the bind, and most of
+bind remains intact"*, *"it's ok for a synced item to apply to the exact same root as a bind, just
+like a copy can"*. At an exact-dest pair delivery resolves the sync through that very bind, so it
+writes into the bind's own host source: it clobbers CONTENT, and the mount survives.
 
-⚑ A sync at a MASK's exact point is NOT refused: `src = None` marks a mask, and the rule and its
-inode rationale are about BINDINGS. Whether such a sync is then dead is a delivery question, like
-the seed at a mask's point beside it.
+⚑ Because the arm arbitrates nothing, the mask case needs no carve-out either. A sync at a MASK's
+exact point was already accepted (a mask is the source-less entry, and the refusal returned early on
+it); now it is accepted for the same reason as everything else, rather than by a coincidence of
+implementation. Whether such a sync is then dead is a DELIVERY question — `start._synced_host_dest`
+warns and skips a dest whose cover is a mask or is read-only.
+
+🔴 **SPEC DELTA, OPEN:** `specs/settings-keyspace-1.8.0.md` §0 still states this refusal, as does
+`settings-keyspace-1.8.0-annotations.md:187`. The ruling supersedes both; the spec edit is owed and
+is not the code's to take.
 
 ## Home is pid 0
 
@@ -301,13 +309,19 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 
 * **it does not resolve a sync dest through the bind map.** That is the DELIVERY half and it lands
   at the CUTOVER's step 2; here the row carries the guest dest.
-* **it does not reproduce `_resolve_dest_group`'s `synced_vs_binding` refusal**, which the same
-  ruling RETIRED — and which is now GONE from the reconcile route (cutover 5-1b). It existed
-  because a copy could be shadowed by a live mount, and under copy-last the copy goes INTO the
-  mount's source. ⚑ The RULE survives, once, as `_refuse_sync_at_a_bind_dest` above: a sync
-  strictly INSIDE a bind resolves through it, a sync AT its point still refuses. Its stated
-  replacement was the `mount_forbidden` backlog item; the actual replacement is the ORDERING, plus
-  that exact-dest refusal — so that backlog item is answered, not pending.
+* **it does not arbitrate a sync against the bind map AT ALL** — ⚖️ RULED 2026-08-12, *"don't check
+  for sync. Let it clobber whatever it wants."* The `synced`↔`binding` refusal is GONE from BOTH
+  stages: `_resolve_dest_group`'s copy went at cutover 5-1b, and the fold's own
+  `_refuse_sync_at_a_bind_dest` went with the ruling, taking `_collapse_synced`'s `bindings`
+  parameter with it. A sync at a bind's EXACT dest is ordinary: delivery resolves it through that
+  bind into the bind's host source, so it overwrites CONTENT and *"most of bind remains intact"*.
+  ⚑ The `mount_forbidden` backlog item stays REMOVED — nothing needs replacing. ⚑ The rule was
+  once justified by the file-bind inode-replacement case; that concern is narrower than the
+  structural blanket refusal it was generalised into, and the generalisation was an implementer's,
+  not a ruling.
+  🔴 **SPEC DELTA, OPEN:** `specs/settings-keyspace-1.8.0.md` §0 still reads *"A sync dest that
+  EXACTLY EQUALS a bind dest is a config ERROR"* (annotations `:187` mirrors it). The ruling
+  supersedes that sentence and the spec edit is owed.
 * ⚑ **it does not carry the live route's "a `synced` row REPLACES every other copy at a shared
   dest"** (`settings_categories._resolve_copy_group`). Two lists leave that rule no home in the
   collapse. The reading is that it falls out of TIME and POLARITY instead — a seed lands once at
@@ -344,6 +358,7 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   it. Refused BEFORE the sweep, so a mask that cannot be accepted deletes nothing first.
 * **seed outside home** — names the source and the destination, points at the home bind, and offers
   `synced` as the category that is not home-only.
-* **sync at a bind's exact dest** — names the sync's source, the shared destination and the source
-  bound there, and points at "strictly inside" as the cure.
 * **mode contradiction** — see the fold, above.
+
+⚑ **The sync arm contributes NO refusal to this list** (ruling 2026-08-12) — it is the one arm that
+can raise nothing at all.
