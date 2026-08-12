@@ -3,9 +3,9 @@
 `KeyStore` is the recursive attribute-dict every resolved keyspace lives in: a `dict` subclass whose
 keys are also attributes, whose nested plain `dict` literals are wrapped on write, and whose
 leaves are whatever value space the caller instantiates it over. It defines the container, the
-reserved-key refusal (`ReservedKeyError`), the absent-vs-present-`None` sentinel (`_MISSING`) and
-the one segment-wise walk — **NOT** resolution, merge, cascade, `@`-ref / `$VAR` / `~` expansion,
-typed views, or any consumer of them.
+reserved-key refusal (`ReservedKeyError`) and the one segment-wise walk — **NOT** resolution, merge,
+cascade, `@`-ref / `$VAR` / `~` expansion, typed views, or any consumer of them, and **not** the
+`__MISSING__` sentinel, which is value-space and lives in `kb_store`.
 
 **Authority:** `specs/settings-keyspace-1.8.0.md` — §0 (files store UNRESOLVED; the reserved-name
 floor), §2 (the cascade), §2a (category list + value types). ⚑ **The spec is the LIVE authority;
@@ -30,9 +30,15 @@ be able to leave. **Nothing else may copy this edge** — `kb_store` spells the 
 every other module, precisely because it is NOT part of the liftable unit.
 
 The five message constants live in `keystore_strings` as `%`-format templates:
-`ERR_RESERVEDKEY_DUNDER`, `ERR_RESERVEDKEY_METHOD`, `ERR_TYPE_NONSTRING_KEY`,
+`ERR_RESERVEDKEY_DUNDER`, `ERR_RESERVEDKEY_SHADOW`, `ERR_TYPE_NONSTRING_KEY`,
 `ERR_TYPE_KEYSTORE_ARGS`, `ERR_ATTRIBUTE_NO_KEY`. The reserved-key message names the offending key
 AND renders the sorted reserved set, so it is actionable rather than merely correct.
+
+⚑ `ERR_RESERVEDKEY_SHADOW` was `ERR_RESERVEDKEY_METHOD` until the store's own public members joined
+the set. What it reports is no longer `dict` method names alone — `RESERVED_KEY_NAMES` is a constant
+and `insert_segments` is not a `dict` method — so `_METHOD` had become false OF ITS OWN CONTENTS, and `_SHADOW` states the actual reason both it and its `_DUNDER` sibling
+refuse a key. **These constant names are the join key across future per-language strings files**, so
+a rename is cheap only while this is the only such file; it was made at that moment deliberately.
 
 ## Generic over its value space
 
@@ -73,24 +79,21 @@ normally.
 holding a key named `items` must not shadow the protocol the container is built on. The reserved set
 below makes this belt-and-braces, and it stays.
 
-## `None` semantics and the `_MISSING` sentinel
+## `None` semantics — and where the sentinel LIVES
 
 A key may be **absent** (unset) or present as **`None`** (explicit reset). Present-`None` is a legal
-stored value. The absent-vs-present-`None` probe is the **BOUND** `store.get(key, _MISSING)`: it
-returns `_MISSING` iff the key is absent, `None` iff present-`None`, else the value. The bound form
-is safe precisely because `get` is a reserved key name — `store.get` is ALWAYS the inherited `dict`
-method, never a stored value. The **UNBOUND** `dict.get(store, key, _MISSING)` form remains equally
-valid and is still used by existing consumers (`settings_merge`, the typed views, `config set`); it
-was canonical before reserved names existed, and nothing needs retrofitting.
+stored value, so the two must stay distinguishable at this surface.
 
-`_MISSING` is **never stored** and is deliberately NOT a member of the value space (`kb_store`
-excludes it from `StoreValue` by construction). It is consulted by merge LOGIC elsewhere; here only
-the sentinel itself is defined, to keep it out of the value space.
+⚑ **The `__MISSING__` sentinel that distinguishes them is NOT defined here — it lives in
+`kb_store`**, beside the `StoreValue` union that deliberately excludes it. Absence is a fact about
+the VALUE space, and this module is value-space-agnostic precisely so it can leave the tree. See
+`llm-docs/kanibako/settings/kb_store.py.md`.
 
-`class _Missing` is a distinct singleton TYPE, not a bare `object()`, so it has a legible `repr`
-(`"_MISSING"`) and static type-checkers can reason about `StoreValue | _Missing` at internal call
-sites. Its `__bool__` returns `False` defensively — **test presence with `is _MISSING`, never as a
-bool.**
+What belongs to the container is why the probe is SAFE: the **BOUND** `store.get(key, __MISSING__)`
+works because `get` is a reserved key name, so `store.get` is ALWAYS the inherited `dict` method and
+never a stored value. The **UNBOUND** `dict.get(store, key, __MISSING__)` form remains equally valid
+and is still used by existing consumers (`settings_merge`, the typed views, `config set`); it was
+canonical before reserved names existed, and nothing needs retrofitting.
 
 ## Collision safety — `RESERVED_KEY_NAMES`, rejected at the SOURCE
 
@@ -103,8 +106,9 @@ Reserved means either of:
 
 * the **dunder pattern** — `name.startswith("__") and name.endswith("__")` (the Python data model's
   attribute space); or
-* a **public `dict` method name** — `KeyStore.RESERVED_KEY_NAMES`, exactly `dir(dict)`'s non-dunder
-  names (verified equal: 0 unguarded, 0 extras).
+* a **name that would shadow a real attribute on the store** — `KeyStore.RESERVED_KEY_NAMES`,
+  exactly `dir(dict)`'s non-dunder names PLUS this class's own PUBLIC members
+  (`RESERVED_KEY_NAMES`, `insert_segments`) (verified equal: 0 unguarded, 0 extras).
 
 Spec keys do not use these (env vars are UPPER_SNAKE; category and scope names are fixed words such
 as `bindings` / `box`), so the reservation costs nothing and makes the bound `store.get` safe. A
@@ -127,31 +131,43 @@ wrote.
 With reserved names forbidden, a plain `__getattr__` (which fires only on a normal-lookup MISS)
 suffices; no key shadows a real attribute and no `__getattribute__` interception is needed.
 
-## The class-member pin — EXACTLY four non-dunder members
+## The class-member invariant — unreachable by any declared key
 
-⚑ **This replaces the older "`KeyStore` defines ONLY dunder members" invariant, which the split
-retires.** The reasoning is unchanged and is the reason the pin exists at all: because `__getattr__`
-fires only on a MISS, ANY non-dunder class member resolves BEFORE a same-named stored key — a
-collision the reserved set does not cover.
+⚑ **State the exposure the right way round.** `__getattr__` fires on a lookup **MISS ONLY**, so a
+class member **ALWAYS wins**. A key spelled like a member does NOT break the member; the key becomes
+silently **UNREADABLE** through attribute access — `store[name]` still returns it, `store.name` hands
+back the member. The failure is a wrong answer with no error, which is why it needs a pin at all.
 
-The split moves four members onto the class ON PURPOSE:
+This was not hypothetical. With the members spelled as ordinary public names,
+`store["insert_segments"] = "X"` was ACCEPTED and `store.insert_segments` handed back the bound
+METHOD.
 
-| member | what it is |
-|---|---|
-| `RESERVED_KEY_NAMES` | the public reserved set (above) |
-| `insert_segments` | the walk, promoted from module function to method |
-| `_KeyStore__check_key_name` | name-mangled static validator |
-| `_KeyStore__wrap` | name-mangled static wrapper |
+**THE INVARIANT: every class member is a DUNDER, or NAME-MANGLED (`_KeyStore__*`), or LISTED in
+`RESERVED_KEY_NAMES`.** Each route makes the member unreachable by a declared key — a dunder key is
+refused at write time, no key is spelled `_KeyStore__*`, and a listed name is refused too.
 
-None of the four is a declared key or could be one, so the guard becomes an EXACT pin rather than an
-empty one: `test_keystore_class_members_are_exactly_the_declared_four` asserts the set, and a FIFTH
-member — the unreviewed kind, which is how a real key gets shadowed — reddens it. **Do not add a
-non-dunder member without deciding that question first.**
+| member | what it is | why a key cannot reach it |
+|---|---|---|
+| `RESERVED_KEY_NAMES` | the public reserved set (above) | **self-LISTED** in the set |
+| `insert_segments` | the walk, promoted from module function to method | **self-LISTED** in the set |
+| `_KeyStore__check_key_name` | static validator | name-mangled (private) |
+| `_KeyStore__wrap` | static wrapper | name-mangled (private) |
+
+⚑ **The split is PUBLIC vs PRIVATE, and it is the PEP 8 point.** A dunder name is the data model's
+namespace and is not ours to mint, so neither route uses one. The two validators are implementation
+details: they take the leading-double-underscore private spelling and Python mangles them to
+`_KeyStore__*`, which no declared key is spelled as. The two public members cannot be mangled —
+callers outside the class name them — so they take the only remaining route and NAME THEMSELVES in
+the reserved set, which refuses the colliding key at write time.
+
+The pin is `test_every_non_dunder_class_member_is_mangled_or_reserved`. **It asserts the RULE, not
+an inventory** — a new PRIVATE helper passes with no test edit, while a new PUBLIC member fails until
+someone decides to add it to the reserved set. That is the decision the pin exists to force.
 
 The two validators are private static methods, not module functions:
 
 * `__check_key_name(key)` — returns the key unchanged, or raises. Rejects a non-`str` key with
-  `TypeError`, a dunder-pattern name and a `dict` method name with `ReservedKeyError`.
+  `TypeError`, and a dunder-pattern name or any `RESERVED_KEY_NAMES` entry with `ReservedKeyError`.
 * `__wrap(value)` — coerces a raw value into the stored space. A plain `dict` becomes a `KeyStore`
   node recursively; an existing `KeyStore` passes through; everything else — binds, scalars, lists,
   `None` — is stored verbatim. A `list` is NOT descended into: the value space admits only scalar
@@ -180,7 +196,8 @@ shatters into extra tree levels, and two dests whose shattered paths nest (`~/.c
 `~/.claude.json`) silently overwrite one another.
 
 ⚑ **It was a module-level function `insert_segments(store, segments, value)` and is now a method.**
-The call is `store.insert_segments(...)`; there is no free function of that name.
+The call is `store.insert_segments(...)`; there is no free function of that name. Being PUBLIC, the
+name is self-listed in `RESERVED_KEY_NAMES`, so `insert_segments` is NOT a storable key.
 
 ### `insert_dotted` is RETIRED
 

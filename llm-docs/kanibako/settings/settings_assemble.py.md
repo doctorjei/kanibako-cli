@@ -23,10 +23,10 @@ Provenance: block 2a of the KeyStore implementation.
 * **Spec `settings-keyspace-1.8.0.md` §2 — the cascade, PRIMARY authority.** The 6-level bracket
   `base < system < agent.default < agent.<active> < workset < box`, reversed here to high→low
   precedence. `agent.default` is an EXPLICIT level and both agent layers reuse the same linear
-  `_MISSING` precedence (no nested mini-cascade) — the LEVEL ORDER *is* the precedence.
+  `__MISSING__` precedence (no nested mini-cascade) — the LEVEL ORDER *is* the precedence.
   ⚑ §2 also records that `agent.default` "is NOT an authority tier of its own — it is the agent
   tier's FALLBACK"; writing it as a linear level is the IMPLEMENTATION choice this module makes,
-  and it is equivalent because `_MISSING` is tested per entry key.
+  and it is equivalent because `__MISSING__` is tested per entry key.
 * **Spec §2d** — the ONLY two agent key forms are `agent.default.<key>` and `agent.<agent>.<key>`
   (a concrete agent name); §0 forbids a bare `agent.<key>`.
 * **Spec §2** (cascade + scopes) / **§2a** (categories + value types) / **§0** (namespace ORTHOGONAL
