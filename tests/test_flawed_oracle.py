@@ -1268,15 +1268,12 @@ class TestCoreDefaultCategories:
         binds = core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
         )
-        # home: rw bind at /home/agent, options Z,U (the entry's 2nd slot).
-        # The home host_src is the MODE-INDEPENDENT @meta.box.home REF (spec `:978`,
-        # the RO DERIVED key), resolved at launch-expand to str(proj.shell_path) —
-        # the key is itself @meta.box.path/home, so the per-mode variation lives in
-        # meta.box.path, not here and not in this row.
-        assert binds["box.bindings.rw"]["/home/agent"] == (
-            "@meta.box.home",
-            "Z,U",
-        )
+        # 🛑 HOME IS NOT HERE, AND THAT IS THE ASSERTION. Cutover 6-H deleted the
+        # `key: home` row: home does NOT route through bindings.rw (spec `:1015`), it
+        # is pid 0 and the assembly seam builds it from the RO DERIVED @meta.box.home.
+        # A row producing an entry at /home/agent would be a SECOND bind at the
+        # foundation's point, which the collapse refuses by name.
+        assert "/home/agent" not in binds["box.bindings.rw"]
         # workspace: rw bind at /home/agent/workspace, options Z,U.  B2: the host_src
         # is the @meta.box.workspace REF (routed through the materialized identity
         # anchor, spec §2c L476); it resolves to str(proj.project_path) at expand.
@@ -1292,14 +1289,17 @@ class TestCoreDefaultCategories:
                 assert ":" not in dest
 
     def test_home_is_mode_independent_and_vault_roots_at_workset(self, tmp_path):
-        """The home DECLARATION is one line for every mode; vault roots at @workset.*.
+        """No home row in ANY mode; vault roots at @workset.* in all of them.
 
-        Spec §2c ALL PROJECTS gives ``box.bindings.rw.home`` a single mode-independent
-        form, so STANDALONE emits the SAME tuple as primary/named — the per-mode
-        variation moved up into ``meta.box.path``.  The vault bind stays per-mode (a
-        lone box has no per-box ``/@meta.box.name`` subdir) but BOTH arms now root at
-        the SAME ``@workset.vault_*`` anchor; the standalone arm used to carry a
-        SECOND spelling of that root (``@meta.workset.path/vault/*``).
+        🛑 INVERTED AT CUTOVER 6-H. This used to assert that ``box.bindings.rw``'s home
+        entry was one mode-independent line — the A9 form. Home has left the arm
+        entirely (spec ``:1015``), so mode-independence is no longer a property of a
+        declaration to check: it is a property of ``meta.box.path``, and the seam reads
+        one key in every mode. What remains checkable here is that NO mode grew a home
+        row back.  The vault bind stays per-mode (a lone box has no per-box
+        ``/@meta.box.name`` subdir) but BOTH arms now root at the SAME
+        ``@workset.vault_*`` anchor; the standalone arm used to carry a SECOND spelling
+        of that root (``@meta.workset.path/vault/*``).
         """
         from kanibako.settings import core_defaults
 
@@ -1310,14 +1310,8 @@ class TestCoreDefaultCategories:
         primary = core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
         )
-        assert binds["box.bindings.rw"]["/home/agent"] == (
-            "@meta.box.home", "Z,U",
-        )
-        # ONE declaration: byte-equal to the primary arm — and now that the dest is
-        # the KEY, "byte-equal" covers the destination as well as the value.
-        assert binds["box.bindings.rw"]["/home/agent"] == (
-            primary["box.bindings.rw"]["/home/agent"]
-        )
+        assert "/home/agent" not in binds["box.bindings.rw"]
+        assert "/home/agent" not in primary["box.bindings.rw"]
         assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
             "@workset.vault_ro", "ro",
         )
@@ -1361,10 +1355,10 @@ class TestCoreDefaultCategories:
         # only core entry in the ``ro`` arm, a disabled vault drops the whole arm.
         assert "box.bindings.ro" not in binds
         assert "/home/agent/vault/rw" not in binds["box.bindings.rw"]
-        # home + workspace stay unconditional, and are ALL that remains.
-        assert set(binds["box.bindings.rw"]) == {
-            "/home/agent", "/home/agent/workspace",
-        }
+        # workspace stays unconditional, and is ALL that remains — home LEFT the arm
+        # at cutover 6-H (it is pid 0, built at the seam), so the core rw arm is a
+        # single entry with the vault off.
+        assert set(binds["box.bindings.rw"]) == {"/home/agent/workspace"}
 
     def test_vault_emitted_and_source_created_when_missing(self, tmp_path):
         """Vault is UNIVERSAL unless disabled: a missing source is CREATED and the
@@ -1395,7 +1389,8 @@ class TestCoreDefaultCategories:
         # still keys off the PROBED proj vault source, independent of the @-ref.
         assert proj.vault_ro_path.is_dir()
         assert proj.vault_rw_path.is_dir()
-        assert "/home/agent" in binds["box.bindings.rw"]
+        # ⚑ HOME IS NOT AMONG THEM (6-H) — the core arm is workspace + vault only.
+        assert "/home/agent" not in binds["box.bindings.rw"]
         assert "/home/agent/workspace" in binds["box.bindings.rw"]
 
     def test_options_flow_through_resolver_to_entry(self, tmp_path):
@@ -1419,17 +1414,17 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         ))
         ctx = make_ctx()
-        # workspace routes through @meta.box.workspace; home through the RO DERIVED
-        # key @meta.box.home, which is ITSELF the box root formula
-        # @meta.box.path/home; vault through @workset.vault_*/@meta.box.name
-        # (PRIMARY).  Provide the materialized anchors (as the launch floor does) so
-        # the refs resolve.  Each anchor carries its @-REF FORMULA, not a resolved
-        # literal, so this stays sensitive to a wrong formula: the oracle resolves
-        # @-refs TRANSITIVELY, exactly as the launch expand does — home is now a
-        # THREE-hop walk (@meta.box.home -> @meta.box.path/home -> @workset.boxes/
-        # @meta.box.name).  The keys must be LISTED, though — this dict IS the whole
+        # workspace routes through @meta.box.workspace; vault through
+        # @workset.vault_*/@meta.box.name (PRIMARY).  Provide the materialized anchors
+        # (as the launch floor does) so the refs resolve.  Each anchor carries its
+        # @-REF FORMULA, not a resolved literal, so this stays sensitive to a wrong
+        # formula: the oracle resolves @-refs TRANSITIVELY, exactly as the launch
+        # expand does.  The keys must be LISTED, though — this dict IS the whole
         # keyspace for the oracle, so an omitted key is simply an unknown
         # @-reference.
+        # ⚑ ``meta.box.home`` is still declared here and is deliberately NOT walked by
+        # any entry: since 6-H nothing in the core arm points at it, and its presence
+        # is what makes that observable rather than merely untested.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
@@ -1444,15 +1439,21 @@ class TestCoreDefaultCategories:
         ]
         entries = _resolve(levels, ctx)
         by_dest = {e.box_dest: e for e in entries}
-        assert by_dest["/home/agent"].options == "Z,U"
-        assert by_dest["/home/agent"].category == "bindings.rw"
+        assert "/home/agent" not in by_dest
         assert by_dest["/home/agent/workspace"].options == "Z,U"
         assert by_dest["/home/agent/vault/ro"].options == "ro"
         assert by_dest["/home/agent/vault/ro"].category == "bindings.ro"
         assert by_dest["/home/agent/vault/rw"].options == "Z,U"
 
-    def test_home_and_workspace_depth_order_keeps_both(self, tmp_path):
-        """reconcile depth-sort keeps BOTH the nested home + workspace binds.
+    def test_workspace_and_a_nested_bind_depth_order_keeps_both(self, tmp_path):
+        """reconcile depth-sort keeps BOTH of two NESTED binds, shallowest first.
+
+        🛑 RE-COMPOSED AT CUTOVER 6-H, claim unchanged. The nesting pair used to be
+        the shipped home + workspace rows; home has left ``bindings.rw`` (spec
+        ``:1015``) and the core arm no longer contains a pair that nests, so the outer
+        member is DECLARED here instead of borrowed. Declaring one at ``/home/agent``
+        would model an arrangement the collapse now refuses, which is why the pair is
+        workspace and something inside it.
 
         ⚑ Adapted at the boundary (see :func:`_as_frozen_name_keyed`): the depth
         sort under test is ``reconcile_categories``' and keys on the RESOLVED
@@ -1464,13 +1465,15 @@ class TestCoreDefaultCategories:
         defaults = _as_frozen_name_keyed(core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
         ))
+        # The INNER member, in the same frozen name-keyed shape the adapter emits.
+        defaults["box.bindings.rw.nested"] = (
+            str(proj.project_path), "/home/agent/workspace/sub", "Z,U",
+        )
         ctx = make_ctx()
-        # workspace via @meta.box.workspace; home via the RO DERIVED key
-        # @meta.box.home (itself the box-root formula @meta.box.path/home); vault
-        # via @workset.vault_*/@meta.box.name (PRIMARY).  Each anchor carries its
-        # @-REF FORMULA (the oracle resolves @-refs transitively), so a wrong
-        # formula would show up here; every key it walks must be LISTED, since this
-        # dict IS the oracle's whole keyspace.
+        # workspace via @meta.box.workspace; vault via @workset.vault_*/@meta.box.name
+        # (PRIMARY).  Each anchor carries its @-REF FORMULA (the oracle resolves
+        # @-refs transitively), so a wrong formula would show up here; every key it
+        # walks must be LISTED, since this dict IS the oracle's whole keyspace.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
@@ -1485,7 +1488,9 @@ class TestCoreDefaultCategories:
         ]
         rec = _reconcile(levels, ctx)
         dests = [m.box_dest for m in rec.mounts]
-        # Both kept; home (shallower) emitted before workspace (deeper).
-        assert "/home/agent" in dests
+        # Both kept; workspace (shallower) emitted before what nests inside it.
         assert "/home/agent/workspace" in dests
-        assert dests.index("/home/agent") < dests.index("/home/agent/workspace")
+        assert "/home/agent/workspace/sub" in dests
+        assert dests.index("/home/agent/workspace") < dests.index(
+            "/home/agent/workspace/sub"
+        )

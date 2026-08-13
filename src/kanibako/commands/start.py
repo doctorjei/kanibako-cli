@@ -3799,8 +3799,8 @@ def _run_container(
         # after the emit above.  Four consequences, all deliberate:
         #   * it reads THIS resolve — the same one the bind map came from — instead of
         #     running a narrow resolve of its own.  That second resolve carried no
-        #     base families, hence no home bind, hence no `meta.assembly.synced` at
-        #     all; a sync also has to be resolved against the mount set the collapse
+        #     base families, so it is not a box, so it writes no `meta.assembly.synced`
+        #     at all; a sync also has to be resolved against the mount set the collapse
         #     validated it over, and there is only one of those.
         #   * every parameter is REQUIRED, so leaving this call where it used to sit
         #     (beside the create-time seed, ~180 lines up) cannot even name its
@@ -6796,14 +6796,28 @@ _ASSEMBLY_SEEDED: "tuple[str, ...]" = ("meta", "assembly", "seeded")
 _ASSEMBLY_SYNCED: "tuple[str, ...]" = ("meta", "assembly", "synced")
 
 
+#: The pid-0 FOUNDATION's mount options — SEAM MACHINERY, not part of any key
+#: (spec ``:1015``). Home does not route through ``bindings.rw``, so this string is
+#: never folded by ``store_collapse._merge_bindings``: it reaches the box BARE, with
+#: no ``rw`` arm token appended, which is exactly what distinguishes the foundation
+#: from every bind that folds over it.
+_HOME_OPTIONS: "str" = "Z,U"
+
+
 def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     """Store the collapse at ``meta.assembly.*``, each leaf on ITS OWN gate — see llm-docs.
 
     *whole_box* is the resolve's own ``include_base_families``, forwarded rather than
-    re-derived: a resolve that carries the base families is describing A BOX, and a box
-    without exactly one home binding is not a box (cutover 2c). A NARROW resolve carries
-    no core family, has no home bind by construction, and asks only for the seed arm —
-    so it keeps the early return.
+    re-derived: a resolve that carries the base families is describing A BOX, and only a
+    box has a foundation to fold over. A NARROW resolve describes an injected table, not
+    a box, and asks only for the seed arm — so it keeps the early return.
+
+    🛑 THE GATE IS *whole_box*, NEVER "did ``meta.box.home`` resolve". The key is
+    materialised by ``settings_launch.workset_anchor_floor``, which the launch builds
+    UNCONDITIONALLY, so it resolves on a narrow resolve too — gating on the value would
+    write all three leaves for the image and helper tables. It also closes what the old
+    entry-list gate left open: a USER home row on a narrow resolve made a home bind
+    appear and ran the whole fold over a narrow snapshot.
 
     ⚑ NOTHING IS SWALLOWED HERE ANY MORE. Until step 2c a ``SettingsError`` from the
     fold was logged at ``debug`` and the leaves left absent, so a refusal reached
@@ -6817,16 +6831,18 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
 
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
+    from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.store_collapse import collapse_seeded, collapse_store_shapes
     from kanibako.settings.store_shape import build_store_shape_set
 
-    if whole_box:
-        _refuse_without_one_home(entries)
-    home_bind, folded = _split_home_bind(entries)
+    # ⚑ THE WHOLE (GATED) LIST. Nothing is lifted out any more: home left
+    # ``bindings.rw`` at cutover 6-H, so no entry in here can be the foundation. A
+    # declaration that DOES land at home is a user's second bind at pid 0, and the
+    # COLLAPSE refuses it by name against the foundation seeded below.
     # The SEED leaf is gated on NOTHING but its own arm (2b-1): home is pid 0 and
-    # is seeded before any bind folds, so a resolve with no home bind — every
-    # narrow one, including the CREATE-side seed resolve — still has a seed list.
-    shapes = build_store_shape_set(folded)
+    # is seeded before any bind folds, so a NARROW resolve — including the
+    # CREATE-side seed resolve — still has a seed list.
+    shapes = build_store_shape_set(entries)
     # The PRODUCER's own same-scope ambiguities (§0 row 5), handed to the ONE emission
     # seam. Wired at cutover 5-0 ALONGSIDE the reconcile's feed; 5-1c deleted that one,
     # so this is now the SOLE producer of a ``CategoryCollision`` on any path. It sits
@@ -6848,11 +6864,18 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # precedes that refusal.
     emit_collision_warnings(shapes.warnings)
     snapshot.insert_segments(_ASSEMBLY_SEEDED, collapse_seeded(shapes))
-    # The other two DESCRIBE AN ASSEMBLY, so the fact that belongs to one gates them:
-    # a home to build on. Above, a whole-box resolve has already REFUSED if it lacks
-    # that; what reaches this return is a narrow resolve, and only ever that.
-    if home_bind is None:
+    # The other two DESCRIBE AN ASSEMBLY, and only a whole-box resolve describes one.
+    # ⚑ THE ASYMMETRY IS DELIBERATE AND PINNED: the seed leaf is written ABOVE this
+    # return, the bindings and sync leaves below it.
+    if not whole_box:
         return
+    # THE pid-0 FOUNDATION, built HERE. Home does not route through ``bindings.rw``
+    # (spec ``:1015``): the seam reads the RO DERIVED key and pairs it with the seam's
+    # own options, and the collapse seeds it beneath every scope's shape.
+    # 🛑 READ THE KEY — never re-derive from ``proj.shell_path`` and never re-inline
+    # ``@meta.box.path/home``. ``settings_launch.workset_anchor_floor`` is the ONE
+    # spelling of that derivation; a second one here is what A9 removed.
+    home_bind = BindEntry(_snapshot_home(snapshot), _HOME_OPTIONS)
     # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation over
     # the SAME shapes, so it cannot differ. One implementation beats one saved
     # traversal.
@@ -6861,69 +6884,30 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     snapshot.insert_segments(_ASSEMBLY_SYNCED, collapsed.synced)
 
 
-def _home_bind_entries(entries) -> list:
-    """The MOUNT entries landing AT the box home — the collapse's pid-0 candidates.
+def _snapshot_home(snapshot) -> str:
+    """The box home HOST path off *snapshot* — the pid-0 foundation bind's source.
 
-    ⚑ ONE predicate, TWO askers (:func:`_split_home_bind` takes the home,
-    :func:`_refuse_without_one_home` counts it), so the fold and the refusal cannot
-    disagree about what "a home binding" is.
+    🛑 NOT A SECOND ONE-HOME RULE. The three functions that used to live here
+    (``_home_bind_entries`` · ``_refuse_without_one_home`` · ``_split_home_bind``)
+    are gone with the ``bindings.rw`` home row at cutover 6-H, and neither failure
+    they covered survives as a reachable state: ZERO homes is unconstructible (the
+    key is floor-produced and ``settings_launch._assert_box_root_resolved`` refuses a
+    box root that did not resolve), and TWO is the COLLAPSE's ``_refuse_bind_over_bind``
+    against the foundation seeded beneath it. What is left here is the TYPE the
+    snapshot cannot carry: a resolved leaf is ``object``, and a non-string one would
+    otherwise reach podman as a mount source.
     """
-    from kanibako.settings.settings_categories import MOUNT
-    from kanibako.settings.settings_resolve import normalize_bind_dest
-    from kanibako.settings.store_collapse import HOME_DEST
-
-    return [
-        entry for entry in entries
-        if entry.delivery == MOUNT
-        and entry.host_src is not None
-        and normalize_bind_dest(entry.box_dest) == HOME_DEST
-    ]
-
-
-def _refuse_without_one_home(entries) -> None:
-    """A box is assembled over EXACTLY ONE home binding — nothing may subsume pid 0.
-
-    ⚑ ONE guard for BOTH failures, because they are ONE spec violation: home is the
-    base plate, seeded before any bind folds, so zero home bindings leaves the box
-    nothing to build on and two leave it ambiguous. Suppressing the core home row is
-    spec-invalid by construction (there is already a binding there), and so is
-    declaring a second one.
-    """
+    from kanibako.settings.settings_launch import BOX_HOME_KEY, snapshot_leaf
     from kanibako.settings.settings_resolve import SettingsError
-    from kanibako.settings.store_collapse import HOME_DEST
 
-    at_home = _home_bind_entries(entries)
-    if len(at_home) == 1:
-        return
-    if not at_home:
-        raise SettingsError(
-            f"this box has no binding at its home destination {HOME_DEST!r}. Home is "
-            f"the foundation every other binding folds over, so a box cannot be "
-            f"assembled without it. It is bound by default; a settings file that "
-            f"suppresses that key (a null at the home destination) takes the box's "
-            f"floor away. Remove the suppression, or bind a source of your own there."
-        )
-    named = ", ".join(f"{e.key!r} ({e.host_src!r})" for e in at_home)
+    value = snapshot_leaf(snapshot, BOX_HOME_KEY)
+    if isinstance(value, str) and value:
+        return value
     raise SettingsError(
-        f"{len(at_home)} bindings target the box home destination {HOME_DEST!r}: "
-        f"{named}. Home is bound exactly once — it is the foundation the rest of the "
-        f"mount set folds over, and two claims on it leave no way to say which box "
-        f"the other bindings are inside. Keep the one you want and SUPPRESS the "
-        f"other: set the unwanted key to null in the settings file for its scope."
-    )
-
-
-def _split_home_bind(entries):
-    """Lift the ONE home mount out of *entries* — home is pid 0 and folds alone (§2a)."""
-    from kanibako.settings.kb_store import BindEntry
-
-    at_home = _home_bind_entries(entries)
-    if len(at_home) != 1:
-        return None, entries  # No box home to build on ⇒ nothing to assemble.
-    home = at_home[0]
-    return (
-        BindEntry(home.host_src, home.options),
-        [entry for entry in entries if entry is not home],
+        f"the resolved settings carry no usable {BOX_HOME_KEY!r} (got {value!r}). "
+        f"It is the box home SOURCE — the foundation every other binding folds over "
+        f"— and it is derived from the box root, so the cause is upstream of the "
+        f"mount set: check 'workset.boxes' in the settings file for this box's scope."
     )
 
 
@@ -7010,9 +6994,10 @@ def _launch_bind_map(snapshot) -> "dict[str, object]":
     """The launch's bind map — THE COLLAPSE, and nothing else (cutover 2c).
 
     ⚑ TOTAL on both of its callers BY CONSTRUCTION, not by luck: each resolves with
-    the base families on, and such a resolve either wrote this leaf or REFUSED by name
-    (:func:`_refuse_without_one_home`, plus the fold's own seven refusals, which no
-    longer reach a swallow). The narrow resolves never arrive here at all — they read
+    the base families on, and a whole-box resolve either wrote this leaf or REFUSED by
+    name (the fold's own refusals, which no longer reach a swallow). The gate is
+    ``whole_box`` itself, so there is no configuration that reaches a whole-box resolve
+    and skips the leaf. The narrow resolves never arrive here at all — they read
     :func:`_narrow_bind_map` off their own reconciled rows.
 
     ⚑ The reconciled fallback this used to carry came out with that swallow. It
@@ -7337,9 +7322,9 @@ def _snapshot_assembly_bindings(snapshot: "KeyStore") -> "dict[str, object] | No
     """The collapsed bind map at ``meta.assembly.bindings``, or ``None`` if absent.
 
     ⚑ ABSENT is a real state and it means ONE thing since cutover 2c: a NARROW resolve,
-    which carries no core family, has no home bind to build on, and asks only for the
-    seed arm. It no longer means "the fold refused" — a refusal RAISES — and a
-    whole-box resolve with no single home bind is refused by name before it gets here.
+    which describes an injected table rather than a box and asks only for the seed arm.
+    It no longer means "the fold refused" — a refusal RAISES — and since 6-H the gate is
+    ``whole_box`` itself, so a whole-box resolve always writes this leaf or raises.
     ⚑ A narrow resolve leaves ``meta.assembly.seeded`` written all the same (2b-1),
     which is why this walks to the ``bindings`` leaf and never tests the subtree.
     COPIED OUT of the snapshot — the caller gets its own map, never the live node.
@@ -7357,7 +7342,7 @@ def _snapshot_assembly_seeded(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
 
     ⚑ ABSENT and EMPTY are DIFFERENT ANSWERS here, which is the whole reason this
     returns an option rather than a list.  The leaf is written whenever the seed arm
-    folds — including for a narrow resolve with no home bind and no seeds at all
+    folds — including for a narrow resolve, which has no foundation and no seeds at all
     (2b-1) — so ``[]`` means *this box seeds nothing* and must never be read as a hole.
     ⚑ Since cutover 2c ``None`` no longer means *the collapse REFUSED* (a refusal
     raises); it means *this snapshot was never resolved*, and the consumer refuses it.

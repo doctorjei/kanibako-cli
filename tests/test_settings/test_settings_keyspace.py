@@ -721,16 +721,20 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
 
 
 # ---------------------------------------------------------------------------
-# The UNPRODUCED meta.box leaves — spec §2c; `home` is A9, ratified 2026-08-08a
+# The UNPRODUCED meta.box leaves — spec §2c
 # ---------------------------------------------------------------------------
 
-#: The three ``meta.box`` leaves the manifest and the spec declared while the
-#: code refused them (fixed 2026-08-08g). None is produced: ``home``'s
-#: ``@meta.box.path`` derivation is still OWED (``core-defaults`` spells the
-#: literal inline), ``container_name`` renders in ``utils.container_name_for``
-#: off ``proj`` attrs rather than the store, and ``helper_num`` travels as a
-#: structured field in helper messages. Declaring them is the whole change.
-UNPRODUCED_BOX_LEAVES = ("home", "container_name", "helper_num")
+#: The ``meta.box`` leaves the manifest and the spec declare while NOTHING writes
+#: them: ``container_name`` renders in ``utils.container_name_for`` off ``proj``
+#: attrs rather than the store, and ``helper_num`` travels as a structured field in
+#: helper messages.
+#: ⚑ ``home`` WAS HERE AND IS NOT ANY MORE. It IS produced —
+#: ``settings_launch.workset_anchor_floor`` writes it beside the ``@meta.box.path``
+#: it derives from (A9, ``b6ad780``) — and since cutover 6-H it is the only route to
+#: the box home there is: the ``core-defaults`` row that used to bind home is gone,
+#: and the assembly seam reads this key. Declared-but-unproduced is what this tuple
+#: is for, and home no longer qualifies.
+UNPRODUCED_BOX_LEAVES = ("container_name", "helper_num")
 
 
 def test_the_meta_box_declaration_matches_the_manifest():
@@ -752,7 +756,7 @@ def test_an_unproduced_box_leaf_is_indistinguishable_from_a_produced_sibling(lea
     """Sibling-equality again, against ``meta.box.path`` — which IS produced.
 
     ``meta.box.path`` is written by ``settings_launch.workset_anchor_floor``; these
-    three are written by nothing. That difference must not reach the read surface,
+    are written by nothing. That difference must not reach the read surface,
     and today it cannot: ``is_known_key`` gates on the SETTABLE set and every
     ``meta.*`` key is ``set: never``, so ``system get`` answers "unknown config key"
     for the produced anchor and for these alike (verified at the CLI). The case goes

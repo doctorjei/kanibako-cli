@@ -127,48 +127,26 @@ channels:
 #   * STATIC  — the box-side destinations + per-entry `options` + the structural
 #     shape (which keys exist, their category).  Pure literals; they belong here.
 #   * DYNAMIC — the host SOURCES are runtime-PROBED from `ProjectPaths`
-#     (`proj.shell_path` → home, `proj.project_path` → workspace,
-#     `proj.vault_ro_path`/`proj.vault_rw_path` → vault); the loader injects each
-#     probed source into its keyed entry (the file names it SYMBOLICALLY via
-#     `source:`).
+#     (`proj.project_path` → workspace, `proj.vault_ro_path`/`proj.vault_rw_path`
+#     → vault); the loader injects each probed source into its keyed entry (the
+#     file names it SYMBOLICALLY via `source:`).
 #   * CONDITIONAL gating stays at the injection site, NOT here: the vault binds
 #     are UNIVERSAL unless explicitly disabled — emitted whenever vault is
 #     enabled, with the vault source dir CREATED IF MISSING so the bind is always
 #     present (rather than silently dropped when the source happens to be absent).
 #     Only a disabled vault omits them — see
-#     `core_defaults.core_default_categories`.  home + workspace are
-#     UNCONDITIONAL (every box mode).
+#     `core_defaults.core_default_categories`.  workspace is UNCONDITIONAL (every
+#     box mode).
+#
+# ⚑⚑ THERE IS NO `home` ROW HERE, AND ONE MUST NOT BE ADDED.  The box home does NOT
+# route through `bindings.rw` (spec `:1015`, amendment 2026-08-08a / A9): it is pid
+# 0, the FOUNDATION the whole mount set folds over, and it is constructed at the
+# assembly seam (`commands/start.py._install_assembly_collapse`) from the RO DERIVED
+# key `meta.box.home` — the ONE spelling of the box-home source, declared in
+# `settings_launch.workset_anchor_floor`.  Its mount options are SEAM MACHINERY and
+# live with the seam, not in any key.  A row here would be a SECOND bind at home,
+# which the collapse refuses by name.
 core:
-  # Persistent agent home — host shell_path bound rw at ~ (/home/agent).  ``~``
-  # (not ``~/``) so the dest is exactly ``/home/agent`` — no trailing slash, byte-
-  # identical to the old hardwired ``{shell_path}:/home/agent:Z,U`` bind.
-  #
-  # Routed through the RO DERIVED key `@meta.box.home` (spec `:978`, amendment
-  # 2026-08-08a / A9) — ONE declaration for EVERY mode.  The key IS the box-home
-  # SOURCE (`meta.box.home | @meta.box.path/home`,
-  # `settings_launch.workset_anchor_floor`), so the derivation is spelled ONCE, in
-  # the keyspace, and this row only NAMES it.  It used to spell
-  # `@meta.box.path/home` inline as well — two spellings of one derivation, held
-  # equal by a drift-guard test; the key is the single source and the guard is
-  # gone with the duplicate.  The per-mode variation still lives in
-  # `meta.box.path` and nowhere downstream, which is the whole point of the
-  # anchor, and this resolves to the SAME literal `proj.shell_path` produces in
-  # every mode (byte-identical — gated by a launch-path before/after comparison of
-  # the resolved mount).  `source: shell_path` is kept as the documentary symbolic
-  # name.
-  #
-  # ⚑ STILL A `bindings.rw` ROW, DELIBERATELY.  The spec's END state takes home OUT
-  # of `bindings.rw` entirely and seeds it into the collapse as the pid-0
-  # FOUNDATION bind (amendment 2026-08-08a); that move is the CUTOVER's, together
-  # with `core_defaults.add_bind`'s home arm and these `options` becoming the
-  # seam's.  This row is what binds a box's home on every launch until then.
-  - key: home
-    category: bindings.rw
-    source: shell_path
-    meta_ref: "@meta.box.home"
-    box_dest: "~"
-    options: "Z,U"
-    scope: system
   # Project workspace — bound rw at ~/workspace.  B2: routed through
   # @meta.box.workspace (spec §2c) — the host_src is the @meta.* REF, which
   # `expand` resolves to the SAME materialized workspace source (= str(proj.

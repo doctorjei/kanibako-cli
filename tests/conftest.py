@@ -632,24 +632,20 @@ def start_mocks():
                         _floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
                     _state = dict(_agent_cfg.state)
-                # ⚑⚑ THE ONE CORE ROW THIS STUB CARRIES — the box HOME bind, and it
-                # is a PRECONDITION of the collapse, not a convenience.  Home is pid
-                # 0: ``_split_home_bind`` lifts the single mount at ``~`` out as the
-                # foundation, and with no such mount the collapse EARLY-RETURNS and
-                # writes no ``meta.assembly.bindings`` at all.  This stub
-                # reimplements the base-families branch and would otherwise omit
-                # every core family, so every launch driven through it would take
-                # the reconciled route rather than the collapsed one — i.e. would
-                # test the route the cutover is deleting.
-                # 🛑 The terminal arm key is ``box.bindings.rw``; a deeper
-                # ``box.bindings.rw.home`` is REFUSED BY NAME (``_insert_dotted``) —
-                # the dest is the map KEY, the entry name was dropped.
-                # 🛑 The src is the LITERAL path, not ``@meta.box.home``: this stub
-                # passes no ``meta_runtime``/``workset_anchor``, so an @-ref would
-                # not resolve.  ``proj.shell_path`` is a REAL mkdir'd dir above, so
-                # the L7 guarantee-create has nothing to do.
+                # ⚑⚑ THE ONE CORE FACT THIS STUB CARRIES — the box HOME SOURCE, and
+                # it is a PRECONDITION of the collapse, not a convenience.  Home is
+                # pid 0 and does NOT route through ``bindings.rw`` (spec ``:1015``):
+                # the assembly seam READS ``meta.box.home`` to build the foundation
+                # bind, so a snapshot without it cannot be assembled at all.  This
+                # stub reimplements the base-families branch and would otherwise omit
+                # every core family, so every launch driven through it would fail the
+                # collapse rather than exercise it.
+                # 🛑 The value is the LITERAL path, not the ``@meta.box.path/home``
+                # formula: this stub passes no ``meta_runtime``/``workset_anchor``, so
+                # an @-ref would not resolve.  ``proj.shell_path`` is a REAL mkdir'd
+                # dir above, so the L7 guarantee-create has nothing to do.
                 _default_cats: dict[str, object] = {
-                    "box.bindings.rw": {"~": (str(proj.shell_path), "Z,U")},
+                    "meta.box.home": str(proj.shell_path),
                 }
                 # SECRET category (spec §2a secret_path): fold the active agent's
                 # secret_path pointers into the snapshot as agent-scope category

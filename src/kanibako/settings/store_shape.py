@@ -104,7 +104,15 @@ def build_store_shape_set(entries: list[CategoryEntry]) -> StoreShapeSet:
 def build_store_shape(
   entries: list[CategoryEntry],
 ) -> tuple[StoreShape, list[CategoryCollision]]:
-  """Fold ONE scope's entries into its :class:`StoreShape` + its §0 row-5 warnings."""
+  """Fold ONE scope's entries into its :class:`StoreShape` + its §0 row-5 warnings.
+
+  🛑 A ROW AT THE BOX HOME IS NOT THIS FUNCTION'S TO REFUSE (P7). Home is pid 0 and
+  no longer routes through ``bindings.rw`` (spec ``:1015``), so a declaration landing
+  there is a SECOND bind at the foundation's point — and the spec (§0 rule 2) places
+  that refusal in the COLLAPSE, which is the only place holding the foundation to
+  compare against. Refusing it here by DEST would be a second spelling of one rule,
+  and it would fire on the create-side seed shapes, which have no foundation at all.
+  """
   survivors, warnings = _scope_survivors(entries)
   mounts: dict[str, BindMap] = {"ro": {}, "rw": {}}
   copies: dict[str, CopyList] = {"seed": [], "sync": []}

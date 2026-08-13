@@ -649,11 +649,13 @@ class TestTheCollapseRouteFeedsTheSameChannel:
         reset_collision_warnings()
 
     def _ambiguous(self):
-        """One same-scope abstraction ambiguity at ``DEST``, and no home bind.
+        """One same-scope abstraction ambiguity at ``DEST``, driven NARROW.
 
-        No home means ``whole_box=False`` — the narrow shape — which is enough: the
-        shapes are built, and the warnings with them, before the bind fold the home
-        gates.
+        The callers pass ``whole_box=False`` explicitly, and that is enough: the
+        shapes are built, and the warnings with them, ABOVE the gate — a warning is a
+        property of what was DECLARED, not of whether an assembly follows.
+        ⚑ The gate has been ``whole_box`` itself since cutover 6-H; it never reads the
+        entry list for a home bind, because home is no longer a declaration at all.
         """
         return [
             entry("caches", name="build", scope="box", host_src="/cache"),

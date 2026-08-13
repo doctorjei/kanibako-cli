@@ -188,11 +188,17 @@ workset-scoped meta_ref entry on a standalone box is still omitted.
 ## The core box mounts
 
 ```core_default_categories(std, proj, *, enable_vault: bool, mode: str, guarantee_create: bool = True) -> BindArmTable```
-Build the core box mounts (home + workspace + vault) as `default_categories` (step 3).
+Build the core box mounts (workspace + vault) as `default_categories` (step 3).
+
+🛑 **NO HOME ROW SINCE CUTOVER 6-H.** The box home does NOT route through `bindings.rw` (spec
+`:1015`): it is pid 0, the FOUNDATION the whole set folds over, built at the assembly seam
+(`commands/start.py._install_assembly_collapse`) from the RO DERIVED key `meta.box.home`. Its mount
+options are seam machinery and live with the seam. A `key: home` row here would be a SECOND bind at
+the foundation's point, which the collapse refuses by name — do not re-add one.
 
 Fills the TERMINAL `box.bindings.ro` / `box.bindings.rw` arms with one
 `box_dest -> (host_src, options)` entry per CORE box mount. These are the box's own
-home/workspace/vault binds — TODAY's hardwired podman `-v` routed through the category resolver so
+workspace/vault binds — TODAY's hardwired podman `-v` routed through the category resolver so
 nothing is bound into a box except through the keyspace. The box-side destinations, per-entry mount
 options, and armed category come from the declarative file (`core:` list); the host SOURCES are
 runtime-probed from *proj* here and injected into each entry.
@@ -203,7 +209,7 @@ file's `~` is stored as `/home/agent/...` — and the per-entry mount OPTIONS ar
 options OVERRIDE the category default for that entry**, so the `ro` vault bind keeps `ro` and the
 `Z,U` binds keep `Z,U` regardless of the category's own default.
 
-home + workspace are UNCONDITIONAL (every box mode). The vault binds (`scope: vault` in the file)
+workspace is UNCONDITIONAL (every box mode). The vault binds (`scope: vault` in the file)
 are UNIVERSAL UNLESS DISABLED: emitted whenever *enable_vault* is true, with the probed source dir
 CREATED IF MISSING here so the bind is ALWAYS emitted rather than silently dropped when the source
 happens to be absent. Only an explicitly DISABLED vault omits them.
@@ -214,11 +220,12 @@ exists because `box show --effective` resolves this same table (`commands/box/_p
 DISPLAY verb must not write to disk.
 
 ⚑ **The @-ref routing has TWO shapes and the per-mode one is now the vault's alone.** An entry
-routed through an `@`-ref carries either a single `meta_ref` (MODE-INDEPENDENT — home and
-workspace) OR a `mode_meta_ref` PER-MODE map. The per-mode form serves the VAULT binds ONLY, for a
+routed through an `@`-ref carries either a single `meta_ref` (MODE-INDEPENDENT — workspace) OR a
+`mode_meta_ref` PER-MODE map. The per-mode form serves the VAULT binds ONLY, for a
 real reason: primary/named take the per-box `/@meta.box.name` subdir that a lone standalone box does
-not have (spec §2c). Both vault arms root at the SAME `@workset.vault_*` anchor. home no longer
-needs an arm at all — it roots at `@meta.box.path`, which is where the per-mode variation lives. The
+not have (spec §2c). Both vault arms root at the SAME `@workset.vault_*` anchor. home needs
+no arm at all and no row either — `meta.box.home` roots at `@meta.box.path`, which is where the
+per-mode variation lives. The
 host_src is the `@`-ref STRING, which `expand` resolves to the SAME runtime-probed literal
 (byte-identical) because the `workset.*` / `meta.workset.path` anchors resolve to the launch's own
 roots. An un-routed entry falls back to the probed source.
