@@ -1671,7 +1671,7 @@ def _assemble_image_sharing_mounts(
         # carrying ONLY the image table (include_base_families=False) — its
         # box_dests are disjoint from the main reconcile, so a separate
         # reconcile is byte-for-byte equivalent.
-        _img_snap, _img_rec = _resolve_launch_snapshot(
+        _img_snap, _img_rec, _img_deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -1928,7 +1928,7 @@ def _start_helper_hub(
     # carrying ONLY the helper table (include_base_families=False) — its
     # box_dests are disjoint from the main reconcile, so a separate
     # reconcile is byte-for-byte equivalent.
-    _hub_snap, _hub_rec = _resolve_launch_snapshot(
+    _hub_snap, _hub_rec, _hub_deliveries = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_id,
@@ -3454,7 +3454,7 @@ def _run_container(
             system_settings_path=system_settings_path,
             agent_cfg_path=agent_cfg_path,
         )
-        _snapshot, reconciled = _resolve_launch_snapshot(
+        _snapshot, reconciled, _deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -6360,7 +6360,16 @@ def _resolve_launch_snapshot(
     :func:`kanibako.settings.settings_launch.build_launch_snapshot`.  The expanded snapshot
     is then adapted to ``CategoryEntry`` and reconciled ONCE.
 
-    Returns ``(snapshot, reconciled)``.  AGENT_CRITICAL delivery binds
+    Returns ``(snapshot, reconciled, deliveries)``.  The third element is the
+    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier —
+    envs, the per-VAR ``secret_path`` winners and the agent-delivered dests, built
+    off the SAME credential-gated list the reconcile and the collapse see.
+    ⚑ NOTHING CONSUMES IT YET (cutover 6-R1 is additive: the replacement is wired
+    and returned BESIDE the route it replaces, and the flips are 6-R2's).  It is a
+    RETURN VALUE and not a snapshot leaf on purpose — ``meta.assembly.*`` is closed
+    at three leaves and a fourth would install silently.
+
+    AGENT_CRITICAL delivery binds
     now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree (single-route),
     emitted by :func:`_emit_category_mounts` under its ``must_exist`` policy at the
     call site — NOT a parallel ``descriptor_mounts`` route, and since cutover 2a-3
@@ -6425,6 +6434,7 @@ def _resolve_launch_snapshot(
     from kanibako.settings.settings_categories import (
         derive_binding_keys,
         gate_credential_delivery,
+        launch_deliveries,
         reconcile_categories,
     )
     from kanibako.settings.settings_prefs import collect_prefs
@@ -6692,7 +6702,15 @@ def _resolve_launch_snapshot(
     _install_assembly_collapse(
         snapshot, delivered, whole_box=include_base_families,
     )
-    return snapshot, reconciled
+    # Cutover 6-R1: the ADDITIVE half of the reconcile's retirement. The carrier is
+    # built off the SAME gated list — a third reader of one list, never a second
+    # resolve — and returned beside the reconciled winners. ⚑ The agent-delivery
+    # predicate stays HERE, where the emitter applies its policy; passing the dest
+    # set in keeps :func:`_is_agent_delivery` the one spelling of that rule.
+    deliveries = launch_deliveries(
+        delivered, agent_dests=_agent_delivered_dests(delivered),
+    )
+    return snapshot, reconciled, deliveries
 
 
 def _annotate_pref_origin(exc, prefs):
@@ -7046,17 +7064,26 @@ def _is_agent_delivery(entry) -> bool:
     return entry.scope == "agent" and entry.category in ("bindings.ro", "bindings.rw")
 
 
-def _agent_delivered_dests(mounts: list) -> "frozenset[str]":
+def _agent_delivered_dests(entries: list) -> "frozenset[str]":
     """The dests the agent's delivery binds land at, normalized.
 
     Feeds the emitter's SKIP-IF-ABSENT set (the AGENT best-effort half) and picks
     the helper context's reuse list back out of the emitted mounts.  It is no
     longer a PARTITION: there is one emitter now, so there is nothing to split.
+
+    ⚑ TOTAL over ANY :class:`CategoryEntry` list, and that is why the seam may hand
+    it the GATED ENTRY LIST as readily as the reconciled mounts: the predicate reads
+    an entry's SCOPE and CATEGORY and nothing else, so a non-mount entry is excluded
+    by category rather than by having been filtered out beforehand.  ⚑ The two lists
+    are not identical in principle — a reconciled list has already dropped an agent
+    bind that LOST its dest (only a ``masks`` can take one silently; the concrete
+    and abstract contenders raise) — so a caller that needs the WINNERS asks the
+    reconcile, and a caller that needs the DECLARATIONS asks the entry list.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
     return frozenset(
-        normalize_bind_dest(e.box_dest) for e in mounts if _is_agent_delivery(e)
+        normalize_bind_dest(e.box_dest) for e in entries if _is_agent_delivery(e)
     )
 
 
@@ -7279,8 +7306,9 @@ def _sync_box_at_create(
     this copies nothing.
     """
     # ⚑ The reconciled winners are DISCARDED: since cutover 2c the sync pass reads the
-    # collapse alone, and this resolve exists only to produce it.
-    snapshot, _ = _resolve_launch_snapshot(
+    # collapse alone, and this resolve exists only to produce it. The 6-R1 carrier
+    # beside them is discarded for the same reason — nothing consumes it yet.
+    snapshot, _, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -8025,8 +8053,9 @@ def _apply_init_seeds(
     # agent-binding inputs (``desc``/``install``) are omitted — they feed only
     # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
     # ⚑ The reconciled winners are DISCARDED: since cutover 2c the seed pass reads the
-    # collapsed leaf alone, and this narrow resolve exists only to produce it.
-    snapshot, _ = _resolve_launch_snapshot(
+    # collapsed leaf alone, and this narrow resolve exists only to produce it. The 6-R1
+    # carrier beside them is discarded for the same reason — nothing consumes it yet.
+    snapshot, _, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,

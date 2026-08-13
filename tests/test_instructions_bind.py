@@ -397,7 +397,7 @@ class TestKickoffLaunchWiring:
         from kanibako.settings.settings_resolve import normalize_bind_dest
         from kanibako.targets.base import BindScope as _BindScope
 
-        _snapshot, reconciled = _resolve_launch_snapshot(
+        _snapshot, reconciled, _ = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name="claude",

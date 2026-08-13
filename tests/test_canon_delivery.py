@@ -657,7 +657,7 @@ class TestLaunchWiring:
     def _launch_reconciled(self, std, proj, target):
         from kanibako.commands.start import _resolve_launch_snapshot
 
-        _snapshot, reconciled = _resolve_launch_snapshot(
+        _snapshot, reconciled, _ = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name="claude",
