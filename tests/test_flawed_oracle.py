@@ -35,6 +35,7 @@ from kanibako.settings.settings_categories import (
     ENV,
     MOUNT,
     CategoryEntry,
+    gate_credential_delivery,
     reconcile_categories,
 )
 from kanibako.settings.settings_resolve import (
@@ -887,15 +888,14 @@ class TestIsCategoryKey:
 # ERROR; a mask OVERRIDES; an abstraction extending onto an occupied dest ERRORs;
 # abstraction-vs-abstraction is decided by scope, silently across scopes and with
 # a WARN within one. Unchanged: synced (COPY) vs binding (MOUNT) at one dest ->
-# ConfigError; MOUNTs emit depth-sorted (shallow first); deliver_creds=False
-# suppresses synced + cred seeds.
+# ConfigError; MOUNTs emit depth-sorted (shallow first); ``deliver_creds=False``
+# suppresses synced + cred seeds — ⚑ through ``gate_credential_delivery`` COMPOSED
+# ABOVE the reconcile, which is where delivery policy lives (cutover step 4).
 # ---------------------------------------------------------------------------
 
 
-def _reconcile(levels, ctx, *, deliver_creds=True, scope_roots=None):
-    return reconcile_categories(
-        _resolve(levels, ctx, scope_roots=scope_roots), deliver_creds=deliver_creds
-    )
+def _reconcile(levels, ctx, *, scope_roots=None):
+    return reconcile_categories(_resolve(levels, ctx, scope_roots=scope_roots))
 
 
 def _entry(
@@ -1127,11 +1127,21 @@ class TestReconcileDepthOrder:
         ]
 
 
-class TestReconcileGroupAuthGate:
+class TestCredentialGateComposedAboveReconcile:
+    """The PRODUCTION composition: ``reconcile_categories(gate_credential_delivery(...))``.
+
+    ⚑ The gate is NOT inside the reconcile any more (cutover step 4) — it is a
+    DELIVERY policy applied by the caller at the launch seam, above BOTH consumers
+    of the entry list.  These pin the composition the launch actually performs, so
+    the "gate first, resolve second" ordering they assert is the real one.
+    """
+
     def test_shares_false_suppresses_synced(self):
         synced = _entry("synced", box_dest="/g/cred")
         binding = _entry("bindings.rw", box_dest="/g/keep")
-        rec = reconcile_categories([synced, binding], deliver_creds=False)
+        rec = reconcile_categories(
+            gate_credential_delivery([synced, binding], False),
+        )
         cats = [w.category for w in (rec.mounts + rec.copies)]
         assert "synced" not in cats
         assert "bindings.rw" in cats
@@ -1139,7 +1149,9 @@ class TestReconcileGroupAuthGate:
     def test_shares_false_suppresses_credential_seed_only(self):
         cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
         plain_seed = _entry("seeded", box_dest="/g/plain", is_credential=False)
-        rec = reconcile_categories([cred_seed, plain_seed], deliver_creds=False)
+        rec = reconcile_categories(
+            gate_credential_delivery([cred_seed, plain_seed], False),
+        )
         dests = [c.box_dest for c in rec.copies]
         assert "/g/cred" not in dests
         assert "/g/plain" in dests
@@ -1147,7 +1159,9 @@ class TestReconcileGroupAuthGate:
     def test_shares_true_keeps_synced_and_cred_seed(self):
         synced = _entry("synced", box_dest="/g/s")
         cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
-        rec = reconcile_categories([synced, cred_seed], deliver_creds=True)
+        rec = reconcile_categories(
+            gate_credential_delivery([synced, cred_seed], True),
+        )
         dests = {c.box_dest for c in rec.copies}
         assert dests == {"/g/s", "/g/cred"}
 
@@ -1155,7 +1169,9 @@ class TestReconcileGroupAuthGate:
         # synced suppressed by gate -> no clash with the binding at same dest.
         synced = _entry("synced", box_dest="/g/d")
         binding = _entry("bindings.rw", box_dest="/g/d")
-        rec = reconcile_categories([synced, binding], deliver_creds=False)
+        rec = reconcile_categories(
+            gate_credential_delivery([synced, binding], False),
+        )
         assert [m.category for m in rec.mounts] == ["bindings.rw"]
 
 

@@ -706,9 +706,7 @@ def start_mocks():
                 # CALLS to the one implementation, never a second copy of it.
                 _deliver_creds = kw.get("deliver_creds", True)
                 delivered = gate_credential_delivery(entries, _deliver_creds)
-                rec = reconcile_categories(
-                    delivered, deliver_creds=_deliver_creds,
-                )
+                rec = reconcile_categories(delivered)
                 _install_assembly_collapse(snap, delivered, whole_box=True)
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
                 # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and

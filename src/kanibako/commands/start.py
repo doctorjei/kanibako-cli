@@ -6658,12 +6658,18 @@ def _resolve_launch_snapshot(
     # BEFORE the reconcile — the derivation is a property of the declaration,
     # not of whether it won.
     _install_derived_bindings(snapshot, derive_binding_keys(entries))
-    # (D-M4) The credential gate, applied ONCE ABOVE BOTH consumers below — see
-    # llm-docs. ⚑ It sits AFTER the derivation on purpose: a derived binding is a
-    # property of the DECLARATION (R-8), not of whether the box may receive it.
+    # (D-M4) THE credential gate — this line is the SOLE application of the rule on
+    # any path, applied ONCE above BOTH consumers below (cutover step 4 removed the
+    # duplicate inside ``reconcile_categories``). It is LOAD-BEARING, not
+    # belt-and-suspenders: delete it and a PRIVATE box receives credentials.
+    # ⚑ It sits AFTER the derivation on purpose: a derived binding is a property of
+    # the DECLARATION (R-8), not of whether the box may receive it.
+    # ⚑ And it sits BEFORE the reconcile on purpose: a suppressed ``synced`` must not
+    # be able to survive beside — or win over — a binding it never delivers. That
+    # ordering is now guaranteed BY CONSTRUCTION (producer DESIGN §9.2).
     delivered = gate_credential_delivery(entries, deliver_creds)
     try:
-        reconciled = reconcile_categories(delivered, deliver_creds=deliver_creds)
+        reconciled = reconcile_categories(delivered)
     except CategoryCollisionError as exc:
         # A collision names the DECLARATION key PLUS the entry's DEST. When that
         # declaration was INSTALLED BY A PREF, the named key is one the user
@@ -7970,7 +7976,9 @@ def _apply_init_seeds(
     destination IS the entry's identity (R-10), so an entry NAME is not part of
     the keyspace.  Do not reintroduce the old label as a nickname.
 
-    The credential gate (D-M4) is applied during reconcile: a credential-flagged
+    The credential gate (D-M4) is applied ONCE, inside the resolve this pass reads,
+    above both the reconcile and the collapse
+    (``settings_categories.gate_credential_delivery``): a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
 
     ⚑⚑ ONE DESTINATION NAMESPACE (spec §0 "ONE DEST SPACE, TWO DELIVERIES";
