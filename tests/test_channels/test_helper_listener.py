@@ -721,12 +721,12 @@ class TestHelperDefaultCategories:
             cats["box.bindings.ro"]
         )
 
-    def test_emitted_mount_options_empty_through_reconcile(self, tmp_path):
-        # End-to-end through the resolver: the helper_sock entry survives reconcile
-        # with EMPTY mount options (not the rw default Z,U) — the property the live
-        # socket depends on.
+    def test_emitted_mount_options_empty_through_the_narrow_route(self, tmp_path):
+        # End-to-end through the resolver: the helper_sock entry survives the NARROW
+        # table pass with EMPTY mount options (not the rw default Z,U) — the property
+        # the live socket depends on.
         from kanibako.settings import core_defaults
-        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_categories import narrow_table_winners
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
@@ -738,9 +738,10 @@ class TestHelperDefaultCategories:
             socket_path=sock,
             log_path=log,
         )
-        # Resolved through the LIVE launch route (build_launch_snapshot →
-        # snapshot_category_entries → reconcile), the same single route a real
-        # launch takes. B2b: helper_log routes through
+        # Resolved through the LIVE narrow route (build_launch_snapshot →
+        # snapshot_category_entries → ``narrow_table_winners`` over the helper
+        # table's own dests), the same single route the real helper-hub resolve
+        # takes. B2b: helper_log routes through
         # ``@workset.logs/@{meta.box.name}.jsonl``, so the floor below STANDS IN FOR
         # ``workset_anchor_floor`` / ``meta_identity_floor`` with LITERALS.
         # ⚑ Not the same thing: the real ``workset_anchor_floor`` materializes
@@ -770,14 +771,14 @@ class TestHelperDefaultCategories:
         # applies it (cutover step 4), but this floor declares no credential entry
         # at all, so a shared-creds gate here would be a literal no-op over the very
         # list it is handed. The composition is pinned where it MEANS something —
-        # ``test_flawed_oracle.TestCredentialGateComposedAboveReconcile``.
-        reconciled = reconcile_categories(entries)
+        # ``test_start_assembly.TestTheCredentialGateReachesTheCollapse``.
+        winners = narrow_table_winners(entries, core_defaults.helper_bind_dests())
         # ⚑ Re-derived for dest-keying (R-3/R-10): a bindings entry's ``name`` IS
         # its box destination — the ``helper_sock`` name no longer exists anywhere,
         # so selecting by it would raise ``StopIteration`` rather than fail an
         # assertion.
         sock_mount = next(
-            e for e in reconciled.mounts
+            e for e in winners
             if e.name == "/home/agent/.kanibako/state/helper.sock"
         )
         assert sock_mount.options == ""
@@ -787,7 +788,7 @@ class TestHelperDefaultCategories:
         # And the log bind's @-ref chain resolves back to the probed log path —
         # the formula and the .exists()-gated literal must agree (PHASE R).
         log_mount = next(
-            e for e in reconciled.mounts
+            e for e in winners
             if e.name == "/home/agent/.kanibako/state/helpers.jsonl"
         )
         assert log_mount.host_src == str(log)

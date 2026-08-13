@@ -29,14 +29,11 @@ from collections.abc import Callable, Mapping
 
 import pytest
 
-from kanibako.errors import CategoryCollisionError
 from kanibako.settings.settings_categories import (
     COPY,
     ENV,
     MOUNT,
     CategoryEntry,
-    gate_credential_delivery,
-    reconcile_categories,
 )
 from kanibako.settings.settings_resolve import (
     LevelView,
@@ -875,334 +872,39 @@ class TestIsCategoryKey:
 
 
 # ---------------------------------------------------------------------------
-# 4b — collision resolver (reconcile_categories)
+# 🕯️ THE 4b LIVE-RECONCILE HALF DIED AT CUTOVER 6-R3, WITH THE FUNCTION IT DROVE.
 #
-# ⚑ These drive the LIVE ``reconcile_categories``. They live in this quarantined
-# file for history, not because they are frozen: the frozen thing here is
-# ``flawed_oracle_categories``, and moving these out would silently relocate the
-# drift tripwire. The spec §0 TABLE's own cases are in
-# ``tests/test_category_collisions.py``.
+# It held ``TestReconcileCollisionTable`` · ``TestReconcileScopePrecedence`` ·
+# ``TestReconcileSyncedBindingKeepsBOTH`` · ``TestReconcileDepthOrder`` ·
+# ``TestCredentialGateComposedAboveReconcile`` · ``TestReconcilePartition``, plus
+# the ``_reconcile`` / ``_entry`` helpers they shared.  Its own header said these
+# drove the LIVE ``reconcile_categories`` and were NOT frozen — they lived here for
+# history only — so retiring them takes nothing frozen with it.
 #
-# The flat authority ladder (seed < cache < binding < common < synced < masks)
-# was DELETED in favour of the §0 table: two concrete declarations at one dest
-# ERROR; a mask OVERRIDES; an abstraction extending onto an occupied dest ERRORs;
-# abstraction-vs-abstraction is decided by scope, silently across scopes and with
-# a WARN within one. Unchanged: synced (COPY) vs binding (MOUNT) at one dest ->
-# ConfigError; MOUNTs emit depth-sorted (shallow first); ``deliver_creds=False``
-# suppresses synced + cred seeds — ⚑ through ``gate_credential_delivery`` COMPOSED
-# ABOVE the reconcile, which is where delivery policy lives (cutover step 4).
+# 🛑 THE FROZEN HALVES OF THIS FILE ARE UNTOUCHED AND STAY WHOLE.  The frozen thing
+# is ``flawed_oracle_categories`` and the ``_FROZEN_*`` copies beside it; the file's
+# charter forbids part-editing that artefact, and nothing above or below this marker
+# was edited except the one depth-order test that read the retired function's sorted
+# output and now sorts on the PUBLIC ``path_depth`` key instead.
+#
+# WHERE THE CLAIMS LIVE NOW — every one has a successor, none was simply dropped:
+#   * the spec §0 TABLE's own cases        -> tests/test_category_collisions.py
+#     (they were always there; this set was the second copy)
+#   * §0 rows 1/3 inside ONE scope         -> tests/test_settings/test_store_shape.py
+#   * rows 1/2/4 ACROSS scopes, and the
+#     bind/mask/copy fold                  -> tests/test_settings/test_store_collapse.py
+#   * a copy at a mount's dest keeping
+#     BOTH                                 -> test_store_collapse.py::TestNothingPrunesACopy
+#   * the DEPTH SORT of emitted mounts     -> the emitter, pinned in
+#     test_commands/test_start_assembly.py::
+#     TestTheEmitterConsumesTheShape::test_the_emitter_depth_sorts_the_map_it_is_given
+#   * the CREDENTIAL GATE composed above
+#     every consumer                       -> test_commands/test_start_assembly.py::
+#     TestTheCredentialGateReachesTheCollapse (which carries the MEASURED mutation
+#     showing which pins actually redden — this set was not among them)
+#   * env never colliding with a path dest -> the carrier's env filter, pinned in
+#     test_category_collisions.py
 # ---------------------------------------------------------------------------
-
-
-def _reconcile(levels, ctx, *, scope_roots=None):
-    return reconcile_categories(_resolve(levels, ctx, scope_roots=scope_roots))
-
-
-def _entry(
-    category, *, box_dest, scope="box", host_src="/h", is_credential=False,
-    name=None,
-):
-    """Build a CategoryEntry directly (bypasses parsing) for precise collisions.
-
-    *name* defaults to *box_dest* (the historical shape). Pass it explicitly when
-    a case needs two DISTINCT declarations at one dest — under the spec §0
-    collision table the declaration KEY is what the outcome and the message are
-    stated in terms of, so two entries must not share one key.
-    """
-    from kanibako.settings.settings_categories import _DELIVERY, _bind_options
-
-    delivery = _DELIVERY[category]
-    host = None if category in ("masks", "env") else host_src
-    options = _bind_options(category) if delivery == MOUNT else ""
-    leaf = box_dest if name is None else name
-    return CategoryEntry(
-        category=category,
-        scope=scope,
-        box_dest=box_dest,
-        host_src=host,
-        delivery=delivery,
-        options=options,
-        name=leaf,
-        key_segments=(*scope.split("."), *category.split("."), leaf),
-        is_credential=is_credential,
-    )
-
-
-class TestReconcileCollisionTable:
-    def test_identical_dest_outcomes_follow_the_collision_table(self):
-        # RETIRED: the flat ladder ``seed < cache < binding < common < synced <
-        # masks`` resolved every rung silently. Under the spec §0 table, three of
-        # the six rungs below are now ERRORS (an abstraction meeting the concrete
-        # layer) and the rest are decided by rules that are not a total order.
-        D = "/g/x"
-        # Every stack that mixes the CONCRETE layer with an ABSTRACTION is row 3.
-        for rest in (
-            ["common", "bindings.rw", "caches", "seeded"],
-            ["bindings.rw", "caches", "seeded"],
-        ):
-            with pytest.raises(CategoryCollisionError) as exc:
-                reconcile_categories([_entry(c, box_dest=D) for c in rest])
-            assert exc.value.kind == "extension_onto_occupied"
-        # masks OVERRIDES an all-abstract + synced pile (row 2 + the unchanged
-        # cross-delivery rule: a tmpfs mask beats even a cred copy-sync).
-        rec = reconcile_categories([
-            _entry(c, box_dest=D)
-            for c in ("synced", "common", "caches", "seeded", "masks")
-        ])
-        assert [w.category for w in rec.mounts + rec.copies] == ["masks"]
-        # ⚑ synced no longer DISPLACES the surviving mount (ruling 2026-08-12) — the
-        # mount winner and the copy both come out, and the ``seeded`` under them is
-        # still shadowed by the mount. The common/caches pair is a same-scope row-5
-        # ambiguity, which ``caches`` wins on input order — and the surviving
-        # ``caches`` mount below IS that pick. ⚑ The ``len(rec.warnings) == 1`` line
-        # that used to follow was RETIRED at cutover 5-1c: the reconcile no longer
-        # builds row-5 warnings (the per-scope ``store_shape`` producer does), and
-        # nothing about the retired LADDER — which is all this file exists to
-        # contrast against — was carried by it.
-        rec = reconcile_categories([
-            _entry(c, box_dest=D) for c in ("common", "caches", "seeded", "synced")
-        ])
-        assert [w.category for w in rec.mounts + rec.copies] == ["caches", "synced"]
-        # A mount beats a seeded copy (cross-delivery, unchanged).
-        rec = reconcile_categories([
-            _entry(c, box_dest=D) for c in ("seeded", "caches")
-        ])
-        assert [w.category for w in rec.mounts + rec.copies] == ["caches"]
-
-    def test_mask_overrides_every_other_category_at_one_dest(self):
-        """Spec §0 row 2 — the ONE rung of the retired ladder that survives.
-
-        A mask says NOTHING MAY BE HERE, so it overrides whatever else lands at
-        the dest. The binding is deliberately absent: mixing the concrete layer
-        with an abstraction is row 3 (an error), which is asserted separately.
-        """
-        ctx = make_ctx()
-        levels = [
-            LevelView(
-                "box",
-                {
-                    "box.seeded.s": ["/h/s", "/g/x"],
-                    "box.caches.c": ["/h/c", "/g/x"],
-                    "box.common.h": ["/h/h", "/g/x"],
-                    "box.masks": "/g/x",
-                },
-            ),
-        ]
-        rec = _reconcile(levels, ctx)
-        winners = rec.mounts + rec.copies
-        assert [w.category for w in winners] == ["masks"]
-
-    def test_mask_does_not_excuse_a_contradictory_pair_underneath_it(self):
-        """Rows 1/3 are evaluated BEFORE the row-2 override.
-
-        §0 states row 1 as "ERROR, always — any scope, any mode". A mask that
-        happens to cover a contradiction hides its consequence, not the
-        contradiction, so the error still fires. Pinned because the opposite
-        ordering is an equally implementable reading.
-        """
-        with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                _entry("bindings.rw", box_dest="/g/x", name="b"),
-                _entry("common", box_dest="/g/x", name="h"),
-                _entry("masks", box_dest="/g/x"),
-            ])
-        assert exc.value.kind == "extension_onto_occupied"
-
-    def test_seed_beats_nothing_alone_survives(self):
-        # A lone seed at a dest with no higher-authority collider survives.
-        rec = reconcile_categories([_entry("seeded", box_dest="/g/only")])
-        assert [w.category for w in rec.copies] == ["seeded"]
-        assert rec.mounts == []
-
-
-class TestReconcileScopePrecedence:
-    def test_two_bindings_at_one_dest_no_longer_tie_break_they_ERROR(self):
-        """INVERTED by spec §0 row 1 (was: the more specific scope won silently).
-
-        This is the M-7 upgrade hazard in one assertion: the exact configuration
-        that used to resolve to ``/box`` now refuses to launch.
-        """
-        sys_e = _entry("bindings.rw", box_dest="/g/d", scope="system", host_src="/sys")
-        box_e = _entry("bindings.rw", box_dest="/g/d", scope="box", host_src="/box")
-        with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([sys_e, box_e])
-        assert exc.value.kind == "binding_vs_binding"
-        assert exc.value.box_dest == "/g/d"
-
-    def test_tie_within_category_box_wins_regardless_of_input_order(self):
-        sys_e = _entry("caches", box_dest="/g/c", scope="system", host_src="/sys")
-        box_e = _entry("caches", box_dest="/g/c", scope="box", host_src="/box")
-        # box listed FIRST: still wins (scope beats input order).
-        rec = reconcile_categories([box_e, sys_e])
-        assert rec.mounts[0].host_src == "/box"
-
-
-class TestReconcileSyncedBindingKeepsBOTH:
-    """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
-
-    ⚑ THE RULE IS GONE, not relocated. The reconcile's duplicate went at 5-1b and
-    the assembly fold's copy went with this ruling, so no stage refuses a sync at a
-    mount's exact dest. ⚑⚑ AND THE MOUNT IS NOT DROPPED EITHER: the sync is
-    delivered THROUGH the covering bind into its host source, so it clobbers CONTENT
-    and *"most of bind remains intact"*. Between 5-1b and this ruling the ladder
-    returned the copy ALONE and silently deleted a declared binding.
-    """
-
-    def test_synced_vs_binding_same_dest_keeps_the_mount_AND_the_copy(self):
-        synced = _entry("synced", box_dest="/g/clash")
-        binding = _entry("bindings.rw", box_dest="/g/clash")
-        rec = reconcile_categories([synced, binding])
-        assert [c.category for c in rec.copies] == ["synced"]
-        assert [m.category for m in rec.mounts] == ["bindings.rw"]
-
-    def test_synced_vs_binding_ro_same_dest_keeps_the_mount_AND_the_copy(self):
-        synced = _entry("synced", box_dest="/g/clash")
-        binding = _entry("bindings.ro", box_dest="/g/clash")
-        rec = reconcile_categories([synced, binding])
-        assert [c.category for c in rec.copies] == ["synced"]
-        assert [m.category for m in rec.mounts] == ["bindings.ro"]
-
-    def test_synced_and_shared_same_dest_keeps_BOTH_too(self):
-        # ⚑ The ABSTRACT arm, and it must answer identically: ``common`` and
-        # ``caches`` FOLD INTO the bindings, so a ladder that spared a
-        # ``bindings.*`` mount but dropped this one would be one rule wearing two
-        # faces. (This case used to resolve to the copy alone.)
-        synced = _entry("synced", box_dest="/g/ok")
-        shared = _entry("common", box_dest="/g/ok")
-        rec = reconcile_categories([synced, shared])
-        assert [m.category for m in rec.mounts] == ["common"]
-        assert [c.category for c in rec.copies] == ["synced"]
-
-    def test_a_masks_mount_STILL_takes_the_dest_from_a_synced_alone(self):
-        # ⚑ THE UNTOUCHED ARM, pinned so this ruling cannot be read as reaching it.
-        # A tmpfs has no host source for a copy to resolve THROUGH; copy-vs-mask is
-        # a separate question and is not decided here.
-        synced = _entry("synced", box_dest="/g/hidden")
-        mask = _entry("masks", box_dest="/g/hidden")
-        rec = reconcile_categories([synced, mask])
-        assert [m.category for m in rec.mounts] == ["masks"]
-        assert rec.copies == []
-
-    def test_a_seeded_copy_is_STILL_dropped_by_a_mount_at_its_dest(self):
-        # ⚑ THE OTHER UNTOUCHED ARM. Only ``synced`` gained the mount's company:
-        # a mount physically shadows a seeded file, and that rule did not move.
-        seeded = _entry("seeded", box_dest="/g/under")
-        binding = _entry("bindings.rw", box_dest="/g/under")
-        rec = reconcile_categories([seeded, binding])
-        assert [m.category for m in rec.mounts] == ["bindings.rw"]
-        assert rec.copies == []
-
-
-class TestReconcileDepthOrder:
-    def test_mounts_emitted_shallow_to_deep(self):
-        home = _entry("bindings.rw", box_dest="/home/agent")
-        ws = _entry("bindings.rw", box_dest="/home/agent/workspace")
-        vault = _entry("masks", box_dest="/home/agent/workspace/vault")
-        # Input deliberately scrambled.
-        rec = reconcile_categories([vault, home, ws])
-        assert [m.box_dest for m in rec.mounts] == [
-            "/home/agent",
-            "/home/agent/workspace",
-            "/home/agent/workspace/vault",
-        ]
-
-    def test_mask_inside_workspace_lands_on_top(self):
-        # mask at deeper dest emits AFTER the workspace binding (last -v wins).
-        ws = _entry("bindings.rw", box_dest="/home/agent/workspace")
-        mask = _entry("masks", box_dest="/home/agent/workspace/vault")
-        rec = reconcile_categories([mask, ws])
-        assert [m.box_dest for m in rec.mounts] == [
-            "/home/agent/workspace",
-            "/home/agent/workspace/vault",
-        ]
-        assert rec.mounts[-1].category == "masks"
-
-    def test_root_home_before_nested(self):
-        root = _entry("bindings.rw", box_dest="/")
-        nested = _entry("bindings.rw", box_dest="/home/agent/workspace/vault")
-        rec = reconcile_categories([nested, root])
-        assert [m.box_dest for m in rec.mounts] == [
-            "/",
-            "/home/agent/workspace/vault",
-        ]
-
-
-class TestCredentialGateComposedAboveReconcile:
-    """The PRODUCTION composition: ``reconcile_categories(gate_credential_delivery(...))``.
-
-    ⚑ The gate is NOT inside the reconcile any more (cutover step 4) — it is a
-    DELIVERY policy applied by the caller at the launch seam, above BOTH consumers
-    of the entry list.  These pin the composition the launch actually performs, so
-    the "gate first, resolve second" ordering they assert is the real one.
-    """
-
-    def test_shares_false_suppresses_synced(self):
-        synced = _entry("synced", box_dest="/g/cred")
-        binding = _entry("bindings.rw", box_dest="/g/keep")
-        rec = reconcile_categories(
-            gate_credential_delivery([synced, binding], False),
-        )
-        cats = [w.category for w in (rec.mounts + rec.copies)]
-        assert "synced" not in cats
-        assert "bindings.rw" in cats
-
-    def test_shares_false_suppresses_credential_seed_only(self):
-        cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
-        plain_seed = _entry("seeded", box_dest="/g/plain", is_credential=False)
-        rec = reconcile_categories(
-            gate_credential_delivery([cred_seed, plain_seed], False),
-        )
-        dests = [c.box_dest for c in rec.copies]
-        assert "/g/cred" not in dests
-        assert "/g/plain" in dests
-
-    def test_shares_true_keeps_synced_and_cred_seed(self):
-        synced = _entry("synced", box_dest="/g/s")
-        cred_seed = _entry("seeded", box_dest="/g/cred", is_credential=True)
-        rec = reconcile_categories(
-            gate_credential_delivery([synced, cred_seed], True),
-        )
-        dests = {c.box_dest for c in rec.copies}
-        assert dests == {"/g/s", "/g/cred"}
-
-    def test_gate_applied_before_collision_so_no_false_synced_binding_error(self):
-        # synced suppressed by gate -> no clash with the binding at same dest.
-        synced = _entry("synced", box_dest="/g/d")
-        binding = _entry("bindings.rw", box_dest="/g/d")
-        rec = reconcile_categories(
-            gate_credential_delivery([synced, binding], False),
-        )
-        assert [m.category for m in rec.mounts] == ["bindings.rw"]
-
-
-class TestReconcilePartition:
-    def test_copy_mount_env_split(self):
-        ctx = make_ctx()
-        levels = [
-            LevelView(
-                "box",
-                {
-                    "box.seeded.s": ["/h/s", "/g/s"],
-                    "box.synced.y": ["/h/y", "/g/y"],
-                    "box.bindings.rw.b": ["/h/b", "/g/b"],
-                    "box.masks": "/g/m",
-                    "box.env.FOO": "bar",
-                },
-            ),
-        ]
-        rec = _reconcile(levels, ctx)
-        assert {m.delivery for m in rec.mounts} == {MOUNT}
-        assert {c.delivery for c in rec.copies} == {COPY}
-        assert [e.box_dest for e in rec.envs] == ["FOO"]
-        assert {e.delivery for e in rec.envs} == {ENV}
-
-    def test_env_never_collides_with_path_dest(self):
-        # An env VAR name equal to a path dest must not be treated as a collision.
-        env = _entry("env", box_dest="/g/x")  # contrived VAR name
-        binding = _entry("bindings.rw", box_dest="/g/x")
-        rec = reconcile_categories([env, binding])
-        assert len(rec.mounts) == 1
-        assert len(rec.envs) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1456,8 +1158,15 @@ class TestCoreDefaultCategories:
         workspace and something inside it.
 
         ⚑ Adapted at the boundary (see :func:`_as_frozen_name_keyed`): the depth
-        sort under test is ``reconcile_categories``' and keys on the RESOLVED
-        ``box_dest``, which the adaptation preserves exactly.
+        sort under test keys on the RESOLVED ``box_dest``, which the adaptation
+        preserves exactly.
+
+        ⚑ SORTED HERE ON THE PUBLIC KEY (6-R3). The retired by-dest reconcile used
+        to hand back a pre-sorted list and this read that list; the sort belongs to
+        EMISSION now (a dest-keyed map carries no order), and
+        ``settings_categories.path_depth`` is PUBLIC for exactly that reason — one
+        depth rule, every consumer. Going through the emitter itself is not open to
+        this test: it is on the FROZEN side, whose sources do not exist on disk.
         """
         from kanibako.settings import core_defaults
 
@@ -1486,8 +1195,14 @@ class TestCoreDefaultCategories:
             }),
             LevelView("agent", {}, defaults=defaults),
         ]
-        rec = _reconcile(levels, ctx)
-        dests = [m.box_dest for m in rec.mounts]
+        from kanibako.settings.settings_categories import path_depth
+
+        dests = [
+            e.box_dest for e in sorted(
+                (e for e in _resolve(levels, ctx) if e.delivery == MOUNT),
+                key=lambda e: (path_depth(e.box_dest), e.box_dest),
+            )
+        ]
         # Both kept; workspace (shallower) emitted before what nests inside it.
         assert "/home/agent/workspace" in dests
         assert "/home/agent/workspace/sub" in dests

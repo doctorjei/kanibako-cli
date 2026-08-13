@@ -9,18 +9,31 @@ tagged with its *delivery* (COPY vs MOUNT).  It is **pure**: no file I/O, no
 mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
-Cross-category collision resolution (the spec §0 identical-dest TABLE, depth-order)
-is :func:`reconcile_categories` (sub-step 4b), layered on top of category entries.
-The credential gate is NOT part of it: :func:`gate_credential_delivery` is a
-DELIVERY policy, applied by the caller at the launch seam above every consumer
-(cutover step 4).
+Cross-category collision resolution (the spec §0 identical-dest TABLE) is NOT here
+any more.  ⚑ The single by-dest reconcile pass was RETIRED at cutover 6-R3;
+what replaced it is not one function but the three seams that each hold the inputs
+their own rows need:
 
-**Block 7c status:** :func:`reconcile_categories` is LIVE — the by-dest pass the
-KeyStore snapshot path uses (fed by ``settings_launch.snapshot_category_entries``).
-The OLD by-NAME LevelView resolver was RETIRED (it was wrong in a number of cases,
-which is why the snapshot pipeline replaced it); its frozen, non-shipping remnant
-lives ONLY in ``tests/support/flawed_oracle.py`` as a drift tripwire for the
-equivalence test — NOT a correctness authority. The ``settings_shares`` /
+* the per-scope ``store_shape`` PRODUCER (:mod:`kanibako.settings.store_shape`)
+  raises rows 1 and 3 inside one scope, through the two public raisers below;
+* the ASSEMBLY COLLAPSE (:mod:`kanibako.settings.store_collapse`) folds the scopes
+  into the one mount set a box is built from, and refuses the cross-scope pairs;
+* THIS module's launch-seam functions — :func:`launch_deliveries` (with
+  :func:`secret_path_deliveries`) and :func:`narrow_table_winners` — answer the two
+  questions the collapse deliberately does not: what a ``secret_path`` dest
+  delivers, and what a NARROW resolve's own injected table mounts.
+
+The credential gate is NOT part of any of them: :func:`gate_credential_delivery` is
+a DELIVERY policy, applied by the caller ONCE at the launch seam above every
+consumer of the entry list (cutover step 4).
+
+The OLD by-NAME LevelView resolver was RETIRED long before (it was wrong in a
+number of cases, which is why the snapshot pipeline replaced it); its frozen,
+non-shipping remnant lives ONLY in ``tests/test_flawed_oracle.py`` as a drift
+tripwire — NOT a correctness authority.  (⚑ That path read
+``tests/support/flawed_oracle.py`` until 6-R3; the module moved in beside the tests
+that drive it so the retired model occupies exactly ONE file, and a stale ``.pyc``
+under ``tests/support/__pycache__`` is all that is left at the old location.) The ``settings_shares`` /
 ``settings_seeds`` wrapper modules it used to feed were retired in 7c (the launch +
 ``workset share`` paths now resolve through the snapshot pipeline).
 
@@ -94,7 +107,8 @@ returned in scope *apply* order ``system, agent, workset, box`` (the REVERSE of
 precedence) so the most-specific scope lands LAST — letting a later copy overlay
 an earlier one and podman's "last ``-v`` wins" dedup honor box over system.
 Within a scope they are ordered ``(category, name)`` ascending for determinism.
-4b imposes the cross-category authority order on top of this.
+The §0 collision table is imposed on top of this order by the three seams named
+above, each over the same list in the same order.
 
 No root-join
 ~~~~~~~~~~~~~~~
@@ -399,11 +413,8 @@ SECRET_KEY_RE = re.compile(
 #: sync with the ``name`` group above.
 SECRET_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-# Sentinel value that disables a COPY entry (the "empty" terminal, preserved
-# from the seed resolver).
-_DISABLE_SENTINEL = "empty"
-
-# Apply order: REVERSE of precedence (most-specific scope lands LAST).
+# Apply order: REVERSE of precedence (most-specific scope lands LAST).  Read by
+# :func:`_most_specific`, which is the per-VAR ``secret_path`` pick's implementation.
 _SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
 # The CONCRETE MOUNT categories — the layer §0 calls the SOURCE OF TRUTH. A mount
@@ -507,7 +518,7 @@ class CategoryEntry:
     ``commands.start._synced_host_dest``, which resolves it through the bind that
     covers it rather than under the box home (cutover 2b-3).  Either way there are
     no longer two namespaces to tell apart, nothing for an entry to carry, and
-    :func:`reconcile_categories` groups on the bare ``box_dest``.
+    every seam that groups entries groups on the bare ``box_dest``.
 
     ⚑ WHAT THE RETIRED FIELD WAS FOR, kept as the record of a real bug it closed:
     the §2a seed layers used to spell their dest ``@meta.box.path/home`` — an
@@ -577,9 +588,9 @@ class CategoryCollision:
     below is spec §0's, written ONCE, beside the two refusal texts
     (:func:`raise_binding_vs_binding`, :func:`raise_extension_onto_occupied`)
     that are also the producer's to raise.  ⚑ Cutover 5-1c retired the SECOND
-    builder — :func:`reconcile_categories` used to return these too, so one
-    ambiguity could reach the emitter down two paths.  The producer is the only
-    builder now; do not add a second one back.
+    builder — the by-dest reconcile used to return these too, so one ambiguity
+    could reach the emitter down two paths.  The producer is the only builder now
+    (the reconcile itself is gone, 6-R3); do not add a second one back.
     """
 
     box_dest: str
@@ -598,43 +609,6 @@ class CategoryCollision:
             f"cannot know which you meant. Suppress one (set it to null) or "
             f"repoint it. This warning repeats every launch until it is fixed."
         )
-
-
-@dataclass(frozen=True)
-class ReconciledCategories:
-    """The reconciled, emit-ready partition of category entries (sub-step 4b).
-
-    *mounts* are the MOUNT-delivered winners (``caches``, ``bindings.{ro,rw}``,
-    ``common``, ``masks``), depth-sorted by ``box_dest`` path-depth ASCENDING
-    (shallower first), so a later ``-v`` / podman's own depth-sort lands the most
-    specific mount on top (mask-inside-``~/workspace``, ``home``-under-everything).
-    *copies* are the COPY-delivered winners (``seeded``, ``synced``) in a
-    deterministic order.  *envs* are the ENV entries (no box_dest collision —
-    their "dest" is a VAR name), in deterministic order.
-
-    Each MOUNT ``box_dest`` appears at most once (mounts SHADOW, so an
-    identical-dest collision is resolved to one winner per the §0 table). COPIES
-    OVERLAY rather than shadow, so a dest targeted by ``seeded`` copies ONLY keeps
-    every copy (in apply order) — the layered ``seeded[~/]`` trio all seed
-    into ``~`` and last-wins-merge there. A dest shared by a mount and ``seeded``
-    copies reverts to the single mount winner (the copy cannot survive under a live
-    shadow mount); a dest shared by a mount and a ``synced`` copy-sync keeps BOTH,
-    because the sync is delivered THROUGH the covering bind into its host source —
-    so the same ``box_dest`` may appear once in *mounts* and once in *copies*.
-
-    ⚑ THERE IS NO ``warnings`` FIELD (cutover 5-1c).  It carried the §0 row-5
-    same-scope ambiguities until the per-scope ``store_shape`` producer took that
-    channel over; the field's ONE reader was the
-    ``emit_collision_warnings(reconciled.warnings)`` call in
-    ``commands.start._resolve_launch_snapshot``, deleted in the same step.  An
-    always-empty field left behind would be a false claim in the type AND a
-    re-pluggable socket for the second channel this step exists to close — one
-    ambiguity, one announcement, one builder.
-    """
-
-    mounts: list[CategoryEntry]
-    copies: list[CategoryEntry]
-    envs: list[CategoryEntry]
 
 
 def path_depth(box_dest: str) -> int:
@@ -658,10 +632,10 @@ def gate_credential_delivery(
 ) -> list[CategoryEntry]:
     """Drop what a PRIVATE box must not receive (D-M4). PUBLIC, PURE and IDEMPOTENT."""
     # ⚑ THIS IS THE ONLY SPELLING OF THE RULE, and it is APPLIED ONCE — at the launch
-    # seam (``commands/start._resolve_launch_snapshot``), above BOTH consumers of the
-    # entry list: :func:`reconcile_categories` below and the ASSEMBLY COLLAPSE beside
-    # it. One application of one spelling is what makes the two routes describe the
-    # SAME private box; a second of either is how a credential reaches a box the user
+    # seam (``commands/start._resolve_launch_snapshot``), above EVERY consumer of the
+    # entry list: the ASSEMBLY COLLAPSE and :func:`launch_deliveries` below. One
+    # application of one spelling is what makes those routes describe the SAME
+    # private box; a second of either is how a credential reaches a box the user
     # made private.
     if deliver_creds:
         return list(entries)
@@ -725,11 +699,10 @@ def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     entry's dest is ``SECRET_MOUNT_DIR/{VAR}`` BY CONSTRUCTION, so a group sharing
     a dest is ONE VAR arriving from several scopes — the ordinary per-VAR cascade,
     picked by :func:`_most_specific` (scope precedence first, then input order).
-    That is the same call, over the same set, that :func:`_resolve_mount_group`
-    reaches through the D2 carve-out in :data:`CONCRETE_CATEGORIES`; this function
-    is that carve-out's SUCCESSOR at the launch seam, and it exists so the pick
-    survives the reconcile's retirement without a second spelling of the scope
-    order.
+    It is the D2 carve-out in :data:`CONCRETE_CATEGORIES`, made explicit: the
+    retired by-dest reconcile reached the same :func:`_most_specific` call over the
+    same set by falling THROUGH that carve-out, and this function is where the pick
+    lives now — one spelling of the scope order, at the launch seam.
 
     The result is sorted on the mount depth-sort's key so it is byte-identical to
     the reconciled mounts filtered to this category — one order, one consumer
@@ -755,8 +728,8 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     BECAUSE NOTHING ELSE HOLDS THE INPUTS.  ``secret_path`` carries no arm in the
     disk-store shape (producer DESIGN §7.4), so the assembly COLLAPSE never sees a
     secret and cannot answer "does anything else contend for this destination"; the
-    only other answer was inside :func:`reconcile_categories`, which is being
-    retired.  So the rows that decided it are applied here, over the SAME entry list
+    only other answer was inside the by-dest reconcile, retired at 6-R3.  So the
+    rows that decided it are applied here, over the SAME entry list
     and in the SAME order, restricted to the destinations a secret claims:
 
     * row 1 / row 3 — a ``bindings.*`` row (or an abstraction deriving one) aimed at
@@ -810,11 +783,10 @@ def launch_deliveries(
 ) -> LaunchDeliveries:
     """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
-    ⚑ The ENV filter below is byte-identical to :func:`reconcile_categories`'
-    own (there is no env arbitration to reproduce — that line IS the filter).  The
-    duplication is the ADDITIVE phase's, deliberately: the reconcile's copy dies
-    with the reconcile, leaving this the only one, and the equivalence canary in
-    the tests fails on any drift in between.
+    ⚑ The ENV filter below is the ONLY one since 6-R3 retired the by-dest reconcile
+    (whose own copy of it was byte-identical).  There is no env arbitration to
+    reproduce — that line IS the filter; the per-VAR winner is the CONSUMER's
+    dict-update, as it has always been.
     """
     return LaunchDeliveries(
         envs=[e for e in entries if e.delivery == ENV],
@@ -888,233 +860,20 @@ def narrow_table_winners(
     return winners
 
 
-def reconcile_categories(
-    entries: list[CategoryEntry],
-) -> ReconciledCategories:
-    """Resolve cross-category collisions and partition for emission (4b, D-B1).
-
-    Takes the ordered ``list[CategoryEntry]`` produced by the category resolver
-    (``snapshot_category_entries`` in the live path; apply order, see the module
-    docstring) and returns a :class:`ReconciledCategories`
-    with the per-dest winners split into MOUNT / COPY / ENV lists.
-
-    ⚑ PRECONDITION — *entries* IS ALREADY CREDENTIAL-GATED.  The caller applies
-    :func:`gate_credential_delivery` ONCE, at the launch seam
-    (``commands.start._resolve_launch_snapshot``), above BOTH consumers of the
-    list: this reconcile and the assembly collapse.  The load-bearing ordering
-    fact SURVIVES and is now BY CONSTRUCTION — the gate runs BEFORE collision
-    resolution, so a suppressed ``synced`` never reaches this function at all and
-    cannot survive beside, or win over, a binding it never delivers.  Hand this
-    function an UNGATED list and credentials simply pass through: delivery policy
-    is the CALLER's, not this resolver's (cutover step 4; producer DESIGN §9.2).
-
-    The §0 COLLISION TABLE (2026-07-29) — keyed on the resolved ``box_dest``,
-    NEVER on the name. It replaced the flat authority ladder
-    ``seed < cache < binding < common < synced < masks``, which resolved every
-    collision to one silent winner:
-
-    ==== ============================================ ==========================
-    row  case                                          outcome
-    ==== ============================================ ==========================
-    1    two CONCRETE declarations at one dest         **ERROR** — always
-    2    ``masks`` at a dest a binding occupies        OVERRIDE (that is its job)
-    3    an ABSTRACTION extending onto an occupied     **ERROR** — refuse the
-         dest                                          EXTENSION, keep the base
-    4    abstraction vs abstraction, DIFFERENT scopes  scope precedence, SILENT
-    5    abstraction vs abstraction, SAME scope        existing ordering, SILENT
-                                                       HERE (the WARN is the
-                                                       producer's — 5-1c)
-    ==== ============================================ ==========================
-
-    Rows 1/3 raise :class:`~kanibako.errors.CategoryCollisionError`.  "The
-    existing ordering" is the input order the adapter produced (``scope`` apply
-    order, then ``(category, name)``), LAST wins — the same ordering the retired
-    ladder produced for every abstract pair, because ``common`` outranked
-    ``caches`` there and also sorts after it here.
-
-    ⚑ ROW 5's WARNING IS NOT THIS FUNCTION'S ANY MORE (cutover 5-1c).  Row 5's
-    BEHAVIOUR — proceed on the existing ordering — is unchanged and still
-    performed here; what moved is the ANNOUNCEMENT, to the per-scope
-    ``store_shape`` producer, which reaches
-    ``commands.start.emit_collision_warnings`` through
-    ``_install_assembly_collapse``.  Two builders meant one ambiguity could be
-    announced down two paths; there is one builder now.
-
-    ⚑ **The table governs MOUNT-vs-MOUNT only.**  The COPY layer and the
-    copies-vs-mounts boundary keep their own, UNCHANGED rules (spec §0
-    states them independently of the table):
-
-    * a PURE-``seeded`` dest keeps EVERY entry — copies OVERLAY, they do not
-      shadow, so the layered ``seeded[~/]`` trio is not a collision at all;
-    * a ``synced`` copy-sync replaces a ``seeded`` at the same dest;
-    * where a MOUNT winner and a COPY winner name one dest: ``masks`` beats
-      everything including ``synced``; a ``synced`` and any other mount BOTH
-      survive; every mount beats ``seeded``.
-
-    ⚑ A ``synced`` copy at a mount's EXACT dest is not refused, here or anywhere
-    (the rule is RETIRED, 2026-08-12) — and it does not displace the mount either.
-    The sync is delivered LAST, through the bind covering its dest and into that
-    bind's host source, so it overwrites CONTENT the mount exposes rather than the
-    mount itself.
-
-    ⚑ Rows 1 and 3 are evaluated BEFORE the row-2 mask OVERRIDE.  §0 states row 1
-    as "ERROR, always — any scope, any mode", and a mask that happens to cover a
-    contradictory pair does not make the contradiction go away; it only hides its
-    consequence.  A mask over ONE binding (the shipped shape) is untouched.
-
-    The emitted MOUNT list is sorted by ``box_dest`` path-depth ASCENDING so
-    podman's last-``-v``-wins/depth-sort resolves nested-but-different dests
-    (mask-inside-``~/workspace``, ``home``-under-everything).  COPY and ENV lists
-    keep a deterministic order.
-
-    Raises :class:`~kanibako.errors.CategoryCollisionError` (a
-    :class:`~kanibako.errors.ConfigError`) on a row-1 / row-3 collision.
-    """
-    # --- env entries never collide on a guest path; keep them aside (order kept).
-    envs = [e for e in entries if e.delivery == ENV]
-    path_entries = [e for e in entries if e.delivery != ENV]
-
-    # --- group by resolved box_dest; resolve each group per §0.
-    # Preserve input order — "the existing ordering" the table's row 5 defers to.
-    #
-    # ⚑ THE BARE DEST IS THE WHOLE KEY (2026-08-08c). It used to be
-    # ``(dest_space, box_dest)``, because a COPY's dest was an absolute HOST path
-    # and a MOUNT's was a guest path — two namespaces that can produce the same
-    # STRING. Copy dests are GUEST-spelled now (spec §0 "ONE DEST SPACE, TWO
-    # DELIVERIES"), so there is one namespace and one key.
-    # ⚑⚑ THIS TURNED COLLISION RULES BACK ON that the split key made unreachable:
-    # a COPY and a MOUNT at one dest now meet in ``_resolve_dest_group`` and the
-    # cross-delivery ladder there decides between them. That is the intended
-    # consequence of collapsing the key, not a side effect to route around.
-    by_dest: dict[str, list[CategoryEntry]] = {}
-    for e in path_entries:
-        by_dest.setdefault(e.box_dest, []).append(e)
-
-    winners: list[CategoryEntry] = []
-    for box_dest, group in by_dest.items():
-        winners.extend(_resolve_dest_group(box_dest, group))
-
-    # --- partition winners by delivery; depth-sort the mounts (shallow first).
-    mounts = [w for w in winners if w.delivery == MOUNT]
-    copies = [w for w in winners if w.delivery == COPY]
-
-    # MOUNT depth-sort: shallower box_dest first so the deepest (most specific)
-    # mount lands LAST and wins. Stable tie-break by box_dest for determinism.
-    mounts.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
-    # COPY: deterministic by box_dest (no depth constraint).
-    copies.sort(key=lambda e: e.box_dest)
-
-    return ReconciledCategories(mounts=mounts, copies=copies, envs=envs)
-
-
-def _resolve_dest_group(
-    box_dest: str, group: list[CategoryEntry],
-) -> list[CategoryEntry]:
-    """Resolve ONE ``box_dest`` group per §0 → the survivors.
-
-    *group* is in input (apply) order.  The three layers are resolved
-    independently and then reconciled across the delivery boundary; each step is
-    named for the rule it implements so no single ladder stands in for five
-    different decisions.
-    """
-    # ⚑ NO ``synced``↔``binding`` refusal here, and none anywhere else either — the
-    # rule is RETIRED, not relocated (Jei, 2026-08-12: *"don't check for sync. Let
-    # it clobber whatever it wants."*). A copy sharing a mount's destination is
-    # ordinary; the copy lands ON TOP of the mount and most of the mount remains
-    # intact.
-    mount_sub = [e for e in group if e.delivery == MOUNT]
-    copy_sub = [e for e in group if e.delivery == COPY]
-
-    mount_winner = _resolve_mount_group(box_dest, mount_sub)
-    copy_winners = _resolve_copy_group(copy_sub)
-
-    # CROSS-DELIVERY. A mount physically shadows a copied file, so it beats a
-    # ``seeded`` copy; a ``masks`` tmpfs hides the dest outright, so it beats even a
-    # ``synced``.
-    #
-    # ⚑⚑ A ``synced`` DOES NOT DISPLACE THE MOUNT — BOTH SURVIVE. The sync is
-    # delivered LAST and resolves THROUGH the bind that covers its dest into that
-    # bind's host source (``commands.start._synced_host_dest``), so at an EXACT-dest
-    # pair it writes into the very source the mount exposes. It clobbers CONTENT, not
-    # the mount. Returning the copy alone deleted a declared binding to make room for
-    # a copy that never needed the room (Jei, 2026-08-12: *"copy | bind copies on top
-    # of the bind, and most of bind remains intact"*).
-    #
-    # ⚑ Every non-``masks`` mount category is treated alike here on purpose:
-    # ``caches`` and ``common`` FOLD INTO the bindings, so singling ``bindings.*``
-    # out would be one rule wearing two faces.
-    if mount_winner is not None and copy_winners:
-        if mount_winner.category == "masks":
-            return [mount_winner]
-        if any(e.category == "synced" for e in copy_winners):
-            return [mount_winner, *copy_winners]
-        return [mount_winner]
-    if mount_winner is not None:
-        return [mount_winner]
-    return copy_winners
-
-
-def _resolve_mount_group(
-    box_dest: str, mount_sub: list[CategoryEntry],
-) -> CategoryEntry | None:
-    """Apply §0 rows 1-4 to the MOUNT entries at ONE dest (input order kept).
-
-    ⚑ Row 5's WARNING is NOT built here (cutover 5-1c) — see
-    :func:`reconcile_categories`.  Row 5's outcome is the same pick row 4 makes,
-    so the two share the one :func:`_most_specific` call below; the announcement
-    is the ``store_shape`` producer's.
-    """
-    if not mount_sub:
-        return None
-    if len(mount_sub) == 1:
-        return mount_sub[0]
-
-    concrete = [e for e in mount_sub if e.category in CONCRETE_CATEGORIES]
-    abstract = [e for e in mount_sub if e.category in ABSTRACT_CATEGORIES]
-    masks = [e for e in mount_sub if e.category == "masks"]
-
-    # ROW 1 — two CONCRETE declarations at one dest: ERROR, always. D2 carve-out:
-    # an ALL-``secret_path`` set is the documented per-VAR cascade (one NAME from
-    # two scopes), not two names contending, so it falls through to the ordinary
-    # last-wins pick below.
-    if len(concrete) > 1 and not all(
-        e.category == "secret_path" for e in concrete
-    ):
-        raise_binding_vs_binding(box_dest, concrete)
-
-    # ROW 3 — an ABSTRACTION extending onto a dest the CONCRETE base occupies:
-    # ERROR, refusing the EXTENSION. "I wrote it down literally" wins.
-    if concrete and abstract:
-        raise_extension_onto_occupied(
-            box_dest, extension=abstract[-1], base=concrete[-1],
-        )
-
-    # ROW 2 — a mask OVERRIDES whatever else lands here (hiding a bound path is
-    # the whole job). Several masks at one dest are the same instruction twice.
-    if masks:
-        return _most_specific(masks)
-
-    # ROWS 4/5 — abstraction vs abstraction. SCOPE PRECEDENCE decides (row 4),
-    # then the existing ordering within a scope; a collision WITHIN the winning
-    # scope is the ambiguity §0 says to PROCEED on (row 5) — which is this same
-    # pick. ⚑ The WARN that row 5 also mandates is the per-scope ``store_shape``
-    # producer's since cutover 5-1c; this function no longer builds a
-    # ``CategoryCollision``, so a same-scope ambiguity cannot be announced twice.
-    return _most_specific(mount_sub)
-
-
 def raise_binding_vs_binding(
     box_dest: str, concrete: list[CategoryEntry],
 ) -> NoReturn:
     """Raise the §0 row-1 refusal: two CONCRETE declarations at one *box_dest*.
 
     PUBLIC because row 1 is decidable inside ONE scope as well as across two, so
-    it has TWO callers: :func:`_resolve_mount_group` (the cross-scope pass) and
-    the per-scope ``store_shape`` producer (``settings.store_shape``).  The
-    message is spec-mandated, so it is written ONCE, here — a second remedy text
-    is the drift this extraction exists to prevent.  The D2 ``secret_path``
-    carve-out is the CALLER's test, not this function's: it decides whether the
-    set in hand is a collision at all.
+    it has THREE callers: the per-scope ``store_shape`` producer
+    (``settings.store_shape``) and, at the launch seam, the two functions above
+    that hold inputs the collapse never sees —
+    :func:`secret_path_deliveries` and :func:`narrow_table_winners`.  The message
+    is spec-mandated, so it is written ONCE, here — a second remedy text is the
+    drift this extraction exists to prevent.  The D2 ``secret_path`` carve-out is
+    the CALLER's test, not this function's: it decides whether the set in hand is
+    a collision at all.
     """
     from kanibako.errors import CategoryCollisionError
 
@@ -1141,10 +900,11 @@ def raise_extension_onto_occupied(
 ) -> NoReturn:
     """Raise the §0 row-3 refusal: *extension* extends onto the *base*'s *box_dest*.
 
-    PUBLIC for the same reason as :func:`raise_binding_vs_binding` — row 3 is
-    decidable inside ONE scope, so the per-scope ``store_shape`` producer raises
-    it too, with this one message.  The BASE always survives, so the remedy names
-    it without the row-1 "either one may be the one you keep" hedge.
+    PUBLIC for the same reason as :func:`raise_binding_vs_binding`, and with the
+    same three callers — row 3 is decidable inside ONE scope, so the per-scope
+    ``store_shape`` producer raises it too, with this one message.  The BASE
+    always survives, so the remedy names it without the row-1 "either one may be
+    the one you keep" hedge.
     """
     from kanibako.errors import CategoryCollisionError
 
@@ -1167,42 +927,18 @@ def raise_extension_onto_occupied(
     )
 
 
-def _resolve_copy_group(copy_sub: list[CategoryEntry]) -> list[CategoryEntry]:
-    """Resolve the COPY entries at ONE dest (unchanged by the §0 table).
-
-    SEEDS OVERLAY, MOUNTS SHADOW. A ``seeded`` COPY merges its tree into the dest
-    PER-FILE (later scope overlays earlier — the module's "most-specific scope
-    lands LAST" apply order); it does NOT physically shadow the whole dest the way
-    a MOUNT does. So a dest targeted by ``seeded`` copies ONLY keeps them ALL, in
-    apply order — which is what lets the layered ``seeded[~/]`` trio
-    (system+agent+workset, all seeding into ``~``) co-exist and last-wins-merge at
-    the seam that applies them (``commands.start._apply_init_seeds`` stages
-    same-dest seeds in this order). Overlaying copies displace nothing, so this is
-    not a collision and never warns.
-
-    A ``synced`` cred copy-sync is not a layer: it REPLACES whatever else copies to
-    that dest. ⚑ That pick is resolved by SCOPE PRECEDENCE, not input order, and it
-    is the CREDENTIAL pick — getting it wrong copies the wrong credentials into the
-    box, silently.
-    """
-    if not copy_sub:
-        return []
-    synced = [e for e in copy_sub if e.category == "synced"]
-    if synced:
-        return [_most_specific(synced)]
-    return list(copy_sub)
-
-
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry:
     """The winner among same-layer peers: SCOPE PRECEDENCE first, then input order.
 
-    Spec §0 row 4 says scope precedence decides an abstraction-vs-abstraction
-    collision across scopes, so the CALLER's list order must not be able to
-    override it (``reconcile_categories`` takes an arbitrary list; only the live
-    adapter happens to hand it apply-ordered).  Within one scope the input order
-    decides, LAST wins — which reproduces the retired ladder exactly, because its
-    only same-scope abstract pair was ``common`` over ``caches`` and ``common``
-    also sorts after ``caches``.
+    The scope order is authoritative and the CALLER's list order must not be able
+    to override it: this takes an ARBITRARY list, and only the live adapter happens
+    to hand it apply-ordered.  Within one scope the input order decides, LAST wins.
+
+    ⚑ ONE CALLER since 6-R3 — :func:`secret_path_winners`, where the rule it
+    implements is spec §2a's per-VAR cascade (*"a box ``secret_path.<VAR>``
+    overrides a workset's pointer for the same VAR"*).  It was written for spec §0
+    row 4 as well, and the retired by-dest reconcile used it for both; the row-4
+    pick now belongs to the assembly collapse.
     """
     return max(
         enumerate(entries),

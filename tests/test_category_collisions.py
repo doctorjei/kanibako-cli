@@ -2,12 +2,12 @@
 
 One test per table row, plus the behaviours the table does not mention and which
 must survive it byte-for-byte (the pure-``seeded`` overlay, the credential gate
-ordering, the cross-delivery ladder, the ``secret_path`` per-VAR cascade).
+ordering, the ``secret_path`` per-VAR cascade).
 
-⚑ EVERY case here is MUTATION-PROVEN: each one reddens when its own branch in
-``settings_categories`` is inverted, and stays green when the others are. A test
-that passes because the rule is incidentally satisfied proves nothing, and the
-five-row table is exactly the shape that invites incidental passes.
+⚑ EVERY case here is MUTATION-PROVEN: each one reddens when its own branch is
+inverted, and stays green when the others are. A test that passes because the rule
+is incidentally satisfied proves nothing, and the five-row table is exactly the shape
+that invites incidental passes.
 
 The table (spec §0, 2026-07-29) replaced the flat authority ladder
 ``seed < cache < binding < common < synced < masks``:
@@ -21,56 +21,42 @@ row  case                                            outcome
                                                      EXTENSION
 4    abstraction vs abstraction, DIFFERENT scopes    scope precedence, SILENT
 5    abstraction vs abstraction, SAME scope          existing order + WARN
-                                                     (the WARN is the PRODUCER's
-                                                     since 5-1c, not this
-                                                     helper's — see below)
 ===  =============================================  =========================
 
-⚑⚑ WHOSE TRUTH THIS IS, SINCE CUTOVER 2c — READ BEFORE APPLYING ANY OUTCOME
-BELOW TO A REAL BOX. ``reconcile_categories`` is a PURE helper and is no longer
-authoritative for BOX ASSEMBLY. What a box is assembled from — its bindings, its
-seed list and its sync list — is decided by the assembly COLLAPSE
-(``settings.store_collapse.collapse_store_shapes``, installed on the launch path
-by ``commands.start._install_assembly_collapse``), and the collapse's refusals
-are the launch's. The helper KEEPS RUNNING by design; that is not a migration and
-not a second opinion. Its ARBITRATION half is retired at cutover step 5; its WARN
-half already is (5-1c, below).
+⚑⚑ **WHO DECIDES WHICH ROW — READ THIS BEFORE ADDING A CASE.** Until cutover 6-R3
+a single cross-scope helper (``reconcile_categories``) applied the whole table, and
+most cases here drove it. It is DELETED. The table is applied by THREE seams, each
+holding the inputs its own rows need, and a case belongs to the seam that owns it:
 
-So every case below drives a FUNCTION, and only some of them still describe what
-a user meets. What the helper still decides on the live path:
+* the per-scope ``store_shape`` PRODUCER — rows 3 and 5, and row 1's SAME-SCOPE
+  case, through the two public raisers. Its own file is
+  ``tests/test_settings/test_store_shape.py``.
+* the assembly COLLAPSE — rows 2 and 4 and row 1's CROSS-SCOPE case, over the
+  scopes folded onto pid 0. Its own file is
+  ``tests/test_settings/test_store_collapse.py``; its wiring into a launch is
+  ``tests/test_commands/test_start_assembly.py``.
+* the LAUNCH SEAM's two functions here — ``secret_path_deliveries`` (a
+  ``secret_path`` dest, which has no arm in the store shape so the collapse never
+  sees it) and ``narrow_table_winners`` (a narrow resolve's own injected table,
+  where the collapse returns early). Both are pinned in THIS file, below.
 
-* ``envs`` — the collapse produces none (``CollapsedStore`` is bindings + seeded
-  + synced), leaving this its sole producer;
-* ⚑⚑ **CUTOVER 5-1c TOOK A LINE OUT OF THIS LIST FOR GOOD.** The row-5
-  SAME-SCOPE ``warnings`` channel was here, because the helper was its only
-  producer. 5-0 wired the ``store_shape`` producer's warnings into the ONE
-  emission seam (``commands.start.emit_collision_warnings``) BESIDE the helper's;
-  5-1c then deleted the helper's feed AND the
-  ``ReconciledCategories.warnings`` field behind it, so **one ambiguity now has
-  exactly one builder and one path to the user.** ⚑ THERE IS NO ``rec.warnings``
-  TO ASSERT ON ANYWHERE IN THIS FILE — a case below that once proved SILENCE now
-  proves it by the helper having no channel at all, which is why several such
-  assertions were RETIRED rather than inverted. The row-5 warning's own
-  behaviour is pinned where it is now built:
-  ``tests/test_settings/test_store_shape.py::TestWithinScopeRows`` (fields,
-  message, every-launch purity, mask-does-not-suppress) and
-  ``::TestPerScope`` (a CROSS-scope pair is silent). Do not re-pin it here.
-* rows 1 and 3, which RAISE inside ``commands.start._resolve_launch_snapshot``
-  BEFORE the collapse is reached, so their message and remedy text are still
-  exactly what a user is handed.
+🕯️ WHAT 6-R3 RETIRED HERE, all of it with a named successor at its own site:
+``TestRow2MaskOverrides`` · ``TestRow4CrossScopeIsSilent`` (bar its D5 case) ·
+``TestRow5SameScopeProceedsOnTheExistingOrdering`` ·
+``TestPreservedCopyAndCrossDeliveryRules`` (bar two cases recomposed onto the
+collapse and the carrier) · ``TestRow1SecretPathCarveOut`` ·
+``test_there_is_NO_SECOND_FEED_left_to_add`` · and the three 6-R1/6-R2 equivalence
+canaries. What survives states the SAME claims against the seam that now decides
+them — never a rebase that would have one function assert it equals itself.
 
-What it no longer decides is row 4's SILENT cross-scope pick: the collapse
-refuses two binds at one dest whatever their scopes
-(``store_collapse._refuse_bind_over_bind``), so no user can reach the pick even
-though the function still performs it. Those tests stay because the behaviour
-stays; their outcome is a helper's, not a box's. ⚑ Do not "correct" them by
-inverting an assertion — the function is unchanged and the inversion would be
-false.
+⚑ The MESSAGES are single-sourced in ``raise_binding_vs_binding`` and
+``raise_extension_onto_occupied`` (three callers each), so every message case below
+drives the RAISER directly: that is where the text is, and a second copy of it is
+the drift the extraction exists to prevent.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 
 import pytest
@@ -85,10 +71,12 @@ from kanibako.settings.settings_categories import (
     derive_binding_keys,
     gate_credential_delivery,
     narrow_table_winners,
-    reconcile_categories,
+    raise_binding_vs_binding,
+    raise_extension_onto_occupied,
     secret_path_deliveries,
     secret_path_winners,
 )
+from kanibako.settings.store_shape import build_store_shape_set
 
 DEST = "/g/x"
 
@@ -112,9 +100,9 @@ def entry(
     ``_emit_bind_map`` passes one map key as both ``name`` and the key tail, so a
     real key reads ``box.bindings.rw.~/workspace``, never ``box.bindings.rw.vault``.
     The synthetic entries below still carry a distinct NAME token. That is DRIFT
-    left by the 2026-08-08c dest-keying flip, not a design: ``reconcile_categories``
-    and ``derive_binding_keys`` are pure functions over these fields and never read
-    the ``name``/``box_dest`` relationship, so nothing here raised and nothing went
+    left by the 2026-08-08c dest-keying flip, not a design: the seams below and
+    ``derive_binding_keys`` are pure functions over these fields and never read the
+    ``name``/``box_dest`` relationship, so nothing here raised and nothing went
     red. **Do not copy these key strings anywhere as examples of a real key.**
 
     Two consequences worth knowing while reading this file, both recorded rather
@@ -123,10 +111,10 @@ def entry(
     * no case here exercises the LIVE shape of a collision, where the two
       participants' keys end in the SAME segment and differ only by scope and/or
       category;
-    * ``test_same_category_same_scope_also_warns`` drives two entries at one dest
-      in ONE category at ONE scope. Under dest-keying that is one key holding one
-      entry per destination, so the arrangement can no longer arise at all — the
-      reachable row-5 case is the DIFFERENT-category pair its sibling test covers.
+    * the row-5 same-category case (two entries at one dest in ONE category at ONE
+      scope) cannot arise under dest-keying at all — one key holds one entry per
+      destination — so the reachable row-5 case is the DIFFERENT-category pair,
+      pinned on the producer in ``test_store_shape.py``.
 
     Repairing this means re-basing ~20 key/remedy-text assertions and deciding
     what replaces that dissolved case; it is tracked separately and deliberately
@@ -147,8 +135,18 @@ def entry(
     )
 
 
-def categories(rec) -> list[str]:
-    return [e.category for e in (*rec.mounts, *rec.copies)]
+def bound(entries) -> "dict[str, str]":
+    """``{dest: src}`` for everything the PRODUCER folds into a scope\'s bind arms.
+
+    The successor to the retired reconcile\'s mount list, for the cases that ask
+    "what occupies this destination". It reads ONE scope\'s shape, because that is
+    the unit the producer is responsible for; a cross-scope question belongs to the
+    collapse and to its own file.
+    """
+    shape = build_store_shape_set(entries)["box"]
+    return {
+        dest: e.src for arm in (shape.ro, shape.rw) for dest, e in arm.items()
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -159,17 +157,18 @@ def categories(rec) -> list[str]:
 class TestShippedDefaultsAreQuiet:
     """T1 — the synthetic rules below must not fire on a real install.
 
-    Every other test here drives ``reconcile_categories`` with CONSTRUCTED
-    entries, which proves the rules are enforced but says nothing about whether
-    they fire in practice. This one resolves the REAL shipped defaults through
+    Every other test here drives a seam with CONSTRUCTED entries, which proves the
+    rules are enforced but says nothing about whether they fire in practice. This one resolves the REAL shipped defaults through
     the REAL pipeline (see ``tests/test_categories_live.py`` for the per-mode
     probe it borrows) and asserts zero errors and zero warnings — which is also
     the M-7 real-world exposure check.
 
-    ⚑ The ERROR half certifies the RECONCILE arm of that install, and only that
-    arm. Whether the same shipped set survives the ASSEMBLY COLLAPSE — the route
-    that decides the install since cutover 2c — is a separate question, and
-    neither this file nor the per-mode probe it borrows asks it.
+    ⚑⚑ THE ERROR HALF NOW ASKS THE ROUTE THAT DECIDES THE INSTALL. It used to
+    certify the retired cross-scope helper's arm and only that, and said so — the
+    question it left open was whether the same shipped set survives the ASSEMBLY
+    COLLAPSE. 6-R3 closed the gap by necessity: the helper is gone, so the
+    recomposition drives ``_install_assembly_collapse`` and asserts a real box's
+    bind map comes out. That is strictly the stronger claim.
 
     ⚑ The WARNING half is asked of the PRODUCER (cutover 5-1c retargeted it).
     That is not a widening for its own sake: the producer is what a user actually
@@ -181,8 +180,8 @@ class TestShippedDefaultsAreQuiet:
     def test_every_mode_and_agent_shape_resolves_clean(self, tmp_path):
         from tests.test_categories_live import _probe_cases, _probe_snapshot
 
+        from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.settings_launch import snapshot_category_entries
-        from kanibako.settings.store_shape import build_store_shape_set
 
         for mode, proj, ws_root, hl in _probe_cases(tmp_path):
             snap, ctx = _probe_snapshot(mode, proj, ws_root, hl)
@@ -192,8 +191,12 @@ class TestShippedDefaultsAreQuiet:
                 )
                 produced = build_store_shape_set(entries)
                 assert produced.warnings == (), (mode, agent, produced.warnings)
-                rec = reconcile_categories(entries)
-                assert rec.mounts, (mode, agent)
+                # The COLLAPSE, on the real shipped set: it must fold without
+                # refusing, and produce a non-empty bind map.
+                _install_assembly_collapse(snap, entries, whole_box=True)
+                assert dict.get(
+                    dict.get(dict.get(snap, "meta"), "assembly"), "bindings",
+                ), (mode, agent)
 
     def test_every_shipped_dest_is_occupied_at_most_once(self, tmp_path):
         """The property row 1 turns into an error — asserted on real data.
@@ -220,30 +223,31 @@ class TestShippedDefaultsAreQuiet:
 
 
 class TestRow1BindingVsBinding:
-    """T2 — ERROR, always, any scope, any mode."""
+    """T2 — ERROR, always, any scope, any mode.
+
+    ⚑ SPLIT ACROSS ITS TWO DECIDERS AT 6-R3. The SAME-SCOPE case is the producer\'s
+    and is driven here; the CROSS-SCOPE case is the COLLAPSE\'s and is pinned in
+    ``tests/test_settings/test_store_collapse.py::TestHomeIsPidZero``
+    (``test_a_SECOND_bind_at_home_is_refused`` and its two remedy siblings), which is
+    the same ``_refuse_bind_over_bind`` for every dest. ⚑
+    ``test_cross_scope_raises_instead_of_letting_the_box_win`` DIED there rather than
+    being rebased here: this file has no scope fold to drive it through.
+
+    The MESSAGE is the raiser\'s, so it is asked of the raiser.
+    """
 
     def test_ro_and_rw_at_one_dest_same_scope_raises(self):
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            build_store_shape_set([
                 entry("bindings.ro", name="vault", host_src="/srv/shared"),
                 entry("bindings.rw", name="mine", host_src="/home/jei/vault"),
             ])
         assert exc.value.kind == "binding_vs_binding"
         assert exc.value.box_dest == DEST
 
-    def test_cross_scope_raises_instead_of_letting_the_box_win(self):
-        with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                entry("bindings.ro", name="vault", scope="system",
-                      host_src="/srv/vaults/shared"),
-                entry("bindings.rw", name="vault", scope="box",
-                      host_src="/home/jei/vault"),
-            ])
-        assert exc.value.kind == "binding_vs_binding"
-
     def test_message_names_the_dest_both_keys_and_the_remedy(self):
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            raise_binding_vs_binding(DEST, [
                 entry("bindings.ro", name="vault", scope="system",
                       host_src="/srv/vaults/shared"),
                 entry("bindings.rw", name="vault", scope="box",
@@ -264,41 +268,18 @@ class TestRow1BindingVsBinding:
         )
 
     def test_a_lone_binding_is_not_a_collision(self):
-        rec = reconcile_categories([entry("bindings.rw", name="home")])
-        assert categories(rec) == ["bindings.rw"]
+        assert bound([entry("bindings.rw", name="home")]) == {DEST: "/h"}
 
 
-class TestRow1SecretPathCarveOut:
-    """T10 — the per-VAR cascade §2a documents as a FEATURE survives row 1.
-
-    Two ``secret_path`` entries at one dest are always the SAME VAR arriving
-    from two scopes (the dest is ``SECRET_MOUNT_DIR/{VAR}`` by construction), so
-    they are a cascade override, not two names contending for one destination.
-    """
-
-    def test_box_overrides_workset_for_one_var_without_erroring(self):
-        dest = f"{SECRET_MOUNT_DIR}/TOK"
-        rec = reconcile_categories([
-            entry("secret_path", name="TOK", scope="agent.claude",
-                  box_dest=dest, host_src="/agent/tok"),
-            entry("secret_path", name="TOK", scope="box",
-                  box_dest=dest, host_src="/box/tok"),
-        ])
-        # ⚑ RETIRED at 5-1c, and it never pinned anything: ``secret_path`` is a
-        # CONCRETE category, and row 5's warn branch required an ABSTRACT winner,
-        # so ``rec.warnings == ()`` here was true by construction before the
-        # channel moved as well as after.
-        assert [m.host_src for m in rec.mounts] == ["/box/tok"]
-
-    def test_a_binding_into_the_secrets_dir_still_collides(self):
-        """The carve-out is per-VAR, not a blanket exemption."""
-        dest = f"{SECRET_MOUNT_DIR}/TOK"
-        with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                entry("secret_path", name="TOK", box_dest=dest),
-                entry("bindings.rw", name="sneaky", box_dest=dest),
-            ])
-        assert exc.value.kind == "binding_vs_binding"
+# 🕯️ ``TestRow1SecretPathCarveOut`` DIED AT 6-R3. Both its cases drove the retired
+# helper, and both claims are carried WHOLE by the two classes below, which drive the
+# seam that decides them: the per-VAR override is
+# ``TestSecretPathWinnersAreTheSeamsPerVarPick::
+# test_the_box_pointer_beats_the_workset_one_for_the_same_VAR`` (in BOTH input orders,
+# which the retired case did not do), and "the carve-out is per-VAR, not a blanket
+# exemption" is ``TestSecretDestContentionMovedToTheSeam::
+# test_a_bind_at_a_secret_dest_REFUSES_naming_both_declarations``. The D2 carve-out
+# documentation itself moved with the pick — see ``secret_path_winners``' docstring.
 
 
 class TestSecretPathWinnersAreTheSeamsPerVarPick:
@@ -353,25 +334,11 @@ class TestSecretPathWinnersAreTheSeamsPerVarPick:
         ])
         assert [e.category for e in winners] == ["secret_path"]
 
-    def test_it_matches_what_the_reconcile_yields(self):
-        """🕯️ 6-R1 CANARY — DIES AT 6-R3 (its oracle is the route being retired).
-
-        The seam-side pick and the reconciled mounts filtered to this category are
-        the same winners in the same order, so 6-R2 may flip the consumer
-        (``_emit_secret_mounts``) without changing what a box receives.  The LIVE-path
-        half of this canary is
-        ``tests/test_commands/test_start_assembly.py::TestTheLaunchDeliveriesCarrierAgreesWithTheReconcile``.
-        """
-        entries = [
-            entry("bindings.rw", name="w", box_dest="/g/w"),
-            *self._pair(box_first=False),
-            entry("secret_path", name="SECOND", scope="workset",
-                  box_dest=f"{SECRET_MOUNT_DIR}/SECOND", host_src="/workset/second"),
-        ]
-        rec = reconcile_categories(entries)
-        assert secret_path_winners(entries) == [
-            m for m in rec.mounts if m.category == "secret_path"
-        ]
+    # 🕯️ ``test_it_matches_what_the_reconcile_yields`` DIED AT 6-R3 — a 6-R1 CANARY
+    # whose oracle WAS the retired route. Rebasing it would assert the pick equals
+    # itself. What it protected (that flipping ``_emit_secret_mounts`` onto the
+    # carrier changed nothing a box receives) was its whole job and that flip has
+    # landed; the SPEC oracle underneath survives above, in its own words.
 
 
 class TestSecretDestContentionMovedToTheSeam:
@@ -379,21 +346,18 @@ class TestSecretDestContentionMovedToTheSeam:
 
     ``secret_path`` carries no arm in the disk-store shape (producer DESIGN §7.4),
     so the COLLAPSE never sees a secret and cannot answer "does anything else
-    contend for this destination".  The only place that answered was
-    ``reconcile_categories``, which 6-R3 deletes — so ``secret_path_deliveries``
-    answers it now, over the same entry list, with the same rows and the same
-    messages.
+    contend for this destination".  The only place that answered was the by-dest
+    reconcile, retired at 6-R3 — so ``secret_path_deliveries`` answers it now, over
+    the same entry list, with the same rows and the same messages.
 
-    ⚑⚑ THE RECONCILE STILL RAISES FIRST END TO END during 6-R2 (it runs above the
-    carrier at the seam), so these cases drive the new function DIRECTLY.  That is
-    not a weaker pin — it is the only way to observe the replacement while the route
-    it replaces is still wired.
+    ⚑ THIS IS THE LIVE ANSWER, not a stand-in: since 6-R3 there is nothing above it
+    at the seam, so what these cases drive is what a box meets.
 
     🔬 MEASURED AT 6-R2 on the LIVE seam, and BOTH outcomes are preserved, not
     invented: a ``bindings.rw`` at ``SECRET_MOUNT_DIR/TOK`` raised
     ``binding_vs_binding`` naming both keys; a ``masks`` at the same dest raised
-    NOTHING, dropped the secret from ``reconciled.mounts`` (so the VAR was never
-    delivered) and left a tmpfs at the dest, with no log line at any level.
+    NOTHING, dropped the secret so the VAR was never delivered, and left a tmpfs at
+    the dest, with no log line at any level.
     """
 
     DEST = f"{SECRET_MOUNT_DIR}/TOK"
@@ -412,25 +376,16 @@ class TestSecretDestContentionMovedToTheSeam:
         assert exc.value.kind == "binding_vs_binding"
         assert exc.value.box_dest == self.DEST
         # ⚑ The pin that a one-participant message would fail: BOTH keys, in the
-        # reconcile's order (the contending bind first, the suppression block's
+        # retired route's order (the contending bind first, the suppression block's
         # subject), so the text a user is handed is unchanged.
         assert [k for k, _src in exc.value.entries] == [
             "box.bindings.rw.sneaky", "box.secret_path.TOK",
         ]
 
-    def test_the_reconcile_and_the_seam_refuse_the_SAME_configuration(self):
-        """🕯️ 6-R2 canary against the route being retired — same kind, same dest."""
-        entries = [
-            entry("bindings.rw", name="sneaky", box_dest=self.DEST),
-            self._secret(),
-        ]
-        with pytest.raises(CategoryCollisionError) as old:
-            reconcile_categories(entries)
-        with pytest.raises(CategoryCollisionError) as new:
-            secret_path_deliveries(entries)
-        assert (old.value.kind, old.value.box_dest, old.value.entries) == (
-            new.value.kind, new.value.box_dest, new.value.entries,
-        )
+    # 🕯️ ``test_the_reconcile_and_the_seam_refuse_the_SAME_configuration`` DIED AT
+    # 6-R3 — a 6-R2 canary whose oracle was the retired route. The sibling above
+    # asserts the kind, the dest AND both participant keys directly, which is every
+    # field the canary compared.
 
     def test_an_ABSTRACTION_onto_a_secret_dest_refuses_as_row_3(self):
         """Row 3 keeps its own message: the base survives, the extension is named."""
@@ -464,18 +419,9 @@ class TestSecretDestContentionMovedToTheSeam:
         ]
         assert [e.name for e in secret_path_deliveries(entries)] == ["TOK"]
 
-    def test_it_drops_exactly_what_the_reconcile_drops(self):
-        """🕯️ 6-R2 CANARY — DIES AT 6-R3 (its oracle is the route being retired)."""
-        entries = [
-            self._secret(),
-            entry("masks", name="m", box_dest=self.DEST),
-            entry("secret_path", name="SECOND", scope="workset",
-                  box_dest=f"{SECRET_MOUNT_DIR}/SECOND", host_src="/w/second"),
-        ]
-        rec = reconcile_categories(entries)
-        assert secret_path_deliveries(entries) == [
-            m for m in rec.mounts if m.category == "secret_path"
-        ]
+    # 🕯️ ``test_it_drops_exactly_what_the_reconcile_drops`` DIED AT 6-R3 — the other
+    # 6-R2 canary. The DROP itself is asserted by the three mask cases above, each
+    # against the measured outcome rather than against a second implementation.
 
 
 class TestANarrowResolveEmitsOnlyItsOwnTable:
@@ -553,38 +499,16 @@ class TestANarrowResolveEmitsOnlyItsOwnTable:
 # --------------------------------------------------------------------------- #
 
 
-class TestRow2MaskOverrides:
-    """T3 — a mask at a bound dest wins, and does not raise doing it.
-
-    ⚑ Every case here puts the mask at the LEAST specific scope and FIRST in the
-    input, so neither scope precedence nor input order can hand it the win. A
-    mask at box scope listed last would pass with the override rule DELETED —
-    the mutation matrix caught exactly that, and this is the repair.
-
-    ⚑ "SILENTLY" NOW MEANS "DOES NOT RAISE", AND ONLY THAT (cutover 5-1c). The
-    ``rec.warnings == ()`` half of each case is RETIRED: this helper has no warn
-    channel at all any more, so asserting its silence would assert nothing. What
-    a mask does to the row-5 warning is the PRODUCER's answer and is the OPPOSITE
-    one — a mask does NOT suppress it
-    (``test_store_shape.py::TestTheMaskTrap::test_a_mask_over_an_abstraction_does_not_suppress_the_row5_warning``).
-    Do not read these cases as saying otherwise.
-    """
-
-    def test_mask_over_a_binding_wins_silently(self):
-        rec = reconcile_categories([
-            entry("masks", name=DEST, scope="system"),
-            entry("bindings.rw", name="ws", scope="box"),
-        ])
-        assert categories(rec) == ["masks"]
-        assert [m.scope for m in rec.mounts] == ["system"]
-
-    def test_mask_over_an_abstraction_wins_silently(self):
-        rec = reconcile_categories([
-            entry("masks", name=DEST, scope="system"),
-            entry("common", name="plugins", scope="box"),
-        ])
-        assert categories(rec) == ["masks"]
-        assert [m.scope for m in rec.mounts] == ["system"]
+# 🕯️ ``TestRow2MaskOverrides`` DIED AT 6-R3, with the cross-scope helper it drove.
+# Row 2 is the COLLAPSE's: a mask SWEEPS what it covers when it folds last, and the
+# fold refuses a bind arriving INSIDE an existing mask. Both are pinned where the
+# collapse is — ``tests/test_settings/test_store_collapse.py`` — and their wiring
+# into a launch, including the mask arm reading the SAME map as the mount arm, is
+# ``tests/test_commands/test_start_assembly.py::TestTheMaskArm``. Row 2 at a SECRET
+# dest is the one arm the collapse cannot see, and it stays here
+# (``TestSecretDestContentionMovedToTheSeam::test_a_mask_at_a_secret_dest_takes_it_SILENTLY``);
+# row 2 at a NARROW table's dest likewise
+# (``TestANarrowResolveEmitsOnlyItsOwnTable::test_a_MASK_at_a_table_dest_OVERRIDES_it_rather_than_refusing``).
 
 
 # --------------------------------------------------------------------------- #
@@ -593,15 +517,21 @@ class TestRow2MaskOverrides:
 
 
 class TestRow3ExtensionOntoOccupied:
-    """T4/T5 — ERROR refusing the EXTENSION; the explicit binding is the BASE."""
+    """T4/T5 — ERROR refusing the EXTENSION; the explicit binding is the BASE.
+
+    ⚑ THE DECISION IS THE PRODUCER'S (row 3 is decidable inside ONE scope), so the
+    first case drives it with a SAME-SCOPE pair. The DIRECTION and the MESSAGE are
+    the RAISER's single-sourced text, so the rest drive the raiser and keep the
+    cross-scope key spellings a real message carries. ⚑ Recomposed at 6-R3; the
+    retired helper used to do both halves.
+    """
 
     @pytest.mark.parametrize("abstract", ["common", "caches"])
     def test_abstraction_onto_a_binding_raises(self, abstract):
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            build_store_shape_set([
                 entry("bindings.rw", name="claude_plugins", host_src="/base"),
-                entry(abstract, name="plugins", scope="agent.claude",
-                      host_src="/ext"),
+                entry(abstract, name="plugins", host_src="/ext"),
             ])
         assert exc.value.kind == "extension_onto_occupied"
 
@@ -613,11 +543,13 @@ class TestRow3ExtensionOntoOccupied:
         rule refused the BASE instead, which is the opposite of §0.
         """
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                entry("bindings.rw", name="claude_plugins", host_src="/base"),
-                entry(abstract, name="plugins", scope="agent.claude",
-                      host_src="/ext"),
-            ])
+            raise_extension_onto_occupied(
+                DEST,
+                extension=entry(abstract, name="plugins", scope="agent.claude",
+                                host_src="/ext"),
+                base=entry("bindings.rw", name="claude_plugins",
+                           host_src="/base"),
+            )
         # entries[0] is the refused EXTENSION, entries[1] the surviving BASE.
         assert exc.value.entries[0][0] == f"agent.claude.{abstract}.plugins"
         assert exc.value.entries[1][0] == "box.bindings.rw.claude_plugins"
@@ -628,10 +560,11 @@ class TestRow3ExtensionOntoOccupied:
 
     def test_message_carries_the_rule_changed_paragraph_and_the_remedy(self):
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                entry("bindings.rw", name="claude_plugins"),
-                entry("common", name="plugins", scope="agent.claude"),
-            ])
+            raise_extension_onto_occupied(
+                DEST,
+                extension=entry("common", name="plugins", scope="agent.claude"),
+                base=entry("bindings.rw", name="claude_plugins"),
+            )
         text = str(exc.value)
         assert "THIS RULE CHANGED IN kanibako 1.8.0" in text
         assert "SUPPRESS" in text
@@ -639,10 +572,8 @@ class TestRow3ExtensionOntoOccupied:
 
     def test_an_abstraction_alone_at_a_dest_is_fine(self):
         # ⚑ The ``rec.warnings == ()`` line here was RETIRED at 5-1c and was
-        # vacuous before it: a one-entry group returns on the first branch of
-        # ``_resolve_mount_group``, above every row.
-        rec = reconcile_categories([entry("common", name="plugins")])
-        assert categories(rec) == ["common"]
+        # vacuous before it: one declaration at one dest meets no row at all.
+        assert bound([entry("common", name="plugins")]) == {DEST: "/h"}
 
 
 # --------------------------------------------------------------------------- #
@@ -650,55 +581,23 @@ class TestRow3ExtensionOntoOccupied:
 # --------------------------------------------------------------------------- #
 
 
-class TestRow4CrossScopeIsSilent:
-    """T6 — scope precedence decides and nothing is said, IN THE HELPER.
+# 🕯️ ``TestRow4CrossScopeIsSilent``'s TWO CROSS-SCOPE CASES DIED AT 6-R3, and their
+# outcome had already stopped being reachable from a launch: row 4's silent pick was
+# the retired helper's, while the COLLAPSE refuses two binds at one dest whatever
+# their scopes (``store_collapse._refuse_bind_over_bind``) — so a real box never got
+# the pick, it failed to assemble. With the helper gone the outcome exists nowhere and
+# there is nothing left to assert. The refusal that replaced it is pinned in
+# ``tests/test_settings/test_store_collapse.py``; that a cross-scope abstraction pair
+# produces NO WARNING is pinned in
+# ``test_store_shape.py::TestPerScope::test_a_cross_scope_abstraction_pair_is_left_whole``.
+#
+# ⚑ ONE CASE SURVIVES, and it was never a cross-scope case in the collapse's terms:
+# D5 below, whose two entries carry the ONE bare ``agent`` token and so fold into a
+# single scope's shape. It drove ``build_store_shape_set`` already.
 
-    ⚑⚑ THE OUTCOME THIS CLASS NAMES IS NO LONGER REACHABLE FROM A LAUNCH (see the
-    module docstring). The two CROSS-SCOPE cases below are exactly the
-    arrangement the assembly collapse refuses — two binds at one dest, whatever
-    their scopes (``store_collapse._refuse_bind_over_bind``) — so a real box
-    never gets the silent pick; it fails to assemble instead. The function still
-    performs the pick, and that is what is asserted here, deliberately and
-    unchanged: this is the pure helper's behaviour, not a box's.
 
-    ⚑ The caveat is per-CASE, not per-class:
-    ``test_agent_default_and_active_count_as_ONE_scope`` is NOT a cross-scope
-    case in the collapse's terms — see its own docstring.
-
-    ⚑ "SILENT" IS NO LONGER THIS FILE'S TO ASSERT (cutover 5-1c): the helper has
-    no warn channel, so each case's ``rec.warnings == ()`` line is RETIRED and
-    what survives is the PICK. The silence claim itself is alive and pinned on
-    the arm that would make the noise —
-    ``test_store_shape.py::TestPerScope::test_a_cross_scope_abstraction_pair_is_left_whole``
-    (a cross-scope abstraction pair produces NO warning, because the producer
-    folds each scope alone and neither scope has two). Re-pinning it here would
-    be a second spelling of one claim.
-    """
-
-    def test_box_beats_system_across_categories_silently(self):
-        rec = reconcile_categories([
-            entry("common", name="a", scope="system", host_src="/sys"),
-            entry("caches", name="b", scope="box", host_src="/box"),
-        ])
-        assert [m.host_src for m in rec.mounts] == ["/box"]
-
-    def test_scope_precedence_beats_input_order(self):
-        """The caller's list order must not be able to override row 4.
-
-        ``reconcile_categories`` takes an arbitrary list; only the live adapter
-        happens to hand it apply-ordered.
-
-        ⚑ THE CANARY, and it is pinning a PURE FUNCTION on purpose. It calls the
-        helper directly, so what it proves — that the helper's own answer does
-        not depend on input order — is untouched by the collapse taking over box
-        assembly. A cutover step that expects this to change is reading it as an
-        assembly claim; it is not one.
-        """
-        rec = reconcile_categories([
-            entry("caches", name="b", scope="box", host_src="/box"),
-            entry("common", name="a", scope="system", host_src="/sys"),
-        ])
-        assert [m.host_src for m in rec.mounts] == ["/box"]
+class TestTheAgentTierIsONEScope:
+    """D5 — ``agent.default`` and ``agent.<active>`` count as ONE scope, and WARN."""
 
     def test_agent_default_and_active_count_as_ONE_scope(self):
         """D5 — pinned EITHER WAY so the choice is visible and mutable.
@@ -711,9 +610,9 @@ class TestRow4CrossScopeIsSilent:
         tier as ONE scope and WARNS, which is the LOUD direction. If Jei rules
         the other way, this assertion is the single place that flips.
 
-        ⚑ The collapse reads it the same way, which is why the class-level
-        caveat does not reach this case: both entries carry the one ``agent``
-        scope token, so they fold into a single scope's shape and never meet
+        ⚑ The collapse reads it the same way, and that is why this case outlived
+        the cross-scope ones beside it: both entries carry the one ``agent`` scope
+        token, so they fold into a single scope's shape and never meet
         ``_refuse_bind_over_bind``. Nothing refuses this arrangement, and the
         warning below stays the only announcement the user gets.
 
@@ -735,76 +634,26 @@ class TestRow4CrossScopeIsSilent:
         assert len(produced.warnings) == 1
         assert produced.warnings[0].scope == "agent"
         assert set(produced.warnings[0].loser_keys) == {"agent.default.common.a"}
-        # The helper still makes the same PICK, silently, and that half is its own.
-        assert [m.host_src for m in reconcile_categories(entries).mounts] == ["/act"]
+        # …and the PICK proceeds: the active slot's row is what the arm carries.
+        assert produced["agent"].rw[DEST].src == "/act"
 
 
-class TestRow5SameScopeProceedsOnTheExistingOrdering:
-    """T7 — proceed on the existing ordering. SAYING so is no longer this arm's.
-
-    ⚑⚑ RENAMED AND CUT DOWN AT CUTOVER 5-1c, and the rename is the point: row 5
-    is PROCEED **and** WARN, and this helper now does only the first half. The
-    warning is built by the per-scope ``store_shape`` producer and is pinned
-    THERE, once —
-    ``test_store_shape.py::TestWithinScopeRows::test_row5_two_abstractions_at_one_dest_warn_and_the_last_wins``
-    (dest, scope, winner_key, loser_keys) and ``::test_row5_warns_every_launch_and_never_raises``
-    (purity across repeated calls, and the message text). Three cases that lived
-    here were RETIRED rather than moved, because moving them would have made a
-    second spelling of a claim that is already pinned:
-
-    * ``test_same_category_same_scope_also_warns`` — its ONLY assertions were on
-      ``rec.warnings``. It also drove an arrangement that cannot arise in
-      production at all: under dest-keying one key holds one entry per
-      destination, so two ``common`` entries at one dest is synthetic (see the
-      ``entry()`` quarantine note above). The producer's rule reads
-      ``len(abstract) >= 2`` and never compares categories, so nothing about the
-      same-category case is unpinned by its going.
-    * ``test_the_resolver_itself_has_no_memory`` — purity, observed through the
-      warn channel. Pinned on the producer by
-      ``test_row5_warns_every_launch_and_never_raises``.
-    * ``test_a_lower_scopes_own_ambiguity_is_masked_by_row_4``'s SILENCE half —
-      see the surviving case below. ⚑ That one must NOT be retargeted: the
-      producer gives the OPPOSITE answer.
-    """
-
-    def test_same_scope_pair_survives_and_the_existing_ordering_picks(self):
-        """The PROCEED half: one winner comes out, chosen by the input ordering.
-
-        ``common`` sorts after ``caches``, so it wins — the same answer the
-        retired flat ladder gave, and the same one the producer gives.
-        """
-        rec = reconcile_categories([
-            entry("caches", name="build", scope="box", host_src="/cache"),
-            entry("common", name="buildcache", scope="box", host_src="/common"),
-        ])
-        assert len(rec.mounts) == 1
-        assert rec.mounts[0].key == "box.common.buildcache"
-        assert rec.mounts[0].host_src == "/common"
-
-    def test_a_lower_scopes_own_ambiguity_still_resolves_to_ONE_mount(self):
-        """Row 4 makes the whole lower scope lose, so its internal order
-        decided nothing and naming a "winner" there would be a lie.
-
-        ⚑ A row-4 shape, so the class-level caveat on
-        ``TestRow4CrossScopeIsSilent`` applies here and not the one above it:
-        three binds at one dest across two scopes is an arrangement the collapse
-        refuses outright, so the outcome asserted below is the helper's alone.
-
-        ⚑⚑ THE ``rec.warnings == ()`` HALF IS RETIRED AND MUST NOT BE
-        RETARGETED — it is one of the two MEASURED divergences between the arms
-        (cutover 5-0). The producer folds ``system`` ALONE, sees two abstractions
-        at one dest there, and DOES warn; the reconcile was silent because row 4
-        had already made that whole scope lose. Asking ``build_store_shape_set``
-        for silence here would assert the opposite of the truth. What survives is
-        the pick, which is what this case was named for.
-        """
-        rec = reconcile_categories([
-            entry("common", name="a", scope="system"),
-            entry("caches", name="b", scope="system"),
-            entry("common", name="c", scope="box"),
-        ])
-        assert len(rec.mounts) == 1
-        assert rec.mounts[0].scope == "box"
+# 🕯️ ``TestRow5SameScopeProceedsOnTheExistingOrdering`` DIED AT 6-R3. It held the
+# PROCEED half of row 5 for the retired helper; the WARN half had already moved to the
+# per-scope producer at 5-1c, and the PROCEED half moved with it. Both are pinned
+# together, where one function decides them:
+# ``tests/test_settings/test_store_shape.py::TestWithinScopeRows::
+# test_row5_two_abstractions_at_one_dest_warn_and_the_last_wins`` (the winner AND the
+# warning's fields) and ``::test_row5_warns_every_launch_and_never_raises`` (purity
+# and the message text).
+#
+# Its second case — ``test_a_lower_scopes_own_ambiguity_still_resolves_to_ONE_mount``
+# — was a ROW 4 shape and dies for the same reason row 4 does: the helper's pick over
+# three binds at one dest across two scopes, an arrangement the collapse refuses
+# outright, so no box could reach the outcome it asserted. ⚑ Its retired
+# ``rec.warnings == ()`` half must still NOT be retargeted at the producer: the
+# producer folds ``system`` ALONE, sees two abstractions there and DOES warn — one of
+# the two MEASURED divergences recorded at cutover 5-0.
 
 
 class TestCollisionWarningEmission:
@@ -934,28 +783,13 @@ class TestTheCollapseRouteFeedsTheSameChannel:
         # The LOSER is the actionable half — it names the declaration to edit.
         assert "box.caches.build" in self._lines(caplog)[0]
 
-    def test_there_is_NO_SECOND_FEED_left_to_add(self):
-        """5-1c's own guarantee: one ambiguity, one builder, one path to the user.
-
-        The reconcile's feed was deletable because the collapse route replaced it; it
-        had to be DELETED, not merely unused, because two feeds of one channel print
-        one line only for as long as their two constructions stay byte-equal. Making
-        the second feed UNAVAILABLE is what closes that (P3): re-adding it now means
-        re-adding a field, which is a visible design act rather than a one-line edit.
-
-        MUTATION ANCHOR: restore ``warnings`` to ``ReconciledCategories`` (with the
-        row-5 ``CategoryCollision`` construction in ``_resolve_mount_group`` that fills
-        it) and this fails — the attribute is back and a same-scope ambiguity is
-        carried on it again.
-        """
-        rec = reconcile_categories(self._ambiguous())
-
-        assert not hasattr(rec, "warnings"), (
-            "reconcile_categories grew a warn channel back — see cutover 5-1c"
-        )
-        assert [f.name for f in dataclasses.fields(rec)] == [
-            "mounts", "copies", "envs",
-        ]
+    # 🕯️ ``test_there_is_NO_SECOND_FEED_left_to_add`` DIED AT 6-R3, WITH THE
+    # DATACLASS IT INSPECTED. It asserted that ``ReconciledCategories`` had no
+    # ``warnings`` field and exactly three — making the second feed UNAVAILABLE
+    # rather than merely unused (P3). The whole class is deleted now, which is the
+    # same guarantee one level stronger and unrepresentable as a field check. The
+    # structural guard moved to ``test_the_retired_routes_are_GONE`` at the foot of
+    # this file, which asserts the symbols themselves are absent.
 
     def test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not(
         self, caplog,
@@ -995,147 +829,124 @@ class TestTheCollapseRouteFeedsTheSameChannel:
 # --------------------------------------------------------------------------- #
 
 
-class TestPreservedCopyAndCrossDeliveryRules:
-    """The copy layer and the delivery boundary — neither is in the §0 table.
+class TestPreservedCopyRules:
+    """The copy layer — not in the §0 table, and it outlived the table's helper.
 
-    ⚑ Two ``rec.warnings == ()`` assertions were RETIRED here at cutover 5-1c
-    (this one and ``test_synced_at_a_bindings_dest_keeps_the_BINDING_AND_the_copy``).
-    Beyond the channel having moved to the producer, both were vacuous where they
-    stood: ``seeded`` and ``synced`` are COPY deliveries and never reach
-    ``_resolve_mount_group`` at all, so no arrangement of them could ever have
-    produced a row-5 warning.
+    🕯️ THE CROSS-DELIVERY HALF OF THIS CLASS DIED AT 6-R3, and not merely because
+    the helper did: the ladder it pinned was RULED THE OTHER WAY (Jei, 2026-08-12 —
+    *"don't check for sync. Let it clobber whatever it wants."*). ``synced`` no
+    longer REPLACES a ``seeded`` at one dest, a ``synced`` winner is not picked by
+    scope precedence, and nothing prunes a copy for sharing a destination with a
+    mount. The surviving rule is the collapse's and is stated where it lives:
+
+    * ``tests/test_settings/test_store_collapse.py::TestNothingPrunesACopy`` — a
+      copy at a mount's dest keeps BOTH, at every scope;
+    * ``::TestTheSyncArmIsAPlainConcatenation`` — the sync arm arbitrates nothing:
+      every row survives in scope order, which is the direct contradiction of the
+      retired ``_resolve_copy_group`` pick these cases asserted.
+
+    ⚑ Retiring ``test_the_synced_winner_is_the_MOST_SPECIFIC_scope`` and
+    ``test_the_synced_winner_beats_a_seeded_at_the_same_dest`` is the point, not a
+    loss: rebasing them would have pinned an outcome the ruling deleted.
     """
 
     def test_pure_seeded_group_keeps_every_layer(self):
-        """T11 — the template trio. Copies OVERLAY; they do not shadow."""
-        rec = reconcile_categories([
-            entry("seeded", name="template", scope="system", host_src="/base"),
-            entry("seeded", name="template", scope="agent.claude", host_src="/ag"),
-            entry("seeded", name="template", scope="workset", host_src="/ws"),
-        ])
-        assert [c.host_src for c in rec.copies] == ["/base", "/ag", "/ws"]
+        """T11 — the template trio. Copies OVERLAY; they do not shadow.
 
-    def test_synced_at_a_bindings_dest_keeps_the_BINDING_AND_the_copy(self):
-        """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
-
-        The arrangement IS legal now, at every stage: the reconcile's refusal went
-        at 5-1b and the assembly fold's went with this ruling.  ⚑⚑ AND THE BINDING
-        SURVIVES.  The sync is delivered THROUGH the bind covering its dest, into
-        that bind's host source, so it overwrites CONTENT rather than the mount —
-        *"copy | bind copies on top of the bind, and most of bind remains intact"*.
-        Between 5-1b and this ruling the ladder returned the copy alone and deleted
-        a declared binding, which is why ``rec.mounts`` is asserted here at all.
+        ⚑ RECOMPOSED ONTO THE COLLAPSE's seed arm (6-R3), which is what a box is
+        seeded from. Same claim, and now against the route that performs it.
         """
-        rec = reconcile_categories([
-            entry("synced", name="creds"),
-            entry("bindings.rw", name="home"),
-        ])
-        assert [c.category for c in rec.copies] == ["synced"]
-        assert [m.category for m in rec.mounts] == ["bindings.rw"]
+        from kanibako.settings.store_collapse import collapse_seeded
 
-    def test_the_synced_winner_is_the_MOST_SPECIFIC_scope(self):
-        """N3 — this is the CREDENTIAL pick, so getting it wrong is not a
-        cosmetic ordering bug: it copies the WRONG credentials into the box.
-
-        Two ``synced`` entries at one dest are resolved by scope precedence, box
-        over workset over system — the same cascade every other override obeys.
-        Asserted with the box entry FIRST in the input so a fallback to plain
-        input order cannot pass this by accident.
-        """
-        rec = reconcile_categories([
-            entry("synced", name="creds", scope="box", host_src="/box/creds"),
-            entry("synced", name="creds", scope="system", host_src="/sys/creds"),
-        ])
-        assert [c.host_src for c in rec.copies] == ["/box/creds"]
-
-    def test_the_synced_winner_beats_a_seeded_at_the_same_dest(self):
-        """A ``synced`` cred copy-sync is not a layer — it REPLACES the seeded
-        copies at its dest, from ANY scope (an inode-swap cannot co-exist with a
-        file another layer also writes)."""
-        rec = reconcile_categories([
-            entry("synced", name="creds", scope="system", host_src="/sys/creds"),
-            entry("seeded", name="tpl", scope="box", host_src="/box/tpl"),
-        ])
-        assert [c.host_src for c in rec.copies] == ["/sys/creds"]
-
-    def test_synced_no_longer_DISPLACES_a_non_mask_mount(self):
-        # ⚑ The ABSTRACT arm of the same ruling, and it must answer identically to
-        # the ``bindings.rw`` case above: ``common`` and ``caches`` FOLD INTO the
-        # bindings, so sparing one mount and dropping the other would be one rule
-        # wearing two faces.
-        rec = reconcile_categories([
-            entry("common", name="a"),
-            entry("synced", name="creds"),
-        ])
-        assert categories(rec) == ["common", "synced"]
-
-    def test_a_mount_still_outranks_a_seeded_copy(self):
-        rec = reconcile_categories([
-            entry("seeded", name="tpl"),
-            entry("caches", name="c"),
-        ])
-        assert categories(rec) == ["caches"]
-
-    def test_masks_still_outranks_synced(self):
-        rec = reconcile_categories([
-            entry("masks", name=DEST, scope="system"),
-            entry("synced", name="creds", scope="box"),
-        ])
-        assert categories(rec) == ["masks"]
+        # ⚑ A dest INSIDE home: seeds apply to the home bind alone, so the collapse
+        # refuses one outside it (``_refuse_seed_outside_home``). The retired helper
+        # had no home to answer against and took any dest.
+        dest = "/home/agent/template"
+        collapsed = collapse_seeded(build_store_shape_set([
+            entry("seeded", name=dest, box_dest=dest, scope="system",
+                  host_src="/base"),
+            entry("seeded", name=dest, box_dest=dest, scope="agent.claude",
+                  host_src="/ag"),
+            entry("seeded", name=dest, box_dest=dest, scope="workset",
+                  host_src="/ws"),
+        ]))
+        assert [c.src for c in collapsed] == ["/base", "/ag", "/ws"]
 
     def test_env_never_participates_in_a_dest_collision(self):
-        rec = reconcile_categories([
+        """An env VAR name equal to a path dest is not a destination at all.
+
+        ⚑ RECOMPOSED ONTO THE CARRIER (6-R3): ``env`` reaches a box through
+        ``LaunchDeliveries.envs`` and through nothing else, and the bind reaches it
+        through the collapse — two carriers, so the contrived clash cannot even be
+        expressed as one.
+        """
+        from kanibako.settings.settings_categories import launch_deliveries
+
+        entries = [
             entry("env", name="PATH", box_dest="PATH"),
             entry("bindings.rw", name="home", box_dest="PATH"),
-        ])
-        assert len(rec.envs) == 1
-        assert len(rec.mounts) == 1
+        ]
+        deliveries = launch_deliveries(entries, agent_dests=frozenset())
+        assert [e.box_dest for e in deliveries.envs] == ["PATH"]
+        assert bound(entries) == {"PATH": "/h"}
 
 
 class TestCredentialGateRunsFirst:
-    """T12 — the gate runs ABOVE the reconcile, so a suppressed cred cannot error.
+    """T12 — the gate runs ABOVE every consumer, so a suppressed cred cannot error.
 
-    ⚑ CUTOVER STEP 4 MOVED IT OUT. ``reconcile_categories`` no longer takes
-    ``deliver_creds`` and applies no gate of its own: delivery policy belongs to
-    the launch seam (``commands.start._resolve_launch_snapshot``), above BOTH
-    consumers of the entry list. These cases therefore drive the PRODUCTION
-    COMPOSITION — ``reconcile_categories(gate_credential_delivery(entries, flag))``
-    — which is what makes "gate first, resolve second" true BY CONSTRUCTION.
+    ⚑ CUTOVER STEP 4 MOVED IT OUT: delivery policy belongs to the launch seam
+    (``commands.start._resolve_launch_snapshot``), above every consumer of the entry
+    list, and no consumer applies a gate of its own. These cases drive the
+    PRODUCTION COMPOSITION — ``build_store_shape_set(gate_credential_delivery(...))``
+    — which is what makes "gate first, fold second" true BY CONSTRUCTION.
+
+    ⚑ RE-POINTED AT THE PRODUCER at 6-R3 (it was the retired helper). The LIVE
+    composition, end to end through a real resolve, is pinned in
+    ``tests/test_commands/test_start_assembly.py::TestTheCredentialGateReachesTheCollapse``,
+    which carries the MEASURED mutation showing exactly which pins redden.
     """
 
+    @staticmethod
+    def _copies(entries):
+        shape = build_store_shape_set(entries)["box"]
+        return shape.seed, shape.sync
+
     def test_private_box_does_not_error_on_a_suppressed_synced(self):
-        rec = reconcile_categories(gate_credential_delivery(
+        entries = gate_credential_delivery(
             [entry("synced", name="creds"), entry("bindings.rw", name="home")],
             False,
-        ))
-        assert categories(rec) == ["bindings.rw"]
+        )
+        seed, sync = self._copies(entries)
+        assert sync == []
+        assert bound(entries) == {DEST: "/h"}
 
     def test_private_box_drops_a_credential_seed_but_keeps_a_plain_one(self):
-        rec = reconcile_categories(gate_credential_delivery(
+        seed, _sync = self._copies(gate_credential_delivery(
             [
-                entry("seeded", name="creds", is_credential=True),
-                entry("seeded", name="tpl"),
+                entry("seeded", name="creds", box_dest="/g/cred",
+                      is_credential=True),
+                entry("seeded", name="tpl", box_dest="/g/tpl"),
             ],
             False,
         ))
-        assert [c.name for c in rec.copies] == ["tpl"]
+        assert [c.dest for c in seed] == ["/g/tpl"]
 
-    def test_reconcile_does_not_gate_credentials_the_gate_is_the_callers(self):
-        """UNGATED in ⇒ credentials OUT — the helper has no delivery policy left.
+    def test_the_producer_does_not_gate_credentials_the_gate_is_the_callers(self):
+        """UNGATED in ⇒ credentials OUT — no consumer has a delivery policy left.
 
-        The pin for cutover step 4's whole point: hand ``reconcile_categories``
-        the very entries a PRIVATE box must not receive, WITHOUT the gate, and
-        they survive. Re-adding a ``deliver_creds`` parameter (or any internal
-        re-gate) reddens this — which is the guard, because a second application
-        of the rule is how the two launch consumers come to describe differently
-        private boxes.
+        The pin for cutover step 4's whole point: hand the producer the very entries
+        a PRIVATE box must not receive, WITHOUT the gate, and they survive. Any
+        internal re-gate reddens this — which is the guard, because a second
+        application of the rule is how two launch consumers come to describe
+        differently private boxes.
         """
-        rec = reconcile_categories([
+        seed, sync = self._copies([
             entry("synced", name="creds", box_dest="/g/sync"),
-            entry("seeded", name="credseed", box_dest="/g/seed", is_credential=True),
+            entry("seeded", name="credseed", box_dest="/g/seed",
+                  is_credential=True),
         ])
-        assert {c.box_dest for c in rec.copies} == {"/g/sync", "/g/seed"}
-        assert {c.category for c in rec.copies} == {"synced", "seeded"}
+        assert [c.dest for c in sync] == ["/g/sync"]
+        assert [c.dest for c in seed] == ["/g/seed"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1185,16 +996,17 @@ class TestDeriveBindingKeys:
         declaration's derivation is exactly what explains the warning that
         names it, so hiding it would defeat the point.
 
-        ⚑ The "did it actually lose?" precondition used to be read off
-        ``reconcile_categories(...).warnings``; 5-1c retired that field, so it is
-        read off the WINNER instead — which says the same thing more directly.
+        ⚑ The "did it actually lose?" precondition used to be read off a warnings
+        field; 5-1c retired that field, so it is read off the WINNER instead — which
+        says the same thing more directly. ⚑ The winner comes from the PRODUCER
+        since 6-R3, which is what decides a same-scope pair.
         """
         entries = [
             entry("caches", name="build", scope="box", host_src="/loser"),
             entry("common", name="buildcache", scope="box", host_src="/winner"),
         ]
-        # The loser did lose: one mount survives and it is the other one.
-        assert [m.host_src for m in reconcile_categories(entries).mounts] == ["/winner"]
+        # The loser did lose: one bind occupies the dest and it is the other one.
+        assert bound(entries) == {DEST: "/winner"}
         derived = derive_binding_keys(entries)
         assert derived[
             ("binding_derivations", "box", "caches", "build")
@@ -1288,14 +1100,45 @@ def test_the_flat_authority_ladder_is_gone():
     assert not hasattr(settings_categories, "_CATEGORY_AUTHORITY")
 
 
+def test_the_retired_routes_are_GONE():
+    """🛑 CUTOVER 6-R3, STATED STRUCTURALLY — the same reasoning as the ladder above.
+
+    The single cross-scope pass and its result type are DELETED, not merely unused.
+    Two implementations of one table print one answer only for as long as they stay
+    byte-equal, and this file spent three cutover steps carrying canaries to prove
+    they did. Making the second one UNAVAILABLE is what closes that (P3): re-adding
+    it means re-adding a module-level function and a dataclass, which is a visible
+    design act rather than a one-line edit.
+
+    ⚑ THIS REPLACES ``test_there_is_NO_SECOND_FEED_left_to_add``, which asserted the
+    absence of ONE FIELD on the class this asserts the absence of.
+
+    MUTATION ANCHOR: restore either symbol and this fails, naming it.
+    """
+    from kanibako.settings import settings_categories
+
+    for name in (
+        "reconcile_categories", "ReconciledCategories",
+        "_resolve_dest_group", "_resolve_mount_group", "_resolve_copy_group",
+        "_DISABLE_SENTINEL",
+    ):
+        assert not hasattr(settings_categories, name), name
+
+
 class TestRemedyTextIsHonestAboutWhatItCanKnow:
-    """The remedy is the non-obvious part (§0), so it must not overstate itself."""
+    """The remedy is the non-obvious part (§0), so it must not overstate itself.
+
+    ⚑ EVERY CASE DRIVES A RAISER (6-R3). The text is written ONCE, in the two public
+    raisers, and read by three callers each; asking a caller for it would pin the
+    caller\'s route rather than the sentence, and any of the three would do equally
+    badly. The retired helper was simply the caller these used to reach it through.
+    """
 
     def test_row1_labels_the_yaml_block_as_a_choice(self):
         """Row 1 has two PEERS — the resolver cannot know which one the user
         wants to keep, so prescribing one would be a guess dressed as advice."""
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            raise_binding_vs_binding(DEST, [
                 entry("bindings.ro", name="vault", scope="system"),
                 entry("bindings.rw", name="vault", scope="box"),
             ])
@@ -1306,10 +1149,11 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
     def test_row3_does_not_label_it_a_choice(self):
         """Row 3's occupant is DETERMINED — the base always survives."""
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                entry("bindings.rw", name="home", scope="box"),
-                entry("common", name="plugins", scope="agent.claude"),
-            ])
+            raise_extension_onto_occupied(
+                DEST,
+                extension=entry("common", name="plugins", scope="agent.claude"),
+                base=entry("bindings.rw", name="home", scope="box"),
+            )
         assert "Either entry may be the one you keep" not in str(exc.value)
 
     def test_an_agent_scope_occupant_names_the_per_agent_file_spelling(self):
@@ -1317,7 +1161,7 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
         ``agent.<node>`` form is what a CONTAINING scope's file writes. Printing
         one without the other hands the reader an edit that silently no-ops."""
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            raise_binding_vs_binding(DEST, [
                 entry("bindings.ro", name="a", scope="agent.claude"),
                 entry("bindings.rw", name="b", scope="agent.claude"),
             ])
@@ -1327,7 +1171,7 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
 
     def test_a_box_scope_occupant_gets_no_agent_caveat(self):
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            raise_binding_vs_binding(DEST, [
                 entry("bindings.ro", name="a", scope="box"),
                 entry("bindings.rw", name="b", scope="box"),
             ])
@@ -1359,7 +1203,7 @@ class TestRemedyBlockKeysTheDestWhole:
     def test_row1_prints_the_dotted_dest_as_one_key(self):
         dest = "/home/agent/.claude/plugins"
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
+            raise_binding_vs_binding(dest, [
                 entry("bindings.ro", name=dest, box_dest=dest, scope="box",
                       host_src="/srv/plugins"),
                 entry("bindings.rw", name=dest, box_dest=dest, scope="box",
@@ -1374,12 +1218,13 @@ class TestRemedyBlockKeysTheDestWhole:
         and keeps a ``null`` value as the per-entry reset."""
         dest = "~/.cache/uv"
         with pytest.raises(CategoryCollisionError) as exc:
-            reconcile_categories([
-                entry("bindings.rw", name=dest, box_dest=dest, scope="box",
-                      host_src="/var/cache/uv"),
-                entry("caches", name=dest, box_dest=dest, scope="agent.claude",
-                      host_src="/ext"),
-            ])
+            raise_extension_onto_occupied(
+                dest,
+                extension=entry("caches", name=dest, box_dest=dest,
+                                scope="agent.claude", host_src="/ext"),
+                base=entry("bindings.rw", name=dest, box_dest=dest, scope="box",
+                           host_src="/var/cache/uv"),
+            )
         block = yaml.safe_load(_remedy_block(str(exc.value), "box"))
         assert block == {"box": {"bindings": {"rw": {dest: None}}}}
 
@@ -1724,3 +1569,75 @@ class TestPrefOriginOnTheAdapterRaise:
 
         exc = SettingsError("something else entirely")
         assert _annotate_pref_origin(exc, []) is exc
+
+
+class TestThePrefOriginReachesTheLIVEPATH:
+  """🛑 CUTOVER 6-R3 — the enrichment on the REAL resolve, not on the function.
+
+  Every case above hands ``_annotate_pref_origin`` an exception it built itself, so
+  all of them stay green with the CALL SITE deleted. That was tolerable while the
+  retired by-dest reconcile raised FIRST on the live path and its ``try`` was the
+  only one there was: deleting it moved the refusal into three OTHER callees, and a
+  wrap left around the wrong one downgrades every pref-caused collision message
+  silently — no test would have noticed.
+
+  So this one drives ``kanibako start``'s own resolve end to end: a ``pref`` in a
+  BOX settings file installs a declaration that collides with the box's own, and the
+  error a user would receive must name the request.
+
+  🛑 MUTATION ANCHOR, PROVED: delete the ``except (CategoryCollisionError,
+  SettingsError)`` wrap from ``_resolve_launch_snapshot`` and this fails on the
+  ``was installed by`` assertion while every case above stays green.
+
+  ⚑ SAME SCOPE on purpose. Both declarations land in ``agent``, so the PER-SCOPE
+  PRODUCER raises the §0 row-3 refusal with its participants STRUCTURED — which is
+  the arm that carries the declaration keys the enrichment matches against. A
+  cross-scope pair reaches the COLLAPSE instead, whose message structurally cannot
+  name a declaration key (``store_collapse._refuse_bind_over_bind``'s own docstring
+  says so), so it would pin nothing about this wire.
+
+  ⚑ AND THE AGENT TIER IS WHERE A ``pref`` CAN AIM: §2h's allowlist admits only
+  ``system.agent`` and ``agent.<agent>.<key>``, so ``pref.agent.claude.common`` is
+  the request, and the occupant it extends onto is declared at the same tier.
+  """
+
+  DEST = "~/prefcollide"
+
+  def test_a_pref_installed_collision_NAMES_THE_REQUEST_on_a_real_resolve(
+    self, std, config, project_dir, tmp_path,
+  ):
+    import yaml
+
+    from kanibako.commands.start import _resolve_launch_snapshot
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings.paths import resolve_project
+    from kanibako.targets.no_agent import NoAgentTarget
+
+    src = tmp_path / "collide"
+    src.mkdir()
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
+    proj.metadata_path.mkdir(parents=True, exist_ok=True)
+    (proj.metadata_path / "settings.yaml").write_text(yaml.safe_dump({
+      "pref": {"agent": {"claude": {"common": {self.DEST: [str(src)]}}}},
+    }))
+
+    with pytest.raises(CategoryCollisionError) as exc:
+      _resolve_launch_snapshot(
+        std=std, proj=proj, agent_name="claude",
+        system_settings_path=None, agent_cfg_path=None,
+        desc=None, install=None, target=NoAgentTarget(), agent_cfg=None,
+        deliver_creds=True,
+        # The OCCUPANT, at the same tier: an explicit agent-scope binding the
+        # pref-installed ``common`` then extends onto.
+        extra_default_categories={
+          "agent.claude.bindings.rw": {self.DEST: (str(src),)},
+        },
+      )
+
+    text = str(exc.value)
+    # The ENTRY key the user cannot write, and the REQUEST they can.
+    assert "was installed by" in text, text
+    assert "'pref.agent.claude.common'" in text, text
+    assert "edit or remove that request" in text, text
+    # The structured fields survive the enrichment, as the pure-function cases pin.
+    assert exc.value.kind == "extension_onto_occupied"

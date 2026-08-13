@@ -573,13 +573,12 @@ def start_mocks():
             m_resolve_target.return_value = target
 
             # Wire the launch-snapshot orchestrator stub (block 7b).  It returns a
-            # controlled ``(snapshot, reconciled)``: the reconcile's
-            # MOUNT winners are ONLY the AGENT delivery binds (claude's descriptor,
-            # resolved against the real ``install_mock`` paths via the real 7a
-            # representation + the committed pipeline) so the descriptor-delivery
-            # integration assertions hold, and NO MagicMock-path category mounts
-            # are produced (their behavior is covered by the dedicated suites with a
-            # REAL ``std``).  Late image/helper resolves (gated off by default) call
+            # controlled ``(snapshot, deliveries)``: the collapsed MOUNT set is ONLY
+            # the AGENT delivery binds (claude's descriptor, resolved against the
+            # real ``install_mock`` paths via the real 7a representation + the
+            # committed pipeline) so the descriptor-delivery integration assertions
+            # hold, and NO MagicMock-path category mounts are produced (their
+            # behavior is covered by the dedicated suites with a REAL ``std``).  Late image/helper resolves (gated off by default) call
             # the same stub; their controlled result has no agent binds and the
             # default off-gates mean they don't fire anyway.
             def _snapshot_side_effect(*a, **kw):
@@ -596,7 +595,6 @@ def start_mocks():
                 from kanibako.settings.settings_categories import (
                     gate_credential_delivery,
                     launch_deliveries,
-                    reconcile_categories,
                 )
                 from kanibako.settings.settings_launch import (
                     build_launch_snapshot,
@@ -695,22 +693,20 @@ def start_mocks():
                 entries = snapshot_category_entries(
                     snap, active_agent=_node, box_ctx=ctx,
                 )
-                # ⚑⚑ THE TAIL OF THE REAL ORCHESTRATOR, MIRRORED BY CALL — the gate,
-                # the reconcile, and the COLLAPSE, in that order and off the SAME
-                # gated list, exactly as ``_resolve_launch_snapshot`` does it.
+                # ⚑⚑ THE TAIL OF THE REAL ORCHESTRATOR, MIRRORED BY CALL — the
+                # gate, then the COLLAPSE and the CARRIER, in that order and off the
+                # SAME gated list, exactly as ``_resolve_launch_snapshot`` does it.
                 # 🛑 The collapse install is not optional decoration: it is the ONLY
                 # writer of ``meta.assembly.*``, and it lives in the orchestrator
                 # this stub REPLACES.  Without it every launch driven through this
-                # fixture reads all three leaves ABSENT and takes the reconciled
-                # fallback — i.e. tests the route the cutover is deleting.  These are
-                # CALLS to the one implementation, never a second copy of it.
+                # fixture reads all three leaves ABSENT.  These are CALLS to the one
+                # implementation, never a second copy of it.
                 _deliver_creds = kw.get("deliver_creds", True)
                 delivered = gate_credential_delivery(entries, _deliver_creds)
-                rec = reconcile_categories(delivered)
                 _install_assembly_collapse(snap, delivered, whole_box=True)
-                # Cutover 6-R1: the carrier the orchestrator now returns third,
-                # built here BY THE SAME CALL off the SAME gated list — a stub that
-                # returned a hand-made one would be a second producer in the harness.
+                # The carrier the orchestrator returns second, built here BY THE SAME
+                # CALL off the SAME gated list — a stub that returned a hand-made one
+                # would be a second producer in the harness.
                 deliveries = launch_deliveries(
                     delivered, agent_dests=_agent_delivered_dests(delivered),
                 )
@@ -722,7 +718,7 @@ def start_mocks():
                 # to avoid, and this snapshot carries no abstract declarations to
                 # derive from anyway. Tests that need either use the REAL path or
                 # call the functions directly (tests/test_category_collisions.py).
-                return snap, rec, deliveries
+                return snap, deliveries
 
             m_launch_mount_stubs[
                 "_resolve_launch_snapshot"

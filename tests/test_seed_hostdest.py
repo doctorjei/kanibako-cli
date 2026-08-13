@@ -55,10 +55,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.settings import core_defaults
-from kanibako.settings.settings_categories import (
-    CategoryEntry,
-    reconcile_categories,
-)
+from kanibako.settings.settings_categories import CategoryEntry
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 
@@ -233,60 +230,19 @@ def _entry(**kw) -> CategoryEntry:
     return CategoryEntry(**base)  # type: ignore[arg-type]
 
 
-class TestReconcileAtOneDestination:
-    """A COPY and a MOUNT that name one destination ARE one destination.
-
-    ⚑⚑ THE PREMISE OF THE OLD CLASS DISSOLVED (2026-08-08c).  It pinned that
-    reconcile grouped on ``(dest_space, box_dest)`` so that a HOST copy and a
-    GUEST mount sharing a dest STRING stayed two independent groups.  There is
-    one dest space now (spec §0), ``CategoryEntry.dest_space`` is deleted, and
-    ``reconcile_categories`` keys on the bare ``box_dest`` — so the two entries
-    meet in ``_resolve_dest_group`` and the cross-delivery ladder picks between
-    them.  That is the intended consequence of collapsing the key.
-
-    ⚑⚑ THIS PINS TODAY'S BEHAVIOUR AND DELIBERATELY DOES NOT ASSERT AN ERROR.
-    A separately-planned later step ("the collapse") makes two entries at one
-    point an ERROR; that is not this pass.  When it lands, these two tests are
-    the ones that must be re-derived — do not read their current expectations as
-    an argument against making it an error.
-    """
-
-    def test_a_box_store_shaped_dest_gets_no_special_treatment(self):
-        """A dest that LOOKS like a host box-store path is an ordinary guest dest.
-
-        ⚑ This is what is left of the old host/guest split, and it is worth
-        keeping: the string below is exactly the shape the retired host spelling
-        produced on a ``/home/agent`` host.  Nothing may re-derive a space from
-        it — no prefix heuristic, no special case — so it reconciles precisely
-        like any other dest: one group, and the mount beats the ``seeded`` copy.
-        """
-        shared = f"{GUEST_HOME}/.local/share/kanibako/boxes/demo/home"
-        copy = _entry(box_dest=shared, name=shared,
-                      key_segments=("system", "seeded", shared))
-        mount = _entry(
-            category="bindings.ro", box_dest=shared, delivery="MOUNT",
-            options="ro", name=shared,
-            key_segments=("box", "bindings", "ro", shared),
-            scope="box",
-        )
-        rec = reconcile_categories([copy, mount])
-        assert rec.copies == [], rec.copies
-        assert [m.key for m in rec.mounts] == [f"box.bindings.ro.{shared}"]
-
-    def test_an_ordinary_guest_dest_reconciles_the_same_way(self):
-        """The plain case, unchanged: a MOUNT beats a ``seeded`` COPY at one dest."""
-        shared = f"{GUEST_HOME}/thing"
-        copy = _entry(box_dest=shared, name=shared,
-                      key_segments=("system", "seeded", shared))
-        mount = _entry(
-            category="bindings.ro", box_dest=shared, delivery="MOUNT",
-            options="ro", name=shared,
-            key_segments=("box", "bindings", "ro", shared),
-            scope="box",
-        )
-        rec = reconcile_categories([copy, mount])
-        assert rec.copies == []
-        assert len(rec.mounts) == 1
+# 🕯️ ``TestReconcileAtOneDestination`` DIED AT 6-R3, with the cross-delivery ladder
+# it pinned. It asserted that a COPY and a MOUNT at one destination resolve to the
+# MOUNT ALONE — the retired ``_resolve_dest_group``'s answer. That rule was ruled the
+# OPPOSITE way (Jei, 2026-08-12: a copy lands ON TOP of a bind and most of the bind
+# remains intact), so rebasing the class would have pinned a behaviour that no longer
+# exists. Its successor is
+# ``tests/test_settings/test_store_collapse.py::TestNothingPrunesACopy``, which states
+# the surviving rule: nothing prunes a copy for sharing a destination with a mount.
+#
+# ⚑ What the class ALSO carried — that a dest which LOOKS like a host box-store path
+# gets no special treatment, no prefix heuristic, no re-derived dest space — survives
+# in ``CategoryEntry``'s own docstring (the "WHAT THE RETIRED FIELD WAS FOR" note) and
+# in the seed translator's tests above, which drive that very shape.
 
 
 # ===========================================================================
@@ -321,10 +277,9 @@ class TestOptionalBindEmission:
             key_segments=("box", "bindings", "ro", self._DEST),
             optional=optional,
         )
-        rec = reconcile_categories([entry])
         with caplog.at_level(logging.WARNING):
             mounts = _emit_category_mounts(
-                _bind_map_from_mounts(rec.mounts), label="category",
+                _bind_map_from_mounts([entry]), label="category",
                 skip_if_absent=skip_if_absent,
             )
         return mounts
@@ -356,8 +311,7 @@ class TestOptionalBindEmission:
         )
         with caplog.at_level(logging.WARNING):
             assert _emit_category_mounts(
-                _bind_map_from_mounts(reconcile_categories([entry]).mounts),
-                label="category",
+                _bind_map_from_mounts([entry]), label="category",
             ) == []
         assert any("does not exist" in r.message for r in caplog.records)
 
@@ -411,8 +365,7 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
         )
         with caplog.at_level(logging.WARNING):
             return _emit_category_mounts(
-                _bind_map_from_mounts(reconcile_categories([entry]).mounts),
-                label="folded",
+                _bind_map_from_mounts([entry]), label="folded",
             )
 
     @pytest.mark.parametrize("options", ["ro", "ro,Z", "Z,U,ro", " ro "])
@@ -598,11 +551,16 @@ class TestCanonDefaultCategories:
 
 
 class TestHandbookMountOrdering:
-    def test_contents_and_chapters_reconcile_in_ascending_depth(self, tmp_path):
+    def test_contents_and_chapters_are_EMITTED_in_ascending_depth(self, tmp_path):
         """A depth-sort regression is otherwise SILENT. Under J-7 the chapters are
         siblings rather than nested, so ordering is no longer load-bearing for
         correctness — but the ordering itself is still what a future non-sibling
-        layout would depend on, and it is free to pin."""
+        layout would depend on, and it is free to pin.
+
+        ⚑ ASSERTED AT THE EMITTER since 6-R3. A dest-keyed map carries NO order, so
+        EMISSION owns the depth-sort (``_emit_category_mounts``); the retired by-dest
+        reconcile used to hand a sorted list over instead, and that is the list this
+        used to read."""
         arm = core_defaults.canon_default_categories(
             _Std(tmp_path), "claude",
         )["box.bindings.ro"]
@@ -624,8 +582,16 @@ class TestHandbookMountOrdering:
         entries = snapshot_category_entries(
             snap, active_agent="claude", box_ctx=_ctx(),
         )
-        rec = reconcile_categories(entries)
-        dests = [m.box_dest for m in rec.mounts]
+        from kanibako.commands.start import (
+            _bind_map_from_mounts,
+            _emit_category_mounts,
+        )
+
+        dests = [
+            m.destination for m in _emit_category_mounts(
+                _bind_map_from_mounts(entries), label="handbook-order",
+            )
+        ]
         depths = [d.count("/") for d in dests]
         assert depths == sorted(depths), dests
         assert f"{GUEST_HOME}/canon/handbook/box" in dests

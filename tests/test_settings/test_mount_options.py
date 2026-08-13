@@ -68,9 +68,8 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   stays green while the box stops working
   [[same-arity-shape-flip-passes-silently]]. Only the VALUE catches it.
   """
-  from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
+  from kanibako.commands.start import _narrow_bind_map, _emit_category_mounts
   from kanibako.settings import core_defaults
-  from kanibako.settings.settings_categories import reconcile_categories
   from kanibako.settings.settings_launch import (
     build_launch_snapshot,
     snapshot_category_entries,
@@ -110,10 +109,10 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
 
   # And the value survives DELIVERY: the falsy-drop in ``Mount.to_volume_arg``
   # yields the 2-field form, because ``src:dst:`` is rejected outright by podman.
-  rec = reconcile_categories(entries)
   by_dest = {
     m.destination: m for m in _emit_category_mounts(
-      _bind_map_from_mounts(rec.mounts), label="options-fidelity",
+      _narrow_bind_map(entries, core_defaults.helper_bind_dests()),
+      label="options-fidelity",
     )
   }
   assert by_dest[sock_dest].options == "", sorted(by_dest)

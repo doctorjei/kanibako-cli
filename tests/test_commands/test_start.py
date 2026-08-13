@@ -1531,8 +1531,8 @@ class TestTheMainPathEmitsFromTheCollapse:
     ``_emit_category_mounts`` takes a dest-keyed ``(src, opts)`` map and cannot tell
     which route built it, so testing the emitter proves nothing about which map the
     LAUNCH hands it. These two pin the call site itself: what
-    ``_snapshot_assembly_bindings`` returns is what the box receives, and the
-    reconciled rows are reached ONLY when that read comes back ABSENT.
+    ``_snapshot_assembly_bindings`` returns is what the box receives, and an ABSENT
+    read FAILS the launch (2c) rather than reaching a second set of rows.
 
     ⚑ The collapsed map is INJECTED here rather than resolved because the point is
     the CALL SITE, not the fold: injection is the only way to make the map a KNOWN
@@ -1551,8 +1551,8 @@ class TestTheMainPathEmitsFromTheCollapse:
     _KICKOFF = "/home/agent/.config/kanibako/kickoff.md"
 
     def test_the_live_launch_emits_THE_MAP_IT_READ(self, start_mocks, tmp_path):
-        """🛑 THE MUTATION ANCHOR: point the call site back at the reconciled rows
-        and this fails — the injected dest vanishes and kickoff comes back."""
+        """🛑 THE MUTATION ANCHOR: point the call site at any other row set and
+        this fails — the injected dest vanishes and kickoff comes back."""
         from kanibako.commands import start as start_mod
         from kanibako.settings.store_collapse import CollapsedBind
 
@@ -1571,12 +1571,12 @@ class TestTheMainPathEmitsFromTheCollapse:
         assert by_dest.get(self._INJECTED) == "Z,U,rw", by_dest
         # ⚑⚑ AND KICKOFF IS GONE — THE ASSERTION 2a-3 INVERTED, and the sharpest
         # evidence in the suite that the merge took effect. It used to read ``== "ro"``
-        # because a SECOND emitter walked the reconciled rows, so an agent delivery
-        # bind survived a map that never mentioned it. There is ONE emitter and ONE
-        # map now: a dest absent from the map is absent from the box.
+        # because a SECOND emitter walked a second row set, so an agent delivery bind
+        # survived a map that never mentioned it. There is ONE emitter and ONE map
+        # now: a dest absent from the map is absent from the box.
         # 🛑 RED if a second delivery route is ever reintroduced — which is exactly
         # what this assertion is for. That the agent binds are NOT lost is pinned by
-        # the sibling below, where the map is absent and the fallback carries them.
+        # ``test_the_helper_hub_still_gets_the_agent_delivery_binds`` above.
         assert self._KICKOFF not in by_dest, by_dest
 
     def test_the_helper_hub_still_gets_the_agent_delivery_binds(self, start_mocks):
@@ -1687,12 +1687,11 @@ class TestPluginsAndCacheShares:
 
     def _build(self, std, config_file, tmp_path):
         from kanibako.commands.start import (
-            _agent_delivered_dests,
-            _bind_map_from_mounts,
             _emit_category_mounts,
             _resolve_launch_snapshot,
         )
         from kanibako.plugins.claude.target import ClaudeTarget
+        from tests.support.narrow_resolve import table_bind_dests
 
         target = ClaudeTarget()
         # NARROW snapshot resolve: inject ONLY the claude agent ``common`` entries
@@ -1701,7 +1700,8 @@ class TestPluginsAndCacheShares:
         # agent-scope ``common`` table (plugins/cache under
         # ``@meta.agent.claude.path/common``). All scope files are absent (None) —
         # this isolates the agent-scope category resolution.
-        _snap, reconciled, _ = _resolve_launch_snapshot(
+        _table = target.default_common()
+        _snap, deliveries = _resolve_launch_snapshot(
             std=std,
             proj=self._proj(std),
             agent_name="claude",
@@ -1712,12 +1712,13 @@ class TestPluginsAndCacheShares:
             target=target,
             agent_cfg=None,
             include_base_families=False,
-            extra_default_categories=target.default_common(),
+            extra_default_categories=_table,
             deliver_creds=True,
+            narrow_bind_dests=table_bind_dests(_table),
         )
         return _emit_category_mounts(
-            _bind_map_from_mounts(reconciled.mounts), label="share",
-            skip_if_absent=_agent_delivered_dests(reconciled.mounts),
+            deliveries.narrow_bindings, label="share",
+            skip_if_absent=deliveries.agent_dests,
         )
 
     def _by_dest(self, mounts, dest):
@@ -2333,15 +2334,18 @@ class TestContainerEnvPrecedence:
     """Verify container env accumulation precedence.
 
     Order (low->high, later ``.update`` wins):
-        agent < the reconciled ``<scope>.env.<VAR>`` winners < state < cli
+        agent < the delivered ``<scope>.env.<VAR>`` entries < state < cli
 
     ⚑ FLIPPED by B9/RQ-1. The three docker ``.env`` FILE tiers (system, workset,
     box) that used to open this sequence are RETIRED — the ratified manifest
     records the files as DROPPED, so the launch read of them was an
     authority-vs-code divergence. Their replacement is the settings key
-    ``<scope>.env.<VAR>``, whose per-VAR precedence winner (system < agent <
-    workset < box) the single launch reconcile has ALREADY picked; the launch
-    applies that result rather than re-deriving the order.
+    ``<scope>.env.<VAR>``, delivered through ``LaunchDeliveries.envs`` in scope
+    apply order (system < agent < workset < box).
+
+    ⚑ THE PER-VAR WINNER IS ``_build_config_env``'s OWN ``update`` and always was:
+    nothing upstream arbitrates env, so the launch applies the delivered order
+    rather than re-deriving one.
     """
 
     @staticmethod
@@ -2355,11 +2359,11 @@ class TestContainerEnvPrecedence:
         )
 
     @classmethod
-    def _assemble(cls, *, agent_env, reconciled_envs, state_env, cli_env):
+    def _assemble(cls, *, agent_env, scope_envs, state_env, cli_env):
         """Replicate the start.py env-assembly sequence verbatim."""
         from kanibako.commands.start import _build_config_env
 
-        container_env = _build_config_env(agent_env, reconciled_envs)
+        container_env = _build_config_env(agent_env, scope_envs)
         container_env.update(state_env)                        # state
         container_env.update(cli_env)                          # cli
         return container_env
@@ -2367,22 +2371,22 @@ class TestContainerEnvPrecedence:
     def test_scoped_env_overrides_the_agent_tier(self):
         env = self._assemble(
             agent_env={"K": "agent", "ONLY_AGENT": "a"},
-            reconciled_envs=[
+            scope_envs=[
                 self._env_entry("K", "box"), self._env_entry("ONLY_BOX", "b"),
             ],
             state_env={},
             cli_env={},
         )
-        assert env["K"] == "box"          # the reconciled winner wins
+        assert env["K"] == "box"          # the last delivered entry wins
         assert env["ONLY_BOX"] == "b"
         assert env["ONLY_AGENT"] == "a"
 
-    def test_the_reconcile_owns_the_cross_scope_order(self):
-        """The launch does NOT re-layer scopes: reconcile already emitted ONE
-        winner per VAR, so whichever entry it hands over is the value used."""
+    def test_the_carrier_owns_the_cross_scope_order(self):
+        """The launch does NOT re-layer scopes: it applies the carrier's entries in
+        the order given, so whichever entry lands LAST is the value used."""
         env = self._assemble(
             agent_env={"K": "agent"},
-            reconciled_envs=[self._env_entry("K", "workset", scope="workset")],
+            scope_envs=[self._env_entry("K", "workset", scope="workset")],
             state_env={},
             cli_env={},
         )
@@ -2392,7 +2396,7 @@ class TestContainerEnvPrecedence:
         """state_env and CLI -e env both sit above every config level."""
         base = dict(
             agent_env={"K": "agent"},
-            reconciled_envs=[self._env_entry("K", "box")],
+            scope_envs=[self._env_entry("K", "box")],
         )
         env_state = self._assemble(**base, state_env={"K": "state"}, cli_env={})
         assert env_state["K"] == "state"
@@ -3293,8 +3297,8 @@ class TestApplyInitSeeds:
         is no longer a second seed, it is the same entry one cascade level down,
         and the §2d active-over-default pick resolves it away before emission.  A
         BOX-tier entry is a DIFFERENT SCOPE, so it survives the pick and reaches
-        reconcile, where copies overlay rather than shadow — which is the property
-        this test is actually about.
+        the collapse's seeded arm, where copies overlay rather than shadow — which
+        is the property this test is actually about.
         """
         shell = self._shell(tmp_path)
         src = tmp_path / "hsrc"
@@ -3351,7 +3355,7 @@ class TestApplyInitSeeds:
         # ``test_guest_home_dest_copies_contents_into_root``: under dest-keying an
         # ``agent.default`` entry at ``~/`` is the SAME entry as the agent-tier
         # template layer already declared there, so the §2d pick resolves it away.
-        # A box-tier entry is a different SCOPE and survives to reconcile.
+        # A box-tier entry is a different SCOPE and survives to the seed fold.
         # P6c: the box-tier seed config lives at proj.metadata_path/settings.yaml.
         (self._proj(shell).metadata_path / "settings.yaml").write_text(
             f'box:\n  seeded:\n    "~/": ["{src}"]\n'
@@ -6872,7 +6876,7 @@ class TestPersonaLiveTierWiring:
         )
 
     def _snapshot(self, std, *, target, persona_values):
-        snap, _rec, _ = self._resolve(
+        snap, _deliveries = self._resolve(
             std, target=target, persona_values=persona_values,
         )
         return snap
@@ -6920,31 +6924,29 @@ class TestPersonaLiveTierWiring:
     def test_the_tier_reaches_DELIVERY_not_just_the_snapshot(
         self, std, config_file, tmp_home,
     ):
-        """The reconcile emits the token MOUNT and the env var from the store.
+        """The launch DELIVERS the token MOUNT and the env var from the store.
 
         The snapshot assertions above prove the value resolved; this proves it
         is actually DELIVERED — ``secret_path`` is a MOUNT category and ``env``
-        an ENV one, so a store-only value reaching ``reconcile_categories``
-        is the whole point of routing it through the tier rather than a file.
+        an ENV one, so both ride the ``LaunchDeliveries`` carrier the launch seam
+        returns, which is the whole point of routing the store through the tier
+        rather than a file.
         """
         from kanibako.commands.start import _persona_values_for
 
         persona_dir = self._store(tmp_home, env={"SOME_NEW_VAR": "brand-new"})
         target = self._target()
-        _snap, rec, _ = self._resolve(
+        _snap, deliveries = self._resolve(
             std, target=target,
             persona_values=_persona_values_for(self._NODE, target),
         )
-        secret_mounts = [
-            m for m in rec.mounts if m.category == "secret_path"
-        ]
-        assert [str(m.host_src) for m in secret_mounts] == [
+        assert [str(m.host_src) for m in deliveries.secrets] == [
             str(persona_dir / "token")
         ]
         # For an ``env`` entry the VAR name is ``box_dest`` and its VALUE rides
         # ``options`` (env carries no path / mount flags) — see CategoryEntry.
         assert [
-            (e.box_dest, e.options) for e in rec.envs if e.category == "env"
+            (e.box_dest, e.options) for e in deliveries.envs
         ] == [("SOME_NEW_VAR", "brand-new")]
 
     # --- display == launch ---------------------------------------------------
@@ -7121,7 +7123,7 @@ class TestPersonaLiveTierWiring:
         """⚑ NEVER-PERSIST: the agent settings file is USER-INTENT ONLY.
 
         Resolving the whole persona tier — read, render, snapshot, category
-        reconcile — must leave ``agents/<node>/settings.yaml`` exactly as it was.
+        delivery — must leave ``agents/<node>/settings.yaml`` exactly as it was.
         The retired verified swap wrote endpoint/model/secret_path into it on
         every launch; nothing may write there again except a user's own
         ``config set`` and the one-time empty first-use generate.
@@ -7186,7 +7188,7 @@ class TestPersonaLiveTierWiring:
             system_file.parent.mkdir(parents=True, exist_ok=True)
             dump_doc(system_file, system_doc)
         try:
-            snap, _rec, _ = _resolve_launch_snapshot(
+            snap, _deliveries = _resolve_launch_snapshot(
                 std=std, proj=self._proj(std), agent_name=self._NODE,
                 system_settings_path=system_file, agent_cfg_path=agent_cfg_path,
                 desc=None, install=None, target=target,

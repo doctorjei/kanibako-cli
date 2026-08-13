@@ -1,7 +1,7 @@
 """Category resolution through the LIVE launch pipeline (no frozen oracle).
 
-These cases drive ``build_launch_snapshot`` → ``snapshot_category_entries`` →
-``reconcile_categories`` — the single route a real launch takes. They were split
+These cases drive ``build_launch_snapshot`` → ``snapshot_category_entries`` → the
+delivery seams — the single route a real launch takes. They were split
 out of the frozen-oracle file on 2026-07-29 so that file has exactly ONE purpose:
 the retired by-name resolver and its own direct tests. Nothing here may import
 ``flawed_oracle_categories``.
@@ -24,10 +24,11 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.settings.settings_categories import reconcile_categories
+from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
 )
+from tests.support.narrow_resolve import table_bind_dests
 
 HOST_HOME = "/home/u"
 
@@ -62,8 +63,9 @@ def _resolve_home_vault(floor, *, mode, config=None):
     through ``bindings.rw`` (spec ``:1015``): it is the RO DERIVED ``meta.box.home``,
     read straight off the resolved snapshot, and the assembly seam pairs it with the
     seam's options to make the pid-0 foundation. So the byte-identity bar for home is a
-    bar on the KEY's resolved value; the vault half stays a bar on the reconciled
-    mounts.
+    bar on the KEY's resolved value; the vault half stays a bar on the MOUNT WINNERS
+    the injected floor's own dests resolve to (``narrow_table_winners``, the live
+    narrow-resolve seam — this harness injects one table and nothing else).
 
     *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
     ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
@@ -80,10 +82,11 @@ def _resolve_home_vault(floor, *, mode, config=None):
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories=floor,
     )
-    rec = reconcile_categories(
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    winners = narrow_table_winners(
+        snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+        table_bind_dests(floor),
     )
-    return snap.meta.box.home, {m.box_dest: m.host_src for m in rec.mounts}
+    return snap.meta.box.home, {m.box_dest: m.host_src for m in winners}
 
 
 class TestB2bHomeVaultByteIdentity:
@@ -241,11 +244,12 @@ class TestB2bHomeVaultByteIdentity:
             entries = snapshot_category_entries(
                 snap, active_agent="claude", box_ctx=ctx,
             )
-            # ⚑ The RECONCILE still accepts it — one declaration at one dest is no
-            # collision to it. The refusal is the COLLAPSE's, which is the only layer
-            # holding the foundation to compare against.
-            rec = reconcile_categories(entries)
-            assert {m.box_dest for m in rec.mounts} == {"/home/agent"}
+            # ⚑ THE DECLARATION RESOLVES — it is one row at one dest, which no
+            # per-scope layer has any reason to refuse. The refusal is the COLLAPSE's,
+            # which is the only layer holding the foundation to compare against.
+            assert {
+                e.box_dest for e in entries if e.category.startswith("bindings")
+            } == {"/home/agent"}
 
             with pytest.raises(SettingsError) as e:
                 _install_assembly_collapse(snap, entries, whole_box=True)
@@ -470,10 +474,15 @@ def _probe_mounts(mode, proj, ws_root, helper_log):
     from kanibako.settings.settings_launch import snapshot_category_entries
 
     snap, ctx = _probe_snapshot(mode, proj, ws_root, helper_log)
-    rec = reconcile_categories(
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-    )
-    return {m.box_dest: m.host_src for m in rec.mounts}
+    # ⚑ READ OFF THE ENTRIES. What these cases probe is the ANCHOR CHAIN — that a
+    # declared source RESOLVES to the right absolute path — and that is settled by
+    # ``build_launch_snapshot`` + the adapter, before any delivery seam. Going
+    # through one would add an arbitration these fixtures declare no collision for.
+    return {
+        e.box_dest: e.host_src
+        for e in snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        if e.delivery == "MOUNT"
+    }
 
 
 class TestP1BoxRootAnchor:
@@ -489,7 +498,7 @@ class TestP1BoxRootAnchor:
 
         🛑 READ OFF THE KEY, NOT THE MOUNT SET, since cutover 6-H: home does not route
         through ``bindings.rw`` (spec ``:1015``), so it is in no scope's declarations
-        and the reconciled mounts do not carry it. The assembly seam builds the pid-0
+        and the resolved mount set does not carry it. The assembly seam builds the pid-0
         foundation from this very value — which is what makes asserting the key the
         same gate it always was, and its ABSENCE from the mount set part of the claim.
         """
@@ -683,7 +692,7 @@ class TestB3ImagesStoreKey:
         Mirrors the launch's narrow image resolve: ONLY the image table as the
         floor (``include_base_families=False`` shape), plus an optional box
         settings FILE — the tier a user's ``box: images_store:`` repoint lives
-        in.  All host sources are real dirs/files so the reconcile keeps them.
+        in.  All host sources are real dirs/files so the resolve keeps them.
 
         *probed_ok* False is the FAILED PROBE (ruled 11a): ``graph_root=None``,
         so the table carries no floor scalar for ``box.images_store`` and only a
@@ -712,10 +721,11 @@ class TestB3ImagesStoreKey:
             agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
             workset_path=None, box_path=box_path, default_categories=floor,
         )
-        rec = reconcile_categories(
-            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        winners = narrow_table_winners(
+            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+            table_bind_dests(floor),
         )
-        return probed, {m.box_dest: m.host_src for m in rec.mounts}
+        return probed, {m.box_dest: m.host_src for m in winners}
 
     def test_default_resolves_to_the_probed_graphroot(self, tmp_path):
         """Out of the box, ``@box.images_store`` resolves to the probe.
@@ -795,7 +805,7 @@ class TestB3ImagesStoreKey:
 class TestDeclarationRoots:
     """P3 — the ABSTRACT categories root AT DECLARATION (spec §2a).
 
-    The rule, driven through the REAL pipeline (build → snapshot → reconcile):
+    The rule, driven through the REAL pipeline (build → snapshot → adapt):
     a bare relative leaf resolves under ``<agent-store>/<category>/``; an already
     self-resolving source (absolute / ``~`` / ``$var`` / ``@``-ref) is NOT rooted.
     There is no assembly-time prepend left to compensate for either way.
@@ -825,12 +835,17 @@ class TestDeclarationRoots:
             agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
             workset_path=None, box_path=None, default_categories=floor,
         )
-        rec = reconcile_categories(
-            snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx)
-        )
-        # MOUNTs and COPYs together — ``seeded`` is a COPY, so a mounts-only view
-        # would silently skip the one abstract category that is not a mount.
-        return {e.box_dest: e.host_src for e in (*rec.mounts, *rec.copies)}
+        # ⚑ READ OFF THE ENTRIES. Rooting happens at DECLARATION and is settled by
+        # ``expand`` + the adapter; no delivery seam touches a ``host_src``. MOUNTs and
+        # COPYs together — ``seeded`` is a COPY, so a mounts-only view would silently
+        # skip the one abstract category that is not a mount.
+        return {
+            e.box_dest: e.host_src
+            for e in snapshot_category_entries(
+                snap, active_agent=agent, box_ctx=ctx,
+            )
+            if e.delivery != "ENV"
+        }
 
     def test_absolute_and_ref_sources_are_not_rooted(self):
         """T4 — an IDENTITY mount whose source is rooted at ``@system.cache``.

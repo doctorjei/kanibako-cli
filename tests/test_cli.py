@@ -1479,7 +1479,7 @@ class TestTemplateStalenessRetired:
         through the REAL launch route the container env is built from::
 
             build_launch_snapshot -> snapshot_category_entries
-            -> reconcile_categories -> start._build_config_env
+            -> launch_deliveries -> start._build_config_env
 
         and assert ``COLORTERM=truecolor`` arrives, carrying the ``box`` scope. A
         ``config show --effective`` check would NOT substitute: it shares code
@@ -1489,7 +1489,7 @@ class TestTemplateStalenessRetired:
         from kanibako.commands.start import _build_config_env
         from kanibako.settings.config import config_file_path, load_config
         from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_categories import launch_deliveries
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
@@ -1513,9 +1513,9 @@ class TestTemplateStalenessRetired:
         entries = snapshot_category_entries(
             snap, active_agent="claude", box_ctx=ctx,
         )
-        rec = reconcile_categories(entries)
-        assert _build_config_env({}, rec.envs)["COLORTERM"] == "truecolor"
-        winner = next(e for e in rec.envs if e.box_dest == "COLORTERM")
+        deliveries = launch_deliveries(entries, agent_dests=frozenset())
+        assert _build_config_env({}, deliveries.envs)["COLORTERM"] == "truecolor"
+        winner = next(e for e in deliveries.envs if e.box_dest == "COLORTERM")
         assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
 
     def test_colorterm_box_file_override_beats_the_system_file_seed(self, tmp_home):
@@ -1530,7 +1530,7 @@ class TestTemplateStalenessRetired:
         from kanibako.settings.config import config_file_path, load_config
         from kanibako.settings.config_io import write_nested_key
         from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_categories import launch_deliveries
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
@@ -1554,10 +1554,11 @@ class TestTemplateStalenessRetired:
             agent_path=None, workset_path=None, box_path=box_settings,
             default_categories={},
         )
-        rec = reconcile_categories(
-            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        deliveries = launch_deliveries(
+            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+            agent_dests=frozenset(),
         )
-        assert _build_config_env({}, rec.envs)["COLORTERM"] == "256color"
+        assert _build_config_env({}, deliveries.envs)["COLORTERM"] == "256color"
 
 
 class TestShellAgentFlagIgnored:

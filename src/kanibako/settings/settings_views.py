@@ -34,8 +34,8 @@ PER-SCOPE, not cross-scope (S21)
 Every accessor is a typed LENS over a category NODE WHEREVER it appears in the
 scope-qualified snapshot (``store.box.bindings.rw`` → ``Mapping[str, Bind]``).
 It is NOT a cross-scope aggregator — resolving the SAME ``box_dest`` declared at
-different scopes is ``reconcile_categories`` (design §6g), a SEPARATE downstream
-pass that is OUT of scope here.
+different scopes is the ``store_shape`` producer + the assembly collapse (design
+§6g), a SEPARATE downstream pass that is OUT of scope here.
 
 The load-bearing ``Bind``-not-``Bind|None`` coupling (S22)
 ----------------------------------------------------------
@@ -58,7 +58,7 @@ user key would shadow into a crash (the standing :class:`KeyStore` foot-gun).
 
 OUT of scope (hard boundaries)
 ------------------------------
-NO ``reconcile_categories`` / cross-scope ``box_dest`` collision (design §6g);
+NO cross-scope ``box_dest`` collision resolution (design §6g);
 NO merge / expansion / cycle detection (:mod:`kanibako.settings.settings_merge` /
 :mod:`kanibako.settings.settings_expand`); NO ``config set``
 (:mod:`kanibako.settings.config_interface`); NO ``StandardPaths`` port. This module does

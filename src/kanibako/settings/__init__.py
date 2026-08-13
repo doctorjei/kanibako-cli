@@ -19,7 +19,14 @@ The resolver chain, in build order:
 * ``settings_resolve``    — the expression engine (``@``-refs, ``$vars``, ``~``)
   and the ``GUEST_HOME``/``GUEST_UID``/``GUEST_GID`` image contract.
 * ``settings_views``      — the typed 3-tier read surface over the snapshot.
-* ``settings_categories`` — ``reconcile_categories``: THE single binding route.
+* ``settings_categories`` — the nine CATEGORIES and the ``CategoryEntry`` list
+  they resolve to: the single route by which anything is bound or copied.  It
+  also holds the two §0 refusal texts and the launch seam's ``LaunchDeliveries``
+  (env, ``secret_path`` mounts, a narrow resolve's own table).
+* ``store_shape``         — the per-scope PRODUCER: entries → one scope's five-arm
+  store shape, raising §0 rows 1/3 inside a scope.
+* ``store_collapse``      — the ASSEMBLY COLLAPSE: the scopes folded, over pid 0
+  (home), into the one mount set a box is built from.
 * ``settings_launch``     — the ONE resolve per launch.
 * ``settings_prefs``      — ``pref.*`` requests to set an earlier-resolving key
   (spec §2h).
@@ -125,4 +132,6 @@ __all__ = [
     "settings_prefs",
     "settings_resolve",
     "settings_views",
+    "store_collapse",
+    "store_shape",
 ]

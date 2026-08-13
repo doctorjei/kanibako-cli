@@ -13,18 +13,19 @@ comparing scopes is the grand-unification collapse's whole job (roadmap step 6).
 `designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
 `specs/settings-keyspace-1.8.0.md` §0 (the collision table).
 
-## Status: CONSUMED — the MOUNT arms live, the COPY arms not yet
+## Status: CONSUMED — all three leaves, and there is no second route left
 
 `commands/start.py:_install_assembly_collapse` calls `build_store_shape_set` on the launch path and
 feeds it to `collapse_store_shapes`, storing the result at
 `meta.assembly.{bindings,seeded,synced}` — three leaves, each on its own gate.
 
-⚑ **Only the `bindings` leaf has a consumer.** Since 2a-3 `start.py:_launch_bind_map` reads it and
-emits from it, with the reconciled rows as the collapse's-own-ABSENT fallback. **The two COPY leaves
-are still OBSERVED BY NOTHING** — their consumers move at 2b-2/2b-3 — so a change confined to the
-`seed`/`sync` arms changes nothing a box receives today. Until then `snapshot_category_entries` →
-`reconcile_categories` still owns copy delivery, and `reconcile_categories`' arbitration half comes
-out at the cutover.
+⚑ **All three leaves have consumers, and each is the ONLY route to what it delivers.**
+`start.py:_launch_bind_map` reads `bindings` (2a-3), `_launch_seed_list` reads `seeded` (2b-2) and
+`_launch_synced_list` reads `synced` (2b-3); an ABSENT leaf on a whole-box resolve is a NAMED error,
+not a fallback. ⚑ **Cutover 6-R3 deleted the second, cross-scope route entirely** — there is no
+`reconcile_categories` and no `ReconciledCategories`. §0 is applied by this producer (rows 3, 5 and
+row 1 SAME-scope), by the collapse (rows 2, 4 and row 1 cross-scope), and by the launch seam's two
+functions for the inputs the collapse cannot see (`secret_path_deliveries`, `narrow_table_winners`).
 
 ⚑ The collapse REFUSES some shapes the shipped route still accepts, so the call site catches
 `SettingsError`, leaves both leaves ABSENT and logs at `debug`. That tightening is intended and lands
@@ -109,10 +110,10 @@ kept the LAST row.
     yet hand this arm two rows at one dest in one scope — the store LEAF is itself dest-keyed, so
     `~/x` and `/home/agent/x` merge inside `build_launch_snapshot`, and `agent.default` vs
     `agent.<active>` resolve through the cascade before an entry exists. The repair is therefore a
-    REPRESENTATION fix, not a live-loss fix. It still matters: `reconcile_categories` keeps both
-    rows on the same input (measured), so the dict arm was the one place in the chain where a
-    declared copy could vanish with no warning at any log level, and it chose the survivor by raw
-    dest SPELLING rather than by the user's file order.
+    REPRESENTATION fix, not a live-loss fix. It still matters: nothing else in the chain prunes a
+    copy for sharing a destination (the collapse's sync arm is a plain scope-ordered concatenation),
+    so the dict arm was the one place where a declared copy could vanish with no warning at any log
+    level, and it chose the survivor by raw dest SPELLING rather than by the user's file order.
   * ⚑ **Do not "tidy" the two arms back into a `BindMap` for symmetry with the mounts.** The
     asymmetry is the ruling; symmetry here is the bug.
 * `mask` is dest-keyed and its **VALUE IS NEVER READ**: the collapse touches `shape.mask` in exactly
@@ -144,20 +145,21 @@ loudly rather than dropping its entries.
 * **`secret_path`** is PARKED. It is a CONCRETE mount whose dest is `/run/kanibako/secrets/{VAR}` by
   construction; the five-key shape is ratified without it and reshaping it is not this step's.
   ⚑ Consequence worth knowing: because it reaches no arm, the producer does not arbitrate it either,
-  so a same-scope `bindings.rw[/run/kanibako/secrets/TOK]` + `secret_path.TOK` pair — which
-  `reconcile_categories` refuses today as row 1 — is not refused here. That hole closes when
-  `secret_path` is unparked, and the live path still refuses it in the meantime.
+  so a `bindings.rw[/run/kanibako/secrets/TOK]` + `secret_path.TOK` pair is not refused here. It IS
+  refused on the live path, by `settings_categories.secret_path_deliveries` at the launch seam, which
+  since 6-R3 is the only layer holding both a secret and everything contending for its dest.
 
 ## What the producer must NOT do
 
-1. **Not reconcile across scopes.** `reconcile_categories` returns ONE winner per dest across all
-   four scopes; a `StoreShapeSet` must keep all four scopes' entries intact and separate, because
-   the collapse re-derives the cross-scope answer itself. ⚑ This is why the producer cannot simply
-   consume today's `reconcile_categories` output — that output has already thrown away the per-scope
-   structure the collapse needs. It consumes the ENTRY LIST.
-2. **Not reuse `_resolve_dest_group` per scope.** It looks like the free win — that function already
-   implements all five rows — and **the failure is silent.** It also implements row 2, and a mask
-   and a binding can perfectly well share ONE scope: applied per scope the mask would EAT the
+1. **Not arbitrate across scopes.** A `StoreShapeSet` must keep all four scopes' entries intact and
+   separate, because the collapse re-derives the cross-scope answer itself. ⚑ This is why the
+   producer consumes the ENTRY LIST and not a pre-resolved winner set: the retired
+   `reconcile_categories` returned ONE winner per dest across all four scopes, which had already
+   thrown away the per-scope structure the collapse needs.
+2. **Not apply the whole table per scope.** It looks like the free win — the retired
+   `_resolve_dest_group` implemented all five rows — and **the failure is silent.** It also
+   implemented row 2, and a mask and a binding can perfectly well share ONE scope: applied per scope
+   the mask would EAT the
    binding inside the producer, and `shape.rw` would arrive at the collapse missing the entry the
    collapse's own mask loop is written to override. The collapse would be correct and the answer
    still wrong.
@@ -185,9 +187,10 @@ loudly rather than dropping its entries.
 Recorded so they are not discovered during step 6.
 
 * **`seeded` onto a binding.** Spec §0 row 3 names `seeded` among the ABSTRACT declarations, but no
-  code has ever refused it: `seeded` is a COPY, so it never reaches `_resolve_mount_group` where
-  row 3 lives — `reconcile_categories` resolves it through the cross-delivery ladder instead (the
-  mount wins, silently). ⚑ The collapse does not rule the case at all — a copy never meets a bind
+  code has ever refused it: `seeded` is a COPY, so it never reaches a MOUNT group where row 3 lives.
+  (The retired `reconcile_categories` resolved it through its cross-delivery ladder instead — the
+  mount won, silently — and that ladder went with it at 6-R3.) ⚑ The collapse does not rule the case
+  at all — a copy never meets a bind
   there, so nothing is refused and nothing is removed. A mount shadowing a copied file is a DELIVERY
   fact, and it is legal ("it's ok for a mount to shadow a seeded file"). Refusing it here would have
   invented an error that neither ships today nor is wanted downstream, so the producer folds `seeded`
@@ -205,26 +208,25 @@ Recorded so they are not discovered during step 6.
 
 ## Warnings are DATA
 
-Row 5 returns `CategoryCollision` on `StoreShapeSet.warnings`, exactly as
-`ReconciledCategories.warnings` does, and the ONE emission seam
+Row 5 returns `CategoryCollision` on `StoreShapeSet.warnings`, and the ONE emission seam
 (`commands.start.emit_collision_warnings`) renders them. The producer stays PURE.
 
-⚑ **The two channels must not BOTH fire for one ambiguity once step 6 lands.** When
-`reconcile_categories`' arbitration half comes out, its row-5 warning channel goes with it — not
-before.
+⚑ **It is the ONLY channel.** A second one existed on the retired `ReconciledCategories.warnings`;
+5-1c deleted that feed and the field, and 6-R3 deleted the class. One ambiguity, one builder, one
+path to the user — re-adding a second means re-adding a type, which is a visible design act.
 
 ## Message single-sourcing
 
 The row-1 and row-3 refusals are raised through `settings_categories.raise_binding_vs_binding` and
-`raise_extension_onto_occupied`, which were extracted from `_resolve_mount_group` verbatim and made
-public for exactly this second caller. The message text is spec-mandated (it must point at
-SUPPRESS-THEN-ADD and name the extending entry, the occupant and the dest), so there is ONE copy of
-it and no second remedy text.
+`raise_extension_onto_occupied`, which were extracted from the retired cross-scope pass verbatim and
+made public for this second caller. They have THREE callers now — this producer, plus
+`secret_path_deliveries` and `narrow_table_winners` at the launch seam. The message text is
+spec-mandated (it must point at SUPPRESS-THEN-ADD and name the extending entry, the occupant and the
+dest), so there is ONE copy of it and no second remedy text.
 
 ⚑ The row-1 message's "until 1.8.0 the more specific scope won" paragraph reads slightly oddly for a
-SAME-scope pair, where there is no more-specific scope. That is not new: `reconcile_categories`
-raises the identical message for a same-scope pair today, and reusing it keeps the two callers
-byte-identical rather than forking the wording.
+SAME-scope pair, where there is no more-specific scope. That is deliberate: every caller raises the
+identical message, which keeps them byte-identical rather than forking the wording per caller.
 
 ## Destinations are DATA
 

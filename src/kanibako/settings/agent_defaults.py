@@ -462,7 +462,7 @@ def load_category_binds(
     spellings do NOT reach podman as two mounts. ``commands.start``'s floor merge
     dedupes on these keys BEFORE anything parses them, so ``~/x`` and
     ``/home/agent/x`` survive it as two entries; both then resolve to the same
-    guest dest and ``reconcile_categories`` raises ``binding_vs_binding``. The
+    guest dest and the §0 row-1 refusal raises ``binding_vs_binding``. The
     cost is the FAILED OVERRIDE that precedes the error: a value written at the
     canonical spelling does not REPLACE an unnormalized entry, it becomes a
     SECOND one.

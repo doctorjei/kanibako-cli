@@ -12,21 +12,22 @@ table and the operations at **§8** · **§9, which rules that copies apply to t
 `meta.assembly.*` rows and the **2026-08-10b** amendment, which splits the copy output in two and
 moves `synced` to the far end of the fold.
 
-## Status: ADDITIVE, PURE and INFORMATION-ONLY
+## Status: LIVE — this IS the delivery path, and it is PURE
 
-⚑⚑ Step 6 *"merges the **information**, but not the action"* — the roadmap's own words. This
-function computes and returns. It drives no emission, executes no copy, changes no mount and
-deletes nothing: `snapshot_category_entries` → `reconcile_categories` → emission is still the whole
-live delivery path, including `reconcile_categories`' arbitration half and its row-5 warning
-channel.
+⚑⚑ This function computes and returns: it drives no emission, executes no copy and touches no
+filesystem. What CHANGED since it was written is everything downstream of it. The old note here
+said the collapse was information-only and that `snapshot_category_entries` →
+`reconcile_categories` → emission was the live path. **That second route was deleted at cutover
+6-R3.** The live path is now `snapshot_category_entries` → this collapse → emission, with the launch
+seam answering separately for the two things the collapse cannot see (`secret_path` dests and a
+narrow resolve's own table — `settings_categories.secret_path_deliveries` /
+`narrow_table_winners`).
 
 Its one consumer is `start.py:_install_assembly_collapse`, which writes the result to
-`meta.assembly.bindings` / `meta.assembly.seeded` / `meta.assembly.synced`. ⚑ **Of those three,
-only `bindings` is read**: since 2a-3 `start.py:_launch_bind_map` emits mounts from it, falling back
-to the reconciled rows when the collapse wrote none. **The two COPY leaves are read by nothing** —
-their consumers move at 2b-2/2b-3 — so a change confined to `seeded`/`synced` alters nothing a box
-receives today. The collapse REFUSES shapes the shipped route still accepts, so that seam catches
-`SettingsError` and leaves the leaves it governs absent; the tightening lands at the CUTOVER.
+`meta.assembly.bindings` / `meta.assembly.seeded` / `meta.assembly.synced`. ⚑ **All three are
+read** — `_launch_bind_map` (2a-3), `_launch_seed_list` (2b-2), `_launch_synced_list` (2b-3) — and
+an ABSENT leaf on a whole-box resolve is a NAMED error, not a fallback. This function's REFUSALS are
+the launch's since cutover 2c: they propagate out of the resolve and stop the box.
 
 ## Three passes, in the ONE order that is a ruling
 

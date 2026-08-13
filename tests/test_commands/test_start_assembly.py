@@ -1,23 +1,25 @@
 """The collapse WIRING — ``meta.assembly.*`` is produced, and since 2a-2 it BINDS.
 
-🛑 **CUTOVER STEP 2a-2 MOVED THE LINE THIS FILE USED TO DRAW.** The collapse was
-information-only through step 6b; the MAIN launch path now emits its category mounts
-from ``meta.assembly.bindings``. What survives unchanged is the RECONCILED route
-itself — it still runs, still computes its whole answer, and still feeds the two
-narrow resolves, the mask arm and the agent arm. So the oracle here is now THREE-sided:
+🛑 **CUTOVER 6-R3 TOOK THE SECOND SIDE OF THIS FILE\'S ORACLE AWAY.** Through 6-R2 a
+second, cross-scope ``reconcile`` pass ran beside the collapse and computed its own
+whole answer, so most classes here could assert the collapse AGAINST it — equal where
+the two agreed, and pinned where they diverged. That pass is deleted. There is ONE
+route now, and the oracle is what the configuration DECLARES:
 
 * the collapse runs on the REAL launch seam and its output lands at the declared keys
   (this side is easy to fake green — assert MEANING, not shape);
-* the RECONCILED route is byte-identical to a run with the wiring removed, INCLUDING
-  the case where the collapse REFUSES the configuration (that is what keeps a refusal
-  from failing a launch until step 2c);
-* the emitter consumes the SHAPE, so the collapsed map and the same map translated
-  from reconciled winners go through ONE function — and where the two DISAGREE, the
-  disagreement is pinned, not smoothed.
+* the collapsed map is checked against the DECLARATIONS the adapter produced, never
+  against a second implementation of the same fold;
+* the emitter consumes the SHAPE, and the LAUNCH is pinned to the map it read.
 
-The refusal case is real, not hypothetical: the collapse forbids a bind above a bind,
-while ``reconcile_categories`` permits nested binds and errors only on two concrete
-declarations at ONE identical dest. Prose: ``llm-docs/kanibako/commands/start.py.md``.
+⚑ The contrast tests that had the retired route for their oracle were RETIRED WITH IT
+(6-R3), each one named where it stood. What replaced a contrast is a claim about the
+declarations, not a rebase onto the survivor — an assertion that the collapse equals
+itself would be a tautology.
+
+Refusals are real, not hypothetical: the collapse forbids a bind above a bind and a
+mask over a later scope\'s bind, and since 2c those refusals STOP the launch.
+Prose: ``llm-docs/kanibako/commands/start.py.md``.
 """
 
 import logging
@@ -28,7 +30,6 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.commands.start import (
-    _agent_delivered_dests,
     _bind_map_from_mounts,
     _bind_map_masks,
     _emit_category_mounts,
@@ -93,7 +94,7 @@ def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
         _synced_uptodate,
     )
 
-    snapshot, reconciled, _ = _resolve(std, proj, **kw)
+    snapshot, _deliveries = _resolve(std, proj, **kw)
     _apply_synced_copies(
         snapshot=snapshot,
         bindings=_launch_bind_map(snapshot) if bindings is None
@@ -101,7 +102,7 @@ def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
         logger=logger,
         skip_if=_synced_uptodate if gated else None,
     )
-    return snapshot, reconciled
+    return snapshot
 
 
 def _assembly(snapshot):
@@ -110,26 +111,20 @@ def _assembly(snapshot):
     return dict.get(meta, "assembly") or {}
 
 
-def _delivered(reconciled):
-    """Everything the RECONCILED route computes, as comparable plain data.
+def _entries(std, proj, snapshot):
+    """The DECLARATIONS the fold saw — the adapter\'s entry list for *snapshot*.
 
-    ⚑ Not "what the box receives" since 2a-2 — the main path's mounts come from the
-    collapse now. This is the arm that must stay untouched by the wiring.
-
-    ⚑ The row-5 warning MESSAGES were a fourth element here until cutover 5-1c, which
-    retired ``ReconciledCategories.warnings``: the reconcile computes no warnings, so
-    there is nothing of that kind left on this arm to compare. The collapse route's
-    warnings are the user's channel now and are asserted on the LOG, in
-    ``tests/test_category_collisions.py::TestTheCollapseRouteFeedsTheSameChannel``.
+    The oracle this file uses since 6-R3 retired the second route: built by the SAME
+    call the seam makes, so it is what was declared and never a second fold.
     """
-    mounts = _emit_category_mounts(
-        _bind_map_from_mounts(reconciled.mounts), label="assembly-wiring",
-        skip_if_absent=_agent_delivered_dests(reconciled.mounts),
-    )
-    return (
-        [(m.destination, str(m.source), m.options) for m in mounts],
-        [(c.box_dest, c.host_src, c.options, c.category) for c in reconciled.copies],
-        [(e.box_dest, e.options) for e in reconciled.envs],
+    from kanibako.commands.start import _launch_snapshot_inputs
+    from kanibako.settings.core_defaults import canon_optional_bind_keys
+    from kanibako.settings.settings_launch import snapshot_category_entries
+
+    ctx = _launch_snapshot_inputs(std=std, proj=proj, agent_name="claude")[0]
+    return snapshot_category_entries(
+        snapshot, active_agent="claude", box_ctx=ctx,
+        optional_keys=canon_optional_bind_keys(),
     )
 
 
@@ -139,7 +134,7 @@ class TestTheCollapseIsProduced:
     def test_all_three_declared_leaves_are_written(self, std, config, project_dir):
         """RED if the wiring is deleted: no leaf exists at all."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve(std, proj)
+        snapshot, _deliveries = _resolve(std, proj)
 
         assert sorted(_assembly(snapshot)) == ["bindings", "seeded", "synced"]
 
@@ -154,7 +149,7 @@ class TestTheCollapseIsProduced:
         comes from.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve(std, proj)
+        snapshot, _deliveries = _resolve(std, proj)
 
         bindings = _assembly(snapshot)["bindings"]
         assert HOME_DEST in bindings
@@ -163,24 +158,32 @@ class TestTheCollapseIsProduced:
         assert bindings[HOME_DEST].src.endswith("/home")
         assert bindings[HOME_DEST].opts == "Z,U"
 
-    def test_the_fold_sees_the_same_declarations_the_live_route_does(
+    def test_the_fold_sees_the_same_declarations_the_ADAPTER_produced(
         self, std, config, project_dir,
     ):
-        """Every reconciled MOUNT dest is a collapsed bind dest, and vice versa BUT HOME.
+        """Every DECLARED MOUNT dest is a collapsed bind dest, and vice versa BUT HOME.
 
-        ⚑ HOME IS ON THE LEFT ONLY, and that asymmetry is the 6-H change stated as an
-        equation: the reconciled route walks DECLARATIONS, and home stopped being one
-        — it is the seam-built foundation, present in the collapsed map and in no
-        scope's declarations.
+        ⚑ HOME IS ON THE RIGHT ONLY, and that asymmetry is the 6-H change stated as an
+        equation: a scope's declarations are what the adapter emits, and home stopped
+        being one — it is the seam-built foundation, present in the collapsed map and
+        in no scope's declarations.
+
+        ⚑ RECOMPOSED AT 6-R3. The oracle was the retired reconcile's MOUNT winners;
+        it is the ADAPTER's entry list now — the declarations themselves, which is
+        what that route was walking and the only side of the equation left.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(std, proj)
+        snapshot, _deliveries = _resolve(std, proj)
 
-        # ⚑ Holds because this configuration triggers no subsumption; the collapse
-        # REMOVES what it subsumes, so this is a pin on THIS fixture, not a law.
-        reconciled_dests = {m.box_dest for m in reconciled.mounts}
-        assert HOME_DEST not in reconciled_dests
-        assert set(_assembly(snapshot)["bindings"]) == reconciled_dests | {HOME_DEST}
+        # ⚑ Holds because this configuration triggers no subsumption and no mask; the
+        # collapse REMOVES what it subsumes or hides, so this is a pin on THIS
+        # fixture, not a law.
+        declared = {
+            normalize_bind_dest(e.box_dest)
+            for e in _entries(std, proj, snapshot) if e.delivery == "MOUNT"
+        }
+        assert HOME_DEST not in declared
+        assert set(_assembly(snapshot)["bindings"]) == declared | {HOME_DEST}
 
     def test_a_narrow_resolve_writes_THE_SEED_LIST_AND_NOTHING_ELSE(
         self, std, config, project_dir, tmp_path,
@@ -198,7 +201,7 @@ class TestTheCollapseIsProduced:
         src = tmp_path / "seedme"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve_launch_snapshot(
+        snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -219,7 +222,7 @@ class TestTheCollapseIsProduced:
         nothing. RED if the write is skipped for an empty list.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve_launch_snapshot(
+        snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -230,17 +233,17 @@ class TestTheCollapseIsProduced:
 
 
 class TestTheCredentialGateReachesTheCollapse:
-    """Cutover 2b-0: D-M4 is applied ONCE, above the reconcile AND the collapse.
+    """Cutover 2b-0: D-M4 is applied ONCE, above EVERY consumer of the entry list.
 
-    🛑 Before the hoist the gate lived INSIDE ``reconcile_categories`` while
+    🛑 Before the hoist the gate lived INSIDE the retired by-dest reconcile while
     ``_install_assembly_collapse`` was handed the RAW entry list, so a PRIVATE box
-    got ``reconciled.copies == []`` and a ``meta.assembly.synced`` still carrying
+    got an empty copy set on one route and a ``meta.assembly.synced`` still carrying
     every credential row. Nothing consumed that leaf, so nothing broke — the first
     consumer pointed at it would have delivered the creds and reversed D-M4.
 
-    ⚑ CUTOVER STEP 4 FINISHED IT: the reconcile's internal re-gate is GONE, so the
-    seam call in ``_resolve_launch_snapshot`` is the SOLE application of D-M4 and
-    both consumers read one gated list by construction.
+    ⚑ CUTOVER STEP 4 FINISHED IT: the second, internal re-gate is GONE, so the seam
+    call in ``_resolve_launch_snapshot`` is the SOLE application of D-M4 and every
+    consumer reads one gated list by construction.
 
     🛑 THIS FILE IS THE ONLY PLACE THAT PINS IT — MEASURED 2026-08-13 by neutering
     the seam call to ``delivered = list(entries)``. Exactly two tests reddened, both
@@ -286,22 +289,15 @@ class TestTheCredentialGateReachesTheCollapse:
 
         assert self._synced_dests(snapshot) == []
 
-    def test_the_reconcile_and_the_collapse_see_ONE_gated_list(
-        self, std, config, project_dir, tmp_path,
-    ):
-        """Both consumers agree about how private the box is — that is the whole point."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        src = tmp_path / "creds.txt"
-        src.write_text("token")
-        extra = {"box.synced": {"~/cred.txt": (str(src),)}}
-        for deliver_creds in (True, False):
-            snapshot, reconciled, _ = _resolve(
-                std, proj, deliver_creds=deliver_creds,
-                extra_default_categories=extra,
-            )
-            assert self._synced_dests(snapshot) == [
-                c.box_dest for c in reconciled.copies if c.category == "synced"
-            ], deliver_creds
+    # 🕯️ ``test_the_reconcile_and_the_collapse_see_ONE_gated_list`` DIED AT 6-R3.
+    # It compared the collapse's synced dests against the RETIRED route's copy
+    # winners; with one route left the comparison has no second side and a rebase
+    # would assert the collapse equals itself. The claim it carried — a PRIVATE box
+    # gets no credential row — is carried WHOLE by the two pins above
+    # (``test_a_shared_box_collapses_the_synced_row`` +
+    # ``test_a_PRIVATE_box_collapses_NO_synced_row``), which are the two this class's
+    # own MEASURED mutation reddened; this one did not redden and pinned nothing
+    # the pair did not already pin.
 
     def test_the_gate_drops_a_CREDENTIAL_seed_and_keeps_an_ordinary_one(self, tmp_path):
         """The seeded half, unreachable from a fixture: nothing sets ``is_credential`` yet."""
@@ -323,7 +319,7 @@ class TestTheCredentialGateReachesTheCollapse:
 
         assert gate_credential_delivery([cred, plain], True) == [cred, plain]
         assert gate_credential_delivery([cred, plain], False) == [plain]
-        # IDEMPOTENT — no consumer re-gates any more (step 4 deleted the reconcile's
+        # IDEMPOTENT — no consumer re-gates any more (step 4 deleted the second
         # copy), but the property is the reason ONE application is safe to rely on:
         # a re-application must never be what makes the result correct.
         assert gate_credential_delivery([plain], False) == [plain]
@@ -337,36 +333,22 @@ class TestTheCredentialGateReachesTheCollapse:
         assert gate_credential_delivery(entries, False) is not entries
 
 
-class TestTheLivePathIsUnchanged:
-    """⚑⚑ THE 2a-2 SAFETY CLAIM, NARROWED AT 2c TO CONFIGURATIONS THAT FOLD.
+class TestARefusalStopsTheResolve:
+    """⚑⚑ THE 2a-2 SAFETY CLAIM, SPENT — what is left is the REFUSAL half.
 
-    Producing the collapse must not perturb the route that still feeds the narrow
-    resolves and the agent arm — and where nothing refuses, it does not.
+    🛑 ``_both_ways`` AND ``test_delivery_is_identical_with_and_without_the_wiring``
+    DIED AT 6-R3. They resolved twice — once with the collapse wired, once with it
+    patched to a no-op — and compared what the RETIRED route delivered either way.
+    With one route left there is nothing for the wiring to leave undisturbed: the
+    collapse IS the delivery. What the box receives is pinned at the CALL SITE by
+    ``test_commands/test_start.py::TestTheMainPathEmitsFromTheCollapse``, and the
+    map\'s content by ``TestTheEmitterConsumesTheShape`` below.
 
-    🛑 THE REFUSAL HALF IS INVERTED. It read "most of all when the collapse REFUSES,
-    because that refusal must reach nobody until step 2c takes the swallow out."
-    Step 2c took it out: a fold that refuses now RAISES out of the resolve and stops
-    the launch, and the tests below say so rather than assert the old silence.
+    🛑 THE REFUSAL HALF IS INVERTED (2c). It read "the refusal must reach nobody
+    until step 2c takes the swallow out." Step 2c took it out: a fold that refuses
+    RAISES out of the resolve and stops the launch, and these say so rather than
+    assert the old silence.
     """
-
-    def _both_ways(self, monkeypatch, std, proj, **kw):
-        """Resolve twice — once with the wiring, once with it patched to a no-op."""
-        with_wiring = _delivered(_resolve(std, proj, **kw)[1])
-        monkeypatch.setattr(
-            "kanibako.commands.start._install_assembly_collapse",
-            lambda *_a, **_kw: None,
-        )
-        return with_wiring, _delivered(_resolve(std, proj, **kw)[1])
-
-    def test_delivery_is_identical_with_and_without_the_wiring(
-        self, monkeypatch, std, config, project_dir,
-    ):
-        """Mounts, copies, envs and warnings all match a run that never collapses."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        wired, bare = self._both_ways(monkeypatch, std, proj)
-
-        assert wired == bare
-        assert wired[0], "the fixture must actually deliver mounts"
 
     def test_a_BIND_FOLD_refusal_STOPS_THE_RESOLVE(
         self, std, config, project_dir, tmp_path,
@@ -375,8 +357,9 @@ class TestTheLivePathIsUnchanged:
 
         🛑 THE ASSERTION THIS REPLACED IS THE POINT. It read ``sorted(_assembly(
         snapshot)) == ["seeded"]`` — a refused bind fold left the two assembly leaves
-        absent, the launch fell back to the reconciled rows, and a configuration the
-        spec forbids started a box anyway. It now raises, naming both participants.
+        absent, the launch fell back to a second route\'s rows, and a configuration
+        the spec forbids started a box anyway. It now raises, naming both
+        participants.
 
         ⚑ The seed is DECLARED here, not inherited: the shipped default-category
         families carry no ``seeded`` entry on this target, so the pre-2c form of this
@@ -433,92 +416,18 @@ class TestTheLivePathIsUnchanged:
         ), [r.message for r in caplog.records]
 
 
-class TestTheLaunchDeliveriesCarrierAgreesWithTheReconcile:
-    """🕯️ 6-R1 CANARY — DIES AT 6-R3 WITH THE RECONCILE IT COMPARES AGAINST.
-
-    Cutover 6-R1 builds the REPLACEMENT for the three things the reconcile still
-    decides that the collapse does not carry (envs, the ``secret_path`` winners, the
-    agent-delivered dests) and returns it BESIDE the reconciled winners, consumed by
-    nobody.  These cases are the equivalence proof for that additive window: on the
-    REAL seam, over a floor exercising all three, the carrier says exactly what the
-    route it replaces says.  When 6-R3 deletes ``reconcile_categories`` this class
-    goes with it — its oracle IS the old route, so rebasing it onto the new one would
-    leave a tautology asserting the carrier equals itself.  What must SURVIVE 6-R3 is
-    the spec oracle underneath the secret pick, which lives where the pick does
-    (``tests/test_category_collisions.py::TestSecretPathWinnersAreTheSeamsPerVarPick``).
-
-    ⚑ The floor puts the SECRET pointer at TWO scopes for one VAR — spec §2a's
-    documented per-VAR cascade — so the comparison covers the one field where a real
-    ARBITRATION moved, not just the two filters.
-    """
-
-    #: Envs at two scopes, one VAR pointed at from two scopes, a second VAR at one,
-    #: an AGENT-scope delivery bind (``_WiringTarget`` declares none of its own, so
-    #: without this the dest set is empty and its case proves nothing), plus an
-    #: ordinary box bind so the mount list is neither all-secret nor all-agent.
-    _FLOOR = {
-        "agent.claude.bindings.ro": {"/g/agent": ("/host/agent",)},
-        "workset.env.KANI_CANARY": "workset",
-        "box.env.KANI_CANARY": "box",
-        "box.env.KANI_OTHER": "other",
-        "workset.secret_path.TOK": "/host/workset/tok",
-        "box.secret_path.TOK": "/host/box/tok",
-        "workset.secret_path.SECOND": "/host/workset/second",
-        "box.bindings.ro": {"/g/ro": ("/host/ro",)},
-    }
-
-    def _both(self, std, config, project_dir):
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, reconciled, deliveries = _resolve(
-            std, proj, extra_default_categories=dict(self._FLOOR),
-        )
-        return reconciled, deliveries
-
-    def test_the_carrier_carries_the_same_ENV_ENTRIES_in_the_same_order(
-        self, std, config, project_dir,
-    ):
-        """Identity, not equality: no env arbitration happens on either route."""
-        reconciled, deliveries = self._both(std, config, project_dir)
-        assert deliveries.envs, "the floor declares envs; a green on an empty list is no proof"
-        assert deliveries.envs == reconciled.envs
-        assert all(a is b for a, b in zip(deliveries.envs, reconciled.envs, strict=True))
-
-    def test_the_carrier_names_the_same_AGENT_DELIVERED_DESTS(
-        self, std, config, project_dir,
-    ):
-        """Built off the ENTRY list, compared against the RECONCILED mounts."""
-        reconciled, deliveries = self._both(std, config, project_dir)
-        expected = _agent_delivered_dests(reconciled.mounts)
-        assert expected, "the agent target delivers binds; an empty set proves nothing"
-        assert deliveries.agent_dests == expected
-
-    def test_the_carrier_picks_the_same_SECRET_WINNERS_in_the_same_order(
-        self, std, config, project_dir,
-    ):
-        """The per-VAR pick AND the emission order ``_emit_secret_mounts`` walks."""
-        reconciled, deliveries = self._both(std, config, project_dir)
-        from_reconcile = [m for m in reconciled.mounts if m.category == "secret_path"]
-        assert [(e.name, e.host_src) for e in from_reconcile] == [
-            ("SECOND", "/host/workset/second"), ("TOK", "/host/box/tok"),
-        ], from_reconcile
-        assert deliveries.secrets == from_reconcile
-        assert all(
-            a is b for a, b in zip(deliveries.secrets, from_reconcile, strict=True)
-        )
-
-
 class TestTheEnvConsumerReadsTheCarrier:
-    """The env flip (cutover 6-R2), pinned against the DECLARATIONS — not the reconcile.
+    """The env flip (cutover 6-R2), pinned against the DECLARATIONS.
 
-    ⚑ THIS SURVIVES 6-R3, and that is why it exists beside the canary above: the
-    canary's oracle is ``reconciled.envs`` and dies with it, which would leave the
-    env wire pinned by nothing.  The oracle here is the FLOOR — what was declared,
-    and which scope's value a box is supposed to receive.
+    ⚑ THIS IS WHY IT WAS WRITTEN THIS WAY. It was built beside a 6-R1 equivalence
+    canary whose oracle was the retired route\'s env list; that canary died with the
+    route at 6-R3, and had this one shared its oracle the env wire would now be
+    pinned by nothing.  The oracle here is the FLOOR — what was declared, and which
+    scope\'s value a box is supposed to receive.
 
     ⚑ It drives ``_build_config_env`` off the carrier because THAT dict-update IS the
-    per-VAR cascade: no arbitration happens upstream on either route (measured at
-    6-R1), so a test asserting only the carrier's list would pin the filter and miss
-    the cascade.
+    per-VAR cascade: nothing arbitrates env upstream (measured at 6-R1), so a test
+    asserting only the carrier\'s list would pin the filter and miss the cascade.
     """
 
     _FLOOR = {
@@ -531,7 +440,7 @@ class TestTheEnvConsumerReadsTheCarrier:
         from kanibako.commands.start import _build_config_env
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, _rec, deliveries = _resolve(
+        _snapshot, deliveries = _resolve(
             std, proj, extra_default_categories=dict(self._FLOOR),
         )
         return _build_config_env({"KANI_AGENT_TIER": "agent"}, deliveries.envs)
@@ -567,10 +476,11 @@ class TestTheFoundationIsBuiltAtTheSeam:
       the third case here under its original name and claim.
     """
 
-    def _mounts(self, std, config, project_dir):
+    def _declarations(self, std, config, project_dir):
+        """A REAL entry list off a real resolve — the fold\'s actual input."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, reconciled, _ = _resolve(std, proj)
-        return list(reconciled.mounts)
+        snapshot, _deliveries = _resolve(std, proj)
+        return _entries(std, proj, snapshot)
 
     def test_the_foundation_is_read_from_meta_box_home_with_BARE_options(
         self, std, config, project_dir,
@@ -591,7 +501,7 @@ class TestTheFoundationIsBuiltAtTheSeam:
         snapshot = KeyStore()
         snapshot.insert_segments(("meta", "box", "home"), "/nowhere/near/proj/home")
         _install_assembly_collapse(
-            snapshot, self._mounts(std, config, project_dir), whole_box=True,
+            snapshot, self._declarations(std, config, project_dir), whole_box=True,
         )
 
         home = _assembly(snapshot)["bindings"][HOME_DEST]
@@ -636,28 +546,35 @@ class TestTheFoundationIsBuiltAtTheSeam:
 
         snapshot = KeyStore()
         _install_assembly_collapse(
-            snapshot, self._mounts(std, config, project_dir), whole_box=False,
+            snapshot, self._declarations(std, config, project_dir), whole_box=False,
         )
 
         assert _assembly(snapshot) == {"seeded": []}
 
 
 class TestTheEmitterConsumesTheShape:
-    """Cutover 2a-2: one emitter, one dest-keyed ``(src, opts)`` shape, two sources."""
+    """Cutover 2a-2: one emitter, one dest-keyed ``(src, opts)`` shape.
 
-    def _both_shapes(self, std, proj):
-        """The collapsed map off the snapshot, and the same shape from reconciled rows."""
-        snapshot, reconciled, _ = _resolve(std, proj)
+    🛑 ``_both_shapes`` AND ``test_both_shapes_emit_the_same_destinations`` DIED AT
+    6-R3 — "two sources" was the retired route and this map\'s translation of it.
+    The collapsed map\'s DEST SET is pinned against the declarations by
+    ``TestTheCollapseIsProduced::test_the_fold_sees_the_same_declarations_the_ADAPTER_produced``,
+    which is the same equation with the one surviving side on it.
+    """
+
+    def _collapsed(self, std, proj):
+        """The collapsed map off a real resolve."""
+        snapshot, _deliveries = _resolve(std, proj)
         collapsed = _snapshot_assembly_bindings(snapshot)
         assert collapsed is not None, "the fixture must actually collapse"
-        return collapsed, _bind_map_from_mounts(reconciled.mounts), reconciled
+        return snapshot, collapsed
 
     def test_the_snapshot_reader_returns_a_copy_not_the_live_node(
         self, std, config, project_dir,
     ):
         """P8 — a caller mutating what it read must not rewrite the snapshot."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve(std, proj)
+        snapshot, _deliveries = _resolve(std, proj)
         first = _snapshot_assembly_bindings(snapshot)
         first.clear()
 
@@ -674,7 +591,7 @@ class TestTheEmitterConsumesTheShape:
         assemble — and it must stay distinguishable from an assembled-but-empty map.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        narrow, _rec, _ = _resolve_launch_snapshot(
+        narrow, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -686,13 +603,19 @@ class TestTheEmitterConsumesTheShape:
     def test_the_main_path_takes_the_COLLAPSED_map_when_there_is_one(
         self, std, config, project_dir,
     ):
-        """The switch itself, over a REAL resolve — and the two maps are not equal."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(std, proj)
+        """The switch itself, over a REAL resolve.
 
-        chosen = _launch_bind_map(snapshot)
-        assert chosen == _snapshot_assembly_bindings(snapshot)
-        assert chosen != _bind_map_from_mounts(reconciled.mounts)
+        ⚑ The second assertion — that the chosen map differs from the retired
+        route\'s — died with that route at 6-R3. What it distinguished the collapse
+        FROM no longer exists; that the map is the COLLAPSE\'s and not an injected
+        one is pinned at the call site in
+        ``test_commands/test_start.py::TestTheMainPathEmitsFromTheCollapse``.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, collapsed = self._collapsed(std, proj)
+
+        assert _launch_bind_map(snapshot) == collapsed
+        assert collapsed, "the fixture must produce a non-empty map"
 
     def test_a_NARROW_snapshot_REFUSES_instead_of_returning_None(
         self, std, config, project_dir,
@@ -700,7 +623,7 @@ class TestTheEmitterConsumesTheShape:
         """🛑 THE FALLBACK IS GONE, and what replaced it is a NAMED error.
 
         This test used to assert the opposite — that a snapshot with no assembly leaf
-        fell back to ``_bind_map_from_mounts(reconciled.mounts)``. With the arm removed
+        fell back to a second route\'s rows translated into this shape. With the arm removed
         the reader's ``None`` would reach ``_emit_category_mounts`` and die on
         ``.items()``: an uncaught ``AttributeError`` traceback rather than a
         ``KanibakoError``. So the seam states the wiring invariant itself.
@@ -712,7 +635,7 @@ class TestTheEmitterConsumesTheShape:
         ``_launch_bind_map`` and this fails with ``DID NOT RAISE``.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        narrow, _rec, _ = _resolve_launch_snapshot(
+        narrow, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -722,83 +645,65 @@ class TestTheEmitterConsumesTheShape:
         with pytest.raises(SettingsError, match="meta.assembly.bindings"):
             _launch_bind_map(narrow)
 
-    def test_both_shapes_emit_the_same_destinations(self, std, config, project_dir):
-        """⚑ THE DESTS AGREE on the shipped fixture, BUT HOME — so a difference below is REAL.
-
-        ⚑ HOME IS ON THE COLLAPSED SIDE ONLY since 6-H: the reconciled route walks
-        DECLARATIONS and home is no longer one of them, while the collapsed map is
-        SEEDED with the foundation before any scope folds. Everything else must match.
-        """
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        collapsed, from_rows, reconciled = self._both_shapes(std, proj)
-        agent = _agent_delivered_dests(reconciled.mounts)
-
-        def dests(binds):
-            return {
-                m.destination for m in _emit_category_mounts(
-                    binds, label="shape", skip_if_absent=agent,
-                )
-            }
-
-        assert HOME_DEST not in dests(from_rows)
-        assert dests(collapsed) == dests(from_rows) | {HOME_DEST}
-
     def test_the_collapse_folds_THE_MODE_INTO_THE_OPTIONS(
         self, std, config, project_dir,
     ):
-        """🛑 THE MEASURED DIVERGENCE, PINNED — not smoothed over.
+        """🛑 THE MODE FOLD, PINNED AGAINST THE DECLARATIONS — not smoothed over.
 
         The five-arm shape carries ro/rw as the ARM, so the collapse folds the mode
-        back into the option string (``store_collapse.fold_opt``): a rw bind the
-        reconciled route emits as ``Z,U`` arrives as ``Z,U,rw``. Podman's default IS
-        rw, so nothing about the box changes — but the option string podman receives
-        does, and that is exactly the kind of difference a suite must state out loud
-        rather than let a later reader discover in an argv.
+        back into the option string (``store_collapse.fold_opt``): a rw DECLARATION
+        whose own options read ``Z,U`` arrives as ``Z,U,rw``. Podman\'s default IS rw,
+        so nothing about the box changes — but the option string podman receives does,
+        and that is exactly the kind of difference a suite must state out loud rather
+        than let a later reader discover in an argv.
 
         ⚑ HOME is the exception BY CONSTRUCTION: it is pid 0, SEEDED before any scope
         folds, so no arm ever appends to its options.
 
-        🛑 THE VALUE ORACLE IS UNMOVED: ``collapsed_opts[HOME_DEST] == "Z,U"``, bare.
-        What 6-H changed is only where the OTHER side of that line used to come from —
-        home left ``bindings.rw``, so the reconciled route no longer emits it at all,
-        and the comparison against ``row_opts[HOME_DEST]`` became a read of a dest that
-        is legitimately absent. Its absence is asserted instead, and the value is not.
+        ⚑ RECOMPOSED AT 6-R3. The oracle was the retired route\'s option strings; it
+        is the DECLARATION\'s own ``options`` now, which is what that route emitted
+        verbatim (``settings_categories._bind_options``) and the only side left.
+
+        🛑 THE VALUE ORACLE IS UNMOVED: ``collapsed[HOME_DEST] == "Z,U"``, bare, and
+        home appears in NO declaration (6-H) — its absence there is asserted too.
         """
+        from kanibako.settings.settings_categories import is_read_only
+
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        collapsed, from_rows, reconciled = self._both_shapes(std, proj)
-        agent = _agent_delivered_dests(reconciled.mounts)
+        snapshot, collapsed = self._collapsed(std, proj)
+        declared = {
+            normalize_bind_dest(e.box_dest): e.options
+            for e in _entries(std, proj, snapshot)
+            if e.delivery == "MOUNT" and e.category != "masks"
+        }
 
-        def opts(binds):
-            return {
-                m.destination: m.options for m in _emit_category_mounts(
-                    binds, label="shape", skip_if_absent=agent,
-                )
-            }
-
-        collapsed_opts, row_opts = opts(collapsed), opts(from_rows)
-        assert collapsed_opts != row_opts, "the two routes cannot be indistinguishable"
-        assert collapsed_opts[HOME_DEST] == "Z,U"
-        assert HOME_DEST not in row_opts
-        rw = [d for d, o in row_opts.items() if o == "Z,U" and d != HOME_DEST]
+        assert collapsed[HOME_DEST].opts == "Z,U"
+        assert HOME_DEST not in declared
+        rw = [d for d, o in declared.items() if not is_read_only(o) and d in collapsed]
         assert rw, "the fixture must carry a rw bind that is not home"
-        assert all(collapsed_opts[d] == "Z,U,rw" for d in rw), collapsed_opts
-        ro = [d for d, o in row_opts.items() if o == "ro"]
+        assert all(collapsed[d].opts == "Z,U,rw" for d in rw), collapsed
+        ro = [d for d, o in declared.items() if is_read_only(o) and d in collapsed]
         assert ro, "the fixture must carry a ro bind"
-        assert all(collapsed_opts[d] == "ro" for d in ro), collapsed_opts
+        assert all(collapsed[d].opts == "ro" for d in ro), collapsed
 
     def test_A_MASK_NOW_HIDES_THE_BIND_NESTED_UNDER_IT(
         self, std, config, project_dir,
     ):
         """⚑⚑ THE USER-VISIBLE DIVERGENCE OF 2a-2 — the one that is not cosmetic.
 
-        The live route emits a mask and a bind INSIDE it as two mounts, and podman's
-        depth-sort then lands the bind on top: the mask hides only what nothing else
-        claimed. The collapse SWEEPS everything at or inside a mask, which is what a
-        mask means. It does NOT refuse this configuration, so the difference reaches
-        the box — hence CHANGELOG + MIGRATION §2.27 in this same commit.
+        The PRE-2a-2 route emitted a mask and a bind INSIDE it as two mounts, and
+        podman\'s depth-sort then landed the bind on top: the mask hid only what
+        nothing else claimed. The collapse SWEEPS everything at or inside a mask,
+        which is what a mask means. It does NOT refuse this configuration, so the
+        difference reaches the box — hence CHANGELOG + MIGRATION §2.27 at 2a-2.
+
+        ⚑ The second half of this test — the retired route still carrying the swept
+        bind — died with that route at 6-R3. The SWEEP is what matters and it is
+        asserted here; that the bind was DECLARED is asserted beside it, so its
+        absence from the map is the sweep and not a resolve miss.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
+        snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {"~/masked/inside": ("/tmp",)},
             "box.masks": ["~/masked"],
         })
@@ -807,8 +712,9 @@ class TestTheEmitterConsumesTheShape:
         assert chosen is not None
         assert _snapshot_assembly_bindings(snapshot) is not None, "must NOT refuse"
         assert "/home/agent/masked/inside" not in chosen, sorted(chosen)
-        # …and the reconciled route — which still drives the mask arm — still has it.
-        assert "/home/agent/masked/inside" in _bind_map_from_mounts(reconciled.mounts)
+        assert "/home/agent/masked/inside" in {
+            normalize_bind_dest(e.box_dest) for e in _entries(std, proj, snapshot)
+        }
 
     def test_a_mask_in_the_map_emits_no_mount(self):
         """A MASK has no host source; the tmpfs arm takes it (:class:`TestTheMaskArm`)."""
@@ -844,10 +750,12 @@ class TestTheEmitterConsumesTheShape:
 class TestTheMaskArm:
     """Cutover 2a-4: the tmpfs masks and the bind mounts are halves of ONE map.
 
-    The mask arm used to be built from the RECONCILED rows while the mounts beside it
-    came from the collapse, so the two could — and at one dest did — disagree about
-    what the box gets. Every test here asks the question the divergence asked: does
-    the mask arm say the same thing the mount arm says, off the same value?
+    The mask arm used to be built from a SECOND, cross-scope route\'s rows while the
+    mounts beside it came from the collapse, so the two could — and at one dest did —
+    disagree about what the box gets. That route is retired (6-R3); every test here
+    still asks the question its divergence asked, because one map answering both arms
+    is the property, not the absence of a rival: does the mask arm say the same thing
+    the mount arm says, off the same value?
     """
 
     @staticmethod
@@ -860,11 +768,11 @@ class TestTheMaskArm:
     ):
         """The live seam: a ``<scope>.masks`` entry arrives as a mask IN THE MAP.
 
-        RED if the arm goes back to the reconciled rows only by accident — the
-        assertion is that the map it is taken from IS the collapsed one.
+        RED if the arm is ever taken from anything but the map — the assertion is
+        that the map it is taken from IS the collapsed one.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(
+        snapshot, _deliveries = _resolve(
             std, proj, extra_default_categories={"box.masks": ["~/private"]},
         )
         collapsed = _snapshot_assembly_bindings(snapshot)
@@ -886,7 +794,7 @@ class TestTheMaskArm:
         so the tmpfs the box receives is the one the sweep was performed against.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
+        snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {"~/private/notes": ("/tmp",)},
             "box.masks": ["~/private"],
         })
@@ -902,13 +810,18 @@ class TestTheMaskArm:
         """🛑 THE MEASURED DIVERGENCE OF 2a-4, and the reason it is not cosmetic.
 
         A mask may be TAKEN by a bind at its own destination in a later scope (the
-        fold sweeps the mask and the bind lands). The reconcile resolves that same
-        collision the other way — §0 row 2, a mask OVERRIDES a binding at its dest —
-        so with the arms on two sources the launch emitted a ``-v`` bind AND a
-        ``--mount type=tmpfs`` at ONE destination. Off one map it emits the bind.
+        fold sweeps the mask and the bind lands). The retired cross-scope route
+        resolved that same collision the other way — §0 row 2, a mask OVERRIDES a
+        binding at its dest — so with the arms on two sources the launch emitted a
+        ``-v`` bind AND a ``--mount type=tmpfs`` at ONE destination. Off one map it
+        emits the bind.
+
+        ⚑ The final assertion — the retired arm still answering the OPPOSITE way —
+        died with that arm at 6-R3. Both DECLARATIONS are asserted present instead,
+        so the outcome is still shown to be a decision rather than a resolve miss.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
+        snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
             "agent.claude.masks": ["~/contested"],
             "box.bindings.ro": {"~/contested": ("/tmp",)},
         })
@@ -917,10 +830,10 @@ class TestTheMaskArm:
 
         assert _bind_map_masks(chosen) == []
         assert "/home/agent/contested" in self._mounted(chosen)
-        # The retired arm's answer, still computed, and still the OPPOSITE one.
-        assert "/home/agent/contested" in [
-            e.box_dest for e in reconciled.mounts if e.category == "masks"
-        ]
+        assert {"masks", "bindings.ro"} <= {
+            e.category for e in _entries(std, proj, snapshot)
+            if normalize_bind_dest(e.box_dest) == "/home/agent/contested"
+        }
 
     def test_a_mask_ABOVE_a_LATER_scopes_bind_STOPS_THE_LAUNCH(
         self, std, config, project_dir,
@@ -972,10 +885,9 @@ class TestTheMaskArm:
         """⚑⚑ THE PRODUCTION SEAM, not the functions: `_run_container` → `runtime.run`.
 
         Patching ``_launch_bind_map`` makes the map the ONLY place either arm could
-        have come from — the harness's reconciled rows carry no mask at all, so the
-        retired spelling would hand podman an empty mask list while mounting the bind.
-        The call COUNT is asserted too: two reads is not one value, and while the
-        fallback lives nothing says two reads answer from the same arm.
+        have come from — the harness resolves no mask at all, so any other spelling
+        would hand podman an empty mask list while mounting the bind. The call COUNT
+        is asserted too: two reads is not one value.
         """
         from kanibako.commands.start import _run_container
         from kanibako.settings.store_collapse import MASK, CollapsedBind
@@ -1119,7 +1031,7 @@ class TestTheThreeMissingSourcePolicies:
         A narrow resolve reads the user's WHOLE cascade, so every user row reaches
         it — and the MAIN path already emits every one of them from the collapse.
         Emitting them here mounted each a SECOND time (shipped in v1.7.2:
-        ``_emit_category_mounts(_img_rec, …)`` had no filter at all) and did it from
+        the image resolve\'s emitter had no filter at all) and did it from
         RAW rows, so a later-scope ``masks`` sweep the collapse applied was defeated.
         RED if the dest filter is dropped: the user rows come back.
         """
@@ -1159,12 +1071,12 @@ class TestTheThreeMissingSourcePolicies:
         the scope is gone — so a user's own bind that WINS one of the agent's delivery
         destinations inherits that destination's must-exist safe-fail rather than the
         warn-and-drop it would have taken on the old route. Documented in MIGRATION
-        §2.28; this is the half of it the reconcile and the fold have to agree on —
-        that the box-scope declaration actually lands at that exact key.
+        §2.28; this is the half of it the fold has to get right — that the box-scope
+        declaration actually lands at that exact key.
         """
         critical = "/home/agent/.local/bin/claude"
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
+        snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {critical: ("/nonexistent/kanibako-test-source",)},
         })
         chosen = _launch_bind_map(snapshot)
@@ -1194,7 +1106,7 @@ def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
 ):
     """A dest is DATA: the leaf holds ONE value, never a tree shattered on its dots."""
     proj = resolve_project(std, config, str(project_dir), initialize=True)
-    snapshot, _rec, _ = _resolve(std, proj)
+    snapshot, _deliveries = _resolve(std, proj)
     value = _assembly(snapshot)[leaf]
 
     # ⚑ TWO SHAPES, ONE PROPERTY. ``bindings`` is dest-KEYED; ``seeded`` and
@@ -1347,14 +1259,14 @@ class TestTheSeedApplierConsumesTheLeaf:
         assert (landed / "only-first.txt").read_text() == "first"
         assert (landed / "shared.txt").read_text() == "second"
 
-    def test_the_applier_reads_THE_LEAF_and_not_the_reconciled_copies(
+    def test_the_applier_reads_THE_LEAF_and_NOTHING_ELSE(
         self, monkeypatch, std, config, project_dir, tmp_path,
     ):
-        """🛑 THE SWITCH ITSELF. Empty the LEAF and nothing is seeded, though the
-        reconciled route still carries every row.
+        """🛑 THE SWITCH ITSELF. Empty the LEAF and nothing is seeded, though every
+        row is still declared.
 
-        RED before 2b-2 on the identical fixture: the old loop walked
-        ``reconciled.copies``, which this monkeypatch does not touch at all.
+        RED before 2b-2 on the identical fixture: the old loop walked the retired
+        route\'s copy winners, which this monkeypatch does not touch at all.
         """
         monkeypatch.setattr(
             "kanibako.commands.start._snapshot_assembly_seeded", lambda _snap: [],
@@ -1488,7 +1400,7 @@ class TestTheSeedApplierConsumesTheLeaf:
     ):
         """🛑 INVERTED AT 2c — and this arm was UNREACHABLE, not merely unused.
 
-        It read: an absent leaf falls back to the reconciled ``seeded`` winners, so a
+        It read: an absent leaf falls back to a second route\'s ``seeded`` winners, so a
         refused fold costs a brand-new box nothing. The seed leaf rides its own gate
         (2b-1) and every resolve writes it, so once refusals stopped being swallowed
         the only way to reach ``None`` was to patch the reader — which is what this
@@ -1515,7 +1427,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         """🛑 REWRITTEN AT 2c: ABSENT is no longer a state a resolve can produce.
 
         This read ``_snapshot_assembly_seeded(refused) is None`` against a seed dest
-        outside home — the arm that routed the reconciled fallback. That refusal raises
+        outside home — the arm that routed the old fallback. That refusal raises
         now, so the leaf's ``None`` means only "this snapshot was never resolved", and
         the property worth pinning is the one 2b-1 built: the seed leaf rides its OWN
         gate, so even a NARROW resolve — the create-side seed path, which has no home
@@ -1527,13 +1439,13 @@ class TestTheSeedApplierConsumesTheLeaf:
         from kanibako.commands.start import _snapshot_assembly_seeded
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        narrow, _rec, _ = _resolve_launch_snapshot(
+        narrow, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
         )
-        whole_box, _rec, _ = _resolve(std, proj)
+        whole_box, _deliveries = _resolve(std, proj)
 
         assert _snapshot_assembly_seeded(narrow) == []
         assert _snapshot_assembly_seeded(whole_box) is not None
@@ -1551,7 +1463,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         src = tmp_path / "seedme"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve(std, proj, extra_default_categories={
+        snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
             "box.seeded": {"~/seedme": (str(src),)},
         })
         first = _snapshot_assembly_seeded(snapshot)
@@ -1610,12 +1522,11 @@ class TestTheSyncApplierConsumesTheLeaf:
         """The producer half: the sync arm is a FLAT list, not one arbitrated winner.
 
         RED if anything between the declaration and the leaf keys the sync arm on its
-        destination — which is what ``reconcile_categories`` does
-        (``_resolve_copy_group`` returns ONE row) and what the leaf deliberately does
-        not.
+        destination and returns ONE row — which is what the retired by-dest reconcile
+        did, and what the leaf deliberately does not.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec, _ = _resolve(
+        snapshot, _deliveries = _resolve(
             std, proj, extra_default_categories=self._two_scopes_at_one_dest(tmp_path),
         )
         rows = [
@@ -1652,8 +1563,8 @@ class TestTheSyncApplierConsumesTheLeaf:
         """ADDITIVE: an empty sync arm is a no-op, not an empty-list special case.
 
         ⚑ MOVED HERE AT 2c from ``test_start.TestApplySyncedCopies``, whose whole class
-        drove a NARROW resolve and therefore exercised the reconciled fallback arm that
-        the cutover deleted. The behaviour is unchanged; what changed is that it is now
+        drove a NARROW resolve and therefore exercised the fallback arm that the
+        cutover deleted. The behaviour is unchanged; what changed is that it is now
         asserted against the route the box actually takes.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
@@ -1851,7 +1762,7 @@ class TestTheSyncApplierConsumesTheLeaf:
     ):
         """🛑 INVERTED AT 2c — the safety arm this asserted is gone.
 
-        It read: an absent leaf falls back to the reconciled ``synced`` winners, so a
+        It read: an absent leaf falls back to a second route\'s ``synced`` winners, so a
         refused fold costs the box nothing. The fold's refusals are the launch's now,
         and the arm went with the swallow; what is left is the wiring invariant, which
         must be a NAMED error rather than a silent empty sync list.
@@ -1880,9 +1791,9 @@ class TestTheSyncApplierConsumesTheLeaf:
     ):
         """🛑🛑 THE PROPERTY OUTLIVED THE FILTER THAT USED TO CARRY IT.
 
-        ``reconciled.copies`` was ONE list holding BOTH copy categories, so the
-        fallback arm needed a ``category == "synced"`` test to say which half it
-        wanted. The arm is gone at 2c and the filter with it — the two categories are
+        The retired route\'s copy winners were ONE list holding BOTH copy categories,
+        so the fallback arm needed a ``category == "synced"`` test to say which half
+        it wanted. The arm is gone at 2c and the filter with it — the two categories are
         two LEAVES now, and this pass reads one of them. That makes the property
         structural rather than enforced, which is exactly when a test earns its keep:
         it is the thing that goes RED if the consumer is ever pointed at the wrong
@@ -1939,7 +1850,7 @@ class TestTheSyncApplierConsumesTheLeaf:
         landed = proj.shell_path / "cred.txt"
         cats = {"box.synced": {"~/cred.txt": (str(src),)}}
 
-        snapshot, _rec = _sync(
+        snapshot = _sync(
             std, proj, logger=logging.getLogger("sync-consumer"),
             extra_default_categories=cats, deliver_creds=False,
         )
@@ -1965,8 +1876,9 @@ class TestTheSyncApplierConsumesTheLeaf:
         the launch refresh and the once-at-create write are two passes with two
         answers, and a default would silently hand one of them the other's.
 
-        ⚑ ``reconciled`` LEFT THEM at cutover 2c: it was read only by the sync list's
-        fallback arm, and an input nothing reads cannot make a mis-placed call fail.
+        ⚑ A ``reconciled`` PARAMETER LEFT THEM at cutover 2c: it was read only by the
+        sync list\'s fallback arm, and an input nothing reads cannot make a mis-placed
+        call fail.
         """
         import inspect
 
@@ -1994,7 +1906,7 @@ def _sync_over_the_launch_map(std, proj, *, logger, gated=False, **kw):
     """
     from kanibako.commands.start import _apply_synced_copies, _synced_uptodate
 
-    snapshot, _reconciled, _ = _resolve(std, proj, **kw)
+    snapshot, _deliveries = _resolve(std, proj, **kw)
     bindings = _launch_bind_map(snapshot)
     _apply_synced_copies(
         snapshot=snapshot, bindings=bindings, logger=logger,

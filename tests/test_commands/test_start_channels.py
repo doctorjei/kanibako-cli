@@ -26,14 +26,13 @@ import pytest
 from kanibako.channels import channels as _ch
 from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.commands.start import (
-    _agent_delivered_dests,
-    _bind_map_from_mounts,
     _channel_default_categories,
     _emit_category_mounts,
     _launch_snapshot_inputs,
     _resolve_launch_snapshot,
     _seed_channel_files,
 )
+from tests.support.narrow_resolve import table_bind_dests
 from kanibako.settings.paths import (
     WorksetSpec,
     resolve_project,
@@ -77,12 +76,18 @@ def _build(std, proj):
     Drives the LIVE single-route path (7c): seed the chat files, then resolve the
     channel default-category table through the committed ``build_launch_snapshot``
     pipeline (``_resolve_launch_snapshot`` with base-families OFF + the channel
-    table as the narrow ``extra_default_categories``) and emit the reconciled
-    non-agent MOUNT winners via ``_emit_category_mounts`` — exactly the live launch
-    channel path (start.py:1317-1318), no separate channel resolver.
+    table as the narrow ``extra_default_categories``) and emit the resolve's OWN
+    table winners via ``_emit_category_mounts``.
+
+    ⚑ A NARROW resolve, so it emits from ``LaunchDeliveries.narrow_bindings`` —
+    the seam the image and helper resolves take (cutover 6-R2/6-R3). The live
+    launch carries the channel table as a BASE family and emits it from the
+    collapse instead; what this isolates is the table's own contribution, which is
+    identical either way and is the only thing these assertions name.
     """
     _seed_channel_files(std, proj)
-    _snapshot, reconciled, _ = _resolve_launch_snapshot(
+    _table = _channel_default_categories(std, proj)
+    _snapshot, deliveries = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name="general",
@@ -93,12 +98,13 @@ def _build(std, proj):
         target=None,
         agent_cfg=None,
         include_base_families=False,
-        extra_default_categories=_channel_default_categories(std, proj),
+        extra_default_categories=_table,
         deliver_creds=True,
+        narrow_bind_dests=table_bind_dests(_table),
     )
     mounts = _emit_category_mounts(
-        _bind_map_from_mounts(reconciled.mounts), label="channel",
-        skip_if_absent=_agent_delivered_dests(reconciled.mounts),
+        deliveries.narrow_bindings, label="channel",
+        skip_if_absent=deliveries.agent_dests,
     )
     return {
         m.destination: (str(m.source), m.options) for m in mounts
