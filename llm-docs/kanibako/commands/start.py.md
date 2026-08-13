@@ -132,46 +132,60 @@ nothing", and that is now false for MOUNTS and for BOTH copy arms.** The main la
 category mounts from `meta.assembly.bindings` (see the section above), the create-time seed applier
 reads `meta.assembly.seeded`, and the launch-time sync applier reads `meta.assembly.synced` (both
 below). What still runs on `reconciled`: the env set, the agent delivery arm, and the remaining narrow
-resolves. Retiring `reconcile_categories`' arbitration half is step 5, and none of it may be smuggled
-in early.
+resolves. Retiring `reconcile_categories`' ARBITRATION half is step 5, and none of it may be smuggled
+in early. ⚑ Its WARN half is already gone — cutover 5-1c, next section.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
 
-### The row-5 warning now has a home HERE too (cutover 5-0)
+### The row-5 warning lives HERE, and ONLY here (cutover 5-0, then 5-1c)
 
-🛑 **UPDATED AT 5-0 — the paragraph above used to list "the row-5 warnings" among what runs on
-`reconciled`, and that is no longer the whole picture.** `build_store_shape_set` computed the same
-same-scope ambiguities all along and `StoreShapeSet` carried them as data, but nothing ever asked
-for `.warnings`: the ONLY emission in `src/` was `emit_collision_warnings(reconciled.warnings)`, on
-the arm step 5 deletes. `_install_assembly_collapse` now hands `shapes.warnings` to that same seam,
-so the deletion is a deletion and not a silently lost warning. **Both feeds are live and nothing was
-removed** — reverting is one line.
+🛑 **UPDATED TWICE. 5-0:** `build_store_shape_set` computed the same same-scope ambiguities all
+along and `StoreShapeSet` carried them as data, but nothing ever asked for `.warnings` — the ONLY
+emission in `src/` was `emit_collision_warnings(reconciled.warnings)`. 5-0 handed `shapes.warnings`
+to that same seam as well, so both feeds were live and reverting was one line.
+🛑 **5-1c THEN DELETED THE RECONCILE FEED — and the `ReconciledCategories.warnings` field, and the
+row-5 `CategoryCollision` construction in `_resolve_mount_group` that filled it.** The producer is
+now the SOLE builder of a `CategoryCollision` anywhere in `src/`, and there is no second feed left
+to add without re-adding a field.
 
-**One ambiguity still prints one line, by construction.** `store_shape` imports
-`CategoryCollision` from `settings_categories`, so both arms build the same type; both group on the
-bare `entry.box_dest`; both name the winner's scope; and `emit_collision_warnings` memoises on
-exactly `(box_dest, scope)`. **Measured:** for an ambiguity inside ONE scope the two arms' warning
-tuples are equal field for field.
+**Why the field went with the feed, rather than being left empty.** An always-empty field is a false
+claim in the type, and — more to the point — a re-pluggable socket. Two feeds printed one line only
+because both arms happened to build an EQUAL `CategoryCollision` and `emit_collision_warnings`
+memoises on `(box_dest, scope)`; that was a property of the two CONSTRUCTIONS, never of the channel.
+Making the second feed **unavailable** (P3) is what closes it. 🔬 **Mutation-proved:** the full
+revert — construction + field + feed, all three — leaves every LOG-based test in
+`TestTheCollapseRouteFeedsTheSameChannel` **green**, because the memo hides it. Only the structural
+case `test_there_is_NO_SECOND_FEED_left_to_add` goes red. That is exactly why the guarantee is
+pinned structurally and not by counting log lines.
 
-**Where they diverge, and it is not filtered.** The producer folds each scope alone, so it reports
-an ambiguity the reconcile silenced for a reason of its own. **Measured, and there are exactly two
-such reasons:**
+**No warning was lost. Measured, not argued.** Sweeping 243,300 two- and three-entry arrangements
+(7 categories × 5 scopes × 2 dests) through the PRE-IMAGE reconcile and the live producer and
+comparing the warned `(box_dest, scope)` sets: **0 arrangements warned only by the reconcile**;
+8,320 warned by both; 1,464 warned only by the producer. The producer's set is a strict SUPERSET —
+it folds each scope alone, so it applies none of the reconcile's silences:
 
-| what silenced the reconcile | what the collapse arm now says | what the launch does |
+| what silenced the reconcile | what the collapse arm says | what the launch does |
 |---|---|---|
-| a `masks` entry at that dest, in ANY scope (§0 row 2 returns the mask and no warnings) | warns for the ambiguous scope | **works** — one extra line the user did not get before (CHANGELOG, Unreleased/Changed) |
-| another scope's abstraction took the dest (its old row 4) | warns for the LOSING scope, a scope the reconcile never names | refused by `collapse_store_shapes` — two mounts at one dest — so the line only ever precedes that refusal |
+| a `masks` entry at that dest, in ANY scope (§0 row 2 returned the mask and no warnings) | warns for the ambiguous scope | **works** — one extra line the user did not get before v1.8.0 (CHANGELOG, Unreleased/Changed) |
+| another scope's abstraction took the dest (its old row 4) | warns for the LOSING scope, a scope the reconcile never named | refused by `collapse_store_shapes` — two mounts at one dest — so the line only ever precedes that refusal |
 
 The mask row is the one that changes what a working launch prints, and it is the reason this is a
 CHANGELOG entry at all; it is pinned by
 `tests/test_category_collisions.py::TestTheCollapseRouteFeedsTheSameChannel::test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not`.
 ⚑ The second row is MEASURED, not pinned — no test drives a warning that precedes a refusal.
 
-⚑ **The channel itself is a spec question step 5 has to answer.** §0's containment table makes two
-mounts at one destination "an error in EVERY scope combination", same-scope included; warn-and-
-proceed is the retired five-row table's row 5, which both arms still implement. 5-0 gives the
-existing behaviour a home in the new route; it does not rule on whether that behaviour survives.
+⚑ **The `_split_home_bind` question, asked and closed.** The producer sees `folded` (entries minus
+the one home mount), so in principle a same-scope ambiguity AT the home dest could reach the
+reconcile and not the producer. It cannot: `_home_bind_entries` only ever lifts an entry out when
+there is EXACTLY ONE there, and one entry is not an ambiguity. Two at home is
+`_refuse_without_one_home` on a whole-box resolve and is left un-split (so the producer sees both)
+on a narrow one.
+
+⚑ **Whether the channel should exist AT ALL is still a spec question, and still open.** §0's
+containment table makes two mounts at one destination "an error in EVERY scope combination",
+same-scope included; warn-and-proceed is the retired five-row table's row 5. 5-0 gave that behaviour
+a home in the new route and 5-1c gave it exactly one; neither rules on whether it survives.
 
 ### The credential gate is HOISTED above BOTH consumers (cutover 2b-0)
 

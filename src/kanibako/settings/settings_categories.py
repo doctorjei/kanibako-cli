@@ -564,12 +564,20 @@ def is_read_only(options: str | None) -> bool:
 class CategoryCollision:
     """One SAME-SCOPE abstraction ambiguity at one ``box_dest`` (§0 row 5).
 
-    Returned as DATA by :func:`reconcile_categories` — which stays PURE — and
-    rendered by the one emission seam
+    Built as DATA by the per-scope ``store_shape`` PRODUCER — which stays PURE —
+    and rendered by the one emission seam
     (``kanibako.commands.start.emit_collision_warnings``).  *scope* is the bare
     scope token both declarations share; *winner_key* is the declaration that
     survives the existing ordering; *loser_keys* are the same-scope declarations
     at that dest which do not.
+
+    ⚑ IT LIVES HERE, NOT IN ``store_shape``, AND IT IS DELIBERATE: the message
+    below is spec §0's, written ONCE, beside the two refusal texts
+    (:func:`raise_binding_vs_binding`, :func:`raise_extension_onto_occupied`)
+    that are also the producer's to raise.  ⚑ Cutover 5-1c retired the SECOND
+    builder — :func:`reconcile_categories` used to return these too, so one
+    ambiguity could reach the emitter down two paths.  The producer is the only
+    builder now; do not add a second one back.
     """
 
     box_dest: str
@@ -612,15 +620,19 @@ class ReconciledCategories:
     because the sync is delivered THROUGH the covering bind into its host source —
     so the same ``box_dest`` may appear once in *mounts* and once in *copies*.
 
-    *warnings* carries the §0 row-5 SAME-SCOPE abstraction ambiguities as DATA.
-    This function stays PURE (no logging, no process state), so the caller owns
-    emission — see ``kanibako.commands.start.emit_collision_warnings``.
+    ⚑ THERE IS NO ``warnings`` FIELD (cutover 5-1c).  It carried the §0 row-5
+    same-scope ambiguities until the per-scope ``store_shape`` producer took that
+    channel over; the field's ONE reader was the
+    ``emit_collision_warnings(reconciled.warnings)`` call in
+    ``commands.start._resolve_launch_snapshot``, deleted in the same step.  An
+    always-empty field left behind would be a false claim in the type AND a
+    re-pluggable socket for the second channel this step exists to close — one
+    ambiguity, one announcement, one builder.
     """
 
     mounts: list[CategoryEntry]
     copies: list[CategoryEntry]
     envs: list[CategoryEntry]
-    warnings: tuple[CategoryCollision, ...] = ()
 
 
 def path_depth(box_dest: str) -> int:
@@ -681,15 +693,24 @@ def reconcile_categories(
     3    an ABSTRACTION extending onto an occupied     **ERROR** — refuse the
          dest                                          EXTENSION, keep the base
     4    abstraction vs abstraction, DIFFERENT scopes  scope precedence, SILENT
-    5    abstraction vs abstraction, SAME scope        existing ordering + WARN
+    5    abstraction vs abstraction, SAME scope        existing ordering, SILENT
+                                                       HERE (the WARN is the
+                                                       producer's — 5-1c)
     ==== ============================================ ==========================
 
-    Rows 1/3 raise :class:`~kanibako.errors.CategoryCollisionError`; row 5 is
-    RETURNED as data on :attr:`ReconciledCategories.warnings` (this function is
-    pure — the caller emits).  "The existing ordering" is the input order the
-    adapter produced (``scope`` apply order, then ``(category, name)``), LAST
-    wins — the same ordering the retired ladder produced for every abstract pair,
-    because ``common`` outranked ``caches`` there and also sorts after it here.
+    Rows 1/3 raise :class:`~kanibako.errors.CategoryCollisionError`.  "The
+    existing ordering" is the input order the adapter produced (``scope`` apply
+    order, then ``(category, name)``), LAST wins — the same ordering the retired
+    ladder produced for every abstract pair, because ``common`` outranked
+    ``caches`` there and also sorts after it here.
+
+    ⚑ ROW 5's WARNING IS NOT THIS FUNCTION'S ANY MORE (cutover 5-1c).  Row 5's
+    BEHAVIOUR — proceed on the existing ordering — is unchanged and still
+    performed here; what moved is the ANNOUNCEMENT, to the per-scope
+    ``store_shape`` producer, which reaches
+    ``commands.start.emit_collision_warnings`` through
+    ``_install_assembly_collapse``.  Two builders meant one ambiguity could be
+    announced down two paths; there is one builder now.
 
     ⚑ **The table governs MOUNT-vs-MOUNT only.**  The COPY layer and the
     copies-vs-mounts boundary keep their own, UNCHANGED rules (spec §0
@@ -761,11 +782,8 @@ def reconcile_categories(
         by_dest.setdefault(e.box_dest, []).append(e)
 
     winners: list[CategoryEntry] = []
-    warnings: list[CategoryCollision] = []
     for box_dest, group in by_dest.items():
-        kept, group_warnings = _resolve_dest_group(box_dest, group)
-        winners.extend(kept)
-        warnings.extend(group_warnings)
+        winners.extend(_resolve_dest_group(box_dest, group))
 
     # --- partition winners by delivery; depth-sort the mounts (shallow first).
     mounts = [w for w in winners if w.delivery == MOUNT]
@@ -777,15 +795,13 @@ def reconcile_categories(
     # COPY: deterministic by box_dest (no depth constraint).
     copies.sort(key=lambda e: e.box_dest)
 
-    return ReconciledCategories(
-        mounts=mounts, copies=copies, envs=envs, warnings=tuple(warnings),
-    )
+    return ReconciledCategories(mounts=mounts, copies=copies, envs=envs)
 
 
 def _resolve_dest_group(
     box_dest: str, group: list[CategoryEntry],
-) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
-    """Resolve ONE ``box_dest`` group per §0 → (survivors, row-5 warnings).
+) -> list[CategoryEntry]:
+    """Resolve ONE ``box_dest`` group per §0 → the survivors.
 
     *group* is in input (apply) order.  The three layers are resolved
     independently and then reconciled across the delivery boundary; each step is
@@ -800,7 +816,7 @@ def _resolve_dest_group(
     mount_sub = [e for e in group if e.delivery == MOUNT]
     copy_sub = [e for e in group if e.delivery == COPY]
 
-    mount_winner, warnings = _resolve_mount_group(box_dest, mount_sub)
+    mount_winner = _resolve_mount_group(box_dest, mount_sub)
     copy_winners = _resolve_copy_group(copy_sub)
 
     # CROSS-DELIVERY. A mount physically shadows a copied file, so it beats a
@@ -820,23 +836,29 @@ def _resolve_dest_group(
     # out would be one rule wearing two faces.
     if mount_winner is not None and copy_winners:
         if mount_winner.category == "masks":
-            return [mount_winner], warnings
+            return [mount_winner]
         if any(e.category == "synced" for e in copy_winners):
-            return [mount_winner, *copy_winners], warnings
-        return [mount_winner], warnings
+            return [mount_winner, *copy_winners]
+        return [mount_winner]
     if mount_winner is not None:
-        return [mount_winner], warnings
-    return copy_winners, warnings
+        return [mount_winner]
+    return copy_winners
 
 
 def _resolve_mount_group(
     box_dest: str, mount_sub: list[CategoryEntry],
-) -> tuple[CategoryEntry | None, list[CategoryCollision]]:
-    """Apply §0 rows 1-5 to the MOUNT entries at ONE dest (input order kept)."""
+) -> CategoryEntry | None:
+    """Apply §0 rows 1-4 to the MOUNT entries at ONE dest (input order kept).
+
+    ⚑ Row 5's WARNING is NOT built here (cutover 5-1c) — see
+    :func:`reconcile_categories`.  Row 5's outcome is the same pick row 4 makes,
+    so the two share the one :func:`_most_specific` call below; the announcement
+    is the ``store_shape`` producer's.
+    """
     if not mount_sub:
-        return None, []
+        return None
     if len(mount_sub) == 1:
-        return mount_sub[0], []
+        return mount_sub[0]
 
     concrete = [e for e in mount_sub if e.category in CONCRETE_CATEGORIES]
     abstract = [e for e in mount_sub if e.category in ABSTRACT_CATEGORIES]
@@ -861,30 +883,15 @@ def _resolve_mount_group(
     # ROW 2 — a mask OVERRIDES whatever else lands here (hiding a bound path is
     # the whole job). Several masks at one dest are the same instruction twice.
     if masks:
-        return _most_specific(masks), []
+        return _most_specific(masks)
 
     # ROWS 4/5 — abstraction vs abstraction. SCOPE PRECEDENCE decides (row 4),
     # then the existing ordering within a scope; a collision WITHIN the winning
-    # scope is the ambiguity §0 says to proceed on and WARN about (row 5).
-    winner = _most_specific(mount_sub)
-    same_scope_losers = tuple(
-        e.key for e in mount_sub
-        if e is not winner
-        and e.scope == winner.scope
-        and e.category in ABSTRACT_CATEGORIES
-    )
-    warnings: list[CategoryCollision] = []
-    if same_scope_losers and winner.category in ABSTRACT_CATEGORIES:
-        # ⚑ Only the WINNING scope's internal ambiguity is reported — spec §0
-        # row 5's qualifier ("the warn applies to the WINNING scope's own
-        # ambiguity", 2026-07-31). A losing scope's tie is wholly masked by row 4.
-        warnings.append(CategoryCollision(
-            box_dest=box_dest,
-            scope=winner.scope,
-            winner_key=winner.key,
-            loser_keys=same_scope_losers,
-        ))
-    return winner, warnings
+    # scope is the ambiguity §0 says to PROCEED on (row 5) — which is this same
+    # pick. ⚑ The WARN that row 5 also mandates is the per-scope ``store_shape``
+    # producer's since cutover 5-1c; this function no longer builds a
+    # ``CategoryCollision``, so a same-scope ambiguity cannot be announced twice.
+    return _most_specific(mount_sub)
 
 
 def raise_binding_vs_binding(

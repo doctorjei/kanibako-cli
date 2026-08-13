@@ -953,12 +953,16 @@ class TestReconcileCollisionTable:
         # ⚑ synced no longer DISPLACES the surviving mount (ruling 2026-08-12) — the
         # mount winner and the copy both come out, and the ``seeded`` under them is
         # still shadowed by the mount. The common/caches pair is a same-scope row-5
-        # ambiguity, which ``caches`` wins on input order.
+        # ambiguity, which ``caches`` wins on input order — and the surviving
+        # ``caches`` mount below IS that pick. ⚑ The ``len(rec.warnings) == 1`` line
+        # that used to follow was RETIRED at cutover 5-1c: the reconcile no longer
+        # builds row-5 warnings (the per-scope ``store_shape`` producer does), and
+        # nothing about the retired LADDER — which is all this file exists to
+        # contrast against — was carried by it.
         rec = reconcile_categories([
             _entry(c, box_dest=D) for c in ("common", "caches", "seeded", "synced")
         ])
         assert [w.category for w in rec.mounts + rec.copies] == ["caches", "synced"]
-        assert len(rec.warnings) == 1
         # A mount beats a seeded copy (cross-delivery, unchanged).
         rec = reconcile_categories([
             _entry(c, box_dest=D) for c in ("seeded", "caches")

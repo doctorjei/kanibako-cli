@@ -1,9 +1,36 @@
-# Category entries — mount options
+# Category entries — the reconciled shape, mount options
 
 ⚠️ **PARTIAL MIRROR.** `settings_categories.py` is a large module (the category dataclasses, the
 reconcile ladder, the collision table). Only the parts whose prose has been migrated out of source
 appear here; absence of a symbol below means "not migrated yet", never "does not exist". Migration
 happens as files are touched, not in a big-bang pass.
+
+## `ReconciledCategories` has THREE fields, and the fourth is not coming back
+
+`mounts`, `copies`, `envs`. There is no `warnings`.
+
+It carried the §0 row-5 same-scope ambiguities until cutover 5-1c, which also deleted the
+`CategoryCollision` construction in `_resolve_mount_group` that filled it. The channel did not
+disappear — it moved to the per-scope `store_shape` producer (wired at 5-0), which reaches the one
+emission seam `commands.start.emit_collision_warnings` through `_install_assembly_collapse`. Full
+reasoning, the superset measurement and the mutation proof: `llm-docs/kanibako/commands/start.py.md`,
+"The row-5 warning lives HERE, and ONLY here".
+
+⚑ **The field went with the feed on purpose, and leaving it empty would have been worse than
+useless.** Two feeds of one channel printed one line only because both arms happened to build an
+EQUAL `CategoryCollision` and the emitter memoises on `(box_dest, scope)` — a property of the two
+constructions, not of the channel. An empty-but-present field keeps the second feed's socket wired
+and unplugged; making it UNAVAILABLE (P3) means re-adding it is a visible design act.
+
+⚑ **`CategoryCollision` itself still lives in this module**, and that is not leftovers: its message
+is spec §0's, written once, beside the two refusal texts (`raise_binding_vs_binding`,
+`raise_extension_onto_occupied`) that the producer also raises. `store_shape` imports all three from
+here. It is DEFINED here and BUILT there.
+
+⚑ **Row 5's BEHAVIOUR is unchanged in this module.** "Proceed on the existing ordering" is still
+`_resolve_mount_group`'s `_most_specific` pick, which is the same pick row 4 makes. Only the
+announcement moved. Rows 1 and 3 still RAISE here, and the row-2 mask override still applies here —
+none of that is 5-1c's.
 
 ## Mount options: one writer, one reader
 

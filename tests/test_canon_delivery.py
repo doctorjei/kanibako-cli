@@ -120,8 +120,8 @@ def _merged_canon_cats(chapter: Path) -> dict:
     return merged
 
 
-def _reconcile(cats: dict) -> object:
-    """Drive the real launch cascade → ``reconcile_categories`` over *cats*."""
+def _entries(cats: dict) -> list:
+    """Drive the real launch cascade over *cats* → its ``CategoryEntry`` list."""
     snap = build_launch_snapshot(
         agent_name="claude",
         ctx=_ctx(),
@@ -131,8 +131,12 @@ def _reconcile(cats: dict) -> object:
         box_path=None,
         default_categories=dict(cats),
     )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    return reconcile_categories(entries)
+    return snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+
+
+def _reconcile(cats: dict) -> object:
+    """Drive the real launch cascade → ``reconcile_categories`` over *cats*."""
+    return reconcile_categories(_entries(cats))
 
 
 def _make_fake_rom(root: Path) -> Path:
@@ -598,12 +602,24 @@ class TestSiblingAssembly:
                 )
 
     def test_all_six_reconcile_without_collision_warnings(self, tmp_path):
+        """⚑ RETARGETED at cutover 5-1c, and the claim got STRICTER, not weaker.
+
+        The warning used to be read off ``reconcile_categories(...).warnings``; that
+        field is gone and the per-scope ``store_shape`` producer is the sole builder
+        — which is also what a user hears. The producer folds each scope ALONE, so it
+        applies none of the reconcile's cross-scope silences: a canon set that is
+        quiet HERE is quiet on the launch path.
+        """
+        from kanibako.settings.store_shape import build_store_shape_set
+
         chapter = tmp_path / "data" / "rom"
         (chapter / "directives").mkdir(parents=True)
         (chapter / "directives" / "ROM_AGENT.md").write_text("")
 
-        rec = _reconcile(_merged_canon_cats(chapter))
-        assert not rec.warnings, rec.warnings
+        entries = _entries(_merged_canon_cats(chapter))
+        produced = build_store_shape_set(entries)
+        assert not produced.warnings, produced.warnings
+        rec = reconcile_categories(entries)
         assert f"{GUEST_HOME}/canon/bible/agent" in {m.box_dest for m in rec.mounts}
 
 
