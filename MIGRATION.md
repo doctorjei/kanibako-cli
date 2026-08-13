@@ -1456,6 +1456,31 @@ synced /srv/x: no binding covers this destination; skipping
 These three messages replace the single `guest_dest … is outside /home/agent` warning, and they name
 the destination as kanibako resolves it (`/home/agent/x`, not `~/x`) for the same reason §2.27's do.
 
+**One arrangement is not skipped, and it is the mask's *own* destination.** A synced entry whose
+source is a single **file**, aimed at exactly the path a mask names, is delivered — and that mask is
+**not mounted for the box at all**. One file filling one void is total, so nothing is left
+half-hidden. A **directory** copied at that same destination is still skipped, since it would leave
+the mask partly populated; and a mask *above* the destination still skips both.
+
+```
+box:
+  masks:
+    "~/.config/agent/creds.json": true    # a void at one file path
+    "~/private": true                     # a void at a directory
+  synced:
+    # a FILE at the mask's own point -> delivered, and no tmpfs is mounted there
+    "~/.config/agent/creds.json": ["/srv/creds.json"]
+    # a DIRECTORY at a mask's own point -> skipped, and the mask still applies
+    "~/private": ["/srv/private"]
+    # anything UNDER a mask -> skipped, file or directory alike
+    "~/private/notes.md": ["/srv/notes.md"]
+```
+
+**⚠️ A mask you rely on stops applying if a synced file is aimed at its exact destination.** Declaring
+both was previously a contradiction that resolved in the mask's favour and delivered nothing; now the
+file wins the destination outright. If you meant the void, remove the synced entry — or aim it
+somewhere the mask does not name.
+
 **3. Synced entries are applied later in the launch, after credential sync.** The pass now runs once
 the mount set is final — which is also after the plugin's own credential refresh, and after the three
 checks that can abort a launch (an unusable host agent binary, a failed authentication check, an
@@ -1480,8 +1505,9 @@ box:
 ```
 
 **The mount is not replaced and the rest of the bound directory is untouched** — the copy overwrites
-what it names and nothing else. If the covering bind is read-only, or is a `masks` entry, the copy is
-still skipped with the warning consequence 2 describes; that has not changed.
+what it names and nothing else. If the covering bind is read-only the copy is still skipped with the
+warning consequence 2 describes; a `masks` entry skips it too, except at the mask's own destination
+with a file source, which consequence 2 spells out.
 
 **⚠️ A configuration that refused to launch now launches.** If you declared this pair deliberately,
 expecting the error to stop you, it will not any more. There is no configuration that launched before

@@ -39,7 +39,7 @@ from kanibako.commands.start import (
     _split_home_bind,
 )
 from kanibako.settings.paths import resolve_project
-from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_collapse import HOME_DEST
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.no_agent import NoAgentTarget
@@ -1833,3 +1833,272 @@ class TestTheSyncApplierConsumesTheLeaf:
         assert all(
             p.default is inspect.Parameter.empty for p in params.values()
         ), {n: p.default for n, p in params.items()}
+
+
+def _sync_over_the_launch_map(std, proj, *, logger, gated=False, **kw):
+    """Run the sync pass the way the LAUNCH does — and hand the map back.
+
+    ⚑ THE COMPOSITION IS THE PRODUCTION ONE, IN ITS ORDER: resolve →
+    ``_launch_bind_map`` → ``_apply_synced_copies`` → (the caller's)
+    ``_bind_map_masks``. The module-level ``_sync`` helper builds its map inline and
+    drops it, which cannot observe a mask the sync pass DELETED; this returns the very
+    object ``_run_container`` keeps, so the tmpfs arm can be read off it.
+    """
+    from kanibako.commands.start import _apply_synced_copies, _synced_uptodate
+
+    snapshot, _reconciled = _resolve(std, proj, **kw)
+    bindings = _launch_bind_map(snapshot)
+    _apply_synced_copies(
+        snapshot=snapshot, bindings=bindings, logger=logger,
+        skip_if=_synced_uptodate if gated else None,
+    )
+    return bindings
+
+
+class TestTheCopyRowsAtAMasksOwnPoint:
+    """Spec §0's containment table, the two COPY rows, where they DIFFER.
+
+    ============  ===============  ==============
+    Arriving      Point is mask    Parent is mask
+    ============  ===============  ==============
+    copy (file)   ok — delete it   REFUSE
+    copy (dir)    REFUSE           REFUSE
+    ============  ===============  ==============
+
+    ONE cell, and it is the entire reason there are two rows: a copied FILE at a
+    mask's OWN point replaces the mask — one file filling one void is total, so
+    nothing partial survives — while a copied DIRECTORY at that same point is
+    REFUSED, because a mask may not be left partially populated. A mask that is a
+    strict PARENT refuses both.
+
+    ⚑ ``synced`` is the only copy category these rows reach: it copies LAST, through
+    the final bind map, so it meets mounts by construction. ``seeded`` applies to home
+    alone and completes before any binding folds.
+
+    ⚑ THE MASK DELETION IS OBSERVED WHERE THE BOX WOULD OBSERVE IT — ``_bind_map_masks``
+    over the map the launch keeps, which is what feeds ``runtime.run(tmpfs_masks=...)``.
+    Asserting only that the file landed would pass with the tmpfs still mounted over
+    it, i.e. against a box that never sees the copy.
+    """
+
+    def test_a_synced_FILE_at_a_masks_own_point_LANDS_AND_DELETES_THE_MASK(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """🔴 THE ONE-CELL FLIP. Before it, this row took the cover-is-a-MASK refusal.
+
+        ``is_within`` is INCLUSIVE, so at the exact point the mask IS the longest-prefix
+        cover and the same arm fired that serves mask-as-parent — refusing the FILE case
+        the table accepts.
+
+        MUTATION-PROVED against dropping the ``_synced_masks_replaced`` call from
+        ``_apply_synced_copies``: no file lands, the mask stays in the map, and the
+        cover-is-a-MASK warning comes back — the three things this asserts.
+        """
+        src = tmp_path / "cred.json"
+        src.write_text("TOKEN")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            bindings = _sync_over_the_launch_map(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.masks": ["~/cred.json"],
+                    "box.synced": {"~/cred.json": (str(src),)},
+                },
+            )
+
+        assert (proj.shell_path / "cred.json").read_text() == "TOKEN"
+        assert _bind_map_masks(bindings) == []
+        assert not [
+            r.getMessage() for r in caplog.records if "is a mask" in r.getMessage()
+        ]
+
+    def test_a_synced_DIRECTORY_at_a_masks_own_point_is_STILL_REFUSED(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """The other half of the cell — and a mask survives a refusal INTACT.
+
+        A directory copied onto a void would leave the mask partially populated, which
+        is a state the table has no room for. The refusal is warn-and-skip, as every
+        copy refusal here is.
+
+        MUTATION-PROVED against ``_synced_masks_replaced`` asking ``exists()`` instead
+        of ``is_file()``: the tree lands and the mask is gone.
+        """
+        src = tmp_path / "tree"
+        (src / "nested").mkdir(parents=True)
+        (src / "nested" / "f.txt").write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            bindings = _sync_over_the_launch_map(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.masks": ["~/tree"],
+                    "box.synced": {"~/tree": (str(src),)},
+                },
+            )
+
+        assert not (proj.shell_path / "tree").exists()
+        assert _bind_map_masks(bindings) == [normalize_bind_dest("~/tree")]
+        assert any("is a mask" in r.getMessage() for r in caplog.records), [
+            r.getMessage() for r in caplog.records
+        ]
+
+    def test_a_mask_as_a_strict_PARENT_refuses_a_DIRECTORY_source_TOO(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """The PARENT column, whose two cells agree — the FILE half is pinned above it.
+
+        ⚑ THE SIBLING IS THE POINT: ``test_a_dest_under_a_MASK_is_skipped_and_does_not_RAISE``
+        pins the FILE source under a parent mask. Only the OWN-POINT column
+        discriminates on the source's type, and this is what says so.
+
+        MUTATION-PROVED against BOTH halves of the lookup relaxed at once —
+        ``_synced_masks_replaced`` asking the longest-prefix COVER instead of the
+        dest's own point, and ``exists()`` instead of ``is_file()``: the parent mask is
+        deleted and the tree lands in the home bind's source. ⚑ Either half ALONE
+        leaves this green (a directory is not a file; a parent is not the point), which
+        is exactly why the two columns need a test each.
+        """
+        src = tmp_path / "tree"
+        src.mkdir()
+        (src / "f.txt").write_text("x")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            bindings = _sync_over_the_launch_map(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.masks": ["~/private"],
+                    "box.synced": {"~/private/tree": (str(src),)},
+                },
+            )
+
+        assert not (proj.shell_path / "private").exists()
+        assert _bind_map_masks(bindings) == [normalize_bind_dest("~/private")]
+        assert any("is a mask" in r.getMessage() for r in caplog.records), [
+            r.getMessage() for r in caplog.records
+        ]
+
+    def test_the_FILE_lands_in_the_INNERMOST_REAL_COVER_once_the_mask_is_gone(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """With the mask deleted the dest resolves through what REMAINS — the binds.
+
+        Deleting the mask does not invent a destination: the row goes back through
+        ``_synced_host_dest``'s ordinary longest-prefix cover, which is now the
+        innermost REAL bind rather than home.
+
+        MUTATION-PROVED twice: drop the deletion and the row takes the mask refusal
+        again (no file anywhere), and flip ``_synced_host_dest``'s ``max(covers)`` to
+        ``min`` and the file lands under HOME — inside the bind, where the box would
+        never see it.
+        """
+        src = tmp_path / "f.txt"
+        src.write_text("INNER")
+        inner_root = tmp_path / "innerroot"
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        bindings = _sync_over_the_launch_map(
+            std, proj, logger=logging.getLogger("sync-consumer"),
+            extra_default_categories={
+                "box.bindings.rw": {"~/inner": (str(inner_root),)},
+                "box.masks": ["~/inner/f.txt"],
+                "box.synced": {"~/inner/f.txt": (str(src),)},
+            },
+        )
+
+        assert (inner_root / "f.txt").read_text() == "INNER"
+        assert not (proj.shell_path / "inner" / "f.txt").exists()
+        assert _bind_map_masks(bindings) == []
+
+    def test_the_mask_GOES_EVEN_WHEN_THE_MTIME_GATE_SKIPS_THE_COPY(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """⚑ CONTAINMENT IS DECIDED OVER THE DECLARATIONS, NOT OVER WHAT WAS WRITTEN.
+
+        The launch refresh is mtime-gated, so a destination already newer than its
+        source is a no-op — but the mask is replaced by the DECLARATION, and a mask
+        that came back on the launches where the copy happened to be up to date would
+        shadow the file on exactly those launches.
+
+        MUTATION-PROVED against gating the deletion on the copy being WRITTEN (delete
+        per row, and put the mask back when ``_synced_uptodate`` skips): the mask is
+        handed to podman on exactly the launches where the sync had nothing to do.
+        """
+        import os
+
+        src = tmp_path / "cred.json"
+        src.write_text("OLD")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        landed = proj.shell_path / "cred.json"
+        landed.parent.mkdir(parents=True, exist_ok=True)
+        landed.write_text("THE BOX HAS THE NEWER ONE")
+        os.utime(src, (1000, 1000))
+        os.utime(landed, (2000, 2000))
+
+        bindings = _sync_over_the_launch_map(
+            std, proj, logger=logging.getLogger("sync-consumer"), gated=True,
+            extra_default_categories={
+                "box.masks": ["~/cred.json"],
+                "box.synced": {"~/cred.json": (str(src),)},
+            },
+        )
+
+        assert landed.read_text() == "THE BOX HAS THE NEWER ONE"
+        assert _bind_map_masks(bindings) == []
+
+    def test_THE_LAUNCH_HANDS_PODMAN_NO_TMPFS_AT_THE_REPLACED_POINT(
+        self, start_mocks, tmp_path,
+    ):
+        """⚑⚑ THE PRODUCTION SEAM: ``_run_container`` → ``runtime.run(tmpfs_masks=…)``.
+
+        The deletion is only worth anything if it reaches podman. It does so by ORDER
+        alone — one map, both arms (2a-4), with the tmpfs arm read AFTER the sync pass
+        that deletes from it. Nothing in the types enforces that, so this is the test
+        that holds the line.
+
+        The SECOND mask is the control: it keeps the argument a non-empty list, so a
+        regression shows up as the WRONG list rather than as a falsy value that an
+        absent key would also satisfy.
+
+        ⚑ The COPY itself is stubbed out: ``start_mocks`` patches ``builtins.open``, so
+        a real ``copy2`` here writes nothing and then dies in ``utime``. That costs the
+        test nothing — the deletion is decided from the DECLARATION and the source
+        STAT, both of them real above, and where the bytes land is pinned by the
+        sibling tests against a REAL project.
+
+        MUTATION-PROVED against putting ``tmpfs_masks = _bind_map_masks(launch_binds)`` above
+        the ``_apply_synced_copies`` call and this reads
+        ``["/home/agent/cred.json", "/home/agent/hidden"]`` — podman mounts a tmpfs
+        over the credential the same launch just wrote.
+        """
+        from kanibako.commands.start import _run_container
+        from kanibako.settings.store_collapse import (
+            MASK,
+            CollapsedBind,
+            CollapsedCopy,
+        )
+
+        src = tmp_path / "cred.json"
+        src.write_text("TOKEN")
+        bindings = {
+            "/home/agent": CollapsedBind(str(tmp_path / "boxhome"), "rw"),
+            "/home/agent/cred.json": MASK,
+            "/home/agent/hidden": MASK,
+        }
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._launch_bind_map", return_value=bindings,
+        ), patch(
+            "kanibako.commands.start._launch_synced_list",
+            return_value=[CollapsedCopy(str(src), "/home/agent/cred.json", None)],
+        ), patch("kanibako.commands.start._apply_shell_copy"):
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            kwargs = m.runtime.run.call_args.kwargs
+
+        assert kwargs["tmpfs_masks"] == ["/home/agent/hidden"]

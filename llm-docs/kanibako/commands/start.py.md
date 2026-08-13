@@ -388,6 +388,12 @@ two disagree, the map now decides both halves:
 `~/x`) and the arm is depth-sorted on `path_depth` — the same key the emitter sorts on, so the tmpfs
 and the binds reach podman in one order.
 
+⚑ **The arm is read AFTER `_apply_synced_copies`, and that ordering is load-bearing.** That pass may
+DELETE a mask from the map — spec §0's `copy (file)` row, a synced file replacing a mask at its own
+point (`_synced_masks_replaced` below). Reading the masks before it runs mounts a tmpfs over the file
+the same launch just wrote. The bind arm is unaffected either way: `_emit_category_mounts` skips
+masks, so only this arm can observe the deletion.
+
 ---
 
 ## `_launch_seed_list` / `_snapshot_assembly_seeded` — the seed applier consumes the LEAF (cutover 2b-2)
@@ -545,7 +551,7 @@ shadows, so the copy was invisible in the box.
 | arm | when | why it is where it is |
 |---|---|---|
 | no cover → warn+skip | dest outside every bind | there is no host location it could arrive at. Wider than the retired outside-home skip |
-| cover is a MASK → warn+skip | `is_mask(bind)` | **must precede any `Path(bind.src)`** — `MASK` is `src=None`, so it raises `TypeError`, not `AttributeError` |
+| cover is a MASK → warn+skip | `is_mask(bind)` | **must precede any `Path(bind.src)`** — `MASK` is `src=None`, so it raises `TypeError`, not `AttributeError`. By this point the cover can only be a mask ABOVE the dest, or the dest's own point with a DIRECTORY source |
 | cover is READ-ONLY → warn+skip | `is_read_only(bind.opts)` | see below |
 | else | — | `Path(bind.src) / rel` |
 
@@ -556,6 +562,37 @@ shadows, so the copy was invisible in the box.
 sync nothing whatever, so every sync row reaches here, a mask's exact point included — and a mask is the
 source-less entry, so `Path(bind.src)` would raise. Delivery is the only stage that can cope with it,
 and this arm is where it does.
+
+### `_synced_masks_replaced` — the one cell where the two COPY rows differ
+
+**Authority:** spec §0's containment table, the `copy (file)` / `copy (dir)` rows.
+
+At a mask's OWN point a copied **FILE** replaces the mask — one file filling one void is total, so
+nothing partial survives — while a copied **DIRECTORY** there is REFUSED, because no mask may be left
+half-populated. Everywhere else the two rows agree, and a mask that is a strict PARENT refuses both.
+That single cell is why the table carries two copy rows rather than one.
+
+**It can only live at DELIVERY.** FILE vs DIRECTORY is a property of the copy SOURCE, so deciding it
+is a host `stat` — and the collapse is PURE, asking the filesystem nothing (this is what ruling 27's
+stage map means for these rows). `store_collapse.py` therefore carries no copy-vs-mask rule at all;
+`_apply_synced_copies` applies both cells over the collapsed map, before any row resolves.
+
+**The deletion is a MAP EDIT, and the order around it is the contract.** A mask lives in
+`meta.assembly.bindings` as its `src is None` entry, and `_bind_map_masks` is what turns those into
+`runtime.run(tmpfs_masks=…)`. So the replaced mask is deleted from the map the launch holds, and
+`_run_container` reads its mask arm **after** the sync pass — reading it before would hand podman a
+tmpfs mounted over the file that same launch just wrote. Nothing of the snapshot moves:
+`_snapshot_assembly_bindings` copies out, so the map is the launch's own.
+
+Three properties that are easy to get wrong, each pinned by a test:
+
+* **the deletion is decided over the DECLARATIONS, not over what was written.** A row the mtime gate
+  skips still replaces its mask — otherwise the tmpfs would come back on exactly the launches where
+  the sync had nothing to do, and shadow the file the box already has;
+* **downstream skips do not restore it.** Nothing real covering the dest behind the mask, or a
+  read-only cover, still leaves the mask deleted: containment is one layer, delivery another;
+* **it is applied before any row resolves,** so which mask survives cannot depend on the order two
+  sync rows sit in.
 
 🔴 **The READ-ONLY arm is SPEC-SILENT and deliberately strict.** Writing into a read-only bind's host
 source delivers content the box cannot be shown to have received, and the source is usually something
