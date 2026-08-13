@@ -766,7 +766,12 @@ class TestHelperDefaultCategories:
             default_categories=floor,
         )
         entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-        reconciled = reconcile_categories(entries, deliver_creds=True)
+        # ⚑ No ``gate_credential_delivery`` composed above this: the launch seam
+        # applies it (cutover step 4), but this floor declares no credential entry
+        # at all, so a shared-creds gate here would be a literal no-op over the very
+        # list it is handed. The composition is pinned where it MEANS something —
+        # ``test_flawed_oracle.TestCredentialGateComposedAboveReconcile``.
+        reconciled = reconcile_categories(entries)
         # ⚑ Re-derived for dest-keying (R-3/R-10): a bindings entry's ``name`` IS
         # its box destination — the ``helper_sock`` name no longer exists anywhere,
         # so selecting by it would raise ``StopIteration`` rather than fail an

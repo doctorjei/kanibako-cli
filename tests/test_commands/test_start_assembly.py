@@ -227,9 +227,18 @@ class TestTheCredentialGateReachesTheCollapse:
     every credential row. Nothing consumed that leaf, so nothing broke — the first
     consumer pointed at it would have delivered the creds and reversed D-M4.
 
-    ⚑ ``test_start.TestApplySyncedCopies.test_synced_suppressed_when_not_sharing``
-    CANNOT pin this: it consumes ``reconciled.copies``, i.e. the gate that stayed
-    where it was. The leaf is the only place the hoist is observable.
+    ⚑ CUTOVER STEP 4 FINISHED IT: the reconcile's internal re-gate is GONE, so the
+    seam call in ``_resolve_launch_snapshot`` is the SOLE application of D-M4 and
+    both consumers read one gated list by construction.
+
+    🛑 THIS FILE IS THE ONLY PLACE THAT PINS IT — MEASURED 2026-08-13 by neutering
+    the seam call to ``delivered = list(entries)``. Exactly two tests reddened, both
+    here: ``test_a_PRIVATE_box_collapses_NO_synced_row`` below and
+    ``TestTheSyncApplierConsumesTheLeaf::
+    test_a_PRIVATE_box_receives_NO_synced_row_THROUGH_THE_LEAF``. All 400 of
+    ``test_commands/test_start.py`` stayed green, as did ``test_category_collisions``,
+    ``test_flawed_oracle`` and ``test_channels/test_helper_listener``. Do not delete
+    either pin expecting another suite to catch it: there is no other suite.
     """
 
     @staticmethod
@@ -303,7 +312,9 @@ class TestTheCredentialGateReachesTheCollapse:
 
         assert gate_credential_delivery([cred, plain], True) == [cred, plain]
         assert gate_credential_delivery([cred, plain], False) == [plain]
-        # IDEMPOTENT — the gate inside ``reconcile_categories`` runs over this again.
+        # IDEMPOTENT — no consumer re-gates any more (step 4 deleted the reconcile's
+        # copy), but the property is the reason ONE application is safe to rely on:
+        # a re-application must never be what makes the result correct.
         assert gate_credential_delivery([plain], False) == [plain]
 
     def test_the_gate_returns_a_NEW_list_never_the_callers_own(self, tmp_path):
@@ -1782,10 +1793,14 @@ class TestTheSyncApplierConsumesTheLeaf:
     ):
         """D-M4 on the NEW route — the 2b-0 hoist is what keeps this true.
 
-        ⚑ ``test_start.TestApplySyncedCopies.test_synced_suppressed_when_not_sharing``
-        still cannot pin it: that harness has no home bind, so it takes the FALLBACK
-        and observes the gate that never moved. This one resolves with base families
-        on, so the leaf exists and the gate under test is the hoisted one.
+        ⚑ NOTHING IN ``test_commands/test_start.py`` PINS THIS, and the note that
+        used to name ``TestApplySyncedCopies.test_synced_suppressed_when_not_sharing``
+        pointed at a test that no longer exists (corrected 2026-08-13). That file's
+        surviving neighbour, ``TestApplyInitSeeds::
+        test_non_credential_seed_copied_even_when_not_sharing``, asserts the gate's
+        NARROWNESS — a plain seed still copies for a private box — so it is green
+        whether the gate runs or not, by construction. This test resolves with base
+        families on, so the leaf exists and what it pins is the COLLAPSE arm.
 
         MUTATION-PROVED against reverting ``gate_credential_delivery`` to hand
         ``_install_assembly_collapse`` the UNGATED entry list: the credential lands.

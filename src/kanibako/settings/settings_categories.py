@@ -9,9 +9,11 @@ tagged with its *delivery* (COPY vs MOUNT).  It is **pure**: no file I/O, no
 mounting/copying, no global mutable state.  It imports only stdlib and the
 expression engine.
 
-Cross-category collision resolution (the spec §0 identical-dest TABLE, depth-order,
-the credential ``deliver_creds`` gate) is :func:`reconcile_categories` (sub-step
-4b), layered on top of category entries.
+Cross-category collision resolution (the spec §0 identical-dest TABLE, depth-order)
+is :func:`reconcile_categories` (sub-step 4b), layered on top of category entries.
+The credential gate is NOT part of it: :func:`gate_credential_delivery` is a
+DELIVERY policy, applied by the caller at the launch seam above every consumer
+(cutover step 4).
 
 **Block 7c status:** :func:`reconcile_categories` is LIVE — the by-dest pass the
 KeyStore snapshot path uses (fed by ``settings_launch.snapshot_category_entries``).
@@ -476,11 +478,11 @@ class CategoryEntry:
     for structure.
 
     *is_credential* tags an entry whose content is an agent CREDENTIAL.  It is the
-    hook the credential ``deliver_creds`` gate (D-M4) keys off for ``seeded`` entries: a
-    credential ``seeded`` copy is suppressed when the box is PRIVATE (``deliver_creds``
-    False), exactly as ``synced`` (always credential-bearing) is.  Core never sets
-    it; the agent
-    plugin marks its cred seeds (Phase 8).  Defaults to False.
+    hook :func:`gate_credential_delivery` (D-M4) keys off for ``seeded`` entries: a
+    credential ``seeded`` copy is suppressed when the box is PRIVATE
+    (``deliver_creds`` False), exactly as ``synced`` (always credential-bearing)
+    is.  Core never sets it; the agent plugin marks its cred seeds (Phase 8).
+    Defaults to False.
 
     *optional* marks a MOUNT whose SOURCE is legitimately allowed not to exist, so
     the emitter DROPS it SILENTLY instead of warning (spec §2c "SKIP-IF-ABSENT").
@@ -655,10 +657,12 @@ def gate_credential_delivery(
     entries: list[CategoryEntry], deliver_creds: bool,
 ) -> list[CategoryEntry]:
     """Drop what a PRIVATE box must not receive (D-M4). PUBLIC, PURE and IDEMPOTENT."""
-    # ⚑ ONE spelling of the rule, because it now has TWO consumers: the reconcile
-    # below, and the ASSEMBLY COLLAPSE beside it. A second spelling would let the
-    # two routes describe a differently-private box — which is how a credential
-    # reaches a box the user made private.
+    # ⚑ THIS IS THE ONLY SPELLING OF THE RULE, and it is APPLIED ONCE — at the launch
+    # seam (``commands/start._resolve_launch_snapshot``), above BOTH consumers of the
+    # entry list: :func:`reconcile_categories` below and the ASSEMBLY COLLAPSE beside
+    # it. One application of one spelling is what makes the two routes describe the
+    # SAME private box; a second of either is how a credential reaches a box the user
+    # made private.
     if deliver_creds:
         return list(entries)
     return [
@@ -670,8 +674,6 @@ def gate_credential_delivery(
 
 def reconcile_categories(
     entries: list[CategoryEntry],
-    *,
-    deliver_creds: bool = True,
 ) -> ReconciledCategories:
     """Resolve cross-category collisions and partition for emission (4b, D-B1).
 
@@ -679,6 +681,16 @@ def reconcile_categories(
     (``snapshot_category_entries`` in the live path; apply order, see the module
     docstring) and returns a :class:`ReconciledCategories`
     with the per-dest winners split into MOUNT / COPY / ENV lists.
+
+    ⚑ PRECONDITION — *entries* IS ALREADY CREDENTIAL-GATED.  The caller applies
+    :func:`gate_credential_delivery` ONCE, at the launch seam
+    (``commands.start._resolve_launch_snapshot``), above BOTH consumers of the
+    list: this reconcile and the assembly collapse.  The load-bearing ordering
+    fact SURVIVES and is now BY CONSTRUCTION — the gate runs BEFORE collision
+    resolution, so a suppressed ``synced`` never reaches this function at all and
+    cannot survive beside, or win over, a binding it never delivers.  Hand this
+    function an UNGATED list and credentials simply pass through: delivery policy
+    is the CALLER's, not this resolver's (cutover step 4; producer DESIGN §9.2).
 
     The §0 COLLISION TABLE (2026-07-29) — keyed on the resolved ``box_dest``,
     NEVER on the name. It replaced the flat authority ladder
@@ -739,31 +751,12 @@ def reconcile_categories(
     (mask-inside-``~/workspace``, ``home``-under-everything).  COPY and ENV lists
     keep a deterministic order.
 
-    *deliver_creds* gates credential delivery (D-M4; auth-level design step 4): when
-    False — the box is PRIVATE (auth tier ``"box"``, no shared source, today's
-    distinct-auth) — every ``synced`` entry is SUPPRESSED, as is any ``seeded``
-    entry flagged :attr:`CategoryEntry.is_credential` (the plugin's cred-seed
-    hook).  When True (the box receives creds at the global OR workset tier) they are kept.
-    The gate is applied BEFORE collision resolution, so a suppressed ``synced``
-    cannot win against a colliding binding. (Callers pass
-    ``deliver_creds=auth.creds_shared`` off the resolved
-    :class:`~kanibako.settings.settings_launch.AuthSource`.)
-
     Raises :class:`~kanibako.errors.CategoryCollisionError` (a
     :class:`~kanibako.errors.ConfigError`) on a row-1 / row-3 collision.
     """
-    # --- credential-delivery gate (D-M4): a PRIVATE box (deliver_creds=False) suppresses cred
-    # deliveries up front — the same drop today's group_auth=False produced.
-    # ⚑ BEFORE collision resolution, deliberately: a suppressed ``synced`` must not
-    # be able to survive beside — or win over — a binding it never delivers.
-    # ⚑ The LAUNCH caller has already applied this above both of its consumers
-    # (``commands/start._resolve_launch_snapshot``); the gate is idempotent, and it
-    # stays here for every OTHER caller of this function.
-    gated = gate_credential_delivery(entries, deliver_creds)
-
     # --- env entries never collide on a guest path; keep them aside (order kept).
-    envs = [e for e in gated if e.delivery == ENV]
-    path_entries = [e for e in gated if e.delivery != ENV]
+    envs = [e for e in entries if e.delivery == ENV]
+    path_entries = [e for e in entries if e.delivery != ENV]
 
     # --- group by resolved box_dest; resolve each group per §0.
     # Preserve input order — "the existing ordering" the table's row 5 defers to.

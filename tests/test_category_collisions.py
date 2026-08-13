@@ -83,6 +83,7 @@ from kanibako.settings.settings_categories import (
     _bind_options,
     _DELIVERY,
     derive_binding_keys,
+    gate_credential_delivery,
     reconcile_categories,
 )
 
@@ -840,24 +841,49 @@ class TestPreservedCopyAndCrossDeliveryRules:
 
 
 class TestCredentialGateRunsFirst:
-    """T12 — before collision resolution, so a suppressed cred cannot error."""
+    """T12 — the gate runs ABOVE the reconcile, so a suppressed cred cannot error.
+
+    ⚑ CUTOVER STEP 4 MOVED IT OUT. ``reconcile_categories`` no longer takes
+    ``deliver_creds`` and applies no gate of its own: delivery policy belongs to
+    the launch seam (``commands.start._resolve_launch_snapshot``), above BOTH
+    consumers of the entry list. These cases therefore drive the PRODUCTION
+    COMPOSITION — ``reconcile_categories(gate_credential_delivery(entries, flag))``
+    — which is what makes "gate first, resolve second" true BY CONSTRUCTION.
+    """
 
     def test_private_box_does_not_error_on_a_suppressed_synced(self):
-        rec = reconcile_categories(
+        rec = reconcile_categories(gate_credential_delivery(
             [entry("synced", name="creds"), entry("bindings.rw", name="home")],
-            deliver_creds=False,
-        )
+            False,
+        ))
         assert categories(rec) == ["bindings.rw"]
 
     def test_private_box_drops_a_credential_seed_but_keeps_a_plain_one(self):
-        rec = reconcile_categories(
+        rec = reconcile_categories(gate_credential_delivery(
             [
                 entry("seeded", name="creds", is_credential=True),
                 entry("seeded", name="tpl"),
             ],
-            deliver_creds=False,
-        )
+            False,
+        ))
         assert [c.name for c in rec.copies] == ["tpl"]
+
+    def test_reconcile_does_not_gate_credentials_the_gate_is_the_callers(self):
+        """UNGATED in ⇒ credentials OUT — the helper has no delivery policy left.
+
+        The pin for cutover step 4's whole point: hand ``reconcile_categories``
+        the very entries a PRIVATE box must not receive, WITHOUT the gate, and
+        they survive. Re-adding a ``deliver_creds`` parameter (or any internal
+        re-gate) reddens this — which is the guard, because a second application
+        of the rule is how the two launch consumers come to describe differently
+        private boxes.
+        """
+        rec = reconcile_categories([
+            entry("synced", name="creds", box_dest="/g/sync"),
+            entry("seeded", name="credseed", box_dest="/g/seed", is_credential=True),
+        ])
+        assert {c.box_dest for c in rec.copies} == {"/g/sync", "/g/seed"}
+        assert {c.category for c in rec.copies} == {"synced", "seeded"}
 
 
 # --------------------------------------------------------------------------- #
