@@ -588,10 +588,14 @@ def start_mocks():
                     # (the module-level captured, unpatched orchestrator).
                     return _REAL_RESOLVE_LAUNCH_SNAPSHOT(*a, **kw)
 
-                from kanibako.commands.start import _install_assembly_collapse
+                from kanibako.commands.start import (
+                    _agent_delivered_dests,
+                    _install_assembly_collapse,
+                )
                 from kanibako.settings.agent_representation import agent_default_partial
                 from kanibako.settings.settings_categories import (
                     gate_credential_delivery,
+                    launch_deliveries,
                     reconcile_categories,
                 )
                 from kanibako.settings.settings_launch import (
@@ -704,6 +708,12 @@ def start_mocks():
                 delivered = gate_credential_delivery(entries, _deliver_creds)
                 rec = reconcile_categories(delivered)
                 _install_assembly_collapse(snap, delivered, whole_box=True)
+                # Cutover 6-R1: the carrier the orchestrator now returns third,
+                # built here BY THE SAME CALL off the SAME gated list — a stub that
+                # returned a hand-made one would be a second producer in the harness.
+                deliveries = launch_deliveries(
+                    delivered, agent_dests=_agent_delivered_dests(delivered),
+                )
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
                 # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and
                 # emits the §0 row-5 collision warnings. This stub does NEITHER,
@@ -712,7 +722,7 @@ def start_mocks():
                 # to avoid, and this snapshot carries no abstract declarations to
                 # derive from anyway. Tests that need either use the REAL path or
                 # call the functions directly (tests/test_category_collisions.py).
-                return snap, rec
+                return snap, rec, deliveries
 
             m_launch_mount_stubs[
                 "_resolve_launch_snapshot"

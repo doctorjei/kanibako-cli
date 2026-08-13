@@ -93,7 +93,7 @@ def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
         _synced_uptodate,
     )
 
-    snapshot, reconciled = _resolve(std, proj, **kw)
+    snapshot, reconciled, _ = _resolve(std, proj, **kw)
     _apply_synced_copies(
         snapshot=snapshot,
         bindings=_launch_bind_map(snapshot) if bindings is None
@@ -139,7 +139,7 @@ class TestTheCollapseIsProduced:
     def test_all_three_declared_leaves_are_written(self, std, config, project_dir):
         """RED if the wiring is deleted: no leaf exists at all."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(std, proj)
+        snapshot, _rec, _ = _resolve(std, proj)
 
         assert sorted(_assembly(snapshot)) == ["bindings", "seeded", "synced"]
 
@@ -154,7 +154,7 @@ class TestTheCollapseIsProduced:
         comes from.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(std, proj)
+        snapshot, _rec, _ = _resolve(std, proj)
 
         bindings = _assembly(snapshot)["bindings"]
         assert HOME_DEST in bindings
@@ -174,7 +174,7 @@ class TestTheCollapseIsProduced:
         scope's declarations.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj)
+        snapshot, reconciled, _ = _resolve(std, proj)
 
         # ⚑ Holds because this configuration triggers no subsumption; the collapse
         # REMOVES what it subsumes, so this is a pin on THIS fixture, not a law.
@@ -198,7 +198,7 @@ class TestTheCollapseIsProduced:
         src = tmp_path / "seedme"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve_launch_snapshot(
+        snapshot, _rec, _ = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -219,7 +219,7 @@ class TestTheCollapseIsProduced:
         nothing. RED if the write is skipped for an empty list.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve_launch_snapshot(
+        snapshot, _rec, _ = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -295,7 +295,7 @@ class TestTheCredentialGateReachesTheCollapse:
         src.write_text("token")
         extra = {"box.synced": {"~/cred.txt": (str(src),)}}
         for deliver_creds in (True, False):
-            snapshot, reconciled = _resolve(
+            snapshot, reconciled, _ = _resolve(
                 std, proj, deliver_creds=deliver_creds,
                 extra_default_categories=extra,
             )
@@ -433,6 +433,80 @@ class TestTheLivePathIsUnchanged:
         ), [r.message for r in caplog.records]
 
 
+class TestTheLaunchDeliveriesCarrierAgreesWithTheReconcile:
+    """🕯️ 6-R1 CANARY — DIES AT 6-R3 WITH THE RECONCILE IT COMPARES AGAINST.
+
+    Cutover 6-R1 builds the REPLACEMENT for the three things the reconcile still
+    decides that the collapse does not carry (envs, the ``secret_path`` winners, the
+    agent-delivered dests) and returns it BESIDE the reconciled winners, consumed by
+    nobody.  These cases are the equivalence proof for that additive window: on the
+    REAL seam, over a floor exercising all three, the carrier says exactly what the
+    route it replaces says.  When 6-R3 deletes ``reconcile_categories`` this class
+    goes with it — its oracle IS the old route, so rebasing it onto the new one would
+    leave a tautology asserting the carrier equals itself.  What must SURVIVE 6-R3 is
+    the spec oracle underneath the secret pick, which lives where the pick does
+    (``tests/test_category_collisions.py::TestSecretPathWinnersAreTheSeamsPerVarPick``).
+
+    ⚑ The floor puts the SECRET pointer at TWO scopes for one VAR — spec §2a's
+    documented per-VAR cascade — so the comparison covers the one field where a real
+    ARBITRATION moved, not just the two filters.
+    """
+
+    #: Envs at two scopes, one VAR pointed at from two scopes, a second VAR at one,
+    #: an AGENT-scope delivery bind (``_WiringTarget`` declares none of its own, so
+    #: without this the dest set is empty and its case proves nothing), plus an
+    #: ordinary box bind so the mount list is neither all-secret nor all-agent.
+    _FLOOR = {
+        "agent.claude.bindings.ro": {"/g/agent": ("/host/agent",)},
+        "workset.env.KANI_CANARY": "workset",
+        "box.env.KANI_CANARY": "box",
+        "box.env.KANI_OTHER": "other",
+        "workset.secret_path.TOK": "/host/workset/tok",
+        "box.secret_path.TOK": "/host/box/tok",
+        "workset.secret_path.SECOND": "/host/workset/second",
+        "box.bindings.ro": {"/g/ro": ("/host/ro",)},
+    }
+
+    def _both(self, std, config, project_dir):
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        _snapshot, reconciled, deliveries = _resolve(
+            std, proj, extra_default_categories=dict(self._FLOOR),
+        )
+        return reconciled, deliveries
+
+    def test_the_carrier_carries_the_same_ENV_ENTRIES_in_the_same_order(
+        self, std, config, project_dir,
+    ):
+        """Identity, not equality: no env arbitration happens on either route."""
+        reconciled, deliveries = self._both(std, config, project_dir)
+        assert deliveries.envs, "the floor declares envs; a green on an empty list is no proof"
+        assert deliveries.envs == reconciled.envs
+        assert all(a is b for a, b in zip(deliveries.envs, reconciled.envs, strict=True))
+
+    def test_the_carrier_names_the_same_AGENT_DELIVERED_DESTS(
+        self, std, config, project_dir,
+    ):
+        """Built off the ENTRY list, compared against the RECONCILED mounts."""
+        reconciled, deliveries = self._both(std, config, project_dir)
+        expected = _agent_delivered_dests(reconciled.mounts)
+        assert expected, "the agent target delivers binds; an empty set proves nothing"
+        assert deliveries.agent_dests == expected
+
+    def test_the_carrier_picks_the_same_SECRET_WINNERS_in_the_same_order(
+        self, std, config, project_dir,
+    ):
+        """The per-VAR pick AND the emission order ``_emit_secret_mounts`` walks."""
+        reconciled, deliveries = self._both(std, config, project_dir)
+        from_reconcile = [m for m in reconciled.mounts if m.category == "secret_path"]
+        assert [(e.name, e.host_src) for e in from_reconcile] == [
+            ("SECOND", "/host/workset/second"), ("TOK", "/host/box/tok"),
+        ], from_reconcile
+        assert deliveries.secrets == from_reconcile
+        assert all(
+            a is b for a, b in zip(deliveries.secrets, from_reconcile, strict=True)
+        )
+
+
 class TestTheFoundationIsBuiltAtTheSeam:
     """⚑⚑ CUTOVER 6-H — home LEFT ``bindings.rw`` and the seam constructs it.
 
@@ -453,7 +527,7 @@ class TestTheFoundationIsBuiltAtTheSeam:
 
     def _mounts(self, std, config, project_dir):
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, reconciled = _resolve(std, proj)
+        _snapshot, reconciled, _ = _resolve(std, proj)
         return list(reconciled.mounts)
 
     def test_the_foundation_is_read_from_meta_box_home_with_BARE_options(
@@ -531,7 +605,7 @@ class TestTheEmitterConsumesTheShape:
 
     def _both_shapes(self, std, proj):
         """The collapsed map off the snapshot, and the same shape from reconciled rows."""
-        snapshot, reconciled = _resolve(std, proj)
+        snapshot, reconciled, _ = _resolve(std, proj)
         collapsed = _snapshot_assembly_bindings(snapshot)
         assert collapsed is not None, "the fixture must actually collapse"
         return collapsed, _bind_map_from_mounts(reconciled.mounts), reconciled
@@ -541,7 +615,7 @@ class TestTheEmitterConsumesTheShape:
     ):
         """P8 — a caller mutating what it read must not rewrite the snapshot."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(std, proj)
+        snapshot, _rec, _ = _resolve(std, proj)
         first = _snapshot_assembly_bindings(snapshot)
         first.clear()
 
@@ -558,7 +632,7 @@ class TestTheEmitterConsumesTheShape:
         assemble — and it must stay distinguishable from an assembled-but-empty map.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        narrow, _rec = _resolve_launch_snapshot(
+        narrow, _rec, _ = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -572,7 +646,7 @@ class TestTheEmitterConsumesTheShape:
     ):
         """The switch itself, over a REAL resolve — and the two maps are not equal."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj)
+        snapshot, reconciled, _ = _resolve(std, proj)
 
         chosen = _launch_bind_map(snapshot)
         assert chosen == _snapshot_assembly_bindings(snapshot)
@@ -596,7 +670,7 @@ class TestTheEmitterConsumesTheShape:
         ``_launch_bind_map`` and this fails with ``DID NOT RAISE``.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        narrow, _rec = _resolve_launch_snapshot(
+        narrow, _rec, _ = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
@@ -682,7 +756,7 @@ class TestTheEmitterConsumesTheShape:
         the box — hence CHANGELOG + MIGRATION §2.27 in this same commit.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {"~/masked/inside": ("/tmp",)},
             "box.masks": ["~/masked"],
         })
@@ -748,7 +822,7 @@ class TestTheMaskArm:
         assertion is that the map it is taken from IS the collapsed one.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(
+        snapshot, reconciled, _ = _resolve(
             std, proj, extra_default_categories={"box.masks": ["~/private"]},
         )
         collapsed = _snapshot_assembly_bindings(snapshot)
@@ -770,7 +844,7 @@ class TestTheMaskArm:
         so the tmpfs the box receives is the one the sweep was performed against.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {"~/private/notes": ("/tmp",)},
             "box.masks": ["~/private"],
         })
@@ -792,7 +866,7 @@ class TestTheMaskArm:
         ``--mount type=tmpfs`` at ONE destination. Off one map it emits the bind.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
             "agent.claude.masks": ["~/contested"],
             "box.bindings.ro": {"~/contested": ("/tmp",)},
         })
@@ -1041,7 +1115,7 @@ class TestTheThreeMissingSourcePolicies:
         """
         critical = "/home/agent/.local/bin/claude"
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, reconciled = _resolve(std, proj, extra_default_categories={
+        snapshot, reconciled, _ = _resolve(std, proj, extra_default_categories={
             "box.bindings.ro": {critical: ("/nonexistent/kanibako-test-source",)},
         })
         chosen = _launch_bind_map(snapshot)
@@ -1071,7 +1145,7 @@ def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
 ):
     """A dest is DATA: the leaf holds ONE value, never a tree shattered on its dots."""
     proj = resolve_project(std, config, str(project_dir), initialize=True)
-    snapshot, _rec = _resolve(std, proj)
+    snapshot, _rec, _ = _resolve(std, proj)
     value = _assembly(snapshot)[leaf]
 
     # ⚑ TWO SHAPES, ONE PROPERTY. ``bindings`` is dest-KEYED; ``seeded`` and
@@ -1404,13 +1478,13 @@ class TestTheSeedApplierConsumesTheLeaf:
         from kanibako.commands.start import _snapshot_assembly_seeded
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        narrow, _rec = _resolve_launch_snapshot(
+        narrow, _rec, _ = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
         )
-        whole_box, _rec = _resolve(std, proj)
+        whole_box, _rec, _ = _resolve(std, proj)
 
         assert _snapshot_assembly_seeded(narrow) == []
         assert _snapshot_assembly_seeded(whole_box) is not None
@@ -1428,7 +1502,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         src = tmp_path / "seedme"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(std, proj, extra_default_categories={
+        snapshot, _rec, _ = _resolve(std, proj, extra_default_categories={
             "box.seeded": {"~/seedme": (str(src),)},
         })
         first = _snapshot_assembly_seeded(snapshot)
@@ -1492,7 +1566,7 @@ class TestTheSyncApplierConsumesTheLeaf:
         not.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        snapshot, _rec = _resolve(
+        snapshot, _rec, _ = _resolve(
             std, proj, extra_default_categories=self._two_scopes_at_one_dest(tmp_path),
         )
         rows = [
@@ -1871,7 +1945,7 @@ def _sync_over_the_launch_map(std, proj, *, logger, gated=False, **kw):
     """
     from kanibako.commands.start import _apply_synced_copies, _synced_uptodate
 
-    snapshot, _reconciled = _resolve(std, proj, **kw)
+    snapshot, _reconciled, _ = _resolve(std, proj, **kw)
     bindings = _launch_bind_map(snapshot)
     _apply_synced_copies(
         snapshot=snapshot, bindings=bindings, logger=logger,

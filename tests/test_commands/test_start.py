@@ -1701,7 +1701,7 @@ class TestPluginsAndCacheShares:
         # agent-scope ``common`` table (plugins/cache under
         # ``@meta.agent.claude.path/common``). All scope files are absent (None) —
         # this isolates the agent-scope category resolution.
-        _snap, reconciled = _resolve_launch_snapshot(
+        _snap, reconciled, _ = _resolve_launch_snapshot(
             std=std,
             proj=self._proj(std),
             agent_name="claude",
@@ -6874,7 +6874,7 @@ class TestPersonaLiveTierWiring:
         )
 
     def _snapshot(self, std, *, target, persona_values):
-        snap, _rec = self._resolve(
+        snap, _rec, _ = self._resolve(
             std, target=target, persona_values=persona_values,
         )
         return snap
@@ -6933,7 +6933,7 @@ class TestPersonaLiveTierWiring:
 
         persona_dir = self._store(tmp_home, env={"SOME_NEW_VAR": "brand-new"})
         target = self._target()
-        _snap, rec = self._resolve(
+        _snap, rec, _ = self._resolve(
             std, target=target,
             persona_values=_persona_values_for(self._NODE, target),
         )
@@ -7188,7 +7188,7 @@ class TestPersonaLiveTierWiring:
             system_file.parent.mkdir(parents=True, exist_ok=True)
             dump_doc(system_file, system_doc)
         try:
-            snap, _rec = _resolve_launch_snapshot(
+            snap, _rec, _ = _resolve_launch_snapshot(
                 std=std, proj=self._proj(std), agent_name=self._NODE,
                 system_settings_path=system_file, agent_cfg_path=agent_cfg_path,
                 desc=None, install=None, target=target,

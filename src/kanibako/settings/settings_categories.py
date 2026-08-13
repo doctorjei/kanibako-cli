@@ -672,6 +672,94 @@ def gate_credential_delivery(
     ]
 
 
+@dataclass(frozen=True)
+class LaunchDeliveries:
+    """What the launch entry list delivers BESIDE the collapse's mount set.
+
+    The launch seam's carrier for the three deliveries the assembly COLLAPSE
+    deliberately does not carry — environment variables, the arm's-length SECRET
+    mounts, and the dests the agent's own delivery binds land at.  Built ONCE at
+    the seam (``commands.start._resolve_launch_snapshot``) off the CREDENTIAL-GATED
+    entry list — the same list the collapse sees, so the two describe one box.
+
+    * *envs* — the ENV-delivered entries, in entry order.  No arbitration happens
+      here or anywhere: the per-VAR winner is the CONSUMER's dict-update, exactly
+      as it has always been.
+    * *secrets* — the per-VAR ``secret_path`` winners
+      (:func:`secret_path_winners`), in the emitter's order.
+    * *agent_dests* — the normalized dests carrying the agent's delivery binds
+      (the emitter's SKIP-IF-ABSENT set).  A PARAMETER of
+      :func:`launch_deliveries` rather than a filter written here: the predicate
+      that decides what an agent delivery IS belongs to the launch emitter that
+      applies the policy (``commands.start._is_agent_delivery``), and one spelling
+      of it is the point.
+
+    🛑 IT IS A RETURN VALUE, NEVER A SNAPSHOT KEY.  ``meta.assembly.*`` is CLOSED
+    at three leaves (spec §0 · the keyspace manifest ·
+    ``settings_keyspace.DECLARED_META_ASSEMBLY_LEAVES``), and a fourth would be
+    installed SILENTLY — ``insert_segments`` writes what it is handed and only the
+    config-verb path refuses an undeclared key.  Producer DESIGN §9.1's precedent
+    governs: what is not a settings key is PASSED function-to-function.
+    """
+
+    envs: list[CategoryEntry]
+    secrets: list[CategoryEntry]
+    agent_dests: frozenset[str]
+
+
+def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
+    """The per-VAR ``secret_path`` winners — spec §2a's cascade, at the seam.
+
+    Spec §2a states the rule this implements: *"a box ``secret_path.<VAR>``
+    overrides a workset's pointer for the same VAR"*.  Every ``secret_path``
+    entry's dest is ``SECRET_MOUNT_DIR/{VAR}`` BY CONSTRUCTION, so a group sharing
+    a dest is ONE VAR arriving from several scopes — the ordinary per-VAR cascade,
+    picked by :func:`_most_specific` (scope precedence first, then input order).
+    That is the same call, over the same set, that :func:`_resolve_mount_group`
+    reaches through the D2 carve-out in :data:`CONCRETE_CATEGORIES`; this function
+    is that carve-out's SUCCESSOR at the launch seam, and it exists so the pick
+    survives the reconcile's retirement without a second spelling of the scope
+    order.
+
+    The result is sorted on the mount depth-sort's key so it is byte-identical to
+    the reconciled mounts filtered to this category — one order, one consumer
+    (``commands.start._emit_secret_mounts``).
+
+    ⚑ P7 — WHAT THIS DOES *NOT* DECIDE, stated because the reconcile did decide it
+    while both routes ran: this answers "which pointer wins for each VAR", not
+    "does anything ELSE contend for that dest".  A ``bindings.*`` row aimed into
+    the secrets directory, or a ``masks`` over it, is a CROSS-CATEGORY question
+    that the §0 table answers today inside :func:`reconcile_categories` — and
+    ``secret_path`` carries no arm in the disk-store shape (producer DESIGN §7.4),
+    so the collapse does not answer it either.  Not this function's to invent.
+    """
+    by_dest: dict[str, list[CategoryEntry]] = {}
+    for e in entries:
+        if e.category == "secret_path":
+            by_dest.setdefault(e.box_dest, []).append(e)
+    winners = [_most_specific(group) for group in by_dest.values()]
+    winners.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
+    return winners
+
+
+def launch_deliveries(
+    entries: list[CategoryEntry], *, agent_dests: frozenset[str],
+) -> LaunchDeliveries:
+    """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
+
+    ⚑ The ENV filter below is byte-identical to :func:`reconcile_categories`'
+    own (there is no env arbitration to reproduce — that line IS the filter).  The
+    duplication is the ADDITIVE phase's, deliberately: the reconcile's copy dies
+    with the reconcile, leaving this the only one, and the equivalence canary in
+    the tests fails on any drift in between.
+    """
+    return LaunchDeliveries(
+        envs=[e for e in entries if e.delivery == ENV],
+        secrets=secret_path_winners(entries),
+        agent_dests=agent_dests,
+    )
+
+
 def reconcile_categories(
     entries: list[CategoryEntry],
 ) -> ReconciledCategories:

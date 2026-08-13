@@ -85,6 +85,7 @@ from kanibako.settings.settings_categories import (
     derive_binding_keys,
     gate_credential_delivery,
     reconcile_categories,
+    secret_path_winners,
 )
 
 DEST = "/g/x"
@@ -296,6 +297,79 @@ class TestRow1SecretPathCarveOut:
                 entry("bindings.rw", name="sneaky", box_dest=dest),
             ])
         assert exc.value.kind == "binding_vs_binding"
+
+
+class TestSecretPathWinnersAreTheSeamsPerVarPick:
+    """T10b — the carve-out's SUCCESSOR: ``secret_path_winners`` (cutover 6-R1).
+
+    The launch seam builds the per-VAR pick itself now, so that it survives the
+    reconcile's retirement.  Spec §2a is the oracle, in its own words: *"a box
+    ``secret_path.<VAR>`` overrides a workset's pointer for the same VAR"*.
+
+    ⚑⚑ THE PICK IS SCOPE-DRIVEN, AND ONE INPUT ORDER CANNOT PROVE THAT.  With the
+    box entry LAST, a naive "take the last" implements the same outcome; with it
+    FIRST, "take the first" does.  So the SAME pair is driven BOTH ways below and
+    the box pointer must win either way — that pair of cases is what makes the two
+    obvious neuterings (``group[0]`` / ``group[-1]``) each redden one case.
+    MUTATION-PROVEN, both directions.
+
+    ⚑ WHAT IS NOT HERE, DELIBERATELY: a ``bindings.*`` aimed into the secrets dir
+    (the sibling case above) is a CROSS-CATEGORY refusal the §0 table still owns —
+    ``secret_path_winners`` answers WHICH POINTER WINS FOR A VAR and nothing else.
+    """
+
+    def _pair(self, *, box_first: bool):
+        dest = f"{SECRET_MOUNT_DIR}/TOK"
+        workset = entry("secret_path", name="TOK", scope="workset",
+                        box_dest=dest, host_src="/workset/tok")
+        box = entry("secret_path", name="TOK", scope="box",
+                    box_dest=dest, host_src="/box/tok")
+        return [box, workset] if box_first else [workset, box]
+
+    @pytest.mark.parametrize("box_first", [False, True])
+    def test_the_box_pointer_beats_the_workset_one_for_the_same_VAR(self, box_first):
+        """Spec §2a, in both input orders — scope precedence, never arrival order."""
+        winners = secret_path_winners(self._pair(box_first=box_first))
+        assert [(e.name, e.host_src) for e in winners] == [("TOK", "/box/tok")]
+
+    def test_a_second_VAR_at_the_LOSING_scope_survives_untouched(self):
+        """The pick is PER VAR: overriding TOK must not take SECOND with it."""
+        second = entry("secret_path", name="SECOND", scope="workset",
+                       box_dest=f"{SECRET_MOUNT_DIR}/SECOND", host_src="/workset/second")
+        winners = secret_path_winners([*self._pair(box_first=False), second])
+        assert [(e.name, e.host_src) for e in winners] == [
+            ("SECOND", "/workset/second"), ("TOK", "/box/tok"),
+        ]
+
+    def test_nothing_but_secret_path_reaches_the_pick(self):
+        """Handed the WHOLE gated list at the seam, it takes only its own category."""
+        winners = secret_path_winners([
+            entry("bindings.rw", name="w", box_dest="/g/w"),
+            entry("env", name="FOO", box_dest="FOO"),
+            entry("seeded", name="s", box_dest="~/s"),
+            *self._pair(box_first=False),
+        ])
+        assert [e.category for e in winners] == ["secret_path"]
+
+    def test_it_matches_what_the_reconcile_yields(self):
+        """🕯️ 6-R1 CANARY — DIES AT 6-R3 (its oracle is the route being retired).
+
+        The seam-side pick and the reconciled mounts filtered to this category are
+        the same winners in the same order, so 6-R2 may flip the consumer
+        (``_emit_secret_mounts``) without changing what a box receives.  The LIVE-path
+        half of this canary is
+        ``tests/test_commands/test_start_assembly.py::TestTheLaunchDeliveriesCarrierAgreesWithTheReconcile``.
+        """
+        entries = [
+            entry("bindings.rw", name="w", box_dest="/g/w"),
+            *self._pair(box_first=False),
+            entry("secret_path", name="SECOND", scope="workset",
+                  box_dest=f"{SECRET_MOUNT_DIR}/SECOND", host_src="/workset/second"),
+        ]
+        rec = reconcile_categories(entries)
+        assert secret_path_winners(entries) == [
+            m for m in rec.mounts if m.category == "secret_path"
+        ]
 
 
 # --------------------------------------------------------------------------- #

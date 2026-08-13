@@ -2003,7 +2003,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             )
             from kanibako.errors import KanibakoError
             try:
-                category_snapshot, _reconciled = _resolve_launch_snapshot(
+                category_snapshot, _reconciled, _deliveries = _resolve_launch_snapshot(
                     std=std, proj=proj, agent_name=agent_id,
                     system_settings_path=std.settings,
                     agent_cfg_path=agent_cfg_path,
