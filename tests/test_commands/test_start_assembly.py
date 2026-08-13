@@ -36,7 +36,6 @@ from kanibako.commands.start import (
     _resolve_launch_snapshot,
     _snapshot_assembly_bindings,
     _snapshot_assembly_synced,
-    _split_home_bind,
 )
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
@@ -147,7 +146,13 @@ class TestTheCollapseIsProduced:
     def test_home_is_pid_zero_and_folded_exactly_once(
         self, std, config, project_dir,
     ):
-        """Home is lifted OUT of the shapes, so it seeds the fold instead of colliding."""
+        """Home is BUILT AT THE SEAM off ``meta.box.home``, so it seeds the fold alone.
+
+        🛑 The map's home entry is not a declaration that survived a fold: since 6-H
+        there is no home declaration anywhere to survive one. It is the pid-0
+        FOUNDATION, and ``TestTheFoundationIsBuiltAtTheSeam`` below pins where it
+        comes from.
+        """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _rec = _resolve(std, proj)
 
@@ -161,15 +166,21 @@ class TestTheCollapseIsProduced:
     def test_the_fold_sees_the_same_declarations_the_live_route_does(
         self, std, config, project_dir,
     ):
-        """Every reconciled MOUNT dest is a collapsed bind dest, and vice versa."""
+        """Every reconciled MOUNT dest is a collapsed bind dest, and vice versa BUT HOME.
+
+        ⚑ HOME IS ON THE LEFT ONLY, and that asymmetry is the 6-H change stated as an
+        equation: the reconciled route walks DECLARATIONS, and home stopped being one
+        — it is the seam-built foundation, present in the collapsed map and in no
+        scope's declarations.
+        """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, reconciled = _resolve(std, proj)
 
         # ⚑ Holds because this configuration triggers no subsumption; the collapse
         # REMOVES what it subsumes, so this is a pin on THIS fixture, not a law.
-        assert set(_assembly(snapshot)["bindings"]) == {
-            m.box_dest for m in reconciled.mounts
-        }
+        reconciled_dests = {m.box_dest for m in reconciled.mounts}
+        assert HOME_DEST not in reconciled_dests
+        assert set(_assembly(snapshot)["bindings"]) == reconciled_dests | {HOME_DEST}
 
     def test_a_narrow_resolve_writes_THE_SEED_LIST_AND_NOTHING_ELSE(
         self, std, config, project_dir, tmp_path,
@@ -422,50 +433,22 @@ class TestTheLivePathIsUnchanged:
         ), [r.message for r in caplog.records]
 
 
-class TestHomeIsLiftedOut:
-    """``_split_home_bind`` — the one seam that keeps pid 0 out of every scope's shape."""
+class TestTheFoundationIsBuiltAtTheSeam:
+    """⚑⚑ CUTOVER 6-H — home LEFT ``bindings.rw`` and the seam constructs it.
 
-    def test_no_home_entry_yields_no_bind_and_the_list_untouched(self):
-        """Zero candidates ⇒ nothing to build on; the caller must not fold at all."""
-        assert _split_home_bind([]) == (None, [])
+    🛑 THIS CLASS REPLACES ``TestHomeIsLiftedOut`` AND
+    ``TestABoxIsAssembledOverEXACTLYONEHomeBinding``, whose three functions
+    (``_split_home_bind`` · ``_home_bind_entries`` · ``_refuse_without_one_home``)
+    went with the ``key: home`` row. What they guarded is not unguarded, it is
+    UNCONSTRUCTIBLE or moved:
 
-    def test_several_home_entries_refuse_to_name_pid_zero(self, std, config, project_dir):
-        """Two mounts at ``~`` cannot name ONE foundation, so the fold is skipped."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, reconciled = _resolve(std, proj)
-        home = next(m for m in reconciled.mounts if m.box_dest == HOME_DEST)
-
-        assert _split_home_bind([home, home]) == (None, [home, home])
-
-    def test_the_home_entry_is_removed_from_what_the_shapes_fold(
-        self, std, config, project_dir,
-    ):
-        """The lifted entry is gone from the remainder — else it collides with the seed."""
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, reconciled = _resolve(std, proj)
-        entries = list(reconciled.mounts)
-        home_bind, folded = _split_home_bind(entries)
-
-        assert home_bind is not None
-        assert len(folded) == len(entries) - 1
-        assert all(e.box_dest != HOME_DEST for e in folded)
-
-
-class TestABoxIsAssembledOverEXACTLYONEHomeBinding:
-    """⚑⚑ CUTOVER 2c's OWN GUARD — the defect 2c would otherwise have INTRODUCED.
-
-    With the reconciled fallback deleted, ``_launch_bind_map`` reduces to the reader,
-    and a whole-box resolve that wrote no ``meta.assembly.bindings`` would hand
-    ``_emit_category_mounts`` a ``None`` that dies on ``.items()``: an uncaught
-    ``AttributeError`` traceback instead of a ``KanibakoError``. So the resolve refuses
-    FIRST, by name.
-
-    ⚑ ONE guard for BOTH failures, because ``len(at_home) != 1`` is ONE spec violation:
-    home is pid 0, the base plate seeded before any bind folds, so zero leaves the box
-    nothing to build on and two leave it ambiguous. 🛑 The NARROW path keeps its early
-    return — it carries no core family and asks only for the seed arm — which is what
-    ``TestTheCollapseIsProduced.test_a_narrow_resolve_writes_THE_SEED_LIST_AND_NOTHING_ELSE``
-    pins.
+    * ZERO homes — there is no declaration left to suppress, and the SOURCE key is
+      floor-produced and validated by ``settings_launch._assert_box_root_resolved``.
+    * TWO homes — the COLLAPSE's ``_refuse_bind_over_bind``, against the foundation
+      seeded beneath every scope's shape (``test_store_collapse.py``), reached from a
+      real settings file by ``test_categories_live`` and end-to-end below.
+    * The NARROW early return — same invariant, new gate (``whole_box``), pinned by
+      the third case here under its original name and claim.
     """
 
     def _mounts(self, std, config, project_dir):
@@ -473,63 +456,72 @@ class TestABoxIsAssembledOverEXACTLYONEHomeBinding:
         _snapshot, reconciled = _resolve(std, proj)
         return list(reconciled.mounts)
 
-    def test_NO_home_binding_REFUSES_a_whole_box_resolve(
+    def test_the_foundation_is_read_from_meta_box_home_with_BARE_options(
         self, std, config, project_dir,
     ):
-        """Zero: the box has no floor, and it says which destination is missing.
+        """🛑 THE TWO FACTS THE SEAM OWNS: which key it reads, and the options it pairs.
 
-        MUTATION ANCHOR: drop the ``if whole_box: _refuse_without_one_home(entries)``
-        call from ``_install_assembly_collapse`` and this fails with ``DID NOT RAISE``
-        — and the launch goes on to die inside the emitter instead.
+        The snapshot's ``meta.box.home`` is a path that matches NO ``proj`` attribute,
+        so a seam that re-derived the foundation from ``proj.shell_path`` — or from an
+        inlined ``@meta.box.path/home`` — cannot produce it.
+
+        MUTATION ANCHORS, both proved: change ``_HOME_OPTIONS`` to ``"Z,U,rw"`` and the
+        options assertion fails; build the bind from anything but
+        ``_snapshot_home(snapshot)`` and the source assertion fails.
         """
         from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.keystore import KeyStore
 
-        homeless = [
-            e for e in self._mounts(std, config, project_dir)
-            if e.box_dest != HOME_DEST
-        ]
+        snapshot = KeyStore()
+        snapshot.insert_segments(("meta", "box", "home"), "/nowhere/near/proj/home")
+        _install_assembly_collapse(
+            snapshot, self._mounts(std, config, project_dir), whole_box=True,
+        )
 
-        with pytest.raises(SettingsError, match="no binding at its home destination"):
-            _install_assembly_collapse(KeyStore(), homeless, whole_box=True)
+        home = _assembly(snapshot)["bindings"][HOME_DEST]
+        assert home.src == "/nowhere/near/proj/home"
+        # BARE ``Z,U`` — the foundation is pre-seeded and never passes the arm fold,
+        # so no ``rw`` token is ever appended to it.
+        assert home.opts == "Z,U"
 
-    def test_TWO_home_bindings_REFUSE_THE_SAME_WAY(self, std, config, project_dir):
-        """Two: the same violation, and the remedy names the mechanism (suppress).
+    def test_a_settings_file_binding_at_home_is_REFUSED(
+        self, std, config, project_dir,
+    ):
+        """⚑⚑ THE CAPABILITY REMOVAL, on the REAL launch seam — MIGRATION §2.32.
 
-        🛑 Reached here by construction rather than through a settings file, because
-        ``reconcile_categories`` refuses two concrete declarations at one identical
-        dest a layer earlier. This guard is what covers the arrangements that reach the
-        fold anyway; answering only the zero case would leave it open.
+        A ``box.bindings.rw`` entry at ``~`` used to be the documented way to give a
+        box a custom home: it overrode the core row through the cascade and won. There
+        is no core row to override now, so the declaration is a SECOND bind at pid 0's
+        point and the collapse refuses it by name. The cure is ``workset.boxes``.
         """
-        from kanibako.commands.start import _install_assembly_collapse
-        from kanibako.settings.keystore import KeyStore
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
 
-        mounts = self._mounts(std, config, project_dir)
-        home = next(e for e in mounts if e.box_dest == HOME_DEST)
+        with pytest.raises(SettingsError, match="binding") as e:
+            _resolve(std, proj, extra_default_categories={
+                "box.bindings.rw": {"~": ("/custom/home",)},
+            })
 
-        with pytest.raises(SettingsError, match="2 bindings target the box home") as e:
-            _install_assembly_collapse(KeyStore(), [*mounts, home], whole_box=True)
-
-        assert "null" in str(e.value), str(e.value)
+        assert HOME_DEST in str(e.value), str(e.value)
 
     def test_a_NARROW_resolve_with_no_home_STILL_writes_its_seed_leaf(
         self, std, config, project_dir,
     ):
-        """🛑 THE HALF THAT MUST NOT MOVE: the guard is the whole-box path's alone.
+        """🛑 THE HALF THAT MUST NOT MOVE: the two assembly leaves are whole-box only.
 
-        MUTATION ANCHOR: call ``_refuse_without_one_home`` unconditionally and this
-        fails — the create-side seed resolve, which has no home bind by construction,
-        would stop being able to seed a box at all.
+        The create-side seed resolve carries no base families and describes no box, so
+        it must still get a seed list — and neither of the other two leaves.
+
+        MUTATION ANCHOR: delete the ``if not whole_box: return`` gate from
+        ``_install_assembly_collapse`` and this fails — the narrow resolve would write
+        all three leaves, off a snapshot that describes an injected table.
         """
         from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.keystore import KeyStore
 
-        homeless = [
-            e for e in self._mounts(std, config, project_dir)
-            if e.box_dest != HOME_DEST
-        ]
         snapshot = KeyStore()
-        _install_assembly_collapse(snapshot, homeless, whole_box=False)
+        _install_assembly_collapse(
+            snapshot, self._mounts(std, config, project_dir), whole_box=False,
+        )
 
         assert _assembly(snapshot) == {"seeded": []}
 
@@ -615,7 +607,12 @@ class TestTheEmitterConsumesTheShape:
             _launch_bind_map(narrow)
 
     def test_both_shapes_emit_the_same_destinations(self, std, config, project_dir):
-        """⚑ THE DESTS AGREE on the shipped fixture — so a difference below is REAL."""
+        """⚑ THE DESTS AGREE on the shipped fixture, BUT HOME — so a difference below is REAL.
+
+        ⚑ HOME IS ON THE COLLAPSED SIDE ONLY since 6-H: the reconciled route walks
+        DECLARATIONS and home is no longer one of them, while the collapsed map is
+        SEEDED with the foundation before any scope folds. Everything else must match.
+        """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         collapsed, from_rows, reconciled = self._both_shapes(std, proj)
         agent = _agent_delivered_dests(reconciled.mounts)
@@ -627,7 +624,8 @@ class TestTheEmitterConsumesTheShape:
                 )
             }
 
-        assert dests(collapsed) == dests(from_rows)
+        assert HOME_DEST not in dests(from_rows)
+        assert dests(collapsed) == dests(from_rows) | {HOME_DEST}
 
     def test_the_collapse_folds_THE_MODE_INTO_THE_OPTIONS(
         self, std, config, project_dir,
@@ -641,8 +639,14 @@ class TestTheEmitterConsumesTheShape:
         does, and that is exactly the kind of difference a suite must state out loud
         rather than let a later reader discover in an argv.
 
-        ⚑ HOME is the exception BY CONSTRUCTION: it is pid 0, lifted out before any
-        scope folds, so no arm ever appends to its options.
+        ⚑ HOME is the exception BY CONSTRUCTION: it is pid 0, SEEDED before any scope
+        folds, so no arm ever appends to its options.
+
+        🛑 THE VALUE ORACLE IS UNMOVED: ``collapsed_opts[HOME_DEST] == "Z,U"``, bare.
+        What 6-H changed is only where the OTHER side of that line used to come from —
+        home left ``bindings.rw``, so the reconciled route no longer emits it at all,
+        and the comparison against ``row_opts[HOME_DEST]`` became a read of a dest that
+        is legitimately absent. Its absence is asserted instead, and the value is not.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         collapsed, from_rows, reconciled = self._both_shapes(std, proj)
@@ -657,7 +661,8 @@ class TestTheEmitterConsumesTheShape:
 
         collapsed_opts, row_opts = opts(collapsed), opts(from_rows)
         assert collapsed_opts != row_opts, "the two routes cannot be indistinguishable"
-        assert collapsed_opts[HOME_DEST] == row_opts[HOME_DEST] == "Z,U"
+        assert collapsed_opts[HOME_DEST] == "Z,U"
+        assert HOME_DEST not in row_opts
         rw = [d for d, o in row_opts.items() if o == "Z,U" and d != HOME_DEST]
         assert rw, "the fixture must carry a rw bind that is not home"
         assert all(collapsed_opts[d] == "Z,U,rw" for d in rw), collapsed_opts

@@ -126,10 +126,13 @@ def core_default_categories(
     std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str,
     guarantee_create: bool = True,
 ) -> BindArmTable:
-    """Build the core box mounts — home + workspace + vault — as ``default_categories`` (step 3)."""
+    """Build the core box mounts — workspace + vault — as ``default_categories`` (step 3).
+
+    ⚑ NO HOME ROW. Home is pid 0, not one bind among these: it is constructed at the
+    assembly seam off ``meta.box.home`` (spec ``:1015``), never declared here.
+    """
     # Symbolic source name -> runtime-probed host path off ``ProjectPaths``.
     sources: dict[str, str] = {
-        "shell_path": str(proj.shell_path),
         "project_path": str(proj.project_path),
         "vault_ro_path": str(proj.vault_ro_path),
         "vault_rw_path": str(proj.vault_rw_path),
@@ -153,7 +156,7 @@ def core_default_categories(
             if guarantee_create:
                 src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
-        # ⚑ TWO @-ref shapes: a single ``meta_ref`` (mode-independent — home, workspace) or a
+        # ⚑ TWO @-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a
         # ``mode_meta_ref`` PER-MODE map, which today serves the VAULT binds ONLY (spec §2c).
         mode_ref = entry.get("mode_meta_ref")
         if mode_ref is not None:

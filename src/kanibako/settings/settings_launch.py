@@ -79,7 +79,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Collection, Literal, Mapping, NamedTuple, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Collection,
+    Final,
+    Literal,
+    Mapping,
+    NamedTuple,
+    Sequence,
+)
 
 if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
@@ -735,13 +743,13 @@ def meta_identity_floor(
 # — and the whole chain is gated by a launch-path byte-identity check on the
 # resolved home/vault/helper_log mounts.
 #
-# ⚑ A BOX ROOT THAT DOES NOT RESOLVE IS CATASTROPHIC, NOT COSMETIC. The consumer
-# ``box.bindings.rw.home = (@meta.box.home, ~)`` names the derived key, and that
-# key is itself the EMBEDDED ref ``@meta.box.path/home`` — the embedded rule (§6b)
-# coerces an absent / present-None referent to ``""``, so a box root that fails to
-# resolve yields the host_src ``/home``, which the L7 guarantee-create then
-# mkdir's and mounts OVER the box home, silently. Naming the key moved the
-# embedded dereference one level up; it did not remove it. The floor values below
+# ⚑ A BOX ROOT THAT DOES NOT RESOLVE IS CATASTROPHIC, NOT COSMETIC. The consumer is
+# the ASSEMBLY SEAM, which builds the pid-0 foundation bind straight off
+# ``meta.box.home``, and that key is itself the EMBEDDED ref ``@meta.box.path/home``
+# — the embedded rule (§6b) coerces an absent / present-None referent to ``""``, so a
+# box root that fails to resolve yields the host_src ``/home``, which the L7
+# guarantee-create then mkdir's and mounts OVER the box home, silently. Naming the key
+# moved the embedded dereference one level up; it did not remove it. The floor values below
 # are constants and cannot be None; a user's ``workset.boxes: null`` in a settings
 # file still can, which is why ``build_launch_snapshot`` asserts the resolved
 # ``meta.box.path`` is a non-empty absolute path.
@@ -773,6 +781,13 @@ _BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset(
     {"common", "chat", "broadcast", "share", "mailboxes", "share_global"}
 )
+
+#: The RO DERIVED box-home SOURCE (spec ``:1015``) — the pid-0 FOUNDATION bind's src.
+#: ⚑ NAMED, unlike its sibling floor keys, because it has readers OUTSIDE this module:
+#: the assembly seam builds the foundation bind from it
+#: (``commands/start.py._install_assembly_collapse``) and ``box show --effective``
+#: renders it. One spelling for the producer below and both consumers.
+BOX_HOME_KEY: Final[str] = "meta.box.home"
 
 
 def workset_anchor_floor(
@@ -862,11 +877,13 @@ def workset_anchor_floor(
         ),
         # The RO DERIVED box-home SOURCE (spec §2c ALL PROJECTS). ONE declaration
         # for EVERY mode — the per-mode variation is the box root above and nothing
-        # here, exactly like ``meta.box.settings``. ⚑ THE ONLY SPELLING: the home
-        # bind in ``core-defaults.yaml`` names ``@meta.box.home`` rather than
-        # re-deriving it, so this line is what every launch's home mount resolves
-        # through. Do not re-inline the formula anywhere downstream.
-        "meta.box.home": "@meta.box.path/home",
+        # here, exactly like ``meta.box.settings``. ⚑ THE ONLY SPELLING: home does NOT
+        # route through ``bindings.rw`` (spec ``:1015``) — the assembly seam
+        # (``commands/start.py._install_assembly_collapse``) READS THIS KEY to build the
+        # pid-0 foundation bind, so this line is what every launch's home mount resolves
+        # through. Do not re-inline the formula anywhere downstream, and do not
+        # re-derive it from ``proj.shell_path``.
+        BOX_HOME_KEY: "@meta.box.path/home",
         # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b). UNIFORM in every
         # mode — no per-mode arm and no ``<None>`` carve-out — which is only safe
         # because the chapter binds they feed are SKIP-IF-ABSENT (spec §2c says so
@@ -1535,7 +1552,7 @@ def resolve_selected_agent(
             f"{SELECTION_KEY}=<name>`, or request one per box with "
             f"`kanibako box set pref.{SELECTION_KEY}=<name>` (spec §2h)."
         )
-    return _snapshot_leaf(expanded, SELECTION_KEY)
+    return snapshot_leaf(expanded, SELECTION_KEY)
 
 
 #: The RO per-mode box-root anchor (spec §2c). Every rooted box key spells itself
@@ -1547,8 +1564,14 @@ _BOX_ROOT_KEY = "meta.box.path"
 _BOX_STORE_KEY = "workset.boxes"
 
 
-def _snapshot_leaf(snapshot: KeyStore, dotted: str) -> object:
-    """Read the resolved leaf at *dotted*, or ``__MISSING__``. UNBOUND protocol (S3)."""
+def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object:
+    """Read the resolved leaf at *dotted*, or ``__MISSING__``. UNBOUND protocol (S3).
+
+    ⚑ PUBLIC because the assembly seam reads ``meta.box.home`` through it
+    (``commands/start.py._install_assembly_collapse``). One reader, so a dotted read
+    off a resolved snapshot cannot acquire a second spelling with its own idea of
+    what absence looks like.
+    """
     node: object = snapshot
     for seg in dotted.split("."):
         if not isinstance(node, KeyStore):
@@ -1563,7 +1586,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
     """Fail LOUDLY when the box root, or the store it derives from, did not resolve.
 
     ⚑ A box root that resolves to nothing does NOT surface as an error on its own.
-    ``box.bindings.rw.home`` is ``(@meta.box.home, ~)``, and ``meta.box.home`` is
+    The pid-0 foundation bind's src IS ``meta.box.home``, and ``meta.box.home`` is
     ``@meta.box.path/home`` — an EMBEDDED ``@``-ref, and the embedded rule (§6b)
     coerces an absent / present-``None`` referent to ``""``. The L7 guarantee-create
     then ``mkdir``\\ s whatever that produced and mounts it OVER the box home, so the
@@ -1608,7 +1631,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
     ``""``-terminal) plus the vanished-leaf shape below.
     """
     for key in (_BOX_STORE_KEY, _BOX_ROOT_KEY):
-        value = _snapshot_leaf(snapshot, key)
+        value = snapshot_leaf(snapshot, key)
         if isinstance(value, str) and value != "" and not value.endswith("/"):
             continue
         got = "absent" if value is __MISSING__ else repr(value)
@@ -2099,7 +2122,7 @@ def snapshot_category_entries(
     for scope in _SCOPES:
         # ⚑ Two producers, two shapes: the agent arm always yields a node, the
         # plain arm yields the ABSENT sentinel when the scope is missing. Declared
-        # ``object`` (as ``_snapshot_leaf`` declares its walk cursor) so the
+        # ``object`` (as ``snapshot_leaf`` declares its walk cursor) so the
         # ``isinstance`` gate below stays the ONE thing that tells them apart.
         scope_node: object
         if scope == "agent":

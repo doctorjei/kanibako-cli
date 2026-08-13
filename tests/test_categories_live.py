@@ -56,7 +56,14 @@ def make_ctx(
 
 def _resolve_home_vault(floor, *, mode, config=None):
     """Resolve home/vault through the LIVE build_launch_snapshot pipeline (the
-    single route the launch uses) → {box_dest: host_src}.
+    single route the launch uses) → ``(box_home, {box_dest: host_src})``.
+
+    ⚑ HOME COMES BACK SEPARATELY, and that split IS cutover 6-H. Home does not route
+    through ``bindings.rw`` (spec ``:1015``): it is the RO DERIVED ``meta.box.home``,
+    read straight off the resolved snapshot, and the assembly seam pairs it with the
+    seam's options to make the pid-0 foundation. So the byte-identity bar for home is a
+    bar on the KEY's resolved value; the vault half stays a bar on the reconciled
+    mounts.
 
     *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
     ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
@@ -76,17 +83,18 @@ def _resolve_home_vault(floor, *, mode, config=None):
     rec = reconcile_categories(
         snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
     )
-    return {m.box_dest: m.host_src for m in rec.mounts}
+    return snap.meta.box.home, {m.box_dest: m.host_src for m in rec.mounts}
 
 
 class TestB2bHomeVaultByteIdentity:
-    """The equivalence bar: a DEFAULT box's resolved home/vault binds are
+    """The equivalence bar: a DEFAULT box's resolved home/vault sources are
     byte-identical to the pre-B2b proj-attr literals, per mode."""
 
     def test_primary_named_home_vault_resolve_to_proj_literals(self):
-        # PRIMARY/NAMED: home routes the ONE mode-independent @meta.box.home
-        # declaration; vault routes @workset.vault_*/@meta.box.name.  Both resolve to
-        # the SAME literal proj.shell_path / proj.vault_*_path the old injection used.
+        # PRIMARY/NAMED: home is the ONE mode-independent @meta.box.home KEY (no
+        # bindings.rw row — 6-H); vault routes @workset.vault_*/@meta.box.name.  Both
+        # resolve to the SAME literal proj.shell_path / proj.vault_*_path the old
+        # injection used.
         # ⚑ The ASSERTED PATHS are unchanged from before the anchor collapse — only
         # the floor SPELLINGS moved.  That is the point of the phase.
         from kanibako.settings.settings_launch import (
@@ -97,9 +105,10 @@ class TestB2bHomeVaultByteIdentity:
 
         # ⚑ DEST-KEYED (R-3/R-5/R-11): one terminal arm key per mode, whose value
         # is ``{box_dest: (src[, options])}`` with the dest already absolutized.
+        # ⚑ NO ``/home/agent`` ENTRY — a default box declares none, and one here would
+        # be a second bind at the foundation's point.
         floor = {
             "box.bindings.rw": {
-                "/home/agent": ("@meta.box.home", "Z,U"),
                 "/home/agent/vault/rw": (
                     "@workset.vault_rw/@meta.box.name", "Z,U",
                 ),
@@ -122,20 +131,21 @@ class TestB2bHomeVaultByteIdentity:
             box_name="mybox", project_path="/code/x", inbox="/i",
             share_global="/sg", share_workset="/sw",
         ))
-        by_dest = _resolve_home_vault(
+        box_home, by_dest = _resolve_home_vault(
             floor, mode="primary", config={"config.primary_workset": "/data/pw"},
         )
         # Byte-identical to proj.shell_path = boxes/<name>/home, vault/{ro,rw}/<name>.
-        assert by_dest["/home/agent"] == "/data/pw/boxes/mybox/home"
+        assert box_home == "/data/pw/boxes/mybox/home"
+        assert "/home/agent" not in by_dest
         assert by_dest["/home/agent/vault/ro"] == "/data/pw/vault/ro/mybox"
         assert by_dest["/home/agent/vault/rw"] == "/data/pw/vault/rw/mybox"
 
     def test_standalone_home_vault_resolve_to_proj_literals(self):
-        # STANDALONE: home routes the SAME @meta.box.home declaration as
-        # primary/named (the per-mode variation lives in meta.box.path = the EMPTY
-        # LEAF @workset.boxes); vault routes the bare @workset.vault_* (a lone box has
-        # no per-box vault subdir).  meta.workset.path = the project ROOT, so these
-        # resolve to <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
+        # STANDALONE: home is the SAME @meta.box.home key as primary/named (the
+        # per-mode variation lives in meta.box.path = the EMPTY LEAF @workset.boxes);
+        # vault routes the bare @workset.vault_* (a lone box has no per-box vault
+        # subdir).  meta.workset.path = the project ROOT, so these resolve to
+        # <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
         # proj.vault_{ro,rw}_path — byte-identical to before the anchor collapse.
         from kanibako.settings.settings_launch import (
             meta_identity_floor,
@@ -145,7 +155,6 @@ class TestB2bHomeVaultByteIdentity:
 
         floor = {
             "box.bindings.rw": {
-                "/home/agent": ("@meta.box.home", "Z,U"),
                 "/home/agent/vault/rw": ("@workset.vault_rw", "Z,U"),
             },
             "box.bindings.ro": {
@@ -164,16 +173,31 @@ class TestB2bHomeVaultByteIdentity:
             box_name="sb", project_path="/proj/workspace", inbox="/i",
             share_global="/sg", share_workset=None,
         ))
-        by_dest = _resolve_home_vault(floor, mode="standalone")
+        box_home, by_dest = _resolve_home_vault(floor, mode="standalone")
         # <root>=/proj: home = /proj/box_data/home, vault = /proj/vault/{ro,rw}.
-        assert by_dest["/home/agent"] == "/proj/box_data/home"
+        assert box_home == "/proj/box_data/home"
+        assert "/home/agent" not in by_dest
         assert by_dest["/home/agent/vault/ro"] == "/proj/vault/ro"
         assert by_dest["/home/agent/vault/rw"] == "/proj/vault/rw"
 
-    def test_box_bindings_home_cascade_override_wins(self):
-        # Option A: a box.bindings.rw.home CASCADE override (box scope) WINS over the
-        # spec-derived @meta.box.home default (the mechanism for a custom home,
-        # replacing the dropped meta["shell"] override).
+    def test_box_bindings_home_repoint_is_REFUSED(self):
+        """🛑 INVERTED AT CUTOVER 6-H — MIGRATION §2.32. This asserted the OPPOSITE.
+
+        It used to pin "Option A": a ``box.bindings.rw`` entry at ``~`` in a box
+        settings FILE cascaded over the spec-derived core default and WON, and that was
+        the documented mechanism for a custom home (it replaced the dropped
+        ``meta["shell"]`` override). There is no core default at ``~`` any more — home
+        left ``bindings.rw`` (spec ``:1015``) and is the pid-0 FOUNDATION the assembly
+        seam builds from ``meta.box.home`` — so the file entry is not an override of
+        anything: it is a SECOND bind at the foundation's point, and the collapse
+        refuses it by name against the seeded home.
+
+        ⚑ THE CASCADE STILL WORKS EXACTLY AS IT DID. Nothing about scope precedence
+        changed; what changed is that there is no longer a declaration at this dest to
+        beat. The cure for a custom box home is ``workset.boxes``, which relocates the
+        box store the home is derived from.
+        """
+        from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             meta_identity_floor,
@@ -181,10 +205,9 @@ class TestB2bHomeVaultByteIdentity:
             snapshot_category_entries,
             workset_anchor_floor,
         )
+        from kanibako.settings.settings_resolve import SettingsError
 
-        floor = {
-            "box.bindings.rw": {"/home/agent": ("@meta.box.home", "Z,U")},
-        }
+        floor: dict = {}
         floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
         floor.update(workset_anchor_floor(
             mode="primary",
@@ -196,10 +219,8 @@ class TestB2bHomeVaultByteIdentity:
         ctx = make_ctx(
             workset_name=None, config={"config.primary_workset": "/data/pw"},
         )
-        # A box settings FILE repointing the SAME destination to a custom host
-        # path. ⚑ The file spells the dest ``~`` and the floor spells it
-        # ``/home/agent``; R-11 canonicalizes both, so they are ONE entry and the
-        # cascade really has an override to decide — not two binds at one place.
+        # A box settings FILE repointing the box home to a custom host path — spelled
+        # ``~``, which R-11 canonicalizes to ``/home/agent``: pid 0's own point.
         box_overrides = {
             "box": {"bindings": {"rw": {"~": ["/custom/home"]}}},
         }
@@ -217,12 +238,19 @@ class TestB2bHomeVaultByteIdentity:
                 box_path=Path(path),
                 default_categories=floor,
             )
-            rec = reconcile_categories(
-                snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+            entries = snapshot_category_entries(
+                snap, active_agent="claude", box_ctx=ctx,
             )
-            by_dest = {m.box_dest: m.host_src for m in rec.mounts}
-            # The box cascade override WINS over the spec-derived default.
-            assert by_dest["/home/agent"] == "/custom/home"
+            # ⚑ The RECONCILE still accepts it — one declaration at one dest is no
+            # collision to it. The refusal is the COLLAPSE's, which is the only layer
+            # holding the foundation to compare against.
+            rec = reconcile_categories(entries)
+            assert {m.box_dest for m in rec.mounts} == {"/home/agent"}
+
+            with pytest.raises(SettingsError) as e:
+                _install_assembly_collapse(snap, entries, whole_box=True)
+            assert "/home/agent" in str(e.value), str(e.value)
+            assert "/custom/home" in str(e.value), str(e.value)
         finally:
             os.unlink(path)
 
@@ -452,16 +480,23 @@ class TestP1BoxRootAnchor:
     """The RO box root and the one-declaration binds rooted against it."""
 
     def test_home_resolves_identically_in_all_three_modes(self, tmp_path):
-        """The ONE ``@meta.box.home`` declaration lands on ``proj.shell_path``.
+        """The ONE ``meta.box.home`` key lands on ``proj.shell_path``.
 
         This is the standing form of the P1 gate: whatever the mode, the resolved
-        home mount is byte-identical to the host home dir the launch has always
+        home SOURCE is byte-identical to the host home dir the launch has always
         used. A regression in the anchor chain shows up HERE as a wrong absolute
         path, not as a changed spelling.
+
+        🛑 READ OFF THE KEY, NOT THE MOUNT SET, since cutover 6-H: home does not route
+        through ``bindings.rw`` (spec ``:1015``), so it is in no scope's declarations
+        and the reconciled mounts do not carry it. The assembly seam builds the pid-0
+        foundation from this very value — which is what makes asserting the key the
+        same gate it always was, and its ABSENCE from the mount set part of the claim.
         """
         for mode, proj, ws_root, hl in _probe_cases(tmp_path):
-            by_dest = _probe_mounts(mode, proj, ws_root, hl)
-            assert by_dest["/home/agent"] == str(proj.shell_path), mode
+            snap, _ctx = _probe_snapshot(mode, proj, ws_root, hl)
+            assert snap.meta.box.home == str(proj.shell_path), mode
+            assert "/home/agent" not in _probe_mounts(mode, proj, ws_root, hl), mode
 
     def test_vault_and_logs_resolve_identically_in_all_three_modes(self, tmp_path):
         """The vault + helper-log mounts are unmoved by the anchor collapse."""
@@ -476,15 +511,17 @@ class TestP1BoxRootAnchor:
         """The DUPLICATION is retired at the source, not merely at resolution.
 
         ``core-defaults.yaml`` used to carry a 3-arm per-mode map for the home
-        host_src. Asserting the emitted entry is EQUAL across modes is what stops a
-        future per-mode arm from creeping back in.
+        host_src, then ONE row naming ``@meta.box.home``. At cutover 6-H it carries NO
+        home row at all: home is pid 0 and does not route through ``bindings.rw``
+        (spec ``:1015``). Mode-independence therefore has nowhere left to break in this
+        arm, and what stops a per-mode home from creeping back is asserting that no
+        mode emits a home entry AT ALL — the strictly stronger form of the old claim.
+        The mode-independence of the arm that REMAINS is still asserted below.
 
-        ⚑ Re-derived for dest-keying (R-3/R-5/R-11). The arm is now ONE terminal
-        key whose value is ``{box_dest: (host_src[, options])}``, so the box
-        DESTINATION moved out of the tuple and became the map key — and
-        mode-independence is therefore a property of the whole ENTRY, key and
-        value together. The dest reads ``/home/agent`` rather than the file's
-        ``~`` because R-11 absolutizes a destination at the producer.
+        ⚑ Re-derived for dest-keying (R-3/R-5/R-11). The arm is ONE terminal key whose
+        value is ``{box_dest: (host_src[, options])}``, so the box DESTINATION is the
+        map key; the dest reads ``/home/agent`` rather than the file's ``~`` because
+        R-11 absolutizes a destination at the producer.
         """
         from kanibako.settings import core_defaults
 
@@ -501,7 +538,7 @@ class TestP1BoxRootAnchor:
             for mode in ("primary", "named", "standalone")
         }
         for mode, arm in arms.items():
-            assert arm["/home/agent"] == ("@meta.box.home", "Z,U"), mode
+            assert "/home/agent" not in arm, mode
         # The WHOLE arm is mode-invariant, not just the home entry — a per-mode
         # dest would now be a per-mode map KEY, which comparing tuples alone
         # would no longer catch.
@@ -1175,6 +1212,73 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         # The bare agent form never appears (it is not a key).
         assert "agent.common" not in text
         assert "agent.caches" not in text
+
+
+class TestTheEffectiveBlockShowsThePidZeroFoundation:
+    """⚑⚑ CUTOVER 6-H — ``box show --effective`` must not lose the box's own home.
+
+    The block walks ``<scope>.bindings.{ro,rw}`` and renders what it finds there. Home
+    left that arm (spec ``:1015``), so without a line of its own the ONE mount every
+    box has would silently vanish from the view whose entire purpose is telling a user
+    what their box gets. It is rendered from the SAME key the assembly seam reads.
+    """
+
+    @staticmethod
+    def _snapshot():
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            meta_identity_floor,
+            meta_runtime_floor,
+            workset_anchor_floor,
+        )
+
+        floor: dict = {
+            "box.bindings.rw": {"/home/agent/workspace": ("/code/x", "Z,U")},
+        }
+        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+        floor.update(workset_anchor_floor(mode="primary"))
+        floor.update(meta_identity_floor(
+            box_name="mybox", project_path="/code/x", inbox="/i",
+            share_global="/sg", share_workset="/sw",
+        ))
+        ctx = make_ctx(
+            workset_name=None, config={"config.primary_workset": "/data/pw"},
+        )
+        return build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+
+    def test_the_foundation_is_rendered_and_labelled_as_one(self):
+        """MUTATION ANCHOR: drop the foundation line and this fails — the box home is
+        then absent from the whole block, exactly as it silently was mid-6-H."""
+        import io
+
+        from kanibako.settings.config_display import _print_category_block
+
+        buf = io.StringIO()
+        _print_category_block(self._snapshot(), None, buf)
+        text = buf.getvalue()
+
+        assert "(foundation) meta.box.home = /data/pw/boxes/mybox/home -> /home/agent" \
+            in text, text
+        # The ordinary scope declaration still renders beneath it, unchanged.
+        assert "box.bindings.rw./home/agent/workspace = /code/x -> " in text, text
+
+    def test_the_foundation_is_not_spelled_as_a_settable_binding_key(self):
+        """It is NOT ``box.bindings.rw.~`` and must never read as one: that key does
+        not exist, and a user copying it into a settings file would declare a second
+        bind at pid 0's point — which the collapse refuses."""
+        import io
+
+        from kanibako.settings.config_display import _print_category_block
+
+        buf = io.StringIO()
+        _print_category_block(self._snapshot(), None, buf)
+        text = buf.getvalue()
+
+        assert "bindings.rw./home/agent =" not in text, text
+        assert "bindings.rw.~" not in text, text
 
 
 class TestForgedDerivationsTableNeverEntersTheMerge:

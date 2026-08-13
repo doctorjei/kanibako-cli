@@ -147,9 +147,10 @@ inside boxes. In order of likely impact:
     agent.claude.bindings.ro.launcher=/newsrc` both used to work; both now refuse, naming the key
     and the file to edit. **Nothing you have already configured stops working** — the keys are
     still declared, still read at launch, and `config get` still reads them back. Only the write
-    verb is gone, and there is no CLI replacement. If a script of yours repoints a bind, that is
-    the thing to check. The other mount categories (`caches`, `seeded`, `common`, `synced`) are
-    untouched and still settable at every scope.
+    verb is gone, and there is no CLI replacement. ⚑ One exception, and it is the example above: a
+    binding at the box home is a separate change and does **not** keep mounting (item 19). If a
+    script of yours repoints a bind, that is the thing to check. The other mount categories
+    (`caches`, `seeded`, `common`, `synced`) are untouched and still settable at every scope.
 
 18. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
     host:guest` is now `workset share add WS host:guest`, and `workset share rm WS NAME` is now
@@ -163,7 +164,16 @@ inside boxes. In order of likely impact:
     the thing to check, and so is anything that parses `share list`, whose columns are now
     `DEST / MODE / SOURCE`.
 
-19. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+19. **If you gave a box a custom home with a binding at `~`, that box no longer starts** (§2.32).
+    The box home stopped being a binding — it is the foundation the rest of the mount set folds
+    over — so an entry at `~` in any settings file is now a second claim on one place and refuses
+    the launch by name. Nothing else moves: a binding *inside* home (`~/work`) is unaffected, and
+    the mount a box receives at `~` is byte-identical to before. **The cure is `workset.boxes`**,
+    the workset-scope key naming where box stores live, plus moving the directory yourself. Home
+    also leaves the per-scope `bindings.*` listing in `kanibako box show --effective` and appears
+    above it as a labelled foundation line.
+
+20. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -942,6 +952,10 @@ keys symmetrically — a reset is a write.
 
 Only the *write verb* is gone.
 
+⚑ **One exception has appeared since, and it is the example above.** A binding at the box home
+(`~`) does *not* keep mounting — home stopped being a binding at all, and an entry there now refuses
+the launch. See §2.32; everything in this entry holds for every other destination.
+
 **Why there is no replacement command.** A `bindings.{ro,rw}` arm **is** a single key whose
 value is a map keyed by the mount **destination**, and the destinations inside that map are values,
 not key segments. So there is no per-entry key for `set` to name — not a route that moved, a route
@@ -1608,9 +1622,11 @@ an agent.
 - **A binding whose options contradict its arm.** `ro` in the options of a `bindings.rw` entry, or
   `rw` in a `bindings.ro` one. The mode IS the arm — declare it in the arm that means it.
 
-**And one more, which is new rather than newly-enforced: a box must have exactly one binding at its
-home destination.** Home is bound by default. Suppressing that key, or declaring a second binding at
-the same place, now refuses instead of producing a box with no floor.
+**And one more, which is new rather than newly-enforced: nothing may be bound at the box home.**
+Home is not a binding — it is the foundation the whole set folds over, and kanibako builds it for
+every box (§2.32). A `bindings.ro` or `bindings.rw` entry at `~` is a second claim on that one
+place, and it now refuses instead of producing a box whose real home is ambiguous. There is no
+binding to suppress and nothing to override; §2.32 has the cure.
 
 **What you must do.** Nothing, unless you declare one of the arrangements above. To find out before
 you hit it, `kanibako box show --effective` resolves the same settings and reports the same refusal
@@ -1634,6 +1650,65 @@ receives; if it rejects an arrangement and the launch proceeds on a different ro
 the fold was applying was never a rule — and the box you get is decided by which route happened to
 run. Two of the arrangements above (a binding under a mask, a mask over home) produced a box that
 does not match any reading of the configuration. It is better to be told.
+
+---
+
+### 2.32 You can no longer repoint a box's home with a binding
+
+**What changed.** Giving a box a custom home used to be a binding: you wrote an entry at `~` in a
+box (or workset, or system) settings file, it overrode the one kanibako ships, and it won.
+
+```yaml
+box:
+  bindings:
+    rw:
+      "~": ["/somewhere/else"]     # used to work; now REFUSED
+```
+
+**That is gone, and it now refuses the launch by name.** The box home stopped being a binding at
+all. It is the *foundation* — the one place the rest of the mount set is folded over, established
+before any binding is considered — so there is nothing at `~` to override, and an entry there is a
+second claim on the same place. The refusal is the same one you get for any two bindings at one
+destination (§2.31), and it names both.
+
+**What you must do instead.** Move the box's *store*, which is what its home is derived from. Boxes
+live under `workset.boxes`, and a box's home is a directory inside its own place there:
+
+```yaml
+workset:
+  boxes: /somewhere/else          # box homes become /somewhere/else/<box>/home
+```
+
+`workset.boxes` is a **workset-scope** key: write it in the workset settings file (or the system
+one), not a box's — a box settings file may not write a scope that contains it, and a top-level
+`workset:` table there is dropped with a warning. It relocates the store for the whole workset,
+which is the level a box store belongs to. For a lone box, a **standalone** project is the shape
+that gives one box its own store to point wherever you like. **Move the existing directory yourself
+before the next launch** — kanibako creates a home where it does not find one, so a repoint without
+a move gives you an empty box home and leaves the old one where it was.
+
+**If you only wanted a directory from elsewhere inside the box, you did not need this** — bind it
+at a destination *inside* home (`~/work`, `~/somewhere`), which is unaffected and always was. This
+entry is only about `~` itself.
+
+**Where home shows up now.** `kanibako box show --effective` lists it first, on its own line,
+labelled as the foundation rather than as a settings key:
+
+```
+  (foundation) meta.box.home = /data/ws/boxes/mybox/home -> /home/agent
+  box.bindings.rw./home/agent/workspace = /code/myproject -> /home/agent/workspace  [Z,U]
+```
+
+It is no longer among the per-scope `bindings.*` lines, because it is no longer one of them.
+`meta.box.home` is a derived, read-only value: it is shown so you can see what your box gets, and
+it is not something you can set. Set `workset.boxes` and read `meta.box.home` back to check.
+
+**Why.** There can only be one home, and everything else in the box is somewhere inside it. While
+home was one binding among many, that had to be enforced with rules — and the rules could be
+argued with: suppress the shipped entry and declare your own, override it at a deeper scope, put a
+mask over it. Making home the foundation removes the question instead of answering it. The path a
+box's home comes from is now stated in exactly one place, and relocating a box is a property of
+where the box lives rather than of its mount table.
 
 ---
 

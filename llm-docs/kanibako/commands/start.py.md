@@ -106,12 +106,12 @@ binds fold `fold_opt("ro", "ro") == "ro"`, byte-identical to the fallback.
 The five-arm shape carries ro/rw as the ARM, so the collapse folds the mode back into the option
 string: a rw bind the reconciled route emits as `Z,U` arrives as `Z,U,rw`. Podman's default IS rw and
 `fold_opt` dedupes, so `ro` stays `ro` and nothing about the box changes — but the option string
-podman receives does. Home is the exception by construction: pid 0 is lifted out before any scope
-folds, so no arm ever appends to its options.
+podman receives does. Home is the exception by construction: pid 0 is SEEDED before any scope
+folds and is in no scope's shape, so no arm ever appends to its options.
 
 ---
 
-## `_install_assembly_collapse` / `_split_home_bind` — the collapse wiring (roadmap step 6b)
+## `_install_assembly_collapse` / `_snapshot_home` — the collapse wiring (roadmap step 6b)
 
 **Authority:** Jei's roadmap step 6, verbatim — *"implement a 'grand unification function' … that
 will **merge the information, but not perform the action**"* ·
@@ -175,12 +175,12 @@ CHANGELOG entry at all; it is pinned by
 `tests/test_category_collisions.py::TestTheCollapseRouteFeedsTheSameChannel::test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not`.
 ⚑ The second row is MEASURED, not pinned — no test drives a warning that precedes a refusal.
 
-⚑ **The `_split_home_bind` question, asked and closed.** The producer sees `folded` (entries minus
-the one home mount), so in principle a same-scope ambiguity AT the home dest could reach the
-reconcile and not the producer. It cannot: `_home_bind_entries` only ever lifts an entry out when
-there is EXACTLY ONE there, and one entry is not an ambiguity. Two at home is
-`_refuse_without_one_home` on a whole-box resolve and is left un-split (so the producer sees both)
-on a narrow one.
+⚑ **The old `_split_home_bind` question is MOOT since cutover 6-H.** It used to be worth asking
+whether a same-scope ambiguity AT the home dest could reach the reconcile and not the producer, since
+the producer saw the entry list minus the one lifted home mount. There is no lift any more: home left
+`bindings.rw` entirely and the producer sees the WHOLE gated list. Anything declared at the home dest
+is an ordinary entry to the producer — it warns on an ambiguity there exactly as it would anywhere
+else — and the collapse then refuses the survivor against the seeded foundation.
 
 ⚑ **Whether the channel should exist AT ALL is still a spec question, and still open.** §0's
 containment table makes two mounts at one destination "an error in EVERY scope combination",
@@ -209,21 +209,40 @@ today (only tests set it), so on a real launch the gate drops `synced` rows and 
 halves are gated regardless — a gate that covers one of two arms is the shape that produces this
 class of bug in the first place.
 
-### Home is pid 0, so it is lifted OUT of the fold
+### Home is pid 0, so the SEAM CONSTRUCTS it (cutover 6-H)
+
+🛑 **REWRITTEN AT 6-H. This section used to describe LIFTING home out of the entry list
+(`_split_home_bind`, `_home_bind_entries`, `_refuse_without_one_home`). All three are DELETED, and
+the model they implemented is retired: home never enters the entry list at all now.**
 
 `collapse_store_shapes` seeds `combined_bindings` with home BEFORE any scope folds, and takes it as
-its own parameter. A `store_shape` that also carried home would therefore collide with the seed on
-the very first scope. `_split_home_bind` removes the home mount from the entry list and hands it
-over separately.
+its own parameter. Until 6-H, home was ALSO a `bindings.rw` row in `data/core-defaults.yaml`, so the
+same fact arrived twice and the seam had to pull one copy back out before the producer could fold
+the rest. Deleting the row removes the duplication at its source: home does **not** route through
+`bindings.rw` (spec `:1015`, amendment 2026-08-08a / A9), and `_install_assembly_collapse` builds the
+foundation itself —
 
-The home entry is identified by its DESTINATION — the one MOUNT entry with a source whose
-`normalize_bind_dest(box_dest)` is `store_collapse.HOME_DEST`. Not by key, not by category, and
-never by splitting a dest on `.`: a destination is data.
+```python
+home_bind = BindEntry(_snapshot_home(snapshot), _HOME_OPTIONS)
+```
 
-**Zero or several such entries ⇒ no BINDINGS and no SYNCED leaf.** There is then no pid 0 to build
-on, so there is no assembly to describe. In practice this is what silences the narrow resolves
-(`box show --effective`'s families-off siblings, the conditional image and helper resolves) for
-those two leaves: they carry image and helper binds only, and no box home.
+— from the RO DERIVED key `meta.box.home`, which `settings_launch.workset_anchor_floor` materialises
+as `@meta.box.path/home`. 🛑 **That key is the ONE spelling of the derivation.** Never re-derive the
+foundation from `proj.shell_path`, and never re-inline `@meta.box.path/home` here; `settings_launch`
+says so in terms at the floor line, and A9 existed precisely to remove the second spelling.
+
+`_HOME_OPTIONS` is a BARE `Z,U` — no `rw` token. The foundation is pre-seeded into the collapse map
+and never passes `_merge_bindings`' `fold_opt`, which is exactly what distinguishes it from every
+rw bind that folds over it (`Z,U,rw`). Mount options are SEAM MACHINERY, not part of any key — which
+is why the literal lives beside the seam and not in the keyspace.
+
+**Neither of the two failures the deleted guard covered survives as a reachable state.** ZERO homes
+is unconstructible: the key is floor-produced on every resolve and
+`settings_launch._assert_box_root_resolved` refuses a box root that did not resolve. TWO is the
+COLLAPSE's `_refuse_bind_over_bind`, fired against the foundation seeded beneath every scope's shape
+— which is where §0 rule 2 puts it, and the only layer holding a foundation to compare against.
+`_snapshot_home` therefore carries no one-home rule; what it does carry is the TYPE the snapshot
+cannot (a resolved leaf is `object`, and a non-string one would otherwise reach podman as a source).
 
 ### …but the SEED leaf is not gated on a home bind (cutover 2b-1)
 
@@ -243,7 +262,13 @@ So `_install_assembly_collapse` gates each leaf on its OWN facts:
 | leaf | written when |
 |------|--------------|
 | `seeded` | the seed arm folds |
-| `bindings`, `synced` | the seed arm folds AND there is exactly one home bind AND the bind fold does not refuse |
+| `bindings`, `synced` | the seed arm folds AND this is a WHOLE-BOX resolve AND the bind fold does not refuse |
+
+🛑 **THE GATE IS `whole_box`, NEVER "did `meta.box.home` resolve" (cutover 6-H).** The key is
+materialised by `workset_anchor_floor`, which the launch builds unconditionally, so it resolves on a
+NARROW resolve too — gating on the value would write all three leaves for the image and helper
+tables. It also closes what the old entry-list gate left open: a USER row at the home dest made
+`home_bind is not None` on a narrow resolve and ran the whole fold over a narrow snapshot.
 
 ⚑ **ABSENT and EMPTY are different answers.** The seed leaf is written even when the list is empty,
 so a consumer reading `None` learns the collapse REFUSED — never that this box seeds nothing.
@@ -263,9 +288,10 @@ outright. A fold that refuses now raises out of `_resolve_launch_snapshot`.
 That is deliberate: it is the same pure concatenation over the same shapes, so it cannot differ, and
 one implementation of the seed rule is worth more than one saved traversal.
 
-⚑ The home bind row itself (`data/core-defaults.yaml`, `core_defaults.add_bind`'s home arm) is
-UNTOUCHED. Re-pointing it at the ratified `meta.box.home` key binds home on every launch and needs a
-real-podman e2e; it rides with the cutover.
+⚑ The home bind row in `data/core-defaults.yaml` is **DELETED** (cutover 6-H) — see the section
+above. `core_defaults.add_bind`'s "home arm", which older drafts of this file and the manifest both
+named as a second follow-up, was a PHANTOM: the function has been generic since its introducing
+commit and the home behaviour lived in the YAML row alone, so deleting the row discharged both.
 
 ### A collapse refusal IS the launch's, as of cutover 2c
 
@@ -287,14 +313,19 @@ through `cli.main`'s `except KanibakoError` arm as `Error: …`, rc 1, no traceb
 try/except is needed at the launch site, and `box show --effective` (which already catches
 `KanibakoError`) stays safe as the "check before you hit it" path.
 
-⚑ **The one refusal 2c ADDED is this seam's own:** a whole-box resolve with `len(at_home) != 1` is
-refused by name (`_refuse_without_one_home`). Home is pid 0, the base plate every other binding folds
-over; zero leaves the box nothing to build on, two leave it ambiguous, and both are ONE spec
-violation, so one guard covers both. Without it, deleting the fallback would have turned an invalid
-configuration into an `AttributeError` on `None.items()` inside the emitter instead of a
-`KanibakoError`. 🛑 The NARROW path keeps its early return — it carries no core family, has no home
-bind by construction, and asks only for the seed arm — which is why the guard is gated on the
-resolve's own `include_base_families`, forwarded as `whole_box` rather than re-derived.
+⚑ **The one refusal 2c ADDED was this seam's own, and 6-H RETIRED it.** 2c refused a whole-box
+resolve with `len(at_home) != 1` by name (`_refuse_without_one_home`), because deleting the reconciled
+fallback would otherwise have turned an invalid configuration into an `AttributeError` on
+`None.items()` inside the emitter. 6-H removed the reachable states rather than the guarantee: a
+whole-box resolve now ALWAYS writes `meta.assembly.bindings` or raises, because the gate is
+`whole_box` itself and the foundation is constructed rather than found. Two binds at home is the
+collapse's `_refuse_bind_over_bind`; zero is unconstructible. 🛑 The NARROW path keeps its early
+return — it describes an injected table, not a box, and asks only for the seed arm — which is why the
+gate is the resolve's own `include_base_families`, forwarded as `whole_box` rather than re-derived.
+
+⚑ **A user-visible capability went with the row: a settings-file entry at `~` used to repoint the
+box home and WIN through the cascade; it is now a second bind at pid 0's point and REFUSES.** The
+cure is `workset.boxes`. CHANGELOG + MIGRATION §2.32, same commit.
 
 ⚑ A partial write is worse than no write, which is why the two leaves that DESCRIBE an assembly are
 installed only after the fold returns — a half-built `meta.assembly.bindings` with no sync list

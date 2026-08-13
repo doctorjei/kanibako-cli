@@ -98,13 +98,18 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               and the options (`Z,U`) move to the seam UNCHANGED IN VALUE. The ~13
               binds NESTED inside home are UNAFFECTED: they stay bindings.rw
               entries and simply nest on the base plate. No other bind row moves."
-      code_state: "DOC-ONLY when written. The code follow-ups are NOT in this
-                   amendment and are named in A9 as downstream:
-                   data/core-defaults.yaml's `key: home` entry stops being
-                   `category: bindings.rw`; core_defaults.add_bind loses its home
-                   arm; settings_launch.py carries the foundation seam. The spec is
-                   the authority; code that still routes home through bindings.rw
-                   is WRONG."
+      code_state: "DOC-ONLY when written; the code follow-up LANDED at cutover 6-H.
+                   data/core-defaults.yaml's `key: home` row is DELETED (there is no
+                   home row and one must not be re-added), and the FOUNDATION SEAM is
+                   commands/start.py._install_assembly_collapse, which builds the
+                   pid-0 bind from meta.box.home and hands it to
+                   store_collapse.collapse_store_shapes. ⚑ TWO CORRECTIONS TO THE
+                   ORIGINAL TEXT ABOVE: `core_defaults.add_bind's home arm` was a
+                   PHANTOM — the function has been generic since its introducing
+                   commit and the home behaviour lived in the YAML row alone, so
+                   deleting the row discharged it with NO add_bind edit; and the seam
+                   is start.py's, not settings_launch.py's (settings_launch owns the
+                   KEY, via workset_anchor_floor, and nothing more)."
     - date: "2026-08-08b"
       what: "COPY DESTS GO GUEST-SPELLED. policy.tuple_dest_space.copies flips
              `host` -> `guest`; the §0 rule becomes ONE DEST SPACE, TWO DELIVERIES
@@ -169,17 +174,20 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                   and its converse, that a DECLARED key must resolve as one).
                   Same defect class as 2026-08-08f, one namespace over; no new
                   ratification was needed or sought."
-      scope: "DECLARATION ONLY. ⚑ NONE OF THE THREE IS PRODUCED: `home`'s
-              @meta.box.path derivation is still OWED (core-defaults' home bind
-              spells the literal `@meta.box.path/home` inline instead), and
-              `container_name` / `helper_num` are the non-bind RENDER pair
-              (JC-B2-3) — container_name is composed in utils.container_name_for
-              from proj attrs, helper_num travels in helper messages. ⚑⚑ The
-              core-defaults `key: home` / `category: bindings.rw` row and
-              core_defaults.add_bind's home arm are UNTOUCHED and STILL BIND HOME:
-              A9's downstream code follow-up is deliberately NOT in this amendment,
-              because the collapse that would seed home has not landed and deleting
-              the delivery route first breaks every launch."
+      scope: "DECLARATION ONLY. ⚑ NONE OF THE THREE WAS PRODUCED WHEN THIS WAS
+              WRITTEN: `home`'s @meta.box.path derivation was still OWED
+              (core-defaults' home bind spelled the literal `@meta.box.path/home`
+              inline instead), and `container_name` / `helper_num` are the non-bind
+              RENDER pair (JC-B2-3) — container_name is composed in
+              utils.container_name_for from proj attrs, helper_num travels in helper
+              messages. ⚑⚑ `home` IS PRODUCED NOW, and the row that bound it is GONE:
+              settings_launch.workset_anchor_floor materialises `meta.box.home`
+              (2026-08-10, A9), and cutover 6-H deleted the core-defaults `key: home`
+              row outright — the FOUNDATION is built at the assembly seam
+              (commands/start.py._install_assembly_collapse) and nothing routes home
+              through bindings.rw. `container_name` / `helper_num` are still
+              unproduced. ⚑ `core_defaults.add_bind's home arm` never existed; see the
+              2026-08-08a code_state above."
       code_state: "Code + tests landed with this amendment: the three leaves join
                    DECLARED_META_BOX_LEAVES, and the meta.box counterpart of
                    2026-08-08f's manifest drift guard is added — it was the RED
@@ -356,10 +364,11 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               (\"ONE NEW REFUSAL: a sync dest that EXACTLY EQUALS a bind dest\").
               Both are left standing as the dated history of what those rulings did;
               neither states the rule today.
-              🔴 SPEC DELTA, OWED AND NOT TAKEN HERE: specs/settings-keyspace-1.8.0.md
-              §0 still reads \"A sync dest that EXACTLY EQUALS a bind dest is a config
-              ERROR\", and settings-keyspace-1.8.0-annotations.md:187 mirrors it. The
-              ruling supersedes both sentences. The spec edit is a separate act."
+              ✅ SPEC DELTA TAKEN (2026-08-12): specs/settings-keyspace-1.8.0.md §0 now
+              reads that such a dest is ACCEPTED — the copy lands ON TOP and writes
+              through into the bind's source — carrying a dated correction note, and
+              the annotations file strikes the old sentence in place. Nothing is owed
+              on this axis; this record is history, not a pending edit."
       code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment."
 
 ## ---------------------------------------------------------------------------
@@ -629,11 +638,11 @@ policy:
                                          #   beside the copy; a `synced` no longer
                                          #   displaces it. ⚑ mount_forbidden stays
                                          #   REMOVED: nothing needs replacing.
-                                         #   🔴 SPEC DELTA: §0 still reads "A sync dest
-                                         #   that EXACTLY EQUALS a bind dest is a config
-                                         #   ERROR" (annotations :187 mirrors it). The
-                                         #   ruling supersedes that sentence; the spec
-                                         #   edit is OWED and is not the code's to make.
+                                         #   ✅ SPEC DELTA TAKEN (2026-08-12): §0 now
+                                         #   states such a dest is ACCEPTED, with a
+                                         #   dated correction note, and the
+                                         #   annotations strike the old sentence in
+                                         #   place. Nothing is owed here.
   category_reconcile_spec: "§0 (The collapse MERGES THE INFORMATION; it performs nothing)"
 
   # Collision-safety floor on the resolved data structure. THE RULE is "would this

@@ -153,11 +153,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box received depended on which route ran. Each of them is now a launch error naming the
   participants and the cure. **A default install cannot reach any of them**: every one requires a
   binding, mask, seed or sync entry you wrote yourself. `kanibako box show --effective` reports the
-  same refusal without starting anything. Relatedly, a box must now have exactly one binding at its
-  home destination — home is bound by default, and suppressing that key (or declaring a second
-  binding there) refuses rather than producing a box with no floor. The refusal for two bindings at
-  one destination also states the cure the same way its sibling does — suppress the entry you do not
-  want, since an override is not enough. See [MIGRATION.md](MIGRATION.md) §2.31.
+  same refusal without starting anything. Relatedly, nothing may now be bound at the box home — home
+  is the foundation the rest of the set folds over rather than a binding among them, so an entry at
+  `~` is a second claim on one place and refuses (see the next entry). The refusal for two bindings
+  at one destination also states the cure the same way its sibling does — suppress the entry you do
+  not want, since an override is not enough. See [MIGRATION.md](MIGRATION.md) §2.31.
+
+- **A box's home is no longer a binding, and can no longer be repointed with one.** Writing an entry
+  at `~` in a settings file used to override the home binding kanibako ships and win — the
+  documented way to give a box a custom home. There is no such binding any more: the box home is the
+  *foundation* the whole mount set folds over, established from the box's own store before anything
+  else is considered, so an entry at `~` is a second claim on that one place and **the launch now
+  refuses it by name**. Nothing else moves — a binding at a destination *inside* home (`~/work`) is
+  unaffected, and the mount a box actually receives at `~` is byte-identical to before. **The cure
+  is `workset.boxes`**, the workset-scope key naming where box stores live; a box's home is derived
+  from it. Home also leaves the per-scope `bindings.*` listing in `kanibako box show --effective`
+  and appears at the top of that block as a labelled foundation line, so the one mount every box has
+  is still visible in the view that exists to show what a box gets. See
+  [MIGRATION.md](MIGRATION.md) §2.32.
 
 - **A mask now hides the binds nested under it.** A box's mounts are assembled by folding every
   scope's declarations over the box home in scope order, and in that fold a `masks` entry clears

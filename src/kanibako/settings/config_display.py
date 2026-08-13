@@ -223,8 +223,9 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
 def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
-    Every CONCRETE binding is listed with the destination it occupies, read off
-    the SAME snapshot the launch resolved.  Nothing is re-derived here.
+    The pid-0 FOUNDATION comes first, then every CONCRETE binding with the
+    destination it occupies — all read off the SAME snapshot the launch resolved.
+    Nothing is re-derived here.
 
     ⚑ The ABSTRACT half is TEMPORARILY DISABLED.  It used to list every
     ``common`` / ``caches`` / ``seeded`` declaration with the
@@ -239,6 +240,8 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     from kanibako.settings.settings_categories import (
         effective_bindings_and_template_sources,
     )
+    from kanibako.settings.settings_launch import BOX_HOME_KEY
+    from kanibako.settings.store_collapse import HOME_DEST
 
     print("", file=out)
     if error is not None:
@@ -254,7 +257,20 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
             node = dict.get(node, seg, None)
         return node
 
-    # CONCRETE first — the source of truth a mount is emitted from.
+    # The pid-0 FOUNDATION, FIRST — and it is not a scope declaration, which is why
+    # it is labelled rather than spelled as a key.  The box home does NOT route
+    # through ``bindings.rw`` (spec ``:1015``): the assembly seam builds it from the
+    # RO DERIVED ``meta.box.home``, so the per-scope walk below cannot see it, and
+    # without this line the one mount EVERY box has would be missing from the view
+    # that exists to show what a box gets.
+    # ⚑ NO OPTIONS COLUMN.  Home's mount options are SEAM MACHINERY (spec ``:1015``),
+    # not a facet of any key — there is nothing here a user could set, and printing
+    # the string would put a second copy of the seam's literal in the display.
+    home_src = _leaf(BOX_HOME_KEY)
+    if isinstance(home_src, str) and home_src:
+        print(f"  (foundation) {BOX_HOME_KEY} = {home_src} -> {HOME_DEST}", file=out)
+
+    # CONCRETE next — the source of truth a mount is emitted from.
     #
     # ⚑ The arm is DEST-KEYED (R-5/R-6): the map KEY is the box destination and
     # the leaf is a 2-element ``BindEntry(src, opts)`` carrying no destination at

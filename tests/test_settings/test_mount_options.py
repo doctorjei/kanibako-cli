@@ -125,7 +125,7 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
 
   Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
   """
-  from kanibako.commands.start import _split_home_bind
+  from kanibako.settings.kb_store import BindEntry
   from kanibako.settings.keystore import KeyStore
   from kanibako.settings.settings_assemble import parse_bind_map
   from kanibako.settings.settings_launch import snapshot_category_entries
@@ -134,8 +134,11 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
   from kanibako.settings.store_shape import build_store_shape_set
 
   snap, box, bindings = KeyStore(), KeyStore(), KeyStore()
+  # ⚑ NO ``~`` ENTRY. Home is pid 0 and left ``bindings.rw`` at cutover 6-H: it is
+  # not declared, it is CONSTRUCTED and handed to the collapse below, exactly as
+  # ``commands.start._install_assembly_collapse`` does it. A ``~`` row here would be
+  # a SECOND bind at the foundation's point and the collapse would refuse it.
   bindings["rw"] = parse_bind_map({
-    "~": [str(tmp_path / "home")],                  # home: pid 0, lifted out
     "~/ws": [str(tmp_path / "ws")],                 # 1 element -> ABSENT opts
     "~/sock": [str(tmp_path / "s"), ""],            # explicit "" -> the socket
     "~/cache": [str(tmp_path / "c"), "z"],          # authored opts
@@ -150,12 +153,13 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
     agent_name="claude", workset_name=None, host_home=str(tmp_path), xdg={},
   )
   entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-  home, folded = _split_home_bind(entries)
-  assert home is not None, "the fixture must declare a home bind"
+  # The FOUNDATION, as the seam builds it: the box home source paired with the seam's
+  # own BARE options.
+  home = BindEntry(str(tmp_path / "home"), "Z,U")
   opts = {
     dest: bind.opts
     for dest, bind in collapse_store_shapes(
-      build_store_shape_set(folded), home,
+      build_store_shape_set(entries), home,
     ).bindings.items()
   }
 
@@ -170,5 +174,6 @@ def test_the_category_default_reaches_the_COLLAPSED_route_intact(tmp_path):
   assert opts["/home/agent/cache"] == "z,rw", opts
   # The ro arm takes its OWN default, not the rw one, and folding is idempotent.
   assert opts["/home/agent/ref"] == "ro", opts
-  # HOME is lifted out BEFORE the fold, so no arm token is ever appended to it.
+  # HOME is SEEDED BEFORE the fold and is in no scope's shape, so no arm token is
+  # ever appended to it.
   assert opts[HOME_DEST] == "Z,U", opts

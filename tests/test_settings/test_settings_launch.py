@@ -2546,32 +2546,40 @@ def test_meta_box_home_resolves_under_the_box_root_in_every_mode():
 
 
 def test_home_bind_names_the_derived_key_and_resolves_through_it():
-    """The home bind's host_src IS ``@meta.box.home`` — ONE spelling, read from YAML.
+    """The FOUNDATION's src IS ``meta.box.home`` — ONE spelling, read AT THE SEAM.
 
-    ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point). While the
-    derivation existed TWICE — the key, and an inline ``@meta.box.path/home`` in the
-    ``home`` row of ``core-defaults.yaml`` — a guard held the two spellings equal.
-    The row now NAMES the key, so there is nothing left to drift; what still needs
-    pinning is the opposite thing: that the row did not quietly go back to
-    re-deriving, and that a bind pointing at the key still RESOLVES to the box home
-    (a whole-value ref onto a key that is itself an embedded ref — two hops, and the
-    launch path is where that chain is actually consumed).
+    ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point), and it is
+    RE-AIMED, never deleted. While the derivation existed TWICE — the key, and an
+    inline ``@meta.box.path/home`` in the ``home`` row of ``core-defaults.yaml`` — a
+    guard held the two spellings equal. Then the row NAMED the key. At cutover 6-H the
+    row went away entirely: home does NOT route through ``bindings.rw`` (spec
+    ``:1015``), and ``commands.start._install_assembly_collapse`` builds the pid-0
+    foundation by READING the key. So the thing that needs pinning is unchanged in
+    kind — that nothing quietly went back to re-deriving — and moved in place: from
+    the YAML row to the seam.
 
-    The ``meta_ref`` is READ FROM THE YAML, never hardcoded here: re-inlining any
-    formula in that row turns this RED.
+    The three facts, none of them hardcoded twice:
 
-    MUTATION-PROOF: restoring ``meta_ref: "@meta.box.path/home"`` in
-    ``core-defaults.yaml`` → RED on the spelling assertion; producing
-    ``@meta.box.path/home2`` in ``workset_anchor_floor`` → RED on the resolved src.
+    * ``core-defaults.yaml`` declares NO ``home`` row (re-adding one is a second bind
+      at pid 0's point, which the collapse refuses);
+    * the collapsed foundation's src is EXACTLY the resolved ``meta.box.home``, in all
+      three modes — a chain of two embedded hops the launch path actually consumes;
+    * its options are the seam's BARE ``Z,U`` — the foundation never passes the arm
+      fold, so nothing appends ``rw`` to it.
+
+    MUTATION-PROOF: re-deriving the foundation from ``proj.shell_path`` or re-inlining
+    ``@meta.box.path/home`` at the seam → RED on the src; producing
+    ``@meta.box.path/home2`` in ``workset_anchor_floor`` → RED on the resolved value;
+    ``_HOME_OPTIONS = "Z,U,rw"`` → RED on the options.
     """
+    from kanibako.commands.start import _install_assembly_collapse
     from kanibako.settings.core_defaults import _load_doc
+    from kanibako.settings.store_collapse import HOME_DEST
 
     rows = [r for r in _load_doc().get("core", []) if r.get("key") == "home"]
-    assert len(rows) == 1, "core-defaults.yaml carries exactly one `home` bind row"
-    row = rows[0]
-    bind_ref = row["meta_ref"]
-    assert bind_ref == "@meta.box.home", (
-        "the home bind must NAME the derived key, not re-derive it"
+    assert rows == [], (
+        "core-defaults.yaml must carry NO `home` bind row — home is pid 0 and is "
+        "built at the assembly seam from `meta.box.home` (spec :1015)"
     )
 
     expected = {
@@ -2584,16 +2592,14 @@ def test_home_bind_names_the_derived_key_and_resolves_through_it():
         snap = build_launch_snapshot(
             agent_name="claude", ctx=_ctx(),
             system_path=None, agent_path=None, workset_path=None, box_path=None,
-            default_categories={
-                **floor,
-                "box.bindings.rw": {row["box_dest"]: (bind_ref, row["options"])},
-            },
+            default_categories=floor,
             workset_anchor=floor,
         )
-        bind = getattr(snap.box.bindings.rw, GUEST_HOME)
-        assert isinstance(bind, BindEntry), mode
-        assert bind.src == snap.meta.box.home, mode
-        assert bind.src == want, mode
+        _install_assembly_collapse(snap, [], whole_box=True)
+        home = dict.__getitem__(snap.meta.assembly.bindings, HOME_DEST)
+        assert home.src == snap.meta.box.home, mode
+        assert home.src == want, mode
+        assert home.opts == "Z,U", mode
 
 
 def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
