@@ -19,8 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   binding that covers its destination, into that binding's host source, so a copy at the exact
   destination lands in the bound directory itself. **It overwrites content there; it does not
   replace the mount, and the rest of the binding is untouched.** Copying onto a binding is a thing
-  you may legitimately want, so kanibako no longer second-guesses it. A `synced` copy at a
-  `masks` destination is still skipped (a tmpfs has no host source to write into), and a copy whose
+  you may legitimately want, so kanibako no longer second-guesses it. A `synced` copy under a
+  `masks` destination is still skipped (a tmpfs has no host source to write into), as is a copy of a
+  *directory* at a mask's own destination — it would leave the mask half-populated. **A single
+  *file* copied at a mask's own destination is delivered, and that mask is then not mounted for the
+  box at all**: one file filling one void is total, so nothing is left half-hidden. A copy whose
   covering binding is read-only is still skipped with a warning. See
   [MIGRATION.md](MIGRATION.md) §2.29.
 

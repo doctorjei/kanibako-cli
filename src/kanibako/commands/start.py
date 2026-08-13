@@ -3788,13 +3788,6 @@ def _run_container(
             m for m in category_mounts if str(m.destination) in agent_dests
         ]
 
-        # Masks: the tmpfs mask dests, taken from the SAME map the mounts above
-        # came from.  There is NO default mask (the old ~/workspace/vault default
-        # was dropped — the vault moved out of the workspace in 1.6.0); a box (or
-        # any scope) may declare masks via ``box.masks`` / ``<scope>.masks``.  The
-        # result drives runtime.run(tmpfs_masks=...) below.
-        tmpfs_masks = _bind_map_masks(launch_binds)
-
         # Synced copies (the terminal `<scope>.synced` category) — applied on EVERY
         # launch (mtime-gated), unlike copy-once seeds.  ADDITIVE: with no
         # `<scope>.synced` keys configured the sync list is empty -> no-op.  The share
@@ -3830,6 +3823,18 @@ def _run_container(
             snapshot=_snapshot, bindings=launch_binds,
             logger=logger, skip_if=_synced_uptodate,
         )
+
+        # Masks: the tmpfs mask dests, taken from the SAME map the mounts above came
+        # from — and read AFTER the sync pass, which is the whole reason it sits here
+        # rather than beside the emit.  Spec §0's `copy (file)` row accepts a synced
+        # FILE at a mask's own point and DELETES the mask, and `_apply_synced_copies`
+        # applies that to this very map; reading the masks first would hand
+        # `runtime.run` a tmpfs the copy just replaced, shadowing the file it wrote.
+        # There is NO default mask (the old ~/workspace/vault default was dropped —
+        # the vault moved out of the workspace in 1.6.0); a box (or any scope) may
+        # declare masks via ``box.masks`` / ``<scope>.masks``.  The result drives
+        # runtime.run(tmpfs_masks=...) below.
+        tmpfs_masks = _bind_map_masks(launch_binds)
 
         # Image sharing: mount host image storage read-only into child, routed
         # through the category resolver (Phase B, D-M8) instead of hardwired
@@ -7022,6 +7027,10 @@ def _bind_map_masks(bindings) -> "list[str]":
 
     ⚑ Hand it the SAME map object :func:`_emit_category_mounts` gets: one value, both
     arms (llm-docs ``commands/start.py.md``).
+
+    ⚑ ASK IT AFTER :func:`_apply_synced_copies`, which may DELETE a mask from that map
+    (spec §0: a synced FILE at a mask's own point replaces it).  Asked earlier, the
+    tmpfs would still be mounted over the file the sync just wrote.
     """
     from kanibako.settings.settings_categories import path_depth
     from kanibako.settings.store_collapse import is_mask
@@ -8123,6 +8132,10 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
       carries ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.  The collapse
       refuses a sync NOTHING (ruling 2026-08-12), so every declared row arrives here
       and this seam is the only one that can decline one.
+      ⚑ By the time this runs, a mask cover can only
+      be a strict PARENT of the dest or the dest's own point with a DIRECTORY source:
+      spec §0's ``copy (file)`` row accepts a FILE at a mask's own point and deletes
+      the mask, which :func:`_apply_synced_copies` has already applied to *bindings*.
     * **the cover is READ-ONLY** — writing into a read-only bind's host source
       delivers content the box cannot be shown to have received, and the source is
       very often something the user did not mean this to reach (a canon chapter, the
@@ -8186,6 +8199,43 @@ def _synced_last_wins(copies: "list[CollapsedCopy]") -> "list[CollapsedCopy]":
     return list(last.values())
 
 
+def _synced_masks_replaced(
+    copies: "list[CollapsedCopy]", bindings,
+) -> "list[str]":
+    """The mask dests a synced FILE arrives at EXACTLY — accepted, and the mask goes.
+
+    Spec §0's containment table, the ``copy (file)`` row: at a mask's OWN point a
+    copied FILE replaces the mask, one file filling one void being total, while a
+    copied DIRECTORY is REFUSED because no mask may be left partially populated.
+    That is the ONLY cell in which the two copy rows differ, and it is why they are
+    two rows.
+
+    FILE vs DIRECTORY is a property of the copy SOURCE, so answering it is a host
+    STAT and can only happen at DELIVERY: the collapse is pure and asks the
+    filesystem nothing.  A source that is a directory — or missing, or unreadable —
+    is not a file, so the mask stands and :func:`_synced_host_dest` declines the row
+    exactly as it declines any other cover-is-a-mask.
+
+    ⚑ ONLY the dest's own point.  A mask that is a strict PARENT of the dest refuses
+    every arrival and is not touched here.
+
+    ⚑ THE ACCEPTANCE IS THE TABLE'S, NOT THE DELIVERY'S.  A mask named here stays
+    deleted even when the copy is then skipped downstream — nothing real covering the
+    dest behind the mask, a read-only cover, a source that vanished between the stat
+    and the copy.  Containment is decided over the DECLARATIONS; whether the bytes
+    move is a later question that carries its own warning.
+
+    ⚑ A dest is DATA — compared whole, never split on ``.``.
+    """
+    from kanibako.settings.store_collapse import is_mask
+
+    return list(dict.fromkeys(
+        sync.dest for sync in copies
+        if (bind := bindings.get(sync.dest)) is not None
+        and is_mask(bind) and Path(sync.src).is_file()
+    ))
+
+
 def _apply_synced_copies(
     *,
     snapshot: "KeyStore",
@@ -8239,10 +8289,23 @@ def _apply_synced_copies(
     it is applied once inside the resolve, above both the reconcile and the collapse
     (``settings_categories.gate_credential_delivery``).
 
+    ⚑⚑ IT DELETES FROM *bindings*, AND THE CALLER MUST READ THAT MAP'S MASKS AFTER
+    THIS RETURNS.  Spec §0's ``copy (file)`` row accepts a synced FILE at a mask's own
+    point and DELETES the mask (:func:`_synced_masks_replaced`), and a deleted mask is
+    one that must never reach ``runtime.run(tmpfs_masks=...)``: the map is this pass's
+    INPUT and :func:`_bind_map_masks`'s SOURCE, and there is exactly one of it (2a-4).
+    Nothing of the snapshot moves — ``meta.assembly.bindings`` is COPIED OUT
+    (:func:`_snapshot_assembly_bindings`), so the map is the caller's own.
+
     ADDITIVE: with no ``<scope>.synced`` keys configured (and no target default synced
     entries) the sync list is empty -> copies nothing.
     """
-    for sync in _synced_last_wins(_launch_synced_list(snapshot)):
+    rows = _synced_last_wins(_launch_synced_list(snapshot))
+    # Applied BEFORE any row resolves, so which mask survives cannot depend on the
+    # order two sync rows happen to sit in.
+    for replaced in _synced_masks_replaced(rows, bindings):
+        del bindings[replaced]
+    for sync in rows:
         dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:
             continue
