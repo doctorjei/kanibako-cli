@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Your own binds were mounted twice on any box with helpers or image sharing on.** kanibako
+  resolves two small extra passes at launch — one for the helper socket and message log, one for the
+  shared image store — and each of those passes read your whole settings cascade, not just its own
+  two entries. Every `bindings.*`, `caches` and `common` destination you had declared was therefore
+  emitted a second time, from unresolved rows: a duplicate `-v` for each, and a `masks` entry that
+  should have hidden one of them was defeated, because the second emission never saw the mask.
+  Each pass now emits **only the destinations it owns**; everything you declare is emitted once, from
+  the one place that resolves it. Two mounts landing on one of those internal destinations (from
+  your settings and from kanibako's own) is now refused by name rather than resolved silently — the
+  same rule, and the same message, as everywhere else in 1.8.0. See
+  [MIGRATION.md](MIGRATION.md) §2.2.
+
 - **A settings key named for one of the store's own members was accepted, then unreadable.**
   `insert_segments` is a public method on the resolved store, and it was not a reserved leaf
   name — so `box.env.insert_segments` (and the like) was accepted and stored. Attribute reads

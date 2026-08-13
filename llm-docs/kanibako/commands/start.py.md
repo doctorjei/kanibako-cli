@@ -40,9 +40,10 @@ foundation, no arbitration, no scope fold).
   problem stopped existing** (P4: the representation deletes the code that enforced the rule), so
   `delivered_elsewhere` is gone. What the agent binds actually needed was never the scope — it was a
   per-dest MISSING-SOURCE POLICY, and that was already dest-keyed and already a parameter: the
-  descriptor's `BindScope.AGENT_CRITICAL` dests. A narrow resolve still drops the agent rows before
-  handing its map over (`_narrow_bind_map`), but that is a caller selecting its own rows, not the
-  emitter branching on a field.
+  descriptor's `BindScope.AGENT_CRITICAL` dests. A narrow resolve selects its own rows before handing
+  its map over (`_narrow_bind_map`) — since 6-R2 by its own table's DESTS, which subsumes the agent
+  drop it used to spell separately — but that is a caller choosing what it emits, not the emitter
+  branching on a field.
 * **`name`** — the WARNING text named it. Under dest-keying `CategoryEntry.name` IS the destination
   (R-10), so the dest carries the identity; the only change a user can see is that the message now
   spells the dest normalized (`/home/agent/canon`) rather than as declared (`~/canon`).
@@ -131,9 +132,11 @@ collapse (`collapse_store_shapes`), and stores the results at the declared RO/de
 nothing", and that is now false for MOUNTS and for BOTH copy arms.** The main launch path emits its
 category mounts from `meta.assembly.bindings` (see the section above), the create-time seed applier
 reads `meta.assembly.seeded`, and the launch-time sync applier reads `meta.assembly.synced` (both
-below). What still runs on `reconciled`: the env set, the agent delivery arm, and the remaining narrow
-resolves. Retiring `reconcile_categories`' ARBITRATION half is step 5, and none of it may be smuggled
-in early. ⚑ Its WARN half is already gone — cutover 5-1c, next section.
+below). ⚑ **AND AGAIN AT 6-R2: NOTHING RUNS ON `reconciled` ANY MORE.** The env set, the
+`secret_path` mounts, the agent-delivery dest set and both narrow bind maps all read the
+`LaunchDeliveries` carrier now (section below); `reconcile_categories` still runs and still computes
+its whole answer, but the only readers of that answer are the equivalence canaries in the tests.
+6-R3 deletes it. ⚑ Its WARN half went at 5-1c, next section.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -196,9 +199,10 @@ divergence was inert only because nothing consumed that leaf. Pointing a consume
 delivered every `synced` credential into a box the user made private, reversing D-M4.
 
 `_resolve_launch_snapshot` therefore calls `settings_categories.gate_credential_delivery` ONCE and
-hands the SAME gated list to the reconcile and to the collapse. The gate inside
-`reconcile_categories` stays: it is idempotent, it is the rule's one spelling (the hoist calls the
-same function), and it still guards every OTHER caller. Removing it is step 5.
+hands the SAME gated list to the reconcile, to the collapse and (since 6-R1) to `launch_deliveries`.
+🛑 **The gate that used to sit INSIDE `reconcile_categories` is GONE — deleted at cutover 4
+(`42f5291`), not deferred.** This paragraph said "it stays … removing it is step 5" and was stale
+from that commit onward; the hoisted call above is now the rule's ONLY spelling, on any path.
 
 ⚑ The gate runs AFTER `_install_derived_bindings`, not before. A derived binding materialises a
 property of the DECLARATION (R-8) — `binding_derivations` records what was declared, not what this
@@ -388,6 +392,76 @@ read BEFORE the rw guarantee-create.
 The image and helper resolves run with `include_base_families=False`, so they carry no canon floor —
 but they still read the user's cascade files, so a user-declared bind at a chapter dest reaches them
 too. A policy that varied by call site would decide one destination two ways.
+
+---
+
+## `LaunchDeliveries` — the consumers leave the reconcile (cutover 6-R2)
+
+**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §6 "§6 DESIGN PASS" · producer `DESIGN` §7.4
+(`secret_path` is PARKED out of the disk-store shape) · §9.1 (what is not a settings key is PASSED).
+
+### What the switch is
+
+6-R1 built the carrier and returned it beside `reconciled`, consumed by nobody. 6-R2 moves every
+consumer onto it:
+
+| what | was | is |
+|---|---|---|
+| the container env | `_build_config_env(agent_env, reconciled.envs)` | `deliveries.envs` — at the launch AND at `box show --effective` |
+| the secret mounts | `_emit_secret_mounts` filtering `reconciled.mounts` | `deliveries.secrets` |
+| the agent-delivery dests | `_agent_delivered_dests(reconciled.mounts)` | `deliveries.agent_dests` |
+| the narrow bind maps | `_narrow_bind_map(_img_rec.mounts)` | `deliveries.narrow_bindings` |
+
+The reconcile still RUNS. Nothing on a live path reads its answer any more; the equivalence canaries
+do, and they die with it at 6-R3.
+
+⚑ **The env flip is byte-identical by inspection, not by hope:** `reconcile_categories` does no env
+arbitration — its env line IS `[e for e in entries if e.delivery == ENV]`, the same filter
+`launch_deliveries` spells. The per-VAR winner is, and always was, the consumer's `dict.update`.
+
+### The narrow resolves emit their OWN table's dests, and nothing else
+
+A narrow resolve carries one injected table but resolves the user's WHOLE cascade, so every user
+declaration reaches it. Emitting them was the **D1 defect**, and it is not new: at `v1.7.2`
+`_emit_category_mounts(_img_rec, label="images")` had no dest filter at all, so a user
+`box.bindings.*` row was emitted a SECOND time on any helpers-enabled or image-sharing launch — and
+emitted from RAW rows, so a later-scope `masks` sweep the collapse had applied was defeated.
+
+`core_defaults.helper_bind_dests()` / `image_bind_dests()` read the dests from the SAME
+`core-defaults.yaml` rows that declare the binds (the `canon_optional_bind_dests` pattern), and
+`settings_categories.narrow_table_winners` filters to them. **That DELETES the exposure rather than
+arbitrating it (P4):** a user declaration cannot collide inside a narrow resolve unless it names an
+internal dest outright.
+
+At a dest that IS the table's, §0 still has to decide, and a narrow resolve has nobody else to ask —
+the per-scope producer already raised the SAME-scope pair (`build_store_shape_set` runs ABOVE the
+collapse's `whole_box` gate, so it runs on narrow resolves too), and the CROSS-scope pair is
+`collapse_store_shapes`', which returns early here. So `narrow_table_winners` applies rows 1/3
+(refuse, through the two surviving public raisers) and row 2 (a `masks` OVERRIDES — it is the inverse
+of a bind, not a second one). A bare dest-filter would keep both rows and let a dest-keyed map settle
+them by INSERTION ORDER, which is the `7b64217` shape and the plan's own storage.conf
+counter-example.
+
+### The cross-category gate for a SECRET dest moved to the seam
+
+`secret_path` carries no arm in the disk-store shape, so the COLLAPSE never sees a secret and cannot
+answer "does anything ELSE contend for this destination". The only answer was inside
+`reconcile_categories`. `settings_categories.secret_path_deliveries` composes the per-VAR pick with
+that answer, over the same entry list, in the same order:
+
+* a `bindings.*` row (or an abstraction deriving one) at `SECRET_MOUNT_DIR/<VAR>` **refuses**, through
+  the same raisers, **naming both declarations**;
+* a `masks` at the dest takes it and the VAR is simply not delivered — silently, as it has been since
+  the flat authority ladder put `masks` on top.
+
+🔬 **Both outcomes MEASURED on the live seam at 6-R2 before the move**, and both are preserved. It
+sits at the SEAM rather than in `_emit_secret_mounts` for one concrete reason: the collapsed bind map
+has lost the declaring KEY, so a gate reading it could only have named ONE participant of a
+two-participant collision — a worse message than the one it replaces.
+
+⚑ **EXACT DEST ONLY, and that is not a narrowing:** a bind or a mask over the secrets DIRECTORY never
+contended with `SECRET_MOUNT_DIR/<VAR>`; the secret mounts inside it, deeper in the depth-sort.
+Measured both ways.
 
 ---
 

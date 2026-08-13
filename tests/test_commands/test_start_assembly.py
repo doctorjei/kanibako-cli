@@ -507,6 +507,48 @@ class TestTheLaunchDeliveriesCarrierAgreesWithTheReconcile:
         )
 
 
+class TestTheEnvConsumerReadsTheCarrier:
+    """The env flip (cutover 6-R2), pinned against the DECLARATIONS — not the reconcile.
+
+    ⚑ THIS SURVIVES 6-R3, and that is why it exists beside the canary above: the
+    canary's oracle is ``reconciled.envs`` and dies with it, which would leave the
+    env wire pinned by nothing.  The oracle here is the FLOOR — what was declared,
+    and which scope's value a box is supposed to receive.
+
+    ⚑ It drives ``_build_config_env`` off the carrier because THAT dict-update IS the
+    per-VAR cascade: no arbitration happens upstream on either route (measured at
+    6-R1), so a test asserting only the carrier's list would pin the filter and miss
+    the cascade.
+    """
+
+    _FLOOR = {
+        "workset.env.KANI_PINNED": "workset",
+        "box.env.KANI_PINNED": "box",
+        "workset.env.KANI_ONLY_WORKSET": "ws-only",
+    }
+
+    def _env(self, std, config, project_dir):
+        from kanibako.commands.start import _build_config_env
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        _snapshot, _rec, deliveries = _resolve(
+            std, proj, extra_default_categories=dict(self._FLOOR),
+        )
+        return _build_config_env({"KANI_AGENT_TIER": "agent"}, deliveries.envs)
+
+    def test_the_box_scope_value_wins_and_the_workset_only_VAR_survives(
+        self, std, config, project_dir,
+    ):
+        """The cascade the consumer performs — and the tail the mis-wire would drop."""
+        env = self._env(std, config, project_dir)
+        assert env["KANI_PINNED"] == "box"
+        assert env["KANI_ONLY_WORKSET"] == "ws-only"
+
+    def test_the_agent_tier_stays_the_UNDER_layer(self, std, config, project_dir):
+        """``AgentConfig.env`` is below every scope, and is not dropped."""
+        assert self._env(std, config, project_dir)["KANI_AGENT_TIER"] == "agent"
+
+
 class TestTheFoundationIsBuiltAtTheSeam:
     """⚑⚑ CUTOVER 6-H — home LEFT ``bindings.rw`` and the seam constructs it.
 
@@ -1071,15 +1113,20 @@ class TestTheThreeMissingSourcePolicies:
             assert self._emit(dest, src) == []
         assert [r.levelname for r in caplog.records] == ["WARNING"]
 
-    def test_a_narrow_resolve_drops_the_agent_rows_it_must_not_emit(self, tmp_path):
-        """A narrow resolve reads the user's cascade files, so an agent row reaches it.
+    def test_a_narrow_resolve_emits_ONLY_its_own_tables_dests(self, tmp_path):
+        """🐞 THE D1 DEFECT, FIXED (cutover 6-R2) — and the pin that proves the filter.
 
-        The MAIN path emits every agent delivery bind from the collapse, so a narrow
-        caller emitting the same row would double-mount it. RED if
-        ``_narrow_bind_map`` degrades to ``_bind_map_from_mounts``.
+        A narrow resolve reads the user's WHOLE cascade, so every user row reaches
+        it — and the MAIN path already emits every one of them from the collapse.
+        Emitting them here mounted each a SECOND time (shipped in v1.7.2:
+        ``_emit_category_mounts(_img_rec, …)`` had no filter at all) and did it from
+        RAW rows, so a later-scope ``masks`` sweep the collapse applied was defeated.
+        RED if the dest filter is dropped: the user rows come back.
         """
         from kanibako.commands.start import _narrow_bind_map
         from kanibako.settings.settings_categories import CategoryEntry
+
+        table = "/home/agent/.kanibako/state/helper.sock"
 
         def row(scope, category, dest):
             return CategoryEntry(
@@ -1089,17 +1136,19 @@ class TestTheThreeMissingSourcePolicies:
             )
 
         rows = [
+            row("box", "bindings.rw", table),                       # THE TABLE's own
             row("agent", "bindings.ro", "/home/agent/.local/bin/claude"),
             row("agent", "common", "/home/agent/.claude/plugins"),
             row("box", "bindings.ro", "/opt/kanibako"),
         ]
 
-        # The agent BIND is dropped; an agent-scope COMMON is not a delivery bind
-        # and stays, exactly as the box-scope bind does.
-        assert sorted(_narrow_bind_map(rows)) == [
-            "/home/agent/.claude/plugins", "/opt/kanibako",
+        assert list(_narrow_bind_map(rows, frozenset({table}))) == [table]
+        # ⚑ The rows ARE there to be emitted — the filter is what drops them, not
+        # some upstream absence.
+        assert sorted(_bind_map_from_mounts(rows)) == [
+            "/home/agent/.claude/plugins", "/home/agent/.kanibako/state/helper.sock",
+            "/home/agent/.local/bin/claude", "/opt/kanibako",
         ]
-        assert "/home/agent/.local/bin/claude" in _bind_map_from_mounts(rows)
 
     def test_a_BOX_scope_bind_at_a_CRITICAL_dest_takes_THAT_DESTS_policy(
         self, std, config, project_dir,

@@ -2003,7 +2003,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             )
             from kanibako.errors import KanibakoError
             try:
-                category_snapshot, _reconciled, _deliveries = _resolve_launch_snapshot(
+                category_snapshot, _reconciled, deliveries = _resolve_launch_snapshot(
                     std=std, proj=proj, agent_name=agent_id,
                     system_settings_path=std.settings,
                     agent_cfg_path=agent_cfg_path,
@@ -2028,11 +2028,12 @@ def _run_box_config(args: argparse.Namespace) -> int:
                         else None
                     ),
                 )
-                # ⚑ The SAME helper the launch uses, so the display cannot claim an env
-                # the box will not get.  It needs the RECONCILE — hence its position here.
+                # ⚑ The SAME helper the launch uses, off the SAME carrier, so the
+                # display cannot claim an env the box will not get.  It needs the
+                # RESOLVE — hence its position here.
                 env_resolved = _build_config_env(
                     agent_cfg.env if agent_cfg is not None else {},
-                    _reconciled.envs,
+                    deliveries.envs,
                 )
             except KanibakoError as exc:
                 category_error = str(exc)
