@@ -53,8 +53,6 @@ SECRET_KEY_RE = re.compile('^(?P<scope>system|agent|workset|box)\\.secret_path\\
 
 SECRET_VAR_RE = re.compile('^[A-Za-z_][A-Za-z0-9_]*$')
 
-_DISABLE_SENTINEL = 'empty'
-
 _SCOPE_APPLY_ORDER = {'system': 0, 'agent': 1, 'workset': 2, 'box': 3}
 
 CONCRETE_CATEGORIES: Final[tuple[str, ...]] = ('bindings.ro', 'bindings.rw', 'secret_path')
@@ -94,35 +92,35 @@ class CategoryCollision:
     def message(self) -> str:
         ...
 
-@dataclass(frozen=True)
-class ReconciledCategories:
-    mounts: list[CategoryEntry]
-    copies: list[CategoryEntry]
-    envs: list[CategoryEntry]
-    warnings: tuple[CategoryCollision, ...] = ()
-
 def path_depth(box_dest: str) -> int:
     ...
 
 def gate_credential_delivery(entries: list[CategoryEntry], deliver_creds: bool) -> list[CategoryEntry]:
     ...
 
-def reconcile_categories(entries: list[CategoryEntry], *, deliver_creds: bool=True) -> ReconciledCategories:
+@dataclass(frozen=True)
+class LaunchDeliveries:
+    envs: list[CategoryEntry]
+    secrets: list[CategoryEntry]
+    agent_dests: frozenset[str]
+    narrow_bindings: 'dict[str, object] | None' = None
+
+def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     ...
 
-def _resolve_dest_group(box_dest: str, group: list[CategoryEntry]) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
+def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     ...
 
-def _resolve_mount_group(box_dest: str, mount_sub: list[CategoryEntry]) -> tuple[CategoryEntry | None, list[CategoryCollision]]:
+def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None) -> LaunchDeliveries:
+    ...
+
+def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]:
     ...
 
 def raise_binding_vs_binding(box_dest: str, concrete: list[CategoryEntry]) -> NoReturn:
     ...
 
 def raise_extension_onto_occupied(box_dest: str, *, extension: CategoryEntry, base: CategoryEntry) -> NoReturn:
-    ...
-
-def _resolve_copy_group(copy_sub: list[CategoryEntry]) -> list[CategoryEntry]:
     ...
 
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry:

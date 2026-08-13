@@ -1664,14 +1664,14 @@ def _assemble_image_sharing_mounts(
         graph_root = detect_graph_root(runtime.cmd)
         staging = proj.metadata_path / ".image-sharing"
         # The GENERATED storage.conf (spec D-M8): written up front so the
-        # reconcile's skip-if-missing sees a real source; its box DELIVERY
+        # resolve's skip-if-missing sees a real source; its box DELIVERY
         # follows the resolved store below (no store → nothing emitted).
         storage_conf_path = write_storage_conf(staging)
         # Late, CONDITIONAL resolve through the same snapshot pipeline, carrying
         # ONLY the image table (include_base_families=False) — and, since cutover
         # 6-R2, EMITTING only that table's dests: the user's cascade reaches this
         # resolve too, and every row of it is already emitted by the main path.
-        _img_snap, _img_rec, _img_deliveries = _resolve_launch_snapshot(
+        _img_snap, _img_deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -1736,8 +1736,9 @@ def _assemble_launch_env(
     from ONE object built from ONE list.
     """
     # Config-level env: the agent tier under the settings-framework env (the
-    # `<scope>.env.<VAR>` category), whose per-VAR winner the single launch
-    # reconcile above already picked over system < agent < workset < box.
+    # `<scope>.env.<VAR>` category), delivered by the single launch resolve above
+    # in scope apply order (system < agent < workset < box) — ⚑ the per-VAR winner
+    # is ``_build_config_env``'s own ``update``, not an upstream arbitration.
     # Target-derived state env and per-run CLI -e env stay above all config
     # levels.  The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
@@ -1935,7 +1936,7 @@ def _start_helper_hub(
     # the helper table (include_base_families=False) — and, since cutover 6-R2,
     # EMITTING only that table's dests: the user's cascade reaches this resolve too,
     # and every row of it is already emitted by the main path.
-    _hub_snap, _hub_rec, _hub_deliveries = _resolve_launch_snapshot(
+    _hub_snap, _hub_deliveries = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_id,
@@ -3412,7 +3413,7 @@ def _run_container(
 
         # Block 7b (ruling A — the FULL read-path swap): build the ONE launch
         # snapshot HERE, before the behavior read, so BOTH the behavior read (just
-        # below) AND the category reconcile (further down) consume the SAME snapshot
+        # below) AND the category delivery (further down) consume the SAME snapshot
         # (S12 resolve-ONCE). It carries the behavior FLOOR (→ agent.default.*, OS1),
         # the per-agent file's flat behavior state (wrapped under agent.<active>),
         # the always-available category default tables, 7a's descriptor delivery
@@ -3462,7 +3463,7 @@ def _run_container(
             system_settings_path=system_settings_path,
             agent_cfg_path=agent_cfg_path,
         )
-        _snapshot, _reconciled, deliveries = _resolve_launch_snapshot(
+        _snapshot, deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -3701,15 +3702,15 @@ def _run_container(
 
         # Build extra mounts from target binary detection.
         #
-        # Block 7b: the launch-time CATEGORY resolution runs through the ONE snapshot
-        # + ONE reconcile built ABOVE (the same ``_snapshot`` / ``reconciled`` the
+        # Block 7b: the launch-time CATEGORY resolution runs through the ONE
+        # snapshot built ABOVE (the same ``_snapshot`` / ``deliveries`` the
         # behavior read consumes — S12 resolve-ONCE). The always-available category
         # default tables (core / kani / channel / share / seeds), the resolved
         # ``system.*`` tier, and 7a's descriptor delivery partial are
         # all folded in there. The image + helper tables are CONDITIONAL and
         # late-bound (their inputs are computed further down), so they are resolved
         # at their own sites — their box_dests are disjoint from these families, so
-        # a separate reconcile is byte-for-byte equivalent.
+        # a separate resolve is byte-for-byte equivalent.
         extra_mounts = []
 
         # AGENT delivery binds: the AGENT_CRITICAL delivery binds (binary +
@@ -3726,7 +3727,7 @@ def _run_container(
         # so what survives is not a route but a per-dest missing-source POLICY —
         # and that policy was never a settings-scope fact to begin with.
         # ⚑ Read off the CARRIER since cutover 6-R2, which builds it from the gated
-        # ENTRY list rather than the reconciled winners: this set names the dests a
+        # ENTRY list rather than any reconciled winners: this set names the dests a
         # DECLARED agent bind may legitimately be missing at, and whether such a
         # declaration then lost its dest to a mask is a different question.
         agent_dests = deliveries.agent_dests
@@ -3795,7 +3796,7 @@ def _run_container(
         # The helper context reuses the agent's delivery binds so an in-helper
         # agent finds the same binary. They are no longer a separate list to hand
         # over, so SELECT them back out by destination — the one currency the
-        # emitted mounts and the reconciled rows still share.
+        # emitted mounts and the carrier's agent dests still share.
         binary_mnts: list = [
             m for m in category_mounts if str(m.destination) in agent_dests
         ]
@@ -5151,7 +5152,7 @@ def _persona_token_pointer(agent_cfg, var: str, bundle) -> "str | None":
     TWO sources, in the RULED cascade order — the agent settings file rung first,
     the persona-store tier below it.  That ordering is not a preference: the file
     rung genuinely OUTRANKS the persona tier in ``build_launch_snapshot``, so it
-    is the value ``reconcile_categories`` will actually MOUNT.  Gating on
+    is the value the launch will actually MOUNT.  Gating on
     anything else would re-open the display≠launch gap (a pre-flight that
     approves a token the box never receives, or refuses one it does).
 
@@ -5798,7 +5799,7 @@ def _resolve_box_auth_source(
     launch uses (single-route).
 
     Computed ONCE per launch and threaded to every credsync/gate consumer (the
-    early reattach / seed / refresh sites, the main ``reconcile_categories`` feed,
+    early reattach / seed / refresh sites, the main launch resolve's feed,
     and the auto-auth / writeback gates) so the decision is consistent everywhere.
     Private/no-share = ``box.auth.{global,workset}_enabled=false`` (settable via
     config); there is no flag to plumb.
@@ -6368,7 +6369,7 @@ def _resolve_launch_snapshot(
     cli_level: "Mapping[str, object] | None" = None,
     narrow_bind_dests: "frozenset[str] | None" = None,
 ):
-    """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
+    """Build the ONE launch snapshot + what this launch DELIVERS from it.
 
     The single launch-time CATEGORY resolve (block 7b): aggregates every
     runtime ``default_categories`` table (core / kani / channel / share / seeds /
@@ -6376,19 +6377,25 @@ def _resolve_launch_snapshot(
     the resolved ``system.*`` tier so @-refs resolve from the snapshot, represents
     the agent's descriptor delivery binds via 7a's ``agent_default_partial``, and
     runs ``assemble_levels → merge → expand`` ONCE via
-    :func:`kanibako.settings.settings_launch.build_launch_snapshot`.  The expanded snapshot
-    is then adapted to ``CategoryEntry`` and reconciled ONCE.
+    :func:`kanibako.settings.settings_launch.build_launch_snapshot`.  The expanded
+    snapshot is then adapted to ``CategoryEntry`` ONCE, and that ONE list feeds
+    every consumer below it.
 
-    Returns ``(snapshot, reconciled, deliveries)``.  The third element is the
-    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier —
-    envs, the per-VAR ``secret_path`` winners, the agent-delivered dests and (for a
-    narrow resolve only) that resolve's own bind map, all built off the SAME
-    credential-gated list the reconcile and the collapse see.  ⚑ IT IS THE LIVE
-    ROUTE as of cutover 6-R2: every consumer reads the carrier, and the reconciled
-    winners returned second are consumed by nothing but the equivalence canaries
-    until 6-R3 deletes them.  It is a RETURN VALUE and not a snapshot leaf on
-    purpose — ``meta.assembly.*`` is closed at three leaves and a fourth would
-    install silently.
+    Returns ``(snapshot, deliveries)``.  The mount set a box is built from lives IN
+    the snapshot, under ``meta.assembly.*``, written by the assembly COLLAPSE.  The
+    second element is the
+    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier — envs,
+    the ``secret_path`` mounts, the agent-delivered dests and (for a narrow resolve
+    only) that resolve's own bind map: what the collapse deliberately does not
+    carry, built off the SAME credential-gated list the collapse sees, so the two
+    describe one box.  ⚑ It is a RETURN VALUE and not a snapshot leaf on purpose —
+    ``meta.assembly.*`` is closed at three leaves and a fourth would install
+    silently.
+
+    ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
+    §0's collision table is applied by the per-scope producer, the collapse, and
+    the two seam functions that hold inputs the collapse never sees — see
+    :mod:`kanibako.settings.settings_categories`' module docstring for the split.
 
     *narrow_bind_dests* is a NARROW caller's own injected table's dests
     (``core_defaults.helper_bind_dests`` / ``image_bind_dests``).  Given, this
@@ -6419,7 +6426,7 @@ def _resolve_launch_snapshot(
     *include_base_families* gates the always-available tables (core / kani /
     channel / common / seeded).  It is True for the MAIN launch snapshot and False
     for the late, conditional image/helper resolves (whose box_dests are disjoint),
-    so the image/helper reconcile carries ONLY their own table + any config-file
+    so the image/helper resolve carries ONLY their own table + any config-file
     keys — byte-for-byte the old per-family ``_build_image_mounts`` /
     ``_build_helper_hub_mounts`` resolve (which injected only that one table).
 
@@ -6463,7 +6470,6 @@ def _resolve_launch_snapshot(
         derive_binding_keys,
         gate_credential_delivery,
         launch_deliveries,
-        reconcile_categories,
     )
     from kanibako.settings.settings_prefs import collect_prefs
     from kanibako.settings.settings_resolve import SettingsError
@@ -6693,59 +6699,70 @@ def _resolve_launch_snapshot(
         raise _annotate_pref_origin(exc, prefs) from None
     # MATERIALISE each ABSTRACT declaration's derived binding beside it, under
     # the reserved ``binding_derivations`` node at the snapshot root (R-8),
-    # BEFORE the reconcile — the derivation is a property of the declaration,
+    # BEFORE the collapse — the derivation is a property of the declaration,
     # not of whether it won.
     _install_derived_bindings(snapshot, derive_binding_keys(entries))
     # (D-M4) THE credential gate — this line is the SOLE application of the rule on
-    # any path, applied ONCE above BOTH consumers below (cutover step 4 removed the
-    # duplicate inside ``reconcile_categories``). It is LOAD-BEARING, not
+    # any path, applied ONCE above EVERY consumer below (cutover step 4 removed the
+    # duplicate the retired by-dest reconcile carried). It is LOAD-BEARING, not
     # belt-and-suspenders: delete it and a PRIVATE box receives credentials.
     # ⚑ It sits AFTER the derivation on purpose: a derived binding is a property of
     # the DECLARATION (R-8), not of whether the box may receive it.
-    # ⚑ And it sits BEFORE the reconcile on purpose: a suppressed ``synced`` must not
-    # be able to survive beside — or win over — a binding it never delivers. That
-    # ordering is now guaranteed BY CONSTRUCTION (producer DESIGN §9.2).
+    # ⚑ And it sits BEFORE every consumer on purpose: a suppressed ``synced`` must
+    # not be able to survive beside — or win over — a binding it never delivers.
+    # That ordering is now guaranteed BY CONSTRUCTION (producer DESIGN §9.2).
     delivered = gate_credential_delivery(entries, deliver_creds)
+    # ⚑⚑ THE PREF-ORIGIN ENRICHMENT WRAPS EVERY §0 REFUSAL ON THIS PATH, and the
+    # ONE ``try`` is why (cutover 6-R3). A collision names the DECLARATION key PLUS
+    # the entry's DEST. When that declaration was INSTALLED BY A PREF, the named key
+    # is one the user never wrote and cannot write
+    # (``agent.claude.common.~/plugins`` from ``pref.agent.claude.common``, whose
+    # value carries the dest), so the message would send them looking for a key that
+    # is not in any of their files. This is the one seam that holds BOTH the error
+    # and the requests, so it is the only place the enrichment can happen.
+    # ⚑ It used to wrap the retired by-dest reconcile, which raised FIRST and so
+    # annotated in practice. The refusals that survive it are spread across three
+    # callees — the per-scope producer's rows 1/3 and the collapse's cross-scope
+    # refusals (both inside ``_install_assembly_collapse``), and the seam's own
+    # ``secret_path`` gate and narrow-table pass (both inside ``launch_deliveries``)
+    # — so the wrap covers the BLOCK rather than one call. Narrowing it back to a
+    # single call silently downgrades every pref-caused collision message.
+    # ⚑⚑ BOTH TYPES, and the second is not decoration: the producer and the seam
+    # raise ``CategoryCollisionError``, but the COLLAPSE's own refusals are plain
+    # ``SettingsError`` (they are not the §0 table's two texts). The reconcile used
+    # to reach a cross-scope pair FIRST and annotate it; catching only the collision
+    # type here would leave exactly that case un-annotated, which is the downgrade
+    # this relocation exists to prevent. ⚑ ``_annotate_pref_origin`` returns the
+    # exception UNCHANGED when no request accounts for a participant, so the common
+    # path is byte-identical either way.
     try:
-        reconciled = reconcile_categories(delivered)
-    except CategoryCollisionError as exc:
-        # A collision names the DECLARATION key PLUS the entry's DEST. When that
-        # declaration was INSTALLED BY A PREF, the named key is one the user
-        # never wrote and cannot write (``agent.claude.common.~/plugins`` from
-        # ``pref.agent.claude.common``, whose value carries the dest), so the
-        # message would send them looking for a key that is not in any of their
-        # files. Enrich it HERE — the one seam that holds both the error and the
-        # requests.
+        # Roadmap step 6b: the COLLAPSE, folded and STORED. ⚑ Off the GATED list, the
+        # same one every other consumer sees — they must describe the same private
+        # box. ⚑ Its refusals are THE LAUNCH'S (cutover 2c) — they propagate here.
+        # ⚑ NO ``emit_collision_warnings`` beside it: the §0 row-5 same-scope
+        # ambiguity is announced ONCE, from the producer, inside this call (cutover
+        # 5-1c). A second feed would give one ambiguity two ways to reach the user.
+        _install_assembly_collapse(
+            snapshot, delivered, whole_box=include_base_families,
+        )
+        # The carrier every consumer reads (cutover 6-R1/6-R2), built off the SAME
+        # gated list — another reader of one list, never a second resolve. ⚑ The
+        # agent-delivery predicate and the emitter SHAPE stay HERE, where the emitter
+        # applies its policy; passing them in keeps :func:`_is_agent_delivery` and
+        # :func:`_bind_map_from_mounts` one spelling each.
+        # ⚑ The narrow map is built ONLY for a caller that named its table (P3) — and
+        # it is built AFTER ``_install_assembly_collapse`` above, which has already
+        # raised every SAME-scope collision the per-scope producer decides.
+        deliveries = launch_deliveries(
+            delivered, agent_dests=_agent_delivered_dests(delivered),
+            narrow_bindings=(
+                None if narrow_bind_dests is None
+                else _narrow_bind_map(delivered, narrow_bind_dests)
+            ),
+        )
+    except (CategoryCollisionError, SettingsError) as exc:
         raise _annotate_pref_origin(exc, prefs) from None
-    # ⚑ NO ``emit_collision_warnings(reconciled.warnings)`` HERE ANY MORE (cutover
-    # 5-1c), and the shape has no ``warnings`` field to feed it: the §0 row-5
-    # same-scope ambiguity is announced ONCE, from the producer, inside
-    # ``_install_assembly_collapse`` below. Two feeds of one channel meant one
-    # ambiguity had two ways to reach the user; re-adding this line would restore
-    # that, not add a second guarantee.
-    #
-    # Roadmap step 6b: the COLLAPSE, folded and STORED. ⚑ Off the GATED list, the
-    # same one the reconcile saw — the two must describe the same private box.
-    # ⚑ Its refusals are THE LAUNCH'S now (cutover 2c) — they propagate from here.
-    _install_assembly_collapse(
-        snapshot, delivered, whole_box=include_base_families,
-    )
-    # Cutover 6-R1/6-R2: the reconcile's REPLACEMENT. The carrier is built off the
-    # SAME gated list — a third reader of one list, never a second resolve — and is
-    # what every consumer now reads. ⚑ The agent-delivery predicate and the emitter
-    # SHAPE stay HERE, where the emitter applies its policy; passing them in keeps
-    # :func:`_is_agent_delivery` and :func:`_bind_map_from_mounts` one spelling each.
-    # ⚑ The narrow map is built ONLY for a caller that named its table (P3) — and it
-    # is built AFTER ``_install_assembly_collapse`` above, which has already raised
-    # every SAME-scope collision the per-scope producer decides.
-    deliveries = launch_deliveries(
-        delivered, agent_dests=_agent_delivered_dests(delivered),
-        narrow_bindings=(
-            None if narrow_bind_dests is None
-            else _narrow_bind_map(delivered, narrow_bind_dests)
-        ),
-    )
-    return snapshot, reconciled, deliveries
+    return snapshot, deliveries
 
 
 def _annotate_pref_origin(exc, prefs):
@@ -6908,7 +6925,7 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # builder is the guarantee (§5: "together, never apart").
     #
     # ⚑ THIS ARM SAYS MORE THAN THE RETIRED ONE DID, on purpose. The producer folds each
-    # scope ALONE, so it reports ambiguities the reconcile silenced for reasons of its
+    # scope ALONE, so it reports ambiguities the retired reconcile silenced for its own
     # own — MEASURED at 5-0, exactly two: a ``masks`` entry at that dest (in ANY scope)
     # overrode both declarations, or another scope's abstraction took the dest outright.
     # The masked one reaches a WORKING launch, so the user gets a line they did not get
@@ -7001,9 +7018,9 @@ def emit_collision_warnings(collisions) -> None:
 
     ⚑ ONE PRODUCER FEEDS THIS, and the memo is not what makes that true.  Cutover 5-0
     wired the ``store_shape`` PRODUCER's warnings in through
-    :func:`_install_assembly_collapse` beside ``reconcile_categories``' own; 5-1c
-    deleted the reconcile feed and the ``warnings`` field behind it, so the producer is
-    the sole builder.  The memo below collapses the SAME ambiguity seen by SEVERAL
+    :func:`_install_assembly_collapse` beside the by-dest reconcile's own; 5-1c
+    deleted that second feed and the ``warnings`` field behind it, so the producer is
+    the sole builder (and 6-R3 retired the reconcile itself).  The memo below collapses the SAME ambiguity seen by SEVERAL
     RESOLVES — never two announcements of one resolve, which is a shape this function
     is not the right place to fix.
 
@@ -7022,7 +7039,7 @@ def emit_collision_warnings(collisions) -> None:
 
 
 def _bind_map_from_mounts(mounts: list) -> "dict[str, object]":
-    """Reconciled MOUNT winners → the emitter's dest-keyed ``(src, opts)`` shape.
+    """MOUNT winners → the emitter's dest-keyed ``(src, opts)`` shape.
 
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
@@ -7147,8 +7164,8 @@ def _emit_category_mounts(
     """Emit a dest-keyed ``(src, opts)`` bind map as :class:`Mount`s under L7.
 
     *bindings* is the SHAPE, not a source: ``meta.assembly.bindings`` on the main
-    launch path, the same shape translated from reconciled winners
-    (:func:`_narrow_bind_map`) on the narrow resolves.  *must_exist* and
+    launch path, the same shape translated from the narrow resolve's OWN table
+    winners (:func:`_narrow_bind_map`) on the narrow resolves.  *must_exist* and
     *skip_if_absent* are the two DEST-keyed missing-source policies; a dest in
     neither takes L7's warn-and-drop default.  Prose: llm-docs
     ``commands/start.py.md``.
@@ -7346,10 +7363,9 @@ def _sync_box_at_create(
     ADDITIVE: with no ``<scope>.synced`` keys configured the sync list is empty and
     this copies nothing.
     """
-    # ⚑ The reconciled winners are DISCARDED: since cutover 2c the sync pass reads the
-    # collapse alone, and this resolve exists only to produce it. The 6-R1 carrier
-    # beside them is discarded for the same reason — nothing consumes it yet.
-    snapshot, _, _ = _resolve_launch_snapshot(
+    # ⚑ The DELIVERIES carrier is DISCARDED: since cutover 2c the sync pass reads
+    # the collapse alone, and this resolve exists only to produce it.
+    snapshot, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -7732,7 +7748,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → materialise the persona artifacts (write the freshly
-    # generated config, then the common-dir shim) BEFORE the seed reconcile reads them.
+    # generated config, then the common-dir shim) BEFORE the seed resolve reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
         write_agent_config(agent_cfg_path, seed_agent_cfg)
@@ -8010,9 +8026,9 @@ def _apply_init_seeds(
 
     The LAYERED ``seeded[~/]`` trio (system/base -> agent -> workset; spec §2a, Q1)
     flows through THIS route too — no separate on-disk staging pass. The
-    template layers all target ``~`` (the create-time home); the seeded-category
-    reconcile keeps every same-dest COPY (copies OVERLAY, they do not shadow —
-    :func:`kanibako.settings.settings_categories.reconcile_categories`), so here the
+    template layers all target ``~`` (the create-time home); the collapse's seeded
+    arm keeps every same-dest COPY (copies OVERLAY, they do not shadow —
+    :func:`kanibako.settings.store_collapse.collapse_seeded`), so here the
     ``~``-group is a list of layer sources in scope apply order that
     :func:`kanibako.launch.templates.stage_layers` stages PER-FILE LAST-WINS then copies
     into home CREATE-IF-ABSENT (never clobbering user content). A layer whose
@@ -8031,7 +8047,7 @@ def _apply_init_seeds(
     the keyspace.  Do not reintroduce the old label as a nickname.
 
     The credential gate (D-M4) is applied ONCE, inside the resolve this pass reads,
-    above both the reconcile and the collapse
+    above every consumer of the entry list, the collapse included
     (``settings_categories.gate_credential_delivery``): a credential-flagged
     ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
 
@@ -8084,19 +8100,18 @@ def _apply_init_seeds(
     )
 
     # Single-route (7c): resolve the seed COPY winners off the ONE committed
-    # KeyStore snapshot pipeline (``build_launch_snapshot`` → reconcile, via
-    # ``_resolve_launch_snapshot``), replacing the retired second resolver route
+    # KeyStore snapshot pipeline (``build_launch_snapshot`` → the assembly collapse,
+    # via ``_resolve_launch_snapshot``), replacing the retired second resolver route
     # (the retired by-name category resolver, now the frozen
-    # ``tests/support/flawed_oracle.py`` baseline).
+    # ``tests/test_flawed_oracle.py`` baseline).
     # NARROW injection: ``include_base_families=False`` +
     # ``extra_default_categories`` injects ONLY the target's declared seeds + the
     # template layer keys (NOT the unrelated core/channel/share families). The
     # agent-binding inputs (``desc``/``install``) are omitted — they feed only
     # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
-    # ⚑ The reconciled winners are DISCARDED: since cutover 2c the seed pass reads the
-    # collapsed leaf alone, and this narrow resolve exists only to produce it. The 6-R1
-    # carrier beside them is discarded for the same reason — nothing consumes it yet.
-    snapshot, _, _ = _resolve_launch_snapshot(
+    # ⚑ The DELIVERIES carrier is DISCARDED: since cutover 2c the seed pass reads
+    # the collapsed leaf alone, and this narrow resolve exists only to produce it.
+    snapshot, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -8353,8 +8368,8 @@ def _apply_synced_copies(
     ``synced`` row pointed at a file credsync also writes is applied SECOND and wins.
 
     The credential gate (D-M4) suppresses every ``synced`` entry for a PRIVATE box;
-    it is applied once inside the resolve, above both the reconcile and the collapse
-    (``settings_categories.gate_credential_delivery``).
+    it is applied once inside the resolve, above every consumer of the entry list,
+    the collapse included (``settings_categories.gate_credential_delivery``).
 
     ⚑⚑ IT DELETES FROM *bindings*, AND THE CALLER MUST READ THAT MAP'S MASKS AFTER
     THIS RETURNS.  Spec §0's ``copy (file)`` row accepts a synced FILE at a mask's own

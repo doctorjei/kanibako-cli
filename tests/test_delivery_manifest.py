@@ -20,7 +20,7 @@ WHAT THIS DOES NOT DO
 ---------------------
 This is a HOST-side, NO-podman guard. It proves the SOURCE files exist and the
 SOURCE→DEST mapping is correct through the real resolution seams
-(``_apply_init_seeds`` for the seed layer; ``reconcile_categories`` /
+(``_apply_init_seeds`` for the seed layer; the category resolve /
 ``descriptor_mounts`` for the bind layer). It does NOT boot a container — the
 physical materialization of the RO binds inside a live box is (and remains) the
 job of the podman e2e ``tests/e2e/test_instructions_delivery.py``. This test
@@ -39,8 +39,8 @@ THE TWO DELIVERY LAYERS
    * the RO packaged CANON → FIVE SIBLING binds from
      ``core_defaults.rom_default_categories`` (spec §2c, J-7): ``canon_collection``
      and ``canon_bible_contents`` as FILE binds, plus one whole-directory bind per
-     packaged bible chapter (``canon_bible_{general,workset,box}``), reconciled
-     through ``reconcile_categories``; plus
+     packaged bible chapter (``canon_bible_{general,workset,box}``), resolved
+     through the category route; plus
    * the PLUGIN's bible chapter (``canon_bible_agent``) at ``~/canon/bible/agent``,
      emitted by core from the RESOLVED target and GATED on that plugin shipping
      ``data/rom/directives/ROM_AGENT.md`` — which, since C-CANON R2, all three
@@ -83,7 +83,7 @@ from kanibako.settings.core_defaults import (
     ROM_GUIDE_REL,
 )
 from kanibako.settings.paths import resolve_project
-from kanibako.settings.settings_categories import reconcile_categories
+from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
@@ -463,14 +463,14 @@ class TestSeededManifest:
 class TestRomBindManifest:
     """The RO packaged CANON: the COLLECTION.md index, the bible's ROM_CONTENTS.md
     and one bind per packaged chapter — each declared with a stable key and
-    reconciled to a read-only Mount.
+    resolving to a read-only Mount.
 
     Modeled on ``test_canon_delivery.py::TestCanonBinds``: the binds ride the
-    keystore as ``box.bindings.ro.canon_*`` and resolve through the launch cascade →
-    ``reconcile_categories``.
+    keystore as ``box.bindings.ro[<dest>]`` and resolve through the launch cascade →
+    ``narrow_table_winners`` (the live seam for a resolve carrying ONE table).
     """
 
-    def _reconcile_rom(self):
+    def _resolve_rom(self):
         cats = dict(core_defaults.rom_default_categories())
         snap = build_launch_snapshot(
             agent_name="claude",
@@ -482,23 +482,25 @@ class TestRomBindManifest:
             default_categories=cats,
         )
         entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-        return cats, reconcile_categories(entries)
+        from tests.support.narrow_resolve import table_bind_dests
 
-    def test_every_canon_bind_source_exists_and_reconciles_ro(self):
+        return cats, narrow_table_winners(entries, table_bind_dests(cats))
+
+    def test_every_canon_bind_source_exists_and_resolves_ro(self):
         """The manifest of canon binds: exactly these keys, each with a real
-        packaged host SOURCE, each reconciling RO at its declared guest dest."""
-        cats, rec = self._reconcile_rom()
+        packaged host SOURCE, each resolving RO at its declared guest dest."""
+        cats, winners = self._resolve_rom()
         assert set(cats) == {_ARM}, cats
         assert set(cats[_ARM]) == set(_CANON_BINDS), cats
 
-        by_dest = {m.box_dest: m for m in rec.mounts}
+        by_dest = {m.box_dest: m for m in winners}
         missing: list[str] = []
         for box_dest in _CANON_BINDS:
             host_src, options = cats[_ARM][box_dest]
             if not Path(host_src).exists():
                 missing.append(f"{box_dest}: source {host_src}")
             assert options == "ro", box_dest
-            assert box_dest in by_dest, f"not reconciled at {box_dest}"
+            assert box_dest in by_dest, f"did not resolve at {box_dest}"
             assert by_dest[box_dest].category == "bindings.ro", box_dest
             assert by_dest[box_dest].options == "ro", box_dest
         assert not missing, f"packaged canon SOURCE missing for: {missing}"
@@ -508,7 +510,7 @@ class TestRomBindManifest:
         skeleton's 0-byte mountpoints, while each chapter replaces a whole directory.
         Neither book ROOT is ever bound — ``~/canon`` holds the SEEDED
         notebook/workbook, and ``~/canon/bible`` is R1's retired whole-dir bind."""
-        cats, _rec = self._reconcile_rom()
+        cats, _winners = self._resolve_rom()
         for box_dest, (_rel, is_dir) in _CANON_BINDS.items():
             assert Path(cats[_ARM][box_dest][0]).is_dir() == is_dir, box_dest
         dests = set(_CANON_BINDS)
@@ -525,7 +527,7 @@ class TestRomBindManifest:
         with per-chapter siblings, so it now rides the chapter it belongs to. This is
         the assertion that catches a guide that stops shipping.
         """
-        cats, rec = self._reconcile_rom()
+        cats, winners = self._resolve_rom()
         general_src = Path(cats[_ARM][_GENERAL_BOX_DEST][0])
         rom_root = _packaged_shared_bundle()
         assert rom_root is not None
@@ -535,7 +537,7 @@ class TestRomBindManifest:
         assert guide.is_file(), f"box guide source missing: {guide}"
         assert guide.is_relative_to(general_src), "the guide must ride its chapter"
 
-        by_dest = {m.box_dest: m for m in rec.mounts}
+        by_dest = {m.box_dest: m for m in winners}
         general_dest = _GENERAL_BOX_DEST
         assert general_dest in by_dest
         assert general_dest == f"{GUEST_HOME}/canon/bible/general"

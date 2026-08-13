@@ -1,51 +1,45 @@
-"""DRIFT TRIPWIRE: the live snapshot category path vs the FROZEN legacy by-name
-resolver (``flawed_oracle_categories``, quarantined in
-``tests/test_flawed_oracle.py``) reconcile to the SAME mount/copy/env set.
+"""Equivalence bars for the launch snapshot path — delivery, depth-order, behavior.
 
-The live ``build_launch_snapshot → snapshot_category_entries →
-reconcile_categories`` path is compared, for a representative category config,
-against the frozen ``flawed_oracle_categories → reconcile_categories`` baseline —
-the recorded (source, dest, options) SET AND depth-order.
+🕯️ **THE FILE'S ORIGINAL TRIPWIRE DIED AT CUTOVER 6-R3, DELIBERATELY.** It compared
+the live category path against the FROZEN legacy by-name resolver
+(``flawed_oracle_categories``, quarantined in ``tests/test_flawed_oracle.py``) by
+running BOTH sides through ``reconcile_categories`` and comparing the reconciled
+mount/copy/env sets. That reconcile is retired, and the comparison went with it:
 
-⚑ The frozen baseline is NOT a correctness authority (the product REPLACED that
-resolver because it was wrong in a number of cases). A mismatch therefore means
-the live path DRIFTED from the recorded baseline — NOT that the live path is
-wrong. On a divergence a HUMAN adjudicates the correct value against the SPEC
-(``reference/settings-keyspace-1.8.0.md``); the frozen side may itself be
-the buggy one.
+* the oracle is FROZEN by charter — it may not be re-pointed at the surviving route,
+  and part-editing the frozen artefact is exactly what its own file forbids;
+* rebasing the live side onto the collapse while leaving the oracle where it is would
+  compare two things that were never claimed to agree — the oracle predates the
+  five-arm store shape entirely;
+* and running BOTH sides through one surviving function would assert a tautology.
 
-⚑ SCOPE NARROWED BY P3. The two paths agreed on ROOT-JOINING a relative source,
-and that is precisely where they now differ BY DESIGN: the live path no longer
-joins anything (sources are rooted at DECLARATION, spec §2a) while the
-frozen oracle keeps its own join forever. Re-basing the comparison by feeding the
-oracle pre-rooted values would make it assert a tautology, so instead the fixture
-carries NO bare-relative source and the parametrisation no longer varies a root
-table. What survives is a real tripwire over everything else the two share
-(rw/ro binds, ``@``-ref sources, box-side ``~``, masks, env, per-entry options).
-The root-join drift instrument is now the P3 gate probe + the structural
-no-resurrection scan in ``test_settings_launch.py``.
+So ``test_snapshot_path_matches_legacy_path`` was RETIRED rather than rebased, along
+with ``_entry_set``, ``_default_categories``, ``_legacy_default_categories`` and
+``_RESOLVED_SYS``, which existed only to feed it. Said out loud here because a
+deleted tripwire that nobody notices is worse than one that fails. What replaces its
+coverage is not another equivalence: it is the SPEC-anchored per-block conformance in
+``tests/test_settings/test_store_shape.py`` and ``test_store_collapse.py``, which
+assert values rather than agreement between two implementations.
+
+WHAT SURVIVES HERE, all of it independent of that oracle:
+
+* DELIVERY equivalence — the 7a agent delivery binds through the snapshot + the ONE
+  category emitter vs the OLD ``descriptor_mounts``, per mode×agent, including the
+  AGENT_CRITICAL exit-1 parity;
+* the DEPTH-ORDER property across families;
+* BEHAVIOR equivalence (ruling A) — the snapshot behavior read vs the retired
+  ``_build_effective_state``, and the resolution-order edge.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from kanibako.settings.settings_categories import (
-    ReconciledCategories,
-    reconcile_categories,
-)
 from kanibako.settings.settings_launch import (
     build_launch_snapshot,
     snapshot_category_entries,
 )
-from kanibako.settings.settings_resolve import LevelView, ResolveCtx
-
-# The FROZEN legacy by-name resolver (retired from the product). It is a DRIFT
-# TRIPWIRE, NOT a correctness authority: a mismatch below means the live snapshot
-# path DRIFTED from this recorded baseline, and a human adjudicates the correct
-# value against the SPEC (reference/settings-keyspace-1.8.0.md) — the OLD
-# resolver here may itself be the wrong side.
-from tests.test_flawed_oracle import flawed_oracle_categories
+from kanibako.settings.settings_resolve import ResolveCtx
 
 
 def _ctx(agent: str, workset: str | None) -> ResolveCtx:
@@ -57,173 +51,9 @@ def _ctx(agent: str, workset: str | None) -> ResolveCtx:
     )
 
 
-# The resolved system.* tier (what the old _lookup map carried / the new path folds
-# into the floor so @-refs resolve from the snapshot).
-_RESOLVED_SYS = {
-    "system.data": "/data/kanibako",
-    "system.agents": "/data/agents",
-    "system.channelroot": "/data/channels",
-}
-
-
-def _entry_set(rec: ReconciledCategories) -> dict:
-    """A comparable signature of a reconciled result: the ordered MOUNT tuples
-    (depth-order load-bearing), and the COPY/ENV sets (order not load-bearing)."""
-    return {
-        "mounts": [
-            (e.category, e.scope, e.host_src, e.box_dest, e.options)
-            for e in rec.mounts
-        ],
-        "copies": sorted(
-            (e.category, e.scope, e.host_src, e.box_dest) for e in rec.copies
-        ),
-        "envs": sorted((e.box_dest, e.options) for e in rec.envs),
-    }
-
-
-# A representative category config exercising: rw/ro binds, an agent-scope common
-# with a self-resolving ``@``-ref source, a box-side ``~`` dest, an embedded
-# ``@``-ref host_src, a mask, an env var, and a per-entry options override. NO
-# bare-relative source — see the module docstring.
-#
-# ⚑ THE TWO SIDES ARE SPELLED DIFFERENTLY ON PURPOSE, and the difference is exactly
-# one ruling. The LIVE floor is dest-keyed (R-3/R-5): ``box.bindings.{ro,rw}`` and —
-# since 2026-08-08c — ``<scope>.{caches,seeded,common,synced}`` are TERMINAL keys
-# whose value is the whole ``{box_dest: (src[, options])}`` map, and the entry NAME
-# is gone (R-10). The FROZEN oracle predates all of that and is
-# quarantined in the retired name-keyed ``<scope>.<category>.<name> = (src, dest
-# [, options])`` shape forever — it is a drift tripwire, not an authority, so it is
-# NOT migrated. Keeping both tables written out, rather than deriving one from the
-# other, is what keeps the comparison a real one instead of a tautology.
-#
-# ⚑⚑ THE COMPARISON'S PREMISE SURVIVED THE FLIP UNCHANGED, and that is worth
-# saying plainly because it is what makes the respell below safe: ``_entry_set``
-# compares ``(category, scope, host_src, box_dest, options)`` and has NEVER
-# compared the entry NAME. Dest-keying moved where the destination is WRITTEN, not
-# what it resolves to, so both sides still have to agree on the same five facts.
-def _default_categories(agent: str) -> dict:
-    """The LIVE production-shaped default table: dest-keyed throughout, agent-scope
-    keys DISCRIMINATED.
-
-    A plugin builds its own ``agent.<agent>.<category>`` keys (there is no bare
-    ``agent.<category>`` anywhere), so the table is agent-specific.
-    """
-    return {
-        # ⚑ ``~/`` is deliberate: R-11 normalizes a dest, so this key IS
-        # ``/home/agent`` and matches the oracle's ``~`` below. Before R-11 the two
-        # spellings expanded to ``/home/agent/`` and ``/home/agent`` — two dict
-        # entries at ONE destination, which is the collision R-11 was ruled to end.
-        "box.bindings.rw": {
-            "~/": ("/h/home", "Z,U"),
-            "/home/agent/x": ("@system.data/x",),  # @-ref host_src, no options
-        },
-        "box.bindings.ro": {
-            "/opt/kanibako": ("/opt/k", "ro"),
-        },
-        # ⚑ ``common`` is TERMINAL too since 2026-08-08c: the dest moved out of the
-        # value and into the map key. The oracle's ``agent.common.plugins`` row
-        # below still spells the same delivery the retired way.
-        f"agent.{agent}.common": {
-            "~/.claude/plugins": (f"@system.agents/{agent}/common/plugins",),
-        },
-        "box.masks": ["/home/agent/secret"],
-        "box.env.FOO": "bar",
-    }
-
-
-def _legacy_default_categories(agent: str) -> dict:
-    """The SAME configuration in the FROZEN oracle's retired name-keyed shape.
-
-    ⚑ Do NOT "modernize" this table — the oracle it feeds is quarantined and only
-    speaks this shape. The one spelling that had to move is the home dest: the
-    oracle expands ``~/`` to ``/home/agent/`` (trailing slash intact, it has no
-    dest normalization), so it is spelled ``~`` here — the spelling on which the
-    pre-R-11 and post-R-11 destinations agree. That is the whole of the divergence
-    between the two tables.
-    """
-    return {
-        "box.bindings.rw.home": ("/h/home", "~", "Z,U"),
-        "box.bindings.ro.kani": ("/opt/k", "/opt/kanibako", "ro"),
-        f"agent.{agent}.common.plugins": (
-            f"@system.agents/{agent}/common/plugins", "~/.claude/plugins",
-        ),
-        "box.bindings.rw.data": ("@system.data/x", "/home/agent/x"),  # @-ref host
-        "box.masks": ["/home/agent/secret"],
-        "box.env.FOO": "bar",
-    }
-
-
-@pytest.mark.parametrize(
-    "agent,workset",
-    [
-        ("claude", None),        # standalone (no workset tier)
-        ("claude", "myws"),      # named/primary
-        ("goose", None),         # a different agent store
-        ("codex", "w2"),
-    ],
-)
-def test_snapshot_path_matches_legacy_path(agent, workset):
-    cats = _default_categories(agent)
-    ctx = _ctx(agent, workset)
-
-    # The FROZEN oracle is the retired BY-NAME resolver: it reads a LevelView keyed
-    # at the reconcile shape ``<scope>.<category>.<name>``, which never carried the
-    # agent discriminator. Strip it for the baseline side ONLY — the undiscriminated
-    # ``agent.<category>`` form is QUARANTINED to this frozen retired-model baseline
-    # and exists NOWHERE else (spec §0). The new path takes the production
-    # (discriminated) table as-is.
-    def _undiscriminate(key: str) -> str:
-        prefix = f"agent.{agent}."
-        return f"agent.{key[len(prefix):]}" if key.startswith(prefix) else key
-
-    legacy_cats = {
-        _undiscriminate(k): v
-        for k, v in _legacy_default_categories(agent).items()
-    }
-
-    # --- FROZEN BASELINE path: the retired by-name resolver over a single
-    # AGENT-level LevelView whose defaults carry the tables + the resolved
-    # system.* lookup map. (Drift tripwire, NOT an authority — see module docstring.)
-    old_levels = [
-        LevelView("box", {}),
-        LevelView("workset", {}),
-        LevelView("agent", {}, defaults=legacy_cats),
-        LevelView("system", {}),
-    ]
-
-    def _lookup(ref, chain):
-        if ref in _RESOLVED_SYS:
-            return _RESOLVED_SYS[ref]
-        raise AssertionError(f"unexpected @-ref {ref}")
-
-    # No root table on either side: the fixture has no bare-relative source, so
-    # the oracle's own (retained) join has nothing to act on and the comparison is
-    # about everything ELSE the two paths share.
-    old_entries = flawed_oracle_categories(
-        levels=old_levels, ctx=ctx, lookup=_lookup,
-    )
-    old_rec = reconcile_categories(old_entries)
-
-    # --- NEW path: fold the tables + system.* into the floor, build the ONE
-    # snapshot, adapt + reconcile.
-    floor = dict(cats)
-    floor.update(_RESOLVED_SYS)
-    snap = build_launch_snapshot(
-        agent_name=agent, ctx=ctx,
-        system_path=None, agent_path=None, workset_path=None, box_path=None,
-        default_categories=floor,
-    )
-    new_entries = snapshot_category_entries(
-        snap, active_agent=agent, box_ctx=ctx,
-    )
-    new_rec = reconcile_categories(new_entries)
-
-    assert _entry_set(new_rec) == _entry_set(old_rec)
-
-
 # --------------------------------------------------------------------------- #
 # DELIVERY equivalence — the riskiest swap: the 7a agent delivery binds + the   #
-# override bridge through reconcile + agent_delivery_mounts vs the OLD          #
+# override bridge through the snapshot + the ONE emitter vs the OLD             #
 # descriptor_mounts, per mode×agent, incl. the AGENT_CRITICAL exit-1 parity.    #
 # --------------------------------------------------------------------------- #
 
@@ -274,8 +104,14 @@ def _shipped_descriptor(agent: str):
 
 
 def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
-    """The NEW single-route delivery: 7a partial → snapshot → adapter → reconcile
-    → the ONE category emitter under its must-exist policy (critical-set exit-1).
+    """The NEW single-route delivery: 7a partial → snapshot → adapter → the ONE
+    category emitter under its must-exist policy (critical-set exit-1).
+
+    ⚑ RECOMPOSED AT 6-R3. It ran the adapter\'s rows through the retired by-dest
+    reconcile before translating them; the translation now takes the rows directly
+    (``_bind_map_from_mounts``, the same function the collapsed map goes through).
+    This is a NARROW shape — an agent partial and nothing else — so there is no box
+    to collapse and no table to filter to: the rows ARE the delivery.
 
     *node_name* (Block E fix 2a) is the ACTIVE node the read path (active_agent)
     walks; defaults to *agent* (the harness == install.name for a bare agent). For
@@ -295,9 +131,7 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         agent_partial=partial,
     )
-    rec = reconcile_categories(
-        snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
-    )
+    entries = snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
     # ⚑ Mirrors ``commands.start`` EXACTLY, and that is the point: the critical set
     # is keyed by NORMALIZED BOX DEST, because the collapsed bind map is dest-keyed
     # (R-10/H6). Building it from ``bd.key`` matches nothing, so every
@@ -309,9 +143,9 @@ def _new_delivery_mounts(agent, install, desc, ctx, *, node_name=None):
         if bd.scope is BindScope.AGENT_CRITICAL
     )
     return _emit_category_mounts(
-        _bind_map_from_mounts(rec.mounts), label="delivery-equivalence",
+        _bind_map_from_mounts(entries), label="delivery-equivalence",
         must_exist=critical,
-        skip_if_absent=_agent_delivered_dests(rec.mounts) - critical,
+        skip_if_absent=_agent_delivered_dests(entries) - critical,
     )
 
 
@@ -346,7 +180,7 @@ def test_delivery_matches_descriptor_mounts(agent, tmp_path):
 
 # ----------------------------------------------------------------------------- #
 # PERSONA FULL-LAUNCH delivery (Block E fix 2a) — the test that WOULD have caught #
-# the e2e defect: a ℘ NODE resolves through the FULL snapshot → reconcile →       #
+# the e2e defect: a ℘ NODE resolves through the FULL snapshot → adapter →         #
 # agent_delivery_mounts path with the descriptor's install.name = HARNESS.        #
 # ----------------------------------------------------------------------------- #
 
@@ -423,31 +257,38 @@ def test_delivery_critical_missing_exit1_parity(agent, tmp_path):
         _new_delivery_mounts(agent, install, desc, ctx)
 
 
-def test_depth_order_preserved_across_families():
+def test_depth_order_preserved_across_families(tmp_path):
     # Nested dests must keep depth-order (shallow first) so podman's last-wins
     # resolves the deepest mount on top — the Editor's depth-order condition.
     #
     # ⚑ The ASSERTION below is UNCHANGED by the dest-key flip, and that is the
     # finding worth recording: the emitted mount order was NEVER the by-name emit
-    # order. ``reconcile_categories`` re-sorts the winners by
-    # ``(path_depth(box_dest), box_dest)`` (``settings_categories.py`` — the
-    # depth-sort, PUBLIC since cutover 2a-2 because emission sorts on it too), so
-    # the upstream ``(order, category, name)`` emit key only ever
-    # broke ties BETWEEN ENTRIES AT ONE DEST — which is now unrepresentable inside
-    # an arm anyway. The retired fixture's names (``deep`` < ``home`` < ``ws``)
-    # would have emitted the deepest FIRST; the dest keys below are already in
-    # depth order. So the flip makes the depth-order property hold twice over
-    # instead of once, and changes no expectation.
+    # order. EMISSION sorts on ``(path_depth(box_dest), box_dest)``
+    # (``settings_categories.path_depth``, PUBLIC since cutover 2a-2), so the
+    # upstream ``(order, category, name)`` emit key only ever broke ties BETWEEN
+    # ENTRIES AT ONE DEST — which is now unrepresentable inside an arm anyway. The
+    # retired fixture's names (``deep`` < ``home`` < ``ws``) would have emitted the
+    # deepest FIRST; the dest keys below are already in depth order.
+    #
+    # ⚑ ASSERTED AT THE EMITTER since 6-R3: the retired by-dest reconcile used to
+    # hand a pre-sorted list over, and a dest-keyed map carries no order at all, so
+    # the sort is the EMITTER's and that is where it is now read.
     #
     # ⚑ The arm is written DEEPEST-FIRST on purpose. A dict preserves insertion
     # order and the arm is walked in that order, so an emit that merely echoed its
     # input would fail this assert — the test proves the depth-SORT, not the
     # fixture's own layout.
+    # ⚑ REAL host dirs under ``tmp_path``: the emitter guarantee-creates a MISSING
+    # rw source, and a fixture pointing at absolute literals would try to mkdir them
+    # on the machine running the suite.
+    srcs = {name: tmp_path / name for name in ("h", "ws", "d")}
+    for src in srcs.values():
+        src.mkdir()
     cats = {
         "box.bindings.rw": {
-            "/home/agent/workspace/sub": ("/h/d", "Z,U"),
-            "/home/agent": ("/h", "Z,U"),
-            "/home/agent/workspace": ("/h/ws", "Z,U"),
+            "/home/agent/workspace/sub": (str(srcs["d"]), "Z,U"),
+            "/home/agent": (str(srcs["h"]), "Z,U"),
+            "/home/agent/workspace": (str(srcs["ws"]), "Z,U"),
         },
     }
     ctx = _ctx("claude", None)
@@ -456,10 +297,16 @@ def test_depth_order_preserved_across_families():
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         default_categories=cats,
     )
-    rec = reconcile_categories(
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    from kanibako.commands.start import (
+        _bind_map_from_mounts, _emit_category_mounts,
     )
-    dests = [e.box_dest for e in rec.mounts]
+
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    dests = [
+        m.destination for m in _emit_category_mounts(
+            _bind_map_from_mounts(entries), label="depth-order",
+        )
+    ]
     assert dests == ["/home/agent", "/home/agent/workspace", "/home/agent/workspace/sub"]
 
 

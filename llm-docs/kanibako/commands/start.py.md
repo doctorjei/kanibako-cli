@@ -13,10 +13,12 @@ narrow resolves have no collapsed node) · §2.0g (the four fields the collapsed
 ### What the switch is
 
 The MAIN launch path now emits its category mounts from `meta.assembly.bindings` — the collapse's
-dest-keyed `CollapsedBind(src, opts)` map. `reconcile_categories` still runs and still computes its
-whole answer; nothing is deleted here. What moved is WHERE the main path's rows come from.
+dest-keyed `CollapsedBind(src, opts)` map. At 2a-2 the second, cross-scope `reconcile_categories`
+pass still ran beside it and computed its whole answer; nothing was deleted at that step. What moved
+was WHERE the main path's rows come from. ⚑ **Cutover 6-R3 then deleted that pass outright** — see
+"`LaunchDeliveries`" below.
 
-### Why the emitter takes a map and not a `ReconciledCategories`
+### Why the emitter takes a map and not a winner LIST
 
 The two narrow resolves (images, helper hub) run with `include_base_families=False`, so they carry no
 home bind, so the collapse writes them no node at all — pointing the shared emitter at
@@ -25,8 +27,8 @@ shape is two forms with one meaning (Convention 0), and adapting a collapsed map
 `CategoryEntry`s is impossible rather than merely ugly: `category`, `scope`, `name` and `optional` are
 gone by construction. So the emitter takes the SHAPE — dest → `(src, opts)`, plus its dest-keyed
 policies — and each caller supplies that map from wherever it has one. `_bind_map_from_mounts` is the
-translation for a caller whose answer is a reconciled winner list; it is not a collapse (no home
-foundation, no arbitration, no scope fold).
+translation for a caller whose answer is a MOUNT winner list — today `_narrow_bind_map`, over
+`narrow_table_winners`' answer. It is not a collapse (no home foundation, no scope fold).
 
 ### What became of the four dropped fields
 
@@ -97,7 +99,7 @@ the category set alone misses — the stub never called `_install_assembly_colla
 orchestrator it REPLACES. Either half alone leaves all three leaves absent, so every `_run_container`
 unit test took the fallback and deleting the fallback would have emptied the category mount set for
 that whole suite at once. The fixture now carries the core home row AND mirrors the orchestrator's
-tail (gate → reconcile → collapse, off the same gated list), so those launches read a real
+tail (gate → collapse → carrier, off the same gated list), so those launches read a real
 `meta.assembly.bindings`. **Measured delta on the emitted mount set: `+ /home/agent` and nothing
 else** — home is lifted out before any scope folds, so its options stay `Z,U`, and the agent delivery
 binds fold `fold_opt("ro", "ro") == "ro"`, byte-identical to the fallback.
@@ -105,7 +107,7 @@ binds fold `fold_opt("ro", "ro") == "ro"`, byte-identical to the fallback.
 ### One measured behavioural difference, pinned rather than smoothed
 
 The five-arm shape carries ro/rw as the ARM, so the collapse folds the mode back into the option
-string: a rw bind the reconciled route emits as `Z,U` arrives as `Z,U,rw`. Podman's default IS rw and
+string: a rw DECLARATION whose own options read `Z,U` arrives as `Z,U,rw`. Podman's default IS rw and
 `fold_opt` dedupes, so `ro` stays `ro` and nothing about the box changes — but the option string
 podman receives does. Home is the exception by construction: pid 0 is SEEDED before any scope
 folds and is in no scope's shape, so no arm ever appends to its options.
@@ -132,11 +134,10 @@ collapse (`collapse_store_shapes`), and stores the results at the declared RO/de
 nothing", and that is now false for MOUNTS and for BOTH copy arms.** The main launch path emits its
 category mounts from `meta.assembly.bindings` (see the section above), the create-time seed applier
 reads `meta.assembly.seeded`, and the launch-time sync applier reads `meta.assembly.synced` (both
-below). ⚑ **AND AGAIN AT 6-R2: NOTHING RUNS ON `reconciled` ANY MORE.** The env set, the
-`secret_path` mounts, the agent-delivery dest set and both narrow bind maps all read the
-`LaunchDeliveries` carrier now (section below); `reconcile_categories` still runs and still computes
-its whole answer, but the only readers of that answer are the equivalence canaries in the tests.
-6-R3 deletes it. ⚑ Its WARN half went at 5-1c, next section.
+below). ⚑ **AND AGAIN AT 6-R2/6-R3: THE SECOND ROUTE IS GONE.** The env set, the `secret_path`
+mounts, the agent-delivery dest set and both narrow bind maps read the `LaunchDeliveries` carrier
+(section below), and 6-R3 DELETED `reconcile_categories`, `ReconciledCategories` and the three group
+resolvers under them. ⚑ Its WARN half went first, at 5-1c — next section.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -190,17 +191,19 @@ containment table makes two mounts at one destination "an error in EVERY scope c
 same-scope included; warn-and-proceed is the retired five-row table's row 5. 5-0 gave that behaviour
 a home in the new route and 5-1c gave it exactly one; neither rules on whether it survives.
 
-### The credential gate is HOISTED above BOTH consumers (cutover 2b-0)
+### The credential gate is HOISTED above EVERY consumer (cutover 2b-0)
 
-`reconcile_categories` applies the D-M4 credential gate INTERNALLY, so before 2b-0 a PRIVATE box
-(`deliver_creds=False`) got `reconciled.copies == []` while `_install_assembly_collapse` — handed the
-RAW entry list two lines later — folded the credential rows into `meta.assembly.synced` anyway. The
+The retired `reconcile_categories` applied the D-M4 credential gate INTERNALLY, so before 2b-0 a
+PRIVATE box (`deliver_creds=False`) got an empty copy set on that route while
+`_install_assembly_collapse` — handed the RAW entry list two lines later — folded the credential rows
+into `meta.assembly.synced` anyway. The
 divergence was inert only because nothing consumed that leaf. Pointing a consumer at it would have
 delivered every `synced` credential into a box the user made private, reversing D-M4.
 
 `_resolve_launch_snapshot` therefore calls `settings_categories.gate_credential_delivery` ONCE and
-hands the SAME gated list to the reconcile, to the collapse and (since 6-R1) to `launch_deliveries`.
-🛑 **The gate that used to sit INSIDE `reconcile_categories` is GONE — deleted at cutover 4
+hands the SAME gated list to the collapse and (since 6-R1) to `launch_deliveries` — the two consumers
+that remain after 6-R3.
+🛑 **The second copy of the gate, which sat INSIDE the retired pass, is GONE — deleted at cutover 4
 (`42f5291`), not deferred.** This paragraph said "it stays … removing it is step 5" and was stale
 from that commit onward; the hoisted call above is now the rule's ONLY spelling, on any path.
 
@@ -306,9 +309,25 @@ state is what explains the new one.
 The collapse enforces refusals the shipped route does not: a bind may not subsume a bind, nor sit
 inside a mask, a mask may not take another mask's point nor land at or above home, a seed may not
 land outside home, a sync may not take a bind's exact point, and a bind's options may not contradict
-its arm. `reconcile_categories` permits nested binds — it depth-sorts them and errors only on two
-concrete declarations at one IDENTICAL dest — so **configurations exist that used to launch fine and
-make the collapse raise.** That is the tightening, and it is what CHANGELOG + MIGRATION §2.31 owe.
+its arm. The retired cross-scope pass permitted nested binds — it depth-sorted them and errored only
+on two concrete declarations at one IDENTICAL dest — so **configurations exist that used to launch
+fine and make the collapse raise.** That is the tightening, and it is what CHANGELOG + MIGRATION
+§2.31 owe.
+
+🐞 **AND 6-R3 CHANGED WHICH MESSAGE A CROSS-SCOPE PAIR GETS. MEASURED, not inferred.** Two binds at
+ONE identical dest in two scopes used to hit the reconcile FIRST, so the user got
+`raise_binding_vs_binding`'s row-1 text. With that pass deleted the same configuration reaches
+`store_collapse._refuse_bind_over_bind` instead. **The configuration still refuses, and the REMEDY
+SENTENCE is word-for-word identical** — measured by rendering both: *"To change what occupies a
+destination you must SUPPRESS the entry you do not want … Set the unwanted key to null in the
+settings file for its scope (a file may write its own scope and the scopes it contains)"*. What the
+user LOSES is the surrounding diagnostic: the collapse's message names host SOURCES and the dest but
+**no declaration KEY**, carries no *"THIS RULE CHANGED IN kanibako 1.8.0"* paragraph, and prints no
+YAML block. ⚑ Naming the keys is **structurally impossible** where it stands —
+`build_store_shape` drops `CategoryEntry.key_segments` when it writes the arm — so closing it is a
+PRODUCER SHAPE change, boarded in that function's own docstring and out of 6-R3's scope. **Nothing
+is owed against v1.7.2:** that release had no §0 table and no collapse, so both texts are 1.8.0-new
+and neither has shipped.
 
 Those refusals were always intended; enforcing them was premature while both routes ran. So until 2c
 `SettingsError` out of the collapse was caught at this one seam, at `debug`, and every consumer fell
@@ -395,15 +414,15 @@ too. A policy that varied by call site would decide one destination two ways.
 
 ---
 
-## `LaunchDeliveries` — the consumers leave the reconcile (cutover 6-R2)
+## `LaunchDeliveries` — the consumers leave the reconcile (6-R2), which is then DELETED (6-R3)
 
 **Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §6 "§6 DESIGN PASS" · producer `DESIGN` §7.4
 (`secret_path` is PARKED out of the disk-store shape) · §9.1 (what is not a settings key is PASSED).
 
 ### What the switch is
 
-6-R1 built the carrier and returned it beside `reconciled`, consumed by nobody. 6-R2 moves every
-consumer onto it:
+6-R1 built the carrier and returned it beside the reconciled winners, consumed by nobody. 6-R2 moved
+every consumer onto it:
 
 | what | was | is |
 |---|---|---|
@@ -412,12 +431,36 @@ consumer onto it:
 | the agent-delivery dests | `_agent_delivered_dests(reconciled.mounts)` | `deliveries.agent_dests` |
 | the narrow bind maps | `_narrow_bind_map(_img_rec.mounts)` | `deliveries.narrow_bindings` |
 
-The reconcile still RUNS. Nothing on a live path reads its answer any more; the equivalence canaries
-do, and they die with it at 6-R3.
+🛑 **6-R3 THEN DELETED THE ROUTE.** `_resolve_launch_snapshot` returns `(snapshot, deliveries)`;
+`reconcile_categories`, `ReconciledCategories`, `_resolve_dest_group`, `_resolve_mount_group`,
+`_resolve_copy_group` and the dead `_DISABLE_SENTINEL` are gone, and
+`test_category_collisions.py::test_the_retired_routes_are_GONE` asserts their absence structurally.
+§0's table is applied by three seams from here on — the per-scope `store_shape` producer (rows 3, 5,
+row 1 SAME-scope), the assembly collapse (rows 2, 4, row 1 cross-scope), and this seam's own
+`secret_path_deliveries` / `narrow_table_winners` for the inputs the collapse cannot see.
 
-⚑ **The env flip is byte-identical by inspection, not by hope:** `reconcile_categories` does no env
-arbitration — its env line IS `[e for e in entries if e.delivery == ENV]`, the same filter
+⚑ **The env flip is byte-identical by inspection, not by hope:** the retired pass did no env
+arbitration — its env line WAS `[e for e in entries if e.delivery == ENV]`, the same filter
 `launch_deliveries` spells. The per-VAR winner is, and always was, the consumer's `dict.update`.
+
+### ⚑⚑ The pref-origin enrichment moved with the raises, and that is REAL UX
+
+`_annotate_pref_origin` names the `pref` that installed a colliding key the user never wrote. Its
+`try` used to wrap the reconcile call, which raised FIRST on the live path — so its annotated message
+is the one users actually saw. Deleting the reconcile spread the surviving raises across three
+callees: the producer's rows 1/3 and the collapse's refusals (both inside
+`_install_assembly_collapse`), and the secret gate and narrow-table pass (both inside
+`launch_deliveries`). **The wrap therefore covers the BLOCK, not one call**, and it catches BOTH
+`CategoryCollisionError` (the producer and the seam) AND `SettingsError` (the collapse's own
+refusals, which are not the §0 table's two texts) — narrowing it to either one silently downgrades a
+class of message. `_annotate_pref_origin` returns the exception UNCHANGED when no request accounts
+for a participant, so the common path is byte-identical.
+
+⚑ **Pinned END TO END**, not on the function:
+`test_category_collisions.py::TestThePrefOriginReachesTheLIVEPATH` drives a real resolve with a
+`pref.agent.claude.common` in a box settings file and asserts the error names the request. **Mutation
+proved:** removing the wrap reddens exactly that case; the twelve pure-function cases beside it all
+stay green, which is why it had to exist.
 
 ### The narrow resolves emit their OWN table's dests, and nothing else
 
@@ -445,9 +488,9 @@ counter-example.
 ### The cross-category gate for a SECRET dest moved to the seam
 
 `secret_path` carries no arm in the disk-store shape, so the COLLAPSE never sees a secret and cannot
-answer "does anything ELSE contend for this destination". The only answer was inside
-`reconcile_categories`. `settings_categories.secret_path_deliveries` composes the per-VAR pick with
-that answer, over the same entry list, in the same order:
+answer "does anything ELSE contend for this destination". The only answer was inside the retired
+cross-scope pass. `settings_categories.secret_path_deliveries` composes the per-VAR pick with that
+answer, over the same entry list, in the same order:
 
 * a `bindings.*` row (or an abstraction deriving one) at `SECRET_MOUNT_DIR/<VAR>` **refuses**, through
   the same raisers, **naming both declarations**;
@@ -495,8 +538,8 @@ two disagree, the map now decides both halves:
 * a **bind nested under a mask** is swept, and the mask survives — already true of the bind arm
   since 2a-2 (MIGRATION §2.27); the mask arm now agrees with it instead of being computed elsewhere;
 * a **bind at a mask's own destination**, declared in a LATER scope, sweeps the mask and takes the
-  point. The reconcile resolves that same collision the other way (§0 row 2: a mask OVERRIDES a
-  binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a
+  point. The retired cross-scope pass resolved that same collision the other way (§0 row 2: a mask
+  OVERRIDES a binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a
   `--mount type=tmpfs` at one destination — where it now emits the bind alone;
 * a mask **at or above home**, or **on another mask**, is REFUSED by the collapse. Until 2c that left
   the leaf absent and dropped the whole launch to the fallback, so masks and binds both came from the
@@ -533,8 +576,8 @@ to test. It was one of only two readers of `reconciled.copies`; the other is con
 nothing carries a per-category destination space — the dest is DATA on the row.
 
 🐞 **THIS SWITCH REMOVED AN ARBITER, AND THE FIX IS AT DELIVERY, NOT IN THE COLLAPSE.**
-`reconcile_categories` arbitrates copy-vs-copy at a shared dest (`_resolve_copy_group` returns the
-sync and drops every seeded row); `collapse_seeded` did not, because nothing read it. Reading the leaf
+The retired `_resolve_copy_group` arbitrated copy-vs-copy at a shared dest (it returned the sync and
+dropped every seeded row); `collapse_seeded` did not, because nothing read it. Reading the leaf
 without that rule lets a seed write a credential dest FIRST with a PRESERVED mtime, after which
 `_synced_uptodate` skips the sync forever. A prune in `collapse_seeded` closed it for one commit and
 was **removed by ruling on 2026-08-11**: `_sync_box_at_create` now writes every sync row UNGATED right
@@ -544,7 +587,7 @@ gate compares against the sync's own prior write. **Read `_sync_box_at_create` b
 
 ### The shape delta, and the three things it moved
 
-A reconciled winner is a `CategoryEntry` carrying `category`, `name`, `box_dest`, `host_src`,
+A resolved winner was a `CategoryEntry` carrying `category`, `name`, `box_dest`, `host_src`,
 `options`. A collapsed row is `CollapsedCopy(src, dest, opts)` — **no `name`, no `category`.**
 
 | what it was | what it is | why |
@@ -635,7 +678,7 @@ a different path, and it runs only on a launch that materializes the box.
 ### The position is the contract (P3 — unavailable, not forbidden)
 
 Every parameter is keyword-only and REQUIRED, with no `None` default. A caller at the old site cannot
-name `_snapshot`, `reconciled` or `launch_binds` — they are assigned further down the same function —
+name `_snapshot`, `deliveries` or `launch_binds` — they are assigned further down the same function —
 so the mistake is an `UnboundLocalError`, never a silent no-delivery. **Mutation-proved:** restoring
 the old call site fails 156 tests with `UnboundLocalError: cannot access local variable '_snapshot'`.
 `test_the_consumer_CANNOT_BE_CALLED_before_the_bind_map_exists` pins the signature itself, because no

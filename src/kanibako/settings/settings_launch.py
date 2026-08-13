@@ -3,16 +3,17 @@
 This module is the LIVE read-path: ``commands/start.py`` builds ONE resolved
 :class:`~kanibako.settings.keystore.KeyStore` snapshot per launch here, via the
 committed KeyStore pipeline (``assemble_levels`` → ``merge`` → ``expand``), and
-BOTH the behavior reads AND the category :func:`reconcile_categories` pass read
-from that SINGLE snapshot (S12 WRITE-ONCE — resolve ONCE, read many). It replaces
+BOTH the behavior reads AND the CATEGORY delivery read from that SINGLE snapshot
+(S12 WRITE-ONCE — resolve ONCE, read many). It replaces
 the two inline ``LevelView`` cascades start.py used to hand-build per launch (the
 behavior cascade and the per-mount-family category cascade) and the ``machine``
 (``/etc/kanibako.yaml``) reads (S14).
 
 It is the block-7b consumer SWAP: it IMPORTS the pipeline (single-source — never
-re-implements assemble/merge/expand) and the by-dest reconcile pass
-(:func:`~kanibako.settings.settings_categories.reconcile_categories`, §6g — kept the
-by-dest consumer, fed from the snapshot's category subtrees).
+re-implements assemble/merge/expand) and ADAPTS the snapshot's category subtrees
+into the one ``list[CategoryEntry]`` the delivery seams consume (§6g). ⚑ The single
+by-dest ``reconcile`` pass those seams replaced was retired at cutover 6-R3; this
+module never held it and does not need editing when its successors move.
 
 What lands in the one snapshot
 ------------------------------
@@ -49,7 +50,7 @@ a per-agent file land). Both the behavior read
 (:func:`snapshot_category_entries`) do the active-over-default value-pick PER NAME
 HERE — the consumer's job, since 2a/7a / the merge deliberately keep both slots'
 keys discriminated. Emitted ``CategoryEntry``\\ s carry the BARE ``agent`` scope
-token (load-bearing for reconcile precedence, NOT the discriminator).
+token (load-bearing for scope precedence downstream, NOT the discriminator).
 
 box_dest deferral (S17 / B6)
 ----------------------------
@@ -57,8 +58,8 @@ The snapshot keeps box-side ``$XDG`` / ``~`` in a ``Bind.box`` RAW (deferred —
 host ≠ box). The category ADAPTER (:func:`snapshot_category_entries`) is a
 ``box_dest`` consumer: it resolves box-side ``~`` → ``GUEST_HOME`` and ``$XDG``
 against the BOX ctx (matching the retired by-name resolver's ``space="guest"``)
-BEFORE building each :class:`CategoryEntry`, so reconcile keys on the SAME
-absolute ``box_dest`` it did pre-swap (depth-sort + dest-collision unchanged). The
+BEFORE building each :class:`CategoryEntry`, so every downstream seam keys on the
+SAME absolute ``box_dest`` it did pre-swap (depth-sort + dest-collision unchanged). The
 S20 escape contract (backslash-escaped ``$`` / ``~`` / ``\\`` carried literal) is
 honored by the shared ``expand_expr`` scanner.
 
@@ -961,7 +962,7 @@ class AuthSource:
 
         The single-bool analog of the old ``effective_group_auth`` for the gates
         that only care "is this box sharing at all" (auto-auth, the host-source
-        credsync hops, the reconcile drop). ``False`` ≡ the old distinct-auth.
+        credsync hops, the credential-gate drop). ``False`` ≡ the old distinct-auth.
         """
         return self.tier != "box"
 
@@ -2041,12 +2042,12 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 
 
 # --------------------------------------------------------------------------- #
-# Category adapter — snapshot subtrees → the list reconcile_categories eats   #
+# Category adapter — snapshot subtrees → the ONE list every delivery seam eats #
 # --------------------------------------------------------------------------- #
 
 
 # ⚑ ``agent_delivery_mounts`` LIVED HERE and is GONE (cutover 2a-3). It was the
-# SECOND mount emitter, walking the same reconciled list as the category emitter
+# SECOND mount emitter, walking the same resolved list as the category emitter
 # and filtering to the ``scope == "agent"`` half so neither emitted the other's
 # binds. Under one collapsed, dest-keyed bind map there is one emitter and no half
 # to filter — what survived is a per-dest missing-source POLICY (must-exist ·
@@ -2063,13 +2064,16 @@ def snapshot_category_entries(
     box_ctx: ResolveCtx,
     optional_keys: frozenset[str] = frozenset(),
 ) -> list[CategoryEntry]:
-    """Walk the snapshot's category subtrees → the ``list[CategoryEntry]``
-    :func:`reconcile_categories` consumes (the SAME shape the retired by-name
-    resolver produced), so the by-dest reconcile pass is unchanged (§6g).
+    """Walk the snapshot's category subtrees → the ONE ``list[CategoryEntry]``.
+
+    Every delivery seam downstream reads THIS list and no other: the per-scope
+    ``store_shape`` producer, the assembly collapse, and the launch seam's
+    ``LaunchDeliveries``. The shape is the one the retired by-name resolver
+    produced, unchanged (§6g).
 
     For every ``<scope>.<category>`` subtree present it emits one entry per leaf.
     The four scopes are the SAME ``system, agent, workset, box`` apply order the
-    old by-name resolver used (so a reconcile tie breaks identically), and
+    old by-name resolver used (so a same-scope tie breaks identically), and
     every emitted entry's ``scope`` is the BARE scope token (``agent``) — the
     load-bearing scope identity (§7), NOT the snapshot's agent discriminator.
 
@@ -2090,7 +2094,7 @@ def snapshot_category_entries(
     reintroduce a per-scope root table here — a structural test scans for it. box_dest is
     resolved BOX-side here (this is a ``box_dest`` consumer, B6): ``~`` →
     ``GUEST_HOME`` and ``$XDG`` against *box_ctx* — matching the old
-    ``space="guest"`` pass — so reconcile keys on the SAME absolute dest. ``env``
+    ``space="guest"`` pass — so every seam keys on the SAME absolute dest. ``env``
     carries its VAR name in ``box_dest`` and its value in ``options``; ``masks`` is
     value-less (one entry per masked dest). Reads via the UNBOUND ``dict`` protocol
     (S3).
@@ -2504,8 +2508,8 @@ def _emit_scope_node(
     # keyed by VAR, delivered as a ro MOUNT to SECRET_MOUNT_DIR/{VAR}. Modeled on the
     # env branch but MOUNT: host_src = the scalar path (already host-expanded by the
     # expand pass — a scalar leaf is expanded host-side, ``~``/``$VAR``/@-refs), and
-    # box_dest = the fixed in-box secrets path. The reconcile pass picks the per-VAR
-    # winner (box over workset) by identical box_dest; start.py emits the ro Mount +
+    # box_dest = the fixed in-box secrets path. ``secret_path_winners`` picks the
+    # per-VAR winner (box over workset) by identical box_dest; start.py emits the ro Mount +
     # the box-side export shim — kanibako NEVER reads the file VALUE. options="ro"
     # (NO ``:U`` chown of the host secret). name = VAR (the shim exports it).
     secret = dict.get(scope_node, "secret_path", __MISSING__)

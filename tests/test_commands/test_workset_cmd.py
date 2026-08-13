@@ -1123,14 +1123,15 @@ class TestWorksetEnv:
         """A primary-workset env var reaches the launch env accumulation and
         overrides the system tier (precedence system < workset).
 
-        ⚑ Proven through the SNAPSHOT now, not a ``.env`` file layering: the
-        reconcile picks the per-VAR winner and ``_build_config_env`` applies it.
+        ⚑ Proven through the SNAPSHOT now, not a ``.env`` file layering: the launch
+        seam DELIVERS both scopes' entries in apply order and ``_build_config_env``'s
+        own ``update`` is what picks the per-VAR winner.
         """
         from kanibako.commands.start import _build_config_env
         from kanibako.commands.system_cmd import run_set as system_set
         from kanibako.commands.workset_cmd import run_set
         from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_categories import launch_deliveries
         from kanibako.settings.settings_launch import snapshot_category_entries
         from kanibako.settings.settings_resolve import ResolveCtx
 
@@ -1160,10 +1161,13 @@ class TestWorksetEnv:
             agent_name="claude", workset_name=None,
             host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
         )
-        reconciled = reconcile_categories(snapshot_category_entries(
-            snapshot, active_agent="claude", box_ctx=ctx,
-        ))
-        env = _build_config_env({}, reconciled.envs)
+        deliveries = launch_deliveries(
+            snapshot_category_entries(
+                snapshot, active_agent="claude", box_ctx=ctx,
+            ),
+            agent_dests=frozenset(),
+        )
+        env = _build_config_env({}, deliveries.envs)
         assert env["EDITOR"] == "vim"   # workset overrides system
         assert env["PAGER"] == "less"   # system tier still present
 

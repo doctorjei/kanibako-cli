@@ -11,8 +11,15 @@ about entries the real emitter CANNOT produce; they say so at their own site.
 The seam under test (producer DESIGN §1): the producer owns exactly the §0 rows
 decidable inside ONE scope — row 3, row 5, and row 1's SAME-SCOPE case. Rows 2 and
 4 and row 1's cross-scope case are the COLLAPSE's, and several tests below assert
-that the producer deliberately does NOT decide them, contrasting it against
-``reconcile_categories`` on the very same entries.
+that the producer deliberately does NOT decide them.
+
+⚑ THOSE ASSERTIONS STAND ALONE SINCE 6-R3. They used to be CONTRASTS — the same
+entries run through the retired cross-scope reconcile, which DID decide them, so the
+producer's restraint was visible as a difference. That pass is gone; the surviving
+claim is the stronger half and the one the collapse depends on: the producer keeps
+BOTH sides so the collapse has something to decide BETWEEN. Where the reconcile side
+carried the only statement of a rule (row 1's single-sourced remedy text), it was
+re-pointed at the surviving raiser rather than deleted.
 """
 
 from __future__ import annotations
@@ -26,7 +33,8 @@ from kanibako.settings.kb_store import BindEntry
 from kanibako.settings.settings_categories import (
   _DELIVERY,
   CategoryEntry,
-  reconcile_categories,
+  raise_binding_vs_binding,
+  secret_path_deliveries,
 )
 from kanibako.settings.settings_launch import (
   build_launch_snapshot,
@@ -165,10 +173,11 @@ class TestACopyArmIsAFlatList:
   # ``agent.<active>`` resolve through the cascade before an entry exists. So these
   # assert the ARM'S CONTRACT, not a reproduction of a live loss.
   #
-  # The contract is not academic: ``reconcile_categories`` on these very entries
-  # keeps BOTH (measured), so a dest-keyed ``seed``/``sync`` arm is the ONE place in
-  # the chain where a declared copy can vanish with no warning at any log level, and
-  # the survivor is chosen by raw dest SPELLING rather than by the user's file order.
+  # The contract is not academic: NOTHING else in the chain prunes a copy for
+  # sharing a destination (``test_store_collapse.py::TestNothingPrunesACopy``), so a
+  # dest-keyed ``seed``/``sync`` arm would be the ONE place where a declared copy can
+  # vanish with no warning at any log level, with the survivor chosen by raw dest
+  # SPELLING rather than by the user's file order.
 
   def rows(self, category: str, *srcs: str) -> list[CategoryEntry]:
     """*srcs* as that many copy entries at ONE dest, in the order given."""
@@ -237,10 +246,16 @@ class TestPerScope:
     assert produced["agent"].rw[DEST].src == "/h/a"
     assert produced["box"] == StoreShape()
 
-  def test_one_dest_in_two_scopes_is_NOT_reconciled(self):
-    # ⚑ Row 1's CROSS-SCOPE case is the COLLAPSE's (its double-bind error), so
-    # the producer keeps BOTH — one per scope shape. Contrast: today's
-    # cross-scope pass refuses the very same entries.
+  def test_one_dest_in_two_scopes_is_LEFT_FOR_THE_COLLAPSE(self):
+    # ⚑ Row 1's CROSS-SCOPE case is the COLLAPSE's (its double-bind error), so the
+    # producer keeps BOTH — one per scope shape — and says nothing.
+    #
+    # ⚑ THE CONTRAST HALF DIED AT 6-R3: it also asserted that the retired
+    # cross-scope reconcile REFUSED these very entries, which is what made the
+    # producer's silence legible. The collapse refuses them instead, and that is
+    # asserted where the collapse is —
+    # ``test_store_collapse.py`` (``_refuse_bind_over_bind``). What is left here is
+    # the producer's own contract, which is what this file is for.
     floor = {
       "system.bindings.rw": {"~/x": ("/h/sys",)},
       "box.bindings.rw": {"~/x": ("/h/box",)},
@@ -249,8 +264,6 @@ class TestPerScope:
     assert produced["system"].rw[DEST].src == "/h/sys"
     assert produced["box"].rw[DEST].src == "/h/box"
     assert produced.warnings == ()
-    with pytest.raises(CategoryCollisionError):
-      reconcile_categories(live_entries(floor))
 
   def test_a_cross_scope_abstraction_pair_is_left_whole(self):
     # Row 4 (scope precedence, silent) is the collapse's loop ORDER. The producer
@@ -285,16 +298,26 @@ class TestWithinScopeRows:
     }
 
   def test_row1_uses_the_one_spec_mandated_remedy_text(self):
-    # Single-sourced with the cross-scope pass — no second remedy text exists.
+    # Single-sourced: ONE remedy text exists, in ``raise_binding_vs_binding``, and
+    # the producer must not have grown a second spelling of it.
+    #
+    # ⚑ RE-POINTED AT THE RAISER (6-R3). The other side was the retired cross-scope
+    # reconcile, which reached the SAME public raiser — so the comparison was really
+    # always with that function, and it is compared with it directly now. The other
+    # two callers (``secret_path_deliveries``, ``narrow_table_winners``) reach it the
+    # same way; there is no second text for any of them to drift toward.
     floor = {
       "box.bindings.ro": {"~/x": ("/h/a",)},
       "box.bindings.rw": {"~/x": ("/h/b",)},
     }
+    entries = [
+      e for e in live_entries(floor) if e.category.startswith("bindings")
+    ]
     with pytest.raises(CategoryCollisionError) as producer_err:
       build_store_shape_set(live_entries(floor))
-    with pytest.raises(CategoryCollisionError) as reconcile_err:
-      reconcile_categories(live_entries(floor))
-    assert str(producer_err.value) == str(reconcile_err.value)
+    with pytest.raises(CategoryCollisionError) as raiser_err:
+      raise_binding_vs_binding(DEST, entries)
+    assert str(producer_err.value) == str(raiser_err.value)
     assert "SUPPRESS" in str(producer_err.value)
 
   def test_row3_an_abstraction_onto_an_occupied_dest_is_refused(self):
@@ -371,11 +394,13 @@ class TestTheMaskTrap:
     assert box.rw[DEST] == BindEntry("/h/bound", "Z,U")
     assert box.mask == {DEST: True}
 
-  def test_the_cross_scope_pass_by_contrast_resolves_it_to_the_mask(self):
-    # Same entries, today's pass: ONE winner, the mask — which is exactly the
-    # per-scope structure the producer must not throw away.
-    reconciled = reconcile_categories(live_entries(self.FLOOR))
-    assert [m.category for m in reconciled.mounts] == ["masks"]
+  # 🕯️ ``test_the_cross_scope_pass_by_contrast_resolves_it_to_the_mask`` DIED AT
+  # 6-R3. It ran the SAME entries through the retired cross-scope reconcile and
+  # asserted ONE winner, the mask — the per-scope structure the producer must not
+  # throw away, shown by exhibiting who does throw it away. The collapse's mask loop
+  # is the successor and is pinned where the collapse is
+  # (``test_store_collapse.py``); the sibling above states the producer's half, which
+  # is the only half this file is responsible for.
 
   def test_a_mask_in_one_scope_does_not_touch_a_binding_in_another(self):
     produced = shapes({
@@ -420,9 +445,13 @@ class TestCategoriesWithNoArm:
     box = shapes({"box.secret_path": {"TOK": "/h/tok"}})["box"]
     assert box == StoreShape()
     # It is still a live CONCRETE mount on the shipped route — the producer
-    # parking it does not delete it from the launch.
-    reconciled = reconcile_categories(live_entries({"box.secret_path": {"TOK": "/h/tok"}}))
-    assert [m.category for m in reconciled.mounts] == ["secret_path"]
+    # parking it does not delete it from the launch. ⚑ Read at the LAUNCH SEAM since
+    # 6-R3: ``secret_path`` has no arm in the shape, so the carrier is where a secret
+    # is delivered from and the only place its survival is observable.
+    delivered = secret_path_deliveries(
+      live_entries({"box.secret_path": {"TOK": "/h/tok"}}),
+    )
+    assert [m.category for m in delivered] == ["secret_path"]
 
   def test_an_undeclared_category_is_REFUSED_not_dropped(self):
     # ⚑ HAND-BUILT ON PURPOSE: the live emitter cannot produce this entry, and

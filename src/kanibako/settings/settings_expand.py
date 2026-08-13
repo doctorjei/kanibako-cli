@@ -55,7 +55,8 @@ NOT in the error map (its own transitive upstream chain resolved cleanly).
 
 OUT of scope (hard boundaries): NO cascade merge / precedence
 (:mod:`kanibako.settings.settings_merge` — this consumes its output), NO
-``reconcile_categories`` / ``box_dest`` collision (§6g separate pass), NO typed
+cross-scope ``box_dest`` collision resolution (§6g — the SEPARATE downstream
+pass, today the ``store_shape`` producer + the assembly collapse), NO typed
 views (:mod:`kanibako.settings.settings_views`), NO ``config set``
 (:mod:`kanibako.settings.config_interface`). It WRAPS ``expand_expr`` and does not modify
 it: the single-expr engine is shared with the ``config.*`` / ``system.*``

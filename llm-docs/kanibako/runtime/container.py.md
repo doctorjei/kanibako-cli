@@ -97,14 +97,15 @@ the vault tmpfs is DROPPED — no special-case overlay survives.
 ## Nothing is hardwired into a box
 
 The home + workspace + vault binds are **not** built here. They flow in via *extra_mounts* — the
-core box mounts the caller routes through the category resolver (`reconcile_categories`) — so
-nothing is bound into a box except through the keyspace. Only `-w` (a flag, not a mount) stays in
-this module's own argv.
+core box mounts the caller resolves through the category keyspace and folds through the assembly
+COLLAPSE — so nothing is bound into a box except through the keyspace. Only `-w` (a flag, not a
+mount) stays in this module's own argv.
 
-⚑ Prior text here named `start._build_core_mounts` as the producer. **That symbol no longer
-exists** — it was deleted in `f56211f` when the launch read-path moved onto the KeyStore, and the
-core mounts now arrive from the resolved-snapshot → `reconcile_categories` pipeline. The dead name
-is not carried forward. (It survives in two comments in
+⚑ Prior text here named `start._build_core_mounts` as the producer, then the retired
+`reconcile_categories` pipeline. **Neither symbol exists** — the first went in `f56211f` when the
+launch read-path moved onto the KeyStore, the second at cutover 6-R3. The core mounts arrive from
+`_resolve_launch_snapshot` → `_install_assembly_collapse` → `meta.assembly.bindings` →
+`_emit_category_mounts`. Dead names are not carried forward. (It survives in two comments in
 `tests/test_runtime/test_container_extended.py`, which is outside this pass's seam.)
 
 ## `post_start` — the `:U` re-chown repair seam

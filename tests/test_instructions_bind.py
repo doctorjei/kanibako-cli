@@ -389,15 +389,14 @@ class TestKickoffLaunchWiring:
         question these tests ask.
         """
         from kanibako.commands.start import (
-            _agent_delivered_dests,
-            _bind_map_from_mounts,
             _emit_category_mounts,
+            _launch_bind_map,
             _resolve_launch_snapshot,
         )
         from kanibako.settings.settings_resolve import normalize_bind_dest
         from kanibako.targets.base import BindScope as _BindScope
 
-        _snapshot, reconciled, _ = _resolve_launch_snapshot(
+        snapshot, deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name="claude",
@@ -414,9 +413,9 @@ class TestKickoffLaunchWiring:
             if b.scope is _BindScope.AGENT_CRITICAL
         )
         mounts = list(_emit_category_mounts(
-            _bind_map_from_mounts(reconciled.mounts), label="kickoff-wiring",
+            _launch_bind_map(snapshot), label="kickoff-wiring",
             must_exist=critical,
-            skip_if_absent=_agent_delivered_dests(reconciled.mounts) - critical,
+            skip_if_absent=deliveries.agent_dests - critical,
         ))
         return {m.destination: m for m in mounts}
 
@@ -482,18 +481,25 @@ class TestKickoffLaunchWiring:
         """GUARD THE GUARD: prove the collision the gate prevents is REAL.
 
         Core's box-scope bind and the plugin's agent-scope binding are both CONCRETE
-        declarations at one box_dest — spec §0's row-1 collision, which RAISES.  If
+        declarations at one box_dest — two mounts at one destination, which RAISES.  If
         this ever stops raising, the gate is no longer load-bearing and the whole
         transition dance can go; until then, it is the difference between a working
         upgrade and a box that refuses to launch.
+
+        ⚑ RECOMPOSED AT 6-R3 ONTO THE COLLAPSE, which is where a CROSS-SCOPE pair is
+        decided now: the retired by-dest reconcile raised spec §0's row-1
+        ``CategoryCollisionError`` here, and ``store_collapse._refuse_bind_over_bind``
+        raises a ``SettingsError`` carrying the SAME published remedy sentence, word
+        for word and deliberately (see its docstring).  The configuration refuses
+        either way — which is the whole claim.
         """
+        from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.agent_representation import agent_default_partial
-        from kanibako.errors import CategoryCollisionError
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
-        from kanibako.settings.settings_categories import reconcile_categories
+        from kanibako.settings.settings_resolve import SettingsError
         from kanibako.settings.settings_resolve import ResolveCtx
 
         desc = resolve_target("claude", None).descriptor
@@ -517,6 +523,7 @@ class TestKickoffLaunchWiring:
             # …beside the plugin's own descriptor delivery binds.
             agent_partial=agent_default_partial(desc, install, node_name="claude"),
         )
+        snap.insert_segments(("meta", "box", "home"), "/nonexistent/home")
         entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-        with pytest.raises(CategoryCollisionError):
-            reconcile_categories(entries)
+        with pytest.raises(SettingsError, match="SUPPRESS the entry you do not want"):
+            _install_assembly_collapse(snap, entries, whole_box=True)

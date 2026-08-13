@@ -20,7 +20,6 @@ import pytest
 from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_categories import reconcile_categories
 from kanibako.settings.settings_launch import (
     build_launch_snapshot,
     effective_behavior,
@@ -142,8 +141,8 @@ def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
     # DESTINATION, not by the descriptor's ``binding.key`` (R-10 dropped the name
     # from the keyspace; the arm is a terminal dest-keyed map, R-5). Exercises the
     # FULL emit path
-    # (build_launch_snapshot → snapshot_category_entries → reconcile_categories →
-    # agent_delivery_mounts), so it proves the repoint reaches the emitted Mount.
+    # (build_launch_snapshot → snapshot_category_entries → the ONE category
+    # emitter), so it proves the repoint reaches the emitted Mount.
     from kanibako.settings.agent_representation import agent_default_partial
     from kanibako.settings.config_io import dump_doc
     from kanibako.targets.base import (
@@ -193,12 +192,11 @@ def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
         agent_partial=partial,
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    rec = reconcile_categories(entries)
     # ⚑ must_exist holds DESTINATIONS, not descriptor key names (H6) — and since
     # cutover 2a-3 the delivery binds come out of the ONE category emitter, so this
     # is the live emission seam rather than a second route that shadowed it.
     mounts = _emit_category_mounts(
-        _bind_map_from_mounts(rec.mounts), label="delivery",
+        _bind_map_from_mounts(entries), label="delivery",
         must_exist=frozenset({"/box/share"}),
     )
 
@@ -410,18 +408,22 @@ class TestAMasksListInTheFloorReachesTheEmit:
 
     @classmethod
     def _tmpfs_masks(cls, cats):
-        """The mask destinations that SURVIVE the reconcile — the BRIDGE's output.
+        """The mask destinations the ADAPTER produces — the BRIDGE\'s output.
 
-        ⚑ NOT the launch's own split any more: since cutover 2a-4 the tmpfs arm comes
-        from the collapsed bind map (``commands/start._bind_map_masks``). Both routes
-        read the same ``snapshot_category_entries`` list ``_emit`` builds — the
-        reconcile here, ``store_shape`` + the collapse there — so the FLOOR-FOLD
-        BRIDGE these six cases test sits upstream of both and the reconcile remains a
-        faithful oracle for it. The arm itself is pinned in
+        ⚑ NOT the launch\'s own split: since cutover 2a-4 the tmpfs arm comes from the
+        collapsed bind map (``commands/start._bind_map_masks``), and what these six
+        cases test is the FLOOR-FOLD BRIDGE, which sits UPSTREAM of every delivery
+        seam. So the oracle is the entry list itself, sorted the way the emitter
+        sorts (shallowest dest first). ⚑ It was the retired by-dest reconcile\'s mask
+        winners until 6-R3; reading the declarations is the same answer with nothing
+        between it and the bridge. The arm itself is pinned in
         ``test_start_assembly.py::TestTheMaskArm``.
         """
-        rec = reconcile_categories(cls._emit(cats))
-        return [e.box_dest for e in rec.mounts if e.category == "masks"]
+        from kanibako.settings.settings_categories import path_depth
+
+        masks = [e for e in cls._emit(cats) if e.category == "masks"]
+        masks.sort(key=lambda e: (path_depth(e.box_dest), e.box_dest))
+        return [e.box_dest for e in masks]
 
     def test_a_box_masks_list_becomes_masked_destinations(self):
         entries = self._emit({"box.masks": ["/home/agent/secret", "~/other"]})
@@ -435,7 +437,7 @@ class TestAMasksListInTheFloorReachesTheEmit:
         assert {e.key for e in masks} == {
             "box.masks./home/agent/secret", "box.masks.~/other",
         }
-        # ...and they survive reconcile as the launch's tmpfs mask list.
+        # ...and they arrive in the order the launch's tmpfs mask list takes.
         assert self._tmpfs_masks({"box.masks": ["/home/agent/secret", "~/other"]}) == [
             "/home/agent/other", "/home/agent/secret",
         ]
@@ -650,20 +652,29 @@ class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
         assert f"{category} is dest-keyed" in text         # says WHY
 
 
-def test_adapter_feeds_reconcile_unchanged():
-    # End-to-end: adapter entries flow into reconcile_categories cleanly.
+def test_adapter_feeds_the_emitter_unchanged(tmp_path):
+    # End-to-end: adapter entries flow into the ONE emitter cleanly.
+    # ⚑ REAL host dirs: the emitter guarantee-creates a MISSING rw source, so
+    # absolute literals would try to mkdir them on the machine running the suite.
+    home, ws = tmp_path / "home", tmp_path / "ws"
+    home.mkdir()
+    ws.mkdir()
     snap = KeyStore(
         {"box": {"bindings": {"rw": {
-            "/home/agent": BindEntry("/h/home", "Z,U"),
-            "/home/agent/workspace": BindEntry("/h/ws", "Z,U"),
+            "/home/agent": BindEntry(str(home), "Z,U"),
+            "/home/agent/workspace": BindEntry(str(ws), "Z,U"),
         }}}}
     )
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
-    rec = reconcile_categories(entries)
-    dests = {m.box_dest for m in rec.mounts}
-    assert dests == {"/home/agent", "/home/agent/workspace"}
-    # depth-sort: shallower (/home/agent) first.
-    assert rec.mounts[0].box_dest == "/home/agent"
+    emitted = [
+        m.destination for m in _emit_category_mounts(
+            _bind_map_from_mounts(entries), label="adapter-feed",
+        )
+    ]
+    assert set(emitted) == {"/home/agent", "/home/agent/workspace"}
+    # depth-sort: shallower (/home/agent) first. ⚑ It is the EMITTER\'s since a
+    # dest-keyed map carries no order (the retired reconcile handed a sorted list).
+    assert emitted[0] == "/home/agent"
 
 
 # --------------------------------------------------------------------------- #

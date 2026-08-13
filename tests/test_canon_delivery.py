@@ -50,7 +50,7 @@ from kanibako.settings.core_defaults import (
     UNSHARE_BOX_ROOT_UID,
 )
 from kanibako.settings.paths import resolve_project
-from kanibako.settings.settings_categories import reconcile_categories
+from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
@@ -134,9 +134,16 @@ def _entries(cats: dict) -> list:
     return snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
 
 
-def _reconcile(cats: dict) -> object:
-    """Drive the real launch cascade → ``reconcile_categories`` over *cats*."""
-    return reconcile_categories(_entries(cats))
+def _winners(cats: dict) -> list:
+    """Drive the real launch cascade → the narrow seam's MOUNT winners over *cats*.
+
+    ``narrow_table_winners`` is the live route for a resolve carrying ONE injected
+    table, which is exactly what these fixtures are: it filters to the table's own
+    dests and applies §0 there.
+    """
+    from tests.support.narrow_resolve import table_bind_dests
+
+    return narrow_table_winners(_entries(cats), table_bind_dests(cats))
 
 
 def _make_fake_rom(root: Path) -> Path:
@@ -256,11 +263,11 @@ class TestCanonBinds:
         general_src = cats[_ARM][f"{GUEST_HOME}/canon/bible/general"][0]
         assert guide.is_relative_to(Path(general_src))
 
-    def test_reconciles_to_ro_mounts_at_every_guest_slot(self):
-        rec = _reconcile(core_defaults.rom_default_categories())
-        by_dest = {m.box_dest: m for m in rec.mounts}
+    def test_resolves_to_ro_mounts_at_every_guest_slot(self):
+        cats = core_defaults.rom_default_categories()
+        by_dest = {m.box_dest: m for m in _winners(cats)}
         for dest in _CORE_DESTS:
-            assert dest in by_dest, f"{dest} not reconciled"
+            assert dest in by_dest, f"{dest} did not resolve"
             m = by_dest[dest]
             assert m.scope == "box"
             assert m.category == "bindings.ro"
@@ -601,26 +608,28 @@ class TestSiblingAssembly:
                     f"{b!r} nests inside {a!r} — J-7 retired nested canon binds"
                 )
 
-    def test_all_six_reconcile_without_collision_warnings(self, tmp_path):
+    def test_all_six_resolve_without_collision_warnings(self, tmp_path):
         """⚑ RETARGETED at cutover 5-1c, and the claim got STRICTER, not weaker.
 
-        The warning used to be read off ``reconcile_categories(...).warnings``; that
+        The warning used to be read off a second route's ``warnings`` field; that
         field is gone and the per-scope ``store_shape`` producer is the sole builder
         — which is also what a user hears. The producer folds each scope ALONE, so it
-        applies none of the reconcile's cross-scope silences: a canon set that is
-        quiet HERE is quiet on the launch path.
+        applies none of the cross-scope silences that route applied: a canon set that
+        is quiet HERE is quiet on the launch path.
         """
         from kanibako.settings.store_shape import build_store_shape_set
+        from tests.support.narrow_resolve import table_bind_dests
 
         chapter = tmp_path / "data" / "rom"
         (chapter / "directives").mkdir(parents=True)
         (chapter / "directives" / "ROM_AGENT.md").write_text("")
 
-        entries = _entries(_merged_canon_cats(chapter))
+        cats = _merged_canon_cats(chapter)
+        entries = _entries(cats)
         produced = build_store_shape_set(entries)
         assert not produced.warnings, produced.warnings
-        rec = reconcile_categories(entries)
-        assert f"{GUEST_HOME}/canon/bible/agent" in {m.box_dest for m in rec.mounts}
+        winners = narrow_table_winners(entries, table_bind_dests(cats))
+        assert f"{GUEST_HOME}/canon/bible/agent" in {m.box_dest for m in winners}
 
 
 # ===========================================================================
@@ -654,10 +663,10 @@ class TestLaunchWiring:
     that gap by driving the REAL launch seam with real ``std``/``proj`` objects.
     """
 
-    def _launch_reconciled(self, std, proj, target):
+    def _launch_resolve(self, std, proj, target):
         from kanibako.commands.start import _resolve_launch_snapshot
 
-        _snapshot, reconciled, _ = _resolve_launch_snapshot(
+        return _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name="claude",
@@ -669,24 +678,38 @@ class TestLaunchWiring:
             agent_cfg=None,
             deliver_creds=True,
         )
-        return reconciled
+
+    def _launch_entries(self, std, proj, target):
+        """The DECLARATIONS a real launch resolve produced, optional flags and all.
+
+        Re-adapted from the resolved snapshot by the SAME call the seam makes,
+        including the ``optional_keys`` the seam passes — the flag is a declaration
+        fact and no delivery seam carries it.
+        """
+        from kanibako.commands.start import _launch_snapshot_inputs
+
+        snapshot, _deliveries = self._launch_resolve(std, proj, target)
+        ctx = _launch_snapshot_inputs(std=std, proj=proj, agent_name="claude")[0]
+        return snapshot_category_entries(
+            snapshot, active_agent="claude", box_ctx=ctx,
+            optional_keys=core_defaults.canon_optional_bind_keys(),
+        )
 
     def _launch_mounts(self, std, proj, target) -> dict:
         from kanibako.commands.start import (
-            _agent_delivered_dests,
-            _bind_map_from_mounts,
             _emit_category_mounts,
+            _launch_bind_map,
         )
 
         # ⚑ The missing-source policy is spelled EXACTLY as the live call sites
         # spell it (``commands/start.py``) — a different spelling here would test
         # the harness rather than the launch.
-        rec = self._launch_reconciled(std, proj, target)
+        snapshot, deliveries = self._launch_resolve(std, proj, target)
         mounts = _emit_category_mounts(
-            _bind_map_from_mounts(rec.mounts), label="canon-wiring",
+            _launch_bind_map(snapshot), label="canon-wiring",
             skip_if_absent=(
                 core_defaults.canon_optional_bind_dests()
-                | _agent_delivered_dests(rec.mounts)
+                | deliveries.agent_dests
             ),
         )
         return {m.destination: m for m in mounts}
@@ -797,9 +820,9 @@ class TestLaunchWiring:
         ``canon:`` rows, and this is the only place their agreement is observable.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        reconciled = self._launch_reconciled(std, proj, _WiringTarget())
+        entries = self._launch_entries(std, proj, _WiringTarget())
 
-        flagged = {e.box_dest for e in reconciled.mounts if e.optional}
+        flagged = {e.box_dest for e in entries if e.optional}
         assert flagged == core_defaults.canon_optional_bind_dests()
 
 
