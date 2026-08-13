@@ -116,6 +116,12 @@ def _delivered(reconciled):
 
     ⚑ Not "what the box receives" since 2a-2 — the main path's mounts come from the
     collapse now. This is the arm that must stay untouched by the wiring.
+
+    ⚑ The row-5 warning MESSAGES were a fourth element here until cutover 5-1c, which
+    retired ``ReconciledCategories.warnings``: the reconcile computes no warnings, so
+    there is nothing of that kind left on this arm to compare. The collapse route's
+    warnings are the user's channel now and are asserted on the LOG, in
+    ``tests/test_category_collisions.py::TestTheCollapseRouteFeedsTheSameChannel``.
     """
     mounts = _emit_category_mounts(
         _bind_map_from_mounts(reconciled.mounts), label="assembly-wiring",
@@ -125,7 +131,6 @@ def _delivered(reconciled):
         [(m.destination, str(m.source), m.options) for m in mounts],
         [(c.box_dest, c.host_src, c.options, c.category) for c in reconciled.copies],
         [(e.box_dest, e.options) for e in reconciled.envs],
-        [w.message() for w in reconciled.warnings],
     )
 
 

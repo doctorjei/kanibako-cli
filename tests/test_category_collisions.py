@@ -21,6 +21,9 @@ row  case                                            outcome
                                                      EXTENSION
 4    abstraction vs abstraction, DIFFERENT scopes    scope precedence, SILENT
 5    abstraction vs abstraction, SAME scope          existing order + WARN
+                                                     (the WARN is the PRODUCER's
+                                                     since 5-1c, not this
+                                                     helper's — see below)
 ===  =============================================  =========================
 
 ⚑⚑ WHOSE TRUTH THIS IS, SINCE CUTOVER 2c — READ BEFORE APPLYING ANY OUTCOME
@@ -30,22 +33,28 @@ seed list and its sync list — is decided by the assembly COLLAPSE
 (``settings.store_collapse.collapse_store_shapes``, installed on the launch path
 by ``commands.start._install_assembly_collapse``), and the collapse's refusals
 are the launch's. The helper KEEPS RUNNING by design; that is not a migration and
-not a second opinion. It is retired at cutover step 5, together with its
-arbitration half and never apart from it — NOT here.
+not a second opinion. Its ARBITRATION half is retired at cutover step 5; its WARN
+half already is (5-1c, below).
 
 So every case below drives a FUNCTION, and only some of them still describe what
 a user meets. What the helper still decides on the live path:
 
 * ``envs`` — the collapse produces none (``CollapsedStore`` is bindings + seeded
   + synced), leaving this its sole producer;
-* ⚑ **CUTOVER 5-0 TOOK A LINE OUT OF THIS LIST.** The row-5 SAME-SCOPE
-  ``warnings`` channel was here, because the helper was its only producer.
-  ``commands.start.emit_collision_warnings`` is still the ONE emission seam, but
-  ``_install_assembly_collapse`` now feeds it the ``store_shape`` producer's
-  warnings as well, so the channel no longer depends on this helper. (What one
-  ambiguity reaching that seam TWICE does — nothing: the memo is keyed on the
-  ``CategoryCollision`` both arms build — is pinned by
-  ``TestTheCollapseRouteFeedsTheSameChannel`` below.)
+* ⚑⚑ **CUTOVER 5-1c TOOK A LINE OUT OF THIS LIST FOR GOOD.** The row-5
+  SAME-SCOPE ``warnings`` channel was here, because the helper was its only
+  producer. 5-0 wired the ``store_shape`` producer's warnings into the ONE
+  emission seam (``commands.start.emit_collision_warnings``) BESIDE the helper's;
+  5-1c then deleted the helper's feed AND the
+  ``ReconciledCategories.warnings`` field behind it, so **one ambiguity now has
+  exactly one builder and one path to the user.** ⚑ THERE IS NO ``rec.warnings``
+  TO ASSERT ON ANYWHERE IN THIS FILE — a case below that once proved SILENCE now
+  proves it by the helper having no channel at all, which is why several such
+  assertions were RETIRED rather than inverted. The row-5 warning's own
+  behaviour is pinned where it is now built:
+  ``tests/test_settings/test_store_shape.py::TestWithinScopeRows`` (fields,
+  message, every-launch purity, mask-does-not-suppress) and
+  ``::TestPerScope`` (a CROSS-scope pair is silent). Do not re-pin it here.
 * rows 1 and 3, which RAISE inside ``commands.start._resolve_launch_snapshot``
   BEFORE the collapse is reached, so their message and remedy text are still
   exactly what a user is handed.
@@ -61,6 +70,7 @@ false.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 import pytest
@@ -152,24 +162,33 @@ class TestShippedDefaultsAreQuiet:
     probe it borrows) and asserts zero errors and zero warnings — which is also
     the M-7 real-world exposure check.
 
-    ⚑ It certifies the RECONCILE arm of that install, and only that arm. Whether
-    the same shipped set survives the ASSEMBLY COLLAPSE — the route that decides
-    the install since cutover 2c — is a separate question, and neither this file
-    nor the per-mode probe it borrows asks it.
+    ⚑ The ERROR half certifies the RECONCILE arm of that install, and only that
+    arm. Whether the same shipped set survives the ASSEMBLY COLLAPSE — the route
+    that decides the install since cutover 2c — is a separate question, and
+    neither this file nor the per-mode probe it borrows asks it.
+
+    ⚑ The WARNING half is asked of the PRODUCER (cutover 5-1c retargeted it).
+    That is not a widening for its own sake: the producer is what a user actually
+    hears from now, so "a real install prints no collision warning" is only a
+    true claim if it is asked there. It folds each scope ALONE, so it is also the
+    STRICTER of the two arms — the reconcile's row-2/row-4 silences do not apply.
     """
 
     def test_every_mode_and_agent_shape_resolves_clean(self, tmp_path):
         from tests.test_categories_live import _probe_cases, _probe_snapshot
 
         from kanibako.settings.settings_launch import snapshot_category_entries
+        from kanibako.settings.store_shape import build_store_shape_set
 
         for mode, proj, ws_root, hl in _probe_cases(tmp_path):
             snap, ctx = _probe_snapshot(mode, proj, ws_root, hl)
             for agent in ("claude", "no_agent"):
-                rec = reconcile_categories(
-                    snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx)
+                entries = snapshot_category_entries(
+                    snap, active_agent=agent, box_ctx=ctx,
                 )
-                assert rec.warnings == (), (mode, agent, rec.warnings)
+                produced = build_store_shape_set(entries)
+                assert produced.warnings == (), (mode, agent, produced.warnings)
+                rec = reconcile_categories(entries)
                 assert rec.mounts, (mode, agent)
 
     def test_every_shipped_dest_is_occupied_at_most_once(self, tmp_path):
@@ -261,8 +280,11 @@ class TestRow1SecretPathCarveOut:
             entry("secret_path", name="TOK", scope="box",
                   box_dest=dest, host_src="/box/tok"),
         ])
+        # ⚑ RETIRED at 5-1c, and it never pinned anything: ``secret_path`` is a
+        # CONCRETE category, and row 5's warn branch required an ABSTRACT winner,
+        # so ``rec.warnings == ()`` here was true by construction before the
+        # channel moved as well as after.
         assert [m.host_src for m in rec.mounts] == ["/box/tok"]
-        assert rec.warnings == ()
 
     def test_a_binding_into_the_secrets_dir_still_collides(self):
         """The carve-out is per-VAR, not a blanket exemption."""
@@ -281,12 +303,20 @@ class TestRow1SecretPathCarveOut:
 
 
 class TestRow2MaskOverrides:
-    """T3 — a mask at a bound dest wins, with no error and no warning.
+    """T3 — a mask at a bound dest wins, and does not raise doing it.
 
     ⚑ Every case here puts the mask at the LEAST specific scope and FIRST in the
     input, so neither scope precedence nor input order can hand it the win. A
     mask at box scope listed last would pass with the override rule DELETED —
     the mutation matrix caught exactly that, and this is the repair.
+
+    ⚑ "SILENTLY" NOW MEANS "DOES NOT RAISE", AND ONLY THAT (cutover 5-1c). The
+    ``rec.warnings == ()`` half of each case is RETIRED: this helper has no warn
+    channel at all any more, so asserting its silence would assert nothing. What
+    a mask does to the row-5 warning is the PRODUCER's answer and is the OPPOSITE
+    one — a mask does NOT suppress it
+    (``test_store_shape.py::TestTheMaskTrap::test_a_mask_over_an_abstraction_does_not_suppress_the_row5_warning``).
+    Do not read these cases as saying otherwise.
     """
 
     def test_mask_over_a_binding_wins_silently(self):
@@ -296,7 +326,6 @@ class TestRow2MaskOverrides:
         ])
         assert categories(rec) == ["masks"]
         assert [m.scope for m in rec.mounts] == ["system"]
-        assert rec.warnings == ()
 
     def test_mask_over_an_abstraction_wins_silently(self):
         rec = reconcile_categories([
@@ -305,7 +334,6 @@ class TestRow2MaskOverrides:
         ])
         assert categories(rec) == ["masks"]
         assert [m.scope for m in rec.mounts] == ["system"]
-        assert rec.warnings == ()
 
 
 # --------------------------------------------------------------------------- #
@@ -359,9 +387,11 @@ class TestRow3ExtensionOntoOccupied:
         assert "claude_plugins: null" in text
 
     def test_an_abstraction_alone_at_a_dest_is_fine(self):
+        # ⚑ The ``rec.warnings == ()`` line here was RETIRED at 5-1c and was
+        # vacuous before it: a one-entry group returns on the first branch of
+        # ``_resolve_mount_group``, above every row.
         rec = reconcile_categories([entry("common", name="plugins")])
         assert categories(rec) == ["common"]
-        assert rec.warnings == ()
 
 
 # --------------------------------------------------------------------------- #
@@ -383,6 +413,15 @@ class TestRow4CrossScopeIsSilent:
     ⚑ The caveat is per-CASE, not per-class:
     ``test_agent_default_and_active_count_as_ONE_scope`` is NOT a cross-scope
     case in the collapse's terms — see its own docstring.
+
+    ⚑ "SILENT" IS NO LONGER THIS FILE'S TO ASSERT (cutover 5-1c): the helper has
+    no warn channel, so each case's ``rec.warnings == ()`` line is RETIRED and
+    what survives is the PICK. The silence claim itself is alive and pinned on
+    the arm that would make the noise —
+    ``test_store_shape.py::TestPerScope::test_a_cross_scope_abstraction_pair_is_left_whole``
+    (a cross-scope abstraction pair produces NO warning, because the producer
+    folds each scope alone and neither scope has two). Re-pinning it here would
+    be a second spelling of one claim.
     """
 
     def test_box_beats_system_across_categories_silently(self):
@@ -391,7 +430,6 @@ class TestRow4CrossScopeIsSilent:
             entry("caches", name="b", scope="box", host_src="/box"),
         ])
         assert [m.host_src for m in rec.mounts] == ["/box"]
-        assert rec.warnings == ()
 
     def test_scope_precedence_beats_input_order(self):
         """The caller's list order must not be able to override row 4.
@@ -410,7 +448,6 @@ class TestRow4CrossScopeIsSilent:
             entry("common", name="a", scope="system", host_src="/sys"),
         ])
         assert [m.host_src for m in rec.mounts] == ["/box"]
-        assert rec.warnings == ()
 
     def test_agent_default_and_active_count_as_ONE_scope(self):
         """D5 — pinned EITHER WAY so the choice is visible and mutable.
@@ -428,62 +465,87 @@ class TestRow4CrossScopeIsSilent:
         scope token, so they fold into a single scope's shape and never meet
         ``_refuse_bind_over_bind``. Nothing refuses this arrangement, and the
         warning below stays the only announcement the user gets.
+
+        ⚑ RETARGETED AT 5-1c to the arm that now builds the warning. The
+        DECISION is unchanged and this is still the ONE place it flips — but it
+        is asked of ``build_store_shape_set``, because that is what a user hears
+        from. ``test_store_shape.py`` pins the bare-token FOLD
+        (``test_the_agent_scope_folds_under_its_bare_token``) and never this: two
+        agent-tier declarations at ONE dest warning as ONE scope is pinned only
+        here, so retiring the case would drop D5 entirely.
         """
-        rec = reconcile_categories([
+        from kanibako.settings.store_shape import build_store_shape_set
+
+        entries = [
             entry("common", name="a", scope="agent.default", host_src="/def"),
             entry("caches", name="b", scope="agent.claude", host_src="/act"),
-        ])
-        assert len(rec.warnings) == 1
-        assert rec.warnings[0].scope == "agent"
-        assert set(rec.warnings[0].loser_keys) == {"agent.default.common.a"}
+        ]
+        produced = build_store_shape_set(entries)
+        assert len(produced.warnings) == 1
+        assert produced.warnings[0].scope == "agent"
+        assert set(produced.warnings[0].loser_keys) == {"agent.default.common.a"}
+        # The helper still makes the same PICK, silently, and that half is its own.
+        assert [m.host_src for m in reconcile_categories(entries).mounts] == ["/act"]
 
 
-class TestRow5SameScopeWarns:
-    """T7 — proceed on the existing ordering, and say so.
+class TestRow5SameScopeProceedsOnTheExistingOrdering:
+    """T7 — proceed on the existing ordering. SAYING so is no longer this arm's.
 
-    ⚑ Row 5 is the arm of the helper that is STILL USER-VISIBLE: the warnings it
-    returns are emitted on the live launch path
-    (``commands.start.emit_collision_warnings``) and that emission survives until
-    cutover step 5 retires the helper. Read these as live behaviour — the module
-    docstring's caveat is about row 4, not this row.
+    ⚑⚑ RENAMED AND CUT DOWN AT CUTOVER 5-1c, and the rename is the point: row 5
+    is PROCEED **and** WARN, and this helper now does only the first half. The
+    warning is built by the per-scope ``store_shape`` producer and is pinned
+    THERE, once —
+    ``test_store_shape.py::TestWithinScopeRows::test_row5_two_abstractions_at_one_dest_warn_and_the_last_wins``
+    (dest, scope, winner_key, loser_keys) and ``::test_row5_warns_every_launch_and_never_raises``
+    (purity across repeated calls, and the message text). Three cases that lived
+    here were RETIRED rather than moved, because moving them would have made a
+    second spelling of a claim that is already pinned:
 
-    ⚑ What they are no longer the SOLE source of is the channel itself (5-0): the
-    ``store_shape`` producer computes the same ambiguity per scope and
-    ``_install_assembly_collapse`` feeds it to the same seam. So a case going red
-    here means the HELPER stopped warning, not that the user stopped being told.
+    * ``test_same_category_same_scope_also_warns`` — its ONLY assertions were on
+      ``rec.warnings``. It also drove an arrangement that cannot arise in
+      production at all: under dest-keying one key holds one entry per
+      destination, so two ``common`` entries at one dest is synthetic (see the
+      ``entry()`` quarantine note above). The producer's rule reads
+      ``len(abstract) >= 2`` and never compares categories, so nothing about the
+      same-category case is unpinned by its going.
+    * ``test_the_resolver_itself_has_no_memory`` — purity, observed through the
+      warn channel. Pinned on the producer by
+      ``test_row5_warns_every_launch_and_never_raises``.
+    * ``test_a_lower_scopes_own_ambiguity_is_masked_by_row_4``'s SILENCE half —
+      see the surviving case below. ⚑ That one must NOT be retargeted: the
+      producer gives the OPPOSITE answer.
     """
 
-    def test_same_scope_pair_survives_with_exactly_one_warning(self):
+    def test_same_scope_pair_survives_and_the_existing_ordering_picks(self):
+        """The PROCEED half: one winner comes out, chosen by the input ordering.
+
+        ``common`` sorts after ``caches``, so it wins — the same answer the
+        retired flat ladder gave, and the same one the producer gives.
+        """
         rec = reconcile_categories([
             entry("caches", name="build", scope="box", host_src="/cache"),
             entry("common", name="buildcache", scope="box", host_src="/common"),
         ])
         assert len(rec.mounts) == 1
-        assert len(rec.warnings) == 1
-        w = rec.warnings[0]
-        assert w.box_dest == DEST
-        assert w.scope == "box"
-        assert w.winner_key == "box.common.buildcache"
-        assert w.loser_keys == ("box.caches.build",)
-        assert "repeats every launch" in w.message()
-        assert "box.caches.build" in w.message()
+        assert rec.mounts[0].key == "box.common.buildcache"
+        assert rec.mounts[0].host_src == "/common"
 
-    def test_same_category_same_scope_also_warns(self):
-        rec = reconcile_categories([
-            entry("common", name="a", scope="box"),
-            entry("common", name="b", scope="box"),
-        ])
-        assert len(rec.warnings) == 1
-        assert rec.warnings[0].loser_keys == ("box.common.a",)
-
-    def test_a_lower_scopes_own_ambiguity_is_masked_by_row_4(self):
+    def test_a_lower_scopes_own_ambiguity_still_resolves_to_ONE_mount(self):
         """Row 4 makes the whole lower scope lose, so its internal order
         decided nothing and naming a "winner" there would be a lie.
 
         ⚑ A row-4 shape, so the class-level caveat on
         ``TestRow4CrossScopeIsSilent`` applies here and not the one above it:
         three binds at one dest across two scopes is an arrangement the collapse
-        refuses outright, so the silence asserted below is the helper's alone.
+        refuses outright, so the outcome asserted below is the helper's alone.
+
+        ⚑⚑ THE ``rec.warnings == ()`` HALF IS RETIRED AND MUST NOT BE
+        RETARGETED — it is one of the two MEASURED divergences between the arms
+        (cutover 5-0). The producer folds ``system`` ALONE, sees two abstractions
+        at one dest there, and DOES warn; the reconcile was silent because row 4
+        had already made that whole scope lose. Asking ``build_store_shape_set``
+        for silence here would assert the opposite of the truth. What survives is
+        the pick, which is what this case was named for.
         """
         rec = reconcile_categories([
             entry("common", name="a", scope="system"),
@@ -491,22 +553,7 @@ class TestRow5SameScopeWarns:
             entry("common", name="c", scope="box"),
         ])
         assert len(rec.mounts) == 1
-        assert rec.warnings == ()
-
-    def test_the_resolver_itself_has_no_memory(self):
-        """T8 (resolver half) — purity: the records come back EVERY call.
-
-        Suppression is the emitter's job; a resolver that remembered would make
-        the "every launch" requirement unimplementable from the outside.
-        """
-        entries = [
-            entry("caches", name="build", scope="box"),
-            entry("common", name="buildcache", scope="box"),
-        ]
-        first = reconcile_categories(entries)
-        second = reconcile_categories(entries)
-        assert len(first.warnings) == 1
-        assert first.warnings == second.warnings
+        assert rec.mounts[0].scope == "box"
 
 
 class TestCollisionWarningEmission:
@@ -567,18 +614,28 @@ class TestCollisionWarningEmission:
 
 
 class TestTheCollapseRouteFeedsTheSameChannel:
-    """CUTOVER 5-0 — the row-5 warning has a home in the NEW route, and only one.
+    """CUTOVER 5-0/5-1c — the row-5 warning has a home in the NEW route, and ONLY one.
 
-    Step 5 deletes ``reconcile_categories``' arbitration half together with the
-    ``emit_collision_warnings(reconciled.warnings)`` call in
-    ``_resolve_launch_snapshot``. These two say what has to be true for that to be a
-    deletion rather than a regression: the collapse route announces the ambiguity BY
-    ITSELF, and with BOTH feeds live one ambiguity is still one line — because the two
-    build the SAME ``CategoryCollision``, and the emitter's memo is keyed on it.
+    5-0 wired ``emit_collision_warnings(shapes.warnings)`` into
+    ``_install_assembly_collapse`` beside the reconcile's own feed; 5-1c then deleted
+    that feed and the ``ReconciledCategories.warnings`` field behind it. These cases
+    say what has to be true for that to have been a deletion rather than a regression:
+    the collapse route announces the ambiguity BY ITSELF, there is no second feed left
+    to announce it again, and the case 5-0 newly made audible still is.
 
-    ⚑ Both drive ``_install_assembly_collapse`` itself, not the producer beneath it: what
-    is under test is the WIRING, so a test that called ``build_store_shape_set`` and
-    emitted its warnings by hand would stay green with the wiring ripped out.
+    ⚑ Each drives ``_install_assembly_collapse`` itself, not the producer beneath it:
+    what is under test is the WIRING, so a test that called ``build_store_shape_set``
+    and emitted its warnings by hand would stay green with the wiring ripped out.
+
+    ⚑ ``test_BOTH_feeds_live_still_produce_EXACTLY_ONE_line`` was RETIRED HERE at 5-1c,
+    and deliberately not replaced by a green-but-vacuous version of itself: its subject
+    was two live feeds, and there are not two. It was the SAFETY PROOF FOR THIS
+    DELETION and its job is done. What replaced it is
+    ``test_there_is_NO_SECOND_FEED_left_to_add`` below — the same guarantee stated
+    structurally instead of by coincidence. (Two feeds printed one line only because
+    both arms happened to build an EQUAL ``CategoryCollision`` and the emitter memoises
+    on ``(box_dest, scope)``; that was a property of the two constructions, never of
+    the channel.)
     """
 
     @pytest.fixture(autouse=True)
@@ -624,55 +681,57 @@ class TestTheCollapseRouteFeedsTheSameChannel:
         # The LOSER is the actionable half — it names the declaration to edit.
         assert "box.caches.build" in self._lines(caplog)[0]
 
-    def test_BOTH_feeds_live_still_produce_EXACTLY_ONE_line(self, caplog):
-        """The ordering rule the plan states: never two lines for one ambiguity.
+    def test_there_is_NO_SECOND_FEED_left_to_add(self):
+        """5-1c's own guarantee: one ambiguity, one builder, one path to the user.
 
-        Driven in the live order — the reconcile emission first, the collapse install
-        after — because that is the order ``_resolve_launch_snapshot`` runs them in.
+        The reconcile's feed was deletable because the collapse route replaced it; it
+        had to be DELETED, not merely unused, because two feeds of one channel print
+        one line only for as long as their two constructions stay byte-equal. Making
+        the second feed UNAVAILABLE is what closes that (P3): re-adding it now means
+        re-adding a field, which is a visible design act rather than a one-line edit.
 
-        MUTATION ANCHOR: make the two arms disagree about the pair the memo is keyed on
-        (e.g. give ``store_shape``'s ``CategoryCollision`` a different ``scope``) and
-        this fails on ``assert 2 == 1``.
+        MUTATION ANCHOR: restore ``warnings`` to ``ReconciledCategories`` (with the
+        row-5 ``CategoryCollision`` construction in ``_resolve_mount_group`` that fills
+        it) and this fails — the attribute is back and a same-scope ambiguity is
+        carried on it again.
         """
-        from kanibako.commands.start import (
-            _install_assembly_collapse,
-            emit_collision_warnings,
+        rec = reconcile_categories(self._ambiguous())
+
+        assert not hasattr(rec, "warnings"), (
+            "reconcile_categories grew a warn channel back — see cutover 5-1c"
         )
-        from kanibako.settings.keystore import KeyStore
-
-        entries = self._ambiguous()
-        with caplog.at_level(logging.WARNING):
-            emit_collision_warnings(reconcile_categories(entries).warnings)
-            _install_assembly_collapse(KeyStore(), entries, whole_box=False)
-
-        assert len(self._lines(caplog)) == 1
+        assert [f.name for f in dataclasses.fields(rec)] == [
+            "mounts", "copies", "envs",
+        ]
 
     def test_a_MASKED_destinations_ambiguity_is_announced_where_it_once_was_not(
         self, caplog,
     ):
         """The one place 5-0 changed what a user sees, pinned (CHANGELOG, Unreleased).
 
-        A ``masks`` entry at the dest makes the RECONCILE silent about the pair beneath
-        it (§0 row 2 returns the mask and no warnings, from any scope). The producer
-        folds each scope alone, so it still reports the pair — and the pair is still
-        ambiguous, mask or no mask.
+        A ``masks`` entry at the dest made the RECONCILE silent about the pair beneath
+        it (§0 row 2 returned the mask and no warnings, from any scope), so before 5-0
+        this launch printed nothing and still worked. The producer folds each scope
+        alone, so it reports the pair — and the pair is still ambiguous, mask or no
+        mask.
 
-        MUTATION ANCHOR: filter ``shapes.warnings`` down to what the reconcile also
-        reports before emitting, and this fails on ``assert 0 == 1`` while both tests
-        above stay green — which is exactly the shape of edit this exists to catch.
+        ⚑ 5-1c dropped this case's reconcile scaffolding. It used to assert
+        ``reconciled.warnings == ()`` first, to show WHICH arm was the silent one;
+        with the reconcile channel gone that assertion has no subject, and the claim
+        it set up — that the line comes from the producer — is what the surviving body
+        drives directly.
+
+        MUTATION ANCHOR: filter ``shapes.warnings`` down to what a mask leaves
+        unshadowed before emitting, and this fails on ``assert 0 == 1`` while
+        ``test_the_collapse_route_ALONE_announces_the_ambiguity`` stays green — which
+        is exactly the shape of edit this exists to catch.
         """
-        from kanibako.commands.start import (
-            _install_assembly_collapse,
-            emit_collision_warnings,
-        )
+        from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.keystore import KeyStore
 
         entries = [*self._ambiguous(), entry("masks", name="hide", scope="box")]
-        reconciled = reconcile_categories(entries)
-        assert reconciled.warnings == (), "the reconcile arm must be the silent one here"
 
         with caplog.at_level(logging.WARNING):
-            emit_collision_warnings(reconciled.warnings)
             _install_assembly_collapse(KeyStore(), entries, whole_box=False)
 
         assert len(self._lines(caplog)) == 1
@@ -684,6 +743,16 @@ class TestTheCollapseRouteFeedsTheSameChannel:
 
 
 class TestPreservedCopyAndCrossDeliveryRules:
+    """The copy layer and the delivery boundary — neither is in the §0 table.
+
+    ⚑ Two ``rec.warnings == ()`` assertions were RETIRED here at cutover 5-1c
+    (this one and ``test_synced_at_a_bindings_dest_keeps_the_BINDING_AND_the_copy``).
+    Beyond the channel having moved to the producer, both were vacuous where they
+    stood: ``seeded`` and ``synced`` are COPY deliveries and never reach
+    ``_resolve_mount_group`` at all, so no arrangement of them could ever have
+    produced a row-5 warning.
+    """
+
     def test_pure_seeded_group_keeps_every_layer(self):
         """T11 — the template trio. Copies OVERLAY; they do not shadow."""
         rec = reconcile_categories([
@@ -692,7 +761,6 @@ class TestPreservedCopyAndCrossDeliveryRules:
             entry("seeded", name="template", scope="workset", host_src="/ws"),
         ])
         assert [c.host_src for c in rec.copies] == ["/base", "/ag", "/ws"]
-        assert rec.warnings == ()
 
     def test_synced_at_a_bindings_dest_keeps_the_BINDING_AND_the_copy(self):
         """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
@@ -711,7 +779,6 @@ class TestPreservedCopyAndCrossDeliveryRules:
         ])
         assert [c.category for c in rec.copies] == ["synced"]
         assert [m.category for m in rec.mounts] == ["bindings.rw"]
-        assert rec.warnings == ()
 
     def test_the_synced_winner_is_the_MOST_SPECIFIC_scope(self):
         """N3 — this is the CREDENTIAL pick, so getting it wrong is not a
@@ -838,12 +905,18 @@ class TestDeriveBindingKeys:
     def test_a_LOSING_declaration_is_materialised_too(self):
         """§0's purpose is "a user can see WHY a mount exists" — a losing
         declaration's derivation is exactly what explains the warning that
-        names it, so hiding it would defeat the point."""
+        names it, so hiding it would defeat the point.
+
+        ⚑ The "did it actually lose?" precondition used to be read off
+        ``reconcile_categories(...).warnings``; 5-1c retired that field, so it is
+        read off the WINNER instead — which says the same thing more directly.
+        """
         entries = [
             entry("caches", name="build", scope="box", host_src="/loser"),
             entry("common", name="buildcache", scope="box", host_src="/winner"),
         ]
-        assert reconcile_categories(entries).warnings  # the loser did lose
+        # The loser did lose: one mount survives and it is the other one.
+        assert [m.host_src for m in reconcile_categories(entries).mounts] == ["/winner"]
         derived = derive_binding_keys(entries)
         assert derived[
             ("binding_derivations", "box", "caches", "build")
