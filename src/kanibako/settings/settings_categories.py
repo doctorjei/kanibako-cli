@@ -685,14 +685,23 @@ class LaunchDeliveries:
     * *envs* — the ENV-delivered entries, in entry order.  No arbitration happens
       here or anywhere: the per-VAR winner is the CONSUMER's dict-update, exactly
       as it has always been.
-    * *secrets* — the per-VAR ``secret_path`` winners
-      (:func:`secret_path_winners`), in the emitter's order.
+    * *secrets* — the ``secret_path`` mounts the launch delivers
+      (:func:`secret_path_deliveries`: the per-VAR winners, minus what §0 gives to
+      a ``masks`` at the same dest), in the emitter's order.
     * *agent_dests* — the normalized dests carrying the agent's delivery binds
       (the emitter's SKIP-IF-ABSENT set).  A PARAMETER of
       :func:`launch_deliveries` rather than a filter written here: the predicate
       that decides what an agent delivery IS belongs to the launch emitter that
       applies the policy (``commands.start._is_agent_delivery``), and one spelling
       of it is the point.
+    * *narrow_bindings* — a NARROW resolve's whole mount product, and ``None`` on
+      every other resolve.  A narrow resolve describes an INJECTED TABLE, not a
+      box, so the assembly collapse returns before writing ``meta.assembly.bindings``
+      and there is no collapsed map to emit from; this field is what a narrow
+      caller emits instead.  ⚑ IT IS ``None`` UNLESS THE CALLER ASKED — the seam
+      builds it only for a resolve that named its table's dests
+      (``commands.start._resolve_launch_snapshot``'s *narrow_bind_dests*), so the
+      main path cannot reach a map it never requested (P3).
 
     🛑 IT IS A RETURN VALUE, NEVER A SNAPSHOT KEY.  ``meta.assembly.*`` is CLOSED
     at three leaves (spec §0 · the keyspace manifest ·
@@ -705,6 +714,7 @@ class LaunchDeliveries:
     envs: list[CategoryEntry]
     secrets: list[CategoryEntry]
     agent_dests: frozenset[str]
+    narrow_bindings: "dict[str, object] | None" = None
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
@@ -725,13 +735,9 @@ def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     the reconciled mounts filtered to this category — one order, one consumer
     (``commands.start._emit_secret_mounts``).
 
-    ⚑ P7 — WHAT THIS DOES *NOT* DECIDE, stated because the reconcile did decide it
-    while both routes ran: this answers "which pointer wins for each VAR", not
-    "does anything ELSE contend for that dest".  A ``bindings.*`` row aimed into
-    the secrets directory, or a ``masks`` over it, is a CROSS-CATEGORY question
-    that the §0 table answers today inside :func:`reconcile_categories` — and
-    ``secret_path`` carries no arm in the disk-store shape (producer DESIGN §7.4),
-    so the collapse does not answer it either.  Not this function's to invent.
+    ⚑ P7 — WHAT THIS DOES *NOT* DECIDE: this answers "which pointer wins for each
+    VAR", not "does anything ELSE contend for that dest".  That CROSS-CATEGORY
+    question is :func:`secret_path_deliveries`', which composes the two.
     """
     by_dest: dict[str, list[CategoryEntry]] = {}
     for e in entries:
@@ -742,8 +748,65 @@ def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     return winners
 
 
+def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
+    """The ``secret_path`` mounts a launch DELIVERS: the per-VAR winners, §0-gated.
+
+    ⚑⚑ THE §0 CROSS-CATEGORY GATE FOR SECRET DESTS LIVES HERE (cutover 6-R2),
+    BECAUSE NOTHING ELSE HOLDS THE INPUTS.  ``secret_path`` carries no arm in the
+    disk-store shape (producer DESIGN §7.4), so the assembly COLLAPSE never sees a
+    secret and cannot answer "does anything else contend for this destination"; the
+    only other answer was inside :func:`reconcile_categories`, which is being
+    retired.  So the rows that decided it are applied here, over the SAME entry list
+    and in the SAME order, restricted to the destinations a secret claims:
+
+    * row 1 / row 3 — a ``bindings.*`` row (or an abstraction deriving one) aimed at
+      ``SECRET_MOUNT_DIR/<VAR>`` REFUSES the launch, through the same two public
+      raisers, naming BOTH declarations.  ⚑ Several ``secret_path`` rows at one dest
+      are the documented per-VAR cascade and not a collision — the D2 carve-out,
+      which is the CALLER's test in exactly the way :func:`raise_binding_vs_binding`
+      says it is.
+    * row 2 — a ``masks`` at the dest takes it, and the VAR is simply not delivered.
+      Hiding a bound path is a mask's whole job, and the tmpfs lands there either
+      way, so a secret mounted beside it would be hidden anyway.  SILENT, as it has
+      been since the flat authority ladder put ``masks`` on top.
+
+    ⚑ EXACT DEST ONLY, and that is not a narrowing: a bind or a mask over the
+    secrets DIRECTORY never contended with ``SECRET_MOUNT_DIR/<VAR>`` — the secret
+    mounts inside it, deeper in the depth-sort (MEASURED at 6-R2, both cases).
+
+    🛑 THE DEST GROUP IS THE WHOLE MOUNT GROUP, INCLUDING THE PER-VAR LOSERS, so the
+    refusal lists what the reconcile listed: a message that named one participant of
+    a two-participant collision would be worse than the one it replaces.
+    """
+    winners = secret_path_winners(entries)
+    dests = {w.box_dest for w in winners}
+    by_dest: dict[str, list[CategoryEntry]] = {}
+    for e in entries:
+        if e.delivery == MOUNT and e.box_dest in dests:
+            by_dest.setdefault(e.box_dest, []).append(e)
+
+    delivered: list[CategoryEntry] = []
+    for winner in winners:
+        group = by_dest[winner.box_dest]
+        concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
+        abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
+        if len(concrete) > 1 and not all(
+            e.category == "secret_path" for e in concrete
+        ):
+            raise_binding_vs_binding(winner.box_dest, concrete)
+        if concrete and abstract:
+            raise_extension_onto_occupied(
+                winner.box_dest, extension=abstract[-1], base=concrete[-1],
+            )
+        if any(e.category == "masks" for e in group):
+            continue
+        delivered.append(winner)
+    return delivered
+
+
 def launch_deliveries(
     entries: list[CategoryEntry], *, agent_dests: frozenset[str],
+    narrow_bindings: "dict[str, object] | None" = None,
 ) -> LaunchDeliveries:
     """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
@@ -755,9 +818,74 @@ def launch_deliveries(
     """
     return LaunchDeliveries(
         envs=[e for e in entries if e.delivery == ENV],
-        secrets=secret_path_winners(entries),
+        secrets=secret_path_deliveries(entries),
         agent_dests=agent_dests,
+        narrow_bindings=narrow_bindings,
     )
+
+
+def narrow_table_winners(
+    entries: list[CategoryEntry], dests: frozenset[str],
+) -> list[CategoryEntry]:
+    """A NARROW resolve's mount winners: its OWN table's dests, one row each.
+
+    A narrow resolve carries only one injected table (``include_base_families=False``)
+    but still resolves the user's whole CASCADE, so a user's ``bindings.*`` /
+    ``caches`` / ``common`` / ``masks`` declaration reaches it.  Emitting those is
+    the D1 defect: the MAIN path already emits every one of them from the collapse,
+    so the narrow path mounted each a SECOND time and did it from RAW rows, defeating
+    a later-scope ``masks`` sweep the collapse had applied.  Filtering to *dests* —
+    the table's own, read from the rows that declare the binds — deletes the exposure
+    rather than arbitrating it (P4): a user declaration cannot collide inside a
+    narrow resolve unless it names an internal dest outright.
+
+    At a dest that IS the table's, §0 still decides, and the two rows it needs here
+    are the two a narrow resolve has nobody else to get:
+
+    * row 2 — a ``masks`` at the dest OVERRIDES the table's bind (hiding a bound
+      path is its whole job).  It is the COLLAPSE's rule and the collapse returns
+      early on a narrow resolve, so it is applied here.
+    * row 1 / row 3 — anything else contending for a table dest is REFUSED by name.
+      The per-scope producer (``settings.store_shape``) already raised both for a
+      SAME-scope pair (it runs above the collapse's ``whole_box`` gate, so it runs
+      on narrow resolves too); what is left for this function is the CROSS-scope
+      pair, which the collapse would have refused on a whole-box resolve and which
+      nothing else sees here.  A bare dest-filter would let both rows through into a
+      dest-keyed map and resolve them by INSERTION ORDER, silently.
+
+    ⚑ NO row-4/5 SILENT PICK, deliberately.  Normally the table's own CONCRETE row
+    occupies the dest and a second abstraction meets row 3; where the table row was
+    skip-gated (a helper source that does not exist), two user abstractions could
+    meet alone — and they are refused too, because "two mounts at one dest are an
+    error in every scope combination" is the ratified rule and a narrow resolve has
+    no cross-scope arbiter to defer to.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    by_dest: dict[str, list[CategoryEntry]] = {}
+    for e in entries:
+        if e.delivery != MOUNT:
+            continue
+        dest = normalize_bind_dest(e.box_dest)
+        if dest in dests:
+            by_dest.setdefault(dest, []).append(e)
+
+    winners: list[CategoryEntry] = []
+    for dest, group in by_dest.items():
+        masks = [e for e in group if e.category == "masks"]
+        if masks:
+            winners.append(masks[-1])
+            continue
+        if len(group) > 1:
+            concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
+            abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
+            if concrete and abstract:
+                raise_extension_onto_occupied(
+                    dest, extension=abstract[-1], base=concrete[-1],
+                )
+            raise_binding_vs_binding(dest, group)
+        winners.append(group[0])
+    return winners
 
 
 def reconcile_categories(

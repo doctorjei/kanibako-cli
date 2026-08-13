@@ -712,6 +712,36 @@ def _warn_unprotected(
         )
 
 
+def _table_bind_dests(table: str) -> frozenset[str]:
+    """The normalized box DESTS one declarative bind *table* names.
+
+    Read from the SAME rows that declare the binds and normalized with the SAME
+    function that keys the emitter's map — the :func:`canon_optional_bind_dests`
+    pattern, for the same reason: a dest spelled twice is a dest that can drift.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    return frozenset(
+        normalize_bind_dest(str(entry["box_dest"]))
+        for entry in _load_doc().get(table, [])
+    )
+
+
+def helper_bind_dests() -> frozenset[str]:
+    """The HELPER table's own dests — the helper-hub resolve's EMISSION filter.
+
+    A narrow resolve emits ONLY the dests its own injected table declares
+    (``commands.start._narrow_bind_map``); everything the user's cascade puts
+    elsewhere belongs to the main path, which emits it from the collapse.
+    """
+    return _table_bind_dests("helpers")
+
+
+def image_bind_dests() -> frozenset[str]:
+    """The IMAGE table's own dests — the image-sharing resolve's EMISSION filter."""
+    return _table_bind_dests("images")
+
+
 def helper_default_categories(
     *,
     socket_path: Path,

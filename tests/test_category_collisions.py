@@ -84,7 +84,9 @@ from kanibako.settings.settings_categories import (
     _DELIVERY,
     derive_binding_keys,
     gate_credential_delivery,
+    narrow_table_winners,
     reconcile_categories,
+    secret_path_deliveries,
     secret_path_winners,
 )
 
@@ -370,6 +372,180 @@ class TestSecretPathWinnersAreTheSeamsPerVarPick:
         assert secret_path_winners(entries) == [
             m for m in rec.mounts if m.category == "secret_path"
         ]
+
+
+class TestSecretDestContentionMovedToTheSeam:
+    """T10c — §0's CROSS-CATEGORY answer for a secret dest, at its new home (6-R2).
+
+    ``secret_path`` carries no arm in the disk-store shape (producer DESIGN §7.4),
+    so the COLLAPSE never sees a secret and cannot answer "does anything else
+    contend for this destination".  The only place that answered was
+    ``reconcile_categories``, which 6-R3 deletes — so ``secret_path_deliveries``
+    answers it now, over the same entry list, with the same rows and the same
+    messages.
+
+    ⚑⚑ THE RECONCILE STILL RAISES FIRST END TO END during 6-R2 (it runs above the
+    carrier at the seam), so these cases drive the new function DIRECTLY.  That is
+    not a weaker pin — it is the only way to observe the replacement while the route
+    it replaces is still wired.
+
+    🔬 MEASURED AT 6-R2 on the LIVE seam, and BOTH outcomes are preserved, not
+    invented: a ``bindings.rw`` at ``SECRET_MOUNT_DIR/TOK`` raised
+    ``binding_vs_binding`` naming both keys; a ``masks`` at the same dest raised
+    NOTHING, dropped the secret from ``reconciled.mounts`` (so the VAR was never
+    delivered) and left a tmpfs at the dest, with no log line at any level.
+    """
+
+    DEST = f"{SECRET_MOUNT_DIR}/TOK"
+
+    def _secret(self, **kw):
+        return entry("secret_path", name="TOK", box_dest=self.DEST, **kw)
+
+    def test_a_bind_at_a_secret_dest_REFUSES_naming_both_declarations(self):
+        """Row 1 — and the message must carry BOTH participants, as it did."""
+        entries = [
+            entry("bindings.rw", name="sneaky", box_dest=self.DEST),
+            self._secret(),
+        ]
+        with pytest.raises(CategoryCollisionError) as exc:
+            secret_path_deliveries(entries)
+        assert exc.value.kind == "binding_vs_binding"
+        assert exc.value.box_dest == self.DEST
+        # ⚑ The pin that a one-participant message would fail: BOTH keys, in the
+        # reconcile's order (the contending bind first, the suppression block's
+        # subject), so the text a user is handed is unchanged.
+        assert [k for k, _src in exc.value.entries] == [
+            "box.bindings.rw.sneaky", "box.secret_path.TOK",
+        ]
+
+    def test_the_reconcile_and_the_seam_refuse_the_SAME_configuration(self):
+        """🕯️ 6-R2 canary against the route being retired — same kind, same dest."""
+        entries = [
+            entry("bindings.rw", name="sneaky", box_dest=self.DEST),
+            self._secret(),
+        ]
+        with pytest.raises(CategoryCollisionError) as old:
+            reconcile_categories(entries)
+        with pytest.raises(CategoryCollisionError) as new:
+            secret_path_deliveries(entries)
+        assert (old.value.kind, old.value.box_dest, old.value.entries) == (
+            new.value.kind, new.value.box_dest, new.value.entries,
+        )
+
+    def test_an_ABSTRACTION_onto_a_secret_dest_refuses_as_row_3(self):
+        """Row 3 keeps its own message: the base survives, the extension is named."""
+        entries = [self._secret(), entry("caches", name="c", box_dest=self.DEST)]
+        with pytest.raises(CategoryCollisionError) as exc:
+            secret_path_deliveries(entries)
+        assert exc.value.kind == "extension_onto_occupied"
+
+    def test_a_mask_at_a_secret_dest_takes_it_SILENTLY(self, caplog):
+        """Row 2 — the measured outcome: no raise, no log, the VAR not delivered."""
+        entries = [self._secret(), entry("masks", name="m", box_dest=self.DEST)]
+        with caplog.at_level(logging.DEBUG):
+            assert secret_path_deliveries(entries) == []
+        assert caplog.records == []
+
+    def test_a_mask_takes_ONLY_the_dest_it_names(self):
+        """Per VAR, like the pick itself: masking TOK must not take SECOND."""
+        second_dest = f"{SECRET_MOUNT_DIR}/SECOND"
+        entries = [
+            self._secret(),
+            entry("masks", name="m", box_dest=self.DEST),
+            entry("secret_path", name="SECOND", box_dest=second_dest),
+        ]
+        assert [e.name for e in secret_path_deliveries(entries)] == ["SECOND"]
+
+    def test_a_mask_over_the_secrets_DIRECTORY_is_not_a_contender(self):
+        """MEASURED: exact dest only — the secret mounts INSIDE the tmpfs, as before."""
+        entries = [
+            self._secret(),
+            entry("masks", name="m", box_dest=SECRET_MOUNT_DIR),
+        ]
+        assert [e.name for e in secret_path_deliveries(entries)] == ["TOK"]
+
+    def test_it_drops_exactly_what_the_reconcile_drops(self):
+        """🕯️ 6-R2 CANARY — DIES AT 6-R3 (its oracle is the route being retired)."""
+        entries = [
+            self._secret(),
+            entry("masks", name="m", box_dest=self.DEST),
+            entry("secret_path", name="SECOND", scope="workset",
+                  box_dest=f"{SECRET_MOUNT_DIR}/SECOND", host_src="/w/second"),
+        ]
+        rec = reconcile_categories(entries)
+        assert secret_path_deliveries(entries) == [
+            m for m in rec.mounts if m.category == "secret_path"
+        ]
+
+
+class TestANarrowResolveEmitsOnlyItsOwnTable:
+    """T10d — the narrow-resolve DISSOLUTION (cutover 6-R2), §0 at its new seam.
+
+    A narrow resolve (the images / helper-hub tables) carries only its own injected
+    table but resolves the user's whole CASCADE, so a user declaration reaches it.
+    Emitting those rows is the D1 defect — the main path already emits every one of
+    them from the collapse.  ``narrow_table_winners`` filters to the table's own
+    dests, which DELETES the exposure rather than arbitrating it (P4).
+
+    ⚑ At a dest that IS the table's, two rows still have to be decided, and a narrow
+    resolve has nobody else to ask: the per-scope producer already raised the
+    SAME-scope pair (it runs above the collapse's ``whole_box`` gate), and the
+    CROSS-scope pair is the collapse's, which returns early here.
+    """
+
+    TABLE = "/home/agent/.kanibako/state/helper.sock"
+    DESTS = frozenset({TABLE})
+
+    def _table_row(self):
+        return entry("bindings.rw", name="helper_sock", box_dest=self.TABLE)
+
+    def test_a_user_row_at_ANOTHER_dest_is_dropped(self):
+        """The dissolution itself: only the table's dests survive."""
+        winners = narrow_table_winners(
+            [self._table_row(), entry("bindings.ro", name="u", box_dest="/g/user")],
+            self.DESTS,
+        )
+        assert [e.box_dest for e in winners] == [self.TABLE]
+
+    def test_a_COPY_at_a_table_dest_is_not_a_mount_and_never_emits(self):
+        """Only MOUNT deliveries reach an emitter; a ``seeded`` is a copy."""
+        winners = narrow_table_winners(
+            [entry("seeded", name="s", box_dest=self.TABLE)], self.DESTS,
+        )
+        assert winners == []
+
+    def test_TWO_rows_at_a_table_dest_REFUSE(self):
+        """The plan's own counter-example: a bare filter would pick by INSERTION ORDER.
+
+        A user ``workset.bindings.rw`` at an internal dest and the table's own row
+        are two mounts at one destination — an error in every scope combination.
+        RED if the refusal is dropped: the map silently keeps whichever went in last.
+        """
+        rows = [
+            self._table_row(),
+            entry("bindings.rw", name="mine", scope="workset", box_dest=self.TABLE),
+        ]
+        with pytest.raises(CategoryCollisionError) as exc:
+            narrow_table_winners(rows, self.DESTS)
+        assert exc.value.kind == "binding_vs_binding"
+        assert exc.value.box_dest == self.TABLE
+
+    def test_an_ABSTRACTION_onto_a_table_dest_refuses_as_row_3(self):
+        rows = [self._table_row(), entry("common", name="c", box_dest=self.TABLE)]
+        with pytest.raises(CategoryCollisionError) as exc:
+            narrow_table_winners(rows, self.DESTS)
+        assert exc.value.kind == "extension_onto_occupied"
+
+    def test_a_MASK_at_a_table_dest_OVERRIDES_it_rather_than_refusing(self):
+        """§0 row 2 is not suspended here — a mask is the INVERSE of a bind.
+
+        ⚑ This is the case a blanket ">1 row is an error" would have broken, and it
+        is the shipped outcome: a mask at a helper dest suppressed that bind under
+        the flat authority ladder too.
+        """
+        rows = [self._table_row(), entry("masks", name="m", box_dest=self.TABLE)]
+        winners = narrow_table_winners(rows, self.DESTS)
+        assert [e.category for e in winners] == ["masks"]
 
 
 # --------------------------------------------------------------------------- #

@@ -1667,10 +1667,10 @@ def _assemble_image_sharing_mounts(
         # reconcile's skip-if-missing sees a real source; its box DELIVERY
         # follows the resolved store below (no store → nothing emitted).
         storage_conf_path = write_storage_conf(staging)
-        # Late, CONDITIONAL resolve through the same snapshot pipeline,
-        # carrying ONLY the image table (include_base_families=False) — its
-        # box_dests are disjoint from the main reconcile, so a separate
-        # reconcile is byte-for-byte equivalent.
+        # Late, CONDITIONAL resolve through the same snapshot pipeline, carrying
+        # ONLY the image table (include_base_families=False) — and, since cutover
+        # 6-R2, EMITTING only that table's dests: the user's cascade reaches this
+        # resolve too, and every row of it is already emitted by the main path.
         _img_snap, _img_rec, _img_deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
@@ -1684,6 +1684,7 @@ def _assemble_image_sharing_mounts(
             storage_conf_path=storage_conf_path,
             deliver_creds=auth_src.creds_shared,
             include_base_families=False,
+            narrow_bind_dests=core_defaults.image_bind_dests(),
             # No persona tier (audit): the IMAGE table only, whose box_dests are
             # disjoint from anything a persona bundle can name.
         )
@@ -1694,7 +1695,7 @@ def _assemble_image_sharing_mounts(
         resolved_store = _snapshot_scalar(_img_snap, "box.images_store")
         if resolved_store is not None:
             img_mounts = _emit_category_mounts(
-                _narrow_bind_map(_img_rec.mounts), label="images",
+                _img_deliveries.narrow_bindings, label="images",
                 skip_if_absent=core_defaults.canon_optional_bind_dests(),
             )
             extra_mounts.extend(img_mounts)
@@ -1715,7 +1716,7 @@ def _assemble_launch_env(
     std,
     proj,
     agent_cfg,
-    reconciled,
+    deliveries,
     state_env,
     cli_env,
     target,
@@ -1727,6 +1728,12 @@ def _assemble_launch_env(
 
     SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE with the
     secret mounts.  Returns ``(container_env, secret_export_vars)``.
+
+    *deliveries* is the launch seam's
+    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` — both halves
+    this function needs (the ``<scope>.env.<VAR>`` entries and the ``secret_path``
+    mounts) come off it, so the env the box gets and the secrets it gets are read
+    from ONE object built from ONE list.
     """
     # Config-level env: the agent tier under the settings-framework env (the
     # `<scope>.env.<VAR>` category), whose per-VAR winner the single launch
@@ -1739,7 +1746,7 @@ def _assemble_launch_env(
     # that silently stopped being delivered.  Announce it HERE, at the seam that
     # used to read it, so the loss is named rather than discovered.
     _warn_legacy_env_files(std, proj)
-    container_env = _build_config_env(agent_cfg.env, reconciled.envs)
+    container_env = _build_config_env(agent_cfg.env, deliveries.envs)
     # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
     # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
     # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
@@ -1750,7 +1757,7 @@ def _assemble_launch_env(
     # argv. Missing/unreadable/empty host file -> WARN + VAR unset (fail-soft).
     # ``secret_export_vars`` drives the box-side export shim below; an EMPTY list
     # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
-    secret_mounts, secret_export_vars = _emit_secret_mounts(reconciled, logger)
+    secret_mounts, secret_export_vars = _emit_secret_mounts(deliveries.secrets, logger)
     extra_mounts.extend(secret_mounts)
     container_env.update(state_env)                        # target-derived state env
 
@@ -1924,10 +1931,10 @@ def _start_helper_hub(
     # now derive from one constant.
     kanibako_dir = proj.shell_path / BOX_PINNED_STATE_RELPATH
     kanibako_dir.mkdir(parents=True, exist_ok=True)
-    # Late, CONDITIONAL resolve through the same snapshot pipeline,
-    # carrying ONLY the helper table (include_base_families=False) — its
-    # box_dests are disjoint from the main reconcile, so a separate
-    # reconcile is byte-for-byte equivalent.
+    # Late, CONDITIONAL resolve through the same snapshot pipeline, carrying ONLY
+    # the helper table (include_base_families=False) — and, since cutover 6-R2,
+    # EMITTING only that table's dests: the user's cascade reaches this resolve too,
+    # and every row of it is already emitted by the main path.
     _hub_snap, _hub_rec, _hub_deliveries = _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -1941,11 +1948,12 @@ def _start_helper_hub(
         log_path=log_path,
         deliver_creds=auth_src.creds_shared,
         include_base_families=False,
+        narrow_bind_dests=core_defaults.helper_bind_dests(),
         # No persona tier (audit): the HELPER table only, whose pinned
         # box_dests are disjoint from anything a persona bundle can name.
     )
     helper_hub_mounts = _emit_category_mounts(
-        _narrow_bind_map(_hub_rec.mounts), label="helper",
+        _hub_deliveries.narrow_bindings, label="helper",
         skip_if_absent=core_defaults.canon_optional_bind_dests(),
     )
     extra_mounts.extend(helper_hub_mounts)
@@ -3454,7 +3462,7 @@ def _run_container(
             system_settings_path=system_settings_path,
             agent_cfg_path=agent_cfg_path,
         )
-        _snapshot, reconciled, _deliveries = _resolve_launch_snapshot(
+        _snapshot, _reconciled, deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
             agent_name=agent_id,
@@ -3717,7 +3725,11 @@ def _run_container(
         # list between two walkers; the collapsed map is one list with one walker,
         # so what survives is not a route but a per-dest missing-source POLICY —
         # and that policy was never a settings-scope fact to begin with.
-        agent_dests = _agent_delivered_dests(reconciled.mounts)
+        # ⚑ Read off the CARRIER since cutover 6-R2, which builds it from the gated
+        # ENTRY list rather than the reconciled winners: this set names the dests a
+        # DECLARED agent bind may legitimately be missing at, and whether such a
+        # declaration then lost its dest to a mask is a different question.
+        agent_dests = deliveries.agent_dests
         critical_dests: "frozenset[str]" = frozenset()
         if target and install and desc is not None:
             from kanibako.settings.settings_resolve import normalize_bind_dest
@@ -3863,7 +3875,7 @@ def _run_container(
             std=std,
             proj=proj,
             agent_cfg=agent_cfg,
-            reconciled=reconciled,
+            deliveries=deliveries,
             state_env=state_env,
             cli_env=cli_env,
             target=target,
@@ -4690,23 +4702,24 @@ def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> 
         )
 
 
-def _build_config_env(agent_env: dict[str, str], reconciled_envs) -> dict[str, str]:
-    """Layer config-level env vars, low->high: agent < the reconciled scope env.
+def _build_config_env(agent_env: dict[str, str], scope_envs) -> dict[str, str]:
+    """Layer config-level env vars, low->high: agent < the resolved scope env.
 
     Shared between container launch (start) and ``box show --effective`` so the
     resolved config-env matches exactly — that sharing is the whole point of the
-    function, and it is why the reconcile's ENV winners are folded in HERE rather
-    than by the launch caller alone (they were, and the display consequently
+    function, and it is why the ``<scope>.env.<VAR>`` entries are folded in HERE
+    rather than by the launch caller alone (they were, and the display consequently
     under-reported every ``<scope>.env.<VAR>`` the box actually receives).
     Runtime-only layers (target state env, per-run ``-e``) are applied by the
     caller ON TOP of this and are NOT config, so they are excluded here.
 
-    *reconciled_envs* is ``reconcile_categories(...).envs`` — the per-VAR
-    precedence winners over system < agent < workset < box, each carrying the VAR
-    in ``box_dest`` and the resolved value in ``options``.
+    *scope_envs* is ``LaunchDeliveries.envs`` — the launch seam's ENV-delivered
+    entries in apply order, each carrying the VAR in ``box_dest`` and the resolved
+    value in ``options``.  ⚑ THE PER-VAR WINNER IS THE ``update`` BELOW and always
+    was: no arbitration happens upstream, so this line IS the cascade for env.
 
     *agent_env* is ``AgentConfig.env`` (``agent.<node>.env.<VAR>``) and stays as
-    the UNDER-layer rather than being dropped as redundant: the reconcile reads
+    the UNDER-layer rather than being dropped as redundant: the resolve reads
     the node's settings FILE, while a box whose agent config has not been
     materialised yet is displayed from ``target.generate_agent_config()``, which
     the snapshot cannot see.
@@ -4715,15 +4728,15 @@ def _build_config_env(agent_env: dict[str, str], reconciled_envs) -> dict[str, s
     tiers here are GONE — Jei's RQ-1 re-ruling (2026-08-02): the ratified
     manifest records them as DROPPED, so a live launch read of them was an
     authority-vs-code divergence. Their replacement is ``<scope>.env.<VAR>``,
-    which arrives through *reconciled_envs*.
+    which arrives through *scope_envs*.
     """
     env: dict[str, str] = {}
     env.update(agent_env)                                    # agent tier
-    env.update({e.box_dest: e.options for e in reconciled_envs})
+    env.update({e.box_dest: e.options for e in scope_envs})
     return env
 
 
-def _emit_secret_mounts(reconciled, logger) -> "tuple[list, list[str]]":
+def _emit_secret_mounts(secrets, logger) -> "tuple[list, list[str]]":
     """Emit the SECRET-category (``secret_path``) ro Mounts + the export VAR list.
 
     ARM'S-LENGTH delivery (spec §2a SECRET category, 2026-07-06): each resolved
@@ -4734,12 +4747,19 @@ def _emit_secret_mounts(reconciled, logger) -> "tuple[list, list[str]]":
     agent start. So the secret is never in our process memory, never on the podman
     argv (only the mount PATH is), never in the snapshot/keystore/logs.
 
-    The winners come from the SINGLE launch reconcile (``reconcile_categories``
-    already picked the per-VAR precedence winner — a box ``secret_path.<VAR>`` beats
-    a workset one at the identical ``SECRET_MOUNT_DIR/<VAR>`` box_dest). Each entry's
-    ``host_src`` is the cascade-resolved path (already ``~``/``$VAR`` host-expanded by
-    the snapshot expand pass); it is re-expanded defensively (idempotent on an
-    absolute path) so a hand-set relative ``~`` pointer still resolves.
+    *secrets* is ``LaunchDeliveries.secrets`` — the per-VAR precedence winners the
+    launch seam picked (a box ``secret_path.<VAR>`` beats a workset one at the
+    identical ``SECRET_MOUNT_DIR/<VAR>`` box_dest;
+    ``settings_categories.secret_path_winners``). Each entry's ``host_src`` is the
+    cascade-resolved path (already ``~``/``$VAR`` host-expanded by the snapshot
+    expand pass); it is re-expanded defensively (idempotent on an absolute path) so
+    a hand-set relative ``~`` pointer still resolves.
+
+    ⚑ THE CROSS-CATEGORY §0 QUESTION IS ALREADY ANSWERED (cutover 6-R2).  What else
+    contends for a secret's destination is decided at the launch seam by
+    ``settings_categories.secret_path_deliveries``, which is where the DECLARATIONS
+    still are: a masked dest never reaches this list, and a bind at one refuses the
+    launch by name before it. This function delivers what it is handed.
 
     FAIL-SOFT: a missing / unreadable / EMPTY host file is WARNED (loudly, to stderr
     via the WARNING logger) and the VAR is left OUT of both the mount list AND the
@@ -4760,9 +4780,7 @@ def _emit_secret_mounts(reconciled, logger) -> "tuple[list, list[str]]":
 
     mounts: list = []
     export_vars: list[str] = []
-    for e in reconciled.mounts:
-        if e.category != "secret_path":
-            continue
+    for e in secrets:
         var = e.name
         # DEFENSE-IN-DEPTH: the VAR is interpolated into a generated ``sh -c`` export
         # shim (:func:`_secret_export_shim`), so re-enforce the plain-identifier shape
@@ -6348,6 +6366,7 @@ def _resolve_launch_snapshot(
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
     cli_level: "Mapping[str, object] | None" = None,
+    narrow_bind_dests: "frozenset[str] | None" = None,
 ):
     """Build the ONE launch snapshot + reconcile the launch CATEGORY winners.
 
@@ -6362,12 +6381,21 @@ def _resolve_launch_snapshot(
 
     Returns ``(snapshot, reconciled, deliveries)``.  The third element is the
     :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier —
-    envs, the per-VAR ``secret_path`` winners and the agent-delivered dests, built
-    off the SAME credential-gated list the reconcile and the collapse see.
-    ⚑ NOTHING CONSUMES IT YET (cutover 6-R1 is additive: the replacement is wired
-    and returned BESIDE the route it replaces, and the flips are 6-R2's).  It is a
-    RETURN VALUE and not a snapshot leaf on purpose — ``meta.assembly.*`` is closed
-    at three leaves and a fourth would install silently.
+    envs, the per-VAR ``secret_path`` winners, the agent-delivered dests and (for a
+    narrow resolve only) that resolve's own bind map, all built off the SAME
+    credential-gated list the reconcile and the collapse see.  ⚑ IT IS THE LIVE
+    ROUTE as of cutover 6-R2: every consumer reads the carrier, and the reconciled
+    winners returned second are consumed by nothing but the equivalence canaries
+    until 6-R3 deletes them.  It is a RETURN VALUE and not a snapshot leaf on
+    purpose — ``meta.assembly.*`` is closed at three leaves and a fourth would
+    install silently.
+
+    *narrow_bind_dests* is a NARROW caller's own injected table's dests
+    (``core_defaults.helper_bind_dests`` / ``image_bind_dests``).  Given, this
+    resolve builds ``deliveries.narrow_bindings`` — that table's rows and NOTHING
+    ELSE, in the emitter's shape.  Omitted, the field stays ``None``: a whole-box
+    resolve emits from ``meta.assembly.bindings`` and must not have a second map
+    available to reach for.
 
     AGENT_CRITICAL delivery binds
     now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree (single-route),
@@ -6702,13 +6730,20 @@ def _resolve_launch_snapshot(
     _install_assembly_collapse(
         snapshot, delivered, whole_box=include_base_families,
     )
-    # Cutover 6-R1: the ADDITIVE half of the reconcile's retirement. The carrier is
-    # built off the SAME gated list — a third reader of one list, never a second
-    # resolve — and returned beside the reconciled winners. ⚑ The agent-delivery
-    # predicate stays HERE, where the emitter applies its policy; passing the dest
-    # set in keeps :func:`_is_agent_delivery` the one spelling of that rule.
+    # Cutover 6-R1/6-R2: the reconcile's REPLACEMENT. The carrier is built off the
+    # SAME gated list — a third reader of one list, never a second resolve — and is
+    # what every consumer now reads. ⚑ The agent-delivery predicate and the emitter
+    # SHAPE stay HERE, where the emitter applies its policy; passing them in keeps
+    # :func:`_is_agent_delivery` and :func:`_bind_map_from_mounts` one spelling each.
+    # ⚑ The narrow map is built ONLY for a caller that named its table (P3) — and it
+    # is built AFTER ``_install_assembly_collapse`` above, which has already raised
+    # every SAME-scope collision the per-scope producer decides.
     deliveries = launch_deliveries(
         delivered, agent_dests=_agent_delivered_dests(delivered),
+        narrow_bindings=(
+            None if narrow_bind_dests is None
+            else _narrow_bind_map(delivered, narrow_bind_dests)
+        ),
     )
     return snapshot, reconciled, deliveries
 
@@ -7015,8 +7050,9 @@ def _launch_bind_map(snapshot) -> "dict[str, object]":
     the base families on, and a whole-box resolve either wrote this leaf or REFUSED by
     name (the fold's own refusals, which no longer reach a swallow). The gate is
     ``whole_box`` itself, so there is no configuration that reaches a whole-box resolve
-    and skips the leaf. The narrow resolves never arrive here at all — they read
-    :func:`_narrow_bind_map` off their own reconciled rows.
+    and skips the leaf. The narrow resolves never arrive here at all — they emit
+    ``LaunchDeliveries.narrow_bindings``, their OWN injected table's dests and
+    nothing else (:func:`_narrow_bind_map`).
 
     ⚑ The reconciled fallback this used to carry came out with that swallow. It
     existed so a refusal reached nobody while both routes ran; a refusal is the point
@@ -7057,9 +7093,11 @@ def _bind_map_masks(bindings) -> "list[str]":
 def _is_agent_delivery(entry) -> bool:
     """True for an AGENT-scope bind row — the agent's delivery binds (7a).
 
-    ONE spelling of the rule, because it answers two different questions now: which
-    dests carry the agent's missing-source policy, and which rows a NARROW resolve
-    must leave to the main path.  Written twice it is two rules that agree today.
+    ⚑ ONE QUESTION SINCE CUTOVER 6-R2: which dests carry the agent's missing-source
+    policy.  It used to answer a second — which rows a NARROW resolve must leave to
+    the main path — and that question is GONE, not moved: a narrow resolve now emits
+    only its own table's dests, so an agent row is dropped for naming a dest that is
+    not the table's, like any other cascade row.
     """
     return entry.scope == "agent" and entry.category in ("bindings.ro", "bindings.rw")
 
@@ -7071,14 +7109,14 @@ def _agent_delivered_dests(entries: list) -> "frozenset[str]":
     the helper context's reuse list back out of the emitted mounts.  It is no
     longer a PARTITION: there is one emitter now, so there is nothing to split.
 
-    ⚑ TOTAL over ANY :class:`CategoryEntry` list, and that is why the seam may hand
-    it the GATED ENTRY LIST as readily as the reconciled mounts: the predicate reads
-    an entry's SCOPE and CATEGORY and nothing else, so a non-mount entry is excluded
-    by category rather than by having been filtered out beforehand.  ⚑ The two lists
-    are not identical in principle — a reconciled list has already dropped an agent
-    bind that LOST its dest (only a ``masks`` can take one silently; the concrete
-    and abstract contenders raise) — so a caller that needs the WINNERS asks the
-    reconcile, and a caller that needs the DECLARATIONS asks the entry list.
+    ⚑ TOTAL over ANY :class:`CategoryEntry` list, and that is why the seam hands it
+    the GATED ENTRY LIST: the predicate reads an entry's SCOPE and CATEGORY and
+    nothing else, so a non-mount entry is excluded by category rather than by having
+    been filtered out beforehand.  ⚑ THE ENTRY LIST IS THE RIGHT INPUT, not merely a
+    workable one (cutover 6-R2 — the reconciled mounts were the input until then):
+    this set names the dests at which a DECLARED agent bind may legitimately be
+    missing, and whether such a declaration then lost its dest to a ``masks`` is a
+    different question that the missing-source policy has no stake in.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -7087,15 +7125,18 @@ def _agent_delivered_dests(entries: list) -> "frozenset[str]":
     )
 
 
-def _narrow_bind_map(mounts: list) -> "dict[str, object]":
-    """A NARROW resolve's own rows as the emitter's shape, minus the agent binds.
+def _narrow_bind_map(entries: list, dests: "frozenset[str]") -> "dict[str, object]":
+    """A NARROW resolve's OWN table's dests as the emitter's shape — nothing else.
 
-    A narrow resolve reads the user's cascade files too, so a user-declared
-    ``agent.<node>.bindings.*`` row reaches it — and the MAIN path already emits
-    every agent delivery bind from the collapse.  Dropping them at the SOURCE
-    keeps the emitter emitting exactly what it is handed (P3).
+    The §0 decisions are
+    :func:`~kanibako.settings.settings_categories.narrow_table_winners`'; this is the
+    translation into the emitter's dest-keyed shape, spelled by the same
+    :func:`_bind_map_from_mounts` the collapsed map's own translation uses so a
+    narrow map and a whole-box map cannot mean different things by one key.
     """
-    return _bind_map_from_mounts([e for e in mounts if not _is_agent_delivery(e)])
+    from kanibako.settings.settings_categories import narrow_table_winners
+
+    return _bind_map_from_mounts(narrow_table_winners(entries, dests))
 
 
 def _emit_category_mounts(

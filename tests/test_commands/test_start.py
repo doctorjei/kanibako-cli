@@ -4904,15 +4904,14 @@ class TestEmitSecretMounts:
         import logging
         return logging.getLogger("test_emit_secret_mounts")
 
-    def _reconciled(self, pointers):
-        # Build a reconciled-like object whose .mounts carries secret_path entries
-        # exactly as reconcile_categories would (delivery=MOUNT, box_dest fixed).
-        from types import SimpleNamespace
+    def _winners(self, pointers):
+        # The carrier's ``secrets`` list: secret_path entries exactly as
+        # ``secret_path_deliveries`` yields them (delivery=MOUNT, box_dest fixed).
         from kanibako.settings.settings_categories import (
             SECRET_MOUNT_DIR,
             CategoryEntry,
         )
-        mounts = [
+        return [
             CategoryEntry(
                 category="secret_path", scope="agent",
                 box_dest=f"{SECRET_MOUNT_DIR}/{var}", host_src=path,
@@ -4921,11 +4920,10 @@ class TestEmitSecretMounts:
             )
             for var, path in pointers.items()
         ]
-        return SimpleNamespace(mounts=mounts)
 
     def _call(self, pointers):
         from kanibako.commands.start import _emit_secret_mounts
-        return _emit_secret_mounts(self._reconciled(pointers), self._logger())
+        return _emit_secret_mounts(self._winners(pointers), self._logger())
 
     def test_present_file_mounts_ro_path_only(self, tmp_path):
         from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
