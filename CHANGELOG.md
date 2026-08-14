@@ -53,6 +53,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same one owner: drop your key and override the plugin's key instead, at whatever scope you like.
   See [MIGRATION.md](MIGRATION.md) §2.34.
 
+- **BREAKING: an agent's own environment variables are ordinary settings now, resolving where the
+  agent scope resolves — and arrangements that launch today will refuse: a twin of a variable at
+  another scope, an unexpanded `$NAME` in a value, and an `env:` or `secret_path:` table nested
+  under a second `<agent>:` level.**
+  A variable set in an agent's settings file — `kanibako agent set claude env.EDITOR=vim`, or an
+  `env:` block in `agents/<node>/settings.yaml` — was delivered to the box on a path of its own,
+  *underneath* every `<scope>.env.<VAR>` value instead of at the position an agent-scope key has in
+  the cascade. Four things followed from that, none of them announced: a `system.env.EDITOR` beat
+  it, though the agent scope outranks system; the plugin's own declared default beat it, so
+  `agent set` could not in fact override one; a persona's stored value beat it, though the agent
+  file is meant to win as the only place your own edits live; and a `~` or `$VAR` in the value
+  reached the box as literal text, while the identical value written in a system or box file
+  arrived expanded. **The agent file's `env` table is an ordinary `agent.<node>.env.<VAR>` key
+  now** — it resolves above `system` and below `workset`, it takes the same expansion every other
+  setting takes, and it overrides a plugin default by simply being the same key in a nearer file.
+  **Four arrangements that used to launch will now refuse.** An agent-file variable *and* a twin
+  of it at another scope (`box.env.EDITOR`) are two keys for one slot, which is the one-owner rule
+  above — the box used to take the other scope's value silently. An agent-file value containing a
+  name kanibako's own namespace does not carry, `$HOME` being the likely one, is refused by name
+  the way it always has been in a system, workset or box file; escape it (`\$HOME`) to have it
+  delivered as written. And an `env:` or a `secret_path:` table nested under a second `<agent>:`
+  level in an agent settings file (`self: claude: env:`, `self: claude: secret_path:`) is refused
+  by name, with the key the spelling actually reads: **`self:` is not a key, it is an alias for
+  `agent.claude`**, so a `claude:` level under it reads `agent.claude.claude.env` — the node named
+  twice, which is not a key and never was. Both used to resolve as though written the short way,
+  and in a file carrying both spellings the flat table replaced the nested one wholesale, so an
+  entry spelled only there vanished without a word. Move them up one level, to `self: env:` /
+  `self: secret_path:` (an all-agents entry to the system file's `agent: default: <category>:`);
+  `kanibako agent set <agent> env.VAR=…` writes that shape for you. ⚑ `secret_path` is worth
+  checking even if you never hand-edited an agent file — that nesting predates the move to the
+  flat table. `bindings:` is unaffected. See [MIGRATION.md](MIGRATION.md) §2.35.
+
 ### Fixed
 
 - **Helper boxes inherited the director's browser endpoint by accident of timing.** With

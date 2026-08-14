@@ -156,10 +156,14 @@ class TestTheOverrideStory:
     """
 
     def test_the_agent_file_beats_the_plugin_default(self, tmp_path):
+        # ⚑ The FLAT table is the agent file's only env spelling: ``self:`` IS
+        # ``agent.goose``, so a second ``goose:`` level under it would read
+        # ``agent.goose.goose.env`` and refuses (rulings 49c + 50; pinned in
+        # ``TestTheNestedSpellingRefuses`` below).
         target = target_for("goose")
         agent_file = write_yaml(
             tmp_path / "agent.yaml",
-            {"self": {"goose": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
+            {"self": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}},
         )
         slots = resolve_envs(target, agent_path=agent_file)
         assert slots["GOOSE_DISABLE_KEYRING"].value == "false"
@@ -179,19 +183,59 @@ class TestTheOverrideStory:
         slots = resolve_envs(target, system_path=system_file)
         assert slots["GOOSE_DISABLE_KEYRING"].value == "false"
 
+    def test_the_all_agents_default_tier_arrives_at_all(self, tmp_path):
+        """The POSITIVE CONTROL for the pair below: the all-agents tier is a LIVE route.
+
+        ⚑ Without this, the negative next door passes just as well when nothing reaches the
+        cascade — a dead route and a losing route are indistinguishable from the winner alone.
+        The tier is written in the SYSTEM file (``agent: default: env:``); the agent file has
+        no spelling for it, since its flat table is re-rooted for the ACTIVE node only.
+        """
+        target = target_for("goose")
+        system_file = write_yaml(
+            tmp_path / "system.yaml",
+            {"agent": {"default": {"env": {"PAGER": "less"}}}},
+        )
+        slots = resolve_envs(target, system_path=system_file)
+        assert slots["PAGER"].value == "less"
+        assert slots["PAGER"].key == "agent.default.env.PAGER"
+
     def test_the_all_agents_default_tier_does_not_beat_it(self, tmp_path):
         """``agent.default`` is the BACKSTOP tier and loses to the active slot.
 
         The §2d pick is active-over-default PER NAME, and a plugin declares under its own
-        node — so a value written at ``self.default`` fills a gap, it does not override.
+        node — so a value written at the all-agents tier fills a gap, it does not override.
         """
+        target = target_for("goose")
+        system_file = write_yaml(
+            tmp_path / "system.yaml",
+            {"agent": {"default": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
+        )
+        slots = resolve_envs(target, system_path=system_file)
+        assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+
+
+class TestTheNestedSpellingRefuses:
+    """Ruling 49c — a second ``<node>`` level under ``self:`` refuses, through the REAL chain.
+
+    ⚑ The layer-level cases live in ``test_settings_launch.py``; what this one adds is that the
+    refusal is REACHABLE from the path a launch actually walks, not only from ``_agent_partial``
+    called on its own. It is a DIFFERENT raise from the twin refusal below — assembly-time file
+    spelling, not collapse-time slot arbitration.
+    """
+
+    def test_a_second_node_level_under_self_refuses_naming_the_spelling(self, tmp_path):
         target = target_for("goose")
         agent_file = write_yaml(
             tmp_path / "agent.yaml",
-            {"self": {"default": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
+            {"self": {"goose": {"env": {"GOOSE_DISABLE_KEYRING": "false"}}}},
         )
-        slots = resolve_envs(target, agent_path=agent_file)
-        assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+        with pytest.raises(SettingsError) as exc:
+            resolve_envs(target, agent_path=agent_file)
+        message = str(exc.value)
+        assert "self.goose.env" in message
+        # The cure names the flat table the ``agent set`` verb writes.
+        assert "kanibako agent set goose env.GOOSE_DISABLE_KEYRING=false" in message
 
 
 class TestATwinAtAnotherScopeRefuses:

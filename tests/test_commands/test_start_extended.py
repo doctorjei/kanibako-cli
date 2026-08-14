@@ -1572,7 +1572,13 @@ class TestCliEnv:
             assert env.get("OTHER") == "123"
 
     def test_cli_env_overrides_agent_env(self, start_mocks):
-        """Per-run env vars have highest priority over agent env."""
+        """Per-run env vars have highest priority over agent env.
+
+        ⚑ The loser here rides the ``start_mocks`` FLOOR mirror, not the agent-FILE
+        rung it takes in production; what is pinned is that ``-e`` outranks an
+        agent-scope value, not which rung supplied it (T-B in
+        ``test_start_assembly.py`` pins the real route).
+        """
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_KEY": "agent_val"}
             m.load_agent_config.return_value = m.agent_cfg

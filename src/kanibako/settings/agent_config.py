@@ -28,7 +28,21 @@ class AgentConfig:
                      (model, access, allow_helpers, endpoint, …). The
                      per-node DISCRIMINATED sub-table ``agent.<node>.secret_path``
                      also lives here (see *secret_path* below).
-      env          — raw env vars injected into container (VAR -> value)
+      env          — the ENV category (``agent.<node>.env.<VAR>``), stored FLAT
+                     under ``self`` for the same reason *secret_path* below is:
+                     ``self`` IS ``agent.<node>``.  ⚑ NOT A LAUNCH-INVOCATION INPUT
+                     and not a delivery route: ``_agent_partial`` re-roots the table
+                     into the cascade and the variable reaches the box through the
+                     collapse's arbitrated env slots like every other scope's
+                     (MBR-1 P3).  What the field is FOR is the READ side of the
+                     ``agent`` verbs — ``agent info`` and ``agent show`` render it
+                     (``agent_cmd`` ``:223`` / ``:531``) and ``agent get <node>
+                     env.<VAR>`` returns it (``:489``).  ⚑ It is NOT needed to
+                     preserve a user's ``agent set``: that verb writes through
+                     ``write_nested_key`` and never builds an ``AgentConfig``, and
+                     every ``write_agent_config`` caller persists a FRESHLY
+                     GENERATED config (first-use only), so no read-modify-write
+                     round-trip exists for a value to fall out of.
       secret_path  — the SECRET category (spec §2a, 2026-07-06; RENAMED from the
                      rc0-rc2 ``env_file``): VAR -> host PATH pointer to secret
                      material (e.g. a 0600 bearer-token file). Stored DISCRIMINATED
@@ -206,12 +220,20 @@ def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
     top-level table is ``self`` (its self-reference — the renamed old bare
     ``agent`` values), and the category split is load-bearing:
 
-    * flat state (``model`` / ``endpoint`` / ``access`` / …) and ``env.*`` live
-      DIRECTLY under ``self`` (``self.<key>`` / ``self.env.<VAR>``) — the shape
-      :func:`load_agent_config` reads into ``AgentConfig`` for the launch invocation;
-    * ``secret_path.*`` lives DIRECTLY under ``self`` (``self.secret_path.<VAR>``) —
-      ``self`` IS ``agent.<node>``, so there is NO second ``<node>`` embedding. It is
-      read by :func:`load_agent_config` into ``AgentConfig`` for the launch mount.
+    * flat state (``model`` / ``endpoint`` / ``access`` / …) lives DIRECTLY under
+      ``self`` (``self.<key>``) — the shape :func:`load_agent_config` reads into
+      ``AgentConfig`` for the launch invocation;
+    * ``env.*`` and ``secret_path.*`` live DIRECTLY under ``self``
+      (``self.env.<VAR>`` / ``self.secret_path.<VAR>``) — ``self`` IS
+      ``agent.<node>``, so there is NO second ``<node>`` embedding.  ⚑ BOTH are
+      re-rooted into the launch CASCADE by ``settings_assemble._agent_partial``
+      (``_FLAT_AGENT_CATEGORIES``, whose read side this write side must match);
+      :func:`load_agent_config` models them for the ``agent`` verbs' own READS
+      (``info`` / ``show`` / ``get``), not to deliver them.  ⚑ A second ``<node>``
+      level under ``self`` is REFUSED for BOTH (rulings 49c + 50: ``self`` is an
+      ALIAS for ``agent.<node>``, so ``self.<node>.env`` reads
+      ``agent.<node>.<node>.env``), so this route is the only spelling — which is
+      what keeps write and read from drifting apart.
     * ``bindings.{ro,rw}.*`` still live in the DISCRIMINATED ``self.<node>.*`` sub-table
       — the shape ``_agent_partial`` reads into the launch cascade (it reads
       ``self.<node>`` and re-roots to ``agent.<node>``). Flattening bindings the same
@@ -269,14 +291,18 @@ def load_agent_config(path: Path) -> AgentConfig:
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
     # Flat state = the SCALAR agent-state knobs. Exclude identity keys AND any
-    # dict-valued entry: the discriminated ``<node>:`` sub-table (secret_path, node
-    # binds) is a dict and is NOT flat state — it rides ``_agent_partial``, not the
-    # ``_agent_state_partial`` state channel.
+    # dict-valued entry: the discriminated ``<node>:`` sub-table (env, secret_path,
+    # node binds) is a dict and is NOT flat state — it rides ``_agent_partial``, not
+    # the ``_agent_state_partial`` state channel.
     cfg.state = {
         k: str(v)
         for k, v in agent_sec.items()
         if k not in IDENTITY_KEYS and not isinstance(v, dict)
     }
+    # env: VAR -> value, read DIRECTLY from ``self.env`` (``self`` IS
+    # ``agent.<node>``).  Carried for the ``agent info`` / ``show`` / ``get`` READS;
+    # the launch reads the same table off the file through the cascade, never off
+    # this field (MBR-1 P3).
     cfg.env = {k: str(v) for k, v in agent_sec.get("env", {}).items()}
     # secret_path: VAR -> host PATH pointer, read DIRECTLY from ``self.secret_path``
     # (spec §2a SECRET category — ``self`` IS ``agent.<node>``, no second embedding).

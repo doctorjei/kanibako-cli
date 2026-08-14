@@ -663,6 +663,29 @@ def start_mocks():
                         f"agent.{_node}.secret_path.{var}": path
                         for var, path in _agent_cfg.secret_path.items()
                     })
+                # ENV category, the EXACT analog of the secret above and folded for
+                # the same reason (MBR-1 P3): the per-agent file's ``self.env`` is an
+                # ``agent.<node>.env.<VAR>`` key now, re-rooted into the cascade by
+                # ``_agent_partial``, and it reaches the box ONLY through the collapse.
+                # This stub passes ``agent_path=None``, so without the fold a mocked
+                # launch would deliver none of a user's agent-scope variables.
+                # ⚑ THE APPROXIMATION is the same one the secret takes: the value
+                # enters at the FLOOR rather than the agent-FILE rung.  Against the
+                # SCOPE FILES that is unobservable — this stub reads none of them, so
+                # no system/workset/box level exists for the rung order to matter to.
+                # 🛑 IT IS OBSERVABLE IN EXACTLY ONE CONTEST, and in the WRONG
+                # DIRECTION: at a VAR the active plugin also declares, the
+                # ``default_envs()`` update below lands on the SAME floor dict and
+                # therefore wins here, whereas on the real path the agent FILE beats
+                # the plugin's declared default (that inversion is the very bug
+                # MBR-1 P3 fixed).  So NO TEST DRIVEN THROUGH THIS STUB MAY ASSERT
+                # THAT CONTEST — file-beats-plugin is pinned on the real chain, in
+                # ``tests/test_targets/test_agent_envs.py``.
+                if _agent_cfg is not None and getattr(_agent_cfg, "env", None):
+                    _default_cats.update({
+                        f"agent.{_node}.env.{var}": value
+                        for var, value in _agent_cfg.env.items()
+                    })
                 # The plugin's DECLARED env keys (agent.<node>.env.<VAR>) — the ONLY
                 # route a plugin's own variables have into the box, so a stub that
                 # omitted them would launch every mocked box without them and make

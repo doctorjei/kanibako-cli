@@ -277,16 +277,17 @@ class TestSystemEnvTier:
         assert rc == 0
         assert "system.env.EDITOR = nano" in capsys.readouterr().out
 
-    def test_launch_env_takes_the_collapsed_slot_over_the_agent_tier(self):
-        """``_build_config_env`` layers the agent tier UNDER the COLLAPSED env slots.
+    def test_launch_env_is_the_collapsed_slots_and_only_them(self):
+        """``_build_config_env`` projects the slots — it layers nothing under them.
 
-        🛑 RECOMPOSED WITH THE CONSUMER, and the old prose went with it. The input
-        was ``LaunchDeliveries.envs``, an un-arbitrated entry list, and this docstring
-        said the pick was "the most-specific scope per VAR (system < agent < workset <
-        box)" — the CASCADE's direction, which is not the direction the VARIABLES
-        realize in. The slots arrive decided now (``store_collapse.collapse_env``
-        walks system-first and refuses a contested VAR), so what is left to assert
-        here is the LAYERING and nothing else.
+        🛑 RECOMPOSED TWICE, and the second time the SUBJECT went. It first read an
+        un-arbitrated ``LaunchDeliveries.envs`` entry list and claimed the pick was
+        "the most-specific scope per VAR" — the CASCADE's direction, which is not
+        the direction VARIABLES realize in. It then pinned the agent tier as an
+        UNDER-layer, which MBR-1 P3 retired: that dict was the per-agent file's
+        ``self.env``, off the cascade entirely and therefore below ``system``, and
+        the file's table is an ordinary ``agent.<node>.env.<VAR>`` key now. One
+        input, no layering, nothing to order.
         """
         from kanibako.commands.start import _build_config_env
         from kanibako.settings.store_collapse import CollapsedEnv
@@ -294,16 +295,12 @@ class TestSystemEnvTier:
         def _slot(var, value, scope):
             return {var: CollapsedEnv(value, scope, f"{scope}.env.{var}")}
 
-        # Agent tier alone (no scoped env configured) → unchanged.
-        assert _build_config_env({"EDITOR": "agent-e"}, {})["EDITOR"] == "agent-e"
-        # A collapsed slot supersedes it.
+        assert _build_config_env({}) == {}
+        assert _build_config_env(_slot("EDITOR", "box-e", "box"))["EDITOR"] == "box-e"
+        # The scope rides as PROVENANCE and this projection never consults it.
         assert _build_config_env(
-            {"EDITOR": "agent-e"}, _slot("EDITOR", "box-e", "box"),
-        )["EDITOR"] == "box-e"
-        # And a var only the settings keys know about still arrives.
-        assert _build_config_env(
-            {}, _slot("PAGER", "less", "system"),
-        )["PAGER"] == "less"
+            _slot("PAGER", "less", "system"),
+        ) == {"PAGER": "less"}
 
     def test_reset_env_removes_it(self, config_file, tmp_home, capsys):
         _set("system.env.EDITOR=nano")

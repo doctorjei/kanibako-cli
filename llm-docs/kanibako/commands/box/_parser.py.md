@@ -359,10 +359,13 @@ The NODE-name keys the `agent.<node>.*` keyspace slot and the `agents/<node>/` d
 reflects the RESOLVED target (fallback-safe) with the persona preserved, and for a bare,
 as-requested agent it equals `target.name`.
 
-`env_resolved` is composed by the SAME helper the launch uses (`_build_config_env`, agent tier
-under the reconciled `<scope>.env.<VAR>` winners), so the display cannot claim an env the box will
-not get — or miss one it will. It needs the RECONCILE, which is why it lands after the snapshot
-rather than beside the agent state.
+`env_resolved` is composed by the SAME helper the launch uses (`_build_config_env`, a straight
+projection of the collapse's arbitrated `<scope>.env.<VAR>` slots), so the display cannot claim an
+env the box will not get — or miss one it will. It needs the RESOLVE, which is why it lands after
+the snapshot rather than beside the agent state. ⚑ The helper took a second argument until MBR-1
+P3 — the per-agent file's `self.env`, passed as an under-layer because it was on no cascade level.
+It is an ordinary `agent.<node>.env.<VAR>` key now and arrives in the slots, so this call passes
+the slots and nothing else.
 
 #### `cli_level` — selection only, and the inert `--agent`
 

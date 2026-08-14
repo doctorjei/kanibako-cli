@@ -133,6 +133,159 @@ def test_agent_partial_surfaces_flat_secret_path():
     assert _agent_partial(raw, sub_key="default") == KeyStore()
 
 
+def test_agent_partial_surfaces_flat_env():
+    # MBR-1 P3 (N-1): the per-agent file's ``self.env`` is flat for exactly the reason
+    # ``self.secret_path`` is — ``self`` IS ``agent.<node>`` — and it was re-rooted for
+    # neither. So an ``agent.<node>.env.<VAR>`` was no snapshot leaf at all: it reached
+    # the box only as a separate under-layer BELOW every ``<scope>.env.<VAR>`` slot
+    # (inverting the cascade bracket, where agent outranks system) and never saw the
+    # expand pass. Same arm, same ACTIVE-layer-only rule as the secret above.
+    from kanibako.settings.settings_assemble import _agent_partial
+
+    raw = {"self": {
+        "name": "OpenAI Codex CLI",
+        "env": {"CODEX_HOME": "~/.codex"},
+    }}
+    active = _agent_partial(raw, sub_key="navigator℘codex")
+    assert active.agent["navigator℘codex"].env["CODEX_HOME"] == "~/.codex"
+    # The default layer never carries the file's own env (it is this node's, not
+    # every agent's) — the same discrimination the secret above is held to.
+    assert _agent_partial(raw, sub_key="default") == KeyStore()
+
+
+#: The categories ruled out of the ``self.<sub>`` sub-table, each with a sample entry so a
+#: parametrized case can assert the CURE it renders (the verb spelling is per-category).
+_REFUSED_NESTED = [("env", "EDITOR", "vim"), ("secret_path", "API_KEY", "/t/token")]
+
+
+@pytest.mark.parametrize("category,var,value", _REFUSED_NESTED, ids=lambda v: str(v))
+class TestNothingNestsUnderSelfButTheCategories:
+    """Rulings 49c + 50 — *"There is no self:<agent>:foo. It is just self:foo"*.
+
+    ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
+    ``agent.<agent>``, so ``self.<sub>.<category>`` READS ``agent.<agent>.<sub>.<category>`` — a key
+    that cannot exist, because *"agent.claude does not contain 'claude'"* (*"That would be
+    agent.claude.claude"*). ⚑ That argument is UNIFORM over any ``<sub>``, which is why the literal
+    ``default`` refuses on exactly the same ground and is NOT a generic-``<node>`` construction.
+
+    ⚑ SCOPE: ``env`` and ``secret_path``. ``bindings`` is EXCLUDED — nested is its only spelling
+    today, so refusing it before a flat route exists would delete a live delivery path; the control
+    at the bottom is what stops this refusal creeping into it ahead of that decision.
+
+    ⚑ A DIFFERENT REFUSAL AT A DIFFERENT LAYER from the cross-scope twin
+    (``store_collapse._refuse_env_twin``, rows 35-38): that one arbitrates two DECLARED keys
+    contesting one slot at collapse time; this one rejects a FILE SPELLING at assembly time,
+    before any key exists. Neither weakens the other, and a test here must not stand in for one
+    there.
+    """
+
+    def test_the_nested_spelling_refuses_when_no_flat_table_exists(
+        self, category, var, value,
+    ):
+        # ⚑ THE COMMON CASE, and the one a check placed after the flat splice would miss
+        # entirely: a hand-written file carrying ONLY the nested table. Before the refusal it
+        # resolved to the very same ``agent.<node>.<category>.<VAR>`` keys as the flat spelling,
+        # so nothing distinguished it and nothing told the user.
+        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_resolve import SettingsError
+
+        raw = {"self": {"codex": {category: {var: value}}}}
+        with pytest.raises(SettingsError) as exc:
+            _agent_partial(
+                raw, sub_key="codex", path=Path("/a/settings.yaml"), node="codex",
+            )
+        message = str(exc.value)
+        # Names the offending SPELLING and the cure — a refusal that does not is a crash.
+        assert f"self.codex.{category}" in message
+        assert var in message
+        assert f"kanibako agent set codex {category}.{var}={value}" in message
+        assert "/a/settings.yaml" in message
+
+    def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
+        self, category, var, value,
+    ):
+        # RULING 50, pinned as the WORDING it is: the user is told the key their spelling
+        # actually reads. Without the expansion the refusal is an assertion of authority; with
+        # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
+        # point — the node appears TWICE.
+        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_resolve import SettingsError
+
+        raw = {"self": {"codex": {category: {var: value}}}}
+        with pytest.raises(SettingsError) as exc:
+            _agent_partial(raw, sub_key="codex", node="codex")
+        message = str(exc.value)
+        assert f"agent.codex.codex.{category}" in message
+        assert "alias" in message.lower()
+
+    def test_both_spellings_refuse_rather_than_losing_the_nested_table(
+        self, category, var, value,
+    ):
+        # THE SILENT LOSS THIS REMOVES: the flat splice REPLACED a same-named nested table
+        # WHOLESALE, so ``ONLY_NESTED`` below simply was not in the cascade — no warning, no
+        # key, no trace. The refusal names it instead. ⚑ Asserting the NESTED name (not the flat
+        # one) is what catches a check placed on the wrong side of the splice.
+        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_resolve import SettingsError
+
+        raw = {"self": {
+            category: {"ONLY_FLAT": value},
+            "codex": {category: {"ONLY_NESTED": value}},
+        }}
+        with pytest.raises(SettingsError) as exc:
+            _agent_partial(raw, sub_key="codex", node="codex")
+        assert "ONLY_NESTED" in str(exc.value)
+
+    def test_the_literal_default_sub_table_refuses_on_the_same_ground(
+        self, category, var, value,
+    ):
+        # ⚑ NOT a generic-``<node>`` construction: ``self.default.<category>`` expands to
+        # ``agent.<agent>.default.<category>``, equally non-existent. Only the CURE differs —
+        # the flat table is re-rooted for the ACTIVE layer only, so the all-agents tier has no
+        # agent-file spelling at all and is written in the SYSTEM file (both routes MEASURED
+        # live 2026-08-14: the value arrives, and it does not beat the active node).
+        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_resolve import SettingsError
+
+        raw = {"self": {"default": {category: {var: value}}}}
+        with pytest.raises(SettingsError) as exc:
+            _agent_partial(
+                raw, sub_key="default", path=Path("/a/settings.yaml"), node="codex",
+            )
+        message = str(exc.value)
+        assert f"self.default.{category}" in message
+        assert f"agent.codex.default.{category}" in message
+        assert "SYSTEM settings file" in message
+        # The cure must NOT send an all-agents value to the flat table, which would silently
+        # narrow it to this one node.
+        assert "kanibako agent set" not in message
+
+    def test_a_bare_category_leaf_refuses_on_presence_not_truthiness(
+        self, category, var, value,
+    ):
+        # ``<category>:`` with nothing under it parses to None. It is still the refused
+        # spelling, and catching it here is what stops a user adding the first entry under a
+        # table kanibako was never going to read.
+        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError, match=rf"self\.codex\.{category}"):
+            _agent_partial({"self": {"codex": {category: None}}}, sub_key="codex")
+
+
+def test_the_nested_bindings_sub_table_is_untouched():
+    # THE SCOPE CONTROL, and the ONE occupant of the nested shape left. ``env`` and
+    # ``secret_path`` are BOTH refused there now (rulings 49c + 50); ``bindings`` is not,
+    # because nested is its only spelling today and refusing it before a flat route exists
+    # would delete a live delivery path. That flatten is a separate decision pending Jei's
+    # word — this test failing is the tell that it was assumed rather than made.
+    from kanibako.settings.settings_assemble import _agent_partial
+
+    raw = {"self": {"codex": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}}
+    active = _agent_partial(raw, sub_key="codex", node="codex")
+    assert "x" in str(active.agent["codex"].bindings.rw)
+
+
 def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
     # A user-settable ``agent.<name>.bindings.{ro,rw}`` ENTRY written on a scope
     # FILE repoints the descriptor delivery bind's HOST SOURCE through the ORDINARY
@@ -3426,6 +3579,23 @@ def _nested(key, value):
     return {category: {var: value}} if sep else {key: value}
 
 
+def _agent_file_table(key, value, *, node="claude"):
+    """Spell one persona key as the AGENT FILE table that carries it into ``_agent_partial``.
+
+    ⚑ The two shapes are NOT interchangeable and the difference is load-bearing here.
+    ``env`` / ``secret_path`` live FLAT under ``self`` — ``self`` IS ``agent.<node>``, and a
+    second ``<node>`` level under it REFUSES (rulings 49c + 50). The bare behavior classes have no
+    flat route into ``_agent_partial`` at all (a flat scalar goes to the separate ``cfg.state``
+    channel), so they are written in the discriminated sub-table. Keyed off the PRODUCTION
+    tuple, so a category joining or leaving it cannot leave this spelling behind.
+    """
+    from kanibako.settings.settings_assemble import _FLAT_AGENT_CATEGORIES
+
+    table = _nested(key, value)
+    flat = key.partition(".")[0] in _FLAT_AGENT_CATEGORIES
+    return {"self": table if flat else {node: table}}
+
+
 def _persona_snap(
     tmp_path,
     *,
@@ -3504,11 +3674,16 @@ class TestPersonaRungOrdering:
         the two are DIFFERENT KEYS, so the MERGE never contends them — both survive
         side by side, and the level order between them is unobservable. A test that
         asserted an ordering there would be asserting nothing.
+
+        ⚑ The backstop is written in the SYSTEM file, which is the route for it: the agent
+        file's flat table is re-rooted for the ACTIVE node only, and ``self.default.env``
+        refuses (rulings 49c + 50). Which FILE supplies it is incidental to the claim — that two
+        disjoint names never meet is exactly why the level does not matter.
         """
         snap = _persona_snap(
             tmp_path,
             persona_values={key: "from-persona"},
-            agent_file={"self": {"default": _nested(key, "from-agent-default")}},
+            system={"agent": {"default": _nested(key, "from-agent-default")}},
         )
         assert _leaf(snap, path) == "from-persona"
         # The backstop is untouched under its OWN true name — no clobber, no merge.
@@ -3529,7 +3704,7 @@ class TestPersonaRungOrdering:
         ``agent.<active>.<key>`` in it can only be a deliberate user edit."""
         self._contended(
             tmp_path, key, path, "from-agent-file",
-            agent_file={"self": {"claude": _nested(key, "from-agent-file")}},
+            agent_file=_agent_file_table(key, "from-agent-file"),
         )
 
     def test_persona_loses_to_a_workset_pref(self, tmp_path, key, path):

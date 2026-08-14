@@ -64,11 +64,13 @@ def _resolve(std, proj, **kw):
     # ``extra_default_categories`` and want no system FILE at all. A case whose
     # subject IS the file cascade (the same key in two files) passes the real path.
     kw.setdefault("system_settings_path", None)
+    # ⚑ DEFAULTED for the same reason: a case whose subject is the per-agent FILE
+    # (``self.env`` re-rooted into the cascade) must hand the seam a real path.
+    kw.setdefault("agent_cfg_path", None)
     return _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name="claude",
-        agent_cfg_path=None,
         desc=None,
         install=None,
         target=_WiringTarget(),
@@ -466,9 +468,7 @@ class TestTheEnvConsumerReadsTheLeaf:
             std, proj,
             extra_default_categories=dict(self._FLOOR if floor is None else floor),
         )
-        return _build_config_env(
-            {"KANI_AGENT_TIER": "agent"}, _launch_env_map(snapshot),
-        )
+        return _build_config_env(_launch_env_map(snapshot))
 
     def test_every_declared_VAR_reaches_the_consumer(
         self, std, config, project_dir,
@@ -478,9 +478,19 @@ class TestTheEnvConsumerReadsTheLeaf:
         assert env["KANI_PINNED"] == "workset"
         assert env["KANI_ONLY_WORKSET"] == "ws-only"
 
-    def test_the_agent_tier_stays_the_UNDER_layer(self, std, config, project_dir):
-        """``AgentConfig.env`` is below every scope, and is not dropped."""
-        assert self._env(std, config, project_dir)["KANI_AGENT_TIER"] == "agent"
+    def test_the_leaf_is_the_WHOLE_config_env(self, std, config, project_dir):
+        """🛑 REPLACES ``test_the_agent_tier_stays_the_UNDER_layer`` (MBR-1 P3).
+
+        That test pinned an ``AgentConfig.env`` dict handed to the consumer beside
+        the leaf, and the claim it protected — "the agent tier is below every scope
+        and is not dropped" — was the DEFECT stated as a property: below every scope
+        is below ``system``, which inverts the bracket the spec gives the agent tier.
+        The table is a cascade level now, so the consumer takes ONE input and this
+        pins that: what the collapse decided is the whole of the config env, with no
+        second channel able to add to it or shadow it.
+        """
+        env = self._env(std, config, project_dir)
+        assert set(env) == {"KANI_PINNED", "KANI_ONLY_WORKSET"}
 
     def test_a_VAR_named_by_two_scopes_never_reaches_the_consumer(
         self, std, config, project_dir,
@@ -568,6 +578,157 @@ class TestOneVariableTwoOrderings:
         assert f"box.env.{self._VAR}" in message
         # The cure, not just the complaint.
         assert "ONE owner" in message
+
+
+class TestTheAgentFileEnvRidesTheOneChannel:
+    """MBR-1 P3 — the per-agent FILE's ``self.env`` is an ordinary ``agent.<node>.env.<VAR>``.
+
+    🛑 IT WAS NOT ONE. ``settings_assemble._agent_partial`` re-rooted the file's flat
+    ``self.secret_path`` and nothing else, so the env block never became a snapshot
+    leaf: it reached the box on a private under-layer BELOW every collapsed slot.
+    Two consequences, both closed here and both pinned below — it lost to a ``system``
+    value (inverting the bracket, where agent outranks system), and it never saw the
+    expand pass, so one written value behaved two ways depending on which FILE spelled
+    it. Neither was a decision; both were an omitted arm.
+
+    ⚑ THE INPUT IS WRITTEN WHERE ``agent_file_route`` SAYS, NEVER AT A HAND-SPELLED
+    TABLE. That function IS the per-agent file's shape and it is what ``agent set
+    <node> env.FOO=bar`` routes its write through, so deriving the location from it
+    makes these pins of the USER'S VERB reaching the box — not of a YAML layout that
+    could quietly drift away from the verb that writes it.
+    """
+
+    _VAR = "KANI_FROM_THE_AGENT_FILE"
+
+    def _agent_file(self, std, *, value="from-the-agent-file", var=None):
+        """Write ``self.env.<VAR>`` exactly where the ``agent set`` verb writes it."""
+        from kanibako.settings.agent_config import (
+            agent_file_route,
+            agent_settings_path,
+        )
+        from kanibako.settings.config_io import write_nested_key
+
+        path = agent_settings_path(std.agents, "claude")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        sections, leaf = agent_file_route(f"env.{var or self._VAR}", "claude")
+        write_nested_key(path, sections, leaf, value)
+        return path
+
+    def _slot(self, std, config, project_dir, *, var=None, **kw):
+        """The collapsed slot the launch would deliver, off a real whole-box resolve."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _deliveries = _resolve(std, proj, **kw)
+        return _assembly(snapshot)["env"][var or self._VAR]
+
+    def test_a_node_file_env_var_reaches_the_collapsed_leaf(
+        self, std, config, project_dir,
+    ):
+        """T-B — the var arrives, at AGENT scope, under its own discriminated key.
+
+        ⚑ The provenance is asserted with the value: arriving with the wrong scope
+        would place the variable in the wrong slot-contest bracket, which is the
+        half of this defect a value-only assertion cannot see.
+        """
+        slot = self._slot(
+            std, config, project_dir, agent_cfg_path=self._agent_file(std),
+        )
+        assert slot.value == "from-the-agent-file"
+        assert (slot.scope, slot.key) == ("agent", f"agent.claude.env.{self._VAR}")
+
+    def test_the_agent_file_beats_the_system_file_at_the_same_key(
+        self, std, config, project_dir,
+    ):
+        """ORDERING 1, the lower edge of the bracket: ONE key, TWO files, no error.
+
+        ⚑ NOT a slot contest — that is the other ordering. Both files spell the SAME
+        key ``agent.claude.env.<VAR>``, so the cascade settles it before the collapse
+        sees anything, and what the collapse receives is one agent-scope entry.
+        A ``system.env.<VAR>`` here would be a DIFFERENT key at a DIFFERENT scope and
+        would refuse (``TestOneVariableTwoOrderings``); this is the case that must NOT.
+        """
+        from kanibako.settings.config_io import write_nested_key
+
+        write_nested_key(
+            std.settings, ("agent", "claude", "env"), self._VAR, "from-the-system-file",
+        )
+        slot = self._slot(
+            std, config, project_dir,
+            agent_cfg_path=self._agent_file(std),
+            system_settings_path=std.settings,
+        )
+        assert slot.value == "from-the-agent-file"
+        assert (slot.scope, slot.key) == ("agent", f"agent.claude.env.{self._VAR}")
+
+    def test_a_workset_pref_beats_the_agent_file_at_the_same_key(
+        self, std, config, project_dir,
+    ):
+        """The bracket's UPPER edge, by the only route a containing file has.
+
+        ⚑ MEASURED, and it is why this is a pref: a WORKSET file may not spell an
+        ``agent:`` table at all — ``_drop_upward_scopes`` drops every containing
+        scope's table with a warning (spec §0), and agent CONTAINS workset. So the
+        workset's legal way to reach an agent key is ``pref.agent.<agent>.<key>``
+        (§2h), whose overlay is spliced above the agent-file rung. Asserting a plain
+        ``workset.agent.*`` key here would be asserting a shape the keyspace refuses.
+        """
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        _box_path, workset_path = box_workset_settings_paths(proj)
+        workset_path.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(
+            workset_path, ("pref", "agent", "claude", "env"),
+            self._VAR, "from-the-workset-pref",
+        )
+        snapshot, _deliveries = _resolve(
+            std, proj, agent_cfg_path=self._agent_file(std),
+        )
+        slot = _assembly(snapshot)["env"][self._VAR]
+        assert slot.value == "from-the-workset-pref"
+
+    def test_a_plugin_declared_default_loses_to_the_file_and_does_NOT_refuse(
+        self, std, config, project_dir,
+    ):
+        """The floor and the file are ONE key at two cascade levels — ordering 1.
+
+        P4 put every plugin env literal on ``agent.<agent>.env.<VAR>`` precisely so a
+        user overrides one by writing the SAME key in a nearer file. That is a
+        cascade, not a contest: exactly one key reaches the collapse, so nothing may
+        refuse. Paired deliberately with the case below, which is the twin that MUST.
+        """
+        slot = self._slot(
+            std, config, project_dir,
+            agent_cfg_path=self._agent_file(std),
+            extra_default_categories={
+                f"agent.claude.env.{self._VAR}": "from-the-plugin-floor",
+            },
+        )
+        assert slot.value == "from-the-agent-file"
+        assert (slot.scope, slot.key) == ("agent", f"agent.claude.env.{self._VAR}")
+
+    def test_a_box_scope_twin_of_a_file_var_refuses_naming_both_keys(
+        self, std, config, project_dir,
+    ):
+        """The OTHER ordering, from the same input: two SCOPES, one slot, refused.
+
+        The distinguishing pair for this whole phase. Above, a floor value and a file
+        value are the same key and the nearer one simply wins. Here the second value
+        is a DIFFERENT key at a DIFFERENT scope, so the two contest a variable that
+        holds one value — and re-rooting the file's env is what makes that contest
+        VISIBLE at all (before it, the box silently took the box-scope value).
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        with pytest.raises(SettingsError) as exc:
+            _resolve(
+                std, proj,
+                agent_cfg_path=self._agent_file(std),
+                extra_default_categories={f"box.env.{self._VAR}": "box-owned"},
+            )
+
+        message = str(exc.value)
+        assert f"agent.claude.env.{self._VAR}" in message
+        assert f"box.env.{self._VAR}" in message
 
 
 class TestTheFoundationIsBuiltAtTheSeam:
